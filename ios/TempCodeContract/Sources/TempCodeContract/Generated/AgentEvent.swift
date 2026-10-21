@@ -446,6 +446,43 @@ public struct GoalEvent: Codable, Hashable, Sendable {
     }
 }
 
+public struct PlanHandoffEvent: Codable, Hashable, Sendable {
+    public enum How: RawRepresentable, Codable, Hashable, Sendable {
+        case auto
+        case manual
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "auto": self = .auto
+            case "manual": self = .manual
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .auto: "auto"
+            case .manual: "manual"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let sessionId: String
+    public let title: String
+    public let environmentId: String?
+    public let how: How
+
+    public init(sessionId: String, title: String, environmentId: String? = nil, how: How) {
+        self.sessionId = sessionId
+        self.title = title
+        self.environmentId = environmentId
+        self.how = how
+    }
+}
+
 public struct AgentSpawnedEvent: Codable, Hashable, Sendable {
     public let childSessionId: String
     public let environmentId: String?
@@ -516,6 +553,7 @@ public enum AgentEvent: Codable, Hashable, Sendable {
     case usage(UsageEvent)
     case context(ContextEvent)
     case goal(GoalEvent)
+    case planHandoff(PlanHandoffEvent)
     case agentSpawned(AgentSpawnedEvent)
     case error(ErrorEvent)
     case errorsCleared(ErrorsClearedEvent)
@@ -551,6 +589,7 @@ public enum AgentEvent: Codable, Hashable, Sendable {
         case "usage": self = .usage(try UsageEvent(from: decoder))
         case "context": self = .context(try ContextEvent(from: decoder))
         case "goal": self = .goal(try GoalEvent(from: decoder))
+        case "plan-handoff": self = .planHandoff(try PlanHandoffEvent(from: decoder))
         case "agent-spawned": self = .agentSpawned(try AgentSpawnedEvent(from: decoder))
         case "error": self = .error(try ErrorEvent(from: decoder))
         case "errors-cleared": self = .errorsCleared(try ErrorsClearedEvent(from: decoder))
@@ -582,6 +621,7 @@ public enum AgentEvent: Codable, Hashable, Sendable {
         case .usage(let value): try Self.encode(tag: "usage", value, to: encoder)
         case .context(let value): try Self.encode(tag: "context", value, to: encoder)
         case .goal(let value): try Self.encode(tag: "goal", value, to: encoder)
+        case .planHandoff(let value): try Self.encode(tag: "plan-handoff", value, to: encoder)
         case .agentSpawned(let value): try Self.encode(tag: "agent-spawned", value, to: encoder)
         case .error(let value): try Self.encode(tag: "error", value, to: encoder)
         case .errorsCleared(let value): try Self.encode(tag: "errors-cleared", value, to: encoder)

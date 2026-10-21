@@ -364,8 +364,9 @@ public enum Methods {
             public let context1m: Bool?
             public let threadRules: ThreadRules?
             public let goal: String?
+            public let startedBy: String?
 
-            public init(id: String? = nil, provider: ProviderId? = nil, model: String? = nil, reasoning: Reasoning? = nil, agentType: AgentType? = nil, cwd: String? = nil, title: String? = nil, parentId: Patch<String>? = nil, projectId: Patch<String>? = nil, workspaceId: Patch<String>? = nil, threadType: Patch<ThreadType>? = nil, planPath: String? = nil, permission: PermissionPolicy? = nil, context1m: Bool? = nil, threadRules: ThreadRules? = nil, goal: String? = nil) {
+            public init(id: String? = nil, provider: ProviderId? = nil, model: String? = nil, reasoning: Reasoning? = nil, agentType: AgentType? = nil, cwd: String? = nil, title: String? = nil, parentId: Patch<String>? = nil, projectId: Patch<String>? = nil, workspaceId: Patch<String>? = nil, threadType: Patch<ThreadType>? = nil, planPath: String? = nil, permission: PermissionPolicy? = nil, context1m: Bool? = nil, threadRules: ThreadRules? = nil, goal: String? = nil, startedBy: String? = nil) {
                 self.id = id
                 self.provider = provider
                 self.model = model
@@ -382,6 +383,7 @@ public enum Methods {
                 self.context1m = context1m
                 self.threadRules = threadRules
                 self.goal = goal
+                self.startedBy = startedBy
             }
         }
 

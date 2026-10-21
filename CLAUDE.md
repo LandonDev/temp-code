@@ -680,6 +680,34 @@ thread-resources build hangs its clean-up; `setResourceCleanup` in the
 renderer turns the Archive done checkbox on. Proof:
 `bun run script:e2e-thread-batch`. docs/box.md "The fleet switches".
 
+## Plans: `plan_complete` and the auto-start
+- A plan is finished when the planner calls the `plan_complete` app tool
+  (planning threads only; refused while the plan file is empty) and the
+  thread then settles. The planning preamble makes it the last tool call.
+  The flow (src/main/server/planFlow.ts, settings in src/shared/plans.ts)
+  runs on that settle, never mid-turn: with `plans.autoImplement` on
+  (default; Settings → General → Plans, overridable per project from the
+  project's settings dialog) the host starts the implementation thread
+  itself — same host, cwd, model, effort and context window as the plan
+  thread unless `plans.implementModel` / `implementReasoning` /
+  `implementContext` fix one — with planPath set, the plan thread seeded,
+  the title from the plan's `#` heading; `implementationId` on the plan and
+  `planThreadId` on the build link them, a `plan-handoff` row lands on the
+  plan, and `plans.archiveAfterStart` (default on) archives the plan thread.
+  The thread that started the plan (`startedBy`, set by app_start_thread,
+  else `parentId`) is woken with a `<subagent-report>` through
+  `deliverAgentReport`; a person-started plan is the notifier's finished
+  notice ("Plan complete — implementation started: …" or "…waiting for you
+  to start the build") and the tab's "Plan ready" mark. With auto-start off
+  the plan view's single Start button, the phone's Start a build sheet and
+  `plan.implement` over the wire start the build through the same function.
+  Sending into a completed plan whose build has not started reopens it.
+  Unit tests: planFlow.test.ts, plans.test.ts; proof
+  `bun run script:e2e-plan-auto-implement` (three haiku planners on an
+  in-process registry; `scripts/lib/electron-stub.ts` is the Bun preload
+  that stands in for the claude driver's `nativeImage` import, so such a
+  proof runs without an Electron runtime, on the box too).
+
 ## The prod worktree is retired
 ~/IdeaProjects/temp-code-prod was the old local updater's build checkout.
 The updater no longer reads it or the source repo at all; it can stay

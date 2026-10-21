@@ -1,5 +1,5 @@
 import { hostOfCwd } from "../lib/tcserver/projects";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { readFile } from "../lib/tcserver/commands";
 
 /**
@@ -23,10 +23,13 @@ export function isSettledPlanning(t: {
 }
 
 export function usePlanReady(
-  threads: { id: string; threadType?: string | null; status?: string; planPath?: string | null }[],
+  threads: { id: string; threadType?: string | null; status?: string; planPath?: string | null; planCompletedAt?: number | null }[],
 ): Record<string, boolean> {
   const [ready, setReady] = useState<Record<string, boolean>>({});
-  const idle = threads.filter(isSettledPlanning);
+  // A plan the planner marked complete (plan_complete) is ready on the
+  // server's word; the file peek covers plans written before that tool.
+  const completed = threads.filter((t) => isSettledPlanning(t) && !!t.planCompletedAt).map((t) => t.id);
+  const idle = threads.filter((t) => isSettledPlanning(t) && !t.planCompletedAt);
   const key = idle.map((t) => `${t.id}=${t.planPath}`).join(",");
   useEffect(() => {
     const entries = key ? key.split(",").map((pair) => pair.split("=") as [string, string]) : [];
@@ -54,5 +57,11 @@ export function usePlanReady(
       clearInterval(t);
     };
   }, [key]);
-  return ready;
+  const completedKey = completed.join(",");
+  return useMemo(() => {
+    if (!completedKey) return ready;
+    const out = { ...ready };
+    for (const id of completedKey.split(",")) out[id] = true;
+    return out;
+  }, [ready, completedKey]);
 }

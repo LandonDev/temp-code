@@ -111,7 +111,7 @@ public struct CompactionItem: Sendable, Hashable {
 }
 
 public struct SystemLine: Sendable, Hashable {
-    public enum Kind: Sendable, Hashable { case plan, turnPass, agentSpawned, agentReport, backgroundTask, goal, error, status, unknown }
+    public enum Kind: Sendable, Hashable { case plan, turnPass, agentSpawned, agentReport, planHandoff, backgroundTask, goal, error, status, unknown }
 
     public var seq: Int
     public var ts: Int

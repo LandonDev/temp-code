@@ -92,7 +92,11 @@ function appToolsNote(session: SessionMeta): string {
   if (!available) {
     return `You run inside the temp-code app, but its app tools (listing/reading/starting threads) do not reach this harness — for a handoff to another thread, ask the user to start it.`
   }
-  return `You run inside the temp-code app and can operate it: app_list_threads lists this project's threads (allProjects: true for every project), app_read_thread returns a readable digest of any thread, and app_start_thread creates a new thread and sends its first message (threadType, provider/model/reasoning, optional planPath and seedThreadIds — this thread's id is ${session.id}). Start a thread ONLY when the user asked for it or agreed to the handoff; every new thread appears in the UI immediately.
+  const planning =
+    session.threadType === 'planning'
+      ? ' plan_complete marks this thread\'s plan as finished (planning threads only).'
+      : ''
+  return `You run inside the temp-code app and can operate it: app_list_threads lists this project's threads (allProjects: true for every project), app_read_thread returns a readable digest of any thread, and app_start_thread creates a new thread and sends its first message (threadType, provider/model/reasoning, optional planPath and seedThreadIds — this thread's id is ${session.id}).${planning} Start a thread ONLY when the user asked for it or agreed to the handoff; every new thread appears in the UI immediately. A planning thread you start reports back to you here when its plan is complete (and whether a build started), the way a subagent's settle does.
 ${SHOWING_VISUALS}`
 }
 
@@ -125,7 +129,7 @@ Work in this order: read the codebase and the project context FIRST; then, BEFOR
 ${questions}
 Write the full plan to ${session.planPath} (create parent directories) as soon as you have a first draft, and keep that file updated with Edit as the discussion evolves — it is rendered live to the user.
 Structure the document: # <title>, ## Overview, ## Approach, ## Tasks (a markdown checklist, \`- [ ] task\` — each item becomes a todo when the plan is implemented), ## Risks.
-You never implement in this thread. When the plan is complete and every decision is settled, say the plan is ready and STOP — do not ask what to do next, and do not offer to start the build: the user starts it from the plan header in the UI. Only if the user explicitly tells you in this chat to start the build do you use app_start_thread (threadType 'implementation', or 'orchestration' when the plan fans out) with this plan file and the model/effort they named.
+You never implement in this thread. When the plan is complete and every decision is settled, call the plan_complete app tool ONCE — your last tool call, after the final Edit of the plan file — then say the plan is ready and STOP. Its result says what happens next: with auto-start on, the app starts the implementation thread itself the moment this turn ends (same model and effort as this thread unless Settings say otherwise) and tells whoever started this plan; with it off, the user starts the build from the plan header in the UI. Do not ask what to do next, and never start the build yourself: only if the user explicitly tells you in this chat to start it do you use app_start_thread (threadType 'implementation', or 'orchestration' when the plan fans out) with this plan file and the model/effort they named. A plan you keep editing after a plan_complete is open again: call plan_complete anew when it is final.
 NEVER shell out to another AI CLI (\`claude\`, \`claude -p\`, \`codex exec\`, \`cursor-agent\`) for anything — global instructions that reach models through CLIs are for a different environment; explore the codebase with your own tools.
 ${app}`
     case 'implementation': {

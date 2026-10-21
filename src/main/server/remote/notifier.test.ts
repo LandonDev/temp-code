@@ -328,3 +328,22 @@ describe('plumbing', () => {
     expect(seen()).toEqual(['failed:seed-run'])
   })
 })
+
+describe('a completed plan', () => {
+  it('says the plan is complete and whether its build started', () => {
+    reg.add('p', { threadType: 'planning', planPath: '/p.md', title: 'Plan: widget' })
+    notifier.start()
+    reg.status('p', 'running')
+    reg.row('p', { type: 'user-text', text: 'plan it' })
+    reg.row('p', { type: 'assistant-text', text: 'done', delta: false } as AgentEvent)
+    reg.push('p', { status: 'idle', planCompletedAt: 7 })
+    settle()
+    expect(notices.at(-1)).toMatchObject({ event: 'finished', threadId: 'p', body: 'Plan complete — waiting for you to start the build' })
+    reg.add('b', { threadType: 'implementation', title: 'Ship it' })
+    reg.status('p', 'running')
+    reg.row('p', { type: 'assistant-text', text: 'more', delta: false } as AgentEvent)
+    reg.push('p', { status: 'idle', planCompletedAt: 7, implementationId: 'b' })
+    settle()
+    expect(notices.at(-1)).toMatchObject({ event: 'finished', threadId: 'p', body: 'Plan complete — implementation started: Ship it' })
+  })
+})

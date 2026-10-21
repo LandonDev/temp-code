@@ -29,6 +29,7 @@ import {
 } from "../../lib/session";
 import { policyForMode } from "../../lib/tcserver/access";
 import { startThread } from "../../lib/tcserver/commands";
+import { implementPlan } from "../../lib/tcserver/plans";
 import { sessionStore } from "../../lib/tcserver/store";
 import type { SessionMeta, ThreadType } from "../../lib/tcserver/types";
 import {
@@ -66,11 +67,15 @@ import type { ThreadViewProps } from "./ThreadView";
 const subscribeMetas = (cb: () => void): (() => void) =>
   sessionStore.onMetaChange(cb);
 
-/** The thread this plan handed off to: same plan file, a build type. */
+/** The thread this plan handed off to: the one the server linked
+ *  (implementationId), else any build on the same plan file. */
 function findSpawned(
   id: string,
   planPath: string | null | undefined,
+  implementationId?: string | null,
 ): SessionMeta | null {
+  const linked = implementationId ? sessionStore.metaOf(implementationId) : null;
+  if (linked) return linked;
   if (!planPath) return null;
   return (
     sessionStore
@@ -145,7 +150,7 @@ export function PlanView(props: ThreadViewProps) {
   }, [hasDoc]);
 
   const spawned = useSyncExternalStore(subscribeMetas, () =>
-    findSpawned(session.id, session.planPath),
+    findSpawned(session.id, session.planPath, session.implementationId),
   );
 
   // Chat pane phases: open alongside the plan while the conversation runs;
@@ -180,7 +185,11 @@ export function PlanView(props: ThreadViewProps) {
           right — Start until the handoff, then the running thread. */}
       <PaneHeader
         label="Plan"
-        detail={tasks.length > 0 ? `${tasks.length} tasks` : null}
+        detail={
+          [tasks.length > 0 ? `${tasks.length} tasks` : null, session.planCompletedAt && !spawned ? "complete" : null]
+            .filter(Boolean)
+            .join(" · ") || null
+        }
       >
         {spawned ? (
           <HandoffChip spawned={spawned} onOpen={() => props.onOpenSession?.(spawned.id)} />
@@ -389,6 +398,22 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
       );
       const n = type === "implementation" ? workers : 1;
       const rules = normalizeTune(tune);
+      // One build: the server's own start (plan.implement) — the function
+      // the auto-start runs, so the links, the handoff row and the archive
+      // are the same whichever way the build began.
+      if (n === 1) {
+        await implementPlan(session.environmentId, session.id, {
+          threadType: type,
+          provider: choice.harness,
+          model: nativeModelId(choice.model),
+          reasoning: settings.effort,
+          context1m: settings.context === "1m",
+          permission: policyForMode(mode),
+          goal: goal.trim() || undefined,
+          ...(type === "orchestration" && rules ? { threadRules: rules } : {}),
+        });
+        return;
+      }
       for (let i = 0; i < n; i++) {
         await startThread(
           {
@@ -434,7 +459,7 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
         className="pressable flex items-center gap-1.5 rounded-md bg-content px-3 py-1 text-[12px] font-medium text-background-base hover:bg-content/90"
       >
         <Play className="size-3.5 fill-current" strokeWidth={1.75} />
-        Start
+        Start implementation
       </button>
       {open ? (
         <Popover

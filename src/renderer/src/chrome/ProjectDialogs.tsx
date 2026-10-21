@@ -11,6 +11,9 @@ import { BUILD_EMPTY, BuildFields, buildOrNull } from "./rail/buildSettings";
 import { ConfirmDialog, DialogFooter as Footer, ErrorLine, GHOST, errorText } from "./ConfirmDialog";
 import { INPUT_CLASS, Toggle } from "../surfaces/settingsBits";
 import { TurnPassFields, loadTurnPass, saveTurnPass } from "./TurnPassFields";
+import { PlanSettingsFields, planSettingsSummary } from "./PlanSettingsFields";
+import { savePlanSettings, samePlanSettings, usePlanSettings } from "../lib/tcserver/plans";
+import type { PlanSettings } from "@server/shared/plans";
 import { registry } from "../lib/connection";
 import { useAccounts } from "../stores/accounts";
 import { shortName } from "../lib/accountScope";
@@ -553,6 +556,18 @@ export function ProjectSettingsDialog({
     if (pass !== undefined && savedPass === undefined) setSavedPass(pass);
   }, [pass, savedPass]);
   const shownPass = pass ?? inherited ?? TURN_PASS_OFF;
+  // Plans: the project's override, else what it inherits from the host's global set.
+  const planScope = usePlanSettings(project.environmentId, project.id);
+  const globalPlans = usePlanSettings(project.environmentId, null);
+  const [plans, setPlans] = useState<PlanSettings | null | undefined>(undefined);
+  useEffect(() => {
+    if (planScope && plans === undefined) setPlans(planScope.overridden ? planScope.settings : null);
+  }, [planScope, plans]);
+  const shownPlans = plans ?? globalPlans?.settings ?? planScope?.settings;
+  const plansDirty =
+    planScope !== undefined &&
+    plans !== undefined &&
+    (planScope.overridden ? !plans || !samePlanSettings(plans, planScope.settings) : plans !== null);
 
   const nameDirty = name.trim() !== project.name && !!name.trim();
   const branchDirty =
@@ -564,7 +579,7 @@ export function ProjectSettingsDialog({
       (nextBuild?.outputs ?? "") !== (savedBuild?.outputs ?? ""));
   const passDirty = savedPass !== undefined && !samePass(pass ?? null, savedPass);
   const pinsDirty = !samePins(pins, project.accountPins ?? {});
-  const dirty = nameDirty || branchDirty || buildDirty || passDirty || pinsDirty;
+  const dirty = nameDirty || branchDirty || buildDirty || passDirty || pinsDirty || plansDirty;
   const pinsSummary =
     ROUTED_PROVIDERS.map((p) => {
       const name = pins[p];
@@ -598,6 +613,7 @@ export function ProjectSettingsDialog({
       if (nameDirty) await renameProject(project.id, name.trim());
       if (passDirty) await saveTurnPass(workspace.id, pass ?? null, project.id);
       if (pinsDirty) await setProjectAccounts(project.id, pins);
+      if (plansDirty) await savePlanSettings(project.environmentId, project.id, plans ?? null);
       if (buildDirty) {
         await registry.linkOf(project.environmentId).request("build.set", {
           workspaceId: workspace.id,
@@ -669,6 +685,24 @@ export function ProjectSettingsDialog({
               inheritLabel={projectInheritLabel(workspace, [...snapshot.providers.claude.profiles, ...snapshot.providers.codex.profiles])}
               compact
             />
+          </Disclosure>
+          <Disclosure
+            label="Plans"
+            summary={shownPlans ? `${planSettingsSummary(shownPlans)}${plans ? "" : " · global"}` : "…"}
+          >
+            {shownPlans ? (
+              <PlanSettingsFields
+                value={shownPlans}
+                onChange={setPlans}
+                environmentId={project.environmentId}
+                compact
+              />
+            ) : null}
+            {plans ? (
+              <button type="button" onClick={() => setPlans(null)} className={`${GHOST} self-start`}>
+                Use global setting
+              </button>
+            ) : null}
           </Disclosure>
           <Disclosure label="Build" summary={buildSummary}>
             <BuildFields

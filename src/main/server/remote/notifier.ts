@@ -326,6 +326,13 @@ export class Notifier {
       // A stop by the user is not a finish, and a thread that never worked since we looked has nothing to report.
       if (state.lastError?.stopped && state.lastError.seq >= state.lastRowSeq - 2) return null
       if (state.sent === null && state.lastRowSeq === 0) return null
+      // A plan the planner marked complete says so, and whether its build
+      // runs (planFlow.ts): the person's own notice of a finished plan.
+      if (meta.threadType === 'planning' && meta.planCompletedAt) {
+        const build = meta.implementationId ? this.options.registry.get(meta.implementationId) : null
+        const body = build && !build.archived ? `Plan complete — implementation started: ${cut(build.title, 80)}` : 'Plan complete — waiting for you to start the build'
+        return { event: 'finished', key: `plan:${meta.planCompletedAt}:${build?.id ?? ''}`, body, seq: state.lastRowSeq }
+      }
       return { event: 'finished', key: `finished:${state.lastRowSeq}`, body: 'Finished its turn', seq: state.lastRowSeq }
     }
     return null

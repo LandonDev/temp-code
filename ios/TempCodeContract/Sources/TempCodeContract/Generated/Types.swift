@@ -392,10 +392,14 @@ public struct SessionMeta: Codable, Hashable, Sendable {
     public let treeHasPaused: Bool?
     public let treeFrozenActiveElapsed: Int?
     public let threadRules: JSONValue?
+    public let planCompletedAt: Int?
+    public let implementationId: String?
+    public let planThreadId: String?
+    public let startedBy: String?
     public let createdAt: Int
     public let updatedAt: Int
 
-    public init(id: String, parentId: String?, projectId: String?, workspaceId: String?, threadType: ThreadType?, planPath: String?, provider: ProviderId, model: String, reasoning: Reasoning, agentType: AgentType, title: String, cwd: String, status: SessionStatus, pinned: Bool, archived: Bool, permission: PermissionPolicy, fast: Bool, ultrafast: Bool, context1m: Bool, busySince: Int?, pausedAt: Int?, frozenActiveElapsed: Int?, nativeId: String?, account: String? = nil, activity: String? = nil, activityKind: ActivityKind? = nil, tasks: Tasks? = nil, goal: Goal? = nil, context: Context? = nil, canContinue: Bool? = nil, failure: Failure? = nil, treeCanContinue: Bool? = nil, treeHasLiveWork: Bool? = nil, treeHasPaused: Bool? = nil, treeFrozenActiveElapsed: Int? = nil, threadRules: JSONValue? = nil, createdAt: Int, updatedAt: Int) {
+    public init(id: String, parentId: String?, projectId: String?, workspaceId: String?, threadType: ThreadType?, planPath: String?, provider: ProviderId, model: String, reasoning: Reasoning, agentType: AgentType, title: String, cwd: String, status: SessionStatus, pinned: Bool, archived: Bool, permission: PermissionPolicy, fast: Bool, ultrafast: Bool, context1m: Bool, busySince: Int?, pausedAt: Int?, frozenActiveElapsed: Int?, nativeId: String?, account: String? = nil, activity: String? = nil, activityKind: ActivityKind? = nil, tasks: Tasks? = nil, goal: Goal? = nil, context: Context? = nil, canContinue: Bool? = nil, failure: Failure? = nil, treeCanContinue: Bool? = nil, treeHasLiveWork: Bool? = nil, treeHasPaused: Bool? = nil, treeFrozenActiveElapsed: Int? = nil, threadRules: JSONValue? = nil, planCompletedAt: Int? = nil, implementationId: String? = nil, planThreadId: String? = nil, startedBy: String? = nil, createdAt: Int, updatedAt: Int) {
         self.id = id
         self.parentId = parentId
         self.projectId = projectId
@@ -432,12 +436,16 @@ public struct SessionMeta: Codable, Hashable, Sendable {
         self.treeHasPaused = treeHasPaused
         self.treeFrozenActiveElapsed = treeFrozenActiveElapsed
         self.threadRules = threadRules
+        self.planCompletedAt = planCompletedAt
+        self.implementationId = implementationId
+        self.planThreadId = planThreadId
+        self.startedBy = startedBy
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, parentId, projectId, workspaceId, threadType, planPath, provider, model, reasoning, agentType, title, cwd, status, pinned, archived, permission, fast, ultrafast, context1m, busySince, pausedAt, frozenActiveElapsed, nativeId, account, activity, activityKind, tasks, goal, context, canContinue, failure, treeCanContinue, treeHasLiveWork, treeHasPaused, treeFrozenActiveElapsed, threadRules, createdAt, updatedAt
+        case id, parentId, projectId, workspaceId, threadType, planPath, provider, model, reasoning, agentType, title, cwd, status, pinned, archived, permission, fast, ultrafast, context1m, busySince, pausedAt, frozenActiveElapsed, nativeId, account, activity, activityKind, tasks, goal, context, canContinue, failure, treeCanContinue, treeHasLiveWork, treeHasPaused, treeFrozenActiveElapsed, threadRules, planCompletedAt, implementationId, planThreadId, startedBy, createdAt, updatedAt
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -478,6 +486,10 @@ public struct SessionMeta: Codable, Hashable, Sendable {
         try container.encodeIfPresent(treeHasPaused, forKey: .treeHasPaused)
         try container.encodeIfPresent(treeFrozenActiveElapsed, forKey: .treeFrozenActiveElapsed)
         try container.encodeIfPresent(threadRules, forKey: .threadRules)
+        try container.encodeIfPresent(planCompletedAt, forKey: .planCompletedAt)
+        try container.encodeIfPresent(implementationId, forKey: .implementationId)
+        try container.encodeIfPresent(planThreadId, forKey: .planThreadId)
+        try container.encodeIfPresent(startedBy, forKey: .startedBy)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(updatedAt, forKey: .updatedAt)
     }

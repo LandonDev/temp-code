@@ -390,6 +390,9 @@ public struct ThreadFold: Sendable, Hashable {
             if !board.agents.contains(event.childSessionId) { board.agents.append(event.childSessionId) }
         case .agentReport(let event):
             append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .agentReport, text: event.title, detail: event.status, stopped: false)))
+        case .planHandoff(let event):
+            // The plan's own record of its build: the row links to that thread.
+            append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .planHandoff, text: event.how == .auto ? "Started the build" : "Build started", detail: event.sessionId, stopped: false)))
         case .backgroundTask(let event):
             append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .backgroundTask, text: event.description, detail: event.status.rawValue, stopped: false)))
         case .backgroundTasks(let event):

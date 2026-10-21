@@ -64,7 +64,7 @@ import { errorRowOf, isErrorBlock } from "../lib/turnOutcome";
 import { sessionStore, useSessionMeta } from "../lib/tcserver/store";
 import { ErrorChip } from "./ErrorChip";
 import { CompactionCard } from "./CompactionCard";
-import { AgentSpawnRow } from "./AgentSpawnRow";
+import { AgentSpawnRow, PlanHandoffRow } from "./AgentSpawnRow";
 import { CommandChip, ConnectorMark, ConnectorSummary, ReconnectChip, SubagentMark, SubagentSteps, reauthOf } from "./ToolChips";
 import { commandParts, isAgentCall, mcpServerOf, useKnownCommands, type CommandPart } from "./toolMarks";
 import { TurnStateContext, useTurnState, type TurnSession } from "./turnState";
@@ -1362,6 +1362,7 @@ const TranscriptBlock = memo(function TranscriptBlock({
   if (block.role === "system") {
     if (block.compaction) return <CompactionCard block={block} />;
     if (block.agent) return <AgentSpawnRow block={block} />;
+    if (block.planHandoff) return <PlanHandoffRow block={block} />;
     if (isErrorBlock(block)) return <ErrorRowView block={block} />;
     const actions = passActionsOf(block);
     if (actions) return <PassRow actions={actions} />;

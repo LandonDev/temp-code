@@ -61,6 +61,21 @@ import { gitConfigMtime, githubRepoFromRemote, originRemoteUrl } from './gitRemo
 import { stopProjectLsp } from './lsp'
 import { parseRules, type OrchestrationRules } from '@shared/rules'
 import { DEFAULT_THREAD_DEFAULTS, parseDefaults, type ThreadDefaults } from '@shared/defaults'
+import type { PlanSettings } from '@shared/plans'
+import {
+  completePlan,
+  getPlanSettings,
+  implementPlan,
+  isPlanSettle,
+  linkPlanHandoff,
+  reopenPlan,
+  resolvePlanSettings,
+  setPlanSettings,
+  settlePlan,
+  type CompleteResult,
+  type ImplementOptions,
+  type PlanFlowRegistry
+} from './planFlow'
 import { parseTurnPass, passActions, passEnabled, type TurnPass } from '@shared/turnpass'
 import { parseBuildConfig, type BuildConfig, type EffectiveBuild } from '@shared/build'
 import { detectBuild } from './build'
@@ -1236,6 +1251,58 @@ export class SessionRegistry {
     this.store.setSetting(key, defaults ? JSON.stringify(defaults) : null)
   }
 
+  // ── plans: what happens when a plan is complete (planFlow.ts) ────────
+
+  /** The plan settings stored at a scope (null = unset there). */
+  getPlanSettings(projectId: string | null): PlanSettings | null {
+    return getPlanSettings(this.store, projectId)
+  }
+
+  setPlanSettings(projectId: string | null, settings: PlanSettings | null): void {
+    setPlanSettings(this.store, projectId, settings)
+  }
+
+  /** What applies to a project: override → global → defaults. */
+  resolvePlanSettings(projectId: string | null): PlanSettings {
+    return resolvePlanSettings(this.store, projectId)
+  }
+
+  /** The planner's `plan_complete`: stamp the plan and say what follows. */
+  completePlan(sessionId: string, args: { summary?: string } = {}): Promise<CompleteResult> {
+    return completePlan(this.planFlow(), sessionId, args)
+  }
+
+  /** Start the implementation thread from a finished plan (the plan view,
+   *  the wire's plan.implement); the auto path calls the same function. */
+  implementPlan(planId: string, opts: ImplementOptions = {}): Promise<SessionMeta> {
+    return implementPlan(this.planFlow(), planId, opts, 'manual')
+  }
+
+  /** This host's name, as notices name it; set by the server. */
+  hostName: () => string = () => 'this host'
+
+  /** The registry as the plan flow reads it. */
+  private planFlow(): PlanFlowRegistry {
+    return {
+      get: (id) => this.get(id),
+      listSessions: () => this.store.listSessions(),
+      getSetting: (key) => this.store.getSetting(key),
+      setSetting: (key, value) => this.store.setSetting(key, value),
+      create: (input) => this.create(input),
+      send: (id, text, opts) => this.send(id, text, opts),
+      patch: (id, patch) => {
+        const next = this.store.updateSession(id, patch)
+        if (next) this.notifyMeta(next)
+        return next
+      },
+      append: (id, event) => this.append(id, event),
+      setArchived: (id, archived) => this.setArchived(id, archived),
+      deliverAgentReport: (id, report) => this.deliverAgentReport(id, report),
+      hostName: () => this.hostName(),
+      log: (line) => console.log(line)
+    }
+  }
+
   /** Completed-turn pass for a workspace; null = not configured. */
   getTurnPass(workspaceId: string): TurnPass | null {
     return parseTurnPass(this.store.getSetting(`turn-pass:${workspaceId}`))
@@ -1392,6 +1459,10 @@ export class SessionRegistry {
       frozenActiveElapsed: null,
       threadRules: params.threadRules ?? null,
       nativeId: null,
+      planCompletedAt: null,
+      implementationId: null,
+      planThreadId: null,
+      startedBy: params.startedBy ?? null,
       createdAt: now,
       updatedAt: now
     }
@@ -1407,19 +1478,12 @@ export class SessionRegistry {
     if (params.parentId) {
       this.append(params.parentId, { type: 'agent-spawned', childSessionId: created.id })
     }
-    // A build starting from a plan auto-archives its planning thread: the
-    // conversation is over, the plan file carries the context. Archiving
-    // touches nothing the models use — mirrors and the plan doc stay, and
-    // any send into the thread revives it.
-    if (
-      created.planPath &&
-      (created.threadType === 'implementation' || created.threadType === 'orchestration')
-    ) {
-      const planThread = this.store
-        .listSessions()
-        .find((s) => s.threadType === 'planning' && s.planPath === created.planPath && !s.archived)
-      if (planThread) void this.setArchived(planThread.id, true)
-    }
+    // A build starting from a plan links to its planning thread and back,
+    // leaves a handoff row there, and archives it when plans.archiveAfterStart
+    // says so (planFlow.ts): the conversation is over, the plan file carries
+    // the context. Archiving touches nothing the models use — mirrors and
+    // the plan doc stay, and any send into the thread revives it.
+    linkPlanHandoff(this.planFlow(), created)
     // A requested goal waits for the kickoff message (send() applies it
     // just before the text), so goal and work arrive in order.
     if (params.goal?.trim()) this.pendingGoals.set(id, params.goal.trim())
@@ -1507,6 +1571,10 @@ export class SessionRegistry {
     // A real message starts a fresh turn — the error taint belongs to the
     // one that died. (The pass's own handle.send bypasses this method.)
     this.erroredTurns.delete(sessionId)
+    // A completed plan that takes input again is open until plan_complete
+    // is called anew (one whose build started keeps its mark).
+    reopenPlan(this.planFlow(), meta)
+    meta = this.store.getSession(sessionId) ?? meta
     // Zeron unarchive-on-send: a message into an archived thread revives it.
     if (meta.archived) {
       const next = this.store.updateSession(sessionId, { archived: false })
@@ -2830,6 +2898,10 @@ export class SessionRegistry {
       ) {
         settleToReport = next
       }
+      // A planning thread settling with a complete plan (plan_complete was
+      // called this turn) runs the plan flow: the build starts when the
+      // settings say so, and whoever started the plan hears of it.
+      if (isPlanSettle(cur?.status, event.status, next)) void settlePlan(this.planFlow(), next!)
     }
     // Track disk-writing tools in flight — the live change stream's
     // ownership source. Partial calls open early (execution starts later,

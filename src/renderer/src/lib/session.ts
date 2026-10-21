@@ -160,6 +160,8 @@ export type Block = {
   compaction?: CompactionMeta;
   /** A spawned-agent system row: the child the row stands for. */
   agent?: { id: string; title?: string; status?: string };
+  /** A plan-handoff system row: the build thread started from this plan. */
+  planHandoff?: { id: string; title: string; how: "auto" | "manual" };
   approval?: {
     requestId: string | number;
     decided?: "allow" | "deny";
@@ -289,6 +291,12 @@ export type Session = {
   createdAt?: number;
   /** Plan document (planning) or report (research) path; seeded threads: the source plan. */
   planPath?: string | null;
+  /** Planning threads: when the planner called plan_complete. */
+  planCompletedAt?: number | null;
+  /** Planning threads: the build started from this plan. */
+  implementationId?: string | null;
+  /** Build threads: the planning thread the plan came from. */
+  planThreadId?: string | null;
   /** Parent session for subagent children. */
   parentId?: string | null;
   agentType?: AgentType;

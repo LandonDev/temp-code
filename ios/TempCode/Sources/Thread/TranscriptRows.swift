@@ -552,6 +552,8 @@ struct SystemRow: View {
             AgentLinkRow(childId: line.detail, client: client, fallback: line.text, symbol: "person.badge.plus")
         case .agentReport:
             AgentLinkRow(childId: nil, client: client, fallback: line.detail.map { "\(line.text) · \($0)" } ?? line.text, symbol: "person.text.rectangle")
+        case .planHandoff:
+            AgentLinkRow(childId: line.detail, client: client, fallback: line.text, symbol: "hammer")
         case .backgroundTask:
             QuietLine(symbol: "clock", text: line.detail.map { "\(line.text) · \($0)" } ?? line.text)
         case .goal:

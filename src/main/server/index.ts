@@ -118,6 +118,7 @@ import {
 } from './apptools'
 import { DEFAULT_RULES } from '@shared/rules'
 import { DEFAULT_THREAD_DEFAULTS } from '@shared/defaults'
+import { DEFAULT_PLAN_SETTINGS } from '@shared/plans'
 import {
   blameRange,
   aheadCount,
@@ -520,6 +521,8 @@ export async function startServer(
   macToolsHooks.tokens = macTokens
   // The box side: a thread here starting or spawning on a registered Mac,
   // reached by the app tools (apptools.ts, orchestration.ts).
+  // Notices name this host as the environment switcher does.
+  registry.hostName = () => hostname()
   const crossHostAgents = new CrossHostAgents({
     environmentId,
     store,
@@ -1272,6 +1275,30 @@ export async function startServer(
             registry.setThreadDefaults(req.params.workspaceId, req.params.defaults)
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          case 'plans.get': {
+            const scoped = registry.getPlanSettings(req.params.projectId)
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: {
+                settings:
+                  scoped ??
+                  (req.params.projectId ? registry.getPlanSettings(null) : null) ??
+                  DEFAULT_PLAN_SETTINGS,
+                overridden: scoped !== null
+              }
+            })
+            break
+          }
+          case 'plans.set':
+            registry.setPlanSettings(req.params.projectId, req.params.settings)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'plan.implement': {
+            const { sessionId, ...opts } = req.params
+            sendFrame({ id: req.id, ok: true, result: await registry.implementPlan(sessionId, opts) })
+            break
+          }
           case 'turnpass.get':
             sendFrame({
               id: req.id,
@@ -1628,6 +1655,11 @@ export async function startServer(
               ok: true,
               result: await appReadThread(registry, req.params.threadId, caller)
             })
+            break
+          }
+          case 'app.planComplete': {
+            const caller = callerOf(registry, req.params.sessionId)
+            sendFrame({ id: req.id, ok: true, result: await registry.completePlan(caller.id, req.params) })
             break
           }
           case 'app.startThread': {

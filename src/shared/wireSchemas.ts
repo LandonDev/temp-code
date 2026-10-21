@@ -291,6 +291,10 @@ export const SessionMetaSchema = z.object({
   treeFrozenActiveElapsed: z.number().int().nullable().optional(),
   /** An orchestration run's tune (rules.ts): a large settings object no remote client reads. */
   threadRules: z.unknown().optional(),
+  planCompletedAt: z.number().int().nullable().optional(),
+  implementationId: z.string().nullable().optional(),
+  planThreadId: z.string().nullable().optional(),
+  startedBy: z.string().nullable().optional(),
   createdAt: z.number().int(),
   updatedAt: z.number().int()
 })

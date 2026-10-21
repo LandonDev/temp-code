@@ -57,6 +57,8 @@ describe('METHOD_CAPABILITY', () => {
       [
         'rules.set',
         'defaults.set',
+        // What happens when a plan completes (plans.ts): a settings write.
+        'plans.set',
         'turnpass.set',
         'build.set',
         'appshots.set',

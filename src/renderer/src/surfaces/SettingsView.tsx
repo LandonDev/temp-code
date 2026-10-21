@@ -170,6 +170,7 @@ import { AppshotsPage } from "./AppshotsSettings";
 import { MatrixSpinner } from "./threads/bits";
 import { RemoteSettings } from "./RemoteSettings";
 import { EnvironmentsSettings } from "./EnvironmentsSettings";
+import { PlanSettingsEditor } from "../chrome/PlanSettingsFields";
 import { updateStore, useUpdateSnapshot } from "../lib/updateStore";
 import { MANUAL_DOWNLOAD_URL, canRetry } from "../lib/updater";
 import { openUrl } from "../lib/native";
@@ -489,6 +490,8 @@ function GeneralPage({
           onChange={onClaudeHooks}
         />
       </Row>
+
+      <PlanSettingsEditor />
 
       <Heading title="Linear" />
       <LinearSettings />

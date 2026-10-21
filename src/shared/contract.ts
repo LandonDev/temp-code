@@ -20,6 +20,7 @@ import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
 import { OrchestrationRulesSchema, ThreadRulesSchema } from './rules'
 import { ThreadDefaultsSchema } from './defaults'
+import { PlanSettingsSchema } from './plans'
 import { AppshotSettingsSchema } from './appshots'
 import { AccountPinsSchema } from './contract-m3a'
 import { TurnPassSchema } from './turnpass'
@@ -72,7 +73,9 @@ export const CreateSessionParams = z.object({
   /** orchestration: per-run conduct overrides + custom instructions */
   threadRules: ThreadRulesSchema.optional(),
   /** set this goal on the harness before the kickoff message (plan Start) */
-  goal: z.string().optional()
+  goal: z.string().optional(),
+  /** the thread that starts this one through app_start_thread (told when a plan here completes) */
+  startedBy: z.string().optional()
 })
 export type CreateSessionParams = z.infer<typeof CreateSessionParams>
 /** Pre-parse shape (defaults still optional) — what callers construct. */
@@ -457,6 +460,38 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       defaults: ThreadDefaultsSchema.nullable()
     })
   }),
+  // Plan settings (plans.ts): what happens when a plan is complete. Global
+  // with whole-object per-project overrides, same shape as defaults.*.
+  z.object({
+    id: z.string(),
+    method: z.literal('plans.get'),
+    params: z.object({ projectId: z.string().nullable().default(null) })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('plans.set'),
+    params: z.object({
+      projectId: z.string().nullable().default(null),
+      settings: PlanSettingsSchema.nullable()
+    })
+  }),
+  // Start the implementation thread from a finished plan: the one function
+  // behind the auto-start, the plan view's button and the phone's sheet.
+  z.object({
+    id: z.string(),
+    method: z.literal('plan.implement'),
+    params: z.object({
+      sessionId: z.string(),
+      provider: providerEnum.optional(),
+      model: z.string().optional(),
+      reasoning: reasoningEnum.optional(),
+      context1m: z.boolean().optional(),
+      permission: PermissionPolicySchema.optional(),
+      threadType: z.enum(['implementation', 'orchestration']).optional(),
+      goal: z.string().optional(),
+      threadRules: ThreadRulesSchema.optional()
+    })
+  }),
   // Completed-turn pass: actions the model runs after every settled turn
   // (verify / build / commit / push). The workspace holds the default; a
   // projectId targets that project's override instead (get: null =
@@ -830,6 +865,12 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       claim: z.string().min(1).max(300),
       title: z.string().max(300).optional()
     })
+  }),
+  // plan_complete over WS (the codex bridge): the planner says its plan is done.
+  z.object({
+    id: z.string(),
+    method: z.literal('app.planComplete'),
+    params: z.object({ sessionId: z.string(), title: z.string().optional(), summary: z.string().optional() })
   }),
   z.object({
     id: z.string(),

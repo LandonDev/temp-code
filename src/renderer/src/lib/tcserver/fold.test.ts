@@ -719,3 +719,21 @@ describe("block ids from persisted rows", () => {
     expect(cold).toEqual(["s:41", "a:42"]);
   });
 });
+
+describe("plan-handoff", () => {
+  it("folds the plan's build into a system row that links to the thread", () => {
+    const s = foldAll(
+      rows([
+        { type: "plan-handoff", sessionId: "b1", title: "Ship it", how: "auto" },
+        { type: "plan-handoff", sessionId: "b2", title: "By hand", how: "manual" },
+      ]),
+      CWD,
+    );
+    expect(s.blocks.map((b) => [b.role, b.text])).toEqual([
+      ["system", "Implementation started: Ship it"],
+      ["system", "Build started: By hand"],
+    ]);
+    expect(s.blocks[0].planHandoff).toEqual({ id: "b1", title: "Ship it", how: "auto" });
+    expect(s.blocks[1].planHandoff).toEqual({ id: "b2", title: "By hand", how: "manual" });
+  });
+});

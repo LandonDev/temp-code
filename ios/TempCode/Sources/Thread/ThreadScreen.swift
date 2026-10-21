@@ -56,7 +56,14 @@ struct ThreadScreen: View {
         .safeAreaInset(edge: .bottom, spacing: 0) { BottomDock(client: client, sessionId: sessionId, session: session, thread: thread) }
         .toolbar {
             ToolbarItem(placement: .principal) { ThreadHeader(session: session) }
-            if let session, session.threadType == .planning, session.parentId == nil, phase.planHasContent, !phase.running, session.status != .waiting {
+            if let session, session.threadType == .planning, session.parentId == nil, let buildId = session.implementationId, client.sessions[buildId] != nil {
+                // The host linked a build to this plan (auto-started, or begun elsewhere): the toolbar points at it.
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Build") { pushed = ThreadScreenRoute(sessionId: buildId) }
+                        .font(.subheadline.weight(.semibold))
+                        .accessibilityHint("Open the implementation thread started from this plan")
+                }
+            } else if let session, session.threadType == .planning, session.parentId == nil, phase.planHasContent, !phase.running, session.status != .waiting {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Start") { starting = true }
                         .font(.subheadline.weight(.semibold))

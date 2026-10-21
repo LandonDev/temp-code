@@ -349,6 +349,18 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     byModel: z.boolean().optional()
   }),
 
+  // A plan handed off: the planning thread's quiet record of the
+  // implementation thread started from its plan (auto or by hand).
+  z.object({
+    type: z.literal('plan-handoff'),
+    sessionId: z.string(),
+    title: z.string(),
+    /** Set when the build runs on another host. */
+    environmentId: z.string().optional(),
+    /** 'auto' when the host started it on plan_complete, 'manual' from a Start button or app_start_thread. */
+    how: z.enum(['auto', 'manual'])
+  }),
+
   // Orchestration: this session spawned a child session.
   z.object({
     type: z.literal('agent-spawned'),
@@ -474,6 +486,15 @@ export interface SessionMeta {
   /** Orchestration threads: this run's tune — conduct overrides on top of
    *  the workspace/global rules, plus free-text instructions. */
   threadRules?: import('./rules').ThreadRules | null
+  /** Planning threads: when the planner called plan_complete (null until then). */
+  planCompletedAt?: number | null
+  /** Planning threads: the implementation thread started from this plan. */
+  implementationId?: string | null
+  /** Implementation/orchestration threads: the planning thread the plan came from. */
+  planThreadId?: string | null
+  /** The thread that started this one through app_start_thread (not a parent:
+   *  the thread is a root of its own); it is told when a plan here completes. */
+  startedBy?: string | null
   createdAt: number
   updatedAt: number
 }

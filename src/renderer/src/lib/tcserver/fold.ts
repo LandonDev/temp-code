@@ -640,6 +640,16 @@ export function foldEvent(
     case "background-tasks":
       // The live set rides the session's activity line, not the transcript.
       break;
+    case "plan-handoff": {
+      // The plan's quiet record of its build: a row that links to the thread.
+      blocks = appendStatusBlock(blocks, `${e.how === "auto" ? "Implementation started" : "Build started"}: ${e.title}`, fresh("s"));
+      const last = blocks[blocks.length - 1];
+      if (last?.role === "system") {
+        blocks = blocks.slice();
+        blocks[blocks.length - 1] = { ...last, planHandoff: { id: e.sessionId, title: e.title, how: e.how } };
+      }
+      break;
+    }
     case "agent-spawned":
       blocks = appendStatusBlock(blocks, `Spawned agent ${e.childSessionId}`, fresh("s"));
       blocks = withAgent(blocks, { id: e.childSessionId });

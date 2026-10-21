@@ -48,3 +48,19 @@ vi.mock("../lib/tcserver/projects", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/tcserver/projects")>()),
   hostOfCwd: () => "local",
 }));
+
+describe("usePlanReady with plan_complete", () => {
+  it("marks a completed plan ready on the server's word, without peeking at its file", async () => {
+    readFile.mockImplementation(async () => "");
+    let ready: Record<string, boolean> = {};
+    const threads: Input[] = [
+      { id: "c", threadType: "planning", status: "idle", planPath: "c.md", planCompletedAt: 5 },
+      { id: "r", threadType: "planning", status: "running", planPath: "r.md", planCompletedAt: 5 },
+      { id: "u", threadType: "planning", status: "idle", planPath: "u.md" },
+    ];
+    render(<Probe threads={threads} onReady={(r) => (ready = r)} />);
+    await act(async () => {});
+    expect(ready).toEqual({ c: true, u: false });
+    expect(readFile).not.toHaveBeenCalledWith(expect.anything(), "c.md");
+  });
+});

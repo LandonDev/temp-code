@@ -275,6 +275,8 @@ export async function appStartThread(
     planPath,
     title: args.title,
     parentId: null,
+    // The caller hears when a plan it started completes (planFlow.ts).
+    startedBy: caller.id,
     ...(projectId ? {} : { cwd: caller.cwd })
   })
   await reg.send(thread.id, args.firstMessage, {
@@ -382,10 +384,18 @@ export const CITE_SHAPE = {
   title: z.string().max(300).optional().describe(CITE_TOOL_PARAMS.title)
 }
 
+export const PLAN_COMPLETE_TOOL_NAME = 'plan_complete'
+export const PLAN_COMPLETE_TOOL_DESCRIPTION =
+  'Planning threads only: say the plan is COMPLETE — the plan file is fully written and every decision is settled. Call it once, as the last tool call before your closing message; the app then starts the implementation thread itself (when auto-start is on) and tells whoever started this plan. Refused while the plan file is missing or empty.'
+export const PLAN_COMPLETE_SHAPE = {
+  summary: z.string().optional().describe('One line on what the plan covers (optional)')
+}
+
 export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstance {
   // cite_source exists only inside a research tree (the handle reboots on
   // a retype, so the check at boot is current); elsewhere it would only refuse.
   const research = registry?.researchRootOf(session.id) !== null
+  const planning = session.threadType === 'planning'
   return createSdkMcpServer({
     name: 'app',
     version: '0.1.0',
@@ -395,6 +405,15 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
             tool(CITE_TOOL_NAME, CITE_TOOL_DESCRIPTION, CITE_SHAPE, async (args) =>
               text(registry ? registry.citeSource(session.id, args) : 'app registry not ready')
             )
+          ]
+        : []),
+      ...(planning
+        ? [
+            tool(PLAN_COMPLETE_TOOL_NAME, PLAN_COMPLETE_TOOL_DESCRIPTION, PLAN_COMPLETE_SHAPE, async (args) => {
+              if (!registry) return text('app registry not ready')
+              const result = await registry.completePlan(session.id, args)
+              return text(typeof result === 'string' ? result : JSON.stringify(result))
+            })
           ]
         : []),
       tool(
@@ -491,5 +510,6 @@ export const APP_TOOLS = [
   'mcp__app__app_start_thread',
   `mcp__app__${HTML_PREVIEW_TOOL_NAME}`,
   `mcp__app__${HTML_RENDER_TOOL_NAME}`,
-  `mcp__app__${CITE_TOOL_NAME}`
+  `mcp__app__${CITE_TOOL_NAME}`,
+  `mcp__app__${PLAN_COMPLETE_TOOL_NAME}`
 ]

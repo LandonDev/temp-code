@@ -203,7 +203,14 @@ export function openDb(path: string): DatabaseSync {
     `ALTER TABLE sessions ADD COLUMN moved_to TEXT`,
     `ALTER TABLE sessions ADD COLUMN move_id TEXT`,
     // The trailing failure's verdict (failureKind.ts), folded beside can_continue.
-    `ALTER TABLE session_folds ADD COLUMN failure TEXT`
+    `ALTER TABLE session_folds ADD COLUMN failure TEXT`,
+    // A plan's completion and the handoff links (plans.ts): when the
+    // planner called plan_complete, the build started from the plan, the
+    // plan a build came from, and the thread that started this one.
+    `ALTER TABLE sessions ADD COLUMN plan_completed_at INTEGER`,
+    `ALTER TABLE sessions ADD COLUMN implementation_id TEXT`,
+    `ALTER TABLE sessions ADD COLUMN plan_thread_id TEXT`,
+    `ALTER TABLE sessions ADD COLUMN started_by TEXT`
   ]) {
     try {
       db.exec(stmt)
@@ -325,6 +332,10 @@ interface SessionRowRaw {
   /** Unused since the thread pin went; the column stays (master only adds). */
   account_pin: string | null
   account_current: string | null
+  plan_completed_at: number | null
+  implementation_id: string | null
+  plan_thread_id: string | null
+  started_by: string | null
   created_at: number
   updated_at: number
 }
@@ -375,6 +386,10 @@ function toMeta(r: SessionRowRaw): SessionMeta {
     permission: r.permission as SessionMeta['permission'],
     nativeId: r.native_id,
     account: r.account_current,
+    planCompletedAt: r.plan_completed_at ?? null,
+    implementationId: r.implementation_id ?? null,
+    planThreadId: r.plan_thread_id ?? null,
+    startedBy: r.started_by ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at
   }
@@ -532,8 +547,8 @@ export class Store {
     this.sessionsVersion += 1
     this
       .stmt(
-        `INSERT INTO sessions (id, parent_id, project_id, workspace_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, pinned, permission, fast, ultrafast, context_1m, busy_since, paused_at, frozen_active_elapsed, thread_rules, native_id, account_current, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO sessions (id, parent_id, project_id, workspace_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, pinned, permission, fast, ultrafast, context_1m, busy_since, paused_at, frozen_active_elapsed, thread_rules, native_id, account_current, plan_completed_at, implementation_id, plan_thread_id, started_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         meta.id,
@@ -561,6 +576,10 @@ export class Store {
         meta.threadRules ? JSON.stringify(meta.threadRules) : null,
         meta.nativeId,
         meta.account ?? null,
+        meta.planCompletedAt ?? null,
+        meta.implementationId ?? null,
+        meta.planThreadId ?? null,
+        meta.startedBy ?? null,
         meta.createdAt,
         meta.updatedAt
       )
@@ -591,6 +610,10 @@ export class Store {
         | 'agentType'
         | 'threadRules'
         | 'account'
+        | 'planCompletedAt'
+        | 'implementationId'
+        | 'planThreadId'
+        | 'startedBy'
       >
     >
   ): SessionMeta | null {
@@ -604,7 +627,7 @@ export class Store {
     this.sessionsVersion += 1
     this
       .stmt(
-        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, pinned = ?, provider = ?, model = ?, reasoning = ?, permission = ?, fast = ?, ultrafast = ?, context_1m = ?, busy_since = ?, paused_at = ?, frozen_active_elapsed = ?, thread_type = ?, plan_path = ?, agent_type = ?, thread_rules = ?, account_current = ?, updated_at = ? WHERE id = ?`
+        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, pinned = ?, provider = ?, model = ?, reasoning = ?, permission = ?, fast = ?, ultrafast = ?, context_1m = ?, busy_since = ?, paused_at = ?, frozen_active_elapsed = ?, thread_type = ?, plan_path = ?, agent_type = ?, thread_rules = ?, account_current = ?, plan_completed_at = ?, implementation_id = ?, plan_thread_id = ?, started_by = ?, updated_at = ? WHERE id = ?`
       )
       .run(
         next.status,
@@ -627,6 +650,10 @@ export class Store {
         next.agentType,
         next.threadRules ? JSON.stringify(next.threadRules) : null,
         next.account ?? null,
+        next.planCompletedAt ?? null,
+        next.implementationId ?? null,
+        next.planThreadId ?? null,
+        next.startedBy ?? null,
         next.updatedAt,
         id
       )

@@ -206,6 +206,17 @@ export const TOOLS = [
     }
   },
   {
+    name: 'plan_complete',
+    description:
+      'Planning threads only: say the plan is COMPLETE — the plan file is fully written and every decision is settled. Call it once, as the last tool call before your closing message; the app then starts the implementation thread itself (when auto-start is on) and tells whoever started this plan. Refused while the plan file is missing or empty.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        summary: { type: 'string', description: 'One line on what the plan covers (optional)' }
+      }
+    }
+  },
+  {
     name: 'app_start_thread',
     description:
       'Create a new thread in the app and send its first message — it starts working immediately, visibly. Use ONLY when the user asked for a handoff or agreed to one.',
@@ -572,6 +583,7 @@ const METHOD_FOR = {
   app_list_threads: 'app.listThreads',
   app_read_thread: 'app.readThread',
   app_start_thread: 'app.startThread',
+  plan_complete: 'app.planComplete',
   spawn_agent: 'app.spawnAgent',
   send_to_agent: 'app.sendToAgent',
   check_agent: 'app.checkAgent',

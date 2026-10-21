@@ -415,6 +415,30 @@ app_read_thread({ threadId })
   → the M9 digest of that thread, returned inline (capped). How a
     planning thread ingests the chats it is planning from.
 
+plan_complete({ summary? })      // planning threads only (src/main/server/planFlow.ts)
+  → stamps planCompletedAt on the thread; refused while the plan file is
+    missing or empty. The planning preamble makes it the planner's last
+    tool call, so "the plan is finished" is a fact the app records, never a
+    guess from the transcript. When the thread then settles (idle or
+    watching — never mid-turn), the plan flow runs: with plans.autoImplement
+    on (default; Settings → Plans, overridable per project) the host starts
+    the implementation thread itself — same host and cwd, the plan's own
+    model, effort and context window unless plans.implementModel /
+    implementReasoning / implementContext fix one, planPath set, the plan
+    thread seeded as a thread reference, titled from the plan's heading —
+    links both ways (implementationId on the plan, planThreadId on the
+    build), leaves a `plan-handoff` row on the plan, and archives the plan
+    thread when plans.archiveAfterStart is on. The thread that started the
+    plan (startedBy from app_start_thread, else parentId) is woken with a
+    <subagent-report> ("Plan <title> is done: <path>. Implementation thread
+    <id> started on <host>." or "…waiting for you to start it"); a
+    person-started plan reaches the person through the notifier's finished
+    notice and the tab's "Plan ready" mark. `plan.implement` over the wire
+    (the plan view's Start, Settings-fixed or overridden) starts the build
+    through the same function; a plan whose build is live answers it.
+    Sending into a completed plan whose build has not started reopens it
+    (planCompletedAt cleared) until plan_complete is called anew.
+
 app_start_thread({
   threadType,                    // chat | planning | implementation | orchestration
   provider, model, reasoning,    // validated against the catalog, like spawn_agent

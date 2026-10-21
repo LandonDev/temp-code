@@ -35,7 +35,8 @@ import {
   wholeChange,
 } from "../../lib/threads/rounds";
 import { AgentMarkdown } from "../AgentMarkdown";
-import { duration, MatrixSpinner, PaneHeader, useNow } from "./bits";
+import { duration, MatrixSpinner, PaneHeader, THREAD_GLYPHS, THREAD_TINTS, useNow } from "./bits";
+import { useMetaById } from "../../lib/threads/agents";
 import { AgentDetail } from "./fleet/AgentDetail";
 import { OpenAgentDetailContext } from "../agentDetailContext";
 import { AgentRow } from "./fleet/AgentRow";
@@ -267,7 +268,13 @@ export function ImplementationView(props: ThreadViewProps) {
                 collapsed row below. The plan pin stays: it is the thread's
                 identity, not a round's. */}
             {session.planPath ? (
-              <PlanPin session={session} planPath={session.planPath} running={running} onOpenFile={props.onOpenFile} />
+              <PlanPin
+                session={session}
+                planPath={session.planPath}
+                running={running}
+                onOpenFile={props.onOpenFile}
+                onOpenSession={props.onOpenSession}
+              />
             ) : curRound === 0 ? (
               <p className="text-sm leading-snug font-medium tracking-[-0.01em]">{firstLine(goal)}</p>
             ) : null}
@@ -1342,24 +1349,46 @@ function PlanPin({
   planPath,
   running,
   onOpenFile,
+  onOpenSession,
 }: {
   session: Session;
   planPath: string;
   running: boolean;
   onOpenFile: OpenFileFn;
+  onOpenSession?: (sessionId: string) => void;
 }) {
   const doc = usePlanFile(planPath, running, PIN_CADENCE) ?? "";
   const title = planHeading(doc) ?? session.title;
+  // The planning thread the plan came from: the server's link, so the
+  // build points back even once the plan is archived.
+  const plan = useMetaById(session.planThreadId ?? null);
+  const PlanGlyph = THREAD_GLYPHS.planning;
   return (
-    <button
-      type="button"
-      onClick={() => onOpenFile(planPath)}
-      title="Open the plan document"
-      className="group flex w-full items-baseline gap-2 text-left"
-    >
-      <p className="min-w-0 truncate text-sm leading-snug font-medium tracking-[-0.01em] group-hover:underline">
-        {title}
-      </p>
-    </button>
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <button
+        type="button"
+        onClick={() => onOpenFile(planPath)}
+        title="Open the plan document"
+        className="group flex w-full items-baseline gap-2 text-left"
+      >
+        <p className="min-w-0 truncate text-sm leading-snug font-medium tracking-[-0.01em] group-hover:underline">
+          {title}
+        </p>
+      </button>
+      {plan && onOpenSession ? (
+        <button
+          type="button"
+          onClick={() => onOpenSession(plan.id)}
+          title="Open the planning thread"
+          className="pressable flex w-fit max-w-full items-center gap-1 rounded-md py-0.5 pr-1 text-[12px] text-content/50 hover:text-content"
+        >
+          <PlanGlyph className={`size-3.5 shrink-0 ${THREAD_TINTS.planning}`} strokeWidth={1.75} />
+          <span className="min-w-0 truncate">
+            Planned in {plan.title}
+            {plan.archived ? " · archived" : ""}
+          </span>
+        </button>
+      ) : null}
+    </div>
   );
 }
