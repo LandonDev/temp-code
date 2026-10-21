@@ -1753,6 +1753,13 @@ The fault file is root-only and the launcher consumes it after the post-flip
 probe. Remove it manually if a build/trial fails before the switch. Keep full
 launcher output in a private host log when collecting these proofs.
 
+A thread started or spawned on the Mac this way opens with the Mac
+project's preamble (CLAUDE.md "Project preambles"), resolved on the Mac
+from the project the box cwd maps onto: the box parent is unknown to the
+Mac's store, so the child follows the project rather than the parent, and
+`preamble: false` on the spawn spec rides the wire (`ThreadSpawnArgs`) to
+opt it out.
+
 ### U verification, 2026-10-19
 
 Full logs are root-only on the box:

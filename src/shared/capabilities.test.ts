@@ -64,6 +64,8 @@ describe('METHOD_CAPABILITY', () => {
         'appshots.set',
         'project.setAccounts',
         'workspace.setAccounts',
+        'project.setPreamble',
+        'workspace.setPreamble',
         'linear.setToken',
         // A phone's own push registration (remote.push.*) is the key's row: read.
         ...methods.filter((m) => m.startsWith('remote.') && !m.startsWith('remote.environments.') && !m.startsWith('remote.push.')),

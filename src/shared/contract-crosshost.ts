@@ -129,7 +129,9 @@ export const ThreadSpawnArgsSchema = z.object({
   title: z.string().max(300),
   useWorktree: z.boolean(),
   cwd: z.string().max(2_000),
-  workRoot: z.string().max(2_000).optional()
+  workRoot: z.string().max(2_000).optional(),
+  /** false: the spawner opted the child out of the project preamble (projectPreamble.ts). */
+  preamble: z.boolean().optional()
 })
 export type ThreadSpawnArgs = z.infer<typeof ThreadSpawnArgsSchema>
 

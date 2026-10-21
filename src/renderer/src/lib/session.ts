@@ -172,6 +172,9 @@ export type Block = {
   question?: QuestionMeta;
   /** An error row: the host's verdict on the failure (failureKind.ts), when it had one. */
   failure?: Failure;
+  /** The project rules this first message opened with (the server's
+   *  user-text `preamble` stamp): shown folded to one line above the text. */
+  preamble?: { text: string; words: number };
   /** Optimistic user turn the server has not echoed yet. */
   pending?: boolean;
   /** When this window sent it (ms): the bubble plays its entrance from

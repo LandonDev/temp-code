@@ -316,6 +316,8 @@ export const WorkspaceMetaSchema = z.object({
   accountPins: AccountPinsSchema.optional(),
   githubRepo: z.string().nullable().optional(),
   githubRepoCheckedAt: z.number().int().nullable().optional(),
+  preamble: z.string().nullable().optional(),
+  preambleEnabled: z.boolean().optional(),
   createdAt: z.number().int()
 })
 
@@ -333,6 +335,8 @@ export const ProjectMetaSchema = z.object({
   cwd: z.string(),
   archived: z.boolean(),
   accountPins: AccountPinsSchema.optional(),
+  preamble: z.string().nullable().optional(),
+  preambleEnabled: z.boolean().optional(),
   createdAt: z.number().int()
 })
 

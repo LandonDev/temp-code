@@ -52,6 +52,13 @@ const blockIdentity = {
  *  kind 'appshot' is a window capture (M10): path is the screenshot PNG,
  *  textPath the window's accessibility text. The server expands it into a
  *  plain image + file pair before the harness sees it. */
+/** The project rules a thread's first message opened with, as substituted. */
+export const PreambleStampSchema = z.object({
+  text: z.string(),
+  words: z.number().int().nonnegative()
+})
+export type PreambleStamp = z.infer<typeof PreambleStampSchema>
+
 export const AttachmentSchema = z.object({
   path: z.string(),
   name: z.string(),
@@ -140,6 +147,9 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     type: z.literal('user-text'),
     text: z.string(),
     attachments: z.array(AttachmentSchema).optional(),
+    /** the project preamble this first message carried (projectPreamble.ts):
+     *  the harness read it ahead of `text`; the transcript folds it to one line */
+    preamble: PreambleStampSchema.optional(),
     /** run settings at send time — the board's pass history renders them */
     model: z.string().optional(),
     reasoning: z.string().optional(),

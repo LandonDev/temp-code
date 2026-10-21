@@ -52,6 +52,19 @@ describe("foldEvent", () => {
     expect(s.blocks[0].attachments?.[0].previewUrl).toBe("blob:x");
   });
 
+  it("the first message's project preamble lands on the block, fresh and on a claim", () => {
+    const stamp = { text: "- rules", words: 2 };
+    const fresh = foldAll(rows([{ type: "user-text", text: "go", preamble: stamp }]), CWD);
+    expect(fresh.blocks[0]).toMatchObject({ role: "user", text: "go", preamble: stamp });
+    let s = foldOptimisticUser(emptyFold(), "go");
+    expect(s.blocks[0].preamble).toBeUndefined();
+    s = foldEvent(s, rows([{ type: "user-text", text: "go", preamble: stamp }])[0], CWD);
+    expect(s.blocks).toHaveLength(1);
+    expect(s.blocks[0].preamble).toEqual(stamp);
+    const plain = foldAll(rows([{ type: "user-text", text: "later" }]), CWD);
+    expect(plain.blocks[0].preamble).toBeUndefined();
+  });
+
   it("streams keyed assistant text and keeps text→tool→text as two blocks", () => {
     const s = foldAll(
       rows([

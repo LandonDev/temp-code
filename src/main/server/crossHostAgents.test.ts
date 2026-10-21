@@ -130,7 +130,7 @@ describe('CrossHostAgents: start, spawn, supervise', () => {
   })
   it('spawn records the children, appends agent-spawned with the host, and carries the cwd note', async () => {
     const { agents, appended, states } = setup()
-    const spec = { provider: 'claude' as const, model: 'claude-sonnet-5-5', reasoning: 'medium' as const, context1m: false, agentType: 'implementer' as const, task: 'first line\nmore', useWorktree: true }
+    const spec = { provider: 'claude' as const, model: 'claude-sonnet-5-5', reasoning: 'medium' as const, context1m: false, agentType: 'implementer' as const, task: 'first line\nmore', useWorktree: true, preamble: true }
     const started = await agents.spawn(parent, MAC, [spec, { ...spec, task: 'second' }])
     expect(started.map((s) => s.agentId)).toEqual([encodeAgentId(MAC, 'mac1'), encodeAgentId(MAC, 'mac2')])
     expect(states.get('mac1')?.title).toBe('first line')
@@ -142,7 +142,7 @@ describe('CrossHostAgents: start, spawn, supervise', () => {
   })
   it('send, check, interrupt and answer route by the encoded id and refuse an id this thread did not spawn', async () => {
     const { agents, seen } = setup()
-    const [{ agentId }] = await agents.spawn(parent, MAC, [{ provider: 'claude', model: 'm', reasoning: 'medium', context1m: false, agentType: 'explorer', task: 't', useWorktree: false }])
+    const [{ agentId }] = await agents.spawn(parent, MAC, [{ provider: 'claude', model: 'm', reasoning: 'medium', context1m: false, agentType: 'explorer', task: 't', useWorktree: false, preamble: true }])
     expect(await agents.send(parent, agentId, 'more')).toBe('sent')
     expect(seen.at(-1)).toMatchObject({ method: 'thread.send', params: { args: { sessionId: 'mac1', message: 'more' } } })
     expect(JSON.parse(await agents.check(parent, agentId))).toMatchObject({ agentId, host: MAC, status: 'running', currentTurn: { lastText: 'hi' } })
@@ -155,7 +155,7 @@ describe('CrossHostAgents: start, spawn, supervise', () => {
   })
   it('wait blocks until the Mac reports the thread settled, then answers its reply', async () => {
     const { agents, settle } = setup()
-    const [{ agentId }] = await agents.spawn(parent, MAC, [{ provider: 'claude', model: 'm', reasoning: 'medium', context1m: false, agentType: 'explorer', task: 't', useWorktree: false }])
+    const [{ agentId }] = await agents.spawn(parent, MAC, [{ provider: 'claude', model: 'm', reasoning: 'medium', context1m: false, agentType: 'explorer', task: 't', useWorktree: false, preamble: true }])
     const waiting = agents.wait(parent, agentId, 0)
     await new Promise((r) => setTimeout(r, 20))
     settle('mac1')
@@ -164,7 +164,7 @@ describe('CrossHostAgents: start, spawn, supervise', () => {
   })
   it('a link that drops mid-wait answers the last known state with linkDown instead of hanging', async () => {
     const { agents, calls } = setup()
-    const [{ agentId }] = await agents.spawn(parent, MAC, [{ provider: 'claude', model: 'm', reasoning: 'medium', context1m: false, agentType: 'explorer', task: 't', useWorktree: false }])
+    const [{ agentId }] = await agents.spawn(parent, MAC, [{ provider: 'claude', model: 'm', reasoning: 'medium', context1m: false, agentType: 'explorer', task: 't', useWorktree: false, preamble: true }])
     const waiting = agents.wait(parent, agentId, 0)
     await new Promise((r) => setTimeout(r, 20))
     calls.drop(1)
@@ -178,14 +178,14 @@ describe('CrossHostAgents: start, spawn, supervise', () => {
   })
   it('list reads live state when the link is up', async () => {
     const { agents, settle } = setup()
-    const [{ agentId }] = await agents.spawn(parent, MAC, [{ provider: 'claude', model: 'm', reasoning: 'medium', context1m: false, agentType: 'explorer', task: 't', useWorktree: false }])
+    const [{ agentId }] = await agents.spawn(parent, MAC, [{ provider: 'claude', model: 'm', reasoning: 'medium', context1m: false, agentType: 'explorer', task: 't', useWorktree: false, preamble: true }])
     settle('mac1', 'waiting')
     const list = await agents.list(parent)
     expect(list).toEqual([expect.objectContaining({ agentId, host: MAC, status: 'waiting', idleForSeconds: 1, kind: 'spawned' })])
   })
   it('a settle the Mac reports wakes the parent unless a wait covers it', async () => {
     const { agents, reports, settle } = setup()
-    const [{ agentId }] = await agents.spawn(parent, MAC, [{ provider: 'claude', model: 'm', reasoning: 'medium', context1m: false, agentType: 'explorer', task: 't', useWorktree: false }])
+    const [{ agentId }] = await agents.spawn(parent, MAC, [{ provider: 'claude', model: 'm', reasoning: 'medium', context1m: false, agentType: 'explorer', task: 't', useWorktree: false, preamble: true }])
     const report = { from: MAC, sessionId: 'mac1', parentSessionId: 'box-thread', title: 't', status: 'idle', reply: 'done', pending: null }
     expect(() => agents.settled(MAC2, report)).toThrow('another host')
     agents.settled(MAC, { ...report, sessionId: 'unknown' })

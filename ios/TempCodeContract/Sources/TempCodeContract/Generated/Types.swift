@@ -523,9 +523,11 @@ public struct WorkspaceMeta: Codable, Hashable, Sendable {
     public let accountPins: AccountPins?
     public let githubRepo: String?
     public let githubRepoCheckedAt: Int?
+    public let preamble: String?
+    public let preambleEnabled: Bool?
     public let createdAt: Int
 
-    public init(id: String, name: String, path: String, git: Bool, accountPins: AccountPins? = nil, githubRepo: String? = nil, githubRepoCheckedAt: Int? = nil, createdAt: Int) {
+    public init(id: String, name: String, path: String, git: Bool, accountPins: AccountPins? = nil, githubRepo: String? = nil, githubRepoCheckedAt: Int? = nil, preamble: String? = nil, preambleEnabled: Bool? = nil, createdAt: Int) {
         self.id = id
         self.name = name
         self.path = path
@@ -533,6 +535,8 @@ public struct WorkspaceMeta: Codable, Hashable, Sendable {
         self.accountPins = accountPins
         self.githubRepo = githubRepo
         self.githubRepoCheckedAt = githubRepoCheckedAt
+        self.preamble = preamble
+        self.preambleEnabled = preambleEnabled
         self.createdAt = createdAt
     }
 }
@@ -592,9 +596,11 @@ public struct ProjectMeta: Codable, Hashable, Sendable {
     public let cwd: String
     public let archived: Bool
     public let accountPins: AccountPins?
+    public let preamble: String?
+    public let preambleEnabled: Bool?
     public let createdAt: Int
 
-    public init(id: String, workspaceId: String, name: String, mode: ProjectMode, branch: String?, cwd: String, archived: Bool, accountPins: AccountPins? = nil, createdAt: Int) {
+    public init(id: String, workspaceId: String, name: String, mode: ProjectMode, branch: String?, cwd: String, archived: Bool, accountPins: AccountPins? = nil, preamble: String? = nil, preambleEnabled: Bool? = nil, createdAt: Int) {
         self.id = id
         self.workspaceId = workspaceId
         self.name = name
@@ -603,11 +609,13 @@ public struct ProjectMeta: Codable, Hashable, Sendable {
         self.cwd = cwd
         self.archived = archived
         self.accountPins = accountPins
+        self.preamble = preamble
+        self.preambleEnabled = preambleEnabled
         self.createdAt = createdAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, workspaceId, name, mode, branch, cwd, archived, accountPins, createdAt
+        case id, workspaceId, name, mode, branch, cwd, archived, accountPins, preamble, preambleEnabled, createdAt
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -620,6 +628,8 @@ public struct ProjectMeta: Codable, Hashable, Sendable {
         try container.encode(cwd, forKey: .cwd)
         try container.encode(archived, forKey: .archived)
         try container.encodeIfPresent(accountPins, forKey: .accountPins)
+        try container.encodeIfPresent(preamble, forKey: .preamble)
+        try container.encodeIfPresent(preambleEnabled, forKey: .preambleEnabled)
         try container.encode(createdAt, forKey: .createdAt)
     }
 }

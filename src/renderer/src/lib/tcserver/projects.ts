@@ -76,6 +76,28 @@ export async function setProjectAccounts(
   await workspaceStore.refresh(link);
 }
 
+/** The project's own preamble (null clears it: threads take the workspace default). */
+export async function setProjectPreamble(
+  projectId: string,
+  preamble: string | null,
+  enabled: boolean,
+): Promise<void> {
+  const link = linkOfProject(projectId);
+  await link.request("project.setPreamble", { projectId, preamble, enabled });
+  await workspaceStore.refresh(link);
+}
+
+/** The workspace's default preamble for its projects without one. */
+export async function setWorkspacePreamble(
+  workspaceId: string,
+  preamble: string | null,
+  enabled: boolean,
+): Promise<void> {
+  const link = linkOfWorkspace(workspaceId);
+  await link.request("workspace.setPreamble", { workspaceId, preamble, enabled });
+  await workspaceStore.refresh(link);
+}
+
 export async function setWorkspaceAccounts(
   workspaceId: string,
   pins: AccountPins,

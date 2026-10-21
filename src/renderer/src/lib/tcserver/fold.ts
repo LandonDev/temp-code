@@ -256,7 +256,9 @@ export function foldEvent(
         fast?: boolean;
         ultrafast?: boolean;
         newPass?: boolean;
+        preamble?: { text: string; words: number };
       };
+      const preamble = stamp.preamble ? { preamble: stamp.preamble } : {};
       const turn =
         stamp.model || stamp.reasoning || stamp.context1m !== undefined
           ? {
@@ -283,6 +285,7 @@ export function foldEvent(
           ts: row.ts,
           ...(persisted ? { seq: row.seq } : {}),
           ...turn,
+          ...preamble,
           ...(prev.attachments?.length
             ? { attachments: prev.attachments }
             : attachments
@@ -300,6 +303,7 @@ export function foldEvent(
             startedAt: row.ts,
             ...(persisted ? { seq: row.seq } : {}),
             ...turn,
+            ...preamble,
             ...(attachments ? { attachments } : {}),
           },
         ];

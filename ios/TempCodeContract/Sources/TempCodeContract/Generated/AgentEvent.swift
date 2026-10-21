@@ -4,8 +4,19 @@
 import Foundation
 
 public struct UserTextEvent: Codable, Hashable, Sendable {
+    public struct Preamble: Codable, Hashable, Sendable {
+        public let text: String
+        public let words: Int
+
+        public init(text: String, words: Int) {
+            self.text = text
+            self.words = words
+        }
+    }
+
     public let text: String
     public let attachments: [Attachment]?
+    public let preamble: Preamble?
     public let model: String?
     public let reasoning: String?
     public let context1m: Bool?
@@ -13,9 +24,10 @@ public struct UserTextEvent: Codable, Hashable, Sendable {
     public let ultrafast: Bool?
     public let newPass: Bool?
 
-    public init(text: String, attachments: [Attachment]? = nil, model: String? = nil, reasoning: String? = nil, context1m: Bool? = nil, fast: Bool? = nil, ultrafast: Bool? = nil, newPass: Bool? = nil) {
+    public init(text: String, attachments: [Attachment]? = nil, preamble: Preamble? = nil, model: String? = nil, reasoning: String? = nil, context1m: Bool? = nil, fast: Bool? = nil, ultrafast: Bool? = nil, newPass: Bool? = nil) {
         self.text = text
         self.attachments = attachments
+        self.preamble = preamble
         self.model = model
         self.reasoning = reasoning
         self.context1m = context1m

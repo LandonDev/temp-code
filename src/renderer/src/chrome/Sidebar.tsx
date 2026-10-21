@@ -52,6 +52,7 @@ import { sidebarVisible as asideVisible } from "./sidebarVisibility";
 import { WorkspaceMenu } from "./WorkspaceMenu";
 import { NewProjectDialog } from "./ProjectDialogs";
 import { ThreadDefaultsDialog } from "./ThreadDefaultsDialog";
+import { PreambleDialog } from "./PreambleDialog";
 import { openOrchestrationSettings } from "../lib/tcserver/rules";
 import { useLiveAgents } from "../lib/liveAgentTracker";
 import { useProjectSignals } from "../hooks/useProjectSignals";
@@ -272,6 +273,7 @@ function SidebarComponent({
   const [workspaceMenu, setWorkspaceMenu] = useState<HTMLElement | null>(null);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [threadDefaultsOpen, setThreadDefaultsOpen] = useState(false);
+  const [preambleOpen, setPreambleOpen] = useState(false);
   const openWorkspaceMenu = (event: ReactMouseEvent<HTMLButtonElement>) =>
     setWorkspaceMenu(event.currentTarget);
   // The workspace menu's "Archive dormant threads": every settled, seen,
@@ -652,6 +654,7 @@ function SidebarComponent({
           }
           onThreadDefaults={workspace ? () => setThreadDefaultsOpen(true) : undefined}
           onOrchestration={workspace ? () => openOrchestrationSettings(workspace.id) : undefined}
+          onPreamble={workspace ? () => setPreambleOpen(true) : undefined}
           onWorkspaceSettings={workspace ? () => openWorkspaceSettings(workspace.id) : undefined}
           onRemoveWorkspace={
             railVisible && !atHome
@@ -659,6 +662,9 @@ function SidebarComponent({
               : undefined
           }
         />
+      ) : null}
+      {preambleOpen && workspace ? (
+        <PreambleDialog scope={{ kind: "workspace", workspace }} onClose={() => setPreambleOpen(false)} />
       ) : null}
       {threadDefaultsOpen && workspace ? (
         <ThreadDefaultsDialog

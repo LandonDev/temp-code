@@ -412,7 +412,7 @@ export class CrossHostThreads {
     })
     this.remember(caller, child.id)
     this.lastStatus.set(child.id, child.status)
-    await this.deps.registry.send(child.id, args.task)
+    await this.deps.registry.send(child.id, args.task, { preamble: args.preamble !== false })
     return { sessionId: child.id, title: child.title, cwd, projectId: placed.projectId, ...(placed.cwdNote ? { cwdNote: placed.cwdNote } : {}) }
   }
 

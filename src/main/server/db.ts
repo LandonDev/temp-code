@@ -10,7 +10,7 @@ import { mkdirSync } from 'node:fs'
 import { timed } from './stalls'
 import type { EventReader } from './dbWorkers'
 import { dirname } from 'node:path'
-import type { AgentEvent, EventRow, Failure, SessionMeta, SessionStatus } from '@shared/events'
+import type { AgentEvent, EventRow, Failure, PreambleStamp, SessionMeta, SessionStatus } from '@shared/events'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
 import type { GithubInboxRepo } from '@shared/contract-github'
 import { ACCOUNT_PROVIDERS, type AccountPins } from '@shared/accounts'
@@ -210,7 +210,14 @@ export function openDb(path: string): DatabaseSync {
     `ALTER TABLE sessions ADD COLUMN plan_completed_at INTEGER`,
     `ALTER TABLE sessions ADD COLUMN implementation_id TEXT`,
     `ALTER TABLE sessions ADD COLUMN plan_thread_id TEXT`,
-    `ALTER TABLE sessions ADD COLUMN started_by TEXT`
+    `ALTER TABLE sessions ADD COLUMN started_by TEXT`,
+    // Project preambles (projectPreamble.ts): the markdown prepended to a
+    // thread's first message, and whether it applies. A workspace's row is
+    // the default for its projects that have none of their own.
+    `ALTER TABLE projects ADD COLUMN preamble TEXT`,
+    `ALTER TABLE projects ADD COLUMN preamble_enabled INTEGER NOT NULL DEFAULT 1`,
+    `ALTER TABLE workspaces ADD COLUMN preamble TEXT`,
+    `ALTER TABLE workspaces ADD COLUMN preamble_enabled INTEGER NOT NULL DEFAULT 1`
   ]) {
     try {
       db.exec(stmt)
@@ -937,6 +944,8 @@ export class Store {
       account_pins: string | null
       github_repo: string | null
       github_repo_checked_at: number | null
+      preamble: string | null
+      preamble_enabled: number
       created_at: number
     }[]
     return rows.map((r) => ({
@@ -947,8 +956,18 @@ export class Store {
       accountPins: parseAccountPins(r.account_pins),
       githubRepo: r.github_repo,
       githubRepoCheckedAt: r.github_repo_checked_at,
+      preamble: r.preamble,
+      preambleEnabled: r.preamble_enabled !== 0,
       createdAt: r.created_at
     }))
+  }
+
+  /** The workspace's default preamble: null text clears it; `enabled`
+   *  keeps the text while it does not apply. */
+  setWorkspacePreamble(id: string, preamble: string | null, enabled: boolean): void {
+    this
+      .stmt(`UPDATE workspaces SET preamble = ?, preamble_enabled = ? WHERE id = ?`)
+      .run(preamble, enabled ? 1 : 0, id)
   }
 
   /** Records the workspace's GitHub `owner/name` (null when it has none) and when it was read. */
@@ -991,6 +1010,8 @@ export class Store {
       cwd: string
       archived: number
       account_pins: string | null
+      preamble: string | null
+      preamble_enabled: number
       created_at: number
     }[]
     return rows.map((r) => ({
@@ -1002,8 +1023,18 @@ export class Store {
       cwd: r.cwd,
       archived: !!r.archived,
       accountPins: parseAccountPins(r.account_pins),
+      preamble: r.preamble,
+      preambleEnabled: r.preamble_enabled !== 0,
       createdAt: r.created_at
     }))
+  }
+
+  /** The project's own preamble: null text falls back to the workspace's
+   *  default; `enabled: false` keeps the text while nothing is prepended. */
+  setProjectPreamble(id: string, preamble: string | null, enabled: boolean): void {
+    this
+      .stmt(`UPDATE projects SET preamble = ?, preamble_enabled = ? WHERE id = ?`)
+      .run(preamble, enabled ? 1 : 0, id)
   }
 
   setProjectAccounts(id: string, pins: AccountPins): void {
@@ -1177,6 +1208,22 @@ export class Store {
       )
       .get(sessionId)
     return !!r
+  }
+
+  /** The project preamble the session's first message carried, or null
+   *  when it opened without one (projectPreamble.ts). */
+  firstUserPreamble(sessionId: string): PreambleStamp | null {
+    this.flushEvents()
+    const rows = this
+      .stmt(
+        `SELECT payload FROM ${this.eventsTable(sessionId)} WHERE session_id = ? AND payload LIKE '%"user-text"%' ORDER BY seq LIMIT 5`
+      )
+      .all(sessionId) as unknown as { payload: string }[]
+    for (const r of rows) {
+      const e = JSON.parse(r.payload) as AgentEvent
+      if (e.type === 'user-text') return e.preamble ?? null
+    }
+    return null
   }
 
   /** Whether the assistant has ever answered in this session — a thread

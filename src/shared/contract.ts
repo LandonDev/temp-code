@@ -100,7 +100,9 @@ const SpawnAgentSpecSchema = z.object({
   useWorktree: z.boolean().optional(),
   context1m: z.boolean().optional(),
   /** Run on another host: `mac`, or an environment id (contract-crosshost.ts). */
-  environmentId: z.string().optional()
+  environmentId: z.string().optional(),
+  /** `false`: start the child without the project preamble (projectPreamble.ts). */
+  preamble: z.boolean().optional()
 })
 
 export const ClientRequestSchema = z.discriminatedUnion('method', [
@@ -185,6 +187,18 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     id: z.string(),
     method: z.literal('workspace.setAccounts'),
     params: z.object({ workspaceId: z.string(), pins: AccountPinsSchema })
+  }),
+  // Project preambles (projectPreamble.ts): the project's own text, or
+  // the workspace default its projects without one fall back to.
+  z.object({
+    id: z.string(),
+    method: z.literal('project.setPreamble'),
+    params: z.object({ projectId: z.string(), preamble: z.string().nullable(), enabled: z.boolean() })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('workspace.setPreamble'),
+    params: z.object({ workspaceId: z.string(), preamble: z.string().nullable(), enabled: z.boolean() })
   }),
   z.object({
     id: z.string(),

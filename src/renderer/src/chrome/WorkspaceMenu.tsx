@@ -17,6 +17,8 @@ type Props = {
   onWorkspaceSettings?: () => void;
   onThreadDefaults?: () => void;
   onOrchestration?: () => void;
+  /** The workspace's default preamble for projects without their own. */
+  onPreamble?: () => void;
   onRemoveWorkspace?: () => void;
   canNewProject: boolean;
 };
@@ -42,6 +44,7 @@ export function WorkspaceMenu({
   onWorkspaceSettings,
   onThreadDefaults,
   onOrchestration,
+  onPreamble,
   onRemoveWorkspace,
   canNewProject,
 }: Props) {
@@ -78,6 +81,7 @@ export function WorkspaceMenu({
       ...(onOrchestration
         ? [{ id: "orchestration", label: "Orchestration", run: onOrchestration }]
         : []),
+      ...(onPreamble ? [{ id: "preamble", label: "Preamble…", run: onPreamble }] : []),
       ...(onWorkspaceSettings
         ? [{ id: "settings", label: "Workspace settings", run: onWorkspaceSettings }]
         : []),

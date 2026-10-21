@@ -12,6 +12,7 @@ import {
 } from "react";
 import { measureElement, useVirtualizer, type VirtualizerOptions } from "@tanstack/react-virtual";
 import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
+import { PreambleDialog } from "./PreambleDialog";
 import {
   ArchiveRestore,
   ChartBar,
@@ -96,6 +97,7 @@ type Props = {
 
 type Dialog =
   | { kind: "settings"; project: ProjectMeta }
+  | { kind: "preamble"; project: ProjectMeta }
   | { kind: "teardown"; project: ProjectMeta; action: "archive" | "delete" }
   | { kind: "delete-project"; project: ProjectMeta }
   | { kind: "delete-chat"; thread: ThreadRow };
@@ -760,6 +762,7 @@ type CardProps = {
   onNewChat: (projectId: string) => void;
   onRename: (projectId: string, name: string) => void;
   onSettings: (project: ProjectMeta) => void;
+  onPreamble: (project: ProjectMeta) => void;
   onArchive: (project: ProjectMeta) => void;
   onDelete: (project: ProjectMeta) => void;
 };
@@ -779,6 +782,7 @@ const ProjectCard = memo(function ProjectCard({
   onNewChat: newChat,
   onRename: renameTo,
   onSettings: openSettings,
+  onPreamble: openPreamble,
   onArchive: archive,
   onDelete: remove,
 }: CardProps) {
@@ -787,6 +791,7 @@ const ProjectCard = memo(function ProjectCard({
   const onNewChat = () => newChat(project.id);
   const onRename = (name: string) => renameTo(project.id, name);
   const onSettings = () => openSettings(project);
+  const onPreamble = () => openPreamble(project);
   const onArchive = () => archive(project);
   const onDelete = () => remove(project);
   const onMore = () => more(project.id);
@@ -810,6 +815,7 @@ const ProjectCard = memo(function ProjectCard({
       { kind: "item", id: "chat", label: "New chat" },
       { kind: "item", id: "rename", label: "Rename" },
       { kind: "item", id: "settings", label: "Project settings" },
+      { kind: "item", id: "preamble", label: "Preamble…" },
     ];
     if (runAction === "resume")
       items.push({ kind: "item", id: "resume", label: "Continue paused threads" });
@@ -848,6 +854,7 @@ const ProjectCard = memo(function ProjectCard({
         if (id === "chat") onNewChat();
         else if (id === "rename") setRenaming(true);
         else if (id === "settings") onSettings();
+        else if (id === "preamble") onPreamble();
         else if (id === "resume")
           void Promise.allSettled(status.paused.map((t) => resume(t.id)));
         else if (id === "pause")
@@ -1243,6 +1250,10 @@ export default function WorkspaceSessions({
     (project: ProjectMeta) => setDialog({ kind: "settings", project }),
     [],
   );
+  const openPreamble = useCallback(
+    (project: ProjectMeta) => setDialog({ kind: "preamble", project }),
+    [],
+  );
   const teardownOrConfirm = useCallback(
     (project: ProjectMeta, action: "archive" | "delete") => {
       if (project.mode === "worktree" && project.branch)
@@ -1341,6 +1352,7 @@ export default function WorkspaceSessions({
             onNewChat={newChat}
             onRename={rename}
             onSettings={openSettings}
+            onPreamble={openPreamble}
             onArchive={archive}
             onDelete={remove}
           />
@@ -1422,6 +1434,12 @@ export default function WorkspaceSessions({
         <ProjectSettingsDialog
           project={dialog.project}
           workspace={workspace}
+          onClose={close}
+        />
+      ) : null}
+      {dialog?.kind === "preamble" && workspace ? (
+        <PreambleDialog
+          scope={{ kind: "project", project: dialog.project, workspace }}
           onClose={close}
         />
       ) : null}

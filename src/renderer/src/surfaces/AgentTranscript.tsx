@@ -103,6 +103,7 @@ import { FileRefMenu } from "./FileRefMenu";
 import { splitEditCards } from "./editCards";
 import { AppToolSummary, useAppView } from "./AppToolSummary";
 import { CopyMessageButton } from "./CopyMessageButton";
+import { PreambleRow } from "./PreambleRow";
 import { isEditBlock } from "./editModel";
 import { TranscriptSessionContext, useTranscriptSession } from "./transcriptSession";
 import { TranscriptSelectionMenu } from "./TranscriptSelectionMenu";
@@ -1522,6 +1523,9 @@ function UserMessageBlock({
           <div className={text ? "mb-1.5" : undefined}>
             <SecondOpinionCard card={card} />
           </div>
+        ) : null}
+        {block.preamble ? (
+          <PreambleRow text={block.preamble.text} words={block.preamble.words} />
         ) : null}
         {text ? (
           <pre

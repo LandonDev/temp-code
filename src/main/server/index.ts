@@ -62,6 +62,7 @@ import { createUiHandler } from './remote/ui'
 import { pairingOrigin, readRemoteSettings } from './remote/handlers'
 import type { SessionMeta } from '@shared/events'
 import { openDb, Store } from './db'
+import { seedHousePreamble } from './projectPreamble'
 import { EventReader, startCheckpointWorker } from './dbWorkers'
 import { handleFsGit } from './fsgit'
 import { workRoot } from './workRoot'
@@ -300,6 +301,8 @@ export async function startServer(
   if (options.watchMaster) masterRelease.start()
   const checkpoints = new CheckpointStore(join(options.dataDir ?? dirname(dbPath), 'checkpoints'))
   const registry = new SessionRegistry(store)
+  // The temp-code workspace's default preamble, seeded once (projectPreamble.ts).
+  seedHousePreamble(store)
   // The file viewer's media host serves only files under these roots.
   setMediaRoots(() => [
     ...registry.listProjects().map((p) => p.cwd),
@@ -1007,6 +1010,14 @@ export async function startServer(
             break
           case 'workspace.setAccounts':
             registry.setWorkspaceAccounts(req.params.workspaceId, req.params.pins)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'project.setPreamble':
+            registry.setProjectPreamble(req.params.projectId, req.params.preamble, req.params.enabled)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'workspace.setPreamble':
+            registry.setWorkspacePreamble(req.params.workspaceId, req.params.preamble, req.params.enabled)
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'project.setBranch':

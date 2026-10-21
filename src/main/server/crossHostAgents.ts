@@ -271,7 +271,8 @@ export class CrossHostAgents {
         title,
         useWorktree: r.useWorktree,
         cwd: session.cwd,
-        workRoot: this.deps.workRoot()
+        workRoot: this.deps.workRoot(),
+        ...(r.preamble ? {} : { preamble: false })
       }
       const result = await this.call<ThreadStartResult>(host, session, 'thread.spawn', wire)
       this.record(session.id, {

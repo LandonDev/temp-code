@@ -422,6 +422,8 @@ export interface SpawnAgentSpec {
   context1m?: boolean
   /** Run on another host (crossHostAgents.ts): `mac`, or an environment id. Top-level only: one host per call. */
   environmentId?: string
+  /** `false`: the child starts without the project preamble its parent carried (projectPreamble.ts). */
+  preamble?: boolean
 }
 
 /** One call spawns one agent (`task`) or a batch (`agents`, up to
@@ -459,6 +461,8 @@ export interface ResolvedSpawn {
   agentType: (typeof AGENT_TYPES)[number]
   task: string
   useWorktree: boolean
+  /** false = the spawner opted out of the project preamble */
+  preamble: boolean
 }
 
 /**
@@ -517,7 +521,8 @@ export function resolveSpawnSpecs(
           ? 'explorer'
           : 'implementer',
       task,
-      useWorktree: (spec.useWorktree ?? true) && rules.conduct.useWorktrees
+      useWorktree: (spec.useWorktree ?? true) && rules.conduct.useWorktrees,
+      preamble: spec.preamble !== false
     })
   }
   // Children on other hosts count toward the caps too (crossHostAgents.ts passes them).
@@ -609,7 +614,9 @@ export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs):
       title,
       parentId: parent.id
     })
-    await registry.send(child.id, anglePath ? `${r.task}\n\n${findingsContract(anglePath)}` : r.task)
+    await registry.send(child.id, anglePath ? `${r.task}\n\n${findingsContract(anglePath)}` : r.task, {
+      preamble: r.preamble
+    })
     started.push({
       agentId: child.id,
       title: child.title,

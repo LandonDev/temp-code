@@ -219,6 +219,8 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'appshots.set': 'admin',
   'project.setAccounts': 'admin',
   'workspace.setAccounts': 'admin',
+  'project.setPreamble': 'admin',
+  'workspace.setPreamble': 'admin',
   'linear.setToken': 'admin',
   // A paired phone registers its own push token (thread L6): the key's own row, read suffices.
   'remote.push.register': 'read',

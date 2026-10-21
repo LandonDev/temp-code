@@ -32,6 +32,10 @@ export interface WorkspaceMeta {
   githubRepo?: string | null
   /** When `githubRepo` was last read from the git config (ms); null until the first read. */
   githubRepoCheckedAt?: number | null
+  /** Default project preamble (markdown) for projects under this workspace that have none; null = none. */
+  preamble?: string | null
+  /** Whether the workspace default applies (the text is kept while off). */
+  preambleEnabled?: boolean
   createdAt: number
 }
 
@@ -48,6 +52,10 @@ export interface ProjectMeta {
   archived: boolean
   /** Aliax account per provider for this project's threads; unset inherits the workspace's. */
   accountPins?: AccountPins
+  /** The project's preamble (markdown), prepended to every thread's first message; null inherits the workspace default. */
+  preamble?: string | null
+  /** Whether a preamble applies to this project's threads (the text is kept while off). */
+  preambleEnabled?: boolean
   createdAt: number
 }
 

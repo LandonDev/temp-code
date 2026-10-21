@@ -107,6 +107,7 @@ import {
   writeThreadDigest
 } from './mirror'
 import { removePages } from './htmlRender'
+import { composePreambled, decidePreamble, normalizePreamble } from './projectPreamble'
 
 const THREAD_TITLES = {
   chat: 'New chat',
@@ -1136,6 +1137,20 @@ export class SessionRegistry {
     this.expectAccountsUnder((s) => s.projectId === projectId)
   }
 
+  /** A project's preamble: edits reach new threads only (a running thread
+   *  keeps the text it opened with, on its first user-text row). */
+  setProjectPreamble(projectId: string, preamble: string | null, enabled: boolean): void {
+    if (!this.store.getProject(projectId)) throw new Error(`unknown project: ${projectId}`)
+    this.store.setProjectPreamble(projectId, normalizePreamble(preamble), enabled)
+    this.notifyCatalog('projects')
+  }
+
+  setWorkspacePreamble(workspaceId: string, preamble: string | null, enabled: boolean): void {
+    if (!this.store.listWorkspaces().some((w) => w.id === workspaceId)) throw new Error(`unknown workspace: ${workspaceId}`)
+    this.store.setWorkspacePreamble(workspaceId, normalizePreamble(preamble), enabled)
+    this.notifyCatalog('workspaces')
+  }
+
   setWorkspaceAccounts(workspaceId: string, pins: AccountPins): void {
     if (!this.store.listWorkspaces().some((w) => w.id === workspaceId)) throw new Error(`unknown workspace: ${workspaceId}`)
     this.store.setWorkspaceAccounts(workspaceId, pins)
@@ -1557,7 +1572,13 @@ export class SessionRegistry {
   async send(
     sessionId: string,
     text: string,
-    opts?: RunSettings & { attachments?: Attachment[]; newPass?: boolean; echoed?: QueuedSendOpts['echoed'] }
+    opts?: RunSettings & {
+      attachments?: Attachment[]
+      newPass?: boolean
+      echoed?: QueuedSendOpts['echoed']
+      /** `false`: the spawner opted this thread out of the project preamble */
+      preamble?: boolean
+    }
   ): Promise<void> {
     let meta = this.store.getSession(sessionId)
     if (!meta) throw new Error(`unknown session: ${sessionId}`)
@@ -1611,6 +1632,21 @@ export class SessionRegistry {
     // preambles ride along on the first message, provider-agnostic.
     const first = opts?.echoed ? opts.echoed.first : !this.store.hasUserText(sessionId)
     const attachments = opts?.attachments?.length ? opts.attachments : undefined
+    // The project preamble (projectPreamble.ts) rides the FIRST message of
+    // every thread started in a project, on every start path — all of them
+    // end here. A retry of an echoed send reads the stamp its row already
+    // carries, so the harness gets the same text the transcript shows.
+    const stamp = !first
+      ? null
+      : opts?.echoed
+        ? this.store.firstUserPreamble(sessionId)
+        : decidePreamble({
+            store: this.store,
+            // An untitled thread is about to take its title from the first line.
+            session: isPlaceholderTitle(meta) ? { ...meta, title: '' } : meta,
+            text,
+            optOut: opts?.preamble === false
+          })
     // What the user sees moves NOW: the user row and a 'starting' status
     // land before the harness boots and before the undo baseline is taken,
     // so busySince anchors to the send and the header chip goes live at
@@ -1625,6 +1661,7 @@ export class SessionRegistry {
         type: 'user-text',
         text,
         attachments,
+        ...(stamp ? { preamble: stamp } : {}),
         model: meta.model,
         reasoning: meta.reasoning,
         context1m: meta.context1m,
@@ -1678,7 +1715,7 @@ export class SessionRegistry {
         // Goal support is optional; the kickoff still proceeds.
       }
     }
-    let out = text
+    let out = stamp ? composePreambled(stamp, text) : text
     // A retyped thread re-instructs on its next message: the new type's
     // preamble rides along once, prefaced so the model knows it replaces
     // the instructions the thread opened with.
@@ -1703,7 +1740,7 @@ export class SessionRegistry {
         const note = retyped
           ? `The user CHANGED this thread's type mid-conversation. The instructions below REPLACE the ones this thread opened with — earlier turns may follow the old shape; from this message on, follow these.\n\n`
           : ''
-        out = `<thread-instructions>\n${note}${preamble}\n</thread-instructions>\n\n${text}`
+        out = `<thread-instructions>\n${note}${preamble}\n</thread-instructions>\n\n${out}`
       }
       // Shared context (M8): root project threads open knowing the project —
       // the journal, the sibling transcripts, the journal-append contract.
