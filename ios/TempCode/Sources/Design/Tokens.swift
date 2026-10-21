@@ -121,6 +121,8 @@ enum Layout {
     static let rowGap: CGFloat = 10
     /// The status dot or spinner's column.
     static let markWidth: CGFloat = 14
+    /// The status dot itself.
+    static let dotSize: CGFloat = 7
     /// The type or agent glyph's column.
     static let glyphWidth: CGFloat = 20
     /// How far a subagent steps in under its root.
