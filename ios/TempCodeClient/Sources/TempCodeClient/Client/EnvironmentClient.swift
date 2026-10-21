@@ -82,6 +82,17 @@ public final class EnvironmentClient {
     public internal(set) var push: PushRegistrar?
     /// Called with every session meta the host sent (the Live Activity follows a thread's status through it).
     public var sessionObserver: (@MainActor (EnvironmentClient, [SessionMeta]) -> Void)?
+    /// The thread on screen right now, if it is one of this host's. It resumes
+    /// first on a new session, and only its rows publish with the view's own
+    /// motion; a thread nobody is looking at publishes through `quietly`.
+    public var visibleThread: String?
+    /// Home's list of this host's threads is on screen.
+    public var listVisible = false
+    /// How a change nobody is looking at is published. The app sets this to
+    /// `withTransaction(Transaction(animation: nil))`, so rows that landed
+    /// while the person was elsewhere are simply there when they come back,
+    /// with nothing travelling. Tests count the calls.
+    public var quietly: @MainActor (() -> Void) -> Void = { $0() }
     private let keys: any KeyStore
     private var loops: [Task<Void, Never>] = []
     private var started = false
@@ -192,13 +203,16 @@ public final class EnvironmentClient {
         opens[id, default: 0] += 1
         if threads[id] == nil {
             var state = ThreadState()
-            state.isLoading = true
             if let tail = try? await cache.tail(environment.id, sessionId: id, limit: coldOpenTail) {
                 state.rows = tail.rows
                 state.moreBefore = tail.moreBefore
                 state.fold = ThreadFold.fold(tail.rows)
             }
-            threads[id] = state
+            // A painted tail is the screen; only an empty one is still loading.
+            state.isLoading = state.rows.isEmpty
+            // The screen opened at a cold launch or after a reopen: it is a fresh
+            // paint, so it lands with no animation whatever the visibility says.
+            quietly { threads[id] = state }
         }
         guard !subscriptions.has(id) else { return }
         subscriptions.add(id, SubscriptionHandlers(
@@ -383,8 +397,12 @@ public final class EnvironmentClient {
         switch event {
         case .opened:
             subscriptions.sessionChanged()
-            await refreshShell()
-            await subscriptions.resumeAll(tail: coldOpenTail)
+            // The thread on screen catches up first, the rest of the open set
+            // after it, while the shell lists alongside: the person came back
+            // to the thread they left, not to the list.
+            async let shell: Void = refreshShell()
+            await subscriptions.resumeAll(tail: coldOpenTail, first: visibleThread)
+            await shell
             for id in threads.keys where subscriptions.has(id) {
                 threads[id]?.isLoading = false
                 threads[id]?.isLive = subscriptions.isLive(id)
@@ -406,11 +424,11 @@ public final class EnvironmentClient {
         async let projectsList = try? socket.request(Methods.ProjectList.self, NoParams())
         async let firstPage = try? socket.request(Methods.SessionList.self, .init(archived: nil, projectId: nil, cursor: nil))
         if let list = await workspacesList {
-            workspaces = list
+            publishList { workspaces = list }
             try? await cache.replaceWorkspaces(environment.id, list)
         }
         if let list = await projectsList {
-            projects = list
+            publishList { projects = list }
             try? await cache.replaceProjects(environment.id, list)
         }
         let (listed, complete) = await walk(pages: await firstPage, archived: false)
@@ -454,10 +472,10 @@ public final class EnvironmentClient {
         case .hello:
             break
         case .workspaces(let value):
-            workspaces = value.workspaces
+            publishList { workspaces = value.workspaces }
             try? await cache.replaceWorkspaces(environment.id, value.workspaces)
         case .projects(let value):
-            projects = value.projects
+            publishList { projects = value.projects }
             try? await cache.replaceProjects(environment.id, value.projects)
         case .sessions(let value):
             merge(value.sessions)
@@ -494,7 +512,10 @@ public final class EnvironmentClient {
             // The host started the turn: the strip moves from Sending… to the spinner.
             if meta.status == .starting || meta.status == .running { threads[meta.id]?.sending = false }
         }
-        sessions = byId.values.sorted { ($0.updatedAt, $0.id) > ($1.updatedAt, $1.id) }
+        let sorted = byId.values.sorted { ($0.updatedAt, $0.id) > ($1.updatedAt, $1.id) }
+        // A list that did not change in order or membership is not republished:
+        // a catch-up that confirms what was already true moves nothing.
+        if sorted != sessions { publishList { sessions = sorted } }
         sessionObserver?(self, metas)
         let env = environment.id
         let cache = self.cache
@@ -503,9 +524,9 @@ public final class EnvironmentClient {
 
     private func removeSessions(_ ids: [String]) {
         let gone = Set(ids)
-        sessions.removeAll { gone.contains($0.id) }
+        publishList { sessions.removeAll { gone.contains($0.id) } }
         for id in ids {
-            threads[id] = nil
+            quietly { threads[id] = nil }
             subscriptions.remove(id)
             cancelHistory(id)
             seen[id] = nil
@@ -513,6 +534,17 @@ public final class EnvironmentClient {
         let env = environment.id
         let cache = self.cache
         Task { try? await cache.removeSessions(env, ids) }
+    }
+
+    /// Publishes a change to one thread with the view's motion only when that
+    /// thread is on screen; elsewhere it lands with animations off.
+    private func publish(thread id: String, _ body: () -> Void) {
+        if visibleThread == id { body() } else { quietly(body) }
+    }
+
+    /// Publishes a change to the shell's lists with motion only when Home shows them.
+    private func publishList(_ body: () -> Void) {
+        if listVisible { body() } else { quietly(body) }
     }
 
     private func fold(_ id: String, page: EventsPage, tailFirst: Bool) {
@@ -528,7 +560,7 @@ public final class EnvironmentClient {
             Self.settle(&state, rows: page.rows)
             state.isLoading = false
             state.isLive = true
-            threads[id] = state
+            publish(thread: id) { threads[id] = state }
         } else {
             append(id, rows: page.rows)
             threads[id]?.isLoading = false
@@ -589,7 +621,7 @@ public final class EnvironmentClient {
         }
         if !incremental { state.fold = ThreadFold.fold(state.rows) }
         Self.settle(&state, rows: rows)
-        threads[id] = state
+        publish(thread: id) { threads[id] = state }
     }
 
     /// What this device did optimistically, confirmed by the host's rows: the
@@ -628,6 +660,6 @@ public final class EnvironmentClient {
         } else if fresh.isEmpty {
             state.moreBefore = false
         }
-        threads[id] = state
+        publish(thread: id) { threads[id] = state }
     }
 }

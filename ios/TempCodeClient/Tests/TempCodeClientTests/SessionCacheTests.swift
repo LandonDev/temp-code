@@ -73,6 +73,17 @@ func textRow(_ sessionId: String, seq: Int, text: String? = nil, ephemeral: Bool
         #expect(tail.cursor == 41)
     }
 
+    @Test func `a running thread's host clock survives the cache for the elapsed timer`() async throws {
+        let cache = try SessionCache.inMemory()
+        var running = sampleSession("s1", updatedAt: 1_700_000_000_000)
+        running.status = .running
+        running.busySince = 1_699_999_990_000
+        try await cache.upsertSessions("env_test", [running])
+        let shell = try await cache.shell("env_test")
+        #expect(shell.sessions.first?.busySince == 1_699_999_990_000)
+        #expect(shell.sessions.first?.status == .running)
+    }
+
     @Test func `a thread is pruned to its bound once it runs past it`() async throws {
         let cache = try SessionCache.inMemory()
         try await cache.store("e", sessionId: "s", rows: (1...1_301).map { textRow("s", seq: $0) }, moreBefore: false)

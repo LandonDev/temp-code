@@ -31,14 +31,24 @@ public final class ClientRegistry {
     }
     private var sessionObserver: (@MainActor (EnvironmentClient, [SessionMeta]) -> Void)?
 
-    /// Clients for every stored environment, started; newest additions started too.
-    public func sync() async {
+    /// A client for every stored environment, not yet started: the first frame
+    /// of a cold launch can resolve a restored thread route against it and
+    /// paint that thread from the cache before anything connects.
+    public func prepare() {
         for environment in store.environments where clients[environment.id] == nil {
             let client = make(environment)
             client.push = push
             client.sessionObserver = sessionObserver
+            client.quietly = quietly
             clients[environment.id] = client
-            await client.start()
+        }
+    }
+
+    /// Clients for every stored environment, started; newest additions started too.
+    public func sync() async {
+        prepare()
+        for environment in store.environments {
+            await clients[environment.id]?.start()
         }
         for id in clients.keys where store.environment(id) == nil {
             await clients.removeValue(forKey: id)?.remove()
@@ -46,6 +56,27 @@ public final class ClientRegistry {
     }
 
     public func client(_ id: String) -> EnvironmentClient? { clients[id] }
+
+    /// What is on screen: the thread (on whichever host), and whether Home's
+    /// lists are. Every client publishes what nobody is looking at quietly.
+    public func setVisible(environmentId: String?, sessionId: String?, listVisible: Bool) {
+        for (id, client) in clients {
+            client.visibleThread = id == environmentId ? sessionId : nil
+            client.listVisible = listVisible
+        }
+    }
+
+    /// How a change nobody is looking at is published, for every client now and later.
+    public func setQuietly(_ quietly: @escaping @MainActor (() -> Void) -> Void) {
+        self.quietly = quietly
+        for client in clients.values { client.quietly = quietly }
+    }
+    private var quietly: @MainActor (() -> Void) -> Void = { $0() }
+
+    /// Every host has listed on its live session (or has no session to list on).
+    public var allFresh: Bool {
+        clients.values.allSatisfy { $0.status.fresh || $0.status.transport != .open }
+    }
 
     /// The store's order.
     public var ordered: [EnvironmentClient] {

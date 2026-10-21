@@ -434,4 +434,117 @@ private func seqs(_ rows: [EventRow]) -> [Int] { rows.map(\.seq) }
         #expect(again == row)
         #expect(rig.sent(fake, "session.rowBody").count == 1)
     }
+
+    // MARK: - the return flow
+
+    @Test func `a painted tail is not loading; only an empty thread is`() async throws {
+        let cache = try SessionCache.inMemory()
+        try await cache.store("env_test", sessionId: "s1", rows: (1...10).map { textRow("s1", seq: $0) }, moreBefore: false)
+        let rig = try ClientRig(cache: cache)
+        await rig.client.start()
+        await rig.client.openThread("s1")
+        #expect(rig.client.threads["s1"]?.isLoading == false)
+        #expect(rig.client.threads["s1"]?.rows.count == 10)
+        await rig.client.openThread("s9")
+        #expect(rig.client.threads["s9"]?.isLoading == true)
+    }
+
+    @Test func `on a new session the open thread catches up before the shell has listed`() async throws {
+        let cache = try SessionCache.inMemory()
+        try await cache.store("env_test", sessionId: "s1", rows: (1...50).map { textRow("s1", seq: $0) }, moreBefore: true)
+        let rig = try ClientRig(cache: cache)
+        await rig.client.start()
+        await rig.client.openThread("s1")
+        let fake = await rig.sockets.socket(0)
+        fake.hello()
+        // The shell's three requests stay unanswered while the thread resumes.
+        let subscribe = try #require(await rig.waitForRequest(fake, "session.subscribe"))
+        fake.answer(id: subscribe.id, result: "null")
+        let events = try #require(await rig.waitForRequest(fake, "session.events"))
+        #expect(events.params == .object(["sessionId": .string("s1"), "afterSeq": .number(50)]))
+        fake.answer(id: events.id, result: json(EventsPage(rows: (51...55).map { textRow("s1", seq: $0) }, moreBefore: false, moreAfter: false, reset: false)))
+        #expect(await rig.wait { rig.client.threads["s1"]?.rows.count == 55 })
+        #expect(rig.client.threads["s1"]?.isLive == true)
+        #expect(rig.client.status.fresh == false)
+        #expect(rig.client.hasShell == false)
+        await rig.answerShell(fake, sessions: [clientSession("s1")])
+        #expect(await rig.wait { rig.client.status.fresh })
+    }
+
+    @Test func `the thread on screen resumes ahead of the other open ones`() async throws {
+        let cache = try SessionCache.inMemory()
+        for id in ["s1", "s2", "s3"] {
+            try await cache.store("env_test", sessionId: id, rows: (1...5).map { textRow(id, seq: $0) }, moreBefore: false)
+        }
+        let rig = try ClientRig(cache: cache)
+        await rig.client.start()
+        for id in ["s1", "s2", "s3"] { await rig.client.openThread(id) }
+        rig.client.visibleThread = "s3"
+        let fake = await rig.sockets.socket(0)
+        fake.hello()
+        let first = try #require(await rig.waitForRequest(fake, "session.subscribe"))
+        #expect(first.params == .object(["sessionId": .string("s3")]))
+    }
+
+    @Test func `rows land with motion only on the thread on screen; elsewhere quietly`() async throws {
+        let cache = try SessionCache.inMemory()
+        try await cache.store("env_test", sessionId: "s1", rows: (1...5).map { textRow("s1", seq: $0) }, moreBefore: false)
+        try await cache.store("env_test", sessionId: "s2", rows: (1...5).map { textRow("s2", seq: $0) }, moreBefore: false)
+        let rig = try ClientRig(cache: cache)
+        var quiet = 0
+        rig.client.quietly = { body in
+            quiet += 1
+            body()
+        }
+        await rig.client.start()
+        await rig.client.openThread("s1")
+        await rig.client.openThread("s2")
+        #expect(quiet == 2, "the first paint of each thread lands quietly")
+        rig.client.visibleThread = "s1"
+        let fake = await rig.sockets.socket(0)
+        fake.hello()
+        await rig.answerShell(fake, sessions: [clientSession("s1"), clientSession("s2")])
+        for _ in 0..<2 {
+            let subscribe = try #require(await rig.waitForRequest(fake, "session.subscribe", count: rig.sent(fake, "session.subscribe").count))
+            fake.answer(id: subscribe.id, result: "null")
+            let events = try #require(await rig.waitForRequest(fake, "session.events", count: rig.sent(fake, "session.events").count))
+            let id = events.params.objectValue?["sessionId"]?.stringValue ?? ""
+            fake.answer(id: events.id, result: json(EventsPage(rows: [textRow(id, seq: 6)], moreBefore: false, moreAfter: false, reset: false)))
+            #expect(await rig.wait { rig.client.threads[id]?.rows.count == 6 })
+        }
+        #expect(await rig.wait { rig.client.status.fresh })
+        let afterCatchUp = quiet
+        fake.deliver(#"{"push":"events","sessionId":"s1","rows":\#(json([textRow("s1", seq: 7)]))}"#)
+        #expect(await rig.wait { rig.client.threads["s1"]?.rows.count == 7 })
+        #expect(quiet == afterCatchUp, "the thread on screen publishes with the view's own motion")
+        fake.deliver(#"{"push":"events","sessionId":"s2","rows":\#(json([textRow("s2", seq: 7)]))}"#)
+        #expect(await rig.wait { rig.client.threads["s2"]?.rows.count == 7 })
+        #expect(quiet == afterCatchUp + 1, "a thread nobody is looking at publishes quietly")
+    }
+
+    @Test func `a catch-up that confirms the list republishes nothing`() async throws {
+        let cache = try SessionCache.inMemory()
+        try await cache.replaceWorkspaces("env_test", [sampleWorkspace("w1")])
+        try await cache.replaceProjects("env_test", [sampleProject("p1")])
+        try await cache.upsertSessions("env_test", [clientSession("s3", updatedAt: 5), clientSession("s1", updatedAt: 2)])
+        let rig = try ClientRig(cache: cache)
+        var quiet = 0
+        rig.client.quietly = { body in
+            quiet += 1
+            body()
+        }
+        await rig.client.start()
+        let fake = await rig.sockets.socket(0)
+        fake.hello()
+        await rig.answerShell(fake, sessions: [clientSession("s3", updatedAt: 5), clientSession("s1", updatedAt: 2)])
+        #expect(await rig.wait { rig.client.status.fresh })
+        #expect(quiet == 0, "nothing changed, nothing moved")
+        fake.deliver(#"{"push":"sessions","sessions":\#(json([clientSession("s1", updatedAt: 9)]))}"#)
+        #expect(await rig.wait { rig.client.sessions.first?.id == "s1" })
+        #expect(quiet == 1, "a list nobody is looking at changes quietly")
+        rig.client.listVisible = true
+        fake.deliver(#"{"push":"sessions","sessions":\#(json([clientSession("s3", updatedAt: 12)]))}"#)
+        #expect(await rig.wait { rig.client.sessions.first?.id == "s3" })
+        #expect(quiet == 1, "Home on screen animates its own rows")
+    }
 }
