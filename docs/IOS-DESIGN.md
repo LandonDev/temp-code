@@ -109,35 +109,72 @@ desktop makes the hero.
 
 ### Chat
 
-The transcript is the whole body. Row kinds and their mobile form:
+The transcript is the whole body, the desktop's `AgentTranscript` row by
+row (`Sources/Thread/TranscriptRows.swift`, `ToolChip.swift`,
+`MarkdownView.swift`; the shared ingredients in `TranscriptStyles.swift`,
+the plain-words tool lines in `ToolPhrase.swift`). Row kinds and their
+mobile form:
 
-- **User turn**: bordered field, 12 pt radius, hairline border, attachments
-  as thumbnails under the text (images) or a document line.
-- **Assistant**: markdown as the page, `body` size, no container. Code
-  blocks: mono one step down, horizontal scroll, a copy action in the
-  context menu, never wrapped.
-- **Thinking**: one folded line "Thought for 2s" with the dim-half pattern;
-  tap expands; expanded text in `secondary`.
-- **Tool**: the one-line chip; running shows a spinner where the duration
-  will be; failed tints the glyph destructive. Expanded: input and output in
-  mono, omitted bodies fetched on expand with a shimmer of the final height
-  estimate, 12 pt radius, concentric with the chip's 8 pt.
-- **Edits**: the file name, `+n −m` in success and destructive, tap opens the
-  diff full screen (unified, mono, line numbers dim; no side-by-side on a
-  phone).
+- **User turn**: bordered field, 12 pt radius, hairline border, 12 pt
+  padding on the chrome step; attachments above the text as thumbnails
+  (images, decoded at display size, a 1 px outline at 10 %) or a wash chip
+  with a glyph (documents, threads); the time it was sent in `caption2`
+  under the field; six lines, then "Show more" on tap; Copy Message in the
+  context menu.
+- **Assistant**: markdown as the page, `body` size, no container, a
+  generous measure, selectable, Copy Message in the context menu. Code
+  blocks: the desktop's bordered block (10 pt radius, the content wash, a
+  hairline edge), the language as a small header when the fence names one,
+  line numbers in the dim step, mono one step down, horizontal scroll,
+  never wrapped, a fold past 40 lines, Copy in the context menu. Pipe
+  tables are a bordered grid that scrolls sideways. An empty streaming block
+  draws nothing; the working strip says Thinking.
+- **Thinking**: one folded line, "Thought" with "for 2s" in the dim half,
+  "Thinking" shimmering while it streams; tap opens the thought in place
+  (the expand spring), the text in `secondary`.
+- **Tool**: the one-line chip in the desktop's grammar: the kind's glyph,
+  the verb in the dim step ("Read", "Searched for", "Counted to one
+  hundred"), the target loud (a file in mono, truncated in the middle), the
+  duration right in tabular digits, a chevron that turns when open. Running
+  shows a spinner where the duration will be; failed draws an ✕ and tints
+  the line destructive. Open: the line becomes an 8 pt control inside a
+  12 pt block (concentric, 4 pt of padding) and the body lands under a
+  hairline, the input pretty (the command bare, else key and value lines,
+  never raw JSON) and the output in mono, destructive when the call failed,
+  "… N more lines" past the fold. An omitted body is fetched on open behind
+  a shimmer of its final height and fades in 150 ms after the height starts.
+  Plan-tool calls are one quiet line.
+- **Edits**: the desktop's bordered card: the icon in a 20 pt box, the file
+  name medium, the directory dim, a live verb while the call runs, `+n −m`
+  in success and destructive, semibold and tabular; deleted and failed say
+  so. Tap opens the diff full screen (unified, mono, line numbers dim; no
+  side-by-side on a phone).
 - **Approval** and **question** cards: the only raised surfaces in the
-  transcript, hairline border and warning tint at 8 %, actions as full-width
-  buttons at the bottom (L5 makes them live; L3 and L4 render them with the
-  decided state).
-- **Compaction, errors, system**: one quiet line, glyph and text, errors in
-  destructive.
-- **Subagent spawn and report**: a row with the agent glyph, label, model,
-  status; tap pushes the subagent thread.
+  transcript, hairline border and warning tint at 8 % while undecided, the
+  gray step once decided. An approval says what the agent wants in plain
+  words with the command in a mono well (a file write shows the lines it
+  adds), then Allow as the near-black pill and Deny as the wash, full width;
+  decided it reads Approved, Denied or Denied (timed out). A question shows
+  its header small and dim, the question, the options as wash chips that
+  wrap (the picked one near-black), an Other field when the question takes
+  free text, then Answer; answered, the chosen chips stay on and the rest
+  fall away.
+- **Compaction**: a pulsing violet dot and "Compacting context" with the
+  elapsed time while it runs; a labelled divider "Context compacted ·
+  142k → 38k · 2s · auto" once it lands; a destructive line when it fails.
+- **Errors and system**: "Failed · the harness's words" in destructive with
+  the alert glyph; the user's own Stop is a gray "Stopped"; a pass row reads
+  "Pass · what it did"; everything else is one quiet line, glyph and text.
+- **Subagent spawn and report**: a row under a rail: the agent's glyph,
+  "Spawned" or "Reported", its title in a wash, its status with the dot;
+  tap pushes the subagent thread.
 
 Streaming: new text appends to the last assistant row without re-laying the
-rows above; the list stays pinned to the bottom while the user is at the
-bottom and shows a "Jump to latest" pill (one, 150 ms fade) once they scroll
-up. Turn completion adds nothing visual beyond the strip stopping.
+rows above (rows compare by value and keep their identity by seq); the list
+stays pinned to the bottom while the user is at the bottom and shows a
+"Jump to latest" pill (one, 150 ms opacity and 8 pt of travel) once they
+scroll up. Turn completion adds nothing visual beyond the strip stopping.
+Nothing animates on first paint from cache.
 
 ### Implementation: the board is the hero
 
