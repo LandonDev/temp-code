@@ -165,7 +165,7 @@ struct SearchView: View {
         .onChange(of: offersFiles) {
             if !offersFiles, scope == .files { scope = .threads }
         }
-        .task(id: "\(trimmed)|\(scope.rawValue)|\(clients.count)") { await run() }
+        .task(id: [trimmed, scope.rawValue] + clients.map(\.environment.id)) { await run() }
     }
 
     /// One calm line over the empty list; nothing while an older answer is still showing.
@@ -212,7 +212,8 @@ struct SearchView: View {
             Target(client: $0, id: $0.environment.id, sessions: $0.sessions, projects: Array($0.projects.filter { !$0.archived }.prefix(8)))
         }
         searching = true
-        defer { searching = false }
+        // A cancelled search may finish after its replacement started; only the live one clears the cue.
+        defer { if !Task.isCancelled { searching = false } }
         var next = SearchAnswer(query: text, scope: scope)
         switch scope {
         case .threads:

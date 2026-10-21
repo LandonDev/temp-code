@@ -151,9 +151,27 @@ host when there are several; refresh by pull with `github.inboxRefresh`
 (this is the one place pull-to-refresh is right, since the inbox is a poll,
 not a live push). Detail: the PR or comment with the diff read-only.
 
-**Search** uses `session.search` and `search.project`: a search field at the
-top, results grouped by thread with the matching row quoted, tap lands on
-the row.
+**Search** uses `session.search` and `search.project`: the system search
+field in the navigation bar, always shown, with Threads and Files scope
+buttons only when an open host has a project to grep (a host with none
+offers threads alone, no picker). A query waits 250 ms after the last
+keystroke, then runs on every open host at once off the main actor; the
+previous answer stays on screen until the next one lands, so the list never
+flashes to empty between two queries, and a scope change runs at once.
+Results are plain rows grouped by thread: a head row with the type glyph and
+the title in semibold (the host in `caption2` tertiary after it, only when
+there are several hosts) that opens the thread, then its matching rows
+indented to the title's text edge, the snippet in `footnote` with the query's
+words set in semibold (emphasis by weight, never color) and the relative
+time trailing. Tap a hit to land on its row (the thread screen takes the
+`seq`). File matches sit under a project section header: a file glyph, the
+path with its line number dim, the line itself in mono with the match in
+weight; the phone has no editor, so a file row is a fact, not a push. The
+empty field shows one calm line ("Threads and project files on every
+host."), a finished search with nothing shows "No results for X" in the same
+place, and a search in flight with nothing yet to show has a small spinner;
+Cancel clears the field and returns to the hint. Nothing animates on a
+keystroke or a scope tap; the press scale is the only motion.
 
 ## The thread screen
 
