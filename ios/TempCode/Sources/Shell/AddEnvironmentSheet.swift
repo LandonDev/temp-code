@@ -1,18 +1,31 @@
 import SwiftUI
 import TempCodeClient
 
-/// Pair a host from its link, or add one from a key made on the desktop.
+/// Pair a host from its link, or add one from a key made on the desktop. A
+/// medium sheet with the system's 16 pt radius: the method on top, the
+/// field, a refusal under the field in destructive (never an alert), and
+/// a successful pairing dismisses with the host already in the list.
 struct AddEnvironmentSheet: View {
     /// Pairing again: the host whose key is replaced; the sheet keeps its name and address.
     var replacing: PairedEnvironment? = nil
+
     private enum Method: String, CaseIterable, Identifiable {
-        case link = "Pairing link"
+        case link = "Pairing Link"
         case key = "Key"
         var id: String { rawValue }
     }
 
+    private enum Field: Hashable {
+        case link
+        case origin
+        case key
+        case name
+    }
+
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @FocusState private var focus: Field?
     @State private var method: Method = .link
     @State private var link = ""
     @State private var origin = ""
@@ -20,64 +33,134 @@ struct AddEnvironmentSheet: View {
     @State private var name = ""
     @State private var error: String?
     @State private var busy = false
+    /// Tick once per outcome for the haptic.
+    @State private var successes = 0
+    @State private var refusals = 0
 
     var body: some View {
         NavigationStack {
             Form {
-                Picker("Method", selection: $method) {
-                    ForEach(Method.allCases) { Text($0.rawValue).tag($0) }
+                Section {
+                    Picker("Method", selection: $method) {
+                        ForEach(Method.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets())
+                    .accessibilityIdentifier("pair-method")
                 }
-                .pickerStyle(.segmented)
-                .listRowBackground(Color.clear)
-                .listRowInsets(EdgeInsets())
 
                 Section {
                     switch method {
                     case .link:
-                        TextField("https://host/pair#XXXXX-XXXXX", text: $link, axis: .vertical)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .keyboardType(.URL)
+                        HStack(alignment: .top, spacing: 12) {
+                            TextField("https://host/pair#XXXXX-XXXXX", text: $link, axis: .vertical)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .keyboardType(.URL)
+                                .textContentType(.URL)
+                                .submitLabel(.go)
+                                .focused($focus, equals: .link)
+                                .onSubmit { submit() }
+                                .accessibilityIdentifier("pair-link")
+                            if link.isEmpty {
+                                PasteButton(payloadType: String.self) { strings in
+                                    MainActor.assumeIsolated {
+                                        guard let text = strings.first else { return }
+                                        link = text
+                                        // A pasted link that reads cleanly is redeemed at once.
+                                        if PairingLink(text) != nil { submit() }
+                                    }
+                                }
+                                .labelStyle(.iconOnly)
+                                .buttonBorderShape(.capsule)
+                                .controlSize(.small)
+                                .transition(.opacity)
+                            }
+                        }
+                        .animation(Motion.crossFade, value: link.isEmpty)
                     case .key:
                         TextField("https://host", text: $origin)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .keyboardType(.URL)
+                            .textContentType(.URL)
+                            .submitLabel(.next)
+                            .focused($focus, equals: .origin)
+                            .onSubmit { focus = .key }
+                            .accessibilityIdentifier("pair-origin")
                         SecureField("tc_…", text: $key)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
+                            .submitLabel(.go)
+                            .focused($focus, equals: .key)
+                            .onSubmit { submit() }
+                            .accessibilityIdentifier("pair-key")
                     }
-                    TextField("Name (optional)", text: $name)
-                } footer: {
                     if let error {
-                        Text(error)
-                            .foregroundStyle(.red)
+                        InlineFieldError(message: error)
+                            .transition(Motion.appear(reduced: reduceMotion))
                     }
+                } footer: {
+                    Text(hint)
+                        .contentTransition(.opacity)
+                        .animation(Motion.crossFade, value: hint)
+                }
+
+                Section {
+                    TextField(replacing?.name ?? "Name", text: $name)
+                        .submitLabel(.go)
+                        .focused($focus, equals: .name)
+                        .onSubmit { submit() }
+                        .accessibilityIdentifier("pair-name")
+                } footer: {
+                    Text(replacing == nil ? "Optional. The host's own name when left empty." : "Replaces the key for \u{201C}\(replacing?.name ?? "")\u{201D}; the name and address stay.")
                 }
             }
-            .navigationTitle(replacing == nil ? "Add a host" : "Pair again")
+            .scrollDismissesKeyboard(.interactively)
+            .navigationTitle(replacing == nil ? "Add a Host" : "Pair Again")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .disabled(busy)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    if busy {
+                    ZStack {
+                        Button(replacing == nil ? "Add" : "Pair") { submit() }
+                            .fontWeight(.semibold)
+                            .disabled(!canAdd || busy)
+                            .opacity(busy ? 0 : 1)
+                            .accessibilityIdentifier("pair-submit")
                         ProgressView()
-                    } else {
-                        Button("Add") { Task { await add() } }
-                            .disabled(!canAdd)
+                            .opacity(busy ? 1 : 0)
+                            .accessibilityHidden(!busy)
                     }
+                    .animation(Motion.crossFade, value: busy)
                 }
             }
             .interactiveDismissDisabled(busy)
+            .onChange(of: method) { _, _ in
+                withAnimation(Motion.rowLeave) { error = nil }
+                focus = method == .link ? .link : .origin
+            }
+            .onChange(of: link) { _, _ in clearErrorIfTyping() }
+            .onChange(of: key) { _, _ in clearErrorIfTyping() }
+            .onChange(of: origin) { _, _ in clearErrorIfTyping() }
         }
         .presentationDetents([.medium, .large])
         .presentationCornerRadius(Radius.sheet)
-        .onAppear {
-            guard let replacing else { return }
-            name = replacing.name
-            origin = replacing.origin.absoluteString
+        .presentationDragIndicator(.visible)
+        .sensoryFeedback(.success, trigger: successes)
+        .sensoryFeedback(.error, trigger: refusals)
+        .task {
+            if let replacing {
+                name = replacing.name
+                origin = replacing.origin.absoluteString
+            }
+            // The first field takes the keyboard once the sheet has settled.
+            try? await Task.sleep(for: .milliseconds(350))
+            if focus == nil { focus = method == .link ? .link : .origin }
         }
     }
 
@@ -88,9 +171,34 @@ struct AddEnvironmentSheet: View {
         }
     }
 
+    /// Under the field: what the sheet recognised, or how to get a link.
+    private var hint: String {
+        switch method {
+        case .link:
+            if let parsed = PairingLink(link) {
+                return "Pairs with \(parsed.origin.host ?? parsed.origin.absoluteString)."
+            }
+            return link.isEmpty
+                ? "Make a link in the host's Settings → Remote access, then paste it here."
+                : "A pairing link looks like https://host/pair#XXXXX-XXXXX."
+        case .key:
+            return "A key made in the host's Remote access pane, with the host's address."
+        }
+    }
+
+    private func clearErrorIfTyping() {
+        guard error != nil else { return }
+        withAnimation(Motion.rowLeave) { error = nil }
+    }
+
+    private func submit() {
+        guard canAdd, !busy else { return }
+        Task { await add() }
+    }
+
     private func add() async {
         busy = true
-        error = nil
+        withAnimation(Motion.rowLeave) { error = nil }
         defer { busy = false }
         let displayName = name.trimmingCharacters(in: .whitespaces)
         do {
@@ -101,9 +209,11 @@ struct AddEnvironmentSheet: View {
                 guard let url = URL(string: origin.trimmingCharacters(in: .whitespaces)) else { return }
                 _ = try await model.registry.add(origin: url, key: key, name: displayName.isEmpty ? nil : displayName)
             }
+            successes += 1
             dismiss()
         } catch {
-            self.error = error.message
+            refusals += 1
+            withAnimation(Motion.rowAppear) { self.error = sentence(error.message) }
         }
     }
 }
