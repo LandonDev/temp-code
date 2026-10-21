@@ -1520,6 +1520,73 @@ public struct FsMedia: Codable, Hashable, Sendable {
     }
 }
 
+public struct AttachmentBeginAnswer: Codable, Hashable, Sendable {
+    public let uploadId: String
+    public let chunkBytes: Int
+
+    public init(uploadId: String, chunkBytes: Int) {
+        self.uploadId = uploadId
+        self.chunkBytes = chunkBytes
+    }
+}
+
+public struct AttachmentChunkAnswer: Codable, Hashable, Sendable {
+    public let received: Int
+
+    public init(received: Int) {
+        self.received = received
+    }
+}
+
+public struct CommittedAttachment: Codable, Hashable, Sendable {
+    public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+        case image
+        case file
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "image": self = .image
+            case "file": self = .file
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .image: "image"
+            case .file: "file"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let path: String
+    public let name: String
+    public let mime: String?
+    public let kind: Kind
+    public let size: Int
+
+    public init(path: String, name: String, mime: String? = nil, kind: Kind, size: Int) {
+        self.path = path
+        self.name = name
+        self.mime = mime
+        self.kind = kind
+        self.size = size
+    }
+}
+
+public struct AttachmentSettings: Codable, Hashable, Sendable {
+    public let maxBytes: Int
+    public let chunkBytes: Int
+
+    public init(maxBytes: Int, chunkBytes: Int) {
+        self.maxBytes = maxBytes
+        self.chunkBytes = chunkBytes
+    }
+}
+
 public struct LiveEdit: Codable, Hashable, Sendable {
     public struct Edit: Codable, Hashable, Sendable {
         public enum Kind: RawRepresentable, Codable, Hashable, Sendable {

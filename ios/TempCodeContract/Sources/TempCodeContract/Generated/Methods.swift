@@ -574,6 +574,84 @@ public enum Methods {
         public typealias Output = NoOutput
     }
 
+    public enum AttachmentBegin: ContractMethod {
+        public static let name = "attachment.begin"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sessionId: String
+            public let name: String
+            public let size: Int
+            public let mime: String?
+            public let sha256: String
+
+            public init(sessionId: String, name: String, size: Int, mime: String? = nil, sha256: String) {
+                self.sessionId = sessionId
+                self.name = name
+                self.size = size
+                self.mime = mime
+                self.sha256 = sha256
+            }
+        }
+
+        public typealias Output = AttachmentBeginAnswer
+    }
+
+    public enum AttachmentChunk: ContractMethod {
+        public static let name = "attachment.chunk"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let uploadId: String
+            public let index: Int
+            public let dataBase64: String
+
+            public init(uploadId: String, index: Int, dataBase64: String) {
+                self.uploadId = uploadId
+                self.index = index
+                self.dataBase64 = dataBase64
+            }
+        }
+
+        public typealias Output = AttachmentChunkAnswer
+    }
+
+    public enum AttachmentCommit: ContractMethod {
+        public static let name = "attachment.commit"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let uploadId: String
+
+            public init(uploadId: String) {
+                self.uploadId = uploadId
+            }
+        }
+
+        public typealias Output = CommittedAttachment
+    }
+
+    public enum AttachmentAbort: ContractMethod {
+        public static let name = "attachment.abort"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let uploadId: String
+
+            public init(uploadId: String) {
+                self.uploadId = uploadId
+            }
+        }
+
+        public typealias Output = NoOutput
+    }
+
+    public enum AttachmentSettings: ContractMethod {
+        public static let name = "attachment.settings"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public init() {}
+        }
+
+        public typealias Output = TempCodeContract.AttachmentSettings
+    }
+
     public enum RemoteStatus: ContractMethod {
         public static let name = "remote.status"
 

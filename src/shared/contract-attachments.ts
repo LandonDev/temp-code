@@ -37,25 +37,37 @@ export const AttachmentChunkParamsSchema = z.object({
 })
 export type AttachmentChunkParams = z.infer<typeof AttachmentChunkParamsSchema>
 
-export interface AttachmentBeginAnswer {
-  uploadId: string
-  /** The chunk size the host expects (raw bytes, the last chunk may be shorter). */
-  chunkBytes: number
-}
+// Answers, as zod so the Swift generator (scripts/gen-swift-contract.ts)
+// emits them; the interfaces are the inferred shapes.
 
-export interface AttachmentChunkAnswer {
+export const AttachmentBeginAnswerSchema = z.object({
+  uploadId: z.string(),
+  /** The chunk size the host expects (raw bytes, the last chunk may be shorter). */
+  chunkBytes: z.number().int()
+})
+export type AttachmentBeginAnswer = z.infer<typeof AttachmentBeginAnswerSchema>
+
+export const AttachmentChunkAnswerSchema = z.object({
   /** Bytes the host holds so far. */
-  received: number
-}
+  received: z.number().int()
+})
+export type AttachmentChunkAnswer = z.infer<typeof AttachmentChunkAnswerSchema>
 
 /** What `attachment.commit` answers: an events `Attachment` plus its size. */
-export interface CommittedAttachment {
-  path: string
-  name: string
-  mime?: string
-  kind: 'image' | 'file'
-  size: number
-}
+export const CommittedAttachmentSchema = z.object({
+  path: z.string(),
+  name: z.string(),
+  mime: z.string().optional(),
+  kind: z.enum(['image', 'file']),
+  size: z.number().int()
+})
+export type CommittedAttachment = z.infer<typeof CommittedAttachmentSchema>
+
+export const AttachmentSettingsSchema = z.object({
+  maxBytes: z.number().int(),
+  chunkBytes: z.number().int()
+})
+export type AttachmentSettings = z.infer<typeof AttachmentSettingsSchema>
 
 export interface AttachmentDigest {
   size: number
@@ -66,11 +78,6 @@ export interface AttachmentRange {
   dataBase64: string
   /** The file's whole size, so the reader knows when it is done. */
   size: number
-}
-
-export interface AttachmentSettings {
-  maxBytes: number
-  chunkBytes: number
 }
 
 const request = <M extends string, P extends z.ZodType>(method: M, params: P) =>

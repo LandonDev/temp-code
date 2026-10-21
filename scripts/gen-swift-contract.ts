@@ -37,6 +37,12 @@ import {
 } from '../src/shared/contract-remote'
 import { ProjectModeSchema, ThreadTypeSchema } from '../src/shared/domain'
 import {
+  AttachmentBeginAnswerSchema,
+  AttachmentChunkAnswerSchema,
+  AttachmentSettingsSchema,
+  CommittedAttachmentSchema
+} from '../src/shared/contract-attachments'
+import {
   AttachmentSchema,
   LimitWindowSchema,
   PermissionPolicySchema,
@@ -144,6 +150,11 @@ export const SUBSET: SubsetEntry[] = [
   type('TicketResponse', W.TicketResponseSchema),
   type('HttpError', W.HttpErrorSchema),
   type('FsMedia', W.FsMediaSchema),
+  // attachments uploaded to a thread's host (contract-attachments.ts)
+  type('AttachmentBeginAnswer', AttachmentBeginAnswerSchema),
+  type('AttachmentChunkAnswer', AttachmentChunkAnswerSchema),
+  type('CommittedAttachment', CommittedAttachmentSchema),
+  type('AttachmentSettings', AttachmentSettingsSchema),
   // pushes
   type('LiveEdit', W.LiveEditSchema),
   type('BuildOutput', W.BuildOutputSchema),
@@ -180,6 +191,12 @@ export const SUBSET: SubsetEntry[] = [
   method('queue.update', z.null()),
   method('queue.reorder', z.null()),
   method('queue.steer', z.null()),
+  // a photo or file from the phone lands in the thread's attachment dir
+  method('attachment.begin', AttachmentBeginAnswerSchema),
+  method('attachment.chunk', AttachmentChunkAnswerSchema),
+  method('attachment.commit', CommittedAttachmentSchema),
+  method('attachment.abort', z.null()),
+  method('attachment.settings', AttachmentSettingsSchema),
   method('remote.status', W.RemoteStatusSchema),
   method('remote.keys.list', z.array(W.RemoteKeySchema)),
   method('remote.keys.create', W.CreatedKeySchema),
