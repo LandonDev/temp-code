@@ -30,10 +30,14 @@ export const BODY_OMIT_BYTES = 2 * KIB
  *  grows) and a live-edit diff. At BODY_OMIT_BYTES a remote card stopped
  *  growing at 2 KiB and then appeared whole when the final row landed; at
  *  32 KiB it grows like a local one for all but the largest files. These
- *  rows are broadcast-only and superseded: the coalescer keeps only the
- *  newest partial per call in a batch, Claude's driver sends one at most
- *  every 100 ms, so a card at the line costs about 320 KiB/s before
- *  deflate while it streams, and nothing in the log or on a cold open.
+ *  rows are broadcast-only and superseded: they ride the coalescer's
+ *  100 ms previews window (PUSH_COALESCE_MS, no leading edge) and only the
+ *  newest partial per call leaves, so a card at the line costs at most
+ *  about 320 KiB/s before deflate while it streams, codex's unthrottled
+ *  patch updates included (wire.perf.test.ts: a codex patch growing to
+ *  30 KiB in a second leaves as 10 frames, 170 KiB, 41 KiB deflated; on
+ *  the 33 ms events window it was 32 frames, 510 KiB, 124 KiB), and
+ *  nothing in the log or on a cold open.
  *  The final tool call keeps BODY_OMIT_BYTES (it is stored and replayed;
  *  `session.rowBody` fetches it whole). */
 export const STREAMING_BODY_OMIT_BYTES = 32 * KIB
@@ -75,12 +79,16 @@ export const HISTORY_PAGE_ROWS = 300
 export const SHELL_PAGE_BYTES = 256 * KIB
 export const SHELL_PAGE_ROWS = 300
 
-/** Session metas, live edits and build lines to a remote connection go
- *  out at most once per this window, one frame per kind: a fleet of a
- *  hundred subagents pushes hundreds of metas a second, and at 100 ms the
- *  sidebar sees no lag while the link sees ten frames a second at most.
- *  The first push of a quiet period leaves at once (leading edge); what
- *  follows within the window waits for its end (trailing edge). */
+/** Session metas and build lines to a remote connection go out at most
+ *  once per this window, one frame per kind: a fleet of a hundred
+ *  subagents pushes hundreds of metas a second, and at 100 ms the sidebar
+ *  sees no lag while the link sees ten frames a second at most. The first
+ *  push of a quiet period leaves at once (leading edge); what follows
+ *  within the window waits for its end (trailing edge).
+ *  Previews (partial tool calls, newest per call, and live edits) share
+ *  the length on a lane of their own with no leading edge: each can be
+ *  tens of KiB and is stale when the next lands, so the first only opens
+ *  the window and the newest leaves when it closes. */
 export const PUSH_COALESCE_MS = 100
 
 /** Event rows (the transcript) get their own, shorter window with the same

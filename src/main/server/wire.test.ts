@@ -555,7 +555,7 @@ describe('PushCoalescer', () => {
     ])
   })
 
-  it('batches live edits in order', () => {
+  it('batches live edits in order on the 100 ms previews window, with no leading edge', () => {
     const out: ServerPush[] = []
     const c = new PushCoalescer((f) => out.push(f), 100)
     const edit = (path: string): ServerPush => ({
@@ -568,15 +568,43 @@ describe('PushCoalescer', () => {
     c.push(edit('b'))
     c.push(edit('c'))
     vi.advanceTimersByTime(99)
-    expect(out).toHaveLength(1)
+    expect(out).toEqual([])
     vi.advanceTimersByTime(1)
     expect(out.map((f) => (f as Extract<ServerPush, { push: 'live-edits' }>).items.map((i) => i.edit.path))).toEqual([
-      ['a'],
-      ['b', 'c']
+      ['a', 'b', 'c']
     ])
   })
 
-  it('keeps only the newest partial per tool call within a batch, in its place', () => {
+  it('a burst of 30 partials for one call within 100 ms leaves as one frame with the newest; text in the same window still leaves within 33 ms', () => {
+    const out: { at: number; frame: ServerPush }[] = []
+    const start = Date.now()
+    const c = new PushCoalescer((frame) => out.push({ at: Date.now() - start, frame }))
+    const sent = new Map<number, number>()
+    let seq = 0
+    for (let k = 0; k < 30; k++) {
+      c.push(partial('w', `line ${k} `.repeat(k + 1)))
+      // a text delta every 10 ms through the same window
+      if (k % 3 === 1) {
+        sent.set(++seq, Date.now() - start)
+        c.push(evt('a', seq))
+      }
+      vi.advanceTimersByTime(3)
+    }
+    expect(Date.now() - start).toBeLessThan(PUSH_COALESCE_MS)
+    vi.advanceTimersByTime(PUSH_COALESCE_MS)
+    const previews = out.filter(({ frame }) => frame.push === 'events' && seqs(frame).includes(-1))
+    expect(previews).toHaveLength(1)
+    expect(contents(previews[0].frame)).toEqual([`line 29 `.repeat(30)])
+    expect(previews[0].at).toBe(PUSH_COALESCE_MS)
+    // every text row left, in order, each within one events window of its push
+    const text = out.filter(({ frame }) => frame.push === 'events' && !seqs(frame).includes(-1))
+    expect(text.flatMap(({ frame }) => seqs(frame))).toEqual([...sent.keys()])
+    for (const { at, frame } of text)
+      for (const s of seqs(frame)) expect(at - sent.get(s)!).toBeLessThanOrEqual(PUSH_EVENTS_COALESCE_MS)
+    expect(text[0].at).toBe(sent.get(1))
+  })
+
+  it('keeps only the newest partial per tool call, apart from the text rows', () => {
     const out: ServerPush[] = []
     const c = new PushCoalescer((f) => out.push(f))
     c.push(evt('a', 1))
@@ -587,13 +615,14 @@ describe('PushCoalescer', () => {
     c.push(partial('w', 'one two three'))
     c.push(partial('w', 'elsewhere', 'b'))
     vi.advanceTimersByTime(PUSH_EVENTS_COALESCE_MS)
-    expect(kinds(out)).toEqual(['events', 'events', 'events'])
-    expect(contents(out[1])).toEqual(['other', undefined, 'one two three'])
-    expect(seqs(out[1])).toEqual([-1, 2, -1])
-    expect(contents(out[2])).toEqual(['elsewhere'])
+    expect(out.map(seqs)).toEqual([[1], [2]])
+    vi.advanceTimersByTime(PUSH_COALESCE_MS - PUSH_EVENTS_COALESCE_MS)
+    expect(out.slice(2).map((f) => (f as Extract<ServerPush, { push: 'events' }>).sessionId)).toEqual(['a', 'b'])
+    expect(contents(out[2])).toEqual(['other', 'one two three'])
+    expect(contents(out[3])).toEqual(['elsewhere'])
   })
 
-  it('a final tool call drops the partials of its call that still wait', () => {
+  it('a final tool call drops the partials of its call that still wait, so no stale preview lands after it', () => {
     const out: ServerPush[] = []
     const c = new PushCoalescer((f) => out.push(f))
     c.push(evt('a', 1))
@@ -603,28 +632,29 @@ describe('PushCoalescer', () => {
       push: 'event',
       row: { sessionId: 'a', seq: 2, ts: 2, event: { type: 'tool-call', callId: 'w', name: 'Write', input: { file_path: '/a.ts', content: 'one two three' } } }
     })
-    vi.advanceTimersByTime(PUSH_EVENTS_COALESCE_MS)
-    expect(seqs(out[1])).toEqual([2])
+    vi.advanceTimersByTime(PUSH_COALESCE_MS)
+    expect(out.map(seqs)).toEqual([[1], [2]])
     expect(contents(out[1])).toEqual(['one two three'])
   })
 
-  it('a partial already sent is not touched; the next batch starts fresh', () => {
+  it('a partial already sent is not touched; the next window starts fresh', () => {
     const out: ServerPush[] = []
     const c = new PushCoalescer((f) => out.push(f))
     c.push(partial('w', 'one'))
     c.push(partial('w', 'one two'))
-    vi.advanceTimersByTime(PUSH_EVENTS_COALESCE_MS)
+    vi.advanceTimersByTime(PUSH_COALESCE_MS)
     c.push(partial('w', 'one two three'))
     c.push(partial('w', 'one two three four'))
-    vi.advanceTimersByTime(PUSH_EVENTS_COALESCE_MS)
-    expect(out.map(contents)).toEqual([['one'], ['one two'], ['one two three four']])
+    vi.advanceTimersByTime(PUSH_COALESCE_MS)
+    expect(out.map(contents)).toEqual([['one two'], ['one two three four']])
   })
 
-  it('a growing partial input past the body line still rides the batch whole', () => {
+  it('a growing partial input past the body line still rides whole', () => {
     const out: ServerPush[] = []
     const c = new PushCoalescer((f) => out.push(f))
     const content = big(4 * BODY_OMIT_BYTES)
     c.push(partial('w', content))
+    vi.advanceTimersByTime(PUSH_COALESCE_MS)
     expect(contents(out[0])).toEqual([content])
   })
 

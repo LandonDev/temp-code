@@ -365,28 +365,44 @@ export function sessionPage(
 
 type BuildPush = Extract<ServerPush, { push: 'build' }>
 
-/** The coalescer's two lanes: transcript rows, and everything else it batches. */
-type Lane = 'events' | 'rest'
+/** The coalescer's lanes: stored transcript rows; metas and build lines;
+ *  and previews (partial tool calls and live edits), the growing
+ *  snapshots that each supersede the last. */
+type Lane = 'events' | 'rest' | 'previews'
 
-/** Per remote connection, two lanes with a leading edge each: the first
- *  push of a quiet lane goes out at once, and what follows within the
- *  lane's window (PUSH_EVENTS_COALESCE_MS for event rows, PUSH_COALESCE_MS
- *  for metas, live edits and builds) goes out as one frame per kind when
- *  the window closes, so a steady stream leaves as one frame per window.
- *  Events go grouped by session and in order, a partial tool call that a
- *  later row of the same call supersedes dropped from the batch; the newest
- *  meta per session; live edits in order; build lines joined per run. Any
- *  other push flushes what waits first and goes out at once, so the order
- *  a client sees is the order the server produced. */
+/** True for a partial tool call: a broadcast-only row (seq -1, never in
+ *  the log) carrying the whole input so far, which the next row of the
+ *  same call replaces in the fold. */
+function isPartialCall(row: EventRow): row is EventRow & { event: Extract<AgentEvent, { type: 'tool-call' }> } {
+  return row.event.type === 'tool-call' && row.event.partial === true
+}
+
+/** Per remote connection, three lanes:
+ *  - events: stored rows (text deltas, tool calls, results, status), a
+ *    PUSH_EVENTS_COALESCE_MS window with a leading edge: the first row of
+ *    a quiet lane goes out at once, the rest as one frame per session when
+ *    the window closes, and a window that closes on waiting rows opens the
+ *    next, so a stream leaves as one frame per window.
+ *  - rest: metas (the newest per session) and build lines (joined per
+ *    run), a PUSH_COALESCE_MS window with the same leading edge.
+ *  - previews: partial tool calls (the newest per call) and live edits,
+ *    a PUSH_COALESCE_MS window with no leading edge: the first preview
+ *    opens the window and everything in it leaves when it closes. Each
+ *    preview can carry up to STREAMING_BODY_OMIT_BYTES and is stale the
+ *    moment the next one lands, so they leave at most ten times a second
+ *    and never compete with the text for the link.
+ *  A later row of a call drops that call's waiting partial, whichever
+ *  lane it rides, so a stale preview never lands after the final call.
+ *  Any other push flushes what waits first and goes out at once, so the
+ *  order a client sees is the order the server produced. */
 export class PushCoalescer {
-  /** rows by session; a null is a partial superseded within the batch */
-  private events = new Map<string, (EventRow | null)[]>()
-  /** `sessionId\0callId` → the waiting partial's index in its session's rows */
-  private partials = new Map<string, number>()
+  private events = new Map<string, EventRow[]>()
+  /** `sessionId\0callId` → the newest waiting partial of that call */
+  private partials = new Map<string, EventRow>()
   private sessions = new Map<string, SessionMeta>()
   private liveEdits: Omit<LiveEdit, 'push'>[] = []
   private builds: Omit<BuildPush, 'push'>[] = []
-  private timers: Record<Lane, ReturnType<typeof setTimeout> | null> = { events: null, rest: null }
+  private timers: Record<Lane, ReturnType<typeof setTimeout> | null> = { events: null, rest: null, previews: null }
   private disposed = false
 
   constructor(
@@ -398,18 +414,29 @@ export class PushCoalescer {
   push(frame: ServerPush): void {
     if (this.disposed) return
     switch (frame.push) {
-      case 'event':
-        this.addRow(projectRow(frame.row))
+      case 'event': {
+        const row = projectRow(frame.row)
+        if (row.event.type === 'tool-call') this.partials.delete(`${row.sessionId}\0${row.event.callId}`)
+        if (isPartialCall(row)) {
+          this.partials.set(`${row.sessionId}\0${row.event.callId}`, row)
+          this.arm('previews')
+          return
+        }
+        const rows = this.events.get(row.sessionId)
+        if (rows) rows.push(row)
+        else this.events.set(row.sessionId, [row])
         this.arm('events')
         return
-      case 'session':
-        this.sessions.set(frame.session.id, frame.session)
-        break
+      }
       case 'live-edit': {
         const { push: _push, ...rest } = projectLiveEdit(frame)
         this.liveEdits.push(rest)
-        break
+        this.arm('previews')
+        return
       }
+      case 'session':
+        this.sessions.set(frame.session.id, frame.session)
+        break
       case 'build': {
         const { push: _push, ...rest } = frame
         const prev = this.builds[this.builds.length - 1]
@@ -435,13 +462,15 @@ export class PushCoalescer {
   flush(): void {
     this.flushSessions()
     this.flushEvents()
-    this.flushRest()
+    this.flushPartials()
+    this.flushLiveEdits()
+    this.flushBuilds()
   }
 
   /** The socket closed: nothing waiting can be sent. */
   dispose(): void {
     this.disposed = true
-    for (const lane of ['events', 'rest'] as const) {
+    for (const lane of ['events', 'rest', 'previews'] as const) {
       const timer = this.timers[lane]
       if (timer) clearTimeout(timer)
       this.timers[lane] = null
@@ -453,36 +482,13 @@ export class PushCoalescer {
     this.builds = []
   }
 
-  /** A row joins its session's batch. A tool call drops the partial of the
-   *  same call still waiting: each partial carries the whole input so far
-   *  and the later row replaces it in the fold, so only the newest is worth
-   *  the bytes. Partials are broadcast-only rows (seq -1, never in the
-   *  log), so dropping one leaves no gap a client could notice. */
-  private addRow(row: EventRow): void {
-    let rows = this.events.get(row.sessionId)
-    if (!rows) {
-      rows = []
-      this.events.set(row.sessionId, rows)
-    }
-    if (row.event.type === 'tool-call') {
-      const key = `${row.sessionId}\0${row.event.callId}`
-      const waiting = this.partials.get(key)
-      if (waiting !== undefined) {
-        rows[waiting] = null
-        this.partials.delete(key)
-      }
-      if (row.event.partial) this.partials.set(key, rows.length)
-    }
-    rows.push(row)
-  }
-
-  /** Leading edge: a quiet lane sends now and opens its window; a lane
-   *  inside its window waits for the window to close. A window that closes
-   *  on waiting pushes sends them and opens the next; one that closes on
-   *  nothing leaves the lane quiet. */
+  /** Events and rest have a leading edge: a quiet lane sends now and opens
+   *  its window, a window that closes on waiting pushes sends them and
+   *  opens the next, one that closes on nothing leaves the lane quiet.
+   *  Previews only open the window and send when it closes. */
   private arm(lane: Lane): void {
     if (this.timers[lane]) return
-    this.flushLane(lane)
+    if (lane !== 'previews') this.flushLane(lane)
     this.openWindow(lane)
   }
 
@@ -492,36 +498,48 @@ export class PushCoalescer {
         this.timers[lane] = null
         if (this.disposed || !this.waiting(lane)) return
         this.flushLane(lane)
-        this.openWindow(lane)
+        if (lane !== 'previews') this.openWindow(lane)
       },
       lane === 'events' ? this.eventsDelayMs : this.delayMs
     )
   }
 
   private waiting(lane: Lane): boolean {
-    return lane === 'events'
-      ? this.events.size > 0
-      : this.sessions.size > 0 || this.liveEdits.length > 0 || this.builds.length > 0
+    switch (lane) {
+      case 'events':
+        return this.events.size > 0
+      case 'rest':
+        return this.sessions.size > 0 || this.builds.length > 0
+      case 'previews':
+        return this.partials.size > 0 || this.liveEdits.length > 0
+    }
   }
 
   private flushLane(lane: Lane): void {
-    if (lane === 'rest') {
-      this.flushSessions()
-      this.flushRest()
-      return
-    }
-    // Metas keep their own window; only a status row's waiting meta rides
-    // ahead of the rows, so the row never lands before its meta.
-    const ahead: SessionMeta[] = []
-    for (const [sessionId, rows] of this.events) {
-      const meta = this.sessions.get(sessionId)
-      if (meta && rows.some((r) => r?.event.type === 'status')) {
-        this.sessions.delete(sessionId)
-        ahead.push(meta)
+    switch (lane) {
+      case 'rest':
+        this.flushSessions()
+        this.flushBuilds()
+        return
+      case 'previews':
+        this.flushPartials()
+        this.flushLiveEdits()
+        return
+      case 'events': {
+        // Metas keep their own window; only a status row's waiting meta
+        // rides ahead of the rows, so the row never lands before its meta.
+        const ahead: SessionMeta[] = []
+        for (const [sessionId, rows] of this.events) {
+          const meta = this.sessions.get(sessionId)
+          if (meta && rows.some((r) => r.event.type === 'status')) {
+            this.sessions.delete(sessionId)
+            ahead.push(meta)
+          }
+        }
+        if (ahead.length > 0) this.emit({ push: 'sessions', sessions: ahead })
+        this.flushEvents()
       }
     }
-    if (ahead.length > 0) this.emit({ push: 'sessions', sessions: ahead })
-    this.flushEvents()
   }
 
   private flushSessions(): void {
@@ -535,23 +553,33 @@ export class PushCoalescer {
     if (this.events.size === 0) return
     const events = this.events
     this.events = new Map()
-    this.partials.clear()
-    for (const [sessionId, slots] of events) {
-      const rows = slots.filter((r): r is EventRow => r !== null)
-      if (rows.length > 0) this.emit({ push: 'events', sessionId, rows })
-    }
+    for (const [sessionId, rows] of events) this.emit({ push: 'events', sessionId, rows })
   }
 
-  private flushRest(): void {
-    if (this.liveEdits.length > 0) {
-      const items = this.liveEdits
-      this.liveEdits = []
-      this.emit({ push: 'live-edits', items })
+  /** The waiting partials as one events frame per session. */
+  private flushPartials(): void {
+    if (this.partials.size === 0) return
+    const bySession = new Map<string, EventRow[]>()
+    for (const row of this.partials.values()) {
+      const rows = bySession.get(row.sessionId)
+      if (rows) rows.push(row)
+      else bySession.set(row.sessionId, [row])
     }
-    if (this.builds.length > 0) {
-      const items = this.builds
-      this.builds = []
-      this.emit({ push: 'builds', items })
-    }
+    this.partials.clear()
+    for (const [sessionId, rows] of bySession) this.emit({ push: 'events', sessionId, rows })
+  }
+
+  private flushLiveEdits(): void {
+    if (this.liveEdits.length === 0) return
+    const items = this.liveEdits
+    this.liveEdits = []
+    this.emit({ push: 'live-edits', items })
+  }
+
+  private flushBuilds(): void {
+    if (this.builds.length === 0) return
+    const items = this.builds
+    this.builds = []
+    this.emit({ push: 'builds', items })
   }
 }
