@@ -432,6 +432,10 @@ public struct ThreadFold: Sendable, Hashable {
             }
         case .usage(let event):
             board.markUsage(input: event.inputTokens, output: event.outputTokens)
+        case .notice(let event):
+            // A host's own line in the thread (an account that left, a review's
+            // verdict, a restart mid-turn): one status row, the kind as detail.
+            append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .status, text: event.message, detail: event.kind, stopped: false)))
         case .context:
             break
         case .unknown:
