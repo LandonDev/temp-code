@@ -168,7 +168,8 @@ struct MenuChip: View {
         .font(.footnote.weight(.medium))
         .foregroundStyle(enabled ? Color.primary : Color.secondary)
         .padding(.horizontal, 8)
-        .frame(height: 26)
+        .padding(.vertical, 4)
+        .frame(minHeight: 26)
         .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: Radius.row, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: Radius.row, style: .continuous))
     }
@@ -177,7 +178,8 @@ struct MenuChip: View {
 /// A full-width action at the bottom of a card: the prominent one in the
 /// accent with a white label, the quiet one on the fill step. Row radius
 /// (the card's 12 less its 12 of padding leaves no room for more, so the
-/// chip step is the next one down), 40 pt tall, the same press scale as
+/// chip step is the next one down), 40 pt tall (taller only when the text
+/// size asks), the same press scale as
 /// every button. A busy prominent button shows its spinner in place of the
 /// label without changing size.
 struct CardButton: View {
@@ -209,7 +211,8 @@ struct CardButton: View {
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(role == .prominent ? Color.white : Color.primary)
             .frame(maxWidth: .infinity)
-            .frame(height: 40)
+            .padding(.vertical, 8)
+            .frame(minHeight: 40)
             .background(role == .prominent ? Color.accentColor : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: Radius.row, style: .continuous))
             .contentShape(RoundedRectangle(cornerRadius: Radius.row, style: .continuous))
         }

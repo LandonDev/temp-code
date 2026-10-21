@@ -114,8 +114,8 @@ tertiary fill with the arrow in the tertiary label) and becomes Stop,
 filled in the label color, while a turn runs and the box is empty: the
 glyph swap is the 150 ms cross-fade with 2 pt of blur and the circle never
 moves. The desktop's composer has no confirm on Stop, so neither does the
-phone. On focus a chip row appears above the field (200 ms ease-out, 4 pt
-of travel): the model and, for a model with levels, the reasoning, each a
+phone. On focus a chip row appears above the field (200 ms ease-out, the
+row's 8 pt of travel and fade; it leaves by fade alone): the model and, for a model with levels, the reasoning, each a
 26 pt chip at the row radius on the tertiary fill opening a menu over the
 host's catalog (`catalog.get`, the same list the desktop's picker shows,
 one section per provider with a check on the current model). A pick rides
@@ -301,7 +301,7 @@ Values are exact.
 | Needs-you row appearing | 200 ms ease-out, opacity and 8 pt translateY; removal 150 ms opacity only |
 | Last-activity line changing | 150 ms cross-fade with 2 pt blur; the row never changes height |
 | Send button filling | fill and glyph color 150 ms ease-out when text arrives or leaves; Send ↔ Stop glyph 150 ms cross-fade with 2 pt blur, the circle never moves |
-| Composer chip row | appears on focus: 200 ms ease-out, opacity and 4 pt translateY; leaves the same way |
+| Composer chip row | appears on focus: 200 ms ease-out, opacity and 8 pt translateY; leaves 200 ms opacity only |
 | Card decided | buttons fade, card settles 200 ms ease-out; a refusal's quiet line cross-fades in 150 ms |
 | Haptics | light impact on send and on a decision; nothing on keyboard input |
 | Counts and elapsed | `contentTransition(.numericText())` |

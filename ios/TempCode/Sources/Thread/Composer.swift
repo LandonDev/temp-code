@@ -26,7 +26,8 @@ struct BottomDock: View {
 /// only once there is text. The field grows with the text to five lines
 /// and scrolls past that. On focus a chip row appears above it naming the
 /// model and reasoning the next turn runs with; each chip opens the host's
-/// catalog, the same one the desktop's picker shows. One button swaps
+/// catalog, the same one the desktop's picker shows (the row arrives with
+/// the house travel and fade, and leaves by fade alone). One button swaps
 /// Send ↔ Stop the way the desktop's Action Swap does (150 ms cross-fade
 /// with 2 pt of blur, the button never moves). While the host is degraded
 /// or the key cannot act, the field carries the reason in place of its
@@ -76,7 +77,7 @@ struct ComposerBar: View {
         VStack(alignment: .leading, spacing: 8) {
             if chipsShown {
                 chips
-                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 4)))
+                    .transition(Motion.appear(reduced: reduceMotion))
             }
             field
             if let failure {
