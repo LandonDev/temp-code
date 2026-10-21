@@ -1,5 +1,5 @@
 {
-  "n": 268,
-  "notes": "HtmlRenderFrame.dom.test unmounts after each test: without vitest globals the library never auto-cleans, and React's scheduler then threw 'window is not defined' after jsdom teardown, failing the release gate on alternate runs",
-  "ts": 1792555728665
+  "n": 269,
+  "notes": "Fix: the server refuses a workspace at a folder that is not on this host, so a Mac window can no longer claim the box's temp-code folder at launch",
+  "ts": 1792555731902
 }
