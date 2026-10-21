@@ -285,7 +285,13 @@ export async function startServer(
     workspacePath: (id) => registry.listWorkspaces().find((w) => w.id === id)?.path,
     dataDir: options.dataDir ?? dirname(dbPath)
   })
-  const uploads = new AttachmentUploads({ dirFor: (sessionId) => attachmentDir(sessionId), store })
+  // TEMP_CODE_ATTACHMENT_TTL_MS: a proof's short expiry (scripts/e2e-attachments.ts); the sweep then runs at a tenth of it.
+  const uploadTtl = Number(process.env.TEMP_CODE_ATTACHMENT_TTL_MS) || undefined
+  const uploads = new AttachmentUploads({
+    dirFor: (sessionId) => attachmentDir(sessionId),
+    store,
+    ...(uploadTtl ? { ttlMs: uploadTtl, sweepEveryMs: Math.max(100, Math.floor(uploadTtl / 10)) } : {})
+  })
   registry.onRemoved((ids) => uploads.dropSessions(ids))
   /** Every per-tree attachments root plus the userData one: what the retention sweep walks. */
   const attachmentRoots = (): string[] => [
