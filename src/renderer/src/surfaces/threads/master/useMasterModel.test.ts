@@ -1,3 +1,4 @@
+import { DEFAULT_BATCH_RULES } from "@server/shared/contract-batch";
 import { describe, expect, it } from "vitest";
 import type { SessionMeta, SessionStatus } from "../../../lib/tcserver/types";
 import {
@@ -109,9 +110,13 @@ describe("the batch", () => {
     const steps = [{ id: "land", status: "running", detail: "1 of 3", at: 1 }];
     expect(batchFromPush({ push: "batch", state: { masterId: "m", steps, landed: ["a"], pending: [] } }, "m")).toEqual({
       masterId: "m",
+      rules: DEFAULT_BATCH_RULES,
       steps,
       landed: ["a"],
       pending: [],
+      held: [],
+      blocked: null,
+      finishedAt: null,
     });
     expect(batchFromPush({ push: "batch", state: { masterId: "m", steps } }, "m")?.landed).toEqual([]);
     expect(batchFromPush({ push: "batch", masterId: "m", steps }, "m")).toBeNull();

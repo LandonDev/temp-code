@@ -166,7 +166,6 @@ import { ROUTED_PROVIDERS } from "@server/shared/accounts";
 import { workspaceOfSection } from "../lib/settings";
 import { Heading, Input, Row, Segmented, Select, SecondaryButton, Toggle } from "./settingsBits";
 import { EditorRow } from "./EditorRow";
-import { ThreadCapRow } from "./ThreadCapRow";
 import { DANGER, GHOST, PRIMARY } from "../chrome/ConfirmDialog";
 import { AppshotsPage } from "./AppshotsSettings";
 import { ReviewsPage } from "./ReviewSettings";
@@ -495,7 +494,6 @@ function GeneralPage({
         />
       </Row>
       <EditorRow />
-      <ThreadCapRow />
 
       <PlanSettingsEditor />
 

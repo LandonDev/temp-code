@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { emptyBatch, type BatchState } from "@server/shared/contract-batch";
+import { DEFAULT_BATCH_RULES, emptyBatch, type BatchState } from "@server/shared/contract-batch";
 import { registry } from "../../../lib/connection";
 import { isLiveStatus } from "../../../lib/threads/agents";
 import { sessionStore } from "../../../lib/tcserver/store";
@@ -154,9 +154,13 @@ export function batchFromPush(push: unknown, masterId: string): BatchState | nul
   if (batch.masterId !== masterId || !Array.isArray(batch.steps)) return null;
   return {
     masterId,
+    rules: batch.rules ?? DEFAULT_BATCH_RULES,
     steps: batch.steps,
     landed: Array.isArray(batch.landed) ? batch.landed : [],
     pending: Array.isArray(batch.pending) ? batch.pending : [],
+    held: Array.isArray(batch.held) ? batch.held : [],
+    blocked: batch.blocked ?? null,
+    finishedAt: batch.finishedAt ?? null,
   };
 }
 

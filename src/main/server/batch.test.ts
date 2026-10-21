@@ -65,13 +65,17 @@ describe('Batches', () => {
     const b = w.make()
     expect(b.get('m')).toEqual({
       masterId: 'm',
+      rules: { land: 'as-they-finish', gate: true, release: true, deploy: 'none', then: 'notify' },
       steps: [
         { id: 'land', status: 'pending', detail: '', at: null },
         { id: 'gate', status: 'pending', detail: '', at: null },
         { id: 'release', status: 'pending', detail: '', at: null }
       ],
       landed: [],
-      pending: ['a', 'b']
+      pending: ['a', 'b'],
+      held: [],
+      blocked: null,
+      finishedAt: null
     })
     expect(w.pushes).toEqual([])
   })

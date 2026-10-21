@@ -1427,13 +1427,6 @@ export async function startServer(
             registry.setPlanSettings(req.params.projectId, req.params.settings)
             sendFrame({ id: req.id, ok: true, result: null })
             break
-          case 'threads.get':
-            sendFrame({ id: req.id, ok: true, result: { maxRunning: registry.getMaxRunning() } })
-            break
-          case 'threads.set':
-            registry.setMaxRunning(req.params.maxRunning)
-            sendFrame({ id: req.id, ok: true, result: null })
-            break
           case 'session.start':
             sendFrame({ id: req.id, ok: true, result: { started: await registry.startQueued(req.params.sessionId) } })
             break

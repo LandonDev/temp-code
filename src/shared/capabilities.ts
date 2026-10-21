@@ -36,6 +36,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'app.mergeBranch': 'local',
   'app.reportFindings': 'local',
   'app.batchGate': 'local',
+  'app.batchRules': 'local',
   'stall.report': 'local',
   'dap.connect': 'local',
   'lsp.ensure': 'local',
@@ -102,7 +103,6 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'build.status': 'read',
   'rules.get': 'read',
   'plans.get': 'read',
-  'threads.get': 'read',
   'defaults.get': 'read',
   'turnpass.get': 'read',
   'review.get': 'read',
@@ -238,7 +238,6 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'rules.set': 'admin',
   'defaults.set': 'admin',
   'plans.set': 'admin',
-  'threads.set': 'admin',
   'plan.implement': 'operate',
   'turnpass.set': 'admin',
   'review.set': 'admin',
@@ -250,9 +249,10 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'project.setPreamble': 'admin',
   'workspace.setPreamble': 'admin',
   'project.setMaster': 'admin',
-  // A master thread's batch (contract-batch.ts): read only.
+  // A master thread's batch (contract-batch.ts): reads, and the rules a person may set.
   'batch.get': 'read',
   'batch.children': 'read',
+  'batch.setRules': 'operate',
   'linear.setToken': 'admin',
   // A paired phone registers its own push token (thread L6): the key's own row, read suffices.
   'remote.push.register': 'read',

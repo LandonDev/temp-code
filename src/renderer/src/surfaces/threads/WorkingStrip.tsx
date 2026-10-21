@@ -107,7 +107,7 @@ export const WorkingStrip = memo(function WorkingStrip({
     setStartBusy(true);
     Promise.resolve(onStart()).finally(() => setStartBusy(false));
   };
-  // "Queued · 3rd in line" / "Queued · waiting for X": the host's line for the row.
+  // "Queued · waiting for X": the host's line for the row.
   const queuedLine = queued && session.activity?.startsWith("Queued") ? session.activity : "Queued";
 
   return (

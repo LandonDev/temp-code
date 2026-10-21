@@ -7,11 +7,10 @@ import { SessionRegistry } from './sessions'
 import { BootResumer } from './resumeAfterBoot'
 import type { DriverCtx, DriverHandle } from './drivers/types'
 import type { AgentEvent } from '../../shared/events'
-import { DEFAULT_MAX_RUNNING, ordinal, parseMaxRunning } from '../../shared/threadCap'
 
 /**
  * The thread scheduler (scheduler.ts) on a real registry with a fake
- * claude driver: the host's running cap, `after`, the stored first
+ * claude driver: `after` (the one reason to queue), the stored first
  * message, the activity lines, Start now, the boot order and the batch's
  * Stop on a queued row.
  */
@@ -76,69 +75,27 @@ async function queued(text: string, extra: { after?: string; masterId?: string; 
 }
 const idle = (id: string): void => emits.get(id)!({ type: 'status', status: 'idle' })
 
-describe('the running cap', () => {
-  it('cap 2 with five queued roots starts two; a settle starts the third, oldest first', async () => {
-    registry.setMaxRunning(2)
+describe('no running cap', () => {
+  it('five queued roots all start at once, each with the message its create stored', async () => {
     const ids: string[] = []
     for (let i = 1; i <= 5; i++) ids.push(await queued(`task ${i}`, { title: `T${i}` }))
-    expect(ids.map(status)).toEqual(['running', 'running', 'queued', 'queued', 'queued'])
-    expect(ids.filter((id) => sends.has(id))).toEqual(ids.slice(0, 2))
-    expect(line(ids[2])).toBe('Queued · 1st in line')
-    expect(line(ids[3])).toBe('Queued · 2nd in line')
-    expect(line(ids[4])).toBe('Queued · 3rd in line')
-    idle(ids[0])
-    await settle()
-    expect(status(ids[2])).toBe('running')
-    expect(ids.filter((id) => sends.has(id))).toEqual(ids.slice(0, 3))
-    // The started thread's message is the one its create stored, sent once.
-    expect(sends.get(ids[2])).toEqual(['task 3'])
-    expect(line(ids[3])).toBe('Queued · 1st in line')
-    expect(registry.queueList(ids[2])).toEqual([])
+    expect(ids.map(status)).toEqual(['running', 'running', 'running', 'running', 'running'])
+    expect(ids.map((id) => sends.get(id))).toEqual(ids.map((_, i) => [`task ${i + 1}`]))
+    expect(ids.map(line).filter((l) => l?.startsWith("Queued"))).toEqual([])
   })
 
-  it('a thread that did not opt in starts at once over the cap; a master child always queues', async () => {
-    registry.setMaxRunning(1)
-    const first = await queued('one')
-    expect(status(first)).toBe('running')
-    const plain = await registry.create({ cwd: root, provider: 'claude' })
-    await registry.send(plain.id, 'go')
-    await settle()
-    expect(status(plain.id)).toBe('running')
-    const child = await queued('child', { masterId: first })
-    expect(status(child)).toBe('queued')
-  })
-
-  it('subagents never count against the cap, and never queue', async () => {
-    registry.setMaxRunning(1)
-    const parent = await queued('parent')
-    const sub = await registry.create({ cwd: root, provider: 'claude', parentId: parent, queue: true })
-    await registry.send(sub.id, 'sub task')
-    await settle()
-    expect(status(sub.id)).toBe("running")
-    expect(registry.scheduler.runningCount()).toBe(1)
-    const next = await queued('next')
-    expect(status(next)).toBe('queued')
-  })
-
-  it('0 means unlimited, and raising the cap starts queued threads at once', async () => {
-    registry.setMaxRunning(1)
-    const a = await queued('a')
-    const b = await queued('b')
-    const c = await queued('c')
-    expect([a, b, c].map(status)).toEqual(['running', 'queued', 'queued'])
-    registry.setMaxRunning(0)
-    await settle()
-    expect([a, b, c].map(status)).toEqual(['running', 'running', 'running'])
+  it("a master's child with no after starts at once too", async () => {
+    const master = await queued('master')
+    const child = await queued('child', { masterId: master })
+    expect(status(child)).toBe('running')
   })
 
   it('the stored first message carries the preamble stamp a held-back boot keeps', async () => {
-    registry.setMaxRunning(0)
     const ws = await registry.createWorkspace(root, 'ws')
     registry.setWorkspacePreamble(ws.id, 'Rules here.', true)
     const project = await registry.createProject(ws.id, 'P', 'local')
-    registry.setMaxRunning(1)
-    await queued('hold a slot')
-    const s = await registry.create({ cwd: root, provider: 'claude', projectId: project.id, queue: true })
+    const sibling = await registry.create({ cwd: root, provider: 'claude', title: 'Sibling' })
+    const s = await registry.create({ cwd: root, provider: 'claude', projectId: project.id, queue: true, after: sibling.id })
     await registry.send(s.id, 'do it')
     await settle()
     expect(status(s.id)).toBe('queued')
@@ -157,7 +114,6 @@ describe('the running cap', () => {
 
 describe('after', () => {
   it('holds until the sibling is idle after a turn, then starts', async () => {
-    registry.setMaxRunning(0)
     const sibling = await registry.create({ cwd: root, provider: 'claude', title: 'Sibling' })
     const waiter = await queued('wait', { after: sibling.id })
     // The sibling has not run: a fresh idle thread is not a settled one.
@@ -172,7 +128,6 @@ describe('after', () => {
   })
 
   it('an errored sibling keeps the waiter queued and the line says why; archiving it releases', async () => {
-    registry.setMaxRunning(0)
     const sibling = await registry.create({ cwd: root, provider: 'claude', title: 'Broken' })
     await registry.send(sibling.id, 'go')
     await settle()
@@ -187,7 +142,6 @@ describe('after', () => {
   })
 
   it('a deleted sibling releases the waiter', async () => {
-    registry.setMaxRunning(0)
     const sibling = await registry.create({ cwd: root, provider: 'claude', title: 'Gone' })
     const waiter = await queued('wait', { after: sibling.id })
     await registry.delete(sibling.id)
@@ -195,22 +149,19 @@ describe('after', () => {
     expect(status(waiter)).toBe('running')
   })
 
-  it('Start now starts a queued thread past the cap and its after', async () => {
-    registry.setMaxRunning(1)
+  it('Start now starts a queued thread past its after', async () => {
     const sibling = await queued('busy')
     const waiter = await queued('wait', { after: sibling })
     expect(status(waiter)).toBe('queued')
     expect(await registry.startQueued(waiter)).toBe(true)
     await settle()
     expect(status(waiter)).toBe('running')
-    expect(registry.scheduler.runningCount()).toBe(2)
     expect(await registry.startQueued(waiter)).toBe(false)
   })
 })
 
 describe('boot', () => {
   it('runs the resumer first: nothing queued starts until the boot resume is done', async () => {
-    registry.setMaxRunning(1)
     let release!: () => void
     const resume = new Promise<void>((r) => {
       release = r
@@ -218,16 +169,15 @@ describe('boot', () => {
     registry.scheduler.holdUntil(resume)
     const a = await queued('a')
     expect(status(a)).toBe('queued')
-    expect(line(a)).toBe('Queued · 1st in line')
+    expect(line(a)).toBe('Queued')
     release()
     await settle()
     expect(status(a)).toBe('running')
   })
 
   it('a queued thread survives a restart: the first user row is the message it starts with', async () => {
-    registry.setMaxRunning(1)
     const busy = await queued('busy')
-    const held = await queued('held', { title: 'Held' })
+    const held = await queued('held', { title: 'Held', after: busy })
     expect(status(held)).toBe('queued')
     // A new registry over the same store: the in-memory queue is gone.
     await registry.disposeAll()
@@ -246,26 +196,13 @@ describe('boot', () => {
   })
 })
 
-describe('the batch and the setting', () => {
+describe('the batch', () => {
   it('Stop on a queued root removes it from the queue (archives it)', async () => {
-    registry.setMaxRunning(1)
-    await queued('busy')
-    const q = await queued('later')
+    const busy = await queued('busy')
+    const q = await queued('later', { after: busy })
     const result = await registry.batch('stop', [q])
     expect(result.succeeded).toEqual([q])
     expect(store.getSession(q)?.archived).toBe(true)
     expect(sends.has(q)).toBe(false)
-  })
-
-  it('threads.maxRunning round-trips through the settings table with the default when unset', () => {
-    expect(registry.getMaxRunning()).toBe(DEFAULT_MAX_RUNNING)
-    registry.setMaxRunning(7)
-    expect(store.getSetting('threads.maxRunning')).toBe('7')
-    expect(registry.getMaxRunning()).toBe(7)
-    expect(parseMaxRunning('junk')).toBe(DEFAULT_MAX_RUNNING)
-    expect(parseMaxRunning('0')).toBe(0)
-    expect(ordinal(1)).toBe('1st')
-    expect(ordinal(11)).toBe('11th')
-    expect(ordinal(22)).toBe('22nd')
   })
 })

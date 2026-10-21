@@ -19,7 +19,6 @@ import { CreateSessionParams, type CreateSessionInput } from '@shared/contract'
 import type { SessionBatchResult } from '@shared/contract'
 import { runSessionBatch, type SessionBatchAction } from './sessionBatch'
 import { ThreadScheduler } from './scheduler'
-import { parseMaxRunning, THREAD_CAP_KEY } from '@shared/threadCap'
 import { CATALOG, resolveModel, visibleModels, type ProviderId } from '@shared/catalog'
 import type { AgentEvent, Attachment, EventRow, Failure, SessionMeta, SessionStatus } from '@shared/events'
 import { classifyFailure, type GatewayRefusal } from './failureKind'
@@ -408,7 +407,7 @@ export class SessionRegistry {
   private queueOptIn = new Set<string>()
   /** The lines queued rows carry (scheduler.ts): what the rail and the strip read. */
   private queuedLines = new Map<string, string>()
-  /** The thread scheduler: the host's running cap and `after` (CLAUDE.md "Master threads"). */
+  /** The thread scheduler: `after` (CLAUDE.md "Master threads"). */
   readonly scheduler: ThreadScheduler
   private queueListeners = new Set<QueueListener>()
   private draining = new Set<string>()
@@ -547,7 +546,6 @@ export class SessionRegistry {
     for (const s of store.listSessions()) if (s.context) this.liveContexts.set(s.id, s.context)
     this.scheduler = new ThreadScheduler({
       listSessions: () => this.store.listSessions(),
-      getSetting: (key) => this.store.getSetting(key),
       hasUserText: (id) => this.store.hasUserText(id),
       startQueued: (id) => this.startQueued(id),
       setQueuedLine: (id, line) => {
@@ -563,18 +561,7 @@ export class SessionRegistry {
     this.scheduler.attach()
   }
 
-  // ── the queue: the host's running cap and `after` ────────────────────
-
-  /** The host's running cap (`threads.maxRunning`); 0 = unlimited. */
-  getMaxRunning(): number {
-    return parseMaxRunning(this.store.getSetting(THREAD_CAP_KEY))
-  }
-
-  /** Set the cap; a lower one holds the next starts, a higher one starts queued threads now. */
-  setMaxRunning(n: number): void {
-    this.store.setSetting(THREAD_CAP_KEY, String(n))
-    this.scheduler.schedule()
-  }
+  // ── the queue: `after` ───────────────────────────────────────────────
 
   /** Did the thread's create ask to queue, or does its master make it? */
   private wantsQueue(meta: SessionMeta): boolean {
@@ -582,8 +569,8 @@ export class SessionRegistry {
   }
 
   /** Start a queued thread now: boot the harness and send the first message
-   *  its create stored — the path a first message takes, past the cap and
-   *  `after` (the scheduler when a slot frees; the strip's Start now). */
+   *  its create stored — the path a first message takes, past `after` (the
+   *  scheduler when the sibling settles; the strip's Start now). */
   async startQueued(sessionId: string): Promise<boolean> {
     const meta = this.store.getSession(sessionId)
     if (!meta || meta.status !== 'queued' || meta.archived) return false
@@ -2035,8 +2022,8 @@ export class SessionRegistry {
       }
     }
     // The queue (scheduler.ts): a first message on a thread that opted in
-    // (`queue: true`, or a master's child) holds here when the host is over
-    // its cap or the `after` sibling has not settled. The user row and its
+    // (`queue: true`, or a master's child) holds here when the `after`
+    // sibling has not settled. The user row and its
     // stamp are stored exactly as a held-back boot stores them; the message
     // waits at the front of the queue and `startQueued` sends it.
     if (first && !opts?.echoed && this.wantsQueue(meta) && this.scheduler.admit(meta) === 'queue') {

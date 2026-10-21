@@ -1,14 +1,13 @@
 /**
  * The thread queue, end to end (scheduler.ts). An isolated registry with
- * its own database and a scratch workspace, the host's running cap set
- * to 2, and six claude-haiku-5-5 threads created with `queue: true` and
- * sent at once. Proves:
- *   1. Never more than two root threads are in a turn at once (every meta
- *      change is counted as it lands), the rest sit as `queued` with a
- *      "Queued · Nth in line" activity line.
- *   2. Every queued thread starts when a slot frees, oldest first, with the
- *      message its create stored, and all six finish with an answer.
- *   3. A thread created with `after` waits for its sibling's turn to settle.
+ * its own database and a scratch workspace, and six claude-haiku-5-5
+ * threads created with `queue: true` and sent at once. Proves:
+ *   1. There is no running cap: all six start at once and none sits queued.
+ *   2. Every thread finishes with an answer, and each carries exactly one
+ *      user row (the message its create stored, sent once).
+ *   3. A thread created with `after` waits as `queued` with a "Queued ·
+ *      waiting for <sibling>" line until its sibling's turn settles, then
+ *      starts with its stored message and answers.
  * Run: bun run script:e2e-queue
  */
 import { mkdtempSync } from 'node:fs'
@@ -74,8 +73,6 @@ const finalText = (id: string): string =>
 const ws = await registry.createWorkspace(mkdtempSync(join(tmpdir(), 'tc-queue-ws-')), 'queue-ws')
 const project = await registry.createProject(ws.id, 'Queue', 'local')
 const MODEL = 'claude-haiku-5-5'
-const CAP = 2
-registry.setMaxRunning(CAP)
 
 const spawn = async (n: number, extra: { after?: string } = {}): Promise<string> => {
   const s = await registry.create({
@@ -95,17 +92,16 @@ const spawn = async (n: number, extra: { after?: string } = {}): Promise<string>
   return s.id
 }
 
-// ── 1. six at once under a cap of two ───────────────────────────────────
-console.log(`\n[1] six threads, cap ${CAP}`)
+// ── 1. six at once, no cap ──────────────────────────────────────────────
+console.log('\n[1] six threads, no cap')
 const ids: string[] = []
 for (let n = 1; n <= 6; n++) ids.push(await spawn(n))
 await sleep(300)
 const statuses = ids.map((id) => store.getSession(id)?.status)
-check('two started, four queued', statuses.filter((s) => LIVE.has(s!)).length === CAP && statuses.filter((s) => s === 'queued').length === 4, statuses.join(','))
-check('the queued rows say their place in line', registry.get(ids[2])?.activity === 'Queued · 1st in line' && registry.get(ids[5])?.activity === 'Queued · 4th in line', `${registry.get(ids[2])?.activity} / ${registry.get(ids[5])?.activity}`)
-check('a queued thread holds its first message', registry.queueList(ids[2]).length === 1 && registry.eventsAfter(ids[2], 0).some((r) => r.event.type === 'user-text'))
+check('all six started, none queued', statuses.filter((s) => LIVE.has(s!)).length === 6 && !statuses.includes('queued'), statuses.join(','))
+check('no row carries a Queued line', ids.every((id) => !registry.get(id)?.activity?.startsWith('Queued')))
 
-// ── 2. everything finishes, never more than two at once ──────────────────
+// ── 2. everything finishes ───────────────────────────────────────────────
 console.log('\n[2] all six finish')
 await Promise.all(ids.map((id) => settled(id)))
 // The last settles may still be releasing the next starts; let the ticks land.
@@ -115,8 +111,8 @@ for (const id of ids) {
   const n = ids.indexOf(id) + 1
   check(`Q${n} answered`, text.toLowerCase().includes(`queue ${n} done`), text.slice(-80))
 }
-check(`never more than ${CAP} root threads in a turn at once`, peak <= CAP, `peak ${peak}`)
-check('started oldest first', order.join(',') === ids.join(','), order.map((id) => registry.get(id)?.title).join(','))
+check('all six were in a turn at once', peak === 6, `peak ${peak}`)
+check('started in the order sent', order.join(',') === ids.join(','), order.map((id) => registry.get(id)?.title).join(','))
 check('no thread left queued', ids.every((id) => store.getSession(id)?.status !== 'queued'))
 const userRows = ids.map((id) => registry.eventsAfter(id, 0).filter((r) => r.event.type === 'user-text').length)
 check('each thread has exactly one user row (the stored message, sent once)', userRows.every((n) => n === 1), userRows.join(','))
@@ -127,6 +123,7 @@ const lead = await spawn(7)
 const follower = await spawn(8, { after: lead })
 await sleep(300)
 check('follower queued behind the lead', store.getSession(follower)?.status === 'queued' && registry.get(follower)?.activity === 'Queued · waiting for Q7', registry.get(follower)?.activity ?? '')
+check('the follower holds its first message', registry.queueList(follower).length === 1 && registry.eventsAfter(follower, 0).some((r) => r.event.type === 'user-text'))
 await settled(lead)
 await sleep(1_500)
 check('follower started once the lead settled', LIVE.has(store.getSession(follower)?.status!) || store.getSession(follower)?.status === 'idle', store.getSession(follower)?.status)

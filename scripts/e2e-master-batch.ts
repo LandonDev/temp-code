@@ -2,21 +2,20 @@
  * Master threads, the whole flow end to end (CLAUDE.md "Master threads",
  * docs/master-threads.md). An isolated registry with its own database (no
  * Electron, no window), a scratch repo with a bare origin and two
- * worktrees, the host's running cap at 2, every gate step stubbed through
- * TEMP_CODE_GATE_STUB, every thread claude-haiku-5-5. A chat thread is
+ * worktrees, every gate step stubbed through TEMP_CODE_GATE_STUB, every
+ * thread claude-haiku-5-5. A chat thread is
  * pinned as the project's master and does the work itself, in real turns,
  * through its own tools. Proves:
  *   1. The master starts four children of three types with app_start_thread
  *      (two implementations, a plan, a research thread; the second
- *      implementation `after` the first); each carries masterId; under the
- *      cap two run and the rest sit `queued` with "Nth in line" or "waiting
- *      for <sibling>" lines; list_agents marks them `thread`.
+ *      implementation `after` the first); each carries masterId; three
+ *      start at once and the `after` child sits `queued` with a "waiting
+ *      for <sibling>" line; list_agents marks them `thread`.
  *   2. A child's settle wakes the master with a <subagent-report>; a child
  *      waiting on a question reports as waiting and the master answers it
  *      through answer_agent; the plan child's plan-complete report is its
- *      one report; the queued children start as slots free; the `after`
- *      child starts only once its sibling is idle after a turn; never more
- *      than two children are live at once.
+ *      one report; the `after` child starts only once its sibling is idle
+ *      after a turn.
  *   3. A child lands through merge_branch: typecheck stubbed red (HELD, a
  *      red GateNotice row) then green (merged, a review row, batch.get says
  *      1 landed).
@@ -190,10 +189,9 @@ registry.onMeta((m) => {
   if (m.status === 'starting' && !startedAt.has(m.id)) startedAt.set(m.id, Date.now())
 })
 
-// ── the project, the cap, the master ────────────────────────────────────
+// ── the project and the master ──────────────────────────────────────────
 const ws = await registry.createWorkspace(repo, 'batch-ws')
 const project = await registry.createProject(ws.id, 'Batch', 'local')
-registry.setMaxRunning(2)
 // The plan child completes its plan and reports; no build starts on its own.
 registry.setPlanSettings(project.id, { ...DEFAULT_PLAN_SETTINGS, autoImplement: false })
 const MODEL = 'claude-haiku-5-5'
@@ -218,7 +216,7 @@ Pass each firstMessage verbatim, without the <<< >>> markers. Then reply in one 
 Later messages will be automatic <subagent-report> notifications. On each one: if it says a thread is WAITING on a question, call answer_agent ONCE with that agentId, that requestId and answers [["Blue"]]; otherwise call no tool. Then reply in one short sentence and stop.`
 
 // ── 1. the master starts its batch ──────────────────────────────────────
-console.log('\n[1] the master starts four children, cap 2')
+console.log('\n[1] the master starts four children')
 await turn(master.id, masterBrief)
 const kids = childrenOf().sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
 const byTitle = (t: string): SessionMeta | undefined => kids.find((k) => k.title.toLowerCase().includes(t))
@@ -239,7 +237,7 @@ check('the children run in the project checkout', kids.every((k) => k.cwd === re
 const listed = toolResults(master.id).find((t) => t.includes('"kind":"thread"'))
 const listedRows = listed ? (JSON.parse(listed) as { kind: string; agentId: string; threadType?: string; host?: string; status: string }[]) : []
 check('list_agents marks the batch rows thread, with type, host and status', listedRows.filter((x) => x.kind === 'thread').length === 4 && listedRows.every((x) => x.kind !== 'thread' || (x.threadType && x.host === 'e2e-host' && x.status)), listed?.slice(0, 200))
-check('under the cap, children were queued with their place in line', [...(lines.get(r.id) ?? []), ...(lines.get(p.id) ?? [])].some((l) => /^Queued · \d(st|nd|rd|th) in line$/.test(l)), `r: ${[...(lines.get(r.id) ?? [])].join(' | ')}; p: ${[...(lines.get(p.id) ?? [])].join(' | ')}`)
+check('no cap: children a, r and p were never queued', ![a, r, p].some((k) => [...(lines.get(k.id) ?? [])].some((l) => l.startsWith('Queued'))), [a, r, p].map((k) => `${k.title}: ${[...(lines.get(k.id) ?? [])].join(' | ')}`).join('; '))
 check('child b was queued waiting for child a', [...(lines.get(b.id) ?? [])].some((l) => l === `Queued · waiting for ${a.title}`), [...(lines.get(b.id) ?? [])].join(' | '))
 
 // ── 2. the children run, settle and report ──────────────────────────────
@@ -277,7 +275,7 @@ const aIdle = firstRow(a.id, (e) => e.type === 'turn-complete')
 const bStart = firstRow(b.id, (e) => e.type === 'status' && e.status === 'starting')
 check('child b started only once child a was idle after a turn', !!aIdle && !!bStart && bStart.ts >= aIdle.ts, `a idle ${aIdle?.ts} b start ${bStart?.ts}`)
 check('child b answered', /b done/i.test(finalText(b.id)), finalText(b.id).slice(-60))
-check('never more than two children live at once', peakChildren <= 2, `peak ${peakChildren}`)
+check('three children were live at once (no cap held them)', peakChildren >= 3, `peak ${peakChildren}`)
 check('no child left queued', childrenOf().every((k) => k.status !== 'queued'), childrenOf().map((k) => `${k.title}:${k.status}`).join(', '))
 
 // ── 3. child a lands ─────────────────────────────────────────────────────

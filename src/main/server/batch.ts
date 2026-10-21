@@ -1,5 +1,14 @@
 import type { ClientRequest } from '@shared/contract'
-import { BatchStepIdSchema, emptyBatch, type BatchState, type BatchStep, type BatchStepId } from '@shared/contract-batch'
+import {
+  BatchRulesSchema,
+  DEFAULT_BATCH_RULES,
+  emptyBatch,
+  stepsFor,
+  type BatchRules,
+  type BatchState,
+  type BatchStep,
+  type BatchStepId
+} from '@shared/contract-batch'
 import type { SessionMeta } from '@shared/events'
 import { gateLine, type GateNotice } from '@shared/gate'
 import { BATCH_GATE_TOOL_NAME, GATE_TEXT_TAIL, logTail } from '@shared/gate'
@@ -38,11 +47,21 @@ export function batchChildren(registry: Pick<SessionRegistry, 'list'>, masterId:
 /** What the row keeps beyond the wire shape: each landed child's branch and subjects (the notes). */
 interface StoredBatch {
   masterId: string
+  rules: BatchRules
   steps: BatchStep[]
   landed: string[]
+  held: string[]
+  blocked: BatchState['blocked']
+  finishedAt: number | null
   branches: Record<string, string>
   subjects: Record<string, string[]>
 }
+
+const freshRow = (masterId: string, rules: BatchRules = DEFAULT_BATCH_RULES): StoredBatch => ({
+  ...emptyBatch(masterId, [], rules),
+  branches: {},
+  subjects: {}
+})
 
 export interface BatchesDeps {
   registry: Pick<SessionRegistry, 'list' | 'get' | 'getProject' | 'append'>
@@ -93,14 +112,39 @@ export class Batches {
   get(masterId: string): BatchState {
     const row = this.row(masterId)
     const children = batchChildren(this.deps.registry, masterId).map((s) => s.id)
-    const landed = row.landed.filter((id) => children.includes(id) || this.deps.registry.get(id))
-    return { masterId, steps: row.steps.map((s) => ({ ...s })), landed, pending: children.filter((id) => !row.landed.includes(id)) }
+    const known = (id: string): boolean => children.includes(id) || !!this.deps.registry.get(id)
+    return {
+      masterId,
+      rules: { ...row.rules },
+      steps: row.steps.map((s) => ({ ...s })),
+      landed: row.landed.filter(known),
+      pending: children.filter((id) => !row.landed.includes(id)),
+      held: row.held.filter(known),
+      blocked: row.blocked,
+      finishedAt: row.finishedAt
+    }
+  }
+
+  /** The rules as they stand. */
+  rules(masterId: string): BatchRules {
+    return { ...this.row(masterId).rules }
+  }
+
+  /** Set some or all of the rules (the `batch_rules` tool, `batch.setRules`); the step list follows `deploy`. */
+  setRules(masterId: string, patch: Partial<BatchRules>): BatchState {
+    const row = this.row(masterId)
+    const next = BatchRulesSchema.parse({ ...row.rules, ...patch })
+    if (next.summary !== undefined && !next.summary.trim()) delete next.summary
+    row.rules = next
+    row.steps = stepsFor(next).map((id) => this.step(row, id) ?? { id, status: 'pending', detail: '', at: null })
+    this.save(row)
+    return this.get(masterId)
   }
 
   private row(masterId: string): StoredBatch {
     let row = this.rows.get(masterId)
     if (!row) {
-      row = parseRow(this.deps.store.getSetting(`${ROW_PREFIX}${masterId}`)) ?? { ...emptyBatch(masterId), branches: {}, subjects: {} }
+      row = parseRow(this.deps.store.getSetting(`${ROW_PREFIX}${masterId}`)) ?? freshRow(masterId)
       this.rows.set(masterId, row)
     }
     return row
@@ -113,12 +157,16 @@ export class Batches {
     for (const l of this.listeners) l(state)
   }
 
-  private step(row: StoredBatch, id: BatchStepId): BatchStep {
-    return row.steps.find((s) => s.id === id)!
+  private step(row: StoredBatch, id: BatchStepId): BatchStep | undefined {
+    return row.steps.find((s) => s.id === id)
   }
 
   private set(row: StoredBatch, id: BatchStepId, status: BatchStep['status'], detail: string): void {
-    const step = this.step(row, id)
+    let step = this.step(row, id)
+    if (!step) {
+      step = { id, status, detail, at: null }
+      row.steps.push(step)
+    }
     step.status = status
     step.detail = detail
     step.at = this.now()
@@ -139,9 +187,9 @@ export class Batches {
     const row = this.row(masterId)
     // A landing after the release: a new cycle. After a red gate, or a
     // late child after the gate ran: the gate has to run again.
-    if (this.step(row, 'release').status === 'done') {
-      Object.assign(row, { ...emptyBatch(masterId), branches: {}, subjects: {} })
-    } else if (this.step(row, 'gate').status !== 'pending' && !this.gating.has(masterId)) {
+    if (this.step(row, 'release')?.status === 'done') {
+      Object.assign(row, freshRow(masterId, row.rules))
+    } else if (this.step(row, 'gate')?.status !== 'pending' && !this.gating.has(masterId)) {
       this.set(row, 'gate', 'pending', '')
       this.set(row, 'release', 'pending', '')
     }
@@ -263,10 +311,22 @@ function parseRow(raw: string | null | undefined): StoredBatch | null {
   try {
     const v = JSON.parse(raw) as Partial<StoredBatch>
     if (!v || typeof v.masterId !== 'string' || !Array.isArray(v.steps)) return null
-    const steps = BatchStepIdSchema.options.map(
+    const parsed = BatchRulesSchema.safeParse({ ...DEFAULT_BATCH_RULES, ...(v.rules ?? {}) })
+    const rules = parsed.success ? parsed.data : { ...DEFAULT_BATCH_RULES }
+    const steps = stepsFor(rules).map(
       (id) => v.steps!.find((s) => s.id === id) ?? { id, status: 'pending' as const, detail: '', at: null }
     )
-    return { masterId: v.masterId, steps, landed: v.landed ?? [], branches: v.branches ?? {}, subjects: v.subjects ?? {} }
+    return {
+      masterId: v.masterId,
+      rules,
+      steps,
+      landed: v.landed ?? [],
+      held: v.held ?? [],
+      blocked: v.blocked ?? null,
+      finishedAt: v.finishedAt ?? null,
+      branches: v.branches ?? {},
+      subjects: v.subjects ?? {}
+    }
   } catch {
     return null
   }
@@ -302,7 +362,7 @@ function ordinal(n: number): string {
 
 export function handleBatch(
   req: ClientRequest,
-  batches: Pick<Batches, 'get'>,
+  batches: Pick<Batches, 'get' | 'setRules'>,
   registry: Pick<SessionRegistry, 'list'>
 ): { handled: true; result: unknown } | { handled: false } {
   switch (req.method) {
@@ -310,6 +370,8 @@ export function handleBatch(
       return { handled: true, result: batches.get(req.params.masterId) }
     case 'batch.children':
       return { handled: true, result: { children: batchChildren(registry, req.params.masterId) } }
+    case 'batch.setRules':
+      return { handled: true, result: batches.setRules(req.params.masterId, req.params.rules) }
     default:
       return { handled: false }
   }

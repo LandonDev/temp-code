@@ -1,39 +1,31 @@
 import type { SessionMeta } from '@shared/events'
-import { ordinal, parseMaxRunning, THREAD_CAP_KEY } from '@shared/threadCap'
 
 /**
- * The thread scheduler (CLAUDE.md "Master threads"): a thread the host
- * cannot run yet is created `queued` and started later, instead of being
- * refused or booted into a storm. Two reasons to queue:
+ * The thread scheduler (CLAUDE.md "Master threads"): a thread whose
+ * `after` sibling has not finished is created `queued` and started later,
+ * instead of being refused. That is the one reason to queue; there is no
+ * running cap. `after` is met when the sibling has settled in `done`, or
+ * `idle` after at least one turn, or was archived or deleted. A sibling
+ * that errored, stopped or paused keeps the waiter queued, and the
+ * waiter's activity line says so.
  *
- * - The host's running cap (`threads.maxRunning`, default 4, 0 = unlimited):
- *   root threads (no parentId) in `starting`, `running` or `waiting` count;
- *   subagents follow their parent and never count; paused, idle, watching,
- *   stopped, queued, error and done do not count.
- * - An unmet `after`: the sibling has not yet settled in `done`, or `idle`
- *   after at least one turn, and was not archived or deleted. A sibling
- *   that errored or stopped keeps the waiter queued, and the waiter's
- *   activity line says so.
- *
- * Only a request that opted in queues (`session.create { queue: true }`,
- * or any thread of a master); a person's own new thread starts at once.
  * `admit` is the registry's question on a thread's first message; `tick`
- * starts queued roots oldest-first while a slot is free and their `after`
- * is met, on every meta change (settle, archive, delete, status), after
- * boot once the BootResumer has done its resume (`holdUntil`), and when
- * the cap changes. Starting is the registry's `startQueued`: the same path
- * a first message takes (boot the harness, send the stored first message),
- * so the status moves off `queued` through `starting`.
+ * starts queued roots oldest-first once their `after` is met, on every
+ * meta change (settle, archive, delete, status) and after boot once the
+ * BootResumer has done its resume (`holdUntil`). Starting is the
+ * registry's `startQueued`: the same path a first message takes (boot the
+ * harness, send the stored first message), so the status moves off
+ * `queued` through `starting`.
  *
  * Every queued root's `activity` line (what the rail and the working strip
- * read) is "Queued · waiting for <sibling title>" or "Queued · 3rd in line",
- * recomputed on every tick and pushed only when it changed.
+ * read) is "Queued · waiting for <sibling title>", with "(errored)",
+ * "(stopped)" or "(paused)" appended, recomputed on every tick and pushed
+ * only when it changed.
  */
 
 export interface SchedulerRegistry {
   /** Every stored row, raw (not decorated), archived ones included. */
   listSessions(): SessionMeta[]
-  getSetting(key: string): string | null
   /** Has the thread sent at least one user message (a turn happened or is held)? */
   hasUserText(sessionId: string): boolean
   /** Boot a queued thread and send its stored first message. */
@@ -51,11 +43,9 @@ export type AfterState =
   | { met: true }
   | { met: false; title: string; why: 'running' | 'errored' | 'stopped' | 'paused' | 'queued' }
 
-const COUNTED = new Set<SessionMeta['status']>(['starting', 'running', 'waiting'])
-
 export class ThreadScheduler {
   private readonly lines = new Map<string, string>()
-  /** Queued ids whose start is in flight: counted as running until the row moves. */
+  /** Queued ids whose start is in flight, so a pass never starts one twice. */
   private readonly inFlight = new Set<string>()
   private held = false
   private dirty = false
@@ -86,26 +76,6 @@ export class ThreadScheduler {
     })
   }
 
-  maxRunning(): number {
-    return parseMaxRunning(this.reg.getSetting(THREAD_CAP_KEY))
-  }
-
-  /** Roots in a turn on this host, plus the starts this scheduler has in flight. */
-  runningCount(sessions = this.reg.listSessions()): number {
-    let n = 0
-    for (const s of sessions) {
-      if (s.parentId || s.archived) continue
-      if (COUNTED.has(s.status) || (s.status === 'queued' && this.inFlight.has(s.id))) n++
-    }
-    return n
-  }
-
-  /** Is there room for one more root right now? */
-  hasSlot(sessions = this.reg.listSessions()): boolean {
-    const cap = this.maxRunning()
-    return cap === 0 || this.runningCount(sessions) < cap
-  }
-
   /** The sibling a thread waits for, as it stands. */
   afterState(session: Pick<SessionMeta, 'after'>, sessions = this.reg.listSessions()): AfterState {
     if (!session.after) return { met: true }
@@ -130,11 +100,9 @@ export class ThreadScheduler {
   /** The registry's question on a thread's first message. */
   admit(session: Pick<SessionMeta, 'id' | 'after' | 'parentId'>): Admission {
     if (session.parentId) return 'start'
-    // The boot resume is still taking slots: wait for the picture to settle.
+    // The boot resume is still bringing threads back: wait for the picture to settle.
     if (this.held) return 'queue'
-    const sessions = this.reg.listSessions()
-    if (!this.afterState(session, sessions).met) return 'queue'
-    return this.hasSlot(sessions) ? 'start' : 'queue'
+    return this.afterState(session).met ? 'start' : 'queue'
   }
 
   /** Something changed: run a pass soon, coalescing bursts into one. */
@@ -148,7 +116,7 @@ export class ThreadScheduler {
     })
   }
 
-  /** Run a pass now and wait for it (tests, the cap change). */
+  /** Run a pass now and wait for it (tests). */
   tick(): Promise<void> {
     this.schedule()
     return this.running ?? Promise.resolve()
@@ -175,11 +143,8 @@ export class ThreadScheduler {
     for (const id of this.inFlight) {
       if (!queued.some((s) => s.id === id)) this.inFlight.delete(id)
     }
-    const cap = this.maxRunning()
-    let slots = cap === 0 ? Number.POSITIVE_INFINITY : cap - this.runningCount(sessions)
     const starts: SessionMeta[] = []
     const lines = new Map<string, string>()
-    let position = 0
     for (const s of queued) {
       if (this.inFlight.has(s.id)) continue
       const after = this.afterState(s, sessions)
@@ -187,13 +152,11 @@ export class ThreadScheduler {
         lines.set(s.id, waitingLine(after))
         continue
       }
-      if (!this.held && slots > 0) {
-        slots--
-        starts.push(s)
+      if (this.held) {
+        lines.set(s.id, 'Queued')
         continue
       }
-      position++
-      lines.set(s.id, `Queued · ${ordinal(position)} in line`)
+      starts.push(s)
     }
     for (const s of starts) {
       this.inFlight.add(s.id)

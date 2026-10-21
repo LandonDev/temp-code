@@ -13,7 +13,7 @@ import { MacBridgeRequestSchemas } from './contract-macbridge'
 import { CrossHostRequestSchemas } from './contract-crosshost'
 import { MacBridgeRulesRequestSchemas } from './contract-macbridge-rules'
 import { ProjectPlanRequestSchemas } from './contract-projectplan'
-import { BatchRequestSchemas } from './contract-batch'
+import { BatchRequestSchemas, BatchRulesSchema } from './contract-batch'
 import { MacJobRequestSchemas } from './contract-macjobs'
 import { HostRequestSchemas } from './contract-host'
 import { HostDevicesRequestSchemas } from './contract-hostdevices'
@@ -24,7 +24,6 @@ import { ProjectModeSchema, ThreadTypeSchema } from './domain'
 import { OrchestrationRulesSchema, ThreadRulesSchema } from './rules'
 import { ThreadDefaultsSchema } from './defaults'
 import { PlanSettingsSchema } from './plans'
-import { ThreadCapSchema } from './threadCap'
 import { AppshotSettingsSchema } from './appshots'
 import { AccountPinsSchema } from './contract-m3a'
 import { TurnPassSchema } from './turnpass'
@@ -596,6 +595,12 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('app.batchGate'),
     params: z.object({ sessionId: z.string(), notes: z.string().optional(), release: z.boolean().optional() })
   }),
+  // The codex bridge's batch_rules (batch.ts): read the rules, or set some of them.
+  z.object({
+    id: z.string(),
+    method: z.literal('app.batchRules'),
+    params: z.object({ sessionId: z.string(), rules: BatchRulesSchema.partial().optional() })
+  }),
   // Appshots (M10): global capture settings, one settings-table row.
   z.object({
     id: z.string(),
@@ -730,17 +735,6 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     id: z.string(),
     method: z.literal('session.start'),
     params: z.object({ sessionId: z.string() })
-  }),
-  // The host's running cap (threadCap.ts): `threads.maxRunning`, 0 = unlimited.
-  z.object({
-    id: z.string(),
-    method: z.literal('threads.get'),
-    params: z.object({}).optional()
-  }),
-  z.object({
-    id: z.string(),
-    method: z.literal('threads.set'),
-    params: ThreadCapSchema
   }),
   // A proof's seam (local; isolated instances only, TEMP_CODE_E2E_STATUS=1):
   // set a thread's status without a harness, so a pause has something to pause.

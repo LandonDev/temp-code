@@ -14,6 +14,7 @@ export const STEP_LABEL: Record<BatchStepId, string> = {
   land: "Merge queue",
   gate: "Gate once",
   release: "Release",
+  deploy: "Deploy to the box",
 };
 
 function StepGlyph({ status }: { status: BatchStep["status"] }) {
