@@ -9,6 +9,9 @@
  *
  *   TEMP_CODE_PORT     the app's WS port (localhost-only)
  *   TEMP_CODE_SESSION  the calling thread's session id
+ *   TEMP_CODE_MAC_TOKEN  set only when the thread's Mac bridge is on: the
+ *                      mac_* tools are listed and each call carries it
+ *                      (src/main/server/macTools.ts, docs/box.md)
  *
  * Runs under plain node (node ≥22 has a global WebSocket client). When
  * spawned with the Electron binary, ELECTRON_RUN_AS_NODE=1 makes that
@@ -20,6 +23,7 @@ import { pathToFileURL } from 'node:url'
 
 const PORT = process.env.TEMP_CODE_PORT
 const SESSION = process.env.TEMP_CODE_SESSION
+const MAC_TOKEN = process.env.TEMP_CODE_MAC_TOKEN
 
 // ── WS client to the app server ──────────────────────────────────────
 
@@ -366,6 +370,66 @@ export const TOOLS = [
   }
 ]
 
+// ── the Mac bridge (only when TEMP_CODE_MAC_TOKEN is set) ────────────
+// Copies of src/shared/contract-macbridge.ts's MAC_TOOL_DESCRIPTIONS and
+// MAC_TOOL_PARAMS; macTools.test.ts keeps them equal.
+const MAC_TOOL_DESCRIPTIONS = {
+  mac_read_file:
+    "Read a file on the user's Mac (this thread runs on a remote host; the Mac is where the user and their files are). Paths are absolute Mac paths. Folders the user shared with this host read at once; any other path waits for the user to allow it on the Mac, and may be denied.",
+  mac_list_dir:
+    "List a folder on the user's Mac: name, kind, size and modification time of each entry. Paths are absolute Mac paths. Folders the user shared read at once; others wait for the user's approval on the Mac.",
+  mac_fetch_file:
+    "Copy a file from the user's Mac onto this host and get back the local path it landed at (inside this thread's .temp-code/attachments folder). Use it for files you need to work on here (up to 64 MiB). The same approval rules as mac_read_file.",
+  mac_run:
+    "Run a command on the user's Mac (for macOS-only tools: xcodebuild, osascript, open, security, …). Every command waits for the user to allow it on the Mac, showing them exactly the argv and cwd, and may be denied. Runs through the Mac's login shell with no stdin; output is capped at 1 MB. Prefer argv; use command only when you need shell syntax (pipes, globs)."
+}
+const MAC_TOOL_PARAMS = {
+  path: 'Absolute path on the Mac, e.g. /Users/name/Documents/report.pdf (no ~).',
+  maxBytes: 'Read at most this many bytes (default 262144, at most 8388608).',
+  argv: 'The command and its arguments, run as given with no shell parsing, e.g. ["xcrun", "simctl", "list"].',
+  command: "A shell command line instead of argv, read by the Mac's login shell.",
+  cwd: 'Absolute working directory on the Mac (default: the home directory).',
+  timeoutMs: 'Kill the command after this many milliseconds (default 120000, at most 1800000).'
+}
+const macPath = { type: 'string', description: MAC_TOOL_PARAMS.path }
+export const MAC_TOOLS = [
+  {
+    name: 'mac_read_file',
+    description: MAC_TOOL_DESCRIPTIONS.mac_read_file,
+    inputSchema: {
+      type: 'object',
+      properties: { path: macPath, maxBytes: { type: 'integer', minimum: 1, maximum: 8388608, description: MAC_TOOL_PARAMS.maxBytes } },
+      required: ['path']
+    }
+  },
+  { name: 'mac_list_dir', description: MAC_TOOL_DESCRIPTIONS.mac_list_dir, inputSchema: { type: 'object', properties: { path: macPath }, required: ['path'] } },
+  { name: 'mac_fetch_file', description: MAC_TOOL_DESCRIPTIONS.mac_fetch_file, inputSchema: { type: 'object', properties: { path: macPath }, required: ['path'] } },
+  {
+    name: 'mac_run',
+    description: MAC_TOOL_DESCRIPTIONS.mac_run,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        argv: { type: 'array', items: { type: 'string' }, minItems: 1, description: MAC_TOOL_PARAMS.argv },
+        command: { type: 'string', description: MAC_TOOL_PARAMS.command },
+        cwd: { type: 'string', description: MAC_TOOL_PARAMS.cwd },
+        timeoutMs: { type: 'integer', minimum: 1000, maximum: 1800000, description: MAC_TOOL_PARAMS.timeoutMs }
+      }
+    }
+  }
+]
+const MAC_METHOD_FOR = {
+  mac_read_file: 'mac.readFile',
+  mac_list_dir: 'mac.listDir',
+  mac_fetch_file: 'mac.fetchFile',
+  mac_run: 'mac.run'
+}
+
+/** The tools this thread lists: the Mac's four only while its bridge is on. */
+export function listedTools(macToken = MAC_TOKEN) {
+  return macToken ? [...TOOLS, ...MAC_TOOLS] : TOOLS
+}
+
 const METHOD_FOR = {
   app_list_threads: 'app.listThreads',
   app_read_thread: 'app.readThread',
@@ -396,6 +460,12 @@ export function toolContent(name, result) {
 
 async function callTool(name, args) {
   if (name === 'update_plan') return [{ type: 'text', text: 'task list updated' }]
+  // The Mac decides how long a call may wait (its approval, the command's
+  // timeout); the server holds the deadline, so no client timeout here.
+  if (MAC_METHOD_FOR[name]) {
+    if (!MAC_TOKEN) throw new Error('the Mac bridge is off for this thread')
+    return toolContent(name, await appRequest(MAC_METHOD_FOR[name], { ...(args ?? {}), token: MAC_TOKEN }, 0))
+  }
   const method = METHOD_FOR[name]
   if (!method) throw new Error(`unknown tool: ${name}`)
   // wait_for_agent sleeps until the agent settles (0 = no deadline); an
@@ -451,7 +521,7 @@ async function handle(msg) {
     } else if (method === 'ping') {
       out({ id, result: {} })
     } else if (method === 'tools/list') {
-      out({ id, result: { tools: TOOLS } })
+      out({ id, result: { tools: listedTools() } })
     } else if (method === 'tools/call') {
       const content = await callTool(params?.name, params?.arguments)
       out({ id, result: { content } })

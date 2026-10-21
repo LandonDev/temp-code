@@ -30,6 +30,12 @@ import { Peers } from './remote/peers'
 import { HarnessSync, handleHarness } from './remote/harnessSync'
 import { SessionMover, handleSessionMove } from './remote/sessionMover'
 import { claudeConfigDir, codexHomeDir } from './sessionMove'
+import { PeerCalls, handlePeerRequest } from './remote/peerCalls'
+import { MacBridge, handleMacBridge } from './remote/macBridge'
+import { MacThreadTokens, MacTools, macToolsHooks, rebootWhenSettled } from './macTools'
+import { macBridgeLandingRoot } from './macBridgeLanding'
+import { listEnvironments } from './remote/environments'
+import { LIVE_STATUSES } from '@shared/session-lifecycle'
 import { isHeadless } from '../headless'
 import { RemoteAuth } from './remote/auth'
 import { startRemoteListener, type RemoteListener } from './remote/listener'
@@ -276,7 +282,9 @@ export async function startServer(
       ...registry.listWorkspaces().map((w) => w.path),
       ...(work.root !== work.home ? [work.root] : []),
       // A thread with no project or workspace keeps its uploads here.
-      dataAttachmentsRoot()!
+      dataAttachmentsRoot()!,
+      // Files fetched from the Mac for a thread with no project or workspace (macBridgeLanding.ts).
+      macBridgeLandingRoot(options.dataDir ?? dirname(dbPath))
     ]
   }
   // Each thread's uploaded attachments (attachmentDir.ts): under its project
@@ -323,10 +331,16 @@ export async function startServer(
         void accountSync.syncWith(id)
         void harnessSync.syncWith(id, 'link-up')
         void sessionMover.settleWith(id)
+        void macBridge.linkUp(id)
         accounts.nudge()
       },
-      onClose: () => accounts.nudge(),
-      onPush: (from, push) => accountSync.onPeerPush(from, push)
+      onClose: (id) => {
+        macBridge.linkDown(id)
+        accounts.nudge()
+      },
+      onPush: (from, push) => {
+        if (!macBridge.onPeerPush(from, push)) accountSync.onPeerPush(from, push)
+      }
     }
   )
   const accountSync = new AccountSync({ environmentId, store, peers, nudge: () => accounts.nudge() })
@@ -360,6 +374,31 @@ export async function startServer(
     flush: () => store.flushEvents()
   })
   sessionMover.thawStale()
+  // The Mac bridge (docs/box.md): this host as the Mac, answering the hosts it
+  // links to under its own policy; and as the box, asking a registered Mac.
+  const macBridge = new MacBridge({
+    environmentId,
+    store,
+    managedRoots: () => managedRoots(),
+    environments: () => listEnvironments(store).map((e) => ({ id: e.id, name: e.name })),
+    link: (id) => {
+      const link = peers.get(id)
+      return link?.connected ? (method, params, opts) => link.request(method, params, opts) : null
+    }
+  })
+  const peerCalls = new PeerCalls(environmentId)
+  const macTokens = MacThreadTokens.fromEnv()
+  const macTools = new MacTools({
+    store,
+    sessions: registry,
+    landing: { getProject: (id) => registry.getProject(id), getWorkspace: (id) => registry.listWorkspaces().find((w) => w.id === id) },
+    dataDir: options.dataDir ?? dirname(dbPath),
+    calls: peerCalls,
+    tokens: macTokens,
+    reboot: (id) => rebootWhenSettled(registry, id, (status) => LIVE_STATUSES.has(status))
+  })
+  macToolsHooks.current = macTools
+  macToolsHooks.tokens = macTokens
   peers.refresh()
   const syncTimer = setInterval(() => void accountSync.syncAll(), 15 * 60_000)
   syncTimer.unref()
@@ -579,6 +618,8 @@ export async function startServer(
     const connection = ++connections
     const unsubs = new Map<string, () => void>()
     let unsubscribeAccounts: (() => void) | null = null
+    // The Mac bridge's prompts go to this Mac's own sockets only, never a key's.
+    const offMacBridge = principal.kind === 'local' ? macBridge.subscribe((push) => sendFrame(push)) : null
     /** per-connection file watchers (fs.watch), keyed by projectId */
     const fsWatches = new Map<string, () => void>()
     // One line per connection the first time its unsent bytes pass the mark:
@@ -679,6 +720,16 @@ export async function startServer(
           if (principal.kind === 'remote') unsubscribeAccounts ??= accountSync.subscribe(sendFrame)
           return sendFrame({ id: req.id, ok: true, result: answer })
         }
+        // The reverse RPC (remote/peerCalls.ts): a Mac's main process registers
+        // this socket and answers calls on it; then the bridge's own methods.
+        if (req.method === 'peer.register' || req.method === 'peer.reply' || req.method === 'peer.chunk') {
+          const peerSocket = { connection, keyId: principal.kind === 'remote' ? principal.keyId : null, remote: principal.kind === 'remote', send: sendFrame }
+          return sendFrame({ id: req.id, ok: true, result: handlePeerRequest(peerCalls, peerSocket, req) })
+        }
+        const macBridged = handleMacBridge(req, macBridge)
+        if (macBridged.handled) return sendFrame({ id: req.id, ok: true, result: macBridged.result })
+        const macTooled = await macTools.handle(req)
+        if (macTooled.handled) return sendFrame({ id: req.id, ok: true, result: macTooled.result })
         const remote = await handleRemote(
           req,
           principal.kind === 'local' ? remoteContext : { ...remoteContext, ceiling: principal.caps, createdBy: principal.keyId }
@@ -1508,6 +1559,8 @@ export async function startServer(
       offRemoved()
       offMoved()
       unsubscribeAccounts?.()
+      offMacBridge?.()
+      peerCalls.drop(connection)
       for (const off of unsubs.values()) off()
       unsubs.clear()
       for (const off of fsWatches.values()) off()
@@ -1615,6 +1668,8 @@ export async function startServer(
       harnessSync.close()
       uploads.close()
       sessionMover.close()
+      macBridge.close()
+      peerCalls.close()
       peers.close()
       m3a.accounts.stop()
       await registry.disposeAll()

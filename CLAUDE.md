@@ -295,6 +295,16 @@ routed to (aliax-core's `forward`). Two listeners:
   `src/shared/contract-session-move.ts`). Checkpoints and uncommitted changes
   stay on the source. docs/box.md "Moving a thread between hosts"; proof
   `bun run script:e2e-session-move`.
+- The Mac bridge: a box thread whose `macBridge.thread.<id>` setting names
+  the Mac reads, lists and fetches Mac files and runs Mac commands
+  (`mac_*` tools) over a reverse RPC on the Mac's peer link
+  (`remote/peerCalls.ts`: `peer.register`, `peer.call` push, `peer.reply`,
+  `peer.chunk`). The Mac decides everything in `remote/macBridge.ts`: a
+  per-host policy (off by default), shared folders, and a Mac-local prompt
+  for any other path and every command (`macBridge.decide` is local-only).
+  Codex calls carry a per-thread token (`macTools.ts`). docs/box.md "The Mac
+  bridge: what a box thread may touch on the Mac"; proof
+  `bun run script:e2e-mac-bridge`.
 - Backups: restic to R2 bucket `tempcode-backups`, repo `box` from
   `box-backup.timer` (SQLite snapshotted with VACUUM INTO, never the live
   files) and repo `mac` from the launchd agent `dev.landon.tempcode.backup`

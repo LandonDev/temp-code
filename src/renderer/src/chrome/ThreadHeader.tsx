@@ -1,4 +1,6 @@
 import { sessionStore } from "../lib/tcserver/store";
+import { bridgeableEnvironment, loadThreadBridge, setThreadBridge, useThreadBridge } from "../lib/macBridge";
+import type { MacBridgeThreadState } from "@server/shared/contract-macbridge";
 import { useCallback, useState, type MouseEvent as ReactMouseEvent } from "react";
 import type { ThreadRules } from "@server/shared/rules";
 import type { ThreadType } from "../lib/tcserver/types";
@@ -49,7 +51,10 @@ export type ThreadHeaderProps = {
 
 const TUNABLE: ReadonlySet<ThreadType> = new Set(["orchestration", "research"]);
 
-export function chipMenuItems(chip: StripChip): ExplorerMenuItem[] {
+/** The Mac bridge's switch for a thread on another host (lib/macBridge.ts); absent for this Mac's own threads. */
+export type ChipBridge = { state: MacBridgeThreadState | null };
+
+export function chipMenuItems(chip: StripChip, bridge?: ChipBridge): ExplorerMenuItem[] {
   const t = chip.thread;
   const items: ExplorerMenuItem[] = [{ kind: "item", id: "rename", label: "Rename" }];
   if (t.threadType && TUNABLE.has(t.threadType))
@@ -68,6 +73,15 @@ export function chipMenuItems(chip: StripChip): ExplorerMenuItem[] {
   if (chip.status === "watching")
     items.push({ kind: "item", id: "killBackground", label: "Kill background tasks", danger: true });
   if (live) items.push({ kind: "item", id: "stop", label: "Stop", danger: true });
+  if (bridge) {
+    // Inherited from the parent thread: shown on, switched on the parent.
+    const on = !!bridge.state?.macPeer;
+    const offline = on && !bridge.state?.online ? " (offline)" : "";
+    items.push(
+      { kind: "sep" },
+      { kind: "item", id: "mac-bridge", label: `Mac bridge${offline}`, checked: on, disabled: !bridge.state || bridge.state.inherited },
+    );
+  }
   items.push({ kind: "sep" }, { kind: "item", id: "archive", label: "Archive" });
   items.push({ kind: "sep" }, { kind: "item", id: "delete", label: "Delete…", danger: true });
   return items;
@@ -106,7 +120,12 @@ export function ThreadHeader({
 
   const onContextMenu = useCallback((chip: StripChip, event: ReactMouseEvent<HTMLDivElement>) => {
     setMenu({ x: event.clientX, y: event.clientY, chip });
+    const env = sessionStore.get(chip.id)?.environmentId;
+    if (env && bridgeableEnvironment(env)) void loadThreadBridge(env, chip.id);
   }, []);
+  const menuEnv = menu ? sessionStore.get(menu.chip.id)?.environmentId : undefined;
+  const menuBridgeState = useThreadBridge(menu?.chip.id);
+  const menuBridge: ChipBridge | undefined = menuEnv && bridgeableEnvironment(menuEnv) ? { state: menuBridgeState } : undefined;
 
   const onPick = (id: string) => {
     if (!menu) return;
@@ -116,6 +135,10 @@ export function ThreadHeader({
     else if (id === "tune") setTuning(chip);
     else if (id === "archive") onArchive(chip.id);
     else if (id === "delete") setDeleting(chip);
+    else if (id === "mac-bridge") {
+      const env = sessionStore.get(chip.id)?.environmentId;
+      if (env) void setThreadBridge(env, chip.id, !menuBridgeState?.macPeer).catch((err) => console.warn("[mac-bridge]", err));
+    }
     else onAction(chip.id, id as ThreadAction);
   };
 
@@ -184,7 +207,7 @@ export function ThreadHeader({
         <ExplorerMenu
           x={menu.x}
           y={menu.y}
-          items={chipMenuItems(menu.chip)}
+          items={chipMenuItems(menu.chip, menuBridge)}
           ariaLabel="Thread actions"
           onPick={onPick}
           onClose={() => setMenu(null)}

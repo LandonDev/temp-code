@@ -260,6 +260,24 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'session.export.commit': 'admin',
   'session.export.abort': 'admin',
   'session.move.status': 'admin',
+  // The Mac bridge (contract-macbridge.ts, docs/box.md): the Mac's main process registers on
+  // the box's link and answers its calls; a box thread's own tools are loopback-only (and
+  // carry the thread's token); turning the bridge on for a thread lets it act without a box
+  // prompt, so it needs approve; only the Mac's own renderer decides and sets the policy.
+  'peer.register': 'admin',
+  'peer.reply': 'admin',
+  'peer.chunk': 'admin',
+  'mac.readFile': 'local',
+  'mac.listDir': 'local',
+  'mac.fetchFile': 'local',
+  'mac.run': 'local',
+  'macBridge.thread.get': 'read',
+  'macBridge.thread.set': 'approve',
+  'macBridge.pending': 'local',
+  'macBridge.decide': 'local',
+  'macBridge.policy.get': 'local',
+  'macBridge.policy.set': 'local',
+  'macBridge.shared.set': 'local',
   // Saved hosts and their keys never leave this machine (thread K1).
   'remote.environments.list': 'local',
   'remote.environments.add': 'local',

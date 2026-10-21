@@ -30,6 +30,7 @@ import { CITE_CLAIM_MAX, CITE_TOOL_DESCRIPTION, CITE_TOOL_NAME, CITE_TOOL_PARAMS
 import { preview as previewHtml, publish as publishHtml, type HtmlPreview } from './htmlRender'
 import { INLINE_DIGEST_MAX_CHARS, mirrorRelPath, threadDigest } from './mirror'
 import type { SessionRegistry } from './sessions'
+import { macToolsHooks } from './macTools'
 
 /**
  * App tools (docs/PLAN-2.md M10): every thread is a first-class citizen of
@@ -81,7 +82,9 @@ export function bridgeMcpConfig(sessionId: string): Record<string, unknown> | nu
     env: {
       ...bridge.env,
       TEMP_CODE_PORT: String(bridge.port),
-      TEMP_CODE_SESSION: sessionId
+      TEMP_CODE_SESSION: sessionId,
+      // The Mac bridge's per-thread token, only while the thread's bridge is on (macTools.ts).
+      ...(macToolsHooks.current?.bridgeEnv(sessionId) ?? {})
     },
     // wait_for_agent sleeps until a subagent settles — codex must not
     // kill the call with its default per-tool timeout.

@@ -8,6 +8,7 @@ import { EnvironmentRequestSchemas, RemoteRequestSchemas } from './contract-remo
 import { HarnessRequestSchemas } from './contract-harness'
 import { AttachmentRequestSchemas } from './contract-attachments'
 import { SessionMoveRequestSchemas } from './contract-session-move'
+import { MacBridgeRequestSchemas } from './contract-macbridge'
 import { AGENT_TYPES } from './catalog'
 import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
@@ -102,6 +103,7 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...HarnessRequestSchemas,
   ...AttachmentRequestSchemas,
   ...SessionMoveRequestSchemas,
+  ...MacBridgeRequestSchemas,
   // refresh: re-probe the installed CLIs of the probed providers first.
   z.object({
     id: z.string(),
@@ -913,6 +915,9 @@ export type ServerPush =
   // Account sync (thread V): an owner rotated a grant; only sockets that
   // pulled (another host's main process) get these, never a renderer.
   | { push: 'account'; from: string; transfer: import('aliax-core/sync').Transfer }
+  // The Mac bridge (contract-macbridge.ts): `peer.call` to a registered Mac's
+  // link only; `macBridge.*` to the Mac's own local sockets only.
+  | import('./contract-macbridge').MacBridgePush
   // Watcher spine (M11): project-relative path, debounced ~100 ms.
   | { push: 'file-event'; projectId: string; path: string; kind: 'changed' | 'created' | 'deleted' }
   // Build rail: run state plus any new log lines (batched ~50 ms). A new

@@ -19,6 +19,7 @@ import { registry } from "../lib/connection";
 import { Heading, INPUT_CLASS, Input, Row, SecondaryButton, Segmented, Toggle } from "./settingsBits";
 import { MatrixSpinner } from "./threads/bits";
 import { harnessLine } from "./harnessLine";
+import { MacBridgeSettings } from "./MacBridgeSettings";
 
 /**
  * Settings → Remote access (plan 5jtfkIC45Cbr): the environment id, the
@@ -221,6 +222,8 @@ export function RemoteSettings() {
           ) : null}
         </>
       ) : null}
+
+      <MacBridgeSettings />
 
       <Heading title="Browser sessions" />
       <List empty="No browser is signed in.">

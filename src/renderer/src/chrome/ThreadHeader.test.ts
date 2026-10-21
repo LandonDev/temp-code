@@ -43,3 +43,21 @@ describe("chipMenuItems", () => {
     expect(ids(chip("idle"))).not.toContain("killBackground");
   });
 });
+
+describe("chipMenuItems: the Mac bridge", () => {
+  const state = (macPeer: string | null, extra: { online?: boolean; inherited?: boolean } = {}) => ({
+    state: { sessionId: "t1", macPeer, inherited: extra.inherited ?? false, online: extra.online ?? true, registered: [] },
+  });
+  const item = (c: StripChip, bridge?: Parameters<typeof chipMenuItems>[1]) =>
+    chipMenuItems(c, bridge).find((i) => i.kind === "item" && i.id === "mac-bridge");
+  it("is offered only for a thread on another host", () => {
+    expect(item(chip("idle"))).toBeUndefined();
+    expect(item(chip("idle"), state(null))).toMatchObject({ label: "Mac bridge", checked: false, disabled: false });
+  });
+  it("shows on, offline, and inherited (switched on the parent)", () => {
+    expect(item(chip("idle"), state("env_mac"))).toMatchObject({ checked: true, label: "Mac bridge" });
+    expect(item(chip("idle"), state("env_mac", { online: false }))).toMatchObject({ checked: true, label: "Mac bridge (offline)" });
+    expect(item(chip("idle"), state("env_mac", { inherited: true }))).toMatchObject({ checked: true, disabled: true });
+    expect(item(chip("idle"), { state: null })).toMatchObject({ disabled: true });
+  });
+});
