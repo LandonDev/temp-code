@@ -8,12 +8,14 @@ component builds each surface, and how**. Nothing here is built yet.
 - **Workspace** — a folder/repo the user added. Sidebar top level.
 - **Project** — a named line of work inside a workspace, bound to either an
   auto-created worktree or a local branch.
-- **Thread** — a session inside a project. Four types: **chat**,
-  **planning** (produces a plan document file), **implementation**
-  (todo-first, not chat-shaped), **orchestration** (subagent-first). Threads
-  sit in a strip at the top of the main view. Planning threads hand off: an
-  implementation or orchestration thread can be started *from* a plan file,
-  which seeds its task list.
+- **Thread** — a session inside a project. Six types: **chat**,
+  **planning** (produces a plan document file), **project-plan** (the
+  project-wide plan with milestones, docs/PROJECT-PLAN.md), **implementation**
+  (todo-first, not chat-shaped), **orchestration** (subagent-first),
+  **research**. Threads sit in a strip at the top of the main view. Planning
+  threads hand off: ONE implementation or orchestration thread is started
+  *from* a plan file, which seeds its task list. A project plan hands off
+  one milestone at a time, never the whole plan.
 - **Later (design for it now, build later):** the app grows into an ADE
   proper — integrated terminals, a file browser, and a real editor. Nothing
   below may assume the main view only ever shows threads.
@@ -66,8 +68,8 @@ ambient chrome; it earns its place because agents run in background threads
 ### Thread strip
 
 BeUI *Tabs*, underline variant, `SPRING_LAYOUT` indicator. Each tab: type
-glyph (chat `message-square`, planning `map`, implementation `list-checks`,
-orchestration `git-fork`, 14px) + title + status dot when running. Orchestration tabs may
+glyph (chat `message-square`, planning `map`, project plan `milestone`,
+implementation `list-checks`, orchestration `git-fork`, 14px) + title + status dot when running. Orchestration tabs may
 stack provider glyphs via ReUI *icon-stack*. `+` button opens a popover
 (ReUI) anchored to it: thread type picker (three rows with descriptions) +
 provider/model — replaces the current NewSessionDialog for threads. Overflow

@@ -225,7 +225,7 @@ export const TOOLS = [
       properties: {
         threadType: {
           type: 'string',
-          enum: ['chat', 'planning', 'implementation', 'orchestration', 'research']
+          enum: ['chat', 'planning', 'project-plan', 'implementation', 'orchestration', 'research']
         },
         provider: { type: 'string', enum: PROVIDERS },
         model: { type: 'string' },

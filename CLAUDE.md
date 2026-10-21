@@ -926,6 +926,29 @@ renderer turns the Archive done checkbox on. Proof:
   that stands in for the claude driver's `nativeImage` import, so such a
   proof runs without an Electron runtime, on the box too).
 
+## Plans: one build per plan, and the project plan
+- A plan's Start (desktop plan pane, phone Start sheet) starts ONE thread:
+  an implementation thread, or an orchestration thread as the secondary
+  action. The 1/2/3 worker count and the per-worker brief are gone.
+- The `project-plan` thread type (docs/PROJECT-PLAN.md) writes
+  `<cwd>/.temp-code/plans/project.md` with fixed sections (Goals, Current
+  state, Milestones with scope/dependencies/done-when, Risks, Open
+  questions; parser in src/shared/projectPlan.ts), calls the `plan_complete`
+  app tool (claude toolset and the codex bridge → `app.planComplete`), which
+  writes `status: complete` into the file's frontmatter, and NEVER starts a
+  build on its own, whatever an auto-implement setting says
+  (`planMayAutoStart`). A complete plan ends with the options card: Plan
+  the next milestone (a planning thread linked to the first undone
+  milestone, then the ordinary single Start), an orchestration thread for
+  that milestone, Revise the plan (a new turn), Keep as the project's plan
+  (the header chip reads "Plan · 3 of 7 milestones done"). A landed
+  `project.mergeInto` ticks the milestone of every linked build
+  (`ProjectPlans.landed`, src/main/server/projectPlan.ts); the checkbox in
+  the plan view ticks by hand. State over `projectPlan.*` RPCs
+  (src/shared/contract-projectplan.ts). Proof:
+  `bun run script:e2e-project-plan` (a real haiku project plan, then a haiku
+  milestone plan).
+
 ## The prod worktree is retired
 ~/IdeaProjects/temp-code-prod was the old local updater's build checkout.
 The updater no longer reads it or the source repo at all; it can stay

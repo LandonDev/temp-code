@@ -172,7 +172,9 @@ Chat body as above.
 ### Planning: the document is the hero
 
 Segments: **Plan** and **Chat**; Chat is default until the plan file has
-content, then Plan. Plan renders the markdown file (`fs.read` of
+content, then Plan. A project-plan thread (docs/PROJECT-PLAN.md) has the
+same two segments and renders its file the same way; it has no Start (its
+milestones are planned one at a time from the desktop's options card). Plan renders the markdown file (`fs.read` of
 `planPath`) document-first, `body` size, generous measure, streaming in as
 it is written. Header action **Start** (L5) opens a sheet choosing
 Implementation or Orchestration. A thread stopped on a question forces the
@@ -221,8 +223,9 @@ hairlines, small dense type, color only for meaning.
 | Numbers | `monospacedDigit()` on every elapsed, count and cost | nothing jitters as it ticks |
 
 Thread type glyphs are the desktop's, in SF Symbols: chat `bubble.left`,
-planning `map`, implementation `checklist`, orchestration
-`arrow.triangle.branch`, research `binoculars`. Agent glyphs: orchestrator
+planning `map`, project plan `flag.checkered` (violet, like planning),
+implementation `checklist`, orchestration `arrow.triangle.branch`, research
+`binoculars`. Agent glyphs: orchestrator
 `person.2`, implementer `wrench`, reviewer `checklist`, explorer
 `magnifyingglass`. Icon stroke follows the text weight next to it; outline
 default, fill marks the active state.
