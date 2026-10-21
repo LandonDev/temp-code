@@ -156,7 +156,9 @@ public actor SessionCache {
         try db.query("SELECT json FROM projects WHERE env = ? ORDER BY rowid", [.text(env)]) { (row) throws(CacheError) in
             if let value: ProjectMeta = try? decode(row.blob(0)) { shell.projects.append(value) }
         }
-        try db.query("SELECT json FROM sessions WHERE env = ? ORDER BY updated_at DESC", [.text(env)]) { (row) throws(CacheError) in
+        // The live list's order exactly (`EnvironmentClient.merge`: updatedAt, then id,
+        // descending), so the catch-up after a cold launch moves no row that did not change.
+        try db.query("SELECT json FROM sessions WHERE env = ? ORDER BY updated_at DESC, id DESC", [.text(env)]) { (row) throws(CacheError) in
             if let value: SessionMeta = try? decode(row.blob(0)) { shell.sessions.append(value) }
         }
         return shell
