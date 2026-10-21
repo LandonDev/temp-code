@@ -1,24 +1,30 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { MacBridgeHostPolicy, MacBridgePolicy } from '@server/shared/contract-macbridge'
 import { errorText } from '../chrome/ConfirmDialog'
+import { MacBridgeRunningList } from '../chrome/MacBridgeRunning'
 import { MacBridgeRememberedSection } from '../chrome/MacBridgeRemember'
 import { pickFolder } from '../lib/fs'
 import {
   refreshMacBridgeHosts,
   setMacBridgePolicy,
   setMacBridgeShared,
+  setMacBridgeShowRunning,
   useMacBridgeHosts
 } from '../lib/macBridge'
 import { isWebMode } from '../lib/nativeWeb'
-import { Heading, Input, Row, SecondaryButton, Segmented } from './settingsBits'
+import { Heading, Input, Row, SecondaryButton, Segmented, Toggle } from './settingsBits'
 
 /**
  * Settings → Remote access → Mac bridge (docs/box.md "The Mac bridge"): per
  * saved host, what its threads may do on this Mac (off | read | read and
  * run | full access) and which folders they read without asking. Everything
  * else (under full access: keys, credentials and the folders above home),
- * and every command, is asked on this Mac. Desktop only: the browser bundle has
- * no Mac to share.
+ * and every command not remembered, is asked on this Mac. Beside the policy,
+ * "Show running commands" says whether a command admitted without a prompt
+ * (remembered, or from a thread in full access on its box) shows as a card:
+ * off by default under full access, on otherwise. Off, the only trace is the
+ * running list here, with Stop per command. Desktop only: the browser bundle
+ * has no Mac to share.
  */
 
 const POLICIES: { value: MacBridgePolicy; label: string }[] = [
@@ -30,7 +36,7 @@ const POLICIES: { value: MacBridgePolicy; label: string }[] = [
 
 /** The line under a host's policy, for the levels that need one. */
 const POLICY_NOTES: Partial<Record<MacBridgePolicy, string>> = {
-  full: 'Any file on this Mac except keys and credentials; commands still ask.'
+  full: 'Any file on this Mac except keys and credentials; a command asks unless remembered or from a thread in full access.'
 }
 
 export function MacBridgeSettings() {
@@ -123,6 +129,27 @@ function HostRow({
       </Row>
       {POLICY_NOTES[host.policy] ? (
         <p className="pb-2 pl-1 text-[12px] text-content/50">{POLICY_NOTES[host.policy]}</p>
+      ) : null}
+      {host.policy === 'read+run' || host.policy === 'full' ? (
+        <div className="flex flex-col gap-2 pb-2 pl-1">
+          <div className="flex items-center gap-3">
+            <span className="min-w-0 flex-1 text-[12px] text-content/60">
+              Show running commands
+              <span className="text-content/40">
+                {' · '}
+                {host.showRunning
+                  ? 'a command allowed without asking shows as a running card'
+                  : 'a command allowed without asking shows only here, with Stop'}
+              </span>
+            </span>
+            <Toggle
+              label={`Show commands running from ${host.name}`}
+              on={host.showRunning}
+              onChange={(on) => void run(() => setMacBridgeShowRunning(host.environmentId, on))}
+            />
+          </div>
+          <MacBridgeRunningList environmentId={host.environmentId} hostName={host.name} />
+        </div>
       ) : null}
       {host.policy !== 'off' ? (
         <div className="flex flex-col gap-1.5 pl-1">

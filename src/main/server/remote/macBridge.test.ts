@@ -21,6 +21,8 @@ import {
   macPath,
   readVerdict,
   rememberFolder,
+  runPresentation,
+  showRunningDefault,
   validateSharedFolder
 } from './macBridge'
 
@@ -242,7 +244,8 @@ describe('MacBridge policy', () => {
     b.mb.setShared('env_box', [shared, join(shared, '.')])
     expect(b.mb.sharedOf('env_box')).toEqual([shared])
     expect(b.mb.hosts()).toEqual([
-      { environmentId: 'env_box', name: 'box', policy: 'off', shared: [shared], registered: false }
+      { environmentId: 'env_box', name: 'box', policy: 'off', shared: [shared], showRunning: true,
+        registered: false }
     ])
   })
 
@@ -573,7 +576,7 @@ describe('MacBridge full access', () => {
     expect(r3).toMatchObject({ kind: 'run', argv: ['/bin/echo', 'other'], status: 'pending' })
     b.mb.decide(r3.id, false)
     await expect(other).rejects.toThrow('denied')
-    expect(b.lines.some((l) => l.includes('mac.run → allowed (remembered) argv0=echo'))).toBe(true)
+    expect(b.lines.some((l) => l.includes('mac.run → allowed (remembered, quiet) argv0=echo'))).toBe(true)
   })
 })
 
@@ -715,5 +718,125 @@ describe('MacBridge commands', () => {
     expect(commandKey({ argv: ['a b'], cwd: '/x' })).not.toBe(
       commandKey({ argv: ['a', 'b'], cwd: '/x' })
     )
+  })
+})
+
+describe('runPresentation', () => {
+  it('a command nothing admits prompts, and a prompt always shows', () => {
+    expect(runPresentation({ remembered: false, unattended: false, showRunning: false })).toEqual({
+      prompt: true
+    })
+    expect(runPresentation({ remembered: false, unattended: false, showRunning: true })).toEqual({
+      prompt: true
+    })
+  })
+  it('a remembered command, or one from a full-access thread, starts at once and is quiet unless the host shows running commands', () => {
+    expect(runPresentation({ remembered: true, unattended: false, showRunning: false })).toEqual({
+      prompt: false,
+      why: 'remembered',
+      quiet: true
+    })
+    expect(runPresentation({ remembered: false, unattended: true, showRunning: false })).toEqual({
+      prompt: false,
+      why: 'full access',
+      quiet: true
+    })
+    expect(runPresentation({ remembered: true, unattended: true, showRunning: true })).toEqual({
+      prompt: false,
+      why: 'remembered',
+      quiet: false
+    })
+  })
+  it('the default is off under full access, on otherwise', () => {
+    expect(showRunningDefault('full')).toBe(false)
+    expect(showRunningDefault('read+run')).toBe(true)
+    expect(showRunningDefault('read')).toBe(true)
+    expect(showRunningDefault('off')).toBe(true)
+  })
+})
+
+describe('MacBridge quiet commands', () => {
+  it('"show running commands" follows the policy until pinned, and the pin survives a policy change', () => {
+    const b = bridge()
+    b.mb.setPolicy('env_box', 'read+run')
+    expect(b.mb.showRunningOf('env_box')).toBe(true)
+    b.mb.setPolicy('env_box', 'full')
+    expect(b.mb.hosts()[0]).toMatchObject({ policy: 'full', showRunning: false })
+    b.mb.setShowRunning('env_box', true)
+    expect(b.settings.get('macBridge.showRunning.env_box')).toBe('on')
+    expect(b.mb.hosts()[0].showRunning).toBe(true)
+    b.mb.setPolicy('env_box', 'read+run')
+    b.mb.setShowRunning('env_box', false)
+    expect(b.mb.hosts()[0]).toMatchObject({ policy: 'read+run', showRunning: false })
+    expect(() => b.mb.setShowRunning('env_nobody', true)).toThrow(/unknown host/)
+  })
+
+  it('under full access a full-access thread runs with no card: the request is quiet, listed, and still stops', async () => {
+    const b = bridge()
+    b.mb.setPolicy('env_box', 'full')
+    const ctx = { from: 'env_box', deadlineAt: Date.now() + 15 * 60_000 }
+    const thread = { id: 's9', title: 'auto thread', permission: 'auto' }
+    const run = b.mb.handle(
+      'mac.run',
+      { thread, args: { command: 'sleep 30', cwd: elsewhere } },
+      ctx
+    ) as Promise<MacRunResult>
+    const shown = await b.nextRequest(1)
+    expect(shown).toMatchObject({ kind: 'run', status: 'running', quiet: true })
+    expect(b.requests().every((r) => r.quiet === true)).toBe(true)
+    // Listed for the Remote access pane, with Stop, which kills it.
+    expect(b.mb.pending().map((r) => [r.status, r.quiet])).toEqual([['running', true]])
+    b.mb.decide(shown.id, false)
+    const result = await run
+    expect(result.exitCode === 0).toBe(false)
+    expect(b.pushes.at(-1)).toMatchObject({ push: 'macBridge.resolved', id: shown.id, outcome: 'stopped' })
+    expect(b.lines.some((l) => l.includes('mac.run → allowed (full access, quiet) argv0=sleep'))).toBe(true)
+    // A command nothing admits still prompts under full access for an ordinary thread, and a prompt is never quiet.
+    const asked = b.call('mac.run', { argv: ['/bin/echo', 'x'], cwd: elsewhere }, 's1')
+    const r = await b.nextRequest(b.requests().length - 1)
+    expect(r).toMatchObject({ status: 'pending', sessionId: 's1' })
+    expect(r.quiet).toBeUndefined()
+    b.mb.decide(r.id, false)
+    await expect(asked).rejects.toThrow('denied')
+  })
+
+  it('with "show running commands" on, the same call shows as a running card; a remembered command under read+run shows by default', async () => {
+    const b = bridge()
+    b.mb.setPolicy('env_box', 'full')
+    b.mb.setShowRunning('env_box', true)
+    const ctx = { from: 'env_box', deadlineAt: Date.now() + 15 * 60_000 }
+    const thread = { id: 's9', title: 'auto thread', permission: 'auto' }
+    await b.mb.handle('mac.run', { thread, args: { argv: ['/bin/echo', 'shown'], cwd: elsewhere } }, ctx)
+    expect(b.requests().map((r) => [r.status, r.quiet])).toEqual([
+      ['pending', undefined],
+      ['running', undefined]
+    ])
+    expect(b.lines.some((l) => l.includes('mac.run → allowed (full access) argv0=echo'))).toBe(true)
+    // read+run keeps its default: a remembered command shows.
+    b.mb.setPolicy('env_box', 'read+run')
+    b.settings.delete('macBridge.showRunning.env_box')
+    const first = b.call<MacRunResult>('mac.run', { argv: ['/bin/echo', 'twice'], cwd: shared })
+    const r1 = await b.nextRequest(b.requests().length - 1)
+    b.mb.decide(r1.id, true, true)
+    await first
+    await b.call<MacRunResult>('mac.run', { argv: ['/bin/echo', 'twice'], cwd: shared })
+    const again = b.requests().filter((r) => r.argv?.[1] === 'twice')
+    expect(again.at(-1)).toMatchObject({ status: 'running' })
+    expect(again.every((r) => r.quiet === undefined)).toBe(true)
+    // Pinned off there: quiet.
+    b.mb.setShowRunning('env_box', false)
+    await b.call<MacRunResult>('mac.run', { argv: ['/bin/echo', 'twice'], cwd: shared })
+    expect(b.requests().at(-1)).toMatchObject({ status: 'running', quiet: true })
+  })
+
+  it('reads and writes a full-access thread is admitted never make a request at all', async () => {
+    const b = bridge()
+    b.mb.setPolicy('env_box', 'full')
+    const ctx = { from: 'env_box', deadlineAt: Date.now() + 15 * 60_000 }
+    const thread = { id: 's9', title: 'auto thread', permission: 'auto' }
+    await b.mb.handle('mac.readFile', { thread, args: { path: join(elsewhere, 'secret.txt') } }, ctx)
+    await b.mb.handle('mac.listDir', { thread, args: { path: join(home, '.ssh') } }, ctx)
+    expect(b.requests()).toEqual([])
+    expect(b.mb.pending()).toEqual([])
   })
 })

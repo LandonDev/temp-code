@@ -158,7 +158,8 @@ export interface MacCallThread {
 
 /** A thread in full access on its box (`auto`) is never prompted on the Mac: the
  *  per-box policy still says what kind of call may happen, but every call it
- *  admits goes through as if remembered (the card still shows a command running). */
+ *  admits goes through as if remembered (a command shows on the Mac only when
+ *  the host's "Show running commands" is on; macBridge.ts runPresentation). */
 export function threadRunsUnattended(thread: Pick<MacCallThread, "permission">): boolean {
   return thread.permission === "auto"
 }
@@ -245,6 +246,13 @@ export interface MacBridgeRequest extends MacRunRememberOffer {
   status: 'pending' | 'running'
   /** run: an interactive job (mac.run background: true; remote/macJobs.ts): stdin open, no timeout but the idle one. */
   interactive?: true
+  /**
+   * Admitted without a prompt and not shown: the renderer draws no card for
+   * it (MacBridgeCards). It still counts, with Stop, in Settings → Remote
+   * access → Mac bridge. Set when the host's "Show running commands" is off
+   * (macBridge.ts runPresentation); never on a request that waits.
+   */
+  quiet?: true
 }
 
 export type MacBridgeOutcome = 'allowed' | 'denied' | 'expired' | 'stopped' | 'done'
@@ -255,6 +263,12 @@ export interface MacBridgeHostPolicy {
   name: string
   policy: MacBridgePolicy
   shared: string[]
+  /**
+   * Whether a command admitted without a prompt (remembered, or a full-access
+   * thread) shows on this Mac as a running card. Off by default under `full`,
+   * on otherwise; `macBridge.showRunning.set` pins it either way.
+   */
+  showRunning: boolean
   /** Whether that host has this Mac registered right now (the link is up and it took the offer). */
   registered: boolean
 }
@@ -440,5 +454,7 @@ export const MacBridgeRequestSchemas = [
   request(
     'macBridge.shared.set',
     z.object({ environmentId: envId, folders: z.array(pathArg).max(64) })
-  )
+  ),
+  /** → MacBridgeHostPolicy[]. Whether commands admitted without a prompt show as running cards on this Mac. */
+  request('macBridge.showRunning.set', z.object({ environmentId: envId, show: z.boolean() }))
 ] as const

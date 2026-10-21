@@ -15,7 +15,13 @@ import { isWebMode } from './nativeWeb'
  *  - This Mac's own server pushes `macBridge.request` when a box thread
  *    wants a path outside what this Mac shares, or any command; the cards
  *    (MacBridgeCards) answer with `macBridge.decide` on the LOCAL link. Only
- *    this window can answer: the method is local-only on the server.
+ *    this window can answer: the method is local-only on the server. A
+ *    request marked `quiet` (admitted without a prompt while the host's
+ *    "Show running commands" is off) never reaches a card: it is listed, with
+ *    Stop, in Settings → Remote access → Mac bridge only (useMacBridgeRunning).
+ *  - The cards never fill the screen: `queueOf` keeps one waiting card per
+ *    host (the oldest, decided first) with a count of the rest, and folds
+ *    the running ones into one line per host with Stop all.
  *  - A box thread's switch (`macBridge.thread.get/set`) lives on the box and
  *    is reached over the thread's own link; "on" names this Mac's real
  *    environment id.
@@ -96,17 +102,95 @@ export function decideMacBridge(
   return link.request('macBridge.decide', { id, allow, remember })
 }
 
-/** Requests for one box thread, oldest first. */
-export function useMacBridgeRequests(environmentId: string, sessionId: string): MacBridgeRequest[] {
-  const requests = useStore(store, (s) => s.requests)
-  return Object.values(requests)
-    .filter((r) => r.environmentId === environmentId && r.sessionId === sessionId)
-    .sort((a, b) => a.createdAt - b.createdAt)
+/** Stop every running command in a list (a running request's decide false is Stop); one failure does not stop the rest. */
+export async function stopMacBridgeAll(requests: MacBridgeRequest[]): Promise<void> {
+  const results = await Promise.allSettled(
+    requests.filter((r) => r.status === 'running').map((r) => decideMacBridge(r.id, false))
+  )
+  const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
+  if (failed) throw failed.reason
 }
 
+const byAge = (a: MacBridgeRequest, b: MacBridgeRequest): number => a.createdAt - b.createdAt
+
+/** Requests that get a card: never a quiet one. */
+export const shownRequests = (requests: Iterable<MacBridgeRequest>): MacBridgeRequest[] =>
+  [...requests].filter((r) => !r.quiet).sort(byAge)
+
+/** Requests of one box thread that get a card, oldest first. */
+export function useMacBridgeRequests(environmentId: string, sessionId: string): MacBridgeRequest[] {
+  const requests = useStore(store, (s) => s.requests)
+  return shownRequests(Object.values(requests)).filter(
+    (r) => r.environmentId === environmentId && r.sessionId === sessionId
+  )
+}
+
+/** Every request that gets a card, oldest first. */
 export function useAllMacBridgeRequests(): MacBridgeRequest[] {
   const requests = useStore(store, (s) => s.requests)
-  return Object.values(requests).sort((a, b) => a.createdAt - b.createdAt)
+  return shownRequests(Object.values(requests))
+}
+
+/** Every command running on this Mac for a host or a thread, quiet ones included, oldest first (the Remote access pane, the thread's Mac approvals dialog). */
+export function useMacBridgeRunning(match: {
+  environmentId?: string
+  sessionId?: string
+}): MacBridgeRequest[] {
+  const requests = useStore(store, (s) => s.requests)
+  return Object.values(requests)
+    .filter(
+      (r) =>
+        r.status === 'running' &&
+        (match.environmentId === undefined || r.environmentId === match.environmentId) &&
+        (match.sessionId === undefined || r.sessionId === match.sessionId)
+    )
+    .sort(byAge)
+}
+
+/** One host's running commands, folded into a line. */
+export interface MacBridgeRunningGroup {
+  environmentId: string
+  hostName: string
+  requests: MacBridgeRequest[]
+}
+
+/** What the cards draw: one waiting card per host and a count of the rest; the running ones one line per host. */
+export interface MacBridgeQueue {
+  /** The oldest waiting request of each host, in age order: decided first. */
+  pending: MacBridgeRequest[]
+  /** Waiting beyond the card, by environment id (absent when none). */
+  more: Record<string, number>
+  running: MacBridgeRunningGroup[]
+}
+
+/**
+ * The cap on the cards (docs/box.md "The Mac bridge"): from the requests of
+ * one thread, or of every thread off screen, at most one waiting card per
+ * host (the oldest; the next shows once it is decided) with "and N more",
+ * and the running commands folded into one line per host with Stop all.
+ * Quiet requests are left out first: they never reach a card.
+ */
+export function queueOf(requests: Iterable<MacBridgeRequest>): MacBridgeQueue {
+  const shown = shownRequests(requests)
+  const pending: MacBridgeRequest[] = []
+  const more: Record<string, number> = {}
+  const running = new Map<string, MacBridgeRunningGroup>()
+  for (const r of shown) {
+    if (r.status === 'running') {
+      const group = running.get(r.environmentId) ?? {
+        environmentId: r.environmentId,
+        hostName: r.hostName,
+        requests: []
+      }
+      group.requests.push(r)
+      running.set(r.environmentId, group)
+    } else if (pending.some((p) => p.environmentId === r.environmentId)) {
+      more[r.environmentId] = (more[r.environmentId] ?? 0) + 1
+    } else {
+      pending.push(r)
+    }
+  }
+  return { pending, more, running: [...running.values()] }
 }
 
 // ── the policy (Settings → Remote access) ────────────────────────────
@@ -126,6 +210,15 @@ export async function setMacBridgePolicy(
   const hosts = await local()!.request<MacBridgeHostPolicy[]>('macBridge.policy.set', {
     environmentId,
     policy
+  })
+  store.setState({ hosts })
+}
+
+/** Whether commands admitted without a prompt show as running cards (off by default under full access). */
+export async function setMacBridgeShowRunning(environmentId: string, show: boolean): Promise<void> {
+  const hosts = await local()!.request<MacBridgeHostPolicy[]>('macBridge.showRunning.set', {
+    environmentId,
+    show
   })
   store.setState({ hosts })
 }
