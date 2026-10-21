@@ -16,6 +16,7 @@ const publicHost = { resolve: async () => [{ address: '93.184.216.34', family: 4
 
 const notice: Notice = {
   event: 'finished',
+  kind: 'finished',
   threadId: 't1',
   title: 'Ship it',
   body: 'Finished its turn',
