@@ -125,6 +125,7 @@ the gate held and green, the commit tier outside a batch, the shared queue),
 `src/main/server/gateQueue.test.ts`, `gateRun.test.ts`, `batch.test.ts`
 (the three steps, persistence, batch_gate's refusals and answers), the
 renderer's `GateCard.dom.test.tsx`; `bun run script:e2e-batch-gate` is the
-in-process proof of the batch flow,
+in-process proof of the batch flow and `bun run script:e2e-master-batch`
+the proof of the whole master flow (docs/master-threads.md),
 `src/main/server/threads-review.test.ts` (the preamble under the setting),
 `src/renderer/src/lib/tcserver/fold.test.ts` and `lib/reviewScope.test.ts`.
