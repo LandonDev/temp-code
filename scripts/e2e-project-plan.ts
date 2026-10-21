@@ -70,6 +70,12 @@ function waitFor(sessionId: string, pred: (e: AgentEvent) => boolean, timeoutMs 
 }
 const settled = (id: string): Promise<AgentEvent> =>
   waitFor(id, (e) => e.type === 'turn-complete' || e.type === 'error')
+/** Every thread here runs with full access; anything the harness still
+ *  asks about (a tool outside its policy) is allowed, so no turn parks. */
+const autoApprove = (id: string): (() => void) =>
+  registry.subscribe(id, (row: EventRow) => {
+    if (row.event.type === 'approval-request') void registry.approve(id, row.event.requestId, true)
+  })
 const toolCalls = (id: string): string[] =>
   registry
     .eventsAfter(id, 0)
@@ -103,11 +109,12 @@ const pp = await registry.create({
   model: MODEL,
   reasoning: 'low',
   agentType: 'implementer',
-  permission: 'edits',
+  permission: 'auto',
   projectId: project.id,
   threadType: 'project-plan',
   parentId: null
 })
+autoApprove(pp.id)
 check('a project-plan thread owns the project file', pp.planPath === planPath, pp.planPath ?? 'null')
 check('its title is the type placeholder', pp.title === 'Project plan', pp.title)
 const tools = (appToolsMcp(pp).instance as unknown as { _registeredTools: Record<string, unknown> })._registeredTools
@@ -151,12 +158,13 @@ const planning = await registry.create({
   model: MODEL,
   reasoning: 'low',
   agentType: 'implementer',
-  permission: 'edits',
+  permission: 'auto',
   projectId: project.id,
   threadType: 'planning',
   parentId: null,
   title: milestoneThreadTitle(next)
 })
+autoApprove(planning.id)
 plans.link(planning.id, { projectId: project.id, milestone: next.index })
 await registry.send(
   planning.id,
@@ -175,7 +183,7 @@ const build = await registry.create({
   model: MODEL,
   reasoning: 'low',
   agentType: 'implementer',
-  permission: 'edits',
+  permission: 'auto',
   projectId: project.id,
   threadType: 'implementation',
   parentId: null,
