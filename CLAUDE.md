@@ -601,6 +601,23 @@ routed to (aliax-core's `forward`). Two listeners:
   `host.*` peer calls under the `devices` offer (`src/main/server/devices/`,
   `src/shared/contract-hostdevices.ts`, `surfaces/MacDevices.tsx`).
   docs/box.md "Devices on the Mac".
+- A restart mid-turn: `resume_after_boot` is a live ledger (a row per
+  thread on every running status in `SessionRegistry.append`, cleared when
+  the turn settles), and the signal handlers and `before-quit` stamp the
+  shutdown time on it (`recordForResume`) when they get to run (under the
+  box's `dbus-run-session` Chromium often aborts on the D-Bus disconnect
+  first); after the servers and gateway are up
+  `BootResumer` (src/main/server/resumeAfterBoot.ts) boots each one on its
+  transcript with a "The host restarted during your turn at <time>; continue
+  where you left off." nudge, four at a time, children first, paused ones
+  left paused, and pushes one `boot-resume` (count, boot time) that the rail
+  shows once per boot as "N threads resumed after restart". A running row
+  with no live harness for 20 s flips to the `stopped` status (liveness sweep
+  `sweepLiveness`, `DriverHandle.alive`); the strip says "Stopped · the
+  harness is gone" with Resume, and `session.resume` on it calls
+  `registry.resumeStopped`, the one resume path for a dead harness. The boot
+  reset idles only waiting and watching rows now. docs/box.md "Surviving a
+  restart"; proof `bun scripts/e2e-survive-restart.ts`.
 - Backups: restic to R2 bucket `tempcode-backups`, repo `box` from
   `box-backup.timer` (SQLite snapshotted with VACUUM INTO, never the live
   files) and repo `mac` from the launchd agent `dev.landon.tempcode.backup`

@@ -230,6 +230,9 @@ app.on('before-quit', (e) => {
   // A downloaded release installs on this quit (Squirrel does that on its
   // own); remember it so the next boot can tell whether it landed.
   noteInstallOnQuit()
+  // Threads mid-turn are remembered before their harnesses go: the next
+  // boot resumes them (server/resumeAfterBoot.ts).
+  recordResumeAfterBoot()
   // The server outlives every window and dies only here, with the PTYs
   // and every helper process it started.
   // The shim marker goes back to Aliax first: the async close may not finish.
@@ -240,6 +243,18 @@ app.on('before-quit', (e) => {
   killTrackedChildren()
 })
 
+/** The threads mid-turn right now, written for the next boot to resume
+ *  (sessions.ts recordForResume). Synchronous: both callers exit at once.
+ *  Never throws — a failed record must not keep the process from quitting. */
+function recordResumeAfterBoot(): void {
+  try {
+    const ids = server?.registry.recordForResume() ?? []
+    if (ids.length) console.log(`[resume] ${ids.length} thread(s) mid-turn recorded for the next boot`)
+  } catch (error) {
+    console.error('[resume] could not record threads mid-turn:', error)
+  }
+}
+
 // Nothing of ours outlives the main process: a signal or a plain exit
 // takes the helpers (git, gh, language servers) with it. Children stay in
 // our process group, so a group kill from outside gets them as well.
@@ -249,6 +264,7 @@ process.on('exit', () => {
 })
 for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) {
   process.on(signal, () => {
+    recordResumeAfterBoot()
     releaseGateway()
     killAllPtys()
     killTrackedChildren()

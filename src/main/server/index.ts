@@ -10,6 +10,7 @@ import { ProjectLogos } from './projectLogos'
 import { AccountsService } from './accounts'
 import { isRoutedProvider, PROVIDER_OF, SERVICE_OF } from '@shared/accounts'
 import { startGateway, type Gateway } from './gateway'
+import { BootResumer } from './resumeAfterBoot'
 import { observeHooks } from './gatewayObserve'
 import { HeadroomStore } from './headroom'
 import { WebSocketServer, type WebSocket } from 'ws'
@@ -651,6 +652,10 @@ export async function startServer(
   const githubInbox = new GithubInbox(store, registry)
   registry.resetStaleStatuses()
   registry.startIdleSweep()
+  registry.startLivenessSweep()
+  // Threads the last shutdown cut mid-turn come back once everything
+  // listens (run() below); the renderer hears the count once per boot.
+  const bootResumer = new BootResumer({ store, registry })
   // Fold catch-up: sessions whose sidebar folds are missing or behind
   // their log (first boot after upgrade, a crash, an older build) heal in
   // the background, newest first, without blocking the first list.
@@ -903,6 +908,9 @@ export async function startServer(
       ...(principal.kind === 'remote' ? { key: { id: principal.keyId, name: principal.name } } : {}),
       build
     })
+    // The boot's resume count: already known to a late socket, announced to an open one.
+    if (bootResumer.notice) sendFrame({ push: 'boot-resume', ...bootResumer.notice })
+    const offBootResume = bootResumer.onDone((notice) => sendFrame({ push: 'boot-resume', ...notice }))
 
     ws.on('message', async (data) => {
       let raw: unknown
@@ -1542,7 +1550,13 @@ export async function startServer(
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'session.resume':
-            await registry.resumePausedRun(req.params.sessionId)
+            // A stopped thread (its harness gone) gets a fresh one on its
+            // transcript; a paused tree continues as before.
+            if (registry.get(req.params.sessionId)?.status === 'stopped') {
+              await registry.resumeStopped(req.params.sessionId)
+            } else {
+              await registry.resumePausedRun(req.params.sessionId)
+            }
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'session.continueAllErrors':
@@ -1860,6 +1874,7 @@ export async function startServer(
 
     ws.on('close', () => {
       coalescer?.dispose()
+      offBootResume()
       offMeta()
       offNotes()
       offCatalog()
@@ -1907,6 +1922,8 @@ export async function startServer(
   const address = httpServer.address()
   const port = typeof address === 'object' && address ? address.port : 0
   await restartRemote()
+  // Servers and gateway up: the threads cut by the last shutdown resume now.
+  void bootResumer.run().catch((error) => console.error('[resume] boot resume failed:', error))
 
   // Codex reaches the app tools through the stdio bridge (M10). The app's
   // own location covers dev (repo root) and packaged

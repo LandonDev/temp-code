@@ -194,6 +194,17 @@ export function openDb(path: string): DatabaseSync {
       expires_at   INTEGER NOT NULL,
       revoked_at   INTEGER
     );
+    -- The live ledger of threads mid-turn: a row while a harness works a
+    -- turn (sessions.ts append, on the running status), gone when the turn
+    -- settles, refreshed with shutdown_at by a shutdown that gets to run
+    -- (recordForResume). The next boot resumes each one on its transcript
+    -- (resumeAfterBoot.ts). last_user_seq is the seq of the turn that was cut.
+    CREATE TABLE IF NOT EXISTS resume_after_boot (
+      session_id    TEXT PRIMARY KEY,
+      recorded_at   INTEGER NOT NULL,
+      last_user_seq INTEGER,
+      shutdown_at   INTEGER
+    );
   `)
   // Migrations for databases created before these columns existed.
   for (const stmt of [
@@ -247,7 +258,8 @@ export function openDb(path: string): DatabaseSync {
     `ALTER TABLE projects ADD COLUMN preamble TEXT`,
     `ALTER TABLE projects ADD COLUMN preamble_enabled INTEGER NOT NULL DEFAULT 1`,
     `ALTER TABLE workspaces ADD COLUMN preamble TEXT`,
-    `ALTER TABLE workspaces ADD COLUMN preamble_enabled INTEGER NOT NULL DEFAULT 1`
+    `ALTER TABLE workspaces ADD COLUMN preamble_enabled INTEGER NOT NULL DEFAULT 1`,
+    `ALTER TABLE resume_after_boot ADD COLUMN shutdown_at INTEGER`
   ]) {
     try {
       db.exec(stmt)
@@ -480,6 +492,16 @@ export function tailStart(
     boundary = r.seq
   }
   return scan.length === TAIL_SCAN ? scan[scan.length - 1].seq : null
+}
+
+/** One row of resume_after_boot: a thread cut mid-turn by a shutdown. */
+export interface ResumeAfterBootRow {
+  sessionId: string
+  recordedAt: number
+  /** The seq of the user turn that was in flight, null when the log has none. */
+  lastUserSeq: number | null
+  /** When a shutdown handler refreshed the row; null for a row the turn itself wrote. */
+  shutdownAt: number | null
 }
 
 export class Store {
@@ -951,6 +973,46 @@ export class Store {
       .stmt(`SELECT * FROM sessions WHERE parent_id = ? AND ${VISIBLE} ORDER BY created_at DESC`)
       .all(parentId) as unknown as SessionRowRaw[]
     return rows.map(toMeta)
+  }
+
+  /** The seq of the last user turn in a session's log, null when it has none. */
+  lastUserTurnSeq(sessionId: string): number | null {
+    const r = this
+      .stmt(
+        `SELECT MAX(seq) AS seq FROM ${this.eventsTable(sessionId)} WHERE session_id = ? AND json_extract(payload, '$.type') = 'user-text'`
+      )
+      .get(sessionId) as { seq: number | null }
+    return r.seq ?? null
+  }
+
+  /** Remember sessions to resume at the next boot; a session already
+   *  recorded keeps one row, with the newer values. */
+  recordResumeAfterBoot(rows: ResumeAfterBootRow[]): void {
+    if (rows.length === 0) return
+    const insert = this.stmt(
+      `INSERT OR REPLACE INTO resume_after_boot (session_id, recorded_at, last_user_seq, shutdown_at) VALUES (?, ?, ?, ?)`
+    )
+    this.db.exec('BEGIN')
+    try {
+      for (const row of rows) insert.run(row.sessionId, row.recordedAt, row.lastUserSeq, row.shutdownAt)
+      this.db.exec('COMMIT')
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      throw error
+    }
+  }
+
+  /** Every recorded session, oldest record first. */
+  listResumeAfterBoot(): ResumeAfterBootRow[] {
+    const rows = this
+      .stmt(`SELECT session_id, recorded_at, last_user_seq, shutdown_at FROM resume_after_boot ORDER BY recorded_at, rowid`)
+      .all() as unknown as { session_id: string; recorded_at: number; last_user_seq: number | null; shutdown_at: number | null }[]
+    return rows.map((r) => ({ sessionId: r.session_id, recordedAt: r.recorded_at, lastUserSeq: r.last_user_seq, shutdownAt: r.shutdown_at }))
+  }
+
+  clearResumeAfterBoot(sessionIds: string[]): void {
+    const del = this.stmt(`DELETE FROM resume_after_boot WHERE session_id = ?`)
+    for (const id of sessionIds) del.run(id)
   }
 
   /** Every session, or only the archived / unarchived ones. */

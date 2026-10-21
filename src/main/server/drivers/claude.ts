@@ -1431,6 +1431,9 @@ export const claudeDriver: HarnessDriver = {
         }
         return usage
       },
+      alive(): boolean {
+        return !dead
+      },
       async dispose(): Promise<void> {
         disposed = true
         clearSettle(state)

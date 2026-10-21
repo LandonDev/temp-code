@@ -27,6 +27,12 @@ struct StatusDot: View {
                     .font(.caption2)
                     .foregroundStyle(Tint.warning)
                     .transition(.opacity)
+            case .stopped:
+                // The harness is gone: a still square, the quiet opposite of the spinner.
+                RoundedRectangle(cornerRadius: 1, style: .continuous)
+                    .fill(Color.secondary)
+                    .frame(width: 6, height: 6)
+                    .transition(.opacity)
             case .none:
                 EmptyView()
             }
@@ -40,6 +46,7 @@ struct StatusDot: View {
         case spinner
         case dot(Color)
         case paused
+        case stopped
         case none
     }
 
@@ -51,6 +58,7 @@ struct StatusDot: View {
         case .waiting: return .dot(Tint.warning)
         case .error: return .dot(Tint.destructive)
         case .paused: return .paused
+        case .stopped: return .stopped
         case .idle, .done, .unknown: return .none
         }
     }
@@ -59,6 +67,7 @@ struct StatusDot: View {
         switch mark {
         case .spinner: "Running"
         case .paused: "Paused"
+        case .stopped: "Stopped"
         case .none: ""
         case .dot:
             switch status {

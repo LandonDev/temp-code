@@ -168,6 +168,7 @@ public enum SessionStatus: RawRepresentable, Codable, Hashable, Sendable {
     case waiting
     case watching
     case paused
+    case stopped
     case error
     case done
     /// A value this build does not know; `rawValue` keeps it.
@@ -181,6 +182,7 @@ public enum SessionStatus: RawRepresentable, Codable, Hashable, Sendable {
         case "waiting": self = .waiting
         case "watching": self = .watching
         case "paused": self = .paused
+        case "stopped": self = .stopped
         case "error": self = .error
         case "done": self = .done
         default: self = .unknown(rawValue)
@@ -195,6 +197,7 @@ public enum SessionStatus: RawRepresentable, Codable, Hashable, Sendable {
         case .waiting: "waiting"
         case .watching: "watching"
         case .paused: "paused"
+        case .stopped: "stopped"
         case .error: "error"
         case .done: "done"
         case .unknown(let value): value

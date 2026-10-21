@@ -125,6 +125,11 @@ Environment=HOME=$AGENTS_HOME
 ExecStart=/usr/local/lib/temp-code/run
 Restart=always
 RestartSec=5
+# On stop the whole cgroup gets SIGTERM at once. The main process records
+# every thread mid-turn in one synchronous SQLite write before it exits
+# (src/main/index.ts, sessions.ts recordForResume) and the next boot resumes
+# them; the harnesses write their transcripts as they go, so nothing needs
+# a long flush. 30 s is ample.
 TimeoutStopSec=30
 LimitNOFILE=1048576
 

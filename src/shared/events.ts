@@ -18,6 +18,10 @@ export const SessionStatusSchema = z.enum([
   // live: the process stays up and the thread wakes itself when they land.
   'watching',
   'paused',
+  // The harness behind a running turn is gone (the host restarted without
+  // resuming it, the process died quietly) and nothing is coming: the
+  // thread waits for Resume, which boots a fresh harness on the transcript.
+  'stopped',
   'error',
   'done'
 ])

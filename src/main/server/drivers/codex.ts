@@ -168,6 +168,11 @@ export class AppServerConn {
 
   private settled = false
 
+  /** The app-server process has exited (or never started). */
+  get exited(): boolean {
+    return this.settled
+  }
+
   private settle(code: number | null, onExit: (code: number | null) => void): void {
     if (this.settled) return
     this.settled = true
@@ -937,6 +942,9 @@ export const codexDriver: HarnessDriver = {
           percentage: contextWindow ? (contextTokens / contextWindow) * 100 : 0,
           model: session.model
         }
+      },
+      alive(): boolean {
+        return !conn.exited
       },
       async dispose(): Promise<void> {
         disposed = true

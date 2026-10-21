@@ -220,8 +220,10 @@ describe('registry fold writes', () => {
   it('resetStaleStatuses() advances a current row and leaves a stale one for the sweep', () => {
     legacy('current', [{ type: 'user-text', text: 'go' }])
     legacy('stale', [{ type: 'user-text', text: 'go' }, { type: 'user-text', text: 'go' }])
-    store.updateSession('current', { status: 'running' })
-    store.updateSession('stale', { status: 'running' })
+    // Waiting rows: the reset idles those (a running row waits for the
+    // boot resume or the liveness sweep instead).
+    store.updateSession('current', { status: 'waiting' })
+    store.updateSession('stale', { status: 'waiting' })
     store.putFold({ sessionId: 'current', foldedSeq: 1, foldVersion: FOLD_VERSION, tasks: null, goal: null, canContinue: true, failure: null })
     store.putFold({ sessionId: 'stale', foldedSeq: 1, foldVersion: FOLD_VERSION, tasks: null, goal: null, canContinue: false, failure: null })
     const reg = new SessionRegistry(store)

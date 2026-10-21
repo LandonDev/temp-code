@@ -16,6 +16,8 @@ export type ThreadRow = {
   updatedAt: number;
   unread: boolean;
   paused: boolean;
+  /** The harness behind the turn is gone; Resume boots a fresh one. */
+  stopped?: boolean;
   running: boolean;
   failed: boolean;
   /** failed: the host's one-line verdict, when it has one. */
@@ -143,6 +145,7 @@ export function threadRow(
     updatedAt: meta.updatedAt,
     running,
     paused: meta.status === "paused",
+    stopped: meta.status === "stopped",
     failed: meta.status === "error",
     failure: meta.failure?.summary ?? null,
     needsYou: meta.status === "waiting",

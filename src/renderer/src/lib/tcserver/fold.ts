@@ -534,9 +534,10 @@ export function foldEvent(
       // Logged end-of-turn signals close the turn even when the
       // turn-complete event itself was lost (crash between the two).
       // 'watching' ends the turn too: the harness is idle behind its
-      // background work, and the wake turn opens a fresh one.
+      // background work, and the wake turn opens a fresh one. 'stopped'
+      // ends it as well: the harness is gone, and Resume opens a new one.
       if (
-        (e.status === "idle" || e.status === "error" || e.status === "watching") &&
+        (e.status === "idle" || e.status === "error" || e.status === "watching" || e.status === "stopped") &&
         (thread.turnOpen || thread.inPass)
       ) {
         const t = th();

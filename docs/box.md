@@ -372,6 +372,61 @@ gateway's own proofs run on the box against fake upstreams:
 in the checkout as agents. The hidden preview window is proven with
 `tc-local app.htmlPreview` against a live session (see the log entry).
 
+### Surviving a restart: threads mid-turn come back
+
+`box-update` (and any `systemctl stop`) ends the service with SIGTERM to the
+whole cgroup while threads may be mid-turn. Before 2026-10-21 those threads
+stayed marked running with no harness behind them until someone restarted
+each one by hand. Now:
+
+- **The record.** `resume_after_boot` is a live ledger: `SessionRegistry.
+  append` (src/main/server/sessions.ts) writes a thread's row (time, the seq
+  of the user turn in flight) on every running or starting status and clears
+  it when the turn settles, on a pause, a restart or a delete. The signal
+  handler (and `before-quit` on a Mac) then stamps `shutdown_at` on the rows
+  of every thread with a harness behind it (`recordForResume`, one
+  synchronous SQLite write) and exits. The ledger matters because the handler
+  does not always run: systemd's stop signals the whole cgroup, dbus-daemon
+  (from `dbus-run-session`) goes down with us, and Chromium aborts the main
+  process on the D-Bus disconnect (`FATAL:dbus/bus.cc "D-Bus connection was
+  disconnected"`, SIGTRAP) before Node's handler gets the loop; the proof saw
+  that on both of its stops. A paused thread is never recorded. The unit's
+  `TimeoutStopSec=30` is ample: the harnesses write their transcripts as they
+  go and need no flush of their own.
+- **Boot.** Once the servers and the gateway listen, `BootResumer`
+  (src/main/server/resumeAfterBoot.ts) boots a fresh harness on each recorded
+  thread's transcript and sends it one nudge, `The host restarted during your
+  turn at <time>; continue where you left off.` (the shutdown's time when
+  the handler stamped it, else this boot's), through the same
+  `registry.resumeStopped` the Resume button uses. Four boot at a time, each
+  worker pausing 750 ms between its threads; subagents go before their
+  parents. A thread the user paused stays paused; a thread that is gone or
+  archived is forgotten. The transcript shows `Resumed after the host
+  restarted at <time>`. Log lines start with `[resume]`.
+- **Stopped.** A thread whose row says running (or starting) with no live
+  harness for more than 20 s reads `stopped` (a new status, in the contract
+  and the Swift package): a crash or SIGKILL mid-turn, a boot resume that
+  failed to produce a handle, or a harness process that died without the
+  driver settling the status (`DriverHandle.alive`, the liveness sweep every
+  5 s in `sweepLiveness`). The working strip says "Stopped · the harness is
+  gone" with Resume, the rail row shows a small still square instead of the
+  spinner, the tab says Stopped, and the header menu offers Resume;
+  `session.resume` on a stopped thread calls `resumeStopped`. The boot no
+  longer flips running rows to idle; only waiting and watching rows are
+  idled at boot.
+- **The toast.** When a boot resumed anything, every socket gets one
+  `boot-resume` push (count, the boot's time) and the rail's section for the
+  host shows "7 threads resumed after restart" for a while, once per boot
+  (the renderer keeps the boot time per host in localStorage).
+
+Proof: `bun scripts/e2e-survive-restart.ts` on a host with a Claude account:
+an isolated headless instance, two claude-haiku-5-5 threads sent a long turn
+in a scratch directory, SIGTERM mid-turn, the two rows checked in the
+database, a relaunch, both threads back to running with the nudge, the
+`boot-resume` push read on a fresh socket, then everything torn down. Unit
+tests: src/main/server/sessions-resume-after-boot.test.ts and the strip's
+WorkingStrip.dom.test.tsx.
+
 ### Accounts: sign in on the Mac once
 
 Provider accounts never sign in on the box. The Mac's Accounts page is the

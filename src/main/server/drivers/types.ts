@@ -71,6 +71,10 @@ export interface DriverHandle {
    *  thread/compact/start). Progress and the result arrive as compaction
    *  events; the status settles through the turn, never here. */
   compact?: () => Promise<void>
+  /** Whether the harness process behind this handle is still there. A
+   *  driver that cannot tell leaves it out; false lets the registry's
+   *  liveness sweep (sessions.ts) read a running row as stopped. */
+  alive?: () => boolean
   dispose: () => Promise<void>
 }
 

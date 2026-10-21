@@ -97,6 +97,14 @@ export function TabIndicator({ thread }: { thread: TabThread }) {
         </span>
       );
     }
+    if (status === "stopped") {
+      return (
+        <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-content/50" title="The harness behind this turn is gone">
+          <span className="size-1.5 rounded-[1.5px] bg-current" />
+          Stopped
+        </span>
+      );
+    }
     // A written plan outranks a background wait: the plan is what the tab
     // is for, and the wait (a Monitor, a cron) still shows on hover.
     if (thread.planReady) {

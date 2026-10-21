@@ -192,7 +192,14 @@ function Stat({
   );
 }
 
+/** A stopped thread's mark: the still square of a stop, where the spinner
+ *  was, in the row's own gray. No motion, no color: nothing is happening. */
+function StoppedMark() {
+  return <span aria-label="Stopped" className="size-1.5 shrink-0 rounded-[1.5px] bg-content/45" />;
+}
+
 function StatusDot({ status }: { status: ThreadRow["status"] }) {
+  if (status === "stopped") return <StoppedMark />;
   const cls =
     status === "waiting"
       ? "bg-warning motion-safe:animate-pulse"
@@ -350,7 +357,9 @@ const ChatRow = memo(function ChatRow({
       { kind: "item", id: "rename", label: "Rename" },
       ...(thread.running
         ? [{ kind: "item", id: "stop", label: "Stop" } as const]
-        : []),
+        : thread.stopped
+          ? [{ kind: "item", id: "resume", label: "Resume" } as const]
+          : []),
       { kind: "sep" },
       { kind: "item", id: "delete", label: "Delete chat", danger: true },
     ];
@@ -360,6 +369,7 @@ const ChatRow = memo(function ChatRow({
       onPick: (id) => {
         if (id === "rename") setRenaming(true);
         else if (id === "stop") void interrupt(thread.id);
+        else if (id === "resume") void resume(thread.id);
         else if (id === "delete") actions.onDelete(thread);
       },
     });
@@ -399,6 +409,8 @@ const ChatRow = memo(function ChatRow({
         <Spinner />
       ) : thread.paused ? (
         <Pause className="size-3.5 shrink-0 text-warning" strokeWidth={1.75} />
+      ) : thread.stopped ? (
+        <StoppedMark />
       ) : thread.unread ? (
         <span className="size-1.5 shrink-0 rounded-full bg-accent" />
       ) : null}

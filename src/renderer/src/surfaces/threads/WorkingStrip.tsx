@@ -1,6 +1,6 @@
 import { memo, useMemo, useState } from "react";
 import { usePaneVisible } from "../../hooks/paneVisibility";
-import { Pause } from "../../chrome/icons";
+import { Pause, Square } from "../../chrome/icons";
 import type { Session } from "../../lib/session";
 import { useClock } from "../../lib/turnClock";
 import { MatrixSpinner, duration } from "./bits";
@@ -11,8 +11,11 @@ import { MatrixSpinner, duration } from "./bits";
  * `Sending…` bridges send → turn-start; then the matrix spinner, a
  * rotating flavour word, and elapsed `1m 32s`. A paused run fills the
  * slot with one warning-tinted row at composer width: the glyph, Paused,
- * the frozen elapsed, and Stop / Continue on the right. Only opacity
- * animates in and out (120ms); the slot never changes height.
+ * the frozen elapsed, and Stop / Continue on the right. A stopped run (the
+ * harness behind the turn is gone: the host restarted without resuming it,
+ * or the process died) fills it the same way in neutral: a square, Stopped,
+ * why, the frozen elapsed, and Resume. Only opacity animates in and out
+ * (120ms); the slot never changes height.
  */
 
 const FLAVOUR_WORDS = [
@@ -67,15 +70,16 @@ export const WorkingStrip = memo(function WorkingStrip({
   const running = status === "running" || (status !== "starting" && status !== "paused" && !!session.busy);
   const starting = status === "starting";
   const paused = status === "paused";
+  const stopped = status === "stopped";
   const active = running || starting;
-  const visible = active || paused;
+  const visible = active || paused || stopped;
   const turnStart = turnStartOf(session);
 
   const shown = usePaneVisible();
   // The shared second hand, only while the strip is live and on screen; a
   // parked pane reads 0 and catches up on its first visible tick.
   const now = useClock(active && shown);
-  const elapsed = paused
+  const elapsed = paused || stopped
     ? Math.max(0, session.frozenActiveElapsed ?? 0)
     : active
       ? Math.max(0, now - (turnStart ?? now))
@@ -99,11 +103,32 @@ export const WorkingStrip = memo(function WorkingStrip({
         } ${
           paused
             ? "rounded-lg border border-warning/20 bg-warning/10 px-3"
-            : "px-4 text-xs text-content/50"
+            : stopped
+              ? "rounded-lg border border-content/10 bg-content/5 px-3"
+              : "px-4 text-xs text-content/50"
         }`}
         aria-live="polite"
       >
-        {paused ? (
+        {stopped ? (
+          <>
+            <Square className="size-3 shrink-0 fill-current text-content/50" strokeWidth={1.75} />
+            <span className="text-[12px] font-medium text-content">
+              Stopped
+              <span className="font-normal text-content/50"> · the harness is gone</span>
+            </span>
+            {elapsed > 0 ? (
+              <span className="text-[11px] tabular-nums text-content/50">{duration(elapsed)}</span>
+            ) : null}
+            <button
+              type="button"
+              onClick={resume}
+              disabled={resumeBusy}
+              className="pressable ml-auto h-6 rounded-md bg-content px-2.5 text-[11px] font-medium text-background-base disabled:cursor-default disabled:opacity-60"
+            >
+              {resumeBusy ? "Resuming…" : "Resume"}
+            </button>
+          </>
+        ) : paused ? (
           <>
             <Pause className="size-3.5 shrink-0 text-warning" strokeWidth={1.75} />
             <span className="text-[12px] font-medium text-content">Paused</span>

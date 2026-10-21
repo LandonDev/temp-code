@@ -35,7 +35,7 @@ import { isRoutedProvider, type AccountPins, type AccountProvider, type AccountR
 import { resolvePin, type ResolvedPin, type RouteOptions } from './accountRouting'
 import type { LimitWindow } from '@shared/events'
 import { foldEvent, newFoldState, toFoldRow } from './folds'
-import { FOLD_VERSION, type FoldRow } from './db'
+import { FOLD_VERSION, type FoldRow, type ResumeAfterBootRow } from './db'
 
 /** How a harness words a 401 the gateway could not route around (codex: "workspace routing discovery unauthorized (401)"). */
 const UNAUTHORIZED_WORDING = /unauthorized|\(401\)/i
@@ -198,6 +198,9 @@ interface AgentReport {
 
 /** Dispose idle harness handles after this long; resume restores them. */
 const IDLE_DISPOSE_MS = 10 * 60 * 1000
+/** How long a running thread may stand with no harness behind it before it reads stopped. */
+export const HARNESS_GONE_GRACE_MS = 20_000
+const HARNESS_GONE_SWEEP_MS = 5_000
 
 /** What an event says the thread is doing, for the tab strip — text plus
  *  the kind that tints the spinner (investigate/edit/think).
@@ -655,21 +658,192 @@ export class SessionRegistry {
     }, 60_000)
   }
 
-  /** At boot no harness handles exist, so a session persisted as running,
-   *  waiting, or starting is stale from a previous process — reset it, or
-   *  the sidebar and working strip show work that isn't happening (and
-   *  can't be stopped). The dead process also never wrote its closing
-   *  status event, so refolds would see a forever-open turn: append the
-   *  synthetic idle directly (none of append()'s live-session side effects
-   *  — queue drain, parent supervision — belong at boot). */
+  /** Shutdown (SIGTERM, before-quit): every thread whose turn is in flight,
+   *  with a harness behind it (or one queued for a resume that this process
+   *  never got to), so the next boot can resume it (resumeAfterBoot.ts). A
+   *  paused thread is never recorded: the user stopped it and it stays so.
+   *  The ledger already holds these rows (append() writes one on every
+   *  running status and clears it when the turn settles, so a death that
+   *  skips this handler, Chromium's D-Bus abort under systemd's group
+   *  SIGTERM for one, leaves the right set behind); this pass stamps the
+   *  shutdown's time on them for the nudge. Synchronous end to end, because
+   *  it runs from a signal handler that exits right after; the batched event
+   *  rows land first so the recorded user seq is the one on disk. Returns
+   *  the recorded ids. */
+  recordForResume(now = Date.now()): string[] {
+    this.store.flushEvents()
+    const rows: ResumeAfterBootRow[] = []
+    for (const s of this.store.listSessions({ archived: false })) {
+      if (s.status !== 'running' && s.status !== 'starting') continue
+      const inFlight =
+        this.handles.has(s.id) || this.starting.has(s.id) || this.resumePending.has(s.id)
+      if (!inFlight) continue
+      rows.push({
+        sessionId: s.id,
+        recordedAt: now,
+        lastUserSeq: this.store.lastUserTurnSeq(s.id),
+        shutdownAt: now
+      })
+    }
+    this.store.recordResumeAfterBoot(rows)
+    return rows.map((r) => r.sessionId)
+  }
+
+  /** The seq of each session's latest user turn this process appended; the
+   *  ledger row written on the running status carries it. */
+  private readonly lastUserSeq = new Map<string, number>()
+
+  /** The ledger row for a thread whose turn a harness is working now. */
+  private recordMidTurn(sessionId: string, at: number): void {
+    this.store.recordResumeAfterBoot([
+      { sessionId, recordedAt: at, lastUserSeq: this.lastUserSeq.get(sessionId) ?? null, shutdownAt: null }
+    ])
+  }
+
+  /** Boot a fresh harness on a thread whose last one is gone, and tell it to
+   *  pick the turn back up. The one Resume path for a dead harness: the boot
+   *  resumer (resumeAfterBoot.ts, with the shutdown's time), the strip's
+   *  Resume button and `session.resume` on a stopped thread all come here.
+   *  The row may still say running (boot, before the liveness sweep) or
+   *  stopped. A paused, archived or missing thread is left alone (false).
+   *  Throws when the harness cannot boot or refuses the nudge; the row then
+   *  reads error, as a failed Continue does. */
+  async resumeStopped(sessionId: string, opts: { restartedAt?: number } = {}): Promise<boolean> {
+    this.resumePending.delete(sessionId)
+    const meta = this.store.getSession(sessionId)
+    if (!meta || meta.archived || meta.status === 'paused') return false
+    this.assertNotMoving(sessionId)
+    await this.dropHandle(sessionId)
+    this.harnessGoneSince.delete(sessionId)
+    // The working clock carries on from where the dead harness left it.
+    const frozen = Math.max(
+      0,
+      meta.status === 'stopped'
+        ? (meta.frozenActiveElapsed ?? 0)
+        : meta.busySince
+          ? Date.now() - meta.busySince
+          : 0
+    )
+    const when = opts.restartedAt ? new Date(opts.restartedAt).toISOString() : null
+    try {
+      void this.armBaseline(sessionId)
+      const handle = await this.handleFor(sessionId)
+      this.lastActivity.set(sessionId, Date.now())
+      const cause = when
+        ? `The host restarted during your turn at ${when}; continue where you left off.`
+        : 'The harness behind your turn was gone and has been started again; continue where you left off.'
+      await handle.send(
+        `<host-restarted>\n${cause} Check your task list and your last few actions, finish anything half-done, and keep going. Do not restart completed work. If the work was already complete, say so in one short line.\n</host-restarted>`
+      )
+    } catch (error) {
+      const current = this.store.getSession(sessionId)
+      if (current && current.status !== 'paused') {
+        this.append(sessionId, { type: 'status', status: 'error' })
+      }
+      throw error
+    }
+    const now = Date.now()
+    this.append(sessionId, {
+      type: 'status',
+      status: 'running',
+      detail: when ? `Resumed after the host restarted at ${when}` : 'Resumed on a fresh harness'
+    })
+    const next = this.store.updateSession(sessionId, {
+      status: 'running',
+      busySince: now - frozen,
+      pausedAt: null,
+      frozenActiveElapsed: null
+    })
+    this.lastActivity.set(sessionId, now)
+    if (next) this.notifyMeta(next)
+    return true
+  }
+
+  /** Every few seconds: a running (or starting) thread with no live harness
+   *  behind it, for longer than the grace, reads stopped. That is a thread
+   *  the boot found running with nothing recorded for it (a crash, a
+   *  SIGKILL), a boot resume that never produced a handle, or a harness
+   *  process that died without the driver settling the status. */
+  startLivenessSweep(graceMs = HARNESS_GONE_GRACE_MS, everyMs = HARNESS_GONE_SWEEP_MS): void {
+    this.livenessTimer = setInterval(() => this.sweepLiveness(graceMs), everyMs)
+    this.livenessTimer.unref?.()
+  }
+
+  /** One pass of the liveness sweep; returns the threads it flipped to stopped. */
+  sweepLiveness(graceMs = HARNESS_GONE_GRACE_MS, now = Date.now()): string[] {
+    const flipped: string[] = []
+    for (const s of this.store.listSessions({ archived: false })) {
+      const candidate =
+        (s.status === 'running' || s.status === 'starting') &&
+        !this.starting.has(s.id) &&
+        !this.resumePending.has(s.id) &&
+        !this.store.movingTo(s.id)
+      const handle = candidate ? this.handles.get(s.id) : undefined
+      if (!candidate || (handle && handle.alive?.() !== false)) {
+        this.harnessGoneSince.delete(s.id)
+        continue
+      }
+      const since = this.harnessGoneSince.get(s.id)
+      if (since === undefined) {
+        this.harnessGoneSince.set(s.id, now)
+        continue
+      }
+      if (now - since < graceMs) continue
+      this.harnessGoneSince.delete(s.id)
+      this.markStopped(s.id, now)
+      flipped.push(s.id)
+    }
+    return flipped
+  }
+
+  /** The harness behind a running turn is gone for good: the row reads
+   *  stopped with its working time frozen (Resume carries it on), the dead
+   *  handle is dropped, and the transcript gets the line that says why. */
+  private markStopped(sessionId: string, now: number): void {
+    const meta = this.store.getSession(sessionId)
+    if (!meta) return
+    const handle = this.handles.get(sessionId)
+    if (handle) {
+      this.handles.delete(sessionId)
+      void handle.dispose().catch(() => {})
+    }
+    this.denyPendingApprovals(sessionId)
+    const frozen = Math.max(0, meta.busySince ? now - meta.busySince : (meta.frozenActiveElapsed ?? 0))
+    this.append(sessionId, { type: 'status', status: 'stopped', detail: 'The harness behind this turn is gone' })
+    this.activities.delete(sessionId)
+    this.watching.delete(sessionId)
+    const next = this.store.updateSession(sessionId, {
+      status: 'stopped',
+      busySince: null,
+      frozenActiveElapsed: frozen
+    })
+    if (next) this.notifyMeta(next)
+  }
+
+  private livenessTimer: ReturnType<typeof setInterval> | null = null
+
+  /** Sessions a boot resume still owes a harness (resumeAfterBoot.ts): the
+   *  liveness sweep leaves them alone while they wait their turn in the pool,
+   *  and a shutdown meanwhile records them again. */
+  readonly resumePending = new Set<string>()
+  /** When a running thread was first seen with no harness behind it (the
+   *  liveness sweep, startLivenessSweep): past the grace it reads stopped. */
+  private readonly harnessGoneSince = new Map<string, number>()
+
+  /** At boot no harness handles exist, so a session persisted as waiting or
+   *  watching is stale from a previous process — reset it, or the sidebar
+   *  shows a question nobody can answer and background work that died with
+   *  the process. The dead process also never wrote its closing status
+   *  event, so refolds would see a forever-open turn: append the synthetic
+   *  idle directly (none of append()'s live-session side effects — queue
+   *  drain, parent supervision — belong at boot). A running or starting row
+   *  is left as it is: the boot resume (resumeAfterBoot.ts) brings back the
+   *  ones the shutdown recorded, and the liveness sweep flips the rest to
+   *  stopped once the grace is up, so a crash mid-turn reads as what it is
+   *  and offers Resume, instead of a quiet idle. */
   resetStaleStatuses(): void {
     for (const s of this.store.listSessions()) {
-      if (
-        s.status === 'running' ||
-        s.status === 'waiting' ||
-        s.status === 'starting' ||
-        s.status === 'watching'
-      ) {
+      if (s.status === 'waiting' || s.status === 'watching') {
         this.appendStatus(s.id, 'idle')
         this.store.updateSession(s.id, { status: 'idle', busySince: null })
       }
@@ -1964,6 +2138,8 @@ export class SessionRegistry {
         pausedAt: now,
         frozenActiveElapsed
       })
+      // Paused by the user: no boot brings it back on its own.
+      this.store.clearResumeAfterBoot([session.id])
       this.activities.delete(session.id)
       if (next) this.notifyMeta(next)
     }
@@ -2029,6 +2205,7 @@ export class SessionRegistry {
       pausedAt: null,
       frozenActiveElapsed: null
     })
+    this.recordMidTurn(sessionId, now)
     this.lastActivity.set(sessionId, now)
     if (next) this.notifyMeta(next)
   }
@@ -2449,6 +2626,7 @@ export class SessionRegistry {
     const all = this.store.listSessions()
     const root = all.find((s) => s.id === sessionId)
     const ids = this.store.deleteSessionTree(sessionId)
+    this.store.clearResumeAfterBoot(ids)
     for (const id of ids) {
       await this.dropHandle(id)
       this.stopping.delete(id)
@@ -2496,6 +2674,7 @@ export class SessionRegistry {
       pausedAt: null,
       frozenActiveElapsed: null
     })
+    this.store.clearResumeAfterBoot([sessionId])
     if (next) this.notifyMeta(next)
   }
 
@@ -2903,6 +3082,7 @@ export class SessionRegistry {
     const prev = this.folds.get(sessionId) ?? toFoldRow(sessionId, newFoldState())
     const row = this.store.appendEvent(sessionId, event)
     this.lastActivity.set(sessionId, row.ts)
+    if (event.type === 'user-text') this.lastUserSeq.set(sessionId, row.seq)
     const before = tallyOf(warm)
     foldTodo(warm, event, row.ts)
     const after = tallyOf(warm)
@@ -2975,6 +3155,11 @@ export class SessionRegistry {
           : (cur?.busySince ?? row.ts)
       const next = this.store.updateSession(sessionId, { status: event.status, busySince })
       if (next) this.notifyMeta(next)
+      // The ledger of threads mid-turn (resumeAfterBoot.ts): a row while a
+      // harness works the turn, gone the moment it settles, so a boot after
+      // any kind of death knows exactly what to bring back.
+      if (event.status === 'running' || event.status === 'starting') this.recordMidTurn(sessionId, row.ts)
+      else this.store.clearResumeAfterBoot([sessionId])
       // Live change stream (M22): watchers follow running sessions.
       if (next) liveDiffOnStatus(this, next, cur?.status)
       // A settled turn runs the pending completed-turn pass first; only a
@@ -3652,6 +3837,7 @@ export class SessionRegistry {
 
   async disposeAll(): Promise<void> {
     if (this.sweepTimer) clearInterval(this.sweepTimer)
+    if (this.livenessTimer) clearInterval(this.livenessTimer)
     this.flushFolds()
     for (const id of [...this.pendingApprovals.keys()]) this.denyPendingApprovals(id)
     await Promise.allSettled([...this.handles.values()].map((h) => h.dispose()))

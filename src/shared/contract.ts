@@ -1052,6 +1052,10 @@ export type ServerPush =
   // A thread (`id`, with its subagents `sessionIds`) moved to environment `to`
   // (contract-session-move.ts); sent ahead of the session-removed for it.
   | { push: 'session-moved'; id: string; sessionIds: string[]; to: string }
+  // Once per boot, when threads cut mid-turn by the last shutdown came back
+  // (resumeAfterBoot.ts): how many, and the boot's time the toast dedupes by.
+  // Sent to every open socket when the resume finishes and to each later socket after hello.
+  | { push: 'boot-resume'; count: number; at: number }
   // Aliax accounts: the whole snapshot, whenever it is rebuilt.
   | { push: 'accounts'; snapshot: import('./accounts').AccountsSnapshot }
   // Master's release number as this host last read it from GitHub (deployDrift.ts); local sockets only.

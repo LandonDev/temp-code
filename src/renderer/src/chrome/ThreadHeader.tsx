@@ -63,13 +63,16 @@ export function chipMenuItems(chip: StripChip, bridge?: ChipBridge, resources = 
   if (t.threadType && TUNABLE.has(t.threadType))
     items.push({ kind: "item", id: "tune", label: `${THREAD_LABELS[t.threadType]} options…` });
   const paused = chip.status === "paused";
+  const stopped = chip.status === "stopped";
   const working = !!t.treeHasLiveWork || chip.status === "running" || chip.status === "starting";
   const live = working || paused || chip.status === "waiting" || chip.status === "watching";
   if (paused) items.push({ kind: "item", id: "resume", label: "Continue" });
+  // The harness is gone: the same resume boots a fresh one on the transcript.
+  else if (stopped) items.push({ kind: "item", id: "resume", label: "Resume" });
   else if (working) items.push({ kind: "item", id: "pause", label: "Pause" });
   // Compact squeezes the transcript in place; it runs as a turn, so only
   // a thread with no turn in flight offers it.
-  if (!working && !paused && chip.status !== "waiting")
+  if (!working && !paused && !stopped && chip.status !== "waiting")
     items.push({ kind: "item", id: "compact", label: "Compact" });
   // A watching thread is idle behind its background tasks: this kills
   // them (the harness goes with them) and the row settles idle.

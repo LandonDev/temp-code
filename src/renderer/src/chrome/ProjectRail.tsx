@@ -97,6 +97,7 @@ import { Shimmer } from "../surfaces/Shimmer";
 import { TabGroupMenu, type TabGroupMenuExtraItem } from "./TabGroupMenu";
 import { TerminalSpinner } from "./TerminalSpinner";
 import { aliaxChunk, settingsChunk } from "../surfaces/chunks";
+import { BootResumeNote } from "./BootResumeNote";
 
 const REVEAL_LABEL = IS_MAC
   ? "Reveal in Finder"
@@ -569,6 +570,7 @@ export function ProjectRail({
                   items={group ? group.items : sections.projects}
                   indexOf={(item) => sections.projects.indexOf(item)}
                   emptyLabel={group ? "No workspaces here yet" : "No workspaces yet"}
+                  note={<BootResumeNote environmentId={group?.environment.id ?? registry.primary().environmentId} />}
                   onAdd={() => onOpenProject(group?.environment.id)}
                   cwd={cwd}
                   busy={busy}
@@ -882,6 +884,7 @@ function LiveAgentCard({
 function ProjectSection({
   label,
   leading,
+  note,
   items,
   indexOf,
   emptyLabel,
@@ -908,6 +911,8 @@ function ProjectSection({
   label: string;
   /** A mark before the label: the environment's connection dot. */
   leading?: ReactNode;
+  /** One line under the header, when the host has something to say once (BootResumeNote). */
+  note?: ReactNode;
   items: RecentProject[];
   /** The row's place in the sortable's whole list; defaults to its place in `items`. */
   indexOf?: (item: RecentProject) => number;
@@ -951,6 +956,7 @@ function ProjectSection({
           </button>
         ) : null}
       </div>
+      {note}
       {items.length === 0 && emptyLabel ? (
         <p className="px-3 py-2 text-[12px] text-content/50">{emptyLabel}</p>
       ) : null}

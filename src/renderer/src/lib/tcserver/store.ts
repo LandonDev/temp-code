@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { noteBootResume } from "../bootResume";
 import type { Attachment, Block, HarnessId, Session } from "../session";
 import { HARNESSES } from "../session";
 import { resolveModel } from "../models";
@@ -1299,6 +1300,9 @@ class SessionStore {
         break;
       case "session-moved":
         this.onMoved(push.sessionIds, environmentId, push.to);
+        break;
+      case "boot-resume":
+        noteBootResume(environmentId, push.count, push.at);
         break;
       case "queue":
         this.setQueue(push.sessionId, push.items);
