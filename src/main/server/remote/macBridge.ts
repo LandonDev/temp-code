@@ -38,6 +38,7 @@ import { serveMacWrite, writeFoldersOf } from './macBridgeWrite'
 import type { MacWriteFileResult } from '@shared/contract-macbridge'
 import { threadRunsUnattended, type MacCallThread } from '@shared/contract-macbridge'
 import { isMacJobPeerMethod, type MacPeerMethod } from '@shared/contract-macjobs'
+import { isCrossHostPeerMethod, type CrossHostCallParams } from '@shared/contract-crosshost'
 import { MacJobs, type JobSpawner } from './macJobs'
 
 /**
@@ -98,6 +99,8 @@ export interface MacBridgeDeps {
   log?: (line: string) => void
   /** Interactive jobs' process (macJobs.ts): node-pty by default. */
   jobSpawner?: JobSpawner
+  /** Offers besides the bridge's that ride the same peer.register (the threads offer, remote/crossHostThreads.ts). */
+  offers?: () => string[]
 }
 
 // ── the policy, pure ─────────────────────────────────────────────────
@@ -321,7 +324,7 @@ export class MacBridge {
     try {
       await request('peer.register', {
         from: this.deps.environmentId,
-        offers: [MAC_BRIDGE_OFFER],
+        offers: [MAC_BRIDGE_OFFER, ...(this.deps.offers?.() ?? [])],
         home: this.home
       })
       this.registered.add(envId)
@@ -440,13 +443,16 @@ export class MacBridge {
 
   async handle(
     method: MacPeerMethod,
-    params: MacCallParams,
+    wire: MacCallParams | CrossHostCallParams,
     ctx: {
       from: string
       deadlineAt: number
       progress?: (chunk: string, skipped?: number) => void
     }
   ): Promise<unknown> {
+    // A thread.* call is the threads offer's (remote/crossHostThreads.ts), routed before this.
+    if (isCrossHostPeerMethod(method)) throw new Error(`${method} is not a Mac bridge call`)
+    const params = wire as MacCallParams
     const env = this.deps.environments().find((e) => e.id === ctx.from)
     const thread = params?.thread
     if (!env) throw new Error('this Mac does not know that host')

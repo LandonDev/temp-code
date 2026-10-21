@@ -9,6 +9,7 @@ import { HarnessRequestSchemas } from './contract-harness'
 import { AttachmentRequestSchemas } from './contract-attachments'
 import { SessionMoveRequestSchemas } from './contract-session-move'
 import { MacBridgeRequestSchemas } from './contract-macbridge'
+import { CrossHostRequestSchemas } from './contract-crosshost'
 import { MacBridgeRulesRequestSchemas } from './contract-macbridge-rules'
 import { MacJobRequestSchemas } from './contract-macjobs'
 import { AGENT_TYPES } from './catalog'
@@ -91,7 +92,9 @@ const SpawnAgentSpecSchema = z.object({
   agentType: z.string().optional(),
   task: z.string().optional(),
   useWorktree: z.boolean().optional(),
-  context1m: z.boolean().optional()
+  context1m: z.boolean().optional(),
+  /** Run on another host: `mac`, or an environment id (contract-crosshost.ts). */
+  environmentId: z.string().optional()
 })
 
 export const ClientRequestSchema = z.discriminatedUnion('method', [
@@ -106,6 +109,7 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...AttachmentRequestSchemas,
   ...SessionMoveRequestSchemas,
   ...MacBridgeRequestSchemas,
+  ...CrossHostRequestSchemas,
   ...MacBridgeRulesRequestSchemas,
   ...MacJobRequestSchemas,
   // refresh: re-probe the installed CLIs of the probed providers first.
@@ -812,7 +816,9 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       planPath: z.string().optional(),
       seedThreadIds: z.array(z.string()).optional(),
       firstMessage: z.string(),
-      title: z.string().optional()
+      title: z.string().optional(),
+      /** Start it on another host: `mac`, or an environment id (contract-crosshost.ts). */
+      environmentId: z.string().optional()
     })
   }),
   // Orchestration over WS — the codex bridge's spawn/supervise path. Same
@@ -856,7 +862,9 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       sessionId: z.string(),
       agentId: z.string(),
       requestId: z.string(),
-      answers: z.array(z.array(z.string()))
+      answers: z.array(z.array(z.string())).optional(),
+      /** An approval on another host (a `<host>:<id>` agent): true allows, false denies. */
+      allow: z.boolean().optional()
     })
   }),
   z.object({

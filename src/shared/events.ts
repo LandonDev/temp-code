@@ -312,7 +312,12 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   }),
 
   // Orchestration: this session spawned a child session.
-  z.object({ type: z.literal('agent-spawned'), childSessionId: z.string() }),
+  z.object({
+    type: z.literal('agent-spawned'),
+    childSessionId: z.string(),
+    /** Set when the child runs on another host (contract-crosshost.ts): its environment id. */
+    environmentId: z.string().optional()
+  }),
 
   // stopped: the turn ended because the user hit Stop — shown as a quiet
   // "Stopped" note, never as a failure, and it never arms recovery.

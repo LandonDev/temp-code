@@ -313,6 +313,17 @@ routed to (aliax-core's `forward`). Two listeners:
   as remembered. docs/box.md "The Mac
   bridge: what a box thread may touch on the Mac"; proof
   `bun run script:e2e-mac-bridge`.
+- Threads on the Mac from the box: `app_start_thread` and `spawn_agent`
+  take `environmentId` (`mac`, or a host id), and the thread runs on that
+  Mac as an ordinary This Mac thread; its id comes back as `<envId>:
+  <sessionId>` and every supervision tool routes by it (`src/main/server/
+  crossHostAgents.ts` on the box, `remote/crossHostThreads.ts` on the Mac,
+  `src/shared/contract-crosshost.ts`; the `threads` peer offer rides the
+  Mac bridge's `peer.call`, `thread.*` methods, `crossHost.settled` back).
+  Which Mac: the thread's `macBridge.thread` peer, else the only one
+  registered. A dropped link answers `linkDown` with the last state, never
+  a hang. docs/box.md "Starting a thread on the Mac from the box"; proof
+  `bun run script:e2e-cross-host-threads`.
 - Backups: restic to R2 bucket `tempcode-backups`, repo `box` from
   `box-backup.timer` (SQLite snapshotted with VACUUM INTO, never the live
   files) and repo `mac` from the launchd agent `dev.landon.tempcode.backup`

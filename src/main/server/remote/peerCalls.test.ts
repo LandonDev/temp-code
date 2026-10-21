@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ServerFrame } from '@shared/contract'
-import { PEER_CHUNK_CHARS, type MacBridgePush } from '@shared/contract-macbridge'
+import { PEER_CHUNK_CHARS, type MacBridgePush, type MacCallParams } from '@shared/contract-macbridge'
 import {
   PeerCalls,
   PeerOfflineError,
@@ -87,7 +87,7 @@ describe('PeerCalls', () => {
     const push = frames[0] as Call
     expect(push.push).toBe('peer.call')
     expect(push.deadlineMs).toBe(5_000)
-    expect(push.params.thread.id).toBe('s1')
+    expect((push.params as MacCallParams).thread.id).toBe('s1')
     expect(calls.pendingCount()).toBe(0)
   })
 

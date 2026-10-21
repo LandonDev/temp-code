@@ -29,6 +29,7 @@ import {
 } from '@shared/rules'
 import type { EventRow, SessionMeta } from '@shared/events'
 import type { SessionRegistry } from './sessions'
+import type { CrossHostAgents } from './crossHostAgents'
 import { foldTodo, newTodoFold, tallyOf } from './todos'
 
 
@@ -48,12 +49,18 @@ let registry: SessionRegistry | null = null
 export function setOrchestrationRegistry(r: SessionRegistry): void {
   registry = r
 }
+// Threads on other hosts (crossHostAgents.ts): a spawn that names a host,
+// and every supervision call whose agent id encodes one, route there.
+let crossHost: CrossHostAgents | null = null
+export function setCrossHostAgents(c: CrossHostAgents | null): void {
+  crossHost = c
+}
 
 const providerIds = Object.keys(CATALOG) as [ProviderId, ...ProviderId[]]
 
 /** Writing subagents get a git worktree by default so parallel edits
  *  can't collide. Falls back to the parent cwd outside a git repo. */
-async function worktreeFor(parentCwd: string, sessionTag: string): Promise<string | null> {
+export async function worktreeFor(parentCwd: string, sessionTag: string): Promise<string | null> {
   try {
     await execFileP('git', ['-C', parentCwd, 'rev-parse', '--git-dir'])
     const dir = join(homedir(), '.temp-code', 'worktrees', sessionTag)
@@ -413,6 +420,8 @@ export interface SpawnAgentSpec {
   /** Defaults to on for models with a 1M window; asking for it on any
    *  other model is refused. */
   context1m?: boolean
+  /** Run on another host (crossHostAgents.ts): `mac`, or an environment id. Top-level only: one host per call. */
+  environmentId?: string
 }
 
 /** One call spawns one agent (`task`) or a batch (`agents`, up to
@@ -442,7 +451,7 @@ Your findings file is ${anglePath}. The app assigned it; it is your deliverable,
 
 /** A batch entry after validation: everything create() needs, nothing
  *  created yet, so a bad entry anywhere refuses the whole call. */
-interface ResolvedSpawn {
+export interface ResolvedSpawn {
   provider: ProviderId
   model: string
   reasoning: SessionMeta['reasoning']
@@ -452,7 +461,17 @@ interface ResolvedSpawn {
   useWorktree: boolean
 }
 
-export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs): Promise<string> {
+/**
+ * Every entry of a spawn validated against the caller's rules, nothing
+ * created: a bad model in the seventh slot must not leave six agents
+ * running under a refusal. Shared by the local spawn and a spawn on another
+ * host (crossHostAgents.ts), so the box's rules gate both the same way.
+ */
+export function resolveSpawnSpecs(
+  parent: SessionMeta,
+  args: SpawnAgentArgs,
+  opts: { extraChildren?: number; extraLive?: number } = {}
+): { resolved: ResolvedSpawn[]; rules: OrchestrationRules; live: number; researchRoot: SessionMeta | null } | string {
   if (!registry) return 'orchestration registry not ready'
   // The MCP closure holds a boot-time snapshot of the caller; read it
   // fresh so a permission change or tune edit made after boot governs
@@ -470,8 +489,6 @@ export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs):
   // A research tree's children investigate; they never edit the repo, so
   // an untyped spawn is an explorer and nobody gets a worktree.
   const researchRoot = registry.researchRootOf(parent.id)
-  // Validate every entry before creating any: a bad model in the seventh
-  // slot must not leave six agents running under a refusal.
   const resolved: ResolvedSpawn[] = []
   const where = (i: number) => (specs.length > 1 ? `agents[${i}]: ` : '')
   for (const [i, spec] of specs.entries()) {
@@ -500,26 +517,60 @@ export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs):
           ? 'explorer'
           : 'implementer',
       task,
-      useWorktree: spec.useWorktree ?? true
+      useWorktree: (spec.useWorktree ?? true) && rules.conduct.useWorktrees
     })
   }
-  const children = registry.childrenOf(parent.id)
-  const live = children.filter(
-    (s) => s.status === 'running' || s.status === 'starting' || s.status === 'waiting'
-  )
+  // Children on other hosts count toward the caps too (crossHostAgents.ts passes them).
+  const children = registry.childrenOf(parent.id).length + (opts.extraChildren ?? 0)
+  const live =
+    registry
+      .childrenOf(parent.id)
+      .filter((s) => s.status === 'running' || s.status === 'starting' || s.status === 'waiting').length +
+    (opts.extraLive ?? 0)
   const n = resolved.length
   const { maxAgents, maxParallel } = rules.conduct
-  if (maxAgents > 0 && children.length + n > maxAgents) {
-    const room = Math.max(0, maxAgents - children.length)
+  if (maxAgents > 0 && children + n > maxAgents) {
+    const room = Math.max(0, maxAgents - children)
     return room > 0 && n > 1
-      ? `refused: the user capped this thread at ${maxAgents} subagents total (${children.length} already spawned): room for ${room} more, not ${n}. Spawn at most ${room} in this batch.`
-      : `refused: the user capped this thread at ${maxAgents} subagents total (${children.length} already spawned). Reuse an existing agent via send_to_agent, or tell the user the cap is reached.`
+      ? `refused: the user capped this thread at ${maxAgents} subagents total (${children} already spawned): room for ${room} more, not ${n}. Spawn at most ${room} in this batch.`
+      : `refused: the user capped this thread at ${maxAgents} subagents total (${children} already spawned). Reuse an existing agent via send_to_agent, or tell the user the cap is reached.`
   }
-  if (maxParallel > 0 && live.length + n > maxParallel) {
-    const room = Math.max(0, maxParallel - live.length)
+  if (maxParallel > 0 && live + n > maxParallel) {
+    const room = Math.max(0, maxParallel - live)
     return room > 0 && n > 1
-      ? `refused: the user capped parallelism at ${maxParallel} concurrent subagents (${live.length} active): ${room} slots free, not ${n}. Spawn at most ${room} now and the rest after wait_for_agent.`
-      : `refused: the user capped parallelism at ${maxParallel} concurrent subagents (${live.length} active). wait_for_agent on one of them first, then retry.`
+      ? `refused: the user capped parallelism at ${maxParallel} concurrent subagents (${live} active): ${room} slots free, not ${n}. Spawn at most ${room} now and the rest after wait_for_agent.`
+      : `refused: the user capped parallelism at ${maxParallel} concurrent subagents (${live} active). wait_for_agent on one of them first, then retry.`
+  }
+  return { resolved, rules, live, researchRoot }
+}
+
+export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs): Promise<string> {
+  if (!registry) return 'orchestration registry not ready'
+  const parentNow = registry.get(parent.id) ?? parent
+  // Agents on other hosts count toward the caps like local ones.
+  const remote = crossHost?.children(parent.id) ?? []
+  const checked = resolveSpawnSpecs(parent, args, {
+    extraChildren: remote.length,
+    extraLive: remote.filter((r) => r.status === 'running' || r.status === 'starting' || r.status === 'waiting').length
+  })
+  if (typeof checked === 'string') return checked
+  const { resolved, rules, researchRoot } = checked
+  const live = { length: checked.live }
+  const n = resolved.length
+  const { maxParallel } = rules.conduct
+  const parallel =
+    maxParallel > 0 ? { parallel: `${live.length + n} of ${maxParallel} allowed slots in use` } : {}
+  if (args.environmentId?.trim()) {
+    if (!crossHost) return 'refused: threads on other hosts are not available here'
+    if (researchRoot) return 'refused: a research tree spawns its explorers here, not on another host'
+    let started: Awaited<ReturnType<CrossHostAgents['spawn']>>
+    try {
+      started = await crossHost.spawn(parentNow, args.environmentId, resolved)
+    } catch (err) {
+      return `refused: ${err instanceof Error ? err.message : String(err)}`
+    }
+    if (n === 1) return JSON.stringify({ ...started[0], ...parallel, note: 'working on that host — use wait_for_agent to collect the result' })
+    return JSON.stringify({ agents: started, ...parallel, note: `${n} agents working on ${started[0]?.host} — wait_for_agent with agentIds and mode "any" collects them in completion order` })
   }
   const stamp = Date.now() % 100000
   const started: { agentId: string; title: string; cwd: string; findingsFile?: string }[] = []
@@ -529,7 +580,7 @@ export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs):
     // on one repo races for index.lock, and the tag carries the slot so
     // a batch's entries never share a path.
     const cwd =
-      (writer && r.useWorktree && rules.conduct.useWorktrees
+      (writer && r.useWorktree
         ? await worktreeFor(parent.cwd, n > 1 ? `${parent.id}-${stamp}-${i}` : `${parent.id}-${stamp}`)
         : null) ?? parent.cwd
     const title = r.task.split('\n')[0].slice(0, 80) || `${r.provider} · ${r.agentType}`
@@ -569,8 +620,6 @@ export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs):
   // Live headroom rides every spawn result: the boot prompt's cap goes
   // stale when the user retunes mid-run, and a model told "at most 4"
   // self-limits — this is how it learns the current ceiling.
-  const parallel =
-    maxParallel > 0 ? { parallel: `${live.length + n} of ${maxParallel} allowed slots in use` } : {}
   if (n === 1) {
     return JSON.stringify({
       ...started[0],
@@ -591,6 +640,7 @@ export async function orchSendToAgent(
   message: string
 ): Promise<string> {
   if (!registry) return 'orchestration registry not ready'
+  if (crossHost?.isRemote(agentId)) return crossHost.send(parent, agentId, message)
   if (!childOf(parent, agentId)) return notChild(agentId)
   await registry.send(agentId, message)
   return 'sent'
@@ -598,14 +648,15 @@ export async function orchSendToAgent(
 
 /** Where the child stands in its current task list, folded from its log
  *  by the same reducer the tab strip reads (server/todos.ts). */
-function todoProgress(rows: EventRow[]): { done: number; total: number } | null {
+export function todoProgress(rows: EventRow[]): { done: number; total: number } | null {
   const fold = newTodoFold()
   for (const r of rows) foldTodo(fold, r.event, r.ts)
   return tallyOf(fold)
 }
 
-export function orchCheckAgent(parent: SessionMeta, agentId: string): string {
+export async function orchCheckAgent(parent: SessionMeta, agentId: string): Promise<string> {
   if (!registry) return 'orchestration registry not ready'
+  if (crossHost?.isRemote(agentId)) return crossHost.check(parent, agentId)
   const meta = childOf(parent, agentId)
   if (!meta) return notChild(agentId)
   const rows = registry.eventsAfter(agentId, 0)
@@ -649,23 +700,45 @@ export async function orchWaitForAgent(
   args: WaitForAgentArgs
 ): Promise<string> {
   if (!registry) return 'orchestration registry not ready'
-  const ids = [...(args.agentIds ?? []), ...(args.agentId ? [args.agentId] : [])]
-  if (ids.length === 0) return 'refused: pass agentId or agentIds'
+  const all = [...(args.agentIds ?? []), ...(args.agentId ? [args.agentId] : [])]
+  if (all.length === 0) return 'refused: pass agentId or agentIds'
+  const remoteIds = all.filter((id) => crossHost?.isRemote(id))
+  const ids = all.filter((id) => !remoteIds.includes(id))
   for (const id of ids) if (!childOf(parent, id)) return notChild(id)
   // 0 / omitted = sleep until settled — the default; a timeout is opt-in.
   const timeoutMs = (args.timeoutSeconds ?? 0) * 1000
   const release = holdAwaited(ids)
+  // Agents on other hosts wait over their links (crossHostAgents.ts); a
+  // wait over both kinds races them for 'any' and gathers them for 'all'.
+  const stop = { stopped: false }
+  const remoteWait = (id: string) => crossHost!.wait(parent, id, timeoutMs, stop)
   try {
-    if (args.mode === 'all' && ids.length > 1) {
-      const metas = await Promise.all(ids.map((id) => waitForSettled(registry!, id, timeoutMs)))
-      return JSON.stringify(
-        ids.map((id, i) => {
+    if (args.mode === 'all' && all.length > 1) {
+      const [metas, remotes] = await Promise.all([
+        Promise.all(ids.map((id) => waitForSettled(registry!, id, timeoutMs))),
+        Promise.all(remoteIds.map(remoteWait))
+      ])
+      return JSON.stringify([
+        ...ids.map((id, i) => {
           const meta = metas[i]
           return meta
             ? settledReport(id, meta)
             : { agentId: id, status: 'timeout', note: 'still running' }
-        })
-      )
+        }),
+        ...remotes.map((r, i) => (typeof r === 'string' ? { agentId: remoteIds[i], status: 'refused', note: r } : r))
+      ])
+    }
+    if (remoteIds.length > 0) {
+      const local = ids.length
+        ? waitForAnySettled(registry, ids, timeoutMs).then((s) => (s ? settledReport(s.id, s.meta) : null))
+        : null
+      const first = await Promise.race([
+        ...(local ? [local] : []),
+        ...remoteIds.map((id) => remoteWait(id).then((r) => (typeof r === 'string' ? { agentId: id, status: 'refused', note: r } : r)))
+      ])
+      stop.stopped = true
+      if (!first) return JSON.stringify({ status: 'timeout', note: 'still running — check_agent shows progress' })
+      return JSON.stringify(first)
     }
     const settled = await waitForAnySettled(registry, ids, timeoutMs)
     if (!settled) {
@@ -682,10 +755,13 @@ export async function orchWaitForAgent(
 
 export async function orchAnswerAgent(
   parent: SessionMeta,
-  args: { agentId: string; requestId: string; answers: string[][] }
+  args: { agentId: string; requestId: string; answers?: string[][]; allow?: boolean }
 ): Promise<string> {
   if (!registry) return 'orchestration registry not ready'
+  if (crossHost?.isRemote(args.agentId))
+    return crossHost.answer(parent, args.agentId, args.requestId, args.answers, args.allow)
   if (!childOf(parent, args.agentId)) return notChild(args.agentId)
+  if (!args.answers) return 'refused: pass answers (a local agent\'s approvals belong to the user).'
   const pending = pendingOf(registry.eventsAfter(args.agentId, 0))
   if (!pending || pending.requestId !== args.requestId) {
     return `refused: ${args.requestId} is not this agent's pending request${pending ? ` (current: ${pending.requestId})` : ' (nothing pending)'}.`
@@ -699,28 +775,30 @@ export async function orchAnswerAgent(
 
 export async function orchInterruptAgent(parent: SessionMeta, agentId: string): Promise<string> {
   if (!registry) return 'orchestration registry not ready'
+  if (crossHost?.isRemote(agentId)) return crossHost.interrupt(parent, agentId)
   if (!childOf(parent, agentId)) return notChild(agentId)
   await registry.interrupt(agentId)
   return 'interrupted — send_to_agent to redirect, or spawn a replacement'
 }
 
-export function orchListAgents(parent: SessionMeta): string {
+export async function orchListAgents(parent: SessionMeta): Promise<string> {
   if (!registry) return 'orchestration registry not ready'
-  return JSON.stringify(
-    registry
-      .childrenOf(parent.id)
-      .map((s) => ({
-        agentId: s.id,
-        title: s.title,
-        provider: s.provider,
-        model: s.model,
-        agentType: s.agentType,
-        status: s.status,
-        idleForSeconds: idleSeconds(s.id),
-        cwd: s.cwd,
-        ...(s.parentId && s.planPath ? { findingsFile: s.planPath } : {})
-      }))
-  )
+  const local = registry
+    .childrenOf(parent.id)
+    .map((s) => ({
+      agentId: s.id,
+      title: s.title,
+      provider: s.provider,
+      model: s.model,
+      agentType: s.agentType,
+      status: s.status,
+      idleForSeconds: idleSeconds(s.id),
+      cwd: s.cwd,
+      ...(s.parentId && s.planPath ? { findingsFile: s.planPath } : {})
+    }))
+  // Threads on other hosts follow: live state over the link, the last seen state with linkDown when it is down.
+  const remote = crossHost ? await crossHost.list(parent) : []
+  return JSON.stringify([...local, ...remote])
 }
 
 /** Fields a single spawn and each batch entry share. */
@@ -756,6 +834,8 @@ const spawnSpecShape = {
       'Isolate a writing agent in its own git worktree (default true; ignored outside a git repo)'
     )
 }
+/** The host field a single spawn (not a batch entry) and app_start_thread take. */
+export const HOST_PARAM_DESCRIPTION = "Which host runs it: omit for this machine; `mac` for this thread's Mac (or the only Mac linked), or a host's environment id. Use a Mac host for anything that needs Xcode, the iOS simulator, a Mac app, or files that live on the Mac: the thread runs there, as an ordinary thread the Mac app shows under This Mac, and its agent id comes back as `<host>:<id>` so every later call reaches it."
 
 export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInstance {
   return createSdkMcpServer({
@@ -767,6 +847,7 @@ export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInst
         `Spawn a subagent session and send it its task. Returns the agent id. The agent works asynchronously — use wait_for_agent to collect its result. To fan out, pass \`agents\` (up to ${SPAWN_BATCH_MAX} entries, each with its own task) instead of \`task\`: one call starts the whole batch and returns every agent id; the top-level fields are defaults each entry may override.`,
         {
           ...spawnSpecShape,
+          environmentId: z.string().optional().describe(HOST_PARAM_DESCRIPTION),
           task: z
             .string()
             .optional()
@@ -791,7 +872,7 @@ export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInst
         'check_agent',
         'Non-blocking look at what a subagent is doing right now: status, recent tool activity, latest streamed text, anything it is stuck on, token usage. Use it to supervise long-running agents without waiting.',
         { agentId: z.string() },
-        async (args) => text(orchCheckAgent(parent, args.agentId))
+        async (args) => text(await orchCheckAgent(parent, args.agentId))
       ),
       tool(
         'wait_for_agent',
@@ -817,11 +898,12 @@ export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInst
       ),
       tool(
         'answer_agent',
-        'Answer a subagent\'s pending structured question (the "pending" payload from wait_for_agent/check_agent). answers[i] = chosen option labels (or freeform text) for questions[i]. Permission approvals cannot be answered this way — those belong to the user.',
+        'Answer a subagent\'s pending structured question (the "pending" payload from wait_for_agent/check_agent). answers[i] = chosen option labels (or freeform text) for questions[i]. A local agent\'s permission approvals belong to the user; an agent on another host (a `<host>:<id>` agent id) takes `allow` for its approval, since that thread runs under this one\'s grant there.',
         {
           agentId: z.string(),
           requestId: z.string().describe('pending.requestId from wait_for_agent/check_agent'),
-          answers: z.array(z.array(z.string()))
+          answers: z.array(z.array(z.string())).optional(),
+          allow: z.boolean().optional().describe('An approval on another host: true allows, false denies')
         },
         async (args) => text(await orchAnswerAgent(parent, args))
       ),
@@ -831,8 +913,8 @@ export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInst
         { agentId: z.string() },
         async (args) => text(await orchInterruptAgent(parent, args.agentId))
       ),
-      tool('list_agents', 'List the subagents of this session with their status.', {}, async () =>
-        text(orchListAgents(parent))
+      tool('list_agents', 'List the subagents of this session with their status (those on other hosts carry host and a `<host>:<id>` agent id).', {}, async () =>
+        text(await orchListAgents(parent))
       )
     ]
   })
@@ -878,6 +960,14 @@ refused):
 ${spawnableModels(rules)}
 Agent types: ${AGENT_TYPES.join(', ')} — implementers write code, explorers
 read/investigate, reviewers judge, orchestrators sub-orchestrate.
+
+A host: spawn_agent (and app_start_thread) take \`environmentId\`: \`mac\`
+for this thread's Mac (or the only Mac linked), or a host's environment id.
+Use it for anything that needs Xcode, the iOS simulator, a Mac app, or files
+on the Mac — the agent runs there as an ordinary thread the Mac app shows
+under This Mac, its id comes back as \`<host>:<id>\`, and every supervision
+tool routes by that id. If the link drops mid-wait the result says
+\`linkDown\` with the last state seen; wait again once the Mac is back.
 
 Give each agent a complete, self-contained task prompt — it cannot see this
 conversation. Parallelize independent work; sequence dependent work. A

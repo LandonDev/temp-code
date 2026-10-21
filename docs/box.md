@@ -944,6 +944,81 @@ Linux pin waits for a build that has not expired), and vibrancy. Known gap:
 the local socket is the implicit admin for any process on the box's loopback,
 as on a Mac; the box has only `prod` as another user.
 
+### Starting a thread on the Mac from the box
+
+iOS builds, the simulator, screenshots and every Mac app exist only on the
+Mac, and a box thread reaching them through `mac_run` loses the link, the
+tools and the simulator to every other thread doing the same. So a box
+thread can start a thread, or spawn a subagent, ON the Mac instead, and
+supervise it from the box: the work runs where the tools are, as an ordinary
+thread the Mac app shows under This Mac the moment it is created.
+
+The app tools. `app_start_thread` and `spawn_agent` take `environmentId`:
+`mac` for the thread's own Mac, or a host's environment id. Which Mac
+(`src/main/server/crossHostAgents.ts` `resolveHost`): the thread's Mac
+bridge peer when set (`macBridge.thread.<id>`, an ancestor's counts), else
+the only Mac registered with the offer, else a refusal naming
+`macBridge.thread.set`. Every id that comes back is `<environmentId>:
+<sessionId>` (`src/shared/contract-crosshost.ts` `encodeAgentId`), and
+`send_to_agent`, `check_agent`, `wait_for_agent`, `answer_agent`,
+`interrupt_agent`, `list_agents` and `app_read_thread` route by that id, so
+the model never learns which host it is talking to. The tool text tells the
+model when to use a Mac host: anything that needs Xcode, the simulator, a
+Mac app, or files that live on the Mac. The box thread's rules still gate a
+remote spawn (`resolveSpawnSpecs` in orchestration.ts: approved models,
+effort, the caps, with the agents on other hosts counted), and the thread on
+the Mac inherits the box thread's permission, so a full-access thread runs
+unattended there and `answer_agent` takes `allow` for its approvals.
+Codex reaches the same fields through `scripts/app-mcp-bridge.mjs`.
+
+Transport. The `threads` offer rides the Mac bridge's reverse RPC
+(`remote/peerCalls.ts`): the Mac's `peer.register` now carries
+`offers: ['mac-bridge', 'threads']`, and the box sends `peer.call` pushes
+naming `thread.start`, `thread.spawn`, `thread.send`, `thread.list`,
+`thread.events` (at most 500 rows, each text field cut to 4,000 characters),
+`thread.check`, `thread.wait`, `thread.interrupt` and `thread.answer`, with
+the box thread as `caller` (its id, title and permission). None of these is
+a contract request: they ride only inside `peer.call`, whose frames are
+admin, so a remote key never names them; the app tools stay local. One
+`thread.wait` is at most 60 s; the box loops windows until the thread settles
+or the tool's timeout passes, so a link that drops mid-wait is seen within a
+window and the call answers the last state the box saw with `linkDown: true`
+instead of hanging. The Mac reports a settle back as `crossHost.settled`
+(admin, a request on its own link), and the box wakes the thread that
+started it the way a local child's settle would, unless a wait already
+covers it.
+
+On the Mac (`src/main/server/remote/crossHostThreads.ts`). Only a saved host
+may call, and every later call must name a thread that host started here
+(`crossHost.owner.<sessionId>`), so a box never reaches a thread of the
+Mac's own or another host's. The box names where it works (its project cwd)
+and its work root; the Mac maps that onto its own checkout through the
+inverse of its path map (the one the harness sync and the history import
+share: `/srv/agents/work/temp-code` → `~/IdeaProjects/temp-code`) or, for a
+checkout the map does not name, `<box work root>/<name>` →
+`<Mac work root>/<name>`; when nothing is there the thread starts in the
+Mac's work root and the result carries `cwdNote`. A thread.start is a root
+thread with its type and title, under the Mac project at that cwd; a
+thread.spawn is a child whose `parentId` is the box thread, so the Mac's
+fleet view lists it under the box thread it shows over the link (the Mac
+holds no log for that parent: the spawn is recorded on the box, as
+`agent-spawned` with the Mac's environment id). A writing agent gets a
+worktree there as it would locally. Such a child is not archived with its
+parent (the parent is not on the Mac); archive it from the Mac when done.
+
+On the box (`src/main/server/crossHostAgents.ts`), what a thread started
+or spawned is kept in `crossHost.children.<sessionId>` with the last state
+seen, so `list_agents` still names it, marked `linkDown`, while the Mac is
+away. `TEMP_CODE_WORK_ROOT` sets an isolated instance's work root (the
+proof's two hosts). Proof: `bun run script:e2e-cross-host-threads`
+(scripts/e2e-cross-host-threads.ts): two headless instances paired over the
+fixed port under `xvfb-run`; a thread on the box starts a thread on the
+Mac, sends it a message, waits for it to settle, reads its rows, spawns an
+agent there and collects its report, lists both with host, then drops the
+link and gets `linkDown` and the refusal. No turn reaches a model there
+(TEMP_CODE_FAKE_PROVIDERS is a dead origin); the live pass is a box thread
+with the Mac app open.
+
 ## Updating
 
 For a ref already on GitHub, run from the Mac:

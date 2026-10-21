@@ -448,9 +448,11 @@ public struct GoalEvent: Codable, Hashable, Sendable {
 
 public struct AgentSpawnedEvent: Codable, Hashable, Sendable {
     public let childSessionId: String
+    public let environmentId: String?
 
-    public init(childSessionId: String) {
+    public init(childSessionId: String, environmentId: String? = nil) {
         self.childSessionId = childSessionId
+        self.environmentId = environmentId
     }
 }
 

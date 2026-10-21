@@ -33,6 +33,8 @@ import { claudeConfigDir, codexHomeDir } from './sessionMove'
 import { PeerCalls, handlePeerRequest } from './remote/peerCalls'
 import { handlePeerPull, macWriteStages } from './macWriteStage'
 import { MacBridge, handleMacBridge } from './remote/macBridge'
+import { CrossHostThreads, crossHostOffers } from './remote/crossHostThreads'
+import { CrossHostAgents } from './crossHostAgents'
 import { MacThreadTokens, MacTools, macToolsHooks, rebootWhenSettled } from './macTools'
 import { MacRunCalls, MacRunLive } from './macRunLive'
 import { macBridgeLandingRoot } from './macBridgeLanding'
@@ -92,6 +94,7 @@ import {
   orchSendToAgent,
   orchSpawnAgent,
   orchWaitForAgent,
+  setCrossHostAgents,
   setOrchestrationRegistry
 } from './orchestration'
 import {
@@ -101,6 +104,7 @@ import {
   appReadThread,
   appStartThread,
   setAppBridge,
+  setAppCrossHost,
   setAppToolsRegistry
 } from './apptools'
 import { DEFAULT_RULES } from '@shared/rules'
@@ -341,6 +345,7 @@ export async function startServer(
         accounts.nudge()
       },
       onPush: (from, push) => {
+        if (crossHostThreads.onPeerPush(from, push)) return
         if (!macBridge.onPeerPush(from, push)) accountSync.onPeerPush(from, push)
       }
     }
@@ -386,7 +391,22 @@ export async function startServer(
     link: (id) => {
       const link = peers.get(id)
       return link?.connected ? (method, params, opts) => link.request(method, params, opts) : null
-    }
+    },
+    offers: crossHostOffers
+  })
+  // Threads another host starts here (the Mac side of docs/box.md "Starting a
+  // thread on the Mac from the box"): served over the same link as the bridge.
+  const crossHostThreads = new CrossHostThreads({
+    environmentId,
+    store,
+    registry,
+    environments: () => listEnvironments(store).map((e) => ({ id: e.id, name: e.name })),
+    link: (id) => {
+      const link = peers.get(id)
+      return link?.connected ? (method, params, opts) => link.request(method, params, opts) : null
+    },
+    pathMap: () => harnessSync.pathMap(),
+    workRoot: () => workRoot(store).root
   })
   const peerCalls = new PeerCalls(environmentId)
   // A running mac_run's output, live on its thread's tool row (macRunLive.ts).
@@ -406,6 +426,19 @@ export async function startServer(
   })
   macToolsHooks.current = macTools
   macToolsHooks.tokens = macTokens
+  // The box side: a thread here starting or spawning on a registered Mac,
+  // reached by the app tools (apptools.ts, orchestration.ts).
+  const crossHostAgents = new CrossHostAgents({
+    environmentId,
+    store,
+    sessions: registry,
+    calls: peerCalls,
+    macPeerOf: (id) => macTools.macPeerOf(id).macPeer,
+    hostName: (id) => listEnvironments(store).find((e) => e.id === id)?.name ?? null,
+    workRoot: () => workRoot(store).root
+  })
+  setCrossHostAgents(crossHostAgents)
+  setAppCrossHost(crossHostAgents)
   // A thread that ends here (archived, deleted, moved away) takes its interactive jobs on the Mac with it.
   registry.onRemoved((ids) => macTools.threadsEnded(ids))
   registry.onMeta((m) => {
@@ -741,6 +774,11 @@ export async function startServer(
         // A Mac pulling a staged mac.writeFile, only on the socket the call went out on (macWriteStage.ts).
         if (req.method === 'peer.pull')
           return sendFrame({ id: req.id, ok: true, result: handlePeerPull(macWriteStages, { connection, remote: principal.kind === 'remote' }, req.params) })
+        // A Mac reporting that a thread it runs for this host settled (remote/crossHostThreads.ts).
+        if (req.method === 'crossHost.settled') {
+          if (principal.kind !== 'remote') throw new Error(`forbidden: ${req.method} is for another host's main process`)
+          return sendFrame({ id: req.id, ok: true, result: crossHostAgents.settled(req.params.from, req.params) })
+        }
         const macBridged = handleMacBridge(req, macBridge)
         if (macBridged.handled) return sendFrame({ id: req.id, ok: true, result: macBridged.result })
         const macTooled = await macTools.handle(req)
@@ -1453,7 +1491,7 @@ export async function startServer(
             sendFrame({
               id: req.id,
               ok: true,
-              result: appReadThread(registry, req.params.threadId)
+              result: await appReadThread(registry, req.params.threadId, caller)
             })
             break
           }
@@ -1510,7 +1548,7 @@ export async function startServer(
             sendFrame({
               id: req.id,
               ok: true,
-              result: orchCheckAgent(callerOf(registry, req.params.sessionId), req.params.agentId)
+              result: await orchCheckAgent(callerOf(registry, req.params.sessionId), req.params.agentId)
             })
             break
           case 'app.waitForAgent':
@@ -1541,7 +1579,7 @@ export async function startServer(
             sendFrame({
               id: req.id,
               ok: true,
-              result: orchListAgents(callerOf(registry, req.params.sessionId))
+              result: await orchListAgents(callerOf(registry, req.params.sessionId))
             })
             break
         }
@@ -1684,6 +1722,7 @@ export async function startServer(
       uploads.close()
       sessionMover.close()
       macBridge.close()
+      crossHostThreads.close()
       peerCalls.close()
       peers.close()
       m3a.accounts.stop()

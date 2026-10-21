@@ -31,6 +31,9 @@ import { preview as previewHtml, publish as publishHtml, type HtmlPreview } from
 import { INLINE_DIGEST_MAX_CHARS, mirrorRelPath, threadDigest } from './mirror'
 import type { SessionRegistry } from './sessions'
 import { macToolsHooks } from './macTools'
+import type { CrossHostAgents } from './crossHostAgents'
+import { HOST_PARAM_DESCRIPTION, toolLine } from './orchestration'
+import { CROSS_HOST_EVENTS_MAX, type ThreadEventsResult } from '@shared/contract-crosshost'
 
 /**
  * App tools (docs/PLAN-2.md M10): every thread is a first-class citizen of
@@ -47,6 +50,11 @@ import { macToolsHooks } from './macTools'
  */
 
 let registry: SessionRegistry | null = null
+// Threads on other hosts (crossHostAgents.ts): app_start_thread with environmentId goes there.
+let crossHost: CrossHostAgents | null = null
+export function setAppCrossHost(c: CrossHostAgents | null): void {
+  crossHost = c
+}
 export function setAppToolsRegistry(r: SessionRegistry): void {
   registry = r
 }
@@ -121,13 +129,52 @@ export function appListThreads(
     .map(threadRow)
 }
 
-export function appReadThread(reg: SessionRegistry, threadId: string): string | null {
+export async function appReadThread(
+  reg: SessionRegistry,
+  threadId: string,
+  caller?: SessionMeta
+): Promise<string | null> {
+  // A `<host>:<id>` thread this caller started or spawned on another host:
+  // its rows come over the link (crossHostAgents.ts) and read like a digest.
+  if (caller && crossHost?.isRemote(threadId)) {
+    const r = await crossHost.events(caller, threadId, 0, CROSS_HOST_EVENTS_MAX)
+    if (typeof r === 'string') return r
+    return remoteDigest(threadId, r)
+  }
   const meta = reg.get(threadId)
   if (!meta) return null
   let digest = threadDigest(reg, meta)
   if (digest.length > INLINE_DIGEST_MAX_CHARS) {
     digest = `_[earlier turns trimmed]_\n\n…${digest.slice(-INLINE_DIGEST_MAX_CHARS)}`
   }
+  return digest
+}
+
+/** The rows of a thread on another host as the same kind of digest: dialogue plus one-line tool actions. */
+export function remoteDigest(threadId: string, r: ThreadEventsResult): string {
+  const lines: string[] = [`_${threadId} on its host · status ${r.status} · ${r.rows.length} rows (through seq ${r.lastSeq})_`, '']
+  for (const { event } of r.rows) {
+    const e = event as { type?: string; text?: string; delta?: boolean; name?: string; input?: unknown; message?: string; status?: string; parentCallId?: string }
+    switch (e.type) {
+      case 'user-text':
+        lines.push(`**User:** ${e.text ?? ''}`, '')
+        break
+      case 'assistant-text':
+        if (!e.delta && !e.parentCallId && e.text) lines.push(e.text, '')
+        break
+      case 'tool-call':
+        if (e.name) lines.push(`- ${toolLine(e.name, e.input)}`)
+        break
+      case 'error':
+        lines.push(`_error: ${e.message ?? ''}_`, '')
+        break
+      case 'status':
+        if (e.status && e.status !== 'running' && e.status !== 'starting') lines.push(`_status: ${e.status}_`, '')
+        break
+    }
+  }
+  let digest = lines.join('\n')
+  if (digest.length > INLINE_DIGEST_MAX_CHARS) digest = `_[earlier turns trimmed]_\n\n…${digest.slice(-INLINE_DIGEST_MAX_CHARS)}`
   return digest
 }
 
@@ -143,6 +190,8 @@ export interface StartThreadArgs {
   title?: string
   /** Claude models with a 1M window only; refused for anything else. */
   context1m?: boolean
+  /** Start it on another host: `mac`, or an environment id (crossHostAgents.ts). */
+  environmentId?: string
 }
 
 /** Create a thread and kick it off exactly as if the user had — same
@@ -152,7 +201,7 @@ export async function appStartThread(
   reg: SessionRegistry,
   caller: SessionMeta,
   args: StartThreadArgs
-): Promise<{ threadId: string; title: string } | string> {
+): Promise<{ threadId: string; title: string; host?: string; cwd?: string; cwdNote?: string } | string> {
   // A model id names its harness: a gpt model requested under provider
   // "claude" routes to codex. Only a model NO provider serves is refused.
   const requested = args.model || CATALOG[args.provider].defaultModel
@@ -174,6 +223,31 @@ export async function appStartThread(
   const projectId = args.projectId ?? caller.projectId
   if (args.projectId && !reg.getProject(args.projectId)) {
     return `refused: unknown projectId "${args.projectId}".`
+  }
+  // On another host: the Mac maps this box's cwd onto its own checkout and
+  // runs the thread as its own (remote/crossHostThreads.ts); seeds stay
+  // here, since the Mac has no copy of these threads.
+  if (args.environmentId?.trim()) {
+    if (!crossHost) return 'refused: threads on other hosts are not available here'
+    if (args.seedThreadIds?.length) return 'refused: seedThreadIds cannot ride to another host; put what the thread needs into firstMessage.'
+    const callerNow = reg.get(caller.id) ?? caller
+    const cwd = (projectId ? reg.getProject(projectId)?.cwd : null) ?? callerNow.cwd
+    try {
+      const started = await crossHost.startThread(callerNow, args.environmentId, {
+        threadType: args.threadType,
+        provider,
+        model,
+        reasoning,
+        ...(args.context1m ? { context1m: true } : {}),
+        firstMessage: args.firstMessage,
+        ...(args.title ? { title: args.title } : {}),
+        ...(args.planPath ? { planPath: args.planPath } : {}),
+        cwd
+      })
+      return started
+    } catch (err) {
+      return `refused: ${err instanceof Error ? err.message : String(err)}`
+    }
   }
   const seeds = (args.seedThreadIds ?? []).map((id) => reg.get(id))
   if (seeds.some((s) => !s)) {
@@ -339,11 +413,11 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
       ),
       tool(
         'app_read_thread',
-        'Read another thread as a readable digest (dialogue + one-line tool actions). Works across projects.',
+        'Read another thread as a readable digest (dialogue + one-line tool actions). Works across projects, and for a `<host>:<id>` thread this one started or spawned on another host.',
         { threadId: z.string() },
         async (args) => {
           if (!registry) return text('app registry not ready')
-          const digest = appReadThread(registry, args.threadId)
+          const digest = await appReadThread(registry, args.threadId, session)
           return text(
             digest ??
               `refused: unknown thread "${args.threadId}". app_list_threads shows valid ids.`
@@ -373,6 +447,7 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
               'Claude models only: run the thread with the 1M context window. Rejected for models that do not offer it.'
             ),
           projectId: z.string().optional().describe("Defaults to this thread's project"),
+          environmentId: z.string().optional().describe(HOST_PARAM_DESCRIPTION),
           planPath: z
             .string()
             .optional()

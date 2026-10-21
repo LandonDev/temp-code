@@ -122,6 +122,13 @@ const CITE_TOOL_PARAMS = {
   title: "The page's title, when you know it."
 }
 
+/** The host field a single spawn_agent and app_start_thread take (orchestration.ts HOST_PARAM_DESCRIPTION). */
+const HOST_PARAM = {
+  type: 'string',
+  description:
+    "Which host runs it: omit for this machine; `mac` for this thread's Mac (or the only Mac linked), or a host's environment id. Use a Mac host for anything that needs Xcode, the iOS simulator, a Mac app, or files that live on the Mac: the thread runs there, as an ordinary thread the Mac app shows under This Mac, and its agent id comes back as `<host>:<id>` so every later call reaches it."
+}
+
 /** Fields a single spawn_agent and each batch entry share. */
 const SPAWN_SPEC = {
   provider: {
@@ -191,7 +198,7 @@ export const TOOLS = [
   {
     name: 'app_read_thread',
     description:
-      'Read another thread as a readable digest (dialogue + one-line tool actions). Works across projects.',
+      'Read another thread as a readable digest (dialogue + one-line tool actions). Works across projects, and for a `<host>:<id>` thread this one started or spawned on another host.',
     inputSchema: {
       type: 'object',
       properties: { threadId: { type: 'string' } },
@@ -218,6 +225,7 @@ export const TOOLS = [
             'Claude models only: run the thread with the 1M context window. Rejected for models that do not offer it.'
         },
         projectId: { type: 'string', description: "Defaults to this thread's project" },
+        environmentId: HOST_PARAM,
         planPath: {
           type: 'string',
           description:
@@ -239,6 +247,7 @@ export const TOOLS = [
       type: 'object',
       properties: {
         ...SPAWN_SPEC,
+        environmentId: HOST_PARAM,
         task: {
           type: 'string',
           description: 'The complete, self-contained task prompt (one agent; omit when passing agents)'
@@ -304,15 +313,16 @@ export const TOOLS = [
   {
     name: 'answer_agent',
     description:
-      'Answer a subagent\'s pending structured question (the "pending" payload from wait_for_agent/check_agent). answers[i] = chosen labels for questions[i]. Permission approvals cannot be answered this way — those belong to the user.',
+      'Answer a subagent\'s pending structured question (the "pending" payload from wait_for_agent/check_agent). answers[i] = chosen labels for questions[i]. A local agent\'s permission approvals belong to the user; an agent on another host (a `<host>:<id>` agent id) takes `allow` for its approval, since that thread runs under this one\'s grant there.',
     inputSchema: {
       type: 'object',
       properties: {
         agentId: { type: 'string' },
         requestId: { type: 'string' },
-        answers: { type: 'array', items: { type: 'array', items: { type: 'string' } } }
+        answers: { type: 'array', items: { type: 'array', items: { type: 'string' } } },
+        allow: { type: 'boolean', description: 'An approval on another host: true allows, false denies' }
       },
-      required: ['agentId', 'requestId', 'answers']
+      required: ['agentId', 'requestId']
     }
   },
   {
@@ -327,7 +337,7 @@ export const TOOLS = [
   },
   {
     name: 'list_agents',
-    description: 'List the subagents of this session with their status.',
+    description: 'List the subagents of this session with their status (those on other hosts carry host and a `<host>:<id>` agent id).',
     inputSchema: { type: 'object', properties: {} }
   },
   // ── agent HTML pages ───────────────────────────────────────────────

@@ -269,6 +269,8 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'peer.chunk': 'admin',
   'peer.progress': 'admin',
   'peer.pull': 'admin',
+  // A Mac reporting that a thread it runs for this host settled (contract-crosshost.ts); rides its admin link.
+  'crossHost.settled': 'admin',
   'mac.readFile': 'local',
   'mac.listDir': 'local',
   'mac.fetchFile': 'local',
