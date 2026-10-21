@@ -1,5 +1,5 @@
 {
-  "n": 274,
-  "notes": "Cross-host workflow: Mac threads from the box, a quiet Mac bridge with a load guard, one project row for both hosts, thread resources with clean-up, account removals that propagate, deploy drift, two-way memory sync, branch travel, threads that survive a restart, pause that reaches the Mac, deploy and publish from the app, skills parity, failure cards, open on the Mac, the device row and fleet switches. Speed: a windowed transcript, a split bundle, the launch mirror, warm connections, build once deploy twice and a tiered gate. Workflow: project preambles, optional review before merge, quota-aware routing, thread notes, cross-host search, plans that start their own build, and Plan for Project",
-  "ts": 1792610923027
+  "n": 275,
+  "notes": "Everything in v274 (the cross-host workflow, the speed work and the plan flow), plus the Swift contract and the phone client compiling again: FailureKind keeps its own unknown literal with unrecognized(String) as the fallback case, and the fold shows a notice event as a status row",
+  "ts": 1792611190904
 }
