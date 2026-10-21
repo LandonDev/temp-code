@@ -22,13 +22,11 @@ import {
   resolveModel,
 } from "../../lib/models";
 import {
-  sessionDisplayTitle,
   type HarnessId,
   type RuntimeMode,
   type Session,
 } from "../../lib/session";
 import { policyForMode } from "../../lib/tcserver/access";
-import { startThread } from "../../lib/tcserver/commands";
 import { implementPlan } from "../../lib/tcserver/plans";
 import { sessionStore } from "../../lib/tcserver/store";
 import type { SessionMeta, ThreadType } from "../../lib/tcserver/types";
@@ -343,15 +341,6 @@ function HandoffChip({
   );
 }
 
-/** Coordination brief for one of several parallel workers on one plan. */
-const workerBrief = (i: number, n: number, title?: string): string =>
-  n === 1
-    ? `Implement the plan${title ? ` "${title}"` : ""}.`
-    : `Implement the plan. You are worker ${i + 1} of ${n} working this plan in parallel. Coordinate ONLY through the plan file's ## Tasks checklist: re-read the plan file before picking each task; skip tasks that are ticked or marked in progress; when you pick one, append "(in progress: worker ${i + 1})" to its line, and replace that marker with a clean tick when done.`;
-
-const ORCHESTRATION_BRIEF =
-  "Orchestrate implementation of the plan across subagents.";
-
 type BuildType = "implementation" | "orchestration";
 
 const ACTION_ROW =
@@ -359,9 +348,11 @@ const ACTION_ROW =
 const ACTION_TILE =
   "flex size-8 shrink-0 items-center justify-center rounded-lg bg-content/5";
 
-/** The plan pane's one action: hand the approved plan to builders — who
- *  (model + effort), how many, or an orchestrator that splits it itself. */
-function StartButton({ session, tasks }: { session: Session; tasks: string[] }) {
+/** The plan pane's one action: hand the approved plan to ONE builder — who
+ *  (model + effort), as a single implementation thread, or as an
+ *  orchestrator that splits it across subagents itself. A plan never
+ *  starts more than one thread. */
+export function StartButton({ session, tasks }: { session: Session; tasks: string[] }) {
   const reduce = useReducedMotion();
   const trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -375,7 +366,6 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
     session.modelSettings,
   );
   const [mode, setMode] = useState<RuntimeMode>(session.runtimeMode);
-  const [workers, setWorkers] = useState(1);
   // The build's finish line, derived from the plan; editable, clearable —
   // empty starts the thread with no goal.
   const [goal, setGoal] = useState(
@@ -392,51 +382,20 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
     if (busy) return;
     setBusy(type);
     try {
-      const base = sessionDisplayTitle(session.title, session.harness).replace(
-        /^Plan:?\s*/i,
-        "",
-      );
-      const n = type === "implementation" ? workers : 1;
       const rules = normalizeTune(tune);
       // One build: the server's own start (plan.implement) — the function
       // the auto-start runs, so the links, the handoff row and the archive
-      // are the same whichever way the build began.
-      if (n === 1) {
-        await implementPlan(session.environmentId, session.id, {
-          threadType: type,
-          provider: choice.harness,
-          model: nativeModelId(choice.model),
-          reasoning: settings.effort,
-          context1m: settings.context === "1m",
-          permission: policyForMode(mode),
-          goal: goal.trim() || undefined,
-          ...(type === "orchestration" && rules ? { threadRules: rules } : {}),
-        });
-        return;
-      }
-      for (let i = 0; i < n; i++) {
-        await startThread(
-          {
-            environmentId: session.environmentId,
-            threadType: type,
-            provider: choice.harness,
-            model: nativeModelId(choice.model),
-            reasoning: settings.effort,
-            context1m: settings.context === "1m",
-            permission: policyForMode(mode),
-            projectId: session.projectId ?? null,
-            workspaceId: session.workspaceId ?? null,
-            cwd: session.cwd,
-            planPath: session.planPath ?? undefined,
-            goal: goal.trim() || undefined,
-            title: n > 1 ? `${base} (${i + 1}/${n})` : base,
-            ...(type === "orchestration" && rules ? { threadRules: rules } : {}),
-          },
-          type === "implementation"
-            ? workerBrief(i, n, base)
-            : ORCHESTRATION_BRIEF,
-        );
-      }
+      // are the same whichever way the build began. Never more than one.
+      await implementPlan(session.environmentId, session.id, {
+        threadType: type,
+        provider: choice.harness,
+        model: nativeModelId(choice.model),
+        reasoning: settings.effort,
+        context1m: settings.context === "1m",
+        permission: policyForMode(mode),
+        goal: goal.trim() || undefined,
+        ...(type === "orchestration" && rules ? { threadRules: rules } : {}),
+      });
     } finally {
       setBusy(null);
     }
@@ -574,28 +533,7 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-[13px] font-medium">Implement</span>
-                    <span className="block text-xs text-content/50">Work the plan's tasks</span>
-                  </span>
-                  {/* How many parallel implementation threads. */}
-                  <span
-                    onClick={(e) => e.stopPropagation()}
-                    className="flex shrink-0 gap-0.5 rounded-md bg-content/5 p-0.5"
-                  >
-                    {[1, 2, 3].map((n) => (
-                      <button
-                        key={n}
-                        type="button"
-                        onClick={() => setWorkers(n)}
-                        aria-label={`${n} thread${n > 1 ? "s" : ""}`}
-                        className={`flex size-5 items-center justify-center rounded-md text-xs transition-colors ${
-                          workers === n
-                            ? "bg-content/10 text-content"
-                            : "text-content/50 hover:text-content"
-                        }`}
-                      >
-                        {n}
-                      </button>
-                    ))}
+                    <span className="block text-xs text-content/50">One thread works the plan's tasks</span>
                   </span>
                 </div>
                 <div
