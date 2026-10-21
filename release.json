@@ -1,5 +1,5 @@
 {
-  "n": 276,
-  "notes": "A mock page of a box thread opens on the Mac: the page URL names the thread's host and the desktop fetches another host's page once over the admin peer link (page.read), so an html_render of a box thread no longer answers not found. Also a restored box thread paints its tail, not its first 300 rows, and docs/box.md on the integrations and API keys placed by hand on the box",
-  "ts": 1792616124831
+  "n": 277,
+  "notes": "Master threads: a project's master runs a batch of root threads, queued under a host cap, with the gate out of the children and Fable for orchestrators only",
+  "ts": 1792622432691
 }
