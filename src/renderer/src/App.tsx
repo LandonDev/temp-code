@@ -18,7 +18,7 @@ import { WhatsNewDialog } from "./chrome/WhatsNewDialog";
 import { NewWorkspaceDialog } from "./chrome/ProjectDialogs";
 import { RemoteFolderDialog } from "./chrome/RemoteFolderDialog";
 import { environment, environmentAt, environmentStore, stepEnvironment } from "./stores/environment";
-import { subscribeEnvironmentSwitch } from "./lib/environmentSwitch";
+import { subscribeEnvironmentSwitch, workspaceToLandOn } from "./lib/environmentSwitch";
 import { ShellTitleBar, type HeaderEvents } from "./chrome/ShellTitleBar";
 import { MenuBar } from "./chrome/MenuBar";
 import { FilePicker } from "./chrome/FilePicker";
@@ -3309,8 +3309,9 @@ export default function App() {
     );
   }, []);
 
-  /** Move the window to another environment: the workspace it was last on
-   *  there, else its first workspace, else a loose chat on that machine. */
+  /** Move the window to another environment: the same project there, else
+   *  the workspace it was last on there, else its first workspace, else a
+   *  loose chat on that machine. */
   const switchToEnvironment = useCallback(
     (id: string) => {
       if (!registry.has(id) || id === environmentStore.getState().currentId) return;
@@ -3322,9 +3323,8 @@ export default function App() {
       const own = workspaces.filter((w) => w.environmentId === id);
       const unshared = own.filter((w) => environmentOfCwd(w.path) === id);
       const pool = unshared.length > 0 ? unshared : own;
-      const target =
-        pool.find((w) => remembered && sameProjectPath(w.path, remembered)) ??
-        [...pool].sort((a, b) => a.createdAt - b.createdAt)[0];
+      const from = workspaceByPath(workspaces, projectStore.getState().projectCwd);
+      const target = workspaceToLandOn(pool, from, remembered, sameProjectPath);
       environment.follow(id, target?.path ?? null);
       console.info(`[monocode:environment] switch to ${id}${target ? ` at ${target.path}` : " (no workspace there: a loose chat)"}`);
       if (target) {
