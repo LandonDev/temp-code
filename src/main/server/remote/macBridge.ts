@@ -29,8 +29,10 @@ import {
   type MacReadFileResult,
   type MacRunResult
 } from '@shared/contract-macbridge'
+import type { MacDecideRemember } from '@shared/contract-macbridge-rules'
 import { insideRoots, realSpelling } from './fence'
 import { isSecretPath } from './harnessSet'
+import { MacBridgeRuleBook, readRemembers, runOffer, runRememberKind } from './macBridgeRules'
 import { runMacCommand, type RunningCommand } from './macRunner'
 import { servePeerCall, type LinkRequest } from './peerCalls'
 
@@ -53,8 +55,9 @@ import { servePeerCall, type LinkRequest } from './peerCalls'
  *    admits asks (or, with the bridge off, is refused) whether or not it
  *    exists, so the box learns nothing of it until the person allows.
  *  - Every command asks, showing argv and cwd, whatever the thread's
- *    permission mode on the box, with "allow this exact command for this
- *    thread". It runs through the login shell (macRunner.ts).
+ *    permission mode on the box, with a remember choice (exact, folder,
+ *    program, thread; macBridgeRules.ts, which also holds the always-ask
+ *    floor). It runs through the login shell (macRunner.ts).
  *
  * The prompt is a `macBridge.request` push to this Mac's own local sockets
  * (its renderer), answered by `macBridge.decide`, which is local-only: no
@@ -217,26 +220,26 @@ export function asText(buf: Buffer): string | null {
 
 interface Pending {
   request: MacBridgeRequest
-  decide: (allow: boolean, remember: boolean) => void
+  decide: (allow: boolean, remember: Remember) => void
   stop?: () => void
   timer: NodeJS.Timeout
 }
 
-interface ThreadMemory {
-  folders: Set<string>
-  commands: Set<string>
-}
+/** A decide's remember (contract-macbridge-rules.ts). */
+type Remember = MacDecideRemember
 
 export class MacBridge {
   private readonly pendingById = new Map<string, Pending>()
   private readonly listeners = new Set<(push: MacBridgePush) => void>()
-  private readonly memory = new Map<string, ThreadMemory>()
+  /** Remembered approvals per (host, thread), in memory only (macBridgeRules.ts). */
+  readonly rules: MacBridgeRuleBook
   private readonly registered = new Set<string>()
   private readonly home: string
   private readonly log: (line: string) => void
 
   constructor(private readonly deps: MacBridgeDeps) {
     this.home = deps.home ?? homedir()
+    this.rules = new MacBridgeRuleBook(this.home)
     this.log = deps.log ?? ((line) => console.log(`[mac-bridge] ${line}`))
   }
 
@@ -355,7 +358,7 @@ export class MacBridge {
       .sort((a, b) => a.createdAt - b.createdAt)
   }
 
-  decide(id: string, allow: boolean, remember = false): { ok: true } {
+  decide(id: string, allow: boolean, remember: MacDecideRemember = false): { ok: true } {
     const p = this.pendingById.get(id)
     if (!p) throw new Error('that request is no longer waiting')
     if (p.request.status === 'running') {
@@ -373,7 +376,7 @@ export class MacBridge {
     until: number
   ): {
     id: string
-    answer: Promise<{ allow: boolean; remember: boolean; outcome: MacBridgeOutcome }>
+    answer: Promise<{ allow: boolean; remember: Remember; outcome: MacBridgeOutcome }>
   } {
     const id = `mb_${randomBytes(9).toString('base64url')}`
     const now = Date.now()
@@ -384,7 +387,7 @@ export class MacBridge {
       expiresAt: until,
       status: 'pending'
     }
-    const answer = new Promise<{ allow: boolean; remember: boolean; outcome: MacBridgeOutcome }>(
+    const answer = new Promise<{ allow: boolean; remember: Remember; outcome: MacBridgeOutcome }>(
       (resolve) => {
         let settled = false
         const timer = setTimeout(
@@ -420,13 +423,6 @@ export class MacBridge {
     clearTimeout(p.timer)
     this.pendingById.delete(id)
     this.emit({ push: 'macBridge.resolved', id, outcome })
-  }
-
-  private memoryOf(envId: string, sessionId: string): ThreadMemory {
-    const key = `${envId}\0${sessionId}`
-    let m = this.memory.get(key)
-    if (!m) this.memory.set(key, (m = { folders: new Set(), commands: new Set() }))
-    return m
   }
 
   // ── a call from a box ──────────────────────────────────────────────
@@ -469,16 +465,17 @@ export class MacBridge {
     // asks (or was refused above) whether or not it exists.
     const real = macPath(args.path, this.home)
     const isDir = method === 'mac.listDir'
-    const memory = this.memoryOf(env.id, thread.id)
     const full = policy === 'full' ? { home: this.home } : null
     const verdict = readVerdict(real, {
       managed: this.deps.managedRoots(),
       shared: this.sharedOf(env.id),
-      remembered: [...memory.folders],
+      remembered: this.rules.readFolders(env.id, thread.id),
       full
     })
-    if (verdict.allow) line(`allowed (${verdict.why})`)
-    else {
+    if (verdict.allow) {
+      if (verdict.why === 'remembered') this.rules.creditRead(env.id, thread.id, real)
+      line(`allowed (${verdict.why})`)
+    } else {
       // Under full only keys, credentials and the dirs above home ask: each
       // time, never remembered as a folder (that would admit the secret too).
       const folder = full ? null : rememberFolder(real, isDir, this.home)
@@ -504,8 +501,9 @@ export class MacBridge {
             : 'denied at the Mac'
         )
       }
-      if (decision.remember && folder) memory.folders.add(folder)
-      line(`allowed (asked${decision.remember && folder ? ', folder remembered' : ''})`)
+      const keep = readRemembers(decision.remember) && !!folder
+      if (keep) this.rules.addRead(ruleThread(env, thread), folder)
+      line(`allowed (asked${keep ? ', folder remembered' : ''})`)
       this.finish(id, 'allowed')
     }
     if (method === 'mac.listDir') return listDir(real)
@@ -527,8 +525,6 @@ export class MacBridge {
       throw new Error(`no such folder on the Mac: ${cwd}`)
     const timeoutMs = args.timeoutMs ?? MAC_RUN_DEFAULT_TIMEOUT_MS
     const spec = { ...(args.argv ? { argv: args.argv } : { command: args.command }), cwd }
-    const key = commandKey(spec)
-    const memory = this.memoryOf(env.id, thread.id)
     const askUntil = Math.min(
       Date.now() + MAC_APPROVAL_WAIT_MS,
       deadlineAt - timeoutMs - REPLY_MARGIN_MS
@@ -544,13 +540,15 @@ export class MacBridge {
         kind: 'run',
         method: 'mac.run',
         ...spec,
-        timeoutMs
+        timeoutMs,
+        ...runOffer(spec, this.home)
       },
       askUntil
     )
-    const remembered = memory.commands.has(key)
+    const rule = this.rules.runAllowed(env.id, thread.id, spec)
+    const remembered = !!rule
     const decision = remembered
-      ? { allow: true, remember: false, outcome: 'allowed' as const }
+      ? { allow: true, remember: false as MacDecideRemember, outcome: 'allowed' as const }
       : await answer
     if (remembered) this.pendingById.get(id)?.decide(true, false)
     if (!decision.allow) {
@@ -559,9 +557,10 @@ export class MacBridge {
         decision.outcome === 'expired' ? 'nobody at the Mac answered in time' : 'denied at the Mac'
       )
     }
-    if (decision.remember) memory.commands.add(key)
+    const kind = runRememberKind(decision.remember)
+    const made = kind ? this.rules.addRun(ruleThread(env, thread), kind, spec) : null
     line(
-      `allowed (${remembered ? 'remembered' : decision.remember ? 'asked, command remembered' : 'asked'}) argv0=${basename(args.argv?.[0] ?? args.command?.split(/\s/)[0] ?? '')}`
+      `allowed (${rule ? `remembered${rule.kind === 'exact' ? '' : `: ${rule.kind}`}` : made ? `asked, ${made.kind === 'exact' ? 'command' : made.kind} remembered` : 'asked'}) argv0=${basename(args.argv?.[0] ?? args.command?.split(/\s/)[0] ?? '')}`
     )
     const p = this.pendingById.get(id)
     const running: RunningCommand = (this.deps.run ?? runMacCommand)({
@@ -588,6 +587,7 @@ export class MacBridge {
       p.decide(false, false)
       this.finish(id, 'expired')
     }
+    this.rules.clear()
     this.listeners.clear()
   }
 }
@@ -677,7 +677,27 @@ export function handleMacBridge(
         handled: true,
         result: bridge.setShared(req.params.environmentId, req.params.folders)
       }
+    case 'macBridge.rules.list':
+      return { handled: true, result: bridge.rules.list(req.params?.sessionId) }
+    case 'macBridge.rules.forget':
+      return {
+        handled: true,
+        result: bridge.rules.forget(req.params.sessionId, req.params.ruleId)
+      }
     default:
       return { handled: false }
+  }
+}
+
+/** The thread a remember rule is filed under. */
+function ruleThread(
+  env: { id: string; name: string },
+  thread: { id: string; title?: string }
+): { environmentId: string; hostName: string; sessionId: string; threadTitle: string } {
+  return {
+    environmentId: env.id,
+    hostName: env.name,
+    sessionId: thread.id,
+    threadTitle: String(thread.title ?? '')
   }
 }

@@ -278,6 +278,9 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'macBridge.policy.get': 'local',
   'macBridge.policy.set': 'local',
   'macBridge.shared.set': 'local',
+  // The Mac's remembered approvals (contract-macbridge-rules.ts): only its own renderer.
+  'macBridge.rules.list': 'local',
+  'macBridge.rules.forget': 'local',
   // Saved hosts and their keys never leave this machine (thread K1).
   'remote.environments.list': 'local',
   'remote.environments.add': 'local',

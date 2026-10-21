@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { MacBridgeHostPolicy, MacBridgePolicy } from '@server/shared/contract-macbridge'
 import { errorText } from '../chrome/ConfirmDialog'
+import { MacBridgeRememberedSection } from '../chrome/MacBridgeRemember'
 import { pickFolder } from '../lib/fs'
 import {
   refreshMacBridgeHosts,
@@ -77,6 +78,7 @@ export function MacBridgeSettings() {
       ) : (
         hosts.map((host) => <HostRow key={host.environmentId} host={host} run={run} />)
       )}
+      <MacBridgeRememberedSection />
     </>
   )
 }

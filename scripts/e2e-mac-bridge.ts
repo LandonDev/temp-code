@@ -21,6 +21,9 @@
  *    macBridge.decide, the output comes back; a wrong token is refused before
  *    the Mac hears of it; the codex stdio bridge lists the mac tools and reads
  *    a file through them
+ *  - remember kinds: a command allowed with remember 'folder' lets a different
+ *    command in that folder run with no prompt; one in another folder and a
+ *    sudo one in the folder still prompt; macBridge.rules.list/forget
  *  - policy read refuses commands, off refuses everything; with the host
  *    removed on mac, box answers "Mac offline"
  * Run: bun scripts/e2e-mac-bridge.ts   (build first: electron-vite build)
@@ -543,6 +546,108 @@ try {
     'a denied command never runs',
     (await runDenied).includes('denied at the Mac') && !existsSync(join(shared, 'should-not-exist'))
   )
+
+  // ── 6b. remember kinds: 'folder' admits the folder, not another, never sudo ──
+  {
+    const pendingRun = (r: BridgeRequest): boolean => r.kind === 'run' && r.status === 'pending'
+    const first = rpc<{ stdout: string }>(box, 'mac.run', {
+      sessionId: sid,
+      token,
+      argv: ['/bin/echo', 'first'],
+      cwd: shared
+    })
+    const card = (await watcher.next(
+      (r) => pendingRun(r) && r.argv?.[1] === 'first'
+    )) as BridgeRequest & {
+      folder?: string
+      program?: string
+    }
+    check(
+      "a run card offers its cwd as the 'folder' rule and its program",
+      card.folder === shared && card.program === 'echo',
+      JSON.stringify(card)
+    )
+    await rpc(mac, 'macBridge.decide', { id: card.id, allow: true, remember: 'folder' })
+    check("allowed with remember 'folder': it ran", (await first).stdout === 'first\n')
+    // A different command in the same folder: answers with no decide from us.
+    const again = await rpc<{ stdout: string }>(box, 'mac.run', {
+      sessionId: sid,
+      token,
+      command: 'printf "second in %s" "$(basename "$PWD")"',
+      cwd: shared
+    })
+    check(
+      'a different command in the remembered folder ran without a prompt',
+      again.stdout === 'second in shared',
+      JSON.stringify(again)
+    )
+    check(
+      'and still showed on the Mac, as running',
+      await until('the remembered run shows as running', 10_000, () =>
+        watcher.seen.some(
+          (r) =>
+            r.status === 'running' &&
+            !!(r as { command?: string }).command?.startsWith('printf "second')
+        )
+      )
+    )
+    // Another folder asks.
+    const elsewhere = errorOf(
+      rpc(box, 'mac.run', { sessionId: sid, token, argv: ['/bin/echo', 'x'], cwd: privateDir })
+    )
+    const askOther = await watcher.next((r) => pendingRun(r) && r.cwd === privateDir)
+    check(
+      'a command in another folder prompts',
+      askOther.cwd === privateDir,
+      JSON.stringify(askOther)
+    )
+    await rpc(mac, 'macBridge.decide', { id: askOther.id, allow: false })
+    check('(denied)', (await elsewhere).includes('denied at the Mac'))
+    // sudo in the remembered folder still asks, and offers nothing to remember.
+    const sudo = errorOf(
+      rpc(box, 'mac.run', { sessionId: sid, token, command: 'sudo -n true', cwd: shared })
+    )
+    const askSudo = (await watcher.next(
+      (r) => pendingRun(r) && (r as { command?: string }).command === 'sudo -n true'
+    )) as BridgeRequest & { alwaysAsk?: string }
+    check(
+      'a sudo command in the remembered folder still prompts, marked always-ask',
+      askSudo.cwd === shared && askSudo.alwaysAsk === 'sudo',
+      JSON.stringify(askSudo)
+    )
+    await rpc(mac, 'macBridge.decide', { id: askSudo.id, allow: false })
+    check('(denied)', (await sudo).includes('denied at the Mac'))
+    // The rule is listed; forgetting it brings the prompt back.
+    const rules = await rpc<{ kind: string; folder?: string; uses: number; id: string }[]>(
+      mac,
+      'macBridge.rules.list',
+      { sessionId: sid }
+    )
+    const folderRule = rules.find((r) => r.kind === 'folder')
+    check(
+      "macBridge.rules.list names the thread's folder rule (and its earlier read folder)",
+      folderRule?.folder === shared &&
+        folderRule.uses === 1 &&
+        rules.some((r) => r.kind === 'read-folder' && r.folder === privateDir),
+      JSON.stringify(rules)
+    )
+    const left = await rpc<unknown[]>(mac, 'macBridge.rules.forget', {
+      sessionId: sid,
+      ruleId: folderRule?.id
+    })
+    check('macBridge.rules.forget drops that one rule', left.length === rules.length - 1)
+    const afterForget = errorOf(
+      rpc(box, 'mac.run', { sessionId: sid, token, argv: ['/bin/echo', 'y'], cwd: shared })
+    )
+    const askAgain = await watcher.next((r) => pendingRun(r) && r.argv?.[1] === 'y')
+    await rpc(mac, 'macBridge.decide', { id: askAgain.id, allow: false })
+    check('forgotten: the same folder prompts again', (await afterForget).includes('denied'))
+    await rpc(mac, 'macBridge.rules.forget', { sessionId: sid })
+    check(
+      'forget all: nothing left for the thread',
+      (await rpc<unknown[]>(mac, 'macBridge.rules.list', { sessionId: sid })).length === 0
+    )
+  }
 
   // ── 7. the token ─────────────────────────────────────────────────────
   const seenBeforeToken = watcher.seen.length

@@ -5,6 +5,7 @@ import type {
   MacBridgeRequest,
   MacBridgeThreadState
 } from '@server/shared/contract-macbridge'
+import type { MacDecideRemember } from '@server/shared/contract-macbridge-rules'
 import { LOCAL_ENVIRONMENT_ID, WEB_ENVIRONMENT_ID, registry } from './connection/registry'
 import { isWebMode } from './nativeWeb'
 
@@ -85,7 +86,11 @@ export function startMacBridge(): void {
     })
 }
 
-export function decideMacBridge(id: string, allow: boolean, remember = false): Promise<unknown> {
+export function decideMacBridge(
+  id: string,
+  allow: boolean,
+  remember: MacDecideRemember = false
+): Promise<unknown> {
   const link = local()
   if (!link) return Promise.reject(new Error('not connected'))
   return link.request('macBridge.decide', { id, allow, remember })

@@ -10,8 +10,10 @@ import {
   useAllMacBridgeRequests,
   useMacBridgeRequests
 } from '../lib/macBridge'
+import { loadMacBridgeRules, startMacBridgeRules, useRunRemember } from '../lib/macBridgeRules'
 import { useWorkspaceTabs } from '../stores/workspace'
 import { CircleAlert } from './icons'
+import { RunRememberSelect } from './MacBridgeRemember'
 
 /**
  * The Mac bridge's approval cards (docs/box.md "The Mac bridge"): a box
@@ -38,6 +40,7 @@ function MacBridgeCard({
   showThread: boolean
 }) {
   const [remember, setRemember] = useState(false)
+  const runRemember = useRunRemember(request)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const running = request.status === 'running'
@@ -45,7 +48,9 @@ function MacBridgeCard({
     setBusy(true)
     setError(null)
     try {
-      await decideMacBridge(request.id, allow, remember)
+      const kept = request.kind === 'run' ? runRemember.remember : remember
+      await decideMacBridge(request.id, allow, allow ? kept : false)
+      if (allow && kept) void loadMacBridgeRules()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -54,7 +59,7 @@ function MacBridgeCard({
   }
   const rememberLabel =
     request.kind === 'run'
-      ? 'Allow this exact command for this thread'
+      ? null
       : request.folder
         ? `Allow ${request.folder} for this thread`
         : null
@@ -109,6 +114,13 @@ function MacBridgeCard({
               <span className="min-w-0 truncate">{rememberLabel}</span>
             </label>
           ) : null}
+          {request.kind === 'run' ? (
+            <RunRememberSelect
+              request={request}
+              value={runRemember.choice}
+              onChange={runRemember.setChoice}
+            />
+          ) : null}
           <div className="flex gap-2">
             <button
               type="button"
@@ -157,6 +169,7 @@ export function MacBridgeThreadCards({
 /** Requests of threads not in the active tab, as a stack at the bottom right. */
 export function MacBridgeToasts() {
   useEffect(() => startMacBridge(), [])
+  useEffect(() => startMacBridgeRules(), [])
   const requests = useAllMacBridgeRequests()
   const tabs = useWorkspaceTabs((s) => s.tabs)
   const activeTabId = useWorkspaceTabs((s) => s.activeTabId)
