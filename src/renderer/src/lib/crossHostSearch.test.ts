@@ -1,0 +1,323 @@
+import { describe, expect, it, vi } from "vitest";
+import type { AppSearchHit, ContentHit, FileHit, MessageHit } from "./appSearch";
+import {
+  dedupePairedFiles,
+  formatSeconds,
+  hostTimingLabel,
+  hostsMatching,
+  matchesProject,
+  mergeCrossHost,
+  noteHits,
+  parseSearchQuery,
+  runCrossHostSearch,
+  scoreMessages,
+  transcriptHits,
+  type SearchSnapshot,
+} from "./crossHostSearch";
+import { pairWorkspaces } from "./projectPairs";
+import type { Environment } from "./connection/types";
+import type { WorkspaceMeta } from "./tcserver/types";
+
+const env = (id: string, name: string): Environment => ({ id, name, routes: [], credentialRef: null });
+const ws = (environmentId: string, path: string): WorkspaceMeta =>
+  ({ id: `${environmentId}:${path}`, name: path.split("/").pop(), path, git: true, createdAt: 1, environmentId }) as WorkspaceMeta;
+const pairs = pairWorkspaces([ws("local", "/Users/me/app"), ws("box", "/work/app"), ws("local", "/Users/me/solo")]);
+
+const file = (host: string, path: string, extra: Partial<FileHit> = {}): FileHit => ({
+  id: `file:${host}:${path}`,
+  kind: "file",
+  host,
+  path,
+  relative: path.split("/").slice(-2).join("/"),
+  name: path.split("/").pop() ?? path,
+  score: 10,
+  positions: [],
+  ...extra,
+});
+const content = (host: string, path: string, line: number, extra: Partial<ContentHit> = {}): ContentHit => ({
+  id: `content:${host}:${path}:${line}:1`,
+  kind: "content",
+  host,
+  path,
+  relative: path.split("/").slice(-2).join("/"),
+  name: path.split("/").pop() ?? path,
+  line,
+  column: 1,
+  preview: "x",
+  ...extra,
+});
+const message = (host: string, sessionId: string, seq: number, rank?: number): MessageHit => ({
+  id: `message:${sessionId}:seq-${seq}`,
+  kind: "message",
+  host,
+  sessionId,
+  cwd: "/Users/me/app",
+  harness: "claude",
+  title: sessionId,
+  updatedAt: 0,
+  seq,
+  role: "assistant",
+  preview: "p",
+  score: 0,
+  ...(rank !== undefined ? { rank } : {}),
+});
+
+describe("parseSearchQuery", () => {
+  it("lifts host:, type: and project: tokens out of the words", () => {
+    expect(parseSearchQuery("gateway host:box trace type:thread,file project:Temp-Code")).toEqual({
+      text: "gateway trace",
+      host: "box",
+      types: ["thread", "file"],
+      project: "temp-code",
+    });
+  });
+
+  it("treats a token still being typed, an unknown key and an unknown type as words or nothing", () => {
+    expect(parseSearchQuery("host: fts")).toEqual({ text: "fts", host: null, types: null, project: null });
+    expect(parseSearchQuery("url:http type:bogus")).toEqual({ text: "url:http", host: null, types: null, project: null });
+    expect(parseSearchQuery("type:notes type:files")).toEqual({ text: "", host: null, types: ["note", "file"], project: null });
+    expect(parseSearchQuery("   ")).toEqual({ text: "", host: null, types: null, project: null });
+  });
+});
+
+describe("hostsMatching", () => {
+  const hosts = [env("local", "This Mac"), env("env_box1", "box")];
+  it("names a host by name, by id, or by mac for the macOS host; every host without a token", () => {
+    expect(hostsMatching("box", hosts).map((h) => h.id)).toEqual(["env_box1"]);
+    expect(hostsMatching("env_box1", hosts).map((h) => h.id)).toEqual(["env_box1"]);
+    expect(hostsMatching("mac", hosts).map((h) => h.id)).toEqual(["local"]);
+    expect(hostsMatching("mac", [env("local", "This host"), env("b", "box")], true).map((h) => h.id)).toEqual(["local"]);
+    expect(hostsMatching("mac", [env("local", "This host"), env("b", "box")], false)).toEqual([]);
+    expect(hostsMatching(null, hosts)).toHaveLength(2);
+  });
+});
+
+describe("matchesProject", () => {
+  it("matches the pair's name for both hosts' copies, the folder name, and a project hit's name", () => {
+    expect(matchesProject(file("box", "/work/app/src/a.ts"), "app", pairs)).toBe(true);
+    expect(matchesProject(file("local", "/Users/me/app/src/a.ts"), "APP", pairs)).toBe(true);
+    expect(matchesProject(file("box", "/work/app/src/a.ts"), "solo", pairs)).toBe(false);
+    expect(matchesProject(message("box", "s", 1), "app", pairs)).toBe(true);
+    expect(
+      matchesProject({ id: "p", kind: "project", path: "/x/y", name: "Yard", score: 1, positions: [] }, "yard", pairs),
+    ).toBe(true);
+    expect(matchesProject(file("box", "/work/app/src/a.ts"), null, pairs)).toBe(true);
+  });
+});
+
+describe("dedupePairedFiles", () => {
+  it("folds the same path in two copies of a paired project into the newer copy, naming the other", () => {
+    const older = content("local", "/Users/me/app/src/a.ts", 3, { mtime: 100 });
+    const newer = content("box", "/work/app/src/a.ts", 3, { mtime: 200 });
+    const otherLine = content("box", "/work/app/src/a.ts", 9, { mtime: 200 });
+    const out = dedupePairedFiles([older, newer, otherLine], pairs);
+    expect(out).toHaveLength(2);
+    expect(out[0]).toMatchObject({ host: "box", line: 3, alsoOn: ["local"], newer: true });
+    expect(out[1]).toBe(otherLine);
+  });
+
+  it("keeps the first host's copy when neither is newer, without claiming it is", () => {
+    const a = file("local", "/Users/me/app/README.md");
+    const b = file("box", "/work/app/README.md");
+    const out = dedupePairedFiles([a, b], pairs);
+    expect(out).toEqual([{ ...a, alsoOn: ["box"], newer: false }]);
+    // Order of arrival decides the tie, so the merge sorts hosts first.
+    expect(dedupePairedFiles([b, a], pairs)[0]).toMatchObject({ host: "box", alsoOn: ["local"] });
+  });
+
+  it("leaves a file outside any pair, or in a pair of one, alone", () => {
+    const solo = file("local", "/Users/me/solo/x.ts");
+    const stray = file("box", "/tmp/x.ts");
+    expect(dedupePairedFiles([solo, stray], pairs)).toEqual([solo, stray]);
+  });
+
+  it("a copy with no mtime loses to one that has one", () => {
+    const unknown = content("local", "/Users/me/app/src/a.ts", 1);
+    const dated = content("box", "/work/app/src/a.ts", 1, { mtime: 5 });
+    expect(dedupePairedFiles([unknown, dated], pairs)[0]).toMatchObject({ host: "box", newer: true });
+  });
+});
+
+describe("scoreMessages and mergeCrossHost", () => {
+  it("scores by match quality and recency, never by host", () => {
+    const local = message("local", "a", 1, -2);
+    const remote = message("box", "b", 1, -8);
+    const scanned = message("box", "c", 1);
+    const scored = scoreMessages([local, remote, scanned]) as MessageHit[];
+    expect(scored.map((h) => h.score)).toEqual([18, 24, 20]);
+    // Swap the hosts: the scores follow the ranks, not the hosts.
+    const swapped = scoreMessages([{ ...local, host: "box" }, { ...remote, host: "local" }]) as MessageHit[];
+    expect(swapped.map((h) => h.score)).toEqual([18, 24]);
+  });
+
+  it("merges every host's hits, orders hosts for the tie-break, and applies type: and project:", () => {
+    const perHost = new Map<string, AppSearchHit[]>([
+      ["box", [file("box", "/work/app/README.md"), message("box", "b", 1, -3)]],
+      ["local", [file("local", "/Users/me/app/README.md"), file("local", "/Users/me/solo/s.ts"), message("local", "a", 1, -1)]],
+    ]);
+    const all = mergeCrossHost(perHost, { pairs, hostOrder: ["local", "box"] });
+    expect(all.map((h) => h.id)).toEqual([
+      "file:local:/Users/me/app/README.md",
+      "file:local:/Users/me/solo/s.ts",
+      "message:a:seq-1",
+      "message:b:seq-1",
+    ]);
+    expect(all[0]).toMatchObject({ alsoOn: ["box"], newer: false });
+    expect(mergeCrossHost(perHost, { pairs, hostOrder: ["local", "box"], types: ["thread"] }).map((h) => h.kind)).toEqual([
+      "message",
+      "message",
+    ]);
+    expect(mergeCrossHost(perHost, { pairs, hostOrder: ["local", "box"], project: "solo" }).map((h) => h.id)).toEqual([
+      "file:local:/Users/me/solo/s.ts",
+    ]);
+  });
+});
+
+describe("runCrossHostSearch", () => {
+  const deferred = <T,>(): { promise: Promise<T>; resolve: (v: T) => void; reject: (e: unknown) => void } => {
+    let resolve!: (v: T) => void;
+    let reject!: (e: unknown) => void;
+    const promise = new Promise<T>((ok, fail) => {
+      resolve = ok;
+      reject = fail;
+    });
+    return { promise, resolve, reject };
+  };
+  const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+
+  it("streams partial results per host and source, times each host, and skips an offline one", async () => {
+    let clock = 1000;
+    const snapshots: SearchSnapshot[] = [];
+    const boxThreads = deferred<AppSearchHit[]>();
+    const boxFiles = deferred<AppSearchHit[]>();
+    const macThreads = deferred<AppSearchHit[]>();
+    runCrossHostSearch({
+      hosts: [
+        { environmentId: "local", name: "mac", online: true },
+        { environmentId: "box", name: "box", online: true },
+        { environmentId: "old", name: "laptop", online: false },
+      ],
+      sources: (host) => (host.environmentId === "box" ? [boxThreads.promise, boxFiles.promise] : [macThreads.promise]),
+      onUpdate: (s) => snapshots.push(s),
+      now: () => clock,
+    });
+    await flush();
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0].settled).toBe(false);
+    expect(snapshots[0].progress.map((p) => `${p.name}:${p.state}`)).toEqual(["mac:searching", "box:searching", "laptop:skipped"]);
+    expect(snapshots[0].progress[2].detail).toBe("offline");
+
+    clock = 1300;
+    boxThreads.resolve([message("", "b", 1)]);
+    await flush();
+    expect(snapshots).toHaveLength(2);
+    expect(snapshots[1].hits.get("box")?.map((h) => h.host)).toEqual(["box"]);
+    expect(snapshots[1].progress.find((p) => p.name === "box")).toMatchObject({ state: "searching", elapsedMs: 300 });
+
+    clock = 2200;
+    boxFiles.resolve([file("box", "/work/app/x.ts")]);
+    await flush();
+    expect(snapshots[2].hits.get("box")).toHaveLength(2);
+    expect(snapshots[2].progress.find((p) => p.name === "box")).toMatchObject({ state: "done", elapsedMs: 1200 });
+    expect(snapshots[2].settled).toBe(false);
+
+    clock = 2250;
+    macThreads.resolve([]);
+    await flush();
+    expect(snapshots[3].settled).toBe(true);
+    expect(snapshots[3].progress.find((p) => p.name === "mac")).toMatchObject({ state: "done", elapsedMs: 1250 });
+  });
+
+  it("tolerates one failed source, fails a host whose every source failed, and publishes nothing after cancel", async () => {
+    const snapshots: SearchSnapshot[] = [];
+    const ok = deferred<AppSearchHit[]>();
+    const bad = deferred<AppSearchHit[]>();
+    const allBad = deferred<AppSearchHit[]>();
+    const cancel = runCrossHostSearch({
+      hosts: [
+        { environmentId: "a", name: "a", online: true },
+        { environmentId: "b", name: "b", online: true },
+      ],
+      sources: (host) => (host.environmentId === "a" ? [ok.promise, bad.promise] : [allBad.promise]),
+      onUpdate: (s) => snapshots.push(s),
+      now: () => 0,
+    });
+    bad.reject(new Error("boom"));
+    ok.resolve([file("a", "/x")]);
+    allBad.reject(new Error("down"));
+    await flush();
+    const last = snapshots[snapshots.length - 1];
+    expect(last.settled).toBe(true);
+    expect(last.progress).toEqual([
+      { environmentId: "a", name: "a", state: "done", elapsedMs: 0 },
+      { environmentId: "b", name: "b", state: "failed", elapsedMs: 0, detail: "down" },
+    ]);
+    const count = snapshots.length;
+    cancel();
+    await flush();
+    expect(snapshots).toHaveLength(count);
+  });
+
+  it("a host with nothing to ask is done at once", async () => {
+    const onUpdate = vi.fn();
+    runCrossHostSearch({ hosts: [{ environmentId: "a", name: "a", online: true }], sources: () => [], onUpdate, now: () => 0 });
+    await flush();
+    expect(onUpdate).toHaveBeenCalledTimes(1);
+    expect(onUpdate.mock.calls[0][0]).toMatchObject({ settled: true, progress: [{ state: "done" }] });
+  });
+});
+
+describe("hit builders and labels", () => {
+  it("titles transcript rows from the host's metas and skips loaded threads", () => {
+    const metas = new Map([
+      ["s1", { id: "s1", cwd: "/w", harness: "claude" as const, title: "One", updatedAt: 5 }],
+      ["s2", { id: "s2", cwd: "/w", harness: "codex" as const, title: "Two", updatedAt: 6 }],
+    ]);
+    const hits = transcriptHits(
+      "box",
+      [
+        { sessionId: "s1", seq: 3, role: "user", snippet: "hit", ts: 1, rank: -2 },
+        { sessionId: "s2", seq: 1, role: "assistant", snippet: "loaded", ts: 1 },
+        { sessionId: "gone", seq: 1, role: "assistant", snippet: "x", ts: 1 },
+      ],
+      metas,
+      (id) => id === "s2",
+      (title, harness) => `${title}/${harness}`,
+    );
+    expect(hits).toEqual([
+      {
+        id: "message:s1:seq-3",
+        kind: "message",
+        host: "box",
+        sessionId: "s1",
+        cwd: "/w",
+        harness: "claude",
+        title: "One/claude",
+        updatedAt: 5,
+        seq: 3,
+        role: "user",
+        preview: "hit",
+        score: 16,
+        rank: -2,
+      },
+    ]);
+  });
+
+  it("builds note hits with the host in the id", () => {
+    const [hit] = noteHits("box", [{ id: "n1", title: "T", snippet: "s", updatedAt: Date.now(), sourceCwd: "/w" }]);
+    expect(hit).toMatchObject({ id: "note:box:n1", kind: "note", host: "box", noteId: "n1", cwd: "/w" });
+    expect(hit.score).toBeGreaterThan(12);
+  });
+
+  it("formats the footer line per host state", () => {
+    expect(hostTimingLabel({ environmentId: "b", name: "box", state: "done", elapsedMs: 1234 })).toBe("box: 1.2 s");
+    expect(hostTimingLabel({ environmentId: "b", name: "box", state: "done", elapsedMs: 80 })).toBe("box: 80 ms");
+    expect(hostTimingLabel({ environmentId: "b", name: "box", state: "done", elapsedMs: 12_400 })).toBe("box: 12 s");
+    expect(hostTimingLabel({ environmentId: "b", name: "mac", state: "skipped", elapsedMs: 0, detail: "offline" })).toBe(
+      "mac: skipped (offline)",
+    );
+    expect(hostTimingLabel({ environmentId: "b", name: "mac", state: "failed", elapsedMs: 0, detail: "x" })).toBe("mac: failed (x)");
+    expect(hostTimingLabel({ environmentId: "b", name: "mac", state: "searching", elapsedMs: 0 })).toBe("mac: …");
+    expect(formatSeconds(0)).toBe("1 ms");
+  });
+});

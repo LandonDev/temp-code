@@ -105,6 +105,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'accounts.list': 'read',
   'notes.get': 'read',
   'notes.list': 'read',
+  'notes.search': 'read',
   'search.project': 'read',
   'session.search': 'read',
   'session.list': 'read',

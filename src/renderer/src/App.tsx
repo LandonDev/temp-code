@@ -70,6 +70,7 @@ import {
   nextTerminalTitle,
   openDebugTab,
   openEditorTab,
+  openEditorTabBeside,
   openTerminalTab,
   removePane,
   siblingLeafId,
@@ -312,7 +313,7 @@ import { aliaxChunk, diffChunk, settingsChunk } from "./surfaces/chunks";
 import { SurfaceSkeleton } from "./surfaces/SurfaceSkeleton";
 import { SearchView } from "./surfaces/SearchView";
 import { InboxView, InboxDetailPane } from "./surfaces/InboxView";
-import { NotesView } from "./surfaces/NotesView";
+import { NotesView, focusNote } from "./surfaces/NotesView";
 // Lazy surfaces (surfaces/chunks.ts): none of these is on the first-paint path.
 const DiffPane = diffChunk.surface("DiffPane", <SurfaceSkeleton kind="diff" label="Loading changes" />);
 const SettingsView = settingsChunk.surface("SettingsView", <SurfaceSkeleton kind="page" label="Loading settings" />);
@@ -1969,6 +1970,29 @@ export default function App() {
     ],
   );
 
+  /** ⌘↩ on a search hit: the thread split beside the focused pane; a
+   *  window with no pane to split opens it the ordinary way. */
+  const onOpenSessionBeside = useCallback(
+    async (sessionId: string, seq?: number) => {
+      if (seq !== undefined) requestTranscriptJump(sessionId, seq);
+      const sourceId = currentActiveTab()?.focusedId;
+      const session = await ensureOpenSession(sessionId);
+      if (!session) return;
+      if (!sourceId || !openSessionBesideRef.current) {
+        await onSelectHistorySession(sessionId, seq);
+        return;
+      }
+      openSessionBesideRef.current(sourceId, session, session.cwd, true);
+    },
+    [ensureOpenSession, onSelectHistorySession],
+  );
+
+  /** A note found by search: shown on its own host when the notes view opens. */
+  const onOpenNoteFromSearch = useCallback((environmentId: string, noteId: string) => {
+    focusNote(environmentId, noteId);
+    shell.openNotes();
+  }, []);
+
   onSelectHistorySessionRef.current = onSelectHistorySession;
 
   /** A thread the server made on its own joins the workspace behind the
@@ -2585,6 +2609,34 @@ export default function App() {
     },
     // Reads the active tab through its ref: the identity stays put across
     // tab switches, so the memoised transcripts under it do too.
+    [],
+  );
+
+  /** ⌘↩ on a search hit: the file in a new editor pane beside the focused one. */
+  const onOpenFileBeside = useCallback<OpenFileFn>(
+    (path, navigation, options) => {
+      void (async () => {
+        const resolved =
+          (await resolveOpenablePath(currentGitCwd(), path)) ?? path;
+        rememberOpenedFile(currentSidebarCwd(), resolved);
+        const tab = currentActiveTab();
+        if (!tab) return;
+        const editor = options?.editor ?? editorForPath(resolved);
+        const file = newFileTab(
+          resolved,
+          currentSidebarCwd(),
+          false,
+          editor === "monaco" ? "monaco" : undefined,
+        );
+        setTabs((prev) =>
+          prev.map((entry) =>
+            entry.id === tab.id ? openEditorTabBeside(entry, file) : entry,
+          ),
+        );
+        if (navigation) editors.navigateTo({ path: resolved, ...navigation });
+        setComposerFocused(false);
+      })();
+    },
     [],
   );
 
@@ -3811,8 +3863,11 @@ export default function App() {
             onClose={onLeaveSearch}
             onToggleSidebar={deckLayout ? onToggleSidebar : undefined}
             onOpenFile={onOpenFile}
+            onOpenFileBeside={onOpenFileBeside}
             onOpenSession={onSelectHistorySession}
+            onOpenSessionBeside={onOpenSessionBeside}
             onOpenProject={onSelectProject}
+            onOpenNote={onOpenNoteFromSearch}
           />
         ) : null}
         {inboxViewOpen ? (

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'vitest'
@@ -25,6 +25,8 @@ it('searches literal, case, whole-word, regex and include/exclude git pathspecs'
     include: 'src/*.txt',
     exclude: 'src/b.txt'
   })
+  // Every match carries its file's mtime (the newer-copy rule across hosts).
+  const mtime = (await stat(join(root, 'src/a.txt'))).mtimeMs
   expect(result).toEqual({
     matches: [
       {
@@ -32,14 +34,16 @@ it('searches literal, case, whole-word, regex and include/exclude git pathspecs'
         relative: 'src/a.txt',
         line: 1,
         column: 1,
-        preview: 'Alpha alphabet'
+        preview: 'Alpha alphabet',
+        mtime: Math.round(mtime)
       },
       {
         path: join(root, 'src/a.txt'),
         relative: 'src/a.txt',
         line: 2,
         column: 4,
-        preview: 'xx alpha'
+        preview: 'xx alpha',
+        mtime: Math.round(mtime)
       }
     ],
     truncated: false

@@ -78,6 +78,9 @@ export interface ProjectSearchMatch {
   line: number
   column: number
   preview: string
+  /** The file's modification time (ms), for the newer-copy rule when the
+   *  same path exists on two hosts. */
+  mtime?: number
 }
 export interface ProjectSearchResult {
   matches: ProjectSearchMatch[]
@@ -90,9 +93,24 @@ export interface SessionSearchHit {
   role: 'user' | 'assistant'
   snippet: string
   ts: number
+  /** FTS5 bm25 of the row (negative, lower is a better match); absent for
+   *  a row the scan found. */
+  rank?: number
 }
 export interface SessionSearchResult {
   hits: SessionSearchHit[]
+  truncated: boolean
+}
+/** One note whose title or body mentions the query (`notes.search`). */
+export interface NoteSearchHit {
+  id: string
+  title: string
+  snippet: string
+  updatedAt: number
+  sourceCwd?: string
+}
+export interface NoteSearchResult {
+  hits: NoteSearchHit[]
   truncated: boolean
 }
 export const WorkspaceSnapshotSchema = z.record(z.string(), z.json())
@@ -137,6 +155,11 @@ export const M3aRequestSchemas = [
     id: z.string(),
     method: z.literal('notes.delete'),
     params: z.object({ id: NoteIdSchema })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('notes.search'),
+    params: z.object({ query: z.string(), limit: z.number().int().positive().max(200).optional() })
   }),
   z.object({
     id: z.string(),

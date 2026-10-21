@@ -588,6 +588,35 @@ routed to (aliax-core's `forward`). Two listeners:
   (scripts/mac/backup.sh). Secrets are Keychain items `tempcode-restic` and
   `tempcode-r2-backups`, never files in this repo. docs/box.md "Backups".
 
+## Search across hosts: one query, every host, an FTS5 index per host
+- The search surface (src/renderer/src/surfaces/SearchView.tsx on
+  src/renderer/src/lib/crossHostSearch.ts) asks every connected host the
+  same query in parallel (threads by title and transcript, files by
+  `search.project` in the host's copy of the paired project, notes by
+  `notes.search`), streams each host's rows as it answers, ranks without
+  looking at the host (match quality from the hosts' bm25 ranks plus
+  recency), folds a file at the same relative path in both copies of a
+  paired project (src/renderer/src/lib/projectPairs.ts: same GitHub repo,
+  else same folder name; the seam the path-map pairing replaces) into one
+  row on the newer copy (`search.project` matches carry `mtime`), marks
+  each hit with the rail's host dot and name when more than one host is
+  paired, and says "box: 1.2 s" per host at the foot (skipped when
+  offline). Filters are typed in the box: `host:`, `type:` (thread, file,
+  note, project), `project:`; one hint line, no other chrome. Enter opens
+  where the hit lives, ⌘↩ in a new pane; nothing in the list animates.
+- `session.search` runs on an FTS5 index per host (src/main/server/
+  turnIndex.ts): `events_fts` / `cold.events_fts` over turn text, rowid
+  `(ordinal << 32) | seq` through `turn_index`, filled on every event
+  flush for ready sessions, backfilled newest first in the background after
+  boot (`Store.backfillTurnIndex`, kicked after the cold mover and hourly),
+  carried by the hot/cold moves, dropped on delete and `forgetSessions`,
+  with a scan of the not-yet-ready sessions unioned in meanwhile and the
+  old scan as the whole answer when SQLite lacks FTS5. Hits carry `rank`
+  (bm25). On the box's database (426 MB hot, 3.9 GB cold) a query went from
+  0.5 s / 5 s to 2-72 ms / 3-338 ms; the backfill took 15 s. Measure on a
+  copy with `bun run script:measure-turn-index <copy>`; proof
+  `bun run script:e2e-cross-host-search`. docs/box.md "Search across hosts".
+
 ## The iOS contract package is generated
 - `ios/TempCodeContract` holds the Swift `Codable` types of the remote wire,
   generated from zod by `scripts/gen-swift-contract.ts` (`bun run gen:swift`).

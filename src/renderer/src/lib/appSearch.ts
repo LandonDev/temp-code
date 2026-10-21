@@ -17,7 +17,18 @@ import type { ProjectSearchMatch } from "./search";
 
 export type SearchScope = "all" | "conversations" | "files" | "projects";
 
-export type ConversationHit = {
+/** What a `type:` token names: threads (titles and transcript rows), files
+ *  (names and contents), notes, projects. */
+export type SearchKind = "thread" | "file" | "note" | "project";
+export const SEARCH_KINDS: readonly SearchKind[] = ["thread", "file", "note", "project"];
+
+/** What every hit carries about where it lives: the host (an environment
+ *  id; absent when the search knows only this machine). */
+type Located = {
+  host?: string;
+};
+
+export type ConversationHit = Located & {
   id: string;
   kind: "conversation";
   sessionId: string;
@@ -29,7 +40,7 @@ export type ConversationHit = {
   positions: number[];
 };
 
-export type MessageHit = {
+export type MessageHit = Located & {
   id: string;
   kind: "message";
   sessionId: string;
@@ -43,30 +54,54 @@ export type MessageHit = {
   role: string;
   preview: string;
   score: number;
+  /** The host's FTS rank (bm25, negative, lower is better) when it had one. */
+  rank?: number;
 };
 
-export type FileHit = {
-  id: string;
-  kind: "file";
-  path: string;
-  relative: string;
-  name: string;
-  score: number;
-  positions: number[];
+/** A file that a paired project holds on more than one host folds into one
+ *  row: the row opens on `host`, `alsoOn` names the other copies, and
+ *  `newer` says the row's copy won by modification time. */
+type Copies = {
+  mtime?: number;
+  alsoOn?: string[];
+  newer?: boolean;
 };
 
-export type ContentHit = {
+export type FileHit = Located &
+  Copies & {
+    id: string;
+    kind: "file";
+    path: string;
+    relative: string;
+    name: string;
+    score: number;
+    positions: number[];
+  };
+
+export type ContentHit = Located &
+  Copies & {
+    id: string;
+    kind: "content";
+    path: string;
+    relative: string;
+    name: string;
+    line: number;
+    column: number;
+    preview: string;
+  };
+
+export type NoteHit = Located & {
   id: string;
-  kind: "content";
-  path: string;
-  relative: string;
-  name: string;
-  line: number;
-  column: number;
+  kind: "note";
+  noteId: string;
+  title: string;
   preview: string;
+  updatedAt: number;
+  cwd?: string;
+  score: number;
 };
 
-export type ProjectHit = {
+export type ProjectHit = Located & {
   id: string;
   kind: "project";
   path: string;
@@ -80,6 +115,7 @@ export type AppSearchHit =
   | MessageHit
   | FileHit
   | ContentHit
+  | NoteHit
   | ProjectHit;
 
 export type GroupedHits = {
@@ -87,6 +123,7 @@ export type GroupedHits = {
   messages: MessageHit[];
   files: FileHit[];
   content: ContentHit[];
+  notes: NoteHit[];
   projects: ProjectHit[];
 };
 
@@ -95,33 +132,59 @@ const ALL_LIMITS: Record<keyof GroupedHits, number> = {
   messages: 8,
   files: 10,
   content: 12,
+  notes: 6,
   projects: 6,
 };
 
-const SCOPE_LIMITS: Record<SearchScope, Record<keyof GroupedHits, number>> = {
-  all: ALL_LIMITS,
-  conversations: {
-    conversations: 24,
-    messages: 24,
-    files: 0,
-    content: 0,
-    projects: 0,
-  },
-  files: {
-    conversations: 0,
-    messages: 0,
-    files: 40,
-    content: 48,
-    projects: 0,
-  },
-  projects: {
-    conversations: 0,
-    messages: 0,
-    files: 0,
-    content: 0,
-    projects: 24,
-  },
+const NONE: Record<keyof GroupedHits, number> = {
+  conversations: 0,
+  messages: 0,
+  files: 0,
+  content: 0,
+  notes: 0,
+  projects: 0,
 };
+
+/** The groups a kind fills, and how many rows each gets when the search is
+ *  narrowed to that kind. */
+const KIND_LIMITS: Record<SearchKind, Partial<Record<keyof GroupedHits, number>>> = {
+  thread: { conversations: 24, messages: 24 },
+  file: { files: 40, content: 48 },
+  note: { notes: 24 },
+  project: { projects: 24 },
+};
+
+const SCOPE_KINDS: Record<SearchScope, readonly SearchKind[] | null> = {
+  all: null,
+  conversations: ["thread"],
+  files: ["file"],
+  projects: ["project"],
+};
+
+/** Row caps per group for a narrowing: every group at its everyday cap
+ *  when nothing is narrowed, else the named kinds' groups at their wider
+ *  caps and every other group empty. */
+export function limitsFor(kinds: readonly SearchKind[] | null): Record<keyof GroupedHits, number> {
+  if (!kinds || kinds.length === 0) return ALL_LIMITS;
+  const limits = { ...NONE };
+  for (const kind of kinds) Object.assign(limits, KIND_LIMITS[kind]);
+  return limits;
+}
+
+export function kindOf(hit: AppSearchHit): SearchKind {
+  switch (hit.kind) {
+    case "conversation":
+    case "message":
+      return "thread";
+    case "file":
+    case "content":
+      return "file";
+    case "note":
+      return "note";
+    default:
+      return "project";
+  }
+}
 
 export function asHarness(value: string): HarnessId {
   return (HARNESSES as string[]).includes(value)
@@ -278,6 +341,7 @@ export function hitsFromContentMatches(
     line: match.line,
     column: match.column,
     preview: match.preview.trimEnd(),
+    ...(match.mtime !== undefined ? { mtime: match.mtime } : {}),
   }));
 }
 
@@ -386,19 +450,24 @@ export function filterHitsByProject(
   return hits.filter((hit) => {
     if (hit.kind === "file" || hit.kind === "content") return true;
     if (hit.kind === "project") return sameProjectPath(hit.path, cwd);
+    if (hit.kind === "note") return !hit.cwd || sameProjectPath(hit.cwd, cwd);
     return sameProjectPath(hit.cwd, cwd);
   });
 }
 
+/** Hits by group, each sorted by one host-neutral rule (score, then
+ *  recency or path) and capped for the narrowing: a scope name, a list of
+ *  kinds from `type:` tokens, or null for everything. */
 export function groupHits(
   hits: AppSearchHit[],
-  scope: SearchScope,
+  scope: SearchScope | readonly SearchKind[] | null,
 ): GroupedHits {
   const grouped: GroupedHits = {
     conversations: [],
     messages: [],
     files: [],
     content: [],
+    notes: [],
     projects: [],
   };
   for (const hit of hits) {
@@ -406,19 +475,25 @@ export function groupHits(
     else if (hit.kind === "message") grouped.messages.push(hit);
     else if (hit.kind === "file") grouped.files.push(hit);
     else if (hit.kind === "content") grouped.content.push(hit);
+    else if (hit.kind === "note") grouped.notes.push(hit);
     else grouped.projects.push(hit);
   }
   grouped.conversations.sort(byScoreThenRecency);
   grouped.messages.sort(byScoreThenRecency);
   grouped.files.sort((a, b) => b.score - a.score || a.relative.localeCompare(b.relative));
+  grouped.content.sort(
+    (a, b) => (b.mtime ?? 0) - (a.mtime ?? 0) || a.relative.localeCompare(b.relative) || a.line - b.line,
+  );
+  grouped.notes.sort(byScoreThenRecency);
   grouped.projects.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
 
-  const limits = SCOPE_LIMITS[scope];
+  const limits = limitsFor(typeof scope === "string" ? SCOPE_KINDS[scope] : scope);
   return {
     conversations: grouped.conversations.slice(0, limits.conversations),
     messages: grouped.messages.slice(0, limits.messages),
     files: grouped.files.slice(0, limits.files),
     content: grouped.content.slice(0, limits.content),
+    notes: grouped.notes.slice(0, limits.notes),
     projects: grouped.projects.slice(0, limits.projects),
   };
 }
@@ -429,6 +504,7 @@ export function flattenGrouped(grouped: GroupedHits): AppSearchHit[] {
     ...grouped.messages,
     ...grouped.files,
     ...grouped.content,
+    ...grouped.notes,
     ...grouped.projects,
   ];
 }
@@ -453,7 +529,7 @@ function blockSearchText(block: Block): string {
   return parts.join("\n");
 }
 
-function recencyBonus(updatedAt: number): number {
+export function recencyBonus(updatedAt: number): number {
   if (!Number.isFinite(updatedAt) || updatedAt <= 0) return 0;
   const age = Date.now() - updatedAt;
   if (age <= 0) return 24;

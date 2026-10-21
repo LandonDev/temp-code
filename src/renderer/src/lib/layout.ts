@@ -371,6 +371,21 @@ export function openEditorTab(
   };
 }
 
+/** Open the file in a new editor pane split to the right of the focused
+ *  pane (⌘↩ on a search hit), whatever panes already hold it. */
+export function openEditorTabBeside(tab: WorkspaceTab, file: FilePaneTab): WorkspaceTab {
+  if (file.terminal || file.debug) return openTerminalTab(tab, file);
+  tab = isolateTerminalPanes(tab);
+  const editorPane = newEditorPane(file);
+  return {
+    ...tab,
+    layout: splitPane(tab.layout, tab.focusedId, "right", editorPane.id),
+    focusedId: editorPane.id,
+    diffFocused: false,
+    editorPanes: [...tab.editorPanes, editorPane],
+  };
+}
+
 /** Focus the debug tab for `file.path` if one is open, else dock a new one
  *  below the editor (or in the blank leaf `occupyPaneId`). */
 export function openDebugTab(

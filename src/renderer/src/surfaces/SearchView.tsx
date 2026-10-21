@@ -1,6 +1,7 @@
-import { Folder, MessageSquare, Search } from "../chrome/icons";
+import { Folder, MessageSquare, Search, StickyNote } from "../chrome/icons";
 import { MatrixSpinner } from "./threads/bits";
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -9,6 +10,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
+import { toneOf } from "../chrome/EnvironmentSwitcher";
 import { FileTypeIcon } from "../chrome/FileTypeIcon";
 import { HarnessIcon } from "../chrome/HarnessIcon";
 import { MatchText } from "../chrome/MatchText";
@@ -17,40 +19,59 @@ import { OverlayNav } from "../chrome/TitleBar";
 import { WindowControls } from "../chrome/WindowControls";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import {
-  conversationRowsFrom,
+  SEARCH_KINDS,
   flattenGrouped,
   groupHits,
   hitsFromContentMatches,
   hitsFromFileRanks,
-  hitsFromSessionSearch,
-  mergeHits,
   searchConversationTitles,
   searchRecentProjects,
   searchSessionMessages,
   type AppSearchHit,
-  type SearchScope,
 } from "../lib/appSearch";
+import { registry, useEnvironmentStatuses, useEnvironments } from "../lib/connection";
+import type { Environment, EnvironmentStatus } from "../lib/connection/types";
+import {
+  hostTimingLabel,
+  hostsMatching,
+  mergeCrossHost,
+  noteHits,
+  parseSearchQuery,
+  runCrossHostSearch,
+  transcriptHits,
+  type HostProgress,
+  type SearchHost,
+  type SearchSnapshot,
+  type ThreadMeta,
+} from "../lib/crossHostSearch";
 import {
   loadProjectFiles,
   peekProjectFiles,
   rankProjectFiles,
   recentOpenedFiles,
 } from "../lib/fileIndex";
+import { listProjectFiles, type ProjectFile } from "../lib/fs";
+import { invokeOn } from "../lib/native";
 import { prettyCwd, projectName } from "../lib/paths";
 import { IS_MAC } from "../lib/platform";
-import { looksLikeProject, sameProjectPath, type RecentProject } from "../lib/recents";
-import { hostOfCwd } from "../lib/tcserver/projects";
+import { pairWorkspaces, partnersOf } from "../lib/projectPairs";
+import { looksLikeProject, type RecentProject } from "../lib/recents";
 import { searchProject, type OpenFileFn } from "../lib/search";
-import { searchSessions } from "../lib/sessionStore";
-import { useServerSessions } from "../lib/tcserver/store";
-import { useHistoryRows } from "../lib/historyStore";
+import { sessionDisplayTitle, type HarnessId } from "../lib/session";
+import { loadNotesEnabled } from "../lib/settings";
+import { environmentOfCwd, hostOfCwd } from "../lib/tcserver/projects";
+import { sessionStore, useServerSessions, useSessionMetas } from "../lib/tcserver/store";
+import { useWorkspaces } from "../lib/tcserver/workspaces";
 
-const SCOPES: { id: SearchScope; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "conversations", label: "Conversations" },
-  { id: "files", label: "Files" },
-  { id: "projects", label: "Projects" },
-];
+/**
+ * Search over every connected host at once. The box takes the words and
+ * three filters typed beside them (`host:`, `type:`, `project:`; the hint
+ * line under the box names them). Each host answers in parallel and its
+ * rows land as they come; the footer says how long each took, or that it
+ * was skipped. Rows carry the host's mark when more than one host is
+ * paired. Enter opens a row where it lives; ⌘↩ opens it in a new pane.
+ * The list never animates: it is read tens of times a day.
+ */
 
 type Props = {
   open: boolean;
@@ -61,9 +82,29 @@ type Props = {
   onClose: () => void;
   onToggleSidebar?: () => void;
   onOpenFile: OpenFileFn;
+  /** The same file, in a new editor pane beside the focused one (⌘↩). */
+  onOpenFileBeside?: OpenFileFn;
   onOpenSession: (sessionId: string, seq?: number) => void;
+  /** The same thread, split beside the focused pane (⌘↩). */
+  onOpenSessionBeside?: (sessionId: string, seq?: number) => void;
   onOpenProject: (path: string) => void;
+  onOpenNote?: (environmentId: string, noteId: string) => void;
 };
+
+const TRANSCRIPT_LIMIT = 200;
+const NOTE_LIMIT = 50;
+const PARTNER_FILES_TTL_MS = 60_000;
+
+/** A partner host's file list, kept a minute so each keystroke does not re-list. */
+const partnerFiles = new Map<string, { at: number; files: Promise<ProjectFile[]> }>();
+function partnerFileList(host: string, cwd: string): Promise<ProjectFile[]> {
+  const key = `${host}\n${cwd}`;
+  const cached = partnerFiles.get(key);
+  if (cached && Date.now() - cached.at < PARTNER_FILES_TTL_MS) return cached.files;
+  const files = listProjectFiles(host, cwd).catch(() => [] as ProjectFile[]);
+  partnerFiles.set(key, { at: Date.now(), files });
+  return files;
+}
 
 export function SearchView({
   open,
@@ -74,32 +115,40 @@ export function SearchView({
   onClose,
   onToggleSidebar,
   onOpenFile,
+  onOpenFileBeside,
   onOpenSession,
+  onOpenSessionBeside,
   onOpenProject,
+  onOpenNote,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
   const [query, setQuery] = useState("");
-  const [scope, setScope] = useState<SearchScope>("all");
   const [active, setActive] = useState(0);
   const [files, setFiles] = useState(() => peekProjectFiles(cwd) ?? []);
-  const [contentHits, setContentHits] = useState<AppSearchHit[]>([]);
-  const [remoteHits, setRemoteHits] = useState<AppSearchHit[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [snapshot, setSnapshot] = useState<SearchSnapshot | null>(null);
 
-  const trimmed = query.trim();
+  const parsed = useMemo(() => parseSearchQuery(query), [query]);
+  const text = parsed.text;
+
+  const environments = useEnvironments();
+  const statuses = useEnvironmentStatuses();
+  const multiHost = environments.length > 1;
+  const askedHosts = useMemo(
+    () => hostsMatching(parsed.host, environments, IS_MAC),
+    [environments, parsed.host],
+  );
+  const workspaces = useWorkspaces();
+  const pairs = useMemo(() => pairWorkspaces(workspaces), [workspaces]);
+  const currentHost = hostOfCwd(cwd);
 
   useEffect(() => {
     if (!open) return;
     setQuery("");
-    setScope("all");
     setActive(0);
-    setContentHits([]);
-    setRemoteHits([]);
-    setError(null);
+    setSnapshot(null);
   }, [open]);
 
   useEffect(() => {
@@ -140,34 +189,36 @@ export function SearchView({
   }, [cwd, open]);
 
   const sessions = useServerSessions();
-  const rows = useHistoryRows();
-  // History spans every visited project; search only this one's.
-  const history = useMemo(
-    () => rows.filter((entry) => sameProjectPath(entry.cwd, cwd)),
-    [rows, cwd],
+  const metas = useSessionMetas();
+
+  /** The folder to search for files on each asked host: this project here,
+   *  its paired copy there. */
+  const fileCwdOf = useCallback(
+    (host: string): string | null => {
+      if (!looksLikeProject(cwd)) return null;
+      if (host === currentHost) return cwd;
+      return partnersOf(pairs, currentHost, cwd).find((m) => m.environmentId === host)?.cwd ?? null;
+    },
+    [cwd, currentHost, pairs],
   );
-  const conversationRows = useMemo(
-    () => conversationRowsFrom(history, sessions),
-    [history, sessions],
-  );
-  const fileHits = useMemo(
-    () =>
-      trimmed && looksLikeProject(cwd)
-        ? hitsFromFileRanks(
-            rankProjectFiles(files, trimmed, recentOpenedFiles(cwd), 40),
-          )
-        : [],
-    [cwd, files, trimmed],
-  );
-  const titleHits = useMemo(
-    () => (trimmed ? searchConversationTitles(conversationRows, trimmed) : []),
-    [conversationRows, trimmed],
-  );
-  const liveMessageHits = useMemo(
-    () =>
-      trimmed
-        ? searchSessionMessages(
-            sessions.map((session) => ({
+
+  // What this window already holds, searched in memory per host: thread
+  // titles, the loaded transcripts' blocks, this project's file names and
+  // the recent projects. Nothing here waits on a host.
+  const memoryHits = useMemo(() => {
+    const out = new Map<string, AppSearchHit[]>();
+    if (!text) return out;
+    for (const env of askedHosts) {
+      const host = env.id;
+      const rows = metas
+        .filter((meta) => meta.environmentId === host && !meta.parentId && !meta.archived)
+        .map((meta) => ({ id: meta.id, cwd: meta.cwd, harness: meta.provider as HarnessId, title: meta.title, updatedAt: meta.updatedAt }));
+      const hits: AppSearchHit[] = [
+        ...searchConversationTitles(rows, text).map((hit) => ({ ...hit, host })),
+        ...searchSessionMessages(
+          sessions
+            .filter((session) => session.environmentId === host)
+            .map((session) => ({
               id: session.id,
               cwd: session.cwd,
               harness: session.harness,
@@ -175,123 +226,138 @@ export function SearchView({
               updatedAt: Date.now(),
               blocks: session.blocks,
             })),
-            trimmed,
-          )
-        : [],
-    [sessions, trimmed],
-  );
-  const projectHits = useMemo(
-    () => (trimmed ? searchRecentProjects(recents, trimmed) : []),
-    [recents, trimmed],
-  );
+          text,
+        ).map((hit) => ({ ...hit, host })),
+      ];
+      if (host === currentHost && looksLikeProject(cwd)) {
+        hits.push(
+          ...hitsFromFileRanks(rankProjectFiles(files, text, recentOpenedFiles(cwd), 40)).map((hit) => ({
+            ...hit,
+            id: `file:${host}:${hit.path}`,
+            host,
+          })),
+        );
+      }
+      hits.push(
+        ...searchRecentProjects(recents, text)
+          .map((hit) => ({ ...hit, host: environmentOfCwd(hit.path) ?? registry.primaryEnvironmentId }))
+          .filter((hit) => hit.host === host),
+      );
+      out.set(host, hits);
+    }
+    return out;
+  }, [askedHosts, currentHost, cwd, files, metas, recents, sessions, text]);
 
+  // Every asked host, in parallel: its transcripts (FTS), its copy of the
+  // project (contents, and names when it is not this host's), its notes.
   useEffect(() => {
-    if (!open || !trimmed) {
-      setRemoteHits([]);
-      setContentHits([]);
-      setLoading(false);
-      setError(null);
+    if (!open || !text) {
+      setSnapshot(null);
       return;
     }
-
-    let cancelled = false;
+    let cancel: (() => void) | null = null;
     const timer = window.setTimeout(() => {
-      const jobs: Promise<void>[] = [];
-      const wantSessions = scope === "all" || scope === "conversations";
-      const wantFiles = scope === "all" || scope === "files";
-
-      if (wantSessions) {
-        setLoading(true);
-        jobs.push(
-          searchSessions({ query: trimmed })
-            .then((result) => {
-              if (!cancelled) setRemoteHits(hitsFromSessionSearch(result.hits));
-            })
-            .catch(() => {
-              if (!cancelled) setRemoteHits([]);
-            }),
-        );
-      } else {
-        setRemoteHits([]);
-      }
-
-      if (wantFiles && looksLikeProject(cwd)) {
-        setLoading(true);
-        jobs.push(
-          searchProject(hostOfCwd(cwd), { cwd, query: trimmed })
-            .then((result) => {
-              if (!cancelled) {
-                setContentHits(hitsFromContentMatches(result.matches));
-                setError(null);
-              }
-            })
-            .catch((err: unknown) => {
-              if (!cancelled) {
-                setContentHits([]);
-                setError(err instanceof Error ? err.message : String(err));
-              }
-            }),
-        );
-      } else {
-        setContentHits([]);
-      }
-
-      void Promise.all(jobs).then(() => {
-        if (!cancelled) setLoading(false);
+      const notesOn = loadNotesEnabled();
+      const hosts: SearchHost[] = askedHosts.map((env) => ({
+        environmentId: env.id,
+        name: env.name,
+        online: isOnline(env, statuses.get(env.id)),
+      }));
+      cancel = runCrossHostSearch({
+        hosts,
+        onUpdate: setSnapshot,
+        sources: (host) => {
+          const id = host.environmentId;
+          const metasById = new Map<string, ThreadMeta>(
+            metas
+              .filter((meta) => meta.environmentId === id && !meta.parentId)
+              .map((meta) => [meta.id, { id: meta.id, cwd: meta.cwd, harness: meta.provider as HarnessId, title: meta.title, updatedAt: meta.updatedAt }]),
+          );
+          const sources: Promise<AppSearchHit[]>[] = [
+            invokeOn<{ hits: Parameters<typeof transcriptHits>[1] }>(id, "search_sessions", { query: text, limit: TRANSCRIPT_LIMIT }).then(
+              (result) =>
+                transcriptHits(
+                  id,
+                  result.hits,
+                  metasById,
+                  (sessionId) => (sessionStore.get(sessionId)?.blocks.length ?? 0) > 0,
+                  sessionDisplayTitle,
+                ),
+            ),
+          ];
+          const fileCwd = fileCwdOf(id);
+          if (fileCwd) {
+            sources.push(
+              searchProject(id, { cwd: fileCwd, query: text }).then((result) =>
+                hitsFromContentMatches(result.matches).map((hit) => ({ ...hit, id: `content:${id}:${hit.path}:${hit.line}:${hit.column}`, host: id })),
+              ),
+            );
+            if (id !== currentHost) {
+              sources.push(
+                partnerFileList(id, fileCwd).then((list) =>
+                  hitsFromFileRanks(rankProjectFiles(list, text, [], 40)).map((hit) => ({ ...hit, id: `file:${id}:${hit.path}`, host: id })),
+                ),
+              );
+            }
+          }
+          if (notesOn) {
+            sources.push(
+              invokeOn<{ hits: Parameters<typeof noteHits>[1] }>(id, "notes_search", { query: text, limit: NOTE_LIMIT }).then((result) =>
+                noteHits(id, result.hits),
+              ),
+            );
+          }
+          return sources;
+        },
       });
     }, 200);
-
     return () => {
-      cancelled = true;
       window.clearTimeout(timer);
+      cancel?.();
     };
-  }, [cwd, open, scope, trimmed]);
+    // `statuses` changes on every heartbeat; a host's online state is read
+    // when the search starts, which the query's debounce already delays.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [askedHosts, currentHost, fileCwdOf, metas, open, text]);
 
   const hits = useMemo(() => {
-    if (!trimmed) return [];
-    return flattenGrouped(
-      groupHits(
-        mergeHits(
-          titleHits,
-          liveMessageHits,
-          remoteHits,
-          fileHits,
-          contentHits,
-          projectHits,
-        ),
-        scope,
-      ),
-    );
-  }, [
-    contentHits,
-    fileHits,
-    liveMessageHits,
-    projectHits,
-    remoteHits,
-    scope,
-    titleHits,
-    trimmed,
-  ]);
+    if (!text) return [];
+    const combined = new Map<string, AppSearchHit[]>();
+    for (const env of askedHosts) {
+      combined.set(env.id, [...(memoryHits.get(env.id) ?? []), ...(snapshot?.hits.get(env.id) ?? [])]);
+    }
+    const merged = mergeCrossHost(combined, {
+      pairs,
+      hostOrder: environments.map((env) => env.id),
+      types: parsed.types,
+      project: parsed.project,
+    });
+    return flattenGrouped(groupHits(merged, parsed.types));
+  }, [askedHosts, environments, memoryHits, pairs, parsed.project, parsed.types, snapshot, text]);
 
   const activeHit = hits[active] ?? null;
+  const searching = !!text && snapshot !== null && !snapshot.settled;
+  const progress = snapshot?.progress ?? [];
 
   useEffect(() => {
     setActive(0);
-  }, [trimmed, scope]);
+  }, [query]);
 
   useEffect(() => {
     if (active >= hits.length) setActive(0);
   }, [active, hits.length]);
 
-  const openHit = (hit: AppSearchHit | null) => {
+  const openHit = (hit: AppSearchHit | null, beside = false) => {
     if (!hit) return;
-    if (hit.kind === "file") onOpenFile(hit.path);
+    if (hit.kind === "file") (beside ? onOpenFileBeside ?? onOpenFile : onOpenFile)(hit.path);
     else if (hit.kind === "content") {
-      onOpenFile(hit.path, { line: hit.line, column: hit.column });
+      (beside ? onOpenFileBeside ?? onOpenFile : onOpenFile)(hit.path, { line: hit.line, column: hit.column });
     } else if (hit.kind === "message") {
-      onOpenSession(hit.sessionId, hit.seq);
+      (beside ? onOpenSessionBeside ?? onOpenSession : onOpenSession)(hit.sessionId, hit.seq);
     } else if (hit.kind === "conversation") {
-      onOpenSession(hit.sessionId);
+      (beside ? onOpenSessionBeside ?? onOpenSession : onOpenSession)(hit.sessionId);
+    } else if (hit.kind === "note") {
+      onOpenNote?.(hit.host ?? registry.primaryEnvironmentId, hit.noteId);
     } else onOpenProject(hit.path);
     onClose();
   };
@@ -311,14 +377,15 @@ export function SearchView({
     }
     if (event.key === "Enter") {
       event.preventDefault();
-      openHit(activeHit);
+      openHit(activeHit, event.metaKey || event.ctrlKey);
     }
   };
 
   if (!open) return null;
 
-  const empty = !trimmed;
-  const noResults = !empty && hits.length === 0 && !loading;
+  const empty = !text;
+  const failed = progress.length > 0 && progress.every((row) => row.state === "failed" || row.state === "skipped");
+  const noResults = !empty && hits.length === 0 && !searching && snapshot !== null;
 
   return (
     <div
@@ -342,8 +409,10 @@ export function SearchView({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={onQueryKeyDown}
-            placeholder="Search everything..."
+            placeholder={multiHost ? "Search every host…" : "Search everything…"}
             aria-label="Search"
+            aria-controls="app-search-results"
+            aria-activedescendant={activeHit ? `app-search-hit-${active}` : undefined}
             spellCheck={false}
             autoComplete="off"
             autoCorrect="off"
@@ -351,31 +420,12 @@ export function SearchView({
             data-tauri-drag-region="false"
             className="min-w-0 flex-1 bg-transparent text-[13px] text-content outline-none select-text placeholder:text-content/40"
           />
-          {loading ? <MatrixSpinner cell={1.5} /> : null}
+          {searching ? <MatrixSpinner cell={1.5} /> : null}
         </label>
         {!IS_MAC ? <WindowControls /> : null}
       </div>
 
-      <div className="flex h-9 shrink-0 items-center gap-px border-b border-content/10 px-3">
-        {SCOPES.map((item) => {
-          const selected = scope === item.id;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              aria-pressed={selected}
-              onClick={() => setScope(item.id)}
-              className={`pressable rounded-md px-2 py-1 text-[12px] transition-colors ${
-                selected
-                  ? "bg-content/10 text-content"
-                  : "text-content/50 hover:bg-content/5 hover:text-content"
-              }`}
-            >
-              {item.label}
-            </button>
-          );
-        })}
-      </div>
+      <FilterHint parsed={parsed} multiHost={multiHost} askedHosts={askedHosts} />
 
       <div
         ref={lockOverscroll}
@@ -386,31 +436,90 @@ export function SearchView({
         }
       >
         {empty ? (
-          <EmptyState />
-        ) : error && hits.length === 0 ? (
-          <p className="px-2 py-1.5 text-[12px] text-danger">{error}</p>
+          <EmptyState multiHost={multiHost} />
+        ) : failed && hits.length === 0 ? (
+          <p className="px-2 py-1.5 text-[12px] text-danger">
+            {progress.find((row) => row.state === "failed")?.detail ?? "No host could be searched"}
+          </p>
         ) : noResults ? (
           <p className="px-2 py-1.5 text-[12px] text-content/50">No results</p>
         ) : (
           <ResultList
             hits={hits}
             active={active}
-            query={trimmed}
+            query={text}
+            showHost={multiHost}
+            environments={environments}
+            statuses={statuses}
             onActive={setActive}
             onOpen={openHit}
           />
         )}
       </div>
+
+      {!empty && progress.length > 0 ? <HostFooter progress={progress} /> : null}
     </div>
   );
 }
 
-function EmptyState() {
+function isOnline(env: Environment, status: EnvironmentStatus | undefined): boolean {
+  // This machine's own server answers on the loopback socket whatever the
+  // registry says about it; a saved host is online while its socket is open.
+  if (env.id === registry.primaryEnvironmentId) return true;
+  return status?.transport === "open";
+}
+
+/** The one line of filter chrome: the tokens the box understands, the
+ *  active ones in the foreground color. */
+export function FilterHint({
+  parsed,
+  multiHost,
+  askedHosts,
+}: {
+  parsed: ReturnType<typeof parseSearchQuery>;
+  multiHost: boolean;
+  askedHosts: Environment[];
+}) {
+  const token = (label: string, value: string | null, placeholder: string) => (
+    <span className={value ? "text-content/70" : undefined}>
+      {label}:{value ?? placeholder}
+    </span>
+  );
+  const hostValue = parsed.host ? (askedHosts.length > 0 ? askedHosts.map((h) => h.name).join(", ") : `${parsed.host} (no such host)`) : null;
+  return (
+    <div
+      aria-label="Filters"
+      className="flex h-7 shrink-0 items-center gap-3 overflow-hidden border-b border-content/10 px-3.5 font-mono text-[11px] whitespace-nowrap text-content/40"
+    >
+      {multiHost ? token("host", hostValue, "mac, box") : null}
+      {token("type", parsed.types?.join(",") ?? null, SEARCH_KINDS.join(","))}
+      {token("project", parsed.project, "name")}
+    </div>
+  );
+}
+
+/** How long each host took, muted, at the foot; a skipped or failed host says why. */
+export function HostFooter({ progress }: { progress: HostProgress[] }) {
+  return (
+    <div
+      aria-label="Hosts searched"
+      className="flex h-7 shrink-0 items-center gap-3 overflow-hidden border-t border-content/10 px-3.5 font-mono text-[11px] whitespace-nowrap text-content/40 tabular-nums"
+    >
+      {progress.map((row) => (
+        <span key={row.environmentId} data-host-state={row.state}>
+          {hostTimingLabel(row)}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function EmptyState({ multiHost }: { multiHost: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center px-4 pb-24 text-center">
       <Search className="mb-3 size-6 text-content/30" strokeWidth={1.75} />
       <p className="text-[13px] text-content/40">
-        Find files, chats, messages and projects
+        {multiHost ? "Find files, chats, notes and projects on every host" : "Find files, chats, notes and projects"}
       </p>
     </div>
   );
@@ -420,14 +529,20 @@ function ResultList({
   hits,
   active,
   query,
+  showHost,
+  environments,
+  statuses,
   onActive,
   onOpen,
 }: {
   hits: AppSearchHit[];
   active: number;
   query: string;
+  showHost: boolean;
+  environments: Environment[];
+  statuses: ReadonlyMap<string, EnvironmentStatus>;
   onActive: (index: number) => void;
-  onOpen: (hit: AppSearchHit) => void;
+  onOpen: (hit: AppSearchHit, beside?: boolean) => void;
 }) {
   const activeRef = useRef<HTMLButtonElement>(null);
   const pointer = useRef({ x: Number.NaN, y: Number.NaN, allow: false });
@@ -462,8 +577,11 @@ function ResultList({
     onActive(index);
   };
 
+  const nameOf = (id: string): string => environments.find((env) => env.id === id)?.name ?? id;
+
   return (
     <div
+      id="app-search-results"
       role="listbox"
       aria-label="Search results"
       onMouseMove={onListMouseMove}
@@ -474,13 +592,15 @@ function ResultList({
         return (
           <button
             key={hit.id}
+            id={`app-search-hit-${index}`}
             ref={highlighted ? activeRef : undefined}
             type="button"
             role="option"
             aria-selected={highlighted}
+            data-kind={hit.kind}
             onMouseDown={(event) => event.preventDefault()}
             onMouseEnter={() => onRowEnter(index)}
-            onClick={() => onOpen(hit)}
+            onClick={(event) => onOpen(hit, event.metaKey || event.ctrlKey)}
             className={`flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] leading-none ${
               highlighted ? "bg-content/10 text-content" : "text-content"
             }`}
@@ -494,10 +614,50 @@ function ResultList({
                 {row.meta}
               </span>
             ) : null}
+            {showHost && hit.host ? (
+              <HostMark
+                name={nameOf(hit.host)}
+                status={statuses.get(hit.host)}
+                primary={hit.host === registry.primaryEnvironmentId}
+                newer={hit.kind === "file" || hit.kind === "content" ? hit.newer : undefined}
+                alsoOn={hit.kind === "file" || hit.kind === "content" ? hit.alsoOn?.map(nameOf) : undefined}
+              />
+            ) : null}
           </button>
         );
       })}
     </div>
+  );
+}
+
+/** The rail's host mark: the connection dot and the host's name, muted. A
+ *  file that two hosts hold says it is the newer copy and names the other. */
+export function HostMark({
+  name,
+  status,
+  primary,
+  newer,
+  alsoOn,
+}: {
+  name: string;
+  status: EnvironmentStatus | undefined;
+  primary: boolean;
+  newer?: boolean;
+  alsoOn?: string[];
+}) {
+  const tone = primary ? "bg-success" : status ? toneOf(status, status.transport !== "open") : "bg-content/25";
+  const also = alsoOn && alsoOn.length > 0 ? `Also on ${alsoOn.join(", ")}` : undefined;
+  return (
+    <span
+      data-host-mark
+      title={also}
+      className="flex shrink-0 items-center gap-1.5 pl-1 text-[11px] text-content/40"
+    >
+      <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${tone}`} />
+      <span>{name}</span>
+      {newer ? <span className="text-content/50">· newer</span> : null}
+      {!newer && also ? <span className="sr-only">{also}</span> : null}
+    </span>
   );
 }
 
@@ -540,6 +700,13 @@ function rowCopy(
       meta: `${hit.relative}:${hit.line}`,
     };
   }
+  if (hit.kind === "note") {
+    return {
+      icon: <StickyNote className="size-3.5 text-content/50" strokeWidth={1.75} />,
+      title: <Highlight text={hit.preview || hit.title} query={query} />,
+      meta: hit.title,
+    };
+  }
   return {
     icon: (
       <ProjectLogoIcon
@@ -557,7 +724,13 @@ function Highlight({ text, query }: { text: string; query: string }) {
   const needle = query.trim();
   if (!needle) return <>{text}</>;
   const index = text.toLowerCase().indexOf(needle.toLowerCase());
-  if (index < 0) return <>{text}</>;
+  if (index < 0) {
+    // Several words: mark the first one that is there.
+    const first = needle.split(/\s+/).map((word) => text.toLowerCase().indexOf(word.toLowerCase())).find((at) => at >= 0);
+    if (first === undefined) return <>{text}</>;
+    const word = needle.split(/\s+/).find((w) => text.toLowerCase().indexOf(w.toLowerCase()) === first) ?? "";
+    return <Highlight text={text} query={word} />;
+  }
   const end = index + needle.length;
   return (
     <>

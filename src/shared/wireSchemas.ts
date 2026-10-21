@@ -29,6 +29,8 @@ import type {
   GithubInboxSnapshot
 } from './contract-github'
 import type {
+  NoteSearchHit,
+  NoteSearchResult,
   ProjectSearchMatch,
   ProjectSearchResult,
   SessionSearchHit,
@@ -364,7 +366,8 @@ export const SessionSearchHitSchema = z.object({
   seq: z.number().int(),
   role: z.enum(['user', 'assistant']),
   snippet: z.string(),
-  ts: z.number().int()
+  ts: z.number().int(),
+  rank: z.number().optional()
 })
 export const SessionSearchResultSchema = z.object({
   hits: z.array(SessionSearchHitSchema),
@@ -375,10 +378,22 @@ export const ProjectSearchMatchSchema = z.object({
   relative: z.string(),
   line: z.number().int(),
   column: z.number().int(),
-  preview: z.string()
+  preview: z.string(),
+  mtime: z.number().int().optional()
 })
 export const ProjectSearchResultSchema = z.object({
   matches: z.array(ProjectSearchMatchSchema),
+  truncated: z.boolean()
+})
+export const NoteSearchHitSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  snippet: z.string(),
+  updatedAt: z.number().int(),
+  sourceCwd: z.string().optional()
+})
+export const NoteSearchResultSchema = z.object({
+  hits: z.array(NoteSearchHitSchema),
   truncated: z.boolean()
 })
 
@@ -719,6 +734,8 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof SessionSearchResultSchema, SessionSearchResult>>,
   Expect<Mirror<typeof ProjectSearchMatchSchema, ProjectSearchMatch>>,
   Expect<Mirror<typeof ProjectSearchResultSchema, ProjectSearchResult>>,
+  Expect<Mirror<typeof NoteSearchHitSchema, NoteSearchHit>>,
+  Expect<Mirror<typeof NoteSearchResultSchema, NoteSearchResult>>,
   Expect<Mirror<typeof GithubInboxAuthSchema, GithubInboxAuth>>,
   Expect<Mirror<typeof GithubInboxPersonSchema, GithubInboxPerson>>,
   Expect<Mirror<typeof GithubInboxItemSchema, GithubInboxItem>>,

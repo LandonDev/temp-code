@@ -644,6 +644,13 @@ export async function startServer(
       bootMark('cold-move start')
       await coldMover.kick()
       bootMark('cold-move done')
+      // The FTS5 turn index (turnIndex.ts): every session it does not hold
+      // yet, newest first, in the background; nothing on the first boot
+      // after the upgrade has it, later only a moved or imported thread.
+      bootMark('turn-index start')
+      let indexedRows = 0
+      await store.backfillTurnIndex({ onProgress: ({ rows }) => (indexedRows += rows) })
+      bootMark('turn-index done', `${indexedRows} rows`)
       bootMark('archive-sweep start')
       const ids = await sweepArchive({
         store,

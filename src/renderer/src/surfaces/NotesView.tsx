@@ -50,6 +50,13 @@ const DEFAULT_WIDTH = 280;
 
 let rememberedWidth = DEFAULT_WIDTH;
 let rememberedNoteId: string | null = null;
+let focusedEnvironmentId: string | null = null;
+
+/** Show this note, on this host, when the view next opens (a search hit). */
+export function focusNote(environmentId: string, noteId: string): void {
+  rememberedNoteId = noteId;
+  focusedEnvironmentId = environmentId;
+}
 
 type Props = {
   besideRail?: boolean;
@@ -64,8 +71,15 @@ export function NotesView({
   onClose,
   onToggleSidebar,
 }: Props) {
-  // Notes without a project use this machine’s host.
-  const environmentId = cwd ? hostOfCwd(cwd) : registry.primary().environmentId;
+  // Notes without a project use this machine’s host; a note opened from
+  // search names its own host for this showing.
+  const environmentId = focusedEnvironmentId ?? (cwd ? hostOfCwd(cwd) : registry.primary().environmentId);
+  useEffect(
+    () => () => {
+      focusedEnvironmentId = null;
+    },
+    [],
+  );
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const listLock = useLockOverscroll<HTMLDivElement>();

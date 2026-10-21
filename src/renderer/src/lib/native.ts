@@ -68,6 +68,7 @@ export type ServerCommand =
   | "notes_delete"
   | "notes_get"
   | "notes_list"
+  | "notes_search"
   | "notes_upsert"
   | "read_file_base64"
   | "read_file_preview"
@@ -232,6 +233,7 @@ const serverMethods: Record<PassthroughCommand, string> = {
   notes_delete: "notes.delete",
   notes_get: "notes.get",
   notes_list: "notes.list",
+  notes_search: "notes.search",
   notes_upsert: "notes.upsert",
   read_file_base64: "fs.readBase64",
   read_file_preview: "fs.readPreview",

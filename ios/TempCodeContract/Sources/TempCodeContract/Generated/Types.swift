@@ -767,13 +767,15 @@ public struct SessionSearchHit: Codable, Hashable, Sendable {
     public let role: Role
     public let snippet: String
     public let ts: Int
+    public let rank: Double?
 
-    public init(sessionId: String, seq: Int, role: Role, snippet: String, ts: Int) {
+    public init(sessionId: String, seq: Int, role: Role, snippet: String, ts: Int, rank: Double? = nil) {
         self.sessionId = sessionId
         self.seq = seq
         self.role = role
         self.snippet = snippet
         self.ts = ts
+        self.rank = rank
     }
 }
 
@@ -793,13 +795,15 @@ public struct ProjectSearchMatch: Codable, Hashable, Sendable {
     public let line: Int
     public let column: Int
     public let preview: String
+    public let mtime: Int?
 
-    public init(path: String, relative: String, line: Int, column: Int, preview: String) {
+    public init(path: String, relative: String, line: Int, column: Int, preview: String, mtime: Int? = nil) {
         self.path = path
         self.relative = relative
         self.line = line
         self.column = column
         self.preview = preview
+        self.mtime = mtime
     }
 }
 

@@ -6,6 +6,8 @@ export type ProjectSearchMatch = {
   line: number;
   column: number;
   preview: string;
+  /** The file's modification time (ms) when the host could stat it. */
+  mtime?: number;
 };
 
 export type ProjectSearchResult = {

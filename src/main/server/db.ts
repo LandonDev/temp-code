@@ -8,6 +8,7 @@ import {
 } from '@shared/contract-m3a'
 import { mkdirSync } from 'node:fs'
 import { timed } from './stalls'
+import { ftsQuery, TURN_ROW_SQL, TurnIndex, turnText, type BackfillOptions } from './turnIndex'
 import type { EventReader } from './dbWorkers'
 import { dirname } from 'node:path'
 import type { AgentEvent, EventRow, Failure, PreambleStamp, SessionMeta, SessionStatus } from '@shared/events'
@@ -455,10 +456,28 @@ export function tailStart(
 export class Store {
   /** Session search runs on the reader worker while it is up (dbWorkers.ts). */
   private reader: EventReader | undefined
+  /** The FTS5 turn index over both event files (turnIndex.ts). */
+  readonly turnIndex: TurnIndex
+  /** Set by the first backfillTurnIndex(): from then on a session whose rows
+   *  changed under the store is re-indexed in the background. */
+  private indexing = false
   constructor(private db: DatabaseSync, options: { reader?: EventReader } = {}) {
     this.reader = options.reader
     const rows = db.prepare(`SELECT id FROM sessions WHERE cold = 1`).all() as unknown as { id: string }[]
     for (const r of rows) this.coldIds.add(r.id)
+    this.turnIndex = new TurnIndex(db)
+  }
+
+  /** Index every session the turn index does not hold yet, newest first,
+   *  in the background (turnIndex.ts): the whole database on the first
+   *  boot after the upgrade, else what a move or an import left. Safe to
+   *  call again; a call during a run makes it look again at the end. */
+  backfillTurnIndex(opts: BackfillOptions = {}): Promise<void> {
+    this.indexing = true
+    return this.turnIndex.kick((id) => (this.coldIds.has(id) ? 'cold.events' : 'events'), {
+      ...opts,
+      flush: () => this.flushEvents()
+    })
   }
 
   /** Statements are prepared once per SQL string: preparing dominated a
@@ -499,6 +518,8 @@ export class Store {
     seq: number
     ts: number
     payload: string
+    /** The row's turn text for the FTS index, null when it is not a turn. */
+    text: string | null
     table: 'events' | 'cold.events'
   }[] = []
   private flushScheduled = false
@@ -552,6 +573,7 @@ export class Store {
 
   insertSession(meta: SessionMeta): void {
     this.sessionsVersion += 1
+    this.turnIndex.markReady(meta.id)
     this
       .stmt(
         `INSERT INTO sessions (id, parent_id, project_id, workspace_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, pinned, permission, fast, ultrafast, context_1m, busy_since, paused_at, frozen_active_elapsed, thread_rules, native_id, account_current, plan_completed_at, implementation_id, plan_thread_id, started_by, created_at, updated_at)
@@ -731,6 +753,7 @@ export class Store {
       this.coldIds.delete(sid)
       if (this.moving === sid) this.moving = null
     }
+    this.turnIndex.forget(ids)
     return ids
   }
 
@@ -765,6 +788,7 @@ export class Store {
     const done = upTo === Number.MAX_SAFE_INTEGER
     this.db.exec('BEGIN')
     try {
+      const low = this.stmt(`SELECT MIN(seq) AS lo FROM events WHERE session_id = ?`).get(sessionId) as { lo: number | null }
       const moved = this
         .stmt(
           `INSERT OR REPLACE INTO cold.events (session_id, seq, ts, payload)
@@ -773,6 +797,7 @@ export class Store {
         .run(sessionId, upTo).changes
       this.stmt(`DELETE FROM events WHERE session_id = ? AND seq <= ?`).run(sessionId, upTo)
       if (done) this.stmt(`UPDATE sessions SET cold = 1 WHERE id = ?`).run(sessionId)
+      if (low.lo !== null) this.turnIndex.moveRows(sessionId, 'events', 'cold.events', low.lo, upTo)
       this.db.exec('COMMIT')
       if (done) {
         this.coldIds.add(sessionId)
@@ -800,6 +825,7 @@ export class Store {
         .run(sessionId).changes
       this.stmt(`DELETE FROM cold.events WHERE session_id = ?`).run(sessionId)
       this.stmt(`UPDATE sessions SET cold = 0 WHERE id = ?`).run(sessionId)
+      this.turnIndex.moveRows(sessionId, 'cold.events', 'events', 0, Number.MAX_SAFE_INTEGER)
       this.db.exec('COMMIT')
       this.coldIds.delete(sessionId)
       if (this.moving === sessionId) this.moving = null
@@ -831,6 +857,9 @@ export class Store {
       else this.coldIds.delete(id)
     }
     this.sessionsVersion += 1
+    // The index held the old rows: drop them and read the table again.
+    this.turnIndex.forget(ids)
+    if (this.indexing) void this.backfillTurnIndex().catch((error) => console.error('[search] re-index failed:', error))
   }
 
   /** The host a thread is crossing to while a move freezes it (sessionMove.ts), else null. */
@@ -870,7 +899,7 @@ export class Store {
     this.nextSeq.set(sessionId, seq + 1)
     // A row for a cold session lands in the cold file, where its log is.
     const table = this.eventsTable(sessionId)
-    this.pendingEvents.push({ sessionId, seq, ts, payload: JSON.stringify(event), table })
+    this.pendingEvents.push({ sessionId, seq, ts, payload: JSON.stringify(event), text: turnText(event), table })
     if (!this.flushScheduled) {
       this.flushScheduled = true
       setImmediate(() => this.flushEvents())
@@ -912,8 +941,10 @@ export class Store {
             const seq = this.maxSeq(row.sessionId) + 1
             insert.run(row.sessionId, seq, row.ts, row.payload)
             this.nextSeq.set(row.sessionId, seq + 1)
+            row.seq = seq
           }
         }
+        this.turnIndex.insertLanded(rows)
         this.db.exec('COMMIT')
       })
     } catch (error) {
@@ -1161,24 +1192,45 @@ export class Store {
     const limit = Math.min(options.limit ?? SEARCH_CAP, SEARCH_CAP)
     if (!needle) return { hits: [], truncated: false }
     this.flushEvents()
-    const over = (table: string): string =>
+    const ws = options.workspaceId
+    const tables: ('events' | 'cold.events')[] = options.archived ? ['events', 'cold.events'] : ['events']
+    // The scan the search was before the index: every turn row of a table,
+    // or only the rows of sessions the backfill has not reached yet.
+    const scan = (table: string, pendingOnly: boolean): string =>
       `SELECT e.session_id AS sessionId, e.seq AS seq, e.ts AS ts,
               json_extract(e.payload, '$.type') AS type,
               substr(json_extract(e.payload, '$.text'),
-                     max(1, instr(lower(json_extract(e.payload, '$.text')), ?) - 60), 180) AS snippet
+                     max(1, instr(lower(json_extract(e.payload, '$.text')), ?) - 60), 180) AS snippet,
+              0 AS rank
        FROM ${table} e JOIN sessions s ON s.id = e.session_id
-       WHERE json_extract(e.payload, '$.type') IN ('user-text', 'assistant-text')
-         AND COALESCE(json_extract(e.payload, '$.delta'), 0) = 0
-         AND json_extract(e.payload, '$.parentCallId') IS NULL
+       WHERE ${TURN_ROW_SQL}
          AND instr(lower(json_extract(e.payload, '$.text')), ?) > 0
-         ${options.workspaceId ? 'AND s.workspace_id = ?' : ''}`
-    const args = options.workspaceId ? [needle, needle, options.workspaceId] : [needle, needle]
-    const sql = `${over('events')}
-         ${options.archived ? `UNION ALL ${over('cold.events')}` : ''}
-         ORDER BY ts DESC, seq DESC
+         ${ws ? 'AND s.workspace_id = ?' : ''}
+         ${pendingOnly ? `AND e.session_id IN (SELECT p.id FROM sessions p LEFT JOIN turn_index ti ON ti.session_id = p.id AND ti.ready = 1 WHERE ti.session_id IS NULL)` : ''}`
+    const parts: string[] = []
+    const params: (string | number)[] = []
+    const match = this.turnIndex.available ? ftsQuery(options.query) : ''
+    if (match) {
+      for (const table of tables) {
+        parts.push(this.turnIndex.matchSql(table, !!ws))
+        params.push(match)
+        if (ws) params.push(ws)
+      }
+    }
+    if (!match || this.turnIndex.hasPending()) {
+      for (const table of tables) {
+        parts.push(scan(table, !!match))
+        params.push(needle, needle)
+        if (ws) params.push(ws)
+      }
+    }
+    // bm25 is negative, better first; a scanned row (rank 0) follows the
+    // ranked ones, newest first within a rank.
+    const sql = `${parts.join('\n UNION ALL \n')}
+         ORDER BY rank, ts DESC, seq DESC
          LIMIT ?`
-    const params = [...(options.archived ? [...args, ...args] : args), limit + 1]
-    type Row = { sessionId: string; seq: number; ts: number; type: string; snippet: string }
+    params.push(limit + 1)
+    type Row = { sessionId: string; seq: number; ts: number; type: string; snippet: string; rank: number }
     let rows: Row[] | null = null
     if (this.reader?.available) {
       try {
@@ -1194,8 +1246,9 @@ export class Store {
       sessionId: row.sessionId,
       seq: row.seq,
       role: row.type === 'user-text' ? 'user' : 'assistant',
-      snippet: row.snippet.trim(),
-      ts: row.ts
+      snippet: (row.snippet ?? '').trim(),
+      ts: row.ts,
+      ...(row.rank ? { rank: row.rank } : {})
     }))
     return { hits, truncated: rows.length > limit }
   }

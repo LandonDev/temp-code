@@ -176,5 +176,30 @@ export async function searchProject(options: ProjectSearchOptions): Promise<Proj
   if (!query) return { matches: [], truncated: false }
   const root = resolve(expandHome(options.cwd))
   if (!(await stat(root)).isDirectory()) throw new Error(`${root}: Not a directory`)
-  return (await gitGrep(root, query, options)) ?? (await scanFiles(root, query, options))
+  const result = (await gitGrep(root, query, options)) ?? (await scanFiles(root, query, options))
+  return withMtimes(result)
+}
+
+/** Each match carries its file's mtime: the search surface keeps the
+ *  newer copy when a paired project holds the same path on two hosts. One
+ *  stat per distinct file, a few hundred at most (MAX_MATCHES). */
+async function withMtimes(result: ProjectSearchResult): Promise<ProjectSearchResult> {
+  const paths = [...new Set(result.matches.map((m) => m.path))]
+  const mtimes = new Map<string, number>()
+  await Promise.all(
+    paths.map(async (path) => {
+      try {
+        mtimes.set(path, Math.round((await stat(path)).mtimeMs))
+      } catch {
+        // gone between the grep and now: no mtime
+      }
+    })
+  )
+  return {
+    ...result,
+    matches: result.matches.map((m) => {
+      const mtime = mtimes.get(m.path)
+      return mtime === undefined ? m : { ...m, mtime }
+    })
+  }
 }

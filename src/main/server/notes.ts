@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite'
-import { NoteIdSchema, NoteUpsertSchema, type Note, type NoteUpsert } from '@shared/contract-m3a'
+import { NoteIdSchema, NoteUpsertSchema, type Note, type NoteSearchHit, type NoteSearchResult, type NoteUpsert } from '@shared/contract-m3a'
 
 export function ensureNotesTable(db: DatabaseSync): void {
   db.exec(`CREATE TABLE IF NOT EXISTS notes (
@@ -89,4 +89,39 @@ export class Notes {
     NoteIdSchema.parse(id)
     this.db.prepare('DELETE FROM notes WHERE id = ?').run(id)
   }
+
+  /** Notes whose title or body mentions the query, newest first, with a
+   *  snippet around the first mention (`notes.search`). Notes are few and
+   *  small, so this is a case-insensitive scan; a per-thread notes file,
+   *  when one lands, joins through the same shape. */
+  search(query: string, limit = 50): NoteSearchResult {
+    const needle = query.trim().toLowerCase()
+    const cap = Math.min(Math.max(1, Math.floor(limit)), 200)
+    if (!needle) return { hits: [], truncated: false }
+    const rows = this.db
+      .prepare(
+        `SELECT id, title, body, source_cwd AS sourceCwd, updated_at AS updatedAt FROM notes
+         WHERE instr(lower(title), ?) > 0 OR instr(lower(body), ?) > 0
+         ORDER BY updated_at DESC, id ASC LIMIT ?`
+      )
+      .all(needle, needle, cap + 1) as unknown as { id: string; title: string; body: string; sourceCwd: string | null; updatedAt: number }[]
+    const hits: NoteSearchHit[] = rows.slice(0, cap).map((row) => ({
+      id: row.id,
+      title: row.title,
+      snippet: noteSnippet(row.title, row.body, needle),
+      updatedAt: row.updatedAt,
+      ...(row.sourceCwd ? { sourceCwd: row.sourceCwd } : {})
+    }))
+    return { hits, truncated: rows.length > cap }
+  }
+}
+
+/** Up to 180 characters of the body around the first mention; the title
+ *  when only it matches. */
+export function noteSnippet(title: string, body: string, needle: string): string {
+  const compact = body.replace(/\s+/g, ' ').trim()
+  const at = compact.toLowerCase().indexOf(needle)
+  if (at < 0) return title.toLowerCase().includes(needle) ? title : compact.slice(0, 180)
+  const start = Math.max(0, at - 60)
+  return (start > 0 ? '…' : '') + compact.slice(start, start + 180).trim()
 }

@@ -44,6 +44,8 @@ export async function handleM3a(
     case 'notes.delete':
       ctx.notes.delete(req.params.id)
       return done()
+    case 'notes.search':
+      return done(ctx.notes.search(req.params.query, req.params.limit))
     case 'search.project':
       return done(await searchProject(req.params.options))
     case 'session.search':

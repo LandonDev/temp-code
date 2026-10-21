@@ -1464,6 +1464,111 @@ watcher and stops with the last, the peer serving), `devices/ledger.test.ts`,
 `surfaces/MacDevices.dom.test.tsx` (the table, the empty state "No
 simulators", the confirm) and `lib/hostDevices.dom.test.tsx` (watch on
 mount, unwatch on unmount).
+### Search across hosts
+
+The search surface (⌘⇧F opens it; src/renderer/src/surfaces/SearchView.tsx)
+asks every connected host the same query at once and shows one list. Each
+host answers for itself: its threads by title (from the metas the window
+already holds) and by transcript row (`session.search`), its copy of the
+project by file name and file content (`search.project`, within the paired
+project; see below), and its notes (`notes.search`, new, capability read).
+Hosts answer in parallel and the rows land as each one does
+(`runCrossHostSearch` in src/renderer/src/lib/crossHostSearch.ts streams a
+snapshot after every answer); the footer says how long each host took
+("box: 1.2 s", muted) and names a host that was skipped (its socket is not
+open) or failed (no source answered). The ranking never looks at the host:
+a message's score is its match quality (the best bm25 among the hits is 1,
+a row a host had to scan or a loaded transcript matched in memory sits in
+the middle) plus recency; titles and files keep their fuzzy scores.
+
+Hits carry the host as the rail does: the connection dot and the host's
+name at the row's trailing edge, and nothing when only one host is paired.
+Enter opens a hit where it lives (a thread through the session store's
+route to its host, a file through the catalog's host for its path, a note
+in the notes view on its host, `focusNote`); ⌘↩ opens it in a new pane
+beside the focused one (`openEditorTabBeside`, `openSessionBeside`). The
+list never animates.
+
+**The same project on two hosts.** src/renderer/src/lib/projectPairs.ts
+pairs the Mac's checkout with the box's clone when both name the same
+GitHub repository, else when their folders share a name (one member per
+host). The file search on a host runs in that host's member of the current
+project's pair; a file at the same relative path in both copies (a content
+hit: the same line too) is one row that opens on the copy with the later
+mtime (`search.project` matches now carry `mtime`) and says "· newer" in
+its host mark, with "Also on <host>" as the row's title; two copies no
+newer than each other keep the first host's with no claim. A `project:`
+token matches the pair's name for both copies. This pairing is the seam the
+cross-host project pairing through the path map replaces with its own
+table when it lands.
+
+**Filters** are typed in the box, nothing else: `host:box` (a host's name
+or id; `mac` is the macOS host), `type:thread,file,note,project` (several
+with commas, singular or plural), `project:<name>`. The one line under the
+box names them and shows the active ones brighter. A token with nothing
+after the colon is one still being typed and filters nothing.
+
+**The index.** `session.search` was a `json_extract` + `instr` walk of
+every row of `events`. Each host now keeps an FTS5 index over turn text
+(src/main/server/turnIndex.ts): `events_fts` in the hot file and
+`cold.events_fts` in the cold one hold the text of every user-text /
+assistant-text row that is not a delta and not inside a tool call (what
+the scan matched), with rowid `(ordinal << 32) | seq` where `turn_index`
+gives each session an ordinal, so a session's rows are one rowid range and
+a move or a delete is an indexed range operation. The index is kept current
+three ways: `flushEvents()` inserts the text of every landed row whose
+session is ready (a session made through `insertSession` is ready from its
+first row); the backfill (`Store.backfillTurnIndex`, started after the
+cold mover's first drain in server/index.ts and again hourly) indexes every
+session without a ready `turn_index` row, newest first, in transactions of
+5,000 event rows with a yield between them, marking it ready only when every
+row is in; and `moveToCold` / `moveToHot` carry the rows between the files.
+A session whose rows changed under the store (`forgetSessions`, a move
+landing) is dropped and indexed again. While some session is not ready the
+search unions a scan of those sessions' rows only (a PK lookup per session),
+so nothing is unfindable during the first backfill. The query is every
+whitespace token as a quoted term, all required, the last a prefix
+(`ftsQuery`), ranked by bm25 with FTS5's own snippet; a hit carries `rank`
+(negative, lower is better) so the surface can score it. Without FTS5 in
+the SQLite build the hooks are no-ops and the search is the scan it was.
+
+Measured on a copy of the box's database on 2026-10-21 (hot 426 MB with
+919,554 rows of which 10,416 are turns, cold 3.9 GB with 7,657,678 rows of
+which 82,016 are turns, 5,495 sessions; `bun run script:measure-turn-index
+<copy>` prints this against a copy, never the live file):
+
+| | scan before the index | FTS5 after |
+| --- | --- | --- |
+| "gateway", hot | 588 ms | 7 ms |
+| "gateway", hot + cold | 5.8 s | 27 ms |
+| "notarize", hot + cold | 5.1 s | 3 ms |
+| "the" (a stop-word-like term, 200-row cap), hot | 502 ms | 72 ms |
+| "the", hot + cold | 5.5 s | 338 ms |
+
+The backfill indexed the 92,432 turn rows in 14.6 s (6,300 rows/s, in the
+background, yielding between transactions) and grew the hot file by 5 MB
+and the cold file by 107 MB. A two-word query is no longer a phrase: "session
+move" found 1 row by scan and 128 rows with both words by FTS.
+
+Proof: `bun run script:e2e-cross-host-search` (build first). Two headless
+instances, each with a copy of the same workspace (the box's shared file
+newer), threads whose logs are seeded into the databases with the instances
+stopped (a database from before the index); both boot backfills index them
+and `session.search` answers with bm25 (the delta and the tool-call row are
+not hits; a two-word query needs both; a prefix matches; the archived
+thread comes from the cold file's index with `archived: true`),
+`search.project` carries the mtimes, `notes.search` finds the box's note;
+then box issues an admin key and mac saves box, and, as the surface does,
+the script holds a read key for box, mints a ticket, upgrades `/ws` and
+runs the same query on box over the remote listener while asking mac on its
+local socket, merges by rank, reads the shared file's box copy with its
+mtime, and sees `search.project` outside the project refused by the fence.
+Unit tests: src/main/server/db-fts.test.ts (the index, the backfill, the
+moves, the deletes, the ranking, the no-FTS fallback, `notes.search`),
+src/renderer/src/lib/crossHostSearch.test.ts and projectPairs.test.ts (the
+filters, the streaming runner, the merge, the de-dup rule, the pairing),
+src/renderer/src/surfaces/SearchView.dom.test.tsx (a row per kind with its
+host mark, the folded file, the footer, the keys).
 
 ## Updating
 
