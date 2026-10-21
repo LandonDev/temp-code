@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
+import { heldSuffix, useMacHeldTotal } from "../lib/macBridge";
 import { mergeModelSettings, nativeModelId, resolveModel } from "../lib/models";
 import type { HarnessId } from "../lib/session";
 import * as serverCommands from "../lib/tcserver/commands";
@@ -60,6 +61,12 @@ export function bannerThreads(
   return { paused, recovery, needsYou };
 }
 
+/** The paused strip's line: the thread (or the count), and the Mac jobs waiting with it when any. */
+export function pausedText(paused: readonly Pick<SessionMeta, "title">[], held: number): string {
+  const head = paused.length === 1 ? `${paused[0].title} is paused` : `${paused.length} threads paused`;
+  return `${head}${heldSuffix(held)}`;
+}
+
 /**
  * One line under the title bar per thread state the user must act on:
  * paused trees (Continue / Stop) and trees whose last turn failed (Continue)
@@ -75,6 +82,9 @@ export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
   );
   const [busy, setBusy] = useState<Kind | "stop" | null>(null);
   const [failed, setFailed] = useState<Record<Kind, number>>({ recovery: 0, paused: 0, "needs-you": 0 });
+  // Mac calls the paused trees hold on their hosts (lib/macBridge.ts): they wait with the thread and resume with it.
+  const pausedIds = useMemo(() => paused.map((m) => m.id), [paused]);
+  const held = useMacHeldTotal(pausedIds);
 
   if (paused.length === 0 && recovery.length === 0 && needsYou.length === 0) return null;
 
@@ -141,7 +151,7 @@ export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
       {paused.length > 0 ? (
         <Banner
           kind="paused"
-          text={paused.length === 1 ? `${paused[0].title} is paused` : `${paused.length} threads paused`}
+          text={pausedText(paused, held)}
           failed={failed.paused}
           disabled={busy !== null}
           secondary={{

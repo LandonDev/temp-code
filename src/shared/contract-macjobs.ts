@@ -40,8 +40,18 @@ export type MacJobMethod = (typeof MAC_JOB_METHODS)[number]
 /** What the box asks the Mac over `peer.call` for jobs: the four, the start, and a thread's end. */
 export const MAC_JOB_PEER_METHODS = [...MAC_JOB_METHODS, 'mac.jobStart', 'mac.jobsEnd'] as const
 export type MacJobPeerMethod = (typeof MAC_JOB_PEER_METHODS)[number]
-/** Every method a `peer.call` may name: the Mac bridge's, the jobs', and the threads offer's (contract-crosshost.ts). */
-export type MacPeerMethod = MacMethod | MacJobPeerMethod | CrossHostPeerMethod | HostDevicesPeerMethod
+/** What the box sends when a thread pauses or stops (contract-macbridge.ts MacCancelArgs, MacHeldArgs). */
+export const MAC_PAUSE_PEER_METHODS = ['mac.cancel', 'mac.held'] as const
+export type MacPausePeerMethod = (typeof MAC_PAUSE_PEER_METHODS)[number]
+export const isMacPausePeerMethod = (m: string): m is MacPausePeerMethod =>
+  (MAC_PAUSE_PEER_METHODS as readonly string[]).includes(m)
+/** Every method a `peer.call` may name: the Mac bridge's, the jobs', the pause's, the threads offer's (contract-crosshost.ts) and the devices offer's. */
+export type MacPeerMethod =
+  | MacMethod
+  | MacJobPeerMethod
+  | MacPausePeerMethod
+  | CrossHostPeerMethod
+  | HostDevicesPeerMethod
 
 export const isMacJobPeerMethod = (m: string): m is MacJobPeerMethod =>
   (MAC_JOB_PEER_METHODS as readonly string[]).includes(m)

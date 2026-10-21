@@ -640,6 +640,13 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('session.resume'),
     params: z.object({ sessionId: z.string() })
   }),
+  // A proof's seam (local; isolated instances only, TEMP_CODE_E2E_STATUS=1):
+  // set a thread's status without a harness, so a pause has something to pause.
+  z.object({
+    id: z.string(),
+    method: z.literal('session.markStatus'),
+    params: z.object({ sessionId: z.string(), status: z.enum(['running', 'idle']) })
+  }),
   z.object({ id: z.string(), method: z.literal('session.continueAllErrors') }),
   z.object({ id: z.string(), method: z.literal('session.pauseAllRunning') }),
   z.object({ id: z.string(), method: z.literal('session.resumeAllPaused') }),

@@ -183,6 +183,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'session.interrupt': 'operate',
   'session.pause': 'operate',
   'session.resume': 'operate',
+  'session.markStatus': 'local',
   'session.continueAllErrors': 'operate',
   'session.pauseAllRunning': 'operate',
   'session.resumeAllPaused': 'operate',

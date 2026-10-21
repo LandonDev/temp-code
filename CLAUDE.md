@@ -594,6 +594,21 @@ routed to (aliax-core's `forward`). Two listeners:
   waiting until it re-registers. RPCs `resources.list/listAll/remove` take
   ids only. docs/box.md "Thread resources"; the e2e-mac-bridge proof covers
   a bridged worktree's record and removal.
+- Pause and Stop reach the Mac
+  (`src/main/server/macPause.ts`, every mac.* call passes its gate): a
+  thread pausing (subagents with it, by the parentId chain) has its calls
+  out on the Mac cancelled with the tool result "cancelled: the thread was
+  paused" and one `mac.cancel` per thread, which the Mac answers as its Stop
+  button would (deny a waiting card, kill a running command, end the jobs);
+  while paused, commands, jobs and writes are held on the box in order and
+  sent on Continue, or refused with "refused: the thread is paused" once the
+  caller's timeoutMs would have passed; reads go through marked `paused` and
+  only where they need no prompt. The Mac lists held calls (`mac.held`) as
+  `paused` rows without Stop, the box pushes `macBridge.held` so the paused
+  strip says "and N Mac jobs with it". docs/box.md "The Mac
+  bridge: what a box thread may touch on the Mac"; proof
+  `bun run script:e2e-mac-bridge` (its pause step uses the proof seam
+  `session.markStatus`, `TEMP_CODE_E2E_STATUS=1` on an isolated instance).
 - Threads on the Mac from the box: `app_start_thread` and `spawn_agent`
   take `environmentId` (`mac`, or a host id), and the thread runs on that
   Mac as an ordinary This Mac thread; its id comes back as `<envId>:

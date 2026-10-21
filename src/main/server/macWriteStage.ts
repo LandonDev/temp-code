@@ -122,7 +122,9 @@ export async function callMacWrite(
   stages: MacWriteStages,
   macPeer: string,
   thread: MacCallThread,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  /** The peer call's id, named ahead so a pause can cancel it on the Mac (macPause.ts). */
+  callId?: string
 ): Promise<MacWriteFileResult> {
   const { wire, release } = prepareMacWrite(args, calls.connectionOf(macPeer), stages)
   try {
@@ -130,7 +132,8 @@ export async function callMacWrite(
       macPeer,
       'mac.writeFile',
       { thread, args: wire },
-      MAC_APPROVAL_WAIT_MS + MAC_WRITE_PULL_MS + DEADLINE_SLACK_MS
+      MAC_APPROVAL_WAIT_MS + MAC_WRITE_PULL_MS + DEADLINE_SLACK_MS,
+      callId ? { callId } : {}
     )
   } finally {
     release()

@@ -31,6 +31,11 @@ import { isWebMode } from './nativeWeb'
  *  - A box thread's switch (`macBridge.thread.get/set`) lives on the box and
  *    is reached over the thread's own link; "on" names this Mac's real
  *    environment id.
+ *  - A paused box thread holds its commands, jobs and writes on the box
+ *    (macPause.ts); the box lists them here as requests with status
+ *    `paused`: rows of the running lists with "Paused" where Stop would be,
+ *    never a card. The box's own `macBridge.held` push (on the thread's
+ *    link) carries how many a root's tree holds, for the paused strip.
  */
 
 type State = {
@@ -44,6 +49,8 @@ type State = {
   localId: string | null
   /** The Mac's load as the guard last sampled it (macBridge.load.get), once read. */
   load: MacBridgeLoad | null
+  /** Mac calls a paused root thread's tree holds on its host, by root session id (0 rows are dropped). */
+  held: Record<string, number>
 }
 
 const store = createStore<State>(() => ({
@@ -51,7 +58,8 @@ const store = createStore<State>(() => ({
   threads: {},
   hosts: [],
   localId: null,
-  load: null
+  load: null,
+  held: {}
 }))
 export const macBridgeStore = store
 
@@ -106,6 +114,45 @@ export function startMacBridge(): void {
       if (event === 'added' && link.environmentId === LOCAL_ENVIRONMENT_ID)
         attach(link as NonNullable<ReturnType<typeof local>>)
     })
+  startHeldCounts()
+}
+
+let heldStarted = false
+/** Every link (a box thread's host sends its own count): `macBridge.held` lands by session id. */
+function startHeldCounts(): void {
+  if (heldStarted) return
+  heldStarted = true
+  registry.onLink((link, event) => {
+    if (event !== 'added') return
+    link.onPush((push) => {
+      if (push.push === 'macBridge.held') setHeld(push.sessionId, push.held)
+    })
+  })
+}
+
+function setHeld(sessionId: string, held: number): void {
+  store.setState((s) => {
+    if ((s.held[sessionId] ?? 0) === held) return s
+    const next = { ...s.held }
+    if (held > 0) next[sessionId] = held
+    else delete next[sessionId]
+    return { held: next }
+  })
+}
+
+/** How many Mac calls the given root threads hold between them while paused (macPause.ts on their host). */
+export function useMacHeldTotal(sessionIds: readonly string[]): number {
+  const held = useStore(store, (s) => s.held)
+  return heldTotal(held, sessionIds)
+}
+
+export const heldTotal = (held: Record<string, number>, sessionIds: readonly string[]): number =>
+  sessionIds.reduce((n, id) => n + (held[id] ?? 0), 0)
+
+/** The paused strip's suffix: "Build is paused" + heldSuffix(2) → "…, and 2 Mac jobs with it". */
+export function heldSuffix(held: number): string {
+  if (held <= 0) return ''
+  return `, and ${held} Mac ${held === 1 ? 'job' : 'jobs'} with it`
 }
 
 export function decideMacBridge(
@@ -129,15 +176,16 @@ export async function stopMacBridgeAll(requests: MacBridgeRequest[]): Promise<vo
 
 const byAge = (a: MacBridgeRequest, b: MacBridgeRequest): number => a.createdAt - b.createdAt
 
-/** Requests that get a card: never a quiet one, never one waiting its turn on the load guard. */
+/** Requests that get a card: never a quiet one, never one waiting its turn on the load guard, never one a paused thread holds on its host. */
 export const shownRequests = (requests: Iterable<MacBridgeRequest>): MacBridgeRequest[] =>
-  [...requests].filter((r) => !r.quiet && r.status !== 'held').sort(byAge)
+  [...requests].filter((r) => !r.quiet && r.status !== 'held' && r.status !== 'paused').sort(byAge)
 
 /**
  * Every command running on this Mac, or allowed and waiting its turn, for a
  * host or a thread, quiet ones included: the running ones first, oldest
- * first, then the held ones in line order (the Remote access pane, the
- * thread's Mac approvals dialog).
+ * first, then the held ones in line order, then the calls a paused thread
+ * holds on its host (status `paused`, nothing to stop here), oldest first
+ * (the Remote access pane, the thread's Mac approvals dialog).
  */
 export function inFlightRequests(
   requests: Iterable<MacBridgeRequest>,
@@ -145,7 +193,7 @@ export function inFlightRequests(
 ): MacBridgeRequest[] {
   const mine = [...requests].filter(
     (r) =>
-      (r.status === 'running' || r.status === 'held') &&
+      (r.status === 'running' || r.status === 'held' || r.status === 'paused') &&
       (match.environmentId === undefined || r.environmentId === match.environmentId) &&
       (match.sessionId === undefined || r.sessionId === match.sessionId)
   )
@@ -153,7 +201,8 @@ export function inFlightRequests(
   const held = mine
     .filter((r) => r.status === 'held')
     .sort((a, b) => (a.held?.position ?? 0) - (b.held?.position ?? 0) || byAge(a, b))
-  return [...running, ...held]
+  const paused = mine.filter((r) => r.status === 'paused').sort(byAge)
+  return [...running, ...held, ...paused]
 }
 
 /** Requests of one box thread that get a card, oldest first. */
@@ -321,6 +370,7 @@ export async function loadThreadBridge(
       .linkOf(environmentId)
       .request<MacBridgeThreadState>('macBridge.thread.get', { sessionId })
     store.setState((s) => ({ threads: { ...s.threads, [sessionId]: state } }))
+    if (state.held !== undefined) setHeld(sessionId, state.held)
     return state
   } catch {
     return null // an older host, or a key without the method

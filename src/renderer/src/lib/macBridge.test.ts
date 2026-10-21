@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { MacBridgeRequest } from "@server/shared/contract-macbridge";
-import { bridgeableEnvironment, heldLine, inFlightRequests, queueOf, quoteArgv, shownRequests } from "./macBridge";
+import {
+  bridgeableEnvironment,
+  heldLine,
+  heldSuffix,
+  heldTotal,
+  inFlightRequests,
+  queueOf,
+  quoteArgv,
+  shownRequests,
+} from "./macBridge";
 
 describe("quoteArgv", () => {
   it("shows argv exactly as a shell would need it typed", () => {
@@ -142,5 +151,41 @@ describe("held requests (the load guard)", () => {
     expect(inFlightRequests(all).map((r) => r.id)).toEqual(["r1", "o", "r2", "h1", "h2"]);
     expect(inFlightRequests(all, { environmentId: "env_box" }).map((r) => r.id)).toEqual(["r1", "r2", "h1", "h2"]);
     expect(inFlightRequests(all, { sessionId: "s1" }).map((r) => r.id)).toEqual(["r1", "h1", "h2"]);
+  });
+});
+
+describe("a paused thread's held calls (status paused)", () => {
+  it("never get a card: shownRequests and queueOf leave them out", () => {
+    const all = [
+      req("p", { createdAt: 1, status: "paused" }),
+      req("w", { createdAt: 2 }),
+      req("r", { createdAt: 3, status: "running" }),
+    ];
+    expect(shownRequests(all).map((r) => r.id)).toEqual(["w", "r"]);
+    const queue = queueOf(all);
+    expect(queue.pending.map((r) => r.id)).toEqual(["w"]);
+    expect(queue.running.flatMap((g) => g.requests.map((r) => r.id))).toEqual(["r"]);
+  });
+
+  it("are rows of the in-flight list after the running and the held ones, in age order, by host or thread", () => {
+    const all = [
+      req("r", { createdAt: 3, status: "running" }),
+      req("p1", { createdAt: 2, status: "paused" }),
+      req("p2", { createdAt: 1, status: "paused", sessionId: "s2" }),
+      req("w", { createdAt: 0 }),
+      req("o", { createdAt: 4, status: "paused", environmentId: "env_other", sessionId: "sx" }),
+    ];
+    expect(inFlightRequests(all, { environmentId: "env_box" }).map((r) => r.id)).toEqual(["r", "p2", "p1"]);
+    expect(inFlightRequests(all, { sessionId: "s1" }).map((r) => r.id)).toEqual(["r", "p1"]);
+    expect(inFlightRequests(all).map((r) => r.status)).toEqual(["running", "paused", "paused", "paused"]);
+  });
+});
+
+describe("the paused strip's Mac jobs", () => {
+  it("sums the held counts of the paused roots; the suffix reads as part of the sentence", () => {
+    expect(heldTotal({ a: 2, b: 1, c: 5 }, ["a", "b", "x"])).toBe(3);
+    expect(heldSuffix(0)).toBe("");
+    expect(heldSuffix(1)).toBe(", and 1 Mac job with it");
+    expect(heldSuffix(2)).toBe(", and 2 Mac jobs with it");
   });
 });

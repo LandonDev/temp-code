@@ -37,6 +37,8 @@ describe('METHOD_CAPABILITY', () => {
         'accounts.delete',
         // Only the desktop starts a thread's move between hosts (contract-session-move.ts).
         'session.move',
+        // A proof's seam (isolated instances only): a status with no harness, for the e2e's pause step.
+        'session.markStatus',
         // The Mac bridge: a box thread's own tools (token-gated), and the Mac's decisions and policy.
         ...methods.filter((m) => m.startsWith('mac.')),
         ...methods.filter((m) => m.startsWith('macBridge.') && !m.startsWith('macBridge.thread.')),

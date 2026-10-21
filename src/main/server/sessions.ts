@@ -2210,6 +2210,24 @@ export class SessionRegistry {
     if (next) this.notifyMeta(next)
   }
 
+  /**
+   * A proof's seam (index.ts `session.markStatus`, isolated instances only):
+   * a status with no harness behind it, so scripts/e2e-mac-bridge.ts can
+   * pause a thread and continue it. Straight to the row, as pauseRun writes
+   * its own: append() would drop a status while the row says paused.
+   */
+  markStatusForProof(sessionId: string, status: 'running' | 'idle'): void {
+    if (!this.store.getSession(sessionId)) throw new Error(`unknown session: ${sessionId}`)
+    this.appendStatus(sessionId, status)
+    const next = this.store.updateSession(sessionId, {
+      status,
+      busySince: status === 'running' ? Date.now() : null,
+      pausedAt: null,
+      frozenActiveElapsed: null
+    })
+    if (next) this.notifyMeta(next)
+  }
+
   private sessionTree(rootId: string): SessionMeta[] {
     const index = this.indexOf()
     const tree: SessionMeta[] = []

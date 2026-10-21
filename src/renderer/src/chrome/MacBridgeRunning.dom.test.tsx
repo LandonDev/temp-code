@@ -128,5 +128,38 @@ describe('MacBridgeRunningList', () => {
     expect(countLine(2, 0, 'box')).toBe('2 commands running on this Mac from box')
     expect(countLine(1, 3)).toBe('1 command running on this Mac · 3 waiting')
     expect(countLine(0, 1, 'box')).toBe('1 command waiting for this Mac from box')
+    expect(countLine(2, 1, 'box', 1)).toBe('2 commands running on this Mac from box · 1 waiting · 1 paused')
+    expect(countLine(0, 0, undefined, 1)).toBe('1 call paused with its thread')
+    expect(countLine(0, 0, 'box', 2)).toBe('2 calls paused with their thread from box')
+  })
+
+  it("a paused thread's held calls are Paused rows after the others, without Stop; Stop all skips them", () => {
+    seed([
+      req('r', { createdAt: 1 }),
+      req('p', { createdAt: 2, status: 'paused', id: 'mb_held_1' }),
+      req('q', { createdAt: 3, status: 'paused', id: 'mb_held_2', sessionId: 's2' })
+    ])
+    probe = mountProbe(<MacBridgeRunningList environmentId="env_box" hostName="box" />)
+    const root = probe.container
+    const list = root.querySelector('[data-mac-bridge-running-list]')!
+    expect(list.getAttribute('data-mac-bridge-paused-count')).toBe('2')
+    expect(root.textContent).toContain('1 command running on this Mac from box · 2 paused')
+    const rows = [...root.querySelectorAll('[data-mac-bridge-running-row]')]
+    expect(rows.map((r) => r.getAttribute('data-mac-bridge-row-status'))).toEqual(['running', 'paused', 'paused'])
+    expect(rows[0].querySelector('button')?.textContent).toBe('Stop')
+    expect(rows[1].querySelector('button')).toBeNull()
+    expect(rows[1].textContent).toContain('Paused')
+    // One stoppable row: no Stop all.
+    expect([...root.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Stop'])
+  })
+
+  it("a thread's own dialog shows only its paused rows; another thread's shows nothing", () => {
+    seed([req('p', { createdAt: 2, status: 'paused', id: 'mb_held_1' })])
+    probe = mountProbe(<MacBridgeRunningList sessionId="s1" />)
+    expect(probe.container.textContent).toContain('1 call paused with its thread')
+    expect(probe.container.querySelector('button')).toBeNull()
+    probe.unmount()
+    probe = mountProbe(<MacBridgeRunningList sessionId="s2" />)
+    expect(probe.container.querySelector('[data-mac-bridge-running-list]')).toBeNull()
   })
 })

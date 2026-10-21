@@ -406,6 +406,53 @@ describe('limits and timers', () => {
   })
 })
 
+describe('a thread pausing or stopping on the box', () => {
+  it("mac.cancel with jobs: true ends the thread's jobs as stopped and leaves another thread's alone", async () => {
+    const procs: FakeProc[] = []
+    const m = mac(() => {
+      const p = new FakeProc()
+      procs.push(p)
+      return p
+    })
+    const { jobId } = await m.start({ argv: ['cat'] })
+    const theirs = await m.start({ argv: ['cat'] }, 's2')
+    const card = m.requests().filter((r) => r.sessionId === 's1').at(-1)!
+    const out = await m.call<{ cancelled: number; jobsEnded: number }>('mac.cancel', {
+      callIds: [],
+      jobs: true,
+      reason: 'paused'
+    })
+    expect(out).toEqual({ cancelled: 0, jobsEnded: 1 })
+    expect(procs[0].signals).toEqual(['SIGTERM'])
+    expect(procs[1].signals).toEqual([])
+    const r = await m.call<MacJobReadResult>('mac.jobRead', { jobId })
+    expect(r).toMatchObject({ running: false, ended: 'stopped' })
+    expect(m.pushes.some((p) => p.push === 'macBridge.resolved' && p.id === card.id && p.outcome === 'stopped')).toBe(true)
+    const still = await m.call<MacJobReadResult>('mac.jobRead', { jobId: theirs.jobId }, 's2')
+    expect(still.running).toBe(true)
+    expect(m.lines.some((l) => l.includes('mac.cancel → 1 job(s) ended (stopped)'))).toBe(true)
+  })
+
+  it('a job start waiting on its card is denied by the cancel that names its call', async () => {
+    const procs: FakeProc[] = []
+    const m = mac(() => {
+      const p = new FakeProc()
+      procs.push(p)
+      return p
+    })
+    const start = m.mb.handle(
+      'mac.jobStart',
+      { thread: { id: 's1', title: 'T s1' }, args: { argv: ['cat'] } } as never,
+      { from: 'env_box', deadlineAt: Date.now() + 60_000, callId: 'c_job' }
+    )
+    for (let i = 0; i < 200 && m.requests().length === 0; i++) await Promise.resolve()
+    const out = await m.call<{ cancelled: number }>('mac.cancel', { callIds: ['c_job'], jobs: true, reason: 'paused' })
+    expect(out.cancelled).toBe(1)
+    await expect(start).rejects.toThrow('denied at the Mac')
+    expect(procs).toEqual([])
+  })
+})
+
 // ── the box side: token, routing, a thread's end ─────────────────────
 
 describe('the box: MacTools job calls over the peer link', () => {

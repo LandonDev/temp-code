@@ -24,6 +24,7 @@ import {
   MAC_WRITE_MAX_BYTES,
   MacWriteModeSchema,
   type MacBridgeThreadState,
+  type MacCallThread,
   type MacFetchFileResult,
   type MacFetchFileWire,
   type MacMethod,
@@ -40,6 +41,7 @@ import {
   type MacJobReadResult
 } from '@shared/contract-macjobs'
 import { macBridgeLandingDir, type LandingLookup } from './macBridgeLanding'
+import { MacPause, isMacRead } from './macPause'
 import type { MacRunLive } from './macRunLive'
 import { callMacWrite, macWriteStages, type MacWriteStages } from './macWriteStage'
 import type { PeerCalls } from './remote/peerCalls'
@@ -111,6 +113,8 @@ export interface MacToolsDeps {
     observeJobStart(sessionId: string, macPeer: string, jobId: string, args: { argv?: string[]; command?: string; cwd?: string }, macHome: string): void
     observeJobRead(jobId: string, result: Pick<MacJobReadResult, 'output' | 'running' | 'exitCode'>): void
   }
+  /** The count of Mac calls a thread's tree holds while paused changed (macPause.ts): pushed as `macBridge.held`. */
+  heldChanged?: (rootId: string, held: number) => void
 }
 
 type MacArgs = Record<string, unknown>
@@ -127,8 +131,17 @@ export function landingName(name: string): string {
 
 export class MacTools {
   private readonly log: (line: string) => void
+  /** Pause and Stop reach the Mac through this (macPause.ts): every call below passes its gate. */
+  readonly pause: MacPause
   constructor(private readonly deps: MacToolsDeps) {
     this.log = deps.log ?? ((line) => console.log(`[mac-tools] ${line}`))
+    this.pause = new MacPause({
+      sessions: deps.sessions,
+      calls: deps.calls,
+      jobThreads: () => this.jobThreads,
+      ...(deps.heldChanged ? { heldChanged: deps.heldChanged } : {}),
+      log: (line) => this.log(line)
+    })
   }
 
   /** The Mac a thread may reach: its own setting, else the nearest ancestor's. */
@@ -154,7 +167,8 @@ export class MacTools {
       macPeer,
       inherited,
       online: macPeer !== null && this.deps.calls.online(macPeer, MAC_BRIDGE_OFFER),
-      registered: this.deps.calls.registeredIds(MAC_BRIDGE_OFFER)
+      registered: this.deps.calls.registeredIds(MAC_BRIDGE_OFFER),
+      held: this.pause.heldCount(sessionId)
     }
   }
 
@@ -232,29 +246,56 @@ export class MacTools {
       method === 'mac.run'
         ? Math.min(Number(args.timeoutMs) || MAC_RUN_DEFAULT_TIMEOUT_MS, MAC_RUN_MAX_TIMEOUT_MS)
         : 0
+    // A read from a paused thread still goes, marked: the Mac answers it only where it would not have to ask.
+    const thread: MacCallThread = {
+      id: session.id,
+      title: session.title,
+      permission: session.permission,
+      ...(isMacRead(method) && this.pause.isPaused(session.id) ? { paused: true } : {})
+    }
     if (method === 'mac.writeFile')
-      return callMacWrite(
-        this.deps.calls,
-        this.deps.writeStages ?? macWriteStages,
-        macPeer,
-        { id: session.id, title: session.title, permission: session.permission },
-        args
+      return this.pause.guard(
+        {
+          sessionId: session.id,
+          macPeer,
+          method,
+          shape: writeShape(args),
+          waitMs: MAC_APPROVAL_WAIT_MS
+        },
+        (callId) =>
+          callMacWrite(
+            this.deps.calls,
+            this.deps.writeStages ?? macWriteStages,
+            macPeer,
+            thread,
+            args,
+            callId
+          )
       )
     const deadlineMs = MAC_APPROVAL_WAIT_MS + timeoutMs + DEADLINE_SLACK_MS
-    const live =
-      method === 'mac.run' ? this.deps.live?.open(session.id, args as MacRunArgs, rowId) : undefined
-    let result: unknown
-    try {
-      result = await this.deps.calls.call(
+    const result = await this.pause.guard(
+      {
+        sessionId: session.id,
         macPeer,
         method,
-        { thread: { id: session.id, title: session.title, permission: session.permission }, args },
-        deadlineMs,
-        live ? { onProgress: live.progress } : {}
-      )
-    } finally {
-      live?.close()
-    }
+        shape: method === 'mac.run' ? runShape(args) : { path: String(args.path ?? '') },
+        waitMs: method === 'mac.run' ? timeoutMs : deadlineMs
+      },
+      async (callId) => {
+        const live =
+          method === 'mac.run'
+            ? this.deps.live?.open(session.id, args as MacRunArgs, rowId)
+            : undefined
+        try {
+          return await this.deps.calls.call(macPeer, method, { thread, args }, deadlineMs, {
+            callId,
+            ...(live ? { onProgress: live.progress } : {})
+          })
+        } finally {
+          live?.close()
+        }
+      }
+    )
     if (method === 'mac.run' && this.deps.resources && result && typeof result === 'object')
       this.deps.resources.observeMacRun(
         session.id,
@@ -347,11 +388,25 @@ export class MacTools {
         : method === 'mac.jobRead'
           ? Math.min(Number(args.waitMs) || 0, MAC_JOB_READ_WAIT_MAX_MS) + DEADLINE_SLACK_MS
           : DEADLINE_SLACK_MS
-    const result = await this.deps.calls.call(
-      macPeer,
-      method,
-      { thread: { id: session.id, title: session.title, permission: session.permission }, args },
-      deadlineMs
+    const result = await this.pause.guard(
+      {
+        sessionId: session.id,
+        macPeer,
+        method,
+        shape: method === 'mac.jobStart' ? runShape(args) : {},
+        waitMs: deadlineMs
+      },
+      (callId) =>
+        this.deps.calls.call(
+          macPeer,
+          method,
+          {
+            thread: { id: session.id, title: session.title, permission: session.permission },
+            args
+          },
+          deadlineMs,
+          { callId }
+        )
     )
     if (method === 'mac.jobStart') this.jobThreads.set(sessionId, macPeer)
     if (this.deps.resources && result && typeof result === 'object') {
@@ -368,6 +423,7 @@ export class MacTools {
    * started a job, or whose ancestor is among them, has its jobs ended on its Mac.
    */
   threadsEnded(ids: readonly string[]): void {
+    this.pause.ended(ids)
     if (!this.jobThreads.size) return
     const gone = new Set(ids)
     for (const [sid, macPeer] of [...this.jobThreads]) {
@@ -398,6 +454,29 @@ export class MacTools {
             )
         )
     }
+  }
+}
+
+/** What a held mac.run's paused row shows on the Mac: argv or command, cwd; never output. */
+function runShape(args: MacArgs): { argv?: string[]; command?: string; cwd?: string } {
+  return {
+    ...(Array.isArray(args.argv) ? { argv: args.argv.map(String) } : {}),
+    ...(typeof args.command === 'string' ? { command: args.command } : {}),
+    ...(typeof args.cwd === 'string' ? { cwd: args.cwd } : {})
+  }
+}
+
+/** What a held mac.writeFile's paused row shows: the path and the size; never the bytes. */
+function writeShape(args: MacArgs): { path?: string; bytes?: number } {
+  const bytes =
+    typeof args.text === 'string'
+      ? Buffer.byteLength(args.text, 'utf8')
+      : typeof args.dataBase64 === 'string'
+        ? Math.floor((args.dataBase64.length * 3) / 4)
+        : undefined
+  return {
+    ...(typeof args.path === 'string' ? { path: args.path } : {}),
+    ...(bytes !== undefined ? { bytes } : {})
   }
 }
 

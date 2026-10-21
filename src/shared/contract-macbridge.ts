@@ -170,6 +170,13 @@ export interface MacCallThread {
   title: string
   /** The thread's permission mode on its box (`safe` | `edits` | `auto`); absent from an older box. */
   permission?: string
+  /**
+   * The thread is paused on its box (macPause.ts): only reads reach the Mac
+   * while it is, and one the Mac would have to ask about is refused instead
+   * ("refused: the thread is paused"); commands, jobs and writes wait on the
+   * box and never carry this.
+   */
+  paused?: true
 }
 
 /** A thread in full access on its box (`auto`) is never prompted on the Mac: the
@@ -183,8 +190,55 @@ export function threadRunsUnattended(thread: Pick<MacCallThread, "permission">):
 /** `peer.call` params for a mac.* method: the args plus the calling thread. */
 export type MacCallParams = {
   thread: MacCallThread
-  args: MacReadFileArgs | MacListDirArgs | MacFetchFileArgs | MacRunArgs | MacWriteFileWire
+  args:
+    | MacReadFileArgs
+    | MacListDirArgs
+    | MacFetchFileArgs
+    | MacRunArgs
+    | MacWriteFileWire
+    | MacCancelArgs
+    | MacHeldArgs
 }
+
+// ── pause (the box's macPause.ts; the Mac's macBridge.ts cancel/held) ────
+
+/**
+ * The box's `mac.cancel`: the thread paused or stopped, so every call of its
+ * still open on the Mac (by `peer.call` id) gets what the Stop button sends
+ * (a pending one is denied, a running one is killed), and with `jobs` its
+ * interactive jobs end as well. The box has already answered those calls
+ * "cancelled: the thread was paused"; the Mac's late reply is dropped.
+ */
+export interface MacCancelArgs {
+  callIds: string[]
+  /** End the thread's interactive jobs too (macJobs.ts endThread 'stopped'). */
+  jobs?: boolean
+  reason: 'paused' | 'stopped'
+}
+/** One call a paused thread holds on its box: shown on the Mac as a `paused` row, nothing runs for it. */
+export interface MacHeldCall {
+  /** The hold's own id on the box; the Mac's row for it is `mb_held_<id>`. */
+  id: string
+  method: MacMethod | 'mac.jobStart'
+  argv?: string[]
+  command?: string
+  cwd?: string
+  path?: string
+  bytes?: number
+  /** When the box put it on hold. */
+  since: number
+}
+/** The box's `mac.held`: the whole set a thread holds right now (an empty list clears its rows). */
+export interface MacHeldArgs {
+  held: MacHeldCall[]
+}
+/** `mac.cancel` → { cancelled, jobsEnded }. */
+export interface MacCancelResult {
+  cancelled: number
+  jobsEnded: number
+}
+/** The box's push to its own clients: how many Mac calls a thread's tree holds while paused (0 clears). */
+export type MacHeldPush = { push: 'macBridge.held'; sessionId: string; held: number }
 
 export interface MacReadFileResult {
   path: string
@@ -259,8 +313,12 @@ export interface MacBridgeRequest extends MacRunRememberOffer {
   createsFolders?: boolean
   createdAt: number
   expiresAt: number
-  /** pending: waits on the person. held: allowed, waiting its turn on the load guard (`held` says why). running: started. */
-  status: 'pending' | 'held' | 'running'
+  /**
+   * pending: waits on the person. held: allowed, waiting its turn on the load
+   * guard (`held` says why). running: started. paused: a call its thread
+   * holds on the box while paused (mac.held); it waits there, nothing to stop here.
+   */
+  status: 'pending' | 'held' | 'running' | 'paused'
   /** While status is held: its place and the figure that holds it (remote/macLoadGuard.ts). */
   held?: MacBridgeHeld
   /** run: an interactive job (mac.run background: true; remote/macJobs.ts): stdin open, no timeout but the idle one. */
@@ -374,6 +432,8 @@ export interface MacBridgeThreadState {
   online: boolean
   /** The environment ids of the Macs registered right now. */
   registered: string[]
+  /** Mac calls the thread's tree holds while paused (macPause.ts); absent from an older host. */
+  held?: number
 }
 
 export type MacBridgePush =
@@ -387,6 +447,7 @@ export type MacBridgePush =
     }
   | { push: 'macBridge.request'; request: MacBridgeRequest }
   | { push: 'macBridge.resolved'; id: string; outcome: MacBridgeOutcome }
+  | MacHeldPush
 
 // ── mac.writeFile (remote/macBridgeWrite.ts on the Mac, macWriteStage.ts on the box) ──
 

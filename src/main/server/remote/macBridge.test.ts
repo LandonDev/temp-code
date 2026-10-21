@@ -994,3 +994,89 @@ describe('MacBridge load guard', () => {
     mb.close()
   })
 })
+
+describe('MacBridge: pause and Stop from the box (mac.cancel, mac.held, a paused read)', () => {
+  const ctx = (callId: string) => ({ from: 'env_box', deadlineAt: Date.now() + 15 * 60_000, callId })
+  const thread = { id: 's1', title: 'thread s1' }
+
+  it('mac.cancel on a waiting card denies it, on a running command kills it: what the Stop button sends', async () => {
+    const b = bridge()
+    b.mb.setPolicy('env_box', 'read+run')
+    const waiting = b.mb.handle('mac.run', { thread, args: { argv: ['/bin/echo', 'never'], cwd: shared } }, ctx('c_wait'))
+    const running = b.mb.handle('mac.run', { thread, args: { command: 'sleep 30', cwd: shared } }, ctx('c_run'))
+    const r1 = await b.nextRequest(0)
+    const r2 = await b.nextRequest(1)
+    b.mb.decide(r2.id, true)
+    await b.nextRequest(2)
+    // Another thread's call with the same id shape is not touched; an id not out here is nothing.
+    const out = (await b.mb.handle(
+      'mac.cancel',
+      { thread, args: { callIds: ['c_wait', 'c_run', 'c_nothing'], jobs: true, reason: 'paused' } },
+      ctx('c_cancel')
+    )) as { cancelled: number; jobsEnded: number }
+    expect(out).toEqual({ cancelled: 2, jobsEnded: 0 })
+    await expect(waiting).rejects.toThrow('denied at the Mac')
+    const result = (await running) as MacRunResult
+    expect(result.exitCode === 0).toBe(false)
+    expect(b.pushes).toContainEqual({ push: 'macBridge.resolved', id: r1.id, outcome: 'denied' })
+    expect(b.pushes).toContainEqual({ push: 'macBridge.resolved', id: r2.id, outcome: 'stopped' })
+    expect(b.lines.some((l) => l.includes('mac.cancel → paused: 2 cancelled, 0 job(s) ended'))).toBe(true)
+    expect(b.mb.pending()).toEqual([])
+  })
+
+  it('mac.cancel needs no policy: with the bridge off it still answers', async () => {
+    const b = bridge()
+    const out = await b.mb.handle('mac.cancel', { thread, args: { callIds: [], reason: 'stopped' } }, ctx('c'))
+    expect(out).toEqual({ cancelled: 0, jobsEnded: 0 })
+  })
+
+  it("mac.held lists a paused thread's calls as paused rows: in pending(), nothing to decide, gone when the set shrinks or the link drops", async () => {
+    const b = bridge()
+    const held = (list: unknown[]) =>
+      b.mb.handle('mac.held', { thread, args: { held: list } } as never, ctx('c_held'))
+    await held([
+      { id: 'h1', method: 'mac.run', argv: ['make'], cwd: shared, since: 1_000 },
+      { id: 'h2', method: 'mac.jobStart', command: 'cat', cwd: shared, since: 2_000 },
+      { id: 'h3', method: 'mac.writeFile', path: join(shared, 'x'), bytes: 12, since: 3_000 }
+    ])
+    const rows = b.mb.pending()
+    expect(rows.map((r) => [r.id, r.status, r.kind, r.method])).toEqual([
+      ['mb_held_h1', 'paused', 'run', 'mac.run'],
+      ['mb_held_h2', 'paused', 'run', 'mac.run'],
+      ['mb_held_h3', 'paused', 'write', 'mac.writeFile']
+    ])
+    expect(rows[1]).toMatchObject({ interactive: true, command: 'cat', createdAt: 2_000 })
+    expect(rows[2]).toMatchObject({ bytes: 12, sessionId: 's1', hostName: 'box' })
+    expect(() => b.mb.decide('mb_held_h1', false)).toThrow(/paused/)
+    expect(b.requests().filter((r) => r.status === 'paused').length).toBe(3)
+    // The box released or refused two: the same list again adds no row.
+    await held([{ id: 'h2', method: 'mac.jobStart', command: 'cat', cwd: shared, since: 2_000 }])
+    expect(b.mb.pending().map((r) => r.id)).toEqual(['mb_held_h2'])
+    expect(b.pushes.filter((p) => p.push === 'macBridge.resolved').map((p) => (p as { id: string }).id)).toEqual([
+      'mb_held_h1',
+      'mb_held_h3'
+    ])
+    expect(b.requests().length).toBe(3)
+    b.mb.linkDown('env_box')
+    expect(b.mb.pending()).toEqual([])
+  })
+
+  it('a read from a paused thread goes through where it needs no prompt and is refused where it would have asked, with no card', async () => {
+    const b = bridge()
+    b.mb.setPolicy('env_box', 'read')
+    b.mb.setShared('env_box', [shared])
+    const paused = { ...thread, paused: true as const }
+    const listing = (await b.mb.handle('mac.listDir', { thread: paused, args: { path: shared } }, ctx('c1'))) as MacListDirResult
+    expect(listing.entries.some((e) => e.name === 'notes.md')).toBe(true)
+    await expect(b.mb.handle('mac.readFile', { thread: paused, args: { path: join(elsewhere, 'secret.txt') } }, ctx('c2'))).rejects.toThrow(
+      'refused: the thread is paused'
+    )
+    expect(b.requests()).toEqual([])
+    expect(b.lines.some((l) => l.includes('mac.readFile → refused (paused)'))).toBe(true)
+    // The box never sends these while paused; one that arrives marked is refused all the same.
+    b.mb.setPolicy('env_box', 'full')
+    await expect(b.mb.handle('mac.run', { thread: paused, args: { argv: ['/bin/echo'], cwd: shared } }, ctx('c3'))).rejects.toThrow(
+      'refused: the thread is paused'
+    )
+  })
+})

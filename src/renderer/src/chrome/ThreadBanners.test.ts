@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SessionMeta } from "../lib/tcserver/types";
-import { bannerThreads } from "./ThreadBanners";
+import { bannerThreads, pausedText } from "./ThreadBanners";
 
 function meta(id: string, over: Partial<SessionMeta> = {}): SessionMeta {
   return {
@@ -69,5 +69,13 @@ describe("bannerThreads", () => {
     const result = bannerThreads([archived, child], null, undefined);
     expect(result.paused).toEqual([]);
     expect(result.recovery).toEqual([]);
+  });
+});
+
+describe("pausedText", () => {
+  it("names the one paused thread, or counts them, and the Mac jobs waiting with it", () => {
+    expect(pausedText([{ title: "Build" }], 0)).toBe("Build is paused");
+    expect(pausedText([{ title: "Build" }], 2)).toBe("Build is paused, and 2 Mac jobs with it");
+    expect(pausedText([{ title: "A" }, { title: "B" }], 1)).toBe("2 threads paused, and 1 Mac job with it");
   });
 });

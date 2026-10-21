@@ -8,7 +8,8 @@ import {
   MAC_TOOL_PARAMS,
   MacBridgeRequestSchemas,
   macToolDescriptions,
-  type MacBridgePush
+  type MacBridgePush,
+  type MacCallParams
 } from '@shared/contract-macbridge'
 import type { SessionMeta } from '@shared/events'
 import {
@@ -104,7 +105,7 @@ function setup(
     log: () => {},
     ...(opts.resources ? { resources: opts.resources } : {})
   })
-  return { tools, tokens, settings, reboots, pushes, calls }
+  return { tools, tokens, settings, reboots, pushes, calls, sessions }
 }
 
 describe('MacThreadTokens', () => {
@@ -266,6 +267,52 @@ describe('MacTools gate', () => {
       tools.call('loose', tokens.tokenFor('loose'), 'mac.fetchFile', { path: '/x.bin' })
     ).rejects.toThrow(/damaged/)
     expect(existsSync(join(dir, 'data', 'attachments', 'loose', 'x.bin'))).toBe(false)
+  })
+})
+
+describe('MacTools: pause reaches the Mac (macPause.ts)', () => {
+  it("a paused thread's command waits on the box and is refused once its timeout would have passed; a read goes marked paused; thread.get counts the hold", async () => {
+    const seen: { method: string; thread: unknown }[] = []
+    const { tools, tokens, sessions } = setup(async (method, params) => {
+      seen.push({ method, thread: (params as MacCallParams).thread })
+      return { method }
+    })
+    tools.setThread('root', 'env_mac')
+    sessions.set('root', { ...sessions.get('root')!, status: 'paused' })
+    tools.pause.onStatus('root', 'paused')
+    const held = tools.call('child', tokens.tokenFor('child'), 'mac.run', { argv: ['make'], timeoutMs: 1_000 })
+    expect(tools.threadState('root').held).toBe(1)
+    expect(tools.threadState('child').held).toBe(1)
+    const read = (await tools.call('child', tokens.tokenFor('child'), 'mac.listDir', { path: '/tmp' })) as { method: string }
+    expect(read.method).toBe('mac.listDir')
+    expect(seen).toEqual([
+      { method: 'mac.held', thread: { id: 'child', title: 'T child' } },
+      { method: 'mac.listDir', thread: { id: 'child', title: 'T child', permission: 'safe', paused: true } }
+    ])
+    await expect(held).rejects.toThrow('refused: the thread is paused')
+    expect(tools.threadState('root').held).toBe(0)
+  })
+
+  it("a call out on the Mac answers 'cancelled: the thread was paused' the moment the thread pauses; resume sends what was held", async () => {
+    const gate: { release?: () => void } = {}
+    const seen: string[] = []
+    const { tools, tokens } = setup(async (method) => {
+      seen.push(method)
+      if (method === 'mac.run') await new Promise<void>((ok) => (gate.release = ok))
+      return { method }
+    })
+    tools.setThread('root', 'env_mac')
+    const out = tools.call('root', tokens.tokenFor('root'), 'mac.run', { argv: ['sleep', '30'] })
+    await new Promise((ok) => setTimeout(ok, 5))
+    tools.pause.onStatus('root', 'paused')
+    await expect(out).rejects.toThrow('cancelled: the thread was paused')
+    expect(seen).toEqual(['mac.run', 'mac.cancel'])
+    const later = tools.call('root', tokens.tokenFor('root'), 'mac.writeFile', { path: '/tmp/x', text: 'hi' })
+    expect(seen).toEqual(['mac.run', 'mac.cancel', 'mac.held'])
+    tools.pause.onStatus('root', 'running')
+    gate.release?.()
+    expect(await later).toEqual({ method: 'mac.writeFile' })
+    expect(seen.slice(3).sort()).toEqual(['mac.held', 'mac.writeFile'])
   })
 })
 

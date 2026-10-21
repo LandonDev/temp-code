@@ -138,17 +138,23 @@ export class PeerCalls {
     }
   }
 
+  /** A call id the caller may name ahead (opts.callId), so it can cancel the call on the Mac by it. */
+  static newCallId(): string {
+    return `c${randomBytes(9).toString('base64url')}`
+  }
+
   /** Ask a registered peer; rejects with PeerOfflineError when none, or on the deadline. */
   call<T = unknown>(
     envId: string,
     method: MacPeerMethod,
     params: Extract<MacBridgePush, { push: 'peer.call' }>['params'],
     deadlineMs: number,
-    opts: { onProgress?: (frame: ProgressFrame) => void } = {}
+    opts: { onProgress?: (frame: ProgressFrame) => void; callId?: string } = {}
   ): Promise<T> {
     const reg = this.registered.get(envId)
     if (!reg) return Promise.reject(new PeerOfflineError(envId))
-    const callId = `c${randomBytes(9).toString('base64url')}`
+    const callId = opts.callId ?? PeerCalls.newCallId()
+    if (this.calls.has(callId)) return Promise.reject(new Error(`call ${callId} is already out`))
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         const call = this.calls.get(callId)
@@ -172,6 +178,18 @@ export class PeerCalls {
       })
       reg.socket.send({ push: 'peer.call', callId, method, params, deadlineMs })
     })
+  }
+
+  /**
+   * Give up on a call from this side (the thread paused or stopped; macPause.ts):
+   * it fails now with `reason`, and the Mac's reply, if one still comes, is
+   * dropped as unknown. False when the call already settled.
+   */
+  cancel(callId: string, reason: string): boolean {
+    const call = this.calls.get(callId)
+    if (!call) return false
+    this.settle(callId, call, new Error(reason))
+    return true
   }
 
   private settle(callId: string, call: PendingCall, outcome: Error | { value: unknown }): void {

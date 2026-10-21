@@ -1365,6 +1365,36 @@ ended job's output stays readable for another 30 idle minutes (the newest 4
 per thread). The log names the job, its argv0, writes by size, signals and the
 exit; never its input or output.
 
+Pause and Stop (`src/main/server/macPause.ts` on the box; `mac.cancel` and
+`mac.held` in `remote/macBridge.ts` on the Mac). A thread's Mac work follows
+its status, subagents included (a thread is paused when it or any ancestor
+is). Pausing a thread (`session.pause`, the strip's Pause, Pause all) cancels
+every call of its still out on the Mac: the box answers each at once with
+"cancelled: the thread was paused" (that is the tool result the harness sees)
+and sends the Mac one `mac.cancel` per thread naming the calls, and the Mac
+gives each what its Stop button sends (a waiting card is denied, a running
+command killed) and ends the thread's interactive jobs as stopped (they stay
+readable). Stop (`session.interrupt`) does the same with "cancelled: the
+thread was stopped" for the whole root tree. While paused, a new command,
+job or write from the thread or a subagent is held on the box in arrival
+order and never sent: Continue lifts the hold in that order, and a call whose
+own wait (its `timeoutMs`) would pass first is answered at once with
+"refused: the thread is paused"; Stop refuses what is held. Reads are not
+held: they reach the Mac marked `paused` and are answered only where they
+need no prompt (a shared, managed or remembered folder, or full access); one
+that would have asked is refused with the same text and raises no card. The
+Mac lists what the box holds (`mac.held` carries the thread's whole held set
+on every change) as `paused` rows (`mb_held_<id>`, status `paused`) in the
+host's running list in Settings → Remote access and in the thread's "Mac
+approvals…" dialog, with "Paused" where Stop would be, never as a card; they
+go when the box releases or refuses them, or the link drops. The box pushes
+`macBridge.held` (the count under the root) to its own clients and answers it
+on `macBridge.thread.get`, so the paused strip reads "Build is paused, and 2
+Mac jobs with it". This hold is the thread's state only: the load guard's
+room-based wait is a different queue. Proof: the e2e's pause step marks the
+thread running through the proof seam `session.markStatus`
+(`TEMP_CODE_E2E_STATUS=1`, isolated instances only).
+
 Security model, in short: the box can ask, never decide. A compromised box can
 make the Mac show prompts and read what the Mac shared with it (or with its
 projects), nothing more; it can never run a command the person did not allow

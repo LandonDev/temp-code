@@ -45,7 +45,8 @@ import { servePeerCall, type LinkRequest } from './peerCalls'
 import { serveMacWrite, writeFoldersOf } from './macBridgeWrite'
 import type { MacWriteFileResult } from '@shared/contract-macbridge'
 import { threadRunsUnattended, type MacCallThread } from '@shared/contract-macbridge'
-import { isMacJobPeerMethod, type MacPeerMethod } from '@shared/contract-macjobs'
+import type { MacCancelArgs, MacCancelResult, MacHeldArgs } from '@shared/contract-macbridge'
+import { isMacJobPeerMethod, isMacPausePeerMethod, type MacPeerMethod } from '@shared/contract-macjobs'
 import { isCrossHostPeerMethod, type CrossHostCallParams } from '@shared/contract-crosshost'
 import { isHostDevicesPeerMethod, type HostDevicesCallParams } from '@shared/contract-hostdevices'
 import { MacJobs, type JobSpawner } from './macJobs'
@@ -91,6 +92,16 @@ import { MacLoadGuard, type HoldEnd, type LoadSample } from './macLoadGuard'
  *    be stopped there. Reads, listings, fetches and writes are never held.
  *    `macBridge.maxThreads.<envId>` (default 2) caps the Mac-local threads
  *    a host starts here; crossHostThreads.ts asks `admitThread` first.
+ *
+ *  - A thread that pauses or stops on its box sends `mac.cancel` naming the
+ *    calls it had out here: each gets what the Stop button sends (a waiting
+ *    card is denied, a running command killed) and its interactive jobs end;
+ *    the box has already answered those calls, so the late reply is dropped
+ *    there. While paused, the box holds the thread's commands, jobs and
+ *    writes and lists them here with `mac.held`: each is a `paused` row
+ *    (status 'paused', id `mb_held_<id>`) with nothing to stop, gone when the
+ *    box releases or refuses it. A read from a paused thread arrives marked
+ *    `paused` and is refused where it would have asked.
  *
  * The prompt is a `macBridge.request` push to this Mac's own local sockets
  * (its renderer), answered by `macBridge.decide`, which is local-only: no
@@ -300,13 +311,22 @@ interface Pending {
   decide: (allow: boolean, remember: Remember) => void
   stop?: () => void
   timer: NodeJS.Timeout
+  /** The box's `peer.call` id this request serves: what a `mac.cancel` names. */
+  callId?: string
 }
+
+/** The Mac's answer to a read a paused thread sent that would have asked (macPause.ts says the same for a held call). */
+export const REFUSED_PAUSED = 'refused: the thread is paused'
+/** The row id of a call a paused box thread holds (mac.held). */
+export const HELD_ROW_PREFIX = 'mb_held_'
 
 /** A decide's remember (contract-macbridge-rules.ts). */
 type Remember = MacDecideRemember
 
 export class MacBridge {
   private readonly pendingById = new Map<string, Pending>()
+  /** Calls paused box threads hold (mac.held), as `paused` rows, by row id. */
+  private readonly heldRows = new Map<string, MacBridgeRequest>()
   private readonly listeners = new Set<(push: MacBridgePush) => void>()
   /** Remembered approvals per (host, thread), in memory only (macBridgeRules.ts). */
   readonly rules: MacBridgeRuleBook
@@ -527,6 +547,9 @@ export class MacBridge {
 
   linkDown(envId: string): void {
     this.registered.delete(envId)
+    // What that box held is its own to list again when the link is back.
+    for (const [id, row] of [...this.heldRows])
+      if (row.environmentId === envId) this.dropHeldRow(id)
   }
 
   /** A push from a host: a peer.call is served and answered on the same link. */
@@ -556,12 +579,14 @@ export class MacBridge {
   }
 
   pending(): MacBridgeRequest[] {
-    return [...this.pendingById.values()]
-      .map((p) => p.request)
-      .sort((a, b) => a.createdAt - b.createdAt)
+    return [...[...this.pendingById.values()].map((p) => p.request), ...this.heldRows.values()].sort(
+      (a, b) => a.createdAt - b.createdAt
+    )
   }
 
   decide(id: string, allow: boolean, remember: MacDecideRemember = false): { ok: true } {
+    if (this.heldRows.has(id))
+      throw new Error('that call waits on its host while the thread is paused: nothing runs here')
     const p = this.pendingById.get(id)
     if (!p) throw new Error('that request is no longer waiting')
     if (p.request.status === 'running') {
@@ -629,7 +654,8 @@ export class MacBridge {
   private ask(
     shape: Omit<MacBridgeRequest, 'id' | 'createdAt' | 'expiresAt' | 'status' | 'quiet'>,
     until: number,
-    quiet = false
+    quiet = false,
+    callId?: string
   ): {
     id: string
     answer: Promise<{ allow: boolean; remember: Remember; outcome: MacBridgeOutcome }>
@@ -660,6 +686,7 @@ export class MacBridge {
         this.pendingById.set(id, {
           request,
           timer,
+          ...(callId ? { callId } : {}),
           decide: (allow, remember) => {
             if (settled) return
             settled = true
@@ -683,6 +710,85 @@ export class MacBridge {
     this.emit({ push: 'macBridge.resolved', id, outcome })
   }
 
+  // ── pause and stop on the box (macPause.ts) ────────────────────────
+
+  /**
+   * mac.cancel: the thread paused or stopped. Every request of its that
+   * serves one of the named calls gets what the Stop button sends (decide
+   * false: a waiting card is denied, a running command killed), and with
+   * `jobs` its interactive jobs end as stopped. Needs no policy: there is
+   * nothing to admit, only things to end.
+   */
+  cancel(
+    env: { id: string; name: string },
+    thread: MacCallThread,
+    args: MacCancelArgs,
+    line: (decision: string) => void
+  ): MacCancelResult {
+    const wanted = new Set(Array.isArray(args.callIds) ? args.callIds : [])
+    let cancelled = 0
+    for (const [id, p] of [...this.pendingById]) {
+      if (p.request.environmentId !== env.id || p.request.sessionId !== thread.id) continue
+      if (!p.callId || !wanted.has(p.callId)) continue
+      if (p.request.status === 'running') p.stop?.()
+      else p.decide(false, false)
+      cancelled++
+      void id
+    }
+    const jobsEnded = args.jobs ? (this.jobsInstance?.stopThread(env.id, thread.id, line) ?? 0) : 0
+    line(`${args.reason === 'paused' ? 'paused' : 'stopped'}: ${cancelled} cancelled, ${jobsEnded} job(s) ended`)
+    return { cancelled, jobsEnded }
+  }
+
+  /**
+   * mac.held: the whole set a paused thread holds on its box right now. Each
+   * is a `paused` row here (nothing runs, nothing to stop); a row no longer
+   * in the set goes.
+   */
+  held(
+    env: { id: string; name: string },
+    thread: MacCallThread,
+    args: MacHeldArgs,
+    line: (decision: string) => void
+  ): { listed: number } {
+    const list = Array.isArray(args.held) ? args.held : []
+    const keep = new Set(list.map((h) => `${HELD_ROW_PREFIX}${h.id}`))
+    for (const [id, row] of [...this.heldRows])
+      if (row.environmentId === env.id && row.sessionId === thread.id && !keep.has(id))
+        this.dropHeldRow(id)
+    for (const h of list) {
+      const id = `${HELD_ROW_PREFIX}${h.id}`
+      if (this.heldRows.has(id)) continue
+      const row: MacBridgeRequest = {
+        id,
+        environmentId: env.id,
+        hostName: env.name,
+        sessionId: thread.id,
+        threadTitle: String(thread.title ?? ''),
+        kind: h.method === 'mac.writeFile' ? 'write' : h.method === 'mac.run' || h.method === 'mac.jobStart' ? 'run' : 'read',
+        method: h.method === 'mac.jobStart' ? 'mac.run' : h.method,
+        ...(h.argv ? { argv: h.argv } : {}),
+        ...(h.command !== undefined ? { command: h.command } : {}),
+        ...(h.cwd !== undefined ? { cwd: h.cwd } : {}),
+        ...(h.path !== undefined ? { path: h.path } : {}),
+        ...(h.bytes !== undefined ? { bytes: h.bytes } : {}),
+        ...(h.method === 'mac.jobStart' ? { interactive: true as const } : {}),
+        createdAt: typeof h.since === 'number' ? h.since : Date.now(),
+        expiresAt: Number.MAX_SAFE_INTEGER,
+        status: 'paused'
+      }
+      this.heldRows.set(id, row)
+      this.emit({ push: 'macBridge.request', request: row })
+    }
+    line(`${list.length} held`)
+    return { listed: list.length }
+  }
+
+  private dropHeldRow(id: string): void {
+    if (!this.heldRows.delete(id)) return
+    this.emit({ push: 'macBridge.resolved', id, outcome: 'done' })
+  }
+
   // ── a call from a box ──────────────────────────────────────────────
 
   async handle(
@@ -691,6 +797,8 @@ export class MacBridge {
     ctx: {
       from: string
       deadlineAt: number
+      /** The box's `peer.call` id (a `mac.cancel` names it); absent from a test's direct call. */
+      callId?: string
       progress?: (chunk: string, skipped?: number) => void
     }
   ): Promise<unknown> {
@@ -701,11 +809,21 @@ export class MacBridge {
     const thread = params?.thread
     if (!env) throw new Error('this Mac does not know that host')
     if (!thread || typeof thread.id !== 'string') throw new Error('the call names no thread')
-    if (method === 'mac.writeFile') return this.writeFile(env, thread, params.args, ctx.deadlineAt)
-    const policy = this.policyOf(env.id)
-    const unattended = threadRunsUnattended(thread)
     const line = (decision: string): void =>
       this.log(`${env.name} (${env.id}) thread=${thread.id} ${method} → ${decision}`)
+    if (isMacPausePeerMethod(method))
+      return method === 'mac.cancel'
+        ? this.cancel(env, thread, params.args as MacCancelArgs, line)
+        : this.held(env, thread, params.args as MacHeldArgs, line)
+    // The box holds a paused thread's commands, jobs and writes itself; only a read comes marked, and only a prompt-free one is answered.
+    if (thread.paused && !['mac.readFile', 'mac.listDir', 'mac.fetchFile'].includes(method)) {
+      line('refused (paused)')
+      throw new Error(REFUSED_PAUSED)
+    }
+    if (method === 'mac.writeFile')
+      return this.writeFile(env, thread, params.args, ctx.deadlineAt, ctx.callId)
+    const policy = this.policyOf(env.id)
+    const unattended = threadRunsUnattended(thread)
     if (policy === 'off') {
       line('refused (bridge off)')
       throw new Error(
@@ -716,7 +834,8 @@ export class MacBridge {
       return this.jobs.handle(env, thread, method, params.args, {
         policy,
         deadlineAt: ctx.deadlineAt,
-        line
+        line,
+        callId: ctx.callId
       })
     if (method === 'mac.run') {
       if (policy !== 'read+run' && policy !== 'full') {
@@ -725,7 +844,7 @@ export class MacBridge {
           "this host may read on the Mac but not run commands (the Mac's Settings → Remote access)"
         )
       }
-      return this.run(env, thread, params.args, ctx.deadlineAt, line, ctx.progress)
+      return this.run(env, thread, params.args, ctx.deadlineAt, line, ctx.progress, ctx.callId)
     }
     const schema =
       method === 'mac.readFile'
@@ -748,6 +867,10 @@ export class MacBridge {
     if (verdict.allow || unattended) {
       if (verdict.allow && verdict.why === 'remembered') this.rules.creditRead(env.id, thread.id, real)
       line(`allowed (${verdict.allow ? verdict.why : 'full access'})`)
+    } else if (thread.paused) {
+      // A paused thread's read goes only where it needs no prompt: nobody asks the person for a thread that is not running.
+      line('refused (paused)')
+      throw new Error(REFUSED_PAUSED)
     } else {
       // Under full only keys, credentials and the dirs above home ask: each
       // time, never remembered as a folder (that would admit the secret too).
@@ -763,7 +886,9 @@ export class MacBridge {
           path: real,
           ...(folder ? { folder } : {})
         },
-        Math.min(Date.now() + MAC_APPROVAL_WAIT_MS, ctx.deadlineAt - REPLY_MARGIN_MS)
+        Math.min(Date.now() + MAC_APPROVAL_WAIT_MS, ctx.deadlineAt - REPLY_MARGIN_MS),
+        false,
+        ctx.callId
       )
       const decision = await answer
       if (!decision.allow) {
@@ -790,7 +915,8 @@ export class MacBridge {
     raw: unknown,
     deadlineAt: number,
     line: (decision: string) => void,
-    progress?: (chunk: string, skipped?: number) => void
+    progress?: (chunk: string, skipped?: number) => void,
+    callId?: string
   ): Promise<MacRunResult> {
     const args = MacRunArgsSchema.parse(raw)
     if (!args.argv === !args.command) throw new Error('mac.run takes argv or command, one of them')
@@ -827,7 +953,8 @@ export class MacBridge {
         ...runOffer(spec, this.home)
       },
       askUntil,
-      !shown.prompt && shown.quiet
+      !shown.prompt && shown.quiet,
+      callId
     )
     const remembered = !shown.prompt
     const decision = remembered
@@ -883,13 +1010,14 @@ export class MacBridge {
   /** mac.run background: true and the calls on its job; the card is mac.run's, marked interactive. */
   get jobs(): MacJobs {
     this.jobsInstance ??= new MacJobs({
-      ask: (shape, until, remembered) => {
+      ask: (shape, until, remembered, callId) => {
         // A remembered job starts at once, as running; it is quiet (no card)
         // unless the host shows running commands (runPresentation).
         const asked = this.ask(
           shape,
           until,
-          remembered && !this.showRunningOf(shape.environmentId)
+          remembered && !this.showRunningOf(shape.environmentId),
+          callId
         )
         if (remembered) this.pendingById.get(asked.id)?.decide(true, false)
         return asked
@@ -915,6 +1043,7 @@ export class MacBridge {
   close(): void {
     this.jobsInstance?.closeAll()
     this.guard.close()
+    this.heldRows.clear()
     for (const [id, p] of this.pendingById) {
       p.stop?.()
       p.decide(false, false)
@@ -929,7 +1058,8 @@ export class MacBridge {
     env: { id: string; name: string },
     thread: { id: string; title: string },
     args: unknown,
-    deadlineAt: number
+    deadlineAt: number,
+    callId?: string
   ): Promise<MacWriteFileResult> {
     return serveMacWrite(
       {
@@ -940,7 +1070,7 @@ export class MacBridge {
         managed: this.deps.managedRoots(),
         shared: this.sharedOf(env.id),
         remembered: writeFoldersOf(this, env.id, thread.id),
-        ask: (shape, until) => this.ask(shape, until),
+        ask: (shape, until) => this.ask(shape, until, false, callId),
         finish: (id, outcome) => this.finish(id, outcome),
         link: this.deps.link(env.id),
         log: this.log

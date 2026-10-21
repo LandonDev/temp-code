@@ -250,7 +250,9 @@ export interface MacJobsDeps {
   ask: (
     shape: Omit<MacBridgeRequest, 'id' | 'createdAt' | 'expiresAt' | 'status'>,
     until: number,
-    remembered: boolean
+    remembered: boolean,
+    /** The box's `peer.call` id the start serves (a `mac.cancel` names it). */
+    callId?: string
   ) => {
     id: string
     answer: Promise<{ allow: boolean; remember: MacDecideRemember; outcome: MacBridgeOutcome }>
@@ -314,7 +316,7 @@ export class MacJobs {
     thread: MacCallThread,
     method: MacJobPeerMethod,
     raw: unknown,
-    ctx: { policy: string; deadlineAt: number; line: (decision: string) => void }
+    ctx: { policy: string; deadlineAt: number; line: (decision: string) => void; callId?: string }
   ): Promise<unknown> {
     switch (method) {
       case 'mac.jobStart':
@@ -324,7 +326,7 @@ export class MacJobs {
             "this host may read on the Mac but not run commands (the Mac's Settings → Remote access)"
           )
         }
-        return this.start(env, thread, raw, ctx.deadlineAt, ctx.line)
+        return this.start(env, thread, raw, ctx.deadlineAt, ctx.line, ctx.callId)
       case 'mac.jobsEnd':
         return this.endThread(env.id, thread.id, 'thread-ended', ctx.line)
       case 'mac.jobWrite': {
@@ -363,7 +365,8 @@ export class MacJobs {
     thread: MacCallThread,
     raw: unknown,
     deadlineAt: number,
-    line: (decision: string) => void
+    line: (decision: string) => void,
+    callId?: string
   ): Promise<MacJobStartResult> {
     const args = MacRunArgsSchema.parse(raw)
     if (!args.argv === !args.command) throw new Error('mac.run takes argv or command, one of them')
@@ -398,7 +401,8 @@ export class MacJobs {
         interactive: true
       },
       until,
-      remembered
+      remembered,
+      callId
     )
     const decision = await answer
     if (!decision.allow) {
@@ -637,6 +641,22 @@ export class MacJobs {
     this.remembered.delete(this.threadKey(envId, threadId))
     if (jobs.length) line(`${ended} job(s) ended (${why})`)
     return { ended }
+  }
+
+  /**
+   * The thread paused or stopped on its box (mac.cancel): its running jobs
+   * end as stopped, as the card's Stop ends one, and stay readable (a
+   * resumed thread may ask what became of them); its memory stays too.
+   */
+  stopThread(envId: string, threadId: string, line: (d: string) => void = this.deps.log): number {
+    let ended = 0
+    for (const j of this.jobsOf(envId, threadId)) {
+      if (!j.running) continue
+      ended++
+      this.end(j, 'stopped')
+    }
+    if (ended) line(`${ended} job(s) ended (stopped)`)
+    return ended
   }
 
   /** Every job of one host goes (its policy no longer allows commands). */

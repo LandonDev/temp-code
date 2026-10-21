@@ -36,6 +36,15 @@
  *  - an interactive job: mac.run background: true starts `cat` after the
  *    same card (marked interactive), two lines written with mac.jobWrite read
  *    back through mac.jobRead, mac.jobClose ends its stdin and it exits 0
+ *  - pause reaches the Mac: with the thread marked running (the proof seam
+ *    session.markStatus, TEMP_CODE_E2E_STATUS=1), a `sleep 60` allowed and
+ *    running and a `cat` job are both ended by session.pause: box answers the
+ *    call "cancelled: the thread was paused", mac's card resolves stopped and
+ *    its log shows the mac.cancel; a mac.run sent while paused is a `paused`
+ *    row on mac (listed, nothing to decide) and box counts it on
+ *    macBridge.thread.get; one with a 1 s timeout is refused at once; a read
+ *    in the shared folder still answers and one outside is refused with no
+ *    card; marked running again, the held command reaches mac's card and runs
  *  - policy read refuses commands, off refuses everything; with the host
  *    removed on mac, box answers "Mac offline"
  * Run: bun scripts/e2e-mac-bridge.ts   (build first: electron-vite build)
@@ -223,6 +232,7 @@ interface BridgeRequest {
   path?: string
   folder?: string
   argv?: string[]
+  command?: string
   cwd?: string
   sessionId: string
   hostName: string
@@ -233,21 +243,30 @@ interface BridgeRequest {
   /** Allowed and waiting its turn on the load guard (status held). */
   held?: { reason: 'cap' | 'load'; position: number; load: number; limit: number; cores: number; maxRunning: number; running: number }
 }
-/** mac's own socket, as its renderer holds it: every macBridge.request push. */
+/** mac's own socket, as its renderer holds it: every macBridge.request push (and the resolved ones, by id). */
 async function watchMac(): Promise<{
   next: (pred?: (r: BridgeRequest) => boolean) => Promise<BridgeRequest>
   seen: BridgeRequest[]
+  resolved: { id: string; outcome: string }[]
   close: () => void
 }> {
   const ws = new WebSocket(`ws://127.0.0.1:${portOf(mac)}/`)
   const seen: BridgeRequest[] = []
+  const resolved: { id: string; outcome: string }[] = []
   await new Promise<void>((ok, fail) => {
     ws.addEventListener('open', () => ok())
     ws.addEventListener('error', () => fail(new Error('mac socket error')))
   })
   ws.addEventListener('message', (ev) => {
-    const frame = JSON.parse(String(ev.data)) as { push?: string; request?: BridgeRequest }
+    const frame = JSON.parse(String(ev.data)) as {
+      push?: string
+      request?: BridgeRequest
+      id?: string
+      outcome?: string
+    }
     if (frame.push === 'macBridge.request' && frame.request) seen.push(frame.request)
+    if (frame.push === 'macBridge.resolved' && frame.id)
+      resolved.push({ id: frame.id, outcome: frame.outcome ?? '' })
   })
   let cursor = 0
   const next = async (pred: (r: BridgeRequest) => boolean = () => true): Promise<BridgeRequest> => {
@@ -262,7 +281,7 @@ async function watchMac(): Promise<{
     }
     throw new Error('no macBridge.request reached the Mac')
   }
-  return { next, seen, close: () => ws.close() }
+  return { next, seen, resolved, close: () => ws.close() }
 }
 
 /** box's own socket subscribed to a thread, as a renderer holds it: every live row (event and events pushes). */
@@ -372,7 +391,7 @@ interface HostPolicy {
 }
 
 launch(mac)
-launch(box, { TEMP_CODE_MAC_TOKEN_SEED: SEED })
+launch(box, { TEMP_CODE_MAC_TOKEN_SEED: SEED, TEMP_CODE_E2E_STATUS: '1' })
 try {
   const up =
     (await until('mac up', 90_000, () => existsSync(join(mac.data, 'server.json')))) &&
@@ -1096,6 +1115,115 @@ try {
     'mac logged the job, never what it wrote',
     logOf(mac).includes(`job ${job.jobId} ran: exit 0`) && !logOf(mac).includes('first line')
   )
+
+  // ── 8d. pause reaches the Mac: a running command and a job end, a held call waits and then runs ──
+  await rpc(box, 'session.markStatus', { sessionId: sid, status: 'running' })
+  const longRun = rpc<{ exitCode: number }>(box, 'mac.run', {
+    sessionId: sid,
+    token,
+    command: 'sleep 60',
+    cwd: shared,
+    timeoutMs: 120_000
+  })
+  const askLong = await watcher.next(
+    (r) => r.kind === 'run' && r.status === 'pending' && r.command === 'sleep 60'
+  )
+  await rpc(mac, 'macBridge.decide', { id: askLong.id, allow: true })
+  await watcher.next((r) => r.id === askLong.id && r.status === 'running')
+  const job2Start = rpc<{ jobId: string }>(box, 'mac.run', {
+    sessionId: sid,
+    token,
+    argv: ['cat'],
+    cwd: shared,
+    background: true
+  })
+  const askJob2 = await watcher.next((r) => r.kind === 'run' && r.status === 'pending')
+  await rpc(mac, 'macBridge.decide', { id: askJob2.id, allow: true })
+  const job2 = await job2Start
+  await rpc(box, 'session.pause', { sessionId: sid })
+  const cancelled = await errorOf(longRun)
+  check(
+    'session.pause: the running mac.run answers "cancelled: the thread was paused" on the box',
+    cancelled === 'cancelled: the thread was paused',
+    cancelled
+  )
+  const stoppedOnMac = await until(
+    "mac's card for it resolves stopped",
+    15_000,
+    async () => watcher.resolved.some((r) => r.id === askLong.id && r.outcome === 'stopped')
+  )
+  check('the Mac received the cancel: the running command was killed (card resolved stopped)', stoppedOnMac)
+  const jobEnded = await until(
+    "mac ends the thread's job",
+    15_000,
+    async () =>
+      watcher.resolved.some((r) => r.id === askJob2.id && r.outcome === 'stopped') &&
+      logOf(mac).includes(`thread=${sid} mac.cancel → paused: 1 cancelled, 1 job(s) ended`)
+  )
+  check(`the job ${job2.jobId} ended with the pause, and mac logged the cancel`, jobEnded)
+  // Held while paused: a paused row on mac, counted on box; a short timeout is refused at once.
+  const heldRun = rpc<{ stdout: string }>(box, 'mac.run', {
+    sessionId: sid,
+    token,
+    argv: ['/bin/echo', 'after the pause'],
+    cwd: shared,
+    timeoutMs: 60_000
+  })
+  const pausedRow = await watcher.next((r) => r.status === 'paused')
+  check(
+    'a mac.run while paused is held on the box and listed on mac as a paused row',
+    pausedRow.id.startsWith('mb_held_') &&
+      pausedRow.sessionId === sid &&
+      JSON.stringify(pausedRow.argv) === '["/bin/echo","after the pause"]' &&
+      pausedRow.cwd === shared,
+    JSON.stringify(pausedRow)
+  )
+  const pendingOnMac = await rpc<BridgeRequest[]>(mac, 'macBridge.pending')
+  check(
+    'macBridge.pending lists the paused row; deciding it is refused (nothing runs for it on the Mac)',
+    pendingOnMac.some((r) => r.id === pausedRow.id && r.status === 'paused') &&
+      (await errorOf(rpc(mac, 'macBridge.decide', { id: pausedRow.id, allow: false }))).includes('paused'),
+    JSON.stringify(pendingOnMac.map((r) => [r.id, r.status]))
+  )
+  const heldState = await rpc<{ held: number }>(box, 'macBridge.thread.get', { sessionId: sid })
+  check('box counts the held call on macBridge.thread.get', heldState.held === 1, JSON.stringify(heldState))
+  const refused = await errorOf(
+    rpc(box, 'mac.run', { sessionId: sid, token, argv: ['/bin/echo', 'too late'], cwd: shared, timeoutMs: 1_000 })
+  )
+  check(
+    'one whose timeout would pass first answers "refused: the thread is paused"',
+    refused === 'refused: the thread is paused',
+    refused
+  )
+  const pausedRead = await rpc<{ content: string }>(box, 'mac.readFile', {
+    sessionId: sid,
+    token,
+    path: join(shared, 'notes.md')
+  })
+  check('a read in the shared folder still answers while paused', pausedRead.content === NOTE)
+  const cardsBefore = watcher.seen.length
+  const pausedOutside = await errorOf(
+    rpc(box, 'mac.readFile', { sessionId: sid, token, path: join(mac.home, 'Desktop', 'plan.md') })
+  )
+  check(
+    'a read that would ask is refused while paused, with no card on mac',
+    pausedOutside === 'refused: the thread is paused' && watcher.seen.length === cardsBefore,
+    pausedOutside
+  )
+  // Continue: the hold lifts, the command reaches mac's card and runs.
+  await rpc(box, 'session.markStatus', { sessionId: sid, status: 'running' })
+  const askHeld = await watcher.next(
+    (r) => r.kind === 'run' && r.status === 'pending' && JSON.stringify(r.argv) === '["/bin/echo","after the pause"]'
+  )
+  await rpc(mac, 'macBridge.decide', { id: askHeld.id, allow: true })
+  const heldOut = await heldRun
+  check('continued: the held command ran on the Mac and answered', heldOut.stdout === 'after the pause\n', JSON.stringify(heldOut))
+  check(
+    'the paused row left mac and box counts nothing held',
+    watcher.resolved.some((r) => r.id === pausedRow.id) &&
+      (await rpc<{ held: number }>(box, 'macBridge.thread.get', { sessionId: sid })).held === 0
+  )
+  await rpc(box, 'session.markStatus', { sessionId: sid, status: 'idle' })
 
   // ── 9. policy read, then off ─────────────────────────────────────────
   await rpc(mac, 'macBridge.policy.set', { environmentId: boxId, policy: 'read' })

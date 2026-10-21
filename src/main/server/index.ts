@@ -49,6 +49,7 @@ import { MacThreadTokens, MacTools, macToolsHooks, rebootWhenSettled } from './m
 import { OfflineError, ThreadResources } from './threadResources'
 import { runMacCommand } from './remote/macRunner'
 import { MAC_APPROVAL_WAIT_MS, MAC_BRIDGE_OFFER, type MacRunResult } from '@shared/contract-macbridge'
+import type { MacHeldPush } from '@shared/contract-macbridge'
 import { MacRunCalls, MacRunLive } from './macRunLive'
 import { macBridgeLandingRoot } from './macBridgeLanding'
 import { listEnvironments } from './remote/environments'
@@ -551,6 +552,8 @@ export async function startServer(
   peerCalls.onRegister((id, offers) => {
     if (offers.has(MAC_BRIDGE_OFFER)) void resources.linkUp(id)
   })
+  // How many Mac calls a paused thread's tree holds (macPause.ts): every client hears it, for the paused strip.
+  const heldListeners = new Set<(push: MacHeldPush) => void>()
   const macTools = new MacTools({
     store,
     sessions: registry,
@@ -560,7 +563,10 @@ export async function startServer(
     resources,
     tokens: macTokens,
     reboot: (id) => rebootWhenSettled(registry, id, (status) => LIVE_STATUSES.has(status)),
-    live: macRunLive
+    live: macRunLive,
+    heldChanged: (sessionId, held) => {
+      for (const l of heldListeners) l({ push: 'macBridge.held', sessionId, held })
+    }
   })
   macToolsHooks.current = macTools
   macToolsHooks.tokens = macTokens
@@ -584,6 +590,8 @@ export async function startServer(
   registry.onMeta((m) => {
     if (m.archived) macTools.threadsEnded([m.id])
     memorySync.onSessionMeta(m)
+    // Pause and resume follow the status: into paused cancels the tree's Mac work, out of it releases or refuses what waited.
+    macTools.pause.onStatus(m.id, m.status)
   })
   peers.refresh()
   const syncTimer = setInterval(() => void accountSync.syncAll(), 15 * 60_000)
@@ -840,6 +848,8 @@ export async function startServer(
     /** The host-log subscriptions this socket asked for (hostJobs.ts). */
     const offHostLogs: (() => void)[] = []
     const offResources = resources.onChange((sessionId, list) => emitPush({ push: 'resources', sessionId, resources: list }))
+    const onHeld = (push: MacHeldPush): void => sendFrame(push)
+    heldListeners.add(onHeld)
     /** per-connection file watchers (fs.watch), keyed by projectId */
     const fsWatches = new Map<string, () => void>()
     // One line per connection the first time its unsent bytes pass the mark:
@@ -1542,6 +1552,8 @@ export async function startServer(
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'session.interrupt':
+            // Its Mac work first: the calls out on the Mac and its jobs end, what a pause held is refused.
+            macTools.pause.stop(req.params.sessionId)
             await registry.stopRun(req.params.sessionId)
             sendFrame({ id: req.id, ok: true, result: null })
             break
@@ -1559,6 +1571,14 @@ export async function startServer(
             }
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          case 'session.markStatus': {
+            // A proof's seam only (scripts/e2e-mac-bridge.ts): a status without a harness, on an isolated instance.
+            if (process.env.TEMP_CODE_E2E_STATUS !== '1' || !process.env.TEMP_CODE_USER_DATA)
+              throw new Error('session.markStatus is a proof seam (TEMP_CODE_E2E_STATUS=1 on an isolated instance)')
+            registry.markStatusForProof(req.params.sessionId, req.params.status)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          }
           case 'session.continueAllErrors':
             sendFrame({ id: req.id, ok: true, result: await registry.continueAllErrors() })
             break
@@ -1889,6 +1909,7 @@ export async function startServer(
       if (localSink) localSinks.delete(localSink)
       for (const off of offHostLogs) off()
       offResources()
+      heldListeners.delete(onHeld)
       peerCalls.drop(connection)
       hostDevices.dropConnection(connection)
       for (const off of unsubs.values()) off()
