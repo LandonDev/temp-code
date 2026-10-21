@@ -1310,6 +1310,63 @@ seconds, one with a failure waits to be dismissed. Proof:
 providers: archive over five scratch threads, a subagent's id acting on its
 root, pause/stop/resume over idle threads, a read key refused).
 
+### Thread resources
+
+What a thread creates outlives it unless something remembers: the fifteen iOS
+threads of 2026-10-20 each left a git worktree under `~/IdeaProjects/tc-ios/`
+and a simulator on the Mac. The ledger is the `thread_resources` table on the
+host the thread runs on (src/main/server/threadResources.ts,
+src/shared/contract-resources.ts): one row per worktree, simulator or dev
+instance, with the environment id of the host the resource lives on, filed
+under the top-level thread (a subagent's rows carry its parent's id). Rows are
+stamped, never deleted; one live row per resource per host, so a re-creation
+after a removal is a new row.
+
+- **Detection** (threadResourcesParse.ts, pure) reads the command and what it
+  printed, and records nothing the command did not demonstrably create: a
+  `git worktree add` needs git's own `Preparing worktree` line (or a clean
+  exit when the exit code is known; the line also says whether a new branch
+  was made, which is the only branch a removal may delete), `xcrun simctl
+  create` needs the UDID simctl printed, a dev launch needs its
+  `TEMP_CODE_USER_DATA`. `simctl boot` records nothing; `git worktree
+  remove`, `simctl delete` and the harness's `ExitWorktree remove` stamp the
+  row removed. Three feeds: the session event stream (a Bash-like tool call,
+  under any harness's name for it, paired with its result by callId, and the
+  harness's `EnterWorktree`), every `mac.run` result on the box
+  (`macTools.ts` tells the ledger, with the Mac's id and home), and a job's
+  reads once the output proves the creation.
+- **Removal** runs on the owning host, never touching anything not on the
+  ledger (threadResourcesRemove.ts): `git worktree remove --force <path>`
+  from the repo's main tree, then `git branch -D` only for the branch the
+  command created and only when it has no commits ahead of its upstream (with
+  no upstream: none that no remote has); otherwise the branch stays and the
+  row's note says `branch x kept: 2 commits ahead of its upstream`. A
+  simulator is `simctl shutdown` then `simctl delete`; a dev instance's
+  userData dir is removed, never the installed app's. This host runs the
+  argv itself (macRunner); a Mac runs it through the bridge as the thread
+  with the thread's permission (a full-access thread is not prompted, the
+  Mac's policy and remembered rules apply otherwise). A Mac with no live
+  link leaves the row waiting (`remove_requested_at`, note "host offline,
+  waiting for its link") and the next `peer.register` from it retries
+  (`PeerCalls.onRegister`). A resource already gone is a removal with a note.
+- **RPCs** (capabilities.ts): `resources.list { sessionId, includeRemoved? }`
+  and `resources.listAll { kind?, environmentId? }` (read; the device list
+  joins on the latter), `resources.remove { sessionId, ids? }` (operate),
+  `session.archive { …, removeResources: true }` runs the removal after the
+  archive lands. Ids only, never a caller path, so the fence has nothing to
+  check. The host pushes `{ push: 'resources', sessionId, resources }` after
+  every change.
+- **Renderer**: the thread menu's "Resources…" (count once known) opens the
+  panel (chrome/ThreadResourcesDialog.tsx): host · kind · label per row,
+  Remove, "Waiting" while the host is offline, the last outcome under the
+  row, Remove all. Archive on a thread with rows asks first: "and remove 2
+  resources on the Mac" with the box on by default. Every archive flow calls
+  `archiveThread(sessionId, { removeResources })` (lib/threadResources.ts);
+  the fleet's Archive done uses the same function.
+- Proof: `bun run script:e2e-mac-bridge` makes a worktree on the Mac through
+  the bridge, finds it on the box's ledger with the Mac's id, removes it, and
+  checks the branch with an unpushed commit stayed with its note.
+
 ### Starting a thread on the Mac from the box
 
 iOS builds, the simulator, screenshots and every Mac app exist only on the

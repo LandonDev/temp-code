@@ -735,6 +735,59 @@ try {
     check('loadLimit null follows the cores again: 2 × cores', !unpinned.pinned && unpinned.limit === 2 * unpinned.cores, JSON.stringify(unpinned))
     const restored = await rpc<HostPolicy[]>(mac, 'macBridge.limits.set', { environmentId: boxId, maxRunning: null })
     check('maxRunning null restores the default of 4', restored.find((h) => h.environmentId === boxId)?.maxRunning === 4)
+    // Thread resources (docs/box.md "Thread resources"): a worktree the thread
+    // makes on the Mac through the bridge lands on the box's ledger with the
+    // Mac's id, and resources.remove takes it away through the same runner
+    // (the folder rule covers the repo, so nothing asks). The branch has a
+    // commit no remote has, so it stays and the note says so.
+    {
+      const repo = join(shared, 'repo')
+      mkdirSync(repo, { recursive: true })
+      const git = (...args: string[]): string => {
+        const r = Bun.spawnSync(['git', ...args], { cwd: repo, env: { ...process.env, HOME: mac.home } })
+        if (r.exitCode !== 0) throw new Error(`git ${args[0]}: ${r.stderr.toString()}`)
+        return r.stdout.toString()
+      }
+      git('init', '-q', '-b', 'main')
+      writeFileSync(join(repo, 'README'), 'e2e\n')
+      git('-c', 'user.name=e2e', '-c', 'user.email=e2e@example.com', 'add', 'README')
+      git('-c', 'user.name=e2e', '-c', 'user.email=e2e@example.com', 'commit', '-q', '-m', 'init')
+      const made = await rpc<{ exitCode: number; stderr: string }>(box, 'mac.run', {
+        sessionId: sid,
+        token,
+        argv: ['git', 'worktree', 'add', '../wt-e2e', '-b', 'e2e-branch'],
+        cwd: repo
+      })
+      check('resources: git worktree add ran on the Mac', made.exitCode === 0, made.stderr)
+      const wt = join(shared, 'wt-e2e')
+      const listed = await rpc<{ resources: { kind: string; identifier: string; label: string; branch: string | null; environmentId: string; removedAt: number | null }[] }>(
+        box,
+        'resources.list',
+        { sessionId: sid }
+      )
+      const row = listed.resources.find((r) => r.kind === 'worktree' && r.identifier === wt)
+      check(
+        'resources.list: the worktree is on the ledger with the branch it made and the Mac as its host',
+        !!row && row.branch === 'e2e-branch' && row.label === 'e2e-branch' && row.environmentId === macId && row.removedAt === null,
+        JSON.stringify(listed)
+      )
+      const every = await rpc<{ resources: { identifier: string }[] }>(box, 'resources.listAll', { kind: 'worktree' })
+      check('resources.listAll: a device list sees it too', every.resources.some((r) => r.identifier === wt), JSON.stringify(every))
+      const removed = await rpc<{ results: { id: string; outcome: string; note: string | null }[] }>(box, 'resources.remove', { sessionId: sid })
+      check(
+        'resources.remove: the worktree went, the branch with a commit on no remote stayed and the note says so',
+        removed.results.length === 1 &&
+          removed.results[0].outcome === 'removed' &&
+          removed.results[0].note === 'branch e2e-branch kept: 1 commit on no remote' &&
+          !existsSync(wt) &&
+          git('branch', '--list', 'e2e-branch').includes('e2e-branch'),
+        JSON.stringify(removed)
+      )
+      const after = await rpc<{ resources: { removedAt: number | null }[] }>(box, 'resources.list', { sessionId: sid })
+      check('and the thread has no live resource left', after.resources.length === 0, JSON.stringify(after))
+      // Nothing above waited on a decision: the folder rule covers the repo, so
+      // every run went through remembered (the rule's `uses` below counts them).
+    }
     // Another folder asks.
     const elsewhere = errorOf(
       rpc(box, 'mac.run', { sessionId: sid, token, argv: ['/bin/echo', 'x'], cwd: privateDir })
@@ -771,7 +824,7 @@ try {
     check(
       "macBridge.rules.list names the thread's folder rule (and its earlier read folder)",
       folderRule?.folder === shared &&
-        folderRule.uses === 4 && // the remembered run, the quiet one, and the two the load guard ordered
+        folderRule.uses === 10 && // the remembered run, the quiet one, the two the load guard ordered, and the six of the worktree's record and removal
         
         rules.some((r) => r.kind === 'read-folder' && r.folder === privateDir),
       JSON.stringify(rules)

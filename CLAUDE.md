@@ -560,6 +560,23 @@ routed to (aliax-core's `forward`). Two listeners:
   and the load with its limit are on the host row in Settings → Remote
   access. docs/box.md "The Mac bridge: what a box thread may touch on the
   Mac"; proof `bun run script:e2e-mac-bridge`.
+- Thread resources: what a thread created (git worktrees, simulators, dev
+  instances), on its own host or on the Mac through the bridge, is on the
+  host's `thread_resources` table (src/main/server/threadResources.ts; the
+  parsers in threadResourcesParse.ts record nothing a command did not
+  demonstrably create: git's `Preparing worktree` line, simctl's UDID,
+  `TEMP_CODE_USER_DATA`), filed under the top-level thread with the id of the
+  host the resource lives on. The thread menu's "Resources…" panel removes
+  one at a time; archiving a thread with rows asks "and remove N resources on
+  the Mac" (on by default; `session.archive { removeResources }`, the
+  renderer's one `archiveThread()` in lib/threadResources.ts). Removal runs on
+  the owning host through the bridge's runner as the thread
+  (threadResourcesRemove.ts: `git worktree remove --force`, `git branch -D`
+  only with nothing ahead of the upstream, else the branch stays and the row
+  says so; `simctl shutdown` + `delete`), an offline Mac leaves the row
+  waiting until it re-registers. RPCs `resources.list/listAll/remove` take
+  ids only. docs/box.md "Thread resources"; the e2e-mac-bridge proof covers
+  a bridged worktree's record and removal.
 - Threads on the Mac from the box: `app_start_thread` and `spawn_agent`
   take `environmentId` (`mac`, or a host id), and the thread runs on that
   Mac as an ordinary This Mac thread; its id comes back as `<envId>:
