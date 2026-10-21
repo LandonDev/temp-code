@@ -54,7 +54,7 @@ struct AddEnvironmentSheet: View {
                     switch method {
                     case .link:
                         HStack(alignment: .top, spacing: 12) {
-                            TextField("https://host/pair#XXXXX-XXXXX", text: $link, axis: .vertical)
+                            TextField("https://host/pair#XXXXX-XXXXX", text: $link)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
                                 .keyboardType(.URL)
@@ -108,7 +108,7 @@ struct AddEnvironmentSheet: View {
                 }
 
                 Section {
-                    TextField(replacing?.name ?? "Name", text: $name)
+                    TextField("Name", text: $name)
                         .submitLabel(.go)
                         .focused($focus, equals: .name)
                         .onSubmit { submit() }
