@@ -119,10 +119,11 @@ export class SessionMover {
     for (const id of ids) this.busy.add(id)
     try {
       let exp: MoveExport
+      let landed: SessionImportBeginAnswer
       try {
         this.deps.flush?.()
         exp = await MoveExport.build(host, rootId, moveId, to)
-        await link.request<SessionImportBeginAnswer>('session.import.begin', { manifest: exp.manifest }, { timeoutMs: STEP_TIMEOUT_MS })
+        landed = await link.request<SessionImportBeginAnswer>('session.import.begin', { manifest: exp.manifest }, { timeoutMs: STEP_TIMEOUT_MS })
         for (let i = 0; i < exp.manifest.parts; i++) await link.request('session.import.part', exp.part(i), { timeoutMs: STEP_TIMEOUT_MS })
         const answer = await link.request<{ digest: string }>('session.import.commit', { moveId, digest: exp.digest() }, { timeoutMs: STEP_TIMEOUT_MS })
         if (answer.digest !== exp.digest()) throw new Error(`${link.env.name} holds something else than what was sent`)
@@ -143,7 +144,7 @@ export class SessionMover {
         this.log(`${rootId}: release on ${link.env.name} did not answer (${(err as Error).message}); the next link-up settles it`)
       }
       this.log(`${rootId} moved to ${link.env.name}: ${ids.length} session(s), ${exp.manifest.parts} part(s)`)
-      return this.result(exp.manifest, pendingRelease)
+      return this.result(exp.manifest, landed.cwd, pendingRelease)
     } finally {
       for (const id of ids) this.busy.delete(id)
     }
@@ -158,8 +159,9 @@ export class SessionMover {
     for (const id of ids) this.busy.add(id)
     try {
       let digest: string
+      let landed: SessionImportBeginAnswer
       try {
-        this.imports.begin(manifest)
+        landed = this.imports.begin(manifest)
         for (let i = 0; i < manifest.parts; i++) {
           const frame = await link.request<SessionMoveFrame>('session.export.part', { moveId, index: i }, { timeoutMs: STEP_TIMEOUT_MS })
           this.imports.part(frame)
@@ -192,21 +194,20 @@ export class SessionMover {
       const claimed = claimLanding(host, { moveId, sessionId: manifest.rootId })
       registry.arrived(claimed)
       this.log(`${manifest.rootId} moved here from ${link.env.name}: ${ids.length} session(s), ${manifest.parts} part(s)`)
-      return this.result(manifest, false)
+      return this.result(manifest, landed.cwd, false)
     } finally {
       for (const id of ids) this.busy.delete(id)
     }
   }
 
-  private result(m: SessionMoveManifest, pendingRelease: boolean): SessionMoveResult {
-    const root = m.sessions[0]
+  private result(m: SessionMoveManifest, cwd: string, pendingRelease: boolean): SessionMoveResult {
     const carried = m.files.some((f) => f.kind !== 'html')
     return {
       sessionId: m.rootId,
       sessionIds: m.sessions.map((s) => String(s.id)),
       from: m.from,
       to: m.to,
-      cwd: String(root.cwd),
+      cwd,
       events: Object.values(m.events).reduce((a, b) => a + b, 0),
       files: m.files.length,
       transcript: m.transcriptMissing.length ? 'missing' : carried ? 'moved' : 'none',

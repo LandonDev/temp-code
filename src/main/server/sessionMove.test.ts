@@ -239,6 +239,7 @@ describe('moving a thread', () => {
     const out: SessionMoveResult = await mac.mover.move({ sessionId: ROOT, to: BOX })
     expect(out).toMatchObject({ sessionId: ROOT, sessionIds: [ROOT, CHILD], from: MAC, to: BOX, transcript: 'moved', checkpointsStayed: true, dirty: ['src/dirty.ts', 'notes.md'] })
     expect(out.events).toBe(before + 2)
+    expect(out.cwd).toBe(boxProject())
 
     // The box: rows visible, remapped, resolved to its own workspace and project.
     const landed = box.store.getSession(ROOT)!
@@ -276,7 +277,7 @@ describe('moving a thread', () => {
 
     // Box → Mac: the pull lands it where it started.
     const back = await mac.mover.move({ sessionId: ROOT, from: BOX, to: MAC })
-    expect(back).toMatchObject({ from: BOX, to: MAC, transcript: 'moved', dirty: [], checkpointsStayed: false })
+    expect(back).toMatchObject({ from: BOX, to: MAC, cwd: macProject(), transcript: 'moved', dirty: [], checkpointsStayed: false })
     const home = mac.store.getSession(ROOT)!
     expect(home.cwd).toBe(macProject())
     expect(home.workspaceId).toBe('ws-mac')
@@ -334,6 +335,16 @@ describe('moving a thread', () => {
     await expect(mac.mover.move({ sessionId: ROOT, to: BOX })).rejects.toThrow(/already on this host/)
     expect(box.store.getSession(ROOT)?.title).toBe(ROOT)
     expect(raw(mac, ROOT)).toMatchObject({ moving_to: null, moved_to: null })
+  })
+
+  it('refuses a manifest whose session id would name a path', () => {
+    seedBox()
+    const manifest = {
+      moveId: 'm1', from: MAC, to: BOX, home: mac.home, workRoot: mac.home, rootId: '../escape',
+      sessions: [{ id: '../escape', cwd: boxProject() }], folds: [], project: null, workspace: null,
+      events: {}, files: [], transcriptMissing: [], parts: 0, dirty: [], dirtyMore: 0, checkpoints: false
+    }
+    expect(() => box.mover.importBegin(manifest)).toThrow(/bad session id/)
   })
 
   it('a corrupted part is refused on arrival; nothing lands and the source thaws', async () => {

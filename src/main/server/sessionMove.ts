@@ -535,6 +535,8 @@ export class MoveImports {
     if (manifest.to !== this.host.environmentId) throw new MoveRefused(`this host is ${this.host.environmentId}, not ${manifest.to}`)
     const ids = manifest.sessions.map((s) => String(s.id))
     if (String(manifest.sessions[0].id) !== manifest.rootId) throw new MoveRefused('the manifest does not start with its root')
+    // Ids name directories here (html-renders/<id>): the alphabet session.create allows, nothing else.
+    for (const id of ids) if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new MoveRefused(`bad session id ${JSON.stringify(id)}`)
     for (const id of ids) {
       const state = rowState(moveCols(db, id), id)
       if (state.state === 'live' || state.state === 'exporting') throw new MoveRefused('the thread is already on this host')
