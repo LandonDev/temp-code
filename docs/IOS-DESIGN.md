@@ -74,6 +74,34 @@ row "3 archived" that pushes the archived list. Chats without a project sit
 first under the workspace. Archived projects collapse into one dim row at
 the end of the workspace. Pinned threads sort first within their project.
 
+**Home's furniture** (Shell/HomeView.swift, HomeRows.swift, HomeStyles.swift).
+Home is one plain `List` of native `Section`s under a large title that
+collapses; no painted header bands. "Needs you", "Running" and "Chats" are
+section titles in `title3` semibold on the list background, 14 pt above and
+6 pt below, 10 pt between sections. Each workspace is a section whose
+sticky header is the fold row: the mark at 22 pt (the repo icon in a
+continuous `size / 4` corner with a 1 px outline, pure black or pure white
+at 10 %, else the host mark, else a folder), the name semibold, the GitHub
+repo dim under it, and while folded the thread count in tertiary tabular
+digits; the plus trails in a 44 pt target. Tapping the row folds it (no
+chevron); the rows leave on the collapse curve and return on the expand
+spring, cross-fades under reduced motion. Projects are sub-header rows in
+the flow (`footnote` semibold secondary, the worktree mark, the branch
+tertiary, the plus), never bands. Needs-you cells carry the warning tint at
+8 % as the row background under the section title; the wait is `caption2`
+tertiary with a numeric text transition and moves under the cue at
+accessibility sizes. A troubled host is one 12 pt field on the chrome step
+at the top (dot, name, what is happening, the Retry or Pair again capsule),
+stacked at accessibility sizes. Empty states are one calm sentence with one
+tinted action in a 44 pt row: "Nothing needs you right now." with New
+thread when neither Needs you nor Running has a row; "No threads here yet."
+with New thread in an expanded empty workspace; "No workspaces on <host>
+yet…" with Hosts for a host that lists nothing; "Nothing paired yet" with
+Pair a host as the first run. Status and needs-you rows are the only rows
+with an entrance (the motion table's values); nothing animates in the first
+300 ms after the cached paint. The archived lists share the same project
+sub-headers and rows.
+
 **Thread rows** everywhere share one shape: 44 pt minimum, status dot or
 spinner leading (desktop `StatusDot` colors: waiting warning, error
 destructive, starting and watching info, running spinner, idle and done
