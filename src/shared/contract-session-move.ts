@@ -122,8 +122,10 @@ export interface SessionMoveResult {
   pendingRelease?: boolean
 }
 
-const request = <M extends string, P extends z.ZodType>(method: M, params: P) =>
-  z.object({ id: z.string(), method: z.literal(method), params })
+const request = <M extends string, P extends z.ZodType>(
+  method: M,
+  params: P
+): z.ZodObject<{ id: z.ZodString; method: z.ZodLiteral<M>; params: P }> => z.object({ id: z.string(), method: z.literal(method), params })
 
 export const SessionMoveRequestSchemas = [
   /** The desktop's own server: move a thread from `from` (default this host) to `to`. → SessionMoveResult. */

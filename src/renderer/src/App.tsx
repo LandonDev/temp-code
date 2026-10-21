@@ -12,6 +12,7 @@ import {
 } from "react";
 import { Sidebar } from "./chrome/Sidebar";
 import { HiddenApprovalToasts } from "./chrome/ApprovalToasts";
+import { MoveToasts } from "./chrome/ThreadHostChip";
 import { WhatsNewDialog } from "./chrome/WhatsNewDialog";
 import { NewWorkspaceDialog } from "./chrome/ProjectDialogs";
 import { RemoteFolderDialog } from "./chrome/RemoteFolderDialog";
@@ -3864,6 +3865,7 @@ export default function App() {
         />
       ) : null}
 
+      <MoveToasts />
       <HiddenApprovalToasts
         onFocusSession={onOpenApprovalSession}
         onApproval={onApproval}

@@ -148,7 +148,7 @@ const LONG = 'x'.repeat(2_500_000)
 function seedMac(opts: { transcript?: boolean } = {}): void {
   mkdirSync(join(macProject(), '.temp-code', 'plans'), { recursive: true })
   mac.store.insertWorkspace({ id: 'ws-mac', name: 'shop', path: macProject(), git: true, createdAt: 1 })
-  mac.store.insertProject({ id: 'proj-mac', workspaceId: 'ws-mac', name: 'shop', mode: 'local', branch: null, cwd: macProject(), createdAt: 1 })
+  mac.store.insertProject({ id: 'proj-mac', workspaceId: 'ws-mac', name: 'shop', mode: 'local', branch: null, cwd: macProject(), archived: false, createdAt: 1 })
   mac.store.insertSession(
     meta({ id: ROOT, cwd: macProject(), projectId: 'proj-mac', workspaceId: 'ws-mac', nativeId: 'claude-native-1', planPath: join(macProject(), '.temp-code', 'plans', 'p.md'), threadType: 'planning' })
   )
@@ -178,7 +178,7 @@ function seedBox(opts: { workspace?: boolean; dir?: boolean } = {}): void {
   if (opts.dir !== false) mkdirSync(boxProject(), { recursive: true })
   if (opts.workspace !== false) {
     box.store.insertWorkspace({ id: 'ws-box', name: 'shop', path: boxProject(), git: true, createdAt: 1 })
-    box.store.insertProject({ id: 'proj-box', workspaceId: 'ws-box', name: 'shop', mode: 'local', branch: null, cwd: boxProject(), createdAt: 1 })
+    box.store.insertProject({ id: 'proj-box', workspaceId: 'ws-box', name: 'shop', mode: 'local', branch: null, cwd: boxProject(), archived: false, createdAt: 1 })
   }
 }
 

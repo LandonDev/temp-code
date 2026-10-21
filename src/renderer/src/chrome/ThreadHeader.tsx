@@ -12,6 +12,7 @@ import { ConfirmDialog } from "./ProjectDialogs";
 import { PanelRight } from "./icons";
 import { ThreadHeaderStrip, chipTitle, type ArchivedThread, type ChipThread, type StripChip } from "./ThreadHeaderStrip";
 import { TuneDialog } from "./ThreadTune";
+import { ThreadHostChip } from "./ThreadHostChip";
 import { IconButton } from "./TitleBar";
 
 /**
@@ -153,6 +154,7 @@ export function ThreadHeader({
         trailing={<NewThreadChooser workspaceId={workspaceId} empty={empty} onStart={onNew} />}
         end={
           <div className="mr-1.5 flex shrink-0 items-center gap-1">
+            {model.activeId ? <ThreadHostChip sessionId={model.activeId} /> : null}
             {cost != null && cost > 0 ? (
               <span className="px-1 text-[11px] tabular-nums text-content/50" title="Cost of this thread so far">
                 ${cost.toFixed(2)}
