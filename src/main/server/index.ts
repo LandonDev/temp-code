@@ -27,6 +27,8 @@ import { loadEnvironmentId } from './remote/environment'
 import { handleRemote, type RemoteContext } from './remote/handlers'
 import { AccountSync, accountSyncHooks } from './remote/accountSync'
 import { Peers } from './remote/peers'
+import { HarnessSync, handleHarness } from './remote/harnessSync'
+import { isHeadless } from '../headless'
 import { RemoteAuth } from './remote/auth'
 import { startRemoteListener, type RemoteListener } from './remote/listener'
 import { fenceRequest } from './remote/fence'
@@ -291,6 +293,7 @@ export async function startServer(
     {
       onOpen: (id) => {
         void accountSync.syncWith(id)
+        void harnessSync.syncWith(id, 'link-up')
         accounts.nudge()
       },
       onClose: () => accounts.nudge(),
@@ -299,6 +302,17 @@ export async function startServer(
   )
   const accountSync = new AccountSync({ environmentId, store, peers, nudge: () => accounts.nudge() })
   accountSyncHooks.current = accountSync
+  // The user's Claude Code and Codex config, mirrored onto the same hosts
+  // (remote/harnessSync.ts). A headless host (the box) receives and does not send.
+  const harnessSync = new HarnessSync({
+    environmentId,
+    store,
+    peers,
+    dataDir: options.dataDir ?? dirname(dbPath),
+    defaultEnabled: !isHeadless(),
+    workRoot: () => workRoot(store).root
+  })
+  harnessSync.start()
   peers.refresh()
   const syncTimer = setInterval(() => void accountSync.syncAll(), 15 * 60_000)
   syncTimer.unref()
@@ -616,6 +630,8 @@ export async function startServer(
           if (req.method.startsWith('remote.environments.')) peers.refresh()
           return sendFrame({ id: req.id, ok: true, result: remote.result })
         }
+        const harness = await handleHarness(req, harnessSync)
+        if (harness.handled) return sendFrame({ id: req.id, ok: true, result: harness.result })
         const extension = await handleM3a(req, m3a)
         if (extension.handled) { sendFrame({ id: req.id, ok: true, result: extension.result }); return }
         const fsGit = await handleFsGit(req)
@@ -1537,6 +1553,7 @@ export async function startServer(
       await gateway.stop()
       clearInterval(syncTimer)
       accountSync.close()
+      harnessSync.close()
       peers.close()
       m3a.accounts.stop()
       await registry.disposeAll()

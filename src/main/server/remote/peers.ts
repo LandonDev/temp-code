@@ -166,7 +166,8 @@ export class PeerLink {
     }
   }
 
-  request<T = unknown>(method: string, params?: unknown): Promise<T> {
+  /** One request; `timeoutMs` raises the 30 s default for a call that carries a lot (a harness.file chunk). */
+  request<T = unknown>(method: string, params?: unknown, opts: { timeoutMs?: number } = {}): Promise<T> {
     const ws = this.ws
     if (!ws || !this.connected) return Promise.reject(new Error(`${this.env.name} is not connected`))
     const id = `p${++this.seq}`
@@ -174,7 +175,7 @@ export class PeerLink {
       const timer = setTimeout(() => {
         this.pending.delete(id)
         reject(new Error(`${method} on ${this.env.name} timed out`))
-      }, PEER_REQUEST_TIMEOUT_MS)
+      }, opts.timeoutMs ?? PEER_REQUEST_TIMEOUT_MS)
       timer.unref()
       this.pending.set(id, { resolve: resolve as (value: unknown) => void, reject, timer })
       ws.send(JSON.stringify({ id, method, params }))
