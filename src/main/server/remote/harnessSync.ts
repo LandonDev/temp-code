@@ -152,6 +152,34 @@ export interface HarnessSyncDeps {
 
 const within = (path: string, root: string): boolean => path === root || path.startsWith(root.endsWith(sep) ? root : root + sep)
 
+
+/** A loopback address in the sender's `env` (its own proxy or shim) reaches nothing on this host; the CLI's own default is right here. */
+const LOOPBACK = /(^|[^\w.])(127\.0\.0\.1|localhost|0\.0\.0\.0|\[::1\])([^\w.]|$)/i
+
+/** `settings.json` without the `env` entries that point at the sender's loopback; the text as it was when nothing is dropped. */
+export function stripHostBoundEnv(text: string): { text: string; dropped: string[] } {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return { text, dropped: [] }
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { text, dropped: [] }
+  const settings = parsed as Record<string, unknown>
+  const env = settings.env
+  if (!env || typeof env !== 'object' || Array.isArray(env)) return { text, dropped: [] }
+  const kept: Record<string, unknown> = {}
+  const dropped: string[] = []
+  for (const [key, value] of Object.entries(env as Record<string, unknown>)) {
+    if (typeof value === 'string' && LOOPBACK.test(value)) dropped.push(key)
+    else kept[key] = value
+  }
+  if (!dropped.length) return { text, dropped }
+  if (Object.keys(kept).length) settings.env = kept
+  else delete settings.env
+  return { text: JSON.stringify(settings, null, 2) + '\n', dropped }
+}
+
 export class HarnessSync {
   private readonly cache = new Map<string, { size: number; mtimeMs: number; ino: number; sha: string }>()
   private readonly syncing = new Map<string, Promise<void>>()
@@ -550,6 +578,13 @@ export class HarnessSync {
           if (text !== null) {
             out = Buffer.from(remap.text(text), 'utf8')
             usedTx = tx
+          }
+        }
+        if (relPath === '.claude/settings.json') {
+          const stripped = stripHostBoundEnv(out.toString('utf8'))
+          if (stripped.dropped.length) {
+            out = Buffer.from(stripped.text, 'utf8')
+            this.log(`settings.json: dropped env ${stripped.dropped.join(', ')} (a loopback address on the sender means nothing here)`)
           }
         }
         const mode = entry.mode & 0o777

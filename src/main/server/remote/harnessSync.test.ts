@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ClientRequestSchema } from '@shared/contract'
 import { HARNESS_CHUNK_BYTES } from '@shared/contract-harness'
 import { requiredCapability } from '@shared/capabilities'
-import { HarnessSync, handleHarness, PATH_MAP_KEY } from './harnessSync'
+import { HarnessSync, handleHarness, PATH_MAP_KEY, stripHostBoundEnv } from './harnessSync'
 import { HARNESS_SET, buildManifest, commandExecutable, inSet, isSecretPath, missingHookExecutables, ruleFor, validRelPath, type SetRule } from './harnessSet'
 
 let root: string
@@ -209,6 +209,17 @@ describe('mac → box', () => {
     put(box, '.claude/.credentials.json', '{"box":1}')
     put(box, '.claude.json', JSON.stringify({ oauthAccount: { emailAddress: 'box@x' }, machineID: 'box' }))
   }
+
+  it('drops env entries that point at the sender\'s loopback from settings.json and says so', async () => {
+    seed()
+    put(mac, '.claude/settings.json', JSON.stringify({ model: 'opus', env: { ANTHROPIC_BASE_URL: 'http://127.0.0.1:8787/claude', HTTPS_PROXY: 'http://localhost:3128', KEEP_ME: 'https://example.com' } }))
+    const { sender, boxLog } = pair()
+    await sender.syncWith('env_box')
+    expect(JSON.parse(read(box, '.claude/settings.json'))).toEqual({ model: 'opus', env: { KEEP_ME: 'https://example.com' } })
+    expect(boxLog).toContain('settings.json: dropped env ANTHROPIC_BASE_URL, HTTPS_PROXY (a loopback address on the sender means nothing here)')
+    expect(stripHostBoundEnv('{"env":{"ANTHROPIC_BASE_URL":"http://[::1]:1/x"}}')).toEqual({ text: '{}\n', dropped: ['ANTHROPIC_BASE_URL'] })
+    expect(stripHostBoundEnv('not json')).toEqual({ text: 'not json', dropped: [] })
+  })
 
   it('lands the set translated, binaries byte for byte, modes kept; secrets and the box\'s own files untouched', async () => {
     seed()
