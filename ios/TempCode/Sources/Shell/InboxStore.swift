@@ -24,6 +24,10 @@ final class InboxStore {
     private(set) var snapshots: [String: GithubInboxSnapshot] = [:]
     /// The hosts whose snapshot was asked for in this process, answered or not.
     private(set) var asked: Set<String> = []
+    /// When each host was last asked, so a reopened tab asks again only after a while.
+    private var askedAt: [String: Date] = [:]
+    /// A stored snapshot older than this is read again when the tab opens (the desktop may have refreshed it).
+    static let reaskInterval: TimeInterval = 60
     private(set) var seen: [String: Int]
     private(set) var details: [String: GitHubWorkItemDetails] = [:]
     private(set) var threads: [String: GitHubWorkItemThread] = [:]
@@ -49,7 +53,7 @@ final class InboxStore {
 
     /// A host's snapshot, written through to disk. The first one ever seeds the seen marks.
     func put(_ snapshot: GithubInboxSnapshot, for environmentId: String) {
-        asked.insert(environmentId)
+        markAsked(environmentId)
         snapshots[environmentId] = snapshot
         seedSeen(from: snapshot, environmentId: environmentId)
         let url = directory.appending(path: "\(environmentId).json")
@@ -59,7 +63,16 @@ final class InboxStore {
         }
     }
 
-    func markAsked(_ environmentId: String) { asked.insert(environmentId) }
+    func markAsked(_ environmentId: String) {
+        asked.insert(environmentId)
+        askedAt[environmentId] = .now
+    }
+
+    /// The host's stored snapshot is worth asking for: never asked in this process, or not for a minute.
+    func shouldAsk(_ environmentId: String, now: Date = .now) -> Bool {
+        guard let at = askedAt[environmentId] else { return true }
+        return now.timeIntervalSince(at) >= Self.reaskInterval
+    }
 
     /// Every item of every client, newest first, as the desktop sorts.
     func entries(clients: [EnvironmentClient]) -> [InboxEntry] {

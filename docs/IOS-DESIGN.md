@@ -83,10 +83,46 @@ or the last activity, trailing relative time in `tertiary`, tabular. Subagent
 rows indent one step under their root with the agent glyph. No chevrons:
 every row pushes.
 
-**Inbox** is the desktop's GitHub inbox over `github.inbox`, rows naming the
-host when there are several; refresh by pull with `github.inboxRefresh`
-(this is the one place pull-to-refresh is right, since the inbox is a poll,
-not a live push). Detail: the PR or comment with the diff read-only.
+**Inbox** is the desktop's GitHub inbox over `github.inbox`, laid out the
+way Mail lays a message out. A row: the author's picture (36 pt, a 1 pt
+outline at black or white 10 % so the edge reads the same on every avatar,
+a letter until the picture lands, cross-faded in 150 ms), the title in
+`subheadline` (semibold while unread: weight is the whole unread mark, no
+badge, no dot) with the time trailing in tabular `caption` tertiary, then a
+`footnote` line: the kind glyph, the author, the repository's name with the
+number dim, the one word the item waits on in the color that means it
+(Changes requested warning, Checks failing destructive, Approved success,
+Your review info, Merged violet, Closed destructive for a pull request,
+Draft and an issue's Closed plain), and the host's name when there are
+several. Nothing else is colored. Rows sort newest first across every host,
+as the desktop does, with no sections. Swipe trailing marks read or unread
+(info tint; full swipe), swipe leading opens on GitHub, and the context menu
+has both plus Copy Link. Seen marks and the last snapshot of every host live
+in `InboxStore` (UserDefaults and a JSON per host under Application
+Support), so the tab paints at once and never flashes; the first snapshot
+ever seeds everything older than a day as seen. Opening the tab reads each
+host's stored snapshot (`github.inbox`, SQLite only, again after a minute)
+with animations disabled; a pull is the one refresh (`github.inboxRefresh`,
+since the inbox is a poll, not a live push), shows the system indicator, and
+is the only time the rows reorder under the default animation. A key that
+cannot refresh gets one footnote line at the top, as do a signed-out gh and a
+repository that failed. Empty: one calm secondary line, shown only once every
+host has answered or cannot.
+
+The detail paints its header from the row (picture, author, `repo #n` dim,
+the title in `title3` semibold, the state word in its color, `head → base`
+in mono one step down, labels as plain capsules with no color), then the
+body as markdown, the conversation (comments, reviews and review threads in
+time order, 24 pt pictures, the review verdict in its color, Resolved plain,
+`path:line` in mono, replies one step in) and for a pull request the patch by
+file and hunk: one fold per file on the chrome step with its `+n −m`, the
+first open, dim tabular line numbers and a tinted marker in `footnote` mono
+(adds success at 12 %, deletes destructive at 12 %), hunk headers in
+`caption` mono on the quaternary fill, never side by side, long lines
+scrolling sideways inside the file, 2,000 lines before Show all. What loaded
+once stays in the store so going back and in paints from memory. Open on
+GitHub is the bar's one button. Nothing on either screen animates except
+the fold (the expand spring) and the press.
 
 **Search** uses `session.search` and `search.project`: a search field at the
 top, results grouped by thread with the matching row quoted, tap lands on

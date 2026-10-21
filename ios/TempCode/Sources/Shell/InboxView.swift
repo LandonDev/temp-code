@@ -95,9 +95,11 @@ struct InboxView: View {
         clients.map { "\($0.environment.id):\($0.status.transport == .open)" }.joined(separator: ",")
     }
 
-    /// The host's stored snapshot (SQLite, never the network), landing without animation.
+    /// The host's stored snapshot (SQLite, never the network), landing without
+    /// animation: on the first open, and again when the tab comes back after a
+    /// minute, since the desktop may have refreshed it meanwhile.
     private func load(_ clients: [EnvironmentClient]) async {
-        for client in clients where client.status.transport == .open && !store.asked.contains(client.environment.id) {
+        for client in clients where client.status.transport == .open && store.shouldAsk(client.environment.id) {
             store.markAsked(client.environment.id)
             guard let snapshot = try? await client.request(Methods.GithubInbox.self, .init()) else { continue }
             var transaction = Transaction()
