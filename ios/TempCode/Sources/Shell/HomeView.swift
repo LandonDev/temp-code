@@ -2,8 +2,9 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// Home: what needs you, what runs, then every host's workspaces. Paints
-/// from the cache before any socket; the socket's catch-up lands as a diff.
+/// Home: what needs you, what runs, then every host's workspaces, as grouped
+/// sections under a large title. Paints from the cache before any socket;
+/// the socket's catch-up lands as a diff.
 struct HomeView: View {
     @Environment(AppModel.self) private var model
     @Binding var path: NavigationPath
@@ -16,6 +17,7 @@ struct HomeView: View {
     /// The workspace (and project) a new thread is being composed for.
     @State private var composing: NewThreadTarget?
     @State private var launched = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var folded: Set<String> {
         Set(foldedRaw.split(separator: "\n").map(String.init))
@@ -23,22 +25,25 @@ struct HomeView: View {
 
     var body: some View {
         let clients = model.registry.ordered
-        let rows = HomeRows.build(clients: clients, folded: folded)
+        let sections = HomeRows.build(clients: clients, folded: folded)
         Group {
             if !model.ready {
                 Color.clear
             } else if clients.isEmpty {
                 NoHostsView { adding = true }
             } else {
-                List {
-                    ForEach(rows) { row in
-                        HomeRowView(row: row, cue: cue(for: row), path: $path, fold: toggleFold, pairAgain: { pairingAgain = $0 }, newThread: { composing = NewThreadTarget(client: $0, workspace: $1, project: $2) })
+                ScrollViewReader { proxy in
+                    List {
+                        ForEach(sections) { section in
+                            HomeSectionView(section: section, cues: cues, path: $path, fold: toggleFold, pairAgain: { pairingAgain = $0 }, addHost: { adding = true }, newThread: { composing = NewThreadTarget(client: $0, workspace: $1, project: $2) })
+                                .id(section.id)
+                        }
                     }
+                    .listStyle(.insetGrouped)
+                    .animation(Motion.rowAppear, value: needsKey(sections))
+                    .task(id: needsKey(sections)) { await loadLines(sections) }
+                    .task(id: clients.first?.hasShell) { await performLaunch(clients, sections: sections, proxy: proxy) }
                 }
-                .listStyle(.plain)
-                .animation(Motion.rowAppear, value: rows.map(\.id))
-                .task(id: needsKey(rows)) { await loadLines(rows) }
-                .task(id: clients.first?.hasShell) { await performLaunch(clients) }
             }
         }
         .navigationTitle("Home")
@@ -56,8 +61,10 @@ struct HomeView: View {
         }
     }
 
-    /// DEBUG only: the proof opens the new-thread sheet, or creates a chat in the first workspace and opens it.
-    private func performLaunch(_ clients: [EnvironmentClient]) async {
+    /// DEBUG only: the proof opens the new-thread sheet, creates a chat in the
+    /// first workspace and opens it, folds every workspace, or scrolls to the
+    /// first workspace so the shot shows that part of the list.
+    private func performLaunch(_ clients: [EnvironmentClient], sections: [HomeSection], proxy: ScrollViewProxy) async {
         guard let client = clients.first, client.hasShell, let workspace = client.workspaces.first else { return }
         if TestHooks.sheet == "new", composing == nil {
             composing = NewThreadTarget(client: client, workspace: workspace, project: nil)
@@ -68,6 +75,15 @@ struct HomeView: View {
             if let created = try? await client.createThread(draft) {
                 path.append(Route.thread(environmentId: client.environment.id, sessionId: created.id, seq: nil))
             }
+        } else if TestHooks.open == "folded", !launched {
+            launched = true
+            foldedRaw = client.workspaces.map { HomeRows.foldKey(client, $0) }.sorted().joined(separator: "\n")
+        } else if TestHooks.open == "workspaces", !launched {
+            launched = true
+            try? await Task.sleep(for: .milliseconds(300))
+            if let first = sections.first(where: { if case .workspace = $0.kind { return true } else { return false } }) {
+                proxy.scrollTo(first.id, anchor: .top)
+            }
         }
     }
 
@@ -75,24 +91,24 @@ struct HomeView: View {
         var keys = folded
         let key = HomeRows.foldKey(client, workspace)
         if !keys.insert(key).inserted { keys.remove(key) }
-        foldedRaw = keys.sorted().joined(separator: "\n")
-    }
-
-    private func cue(for row: HomeRow) -> HomeModel.Cue? {
-        if case .needsYou(_, let item) = row { return cues[item.id] }
-        return nil
+        let next = keys.sorted().joined(separator: "\n")
+        if reduceMotion {
+            withAnimation(Motion.collapse) { foldedRaw = next }
+        } else {
+            withAnimation(Motion.expand) { foldedRaw = next }
+        }
     }
 
     /// Changes when a needs-you thread arrives, leaves or moves.
-    private func needsKey(_ rows: [HomeRow]) -> String {
-        rows.compactMap { row -> String? in
+    private func needsKey(_ sections: [HomeSection]) -> String {
+        sections.flatMap(\.rows).compactMap { row -> String? in
             if case .needsYou(_, let item) = row { return "\(item.id):\(item.meta.updatedAt)" }
             return nil
         }.joined(separator: ",")
     }
 
-    private func loadLines(_ rows: [HomeRow]) async {
-        for row in rows {
+    private func loadLines(_ sections: [HomeSection]) async {
+        for row in sections.flatMap(\.rows) {
             guard case .needsYou(let client, let item) = row else { continue }
             let tail = item.kind == .paused ? [] : await client.peekTail(item.id)
             let cue = HomeModel.cue(for: item.kind, rows: tail)
@@ -101,58 +117,108 @@ struct HomeView: View {
     }
 }
 
-/// One row of Home. Headers sit flush; content rows share the text edge.
+/// One grouped section of Home: its native header (or the workspace's own
+/// header row), then its rows on the card.
+private struct HomeSectionView: View {
+    let section: HomeSection
+    let cues: [String: HomeModel.Cue]
+    @Binding var path: NavigationPath
+    let fold: (EnvironmentClient, WorkspaceMeta) -> Void
+    let pairAgain: (PairedEnvironment) -> Void
+    let addHost: () -> Void
+    let newThread: (EnvironmentClient, WorkspaceMeta, ProjectMeta?) -> Void
+
+    var body: some View {
+        switch section.kind {
+        case .status(let client):
+            Section {
+                HostStatusRow(client: client) { pairAgain(client.environment) }
+                    .listRowBackground(HomeSurface.status(destructive: client.status.transport == .unauthorized || client.status.transport == .offline))
+            }
+        case .needsYou:
+            Section {
+                rows
+            } header: {
+                HomeHeader("Needs you")
+            }
+        case .running:
+            Section {
+                rows
+            } header: {
+                HomeHeader("Running")
+            }
+        case .host(let client):
+            Section {
+            } header: {
+                HostHeader(client: client)
+            }
+        case .chats(let client):
+            Section {
+                rows
+            } header: {
+                HomeHeader(client.environment.name)
+            }
+        case .workspace(let client, let workspace, let branch, let collapsed):
+            Section {
+                rows
+            } header: {
+                WorkspaceHeader(client: client, workspace: workspace, branch: branch, collapsed: collapsed, fold: { fold(client, workspace) }, newThread: { newThread(client, workspace, nil) })
+            }
+        case .empty(let client):
+            Section {
+                if client.hasShell {
+                    EmptyRow(sentence: "No workspaces on \(client.environment.name) yet. Open one in temp-code there and it appears here.", action: ("Add a host", addHost))
+                } else {
+                    HStack {
+                        Spacer()
+                        ProgressView()
+                        Spacer()
+                    }
+                    .padding(.vertical, 12)
+                    .listRowBackground(Color.clear)
+                }
+            }
+        }
+    }
+
+    private var rows: some View {
+        ForEach(section.rows) { row in
+            HomeRowView(row: row, cue: cue(for: row), path: $path, newThread: newThread)
+        }
+    }
+
+    private func cue(for row: HomeRow) -> HomeModel.Cue? {
+        if case .needsYou(_, let item) = row { return cues[item.id] }
+        return nil
+    }
+}
+
+/// One row of Home on the card.
 private struct HomeRowView: View {
     let row: HomeRow
     let cue: HomeModel.Cue?
     @Binding var path: NavigationPath
-    let fold: (EnvironmentClient, WorkspaceMeta) -> Void
-    let pairAgain: (PairedEnvironment) -> Void
     let newThread: (EnvironmentClient, WorkspaceMeta, ProjectMeta?) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         switch row {
-        case .status(let client):
-            HostStatusRow(client: client) { pairAgain(client.environment) }
-                .listRowInsets(rowInsets)
-                .listRowBackground(Surface.chrome)
-        case .title(let title):
-            SectionHeader(title)
-                .listRowInsets(EdgeInsets())
-                .listRowSeparator(.hidden)
         case .needsYou(let client, let item):
             Button { open(client, item.meta.id, seq: cue?.seq) } label: {
                 NeedsYouRow(item: item, line: cue?.text)
             }
             .buttonStyle(.pressable)
-            .listRowInsets(rowInsets)
-            .listRowBackground(Surface.needsYou)
-            .transition(Motion.appear(reduced: reduceMotion))
+            .listRowBackground(HomeSurface.needsYou)
+            .transition(HomeMotion.needsYou(reduced: reduceMotion))
         case .running(let client, let meta):
             threadButton(client, meta, ThreadRowModel(session: meta))
-        case .host(let client):
-            HostHeader(client: client)
-                .listRowInsets(EdgeInsets())
-                .listRowSeparator(.hidden)
-        case .workspace(let client, let workspace, let collapsed):
-            HStack(spacing: 0) {
-                Button { fold(client, workspace) } label: {
-                    WorkspaceHeaderRow(client: client, workspace: workspace, collapsed: collapsed)
-                }
-                .buttonStyle(.pressable)
-                NewThreadButton { newThread(client, workspace, nil) }
-            }
-            .listRowInsets(rowInsets)
-            .listRowSeparator(.hidden)
         case .project(let client, let group):
-            SectionHeader(group.project.name, branch: group.project.branch, worktree: group.project.mode == .worktree) {
+            ProjectHeaderRow(group: group) {
                 if let workspace = client.workspaces.first(where: { $0.id == group.project.workspaceId }) {
-                    NewThreadButton { newThread(client, workspace, group.project) }
+                    newThread(client, workspace, group.project)
                 }
             }
-            .listRowInsets(EdgeInsets())
-            .listRowSeparator(.hidden)
+            .listRowSeparator(.hidden, edges: .bottom)
         case .thread(let client, let item):
             threadButton(client, item.meta, ThreadRowModel(session: item.meta, unseen: item.unseen))
         case .moreAgents(let client, let root, let hidden):
@@ -161,23 +227,18 @@ private struct HomeRowView: View {
                     .padding(.leading, 16 + 24)
             }
             .buttonStyle(.pressable)
-            .listRowInsets(rowInsets)
         case .archivedThreads(let client, let group):
             Button { path.append(Route.archivedThreads(environmentId: client.environment.id, projectId: group.id)) } label: {
                 DimRow(group.archivedCount == 1 ? "1 archived" : "\(group.archivedCount) archived")
             }
             .buttonStyle(.pressable)
-            .listRowInsets(rowInsets)
         case .archivedProjects(let client, let workspace, let count):
             Button { path.append(Route.archivedProjects(environmentId: client.environment.id, workspaceId: workspace.id)) } label: {
                 DimRow(count == 1 ? "1 archived project" : "\(count) archived projects")
             }
             .buttonStyle(.pressable)
-            .listRowInsets(rowInsets)
-        case .nothing(let client):
-            NothingRow(client: client)
-                .listRowInsets(rowInsets)
-                .listRowSeparator(.hidden)
+        case .noThreads(let client, let workspace):
+            EmptyRow(sentence: "No threads in \(workspace.name) yet.", action: ("New thread", { newThread(client, workspace, nil) }))
         }
     }
 
@@ -190,7 +251,6 @@ private struct HomeRowView: View {
             ThreadRow(row: model)
         }
         .buttonStyle(.pressable)
-        .listRowInsets(rowInsets)
         .threadRowActions(client: client, meta: meta)
     }
 }
@@ -204,20 +264,18 @@ struct NewThreadTarget: Identifiable {
     var id: String { "\(client.environment.id):\(workspace.id):\(project?.id ?? "")" }
 }
 
-/// The plus at the end of a workspace or project header: a new thread there.
-struct NewThreadButton: View {
-    let action: () -> Void
+/// A grouped section's title in the system's place, sentence case like the
+/// desktop's chrome.
+private struct HomeHeader: View {
+    let title: String
+
+    init(_ title: String) { self.title = title }
 
     var body: some View {
-        Button(action: action) {
-            Image(systemName: "plus")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .frame(minWidth: 44, minHeight: 30)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.pressable)
-        .accessibilityLabel("New thread")
+        Text(title)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .textCase(nil)
     }
 }
 
@@ -227,8 +285,10 @@ private struct NeedsYouRow: View {
     let item: NeedsYouItem
     let line: String?
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        let text = line ?? HomeModel.line(for: item.kind, rows: [])
         HStack(spacing: 10) {
             StatusDot(status: item.meta.status)
             TypeGlyph(type: item.meta.threadType)
@@ -236,10 +296,15 @@ private struct NeedsYouRow: View {
                 Text(item.meta.title.isEmpty ? "Untitled" : item.meta.title)
                     .font(.subheadline)
                     .lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
-                Text(line ?? HomeModel.line(for: item.kind, rows: []))
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                ZStack(alignment: .leading) {
+                    Text(text)
+                        .id(text)
+                        .transition(Motion.swap(reduced: reduceMotion))
+                }
+                .animation(Motion.crossFade, value: text)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
             }
             Spacer(minLength: 8)
             TimelineView(.periodic(from: .now, by: 30)) { context in
@@ -262,109 +327,106 @@ private struct HostHeader: View {
         HStack(spacing: 8) {
             ConnectionDot(status: client.status)
             Text(client.environment.name)
+                .font(.headline)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+        }
+        .textCase(nil)
+        .padding(.top, 8)
+    }
+}
+
+/// A workspace's header: its logo, its name, the branch its checkout is on,
+/// the fold mark, and the plus. Tapping the name folds the section.
+private struct WorkspaceHeader: View {
+    let client: EnvironmentClient
+    let workspace: WorkspaceMeta
+    let branch: String?
+    let collapsed: Bool
+    let fold: () -> Void
+    let newThread: () -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Button(action: fold) {
+                HStack(spacing: 8) {
+                    WorkspaceIconView(client: client, workspace: workspace, size: 22)
+                    Text(workspace.name)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    if let branch {
+                        Text(branch)
+                            .font(.footnote)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .layoutPriority(-1)
+                    }
+                    FoldMark(collapsed: collapsed)
+                    Spacer(minLength: 0)
+                }
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.pressable)
+            .accessibilityLabel(workspace.name)
+            .accessibilityValue(collapsed ? "Collapsed" : "Expanded")
+            .accessibilityHint("Double tap to \(collapsed ? "expand" : "collapse")")
+            NewThreadButton(action: newThread)
+                .padding(.trailing, -12)
+        }
+        .textCase(nil)
+        .listRowInsets(EdgeInsets())
+    }
+}
+
+/// A project inside its workspace's card: name, the worktree mark, the
+/// branch dim, and the plus; the rows below it are its threads.
+private struct ProjectHeaderRow: View {
+    let group: ProjectGroup
+    let newThread: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(group.project.name)
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-            Spacer(minLength: 8)
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .frame(minHeight: 36)
-    }
-}
-
-/// A workspace: its icon, its name, and the fold mark. Tap to fold or open.
-private struct WorkspaceHeaderRow: View {
-    let client: EnvironmentClient
-    let workspace: WorkspaceMeta
-    let collapsed: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        HStack(spacing: 10) {
-            WorkspaceIconView(client: client, workspace: workspace, size: 20)
-            Text(workspace.name)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
-            Spacer(minLength: 8)
-            Image(systemName: "chevron.down")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
-                .rotationEffect(collapsed ? .degrees(-90) : .zero)
-                .animation(reduceMotion ? nil : Motion.collapse, value: collapsed)
-        }
-        .frame(minHeight: 44)
-        .accessibilityLabel(workspace.name)
-        .accessibilityValue(collapsed ? "Collapsed" : "Expanded")
-    }
-}
-
-/// A quiet row that pushes a list: "3 archived", "2 more subagents".
-struct DimRow: View {
-    let text: String
-
-    init(_ text: String) { self.text = text }
-
-    var body: some View {
-        Text(text)
-            .font(.footnote)
-            .foregroundStyle(.tertiary)
-            .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
-    }
-}
-
-/// A host with nothing to list yet: a spinner until its shell is listed, then the fact.
-private struct NothingRow: View {
-    let client: EnvironmentClient
-
-    var body: some View {
-        HStack {
-            Spacer()
-            if client.hasShell {
-                Text("No threads yet")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            } else {
-                ProgressView()
+            if group.project.mode == .worktree {
+                Image(systemName: "arrow.triangle.branch")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityLabel("Worktree")
             }
-            Spacer()
+            if let branch = group.project.branch {
+                Text(branch)
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .layoutPriority(-1)
+            }
+            Spacer(minLength: 8)
+            NewThreadButton(weight: .semibold, action: newThread)
+                .padding(.trailing, -12)
         }
-        .padding(.vertical, 40)
+        .frame(minHeight: 36)
+        .padding(.top, 4)
     }
 }
 
-/// The first run: one tap to pair.
+/// A host with nothing paired yet: the first run, one tap to pair.
 private struct NoHostsView: View {
     let add: () -> Void
 
     var body: some View {
         ContentUnavailableView {
-            Label("No hosts", systemImage: "desktopcomputer")
+            Label("No hosts yet", systemImage: "iphone.and.arrow.right.inward")
         } description: {
-            Text("Pair a desktop or the agent host to see its threads here.")
+            Text("Pair your Mac or the agent host to see its threads here.")
         } actions: {
             Button("Add a host", action: add)
                 .buttonStyle(.borderedProminent)
-        }
-    }
-}
-
-/// The transport in one color: open green, trying orange, refused or offline red.
-struct ConnectionDot: View {
-    let status: EnvironmentStatus
-
-    var body: some View {
-        Circle()
-            .fill(color)
-            .frame(width: 7, height: 7)
-            .accessibilityLabel(StatusText.text(for: status, now: .now))
-    }
-
-    private var color: Color {
-        switch status.transport {
-        case .open: Tint.success
-        case .connecting, .reconnecting, .suspended: Tint.warning
-        case .offline, .unauthorized: Tint.destructive
         }
     }
 }
