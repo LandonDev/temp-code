@@ -816,11 +816,71 @@ files in 2 MiB chunks; every frame carries the running digest of the bundle
 arrival and the commit compares one value.
 
 What does not cross: checkpoints (baselines of the source's tree; the toast
-says "Undo history stayed on This Mac"), and uncommitted changes in the
-working tree. The source lists `git status --porcelain` of the thread's cwd
-and the toast names what stayed; commit and push before moving to carry it.
-No patch is carried. Event payloads keep the paths they recorded, as in the
-history move.
+says "Undo history stayed on This Mac"). Event payloads keep the paths they
+recorded, as in the history move.
+
+**The branch travels too.** Before any part goes, the source reads the
+thread's cwd (`src/main/server/sessionMoveBranch.ts`, `inspectBranch`): the
+checked-out branch and commit, whether the cwd is a linked worktree of the
+project (`git rev-parse --git-dir` against `--git-common-dir`), the default
+branch (`origin/HEAD`, else main or master), and `git status --porcelain`
+(tracked changes plus untracked files; a nested worktree listed as `dir/` is
+not a file). The manifest carries that as `branch` (`SessionMoveBranchSchema`);
+`session.move.preview {sessionId, from?}` answers the same reading for the
+confirm dialog, which says "Branch ios/home travels too · 3 uncommitted files
+will be carried" or "No branch to carry" (`movePreviewLine`), and the host
+chip shows the branch after the host name.
+
+- The commits: when the repo has an `origin` and `git push -u origin
+  <branch>` lands, the transport is `origin` and the receiver fetches. When
+  there is no origin, the push fails, HEAD is detached, or the receiver
+  cannot fetch from its own origin (it answers a fetch failure to
+  `session.import.branch.commit`, or raises `BranchFetchFailed` on a pull),
+  the commits cross as a `git bundle` over the link, made only after the
+  receiver named the commits it already holds (`branchPlan.have`: its HEAD,
+  its default branch, its copy of the branch), so the bundle is the
+  difference; the receiver already holding the commit means `transport:
+  'none'`. Bundles over 512 MiB are refused (push to origin first).
+- The uncommitted changes: one patch, `git diff --binary HEAD` plus a
+  `--no-index` diff of every untracked file, capped at 64 MiB (over it the
+  changes stay and the toast says so). Nothing on the source is staged,
+  stashed or reset; the source keeps its branch and its changes.
+- The order (`remote/sessionMover.ts`): a push sends `session.import.begin`
+  (the receiver plans the landing and lands the rows hidden at the planned
+  cwd), then the blobs in 2 MiB chunks (`session.import.branch.chunk`, the
+  patch then the bundle, each frame naming the whole blob's hash), then
+  `session.import.branch.commit {transport, bundle, patch}`, and only then
+  the parts. A pull lands the manifest, then `session.export.branch.begin
+  {have}` (the source makes the bundle), `session.export.branch.chunk`, the
+  local branch step, then the parts. The branch step is complete before any
+  session part crosses; a failure in it aborts the move with the source whole.
+- Where it lands (`planBranchLanding`): the receiver's repo is the mapped
+  main checkout (else the mapped project cwd, else the workspace path). A
+  checkout here that already has the branch is reused (`reuse`; fast-forwarded
+  to the source's commit when clean, left at its own commit with a note
+  otherwise). Else, when the source was on the branch directly and the
+  project here is clean on its default branch, the branch is checked out in
+  the project itself (`checkout`). Else a worktree at
+  `<project>/.claude/worktrees/<branch with / as ->` (`worktree`), and the
+  result says why (dirty project, another branch, the source was in a
+  worktree). A branch that is ahead here, or a detached source, lands as a
+  detached worktree at the source's commit (`detached`). The moved thread's
+  cwd (and a subagent's that was the thread's) becomes that path; a worktree
+  the move made is recorded in the host's `thread_resources` ledger when the
+  host keeps one (`MoveHost.recordResource`), and an abort before the parts
+  commit removes it (`undoBranchLanding`); a checkout the move switched goes
+  back to the previous branch when the tree is clean.
+- The patch is applied with `git apply --check` + `git apply`, then `--3way`
+  on a tree that was clean before (a failed 3-way is undone, including the
+  files it created). A patch that does not apply is kept at
+  `<cwd>/.temp-code/moved-changes.patch` (`.temp-code/` excluded locally),
+  the result says `patch: 'kept'`, and the thread gets one quiet row
+  ("Moved here with branch … the patch is at …", a `status` event with a
+  `detail`) once it is live on the receiver. The toast names where the branch
+  landed, how the commits crossed and what happened to the changes
+  (`moveNoticeLines`).
+- A cwd that is not a git checkout moves as before: no branch, the dirty
+  list named in the toast as what stayed.
 
 Landing: the receiver remaps the cwd and an absolute `plan_path` through
 pathMap.ts with its own `harness.sync.pathMap` (default
@@ -850,12 +910,20 @@ outlives the process that set it (it lifts at boot), and an export or a
 landing nobody touched for 10 minutes is let go.
 
 Proof: `bun run script:e2e-session-move` (two headless instances with their
-own HOMEs, Claude config dirs and Codex homes, paired over the fixed port; a
-seeded thread with a subagent in the cold file, a fold, a page and both
-transcripts moves Mac → box, back, and out again). Unit tests:
-`src/main/server/sessionMove.test.ts` (both directions on temp databases,
-remap, tombstones, refusals, a corrupted part, the settle rules) and the
-renderer's `lib/tcserver/store.test.ts` and `lib/threadMove.test.ts`.
+own HOMEs, Claude config dirs and Codex homes, paired over the fixed port; the
+Mac shop on ios/home with a tracked change and an untracked file, the box shop
+a clone on master; a seeded thread with a subagent in the cold file, a fold, a
+page and both transcripts moves Mac → box with the branch checked out there
+and the patch applied, back with the Mac checkout reused, and out again; a
+second thread in a Mac worktree lands in a box worktree and comes back with
+its patch kept and the note on the thread). Unit tests:
+`src/main/server/sessionMoveBranch.test.ts` (branch detection, push else
+bundle, the bundle against what the receiver holds, the patch round trip,
+checkout vs worktree vs reuse, the detached fallback, a kept patch, undo),
+`src/main/server/sessionMove.test.ts` (both directions on temp databases and
+temp repos, remap, tombstones, refusals, a corrupted part after the branch
+step, the origin-to-bundle fallback, the settle rules) and the renderer's
+`lib/tcserver/store.test.ts` and `lib/threadMove.test.ts`.
 ### The Mac bridge: what a box thread may touch on the Mac
 
 Threads run on the box; the user and their files are on the Mac, and some

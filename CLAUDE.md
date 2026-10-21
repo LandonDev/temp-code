@@ -382,9 +382,18 @@ routed to (aliax-core's `forward`). Two listeners:
   receiver lands it remapped and hidden, the source keeps a tombstone only
   on the echoed digest, and a link-up settles a half-done move
   (`src/main/server/{sessionMove,remote/sessionMover}.ts`,
-  `src/shared/contract-session-move.ts`). Checkpoints and uncommitted changes
-  stay on the source. docs/box.md "Moving a thread between hosts"; proof
-  `bun run script:e2e-session-move`.
+  `src/shared/contract-session-move.ts`). The branch travels with it
+  (`src/main/server/sessionMoveBranch.ts`): before any part, the source
+  pushes the thread's branch to origin (else bundles the commits the
+  receiver lacks over the link) and sends its uncommitted changes as a
+  patch; the receiver checks the branch out at the same commit in the
+  project (source on it directly, project clean on its default branch) or
+  in `<project>/.claude/worktrees/<branch>`, reuses a checkout that has it,
+  applies the patch with `git apply --3way` and keeps one that fails at
+  `<cwd>/.temp-code/moved-changes.patch` with a row on the thread; the
+  source keeps everything. The confirm says what travels
+  (`session.move.preview`). Checkpoints stay on the source. docs/box.md
+  "Moving a thread between hosts"; proof `bun run script:e2e-session-move`.
 - The Mac bridge: a box thread whose `macBridge.thread.<id>` setting names
   the Mac reads, lists and fetches Mac files and runs Mac commands
   (`mac_*` tools) over a reverse RPC on the Mac's peer link

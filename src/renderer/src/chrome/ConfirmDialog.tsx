@@ -58,6 +58,7 @@ export function DialogFooter({
 export function ConfirmDialog({
   title,
   body,
+  note,
   confirmLabel,
   danger,
   onCancel,
@@ -65,6 +66,8 @@ export function ConfirmDialog({
 }: {
   title: string;
   body: string;
+  /** One specific fact under the body (what this move carries), a notch stronger than it. */
+  note?: string;
   confirmLabel: string;
   danger?: boolean;
   onCancel: () => void;
@@ -86,6 +89,11 @@ export function ConfirmDialog({
     <Modal onClose={onCancel} busy={pending} title={title} size="sm">
       <div className="flex flex-col gap-2 px-4 py-3">
         <p className="text-[12px] leading-snug text-content/50">{body}</p>
+        {note ? (
+          <p data-confirm-note className="text-[12px] leading-snug text-content/70">
+            {note}
+          </p>
+        ) : null}
         <ErrorLine error={error} />
       </div>
       <DialogFooter

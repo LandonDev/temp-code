@@ -261,14 +261,19 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'session.move': 'local',
   'session.import.begin': 'admin',
   'session.import.part': 'admin',
+  'session.import.branch.chunk': 'admin',
+  'session.import.branch.commit': 'admin',
   'session.import.commit': 'admin',
   'session.import.release': 'admin',
   'session.import.abort': 'admin',
   'session.export.begin': 'admin',
+  'session.export.branch.begin': 'admin',
+  'session.export.branch.chunk': 'admin',
   'session.export.part': 'admin',
   'session.export.commit': 'admin',
   'session.export.abort': 'admin',
   'session.move.status': 'admin',
+  'session.move.preview': 'admin',
   // The Mac bridge (contract-macbridge.ts, docs/box.md): the Mac's main process registers on
   // the box's link and answers its calls; a box thread's own tools are loopback-only (and
   // carry the thread's token); turning the bridge on for a thread lets it act without a box

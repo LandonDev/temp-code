@@ -1,5 +1,6 @@
+import { spawnSync } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -41,6 +42,7 @@ interface Host {
   moved: { id: string; ids: string[]; to: string }[]
   removed: string[][]
   metas: string[]
+  resources: { sessionId: string; path: string; branch: string | null }[]
 }
 
 let T: string
@@ -59,6 +61,7 @@ function makeHost(env: string, name: string, work: (home: string) => string, pee
   const registry = new SessionRegistry(store)
   const workRoot = work(home)
   mkdirSync(workRoot, { recursive: true })
+  const resources: Host['resources'] = []
   const host: MoveHost = {
     db,
     environmentId: env,
@@ -69,7 +72,8 @@ function makeHost(env: string, name: string, work: (home: string) => string, pee
     claudeDir: () => join(home, '.claude'),
     codexDir: () => join(home, '.codex'),
     gitDirty: async () => (env === MAC ? ['src/dirty.ts', 'notes.md'] : []),
-    forget: (ids) => store.forgetSessions(ids)
+    forget: (ids) => store.forgetSessions(ids),
+    recordResource: (sessionId, r) => resources.push({ sessionId, path: r.path, branch: r.branch })
   }
   /** The peer link: every request crosses as JSON, through the contract's zod, into the other host's dispatch. */
   const link = {
@@ -99,7 +103,7 @@ function makeHost(env: string, name: string, work: (home: string) => string, pee
     flush: () => store.flushEvents(),
     log: () => {}
   })
-  const h: Host = { env, dir, home, work: workRoot, data, db, store, registry, mover, moved: [], removed: [], metas: [] }
+  const h: Host = { env, dir, home, work: workRoot, data, db, store, registry, mover, moved: [], removed: [], metas: [], resources }
   registry.onMoved((id, ids, to) => h.moved.push({ id, ids, to }))
   registry.onRemoved((ids) => h.removed.push(ids))
   registry.onMeta((m) => h.metas.push(m.id))
@@ -145,12 +149,12 @@ const BIG = randomBytes(5 * 1024 * 1024 + 11)
 const LONG = 'x'.repeat(2_500_000)
 
 /** The Mac's thread: a claude root with a codex subagent, events in both tiers, a fold, a page, both transcripts, a checkpoint. */
-function seedMac(opts: { transcript?: boolean } = {}): void {
+function seedMac(opts: { transcript?: boolean; cwd?: string } = {}): void {
   mkdirSync(join(macProject(), '.temp-code', 'plans'), { recursive: true })
   mac.store.insertWorkspace({ id: 'ws-mac', name: 'shop', path: macProject(), git: true, createdAt: 1 })
   mac.store.insertProject({ id: 'proj-mac', workspaceId: 'ws-mac', name: 'shop', mode: 'local', branch: null, cwd: macProject(), archived: false, createdAt: 1 })
   mac.store.insertSession(
-    meta({ id: ROOT, cwd: macProject(), projectId: 'proj-mac', workspaceId: 'ws-mac', nativeId: 'claude-native-1', planPath: join(macProject(), '.temp-code', 'plans', 'p.md'), threadType: 'planning' })
+    meta({ id: ROOT, cwd: opts.cwd ?? macProject(), projectId: 'proj-mac', workspaceId: 'ws-mac', nativeId: 'claude-native-1', planPath: join(macProject(), '.temp-code', 'plans', 'p.md'), threadType: 'planning' })
   )
   mac.store.insertSession(meta({ id: CHILD, parentId: ROOT, cwd: macProject(), projectId: 'proj-mac', provider: 'codex', model: 'gpt-6.1-sol', nativeId: CODEX_ID, createdAt: 2 }))
   const events: AgentEvent[] = [
@@ -337,14 +341,14 @@ describe('moving a thread', () => {
     expect(raw(mac, ROOT)).toMatchObject({ moving_to: null, moved_to: null })
   })
 
-  it('refuses a manifest whose session id would name a path', () => {
+  it('refuses a manifest whose session id would name a path', async () => {
     seedBox()
     const manifest = {
       moveId: 'm1', from: MAC, to: BOX, home: mac.home, workRoot: mac.home, rootId: '../escape',
       sessions: [{ id: '../escape', cwd: boxProject() }], folds: [], project: null, workspace: null,
       events: {}, files: [], transcriptMissing: [], parts: 0, dirty: [], dirtyMore: 0, checkpoints: false
     }
-    expect(() => box.mover.importBegin(manifest)).toThrow(/bad session id/)
+    await expect(box.mover.importBegin(manifest)).rejects.toThrow(/bad session id/)
   })
 
   it('a corrupted part is refused on arrival; nothing lands and the source thaws', async () => {
@@ -355,6 +359,162 @@ describe('moving a thread', () => {
     expect(raw(box, ROOT)).toBeUndefined()
     expect(raw(mac, ROOT)).toMatchObject({ moving_to: null, moved_to: null })
     expect(eventCount(mac, ROOT)).toBeGreaterThan(50)
+  })
+})
+
+// ── the branch travels ────────────────────────────────────────────────────
+
+const git = (cwd: string, ...args: string[]): string => {
+  const r = spawnSync('git', ['-C', cwd, '-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { encoding: 'utf8' })
+  if (r.status !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr}`)
+  return r.stdout.trim()
+}
+const status = (cwd: string): string[] => spawnSync('git', ['-C', cwd, 'status', '--porcelain'], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean).sort()
+
+/** The Mac's shop as a repo with two commits on master, and the box's shop as a clone of it on master (no origin). */
+function repos(): void {
+  const m = macProject()
+  mkdirSync(m, { recursive: true })
+  git(m, 'init', '-q', '-b', 'master')
+  put(join(m, 'README.md'), 'shop\n')
+  put(join(m, 'src', 'a.ts'), 'export const a = 1\n')
+  git(m, 'add', '.')
+  git(m, 'commit', '-q', '-m', 'init')
+  git(box.work, 'clone', '-q', m, boxProject())
+  git(boxProject(), 'remote', 'remove', 'origin')
+}
+/** A feature branch on the Mac's shop with one commit, checked out at `dir` (the project, or a worktree of it). */
+function featureOn(dir: string, worktree = false): string {
+  if (worktree) {
+    mkdirSync(dirname(dir), { recursive: true })
+    git(macProject(), 'worktree', 'add', '-q', '-b', 'ios/home', dir)
+  } else git(dir, 'checkout', '-q', '-b', 'ios/home')
+  put(join(dir, 'src', 'home.ts'), 'export const home = true\n')
+  git(dir, 'add', '.')
+  git(dir, 'commit', '-q', '-m', 'home screen')
+  put(join(dir, 'src', 'a.ts'), 'export const a = 42\n')
+  put(join(dir, 'notes.md'), 'untracked notes\n')
+  return git(dir, 'rev-parse', 'HEAD')
+}
+const noteRows = (h: Host, id: string): string[] =>
+  h.store
+    .eventsAfter(id, 0)
+    .map((r) => r.event as AgentEvent)
+    .filter((e): e is Extract<AgentEvent, { type: 'status' }> => e.type === 'status' && !!e.detail)
+    .map((e) => e.detail!)
+
+describe('the branch travels', () => {
+  it('on the branch directly, the box clean on master: a bundle, the branch checked out in the box project at the same commit, the changes applied; back again it reuses the Mac checkout', async () => {
+    repos()
+    seedBox()
+    const head = featureOn(macProject())
+    seedMac()
+    expect(await mac.mover.preview({ sessionId: ROOT })).toEqual({ branch: 'ios/home', detached: false, worktree: false, dirty: 2, origin: false })
+
+    const out = await mac.mover.move({ sessionId: ROOT, to: BOX })
+    expect(out.branch).toMatchObject({ branch: 'ios/home', head, worktree: false, transport: 'bundle', pushError: 'the repo has no origin', dirty: ['src/a.ts', 'notes.md'] })
+    expect(out.branch!.landing).toMatchObject({ mode: 'checkout', cwd: boxProject(), created: false, patch: 'applied', patchPath: null, note: null })
+    expect(out.cwd).toBe(boxProject())
+    expect(git(boxProject(), 'rev-parse', 'HEAD')).toBe(head)
+    expect(git(boxProject(), 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('ios/home')
+    expect(readFileSync(join(boxProject(), 'notes.md'), 'utf8')).toBe('untracked notes\n')
+    expect(status(boxProject())).toEqual([' M src/a.ts', '?? notes.md'])
+    expect(box.store.getSession(ROOT)?.cwd).toBe(boxProject())
+    expect(box.resources).toEqual([])
+    // The source keeps its branch and its changes.
+    expect(git(macProject(), 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('ios/home')
+    expect(status(macProject())).toEqual([' M src/a.ts', '?? notes.md'])
+    expect(noteRows(box, ROOT)).toEqual([])
+    expect(readdirSync(join(mac.data, 'session-move'))).toEqual([]) // the source's blobs went
+
+    // Back: the Mac's project still has ios/home checked out with changes of its own, so it is reused and the patch is kept.
+    put(join(boxProject(), 'src', 'a.ts'), 'export const a = 43\n')
+    const back = await mac.mover.move({ sessionId: ROOT, from: BOX, to: MAC })
+    expect(back.branch!.landing).toMatchObject({ mode: 'reuse', cwd: macProject(), created: false, patch: 'kept', patchPath: join(macProject(), '.temp-code', 'moved-changes.patch') })
+    expect(back.branch!.landing.note).toMatch(/uncommitted changes; it stays at its own commit/)
+    expect(back.cwd).toBe(macProject())
+    expect(readFileSync(join(macProject(), 'src', 'a.ts'), 'utf8')).toBe('export const a = 42\n') // the Mac's own change, untouched
+    expect(readFileSync(back.branch!.landing.patchPath!, 'utf8')).toContain('+export const a = 43')
+    expect(noteRows(mac, ROOT)).toEqual([expect.stringMatching(/^Moved here with branch ios\/home at .*moved-changes\.patch\.$/)])
+    expect(mac.store.getSession(ROOT)?.cwd).toBe(macProject())
+  })
+
+  it('in a worktree on the Mac: the box lands the thread in a worktree of its own, records it, and an abort removes it', async () => {
+    repos()
+    seedBox()
+    const wt = join(macProject(), '.claude', 'worktrees', 'ios-home')
+    const head = featureOn(wt, true)
+    seedMac({ cwd: wt })
+    expect(await mac.mover.preview({ sessionId: ROOT })).toMatchObject({ branch: 'ios/home', worktree: true, dirty: 2 })
+
+    // First attempt: a corrupted part after the branch step. The box undoes the worktree it made; the Mac thaws.
+    faults.corruptPart = 0
+    await expect(mac.mover.move({ sessionId: ROOT, to: BOX })).rejects.toThrow(/does not match its digest/)
+    const boxWt = join(boxProject(), '.claude', 'worktrees', 'ios-home')
+    expect(existsSync(boxWt)).toBe(false)
+    expect(git(boxProject(), 'worktree', 'list')).not.toContain('ios-home')
+    expect(box.store.getSession(ROOT)).toBeFalsy()
+    expect(mac.store.getSession(ROOT)?.cwd).toBe(wt)
+    faults.corruptPart = undefined
+
+    const out = await mac.mover.move({ sessionId: ROOT, to: BOX })
+    expect(out.branch!.landing).toMatchObject({ mode: 'worktree', cwd: boxWt, created: true, patch: 'applied' })
+    expect(out.cwd).toBe(boxWt)
+    expect(box.store.getSession(ROOT)?.cwd).toBe(boxWt)
+    expect(box.store.getSession(CHILD)?.cwd).toBe(boxProject()) // the subagent ran in the project itself
+    expect(git(boxWt, 'rev-parse', 'HEAD')).toBe(head)
+    expect(git(boxWt, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('ios/home')
+    expect(git(boxProject(), 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('master')
+    expect(status(boxWt)).toEqual([' M src/a.ts', '?? notes.md'])
+    expect(box.resources).toEqual([{ sessionId: ROOT, path: boxWt, branch: 'ios/home' }])
+    expect(existsSync(wt)).toBe(true)
+    expect(status(wt)).toEqual([' M src/a.ts', '?? notes.md'])
+  })
+
+  it('pushed to origin, but the box cannot fetch from it: the Mac sends a bundle instead', async () => {
+    repos()
+    seedBox()
+    const bare = join(T, 'origin.git')
+    git(T, 'init', '-q', '--bare', bare)
+    git(macProject(), 'remote', 'add', 'origin', bare)
+    git(boxProject(), 'remote', 'add', 'origin', join(T, 'nowhere.git'))
+    const head = featureOn(macProject())
+    seedMac()
+    const out = await mac.mover.move({ sessionId: ROOT, to: BOX })
+    expect(git(bare, 'rev-parse', 'refs/heads/ios/home')).toBe(head) // the push landed
+    expect(out.branch).toMatchObject({ transport: 'bundle', pushError: expect.stringMatching(/fetch from origin/) })
+    expect(out.branch!.landing).toMatchObject({ mode: 'checkout', cwd: boxProject(), patch: 'applied' })
+    expect(git(boxProject(), 'rev-parse', 'HEAD')).toBe(head)
+  })
+
+  it('a cwd that is not a checkout moves as before: no branch, the dirty list only', async () => {
+    seedMac()
+    seedBox()
+    expect(await mac.mover.preview({ sessionId: ROOT })).toEqual({ branch: null, detached: false, worktree: false, dirty: 0, origin: false })
+    const out = await mac.mover.move({ sessionId: ROOT, to: BOX })
+    expect(out.branch).toBeNull()
+    expect(out.dirty).toEqual(['src/dirty.ts', 'notes.md'])
+  })
+
+  it('the box holds the repo but the Mac pulls a thread whose branch is ahead there: a detached worktree, and a preview asked of the other host', async () => {
+    repos()
+    seedBox()
+    const head = featureOn(macProject())
+    seedMac()
+    await mac.mover.move({ sessionId: ROOT, to: BOX })
+    // The box commits on the branch; the Mac's own ios/home stays behind, with its changes.
+    git(boxProject(), 'add', '.')
+    git(boxProject(), 'commit', '-q', '-m', 'on the box')
+    const ahead = git(boxProject(), 'rev-parse', 'HEAD')
+    expect(await mac.mover.preview({ sessionId: ROOT, from: BOX })).toEqual({ branch: 'ios/home', detached: false, worktree: false, dirty: 0, origin: false })
+    // The Mac's checkout of ios/home is dirty, so it is reused as it is... unless it is clean: make it clean to see the fast-forward.
+    git(macProject(), 'checkout', '-q', '--', '.')
+    rmSync(join(macProject(), 'notes.md'))
+    const back = await mac.mover.move({ sessionId: ROOT, from: BOX, to: MAC })
+    expect(back.branch!.landing).toMatchObject({ mode: 'reuse', cwd: macProject(), patch: 'none', note: null })
+    expect(git(macProject(), 'rev-parse', 'HEAD')).toBe(ahead)
+    expect(git(macProject(), 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('ios/home')
+    void head
   })
 })
 

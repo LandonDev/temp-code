@@ -1,12 +1,19 @@
 import { randomUUID } from 'node:crypto'
+import { join } from 'node:path'
 import type { ClientRequest } from '@shared/contract'
 import type {
+  SessionExportBranchAnswer,
   SessionImportBeginAnswer,
+  SessionMoveBlob,
+  SessionMoveBlobFrame,
+  SessionMoveBranchLanding,
   SessionMoveFrame,
   SessionMoveManifest,
+  SessionMovePreview,
   SessionMoveResult,
   SessionMoveRowState
 } from '@shared/contract-session-move'
+import type { AgentEvent } from '@shared/events'
 import {
   MoveExport,
   MoveImports,
@@ -19,6 +26,7 @@ import {
   tombstone,
   type MoveHost
 } from '../sessionMove'
+import { BranchFetchFailed, prepareBranch, previewBranch, runGit, type PreparedBranch } from '../sessionMoveBranch'
 import type { PeerLink, Peers } from './peers'
 
 /**
@@ -27,14 +35,18 @@ import type { PeerLink, Peers } from './peers'
  * the only UI and the only host that dials, so every move starts on its own
  * server (`session.move`, local) and runs over its admin peer link:
  *
- *  - push (this host → a peer): freeze the subtree here (`moving_to`), send
- *    the manifest and every part to `session.import.*` there, ask it to
- *    commit; on the echoed digest keep a tombstone here, tell the clients
- *    where the thread went, then release the landing there.
+ *  - push (this host → a peer): freeze the subtree here (`moving_to`),
+ *    prepare the branch (push to origin, write the patch), send the
+ *    manifest to `session.import.begin` there, then the branch's blobs and
+ *    `session.import.branch.commit` (the receiver fetches or unbundles,
+ *    checks out, applies), then every part, then ask it to commit; on the
+ *    echoed digest keep a tombstone here, tell the clients where the thread
+ *    went, then release the landing there.
  *  - pull (a peer → this host): `session.export.begin` freezes it there and
- *    answers the manifest; pull every part, land it here hidden, commit
- *    locally, send the digest to `session.export.commit` (the peer keeps the
- *    tombstone on a match), then claim the landing here.
+ *    answers the manifest; land it here hidden (the branch planned), pull
+ *    the blobs over `session.export.branch.*` and run the branch step, pull
+ *    every part, commit locally, send the digest to `session.export.commit`
+ *    (the peer keeps the tombstone on a match), then claim the landing here.
  *  - settle, on every link-up (accountSync.settle's shape): a landing whose
  *    source is still live is dropped, a landing whose source is a tombstone
  *    is claimed, and a freeze nobody finishes is lifted.
@@ -54,6 +66,8 @@ export interface SessionMoverRegistry {
   arrived(ids: string[]): void
   thawed(ids: string[]): void
   rootSessionOf(sessionId: string): string
+  /** One row on a live thread (the branch step's note). */
+  append?(sessionId: string, event: AgentEvent): void
 }
 
 export interface SessionMoverDeps {
@@ -71,7 +85,11 @@ interface ExportState {
   ids: string[]
   to: string
   timer: NodeJS.Timeout | null
+  /** The puller asked for the branch once already (a second ask means its origin fetch failed). */
+  branchAsked?: boolean
 }
+
+const FETCH_FAILED = /fetch from origin|does not reach|carries no detached|nothing carried it/
 
 export class SessionMover {
   readonly imports: MoveImports
@@ -117,13 +135,16 @@ export class SessionMover {
     const moveId = randomUUID()
     const ids = await registry.freezeForMove(rootId, (frozen) => setMovingTo(host.db, frozen, to, moveId))
     for (const id of ids) this.busy.add(id)
+    let exp: MoveExport | null = null
     try {
-      let exp: MoveExport
       let landed: SessionImportBeginAnswer
+      let branchLanding: SessionMoveBranchLanding | null = null
       try {
         this.deps.flush?.()
-        exp = await MoveExport.build(host, rootId, moveId, to)
+        const branch = await this.prepare(rootId, moveId)
+        exp = await MoveExport.build(host, rootId, moveId, to, branch)
         landed = await link.request<SessionImportBeginAnswer>('session.import.begin', { manifest: exp.manifest }, { timeoutMs: STEP_TIMEOUT_MS })
+        if (branch && landed.branchPlan) branchLanding = await this.sendBranch(link, exp, branch, landed.branchPlan.have)
         for (let i = 0; i < exp.manifest.parts; i++) await link.request('session.import.part', exp.part(i), { timeoutMs: STEP_TIMEOUT_MS })
         const answer = await link.request<{ digest: string }>('session.import.commit', { moveId, digest: exp.digest() }, { timeoutMs: STEP_TIMEOUT_MS })
         if (answer.digest !== exp.digest()) throw new Error(`${link.env.name} holds something else than what was sent`)
@@ -143,10 +164,49 @@ export class SessionMover {
         pendingRelease = true
         this.log(`${rootId}: release on ${link.env.name} did not answer (${(err as Error).message}); the next link-up settles it`)
       }
-      this.log(`${rootId} moved to ${link.env.name}: ${ids.length} session(s), ${exp.manifest.parts} part(s)`)
-      return this.result(exp.manifest, landed.cwd, pendingRelease)
+      this.log(`${rootId} moved to ${link.env.name}: ${ids.length} session(s), ${exp.manifest.parts} part(s)${branchLanding ? `, branch ${branchLanding.branch ?? branchLanding.head.slice(0, 10)} at ${branchLanding.cwd}` : ''}`)
+      return this.result(exp.manifest, landed.cwd, pendingRelease, exp.branch, branchLanding)
     } finally {
+      exp?.dispose()
       for (const id of ids) this.busy.delete(id)
+    }
+  }
+
+  /** The source's branch step: inspect the root's cwd, push to origin, write the patch. Null when the cwd is not a checkout. */
+  private async prepare(rootId: string, moveId: string): Promise<PreparedBranch | null> {
+    const row = this.deps.host.db.prepare(`SELECT cwd FROM sessions WHERE id = ?`).get(rootId) as { cwd: string } | undefined
+    if (!row) return null
+    const staging = join(this.deps.host.dataDir, 'session-move', `${moveId.replace(/[^A-Za-z0-9_-]/g, '_')}-out`)
+    return prepareBranch(row.cwd, staging, { git: this.deps.host.git ?? runGit })
+  }
+
+  /** Send the blobs and run the branch step on the receiver; a fetch from origin that fails there is retried as a bundle. */
+  private async sendBranch(link: PeerLink, exp: MoveExport, branch: PreparedBranch, have: readonly string[]): Promise<SessionMoveBranchLanding> {
+    const moveId = exp.manifest.moveId
+    const sendBlob = async (blob: 'bundle' | 'patch'): Promise<void> => {
+      const meta = blob === 'bundle' ? branch.bundle : branch.descriptor.patch
+      if (!meta) return
+      for (let c = 0; c < meta.chunks; c++) await link.request('session.import.branch.chunk', exp.branchFrame(blob, c), { timeoutMs: STEP_TIMEOUT_MS })
+    }
+    const commit = (): Promise<SessionMoveBranchLanding> =>
+      link.request<SessionMoveBranchLanding>(
+        'session.import.branch.commit',
+        { moveId, transport: branch.descriptor.transport, bundle: branch.bundle, patch: branch.descriptor.patch },
+        { timeoutMs: 10 * STEP_TIMEOUT_MS }
+      )
+    if (branch.descriptor.transport === 'bundle') await branch.makeBundle(have)
+    await sendBlob('patch')
+    await sendBlob('bundle')
+    try {
+      return await commit()
+    } catch (err) {
+      if (branch.descriptor.transport !== 'origin' || !FETCH_FAILED.test((err as Error).message)) throw err
+      // The receiver could not reach origin (no key there, a private remote): the commits go over the link instead.
+      this.log(`${link.env.name} could not fetch ${branch.descriptor.branch} from origin (${(err as Error).message}); sending a bundle`)
+      branch.fallBackToBundle((err as Error).message)
+      await branch.makeBundle(have)
+      await sendBlob('bundle')
+      return commit()
     }
   }
 
@@ -160,15 +220,17 @@ export class SessionMover {
     try {
       let digest: string
       let landed: SessionImportBeginAnswer
+      let branchLanding: SessionMoveBranchLanding | null = null
       try {
-        landed = this.imports.begin(manifest)
+        landed = await this.imports.begin(manifest)
+        if (manifest.branch && landed.branchPlan) branchLanding = await this.pullBranch(link, moveId, landed.branchPlan.have)
         for (let i = 0; i < manifest.parts; i++) {
           const frame = await link.request<SessionMoveFrame>('session.export.part', { moveId, index: i }, { timeoutMs: STEP_TIMEOUT_MS })
           this.imports.part(frame)
         }
         digest = this.imports.commit(moveId, null).digest
       } catch (err) {
-        this.imports.forget(moveId)
+        await this.imports.forget(moveId)
         dropLanding(host, { moveId })
         await link.request('session.export.abort', { moveId, sessionId: manifest.rootId }).catch(() => undefined)
         throw err
@@ -193,14 +255,64 @@ export class SessionMover {
       }
       const claimed = claimLanding(host, { moveId, sessionId: manifest.rootId })
       registry.arrived(claimed)
-      this.log(`${manifest.rootId} moved here from ${link.env.name}: ${ids.length} session(s), ${manifest.parts} part(s)`)
-      return this.result(manifest, landed.cwd, false)
+      this.noteLanded(manifest.rootId)
+      this.log(`${manifest.rootId} moved here from ${link.env.name}: ${ids.length} session(s), ${manifest.parts} part(s)${branchLanding ? `, branch ${branchLanding.branch ?? branchLanding.head.slice(0, 10)} at ${branchLanding.cwd}` : ''}`)
+      return this.result(manifest, branchLanding?.cwd ?? landed.cwd, false, manifest.branch ? { descriptor: manifest.branch } : null, branchLanding)
     } finally {
       for (const id of ids) this.busy.delete(id)
     }
   }
 
-  private result(m: SessionMoveManifest, cwd: string, pendingRelease: boolean): SessionMoveResult {
+  /** The puller's branch step: the source makes the bundle against what this host holds, the blobs cross, the step runs here. */
+  private async pullBranch(link: PeerLink, moveId: string, have: readonly string[]): Promise<SessionMoveBranchLanding> {
+    const answer = await link.request<SessionExportBranchAnswer>('session.export.branch.begin', { moveId, have }, { timeoutMs: 10 * STEP_TIMEOUT_MS })
+    const pullBlob = async (blob: 'bundle' | 'patch'): Promise<void> => {
+      const meta = blob === 'bundle' ? answer.bundle : answer.patch
+      if (!meta) return
+      for (let c = 0; c < meta.chunks; c++) {
+        const frame = await link.request<SessionMoveBlobFrame>('session.export.branch.chunk', { moveId, blob, chunk: c }, { timeoutMs: STEP_TIMEOUT_MS })
+        this.imports.branchChunk(frame)
+      }
+    }
+    await pullBlob('patch')
+    await pullBlob('bundle')
+    try {
+      return await this.imports.branchCommit(moveId, { transport: answer.transport, bundle: answer.bundle, patch: answer.patch })
+    } catch (err) {
+      if (answer.transport !== 'origin' || !(err instanceof BranchFetchFailed)) throw err
+      this.log(`could not fetch from origin here (${(err as Error).message}); asking ${link.env.name} for a bundle`)
+      const again = await link.request<SessionExportBranchAnswer>('session.export.branch.begin', { moveId, have }, { timeoutMs: 10 * STEP_TIMEOUT_MS })
+      if (again.transport === 'bundle') {
+        for (let c = 0; c < (again.bundle?.chunks ?? 0); c++) {
+          const frame = await link.request<SessionMoveBlobFrame>('session.export.branch.chunk', { moveId, blob: 'bundle', chunk: c }, { timeoutMs: STEP_TIMEOUT_MS })
+          this.imports.branchChunk(frame)
+        }
+      }
+      return this.imports.branchCommit(moveId, { transport: again.transport, bundle: again.bundle, patch: again.patch })
+    }
+  }
+
+  /** The branch step's note, as one quiet row on the thread now that it is live here. */
+  private noteLanded(rootId: string): void {
+    const note = this.imports.takeNote(rootId)
+    if (note) this.deps.registry.append?.(rootId, { type: 'status', status: 'idle', detail: note })
+  }
+
+  /** What the move confirm says about a thread's branch: this host's own, or asked of the host that holds it. */
+  async preview(params: { sessionId: string; from?: string }): Promise<SessionMovePreview> {
+    if (params.from && params.from !== this.me) return this.link(params.from).request<SessionMovePreview>('session.move.preview', { sessionId: params.sessionId }, { timeoutMs: STEP_TIMEOUT_MS })
+    const row = this.deps.host.db.prepare(`SELECT cwd FROM sessions WHERE id = ?`).get(params.sessionId) as { cwd: string } | undefined
+    if (!row) throw new Error(`unknown session: ${params.sessionId}`)
+    return previewBranch(row.cwd, this.deps.host.git ?? runGit)
+  }
+
+  private result(
+    m: SessionMoveManifest,
+    cwd: string,
+    pendingRelease: boolean,
+    branch: Pick<PreparedBranch, 'descriptor'> | null,
+    landing: SessionMoveBranchLanding | null
+  ): SessionMoveResult {
     const carried = m.files.some((f) => f.kind !== 'html')
     return {
       sessionId: m.rootId,
@@ -214,6 +326,7 @@ export class SessionMover {
       dirty: m.dirty,
       dirtyMore: m.dirtyMore,
       checkpointsStayed: m.checkpoints,
+      branch: branch && landing ? { ...branch.descriptor, landing } : null,
       ...(pendingRelease ? { pendingRelease } : {})
     }
   }
@@ -226,7 +339,7 @@ export class SessionMover {
     const timer = setTimeout(() => {
       this.importTimers.delete(moveId)
       if (!this.imports.active.includes(moveId)) return
-      this.imports.forget(moveId)
+      void this.imports.forget(moveId)
       const dropped = dropLanding(this.deps.host, { moveId })
       this.log(`landing ${moveId} went idle; dropped ${dropped.length} row(s)`)
     }, this.deps.idleMs ?? IDLE_MS)
@@ -240,10 +353,22 @@ export class SessionMover {
     this.importTimers.delete(moveId)
   }
 
-  importBegin(manifest: SessionMoveManifest): SessionImportBeginAnswer {
-    const answer = this.imports.begin(manifest)
+  async importBegin(manifest: SessionMoveManifest): Promise<SessionImportBeginAnswer> {
+    const answer = await this.imports.begin(manifest)
     this.touchImport(manifest.moveId)
     return answer
+  }
+
+  importBranchChunk(frame: SessionMoveBlobFrame): { chunk: number } {
+    this.touchImport(frame.moveId)
+    return this.imports.branchChunk(frame)
+  }
+
+  async importBranchCommit(params: { moveId: string; transport: 'origin' | 'bundle' | 'none'; bundle: SessionMoveBlob | null; patch: SessionMoveBlob | null }): Promise<SessionMoveBranchLanding> {
+    this.touchImport(params.moveId)
+    const landing = await this.imports.branchCommit(params.moveId, params)
+    this.touchImport(params.moveId)
+    return landing
   }
 
   importPart(frame: SessionMoveFrame): { index: number } {
@@ -258,14 +383,17 @@ export class SessionMover {
 
   importRelease(params: { moveId?: string; sessionId: string }): { sessionIds: string[] } {
     const ids = claimLanding(this.deps.host, params)
-    if (ids.length) this.deps.registry.arrived(ids)
+    if (ids.length) {
+      this.deps.registry.arrived(ids)
+      this.noteLanded(params.sessionId)
+    }
     return { sessionIds: ids }
   }
 
-  importAbort(params: { moveId?: string; sessionId?: string }): { dropped: number } {
+  async importAbort(params: { moveId?: string; sessionId?: string }): Promise<{ dropped: number }> {
     if (params.moveId) {
       this.untouchImport(params.moveId)
-      this.imports.forget(params.moveId)
+      await this.imports.forget(params.moveId)
     }
     let dropped = params.moveId ? dropLanding(this.deps.host, { moveId: params.moveId }) : []
     if (dropped.length === 0 && params.sessionId) dropped = dropLanding(this.deps.host, { sessionId: params.sessionId })
@@ -294,7 +422,8 @@ export class SessionMover {
     const ids = await registry.freezeForMove(rootId, (frozen) => setMovingTo(host.db, frozen, params.to, params.moveId))
     try {
       this.deps.flush?.()
-      const exp = await MoveExport.build(host, rootId, params.moveId, params.to)
+      const branch = await this.prepare(rootId, params.moveId)
+      const exp = await MoveExport.build(host, rootId, params.moveId, params.to, branch)
       this.exports.set(params.moveId, { exp, ids, to: params.to, timer: null })
       this.touchExport(params.moveId)
       return exp.manifest
@@ -303,6 +432,27 @@ export class SessionMover {
       registry.thawed(ids)
       throw err
     }
+  }
+
+  /** The puller named what it holds: make the bundle when one is needed (again as a bundle when its origin fetch failed). */
+  async exportBranchBegin(moveId: string, have: readonly string[]): Promise<SessionExportBranchAnswer> {
+    const state = this.exports.get(moveId)
+    if (!state) throw new Error(`no export ${moveId} here`)
+    this.touchExport(moveId)
+    const b = state.exp.branch
+    if (!b) return { transport: 'none', bundle: null, patch: null, pushError: null }
+    if (b.descriptor.transport === 'origin' && state.branchAsked) b.fallBackToBundle('the receiver could not fetch from origin')
+    state.branchAsked = true
+    if (b.descriptor.transport === 'bundle') await b.makeBundle(have)
+    this.touchExport(moveId)
+    return { transport: b.descriptor.transport, bundle: b.bundle, patch: b.descriptor.patch, pushError: b.descriptor.pushError }
+  }
+
+  exportBranchChunk(moveId: string, blob: 'bundle' | 'patch', chunk: number): SessionMoveBlobFrame {
+    const state = this.exports.get(moveId)
+    if (!state) throw new Error(`no export ${moveId} here`)
+    this.touchExport(moveId)
+    return state.exp.branchFrame(blob, chunk)
   }
 
   exportPart(moveId: string, index: number): SessionMoveFrame {
@@ -319,6 +469,7 @@ export class SessionMover {
     if (mine !== digest) throw new Error('session.export.commit: the digest does not match what was sent')
     if (state.timer) clearTimeout(state.timer)
     this.exports.delete(moveId)
+    state.exp.dispose()
     tombstone(this.deps.host, state.ids, state.to)
     await this.deps.registry.departed(state.exp.manifest.rootId, state.ids, state.to)
     this.log(`${state.exp.manifest.rootId} moved to ${state.to}`)
@@ -329,6 +480,7 @@ export class SessionMover {
     const state = params.moveId ? this.exports.get(params.moveId) : undefined
     if (state?.timer) clearTimeout(state.timer)
     if (params.moveId) this.exports.delete(params.moveId)
+    state?.exp.dispose()
     let ids = state?.ids ?? (params.moveId ? frozenIds(this.deps.host.db, { moveId: params.moveId }) : [])
     if (ids.length === 0 && params.sessionId) ids = frozenIds(this.deps.host.db, { sessionId: params.sessionId })
     if (ids.length === 0) return { thawed: 0 }
@@ -421,7 +573,10 @@ export class SessionMover {
   close(): void {
     for (const t of this.importTimers.values()) clearTimeout(t)
     this.importTimers.clear()
-    for (const s of this.exports.values()) if (s.timer) clearTimeout(s.timer)
+    for (const s of this.exports.values()) {
+      if (s.timer) clearTimeout(s.timer)
+      s.exp.dispose()
+    }
   }
 }
 
@@ -431,7 +586,11 @@ export async function handleSessionMove(req: ClientRequest, mover: SessionMover)
     case 'session.move':
       return { handled: true, result: await mover.move(req.params) }
     case 'session.import.begin':
-      return { handled: true, result: mover.importBegin(req.params.manifest) }
+      return { handled: true, result: await mover.importBegin(req.params.manifest) }
+    case 'session.import.branch.chunk':
+      return { handled: true, result: mover.importBranchChunk(req.params) }
+    case 'session.import.branch.commit':
+      return { handled: true, result: await mover.importBranchCommit(req.params) }
     case 'session.import.part':
       return { handled: true, result: mover.importPart(req.params) }
     case 'session.import.commit':
@@ -439,9 +598,13 @@ export async function handleSessionMove(req: ClientRequest, mover: SessionMover)
     case 'session.import.release':
       return { handled: true, result: mover.importRelease(req.params) }
     case 'session.import.abort':
-      return { handled: true, result: mover.importAbort(req.params) }
+      return { handled: true, result: await mover.importAbort(req.params) }
     case 'session.export.begin':
       return { handled: true, result: await mover.exportBegin(req.params) }
+    case 'session.export.branch.begin':
+      return { handled: true, result: await mover.exportBranchBegin(req.params.moveId, req.params.have) }
+    case 'session.export.branch.chunk':
+      return { handled: true, result: mover.exportBranchChunk(req.params.moveId, req.params.blob, req.params.chunk) }
     case 'session.export.part':
       return { handled: true, result: mover.exportPart(req.params.moveId, req.params.index) }
     case 'session.export.commit':
@@ -450,6 +613,8 @@ export async function handleSessionMove(req: ClientRequest, mover: SessionMover)
       return { handled: true, result: mover.exportAbort(req.params) }
     case 'session.move.status':
       return { handled: true, result: mover.status(req.params.environmentId, req.params.ids) }
+    case 'session.move.preview':
+      return { handled: true, result: await mover.preview(req.params) }
     default:
       return { handled: false }
   }

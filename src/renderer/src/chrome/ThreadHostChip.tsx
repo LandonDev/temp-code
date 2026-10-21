@@ -1,17 +1,32 @@
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState, type JSX } from "react";
+import type { SessionMovePreview } from "@server/shared/contract-session-move";
+import { useProjectBranches } from "../hooks/useProjectBranches";
 import { registry, useEnvironments, useEnvironmentStatuses } from "../lib/connection";
 import { LAYER } from "../lib/layers";
 import { useQueue, useSession, useSessionMeta } from "../lib/tcserver/store";
-import { dismissMoveNotice, hostTone, moveNoticeLines, moveTargets, moveThread, useMoveNotices, useMoving, type MoveNotice } from "../lib/threadMove";
+import {
+  dismissMoveNotice,
+  hostTone,
+  moveNoticeLines,
+  movePreviewLine,
+  moveTargets,
+  moveThread,
+  previewMove,
+  useMoveNotices,
+  useMoving,
+  type MoveNotice,
+} from "../lib/threadMove";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
 
 /**
- * Which host the active thread lives on, with a status dot, and the menu
- * that moves it to the other one ("Move to box…"). Each target is disabled
- * with its reason when the thread is busy, a link is down or the key there
- * is not admin. A running move shows on the chip.
+ * Which host the active thread lives on, with a status dot and the branch
+ * its folder is on, and the menu that moves it to the other one ("Move to
+ * box…"). Each target is disabled with its reason when the thread is busy,
+ * a link is down or the key there is not admin. The confirm says what the
+ * move carries (the branch and its uncommitted changes); a running move
+ * shows on the chip.
  */
 export function ThreadHostChip({ sessionId }: { sessionId: string }): JSX.Element | null {
   const session = useSession(sessionId);
@@ -22,10 +37,26 @@ export function ThreadHostChip({ sessionId }: { sessionId: string }): JSX.Elemen
   const moving = useMoving();
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [confirm, setConfirm] = useState<{ to: string; name: string } | null>(null);
+  const [preview, setPreview] = useState<SessionMovePreview | null | "error">(null);
+  const cwd = session?.cwd ?? "";
+  const branches = useProjectBranches(cwd, !!session && environments.length >= 2);
+  useEffect(() => {
+    if (!confirm) return;
+    let live = true;
+    setPreview(null);
+    previewMove(sessionId).then(
+      (p) => live && setPreview(p),
+      () => live && setPreview("error"),
+    );
+    return () => {
+      live = false;
+    };
+  }, [confirm, sessionId]);
   if (!session) return null;
   const env = environments.find((e) => e.id === session.environmentId);
   // A window with one host has nothing to say here.
   if (!env || environments.length < 2) return null;
+  const branch = branches?.current ?? null;
   const movingTo = moving.get(sessionId);
   const targets = moveTargets(
     {
@@ -55,16 +86,21 @@ export function ThreadHostChip({ sessionId }: { sessionId: string }): JSX.Elemen
         type="button"
         data-tauri-drag-region="false"
         data-thread-host={session.environmentId}
-        title={movingName ? `Moving to ${movingName}…` : `This thread runs on ${env.name}`}
+        title={movingName ? `Moving to ${movingName}…` : `This thread runs on ${env.name}${branch ? ` on branch ${branch}` : ""}`}
         aria-busy={!!movingTo}
         onClick={(event) => {
           const r = event.currentTarget.getBoundingClientRect();
           setMenu({ x: r.left, y: r.bottom + 4 });
         }}
-        className="flex h-6 max-w-40 items-center gap-1.5 rounded-md px-2 text-[12px] text-content/60 hover:bg-content/5 hover:text-content"
+        className="flex h-6 max-w-64 items-center gap-1.5 rounded-md px-2 text-[12px] text-content/60 hover:bg-content/5 hover:text-content"
       >
         <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${movingTo ? "animate-pulse bg-warning" : hostTone(statuses.get(env.id))}`} />
         <span className="truncate">{movingName ? `Moving to ${movingName}…` : env.name}</span>
+        {!movingName && branch ? (
+          <span data-thread-branch={branch} className="min-w-0 truncate text-content/40">
+            · {branch}
+          </span>
+        ) : null}
       </button>
       {menu ? (
         <ExplorerMenu
@@ -84,7 +120,8 @@ export function ThreadHostChip({ sessionId }: { sessionId: string }): JSX.Elemen
       {confirm ? (
         <ConfirmDialog
           title={`Move this thread to ${confirm.name}?`}
-          body={`The thread, its subagents, its transcript and its agent pages move to ${confirm.name} and run there from now on. Uncommitted changes in the working tree and the undo history stay on ${env.name}.`}
+          body={`The thread, its subagents, its transcript and its agent pages move to ${confirm.name} and run there from now on. The undo history stays on ${env.name}.`}
+          note={movePreviewLine(preview)}
           confirmLabel="Move thread"
           onCancel={() => setConfirm(null)}
           onConfirm={() => {

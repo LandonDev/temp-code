@@ -19,6 +19,10 @@ import {
   SESSION_MOVE_FILE_CHUNK,
   SESSION_MOVE_PART_BYTES,
   type SessionImportBeginAnswer,
+  type SessionMoveBlob,
+  type SessionMoveBlobFrame,
+  type SessionMoveBranchLanding,
+  type SessionMoveBranchPlan,
   type SessionMoveFile,
   type SessionMoveFrame,
   type SessionMoveManifest,
@@ -26,6 +30,7 @@ import {
   type SessionMoveRowState
 } from '@shared/contract-session-move'
 import { stripSlash, type HistoryMapping } from './pathMap'
+import { BlobLanding, landBranch, planBranchLanding, runGit, undoBranchLanding, type GitRunner, type PreparedBranch } from './sessionMoveBranch'
 
 /**
  * Moving one thread between hosts: the data half (docs/box.md "Moving a
@@ -52,6 +57,12 @@ import { stripSlash, type HistoryMapping } from './pathMap'
  *    the sessions rows with `moved_to` and archived set, and drops the
  *    events, folds and pages. Checkpoints stay: they are baselines of this
  *    host's tree, and the result says undo history stayed here.
+ *  - the branch (sessionMoveBranch.ts): the manifest names the source's
+ *    working branch, commit and uncommitted changes; the receiver decides at
+ *    begin where it lands (the rows land at that path) and, before any part,
+ *    takes the blobs (`branchChunk`) and runs the step (`branchCommit`):
+ *    fetch or unbundle, check out, apply the patch. A discarded landing
+ *    undoes what that step made.
  */
 
 export interface MoveHost {
@@ -71,6 +82,10 @@ export interface MoveHost {
   exists?(path: string): boolean
   /** The store's caches over these ids are stale (seq counters, tiers). */
   forget?(ids: readonly string[]): void
+  /** Runs git for the branch step (a test seam; the default is spawnBudget's). */
+  git?: GitRunner
+  /** A worktree the branch step made for the thread (the thread_resources ledger, when this host keeps one). */
+  recordResource?(sessionId: string, resource: { kind: 'worktree'; path: string; branch: string | null; repo: string }): void
 }
 
 export const claudeConfigDir = (): string => process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')
@@ -264,7 +279,9 @@ export class MoveExport {
     readonly manifest: SessionMoveManifest,
     private readonly plan: PlanEntry[],
     /** Absolute source path per manifest file. */
-    private readonly paths: string[]
+    private readonly paths: string[],
+    /** The branch step's source half; null when the cwd is not a git checkout. */
+    readonly branch: PreparedBranch | null
   ) {
     this.chain = chainStart(manifest.moveId, manifest.rootId)
   }
@@ -273,8 +290,8 @@ export class MoveExport {
     return this.manifest.sessions.map((s) => String(s.id))
   }
 
-  /** The bundle of a frozen subtree. The caller checked it is at rest. */
-  static async build(host: MoveHost, rootId: string, moveId: string, to: string): Promise<MoveExport> {
+  /** The bundle of a frozen subtree. The caller checked it is at rest, and prepared the branch (sessionMoveBranch.ts) when it wants it carried. */
+  static async build(host: MoveHost, rootId: string, moveId: string, to: string, branch: PreparedBranch | null = null): Promise<MoveExport> {
     const db = host.db
     const ids = subtreeIds(db, rootId).filter((id) => {
       const s = rowState(moveCols(db, id), id).state
@@ -369,7 +386,8 @@ export class MoveExport {
       for (let c = 0; c < chunks; c++) plan.push({ kind: 'file', file: i, chunk: c, chunks })
     })
 
-    const dirtyAll = await (host.gitDirty ?? defaultGitDirty)(String(root.cwd)).catch(() => [] as string[])
+    // With a branch the dirty list is the branch step's (what the patch carries); else `git status` as before.
+    const dirtyAll = branch ? branch.inspection.dirty : await (host.gitDirty ?? defaultGitDirty)(String(root.cwd)).catch(() => [] as string[])
     const checkpoints = ids.some((id) => existsSync(join(host.dataDir, 'checkpoints', id)))
     const manifest: SessionMoveManifest = {
       moveId,
@@ -388,9 +406,21 @@ export class MoveExport {
       parts: plan.length,
       dirty: dirtyAll.slice(0, DIRTY_CAP),
       dirtyMore: Math.max(0, dirtyAll.length - DIRTY_CAP),
-      checkpoints
+      checkpoints,
+      branch: branch?.descriptor ?? null
     }
-    return new MoveExport(host, manifest, plan, paths)
+    return new MoveExport(host, manifest, plan, paths, branch)
+  }
+
+  /** One chunk of the branch's bundle or patch. */
+  branchFrame(blob: 'bundle' | 'patch', chunk: number): SessionMoveBlobFrame {
+    if (!this.branch) throw new Error('this move carries no branch')
+    return this.branch.frame(this.manifest.moveId, blob, chunk)
+  }
+
+  /** The source's blobs go. */
+  dispose(): void {
+    this.branch?.dispose()
   }
 
   /** Part `index`, in order; the last one again on a retry. */
@@ -499,6 +529,16 @@ export function landingCandidates(
 
 export class MoveRefused extends Error {}
 
+interface BranchState {
+  plan: SessionMoveBranchPlan
+  /** The checkout the branch lands in or under. */
+  repo: string
+  blobs: { bundle?: BlobLanding; patch?: BlobLanding }
+  /** What the repo had checked out before the step (an abort goes back to it). */
+  previousBranch: string | null
+  landing: SessionMoveBranchLanding | null
+}
+
 interface Landing {
   manifest: SessionMoveManifest
   ids: string[]
@@ -510,6 +550,8 @@ interface Landing {
   /** Where each file lands here, by manifest index. */
   targets: string[]
   answer: SessionImportBeginAnswer
+  /** The branch step, when the manifest carried a branch and this host has the repo. */
+  branch: BranchState | null
 }
 
 const tableColumns = (db: DatabaseSync, table: string): Set<string> =>
@@ -519,10 +561,16 @@ const safeRel = (rel: string): boolean => !isAbsolute(rel) && !normalize(rel).sp
 
 export class MoveImports {
   private readonly landings = new Map<string, Landing>()
+  /** What the branch step has to tell the thread once it is live, by root id. */
+  private readonly notes = new Map<string, string>()
   constructor(private readonly host: MoveHost) {}
 
   private exists(path: string): boolean {
     return (this.host.exists ?? existsSync)(path)
+  }
+
+  private get git(): GitRunner {
+    return this.host.git ?? runGit
   }
 
   private stagingDir(moveId: string): string {
@@ -530,7 +578,7 @@ export class MoveImports {
   }
 
   /** Check, remap and resolve; land the rows hidden. Throws MoveRefused with the reason. */
-  begin(manifest: SessionMoveManifest): SessionImportBeginAnswer {
+  async begin(manifest: SessionMoveManifest): Promise<SessionImportBeginAnswer> {
     const db = this.host.db
     if (manifest.to !== this.host.environmentId) throw new MoveRefused(`this host is ${this.host.environmentId}, not ${manifest.to}`)
     const ids = manifest.sessions.map((s) => String(s.id))
@@ -555,8 +603,18 @@ export class MoveImports {
       return c.find((x) => this.exists(x)) ?? c[0]
     }
     const root = manifest.sessions[0]
-    const rootCwd = land(String(root.cwd))
-    if (!this.exists(rootCwd)) throw new MoveRefused(`${rootCwd} does not exist on this host`)
+    // The branch: planned now, so the rows land at the path the thread will run in (a worktree may not exist yet).
+    let branch: BranchState | null = null
+    if (manifest.branch) {
+      const repo = [manifest.branch.mainCheckout, manifest.project?.cwd, manifest.workspace?.path]
+        .filter((p): p is string => !!p)
+        .map(land)
+        .find((p) => this.exists(p))
+      const plan = repo ? await planBranchLanding(repo, manifest.branch, this.git) : null
+      if (repo && plan) branch = { plan, repo, blobs: {}, previousBranch: null, landing: null }
+    }
+    const rootCwd = branch ? branch.plan.cwd : land(String(root.cwd))
+    if (!branch && !this.exists(rootCwd)) throw new MoveRefused(`${rootCwd} does not exist on this host`)
 
     // The workspace: the one at the remapped workspace path, else the deepest one holding the cwd.
     const workspaces = db.prepare(`SELECT id, path FROM workspaces`).all() as { id: string; path: string }[]
@@ -589,7 +647,7 @@ export class MoveImports {
     const landed = new Map<string, string>()
     const rows: Row[] = manifest.sessions.map((s) => {
       const id = String(s.id)
-      const cwd = id === manifest.rootId ? rootCwd : land(String(s.cwd))
+      const cwd = id === manifest.rootId || s.cwd === root.cwd ? rootCwd : land(String(s.cwd))
       landed.set(id, cwd)
       const plan = typeof s.plan_path === 'string' && isAbsolute(s.plan_path) ? land(s.plan_path) : s.plan_path
       const project =
@@ -626,7 +684,7 @@ export class MoveImports {
 
     // A stale landing of an earlier attempt, or the tombstone this host kept when the thread left: replaced.
     const prior = this.landings.get(manifest.moveId)
-    if (prior) this.discard(prior)
+    if (prior) await this.discard(prior)
     db.exec('BEGIN')
     try {
       dropRows(db, ids)
@@ -647,7 +705,7 @@ export class MoveImports {
     this.host.forget?.(ids)
     const staging = this.stagingDir(manifest.moveId)
     rmSync(staging, { recursive: true, force: true })
-    const answer = { cwd: rootCwd, workspaceId, projectId: rootProject }
+    const answer: SessionImportBeginAnswer = { cwd: rootCwd, workspaceId, projectId: rootProject, branchPlan: branch?.plan ?? null }
     this.landings.set(manifest.moveId, {
       manifest,
       ids,
@@ -657,9 +715,65 @@ export class MoveImports {
       chunks: new Map(),
       staging,
       targets,
-      answer
+      answer,
+      branch
     })
     return answer
+  }
+
+  // ── the branch step, before any part ──────────────────────────────────
+
+  branchChunk(frame: SessionMoveBlobFrame): { chunk: number } {
+    const l = this.landing(frame.moveId)
+    if (!l.branch) throw new Error('session.import.branch.chunk: this landing carries no branch')
+    if (l.next > 0) throw new Error('session.import.branch.chunk: the parts already started')
+    const landing = (l.branch.blobs[frame.blob] ??= new BlobLanding(join(l.staging, 'branch', frame.blob), frame.blob))
+    landing.take(frame)
+    return { chunk: frame.chunk }
+  }
+
+  /**
+   * Fetch or unbundle, check out, apply the patch; the rows move to where
+   * the branch landed when that differs from the plan. Throws when the
+   * commit cannot be brought here (a BranchFetchFailed on an origin fetch:
+   * the sender may bundle instead and call again).
+   */
+  async branchCommit(moveId: string, declared: { transport: 'origin' | 'bundle' | 'none'; bundle: SessionMoveBlob | null; patch: SessionMoveBlob | null }): Promise<SessionMoveBranchLanding> {
+    const l = this.landing(moveId)
+    const b = l.branch
+    const m = l.manifest.branch
+    if (!b || !m) throw new Error('session.import.branch.commit: this landing carries no branch')
+    if (b.landing) return b.landing
+    if (l.next > 0) throw new Error('session.import.branch.commit: the parts already started')
+    const bundlePath = declared.transport === 'bundle' && declared.bundle ? (b.blobs.bundle?.finish(declared.bundle) ?? null) : null
+    if (declared.transport === 'bundle' && !bundlePath) throw new Error('session.import.branch.commit: no bundle arrived')
+    if (m.patch && (!declared.patch || declared.patch.sha256 !== m.patch.sha256)) throw new Error('session.import.branch.commit: the patch is not the one the manifest declared')
+    const patchPath = declared.patch ? (b.blobs.patch?.finish(declared.patch) ?? null) : null
+    if (declared.patch && !patchPath) throw new Error('session.import.branch.commit: the patch did not arrive whole')
+    b.previousBranch = (await this.git(b.repo, ['rev-parse', '--abbrev-ref', 'HEAD']).catch(() => ({ stdout: '' }))).stdout.trim() || null
+    const landing = await landBranch({ projectCwd: b.repo, plan: b.plan, branch: m, transport: declared.transport, bundlePath, patchPath, git: this.git })
+    b.landing = landing
+    if (landing.cwd !== l.answer.cwd) {
+      const st = this.host.db.prepare(`UPDATE sessions SET cwd = ? WHERE id = ? AND cwd = ?`)
+      for (const id of l.ids) st.run(landing.cwd, id, l.answer.cwd)
+      l.answer = { ...l.answer, cwd: landing.cwd }
+      this.host.forget?.(l.ids)
+    }
+    // One row on the thread only when the patch did not apply (the toast carries every other remark).
+    if (landing.patch === 'kept' && landing.note) this.notes.set(l.manifest.rootId, `Moved here with branch ${landing.branch ?? landing.head.slice(0, 10)} at ${landing.cwd}. ${landing.note}.`)
+    return landing
+  }
+
+  /** The note the branch step left for the thread, once; null when there is none. */
+  takeNote(rootId: string): string | null {
+    const n = this.notes.get(rootId) ?? null
+    this.notes.delete(rootId)
+    return n
+  }
+
+  /** The branch step's answer so far, for the result (the landing, once it ran). */
+  branchLanding(moveId: string): SessionMoveBranchLanding | null {
+    return this.landings.get(moveId)?.branch?.landing ?? null
   }
 
   private landing(moveId: string): Landing {
@@ -672,6 +786,7 @@ export class MoveImports {
     const l = this.landing(frame.moveId)
     if (frame.index === l.next - 1) return { index: frame.index } // a retry of the last one
     if (frame.index !== l.next) throw new Error(`session.import.part: expected part ${l.next}, got ${frame.index}`)
+    if (l.next === 0 && l.branch && !l.branch.landing) throw new Error('session.import.part: the branch step did not run')
     const chain = chainNext(l.chain, frame.part)
     if (chain !== frame.sha) throw new Error(`session.import.part: part ${frame.index} does not match its digest`)
     const part = frame.part
@@ -711,6 +826,7 @@ export class MoveImports {
     const l = this.landing(moveId)
     const m = l.manifest
     if (l.next !== m.parts) throw new Error(`session.import.commit: ${l.next} of ${m.parts} parts arrived`)
+    if (l.branch && !l.branch.landing) throw new Error('session.import.commit: the branch step did not run')
     const mine = finalDigest(l.chain, m)
     if (digest !== null && mine !== digest) throw new Error('session.import.commit: the digest does not match')
     const count = this.host.db.prepare(`SELECT count(*) AS n FROM main.events WHERE session_id = ?`)
@@ -736,18 +852,24 @@ export class MoveImports {
     })
     rmSync(l.staging, { recursive: true, force: true })
     this.landings.delete(moveId)
+    // The worktree the branch step made is the thread's from here on (an abort before this point removed it).
+    const bl = l.branch?.landing
+    if (bl?.created && l.branch) this.host.recordResource?.(m.rootId, { kind: 'worktree', path: bl.cwd, branch: bl.branch, repo: l.branch.repo })
     return { digest: mine }
   }
 
-  private discard(l: Landing): void {
-    rmSync(l.staging, { recursive: true, force: true })
+  private async discard(l: Landing): Promise<void> {
     this.landings.delete(l.manifest.moveId)
+    this.notes.delete(l.manifest.rootId)
+    rmSync(l.staging, { recursive: true, force: true })
+    const b = l.branch
+    if (b?.landing) await undoBranchLanding(b.repo, b.landing, b.previousBranch, this.git).catch(() => undefined)
   }
 
-  /** Forget a landing in memory (the rows are dropped by dropLanding). */
-  forget(moveId: string): void {
+  /** Forget a landing in memory and undo its branch step (the rows are dropped by dropLanding). */
+  forget(moveId: string): Promise<void> {
     const l = this.landings.get(moveId)
-    if (l) this.discard(l)
+    return l ? this.discard(l) : Promise.resolve()
   }
 
   get active(): string[] {

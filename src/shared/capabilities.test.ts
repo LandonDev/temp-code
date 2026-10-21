@@ -80,6 +80,7 @@ describe('METHOD_CAPABILITY', () => {
         // A thread crosses between hosts only under an admin key; the desktop's session.move drives these.
         ...methods.filter((m) => m.startsWith('session.import.') || m.startsWith('session.export.')),
         'session.move.status',
+        'session.move.preview',
         // The reverse RPC a Mac's main process speaks on its link to this host, and its settle report (contract-crosshost.ts).
         ...methods.filter((m) => m.startsWith('peer.')),
         'crossHost.settled',
