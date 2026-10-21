@@ -173,7 +173,7 @@ private struct ToolBody: View {
             let text: String
             switch value {
             case .string(let s): text = s
-            case .number(let n): text = n.rounded() == n ? String(Int(n)) : String(n)
+            case .number(let n): text = value.intValue.map(String.init) ?? String(n)
             case .bool(let b): text = b ? "true" : "false"
             case .null: continue
             default: text = Formatting.pretty(value)

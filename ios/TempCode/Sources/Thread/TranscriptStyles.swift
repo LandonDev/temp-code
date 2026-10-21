@@ -121,7 +121,7 @@ struct ShimmerText: View {
                             .frame(width: proxy.size.width * 0.7)
                             .offset(x: phase * proxy.size.width)
                     }
-                    .mask(Text(text))
+                    .mask { Text(text) }
                 }
             }
             .onAppear {

@@ -715,8 +715,9 @@ private struct OptionChip: View {
     }
 }
 
-/// Chips that wrap: each row fills the width, then the next begins.
-struct FlowLayout: Layout {
+/// Chips that wrap: each row fills the width, then the next begins. Pure
+/// geometry, so it stays off the main actor like the protocol it adopts.
+nonisolated struct FlowLayout: Layout {
     var spacing: CGFloat = 6
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
@@ -887,7 +888,7 @@ struct SystemRow: View {
                         .font(.footnote)
                         .frame(width: 18)
                         .accessibilityHidden(true)
-                    Text("Failed").fontWeight(.medium) + Text(line.text.isEmpty ? "" : " · \(Board.firstLine(line.text))")
+                    Text("\(Text("Failed").fontWeight(.medium))\(line.text.isEmpty ? "" : " · \(Board.firstLine(line.text))")")
                 }
                 .font(.footnote)
                 .foregroundStyle(Tint.destructive)
