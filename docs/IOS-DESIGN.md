@@ -289,28 +289,57 @@ up. Turn completion adds nothing visual beyond the strip stopping.
 
 Segments: **Board** (default) and **Chat**.
 
-The board is the desktop's `ImplementationView` in one column:
+The board is the desktop's `ImplementationView` in one column, Reminders
+meets a build log: progress visible at a glance, the current task impossible
+to miss, nothing shouting. Its pieces live in
+`ios/TempCode/Sources/Thread/ImplementationBoardView.swift` and
+`BoardStyles.swift`; the pure selectors in the client package's
+`Rendering/Board.swift` and `Rendering/BoardSections.swift`.
 
-1. **Goal line** from the plan file when seeded, `subheadline`, dim.
-2. **Passes**: one section per round that produced todos or work, numbered
-   and colored with the desktop's pass colors (green, sky, violet, amber,
-   rose, cyan, lime, fuchsia, by pass number), header being the user's
-   request for that round, first line only, dim.
-3. **Todos**: a row per todo with the status glyph (circle pending, spinner
-   in progress, check completed), the content, duration in tabular digits
-   when done. The running todo is the bright row; settled rows dim. Tap a row
-   to expand its trace: the tool chips and quiet notes that landed while it
+1. **Goal line** from the plan file when seeded, `subheadline`, dim. Under
+   it the **progress line**: a 3 pt capsule track (`quaternarySystemFill`),
+   the done share in the success tint, the task under way reaching one step
+   further at the same tint at 35 %, and `2 of 5` in `caption` tabular
+   digits beside it (success once complete). Never a percentage. The fill
+   moves with the row-expand spring; the count ticks with `numericText`.
+   The line reads the newest pass that had tasks.
+2. **Passes**: once two passes have earned a row, a header per pass on the
+   chrome step: a 7 pt dot in the desktop's pass colour (green, sky, violet,
+   amber, rose, cyan, lime, fuchsia, by pass number), `Pass n` semibold
+   secondary, the user's request for that round (first line, tertiary; the
+   first pass leaves it to the goal line), and a settled pass's `done/total`
+   trailing. The current pass leaves its count to the progress line. A
+   single pass has no header.
+3. **Todos**: a row per todo, 44 pt minimum, the status glyph in a 20 pt
+   column (`circle` tertiary pending, the spinner tinted success while the
+   thread works on it, `circle.dotted` when in progress but not running,
+   `checkmark.circle.fill` success when done; stroke follows the regular
+   text weight), the content, the duration in `caption` tabular digits once
+   done. The **running row** is the bright one: `label`, medium, on a field
+   in the success tint at 6 % (radius 12, inset 8 from the edge with 8 of
+   padding so the glyph column still starts at 16). Done rows step to
+   `secondaryLabel`, pending to `tertiaryLabel`. A glyph changing state
+   swaps with scale 0.25→1, opacity 0→1, blur 4→0, `spring(0.3, bounce 0)`;
+   opacity alone under reduced motion. A row with a trace carries a
+   `chevron.right` (caption2 semibold, tertiary) that turns 90° on the
+   expand spring. Tap a row to expand its trace: the tool chips (the
+   transcript's `ToolChip`, as it is) and quiet notes that landed while it
    was in progress, mapped by the harness's todo state as on the desktop
-   (`groupByTodo`). Exactly one row expands at a time; the running row is
-   open by default.
-4. **Changes**: file rows as edits land, `+n −m`, grouped by todo, tap opens
-   the diff. Count in the section header ticks with a numeric text
-   transition.
-5. **Needs you** cards inline in order.
-6. **Closing report**: the agent's final markdown once all todos are
-   complete, or the answer when a follow-up produced no todos.
-7. **Fleet**: when the thread spawned subagents, their rows sit under the
-   plan, pushing to the agent's detail.
+   (`groupByTodo`), inset to the text column. Exactly one row expands at a
+   time; the running row is open by default, and follows the harness when
+   it moves to the next todo. Expand is `spring(0.35, bounce 0)` with the
+   content fading in 150 ms after the height starts; collapse 200 ms
+   ease-out.
+4. **Changes**: a `Changes` section header whose count ticks with
+   `numericText`, then file rows as edits land, `+n −m`, grouped by todo
+   (the group label `caption` tertiary at 16, setup first; no labels when
+   the pass has one todo), tap opens the diff.
+5. **Needs you** cards inline in order, with the row-appear transition.
+6. **Closing report**: a `Report` section header, then the agent's final
+   markdown once all todos are complete, or the answer when a follow-up
+   produced no todos.
+7. **Fleet**: when the thread spawned subagents, an `Agents` header with
+   the count and their rows under the plan, pushing to the agent's detail.
 
 Chat is the mechanics transcript (thinking, reads, commands, prose), the same
 Chat body as above.
