@@ -123,8 +123,7 @@ The transcript is the whole body. Row kinds and their mobile form:
   mono, omitted bodies fetched on expand with a shimmer of the final height
   estimate, 12 pt radius, concentric with the chip's 8 pt.
 - **Edits**: the file name, `+n −m` in success and destructive, tap opens the
-  diff full screen (unified, mono, line numbers dim; no side-by-side on a
-  phone).
+  diff full screen (see "The diff screen").
 - **Approval** and **question** cards: the only raised surfaces in the
   transcript, hairline border and warning tint at 8 %, actions as full-width
   buttons at the bottom (L5 makes them live; L3 and L4 render them with the
@@ -198,6 +197,46 @@ surfaced streaming in beneath: favicon, title, domain dim, claim in one
 line. The chat docks as the second segment and the app switches to Sources
 when the report completes.
 
+### The diff screen
+
+One screen for every diff: an edit row in the transcript, a Changes row on
+the board, and a pull request's patch in the Inbox (`DiffScreen`, with
+`DiffRoute` for an edit and `PatchDiffRoute` for a patch). Unified, never
+side by side on a phone; the model and its measurements live in
+`Thread/DiffStyles.swift`.
+
+- **Header**: the path on one line in two steps, the directory `tertiary`
+  and the file name in the title's color, `subheadline` semibold, head
+  truncated so the name always shows; `+n −m` trailing in success and
+  destructive (the host's count for an edit, the parsed count for a patch).
+- **Hunks**: a jump or a step back in the new-side numbering starts one, as
+  the desktop's gap does, and every edit of a file starts one. Each hunk is
+  a pinned section row on the one gray step: the line range ("Lines
+  40–43", "Line 12 removed"), the file name first when the document spans
+  files, the hunk's own `+n −m` trailing, a hairline under it.
+- **Lines**: mono one step down from the rows (`footnote`, Dynamic Type
+  honored, the gutter and row height measured from the same font), the
+  number `tertiary` right-aligned in the gutter, the sign bold in the line's
+  color in the gutter and never in the text, the row tinted success or
+  destructive at 10 % with a 2 pt bar of the full color on the leading
+  edge, context text at 70 %: the desktop's `DiffBody` values. No
+  intra-line emphasis, as on the desktop.
+- **Sideways**: each hunk scrolls horizontally on its own, under the pinned
+  gutter, by a sideways drag on any of its rows; the finger's momentum
+  carries it, both ends rubber-band (Apple's `d·c·w / (d·c + w)`, c = 0.55)
+  and it settles with the row-expand spring. A hunk that fits never moves.
+- **Virtualized**: a lazy column of fixed-height rows; a 3,600-line diff
+  opens and scrolls at 120 Hz with nothing built off screen.
+- **Toolbar**: a bottom bar with previous and next hunk and "n of m" in
+  tabular digits between them, numeric transition; the position follows the
+  scroll from the fixed row heights. Hidden for a single hunk. Navigation
+  scrolls 250 ms ease-out; jumps under reduced motion.
+- **Context menu** on any line: Copy line, Copy hunk (unified, with signs).
+- **Loading**: the shimmer of the height the lines will take, from the line
+  count the host left with the omitted body; rows cross-fade in over it in
+  150 ms. **Gone**: one line in destructive with Retry. **Nothing to show**:
+  one quiet line.
+
 ## Visual system
 
 Everything maps to the desktop's `DESIGN.md`: quiet chrome, one gray step,
@@ -247,6 +286,8 @@ Values are exact.
 | Streaming text | none; append only |
 | Status dot to spinner | cross-fade 150 ms |
 | Jump-to-latest pill | 150 ms opacity and 8 pt translateY, both directions |
+| Diff hunk sideways | follows the finger, momentum from the release velocity, rubber band at both ends, settles with spring `duration 0.35, bounce 0`; next and previous hunk scroll 250 ms ease-out |
+| Diff lines landing | 150 ms cross-fade over the shimmer |
 | Reduced motion | cross-fades replace every translate and spring |
 
 Nothing animates on first paint from cache. Nothing animates on a keyboard
