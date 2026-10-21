@@ -1,5 +1,7 @@
+import ActivityKit
 import SwiftUI
 import TempCodeContract
+import WidgetKit
 
 /// The Live Activity's presentation, shared by the extension (the lock
 /// screen and the Dynamic Island) and the app (the DEBUG gallery that
