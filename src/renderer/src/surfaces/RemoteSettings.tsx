@@ -8,6 +8,7 @@ import type {
   RemoteSession,
   RemoteStatus,
 } from "@server/shared/contract-remote";
+import type { HarnessSyncStatus } from "@server/shared/contract-harness";
 import { DialogFooter, ErrorLine, errorText } from "../chrome/ConfirmDialog";
 import { Check, Copy } from "../chrome/icons";
 import { Modal } from "../chrome/Modal";
@@ -15,6 +16,7 @@ import { timeAgo } from "../lib/format";
 import { registry } from "../lib/connection";
 import { Heading, INPUT_CLASS, Input, Row, SecondaryButton, Segmented, Toggle } from "./settingsBits";
 import { MatrixSpinner } from "./threads/bits";
+import { harnessLine } from "./harnessLine";
 
 /**
  * Settings → Remote access (plan 5jtfkIC45Cbr): the environment id, the
@@ -43,21 +45,25 @@ export function RemoteSettings() {
   const [keys, setKeys] = useState<RemoteKey[]>([]);
   const [pairings, setPairings] = useState<RemotePairing[]>([]);
   const [sessions, setSessions] = useState<RemoteSession[]>([]);
+  const [harness, setHarness] = useState<HarnessSyncStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<"key" | "pair" | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const [s, k, p, b] = await Promise.all([
+      const [s, k, p, b, h] = await Promise.all([
         rpc<RemoteStatus>("remote.status"),
         rpc<RemoteKey[]>("remote.keys.list"),
         rpc<RemotePairing[]>("remote.pairings.list"),
         rpc<RemoteSession[]>("remote.sessions.list"),
+        // An older host without the harness sync answers an error: the section just stays away.
+        rpc<HarnessSyncStatus>("harness.status").catch(() => null),
       ]);
       setStatus(s);
       setKeys(k);
       setPairings(p);
       setSessions(b);
+      setHarness(h);
       setError(null);
     } catch (err) {
       setError(errorText(err));
@@ -158,6 +164,44 @@ export function RemoteSettings() {
           />
         ))}
       </List>
+
+      {harness ? (
+        <>
+          <Heading title="Harness config" />
+          <Row
+            label="Sync to hosts"
+            description="Skills, commands, agents, settings and plugins of Claude Code and Codex go from here to every host this machine holds an admin key for; this machine's copy wins."
+          >
+            <Toggle
+              label="Sync harness config"
+              on={harness.enabled}
+              onChange={(on) => void act("harness.settings.set", { enabled: on })}
+            />
+          </Row>
+          <List empty="No host to sync to: pair one with an admin key in Settings → Environments.">
+            {harness.environments.map((env) => (
+              <Item
+                key={env.id}
+                title={env.name}
+                meta={harnessLine(env)}
+                action={
+                  <SecondaryButton
+                    disabled={!harness.enabled || !env.connected || env.running}
+                    onClick={() => void act("harness.sync", { environmentId: env.id })}
+                  >
+                    Sync now
+                  </SecondaryButton>
+                }
+              />
+            ))}
+          </List>
+          {harness.skipped > 0 ? (
+            <p className="pb-2 text-[12px] text-content/40">
+              {harness.skipped} {harness.skipped === 1 ? "file stays" : "files stay"} on this machine (over 16 MB, or a symlink out of reach).
+            </p>
+          ) : null}
+        </>
+      ) : null}
 
       <Heading title="Browser sessions" />
       <List empty="No browser is signed in.">
