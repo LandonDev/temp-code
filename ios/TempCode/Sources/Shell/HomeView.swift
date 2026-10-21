@@ -35,26 +35,29 @@ struct HomeView: View {
             } else if clients.isEmpty {
                 NoHostsView { adding = true }
             } else {
-                List {
-                    ForEach(sections) { section in
-                        Section {
-                            ForEach(section.rows) { row in
-                                HomeRowView(row: row, cue: cue(for: row), path: $path, pairAgain: { pairingAgain = $0 }, newThread: compose)
-                                    .transition(row.isEvent && painted ? HomeStyles.eventRow(reduced: reduceMotion) : .identity)
+                ScrollViewReader { proxy in
+                    List {
+                        ForEach(sections) { section in
+                            Section {
+                                ForEach(section.rows) { row in
+                                    HomeRowView(row: row, cue: cue(for: row), path: $path, pairAgain: { pairingAgain = $0 }, newThread: compose)
+                                        .transition(row.isEvent && painted ? HomeStyles.eventRow(reduced: reduceMotion) : .identity)
+                                }
+                            } header: {
+                                HomeHeaderView(header: section.header, fold: toggleFold, newThread: compose)
                             }
-                        } header: {
-                            HomeHeaderView(header: section.header, fold: toggleFold, newThread: compose)
+                            .id(section.id)
                         }
                     }
-                }
-                .listStyle(.plain)
-                .animation(painted ? Motion.rowAppear : nil, value: eventKey(sections))
-                .task(id: needsKey(sections)) { await loadLines(sections) }
-                .task(id: clients.first?.hasShell) { await performLaunch(clients) }
-                .task {
-                    // One turn of the run loop after the cached paint: the diff that follows is an event.
-                    await Task.yield()
-                    painted = true
+                    .listStyle(.plain)
+                    .animation(painted ? Motion.rowAppear : nil, value: eventKey(sections))
+                    .task(id: needsKey(sections)) { await loadLines(sections) }
+                    .task(id: clients.first?.hasShell) { await performLaunch(clients, proxy: proxy) }
+                    .task {
+                        // One turn of the run loop after the cached paint: the diff that follows is an event.
+                        await Task.yield()
+                        painted = true
+                    }
                 }
             }
         }
@@ -78,9 +81,17 @@ struct HomeView: View {
         composing = NewThreadTarget(client: client, workspace: workspace, project: project)
     }
 
-    /// DEBUG only: the proof opens the new-thread sheet, or creates a chat in the first workspace and opens it.
-    private func performLaunch(_ clients: [EnvironmentClient]) async {
+    /// DEBUG only: the proof opens the new-thread sheet, creates a chat in the
+    /// first workspace and opens it, folds a workspace, or scrolls one to the top.
+    private func performLaunch(_ clients: [EnvironmentClient], proxy: ScrollViewProxy) async {
         guard let client = clients.first, client.hasShell, let workspace = client.workspaces.first else { return }
+        if let part = HomeTestHooks.fold, let target = client.workspaces.first(where: { $0.name.localizedCaseInsensitiveContains(part) }), !folded.contains(HomeRows.foldKey(client, target)) {
+            foldedRaw = (folded.union([HomeRows.foldKey(client, target)])).sorted().joined(separator: "\n")
+        }
+        if let part = HomeTestHooks.scroll, let target = client.workspaces.first(where: { $0.name.localizedCaseInsensitiveContains(part) }) {
+            try? await Task.sleep(for: .milliseconds(600))
+            proxy.scrollTo("workspace:\(client.environment.id):\(target.id)", anchor: .top)
+        }
         if TestHooks.sheet == "new", composing == nil {
             composing = NewThreadTarget(client: client, workspace: workspace, project: nil)
         } else if TestHooks.action == "new-chat", !launched {
@@ -138,6 +149,19 @@ struct HomeView: View {
             if cues[item.id] != cue { cues[item.id] = cue }
         }
     }
+}
+
+/// Home's own launch hooks, for the proof only; a release build reads none.
+private enum HomeTestHooks {
+    #if DEBUG
+    /// Part of a workspace name: that workspace scrolls to the top once the shell is listed.
+    static let scroll = ProcessInfo.processInfo.environment["TC_TEST_HOME_SCROLL"].flatMap { $0.isEmpty ? nil : $0 }
+    /// Part of a workspace name: that workspace starts folded.
+    static let fold = ProcessInfo.processInfo.environment["TC_TEST_HOME_FOLD"].flatMap { $0.isEmpty ? nil : $0 }
+    #else
+    static let scroll: String? = nil
+    static let fold: String? = nil
+    #endif
 }
 
 /// A section's header: nothing, a title, a host, or a workspace's fold row.
