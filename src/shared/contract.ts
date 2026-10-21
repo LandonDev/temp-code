@@ -24,6 +24,7 @@ import { ProjectModeSchema, ThreadTypeSchema } from './domain'
 import { OrchestrationRulesSchema, ThreadRulesSchema } from './rules'
 import { ThreadDefaultsSchema } from './defaults'
 import { PlanSettingsSchema } from './plans'
+import { ThreadCapSchema } from './threadCap'
 import { AppshotSettingsSchema } from './appshots'
 import { AccountPinsSchema } from './contract-m3a'
 import { TurnPassSchema } from './turnpass'
@@ -83,7 +84,10 @@ export const CreateSessionParams = z.object({
   /** master threads: the master this root thread belongs to */
   masterId: z.string().optional(),
   /** master threads: the sibling a queued thread waits for before it boots */
-  after: z.string().optional()
+  after: z.string().optional(),
+  /** Queue instead of booting when the host is over its running cap or
+   *  `after` is unmet (scheduler.ts); a master's children always queue. */
+  queue: z.boolean().optional()
 })
 export type CreateSessionParams = z.infer<typeof CreateSessionParams>
 /** Pre-parse shape (defaults still optional) — what callers construct. */
@@ -713,6 +717,24 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     id: z.string(),
     method: z.literal('session.resume'),
     params: z.object({ sessionId: z.string() })
+  }),
+  // Start one queued thread now, past the host's cap and its `after`
+  // (the strip's Start now; scheduler.ts).
+  z.object({
+    id: z.string(),
+    method: z.literal('session.start'),
+    params: z.object({ sessionId: z.string() })
+  }),
+  // The host's running cap (threadCap.ts): `threads.maxRunning`, 0 = unlimited.
+  z.object({
+    id: z.string(),
+    method: z.literal('threads.get'),
+    params: z.object({}).optional()
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('threads.set'),
+    params: ThreadCapSchema
   }),
   // A proof's seam (local; isolated instances only, TEMP_CODE_E2E_STATUS=1):
   // set a thread's status without a harness, so a pause has something to pause.

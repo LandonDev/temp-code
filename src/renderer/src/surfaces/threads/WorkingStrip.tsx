@@ -14,8 +14,10 @@ import { MatrixSpinner, duration } from "./bits";
  * the frozen elapsed, and Stop / Continue on the right. A stopped run (the
  * harness behind the turn is gone: the host restarted without resuming it,
  * or the process died) fills it the same way in neutral: a square, Stopped,
- * why, the frozen elapsed, and Resume. Only opacity animates in and out
- * (120ms); the slot never changes height.
+ * why, the frozen elapsed, and Resume. A queued thread (created, not
+ * booted: over the host's cap or waiting for a sibling) reads its reason
+ * from the row's activity line and offers one quiet Start now. Only opacity
+ * animates in and out (120ms); the slot never changes height.
  */
 
 const FLAVOUR_WORDS = [
@@ -61,10 +63,13 @@ export const WorkingStrip = memo(function WorkingStrip({
   session,
   onStop,
   onResume,
+  onStart,
 }: {
   session: Session;
   onStop: () => void;
   onResume: () => Promise<void> | void;
+  /** Start a queued thread now (session.start); absent, the strip only says Queued. */
+  onStart?: () => Promise<void> | void;
 }) {
   const status = session.status ?? (session.busy ? "running" : "idle");
   const running = status === "running" || (status !== "starting" && status !== "paused" && !!session.busy);
@@ -96,6 +101,14 @@ export const WorkingStrip = memo(function WorkingStrip({
     setResumeBusy(true);
     Promise.resolve(onResume()).finally(() => setResumeBusy(false));
   };
+  const [startBusy, setStartBusy] = useState(false);
+  const start = (): void => {
+    if (startBusy || !onStart) return;
+    setStartBusy(true);
+    Promise.resolve(onStart()).finally(() => setStartBusy(false));
+  };
+  // "Queued · 3rd in line" / "Queued · waiting for X": the host's line for the row.
+  const queuedLine = queued && session.activity?.startsWith("Queued") ? session.activity : "Queued";
 
   return (
     <div className="mx-auto h-7 w-full max-w-4xl shrink-0">
@@ -154,7 +167,19 @@ export const WorkingStrip = memo(function WorkingStrip({
         ) : starting ? (
           <span>Sending…</span>
         ) : queued ? (
-          <span>Queued</span>
+          <>
+            <span className="min-w-0 truncate">{queuedLine}</span>
+            {onStart ? (
+              <button
+                type="button"
+                onClick={start}
+                disabled={startBusy}
+                className="pressable ml-auto h-6 shrink-0 rounded-md px-2 text-[11px] text-content/60 hover:bg-content/8 hover:text-content disabled:cursor-default disabled:opacity-60"
+              >
+                {startBusy ? "Starting…" : "Start now"}
+              </button>
+            ) : null}
+          </>
         ) : (
           <>
             <MatrixSpinner tint={session.activityKind} />

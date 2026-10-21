@@ -18,6 +18,8 @@ import { basename } from 'node:path'
 import { CreateSessionParams, type CreateSessionInput } from '@shared/contract'
 import type { SessionBatchResult } from '@shared/contract'
 import { runSessionBatch, type SessionBatchAction } from './sessionBatch'
+import { ThreadScheduler } from './scheduler'
+import { parseMaxRunning, THREAD_CAP_KEY } from '@shared/threadCap'
 import { CATALOG, resolveModel, visibleModels, type ProviderId } from '@shared/catalog'
 import type { AgentEvent, Attachment, EventRow, Failure, SessionMeta, SessionStatus } from '@shared/events'
 import { classifyFailure, type GatewayRefusal } from './failureKind'
@@ -402,6 +404,12 @@ export class SessionRegistry {
   private movedListeners = new Set<MovedListener>()
   /** Per-session message queue: composed mid-turn, drained on idle. */
   private queues = new Map<string, QueuedMessage[]>()
+  /** Threads whose create asked to queue (`queue: true`); a master's children queue by their row. */
+  private queueOptIn = new Set<string>()
+  /** The lines queued rows carry (scheduler.ts): what the rail and the strip read. */
+  private queuedLines = new Map<string, string>()
+  /** The thread scheduler: the host's running cap and `after` (CLAUDE.md "Master threads"). */
+  readonly scheduler: ThreadScheduler
   private queueListeners = new Set<QueueListener>()
   private draining = new Set<string>()
   /** Subagent settle reports awaiting a busy parent — delivered straight
@@ -537,6 +545,66 @@ export class SessionRegistry {
     })
     for (const fold of store.listFolds()) this.folds.set(fold.sessionId, fold)
     for (const s of store.listSessions()) if (s.context) this.liveContexts.set(s.id, s.context)
+    this.scheduler = new ThreadScheduler({
+      listSessions: () => this.store.listSessions(),
+      getSetting: (key) => this.store.getSetting(key),
+      hasUserText: (id) => this.store.hasUserText(id),
+      startQueued: (id) => this.startQueued(id),
+      setQueuedLine: (id, line) => {
+        if (line === null) this.queuedLines.delete(id)
+        else this.queuedLines.set(id, line)
+        const meta = this.store.getSession(id)
+        if (meta) this.notifyMeta(meta)
+      },
+      onMeta: (l) => this.onMeta(l),
+      onRemoved: (l) => this.onRemoved(l),
+      log: (line) => console.log(line)
+    })
+    this.scheduler.attach()
+  }
+
+  // ── the queue: the host's running cap and `after` ────────────────────
+
+  /** The host's running cap (`threads.maxRunning`); 0 = unlimited. */
+  getMaxRunning(): number {
+    return parseMaxRunning(this.store.getSetting(THREAD_CAP_KEY))
+  }
+
+  /** Set the cap; a lower one holds the next starts, a higher one starts queued threads now. */
+  setMaxRunning(n: number): void {
+    this.store.setSetting(THREAD_CAP_KEY, String(n))
+    this.scheduler.schedule()
+  }
+
+  /** Did the thread's create ask to queue, or does its master make it? */
+  private wantsQueue(meta: SessionMeta): boolean {
+    return this.queueOptIn.has(meta.id) || !!meta.masterId
+  }
+
+  /** Start a queued thread now: boot the harness and send the first message
+   *  its create stored — the path a first message takes, past the cap and
+   *  `after` (the scheduler when a slot frees; the strip's Start now). */
+  async startQueued(sessionId: string): Promise<boolean> {
+    const meta = this.store.getSession(sessionId)
+    if (!meta || meta.status !== 'queued' || meta.archived) return false
+    this.assertNotMoving(sessionId)
+    const q = this.queues.get(sessionId) ?? []
+    const held = q.shift()
+    if (held) {
+      this.queues.set(sessionId, q)
+      this.notifyQueue(sessionId)
+      await this.send(sessionId, held.text, held)
+      return true
+    }
+    // Nothing held (the host restarted since the create): the first user
+    // row is the message; its stamp is read back the way an echoed send does.
+    const row = this.store.eventsAfter(sessionId, 0).find((r) => r.event.type === 'user-text')
+    if (!row || row.event.type !== 'user-text') {
+      this.append(sessionId, { type: 'status', status: 'idle' })
+      return false
+    }
+    await this.send(sessionId, row.event.text, { attachments: row.event.attachments, echoed: { first: true } })
+    return true
   }
 
   // ── folds ───────────────────────────────────────────────────────────
@@ -1756,6 +1824,7 @@ export class SessionRegistry {
       updatedAt: now
     }
     this.store.insertSession(meta)
+    if (params.queue) this.queueOptIn.add(id)
     // Born folded: an empty row at seq 0, and a warm task fold so the
     // first append never walks a log.
     this.putFold(toFoldRow(id, newFoldState()))
@@ -1965,6 +2034,19 @@ export class SessionRegistry {
         }
       }
     }
+    // The queue (scheduler.ts): a first message on a thread that opted in
+    // (`queue: true`, or a master's child) holds here when the host is over
+    // its cap or the `after` sibling has not settled. The user row and its
+    // stamp are stored exactly as a held-back boot stores them; the message
+    // waits at the front of the queue and `startQueued` sends it.
+    if (first && !opts?.echoed && this.wantsQueue(meta) && this.scheduler.admit(meta) === 'queue') {
+      this.queueOptIn.delete(sessionId)
+      this.append(sessionId, { type: 'status', status: 'queued' })
+      this.queueAdd(sessionId, text, { ...opts, echoed: { first } }, true)
+      this.scheduler.schedule()
+      return
+    }
+    this.queueOptIn.delete(sessionId)
     // A steer into a live turn keeps its running status; everything else
     // (idle, error, watching) is starting a turn.
     const status = this.store.getSession(sessionId)?.status
@@ -2863,7 +2945,10 @@ export class SessionRegistry {
           case 'resume':
             return this.resumePausedRun(rootId)
           case 'stop':
-            return this.stopRun(rootId)
+            // Stop on a queued root is "Remove from queue": it holds no turn.
+            return this.store.getSession(rootId)?.status === 'queued'
+              ? this.setArchived(rootId, true)
+              : this.stopRun(rootId)
           case 'archive':
             return this.setArchived(rootId, true)
         }
@@ -3911,7 +3996,9 @@ export class SessionRegistry {
       activity:
         session.status === 'watching'
           ? watchLine(this.watching.get(session.id))
-          : (act?.text ?? null),
+          : session.status === 'queued'
+            ? (this.queuedLines.get(session.id) ?? 'Queued')
+            : (act?.text ?? null),
       activityKind: act?.kind ?? null,
       tasks: this.tasksOf(session.id),
       goal: this.goalOf(session.id),
@@ -3949,6 +4036,7 @@ export class SessionRegistry {
   async disposeAll(): Promise<void> {
     if (this.sweepTimer) clearInterval(this.sweepTimer)
     if (this.livenessTimer) clearInterval(this.livenessTimer)
+    this.scheduler.dispose()
     this.flushFolds()
     for (const id of [...this.pendingApprovals.keys()]) this.denyPendingApprovals(id)
     await Promise.allSettled([...this.handles.values()].map((h) => h.dispose()))

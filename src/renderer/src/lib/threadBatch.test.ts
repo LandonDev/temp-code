@@ -81,13 +81,13 @@ describe("batchTargets", () => {
   it("archive done takes idle, read threads older than ten minutes with nothing pending", () => {
     expect(ids(batchTargets("archiveDone", metas, all))).toEqual(["idle", "done"]);
   });
-  it("leaves a queued thread to every action: not live, not paused, not finished", () => {
-    const queued = meta({ id: "queued", status: "queued" });
+  it("a queued thread: Pause and Resume leave it, Stop and Archive done remove it from the queue", () => {
+    const queued = meta({ id: "queued", status: "queued", updatedAt: NOW });
     const list = [...metas, queued];
     expect(ids(batchTargets("pause", list, all))).not.toContain("queued");
-    expect(ids(batchTargets("stop", list, all))).not.toContain("queued");
     expect(ids(batchTargets("resume", list, all))).not.toContain("queued");
-    expect(ids(batchTargets("archiveDone", list, all))).not.toContain("queued");
+    expect(ids(batchTargets("stop", list, all))).toContain("queued");
+    expect(ids(batchTargets("archiveDone", list, all))).toContain("queued");
   });
   it("archive done leaves an unread thread, a recent one, a failed one and a waiting one", () => {
     const unread = meta({ id: "unread", updatedAt: NOW - ARCHIVE_DONE_AGE_MS - 5 });
@@ -120,6 +120,15 @@ describe("batchConfirm", () => {
     expect(c.confirmLabel).toBe("Pause 15");
     expect(c.danger).toBe(false);
     expect(c.cleanup).toBeNull();
+  });
+  it("names the queued threads Stop removes from the queue", () => {
+    expect(batchConfirm("stop", 5, box, null, 2).title).toBe("Stop 3 running threads and remove 2 from the queue on the box?");
+    expect(batchConfirm("stop", 5, box, null, 2).confirmLabel).toBe("Stop 5");
+    const only = batchConfirm("stop", 2, box, null, 2);
+    expect(only.title).toBe("Remove 2 threads from the queue on the box?");
+    expect(only.confirmLabel).toBe("Remove 2");
+    expect(only.body).toContain("nothing is lost");
+    expect(batchConfirm("archiveDone", 3, box, 1, 1).title).toBe("Archive 2 finished threads and remove 1 from the queue on the box?");
   });
   it("speaks in the singular, and of a project or everywhere", () => {
     expect(batchConfirm("stop", 1, { kind: "project", path: "/x", name: "temp-code" }).title).toBe("Stop 1 running thread in temp-code?");

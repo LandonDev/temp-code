@@ -1420,6 +1420,16 @@ export async function startServer(
             registry.setPlanSettings(req.params.projectId, req.params.settings)
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          case 'threads.get':
+            sendFrame({ id: req.id, ok: true, result: { maxRunning: registry.getMaxRunning() } })
+            break
+          case 'threads.set':
+            registry.setMaxRunning(req.params.maxRunning)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'session.start':
+            sendFrame({ id: req.id, ok: true, result: { started: await registry.startQueued(req.params.sessionId) } })
+            break
           case 'plan.implement': {
             const { sessionId, ...opts } = req.params
             sendFrame({ id: req.id, ok: true, result: await registry.implementPlan(sessionId, opts) })
@@ -2069,7 +2079,10 @@ export async function startServer(
   const port = typeof address === 'object' && address ? address.port : 0
   await restartRemote()
   // Servers and gateway up: the threads cut by the last shutdown resume now.
-  void bootResumer.run().catch((error) => console.error('[resume] boot resume failed:', error))
+  // Queued threads (scheduler.ts) start only once that resume is done, so a
+  // restart never starts a queued batch on top of the resumed turns.
+  const bootResume = bootResumer.run().catch((error) => console.error('[resume] boot resume failed:', error))
+  registry.scheduler.holdUntil(bootResume)
 
   // Codex reaches the app tools through the stdio bridge (M10). The app's
   // own location covers dev (repo root) and packaged

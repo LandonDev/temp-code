@@ -420,7 +420,12 @@ export const SessionPane = memo(function SessionPane({
     ),
     strip:
       session.threadType !== "orchestration" ? (
-        <WorkingStrip session={session} onStop={() => onStop(session.id)} onResume={resume} />
+        <WorkingStrip
+          session={session}
+          onStop={() => onStop(session.id)}
+          onResume={resume}
+          onStart={() => serverCommands.startNow(session.id).catch(() => undefined)}
+        />
       ) : null,
     composer: composerOf(opts),
   });

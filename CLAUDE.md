@@ -1146,9 +1146,36 @@ renderer turns the Archive done checkbox on. Proof:
   orchestrator without self-edit. Cross-host batch threads are not
   supervised yet. Tests: orchestration.test.ts (master section),
   apptools.test.ts, ThreadHeader.test.ts, WorkspaceSessions.dom.test.tsx.
-- Still to come in wave 1: the scheduler
-  that queues over a host cap or an unmet `after` and starts a queued thread
-  when a slot frees; the gate out
+- The queue (wave 1, src/main/server/scheduler.ts `ThreadScheduler`): a
+  thread the host cannot run yet is created `queued` and started later,
+  never refused or booted into a storm. Two reasons: the host's running cap
+  (`threads.maxRunning` in the settings table, default 4, 0 = unlimited;
+  src/shared/threadCap.ts; the count is root threads in `starting`,
+  `running` or `waiting`, subagents never count; Settings → General's "Run
+  at most this many threads at once" row, RPCs `threads.get`/`threads.set`)
+  and an unmet `after` (the sibling must be `done`, or `idle` after a turn,
+  or archived or deleted; one that errored, stopped or paused keeps the
+  waiter queued). Only a request that opted in queues: `session.create
+  { queue: true }`, or any thread with a `masterId`; a person's own new
+  thread starts at once. The decision is `admit` on the FIRST message in
+  `SessionRegistry.send` (every start path ends there): the user row and its
+  preamble stamp land as a held-back boot stores them, the status goes
+  `queued`, the message waits at the front of the thread's queue, and
+  `startQueued` (the scheduler when a slot frees; `session.start { sessionId }`,
+  operate, the strip's Start now, past the cap and `after`) sends it through
+  the same path, `queued` → `starting`; after a restart the first user row
+  is the message. `tick` runs oldest-first on every meta change and removal
+  (`onMeta`/`onRemoved`), when the cap changes, and after boot only once the
+  BootResumer is done (`holdUntil`; a first message sent during the hold
+  queues). A queued root's `activity` reads "Queued · 3rd in line" or
+  "Queued · waiting for <sibling title>" ("(errored)" / "(stopped)" /
+  "(paused)" appended), pushed only when it changes; the working strip
+  shows that line with Start now. The fleet's Stop and Archive done take a
+  queued root as "remove from the queue" (`session.batch stop` archives it;
+  threadBatch.ts). Proof: `bun run script:e2e-queue` (six haiku threads,
+  cap 2, never more than two live; not in the gate); unit tests
+  scheduler.test.ts.
+- Still to come in wave 1: the gate out
   of the children (merge_branch runs typecheck alone for a batch child, the
   batch's end runs the commit tier once on the merged tree) with the steps
   of `batch.get` filled in; the MasterView board (children by Needs you /

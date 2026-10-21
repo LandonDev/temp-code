@@ -29,9 +29,12 @@ export type BatchScope =
 export const ARCHIVE_DONE_AGE_MS = 10 * 60_000;
 
 // A queued thread (created, not booted; CLAUDE.md "Master threads") is not
-// live: Pause and Stop leave it, Archive done leaves it too (it is not
-// finished), and the thread menu's own Archive takes it like any row.
+// live: Pause and Resume leave it. Stop takes it as "remove from the queue"
+// and Archive done takes it too (it holds no turn); the server archives it
+// on both.
 const LIVE = new Set<string>(["starting", "running", "waiting"]);
+
+export const isQueued = (t: SessionMeta): boolean => t.status === "queued";
 
 /** A thread with a turn in flight somewhere in its tree, not paused. */
 function hasRunningTurn(t: SessionMeta): boolean {
@@ -77,10 +80,11 @@ export function qualifies(
     case "pause":
       return hasRunningTurn(t);
     case "stop":
-      return hasRunningTurn(t);
+      return hasRunningTurn(t) || isQueued(t);
     case "resume":
       return isPausedOrStopped(t);
     case "archiveDone":
+      if (isQueued(t)) return true;
       return (
         (t.status === "idle" || t.status === "done") &&
         !t.treeHasLiveWork &&
@@ -159,13 +163,16 @@ export function needsConfirm(action: BatchAction): boolean {
 /**
  * The confirm dialog's words for a count computed live: "Pause 15 running
  * threads on the box?". `resources` is how many worktrees and simulators
- * Archive done could release, or null when the host cannot.
+ * Archive done could release, or null when the host cannot. `queued` is
+ * how many of the count are queued threads, which Stop and Archive done
+ * remove from the queue rather than stop or archive.
  */
 export function batchConfirm(
   action: BatchAction,
   count: number,
   scope: BatchScope,
   resources: number | null = null,
+  queued = 0,
 ): BatchConfirmCopy {
   const v = VERB[action];
   const where = scopePhrase(scope);
@@ -178,13 +185,22 @@ export function batchConfirm(
       cleanup: null,
     };
   }
-  const title = `${v.imperative} ${count} ${v.noun} ${threads(count)} ${where}?`;
+  const acting = count - queued;
+  const removal = queued > 0 ? `remove ${queued} from the queue` : null;
+  const title =
+    removal && acting === 0
+      ? `Remove ${queued} ${threads(queued)} from the queue ${where}?`
+      : removal
+        ? `${v.imperative} ${acting} ${v.noun} ${threads(acting)} and ${removal} ${where}?`
+        : `${v.imperative} ${count} ${v.noun} ${threads(count)} ${where}?`;
   const body =
-    action === "pause"
-      ? "Each thread keeps its place and picks up where it was when you resume it."
-      : action === "stop"
-        ? "Their turns end now. A stopped thread keeps its history and takes a new message."
-        : "Idle for more than ten minutes, read, and waiting on nothing. Archived threads stay in the archive list.";
+    removal && acting === 0
+      ? "They have not started, so nothing is lost. Removed threads stay in the archive list."
+      : action === "pause"
+        ? "Each thread keeps its place and picks up where it was when you resume it."
+        : action === "stop"
+          ? `Their turns end now. A stopped thread keeps its history and takes a new message.${removal ? " A queued thread leaves the queue for the archive list." : ""}`
+          : `Idle for more than ten minutes, read, and waiting on nothing. Archived threads stay in the archive list.${removal ? " A queued thread leaves the queue with them." : ""}`;
   const cleanup =
     action === "archiveDone" && resources !== null && resources > 0
       ? `and remove their ${resources} ${resources === 1 ? "worktree or simulator" : "worktrees and simulators"}`
@@ -192,7 +208,7 @@ export function batchConfirm(
   return {
     title,
     body,
-    confirmLabel: `${v.imperative} ${count}`,
+    confirmLabel: `${removal && acting === 0 ? "Remove" : v.imperative} ${count}`,
     danger: action === "stop" || action === "archiveDone",
     cleanup,
   };

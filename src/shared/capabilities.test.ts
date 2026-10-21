@@ -61,6 +61,8 @@ describe('METHOD_CAPABILITY', () => {
         'defaults.set',
         // What happens when a plan completes (plans.ts): a settings write.
         'plans.set',
+        // The host's running cap (threadCap.ts): a settings write.
+        'threads.set',
         'turnpass.set',
         'review.set',
         'build.set',

@@ -367,8 +367,9 @@ public enum Methods {
             public let startedBy: String?
             public let masterId: String?
             public let after: String?
+            public let queue: Bool?
 
-            public init(id: String? = nil, provider: ProviderId? = nil, model: String? = nil, reasoning: Reasoning? = nil, agentType: AgentType? = nil, cwd: String? = nil, title: String? = nil, parentId: Patch<String>? = nil, projectId: Patch<String>? = nil, workspaceId: Patch<String>? = nil, threadType: Patch<ThreadType>? = nil, planPath: String? = nil, permission: PermissionPolicy? = nil, context1m: Bool? = nil, threadRules: ThreadRules? = nil, goal: String? = nil, startedBy: String? = nil, masterId: String? = nil, after: String? = nil) {
+            public init(id: String? = nil, provider: ProviderId? = nil, model: String? = nil, reasoning: Reasoning? = nil, agentType: AgentType? = nil, cwd: String? = nil, title: String? = nil, parentId: Patch<String>? = nil, projectId: Patch<String>? = nil, workspaceId: Patch<String>? = nil, threadType: Patch<ThreadType>? = nil, planPath: String? = nil, permission: PermissionPolicy? = nil, context1m: Bool? = nil, threadRules: ThreadRules? = nil, goal: String? = nil, startedBy: String? = nil, masterId: String? = nil, after: String? = nil, queue: Bool? = nil) {
                 self.id = id
                 self.provider = provider
                 self.model = model
@@ -388,6 +389,7 @@ public enum Methods {
                 self.startedBy = startedBy
                 self.masterId = masterId
                 self.after = after
+                self.queue = queue
             }
         }
 

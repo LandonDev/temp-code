@@ -7,6 +7,7 @@ import {
   batchTargets,
   cancelThreadBatch,
   confirmThreadBatch,
+  isQueued,
   resourcesHeldBy,
   useBatchPending,
   type BatchRequest,
@@ -30,7 +31,8 @@ function Confirm({ request }: { request: BatchRequest }): JSX.Element {
   const targets = batchTargets(request.action, metas, sel);
   const ids = targets.map((t) => t.id);
   const resources = request.action === "archiveDone" ? resourcesHeldBy(ids) : null;
-  const copy = batchConfirm(request.action, targets.length, request.scope, resources);
+  const queued = targets.filter(isQueued).length;
+  const copy = batchConfirm(request.action, targets.length, request.scope, resources, queued);
   const [cleanup, setCleanup] = useState(true);
   const confirm = () => {
     void confirmThreadBatch(sel, copy.cleanup && cleanup ? { cleanup: true } : {});

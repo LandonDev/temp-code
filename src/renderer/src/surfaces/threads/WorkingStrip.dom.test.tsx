@@ -52,7 +52,7 @@ describe('WorkingStrip: a stopped run', () => {
 })
 
 describe('WorkingStrip: a queued thread', () => {
-  it('says Queued with no clock and no buttons', () => {
+  it('says Queued with no clock, and no button without a starter', () => {
     const probe = mountProbe(
       <Probe id="strip">
         <WorkingStrip session={session({ status: 'queued' })} onStop={() => {}} onResume={() => {}} />
@@ -61,6 +61,26 @@ describe('WorkingStrip: a queued thread', () => {
     expect(probe.container.textContent).toBe('Queued')
     expect(probe.container.querySelector('.opacity-100')).not.toBeNull()
     expect(probe.container.querySelectorAll('button')).toHaveLength(0)
+    probe.unmount()
+  })
+  it("reads the host's line and Start now calls back", async () => {
+    const onStart = vi.fn(() => Promise.resolve())
+    const probe = mountProbe(
+      <Probe id="strip">
+        <WorkingStrip
+          session={session({ status: 'queued', activity: 'Queued · 3rd in line' })}
+          onStop={() => {}}
+          onResume={() => {}}
+          onStart={onStart}
+        />
+      </Probe>,
+    )
+    expect(probe.container.textContent).toContain('Queued · 3rd in line')
+    const buttons = probe.container.querySelectorAll('button')
+    expect(buttons).toHaveLength(1)
+    expect(buttons[0].textContent).toBe('Start now')
+    buttons[0].click()
+    expect(onStart).toHaveBeenCalledTimes(1)
     probe.unmount()
   })
 })

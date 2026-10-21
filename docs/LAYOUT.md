@@ -187,7 +187,11 @@ context-menu item on the root thread (rail row and tab: "Make master thread",
 after its title, same size, dimmer, and no row in the rail is marked. Wave 1 draws the
 board on the left (children grouped Needs you / Running / Queued / Done, the
 batch's three steps under the list) and the chat on the right, the SplitShell
-recipe (CLAUDE.md "Master threads").
+recipe (CLAUDE.md "Master threads"). A queued child (over the host's
+running cap, or waiting for an `after` sibling) is a still gray dot in the
+rail whose activity line reads "Queued · 3rd in line" or "Queued · waiting
+for <sibling>"; its working strip shows the same line with one quiet "Start
+now" (session.start) on the right, where a paused thread's Continue sits.
 
 ## ADE ambitions (later — but the frame reserves room now)
 

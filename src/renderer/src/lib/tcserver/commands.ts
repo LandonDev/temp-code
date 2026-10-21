@@ -419,6 +419,13 @@ export async function resume(sessionId: string): Promise<void> {
   await link.request("session.resume", { sessionId });
 }
 
+/** Start a queued thread now, past the host's cap and its `after` (the strip's Start now). */
+export async function startNow(sessionId: string): Promise<void> {
+  const link = linkFor(sessionId);
+  if (sessionStore.isDraft(sessionId)) return;
+  await link.request("session.start", { sessionId });
+}
+
 /** Change a thread's type. A draft just takes the new type; a created
  *  thread asks the server, which re-instructs the harness on the next send. */
 export async function retype(sessionId: string, threadType: ThreadType): Promise<void> {
