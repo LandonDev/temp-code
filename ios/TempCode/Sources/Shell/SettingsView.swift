@@ -33,6 +33,7 @@ struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
     @AppStorage("appearance") private var appearance = Appearance.system
+    @Environment(\.dynamicTypeSize) private var typeSize
     /// Where the switch sits while the permission prompt and the hosts are
     /// asked; nil once they have answered and the registrar's word is true.
     @State private var pushPending: Bool?
@@ -43,10 +44,18 @@ struct SettingsView: View {
         List {
             Section {
                 NavigationLink(value: Route.hosts) {
-                    HStack(spacing: 12) {
-                        Text("Hosts")
-                        Spacer(minLength: 12)
-                        HostsSummary(clients: clients)
+                    // The host's name wraps under the label at accessibility sizes instead of truncating.
+                    if typeSize.isAccessibilitySize {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Hosts")
+                            HostsSummary(clients: clients)
+                        }
+                    } else {
+                        HStack(spacing: 12) {
+                            Text("Hosts")
+                            Spacer(minLength: 12)
+                            HostsSummary(clients: clients)
+                        }
                     }
                 }
                 .accessibilityIdentifier("hosts-row")
