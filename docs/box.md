@@ -817,6 +817,40 @@ sits beside, whose copy, when, and Reveal); the Sync memory switch is the
 box, `tc-local memory.status` and the `[memory-sync]` lines in the journal.
 Proof: the memory step of `bun run script:e2e-harness-sync`.
 
+### Integrations and API keys: placed by hand
+
+The harness sync never carries a secret, so the keys and config files the
+Mac holds for the user's integrations were put on the box once, by hand
+(2026-10-21). A new key goes in the same place:
+
+- Keys the Mac exports from its shell (`~/.zshenv`, `~/.codex/sentry.env`
+  via `~/.zprofile`) live in `/etc/temp-code.secrets.env`: `LINEAR_API_KEY`,
+  `LINEAR_API_KEY_SKY`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`.
+  The unit's environment is what every thread child inherits (`harnessEnv`:
+  `process.env` plus the login PATH), so a Bash call in a box thread sees
+  them the way a zsh on the Mac sees `.zshenv`. The agents user's `.bashrc`
+  would not do: bash reads no rc file for a non-interactive shell, and the
+  CLI's shell snapshot carries PATH, functions and options, never exports.
+  A key added to the file reaches children only after
+  `systemctl restart temp-code.service`.
+- Files that scripts and skills read by path sit under the agents home
+  (agents, 600, directories 700): `.codex/sentry.env`,
+  `.config/cosmic/{paynow.env,convex-selfhost.key}`,
+  `.config/cosmic-admin/{runtime.env,keys/}`, `.config/codex/pterodactyl.env`.
+- Each web project's gitignored `.env` and `.env.local` files sit in its
+  clone under `/srv/agents/work/<X>` (agents, 600). `.env.production.local`
+  and `.vercel/` stay on the Mac.
+- `gh` is signed in as LandonDev with the repo scope (`~agents/.config/gh`);
+  git pushes over https through `gh auth git-credential`. No SSH key.
+- Not on the box: the Slack plugin's MCP OAuth grant and the CosmicPrisons
+  project's `linear-server` MCP. Both are per-host sign-ins in the CLI's
+  credential store; the Linear skills call GraphQL with `LINEAR_API_KEY`.
+
+Copying from the Mac: `COPYFILE_DISABLE=1 tar -cf - <paths> | ssh box 'cd
+<dir> && tar -xf - --no-same-owner --no-same-permissions'`, then chown to
+agents and chmod 600. Without `COPYFILE_DISABLE` bsdtar adds a `._<name>`
+AppleDouble file beside each one; delete them.
+
 ### Attachments on a remote thread
 
 A file attached on the Mac (picked, dropped, pasted, an appshot) lives on
