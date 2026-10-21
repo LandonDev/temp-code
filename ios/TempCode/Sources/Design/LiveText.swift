@@ -1,12 +1,12 @@
 import SwiftUI
 
-/// Text that changes in place while the screen shows: a line that swaps, a
-/// count that rolls, a span that ticks. Each one carries the doc's motion
-/// and its tabular digits, so a sibling writes `ElapsedText(since:)` and
-/// nothing jitters.
+/// Text that changes while the user looks at it, done the one way the doc
+/// allows: digits roll with `numericText` on `Motion.numeric` in tabular
+/// figures; a line that is replaced cross-fades with 2 pt of blur and never
+/// changes height. A sibling writes `ElapsedText(since:)` and nothing jitters.
 extension View {
-    /// Digits roll on change (`contentTransition(.numericText())`) over
-    /// `Motion.numeric`, in tabular figures. `value` is what changes.
+    /// Counts, elapsed, costs: tabular digits that roll instead of jumping.
+    /// `value` is what changes; the animation rides on it.
     func numeric(_ value: some Equatable) -> some View {
         monospacedDigit()
             .contentTransition(.numericText())
@@ -14,70 +14,101 @@ extension View {
     }
 }
 
-/// A line replaced in place: the new text cross-fades in over 150 ms with
-/// 2 pt of blur, the old one out, and the line never changes height.
-struct SwapText: View {
-    let text: String
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    init(_ text: String) {
-        self.text = text
-    }
-
-    var body: some View {
-        ZStack(alignment: .leading) {
-            Text(text)
-                .id(text)
-                .transition(Motion.swap(reduced: reduceMotion))
-        }
-        .animation(Motion.crossFade, value: text)
-    }
-}
-
-/// A count whose digits roll toward the new value.
+/// A number that rolls when it changes, in the stamp step (or any step
+/// passed in). "3/7", "12", "$0.42": the caller formats, this animates.
 struct CountText: View {
-    let value: Int
+    let text: String
+    var step: TextStep = .stamp
+    var weight: Font.Weight = .regular
 
-    init(_ value: Int) {
-        self.value = value
+    init(_ text: String, step: TextStep = .stamp, weight: Font.Weight = .regular) {
+        self.text = text
+        self.step = step
+        self.weight = weight
+    }
+
+    init(_ value: Int, step: TextStep = .stamp, weight: Font.Weight = .regular) {
+        self.init(value.formatted(), step: step, weight: weight)
     }
 
     var body: some View {
-        Text(value, format: .number)
-            .monospacedDigit()
-            .contentTransition(.numericText(value: Double(value)))
-            .animation(Motion.numeric, value: value)
+        Text(text)
+            .textStep(step, weight: weight)
+            .numeric(text)
     }
 }
 
-/// A running span since `since` (epoch ms) that ticks each second: "12s", "3m 4s".
+/// A running elapsed since `since` (epoch ms), ticking each second in the
+/// stamp step. Only live rows use it; a settled row shows `AgoText`.
 struct ElapsedText: View {
     let since: Int
+    var step: TextStep = .stamp
 
-    init(since: Int) {
+    init(since: Int, step: TextStep = .stamp) {
         self.since = since
+        self.step = step
     }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
-            Text(TimeFormat.elapsed(since: since, now: context.date))
-                .numeric(context.date)
+            let text = TimeFormat.elapsed(since: since, now: context.date)
+            Text(text)
+                .textStep(step)
+                .numeric(text)
         }
     }
 }
 
-/// How long ago `ms` (epoch) was, refreshed every half minute: "now", "3m", "2h", "Oct 3".
+/// How long ago `ms` (epoch) was, refreshed every 30 s: "now", "3m", "2h", "Oct 3".
 struct AgoText: View {
     let ms: Int
+    var step: TextStep = .stamp
 
-    init(_ ms: Int) {
+    init(_ ms: Int, step: TextStep = .stamp) {
         self.ms = ms
+        self.step = step
     }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
-            Text(TimeFormat.ago(ms, now: context.date))
-                .monospacedDigit()
+            let text = TimeFormat.ago(ms, now: context.date)
+            Text(text)
+                .textStep(step)
+                .numeric(text)
         }
+    }
+}
+
+/// A line that is replaced in place (the last activity, a flavour word, a
+/// status): the new text cross-fades over the old with 2 pt of blur, and
+/// the line keeps one height throughout. `nil` leaves the space empty, at
+/// the same height.
+struct SwapText: View {
+    let text: String?
+    var step: TextStep = .meta
+    var weight: Font.Weight = .regular
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(_ text: String?, step: TextStep = .meta, weight: Font.Weight = .regular) {
+        self.text = text
+        self.step = step
+        self.weight = weight
+    }
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            // The sizer: one line of the step, never shown, so the height is fixed.
+            Text(" ")
+                .textStep(step, weight: weight)
+                .hidden()
+            if let text {
+                Text(text)
+                    .textStep(step, weight: weight)
+                    .id(text)
+                    .transition(Motion.swap(reduced: reduceMotion))
+            }
+        }
+        .lineLimit(1)
+        .animation(Motion.crossFade, value: text)
     }
 }
