@@ -322,9 +322,12 @@ describe("the Mac's home in the tool text", () => {
         instance: { _registeredTools: Record<string, { description?: string }> }
       }
     ).instance._registeredTools
-    expect(Object.keys(registered)).toEqual(Object.keys(MAC_TOOL_DESCRIPTIONS))
-    for (const [name, t] of Object.entries(registered))
-      expect(t.description).toBe(
+    // The shared tools plus the job tools (macJobs); only the shared ones carry the home note.
+    const shared = Object.keys(MAC_TOOL_DESCRIPTIONS)
+    expect(Object.keys(registered).filter((n) => shared.includes(n)).sort()).toEqual([...shared].sort())
+    expect(Object.keys(registered).filter((n) => !shared.includes(n)).sort()).toEqual(['mac_job_read', 'mac_job_signal', 'mac_job_write'])
+    for (const name of shared)
+      expect(registered[name].description).toBe(
         macToolDescriptions('/Users/landon')[name as keyof typeof MAC_TOOL_DESCRIPTIONS]
       )
     macToolsHooks.current = null

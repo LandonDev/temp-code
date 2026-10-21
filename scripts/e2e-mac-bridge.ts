@@ -848,16 +848,16 @@ try {
     path: outsideWrite,
     dataBase64: Buffer.from('written from the box\n').toString('base64')
   })
-  const ask5 = await watcher.next((r) => r.kind === 'write')
+  const askWrite = await watcher.next((r) => r.kind === 'write')
   check(
     'a write outside the shared folder prompts on the Mac with its path and folder',
-    ask5.method === 'mac.writeFile' &&
-      ask5.path === outsideWrite &&
-      ask5.folder === join(mac.home, 'Elsewhere') &&
+    askWrite.method === 'mac.writeFile' &&
+      askWrite.path === outsideWrite &&
+      askWrite.folder === join(mac.home, 'Elsewhere') &&
       !existsSync(outsideWrite),
-    JSON.stringify(ask5)
+    JSON.stringify(askWrite)
   )
-  await rpc(mac, 'macBridge.decide', { id: ask5.id, allow: true })
+  await rpc(mac, 'macBridge.decide', { id: askWrite.id, allow: true })
   const landed = await pendingWrite
   check(
     'allowed through macBridge.decide: the write lands',
@@ -870,6 +870,7 @@ try {
     'codex bridge lists mac_write_file',
     codex.tools.includes('mac_write_file'),
     codex.tools.join(',')
+  )
   // ── 8c. an interactive job: cat, two lines in, read back, stdin closed, exit 0 ──
   const jobStart = rpc<{ jobId: string; pty: boolean }>(box, 'mac.run', {
     sessionId: sid,
