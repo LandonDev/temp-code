@@ -305,6 +305,14 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'host.publish': 'local',
   'host.publishStop': 'local',
   'host.releaseCheckout.set': 'local',
+  // Devices on a Mac (contract-hostdevices.ts): what the Mac runs for its threads; anyone with a key may look, operate acts on a simulator.
+  'host.devices.hosts': 'read',
+  'host.devices': 'read',
+  'host.devices.watch': 'read',
+  'host.devices.unwatch': 'read',
+  'host.simulator.shutdown': 'operate',
+  'host.simulator.delete': 'operate',
+  'host.device.openXcode': 'operate',
   // Saved hosts and their keys never leave this machine (thread K1).
   'remote.environments.list': 'local',
   'deploy.master': 'local',

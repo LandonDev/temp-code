@@ -39,6 +39,8 @@ import { handlePeerPull, macWriteStages } from './macWriteStage'
 import { MacBridge, handleMacBridge } from './remote/macBridge'
 import { CrossHostThreads, crossHostOffers } from './remote/crossHostThreads'
 import { CrossHostAgents } from './crossHostAgents'
+import { HostDevicesHub, MacDevices, handleHostDevices, hostDevicesOffers, isMacHost } from './devices/hostDevices'
+import { readSimulatorHolders } from './devices/ledger'
 import { MacThreadTokens, MacTools, macToolsHooks, rebootWhenSettled } from './macTools'
 import { MacRunCalls, MacRunLive } from './macRunLive'
 import { macBridgeLandingRoot } from './macBridgeLanding'
@@ -366,6 +368,7 @@ export async function startServer(
         accounts.nudge()
       },
       onPush: (from, push) => {
+        if (hostDevices.onPeerPush(from, push)) return
         if (crossHostThreads.onPeerPush(from, push)) return
         if (!macBridge.onPeerPush(from, push)) accountSync.onPeerPush(from, push)
       }
@@ -416,7 +419,7 @@ export async function startServer(
       const link = peers.get(id)
       return link?.connected ? (method, params, opts) => link.request(method, params, opts) : null
     },
-    offers: crossHostOffers
+    offers: () => [...crossHostOffers(), ...hostDevicesOffers()]
   })
   // Threads another host starts here (the Mac side of docs/box.md "Starting a
   // thread on the Mac from the box"): served over the same link as the bridge.
@@ -433,6 +436,30 @@ export async function startServer(
     workRoot: () => workRoot(store).root
   })
   const peerCalls = new PeerCalls(environmentId)
+  // Devices on a Mac (devices/hostDevices.ts, docs/box.md "Devices on the Mac"):
+  // gathered on this Mac while a viewer is open, or asked of a registered Mac
+  // over the peer link; the ledger join names the thread that holds each one.
+  const sessionLookup = (id: string): { title: string; status: string } | null => {
+    const meta = store.getSession(id)
+    return meta ? { title: meta.title, status: meta.status } : null
+  }
+  const macDevices = isMacHost()
+    ? new MacDevices({ environmentId, ledger: () => readSimulatorHolders(db, environmentId), session: sessionLookup })
+    : null
+  const hostDevices = new HostDevicesHub({
+    environmentId,
+    local: macDevices,
+    peers: peerCalls,
+    hostName: (id) => listEnvironments(store).find((e) => e.id === id)?.name ?? null,
+    ledgerFor: (id) => readSimulatorHolders(db, id),
+    session: sessionLookup,
+    localName: 'This Mac',
+    link: (id) => {
+      const link = peers.get(id)
+      return link?.connected ? (method, params) => link.request(method, params) : null
+    },
+    environments: () => listEnvironments(store).map((e) => ({ id: e.id, name: e.name }))
+  })
   // A running mac_run's output, live on its thread's tool row (macRunLive.ts).
   const macRunCalls = new MacRunCalls()
   registry.onEvent((row) => macRunCalls.observe(row))
@@ -813,6 +840,8 @@ export async function startServer(
         if (req.method === 'deploy.master') return sendFrame({ id: req.id, ok: true, result: masterRelease.current() })
         const macBridged = handleMacBridge(req, macBridge)
         if (macBridged.handled) return sendFrame({ id: req.id, ok: true, result: macBridged.result })
+        const devices = await handleHostDevices(req, hostDevices, { connection, send: sendFrame })
+        if (devices.handled) return sendFrame({ id: req.id, ok: true, result: devices.result })
         const macTooled = await macTools.handle(req)
         if (macTooled.handled) return sendFrame({ id: req.id, ok: true, result: macTooled.result })
         const remote = await handleRemote(
@@ -1659,6 +1688,7 @@ export async function startServer(
       if (localSink) localSinks.delete(localSink)
       for (const off of offHostLogs) off()
       peerCalls.drop(connection)
+      hostDevices.dropConnection(connection)
       for (const off of unsubs.values()) off()
       unsubs.clear()
       for (const off of fsWatches.values()) off()
@@ -1773,6 +1803,7 @@ export async function startServer(
       sessionMover.close()
       macBridge.close()
       crossHostThreads.close()
+      hostDevices.close()
       peerCalls.close()
       peers.close()
       m3a.accounts.stop()

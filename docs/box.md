@@ -1139,6 +1139,78 @@ link and gets `linkDown` and the refusal. No turn reaches a model there
 (TEMP_CODE_FAKE_PROVIDERS is a dead origin); the live pass is a box thread
 with the Mac app open.
 
+### Devices on the Mac
+
+"What is crippling my machine" used to take a terminal. Settings → Remote
+access on the Mac now has, under the Mac bridge's host rows, a block
+"Devices on this Mac": one summary line ("3 simulators, 1 booted · iPhone 17
+Pro Max paired · load 44.9 / 16 cores") and a compact table of every
+simulator and every iPhone or iPad Xcode knows: device and runtime, a state
+dot (green booted, muted shutdown, amber while changing) with the booted
+ones' CPU share, the thread that holds the device, and on hover the
+actions. In the box's /ui web mode (and on the phone, which reads the same
+methods) the block is "Devices on <Mac>" for every Mac linked to the box,
+served through the Mac's own main process.
+
+What it reads, on the Mac and only on demand (`src/main/server/devices/`):
+
+- `xcrun simctl list -j devices` (every runtime flattened, devices whose
+  runtime is gone left out), `xcrun devicectl list devices --json-output`
+  (iPhones and iPads: connected when a tunnel is up, paired when known but
+  away, unavailable otherwise; Apple TVs and watches are not listed), one
+  `ps -axo pid,pcpu,command` for the booted simulators' CPU (the %CPU of
+  every process under `…/Devices/<UDID>/`, summed), `os.loadavg()` with the
+  core count, and the Xcode in use: `DEVELOPER_DIR` when set, else the
+  newest `/Applications/Xcode*.app` as `sort -V | tail -1` orders them
+  (exactly what scripts/ios-device.sh picks; `Xcode-beta.app` sorts after
+  `Xcode-26.app`), else what `xcode-select` names. Every xcrun call runs
+  with `DEVELOPER_DIR` pinned to that Xcode, so a Mac whose `xcode-select`
+  points at the Command Line Tools still answers. A pass younger than 5 s
+  answers the next asker as is; overlapping askers share one pass; a tool
+  that fails is one line under the table, the rest of the report stands.
+  The parsers are pinned by fixtures captured on the user's Mac
+  (`devices/fixtures/README.md`).
+- The holder: the `thread_resources` ledger, by UDID, live rows of kind
+  `simulator` whose `environment_id` is the Mac. The Mac joins its own
+  ledger; a box joins its own ledger for that Mac when it forwards the
+  report, so a box thread's simulator names the box thread (title and
+  status when the host runs the thread, else the row's label). A database
+  without the table, or a device no thread recorded, shows "—". The holder
+  is a link to the thread.
+
+The contract (`src/shared/contract-hostdevices.ts`, all capability read
+unless said): `host.devices.hosts` lists the Macs a viewer may watch (this
+Mac; on another host, the peers registered with the `devices` offer);
+`host.devices` answers a report; `host.devices.watch` opens a viewer on the
+socket and a `host.devices` push lands every 30 s until
+`host.devices.unwatch` or the socket closes; `host.simulator.shutdown`,
+`host.simulator.delete` and `host.device.openXcode` (operate) act. Nothing
+runs with no viewer: the renderer watches only while the block is on
+screen (`lib/hostDevices.ts`, two rows of one Mac share a viewer), the hub
+(`HostDevicesHub`) keeps one 30 s timer per Mac while any socket watches
+it, and a box's timer polls the Mac with a `host.devices` peer.call, so the
+Mac gathers only when a box viewer is open too. The peer calls ride the Mac
+bridge's reverse RPC under the `devices` offer the Mac adds to
+`peer.register`; the Mac serves them against its own gatherer, performing
+the actions itself, only for a host it knows.
+
+The actions: Shutdown on a booted simulator; Delete behind a confirm that
+names the holder ("Held by iOS: Home, running. Delete anyway?", or what is
+removed when nobody holds it); on an iPhone only Open in Xcode, which
+brings Xcode forward and clicks Window → Devices and Simulators through
+System Events (without the accessibility permission Xcode comes up and the
+person presses ⇧⌘2). From the box's web UI the same confirm shows and the
+call goes to the Mac over the link. The table never animates beyond the
+hover actions' opacity.
+
+Tests: `devices/parse.test.ts` (the fixtures), `devices/hostDevices.test.ts`
+(the gatherer, the holder join, the viewer timer that starts with the first
+watcher and stops with the last, the peer serving), `devices/ledger.test.ts`,
+`contract-hostdevices.test.ts` (the confirm text and the summary line),
+`surfaces/MacDevices.dom.test.tsx` (the table, the empty state "No
+simulators", the confirm) and `lib/hostDevices.dom.test.tsx` (watch on
+mount, unwatch on unmount).
+
 ## Updating
 
 For a ref already on GitHub, press "Deploy master to the box" in the Mac

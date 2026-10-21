@@ -1,0 +1,54 @@
+{
+  "devices" : {
+    "com.apple.CoreSimulator.SimRuntime.iOS-27-0" : [
+      {
+        "lastBootedAt" : "2026-10-21T03:31:12Z",
+        "dataPath" : "\/Users\/landon\/Library\/Developer\/CoreSimulator\/Devices\/DC72C36B-03C7-4A69-B999-8DC4750E7D0D\/data",
+        "dataPathSize" : 1593835520,
+        "logPath" : "\/Users\/landon\/Library\/Logs\/CoreSimulator\/DC72C36B-03C7-4A69-B999-8DC4750E7D0D",
+        "udid" : "DC72C36B-03C7-4A69-B999-8DC4750E7D0D",
+        "isAvailable" : true,
+        "logPathSize" : 905216,
+        "deviceTypeIdentifier" : "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro",
+        "state" : "Booted",
+        "name" : "iPhone 17 Pro"
+      },
+      {
+        "dataPath" : "\/Users\/landon\/Library\/Developer\/CoreSimulator\/Devices\/5B1C8C2E-7A64-4F2B-9D7E-2F0E3C1B9A11\/data",
+        "dataPathSize" : 13316096,
+        "logPath" : "\/Users\/landon\/Library\/Logs\/CoreSimulator\/5B1C8C2E-7A64-4F2B-9D7E-2F0E3C1B9A11",
+        "udid" : "5B1C8C2E-7A64-4F2B-9D7E-2F0E3C1B9A11",
+        "isAvailable" : true,
+        "deviceTypeIdentifier" : "com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch-M4-8GB",
+        "state" : "Shutdown",
+        "name" : "iPad Pro 13-inch (M4)"
+      }
+    ],
+    "com.apple.CoreSimulator.SimRuntime.tvOS-26-2" : [
+
+    ],
+    "com.apple.CoreSimulator.SimRuntime.iOS-26-2" : [
+      {
+        "lastBootedAt" : "2026-10-19T21:04:48Z",
+        "dataPath" : "\/Users\/landon\/Library\/Developer\/CoreSimulator\/Devices\/0E4D3C2B-1A09-4F8E-B7C6-D5E4F3A2B1C0\/data",
+        "dataPathSize" : 221184000,
+        "logPath" : "\/Users\/landon\/Library\/Logs\/CoreSimulator\/0E4D3C2B-1A09-4F8E-B7C6-D5E4F3A2B1C0",
+        "udid" : "0E4D3C2B-1A09-4F8E-B7C6-D5E4F3A2B1C0",
+        "isAvailable" : true,
+        "logPathSize" : 73728,
+        "deviceTypeIdentifier" : "com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro",
+        "state" : "Shutting Down",
+        "name" : "TempCode proof"
+      },
+      {
+        "dataPath" : "\/Users\/landon\/Library\/Developer\/CoreSimulator\/Devices\/9F8E7D6C-5B4A-4392-8170-6F5E4D3C2B1A\/data",
+        "udid" : "9F8E7D6C-5B4A-4392-8170-6F5E4D3C2B1A",
+        "isAvailable" : false,
+        "availabilityError" : "runtime profile not found using \"System\" match policy",
+        "deviceTypeIdentifier" : "com.apple.CoreSimulator.SimDeviceType.iPhone-15",
+        "state" : "Shutdown",
+        "name" : "iPhone 15"
+      }
+    ]
+  }
+}

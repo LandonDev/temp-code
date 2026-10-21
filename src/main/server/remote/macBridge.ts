@@ -39,6 +39,7 @@ import type { MacWriteFileResult } from '@shared/contract-macbridge'
 import { threadRunsUnattended, type MacCallThread } from '@shared/contract-macbridge'
 import { isMacJobPeerMethod, type MacPeerMethod } from '@shared/contract-macjobs'
 import { isCrossHostPeerMethod, type CrossHostCallParams } from '@shared/contract-crosshost'
+import { isHostDevicesPeerMethod, type HostDevicesCallParams } from '@shared/contract-hostdevices'
 import { MacJobs, type JobSpawner } from './macJobs'
 
 /**
@@ -501,15 +502,15 @@ export class MacBridge {
 
   async handle(
     method: MacPeerMethod,
-    wire: MacCallParams | CrossHostCallParams,
+    wire: MacCallParams | CrossHostCallParams | HostDevicesCallParams,
     ctx: {
       from: string
       deadlineAt: number
       progress?: (chunk: string, skipped?: number) => void
     }
   ): Promise<unknown> {
-    // A thread.* call is the threads offer's (remote/crossHostThreads.ts), routed before this.
-    if (isCrossHostPeerMethod(method)) throw new Error(`${method} is not a Mac bridge call`)
+    // A thread.* call is the threads offer's (remote/crossHostThreads.ts), a host.* call the devices offer's (devices/hostDevices.ts); both routed before this.
+    if (isCrossHostPeerMethod(method) || isHostDevicesPeerMethod(method)) throw new Error(`${method} is not a Mac bridge call`)
     const params = wire as MacCallParams
     const env = this.deps.environments().find((e) => e.id === ctx.from)
     const thread = params?.thread

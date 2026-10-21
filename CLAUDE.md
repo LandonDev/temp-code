@@ -390,6 +390,17 @@ routed to (aliax-core's `forward`). Two listeners:
   registered. A dropped link answers `linkDown` with the last state, never
   a hang. docs/box.md "Starting a thread on the Mac from the box"; proof
   `bun run script:e2e-cross-host-threads`.
+- Devices on the Mac: Settings → Remote access, under the Mac bridge's
+  host rows, lists this Mac's simulators and iPhones with a state dot, the
+  booted ones' CPU, the thread that holds each (the `thread_resources`
+  ledger by UDID, "—" without it), the Xcode in use and the load; Shutdown,
+  Delete (confirm names the holder) and Open in Xcode act locally. The
+  Mac's main process gathers only while a viewer is open (`host.devices.
+  watch`, a push every 30 s, `unwatch` or the socket closing stops it); a
+  box's /ui and the phone read the same methods, forwarded to the Mac as
+  `host.*` peer calls under the `devices` offer (`src/main/server/devices/`,
+  `src/shared/contract-hostdevices.ts`, `surfaces/MacDevices.tsx`).
+  docs/box.md "Devices on the Mac".
 - Backups: restic to R2 bucket `tempcode-backups`, repo `box` from
   `box-backup.timer` (SQLite snapshotted with VACUUM INTO, never the live
   files) and repo `mac` from the launchd agent `dev.landon.tempcode.backup`

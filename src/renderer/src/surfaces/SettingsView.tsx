@@ -276,7 +276,7 @@ export function SettingsView({
           {section === "orchestration" ? <OrchestrationPage /> : null}
           {section === "build" ? <BuildPage /> : null}
           {section === "appshots" ? <AppshotsPage /> : null}
-          {section === "remote" ? <RemoteSettings /> : null}
+          {section === "remote" ? <RemoteSettings onOpenSession={onOpenSession} /> : null}
           {section === "environments" ? <EnvironmentsSettings /> : null}
           {section === "archive" ? (
             <ArchivePage
