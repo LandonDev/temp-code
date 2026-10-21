@@ -78,7 +78,14 @@ export const DEFAULT_RULES: OrchestrationRules = {
     maxParallel: 4,
     maxAgents: 0
   },
-  models: {},
+  // Fable is for orchestrators and masters only (CLAUDE.md "Master
+  // threads"): a chat or implementation thread may not start or spawn it.
+  // A saved rules object replaces this whole map (parseRules), so a
+  // database with its own entries keeps them.
+  models: {
+    'claude:claude-fable-5-1': { approved: 'orchestrators' },
+    'claude:claude-fable-5': { approved: 'orchestrators' }
+  },
   routing: [
     {
       id: 'trivial',
@@ -204,11 +211,15 @@ export const modelKey = (provider: ProviderId, modelId: string): string =>
  *  orchestrator agent, a master) or any other thread. */
 export type PolicyRole = 'orchestrator' | 'thread'
 
-/** The role a session spawns under. */
+/** The role a session spawns under. `master` is whether the session is
+ *  its project's master thread (`projects.master_thread_id`), which the
+ *  caller reads from the registry; shared code has none. A master is an
+ *  orchestrator (wave 1, "Master role"). */
 export function policyRoleOf(
-  session: { agentType?: string | null; threadType?: string | null }
+  session: { agentType?: string | null; threadType?: string | null },
+  master = false
 ): PolicyRole {
-  return session.agentType === 'orchestrator' || session.threadType === 'orchestration'
+  return master || session.agentType === 'orchestrator' || session.threadType === 'orchestration'
     ? 'orchestrator'
     : 'thread'
 }

@@ -253,6 +253,15 @@ describe('implementPlan (inheritance and overrides)', () => {
     expect(reg.created[0].context1m).toBeUndefined()
     expect(reg.sends[0].text).toMatch(/^Orchestrate/)
   })
+  it("a hand-off is the person's choice: an orchestrators-only model is not refused to a chat-role plan thread", async () => {
+    // The model policy by role (apptools.ts) governs what a THREAD may
+    // start; a plan → build hand-off never passes through it. Fable is
+    // orchestrators-only by default and a planning thread is a 'thread'.
+    reg.add('p', { planPath: planFile(), status: 'idle', model: 'claude-fable-5-1', reasoning: 'high' })
+    const built = await implementPlan(reg, 'p')
+    expect(reg.created[0]).toMatchObject({ provider: 'claude', model: 'claude-fable-5-1', reasoning: 'high' })
+    expect(reg.get(built.id)).toMatchObject({ planThreadId: 'p' })
+  })
   it('answers the live build instead of starting a second one', async () => {
     reg.add('p', { planPath: planFile(), status: 'idle' })
     const first = await implementPlan(reg, 'p')

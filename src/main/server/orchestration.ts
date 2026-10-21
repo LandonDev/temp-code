@@ -329,30 +329,48 @@ const settledReport = (id: string, meta: SessionMeta): Record<string, unknown> =
  *  refusals. Renders only the models the user approved, each with the
  *  effort range the policy leaves open. */
 export function spawnableModels(rules: OrchestrationRules, role: PolicyRole = 'thread'): string {
+  // A thread caller sees the orchestrators-only rows marked, so it can
+  // name them when it asks the user for an orchestration or master
+  // thread, rather than taking a missing row for a missing model.
+  let marked = 0
   const blocks = Object.values(visibleCatalog())
     .map((p) => {
-      const models = p.models.filter((m) => modelApproved(rules, p.id, m.id, role))
+      const models = p.models.filter((m) => modelApproved(rules, p.id, m.id, 'orchestrator'))
       if (models.length === 0) return null
       return `- ${p.id}:\n${models
         .map((m) => {
           const ladder = approvedLadder(rules, p.id, m.id)
           const suffix = supportsContext1m(p.id, m.id) ? ' +1m' : ''
-          return `    ${m.id}${ladder.length ? ` (${ladder.join('|')})` : ' (no effort control)'}${suffix}`
+          const own = modelApproved(rules, p.id, m.id, role)
+          if (!own) marked++
+          const only = own ? '' : ' (orchestrators only)'
+          return `    ${m.id}${ladder.length ? ` (${ladder.join('|')})` : ' (no effort control)'}${suffix}${only}`
         })
         .join('\n')}`
     })
     .filter(Boolean)
   if (blocks.length === 0) return '(none — the user has approved no subagent models)'
-  return `${blocks.join('\n')}\n  +1m: spawn_agent runs that model with the 1M context window unless you pass context1m: false; app_start_thread only with context1m: true.`
+  const note = marked
+    ? '\n  Models marked orchestrators-only are available to an orchestration or master thread; ask the user to start one if the task needs them.'
+    : ''
+  return `${blocks.join('\n')}\n  +1m: spawn_agent runs that model with the 1M context window unless you pass context1m: false; app_start_thread only with context1m: true.${note}`
+}
+
+/** The role a session spawns or starts threads under: an orchestration
+ *  thread, an orchestrator agent, or its project's master thread. */
+export function policyRole(session: SessionMeta): PolicyRole {
+  const master =
+    !!session.projectId && registry?.getProject(session.projectId)?.masterThreadId === session.id
+  return policyRoleOf(session, master)
 }
 
 /** Every refusal ends with the table, so the caller can self-correct. */
-const approvedTable = (rules: OrchestrationRules, role: PolicyRole): string =>
+export const approvedTable = (rules: OrchestrationRules, role: PolicyRole): string =>
   `Approved models:\n${spawnableModels(rules, role)}`
 
 /** A provider's spawn default under the policy: the catalog default when
  *  approved, else its first approved model. */
-function approvedDefault(rules: OrchestrationRules, provider: ProviderId, role: PolicyRole): string | null {
+export function approvedDefault(rules: OrchestrationRules, provider: ProviderId, role: PolicyRole): string | null {
   const p = visibleCatalog()[provider]
   if (modelApproved(rules, provider, p.defaultModel, role)) return p.defaultModel
   return p.models.find((m) => modelApproved(rules, provider, m.id, role))?.id ?? null
@@ -499,7 +517,7 @@ export function resolveSpawnSpecs(
   const rules = rulesFor(parentNow)
   // An orchestration thread or an orchestrator agent may spawn the models
   // approved for orchestrators only; any other thread sees them refused.
-  const role = policyRoleOf(parentNow)
+  const role = policyRole(parentNow)
   const { agents: batch, ...defaults } = args
   const specs: SpawnAgentSpec[] = batch?.length ? batch.map((a) => ({ ...defaults, ...a })) : [defaults]
   if (specs.length > SPAWN_BATCH_MAX) {
@@ -1083,7 +1101,7 @@ judgment and user-facing work, low effort for trivial tasks.`
  *  plus the user's structured rules (workspace override or global). */
 export function orchestratorPrompt(session: SessionMeta): string {
   const rules = rulesFor(session)
-  const role = policyRoleOf(session)
+  const role = policyRole(session)
   const custom = session.threadRules?.instructions?.trim()
   const extra = custom ? `\n\n## This run's instructions (user-defined, binding)\n\n${custom}` : ''
   return `${orchestratorMechanics(rules, role)}\n\n${SHOWING_VISUALS}\n\n${renderRules(rules, role)}${extra}`
@@ -1093,7 +1111,7 @@ export function orchestratorPrompt(session: SessionMeta): string {
  *  without the conductor rules — the implementer works first, delegates
  *  when it genuinely helps. */
 export function implementerSpawnPrompt(session: SessionMeta): string {
-  return `${orchestratorMechanics(rulesFor(session), policyRoleOf(session))}
+  return `${orchestratorMechanics(rulesFor(session), policyRole(session))}
 
 You are the implementer, not a conductor: do the work yourself by default.
 Spawn subagents when it genuinely helps — parallel mechanical work, an
@@ -1103,7 +1121,7 @@ independent review, a second opinion — and supervise what you spawn.`
 /** Mechanics for chat threads: conversation first, delegation when real
  *  work would help the discussion. */
 export function chatSpawnPrompt(session: SessionMeta): string {
-  return `${orchestratorMechanics(rulesFor(session), policyRoleOf(session))}
+  return `${orchestratorMechanics(rulesFor(session), policyRole(session))}
 
 This is a conversation thread: think with the user by default. Spawn
 subagents when concrete work would sharpen the discussion — mapping
@@ -1113,7 +1131,7 @@ supervise what you spawn while the conversation continues.`
 
 /** Mechanics for planning threads: the fleet feeds the plan document. */
 export function planningSpawnPrompt(session: SessionMeta): string {
-  return `${orchestratorMechanics(rulesFor(session), policyRoleOf(session))}
+  return `${orchestratorMechanics(rulesFor(session), policyRole(session))}
 
 This is a PLANNING thread: your deliverable is the plan document, and
 subagents exist to feed it. Spawn explorers to map code and gather
@@ -1126,7 +1144,7 @@ plan as their reports land.`
 /** Mechanics for project-plan threads: explorers survey the project in
  *  parallel; nothing is built and nothing is started from here. */
 export function projectPlanSpawnPrompt(session: SessionMeta): string {
-  return `${orchestratorMechanics(rulesFor(session), policyRoleOf(session))}
+  return `${orchestratorMechanics(rulesFor(session), policyRole(session))}
 
 This is a PROJECT PLAN thread: your deliverable is the project plan
 document (Goals, Current state, Milestones, Risks, Open questions), and
@@ -1143,7 +1161,7 @@ land.`
  *  explorers, each writing an app-assigned findings file the root
  *  synthesizes from. */
 export function researchSpawnPrompt(session: SessionMeta): string {
-  return `${orchestratorMechanics(rulesFor(session), policyRoleOf(session))}
+  return `${orchestratorMechanics(rulesFor(session), policyRole(session))}
 
 This is a RESEARCH thread: your deliverable is a cited report, and
 subagents are how you cover ground. Spawn parallel explorers, one per

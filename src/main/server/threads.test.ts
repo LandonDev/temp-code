@@ -35,6 +35,17 @@ it('a chat names a research-shaped ask as a research job without asking, and a f
   expect(text).toContain('NEVER ask whether to start a thread')
 })
 
+it("an implementation thread's spawn table marks Fable orchestrators-only and says who may start it; an orchestration thread sees it plain", () => {
+  const impl = threadPreamble(session('implementation')) ?? ''
+  expect(impl).toContain('claude-fable-5-1 (low|medium|high|xhigh|max) +1m (orchestrators only)')
+  expect(impl).toContain('Models marked orchestrators-only are available to an orchestration or master thread; ask the user to start one if the task needs them.')
+  expect(impl).toContain('claude-opus-5-5 (low|medium|high|xhigh|max) +1m\n')
+  // An orchestration thread on a non-claude harness reads the same table as a preamble, unmarked.
+  const orch = threadPreamble({ ...session('orchestration'), provider: 'codex' } as SessionMeta) ?? ''
+  expect(orch).toContain('claude-fable-5-1 (low|medium|high|xhigh|max) +1m\n')
+  expect(orch).not.toContain('orchestrators only')
+})
+
 it('a planning thread still batches every ready decision into one call', () => {
   const text = threadPreamble(session('planning')) ?? ''
   expect(text).toContain('gathering every decision that is ready into one call')

@@ -81,6 +81,23 @@ it('the spawnable table marks the claude rows +1m and explains the marker once',
   expect(table.match(/context1m: false/g)).toHaveLength(1)
 })
 
+it('the table by role: a thread sees orchestrators-only rows marked with the note, an orchestrator sees them plain, off rows never show', () => {
+  const rules: OrchestrationRules = {
+    ...DEFAULT_RULES,
+    models: { ...DEFAULT_RULES.models, 'claude:claude-opus-5-5': { approved: false } }
+  }
+  const thread = spawnableModels(rules, 'thread')
+  expect(thread).toContain('claude-fable-5-1 (low|medium|high|xhigh|max) +1m (orchestrators only)')
+  expect(thread).toContain('Models marked orchestrators-only are available to an orchestration or master thread')
+  expect(thread).not.toContain('claude-opus-5-5')
+  const orch = spawnableModels(rules, 'orchestrator')
+  expect(orch).toContain('claude-fable-5-1 (low|medium|high|xhigh|max) +1m\n')
+  expect(orch).not.toContain('orchestrators only')
+  expect(orch).not.toContain('claude-opus-5-5')
+  // Nothing marked, nothing to explain.
+  expect(spawnableModels({ ...DEFAULT_RULES, models: {} }, 'thread')).not.toContain('orchestrators-only')
+})
+
 it('spawn_agent with context1m on a claude model reaches create with the flag', async () => {
   const reply = await orchSpawnAgent(parent, {
     model: 'claude-opus-5',

@@ -13,6 +13,7 @@ import {
   type ProviderId
 } from '@shared/catalog'
 import type { SessionMeta } from '@shared/events'
+import { fitReasoning, modelApproved, modelKey } from '@shared/rules'
 import {
   HTML_PREVIEW_TOOL_DESCRIPTION,
   HTML_PREVIEW_TOOL_NAME,
@@ -53,7 +54,7 @@ import type { SessionRegistry } from './sessions'
 import { macToolsHooks } from './macTools'
 import type { CrossHostAgents } from './crossHostAgents'
 import type { ProjectPlans } from './projectPlan'
-import { HOST_PARAM_DESCRIPTION, toolLine } from './orchestration'
+import { HOST_PARAM_DESCRIPTION, approvedDefault, approvedTable, policyRole, rulesFor, toolLine } from './orchestration'
 import { CROSS_HOST_EVENTS_MAX, type ThreadEventsResult } from '@shared/contract-crosshost'
 
 /**
@@ -223,22 +224,38 @@ export async function appStartThread(
   caller: SessionMeta,
   args: StartThreadArgs
 ): Promise<{ threadId: string; title: string; host?: string; cwd?: string; cwdNote?: string } | string> {
+  // The model policy by role (CLAUDE.md "Master threads"): a thread may
+  // start what it may spawn, read fresh so a Settings edit after boot
+  // governs. The paths a person takes (the composer, a plan → build
+  // hand-off, the phone's New thread) never come through here; a start on
+  // another host does, so it is checked here with this caller's role.
+  const now = reg.get(caller.id) ?? caller
+  const rules = rulesFor(now)
+  const role = policyRole(now)
   // A model id names its harness: a gpt model requested under provider
   // "claude" routes to codex. Only a model NO provider serves is refused.
-  const requested = args.model || CATALOG[args.provider].defaultModel
-  // wave 1: policy check ("Model policy by role"): modelApproved(rulesFor(caller), …, policyRoleOf(caller)) is not consulted here yet.
+  // No model named: the provider's default under the policy, as spawn_agent
+  // picks it (the catalog default when approved, else the first approved).
+  const requested =
+    args.model || approvedDefault(rules, args.provider, role) || CATALOG[args.provider].defaultModel
   const { provider, model } = resolveModel(args.provider, requested)
   if (!modelInfo(provider, model)) {
     const visible = visibleCatalog()
     return `refused: no provider serves model "${requested}". Valid: ${(Object.keys(visible) as ProviderId[]).map((p) => `${p}: ${visible[p].models.map((m) => m.id).join(', ')}`).join('; ')}`
   }
-  const info = modelInfo(provider, model)!
-  const reasoning = (args.reasoning ??
-    info.defaultReasoning ??
-    'medium') as SessionMeta['reasoning']
-  if (info.reasoning.length && !info.reasoning.includes(reasoning)) {
-    return `refused: ${model} supports reasoning ${info.reasoning.join('|')}, not "${reasoning}".`
+  if (!modelApproved(rules, provider, model, role)) {
+    const who = role === 'thread' ? 'this thread (role: thread)' : 'this orchestrator'
+    return rules.models[modelKey(provider, model)]?.approved === 'orchestrators'
+      ? `refused: ${model} is approved for orchestrators only, and ${who} may not start it. Pick an approved model, or ask the user to start an orchestration or master thread for the work. ${approvedTable(rules, role)}`
+      : `refused: the user has not approved ${model} for threads — pick an approved model instead. ${approvedTable(rules, role)}`
   }
+  const info = modelInfo(provider, model)!
+  const asked = args.reasoning ?? info.defaultReasoning ?? 'medium'
+  if (info.reasoning.length && !info.reasoning.includes(asked as (typeof info.reasoning)[number])) {
+    return `refused: ${model} supports reasoning ${info.reasoning.join('|')}, not "${asked}".`
+  }
+  // Clamped into the effort range the policy leaves open, as spawn_agent does.
+  const reasoning = fitReasoning(rules, provider, model, asked) as SessionMeta['reasoning']
   if (args.context1m && !supportsContext1m(provider, model)) {
     return `refused: ${model} does not offer the 1M context window — only Claude models do. Start the thread without context1m, or pick a Claude model.`
   }

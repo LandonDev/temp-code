@@ -1096,11 +1096,28 @@ renderer turns the Archive done checkbox on. Proof:
   edge and the working strip, Pause and Stop leave it (threadBatch.ts). The
   model policy's `approved` is `true` | `'orchestrators'` | `false`
   (shared/rules.ts; `modelApproved(rules, provider, model, role)` with
-  `policyRoleOf(session)`: an orchestration thread or an orchestrator agent
-  is `'orchestrator'`), so a model such as Fable can be approved for
-  orchestrators and masters only; spawn_agent's table and refusal respect it,
-  Settings → Orchestration's model row is Everyone / Orchestrators only /
-  Off. The batch over the wire is src/shared/contract-batch.ts
+  `policyRoleOf(session, master)`: an orchestration thread, an orchestrator
+  agent or the project's master thread is `'orchestrator'`;
+  orchestration.ts `policyRole(session)` reads the pin from the registry),
+  so a model such as Fable can be approved for orchestrators and masters
+  only; spawn_agent's table and refusal respect it, Settings →
+  Orchestration's model row is Everyone / Orchestrators only / Off. Fable
+  (`claude-fable-5-1`, `claude-fable-5`) defaults to orchestrators only in
+  `DEFAULT_RULES.models`; a saved rules object replaces the whole map, so a
+  database with its own entries keeps them. app_start_thread checks the
+  policy by the caller's role at its resolveModel call (a start on another
+  host goes through it, so the box thread's role decides), takes the
+  provider's default under the policy when no model is named
+  (`approvedDefault`: the catalog default when approved, else the first
+  approved model, so a chat asking for "claude" gets Opus, not a refusal)
+  and clamps the effort with `fitReasoning` as spawn_agent does; a refusal
+  names the model, the role and the approved table. A plan → build hand-off
+  (planFlow.ts) and the phone's New thread are a person's choice and are
+  never policy-checked. `spawnableModels(rules, role)` renders the rows an
+  orchestrator may spawn: for a `thread` caller the orchestrators-only
+  rows carry "(orchestrators only)" and one line under the table says an
+  orchestration or master thread may start them; switched-off rows never
+  show. The batch over the wire is src/shared/contract-batch.ts
   (`BatchStep` land | gate | release, `BatchState`, `batch.get` and
   `batch.children`, read), answered by src/main/server/batch.ts. The
   master's view is `MasterView` (surfaces/threads, routed when the session is
@@ -1108,8 +1125,7 @@ renderer turns the Archive done checkbox on. Proof:
 - Waves 1 and 2 fill the shapes: the pin and the supervision tools widened
   to the master's children with settle reports to the master; the scheduler
   that queues over a host cap or an unmet `after` and starts a queued thread
-  when a slot frees; app_start_thread checking the policy by role (the
-  `// wave 1: policy check` comment at its resolveModel call); the gate out
+  when a slot frees; the gate out
   of the children (merge_branch runs typecheck alone for a batch child, the
   batch's end runs the commit tier once on the merged tree) with the steps
   of `batch.get` filled in; the MasterView board (children by Needs you /
