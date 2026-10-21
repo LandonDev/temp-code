@@ -1,4 +1,5 @@
 import { nanoid } from 'nanoid'
+import { sweepThreadAttachments } from './attachmentUploads'
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename } from 'node:path'
@@ -2096,6 +2097,7 @@ export class SessionRegistry {
       this.liveContexts.delete(id)
       const meta = all.find((s) => s.id === id)
       if (meta) removeMirror(this, meta) // mirrors die with the thread
+      if (meta) sweepThreadAttachments(meta) // and so do its uploaded attachments
     }
     await removePages(ids) // and so do the agent's HTML pages
     // The journal never dangles into a missing plan file.

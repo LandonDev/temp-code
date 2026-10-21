@@ -239,6 +239,15 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'harness.status': 'admin',
   'harness.sync': 'admin',
   'harness.settings.set': 'admin',
+  // Attachments on a remote thread (contract-attachments.ts): upload into the thread's dir; read a file here in ranges for an uploader.
+  'attachment.begin': 'operate',
+  'attachment.chunk': 'operate',
+  'attachment.commit': 'operate',
+  'attachment.abort': 'operate',
+  'attachment.digest': 'read',
+  'attachment.readRange': 'read',
+  'attachment.settings': 'read',
+  'attachment.settings.set': 'admin',
   // Saved hosts and their keys never leave this machine (thread K1).
   'remote.environments.list': 'local',
   'remote.environments.add': 'local',

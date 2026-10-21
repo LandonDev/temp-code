@@ -58,7 +58,9 @@ describe('METHOD_CAPABILITY', () => {
         'accounts.confirm',
         'accounts.released',
         // The harness config crosses between hosts, and its status and settings are changed, only under an admin key.
-        ...methods.filter((m) => m.startsWith('harness.'))
+        ...methods.filter((m) => m.startsWith('harness.')),
+        // A host's per-file attachment limit.
+        'attachment.settings.set'
       ].sort()
     )
   })

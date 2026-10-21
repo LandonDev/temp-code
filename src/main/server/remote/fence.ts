@@ -123,7 +123,29 @@ export const FENCED_PARAMS: { [M in ClientRequest['method']]?: Picker<M> } = {
   'build.detect': (p) => [p.path],
   'commands.list': (p) => [p.cwd],
   'text.generate': (p) => (p.cwd ? [p.cwd] : []),
-  'session.create': (p) => (p.cwd ? [p.cwd] : [])
+  'session.create': (p) => (p.cwd ? [p.cwd] : []),
+  // An uploader reads a file on this host in ranges (contract-attachments.ts).
+  'attachment.digest': path,
+  'attachment.readRange': path
+}
+
+type WireAttachment = { path: string; kind: string; textPath?: string }
+/** The file paths a turn's attachments name. A `thread` reference names a
+ *  session (its `path` is `thread:<id>`), not a file. */
+const attachmentFiles = (p: { attachments?: WireAttachment[] }): string[] =>
+  (p.attachments ?? []).filter((a) => a.kind !== 'thread').flatMap((a) => (a.textPath ? [a.path, a.textPath] : [a.path]))
+
+/**
+ * Methods whose attachments name files the harness will read. A remote
+ * caller may name only paths under the managed roots or the attachment
+ * directories (the thread dirs live under those roots or `<userData>/
+ * attachments`, which managedRoots lists; `attachment.save`'s paste dir is
+ * the extra root the server passes). A Mac path sent to the box is refused
+ * here with the one typed error instead of failing inside the turn.
+ */
+export const ATTACHMENT_PARAMS: { [M in ClientRequest['method']]?: Picker<M> } = {
+  'session.send': attachmentFiles,
+  'queue.add': attachmentFiles
 }
 
 /** The paths a request names, or null when the method takes none. */
@@ -132,9 +154,19 @@ export function fencedPaths(req: ClientRequest): string[] | null {
   return pick ? pick((req as { params?: unknown }).params) : null
 }
 
-/** Throw the typed error when a request names a path outside the roots. */
-export function fenceRequest(req: ClientRequest, roots: readonly string[]): void {
+/** The attachment file paths a request names, or null when it takes none. */
+export function attachmentPaths(req: ClientRequest): string[] | null {
+  const pick = (ATTACHMENT_PARAMS as Record<string, ((params: unknown) => string[]) | undefined>)[req.method]
+  return pick ? pick((req as { params?: unknown }).params) : null
+}
+
+/** Throw the typed error when a request names a path outside the roots.
+ *  `attachmentRoots` widen the roots for attachment paths only. */
+export function fenceRequest(req: ClientRequest, roots: readonly string[], attachmentRoots: readonly string[] = []): void {
   const paths = fencedPaths(req)
-  if (!paths) return
-  for (const p of paths) if (typeof p !== 'string' || !insideRoots(p, roots)) throw new FenceError(req.method)
+  if (paths) for (const p of paths) if (typeof p !== 'string' || !insideRoots(p, roots)) throw new FenceError(req.method)
+  const files = attachmentPaths(req)
+  if (!files?.length) return
+  const all = [...roots, ...attachmentRoots]
+  for (const p of files) if (typeof p !== 'string' || !insideRoots(p, all)) throw new FenceError(req.method)
 }

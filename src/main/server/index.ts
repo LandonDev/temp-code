@@ -112,7 +112,9 @@ import {
 } from './git'
 import { listCommands } from './commands'
 import { workspaceIcon } from './wsicon'
-import { readAttachment, saveAttachment } from './attachments'
+import { ATTACH_DIR, readAttachment, saveAttachment } from './attachments'
+import { attachmentDir, dataAttachmentsRoot, setAttachmentDirContext, treeAttachmentsRoot } from './attachmentDir'
+import { AttachmentUploads, handleAttachmentUploads, sweepAttachmentRoots } from './attachmentUploads'
 import {
   closeAllWatchers,
   fsCreate,
@@ -270,9 +272,27 @@ export async function startServer(
     return [
       ...registry.listProjects().map((p) => p.cwd),
       ...registry.listWorkspaces().map((w) => w.path),
-      ...(work.root !== work.home ? [work.root] : [])
+      ...(work.root !== work.home ? [work.root] : []),
+      // A thread with no project or workspace keeps its uploads here.
+      dataAttachmentsRoot()!
     ]
   }
+  // Each thread's uploaded attachments (attachmentDir.ts): under its project
+  // cwd, else its workspace path, else <userData>/attachments.
+  setAttachmentDirContext({
+    session: (id) => store.getSession(id),
+    projectCwd: (id) => store.getProject(id)?.cwd,
+    workspacePath: (id) => registry.listWorkspaces().find((w) => w.id === id)?.path,
+    dataDir: options.dataDir ?? dirname(dbPath)
+  })
+  const uploads = new AttachmentUploads({ dirFor: (sessionId) => attachmentDir(sessionId), store })
+  registry.onRemoved((ids) => uploads.dropSessions(ids))
+  /** Every per-tree attachments root plus the userData one: what the retention sweep walks. */
+  const attachmentRoots = (): string[] => [
+    ...registry.listProjects().map((p) => treeAttachmentsRoot(p.cwd)),
+    ...registry.listWorkspaces().map((w) => treeAttachmentsRoot(w.path)),
+    dataAttachmentsRoot()!
+  ]
   setLimitMissLog(join(options.dataDir ?? dirname(dbPath), 'logs'))
   setCodexBootFailureLog(join(options.dataDir ?? dirname(dbPath), 'logs'))
   setStallLog(join(options.dataDir ?? dirname(dbPath), 'logs'))
@@ -408,6 +428,12 @@ export async function startServer(
       })
       bootMark('archive-sweep done', `${ids.length} archived`)
       await coldMover.kick()
+      // Attachments of a thread archived 30 days ago, and directories no thread owns.
+      const swept = sweepAttachmentRoots(attachmentRoots(), (id) => {
+        const meta = store.getSession(id)
+        return meta ? { archived: meta.archived, updatedAt: meta.updatedAt } : null
+      })
+      if (swept.length) console.log(`[attachments] swept ${swept.length} directories`)
     })()
       .catch((err) => console.error('[archive] sweep failed', err))
       .finally(() => {
@@ -616,7 +642,7 @@ export async function startServer(
       try {
         // A remote key names paths only inside the app-managed roots; the
         // refusal is one typed error that never carries the path.
-        if (principal.kind !== 'local') fenceRequest(req, managedRoots())
+        if (principal.kind !== 'local') fenceRequest(req, managedRoots(), [ATTACH_DIR])
         // A pull marks the socket as another host's main process: it hears
         // every later rotation (never a renderer, which never pulls).
         if (req.method === 'accounts.pull') {
@@ -634,6 +660,8 @@ export async function startServer(
         }
         const harness = await handleHarness(req, harnessSync)
         if (harness.handled) return sendFrame({ id: req.id, ok: true, result: harness.result })
+        const upload = await handleAttachmentUploads(req, uploads, principal.kind === 'remote' ? `key:${principal.keyId}` : principal.kind)
+        if (upload.handled) return sendFrame({ id: req.id, ok: true, result: upload.result })
         const extension = await handleM3a(req, m3a)
         if (extension.handled) { sendFrame({ id: req.id, ok: true, result: extension.result }); return }
         const fsGit = await handleFsGit(req)
@@ -1104,10 +1132,7 @@ export async function startServer(
             sendFrame({
               id: req.id,
               ok: true,
-              result: await readAttachment(
-                req.params.path,
-                registry.listProjects().map((p) => p.cwd)
-              )
+              result: await readAttachment(req.params.path, managedRoots())
             })
             break
           case 'session.create': {
@@ -1556,6 +1581,7 @@ export async function startServer(
       clearInterval(syncTimer)
       accountSync.close()
       harnessSync.close()
+      uploads.close()
       peers.close()
       m3a.accounts.stop()
       await registry.disposeAll()

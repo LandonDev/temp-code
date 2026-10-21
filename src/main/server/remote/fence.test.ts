@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
-import { FENCED_PARAMS, FenceError, expandPath, fenceRequest, fencedPaths, insideRoots } from './fence'
+import { ATTACHMENT_PARAMS, FENCED_PARAMS, FenceError, attachmentPaths, expandPath, fenceRequest, fencedPaths, insideRoots } from './fence'
 
 /** R2 H1/H2: the real-path fence every remote request passes before a handler runs. */
 let dir: string
@@ -76,6 +76,16 @@ describe('FENCED_PARAMS', () => {
     }
     expect(missing).toEqual([])
   })
+  it('covers every method whose params carry attachments', () => {
+    const missing: string[] = []
+    for (const option of ClientRequestSchema.options as z.ZodTypeAny[]) {
+      const method = (option as z.ZodObject<{ method: z.ZodLiteral<string> }>).shape.method.value
+      const params = paramsOf(option)
+      if (params && 'attachments' in params.shape && !(method in ATTACHMENT_PARAMS)) missing.push(method)
+    }
+    expect(missing).toEqual([])
+    expect(Object.keys(ATTACHMENT_PARAMS).sort()).toEqual(['queue.add', 'session.send'])
+  })
   it('names the right params', () => {
     const req = (method: string, params: unknown): ClientRequest => ({ id: '1', method, params }) as ClientRequest
     expect(fencedPaths(req('fs.readText', { path: '/a' }))).toEqual(['/a'])
@@ -89,7 +99,79 @@ describe('FENCED_PARAMS', () => {
     expect(fencedPaths(req('workspace.create', { path: '/w' }))).toEqual(['/w'])
     expect(fencedPaths(req('session.create', { provider: 'claude', model: 'm' }))).toEqual([])
     expect(fencedPaths(req('session.list', {}))).toBeNull()
+    expect(fencedPaths(req('attachment.readRange', { path: '/a', offset: 0, length: 1 }))).toEqual(['/a'])
+    expect(fencedPaths(req('attachment.digest', { path: '/a' }))).toEqual(['/a'])
+    // Uploads name a session and an upload id, never a path.
+    expect(fencedPaths(req('attachment.begin', { sessionId: 's', name: 'a', size: 1, sha256: 'x' }))).toBeNull()
   })
+  it('names the file paths of a turn, never a thread reference', () => {
+    const req = (method: string, params: unknown): ClientRequest => ({ id: '1', method, params }) as ClientRequest
+    const atts = [
+      { path: '/r/a.png', name: 'a.png', kind: 'image' },
+      { path: 'thread:abc', name: 'T', kind: 'thread', sessionId: 'abc' },
+      { path: '/r/shot.jpg', name: 'shot', kind: 'appshot', textPath: '/r/shot.txt' }
+    ]
+    expect(attachmentPaths(req('session.send', { sessionId: 's', text: 't', attachments: atts }))).toEqual([
+      '/r/a.png',
+      '/r/shot.jpg',
+      '/r/shot.txt'
+    ])
+    expect(attachmentPaths(req('queue.add', { sessionId: 's', text: 't', attachments: atts.slice(0, 2) }))).toEqual(['/r/a.png'])
+    expect(attachmentPaths(req('session.send', { sessionId: 's', text: 't' }))).toEqual([])
+    expect(attachmentPaths(req('session.list', {}))).toBeNull()
+  })
+})
+
+describe('fenceRequest on attachments', () => {
+  const send = (method: 'session.send' | 'queue.add', attachments: unknown[]): ClientRequest =>
+    ({ id: '1', method, params: { sessionId: 's', text: 'look', attachments } }) as ClientRequest
+  const pasteDir = () => join(dir, 'pastes')
+  beforeAll(() => {
+    mkdirSync(pasteDir(), { recursive: true })
+    writeFileSync(join(pasteDir(), 'p.png'), 'p')
+    mkdirSync(join(root, '.temp-code', 'attachments', 's'), { recursive: true })
+    writeFileSync(join(root, '.temp-code', 'attachments', 's', 'up.pdf'), 'u')
+  })
+  it('admits an uploaded file under the thread dir, a paste, and a thread reference', () => {
+    for (const method of ['session.send', 'queue.add'] as const) {
+      expect(() =>
+        fenceRequest(
+          send(method, [
+            { path: join(root, '.temp-code', 'attachments', 's', 'up.pdf'), name: 'up.pdf', kind: 'file' },
+            { path: join(pasteDir(), 'p.png'), name: 'p.png', kind: 'image' },
+            { path: 'thread:abc', name: 'T', kind: 'thread', sessionId: 'abc' }
+          ]),
+          [root],
+          [pasteDir()]
+        )
+      ).not.toThrow()
+    }
+  })
+  it('refuses a Mac path outside the roots with the one typed error', () => {
+    for (const method of ['session.send', 'queue.add'] as const) {
+      let caught: unknown
+      try {
+        fenceRequest(send(method, [{ path: '/Users/landon/Desktop/report.pdf', name: 'report.pdf', kind: 'file' }]), [root], [pasteDir()])
+      } catch (err) {
+        caught = err
+      }
+      expect(caught).toBeInstanceOf(FenceError)
+      expect((caught as Error).message).toBe(`forbidden: ${method} is outside app-managed roots`)
+      expect((caught as Error).message).not.toContain('/Users')
+    }
+  })
+  it('refuses an appshot whose text file sits outside, an escape, and a symlink out', () => {
+    expect(() =>
+      fenceRequest(send('session.send', [{ path: join(root, 'src', 'a.ts'), name: 's', kind: 'appshot', textPath: join(outside, 'secret') }]), [root])
+    ).toThrow(FenceError)
+    expect(() =>
+      fenceRequest(send('session.send', [{ path: join(root, '..', 'elsewhere', 'secret'), name: 's', kind: 'file' }]), [root])
+    ).toThrow(FenceError)
+    expect(() => fenceRequest(send('session.send', [{ path: join(root, 'link-out'), name: 'l', kind: 'file' }]), [root])).toThrow(FenceError)
+    // The paste dir widens attachment paths only, never a fs.* path.
+    expect(() => fenceRequest(req2('fs.readText', { path: join(pasteDir(), 'p.png') }), [root], [pasteDir()])).toThrow(FenceError)
+  })
+  const req2 = (method: string, params: unknown): ClientRequest => ({ id: '1', method, params }) as ClientRequest
 })
 
 describe('fenceRequest', () => {

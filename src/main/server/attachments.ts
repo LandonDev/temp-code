@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs'
 import { readFile, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, extname, join, resolve } from 'node:path'
+import { insideRoots } from './remote/fence'
 import { nanoid } from 'nanoid'
 import type { Attachment } from '@shared/events'
 
@@ -11,7 +12,8 @@ import type { Attachment } from '@shared/events'
  * can consume. attachment.read serves data URLs back for thumbnails.
  */
 
-const ATTACH_DIR = join(homedir(), '.temp-code', 'attachments')
+/** Where `attachment.save` lands small pastes (the thread-agnostic dir). */
+export const ATTACH_DIR = join(homedir(), '.temp-code', 'attachments')
 const MAX_READ_BYTES = 20 * 1024 * 1024
 
 const MIME: Record<string, string> = {
@@ -46,11 +48,13 @@ export async function saveAttachment(name: string, dataBase64: string): Promise<
   return attachmentFor(path)
 }
 
-/** Data URL for thumbnails. Fenced to the attachments dir and project trees. */
+/** Data URL for thumbnails. Fenced to the attachments dir and the
+ *  app-managed roots, by real path on a segment boundary (fence.ts
+ *  insideRoots): `/a/b` holds `/a/b/c`, never the sibling `/a/bc` a bare
+ *  startsWith admitted, nor a symlink inside that points out. */
 export async function readAttachment(path: string, allowedRoots: string[]): Promise<string> {
   const abs = resolve(path)
-  const roots = [ATTACH_DIR, ...allowedRoots]
-  if (!roots.some((r) => abs.startsWith(resolve(r)))) {
+  if (!insideRoots(abs, [ATTACH_DIR, ...allowedRoots])) {
     throw new Error('path outside app-managed directories')
   }
   const info = await stat(abs)
