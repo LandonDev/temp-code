@@ -48,95 +48,88 @@ extension ThreadRowModel {
         if let activity = session.activity, !activity.isEmpty { return activity }
         return nil
     }
+
+    /// The weight of the title, and of every glyph beside it.
+    var weight: Font.Weight { unseen ? .semibold : .regular }
 }
 
 /// The one row shape every list shares: 44 pt minimum, the status dot or
-/// spinner, the tinted type glyph, the title (semibold while unseen), a dim
-/// line with the model and the tasks or activity, the time trailing in
-/// tertiary tabular digits. Subagents step in with the agent glyph. No
-/// chevron: every row pushes.
+/// spinner, the tinted type glyph at the title's weight, the title
+/// (semibold while unseen), a dim line with the model and the tasks or
+/// activity that cross-fades without changing height, the time trailing in
+/// tabular digits that roll. Subagents step in with the agent glyph. No
+/// chevron: every row pushes. The separator starts at the title.
 struct ThreadRow: View {
     let row: ThreadRowModel
     @Environment(\.dynamicTypeSize) private var typeSize
+    @ScaledMetric(relativeTo: .subheadline) private var gap = Layout.rowGap
+    @ScaledMetric(relativeTo: .subheadline) private var textEdge = Layout.rowTextEdge
 
     var body: some View {
-        HStack(spacing: 10) {
-            StatusDot(status: row.status, running: row.running)
+        HStack(alignment: .center, spacing: gap) {
+            StatusDot(status: row.status, running: row.running, weight: row.weight)
             if let agent = row.agent {
-                AgentGlyph(type: agent)
+                AgentGlyph(type: agent, weight: row.weight)
             } else {
-                TypeGlyph(type: row.type, weight: row.unseen ? .semibold : .regular)
+                TypeGlyph(type: row.type, weight: row.weight)
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.title)
-                    .font(.subheadline.weight(row.unseen ? .semibold : .regular))
+                    .textStep(.title, weight: row.weight)
                     .lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
-                SecondLine(model: row.model, detail: row.detail)
+                ThreadRowSecondLine(model: row.model, detail: row.detail)
             }
             Spacer(minLength: 8)
             HStack(spacing: 6) {
                 if row.pinned {
                     Image(systemName: "pin.fill")
-                        .font(.caption2)
+                        .font(.caption2.weight(row.weight))
                         .foregroundStyle(.tertiary)
                         .accessibilityLabel("Pinned")
                 }
-                TrailingTime(row: row)
+                ThreadRowTime(row: row)
             }
         }
-        .padding(.leading, row.agent == nil ? 0 : 16)
-        .frame(minHeight: 44)
+        .padding(.leading, row.agent == nil ? 0 : Layout.indent)
+        .padding(.vertical, 6)
+        .frame(minHeight: Layout.rowHeight)
+        .separatorAtTextEdge(textEdge + (row.agent == nil ? 0 : Layout.indent))
         .accessibilityElement(children: .combine)
     }
 }
 
 /// The model, then the tasks or activity. The variable half cross-fades
-/// when it changes and the line never changes height.
-private struct SecondLine: View {
+/// when it changes (2 pt of blur) and the line never changes height.
+struct ThreadRowSecondLine: View {
     let model: String
     let detail: String?
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 0) {
             Text(model)
-            if let detail {
+                .textStep(.meta)
+                .lineLimit(1)
+                .layoutPriority(1)
+            if detail != nil {
                 Text(" · ")
-                ZStack(alignment: .leading) {
-                    Text(detail)
-                        .id(detail)
-                        .transition(Motion.swap(reduced: reduceMotion))
-                }
-                .animation(Motion.crossFade, value: detail)
+                    .textStep(.meta)
+                    .layoutPriority(1)
             }
+            SwapText(detail, step: .meta)
         }
-        .font(.footnote)
-        .foregroundStyle(.secondary)
-        .lineLimit(1)
     }
 }
 
-/// A running elapsed that ticks each second, else how long ago the thread moved.
-private struct TrailingTime: View {
+/// A running elapsed that ticks each second, else how long ago the thread
+/// moved. One or the other, never both, and the digits roll.
+struct ThreadRowTime: View {
     let row: ThreadRowModel
 
     var body: some View {
-        Group {
-            if row.running {
-                let since = row.busySince ?? row.updatedAt
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    Text(TimeFormat.elapsed(since: since, now: context.date))
-                        .contentTransition(.numericText())
-                        .animation(Motion.crossFade, value: context.date)
-                }
-            } else {
-                TimelineView(.periodic(from: .now, by: 30)) { context in
-                    Text(TimeFormat.ago(row.updatedAt, now: context.date))
-                }
-            }
+        if row.running {
+            ElapsedText(since: row.busySince ?? row.updatedAt)
+        } else {
+            AgoText(row.updatedAt)
         }
-        .font(.caption2)
-        .monospacedDigit()
-        .foregroundStyle(.tertiary)
     }
 }

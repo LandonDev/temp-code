@@ -230,6 +230,37 @@ default, fill marks the active state.
 No shadows except on floating layers. No glows. No badges with text; dots
 only, and only when they mean something. Nothing is shown twice.
 
+### The kit: `ios/TempCode/Sources/Design/`
+
+Every screen builds from these names and never restates their values. A
+sibling that needs a shared piece the kit lacks adds it in its own area and
+says so here, so the next pass can move it in.
+
+| Name | File | What it is |
+| --- | --- | --- |
+| `Tint.*`, `Surface.*` | Tokens.swift | The colors above by meaning; `Surface.fill` is what a chip or pill sits on |
+| `Radius.row/field/sheet`, `Radius.around(inner, padding:)`, `Radius.inside(outer, padding:)` | Tokens.swift | The three radii and the concentric arithmetic: outer = inner + padding, always |
+| `RoundedRectangle.corner(r)`, `.rowCorner`, `.fieldCorner`, `.sheetCorner` | Tokens.swift | Continuous corners; `.clipShape(.rowCorner)`, `.background(_, in: .fieldCorner)` |
+| `TextStep.title/meta/stamp`, `.textStep(_, weight:)` | Tokens.swift | The three text steps and no more: `subheadline`/label, `footnote`/secondary, `caption2` tabular/tertiary |
+| `Layout.textEdge/rowHeight/rowGap/markWidth/glyphWidth/indent/rowTextEdge/rowInsets` | Tokens.swift | The lengths every list shares (16, 44, 10, 14, 20, 16, 54, the 16 pt insets) |
+| `Hairline(inset:)`, `.separatorAtTextEdge()`, `.hairlineBorder(shape)` | Tokens.swift | One-pixel rules: a rule inset to the text edge, a list separator that starts there, a ring just inside a shape |
+| `.groupCard()`, `.raised()` | Tokens.swift | Grouped-list chrome (chrome step, field corners, hairline ring) and the floating layer (raised step, ring, soft offset shadow in light only) |
+| `.buttonStyle(.pressable)`, `.pressableStatic` | Pressable.swift | The press on every row and button; static dims instead of scaling |
+| `PillButton(_:systemImage:tint:action:)` | Pressable.swift | A small action in a row: capsule on the fill step, or tinted with white text |
+| `StatusDot(status:running:)` | StatusDot.swift | The leading mark: dot, spinner or pause, 14 pt column, 150 ms cross-fade |
+| `TypeGlyph(type:weight:active:)`, `AgentGlyph(type:weight:active:)` | Glyphs.swift | The type and agent glyphs at the title's weight; `active` is the filled variant; the column scales with Dynamic Type |
+| `ThreadRow(row:)`, `ThreadRowModel`, `ThreadRowSecondLine`, `ThreadRowTime` | ThreadRow.swift | The one row shape; the second line and the trailing time stand alone for fleet and agent rows |
+| `.threadRowActions(client:meta:)` | ThreadRowActions.swift | Swipe to pin and archive, context menu with Rename |
+| `SectionHeader(_:branch:worktree:style:)` | SectionHeader.swift | `.band` on the chrome step for plain lists, `.grouped` for inset-grouped lists (no background, more room above than below) |
+| `HostMark(host:weight:)` | HostMark.swift | GitHub and GitLab marks, stroked 1.5 beside regular and 2 beside semibold |
+| `SwapText`, `CountText`, `ElapsedText(since:)`, `AgoText`, `.numeric(value)` | LiveText.swift | Text that changes in place with the doc's motion: the cross-fade with blur, rolling digits, a ticking span, an age |
+| `ModelName.short`, `TimeFormat.ago/duration/elapsed`, `Formatting.*` | ModelName.swift, TimeFormat.swift, Formatting.swift | The desktop's formats, one voice |
+
+Nesting rule in practice: pick the inner radius from the table and derive
+the outer with `Radius.around`. A card at `Radius.field` holds `Radius.row`
+chips with 4 pt between them; a card with 12 pt of padding around row chips
+is `Radius.around(Radius.row, padding: 12)`, never `Radius.field`.
+
 ## Motion
 
 Values are exact.
@@ -251,6 +282,25 @@ Values are exact.
 
 Nothing animates on first paint from cache. Nothing animates on a keyboard
 action. Every animated change has a static cue as well.
+
+Every row of the table has a name in `Motion` (Design/Motion.swift), and
+screens reference the name, never the number:
+
+| Table row | Name |
+| --- | --- |
+| Press | `Motion.pressScale`, `Motion.press`; `Motion.pressDim` under reduced motion |
+| Segment swipe | `Motion.drawer` |
+| Row expand and collapse | `Motion.expand`, `Motion.expandContent`, `Motion.collapse` |
+| Needs-you row appearing | `Motion.rowAppear`, `Motion.rowLeave`, `Motion.travel`; the transition `Motion.appear(reduced:)` or `.rowAppearTransition()` |
+| Last-activity line changing | `Motion.crossFade`, `Motion.crossFadeBlur`; the transition `Motion.swap(reduced:)` or `.swapTransition()`; `SwapText` does the whole thing |
+| Counts and elapsed | `Motion.numeric`; `.numeric(value)`, `CountText`, `ElapsedText` |
+| Status dot to spinner | `Motion.crossFade`, inside `StatusDot` |
+| Jump-to-latest pill | `Motion.jump`; the transition `Motion.jump(reduced:)` or `.jumpTransition()` |
+| Nothing animates | `Motion.withoutAnimation { }` around the first paint from cache and every keyboard action |
+
+The transitions carry their own timings, so the animation that encloses a
+change cannot stretch them. The `.…Transition()` modifiers read reduced
+motion themselves; `Motion.*(reduced:)` is for a view that already has it.
 
 ## Performance
 

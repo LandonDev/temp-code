@@ -1,7 +1,8 @@
 import Foundation
 
 /// The desktop's time formats (src/renderer/src/lib/format.ts), so the two
-/// apps read the same at a glance.
+/// apps read the same at a glance. Every string here is digits a stamp can
+/// roll: the views in LiveText.swift wrap them.
 enum TimeFormat {
     /// "now", "3m", "2h", "5d", then "Oct 3".
     nonisolated static func ago(_ ms: Int, now: Date = .now) -> String {
@@ -31,5 +32,20 @@ enum TimeFormat {
     /// The running span since `ms`, as of `now`.
     nonisolated static func elapsed(since ms: Int, now: Date = .now) -> String {
         duration(ms: Int(now.timeIntervalSince1970 * 1000) - ms)
+    }
+
+    /// A moment as a transcript stamp reads it: "9:41 AM" today, "Mon 9:41 AM"
+    /// this week, "Oct 3, 9:41 AM" before that; the year only when it differs.
+    nonisolated static func stamp(_ ms: Int, now: Date = .now, calendar: Calendar = .current) -> String {
+        let date = Date(timeIntervalSince1970: Double(ms) / 1000)
+        let time = date.formatted(.dateTime.hour().minute())
+        if calendar.isDate(date, inSameDayAs: now) { return time }
+        if let week = calendar.date(byAdding: .day, value: -6, to: now), date > week {
+            return "\(date.formatted(.dateTime.weekday(.abbreviated))) \(time)"
+        }
+        if calendar.isDate(date, equalTo: now, toGranularity: .year) {
+            return "\(date.formatted(.dateTime.month(.abbreviated).day())), \(time)"
+        }
+        return "\(date.formatted(.dateTime.month(.abbreviated).day().year())), \(time)"
     }
 }

@@ -1,7 +1,9 @@
 import SwiftUI
 
 /// The visual system of docs/IOS-DESIGN.md: system colors by meaning, three
-/// text steps, three radii, hairlines. Nothing else in the app names a color.
+/// text steps, three radii, hairlines, and the few lengths every row shares.
+/// Nothing else in the app names a color, a radius, a font step or a row
+/// inset; it names these.
 enum Tint {
     /// Chat type, starting and watching dots.
     static let info = Color(.systemBlue)
@@ -27,8 +29,13 @@ enum Surface {
     static let hairline = Color(.separator)
     /// The needs-you row: warning at 8 %.
     static let needsYou = Tint.warning.opacity(0.08)
+    /// What a chip or a pill sits on: one quiet step on either background.
+    static let fill = Color(.tertiarySystemFill)
 }
 
+/// Three radii, and the arithmetic that keeps nested corners concentric:
+/// the outer corner is the inner corner plus the padding between them,
+/// always. Pick the inner radius from the table and derive the outer one.
 enum Radius {
     /// Chips and rows.
     static let row: CGFloat = 8
@@ -36,13 +43,153 @@ enum Radius {
     static let field: CGFloat = 12
     /// Sheets.
     static let sheet: CGFloat = 16
+
+    /// The outer radius around a corner of `inner` with `padding` between them.
+    static func around(_ inner: CGFloat, padding: CGFloat) -> CGFloat {
+        inner + padding
+    }
+
+    /// The inner radius inside a corner of `outer` with `padding` between them.
+    static func inside(_ outer: CGFloat, padding: CGFloat) -> CGFloat {
+        max(0, outer - padding)
+    }
 }
 
-/// A one-pixel rule in `separator`; the caller insets it to the text edge.
+/// Every corner in the app is continuous (Apple's superellipse), never circular.
+extension Shape where Self == RoundedRectangle {
+    static func corner(_ radius: CGFloat) -> RoundedRectangle {
+        RoundedRectangle(cornerRadius: radius, style: .continuous)
+    }
+
+    /// `Radius.row` corners.
+    static var rowCorner: RoundedRectangle { corner(Radius.row) }
+    /// `Radius.field` corners.
+    static var fieldCorner: RoundedRectangle { corner(Radius.field) }
+    /// `Radius.sheet` corners.
+    static var sheetCorner: RoundedRectangle { corner(Radius.sheet) }
+}
+
+/// The three text steps and no more. A title is `subheadline` in `label`;
+/// meta is `footnote` in `secondaryLabel`; a stamp (a time, a count, a cost)
+/// is `caption2` in `tertiaryLabel` with tabular digits. Weight carries the
+/// seen state and emphasis; size never does.
+enum TextStep {
+    case title
+    case meta
+    case stamp
+
+    var font: Font {
+        switch self {
+        case .title: .subheadline
+        case .meta: .footnote
+        case .stamp: .caption2
+        }
+    }
+}
+
+extension View {
+    /// One of the three text steps, at a weight.
+    func textStep(_ step: TextStep, weight: Font.Weight = .regular) -> some View {
+        modifier(TextStepModifier(step: step, weight: weight))
+    }
+}
+
+private struct TextStepModifier: ViewModifier {
+    let step: TextStep
+    let weight: Font.Weight
+
+    func body(content: Content) -> some View {
+        switch step {
+        case .title:
+            content.font(step.font.weight(weight)).foregroundStyle(.primary)
+        case .meta:
+            content.font(step.font.weight(weight)).foregroundStyle(.secondary)
+        case .stamp:
+            content.font(step.font.weight(weight)).monospacedDigit().foregroundStyle(.tertiary)
+        }
+    }
+}
+
+/// The lengths every list shares, so rows, headers and separators meet on
+/// the same edges.
+enum Layout {
+    /// The text edge: where a row's content and a header's title begin.
+    static let textEdge: CGFloat = 16
+    /// A row's minimum height.
+    static let rowHeight: CGFloat = 44
+    /// Between the status mark, the type glyph and the text.
+    static let rowGap: CGFloat = 10
+    /// The status dot or spinner's column.
+    static let markWidth: CGFloat = 14
+    /// The type or agent glyph's column.
+    static let glyphWidth: CGFloat = 20
+    /// How far a subagent steps in under its root.
+    static let indent: CGFloat = 16
+    /// Where a thread row's title begins, from the row's leading edge: the
+    /// mark, the glyph and the two gaps. Separators start here.
+    static let rowTextEdge: CGFloat = markWidth + rowGap + glyphWidth + rowGap
+    /// A list row's insets: the text edge on both sides, nothing vertical.
+    static let rowInsets = EdgeInsets(top: 0, leading: textEdge, bottom: 0, trailing: textEdge)
+}
+
+/// A one-pixel rule in `separator`, inset from the leading edge to the text edge.
 struct Hairline: View {
+    var inset: CGFloat = 0
     @Environment(\.displayScale) private var scale
 
     var body: some View {
-        Surface.hairline.frame(height: 1 / scale)
+        Surface.hairline
+            .frame(height: 1 / scale)
+            .padding(.leading, inset)
+    }
+}
+
+extension View {
+    /// A list row's separator starts at `offset` from the row's leading edge,
+    /// the text edge, never under the status mark.
+    func separatorAtTextEdge(_ offset: CGFloat = Layout.rowTextEdge) -> some View {
+        alignmentGuide(.listRowSeparatorLeading) { $0[.leading] + offset }
+    }
+
+    /// A one-pixel ring in `separator` (or `color`) just inside `shape`.
+    func hairlineBorder(_ shape: some InsettableShape, color: Color = Surface.hairline) -> some View {
+        modifier(HairlineBorder(shape: shape, color: color))
+    }
+
+    /// The grouped-list look where it fits: a card on the chrome step with
+    /// field corners and a hairline ring. Rows inside separate with
+    /// `Hairline(inset:)` at the text edge; chips inside use `Radius.inside`.
+    func groupCard(radius: CGFloat = Radius.field) -> some View {
+        background(Surface.chrome, in: RoundedRectangle.corner(radius))
+            .hairlineBorder(RoundedRectangle.corner(radius))
+    }
+
+    /// A layer that floats (a pill over the transcript, a card over content):
+    /// the raised surface, a hairline ring, and in light mode a soft shadow
+    /// with an offset. Dark mode keeps the ring only.
+    func raised(radius: CGFloat = Radius.field) -> some View {
+        modifier(Raised(radius: radius))
+    }
+}
+
+private struct HairlineBorder<S: InsettableShape>: ViewModifier {
+    let shape: S
+    let color: Color
+    @Environment(\.displayScale) private var scale
+
+    func body(content: Content) -> some View {
+        content.overlay(shape.strokeBorder(color, lineWidth: 1 / scale))
+    }
+}
+
+private struct Raised: ViewModifier {
+    let radius: CGFloat
+    @Environment(\.colorScheme) private var scheme
+
+    func body(content: Content) -> some View {
+        content
+            .background(Surface.raised, in: RoundedRectangle.corner(radius))
+            .hairlineBorder(RoundedRectangle.corner(radius))
+            .shadow(color: .black.opacity(scheme == .dark ? 0 : 0.08), radius: 8, y: 2)
     }
 }

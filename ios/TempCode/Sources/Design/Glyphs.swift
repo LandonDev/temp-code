@@ -3,7 +3,10 @@ import TempCodeContract
 
 /// The desktop's thread type glyphs, labels and tints
 /// (src/renderer/src/surfaces/threads/bits.tsx) in SF Symbols, and the
-/// fleet's agent glyphs. Outline is the default; fill marks the active state.
+/// fleet's agent glyphs. Outline is the default; fill marks the active
+/// state. A glyph's stroke follows the weight of the text beside it (the
+/// symbol weight is the stroke), and its size follows Dynamic Type with
+/// that text.
 extension ThreadType {
     nonisolated var symbol: String {
         switch self {
@@ -13,6 +16,17 @@ extension ThreadType {
         case .orchestration: "arrow.triangle.branch"
         case .research: "binoculars"
         case .unknown: "bubble.left"
+        }
+    }
+
+    /// The filled variant, for the active state (the selected segment, the open thread's chip).
+    nonisolated var filledSymbol: String {
+        switch self {
+        case .chat, .unknown: "bubble.left.fill"
+        case .planning: "map.fill"
+        case .implementation: "checklist.checked"
+        case .orchestration: "arrow.triangle.branch"
+        case .research: "binoculars.fill"
         }
     }
 
@@ -73,30 +87,62 @@ extension AgentType {
     }
 }
 
-/// A thread's type, tinted; the stroke follows the weight of the title beside it.
+/// A thread's type, tinted, in the glyph column. `weight` is the weight of
+/// the title beside it; `active` swaps in the fill (a 150 ms cross-fade).
 struct TypeGlyph: View {
     let type: ThreadType?
     var weight: Font.Weight = .regular
+    var active = false
+    @ScaledMetric(relativeTo: .subheadline) private var width = Layout.glyphWidth
 
     var body: some View {
         let type = type ?? .chat
-        Image(systemName: type.symbol)
+        Image(systemName: active ? type.filledSymbol : type.symbol)
             .font(.subheadline.weight(weight))
             .foregroundStyle(type.tint)
-            .frame(width: 20)
+            .frame(width: width)
+            .contentTransition(.symbolEffect(.replace))
+            .animation(Motion.crossFade, value: active)
             .accessibilityLabel(type.label)
     }
 }
 
-/// A subagent's role, in the tertiary step so the root's tint stays the loud one.
+/// A subagent's role in the glyph column, in the tertiary step so the
+/// root's tint stays the loud one. `weight` is the weight of the title beside it.
 struct AgentGlyph: View {
     let type: AgentType
+    var weight: Font.Weight = .regular
+    @ScaledMetric(relativeTo: .subheadline) private var width = Layout.glyphWidth
 
     var body: some View {
         Image(systemName: type.symbol)
-            .font(.subheadline)
+            .font(.subheadline.weight(weight))
             .foregroundStyle(.tertiary)
-            .frame(width: 20)
+            .frame(width: width)
             .accessibilityLabel(type.label)
+    }
+}
+
+/// A glyph beside meta text (a branch, a worktree, a host): footnote size,
+/// the text's weight, the text's color unless a tint is given.
+struct MetaGlyph: View {
+    let systemName: String
+    var weight: Font.Weight = .regular
+    var tint: Color?
+    var label: String
+
+    init(_ systemName: String, weight: Font.Weight = .regular, tint: Color? = nil, label: String) {
+        self.systemName = systemName
+        self.weight = weight
+        self.tint = tint
+        self.label = label
+    }
+
+    var body: some View {
+        Image(systemName: systemName)
+            .font(.footnote.weight(weight))
+            .imageScale(.small)
+            .foregroundStyle(tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.tertiary))
+            .accessibilityLabel(label)
     }
 }

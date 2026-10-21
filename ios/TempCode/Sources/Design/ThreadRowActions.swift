@@ -6,7 +6,9 @@ import TempCodeContract
 /// swipe trailing to archive (or bring back), and a context menu with
 /// Rename, Pin and Archive. Every action goes out as its RPC and the
 /// `sessions` push brings the row's new state; a key that cannot act sees
-/// the actions disabled with the reason as the menu's first line.
+/// the actions disabled with the reason as the menu's first line. The
+/// swipe tints are the system's (orange pin, gray archive, blue restore)
+/// so the gestures read the same as Mail's.
 struct ThreadRowActions: ViewModifier {
     let client: EnvironmentClient
     let meta: SessionMeta
@@ -22,7 +24,7 @@ struct ThreadRowActions: ViewModifier {
                 Button {
                     act { try await client.setPinned(meta.id, !meta.pinned) }
                 } label: {
-                    Label(meta.pinned ? "Unpin" : "Pin", systemImage: meta.pinned ? "pin.slash" : "pin")
+                    Label(meta.pinned ? "Unpin" : "Pin", systemImage: meta.pinned ? "pin.slash.fill" : "pin.fill")
                 }
                 .tint(Tint.warning)
                 .disabled(block != nil)
@@ -31,7 +33,7 @@ struct ThreadRowActions: ViewModifier {
                 Button {
                     act { try await client.setArchived(meta.id, !meta.archived) }
                 } label: {
-                    Label(meta.archived ? "Unarchive" : "Archive", systemImage: meta.archived ? "tray.and.arrow.up" : "archivebox")
+                    Label(meta.archived ? "Unarchive" : "Archive", systemImage: meta.archived ? "tray.and.arrow.up.fill" : "archivebox.fill")
                 }
                 .tint(meta.archived ? Tint.info : Color(.systemGray))
                 .disabled(block != nil)
@@ -53,16 +55,18 @@ struct ThreadRowActions: ViewModifier {
                     Label(meta.pinned ? "Unpin" : "Pin", systemImage: meta.pinned ? "pin.slash" : "pin")
                 }
                 .disabled(block != nil)
-                Button {
+                Divider()
+                Button(role: meta.archived ? nil : .destructive) {
                     act { try await client.setArchived(meta.id, !meta.archived) }
                 } label: {
                     Label(meta.archived ? "Unarchive" : "Archive", systemImage: meta.archived ? "tray.and.arrow.up" : "archivebox")
                 }
                 .disabled(block != nil)
             }
-            .alert("Rename", isPresented: $renaming) {
+            .alert("Rename thread", isPresented: $renaming) {
                 TextField("Title", text: $title)
-                Button("Rename") { act { try await client.rename(meta.id, title: title) } }
+                    .textInputAutocapitalization(.sentences)
+                Button("Rename") { act { try await client.rename(meta.id, title: title.trimmingCharacters(in: .whitespaces)) } }
                     .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
                 Button("Cancel", role: .cancel) {}
             }
