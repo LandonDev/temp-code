@@ -67,3 +67,37 @@ struct PillButton: View {
         .buttonStyle(.pressable)
     }
 }
+
+/// A row-sized control that fills its width: the action at the foot of a
+/// sheet or a card, on the fill step with field corners, or filled with the
+/// label color when it is the one thing to do.
+struct WideButton: View {
+    let title: String
+    var systemImage: String?
+    var prominent = false
+    let action: () -> Void
+
+    init(_ title: String, systemImage: String? = nil, prominent: Bool = false, action: @escaping () -> Void) {
+        self.title = title
+        self.systemImage = systemImage
+        self.prominent = prominent
+        self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.subheadline.weight(.semibold))
+                }
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+            }
+            .frame(maxWidth: .infinity, minHeight: Layout.rowHeight)
+            .foregroundStyle(prominent ? AnyShapeStyle(Color(.systemBackground)) : AnyShapeStyle(.primary))
+            .background(prominent ? Color(.label) : Surface.fill, in: RoundedRectangle.fieldCorner)
+        }
+        .buttonStyle(.pressable)
+    }
+}
