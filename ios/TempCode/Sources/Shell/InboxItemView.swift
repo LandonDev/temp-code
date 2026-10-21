@@ -145,7 +145,7 @@ struct InboxItemView: View {
             failed = store.details[key] == nil
         }
         if isPullRequest, store.diffs[key] == nil {
-            if let diff = try? await client.request(Methods.GithubPrDiff.self, .init(cwd: cwd, number: item.number)) {
+            if let diff = try? await client.request(Methods.GitHubPrDiff.self, .init(cwd: cwd, number: item.number)) {
                 store.putDiff(diff, for: key)
             } else {
                 diffFailed = true
@@ -174,7 +174,7 @@ private struct InboxLabels: View {
 }
 
 /// Children laid left to right, wrapping to the next line when the row is full.
-private struct FlowRow: Layout {
+private nonisolated struct FlowRow: Layout {
     var spacing: CGFloat = 6
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
@@ -305,7 +305,7 @@ private struct InboxCommentView: View {
 /// The first file opens; the rest open on tap. Long patches show their first
 /// 2,000 lines until asked for the rest.
 private struct InboxChanges: View {
-    let diff: GithubPrDiff
+    let diff: GitHubPrDiff
     @State private var open: Set<String> = []
     @State private var primed = false
     @State private var showAll = false
@@ -505,8 +505,8 @@ private struct PatchLineRow: View {
 
 // MARK: - the patch
 
-struct PatchLine: Hashable {
-    enum Kind: Hashable {
+nonisolated struct PatchLine: Hashable {
+    nonisolated enum Kind: Hashable {
         case add, del, context, hunk
     }
 
@@ -521,8 +521,8 @@ struct PatchLine: Hashable {
 
 /// One file of a unified patch, the desktop's `parsePrPatch` in Swift,
 /// merged with the counts `gh pr view` reports.
-struct PatchFile: Identifiable, Hashable {
-    enum Status: Hashable {
+nonisolated struct PatchFile: Identifiable, Hashable {
+    nonisolated enum Status: Hashable {
         case added, deleted, renamed, modified
     }
 
@@ -541,13 +541,14 @@ struct PatchFile: Identifiable, Hashable {
         return path
     }
 
-    nonisolated static func parse(_ diff: GithubPrDiff) -> [PatchFile] {
+    nonisolated static func parse(_ diff: GitHubPrDiff) -> [PatchFile] {
         let parsed = parse(patch: diff.patch)
         if parsed.isEmpty {
             return diff.files.map { PatchFile(path: $0.path, additions: $0.additions, deletions: $0.deletions) }
         }
         if diff.files.isEmpty { return parsed }
-        var byPath = Dictionary(parsed.map { ($0.path, $0) }, uniquingKeysWith: { a, _ in a })
+        var byPath: [String: PatchFile] = [:]
+        for file in parsed where byPath[file.path] == nil { byPath[file.path] = file }
         var out: [PatchFile] = []
         for meta in diff.files {
             if var hit = byPath.removeValue(forKey: meta.path) {

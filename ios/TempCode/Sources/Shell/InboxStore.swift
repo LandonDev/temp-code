@@ -31,7 +31,7 @@ final class InboxStore {
     private(set) var seen: [String: Int]
     private(set) var details: [String: GitHubWorkItemDetails] = [:]
     private(set) var threads: [String: GitHubWorkItemThread] = [:]
-    private(set) var diffs: [String: GithubPrDiff] = [:]
+    private(set) var diffs: [String: GitHubPrDiff] = [:]
 
     private let defaults: UserDefaults
     private let directory: URL
@@ -131,7 +131,7 @@ final class InboxStore {
 
     func putDetails(_ value: GitHubWorkItemDetails, for id: String) { details[id] = value }
     func putThread(_ value: GitHubWorkItemThread, for id: String) { threads[id] = value }
-    func putDiff(_ value: GithubPrDiff, for id: String) { diffs[id] = value }
+    func putDiff(_ value: GitHubPrDiff, for id: String) { diffs[id] = value }
 
     // MARK: disk
 
