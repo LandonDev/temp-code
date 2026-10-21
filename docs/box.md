@@ -559,6 +559,86 @@ journal say what landed. Proof:
 `bun run script:e2e-harness-sync` (two headless instances with their own
 HOMEs, paired over the fixed port; runs on the box under `xvfb-run`).
 
+### The Mac bridge: what a box thread may touch on the Mac
+
+Threads run on the box; the user and their files are on the Mac, and some
+tools (`xcodebuild`, `osascript`, `open`, `security`) exist only there. A box
+thread with the bridge on gets four tools: `mac_read_file`, `mac_list_dir`,
+`mac_fetch_file` (copies the file onto the box and answers the box path) and
+`mac_run`. The Mac decides every call; the box only carries it.
+
+Transport (`src/main/server/remote/peerCalls.ts`). The box cannot dial the
+Mac (the Mac's listener is loopback, behind no tunnel), so the box asks over
+the peer link the Mac's main process already holds open to it with an admin
+key. On link-up the Mac sends `peer.register {from, offers: ['mac-bridge']}`
+and the box records that socket as the Mac's. The box asks with a push
+`{push: 'peer.call', callId, method, params, deadlineMs}`; the Mac answers
+`peer.reply {callId, ok, result | error}`, taken only from the socket the call
+went out on. A reply over 2 MiB of JSON first crosses as `peer.chunk` frames,
+each acknowledged. Each call has its own deadline: the Mac's 10-minute wait
+for a person, plus a command's timeout, plus 30 s. When the socket closes its
+calls fail at once and the thread's tool answers `Mac offline`.
+
+On the box (`src/main/server/macTools.ts`). The bridge is per thread: the
+setting `macBridge.thread.<sessionId>` names the Mac's environment id, and a
+subagent inherits its parent's. It is set when the Mac's renderer creates a
+thread on the box while the Mac's policy for the box is not off, or from the
+thread menu ("Mac bridge"; `macBridge.thread.set` needs approve, since it lets
+a thread act without a box prompt). A change restarts the thread's harness
+once it is idle, so the tools come and go with it. Claude reaches the tools
+in-process (`mcpServers.mac`, allowed without a box prompt: the Mac asks for
+itself); Codex reaches them through `scripts/app-mcp-bridge.mjs`, which lists
+them only when `TEMP_CODE_MAC_TOKEN` is in its environment. The `mac.*`
+methods are local-only, and because the loopback socket is unauthenticated
+each call carries that token: an HMAC of the session id under a key made at
+boot, given only to that thread's bridge, so one thread cannot call as
+another. A fetched file lands in `<project>/.temp-code/attachments/<thread>/`
+(else the workspace's, else `<userData>/attachments/<thread>/`, which is in
+the fence's managed roots), never overwriting: a second copy gets ` (1)`.
+
+On the Mac (`src/main/server/remote/macBridge.ts`, `macRunner.ts`):
+
+- Per box, in the Mac's settings: `macBridge.policy.<envId>` is `off` (the
+  default), `read` or `read+run`; `macBridge.shared.<envId>` lists shared
+  folders: absolute, real paths, never `/`, the home directory or a directory
+  above it. Settings → Remote access → Mac bridge edits both.
+- Reads, listings and fetches inside the Mac's own managed roots (its
+  projects, workspaces and work root) or a shared folder go through without a
+  prompt. A path is judged by its real spelling: a symlink out of a shared
+  folder asks. Paths must be absolute (no `~`: the box's home is not the
+  Mac's). Any other path asks the person at the Mac, every time, with
+  "allow this folder for this thread" (not offered when the folder would be
+  home or wider).
+- Every command asks, showing the exact argv (or command string) and cwd,
+  whatever the thread's permission mode on the box, `auto` included, with
+  "allow this exact command for this thread" (argv and cwd must match). A
+  remembered command still shows on the Mac, as running, with Stop.
+- Remember rules live in memory per (box, thread) and end with the app.
+- A command runs through the Mac's login shell (`loginShell.ts`, `-lc`; argv
+  as `exec "$@"`, never re-split), in its own process group, with no stdin, an
+  environment cut down to `HOME`, `USER`, `LOGNAME`, `SHELL`, the locale,
+  `TMPDIR`, `TZ` and a base `PATH` the login shell extends, and a timeout
+  (default 2 minutes, at most 30). Past the timeout, past 1 MB of output, or
+  on Stop, the whole group gets SIGTERM, then SIGKILL after 2 s.
+- The prompt is a `macBridge.request` push to the Mac's own local sockets
+  only, shown as a card above the thread's composer (or a toast when the
+  thread is off screen), and answered by `macBridge.decide`, which is
+  local-only: no key, no phone, no box and no MCP bot can ever answer one.
+  Unanswered, a request counts as denied after 10 minutes.
+- One `[mac-bridge]` log line per call: host, thread, method, decision (and
+  for a command, the executable's name and its exit). Never a file's
+  contents or a command's output.
+
+Security model, in short: the box can ask, never decide. A compromised box can
+make the Mac show prompts and read what the Mac shared with it (or with its
+projects), nothing more; it can never run a command the person did not allow
+on the Mac. The admin key the Mac holds for the box is unchanged in what it
+can do on the box. On the box, the bridge is only as strong as the box's
+loopback (any local process can already speak as the implicit admin there);
+the per-thread token keeps one thread's tools from calling as another.
+Proof: `bun run script:e2e-mac-bridge` (two headless instances, one playing
+the Mac; runs on the box under `xvfb-run`).
+
 Still darwin-only by design: appshots, the Aliax browser-cookie sign-ins,
 the IntelliJ engine's pinned artifact (`lsp.ts` has only `darwin-arm64`; the
 Linux pin waits for a build that has not expired), and vibrancy. Known gap:
