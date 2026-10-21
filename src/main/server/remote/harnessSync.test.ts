@@ -419,3 +419,14 @@ describe('hook executables', () => {
 it('HARNESS_SET roots are clean relative paths', () => {
   for (const r of HARNESS_SET) expect(validRelPath(r.kind === 'tree' ? r.root : r.path)).toBe(true)
 })
+
+describe('stripHostBoundToml', () => {
+  it('drops a top-level base_url that points at the sender loopback and keeps everything else', async () => {
+    const { stripHostBoundToml } = await import('./harnessSync')
+    const toml = 'model = "x"\nchatgpt_base_url = "https://127.0.0.1:8789/codex"\n[model_providers.a]\nbase_url = "http://localhost:1/keep"\n'
+    const r = stripHostBoundToml(toml)
+    expect(r.dropped).toEqual(['chatgpt_base_url'])
+    expect(r.text).toBe('model = "x"\n[model_providers.a]\nbase_url = "http://localhost:1/keep"\n')
+    expect(stripHostBoundToml('model = "x"\nchatgpt_base_url = "https://example.com/codex"\n').dropped).toEqual([])
+  })
+})

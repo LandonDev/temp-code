@@ -180,6 +180,25 @@ export function stripHostBoundEnv(text: string): { text: string; dropped: string
   return { text: JSON.stringify(settings, null, 2) + '\n', dropped }
 }
 
+/** `config.toml` without top-level `*base_url` lines that point at the sender's loopback (Aliax's shim); the per-thread URL the driver passes is right here. Lines only: a TOML parse is not needed for a key = "string" at the top level. */
+export function stripHostBoundToml(text: string): { text: string; dropped: string[] } {
+  const dropped: string[] = []
+  const lines = text.split('\n')
+  let inTable = false
+  const kept = lines.filter((line) => {
+    const t = line.trim()
+    if (t.startsWith('[')) inTable = true
+    if (inTable) return true
+    const m = t.match(/^([A-Za-z0-9_]*base_url)\s*=\s*"([^"]*)"/)
+    if (m && LOOPBACK.test(m[2])) {
+      dropped.push(m[1])
+      return false
+    }
+    return true
+  })
+  return dropped.length ? { text: kept.join('\n'), dropped } : { text, dropped }
+}
+
 export class HarnessSync {
   private readonly cache = new Map<string, { size: number; mtimeMs: number; ino: number; sha: string }>()
   private readonly syncing = new Map<string, Promise<void>>()
@@ -585,6 +604,13 @@ export class HarnessSync {
           if (stripped.dropped.length) {
             out = Buffer.from(stripped.text, 'utf8')
             this.log(`settings.json: dropped env ${stripped.dropped.join(', ')} (a loopback address on the sender means nothing here)`)
+          }
+        }
+        if (relPath === '.codex/config.toml') {
+          const stripped = stripHostBoundToml(out.toString('utf8'))
+          if (stripped.dropped.length) {
+            out = Buffer.from(stripped.text, 'utf8')
+            this.log(`config.toml: dropped ${stripped.dropped.join(', ')} (a loopback address on the sender means nothing here)`)
           }
         }
         const mode = entry.mode & 0o777
