@@ -31,6 +31,7 @@ import { MasterReleaseWatcher } from '../deployDrift'
 import { AccountSync, accountSyncHooks } from './remote/accountSync'
 import { Peers } from './remote/peers'
 import { HarnessSync, handleHarness } from './remote/harnessSync'
+import { DeployTrigger, Publisher, handleHost, type HostJobs } from './hostJobs'
 import { SessionMover, handleSessionMove } from './remote/sessionMover'
 import { claudeConfigDir, codexHomeDir } from './sessionMove'
 import { PeerCalls, handlePeerRequest } from './remote/peerCalls'
@@ -383,6 +384,9 @@ export async function startServer(
     workRoot: () => workRoot(store).root
   })
   harnessSync.start()
+  // Deploy and publish from the app (hostJobs.ts): the box's trigger
+  // directory and the Mac's release scripts, each a log sockets may tail.
+  const hostJobs: HostJobs = { deploy: new DeployTrigger({ version: appVersion }), publish: new Publisher({ store }) }
   // Moving one thread between this host and a peer (remote/sessionMover.ts).
   const sessionMover = new SessionMover({
     host: {
@@ -689,6 +693,8 @@ export async function startServer(
     // Master's release number, when it changes: this host's own sockets only.
     const localSink = principal.kind === 'local' ? (push: ServerPush): void => sendFrame(push) : null
     if (localSink) localSinks.add(localSink)
+    /** The host-log subscriptions this socket asked for (hostJobs.ts). */
+    const offHostLogs: (() => void)[] = []
     /** per-connection file watchers (fs.watch), keyed by projectId */
     const fsWatches = new Map<string, () => void>()
     // One line per connection the first time its unsent bytes pass the mark:
@@ -819,6 +825,8 @@ export async function startServer(
         }
         const harness = await handleHarness(req, harnessSync)
         if (harness.handled) return sendFrame({ id: req.id, ok: true, result: harness.result })
+        const host = await handleHost(req, hostJobs, { connection, send: sendFrame, onClose: (off) => offHostLogs.push(off) })
+        if (host.handled) return sendFrame({ id: req.id, ok: true, result: host.result })
         const upload = await handleAttachmentUploads(req, uploads, principal.kind === 'remote' ? `key:${principal.keyId}` : principal.kind)
         if (upload.handled) return sendFrame({ id: req.id, ok: true, result: upload.result })
         const moved = await handleSessionMove(req, sessionMover)
@@ -1640,6 +1648,7 @@ export async function startServer(
       unsubscribeAccounts?.()
       offMacBridge?.()
       if (localSink) localSinks.delete(localSink)
+      for (const off of offHostLogs) off()
       peerCalls.drop(connection)
       for (const off of unsubs.values()) off()
       unsubs.clear()
@@ -1749,6 +1758,8 @@ export async function startServer(
       clearInterval(syncTimer)
       accountSync.close()
       harnessSync.close()
+      hostJobs.deploy.dispose()
+      hostJobs.publish.dispose()
       uploads.close()
       sessionMover.close()
       macBridge.close()

@@ -294,6 +294,16 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'mac.jobRead': 'local',
   'mac.jobSignal': 'local',
   'mac.jobClose': 'local',
+  // Deploy and publish from the app (contract-host.ts): a deploy of the box
+  // is asked over its link under an admin key; the Mac release signs and
+  // uploads from this machine and is this machine's renderer's alone.
+  'host.deployStatus': 'admin',
+  'host.deploy': 'admin',
+  'host.log': 'admin',
+  'host.publishStatus': 'local',
+  'host.publish': 'local',
+  'host.publishStop': 'local',
+  'host.releaseCheckout.set': 'local',
   // Saved hosts and their keys never leave this machine (thread K1).
   'remote.environments.list': 'local',
   'deploy.master': 'local',

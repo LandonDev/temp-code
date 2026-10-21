@@ -1098,7 +1098,9 @@ with the Mac app open.
 
 ## Updating
 
-For a ref already on GitHub, run from the Mac:
+For a ref already on GitHub, press "Deploy master to the box" in the Mac
+app's Settings → Remote access (below, "Deploy from the app"), or run from
+the Mac:
 
 ```sh
 ssh box 'box-update master'
@@ -1199,6 +1201,59 @@ Install or refresh launcher files without deploying:
 scripts/box/apply.sh --from 75 --through 75
 scripts/box/apply.sh --from 85 --through 85
 ```
+
+### Deploy from the app
+
+"Deploy master to the box" in Settings → Remote access → Deploy and publish
+is the same `box-update master`, pressed in the app with the log streamed
+back. `box-update` must run as root and the host runs as agents, so the app
+never runs it: the root-owned trigger of stage 87
+(scripts/box/87-deploy-trigger.sh) does. One-time install, from the Mac
+checkout:
+
+```sh
+bash scripts/box/apply.sh --from 87 --through 87
+```
+
+What the stage puts in place, all idempotent:
+
+- `/etc/tmpfiles.d/temp-code-deploy.conf`: `/run/temp-code/deploy`, root:agents
+  1770 (tmpfs, recreated at boot). Sticky and group-writable: agents can drop
+  and withdraw its own `request` and read the root-owned `log`, `ref` and
+  `exit`, and nothing else of root's can go.
+- `temp-code-deploy.path`: `PathExists=/run/temp-code/deploy/request` starts
+  `temp-code-deploy.service`, a oneshot running
+  `/usr/local/lib/temp-code/deploy-runner` (scripts/box/deploy-runner.sh) as
+  root. The runner reads the one-line ref, takes `master` or a `v1.0.N` tag
+  only (anything else is refused into the log with exit 2, nothing runs),
+  removes `exit`, truncates `log`, writes `ref`, removes `request` (in that
+  order, so the directory never reads as finished or idle between a request
+  and its run), runs `box-update <ref>` with its output appended to `log`,
+  and writes `exit` last with the status. `systemctl status
+  temp-code-deploy.service` and the journal have the same output.
+
+The app's side (src/main/server/hostJobs.ts `DeployTrigger`,
+src/shared/contract-host.ts): `host.deploy {ref}` (admin, the Mac calls it
+over the box's link) validates the ref, refuses when the directory is not
+writable ("Deploy from the app is not installed on this host; run `bash
+scripts/box/apply.sh --from 87 --through 87` from the Mac checkout once") or
+a deploy is pending or running, and drops the request; `host.deployStatus`
+reads the phase from the files alone (`request` pending, `log` without `exit`
+running, `exit` done, nothing since boot idle), so it is right again after
+the host restarts into the new build mid-deploy; `host.log {job: 'deploy'}`
+answers the log so far and subscribes the socket to `host-log` pushes. A
+request nobody picks up within 15 s is withdrawn and reported as the trigger
+not running. The restart drops the Mac's link; the renderer asks for the log
+again on link-up and the card keeps tailing (`src/renderer/src/lib/hostJobs.ts`).
+The card says the box cannot be stopped mid-way (box-update rolls back on a
+failed trial) and ends with "Deployed v1.0.N, the service is back" or the
+failure's last lines. The confirm names the versions: what the box runs
+(its package.json) against origin/master's in the Mac's release checkout.
+Proof without root: `src/main/server/hostDeployRunner.test.ts` runs the
+runner against a scratch directory and a fake `box-update`
+(`TEMP_CODE_DEPLOY_DIR`, `TEMP_CODE_BOX_UPDATE`), and `hostJobs.test.ts`
+drives the app's side through the same files. The Mac's "Publish Mac
+release" button is the other half (CLAUDE.md "Releases").
 
 For green local master commits that are not on GitHub yet, transfer a bundle
 of that same repo instead of pushing from an implementation thread:

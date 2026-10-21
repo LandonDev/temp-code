@@ -93,6 +93,23 @@ Two separate steps, on purpose.
    version the feed already serves. Apple silicon only; Intel is out of
    scope for now.
 
+3. **Both are buttons in the app too, still pressed by the user** (Settings →
+   Remote access → Deploy and publish; src/main/server/hostJobs.ts,
+   src/shared/contract-host.ts, src/renderer/src/surfaces/DeploySettings.tsx).
+   "Publish Mac release" on This Mac's row runs `bun scripts/release.ts
+   "<notes>"` then `bun run release:publish` through the login shell in the
+   checkout the `release.checkout` setting names (default
+   ~/IdeaProjects/temp-code, the field beside the button), the notes
+   prefilled from the commit subjects since the last `v1.0.*` tag; it refuses
+   a dirty tree, a branch other than master and a version the feed already
+   serves before starting, and the scripts' own refusals come through as the
+   log's last lines. The log streams into a card under the rows (last 40
+   lines, following, Stop kills the scripts' process group). `host.publish*`
+   is local-only: no key ever reaches it. "Deploy master to the box" on a
+   host's row is `host.deploy` (admin, over the box's link) and the root-owned
+   trigger of docs/box.md "Deploy from the app"; its confirm names the
+   versions ("v1.0.270 → v1.0.273, 3 releases").
+
 Never build into or swap /Applications/TempCode.app yourself: the installed
 app replaces itself from the feed, and only from the feed.
 

@@ -39,7 +39,12 @@ describe('METHOD_CAPABILITY', () => {
         'session.move',
         // The Mac bridge: a box thread's own tools (token-gated), and the Mac's decisions and policy.
         ...methods.filter((m) => m.startsWith('mac.')),
-        ...methods.filter((m) => m.startsWith('macBridge.') && !m.startsWith('macBridge.thread.'))
+        ...methods.filter((m) => m.startsWith('macBridge.') && !m.startsWith('macBridge.thread.')),
+        // The Mac release signs and uploads from this machine (contract-host.ts).
+        'host.publishStatus',
+        'host.publish',
+        'host.publishStop',
+        'host.releaseCheckout.set'
       ].sort()
     )
   })
@@ -75,7 +80,11 @@ describe('METHOD_CAPABILITY', () => {
         'session.move.status',
         // The reverse RPC a Mac's main process speaks on its link to this host, and its settle report (contract-crosshost.ts).
         ...methods.filter((m) => m.startsWith('peer.')),
-        'crossHost.settled'
+        'crossHost.settled',
+        // A deploy of this host, and its log, are asked over its link under an admin key (contract-host.ts).
+        'host.deploy',
+        'host.deployStatus',
+        'host.log'
       ].sort()
     )
   })

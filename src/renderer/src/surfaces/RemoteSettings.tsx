@@ -21,6 +21,7 @@ import { Heading, INPUT_CLASS, Input, Row, SecondaryButton, Segmented, Toggle } 
 import { MatrixSpinner } from "./threads/bits";
 import { harnessLine } from "./harnessLine";
 import { MacBridgeSettings } from "./MacBridgeSettings";
+import { DeploySettings } from "./DeploySettings";
 
 /**
  * Settings → Remote access (plan 5jtfkIC45Cbr): the environment id, the
@@ -224,6 +225,8 @@ export function RemoteSettings() {
           ) : null}
         </>
       ) : null}
+
+      <DeploySettings />
 
       <MacBridgeSettings />
 

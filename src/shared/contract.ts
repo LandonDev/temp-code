@@ -12,6 +12,7 @@ import { MacBridgeRequestSchemas } from './contract-macbridge'
 import { CrossHostRequestSchemas } from './contract-crosshost'
 import { MacBridgeRulesRequestSchemas } from './contract-macbridge-rules'
 import { MacJobRequestSchemas } from './contract-macjobs'
+import { HostRequestSchemas } from './contract-host'
 import { AGENT_TYPES } from './catalog'
 import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
@@ -112,6 +113,7 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...CrossHostRequestSchemas,
   ...MacBridgeRulesRequestSchemas,
   ...MacJobRequestSchemas,
+  ...HostRequestSchemas,
   // refresh: re-probe the installed CLIs of the probed providers first.
   z.object({
     id: z.string(),
@@ -938,6 +940,8 @@ export type ServerPush =
   // The Mac bridge (contract-macbridge.ts): `peer.call` to a registered Mac's
   // link only; `macBridge.*` to the Mac's own local sockets only.
   | import('./contract-macbridge').MacBridgePush
+  // Deploy and publish from the app (contract-host.ts): to the sockets that asked for the job's log.
+  | import('./contract-host').HostLogPush
   // Watcher spine (M11): project-relative path, debounced ~100 ms.
   | { push: 'file-event'; projectId: string; path: string; kind: 'changed' | 'created' | 'deleted' }
   // Build rail: run state plus any new log lines (batched ~50 ms). A new
