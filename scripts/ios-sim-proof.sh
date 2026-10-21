@@ -33,6 +33,9 @@
 #   settings Settings, Hosts, a host's detail (TC_TEST_OPEN=host) and the pairing
 #           sheet (TC_TEST_SHEET=pair, and pair-error for a refused code), light
 #           and dark, then Settings and the detail at the accessibility size.
+#   diff    The diff screen: the small edit of the dark-mode thread and the
+#           3,600-line edit of the gateway-router thread, light and dark, then
+#           the big one at the accessibility size.
 #   push    A notification tap (L6): a payload shaped like the hub's, routed
 #           through the delegate at launch, lands on the named thread's row;
 #           the navigation report proves the seq; Settings shows the row.
@@ -442,9 +445,22 @@ settings_set() {
   xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
 }
 
+diff_set() {
+  for mode in light dark; do
+    appearance "$mode"
+    shot "diff-small-$mode" thread "dark mode" board diff
+    shot "diff-big-$mode" thread "gateway router" board diff
+  done
+  appearance light
+  xcrun simctl ui "$TC_SIM_UDID" content_size "$A11Y_SIZE" >/dev/null
+  shot "diff-big-a11y" thread "gateway router" board diff
+  xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
+}
+
 case "$SET" in
   f4) f4_set ;;
   settings) settings_set ;;
+  diff) diff_set ;;
   f4-ui) f4_ui_set ;;
   shell) shell_set; host_gone_set ;;
   threads) threads_set ;;
