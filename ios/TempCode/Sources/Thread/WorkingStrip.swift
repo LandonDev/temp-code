@@ -105,7 +105,8 @@ struct WorkingStripView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 10)
-                    .frame(height: 22)
+                    .padding(.vertical, 3)
+                    .frame(minHeight: 22)
                     .background(Color(.tertiarySystemFill), in: Capsule())
             }
             .buttonStyle(.pressable)
@@ -118,7 +119,8 @@ struct WorkingStripView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10)
-                    .frame(height: 22)
+                    .padding(.vertical, 3)
+                    .frame(minHeight: 22)
                     .background(Tint.warning, in: Capsule())
             }
             .buttonStyle(.pressable)
