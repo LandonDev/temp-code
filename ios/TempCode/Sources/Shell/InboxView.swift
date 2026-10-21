@@ -153,9 +153,9 @@ struct InboxView: View {
         return out
     }
 
-    /// DEBUG only: `TC_TEST_OPEN=item` pushes the newest pull request for the proof's detail shot.
+    /// DEBUG only: `TC_TEST_OPEN=item` (or `item-changes`) pushes the newest pull request for the proof's detail shots.
     private func openForProof(_ clients: [EnvironmentClient]) {
-        guard TestHooks.open == "item", !opened else { return }
+        guard TestHooks.open?.hasPrefix("item") == true, !opened else { return }
         let entries = store.entries(clients: clients)
         guard let entry = entries.first(where: { $0.item.kind.rawValue == "pr" }) ?? entries.first else { return }
         opened = true
