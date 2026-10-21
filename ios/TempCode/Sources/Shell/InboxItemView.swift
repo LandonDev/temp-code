@@ -67,6 +67,8 @@ struct InboxItemView: View {
             .padding(.bottom, 32)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        // DEBUG only: `TC_TEST_OPEN=item-changes` opens scrolled to the end, where the patch is, for the proof.
+        .defaultScrollAnchor(TestHooks.open == "item-changes" ? .bottom : .top)
         .background(Surface.background)
         .navigationTitle(isPullRequest ? "Pull Request" : "Issue")
         .navigationBarTitleDisplayMode(.inline)
