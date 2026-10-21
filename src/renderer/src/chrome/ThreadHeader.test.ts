@@ -61,3 +61,16 @@ describe("chipMenuItems: the Mac bridge", () => {
     expect(item(chip("idle"), { state: null })).toMatchObject({ disabled: true });
   });
 });
+
+describe("chipMenuItems: Resources", () => {
+  const labels = (resources: number) =>
+    chipMenuItems(chip("idle"), undefined, resources)
+      .filter((i) => i.kind === "item")
+      .map((i) => (i.kind === "item" ? `${i.id}=${i.label}` : ""));
+  it("always offers the panel, with the count once known, and the archive asks when there is something to remove", () => {
+    expect(labels(0)).toContain("resources=Resources…");
+    expect(labels(0)).toContain("archive=Archive");
+    expect(labels(2)).toContain("resources=Resources (2)…");
+    expect(labels(2)).toContain("archive=Archive…");
+  });
+});

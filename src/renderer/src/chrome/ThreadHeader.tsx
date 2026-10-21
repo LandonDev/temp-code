@@ -1,7 +1,7 @@
 import { sessionStore } from "../lib/tcserver/store";
 import { bridgeableEnvironment, loadThreadBridge, setThreadBridge, useThreadBridge } from "../lib/macBridge";
 import type { MacBridgeThreadState } from "@server/shared/contract-macbridge";
-import { useCallback, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
 import type { ThreadRules } from "@server/shared/rules";
 import type { ThreadType } from "../lib/tcserver/types";
 import type { HeaderModel } from "../lib/threadHeaderModel";
@@ -15,6 +15,8 @@ import { PanelRight } from "./icons";
 import { ThreadHeaderStrip, chipTitle, type ArchivedThread, type ChipThread, type StripChip } from "./ThreadHeaderStrip";
 import { TuneDialog } from "./ThreadTune";
 import { MacBridgeRulesDialog } from "./MacBridgeRemember";
+import { ArchiveThreadDialog, ThreadResourcesDialog } from "./ThreadResourcesDialog";
+import { liveResources, loadThreadResources, startThreadResources, useThreadResources } from "../lib/threadResources";
 import { ThreadHostChip } from "./ThreadHostChip";
 import { IconButton } from "./TitleBar";
 
@@ -55,7 +57,7 @@ const TUNABLE: ReadonlySet<ThreadType> = new Set(["orchestration", "research"]);
 /** The Mac bridge's switch for a thread on another host (lib/macBridge.ts); absent for this Mac's own threads. */
 export type ChipBridge = { state: MacBridgeThreadState | null };
 
-export function chipMenuItems(chip: StripChip, bridge?: ChipBridge): ExplorerMenuItem[] {
+export function chipMenuItems(chip: StripChip, bridge?: ChipBridge, resources = 0): ExplorerMenuItem[] {
   const t = chip.thread;
   const items: ExplorerMenuItem[] = [{ kind: "item", id: "rename", label: "Rename" }];
   if (t.threadType && TUNABLE.has(t.threadType))
@@ -84,7 +86,9 @@ export function chipMenuItems(chip: StripChip, bridge?: ChipBridge): ExplorerMen
     );
     if (on) items.push({ kind: "item", id: "mac-bridge-rules", label: "Mac approvals…" });
   }
-  items.push({ kind: "sep" }, { kind: "item", id: "archive", label: "Archive" });
+  // What the thread created (worktrees, simulators, dev instances), with Remove per row.
+  items.push({ kind: "sep" }, { kind: "item", id: "resources", label: resources ? `Resources (${resources})…` : "Resources…" });
+  items.push({ kind: "sep" }, { kind: "item", id: "archive", label: resources ? "Archive…" : "Archive" });
   items.push({ kind: "sep" }, { kind: "item", id: "delete", label: "Delete…", danger: true });
   return items;
 }
@@ -119,15 +123,20 @@ export function ThreadHeader({
   const tuningSession = tuning ? sessionStore.get(tuning.id) : undefined;
   const [deleting, setDeleting] = useState<StripChip | null>(null);
   const [bridgeRules, setBridgeRules] = useState<StripChip | null>(null);
+  const [resourcesFor, setResourcesFor] = useState<StripChip | null>(null);
+  const [archiving, setArchiving] = useState<StripChip | null>(null);
+  useEffect(() => startThreadResources(), []);
   const [pauseAll, setPauseAll] = useState<PauseAllState>("idle");
 
   const onContextMenu = useCallback((chip: StripChip, event: ReactMouseEvent<HTMLDivElement>) => {
     setMenu({ x: event.clientX, y: event.clientY, chip });
     const env = sessionStore.get(chip.id)?.environmentId;
     if (env && bridgeableEnvironment(env)) void loadThreadBridge(env, chip.id);
+    void loadThreadResources(chip.id);
   }, []);
   const menuEnv = menu ? sessionStore.get(menu.chip.id)?.environmentId : undefined;
   const menuBridgeState = useThreadBridge(menu?.chip.id);
+  const menuResources = useThreadResources(menu?.chip.id);
   const menuBridge: ChipBridge | undefined = menuEnv && bridgeableEnvironment(menuEnv) ? { state: menuBridgeState } : undefined;
 
   const onPick = (id: string) => {
@@ -136,7 +145,9 @@ export function ThreadHeader({
     setMenu(null);
     if (id === "rename") setRenamingId(chip.id);
     else if (id === "tune") setTuning(chip);
-    else if (id === "archive") onArchive(chip.id);
+    // With resources on the ledger the archive asks whether they go too (ArchiveThreadDialog).
+    else if (id === "archive") (liveResources(chip.id).length ? setArchiving(chip) : onArchive(chip.id));
+    else if (id === "resources") setResourcesFor(chip);
     else if (id === "delete") setDeleting(chip);
     else if (id === "mac-bridge-rules") setBridgeRules(chip);
     else if (id === "mac-bridge") {
@@ -211,7 +222,7 @@ export function ThreadHeader({
         <ExplorerMenu
           x={menu.x}
           y={menu.y}
-          items={chipMenuItems(menu.chip, menuBridge)}
+          items={chipMenuItems(menu.chip, menuBridge, menuResources.length)}
           ariaLabel="Thread actions"
           onPick={onPick}
           onClose={() => setMenu(null)}
@@ -232,6 +243,18 @@ export function ThreadHeader({
       ) : null}
       {bridgeRules ? (
         <MacBridgeRulesDialog sessionId={bridgeRules.id} title={chipTitle(bridgeRules)} onClose={() => setBridgeRules(null)} />
+      ) : null}
+      {resourcesFor ? (
+        <ThreadResourcesDialog sessionId={resourcesFor.id} title={chipTitle(resourcesFor)} onClose={() => setResourcesFor(null)} />
+      ) : null}
+      {archiving ? (
+        <ArchiveThreadDialog
+          sessionId={archiving.id}
+          title={chipTitle(archiving)}
+          resources={liveResources(archiving.id)}
+          onCancel={() => setArchiving(null)}
+          onArchived={() => setArchiving(null)}
+        />
       ) : null}
       {deleting ? (
         <ConfirmDialog
