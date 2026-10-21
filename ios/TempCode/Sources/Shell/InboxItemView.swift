@@ -79,7 +79,7 @@ struct InboxItemView: View {
                 }
             }
         }
-        .task(id: key) { await load() }
+        .task(id: "\(key)|\(cwd ?? "")") { await load() }
     }
 
     @ViewBuilder
@@ -145,7 +145,7 @@ struct InboxItemView: View {
             failed = store.details[key] == nil
         }
         if isPullRequest, store.diffs[key] == nil {
-            if let diff = try? await client.request(Methods.GitHubPrDiff.self, .init(cwd: cwd, number: item.number)) {
+            if let diff = try? await client.request(Methods.GithubPrDiff.self, .init(cwd: cwd, number: item.number)) {
                 store.putDiff(diff, for: key)
             } else {
                 diffFailed = true
@@ -339,9 +339,9 @@ private struct InboxChanges: View {
                     .font(.footnote)
                     .foregroundStyle(.tertiary)
             }
-            let budgets = budgets(files)
+            let limits = budgets(files)
             ForEach(Array(files.enumerated()), id: \.element.id) { index, file in
-                PatchFileView(file: file, expanded: open.contains(file.id), budget: budgets[index]) {
+                PatchFileView(file: file, expanded: open.contains(file.id), budget: limits[index]) {
                     withAnimation(open.contains(file.id) ? Motion.collapse : Motion.expand) {
                         if open.contains(file.id) { open.remove(file.id) } else { open.insert(file.id) }
                     }
@@ -574,7 +574,9 @@ nonisolated struct PatchFile: Identifiable, Hashable {
             if !block.isEmpty, let file = parseFile(block) { files.append(file) }
             block = []
         }
-        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+        var rows = text.split(separator: "\n", omittingEmptySubsequences: false)
+        if rows.last?.isEmpty == true { rows.removeLast() }
+        for line in rows {
             if line.hasPrefix("diff --git ") { flush() }
             block.append(line)
         }
@@ -617,7 +619,7 @@ nonisolated struct PatchFile: Identifiable, Hashable {
                 file.binary = true
                 continue
             }
-            if line.hasPrefix("--- ") {
+            if !inHunk, line.hasPrefix("--- ") {
                 let next = stripPath(line.dropFirst(4))
                 if next == "/dev/null" {
                     if file.status == .modified { file.status = .added }
@@ -626,7 +628,7 @@ nonisolated struct PatchFile: Identifiable, Hashable {
                 }
                 continue
             }
-            if line.hasPrefix("+++ ") {
+            if !inHunk, line.hasPrefix("+++ ") {
                 let next = stripPath(line.dropFirst(4))
                 if next == "/dev/null" {
                     file.status = .deleted
