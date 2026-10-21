@@ -528,3 +528,17 @@ describe('a static token as the live sign-in on a host (the box)', () => {
     expect(activate).not.toHaveBeenCalled()
   })
 })
+
+describe('cliReadable', () => {
+  it('gives an access-only codex blob the placeholder refresh token codex-cli 0.163 insists on, and leaves everything else alone', async () => {
+    const { cliReadable, ACCESS_ONLY_REFRESH } = await import('./accountSync')
+    const access = JSON.stringify({ auth_mode: 'chatgpt', OPENAI_API_KEY: null, tokens: { id_token: 'i', access_token: 'a', account_id: 'x' }, last_refresh: 't' })
+    const out = JSON.parse(cliReadable('codex', access))
+    expect(out.tokens.refresh_token).toBe(ACCESS_ONLY_REFRESH)
+    expect(out.tokens.access_token).toBe('a')
+    const owned = JSON.stringify({ tokens: { refresh_token: 'real', access_token: 'a' } })
+    expect(cliReadable('codex', owned)).toBe(owned)
+    expect(cliReadable('claude-code', access)).toBe(access)
+    expect(cliReadable('codex', 'not json')).toBe('not json')
+  })
+})

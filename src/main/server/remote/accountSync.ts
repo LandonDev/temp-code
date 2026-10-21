@@ -617,9 +617,31 @@ const liveExpiryOf = async (service: ServiceId): Promise<number | null> => {
   }
 }
 
+/** The value an access-only Codex copy carries where its refresh token was:
+ *  codex-cli 0.163+ refuses an auth.json whose `tokens` lack `refresh_token`
+ *  ("missing field `refresh_token`") and then runs as if signed out, so every
+ *  thread answered 401 from the API-key path. The gateway swaps the real token
+ *  into each request and the owner refreshes, so the file's own refresh token
+ *  is never used here; it only has to parse. */
+export const ACCESS_ONLY_REFRESH = 'aliax-access-only'
+
+/** A Codex blob the CLI will read: an access-only copy gets the placeholder refresh token. Other services and malformed blobs pass through. */
+export function cliReadable(service: ServiceId, blob: string): string {
+  if (service !== 'codex') return blob
+  let parsed: { tokens?: Record<string, unknown> }
+  try {
+    parsed = JSON.parse(blob)
+  } catch {
+    return blob
+  }
+  if (!parsed?.tokens || typeof parsed.tokens !== 'object' || typeof parsed.tokens.refresh_token === 'string') return blob
+  parsed.tokens.refresh_token = ACCESS_ONLY_REFRESH
+  return JSON.stringify(parsed)
+}
+
 /** Make a blob the CLI's live sign-in on this host, restarting nothing. */
 const installLive = async (service: ServiceId, name: string, blob: string): Promise<void> => {
-  await adapter(service).activate(blob, coreAccounts.extra(service, name), new Set())
+  await adapter(service).activate(cliReadable(service, blob), coreAccounts.extra(service, name), new Set())
 }
 
 /** The running instance, for aliax-core's hooks (set by startServer; aliax.ts reads it). */
