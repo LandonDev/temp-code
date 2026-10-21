@@ -10,6 +10,7 @@ import type { ReadyMap } from "../lib/threadStripModel";
 import { THREAD_LABELS } from "../surfaces/threads/bits";
 import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
 import { NewThreadChooser } from "./NewThreadChooser";
+import { ProjectPlanChip } from "./ProjectPlanChip";
 import { ConfirmDialog } from "./ProjectDialogs";
 import { PanelRight } from "./icons";
 import { ThreadHeaderStrip, chipTitle, type ArchivedThread, type ChipThread, type StripChip } from "./ThreadHeaderStrip";
@@ -192,7 +193,12 @@ export function ThreadHeader({
         stripRef={stripRef}
         archived={archived}
         onRestore={onRestore}
-        trailing={<NewThreadChooser workspaceId={workspaceId} empty={empty} onStart={onNew} />}
+        trailing={
+          <>
+            <NewThreadChooser workspaceId={workspaceId} empty={empty} onStart={onNew} />
+            <ProjectPlanChip />
+          </>
+        }
         end={
           <div className="mr-1.5 flex shrink-0 items-center gap-1">
             {model.activeId ? <ThreadHostChip sessionId={model.activeId} /> : null}

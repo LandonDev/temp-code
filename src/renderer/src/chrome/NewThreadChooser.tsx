@@ -6,7 +6,7 @@ import type { ThreadType } from "../lib/tcserver/types";
 import { ChevronLeft, Plus, SlidersHorizontal } from "./icons";
 import { Popover } from "./Popover";
 import { ThreadTune, normalizeTune } from "./ThreadTune";
-import { THREAD_GLYPHS, THREAD_HINTS, THREAD_LABELS, THREAD_TINTS, THREAD_TYPES } from "../surfaces/threads/bits";
+import { THREAD_GLYPHS, THREAD_HINTS, THREAD_LABELS, THREAD_START_LABELS, THREAD_TINTS, THREAD_TYPES } from "../surfaces/threads/bits";
 
 const TUNABLE: ReadonlySet<ThreadType> = new Set(["orchestration", "research"]);
 
@@ -111,7 +111,7 @@ export function NewThreadChooser({
                       <Glyph className="size-3.5" strokeWidth={1.75} />
                     </span>
                     <span className="min-w-0">
-                      <span className="block text-[13px] text-content">{THREAD_LABELS[type]}</span>
+                      <span className="block text-[13px] text-content">{THREAD_START_LABELS[type] ?? THREAD_LABELS[type]}</span>
                       <span className="block truncate text-[11px] text-content/40">{THREAD_HINTS[type]}</span>
                     </span>
                   </button>

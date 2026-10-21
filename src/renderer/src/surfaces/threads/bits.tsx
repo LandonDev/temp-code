@@ -40,6 +40,11 @@ export const THREAD_LABELS: Record<ThreadType, string> = {
   research: "Research",
 };
 
+/** What the new-thread chooser calls a type when its row is an action, not a noun. */
+export const THREAD_START_LABELS: Partial<Record<ThreadType, string>> = {
+  "project-plan": "Plan the project…",
+};
+
 /** Identity tint per thread type — the glyph carries it, nothing else. */
 export const THREAD_TINTS: Record<ThreadType, string> = {
   chat: "text-info",

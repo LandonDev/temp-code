@@ -36,6 +36,10 @@ import {
   type Section,
 } from "../../lib/threads/planDoc";
 import { usePlanFile } from "../../hooks/usePlanFile";
+import { projectPlanComplete } from "@server/shared/projectPlan";
+import { loadProjectPlan, useProjectPlan } from "../../lib/projectPlan";
+import { MilestoneList, ProjectPlanCard } from "./ProjectPlanCard";
+import { Pin } from "../../chrome/icons";
 import { AgentMarkdown } from "../AgentMarkdown";
 import {
   MatrixSpinner,
@@ -93,10 +97,33 @@ export function PlanView(props: ThreadViewProps) {
   const running = session.status === "running" || session.status === "starting";
   const waiting = session.status === "waiting";
   const doc = usePlanFile(session.planPath, running);
+  // A project plan (docs/PROJECT-PLAN.md): the same document view, with
+  // the milestones live and the options card instead of Start.
+  const projectPlan = session.threadType === "project-plan";
+  const planState = useProjectPlan(projectPlan ? session.projectId : null);
 
   const sections = useMemo(() => splitSections(doc ?? ""), [doc]);
-  const tasks = useMemo(() => planTasks(sections), [sections]);
+  const tasks = useMemo(() => (projectPlan ? [] : planTasks(sections)), [sections, projectPlan]);
   const hasDoc = sections.length > 0;
+  // The project plan's ## Milestones renders as the live list: its own
+  // `###` sections fold into it instead of printing as headings.
+  const rendered = useMemo(() => {
+    if (!projectPlan) return sections.map((s, i) => ({ s, i, milestones: false }));
+    const out: { s: Section; i: number; milestones: boolean }[] = [];
+    let inside = false;
+    sections.forEach((s, i) => {
+      if (s.level <= 2 && s.heading) inside = /^milestones$/i.test(s.heading);
+      if (inside && s.level >= 3) return;
+      out.push({ s, i, milestones: inside && s.level <= 2 });
+    });
+    return out;
+  }, [sections, projectPlan]);
+  const complete = projectPlan && !!doc && projectPlanComplete(doc);
+  const milestoneDetail = useMemo(() => {
+    if (!projectPlan || !planState?.milestones.length) return null;
+    const done = planState.milestones.filter((m) => m.done).length;
+    return `${done} of ${planState.milestones.length} milestone${planState.milestones.length === 1 ? "" : "s"} done`;
+  }, [projectPlan, planState]);
 
   // Revision wash: a settled section whose content changed flashes once.
   // The streaming tail (last section while running) is growth, not revision.
@@ -147,9 +174,12 @@ export function PlanView(props: ThreadViewProps) {
     return () => el.removeEventListener("scroll", onScroll);
   }, [hasDoc]);
 
-  const spawned = useSyncExternalStore(subscribeMetas, () =>
+  // A project plan hands off milestone by milestone, never as a whole:
+  // the builds sharing its file are no handoff chip.
+  const spawnedRaw = useSyncExternalStore(subscribeMetas, () =>
     findSpawned(session.id, session.planPath, session.implementationId),
   );
+  const spawned = projectPlan ? null : spawnedRaw;
 
   // Chat pane phases: open alongside the plan while the conversation runs;
   // collapsed to the edge bar once the plan has handed off, and once the
@@ -182,14 +212,26 @@ export function PlanView(props: ThreadViewProps) {
       {/* Plan pane header: identity on the left, its action on the
           right — Start until the handoff, then the running thread. */}
       <PaneHeader
-        label="Plan"
+        label={projectPlan ? "Project plan" : "Plan"}
         detail={
-          [tasks.length > 0 ? `${tasks.length} tasks` : null, session.planCompletedAt && !spawned ? "complete" : null]
-            .filter(Boolean)
-            .join(" · ") || null
+          projectPlan
+            ? milestoneDetail
+            : [tasks.length > 0 ? `${tasks.length} tasks` : null, session.planCompletedAt && !spawned ? "complete" : null]
+                .filter(Boolean)
+                .join(" · ") || null
         }
       >
-        {spawned ? (
+        {projectPlan ? (
+          planState?.pinned ? (
+            <span
+              title="Kept as the project's plan"
+              className="flex items-center gap-1 px-2 text-[11px] text-content/50"
+            >
+              <Pin className="size-3 text-info" strokeWidth={1.75} />
+              Project's plan
+            </span>
+          ) : null
+        ) : spawned ? (
           <HandoffChip spawned={spawned} onOpen={() => props.onOpenSession?.(spawned.id)} />
         ) : (
           <AnimatePresence>
@@ -212,7 +254,7 @@ export function PlanView(props: ThreadViewProps) {
           className="min-h-0 flex-1 overflow-y-auto select-text"
         >
           <div className="mx-auto w-full max-w-3xl px-6 py-5">
-            {sections.map((s, i) => (
+            {rendered.map(({ s, i, milestones }) => (
               <div
                 key={`${i}:${flash[i] ?? 0}`}
                 ref={(el) => {
@@ -230,8 +272,24 @@ export function PlanView(props: ThreadViewProps) {
                   cwd={session.cwd}
                   onOpenFile={props.onOpenFile}
                 />
+                {milestones && doc ? (
+                  <MilestoneList
+                    doc={doc}
+                    projectId={session.projectId}
+                    onTicked={() => session.projectId && void loadProjectPlan(session.projectId)}
+                  />
+                ) : null}
               </div>
             ))}
+            {complete && doc && !running && !waiting ? (
+              <ProjectPlanCard
+                session={session}
+                doc={doc}
+                state={planState}
+                onStarted={(id) => props.onOpenSession?.(id)}
+                onChanged={() => session.projectId && void loadProjectPlan(session.projectId)}
+              />
+            ) : null}
           </div>
         </div>
       </div>

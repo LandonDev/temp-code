@@ -1,3 +1,4 @@
+import { loadProjectPlan } from "./projectPlan";
 import { useSyncExternalStore } from "react";
 import type { BuildRun, RemoteStatus } from "@server/shared/build";
 import type {
@@ -156,7 +157,10 @@ export async function mergeFrom(
 }
 
 export async function mergeInto(projectId: string, target: string): Promise<MergeResult> {
-  return (await linkOfProject(projectId).request("project.mergeInto", { projectId, target })) as MergeResult;
+  const result = (await linkOfProject(projectId).request("project.mergeInto", { projectId, target })) as MergeResult;
+  // A landed build ticks the milestone its thread works in the project plan.
+  if (result.ok) void loadProjectPlan(projectId);
+  return result;
 }
 
 /** Last run and its buffered log, replayed into the store. */
