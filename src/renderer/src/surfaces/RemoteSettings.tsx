@@ -9,6 +9,8 @@ import type {
   RemoteStatus,
 } from "@server/shared/contract-remote";
 import type { HarnessSyncStatus } from "@server/shared/contract-harness";
+import type { AttachmentSettings } from "@server/shared/contract-attachments";
+import { forgetAttachmentSettings } from "../lib/attachmentUpload";
 import { DialogFooter, ErrorLine, errorText } from "../chrome/ConfirmDialog";
 import { Check, Copy } from "../chrome/icons";
 import { Modal } from "../chrome/Modal";
@@ -46,24 +48,27 @@ export function RemoteSettings() {
   const [pairings, setPairings] = useState<RemotePairing[]>([]);
   const [sessions, setSessions] = useState<RemoteSession[]>([]);
   const [harness, setHarness] = useState<HarnessSyncStatus | null>(null);
+  const [attachments, setAttachments] = useState<AttachmentSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<"key" | "pair" | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const [s, k, p, b, h] = await Promise.all([
+      const [s, k, p, b, h, a] = await Promise.all([
         rpc<RemoteStatus>("remote.status"),
         rpc<RemoteKey[]>("remote.keys.list"),
         rpc<RemotePairing[]>("remote.pairings.list"),
         rpc<RemoteSession[]>("remote.sessions.list"),
         // An older host without the harness sync answers an error: the section just stays away.
         rpc<HarnessSyncStatus>("harness.status").catch(() => null),
+        rpc<AttachmentSettings>("attachment.settings", {}).catch(() => null),
       ]);
       setStatus(s);
       setKeys(k);
       setPairings(p);
       setSessions(b);
       setHarness(h);
+      setAttachments(a);
       setError(null);
     } catch (err) {
       setError(errorText(err));
@@ -135,6 +140,20 @@ export function RemoteSettings() {
       <Row label="Stuck after" description="Minutes a working thread may stay silent before bots and the hub hear it is stuck.">
         <MinutesField value={status.stuckMinutes} onCommit={(stuckMinutes) => void setSettings({ stuckMinutes })} />
       </Row>
+      {attachments ? (
+        <Row
+          label="Attachment limit"
+          description="Largest file, in MB, a thread on this machine takes as an upload or a paste. Files from another host are copied here first."
+        >
+          <MegabytesField
+            value={Math.round(attachments.maxBytes / 1024 / 1024)}
+            onCommit={(mb) => {
+              forgetAttachmentSettings();
+              void act("attachment.settings.set", { maxBytes: mb * 1024 * 1024 });
+            }}
+          />
+        </Row>
+      ) : null}
       <ErrorLine error={error} />
 
       <Heading title="Clients" />
@@ -289,6 +308,29 @@ function MinutesField({ value, onCommit }: { value: number; onCommit: (minutes: 
   return (
     <Input
       aria-label="Stuck after minutes"
+      inputMode="numeric"
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+      }}
+      className="w-20 text-right"
+    />
+  );
+}
+
+function MegabytesField({ value, onCommit }: { value: number; onCommit: (mb: number) => void }) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => setText(String(value)), [value]);
+  const commit = () => {
+    const mb = Number(text);
+    if (Number.isInteger(mb) && mb > 0 && mb <= 100_000 && mb !== value) onCommit(mb);
+    else setText(String(value));
+  };
+  return (
+    <Input
+      aria-label="Attachment limit in MB"
       inputMode="numeric"
       value={text}
       onChange={(e) => setText(e.target.value)}

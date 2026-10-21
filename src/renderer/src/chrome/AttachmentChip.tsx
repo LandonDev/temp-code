@@ -29,7 +29,8 @@ function useAttachmentSrc(environmentId: string, attachment: Attachment, wanted:
 export function openAttachmentImages(environmentId: string, files: readonly Attachment[], at: Attachment): void {
   const images = files.filter((file) => file.kind === 'image')
   const items: LightboxItem[] = images.map((file) => ({
-    environmentId,
+    // A file still on the host it was attached from reads from there.
+    environmentId: file.environmentId ?? environmentId,
     name: file.name,
     src: attachmentPreviewSrc(file),
     path: file.path
@@ -43,22 +44,47 @@ type Props = {
   onRemove?: () => void
   /** Image chips open the viewer when this is given. */
   onOpen?: () => void
+  /** An upload to the thread's host in flight (or failed): a bar along the chip's foot. */
+  progress?: { sent: number; total: number; failed?: boolean }
 }
 
-export function AttachmentChip({ environmentId, attachment, onRemove, onOpen }: Props) {
+function UploadBar({ progress }: { progress: NonNullable<Props['progress']> }) {
+  const fraction = progress.total > 0 ? Math.min(1, progress.sent / progress.total) : progress.failed ? 1 : 0
+  return (
+    <span
+      aria-hidden
+      className="pointer-events-none absolute inset-x-1 bottom-0 h-0.5 overflow-hidden rounded-full bg-content/15"
+    >
+      <span
+        className={`block h-full rounded-full transition-[width] duration-150 ${progress.failed ? 'bg-danger' : 'bg-accent'}`}
+        style={{ width: `${Math.round(fraction * 100)}%` }}
+      />
+    </span>
+  )
+}
+
+export function AttachmentChip({ environmentId, attachment, onRemove, onOpen, progress }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const preview = useAttachmentSrc(environmentId, attachment, useNearViewport(ref))
   const image = attachment.kind === 'image' && preview
+  const percent = progress && progress.total > 0 ? Math.round((progress.sent / progress.total) * 100) : 0
+  const title = progress
+    ? progress.failed
+      ? `${attachment.name}: upload failed`
+      : `${attachment.name}: uploading to the thread's host, ${percent}%`
+    : (attachment.path ?? attachment.name)
 
   return (
     <div
       ref={ref}
       className={`group relative flex min-w-0 items-center gap-1.5 rounded-md ${
         image ? '' : 'bg-content/10 py-0.5 pl-1 pr-1'
-      }`}
-      title={attachment.path ?? attachment.name}
+      } ${progress?.failed ? 'ring-1 ring-danger/60' : ''}`}
+      title={title}
       data-attachment-path={attachment.path}
+      data-upload={progress ? (progress.failed ? 'failed' : String(percent)) : undefined}
     >
+      {progress ? <UploadBar progress={progress} /> : null}
       {image ? (
         onOpen ? (
           <button

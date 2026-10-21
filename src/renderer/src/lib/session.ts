@@ -113,6 +113,11 @@ export type Attachment = {
   previewUrl?: string;
   /** Appshots: the captured window's accessibility text, sent beside the image. */
   textPath?: string;
+  /** The host `path` (and `textPath`) live on. A thread on another host gets
+   *  the file uploaded first (lib/attachmentUpload.ts); absent: the thread's own. */
+  environmentId?: string;
+  /** A pasted or dropped file's bytes, kept for the upload. Not persisted. */
+  blob?: Blob;
 };
 
 export type Block = {

@@ -200,7 +200,9 @@ export function attachmentFromCapture(capture: AppshotCapture): Attachment {
     kind: 'image',
     size: 0,
     path: capture.path,
-    ...(capture.textPath ? { textPath: capture.textPath } : {})
+    ...(capture.textPath ? { textPath: capture.textPath } : {}),
+    // Captured on this machine: a thread on another host gets it uploaded.
+    environmentId: registry.primary().environmentId
   }
 }
 

@@ -120,6 +120,7 @@ export function persistableAttachment(file: Attachment): Attachment {
     size: file.size,
     ...(file.path ? { path: file.path } : {}),
     ...(file.textPath ? { textPath: file.textPath } : {}),
+    ...(file.environmentId ? { environmentId: file.environmentId } : {}),
   };
 }
 
@@ -316,6 +317,7 @@ async function attachmentFromPath(environmentId: string, info: PathInfo): Promis
     kind,
     size: info.size,
     path: info.path,
+    environmentId,
   };
   if (
     isVisionImage(mimeType) &&
@@ -337,6 +339,21 @@ async function attachmentFromBlob(environmentId: string, file: File): Promise<At
   const kind = kindFromMime(mimeType);
   const name = file.name.trim() || fallbackName(mimeType);
   const previewUrl = kind === "image" ? URL.createObjectURL(file) : undefined;
+  // Over the embed size the bytes stay in memory and are uploaded to the
+  // thread's host at send (lib/attachmentUpload.ts) instead of being
+  // dropped; the host's attachment.maxBytes is checked when it is attached.
+  if (file.size > MAX_EMBED_BYTES) {
+    return {
+      id: crypto.randomUUID(),
+      name,
+      mimeType: kind === "image" ? normalizeImageMime(mimeType) : mimeType,
+      kind,
+      size: file.size,
+      previewUrl,
+      blob: file,
+      environmentId,
+    };
+  }
   const data = await readBlobBase64(file);
   if (kind === "image" && isVisionImage(mimeType) && data) {
     return {
@@ -351,7 +368,7 @@ async function attachmentFromBlob(environmentId: string, file: File): Promise<At
   }
   if (!data) {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
-    return null;
+    throw new Error(`Could not read ${name}`);
   }
   try {
     const path = await invokeOn<string>(environmentId, "write_attachment", { name, data });
@@ -363,6 +380,9 @@ async function attachmentFromBlob(environmentId: string, file: File): Promise<At
       size: file.size,
       path,
       previewUrl,
+      // Saved on this machine; the bytes stay for an upload to another host.
+      environmentId,
+      blob: file,
     };
   } catch (err) {
     if (previewUrl) URL.revokeObjectURL(previewUrl);

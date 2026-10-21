@@ -47,6 +47,15 @@ import { CommandPopover, type AtMatch, type PopoverMatches } from './CommandPopo
 import { ComposerRunner } from './ComposerRunner'
 import { ContextControl } from './ContextControl'
 import { AttachmentChip, openAttachmentImages } from './AttachmentChip'
+import {
+  AttachmentUploadError,
+  attachmentSettings,
+  copiesBytes,
+  needsUpload,
+  overLimitMessage,
+  uploadAttachments,
+  type UploadProgress
+} from '../lib/attachmentUpload'
 import { subscribeAppshots } from '../lib/appshots'
 import { BranchPicker } from './BranchPicker'
 import { CwdPicker } from './CwdPicker'
@@ -236,6 +245,12 @@ export function Composer({
     () => (initialDraft ?? '').trim().length > 0 || !!inboxCard || !!noteCard || !!handoffCard
   )
   const [attachments, setAttachments] = useState<Attachment[]>([])
+  /** Files on their way to the thread's host (lib/attachmentUpload.ts), by attachment id. */
+  const [uploads, setUploads] = useState<Record<string, UploadProgress & { failed?: boolean }>>({})
+  /** Why an attachment could not go (too big, an upload failed): shown here, never as a failed turn. */
+  const [attachNote, setAttachNote] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const uploadingRef = useRef(false)
   const [fileDrag, setFileDrag] = useState(false)
   const reduce = useReducedMotion()
   const midTurnDefault = useSyncExternalStore(subscribeMidTurnDefault, loadMidTurnDefault)
@@ -425,8 +440,33 @@ export function Composer({
     return subscribeAppshots(sessionId, addAttachments);
   }, [addAttachments, sessionId]);
 
+  // A file that is copied to the host (a paste, or a file from another
+  // host) must fit the host's attachment.maxBytes; one over it is refused
+  // here, with the reason, instead of failing at send.
+  const admitAttachments = useCallback(
+    (incoming: Attachment[]) => {
+      if (incoming.length === 0) return
+      void attachmentSettings(environmentId).then(({ maxBytes }) => {
+        const over = incoming.filter((file) => copiesBytes(file, environmentId) && file.size > maxBytes)
+        for (const file of over) revokeAttachment(file)
+        setAttachNote(over.length ? over.map((file) => overLimitMessage(file, maxBytes)).join('. ') : null)
+        addAttachments(incoming.filter((file) => !over.includes(file)))
+      })
+    },
+    [addAttachments, environmentId]
+  )
+  const attachFailed = useCallback((error: unknown) => {
+    setAttachNote(error instanceof Error ? error.message : 'Could not attach the file')
+  }, [])
+
   const removeAttachment = useCallback(
     (id: string) => {
+      setUploads((prev) => {
+        if (!(id in prev)) return prev
+        const next = { ...prev }
+        delete next[id]
+        return next
+      })
       setAttachments((prev) => {
         const removed = prev.find((file) => file.id === id)
         if (removed) revokeAttachment(removed)
@@ -624,7 +664,7 @@ export function Composer({
       if (!attachmentsSupported) return
       const files = [...data.files]
       if (files.length === 0) return
-      void attachmentsFromFiles(files).then(addAttachments)
+      void attachmentsFromFiles(files).then(admitAttachments, attachFailed)
     }
 
     const root = dropRoot()
@@ -637,13 +677,60 @@ export function Composer({
       root?.removeEventListener('dragleave', onDragLeave)
       root?.removeEventListener('drop', onDrop)
     }
-  }, [addAttachments, attachmentsSupported, enabled])
+  }, [admitAttachments, attachFailed, attachmentsSupported, enabled])
 
   const submit = (value: string, invert = false) => {
-    if (blocked) return
+    if (blocked || uploadingRef.current) return
     const text = composeInboxMessage(inboxCard, value)
     const files = attachments
     if (!text && files.length === 0 && !noteCard && !handoffCard) return
+    // A file the thread's host cannot read (it is on this Mac, or only in
+    // memory) is uploaded there first; the text and chips stay put until
+    // every file landed, and a failure stays here on its chip.
+    if (sessionId && files.some((file) => needsUpload(file, environmentId))) {
+      void uploadThenSubmit(sessionId, invert)
+      return
+    }
+    finishSubmit(text, files, invert)
+  }
+
+  const uploadThenSubmit = async (threadId: string, invert: boolean) => {
+    uploadingRef.current = true
+    setUploading(true)
+    setAttachNote(null)
+    const replace = (file: Attachment) => {
+      attachmentsRef.current = attachmentsRef.current.map((a) => (a.id === file.id ? file : a))
+      setAttachments(attachmentsRef.current)
+    }
+    try {
+      const files = await uploadAttachments({
+        threadEnv: environmentId,
+        sessionId: threadId,
+        files: attachmentsRef.current,
+        onProgress: (id, progress) => setUploads((prev) => ({ ...prev, [id]: progress })),
+        onUploaded: (file) => {
+          replace(file)
+          setUploads((prev) => {
+            const next = { ...prev }
+            delete next[file.id]
+            return next
+          })
+        }
+      })
+      finishSubmit(composeInboxMessage(inboxCard, inputRef.current?.value() ?? ''), files, invert)
+    } catch (error) {
+      if (error instanceof AttachmentUploadError) {
+        const id = error.fileId
+        setUploads((prev) => ({ ...prev, [id]: { ...(prev[id] ?? { sent: 0, total: 0 }), failed: true } }))
+      }
+      attachFailed(error)
+    } finally {
+      uploadingRef.current = false
+      setUploading(false)
+    }
+  }
+
+  const finishSubmit = (text: string, files: Attachment[], invert: boolean) => {
     const intent = decideComposerAction({
       busy,
       paused,
@@ -658,6 +745,8 @@ export function Composer({
     onSubmit(text, files, intent === 'pause' ? 'send' : intent)
     inputRef.current?.clear()
     setAttachments([])
+    setUploads({})
+    setAttachNote(null)
     setTrigger(null)
     syncHasValue('', [])
   }
@@ -701,24 +790,24 @@ export function Composer({
     if (files.length === 0) return
     e.preventDefault()
     if (!attachmentsSupported) return
-    void attachmentsFromFiles(files).then(addAttachments)
+    void attachmentsFromFiles(files).then(admitAttachments, attachFailed)
   }
 
   // A pasted log or file's worth of text rides as a file, not as typed
   // text — a contenteditable holding 100 KB crawls on every keystroke.
   const attachLargePaste = useCallback(
     (file: File) => {
-      void attachmentsFromFiles([file]).then(addAttachments)
+      void attachmentsFromFiles([file]).then(admitAttachments, attachFailed)
     },
-    [addAttachments]
+    [admitAttachments, attachFailed]
   )
 
   const attachFromPicker = () => {
     if (!attachmentsSupported) return
     void pickAttachments().then((files) => {
-      addAttachments(files)
+      admitAttachments(files)
       inputRef.current?.focus()
-    })
+    }, attachFailed)
   }
 
   return (
@@ -801,9 +890,10 @@ export function Composer({
                     }
                   >
                     <AttachmentChip
-                      environmentId={environmentId}
+                      environmentId={file.environmentId ?? environmentId}
                       attachment={file}
-                      onRemove={() => removeAttachment(file.id)}
+                      progress={uploads[file.id]}
+                      onRemove={uploading ? undefined : () => removeAttachment(file.id)}
                       onOpen={
                         file.kind === 'image'
                           ? () => openAttachmentImages(environmentId, attachments, file)
@@ -813,6 +903,20 @@ export function Composer({
                   </motion.div>
                 ))}
               </AnimatePresence>
+            </div>
+          ) : null}
+
+          {attachNote ? (
+            <div role="alert" data-attach-note className="flex items-start gap-1.5 px-3 pt-1.5 text-[11px] leading-snug text-danger">
+              <span className="min-w-0 flex-1">{attachNote}</span>
+              <button
+                type="button"
+                aria-label="Dismiss"
+                onClick={() => setAttachNote(null)}
+                className="shrink-0 text-danger/70 hover:text-danger"
+              >
+                ×
+              </button>
             </div>
           ) : null}
 

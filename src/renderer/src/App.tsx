@@ -2752,7 +2752,7 @@ export default function App() {
             await serverCommands.queueAdd(
               sessionId,
               prompt,
-              [...(await serverCommands.toServerAttachments(current.environmentId, prepared)), ...derived],
+              [...(await serverCommands.toServerAttachments(current.environmentId, prepared, sessionId)), ...derived],
               serverCommands.runSettingsFor(current),
             );
           } catch (error: unknown) {

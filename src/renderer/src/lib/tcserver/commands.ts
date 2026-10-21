@@ -1,6 +1,7 @@
 import { nativeModelId } from "../models";
 import type { Attachment, Block, RuntimeMode, Session } from "../session";
 import { policyForMode } from "./access";
+import { needsUpload, uploadAttachment } from "../attachmentUpload";
 import { registry, type Link } from "../connection";
 import { sessionStore } from "./store";
 import { workspaceByPath, workspaceStore } from "./workspaces";
@@ -69,14 +70,23 @@ function linkFor(sessionId: string): Link {
   return link;
 }
 
-/** Files by path; pasted bytes are saved server-side first. */
+/** Files by path; pasted bytes are saved server-side first. A file that
+ *  lives on another host than `environmentId` (or only in memory) is
+ *  uploaded to the thread first when `sessionId` names it: the composer
+ *  does that itself with progress, this is the fallback for every other
+ *  caller, so a path on the wrong host never reaches the turn. */
 export async function toServerAttachments(
   environmentId: string,
   attachments: Attachment[],
+  sessionId?: string,
 ): Promise<ServerAttachment[]> {
   const link = registry.linkOf(environmentId);
   const out = await Promise.all(
-    attachments.map(async (a): Promise<ServerAttachment | null> => {
+    attachments.map(async (original): Promise<ServerAttachment | null> => {
+      const a =
+        sessionId && needsUpload(original, environmentId)
+          ? await uploadAttachment(environmentId, sessionId, original)
+          : original;
       const kind = a.kind === "image" ? "image" : "file";
       if (a.path) {
         const mime = a.mimeType ? { mime: a.mimeType } : {};
@@ -146,7 +156,7 @@ export async function send(
     extra?.newPass,
   );
   const link = linkOfSession(session);
-  const files = [...(await toServerAttachments(link.environmentId, attachments)), ...(extra?.attachments ?? [])];
+  const files = [...(await toServerAttachments(link.environmentId, attachments, session.id)), ...(extra?.attachments ?? [])];
   const meta = await ensureCreated(session);
   const model = nativeModelId(session.model);
   const reasoning = reasoningOf(session);
@@ -176,7 +186,7 @@ export async function steer(
     display?.attachments ?? attachments,
     extra,
   );
-  const files = [...(await toServerAttachments(session.environmentId, attachments)), ...(extra?.attachments ?? [])];
+  const files = [...(await toServerAttachments(session.environmentId, attachments, session.id)), ...(extra?.attachments ?? [])];
   const item = await queueAdd(session.id, text, files, runSettingsFor(session));
   await queueSteer(session.id, item.id);
 }
