@@ -10,11 +10,8 @@ import {
   type ComponentProps,
   type ReactNode,
 } from "react";
-import { harden } from "rehype-harden";
 import {
   Streamdown,
-  defaultRehypePlugins,
-  defaultRemarkPlugins,
   useIsCodeFenceIncomplete,
   type Components,
 } from "streamdown";
@@ -24,6 +21,8 @@ import { CodeBlock } from "./CodeBlock";
 import { FileRefMenu } from "./FileRefMenu";
 import { createLazyMermaidPlugin } from "./mermaidPlugin";
 import { cachedParse, restoreHast } from "../lib/markdownCache";
+import { useMarkdownReady } from "../lib/markdownParse";
+import { MARKDOWN_REHYPE_PLUGINS, MARKDOWN_REMARK_PLUGINS } from "../lib/markdownPipeline";
 import { parseFileHref } from "../lib/paths";
 import type { OpenFileFn } from "../lib/search";
 import {
@@ -53,26 +52,14 @@ const mermaid = createLazyMermaidPlugin({
 
 const MARKDOWN_PLUGINS = { mermaid };
 
-const MARKDOWN_REHYPE_PLUGINS: PluggableList = [
-  defaultRehypePlugins.raw,
-  defaultRehypePlugins.sanitize,
-  [
-    harden,
-    {
-      allowedImagePrefixes: [] as string[],
-      allowedLinkPrefixes: ["*"],
-      allowDataImages: true,
-      imageBlockPolicy: "remove" as const,
-    },
-  ],
-];
-
 // Settled blocks parse through the render cache (lib/markdownCache.ts):
 // the parser is bypassed and the last rehype step hands back the cached
-// tree, so a remount is a lookup. Streaming blocks keep the plain lists.
-// Both pairs are module constants: streamdown keys its processor cache
-// and Block memo on plugin identity.
-const MARKDOWN_REMARK_PLUGINS: PluggableList = Object.values(defaultRemarkPlugins);
+// tree, so a remount is a lookup. The tree gets there from the parse
+// worker (lib/markdownParse.ts): a settled row waits for its answer and
+// never runs the parser on this thread. Streaming blocks keep the plain
+// lists (lib/markdownPipeline.ts, shared with the worker). Both pairs are
+// module constants: streamdown keys its processor cache and Block memo on
+// plugin identity.
 const CACHED_REMARK_PLUGINS: PluggableList = [...MARKDOWN_REMARK_PLUGINS, cachedParse];
 const CACHED_REHYPE_PLUGINS: PluggableList = [...MARKDOWN_REHYPE_PLUGINS, restoreHast];
 
@@ -293,10 +280,26 @@ export const AgentMarkdown = memo(function AgentMarkdown({
   const veilRef = useRef<HTMLDivElement>(null);
   useStreamVeil(veilRef, shown, streaming);
   const settled = !streaming && shown === source;
+  // A row that mounts settled (history, a row scrolled into view) mounts
+  // its tree once the worker has parsed it; until then the text holds the
+  // row's place, unseen, in the same measure. A row that streamed here is
+  // already parsed on this thread, and settles in place as before: taking
+  // it down for the worker would remount its tree and flicker.
+  const streamedHere = useRef(!!streaming);
+  if (streaming) streamedHere.current = true;
+  const ready = useMarkdownReady(shown, settled && !streamedHere.current);
   return (
     <FileOpenContext.Provider value={fileOpen}>
       {/* Relative: the veil paints absolutely-positioned covers over new glyphs. */}
       <div ref={veilRef} className="relative min-w-0">
+        {!ready ? (
+          <pre
+            aria-hidden
+            className={`agent-markdown invisible min-w-0 whitespace-pre-wrap break-words font-sans text-sm leading-6 ${className ?? ""}`}
+          >
+            {shown}
+          </pre>
+        ) : (
         <Streamdown
           className={`agent-markdown min-w-0 font-sans text-sm leading-6 ${className ?? ""}`}
           components={MARKDOWN_COMPONENTS}
@@ -308,6 +311,7 @@ export const AgentMarkdown = memo(function AgentMarkdown({
         >
           {shown}
         </Streamdown>
+        )}
       </div>
     </FileOpenContext.Provider>
   );

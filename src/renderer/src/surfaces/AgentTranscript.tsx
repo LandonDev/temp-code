@@ -47,6 +47,20 @@ import { Shimmer } from "./Shimmer";
 import { TWEEN_FALLBACK_MS, TweenHeight } from "../motion/TweenHeight";
 import { usePersistedOpen } from "./editOpenState";
 import { TranscriptMinimap } from "./TranscriptMinimap";
+import {
+  RowLayout,
+  anchorShift,
+  rangeCovers,
+  type RowAnchor,
+  type RowRange,
+} from "../lib/transcriptWindow";
+import {
+  estimateRowHeight,
+  flattenTurns,
+  turnUserBlock,
+  type TranscriptRow,
+  type TurnInfo,
+} from "./transcriptRows";
 import { TodoListBlock } from "./TodoListBlock";
 import { htmlRenderChunk } from "./chunks";
 import { SurfaceSkeleton } from "./SurfaceSkeleton";
@@ -73,7 +87,6 @@ import { HarnessIcon } from "../chrome/HarnessIcon";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { usePaneVisible } from "../hooks/paneVisibility";
 import {
-  peekTranscriptScroll,
   saveTranscriptScroll,
   takeTranscriptScroll,
   type TranscriptScrollMemory,
@@ -113,12 +126,10 @@ import {
   activityPreviousLabel,
   buildActivityPhases,
   editVerb,
-  groupTurnItems,
   groupTurns,
   isIncompleteTool,
   isThinkingBlock,
   isTodoBlock,
-  lastActivityIndex,
   isProseBlock,
   awaitsUser,
   needsApproval,
@@ -136,34 +147,6 @@ import {
 // An agent's HTML page renders from the html-render chunk (surfaces/chunks.ts).
 const HtmlRenderRow = htmlRenderChunk.surface("HtmlRenderRow", <SurfaceSkeleton kind="frame" label="Loading page" />);
 
-/** The window is budgeted in rows (blocks), never turns: an agent thread
- *  packs tens of thousands of rows into two turns. The first turn shown
- *  may start part-way through. */
-const INITIAL_ROWS = 100;
-const ROW_PAGE_SIZE = 150;
-
-/**
- * Which turns hold the last `rows` blocks: the index of the first one and
- * how many of its blocks to skip. A cut that would drop under half a page
- * of a turn snaps back to the turn's start instead.
- */
-export function windowTurns(
-  turns: Block[][],
-  rows: number,
-): { first: number; skip: number; shown: number } {
-  let remaining = rows;
-  let first = turns.length;
-  while (first > 0 && remaining > 0) {
-    first--;
-    remaining -= turns[first].length;
-  }
-  let skip = Math.max(0, -remaining);
-  if (skip > 0 && skip <= ROW_PAGE_SIZE / 2) skip = 0;
-  let shown = 0;
-  for (let i = first; i < turns.length; i++) shown += turns[i].length;
-  return { first, skip, shown: shown - skip };
-}
-
 /*
  * One scroll engine (ported from temp-code). Three modes: `follow` rides the
  * bottom on a spring, `parked` holds the prompt at the top of the viewport
@@ -178,6 +161,24 @@ const GLIDE_MS = 500;
 const MAX_GLIDE_VIEWPORTS = 2.5;
 const SPACER_MS = 220;
 const FOLLOW_LEAD = 32;
+
+/*
+ * The viewport window. The thread is a flat list of rows (transcriptRows.ts)
+ * laid out by estimated, then measured, heights (lib/transcriptWindow.ts).
+ * Only the rows that meet the viewport, plus a screen of overscan each way,
+ * are mounted, each absolutely placed at its offset (`top`, not a transform:
+ * a transform per row is a compositing node per row, and Chromium's
+ * layerize step then costs about 2 ms on every streamed token) inside a
+ * container the height of the whole thread. One ResizeObserver measures every mounted
+ * row: a measurement writes the container height and the offsets below it
+ * straight to the DOM, and moves the scroll offset by the growth of the rows
+ * above the reader's row, so nothing under the eye moves. The tail row
+ * growing while streaming changes its own box and the container's height
+ * and nothing else: the rows above are never laid out again. The window
+ * re-renders only when the viewport leaves the middle of what is mounted.
+ */
+/** Overscan on each side, in px: a screen, or this when the screen is small. */
+const MIN_OVERSCAN = 400;
 
 type ScrollMode = "follow" | "parked" | "free";
 
@@ -246,17 +247,11 @@ export function AgentTranscript({
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
   const scroller = useRef<HTMLDivElement>(null);
   const spacer = useRef<HTMLDivElement>(null);
+  const container = useRef<HTMLDivElement>(null);
   const showJumpRef = useRef(false);
-  const prependHeight = useRef<number | null>(null);
   const wasVisible = useRef(false);
   const everVisible = useRef(false);
-  const visibleRowsRef = useRef(INITIAL_ROWS);
   const [scrollerEl, setScrollerEl] = useState<HTMLDivElement | null>(null);
-  // A remount after a park takes the window it had grown to, so the
-  // reader's place (restored below) is still inside it.
-  const [visibleRows, setVisibleRows] = useState(
-    () => peekTranscriptScroll(sessionId ?? "")?.rowCount ?? INITIAL_ROWS,
-  );
   const reduceMotion = useReducedMotion() === true;
   // Engine state lives in refs: the rAF loop reads and writes it without a
   // render, and nothing here changes what React draws.
@@ -275,6 +270,17 @@ export function AgentTranscript({
   const runningRef = useRef(!!busy);
   const visibleRef = useRef(visible);
   visibleRef.current = visible;
+  // The window: the layout of every row, the mounted range, the mounted
+  // elements by row key, the reader's anchor row, and a jump still landing.
+  const layoutRef = useRef<RowLayout | null>(null);
+  if (!layoutRef.current) layoutRef.current = new RowLayout();
+  const rowLayout = layoutRef.current;
+  const [mounted, setMounted] = useState<RowRange>({ start: 0, end: 0 });
+  const mountedRef = useRef(mounted);
+  const rowEls = useRef(new Map<string, HTMLElement>());
+  const rowObserver = useRef<ResizeObserver | null>(null);
+  const anchorRef = useRef<RowAnchor | null>(null);
+  const landing = useRef<string | null>(null);
   const { selection, dismissSelection } = useTranscriptSelection(
     scrollerEl,
     onAddToChat !== undefined,
@@ -304,10 +310,69 @@ export function AgentTranscript({
     if (el) el.style.height = `${h}px`;
   };
 
+  /**
+   * Mount what the viewport needs. The rows mounted stretch a screen past
+   * the viewport each way; a render is due only when the viewport comes
+   * within half a screen of their edge, or they reach more than two screens
+   * past it. A scroller with no layout (a parked tab) keeps what it has.
+   */
+  const reconcileWindow = useCallback(
+    (el: HTMLElement) => {
+      const height = el.clientHeight;
+      if (height === 0) return;
+      const overscan = Math.max(MIN_OVERSCAN, height);
+      const need = rowLayout.range(el.scrollTop, height, overscan / 2);
+      const far = rowLayout.range(el.scrollTop, height, overscan * 2);
+      const current = mountedRef.current;
+      if (rangeCovers(current, need) && current.start >= far.start && current.end <= far.end) return;
+      const next = rowLayout.range(el.scrollTop, height, overscan);
+      if (next.start === current.start && next.end === current.end) return;
+      mountedRef.current = next;
+      setMounted(next);
+    },
+    [rowLayout],
+  );
+
+  /** The container's height and the offsets of the mounted rows from `from`
+   *  on, written straight to the DOM; React writes the same values next
+   *  time it renders. */
+  const writeOffsets = useCallback(
+    (from: number) => {
+      const box = container.current;
+      if (box) box.style.height = `${rowLayout.total()}px`;
+      const { start, end } = mountedRef.current;
+      for (let i = Math.max(from, start); i < end; i++) {
+        const key = rowLayout.keyAt(i);
+        const el = key === undefined ? undefined : rowEls.current.get(key);
+        if (el) el.style.top = `${rowLayout.offsetOf(i)}px`;
+      }
+    },
+    [rowLayout],
+  );
+
   /** A scroll write of our own; the scroll handler knows it by its value. */
   const scrollTo = (el: HTMLElement, top: number) => {
     el.scrollTop = top;
     expectedTop.current = el.scrollTop;
+    anchorRef.current = rowLayout.anchorAt(el.scrollTop);
+    reconcileWindow(el);
+  };
+
+  /** A jump's last step: once its row is mounted and measured, land on it
+   *  exactly (the glide aimed at an estimate). */
+  const land = (el: HTMLElement) => {
+    const key = landing.current;
+    if (!key) return;
+    const index = rowLayout.indexOf(key);
+    if (index < 0) {
+      landing.current = null;
+      return;
+    }
+    if (!rowLayout.hasMeasured(key)) return;
+    landing.current = null;
+    const max = Math.max(0, el.scrollHeight - el.clientHeight);
+    const top = Math.min(max, Math.max(0, rowLayout.offsetOf(index) - TOP_INSET));
+    if (Math.abs(top - el.scrollTop) > 1) scrollTo(el, top);
   };
 
   /** Heights read once at the top of a frame, before that frame writes. */
@@ -359,6 +424,7 @@ export function AgentTranscript({
       else {
         glide.current = null;
         velocity.current = 0;
+        land(el);
       }
     } else if (mode.current === "follow") {
       const max = scrollHeight - clientHeight;
@@ -382,6 +448,7 @@ export function AgentTranscript({
     }
     syncPill(el, { scrollHeight, clientHeight });
     if (again) schedule();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reduceMotion, schedule, syncPill]);
   tickRef.current = tick;
 
@@ -396,6 +463,7 @@ export function AgentTranscript({
     const below = inner.getBoundingClientRect().bottom - base - turnTop;
     setSpacer(Math.max(0, el.clientHeight - TOP_INSET - below));
     scrollTo(el, turnTop - TOP_INSET);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /** Retire the runway: at once if it sits below the fold, else a short tween. */
@@ -432,12 +500,14 @@ export function AgentTranscript({
       velocity.current = 0;
       schedule();
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [reduceMotion, schedule],
   );
 
   /** The reader took the wheel: no mode moves the viewport under them. */
   const release = useCallback(() => {
     glide.current = null;
+    landing.current = null;
     pinBottom.current = false;
     parkedTurn.current = null;
     setMode("free");
@@ -447,6 +517,7 @@ export function AgentTranscript({
     const el = scroller.current;
     if (!el) return;
     parkedTurn.current = null;
+    landing.current = null;
     setMode("follow");
     spacerAnim.current = null;
     setSpacer(0);
@@ -463,9 +534,34 @@ export function AgentTranscript({
         target.getBoundingClientRect().top -
         el.getBoundingClientRect().top +
         el.scrollTop;
+      landing.current = target.dataset.row ?? null;
       startGlide(top - TOP_INSET);
     },
     [release, startGlide],
+  );
+
+  /**
+   * Glide to a row by index. A mounted row is measured, so the glide aims
+   * at its box; one outside the window aims at its estimated offset and
+   * lands exactly once it is mounted and measured (`land`). Either way the
+   * glide teleports to within 2.5 screens first, so the rows it passes are
+   * the ones that mount.
+   */
+  const scrollToRow = useCallback(
+    (index: number) => {
+      const el = scroller.current;
+      const key = rowLayout.keyAt(index);
+      if (!el || key === undefined) return;
+      const target = rowEls.current.get(key);
+      if (target) {
+        glideTo(target);
+        return;
+      }
+      release();
+      landing.current = key;
+      startGlide(rowLayout.offsetOf(index) - TOP_INSET);
+    },
+    [rowLayout, glideTo, release, startGlide],
   );
 
   const setScroller = useCallback(
@@ -486,6 +582,8 @@ export function AgentTranscript({
     const el = scrollerEl;
     const onScroll = () => {
       if (el.scrollTop === expectedTop.current) return;
+      anchorRef.current = rowLayout.anchorAt(el.scrollTop);
+      reconcileWindow(el);
       if (dragging.current) release();
       if (mode.current === "free" && fromBottomOf(el) - spacerH.current <= STICK_THRESHOLD) {
         setMode("follow");
@@ -533,15 +631,148 @@ export function AgentTranscript({
       window.removeEventListener("pointerup", onPointerUp);
       el.removeEventListener("keydown", onKey);
     };
-  }, [scrollerEl, release, schedule, syncPill]);
+  }, [scrollerEl, rowLayout, reconcileWindow, release, schedule, syncPill]);
+
+  // ── rows and their layout ─────────────────────────────────────────────
+  const previousTurns = useRef<Block[][]>([]);
+  const turns = useMemo(() => {
+    const next = stableTurns(groupTurns(blocks), previousTurns.current);
+    previousTurns.current = next;
+    return next;
+  }, [blocks]);
+  // Remote profile: the next page of history comes from the server and
+  // lands above; the reader's anchor row keeps them where they were.
+  const moreHistory = !!sessionId && sessionStore.hasOlderHistory(sessionId);
+  const { rows, rowOfBlock } = useMemo(
+    () => flattenTurns(turns, zen, !!busy, { loadEarlier: moreHistory }),
+    [turns, zen, busy, moreHistory],
+  );
+  const rowOf = useCallback((blockId: string) => rowOfBlock().get(blockId), [rowOfBlock]);
+  // The layout takes the rows before they render, so each mounted row's
+  // offset below is read from the list it belongs to.
+  useMemo(() => {
+    rowLayout.setRows(rows.map((row) => ({ key: row.key, estimate: estimateRowHeight(row) })));
+  }, [rows, rowLayout]);
+  // Turns born after mount fade in; the ones the transcript opened with, and
+  // the pages loaded above them, are already history. A row fades once, on
+  // its first mount: one that leaves the window and comes back as the
+  // reader scrolls is history too (`shownRows`), so nothing animates on
+  // scroll.
+  const initialTurns = useRef<Set<string> | null>(null);
+  if (!initialTurns.current) {
+    initialTurns.current = new Set(turns.map((turn) => turn[0].id));
+  }
+  const shownRows = useRef(new Set<string>());
+
+  /**
+   * Measured rows. The container and the offsets below the first change are
+   * written now, in the observer's own pass before paint; the reader's
+   * anchor row stays put by moving the scroll offset with the growth above
+   * it; a jump still landing lands.
+   */
+  const onRowsResized = useCallback(
+    (entries: ResizeObserverEntry[]) => {
+      const el = scroller.current;
+      if (!el) return;
+      const changes: { index: number; delta: number }[] = [];
+      for (const entry of entries) {
+        const key = (entry.target as HTMLElement).dataset.row;
+        if (key === undefined) continue;
+        const height = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
+        const change = rowLayout.measure(key, height);
+        if (change) changes.push(change);
+      }
+      if (changes.length === 0) {
+        if (!glide.current) land(el);
+        return;
+      }
+      let from = Infinity;
+      for (const change of changes) from = Math.min(from, change.index);
+      writeOffsets(from);
+      const anchor = anchorRef.current;
+      const anchorIndex = anchor ? rowLayout.indexOf(anchor.key) : -1;
+      const shift = anchorIndex >= 0 ? anchorShift(changes, anchorIndex) : 0;
+      if (shift !== 0) {
+        el.scrollTop += shift;
+        expectedTop.current = el.scrollTop;
+      }
+      if (!glide.current) land(el);
+      reconcileWindow(el);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rowLayout, writeOffsets, reconcileWindow],
+  );
+  const registerRow = useCallback(
+    (key: string, el: HTMLElement | null) => {
+      const observer = (rowObserver.current ??= new ResizeObserver(onRowsResized));
+      if (el) {
+        rowEls.current.set(key, el);
+        shownRows.current.add(key);
+        observer.observe(el);
+        return;
+      }
+      const old = rowEls.current.get(key);
+      if (!old) return;
+      observer.unobserve(old);
+      rowEls.current.delete(key);
+    },
+    [onRowsResized],
+  );
+  useEffect(
+    () => () => {
+      rowObserver.current?.disconnect();
+      rowObserver.current = null;
+    },
+    [],
+  );
+
+  // The rows changed under the reader: put their anchor row back where it
+  // was (a page landed above, a turn regrouped) unless the transcript is
+  // glued to its end, then mount what the viewport needs. First, so the
+  // effects below see the window the rows will have.
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const box = container.current;
+    if (box) box.style.height = `${rowLayout.total()}px`;
+    const anchor = anchorRef.current;
+    if (anchor && !(mode.current === "follow" && pinBottom.current)) {
+      const top = rowLayout.scrollTopFor(anchor);
+      if (top != null && Math.abs(top - el.scrollTop) > 0.5) {
+        el.scrollTop = top;
+        expectedTop.current = el.scrollTop;
+      }
+    }
+    reconcileWindow(el);
+  }, [rows, rowLayout, reconcileWindow]);
+
+  /** The element of the last turn's first row, when it is mounted. */
+  const lastTurnEl = (): HTMLElement | null => {
+    const last = turns[turns.length - 1];
+    if (!last) return null;
+    const index = rowOf(last[0].id);
+    if (index === undefined) return null;
+    const key = rowLayout.keyAt(index);
+    return key === undefined ? null : (rowEls.current.get(key) ?? null);
+  };
 
   // Own send: with prompt anchoring the new prompt parks at the top over a
   // runway; otherwise the transcript snaps to its end and follows from there.
   // A pane that mounts on an unanswered prompt (the first message of a new
   // session, a tab reopened while the agent works) treats it as its own
-  // send once the turn is running.
+  // send once the turn is running. The prompt's row may mount only on the
+  // commit after the send, so the park waits for it (`pendingPark`).
   const unanswered = blocks.length > 0 && blocks[blocks.length - 1].role === "user";
   const seenUserId = useRef(unanswered ? undefined : lastUserId);
+  const pendingPark = useRef(false);
+  const parkLastTurn = () => {
+    if (!pendingPark.current) return;
+    const turnEl = lastTurnEl();
+    if (!turnEl) return;
+    pendingPark.current = false;
+    parkedTurn.current = turnEl;
+    layoutRunway();
+  };
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el || lastUserId === seenUserId.current) return;
@@ -550,19 +781,26 @@ export function AgentTranscript({
     glide.current = null;
     spacerAnim.current = null;
     pinBottom.current = false;
-    const turnEl = el.querySelector<HTMLElement>(":scope > div > .transcript-turn:last-of-type");
-    if (promptAnchor && lastUserId && turnEl && busy) {
+    if (promptAnchor && lastUserId && busy) {
       setMode("parked");
-      parkedTurn.current = turnEl;
-      layoutRunway();
+      parkedTurn.current = null;
+      pendingPark.current = true;
+      const index = rowOf(lastUserId);
+      if (index !== undefined) scrollTo(el, rowLayout.offsetOf(index) - TOP_INSET);
+      parkLastTurn();
     } else {
       setMode("follow");
       parkedTurn.current = null;
+      pendingPark.current = false;
       setSpacer(0);
       scrollTo(el, el.scrollHeight);
     }
     setShowJump(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastUserId, promptAnchor, busy, unanswered, layoutRunway, setShowJump]);
+  useLayoutEffect(() => {
+    parkLastTurn();
+  });
 
   // Turn end: a parked reader keeps their place while the runway retires, so
   // a settled transcript never keeps blank space below its last row.
@@ -575,6 +813,7 @@ export function AgentTranscript({
     if (mode.current === "parked") {
       setMode("free");
       parkedTurn.current = null;
+      pendingPark.current = false;
     }
     collapseSpacer();
     const el = scroller.current;
@@ -584,10 +823,10 @@ export function AgentTranscript({
   // First commit that carries rows for this session: the last stage mark.
   const markedBlocks = useRef(false);
   useLayoutEffect(() => {
-    if (markedBlocks.current || blocks.length === 0) return;
+    if (markedBlocks.current || blocks.length === 0 || mounted.end === 0) return;
     markedBlocks.current = true;
     perfMark("transcript-blocks", sessionId);
-  }, [blocks.length, sessionId]);
+  }, [blocks.length, mounted.end, sessionId]);
 
   useLayoutEffect(() => {
     const opened = visible && !wasVisible.current;
@@ -608,7 +847,8 @@ export function AgentTranscript({
       // the reader back where they were watching from.
       pinBottom.current = false;
       setMode("free");
-      scrollTo(el, el.scrollHeight - el.clientHeight - (saved as TranscriptScrollMemory).fromBottom);
+      const top = rowLayout.scrollTopFor((saved as TranscriptScrollMemory).anchor);
+      scrollTo(el, top ?? el.scrollHeight - el.clientHeight);
     } else if (!busy) {
       // A settled thread always opens at the bottom. A scroll-up from
       // earlier — the reader's own, or restored memory from a cold
@@ -619,9 +859,11 @@ export function AgentTranscript({
       scrollTo(el, el.scrollHeight);
     } else if (mode.current === "follow") scrollTo(el, el.scrollHeight);
     else if (mode.current === "parked") layoutRunway();
+    reconcileWindow(el);
     syncPill(el);
     schedule();
-  }, [visible, sessionId, layoutRunway, schedule, syncPill]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, sessionId, layoutRunway, reconcileWindow, schedule, syncPill]);
 
   // Unmount (the tab left the warm set): remember where the reader was.
   // The closure holds the element, so the ref being detached first is fine.
@@ -631,17 +873,10 @@ export function AgentTranscript({
     if (!el) return;
     return () => {
       if (!everVisible.current) return;
-      saveTranscriptScroll(
-        sessionId ?? "",
-        mode.current === "follow"
-          ? null
-          : {
-              fromBottom: Math.max(0, fromBottomOf(el) - spacerH.current),
-              rowCount: visibleRowsRef.current,
-            },
-      );
+      const anchor = mode.current === "follow" ? null : rowLayout.anchorAt(el.scrollTop);
+      saveTranscriptScroll(sessionId ?? "", anchor ? { anchor } : null);
     };
-  }, [scrollerEl, sessionId]);
+  }, [scrollerEl, sessionId, rowLayout]);
 
   useLayoutEffect(() => {
     const el = scroller.current;
@@ -650,6 +885,7 @@ export function AgentTranscript({
       scrollTo(el, el.scrollHeight);
     } else if (mode.current === "parked") layoutRunway();
     else schedule();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blocks, busy, visible, layoutRunway, schedule]);
 
   useLayoutEffect(() => {
@@ -661,6 +897,7 @@ export function AgentTranscript({
       else if (mode.current === "follow" && (pinBottom.current || !visibleRef.current)) {
         scrollTo(el, el.scrollHeight);
       } else schedule();
+      reconcileWindow(el);
       syncPill(el);
     };
     const observer = new ResizeObserver(onResize);
@@ -668,7 +905,8 @@ export function AgentTranscript({
     observer.observe(el);
     onResize();
     return () => observer.disconnect();
-  }, [scrollerEl, layoutRunway, schedule, syncPill]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrollerEl, layoutRunway, reconcileWindow, schedule, syncPill]);
 
   // Strict mode runs this cleanup once on mount too: clearing the handle
   // lets the next schedule() start a fresh loop instead of waiting on a
@@ -681,68 +919,36 @@ export function AgentTranscript({
     [],
   );
 
-  const previousTurns = useRef<Block[][]>([]);
-  const turns = useMemo(() => {
-    const next = stableTurns(groupTurns(blocks), previousTurns.current);
-    previousTurns.current = next;
-    return next;
-  }, [blocks]);
-  visibleRowsRef.current = visibleRows;
-  const { first: firstVisibleTurn, skip: firstTurnSkip, shown: shownRows } = useMemo(
-    () => windowTurns(turns, visibleRows),
-    [turns, visibleRows],
-  );
-  const visibleTurns = useMemo(() => {
-    const slice = turns.slice(firstVisibleTurn);
-    if (firstTurnSkip > 0 && slice.length > 0) slice[0] = slice[0].slice(firstTurnSkip);
-    return slice;
-  }, [turns, firstVisibleTurn, firstTurnSkip]);
-  // Keys and freshness come from the whole turn's first block, so a turn
-  // shown from part-way keeps its identity as the window grows into it.
-  const visibleTurnKeys = useMemo(
-    () => turns.slice(firstVisibleTurn).map((turn) => turn[0].id),
-    [turns, firstVisibleTurn],
-  );
-  // Turns born after mount fade in; the ones the transcript opened with, and
-  // the pages loaded above them, are already history.
-  const initialTurns = useRef<Set<string> | null>(null);
-  if (!initialTurns.current) {
-    initialTurns.current = new Set(turns.map((turn) => turn[0].id));
-  }
-
-  useLayoutEffect(() => {
-    const previousHeight = prependHeight.current;
-    const el = scroller.current;
-    if (previousHeight == null || !el) return;
-    prependHeight.current = null;
-    scrollTo(el, el.scrollTop + el.scrollHeight - previousHeight);
-  }, [visibleRows]);
-
-  // Remote profile: once the window holds every loaded row, the next page
-  // of history comes from the server and folds in above the window, so
-  // the reader's place does not move until they ask for more.
-  const moreHistory = !!sessionId && sessionStore.hasOlderHistory(sessionId);
   const loadEarlier = () => {
-    const el = scroller.current;
     release();
-    if (shownRows >= blocks.length && moreHistory && sessionId) {
-      void sessionStore.loadOlder(sessionId).then(() => {
-        const now = scroller.current;
-        if (now) prependHeight.current = now.scrollHeight;
-        setVisibleRows((rows) => rows + ROW_PAGE_SIZE);
-      });
-      return;
-    }
-    if (el) prependHeight.current = el.scrollHeight;
-    setVisibleRows((rows) => Math.min(blocks.length, rows + ROW_PAGE_SIZE));
+    if (sessionId) void sessionStore.loadOlder(sessionId);
   };
+
+  // Which harness answered a turn, for its duration line. Read through a
+  // ref so a streamed delta (a new `blocks` array) re-renders the live
+  // turn's rows alone, never every mounted row.
+  const blocksRef = useRef(blocks);
+  blocksRef.current = blocks;
+  const harnessOf = useCallback(
+    (turn: Block[]) => (harness ? harnessForTurn(blocksRef.current, turn, harness) : undefined),
+    [harness],
+  );
+
+  /** A block's row, for the minimap and search hits. */
+  const scrollToBlock = useCallback(
+    (blockId: string) => {
+      const index = rowOf(blockId);
+      if (index !== undefined) scrollToRow(index);
+    },
+    [rowOf, scrollToRow],
+  );
 
   // Scroll-to-row entry point (session search): the request waits in
   // lib/transcriptJump until this session's history holds the row, then the
-  // window grows to its turn and the same glide the minimap uses lands on
-  // it. No second engine — glideTo owns the motion and the mode. Only the
-  // shown pane takes the request: a hidden one may be about to remount as
-  // the view switches, which would lose the jump with its state.
+  // same glide the minimap uses lands on it, through the window. No second
+  // engine — glideTo owns the motion and the mode. Only the shown pane takes
+  // the request: a hidden one may be about to remount as the view switches,
+  // which would lose the jump with its state.
   const [jumpTick, setJumpTick] = useState(0);
   useEffect(
     () => subscribeTranscriptJump(() => setJumpTick((n) => n + 1)),
@@ -754,20 +960,16 @@ export function AgentTranscript({
     if (!jump) return;
     const block = blockForSeq(blocks, jump.seq);
     if (!block) return;
-    const blockIndex = blocks.indexOf(block);
-    if (blockIndex < 0) return;
-    if (blockIndex < blocks.length - shownRows) {
-      setVisibleRows(blocks.length - blockIndex);
-      return;
-    }
+    const index = rowOf(block.id);
+    if (index === undefined) return;
     const sc = scroller.current;
-    // No layout (a display:none ancestor) means no target to measure.
+    // No layout (a display:none ancestor) means no viewport to land in.
     if (!sc || sc.clientHeight === 0) return;
-    const el = sc.querySelector(`[data-block="${CSS.escape(block.id)}"]`);
-    if (!(el instanceof HTMLElement)) return;
     takeTranscriptJump(sessionId);
-    glideTo(el);
-  }, [sessionId, visible, blocks, shownRows, jumpTick, glideTo]);
+    scrollToRow(index);
+  }, [sessionId, visible, blocks, rowOf, jumpTick, scrollToRow]);
+
+  const shown = rows.slice(mounted.start, Math.min(mounted.end, rows.length));
 
   return (
     <SelectSessionContext.Provider value={onSelectSession}>
@@ -778,38 +980,38 @@ export function AgentTranscript({
       ref={setScroller}
       className="agent-transcript h-full overflow-y-auto overscroll-none [overflow-anchor:none] font-mono text-[13px] leading-5"
     >
-      <div className="mx-auto flex w-full min-w-0 max-w-4xl flex-col gap-1 px-4 pb-1">
-        {shownRows < blocks.length || moreHistory ? (
-          <div className="flex justify-center py-3">
-            <button
-              type="button"
-              className="pressable rounded-md bg-content/8 px-2.5 py-1.5 font-sans text-[12px] text-content/50 hover:bg-content/10 hover:text-content"
-              onClick={loadEarlier}
-            >
-              Load earlier messages
-            </button>
-          </div>
-        ) : null}
-        <TurnList
-          visibleTurns={visibleTurns}
-          visibleTurnKeys={visibleTurnKeys}
-          firstVisibleTurn={firstVisibleTurn}
-          turnCount={turns.length}
-          busy={!!busy}
-          zen={zen}
-          initialTurns={initialTurns.current}
-          cwd={cwd}
-          layout={transcriptLayout}
-          blocks={blocks}
-          harness={harness}
-          turnState={turnState ?? null}
-          onApproval={onApproval}
-          onOpenFile={onOpenFile}
-          onOpenDiff={onOpenDiff}
-          onSaveNote={onSaveNote}
-          onSecondOpinion={onSecondOpinion}
-          onHandoff={onHandoff}
-        />
+      <div className="px-4">
+        <div
+          ref={container}
+          className="relative mx-auto w-full min-w-0 max-w-4xl"
+          style={{ height: rowLayout.total() }}
+        >
+          {shown.map((row, i) => (
+            <RowView
+              key={row.key}
+              row={row}
+              top={rowLayout.offsetOf(mounted.start + i)}
+              fresh={
+                row.kind !== "more" &&
+                !initialTurns.current!.has(row.turn.id) &&
+                !shownRows.current.has(row.key)
+              }
+              zen={zen}
+              cwd={cwd}
+              layout={transcriptLayout}
+              harnessOf={harnessOf}
+              turnState={row.kind !== "more" && row.turn.isLast ? (turnState ?? null) : null}
+              register={registerRow}
+              onLoadEarlier={loadEarlier}
+              onApproval={onApproval}
+              onOpenFile={onOpenFile}
+              onOpenDiff={onOpenDiff}
+              onSaveNote={onSaveNote}
+              onSecondOpinion={onSecondOpinion}
+              onHandoff={onHandoff}
+            />
+          ))}
+        </div>
       </div>
       <div ref={spacer} aria-hidden className="shrink-0" />
       {onAddToChat ? (
@@ -822,9 +1024,9 @@ export function AgentTranscript({
     </div>
     <TranscriptMinimap
       scroller={scrollerEl}
-      turns={visibleTurns}
+      turns={turns}
       visible={visible}
-      onJump={glideTo}
+      onJump={scrollToBlock}
     />
     </div>
     </TurnStateContext.Provider>
@@ -849,101 +1051,20 @@ function stableTurns(next: Block[][], previous: Block[][]): Block[][] {
   return changed ? out : previous;
 }
 
-type TurnListProps = {
-  visibleTurns: Block[][];
-  visibleTurnKeys: string[];
-  firstVisibleTurn: number;
-  turnCount: number;
-  busy: boolean;
-  zen: boolean;
-  /** Ids of the turns the transcript opened with; later ones fade in. */
-  initialTurns: Set<string>;
-  cwd?: string;
-  layout: TranscriptLayout;
-  blocks: Block[];
-  harness?: HarnessId;
-  turnState: TurnSession | null;
-  onApproval?: Props["onApproval"];
-  onOpenFile?: OpenFileFn;
-  onOpenDiff?: (path: string) => void;
-  onSaveNote?: (text: string) => void;
-  onSecondOpinion?: Props["onSecondOpinion"];
-  onHandoff?: Props["onHandoff"];
-};
-
-/**
- * The turns on the page. Memoised on the transcript's inputs alone, so a
- * tab coming back into view (`visible` flipping, a scroll effect) renders
- * the scroller shell and none of the rows.
- */
-const TurnList = memo(function TurnList({
-  visibleTurns,
-  visibleTurnKeys,
-  firstVisibleTurn,
-  turnCount,
-  busy,
-  zen,
-  initialTurns,
-  cwd,
-  layout,
-  blocks,
-  harness,
-  turnState,
-  onApproval,
-  onOpenFile,
-  onOpenDiff,
-  onSaveNote,
-  onSecondOpinion,
-  onHandoff,
-}: TurnListProps) {
-  // Resolved here as plain strings so a turn's view keeps stable props.
-  const fromHarnesses = useMemo(
-    () => visibleTurns.map((turn) => (harness ? harnessForTurn(blocks, turn, harness) : undefined)),
-    [blocks, harness, visibleTurns],
-  );
-  return (
-    <>
-      {visibleTurns.map((turn, turnIndex) => {
-        const isLastTurn = firstVisibleTurn + turnIndex === turnCount - 1;
-        return (
-          <TurnView
-            key={visibleTurnKeys[turnIndex]}
-            turn={turn}
-            stickyIndex={firstVisibleTurn + turnIndex + 1}
-            isLastTurn={isLastTurn}
-            settled={!(busy && isLastTurn)}
-            fresh={!initialTurns.has(visibleTurnKeys[turnIndex])}
-            zen={zen}
-            cwd={cwd}
-            layout={layout}
-            fromHarness={fromHarnesses[turnIndex]}
-            turnState={isLastTurn ? turnState : null}
-            onApproval={onApproval}
-            onOpenFile={onOpenFile}
-            onOpenDiff={onOpenDiff}
-            onSaveNote={onSaveNote}
-            onSecondOpinion={onSecondOpinion}
-            onHandoff={onHandoff}
-          />
-        );
-      })}
-    </>
-  );
-});
-
-type TurnViewProps = {
-  turn: Block[];
-  stickyIndex: number;
-  isLastTurn: boolean;
-  settled: boolean;
-  /** Born after the transcript mounted: fades in. */
+type RowViewProps = {
+  row: TranscriptRow;
+  /** Offset in the container, from the layout at render time. */
+  top: number;
+  /** Born after the transcript mounted and never shown: fades in, once. */
   fresh: boolean;
   zen: boolean;
   cwd?: string;
   layout: TranscriptLayout;
-  fromHarness?: HarnessId;
-  /** The session, for the live turn only; older turns never see it change. */
+  harnessOf: (turn: Block[]) => HarnessId | undefined;
+  /** The session, for the live turn's rows only; older rows never see it change. */
   turnState: TurnSession | null;
+  register: (key: string, el: HTMLElement | null) => void;
+  onLoadEarlier: () => void;
   onApproval?: Props["onApproval"];
   onOpenFile?: OpenFileFn;
   onOpenDiff?: (path: string) => void;
@@ -953,107 +1074,142 @@ type TurnViewProps = {
 };
 
 /**
- * One turn. Its `turn` array keeps its identity while its blocks do (see
- * `stableTurns`), so a streamed delta re-renders the live turn alone.
+ * One row of the window, placed by its offset. Its `row` keeps its identity
+ * while its turn's blocks do (see `stableTurns` and transcriptRows.ts), so
+ * a streamed delta re-renders the live turn's rows alone; a row whose
+ * offset moved re-renders its wrapper and nothing inside it.
  */
-const TurnView = memo(function TurnView({
-  turn,
-  stickyIndex,
-  isLastTurn,
-  settled,
+const RowView = memo(function RowView({
+  row,
+  top,
   fresh,
   zen,
   cwd,
   layout,
-  fromHarness,
+  harnessOf,
   turnState,
+  register,
+  onLoadEarlier,
   onApproval,
   onOpenFile,
   onOpenDiff,
   onSaveNote,
   onSecondOpinion,
   onHandoff,
-}: TurnViewProps) {
-  const userBlock = turnUserBlock(turn);
-  // A steered turn closes its earlier sections by doneTs alone.
-  const durationMs =
-    userBlock?.durationMs ??
-    (userBlock?.doneTs != null && userBlock.startedAt != null
-      ? Math.max(0, userBlock.doneTs - userBlock.startedAt)
-      : undefined);
-  const items = useMemo(() => groupTurnItems(turn, zen), [turn, zen]);
-  const startedAt = userBlock?.startedAt;
-  // Zen interleaves the agent's paragraphs with its work. A group is done
-  // the moment the turn moves past it, the next paragraph or question, so
-  // the fold never lands under text you have already started reading; only
-  // a group at the end of the turn is still live.
-  const lastGroup = lastActivityIndex(items);
+}: RowViewProps) {
+  const key = row.key;
+  // Decided at mount: a later render never starts or cuts the fade.
+  const [fadeIn] = useState(fresh);
+  const ref = useCallback(
+    (el: HTMLElement | null) => {
+      register(key, el);
+      return () => register(key, null);
+    },
+    [register, key],
+  );
   return (
     <div
-      data-turn={turn[0].id}
-      className={`transcript-turn group/turn flex min-w-0 flex-col gap-1${
-        isLastTurn ? " transcript-turn-live" : ""
-      }${fresh ? " z-fade-in" : ""}`}
+      ref={ref}
+      data-row={key}
+      data-turn={row.kind === "more" ? undefined : row.turn.id}
+      className={`absolute inset-x-0 flex min-w-0 flex-col pb-1${fadeIn ? " z-fade-in" : ""}`}
+      style={{ top }}
     >
-      {items.map((item, itemIndex) =>
-        item.type === "activity" ? (
-          zen ? (
-            <ActivityPhases
-              key={item.blocks[0].id}
-              blocks={item.blocks}
-              cwd={cwd}
-              done={settled || itemIndex < items.length - 1}
-              onApproval={onApproval}
-              onOpenFile={onOpenFile}
-              onOpenDiff={onOpenDiff}
-            />
-          ) : (
-            <ActivityGroup
-              key={item.blocks[0].id}
-              blocks={item.blocks}
-              cwd={cwd}
-              autoOpen={!settled && itemIndex === lastGroup}
-              onApproval={onApproval}
-              onOpenFile={onOpenFile}
-              onOpenDiff={onOpenDiff}
-            />
-          )
-        ) : item.block.role === "user" ? (
-          <div key={item.block.id} data-block={item.block.id} className="flex min-w-0 flex-col">
-            <TranscriptBlock
-              block={item.block}
-              layout={layout}
-              stickyIndex={stickyIndex}
-              onApproval={onApproval}
-              onOpenFile={onOpenFile}
-              onOpenDiff={onOpenDiff}
-              cwd={cwd}
-            />
-            <TurnStamp ts={item.block.ts ?? item.block.startedAt} chat={layout === "chat"} />
-          </div>
+      {row.kind === "more" ? (
+        <div className="flex justify-center py-3">
+          <button
+            type="button"
+            className="pressable rounded-md bg-content/8 px-2.5 py-1.5 font-sans text-[12px] text-content/50 hover:bg-content/10 hover:text-content"
+            onClick={onLoadEarlier}
+          >
+            Load earlier messages
+          </button>
+        </div>
+      ) : row.kind === "end" ? (
+        <TurnEnd
+          turn={row.turn}
+          harnessOf={harnessOf}
+          turnState={turnState}
+          onSaveNote={onSaveNote}
+          onSecondOpinion={onSecondOpinion}
+          onHandoff={onHandoff}
+        />
+      ) : row.item.type === "activity" ? (
+        zen ? (
+          <ActivityPhases
+            blocks={row.item.blocks}
+            cwd={cwd}
+            done={row.done}
+            onApproval={onApproval}
+            onOpenFile={onOpenFile}
+            onOpenDiff={onOpenDiff}
+          />
         ) : (
+          <ActivityGroup
+            blocks={row.item.blocks}
+            cwd={cwd}
+            autoOpen={row.autoOpen}
+            onApproval={onApproval}
+            onOpenFile={onOpenFile}
+            onOpenDiff={onOpenDiff}
+          />
+        )
+      ) : row.item.block.role === "user" ? (
+        <div data-block={row.item.block.id} className="group/turn flex min-w-0 flex-col">
           <TranscriptBlock
-            key={item.block.id}
-            block={item.block}
+            block={row.item.block}
             layout={layout}
-            stickyIndex={stickyIndex}
-            compactTop={
-              zen &&
-              items[itemIndex - 1]?.type === "activity" &&
-              isProseBlock(item.block)
-            }
+            stickyIndex={row.turn.index + 1}
             onApproval={onApproval}
             onOpenFile={onOpenFile}
             onOpenDiff={onOpenDiff}
             cwd={cwd}
           />
-        ),
+          <TurnStamp ts={row.item.block.ts ?? row.item.block.startedAt} chat={layout === "chat"} />
+        </div>
+      ) : (
+        <TranscriptBlock
+          block={row.item.block}
+          layout={layout}
+          stickyIndex={row.turn.index + 1}
+          compactTop={row.compactTop}
+          onApproval={onApproval}
+          onOpenFile={onOpenFile}
+          onOpenDiff={onOpenDiff}
+          cwd={cwd}
+        />
       )}
-      {!settled && showsThinkingTail(turn) ? (
-        <div
-          key="tail"
-          className="z-fade-in flex h-[26px] items-center font-sans text-sm"
-        >
+    </div>
+  );
+});
+
+/** A turn's closing row: the thinking tail while it starts, its duration
+ *  line once it is over, the live timer while it runs or waits. */
+function TurnEnd({
+  turn,
+  harnessOf,
+  turnState,
+  onSaveNote,
+  onSecondOpinion,
+  onHandoff,
+}: {
+  turn: TurnInfo;
+  harnessOf: (turn: Block[]) => HarnessId | undefined;
+  turnState: TurnSession | null;
+  onSaveNote?: (text: string) => void;
+  onSecondOpinion?: Props["onSecondOpinion"];
+  onHandoff?: Props["onHandoff"];
+}) {
+  const { settled, durationMs, startedAt, isLast } = turn;
+  // Settled only: the live turn's harness is not known until it answers.
+  const fromHarness = useMemo(
+    () => (settled ? harnessOf(turn.blocks) : undefined),
+    [settled, harnessOf, turn.blocks],
+  );
+  return (
+    <>
+      {!settled && showsThinkingTail(turn.blocks) ? (
+        <div className="z-fade-in flex h-[26px] items-center font-sans text-sm">
           <Shimmer>Thinking</Shimmer>
         </div>
       ) : null}
@@ -1062,25 +1218,25 @@ const TurnView = memo(function TurnView({
           elapsedMs={durationMs}
           done
           completedAt={startedAt != null ? startedAt + durationMs : undefined}
-          copyText={threadMentionsToTitles(turnCopyText(turn), storeTitleOf)}
+          copyText={threadMentionsToTitles(turnCopyText(turn.blocks), storeTitleOf)}
           onSaveNote={onSaveNote}
           fromHarness={fromHarness}
           onSecondOpinion={
             onSecondOpinion
-              ? (target, model) => onSecondOpinion(target, turn, model)
+              ? (target, model) => onSecondOpinion(target, turn.blocks, model)
               : undefined
           }
           onHandoff={
-            onHandoff ? (target, model) => onHandoff(target, turn, model) : undefined
+            onHandoff ? (target, model) => onHandoff(target, turn.blocks, model) : undefined
           }
         />
       ) : null}
-      {isLastTurn && (!settled || (durationMs == null && turnState && isTurnPaused(turnState))) ? (
-        <LiveTurnDuration turn={turn} />
+      {isLast && (!settled || (durationMs == null && turnState && isTurnPaused(turnState))) ? (
+        <LiveTurnDuration turn={turn.blocks} />
       ) : null}
-    </div>
+    </>
   );
-});
+}
 
 /**
  * The running timer for the turn still in flight. Ticks on the shared clock
@@ -2775,13 +2931,6 @@ function HandoffDivider({ block }: { block: Block }) {
 
 function lastUserBlockId(blocks: Block[]): string | undefined {
   return turnUserBlock(blocks)?.id;
-}
-
-function turnUserBlock(blocks: Block[]): Block | undefined {
-  for (let i = blocks.length - 1; i >= 0; i--) {
-    if (blocks[i].role === "user") return blocks[i];
-  }
-  return undefined;
 }
 
 /** Within a line or two of the end of a nested scroller. */

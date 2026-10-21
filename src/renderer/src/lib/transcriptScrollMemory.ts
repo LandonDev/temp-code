@@ -3,11 +3,13 @@
  * long enough to leave the warm set). A transcript that was following the
  * bottom stores nothing: a fresh mount lands there anyway.
  */
+import type { RowAnchor } from "./transcriptWindow";
+
 export type TranscriptScrollMemory = {
-  /** Distance from the bottom of the scroller, in px, spacer excluded. */
-  fromBottom: number;
-  /** How many rows the transcript's window had grown to. */
-  rowCount: number;
+  /** The row at the top edge of the viewport and how far into it the edge
+   *  sat (lib/transcriptWindow.ts `RowAnchor`), so the place survives the
+   *  heights being estimates again on the next mount. */
+  anchor: RowAnchor;
 };
 
 const memory = new Map<string, TranscriptScrollMemory>();

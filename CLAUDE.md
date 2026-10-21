@@ -867,6 +867,37 @@ routed to (aliax-core's `forward`). Two listeners:
   errored. Proof: `bun run script:e2e-merge-review` (headless instance, a
   scratch repo with a bare origin, two real haiku threads, the stub file
   for one blocking finding then none; build first).
+## The desktop transcript: a viewport window, markdown in a worker
+- `src/renderer/src/surfaces/AgentTranscript.tsx` mounts only the rows that
+  meet the viewport plus a screen of overscan each way. The thread is a flat
+  list of rows (`transcriptRows.ts`: one per turn item, one closing row per
+  turn, a `more` row for the remote profile's "Load earlier messages"), laid
+  out by `lib/transcriptWindow.ts` (`RowLayout`: estimates until a
+  ResizeObserver measures, offsets as prefix sums, the window range, the
+  reader's anchor row, `anchorShift`). A measurement writes the container
+  height and the offsets below it to the DOM and moves the scroll offset by
+  the growth above the anchor row; the tail row growing while streaming
+  touches its own box and the container height only. Scroll memory is the
+  anchor row (`TranscriptScrollMemory.anchor`); the minimap and search hits
+  jump by block id through `scrollToRow`, which lands exactly once the row
+  is measured. Never put `content-visibility` or size containment on a row:
+  the window measures natural heights.
+- Settled markdown parses in `lib/markdown.worker.ts` (streamdown's own
+  block split and plugin chain, shared through `lib/markdownPipeline.ts`);
+  the answer fills the hast cache under each block's text and the row
+  mounts the cached tree with no parse on the main thread
+  (`lib/markdownParse.ts`, `useMarkdownReady`). Streaming rows keep the
+  incremental main-thread path. With no `Worker` (tests, node), or one that
+  fails, throws or never gives a first answer (8 s), every text is ready at
+  once and the main thread parses as before. The renderer aliases
+  `decode-named-character-reference` to its plain build (the DOM build has
+  no document in a worker); keep that alias when touching the vite config.
+- Measure with `bun run script:measure-transcript-seed` once, then
+  `TEMP_CODE_PROFILE=1 electron-vite build` and
+  `bun scripts/measure-transcript.ts --label <name>` (an isolated instance
+  under /tmp/tc-transcript-measure on its own display; never the user's
+  data). docs/TRANSCRIPT.md has the rules, the budget and the before/after
+  table.
 
 ## The iOS contract package is generated
 - `ios/TempCodeContract` holds the Swift `Codable` types of the remote wire,

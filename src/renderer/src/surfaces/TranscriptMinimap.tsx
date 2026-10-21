@@ -7,9 +7,10 @@ import { isProseBlock, toolCallLabel } from "./transcriptActivity";
 /**
  * A rail of ticks down the transcript's left edge (ported from temp-code):
  * one per row, coloured by who wrote it, with a window for the viewport.
- * Hover a tick for a line of what it says; click to glide there. The window
- * moves by direct DOM writes from the scroll handler, so scrolling never
- * renders.
+ * Hover a tick for a line of what it says; click to glide there (by block
+ * id: the transcript's window mounts the row if it is off screen). The
+ * window moves by direct DOM writes from the scroll handler, so scrolling
+ * never renders.
  */
 
 type TickKind = "user" | "reply" | "edit" | "tool" | "alert";
@@ -57,13 +58,23 @@ function tickOf(block: Block, turnId: string): Tick | null {
   return null;
 }
 
+/** Ticks per turn array: a settled turn keeps its array (AgentTranscript's
+ *  `stableTurns`), so a delta on the live turn re-reads that turn alone. */
+const turnTicks = new WeakMap<Block[], Tick[]>();
+
 function ticksOf(turns: Block[][]): Tick[] {
   const ticks: Tick[] = [];
   for (const turn of turns) {
-    for (const block of turn) {
-      const tick = tickOf(block, turn[0].id);
-      if (tick) ticks.push(tick);
+    let own = turnTicks.get(turn);
+    if (!own) {
+      own = [];
+      for (const block of turn) {
+        const tick = tickOf(block, turn[0].id);
+        if (tick) own.push(tick);
+      }
+      turnTicks.set(turn, own);
     }
+    for (const tick of own) ticks.push(tick);
   }
   return ticks;
 }
@@ -77,7 +88,7 @@ export const TranscriptMinimap = memo(function TranscriptMinimap({
   scroller: HTMLDivElement | null;
   turns: Block[][];
   visible: boolean;
-  onJump: (target: HTMLElement) => void;
+  onJump: (blockId: string) => void;
 }) {
   const ticks = useMemo(() => ticksOf(turns), [turns]);
   const railH = Math.min(Math.max(ticks.length * ROW_PX, MIN_RAIL), MAX_RAIL);
@@ -116,12 +127,7 @@ export const TranscriptMinimap = memo(function TranscriptMinimap({
 
   if (turns.length < 2 || ticks.length === 0) return null;
 
-  const jump = (tick: Tick) => {
-    const target = scroller?.querySelector<HTMLElement>(
-      `[data-turn="${CSS.escape(tick.turnId)}"]`,
-    );
-    if (target) onJump(target);
-  };
+  const jump = (tick: Tick) => onJump(tick.turnId);
 
   return (
     <div

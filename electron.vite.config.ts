@@ -112,7 +112,14 @@ export default defineConfig({
         // The transplanted renderer imports server types as
         // `@server/shared/*` (MonoCode's layout); they live in src/shared.
         '@server/shared': resolve('src/shared'),
-        '@shared': resolve('src/shared')
+        '@shared': resolve('src/shared'),
+        // The markdown parse worker (lib/markdown.worker.ts) runs micromark
+        // too; the package's browser build decodes entities through a DOM
+        // element, which a worker has no document for. The plain build
+        // works everywhere and costs its entity table.
+        'decode-named-character-reference': resolve(
+          'node_modules/decode-named-character-reference/index.js'
+        )
       }
     },
     define: { 'import.meta.env.TEMP_CODE_PROFILE': JSON.stringify(profiling ? '1' : '') },

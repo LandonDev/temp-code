@@ -263,11 +263,6 @@ html.is-mac.glass .sidebar-glass {
   }
 }
 
-.transcript-turn {
-  content-visibility: auto;
-  contain-intrinsic-block-size: auto 240px;
-}
-
 /*
  * A mounted tab behind the shown one keeps its boxes, scroll offsets and
  * terminal state while layout, paint and hit testing skip it. display:none
@@ -278,15 +273,6 @@ html.is-mac.glass .sidebar-glass {
 .tab-parked {
   content-visibility: hidden;
   pointer-events: none;
-}
-
-/*
- * The live turn is still growing. Size containment would flash the 240px
- * intrinsic fallback when the first step arrives, which bounces Working
- * down and then back up.
- */
-.transcript-turn-live {
-  content-visibility: visible;
 }
 
 
