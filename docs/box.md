@@ -1334,7 +1334,9 @@ after a removal is a new row.
   under any harness's name for it, paired with its result by callId, and the
   harness's `EnterWorktree`), every `mac.run` result on the box
   (`macTools.ts` tells the ledger, with the Mac's id and home), and a job's
-  reads once the output proves the creation.
+  reads once the output proves the creation. A worktree the branch step of a
+  thread move makes for the landed thread is recorded too (sessionMove.ts
+  `recordResource`), so it goes with the thread's archive.
 - **Removal** runs on the owning host, never touching anything not on the
   ledger (threadResourcesRemove.ts): `git worktree remove --force <path>`
   from the repo's main tree, then `git branch -D` only for the branch the

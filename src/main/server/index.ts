@@ -2,7 +2,7 @@ import { homedir, hostname } from 'node:os'
 import { version as appVersion } from '../../../package.json'
 import { hubFromEnv, type HubClient } from './hub'
 import { existsSync, readFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, resolve, basename } from 'node:path'
 import { handleM3a } from './m3a'
 import { withinRoots } from './fspaths'
 import { Notes } from './notes'
@@ -440,6 +440,12 @@ export async function startServer(
     host: {
       db,
       environmentId,
+      // The worktree the branch step makes for a landed thread is the thread's own from then on (threadResources.ts).
+      recordResource: (sessionId, r) =>
+        void resources.record(sessionId, environmentId, {
+          created: [{ kind: 'worktree', identifier: r.path, label: r.branch ?? basename(r.path), branch: r.branch }],
+          removed: []
+        }),
       dataDir: options.dataDir ?? dirname(dbPath),
       home: () => homedir(),
       workRoot: () => workRoot(store).root,
