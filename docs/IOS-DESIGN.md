@@ -200,6 +200,59 @@ surfaced streaming in beneath: favicon, title, domain dim, claim in one
 line. The chat docks as the second segment and the app switches to Sources
 when the report completes.
 
+## Settings
+
+Settings is the one place the app is Apple's own: a pushed, inset grouped
+list, as Settings → Wi-Fi is, because the user already knows how to read it
+and nothing here is the product. Rows carry no glyphs (the desktop's
+settings rows carry none). Every row that needs explaining gets one sentence
+of footer, never a paragraph; the app's version and contract close the
+screen, dim and centred, so a screenshot answers "which build".
+
+- **Hosts** pushes the list; the row's trailing half is one connection dot
+  per host and the single host's name, or the count.
+- **Notifications** is one row: the switch with the registrar's word beside
+  it ("Off", "On", "Registering…", "No relay", "Failed", "Not allowed"). The
+  switch moves at once and holds its position while the permission prompt
+  and the hosts answer; the word cross-fades 150 ms. When the phone refused
+  permission an "Allow in Settings" row opens the system Settings. The footer
+  names what stands in the way.
+- **Appearance** is the inline picker with checkmarks: System, Light, Dark.
+
+**Hosts.** One row per paired host: the connection dot leading in a 14 pt
+box, the name, a second line in `footnote` (the address while connected,
+else what is wrong in two words, destructive only when it waits on the user:
+"Key refused", "Offline", "Different host", "Needs an update"; a socket on
+its way stays `secondary`), and the environment id abbreviated
+(`env_AbCd…StUv`) trailing in mono `caption`, `tertiary`. The second line
+swaps with the 150 ms blur cross-fade. Swipe and long press offer Pair Again
+and Forget; every row pushes the detail.
+
+**Host detail.** Four sections: the status row (dot, the live `StatusText`
+with its countdown, a spinner while connecting) with the one action that
+fixes the state under it (Retry Now when the host is out of reach, Pair
+Again when the key was refused or the address answers as another host,
+nothing when the host needs an update the phone cannot do) and a footer
+saying why; the key's capabilities (Read, Operate, Approve, Admin, each with
+one line of what it allows and a checkmark in the tint when the key has it);
+the host's facts (Name, editable in place; Address; Environment id in mono,
+selectable; Contract from the last hello; Notifications for this host; the
+pairing date); then Pair Again and the red Forget This Host. Forgetting is a
+confirmation dialog naming the host, with what it means in one sentence.
+
+**Pairing** (Add a Host, Pair Again) is a medium sheet, 16 pt radius, with
+the large detent for the keyboard: a segmented Pairing Link / Key, the field
+with a paste button at its trailing edge while empty (a pasted link that
+reads cleanly is redeemed at once; a typed one is recognised, the footer
+naming the host it pairs with, and submitted with Return or Add), an
+optional name, and the refusal under the field inside the same card,
+footnote in destructive with the `exclamationmark.circle` glyph, arriving
+with the needs-you row motion and leaving 150 ms when typing resumes.
+Never an alert. Add swaps for a spinner with a 150 ms cross-fade; a success
+haptic and the sheet dismisses with the host already in the list; an error
+haptic on a refusal. The first field takes the keyboard once the sheet has
+settled (350 ms).
+
 ## Visual system
 
 Everything maps to the desktop's `DESIGN.md`: quiet chrome, one gray step,
