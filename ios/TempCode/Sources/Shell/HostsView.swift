@@ -34,7 +34,7 @@ struct HostsView: View {
                 }
             } footer: {
                 if !clients.isEmpty {
-                    Text("A host is a desktop or the agent host that was paired from its Remote access pane.")
+                    Text("Pair another host with the link its Remote access pane makes.")
                 }
             }
         }
@@ -97,11 +97,12 @@ struct HostRow: View {
                     .lineLimit(1)
                 Text(second(status))
                     .font(.footnote)
-                    .foregroundStyle(status.transport == .open ? AnyShapeStyle(.secondary) : AnyShapeStyle(Tint.destructive))
+                    .foregroundStyle(wrong(status) ? AnyShapeStyle(Tint.destructive) : AnyShapeStyle(.secondary))
                     .lineLimit(1)
                     .id(second(status))
                     .transition(Motion.swap(reduced: reduceMotion))
             }
+            .layoutPriority(1)
             Spacer(minLength: 12)
             Text(abbreviatedEnvironmentId(client.environment.id))
                 .font(.caption.monospaced())
@@ -116,6 +117,16 @@ struct HostRow: View {
     private func second(_ status: EnvironmentStatus) -> String {
         status.transport == .open ? client.environment.host : ConnectionWord.text(for: status)
     }
+
+    /// Destructive only when something is wrong that waits on the user; a
+    /// socket on its way is quiet.
+    private func wrong(_ status: EnvironmentStatus) -> Bool {
+        switch status.transport {
+        case .unauthorized, .offline: true
+        case .connecting: status.attempts > 0
+        case .open, .reconnecting, .suspended: false
+        }
+    }
 }
 
 /// One host in full: its state and the action that fixes it, the key and
@@ -127,7 +138,6 @@ struct HostDetailView: View {
     @State private var pairingAgain: PairedEnvironment?
     @State private var forgetting: PairedEnvironment?
     @State private var name = ""
-    @State private var retrying = false
 
     var body: some View {
         if let client = model.registry.client(environmentId) {
@@ -151,30 +161,23 @@ struct HostDetailView: View {
                     StatusText(status: status)
                         .lineLimit(2)
                     Spacer(minLength: 12)
-                    if retrying || status.transport == .connecting {
+                    if status.transport == .connecting {
                         ProgressView()
                             .controlSize(.small)
                             .transition(.opacity)
                     }
                 }
                 .animation(Motion.crossFade, value: status.transport)
-                .animation(Motion.crossFade, value: retrying)
                 .accessibilityIdentifier("host-status")
                 if let fix = fix(for: status) {
                     Button(fix.title) {
                         switch fix {
                         case .retry:
-                            retrying = true
-                            Task {
-                                await client.retry()
-                                try? await Task.sleep(for: .seconds(1))
-                                retrying = false
-                            }
+                            Task { await client.retry() }
                         case .pairAgain:
                             pairingAgain = environment
                         }
                     }
-                    .disabled(retrying)
                 }
             } footer: {
                 if let explanation = explanation(for: status) {
