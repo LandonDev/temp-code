@@ -185,13 +185,13 @@ struct LiveServerTests {
 
     // MARK: - leaving and coming back
 
-    @Test func `the background closes the socket after the grace and coming back lands the rows appended while away, once`() async throws {
+    @Test @MainActor func `the background closes the socket after the grace and coming back lands the rows appended while away, once`() async throws {
         var configuration = SocketConfiguration()
         configuration.backgroundGraceMs = 300
         let client = EnvironmentClient(environment: LiveServer.environment(), keys: try LiveServer.keys(), cache: try SessionCache.inMemory(), configuration: configuration)
-        let quiet = Mutex(0)
+        var quiet = 0
         client.quietly = { body in
-            quiet.withLock { $0 += 1 }
+            quiet += 1
             body()
         }
         await client.start()
@@ -200,7 +200,7 @@ struct LiveServerTests {
         client.visibleThread = LiveServer.threadB
         #expect(await LiveServer.until { client.threads[LiveServer.threadB]?.isLive == true && (client.threads[LiveServer.threadB]?.rows.count ?? 0) >= 3 })
         let before = client.threads[LiveServer.threadB]!.rows
-        let quietBefore = quiet.withLock { $0 }
+        let quietBefore = quiet
 
         await client.setForeground(false)
         #expect(await LiveServer.until { client.status.transport == .suspended })
@@ -218,11 +218,11 @@ struct LiveServerTests {
         #expect(Set(seqs).count == seqs.count)
         #expect(seqs.last! - seqs.first! + 1 == seqs.count, "no gap in \(seqs)")
         #expect(Array(rows.prefix(before.count)) == before, "the rows that were there are the same rows")
-        #expect(quiet.withLock { $0 } == quietBefore, "the thread on screen caught up with its own motion, nothing else republished")
+        #expect(quiet == quietBefore, "the thread on screen caught up with its own motion, nothing else republished")
         await client.stop()
     }
 
-    @Test func `a cold launch paints the thread you left from the cache and the catch-up applies as a diff`() async throws {
+    @Test @MainActor func `a cold launch paints the thread you left from the cache and the catch-up applies as a diff`() async throws {
         let cache = try SessionCache.inMemory()
         let first = EnvironmentClient(environment: LiveServer.environment(), keys: try LiveServer.keys(), cache: cache)
         await first.start()
@@ -249,7 +249,7 @@ struct LiveServerTests {
         await next.stop()
     }
 
-    @Test func `a host that is down leaves the other host's client untouched`() async throws {
+    @Test @MainActor func `a host that is down leaves the other host's client untouched`() async throws {
         let live = EnvironmentClient(environment: LiveServer.environment(), keys: try LiveServer.keys(), cache: try SessionCache.inMemory())
         let keys = InMemoryKeyStore()
         try keys.set("tc_dead.secret", for: "env_dead")

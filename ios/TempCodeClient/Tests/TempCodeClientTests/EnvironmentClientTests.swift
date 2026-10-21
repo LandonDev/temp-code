@@ -504,14 +504,17 @@ private func seqs(_ rows: [EventRow]) -> [Int] { rows.map(\.seq) }
         let fake = await rig.sockets.socket(0)
         fake.hello()
         await rig.answerShell(fake, sessions: [clientSession("s1"), clientSession("s2")])
-        for _ in 0..<2 {
-            let subscribe = try #require(await rig.waitForRequest(fake, "session.subscribe", count: rig.sent(fake, "session.subscribe").count))
+        // Both threads resume in one batch: two subscribes, then two gap pages.
+        for n in 1...2 {
+            let subscribe = try #require(await rig.waitForRequest(fake, "session.subscribe", count: n))
             fake.answer(id: subscribe.id, result: "null")
-            let events = try #require(await rig.waitForRequest(fake, "session.events", count: rig.sent(fake, "session.events").count))
+        }
+        for n in 1...2 {
+            let events = try #require(await rig.waitForRequest(fake, "session.events", count: n))
             let id = events.params.objectValue?["sessionId"]?.stringValue ?? ""
             fake.answer(id: events.id, result: json(EventsPage(rows: [textRow(id, seq: 6)], moreBefore: false, moreAfter: false, reset: false)))
-            #expect(await rig.wait { rig.client.threads[id]?.rows.count == 6 })
         }
+        #expect(await rig.wait { rig.client.threads["s1"]?.rows.count == 6 && rig.client.threads["s2"]?.rows.count == 6 })
         #expect(await rig.wait { rig.client.status.fresh })
         let afterCatchUp = quiet
         fake.deliver(#"{"push":"events","sessionId":"s1","rows":\#(json([textRow("s1", seq: 7)]))}"#)
