@@ -31,7 +31,7 @@
  * Report: /tmp/tc-warm-start/report.json
  */
 import { randomBytes } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -153,11 +153,35 @@ const until = async (label: string, ms: number, test: () => Promise<boolean> | b
   }
   throw new Error(`timed out: ${label}`)
 }
+/**
+ * Everything of the instance: the preview wrapper, Electron's main process
+ * (`electron .`, which outlives the wrapper's SIGTERM) and every child they
+ * spawned, found by the instance's own TEMP_CODE_USER_DATA in /proc (Linux;
+ * on macOS the port-holder kill of the other e2e scripts would be the way).
+ */
 async function stop(inst: Inst): Promise<void> {
   const pid = inst.proc?.pid
   if (inst.proc) inst.proc.kill('SIGTERM')
   await sleep(1_500)
   if (pid) await sh(['sh', '-c', `pkill -TERM -P ${pid} || true; kill -KILL ${pid} 2>/dev/null || true`], { quiet: true }).catch(() => '')
+  if (existsSync('/proc')) {
+    const marker = `TEMP_CODE_USER_DATA=${inst.data}`
+    for (const entry of readdirSync('/proc')) {
+      if (!/^\d+$/.test(entry) || Number(entry) === process.pid) continue
+      let environ = ''
+      try {
+        environ = readFileSync(`/proc/${entry}/environ`, 'latin1')
+      } catch {
+        continue
+      }
+      if (!environ.split('\0').includes(marker)) continue
+      try {
+        process.kill(Number(entry), 'SIGKILL')
+      } catch {
+        /* gone */
+      }
+    }
+  }
 }
 
 // ── the local socket, as tc-local speaks it ──────────────────────────────────
