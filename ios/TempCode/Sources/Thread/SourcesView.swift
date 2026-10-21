@@ -340,7 +340,6 @@ private struct SourceRowView: View {
     /// A hairline above, inset to the text edge, between consecutive sources.
     let divided: Bool
     let onOpen: (WebPage) -> Void
-    @Environment(\.displayScale) private var scale
     @Environment(\.openURL) private var openURL
     @ScaledMetric(relativeTo: .subheadline) private var icon: CGFloat = 20
 
@@ -484,7 +483,7 @@ final class FaviconCache {
               let url = URL(string: "https://www.google.com/s2/favicons?domain=\(host)&sz=64") else { return }
         inFlight.insert(host)
         defer { inFlight.remove(host) }
-        guard let (data, _) = try? await URLSession.shared.data(from: url), let image = UIImage(data: data) else {
+        guard let fetched = try? await URLSession.shared.data(from: url), let image = UIImage(data: fetched.0) else {
             missing.insert(host)
             return
         }

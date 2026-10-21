@@ -65,7 +65,7 @@ extension ResearchBoard {
 public enum ReportCitations {
     /// A `[n]` or `[n, m]` marker in a line of prose; a markdown link's
     /// `[text](url)` is left alone, as is a `[ ]` checkbox.
-    public static let marker = /\[(\d{1,3}(?:\s*,\s*\d{1,3})*)\](?!\()/
+    public static var marker: Regex<(Substring, Substring)> { /\[(\d{1,3}(?:\s*,\s*\d{1,3})*)\](?!\()/ }
 
     /// The numbers a marker names: "[1]" is [1], "[2, 5]" is [2, 5].
     public static func numbers(in match: Substring) -> [Int] {
@@ -109,15 +109,15 @@ public enum ReportCitations {
         return out
     }
 
-    private static let link = /\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/
-    private static let bareUrl = /https?:\/\/[^\s<>()\]]+/
+    private static var link: Regex<(Substring, Substring, Substring)> { /\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/ }
+    private static var bareUrl: Regex<Substring> { /https?:\/\/[^\s<>()\]]+/ }
 
     /// One sources-list line: its number when it leads with one, the first
     /// url on it, and the title (the link text, else the words beside the url).
     static func item(_ line: String) -> (number: Int?, url: String, title: String?)? {
         var rest = Substring(line)
         var number: Int?
-        if rest.hasPrefix("[") , let close = rest.firstIndex(of: "]"), let n = Int(rest[rest.index(after: rest.startIndex)..<close]) {
+        if rest.hasPrefix("["), let close = rest.firstIndex(of: "]"), let n = Int(rest[rest.index(after: rest.startIndex)..<close]) {
             number = n
             rest = rest[rest.index(after: close)...]
         } else {
