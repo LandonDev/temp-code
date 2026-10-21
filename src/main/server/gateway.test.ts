@@ -54,14 +54,14 @@ afterEach(async () => {
 describe('mayClaimShim', () => {
   const prod = join(home, 'Library', 'Application Support', 'temp-code')
   it('the installed app and dev:prod claim; a dev dir needs the gate', () => {
-    expect(gw.mayClaimShim({ isPackaged: true, env: {} })).toBe(true)
-    expect(gw.mayClaimShim({ isPackaged: false, env: {} })).toBe(false)
-    expect(gw.mayClaimShim({ isPackaged: false, env: { TEMP_CODE_USER_DATA: prod } })).toBe(true)
-    expect(gw.mayClaimShim({ isPackaged: false, env: { TEMP_CODE_USER_DATA: `${prod}-dev` } })).toBe(false)
-    expect(
-      gw.mayClaimShim({ isPackaged: false, env: { TEMP_CODE_USER_DATA: `${prod}-dev`, TEMP_CODE_CLAIM_SHIM: '1' } })
-    ).toBe(true)
-    expect(gw.mayClaimShim({ isPackaged: true, env: { TEMP_CODE_USER_DATA: `${prod}-dev` } })).toBe(false)
+    // The Mac's paths, whichever host runs the suite.
+    const mac = (o: { isPackaged: boolean; env: NodeJS.ProcessEnv }) => gw.mayClaimShim({ ...o, platform: 'darwin' })
+    expect(mac({ isPackaged: true, env: {} })).toBe(true)
+    expect(mac({ isPackaged: false, env: {} })).toBe(false)
+    expect(mac({ isPackaged: false, env: { TEMP_CODE_USER_DATA: prod } })).toBe(true)
+    expect(mac({ isPackaged: false, env: { TEMP_CODE_USER_DATA: `${prod}-dev` } })).toBe(false)
+    expect(mac({ isPackaged: false, env: { TEMP_CODE_USER_DATA: `${prod}-dev`, TEMP_CODE_CLAIM_SHIM: '1' } })).toBe(true)
+    expect(mac({ isPackaged: true, env: { TEMP_CODE_USER_DATA: `${prod}-dev` } })).toBe(false)
   })
 
   it('off macOS the prod dir follows the platform appData', () => {
