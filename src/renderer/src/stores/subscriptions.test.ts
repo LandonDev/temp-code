@@ -454,14 +454,27 @@ describe("installActiveSessionSync", () => {
 });
 
 describe("installBootTasks", () => {
-  it("prunes the seen map to the threads the server lists, and not when the list is empty", () => {
+  it("prunes the seen map to the threads every host lists, and not while a host has not listed or the list is empty", async () => {
+    const listed = vi.spyOn(sessionStore, "listedEnvironments").mockResolvedValue(new Set(["local"]));
+    const environments = vi.spyOn(registry, "environments").mockReturnValue([{ id: "local" }, { id: "env_box" }] as never);
+    sessionStore.adopt(meta({ id: "s-a" }));
+    sessionStore.adopt(meta({ id: "s-b", environmentId: "env_box" }));
     teardown = installBootTasks();
+    await flush();
+    // the box has not listed yet: its threads are not known, so nothing is pruned
     expect(pruneLastSeen).not.toHaveBeenCalled();
     teardown();
-    sessionStore.adopt(meta({ id: "s-a" }));
-    sessionStore.adopt(meta({ id: "s-b" }));
+    listed.mockResolvedValue(new Set(["local", "env_box"]));
     teardown = installBootTasks();
+    await flush();
     expect(pruneLastSeen).toHaveBeenCalledWith(new Set(["s-a", "s-b"]));
+    teardown();
+    vi.spyOn(sessionStore, "metas").mockReturnValue([]);
+    vi.mocked(pruneLastSeen).mockClear();
+    teardown = installBootTasks();
+    await flush();
+    expect(pruneLastSeen).not.toHaveBeenCalled();
+    environments.mockRestore();
   });
 
   it("adopts the default folder on a first launch and re-resolves live models", async () => {

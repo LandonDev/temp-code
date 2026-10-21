@@ -94,6 +94,21 @@ export function markSessionSeen(id: string, at = Date.now()): void {
   for (const listener of listeners) listener();
 }
 
+/** Every known thread read as of now, and the floor raised to now so a
+ *  thread with no entry counts as seen too. */
+export function markAllSeen(ids: Iterable<string>, at = Date.now()): void {
+  const next: SeenMap = { ...loadLastSeen() };
+  for (const id of ids) if (id) next[id] = Math.max(next[id] ?? 0, at);
+  cache = next;
+  floorCache = at;
+  try {
+    localStorage.setItem(KEY, JSON.stringify(next));
+    localStorage.setItem(FLOOR_KEY, String(at));
+  } catch {
+    // private mode / quota
+  }
+  for (const listener of listeners) listener();
+}
 /** Drops ids the server no longer knows. Once at boot, so the map stops
  *  growing with every deleted thread and each later write stays small. */
 export function pruneLastSeen(known: ReadonlySet<string>): void {

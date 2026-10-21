@@ -29,6 +29,7 @@ const EXPECTED: [string, string | undefined][] = [
   ['toggle_sidebar', 'CmdOrCtrl+B'],
   ['toggle_zen', 'CmdOrCtrl+Alt+Z'],
   ['open_inbox', undefined],
+  ['mark_all_read', undefined],
   ['open_notes', undefined],
   ['next_environment', 'CmdOrCtrl+Alt+]'],
   ['prev_environment', 'CmdOrCtrl+Alt+['],
@@ -50,9 +51,9 @@ describe('menu tree', () => {
     expect(actual).toEqual(EXPECTED)
   })
 
-  it('sends 37 ids to the renderer and keeps quit in main', () => {
+  it('sends 38 ids to the renderer and keeps quit in main', () => {
     expect(MAIN_MENU_IDS).toEqual(['quit'])
-    expect(RENDERER_MENU_IDS).toHaveLength(37)
+    expect(RENDERER_MENU_IDS).toHaveLength(38)
     expect(RENDERER_MENU_IDS).toContain('new_window')
     expect(RENDERER_MENU_IDS).not.toContain('quit')
   })

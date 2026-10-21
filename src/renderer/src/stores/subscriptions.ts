@@ -464,10 +464,16 @@ export function installBootTasks(): Teardown {
   let live = true;
   syncDockBadge();
   // The seen map only ever grew: ids of deleted threads stayed in every
-  // write. The server's list is the known set; an empty list (sidecar
-  // down) prunes nothing.
-  const known = sessionStore.metas();
-  if (known.length > 0) pruneLastSeen(new Set(known.map((meta) => meta.id)));
+  // write. The known set is every host's list together, so the prune waits
+  // until each saved environment has listed; with one still out (a host
+  // down, or its link not up yet) it prunes nothing, because its threads
+  // would all read unread the moment the host came back.
+  void sessionStore.listedEnvironments().then((listed) => {
+    if (!live) return;
+    if (!registry.environments().every((env) => listed.has(env.id))) return;
+    const known = sessionStore.metas();
+    if (known.length > 0) pruneLastSeen(new Set(known.map((meta) => meta.id)));
+  });
   const offs = [
     // The badge counts waiting metas: a meta change is the only thing that moves it.
     sessionStore.onMetaChange(syncDockBadge),
