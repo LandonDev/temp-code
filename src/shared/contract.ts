@@ -15,6 +15,7 @@ import { MacBridgeRulesRequestSchemas } from './contract-macbridge-rules'
 import { MacJobRequestSchemas } from './contract-macjobs'
 import { HostRequestSchemas } from './contract-host'
 import { HostDevicesRequestSchemas } from './contract-hostdevices'
+import { ResourcesRequestSchemas } from './contract-resources'
 import { AGENT_TYPES } from './catalog'
 import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
@@ -123,6 +124,7 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...MacJobRequestSchemas,
   ...HostRequestSchemas,
   ...HostDevicesRequestSchemas,
+  ...ResourcesRequestSchemas,
   // refresh: re-probe the installed CLIs of the probed providers first.
   z.object({
     id: z.string(),
@@ -674,7 +676,8 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   z.object({
     id: z.string(),
     method: z.literal('session.archive'),
-    params: z.object({ sessionId: z.string(), archived: z.boolean() })
+    /** removeResources: archiving also removes the thread's live resources on their hosts (contract-resources.ts). */
+    params: z.object({ sessionId: z.string(), archived: z.boolean(), removeResources: z.boolean().optional() })
   }),
   z.object({
     id: z.string(),
@@ -1026,6 +1029,8 @@ export type ServerPush =
   | import('./contract-hostdevices').HostDevicesPush
   // Memory sync (contract-memory.ts): a receiver's nudge down a driver's link.
   | import('./contract-memory').MemoryNudgePush
+  // Thread resources (contract-resources.ts): a thread's ledger rows after any change.
+  | import('./contract-resources').ResourcesPush
   // Watcher spine (M11): project-relative path, debounced ~100 ms.
   | { push: 'file-event'; projectId: string; path: string; kind: 'changed' | 'created' | 'deleted' }
   // Build rail: run state plus any new log lines (batched ~50 ms). A new

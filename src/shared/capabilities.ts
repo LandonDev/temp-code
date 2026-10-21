@@ -188,6 +188,10 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'session.rename': 'operate',
   'session.setThreadRules': 'operate',
   'session.archive': 'operate',
+  // Thread resources (contract-resources.ts): ids only, never a caller path; removal runs on the owning host.
+  'resources.list': 'read',
+  'resources.listAll': 'read',
+  'resources.remove': 'operate',
   'session.delete': 'operate',
   'session.restart': 'operate',
   'session.continue': 'operate',

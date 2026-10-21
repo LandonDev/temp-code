@@ -154,6 +154,27 @@ export function openDb(path: string): DatabaseSync {
       updated_at  INTEGER NOT NULL,
       PRIMARY KEY (key_id, session_id)
     );
+    -- Thread resources (server/threadResources.ts, contract-resources.ts):
+    -- what a thread created and where. A subagent's rows carry its top-level
+    -- thread's id. Rows are stamped, never deleted; one live row per
+    -- resource on a host (the partial unique index), so a re-creation after
+    -- removal is a new row.
+    CREATE TABLE IF NOT EXISTS thread_resources (
+      id                  TEXT PRIMARY KEY,
+      session_id          TEXT NOT NULL,
+      environment_id      TEXT NOT NULL,
+      kind                TEXT NOT NULL,
+      identifier          TEXT NOT NULL,
+      label               TEXT NOT NULL,
+      branch              TEXT,
+      created_at          INTEGER NOT NULL,
+      remove_requested_at INTEGER,
+      removed_at          INTEGER,
+      note                TEXT
+    );
+    CREATE INDEX IF NOT EXISTS thread_resources_session ON thread_resources(session_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS thread_resources_live
+      ON thread_resources(environment_id, kind, identifier) WHERE removed_at IS NULL;
     CREATE TABLE IF NOT EXISTS remote_sessions (
       id           TEXT PRIMARY KEY,
       key_id       TEXT NOT NULL,

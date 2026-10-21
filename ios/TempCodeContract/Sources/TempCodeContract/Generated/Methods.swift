@@ -412,10 +412,12 @@ public enum Methods {
         public struct Params: Codable, Hashable, Sendable {
             public let sessionId: String
             public let archived: Bool
+            public let removeResources: Bool?
 
-            public init(sessionId: String, archived: Bool) {
+            public init(sessionId: String, archived: Bool, removeResources: Bool? = nil) {
                 self.sessionId = sessionId
                 self.archived = archived
+                self.removeResources = removeResources
             }
         }
 
