@@ -353,6 +353,21 @@ routed to (aliax-core's `forward`). Two listeners:
   (`HARNESS_SET` in `harnessSet.ts`), the exclusions and the status line
   (each set with its file count) are in docs/box.md "Harness config: synced
   from the Mac". Proof: `bun run script:e2e-harness-sync`.
+- Memory goes both ways (`src/main/server/remote/{memorySet,memoryMerge,
+  memorySync}.ts`, `memory.*` RPCs, admin): Claude Code's per-project memory
+  (`.claude/projects/<encoded cwd>/memory/`, the encoded dir translated
+  through the path map), plans and `~/.claude/CLAUDE.md`, Codex's
+  `~/.codex/memories/` and `AGENTS.md`; never transcripts, secrets or
+  `.git`. The host holding the link drives (`memory.exchange` →
+  `memory.files`), the other decides: newer mtime wins, a content digest
+  makes a no-op free, both-changed keeps the loser beside the winner as
+  `<name>.conflict-<host>-<time>.md` on both hosts, a project `MEMORY.md`
+  is unioned, deletions travel as 30-day tombstones. Runs on link-up,
+  every 5 minutes, after a thread goes idle on either host (the box nudges
+  over the Mac's link) and from Sync now. The line under each host's
+  harness line in Settings → Remote access shows files, time and conflicts
+  with the conflict list. docs/box.md "Memory: synced both ways"; proof is
+  the memory step of `bun run script:e2e-harness-sync`.
 - Attachments on a remote thread: a file from another host (or a big paste)
   is uploaded to the thread's host before the turn names it
   (`attachment.begin/chunk/commit`, src/shared/contract-attachments.ts) into

@@ -9,6 +9,7 @@ import type {
   RemoteStatus,
 } from "@server/shared/contract-remote";
 import type { HarnessSyncStatus } from "@server/shared/contract-harness";
+import type { MemorySyncStatus } from "@server/shared/contract-memory";
 import type { AttachmentSettings } from "@server/shared/contract-attachments";
 import { forgetAttachmentSettings } from "../lib/attachmentUpload";
 import { DialogFooter, ErrorLine, errorText } from "../chrome/ConfirmDialog";
@@ -20,6 +21,9 @@ import { LOCAL_ENVIRONMENT_ID, registry } from "../lib/connection";
 import { Heading, INPUT_CLASS, Input, Row, SecondaryButton, Segmented, Toggle } from "./settingsBits";
 import { MatrixSpinner } from "./threads/bits";
 import { harnessLine } from "./harnessLine";
+import { memoryLine } from "./memoryLine";
+import { isWebMode } from "../lib/nativeWeb";
+import { revealPath } from "../lib/fs";
 import { MacBridgeSettings } from "./MacBridgeSettings";
 import { DeploySettings } from "./DeploySettings";
 
@@ -51,19 +55,22 @@ export function RemoteSettings({ onOpenSession }: { onOpenSession?: (sessionId: 
   const [pairings, setPairings] = useState<RemotePairing[]>([]);
   const [sessions, setSessions] = useState<RemoteSession[]>([]);
   const [harness, setHarness] = useState<HarnessSyncStatus | null>(null);
+  const [memory, setMemory] = useState<MemorySyncStatus | null>(null);
+  const [showConflicts, setShowConflicts] = useState(false);
   const [attachments, setAttachments] = useState<AttachmentSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<"key" | "pair" | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const [s, k, p, b, h, a] = await Promise.all([
+      const [s, k, p, b, h, mem, a] = await Promise.all([
         rpc<RemoteStatus>("remote.status"),
         rpc<RemoteKey[]>("remote.keys.list"),
         rpc<RemotePairing[]>("remote.pairings.list"),
         rpc<RemoteSession[]>("remote.sessions.list"),
         // An older host without the harness sync answers an error: the section just stays away.
         rpc<HarnessSyncStatus>("harness.status").catch(() => null),
+        rpc<MemorySyncStatus>("memory.status").catch(() => null),
         rpc<AttachmentSettings>("attachment.settings", {}).catch(() => null),
       ]);
       setStatus(s);
@@ -71,6 +78,7 @@ export function RemoteSettings({ onOpenSession }: { onOpenSession?: (sessionId: 
       setPairings(p);
       setSessions(b);
       setHarness(h);
+      setMemory(mem);
       setAttachments(a);
       setError(null);
     } catch (err) {
@@ -97,6 +105,19 @@ export function RemoteSettings({ onOpenSession }: { onOpenSession?: (sessionId: 
   );
   const setSettings = (patch: { enabled?: boolean; port?: number; publicOrigin?: string; stuckMinutes?: number }) =>
     act("remote.settings.set", patch);
+  /** Sync now on a host runs whichever legs are on: the harness config out, the memory both ways. */
+  const syncHost = useCallback(
+    async (environmentId: string, harnessOn: boolean, memoryOn: boolean) => {
+      try {
+        if (harnessOn) await rpc("harness.sync", { environmentId });
+        if (memoryOn) await rpc("memory.sync", { environmentId });
+        await refresh();
+      } catch (err) {
+        setError(errorText(err));
+      }
+    },
+    [refresh],
+  );
 
   if (!status) {
     return (
@@ -201,27 +222,87 @@ export function RemoteSettings({ onOpenSession }: { onOpenSession?: (sessionId: 
               onChange={(on) => void act("harness.settings.set", { enabled: on })}
             />
           </Row>
-          <List empty="No host to sync to: pair one with an admin key in Settings → Environments.">
-            {harness.environments.map((env) => (
-              <Item
-                key={env.id}
-                title={env.name}
-                meta={harnessLine(env)}
-                action={
-                  <SecondaryButton
-                    disabled={!harness.enabled || !env.connected || env.running}
-                    onClick={() => void act("harness.sync", { environmentId: env.id })}
-                  >
-                    Sync now
-                  </SecondaryButton>
-                }
+          {memory ? (
+            <Row
+              label="Sync memory"
+              description="Claude Code's per-project memory and plans and Codex's memories cross both ways with every host paired here. The newer copy wins; the other is kept beside it as a conflict copy."
+            >
+              <Toggle
+                label="Sync memory"
+                on={memory.enabled}
+                onChange={(on) => void act("memory.settings.set", { enabled: on })}
               />
-            ))}
+            </Row>
+          ) : null}
+          <List empty="No host to sync to: pair one with an admin key in Settings → Environments.">
+            {harness.environments.map((env) => {
+              const mem = memory?.environments.find((m) => m.id === env.id) ?? null;
+              const running = env.running || mem?.running === true;
+              return (
+                <Item
+                  key={env.id}
+                  title={env.name}
+                  meta={
+                    mem ? (
+                      <>
+                        <div className="truncate">{harnessLine(env)}</div>
+                        <div className="truncate">
+                          {memoryLine(mem)}
+                          {mem.conflicts > 0 || (memory?.conflicts.length ?? 0) > 0 ? (
+                            <>
+                              {" · "}
+                              <button
+                                type="button"
+                                className="text-content/70 underline decoration-content/20 underline-offset-2 hover:text-content"
+                                onClick={() => setShowConflicts((v) => !v)}
+                              >
+                                {showConflicts ? "Hide conflict copies" : "Show conflict copies"}
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                      </>
+                    ) : (
+                      harnessLine(env)
+                    )
+                  }
+                  action={
+                    <SecondaryButton
+                      disabled={(!harness.enabled && !(memory?.enabled ?? false)) || !env.connected || running}
+                      onClick={() => void syncHost(env.id, harness.enabled, memory?.enabled ?? false)}
+                    >
+                      Sync now
+                    </SecondaryButton>
+                  }
+                />
+              );
+            })}
           </List>
           {harness.skipped > 0 ? (
             <p className="pb-2 text-[12px] text-content/40">
               {harness.skipped} {harness.skipped === 1 ? "file stays" : "files stay"} on this machine (over 16 MB, a symlink out of reach, or a macOS binary).
             </p>
+          ) : null}
+          {memory && showConflicts && memory.conflicts.length > 0 ? (
+            <>
+              <p className="pt-3 pb-1 text-[12px] text-content/40">
+                {memory.conflicts.length === 1 ? "One conflict copy" : `${memory.conflicts.length} conflict copies`} on this machine: each sits beside the file that won. Merge what you need into it, then delete the copy; the deletion reaches the other host.
+              </p>
+              <List empty="No conflict copies.">
+                {memory.conflicts.map((c) => (
+                  <Item
+                    key={c.path}
+                    title={c.of}
+                    meta={`${c.host}'s copy, ${timeAgo(c.at) === "now" ? "just now" : `${timeAgo(c.at)} ago`} · ${c.path}`}
+                    action={
+                      isWebMode() ? null : (
+                        <SecondaryButton onClick={() => void revealPath(c.path)}>Reveal</SecondaryButton>
+                      )
+                    }
+                  />
+                ))}
+              </List>
+            </>
           ) : null}
         </>
       ) : null}

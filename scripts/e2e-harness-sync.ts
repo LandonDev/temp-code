@@ -32,6 +32,12 @@
  *  - a file edited on box is put back by Sync now; a file box made itself stays
  *  - mac's harness.status names box with the file count, each set's count
  *    and no error
+ *  - memory, both ways (memorySync.ts): each side's Claude Code project
+ *    memory lands on the other under the other's encoded project dir, the
+ *    paths inside translated, MEMORY.md unioned, Codex memories and plans
+ *    across; a memory written on each side after link-up lands on the other
+ *    after memory.sync; a transcript never crosses; mac's memory.status
+ *    names box with the count and no conflict
  * Run: bun scripts/e2e-harness-sync.ts   (build first: electron-vite build)
  * Nothing here touches /Applications/TempCode.app, a real HOME, the real
  * Aliax vault, the gateway marker or the box's live temp-code.service.
@@ -141,6 +147,13 @@ symlinkSync(join('..', '..', '.agents', 'skills', 'impeccable'), join(M, '.claud
 // a Mach-O outside any binary cache: skipped on the Mac and counted
 put(M, '.codex/skills/mine/engine', MACHO, 0o755)
 
+const encodeProjectDir = (cwd: string): string => cwd.replace(/[^A-Za-z0-9]/g, '-')
+const MAC_SHOP = encodeProjectDir(`${M}/IdeaProjects/shop`)
+put(M, `.claude/projects/${MAC_SHOP}/memory/MEMORY.md`, `# Memory index\n\n- [Mac build](mac-build.md) — xcodebuild in ${M}/IdeaProjects/shop\n`)
+put(M, `.claude/projects/${MAC_SHOP}/memory/mac-build.md`, `---\nname: mac-build\n---\nBuild from ${M}/IdeaProjects/shop with xcodebuild.\n`)
+put(M, `.claude/projects/${MAC_SHOP}/abc.jsonl`, '{"transcript":true}')
+put(M, '.claude/plans/sunny-otter.md', '# a plan from the mac')
+
 // ── the box's HOME ──────────────────────────────────────────────────────
 const B = box.home
 put(B, '.claude.json', JSON.stringify({ oauthAccount: { emailAddress: 'box@example.com' }, machineID: 'box-machine' }, null, 2))
@@ -149,6 +162,8 @@ put(B, '.claude/settings.local.json', '{"box":"local"}')
 put(B, '.claude/skills/synced/acct/SKILL.md', 'the box account bucket')
 put(B, '.claude/skills/own/SKILL.md', 'made on the box')
 put(B, '.codex/skills/.system/builtin/SKILL.md', 'the box codex system skill')
+put(B, '.codex/memories/MEMORY.md', 'codex remembers the box')
+put(B, '.codex/memories/.git/HEAD', 'ref: refs/heads/main\n')
 
 // ── launch ──────────────────────────────────────────────────────────────
 function launch(inst: Inst): void {
@@ -266,6 +281,13 @@ try {
   const workFor = (x: string): string => (wr.root !== wr.home ? `${wr.root}/${x}` : `${B}/IdeaProjects/${x}`)
   log(`box work root ${wr.root}`)
   await rpc(mac, 'harness.settings.set', { enabled: true })
+  const BOX_SHOP = encodeProjectDir(workFor('shop'))
+  const macMem = (f: string): string => `.claude/projects/${MAC_SHOP}/memory/${f}`
+  const boxMem = (f: string): string => `.claude/projects/${BOX_SHOP}/memory/${f}`
+  put(B, boxMem('MEMORY.md'), `# Memory index\n\n- [Box loop](box-loop.md) — vitest in ${workFor('shop')} with NODE_ENV=test\n`)
+  put(B, boxMem('box-loop.md'), `Run vitest in ${workFor('shop')} with NODE_ENV=test.\n`)
+  // The box's map reads the Mac's IdeaProjects/shop → its work root (harnessSync's translationFor adds it); the Mac reads the same map backward for what comes from the box.
+  await rpc(mac, 'harness.settings.set', { pathMap: { roots: { [`${M}/IdeaProjects/shop`]: workFor('shop') }, prefixes: {} } })
 
   // ── 1. pair: box issues an admin key, mac saves box; the link-up sync lands the set ──
   const key = await rpc<{ token: string }>(box, 'remote.keys.create', { name: 'mac (e2e)', audience: 'client', caps: ['read', 'operate', 'approve', 'admin'] })
@@ -333,6 +355,28 @@ try {
   check('mac: harness.status carries each set\'s count (Codex hooks 1, Claude hooks 1, the shared and Claude skills, the sum is the file count)', sets['Codex hooks'] === 1 && sets['Claude hooks'] === 1 && (sets['Shared skills'] ?? 0) >= 6 && (sets['Claude skills'] ?? 0) >= 5 && sets['Codex skills'] === 1 && Object.values(sets).reduce((a, b) => a + b, 0) === env?.files, JSON.stringify(sets))
   check('mac: the Mach-O outside a binary cache is the one skipped file (the 5 MiB plugin binary is under the budget)', after.skipped === 1, String(after.skipped))
   log(`status: box — ${env?.files} files ${JSON.stringify(sets)}, skipped on mac ${after.skipped}`)
+
+  // ── 6. memory, both ways ─────────────────────────────────────────────
+  interface MemoryStatus {
+    enabled: boolean
+    environments: { name: string; connected: boolean; files: number | null; syncedAt: number | null; error: string | null; conflicts: number }[]
+    conflicts: { path: string; of: string; host: string }[]
+  }
+  const memLanded = await until('the link-up memory sync lands', 60_000, async () => (await rpc<MemoryStatus>(mac, 'memory.status')).environments[0]?.syncedAt != null)
+  check('mac: the link-up memory sync committed on box', memLanded, logOf(mac).split('\n').filter((l) => l.includes('[memory-sync]')).join(' | '))
+  check("the Mac's project memory landed on the box under the box's encoded project dir, its paths translated", read(B, boxMem('mac-build.md')) === `---\nname: mac-build\n---\nBuild from ${workFor('shop')} with xcodebuild.\n`, read(B, boxMem('mac-build.md')) ?? 'missing')
+  check("the box's project memory landed on the Mac under the Mac's encoded project dir, its paths translated back", read(M, macMem('box-loop.md')) === `Run vitest in ${M}/IdeaProjects/shop with NODE_ENV=test.\n`, read(M, macMem('box-loop.md')) ?? 'missing')
+  const boxIndex = read(B, boxMem('MEMORY.md')) ?? ''
+  check('MEMORY.md is one index with both lines on both hosts', boxIndex.includes('(box-loop.md)') && boxIndex.includes('(mac-build.md)') && (read(M, macMem('MEMORY.md')) ?? '') === boxIndex.replaceAll(workFor('shop'), `${M}/IdeaProjects/shop`), boxIndex)
+  check("the Mac's plan and the box's Codex memory crossed; the Codex .git baseline and the transcript did not", read(B, '.claude/plans/sunny-otter.md') === '# a plan from the mac' && read(M, '.codex/memories/MEMORY.md') === 'codex remembers the box' && !has(M, '.codex/memories/.git') && !walk(B).some((r) => r.endsWith('.jsonl')) && !has(B, `.claude/projects/${MAC_SHOP}`))
+  // A memory written on each side after link-up (what a thread does at the end of a turn) lands on the other.
+  put(M, macMem('mac-later.md'), 'written on the mac after link-up')
+  put(B, boxMem('box-later.md'), 'written on the box after link-up')
+  const memAfter = await rpc<MemoryStatus>(mac, 'memory.sync', {})
+  check('a memory written on each side landed on the other after memory.sync', read(B, boxMem('mac-later.md')) === 'written on the mac after link-up' && read(M, macMem('box-later.md')) === 'written on the box after link-up')
+  const memEnv = memAfter.environments[0]
+  check('mac: memory.status names box with the count, a time, no error and no conflict', memEnv?.name === 'box' && memEnv.connected && (memEnv.files ?? 0) >= 7 && memEnv.error === null && (memEnv.syncedAt ?? 0) > 0 && memEnv.conflicts === 0 && memAfter.conflicts.length === 0, JSON.stringify(memAfter))
+  log(`memory: box — ${memEnv?.files} files`)
 } catch (err) {
   console.error('ERROR', err instanceof Error ? err.message : err)
   failures++

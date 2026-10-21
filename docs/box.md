@@ -624,6 +624,74 @@ journal say what landed. Proof:
 `bun run script:e2e-harness-sync` (two headless instances with their own
 HOMEs, paired over the fixed port; runs on the box under `xvfb-run`).
 
+### Memory: synced both ways
+
+The notes the harnesses write for themselves are the one part of the
+harness config every host writes, so they cross both ways
+(`src/main/server/remote/{memorySet,memoryMerge,memorySync}.ts`,
+`src/shared/contract-memory.ts`). The set, relative to each HOME:
+
+- Claude Code: `.claude/projects/<encoded cwd>/memory/**` (MEMORY.md plus
+  one file per memory), `.claude/plans/**`, `.claude/CLAUDE.md`
+- Codex: `.codex/memories/**` (memory_summary.md, MEMORY.md,
+  rollout_summaries/, skills/; not its `.git` baseline), `.codex/AGENTS.md`
+
+Never: transcripts (`*.jsonl` and the per-session dirs beside `memory/`),
+anything the harness sync calls a secret, `.git`, files over 1 MiB. A
+project's own `.claude/` notes live in the checkout and are not touched.
+
+The encoded project dir names the cwd with every other character as `-`
+(`-Users-landon-IdeaProjects-temp-code` on the Mac,
+`-srv-agents-work-temp-code` here), so it is translated through the same
+path map the harness sync uses (`harness.sync.pathMap`, the shipped
+history-map.json by default; `memorySet.ts` `translateEncodedDir`): a mapped
+root or prefix whose encoding starts the name is swapped for its
+counterpart's, a worktree under a mapped root follows it, and a project no
+mapping covers keeps its name. The box reads the map forward; the Mac reads
+it backward for what comes from the box (its roots and prefixes inverted,
+the box's work root as `~/IdeaProjects`). Text files have the paths inside
+them translated the way the harness sync does.
+
+Who drives: the host holding the link (the Mac) sends `memory.exchange`
+(its files with size, sha256, mode and mtime, plus its tombstones); the box
+decides per file (`memoryMerge.ts`) and answers what it wants, what the Mac
+lands (the box's own files whose side won, bytes included) and what the Mac
+deletes; the Mac lands and deletes, then streams what was asked for as
+`memory.files` frames, the last one with the hashes of what it landed. Both
+keep `<userData>/memory-sync/state.json`: per peer, the hashes the two
+agreed on last time; and the host's own tombstones. The rules:
+
+- unchanged on both sides since the last sync: nothing; same bytes once
+  translated: nothing, remembered as synced
+- changed on one side: that side's copy crosses, with its mtime
+- changed on both (or never synced and different): the newer mtime wins
+  on both hosts, and the other copy is kept beside it as
+  `<name>.conflict-<host>-<yyyymmddThhmmss><ext>` (the host whose copy
+  lost), on both hosts; never silently dropped
+- `MEMORY.md` under a project's `memory/` is unioned instead: one line per
+  memory file, the newer file's order, the other's extra lines after the
+  nearest shared line, deduped by file name; a line whose file is gone from
+  both hosts is dropped
+- a deletion crosses as a tombstone (kept 30 days) unless the other side
+  edited the file after it, in which case the edit wins and the file comes
+  back; an edit the deletion beats is kept as a conflict copy
+
+When: on link-up, every 5 minutes, about three seconds after a thread
+settles idle on either host (memory is usually written at the end of a
+turn: the Mac syncs; the box, which holds no link, pushes a `memory.nudge`
+down the Mac's link and the Mac syncs), and from Sync now. A round that
+made something the other side should have (a union result, a conflict copy)
+runs one more at once.
+
+Status: Settings → Remote access on the Mac, under each host's Harness
+config line: `Memory: 42 files, synced 2m ago, 1 conflict`, with "Show
+conflict copies" opening the list of copies on this machine (the file it
+sits beside, whose copy, when, and Reveal); the Sync memory switch is the
+`memory.sync.enabled` setting (on by default). `memory.status`,
+`memory.sync` and `memory.settings.set` on the host's own socket; on the
+box, `tc-local memory.status` and the `[memory-sync]` lines in the journal.
+Proof: the memory step of `bun run script:e2e-harness-sync`.
+
 ### Attachments on a remote thread
 
 A file attached on the Mac (picked, dropped, pasted, an appshot) lives on

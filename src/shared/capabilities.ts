@@ -242,6 +242,12 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'harness.status': 'admin',
   'harness.sync': 'admin',
   'harness.settings.set': 'admin',
+  // Memory sync (remote/memorySync.ts): the harnesses' notes cross both ways between hosts; the pane's status and Sync now.
+  'memory.exchange': 'admin',
+  'memory.files': 'admin',
+  'memory.status': 'admin',
+  'memory.sync': 'admin',
+  'memory.settings.set': 'admin',
   // Attachments on a remote thread (contract-attachments.ts): upload into the thread's dir; read a file here in ranges for an uploader.
   'attachment.begin': 'operate',
   'attachment.chunk': 'operate',

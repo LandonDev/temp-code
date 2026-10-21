@@ -32,6 +32,7 @@ import { AccountSync, accountSyncHooks } from './remote/accountSync'
 import { Peers } from './remote/peers'
 import { HarnessSync, handleHarness } from './remote/harnessSync'
 import { DeployTrigger, Publisher, handleHost, type HostJobs } from './hostJobs'
+import { MemorySync, handleMemory } from './remote/memorySync'
 import { SessionMover, handleSessionMove } from './remote/sessionMover'
 import { claudeConfigDir, codexHomeDir } from './sessionMove'
 import { PeerCalls, handlePeerRequest } from './remote/peerCalls'
@@ -359,6 +360,7 @@ export async function startServer(
       onOpen: (id) => {
         void accountSync.syncWith(id)
         void harnessSync.syncWith(id, 'link-up')
+        void memorySync.syncWith(id, 'link-up')
         void sessionMover.settleWith(id)
         void macBridge.linkUp(id)
         accounts.nudge()
@@ -370,6 +372,7 @@ export async function startServer(
       onPush: (from, push) => {
         if (hostDevices.onPeerPush(from, push)) return
         if (crossHostThreads.onPeerPush(from, push)) return
+        if (memorySync.onPeerPush(from, push)) return
         if (!macBridge.onPeerPush(from, push)) accountSync.onPeerPush(from, push)
       }
     }
@@ -390,6 +393,19 @@ export async function startServer(
   // Deploy and publish from the app (hostJobs.ts): the box's trigger
   // directory and the Mac's release scripts, each a log sockets may tail.
   const hostJobs: HostJobs = { deploy: new DeployTrigger({ version: appVersion }), publish: new Publisher({ store }) }
+  // The harnesses' own notes (Claude Code's per-project memory and plans,
+  // Codex's memories; remote/memorySync.ts) cross both ways: this host
+  // drives over the links it holds, and nudges the hosts linked to it.
+  const memorySync = new MemorySync({
+    environmentId,
+    store,
+    peers,
+    dataDir: options.dataDir ?? dirname(dbPath),
+    pathMap: () => harnessSync.pathMap(),
+    workRoot: () => workRoot(store).root,
+    nudgePeers: (frame) => peerCalls.notify(frame)
+  })
+  memorySync.start()
   // Moving one thread between this host and a peer (remote/sessionMover.ts).
   const sessionMover = new SessionMover({
     host: {
@@ -494,6 +510,7 @@ export async function startServer(
   registry.onRemoved((ids) => macTools.threadsEnded(ids))
   registry.onMeta((m) => {
     if (m.archived) macTools.threadsEnded([m.id])
+    memorySync.onSessionMeta(m)
   })
   peers.refresh()
   const syncTimer = setInterval(() => void accountSync.syncAll(), 15 * 60_000)
@@ -856,6 +873,8 @@ export async function startServer(
         if (harness.handled) return sendFrame({ id: req.id, ok: true, result: harness.result })
         const host = await handleHost(req, hostJobs, { connection, send: sendFrame, onClose: (off) => offHostLogs.push(off) })
         if (host.handled) return sendFrame({ id: req.id, ok: true, result: host.result })
+        const memory = await handleMemory(req, memorySync)
+        if (memory.handled) return sendFrame({ id: req.id, ok: true, result: memory.result })
         const upload = await handleAttachmentUploads(req, uploads, principal.kind === 'remote' ? `key:${principal.keyId}` : principal.kind)
         if (upload.handled) return sendFrame({ id: req.id, ok: true, result: upload.result })
         const moved = await handleSessionMove(req, sessionMover)
@@ -1799,6 +1818,7 @@ export async function startServer(
       harnessSync.close()
       hostJobs.deploy.dispose()
       hostJobs.publish.dispose()
+      memorySync.close()
       uploads.close()
       sessionMover.close()
       macBridge.close()

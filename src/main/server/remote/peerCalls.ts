@@ -117,6 +117,17 @@ export class PeerCalls {
     return this.calls.size
   }
 
+  /** One frame down every registered peer's socket (a memory-sync nudge: a thread here went idle). */
+  notify(frame: ServerFrame): void {
+    for (const reg of this.registered.values()) {
+      try {
+        reg.socket.send(frame)
+      } catch {
+        /* a closing socket: drop() follows */
+      }
+    }
+  }
+
   /** Ask a registered peer; rejects with PeerOfflineError when none, or on the deadline. */
   call<T = unknown>(
     envId: string,

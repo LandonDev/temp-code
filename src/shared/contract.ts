@@ -6,6 +6,7 @@ import { LinearRequestSchemas } from './contract-linear'
 import { GithubRequestSchemas } from './contract-github'
 import { EnvironmentRequestSchemas, RemoteRequestSchemas } from './contract-remote'
 import { HarnessRequestSchemas } from './contract-harness'
+import { MemoryRequestSchemas } from './contract-memory'
 import { AttachmentRequestSchemas } from './contract-attachments'
 import { SessionMoveRequestSchemas } from './contract-session-move'
 import { MacBridgeRequestSchemas } from './contract-macbridge'
@@ -108,6 +109,7 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...RemoteRequestSchemas,
   ...EnvironmentRequestSchemas,
   ...HarnessRequestSchemas,
+  ...MemoryRequestSchemas,
   ...AttachmentRequestSchemas,
   ...SessionMoveRequestSchemas,
   ...MacBridgeRequestSchemas,
@@ -959,6 +961,8 @@ export type ServerPush =
   | import('./contract-host').HostLogPush
   // Devices on a Mac (contract-hostdevices.ts): to a socket with a viewer open, every 30 s.
   | import('./contract-hostdevices').HostDevicesPush
+  // Memory sync (contract-memory.ts): a receiver's nudge down a driver's link.
+  | import('./contract-memory').MemoryNudgePush
   // Watcher spine (M11): project-relative path, debounced ~100 ms.
   | { push: 'file-event'; projectId: string; path: string; kind: 'changed' | 'created' | 'deleted' }
   // Build rail: run state plus any new log lines (batched ~50 ms). A new

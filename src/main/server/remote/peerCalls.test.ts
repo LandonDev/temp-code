@@ -63,6 +63,17 @@ describe('PeerCalls', () => {
     expect(calls.registeredIds('mac-bridge')).toEqual(['env_mac'])
   })
 
+  it('notify sends one frame down every registered socket and nothing to a dropped one', () => {
+    const calls = new PeerCalls('env_box', () => {})
+    const got: Record<string, ServerFrame[]> = { a: [], b: [] }
+    handlePeerRequest(calls, { connection: 1, keyId: null, remote: true, send: (f) => got.a.push(f) }, { method: 'peer.register', params: { from: 'env_a', offers: [] } })
+    handlePeerRequest(calls, { connection: 2, keyId: null, remote: true, send: (f) => got.b.push(f) }, { method: 'peer.register', params: { from: 'env_b', offers: [] } })
+    calls.drop(2)
+    calls.notify({ push: 'memory.nudge', from: 'env_box' })
+    expect(got.a).toEqual([{ push: 'memory.nudge', from: 'env_box' }])
+    expect(got.b).toEqual([])
+  })
+
   it("refuses peer.* from the box's own loopback socket", () => {
     const calls = new PeerCalls('env_box', () => {})
     expect(() =>
