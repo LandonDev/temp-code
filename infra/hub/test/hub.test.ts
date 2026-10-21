@@ -600,16 +600,28 @@ describe('APNs delivery', () => {
         alert: { title: 'Done', body: 'Permission: Bash — git push' },
         sound: 'default',
         'thread-id': 'thread-1',
-        'interruption-level': 'time-sensitive'
+        'summary-arg': 'Done',
+        'interruption-level': 'time-sensitive',
+        'relevance-score': 1,
+        category: 'tc.thread'
       },
       tc: { event: 'needs_you', hostId: 'box', environmentId: 'env_box', threadId: 'thread-1', seq: 42, ts: 2000 }
     })
-    // A finished notice is not time-sensitive and the subscription did not ask for stuck.
+    // The host's subtitle, kind and requestId ride along: an approval gets the Approve/Deny category.
+    fetch.mockClear()
+    expect(await (await callWith(hubEnv, '/v1/notify', 'POST', { ...apnsNotice, subtitle: 'temp-code', kind: 'approval', requestId: 'a1' }, auth)).json()).toEqual({ delivered: 1, failed: 0 })
+    const approval = JSON.parse(fetch.mock.calls[0][1]!.body as string)
+    expect(approval.aps).toMatchObject({ alert: { title: 'Done', subtitle: 'temp-code', body: 'Permission: Bash — git push' }, 'summary-arg': 'temp-code', category: 'tc.approval' })
+    expect(approval.tc).toMatchObject({ kind: 'approval', requestId: 'a1' })
+    expect((await callWith(hubEnv, '/v1/notify', 'POST', { ...apnsNotice, kind: 'party' }, auth)).status).toBe(400)
+    // A finished notice is not time-sensitive, lands without a sound, and the subscription did not ask for stuck.
     fetch.mockClear()
     expect(await (await callWith(hubEnv, '/v1/notify', 'POST', { ...apnsNotice, event: 'stuck' }, auth)).json()).toEqual({ delivered: 0, failed: 0 })
     expect(await (await callWith(hubEnv, '/v1/notify', 'POST', { ...apnsNotice, event: 'finished', seq: undefined }, auth)).json()).toEqual({ delivered: 1, failed: 0 })
     const body = JSON.parse(fetch.mock.calls[0][1]!.body as string)
     expect(body.aps['interruption-level']).toBe('active')
+    expect(body.aps['relevance-score']).toBe(0.4)
+    expect(body.aps).not.toHaveProperty('sound')
     expect(body.tc).not.toHaveProperty('seq')
   })
   it('drops a subscription Apple calls gone, counts other failures, re-mints on a refused provider token, and fails cleanly unconfigured', async () => {
@@ -671,6 +683,14 @@ describe('APNs delivery', () => {
     expect(body.aps).toMatchObject({ event: 'update', 'content-state': { phase: 'working', since: 1000, ts: 5000 }, 'relevance-score': 50 })
     expect(body.aps).not.toHaveProperty('dismissal-date')
     expect(typeof body.aps.timestamp).toBe('number')
+    // The running row's fields pass through whole, and a coalesced task-line change goes at priority 5.
+    fetch.mockClear()
+    const rich = { ...update, state: { ...update.state, title: 'Done', task: 'Write the endpoint', done: 1, total: 3, reason: 'Needs approval: Bash — bun test' }, priority: 5 }
+    expect(await (await callWith(hubEnv, '/v1/activity', 'POST', rich, auth)).json()).toEqual({ delivered: 2, failed: 0 })
+    expect((fetch.mock.calls[0][1]!.headers as Record<string, string>)['apns-priority']).toBe('5')
+    expect(JSON.parse(fetch.mock.calls[0][1]!.body as string).aps['content-state']).toEqual(rich.state)
+    expect((await callWith(hubEnv, '/v1/activity', 'POST', { ...update, priority: 7 }, auth)).status).toBe(400)
+    expect((await callWith(hubEnv, '/v1/activity', 'POST', { ...update, state: { ...update.state, done: -1 } }, auth)).status).toBe(400)
     // A device Apple no longer knows is dropped from the thread; the other stays.
     fetch.mockClear()
     fetch.mockImplementation(async (input) => (String(input).endsWith(TOKEN) ? Response.json({ reason: 'BadDeviceToken' }, { status: 400 }) : new Response('')))
