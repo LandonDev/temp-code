@@ -50,9 +50,10 @@ struct HomeView: View {
                         }
                     }
                     .listStyle(.plain)
+                    .listSectionSpacing(10)
                     .animation(painted ? Motion.rowAppear : nil, value: eventKey(sections))
                     .task(id: needsKey(sections)) { await loadLines(sections) }
-                    .task(id: clients.first?.hasShell) { await performLaunch(clients, proxy: proxy) }
+                    .task(id: clients.first?.hasShell) { await performLaunch(clients, sections: sections, proxy: proxy) }
                     .task {
                         // One turn of the run loop after the cached paint: the diff that follows is an event.
                         await Task.yield()
@@ -83,14 +84,16 @@ struct HomeView: View {
 
     /// DEBUG only: the proof opens the new-thread sheet, creates a chat in the
     /// first workspace and opens it, folds a workspace, or scrolls one to the top.
-    private func performLaunch(_ clients: [EnvironmentClient], proxy: ScrollViewProxy) async {
+    private func performLaunch(_ clients: [EnvironmentClient], sections: [HomeSection], proxy: ScrollViewProxy) async {
         guard let client = clients.first, client.hasShell, let workspace = client.workspaces.first else { return }
         if let part = HomeTestHooks.fold, let target = client.workspaces.first(where: { $0.name.localizedCaseInsensitiveContains(part) }), !folded.contains(HomeRows.foldKey(client, target)) {
             foldedRaw = (folded.union([HomeRows.foldKey(client, target)])).sorted().joined(separator: "\n")
         }
-        if let part = HomeTestHooks.scroll, let target = client.workspaces.first(where: { $0.name.localizedCaseInsensitiveContains(part) }) {
+        if let part = HomeTestHooks.scroll, let target = client.workspaces.first(where: { $0.name.localizedCaseInsensitiveContains(part) }),
+           let section = sections.first(where: { $0.id == "workspace:\(client.environment.id):\(target.id)" }), let first = section.rows.first {
+            // A List scrolls to a row, not to a Section: the workspace's first row, with its header pinned above it.
             try? await Task.sleep(for: .milliseconds(600))
-            proxy.scrollTo("workspace:\(client.environment.id):\(target.id)", anchor: .top)
+            proxy.scrollTo(first.id, anchor: .top)
         }
         if TestHooks.sheet == "new", composing == nil {
             composing = NewThreadTarget(client: client, workspace: workspace, project: nil)
