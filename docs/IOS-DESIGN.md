@@ -181,13 +181,48 @@ Chat segment with the question card in view.
 ### Orchestration: the fleet is the hero
 
 Segments: **Fleet** (default once the first agent spawns) and **Log**.
-Fleet: the goal line and orchestrator status, then one full-width row per
-subagent: provider glyph, agent-type glyph, label, model and effort dim, the
-last tool line updating in place with a 150 ms cross-fade, status (running
-spinner, waiting warning, done, error), elapsed and cost in tabular digits.
-Tap pushes the agent's detail: its own transcript read-only, with a
-send-to-agent field in L5. A waiting agent's approval card renders in the
-detail and tints its fleet row. Log is the orchestrator's own transcript.
+Fleet (`Thread/FleetView.swift`): the goal in `body` text, then one status
+line with its mark (the orchestrator's own state while it runs, waits or
+fails; else its fleet's: "3 subagents working", "1 subagent waiting on
+approval", "Done"), then the fleet in three groups under the design's
+section headers with a count: **Running**, **Waiting**, **Done** (failed
+agents sit first in Done with their red mark). Empty groups are left out.
+Log is the orchestrator's own transcript.
+
+The agent row (`Thread/FleetStyles.swift`, `AgentRow`), shared by the
+Fleet segment, the subagent list and the implementation board's Agents
+section: a 16 pt status mark (spinner running, warning dot waiting,
+destructive dot failed, info dot watching, pause mark paused, a green check
+settled; marks cross-fade 150 ms in a frame that never changes size), the
+title in `subheadline` medium (regular and `secondary` once settled) with
+the elapsed time on its line, a meta line in `footnote secondary` of the
+provider's own mark drawn as a path in the text color (`ProviderGlyph`),
+the role glyph, model and effort, and the worktree name when the agent
+works in one; the activity line in a fixed 18 pt frame (scaled with
+Dynamic Type) that swaps in place with the 150 ms cross-fade and 2 pt
+blur; the stats line when there is anything to say. Elapsed over cost on
+the right, `caption` tabular with `numericText`. One clock drives every
+live row. A waiting row sits on the needs-you tint in an 8 pt rounded field
+inset 8 pt from the edge; the text stays at the 16 pt edge. Hairlines
+between rows, inset to the text edge, none after the last of a group. A
+row that changes group moves with the needs-you row motion.
+
+**Subagent list** (`Thread/SubagentListScreen.swift`,
+`SubagentListScreen(client:rootSessionId:)`): the desktop's right-side
+subagent panel as a screen, pushed from a thread's toolbar button. Title
+"Subagents" over "3 working · 1 waiting · 2 done", then the same grouped
+rows, live, nothing to pull. Fleets of twelve read as three short lists.
+
+**Agent detail** (`Thread/AgentDetailScreen.swift`), pushed from any
+row: the title over the role in the bar; an identity strip under it with
+the mark, the meta line (with the worktree), the activity line, stats,
+elapsed and cost, closed by a hairline; then the agent's own transcript
+(`TranscriptView`, so a waiting agent's approval or question card sits at
+the end, where the screen opens, and decides from there); then one line at
+the bottom, "Steer this agent…" while it runs and "Send to this agent…"
+once idle, one filled send button, through `client.send`. A key that
+cannot act sees the reason in the field. DEBUG hooks on the Fleet segment:
+`TC_TEST_OPEN=agents` pushes the list, `agent-detail` the first agent.
 
 ### Research: the sources are the hero
 
