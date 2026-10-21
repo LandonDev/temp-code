@@ -126,12 +126,15 @@ export function WorkspaceThreadsList({
 export function WorkspaceThreadsPopover({
   anchor,
   workspaceId,
+  workspaceIds,
   activeSessionId,
   onSelectThread,
   onDismiss,
 }: {
   anchor: PopoverAnchor;
   workspaceId: string;
+  /** The same project's checkouts on other hosts, for a merged rail row. */
+  workspaceIds?: readonly string[];
   activeSessionId: string | null;
   onSelectThread: (sessionId: string) => void;
   onDismiss: () => void;
@@ -149,12 +152,12 @@ export function WorkspaceThreadsPopover({
         metas,
         projects,
         workspaces,
-        workspaceId,
+        workspaceIds && workspaceIds.length > 1 ? workspaceIds : workspaceId,
         lastSeen,
         seenFloor,
         cache,
       ),
-    [cache, lastSeen, metas, projects, seenFloor, workspaceId, workspaces],
+    [cache, lastSeen, metas, projects, seenFloor, workspaceId, workspaceIds, workspaces],
   );
 
   return (

@@ -19,6 +19,7 @@ import { installSubscriptions } from "./stores/subscriptions";
 import { accountsStore } from "./stores/accounts";
 import { warmRecentTabsAtBoot } from "./lib/sessionPrefetch";
 import { updateStore } from "./lib/updateStore";
+import { connectProjectPathMap } from "./lib/projectMerge";
 import { initAppshots } from "./lib/appshots";
 import { recordCommit } from "./lib/renderProfile";
 import "./index.css";
@@ -36,6 +37,8 @@ rulesStore.connect(registry);
 slashCommandStore.connect(registry);
 accountsStore.connect(registry);
 initServerLink();
+// The project pairing's path map, from this machine's server once it opens.
+connectProjectPathMap();
 updateStore.start();
 initAppshots();
 

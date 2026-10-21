@@ -382,6 +382,11 @@ export async function getServerPort(): Promise<number> {
 
 // ── Events ─────────────────────────────────────────────────────────────────
 
+/** A native checkbox menu item follows a renderer setting. */
+export function setMenuChecked(id: string, checked: boolean): void {
+  api().menu.setChecked(id, checked);
+}
+
 /** Menu ids share one `native:menu` subscription; it is held only while a
  *  listener exists, so StrictMode's double effects leave no duplicates. */
 const menuHandlers = new Map<string, Set<(event: NativeEvent<string>) => void>>();

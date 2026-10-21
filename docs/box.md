@@ -632,9 +632,29 @@ the right of the thread header names the host it runs on (status dot), and
 its menu has **Move to box…** on a Mac thread or **Move to This Mac…** on a
 box thread. The item is disabled with its reason while the thread (or any
 subagent) is working, paused, waiting on an approval or has queued messages,
-while either link is down, or when the saved key is not admin. Rows in the
-sidebar carry a small host badge once the window talks to two or more hosts.
-While a move runs the chip says `Moving to box…`; the result is a toast.
+while either link is down, or when the saved key is not admin. While a move
+runs the chip says `Moving to box…`; the result is a toast.
+
+**One project, both hosts.** A project checked out on the Mac and on the box
+is one row in the workspace rail, not one under each host: two workspaces are
+the same project when their paths correspond under the path map (the Mac's
+`~/IdeaProjects/<X>` or `~/Desktop/Websites/<X>` and the box's
+`/srv/agents/work/<X>`, plus the roots of `harness.sync.pathMap`, which the
+renderer reads from `harness.status`) or when they share a GitHub origin;
+two checkouts on one host never merge. The pairing is
+`src/renderer/src/lib/projectIdentity.ts` (pure, tested), the renderer's view
+of it `lib/projectMerge.ts`. Selecting the row lists both hosts' threads in
+one sidebar, pinned first then newest, hosts interleaved; the status chip,
+Mark all read, pin and the threads popover cover every checkout. A row from
+this machine carries nothing; a thread from another host carries one small
+host glyph beside its time, the host's name on hover, and only takes the
+connection tint (with the reason in the tooltip) when that host is offline
+or unauthorized, as does the row of a project whose host is in trouble. A
+new thread in a merged project starts on the host last used there (per
+project, in localStorage), else this machine; the composer's host button
+(`DraftHostPicker`, shown only for an unsent draft in such a project) picks
+another. A thread's host never changes afterwards except through the chip's
+move. View → **Group by Host** brings back one section per host.
 
 Only the Mac starts a move, because only the Mac dials (the peer link of
 `remote/peers.ts`). `session.move {sessionId, to, from?}` is local-only on the

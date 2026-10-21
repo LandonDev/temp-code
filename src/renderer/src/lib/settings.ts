@@ -527,3 +527,38 @@ export function subscribeMidTurnDefault(onStoreChange: () => void) {
   return () =>
     window.removeEventListener(MID_TURN_DEFAULT_CHANGE_EVENT, onStoreChange);
 }
+
+// ── the rail: one row per project across hosts, or one section per host ──
+
+const RAIL_GROUP_BY_HOST_KEY = "monocode.railGroupByHost";
+
+/** Off: a project checked out on two hosts is one row with both hosts' threads. */
+export const RAIL_GROUP_BY_HOST_DEFAULT = false;
+
+export const RAIL_GROUP_BY_HOST_CHANGE_EVENT = "monocode:rail-group-by-host-change";
+
+export function loadRailGroupByHost(): boolean {
+  try {
+    const raw = localStorage.getItem(RAIL_GROUP_BY_HOST_KEY);
+    if (raw == null) return RAIL_GROUP_BY_HOST_DEFAULT;
+    return raw === "1" || raw === "true";
+  } catch {
+    return RAIL_GROUP_BY_HOST_DEFAULT;
+  }
+}
+
+export function saveRailGroupByHost(value: boolean) {
+  try {
+    localStorage.setItem(RAIL_GROUP_BY_HOST_KEY, value ? "1" : "0");
+  } catch {
+    // private mode / quota
+  }
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent<boolean>(RAIL_GROUP_BY_HOST_CHANGE_EVENT, { detail: value }));
+}
+
+export function subscribeRailGroupByHost(onStoreChange: () => void) {
+  if (typeof window === "undefined") return () => {};
+  window.addEventListener(RAIL_GROUP_BY_HOST_CHANGE_EVENT, onStoreChange);
+  return () => window.removeEventListener(RAIL_GROUP_BY_HOST_CHANGE_EVENT, onStoreChange);
+}

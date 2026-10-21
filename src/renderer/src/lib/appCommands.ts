@@ -80,6 +80,7 @@ export const APP_COMMANDS = [
   "prev_environment",
   "activate_environment",
   "mark_all_read",
+  "toggle_group_by_host",
 ] as const;
 
 export type AppCommandId = (typeof APP_COMMANDS)[number];

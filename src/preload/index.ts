@@ -158,7 +158,9 @@ const api = {
 
   menu: {
     onCommand: (cb: (id: string) => void): (() => void) =>
-      on<[string]>('native:menu', (id) => cb(id))
+      on<[string]>('native:menu', (id) => cb(id)),
+    /** A checkbox item's state, from the renderer's setting. */
+    setChecked: (id: string, checked: boolean): void => ipcRenderer.send('menu:set-checked', id, checked)
   },
 
   dialog: {

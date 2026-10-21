@@ -280,9 +280,11 @@ export class HarnessSync {
 
   status(): HarnessSyncStatus {
     const records = this.records()
+    const map = this.pathMap()
     return {
       enabled: this.enabled(),
       skipped: this.skipped,
+      pathMap: { roots: { ...map.roots }, prefixes: { ...map.prefixes } },
       environments: this.deps.peers.all().map((link) => {
         const r = records[link.id]
         return {

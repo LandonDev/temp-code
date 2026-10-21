@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { Catalog } from "../lib/projectContext";
 import type { Session } from "../lib/session";
 import type { SessionMeta } from "../lib/tcserver/types";
-import { projectSignals, sessionNeedsYou, workspaceRailStatuses } from "./useProjectSignals";
+import {
+  mergeRailStatuses,
+  projectSignals,
+  sessionNeedsYou,
+  workspaceRailStatuses,
+  type WorkspaceRailStatus,
+} from "./useProjectSignals";
 
 const catalog: Catalog = { workspaces: [], projects: [] };
 
@@ -259,5 +265,24 @@ describe("workspaceRailStatuses", () => {
       {},
     );
     expect(statuses.has("/a")).toBe(false);
+  });
+});
+
+describe("mergeRailStatuses", () => {
+  const running = [{ id: "r1" }] as unknown as NonNullable<WorkspaceRailStatus["running"]>;
+  it("keeps a lone status, and the loudest kind across a project's checkouts with its counts summed", () => {
+    expect(mergeRailStatuses([undefined])).toBeUndefined();
+    const unread: WorkspaceRailStatus = { kind: "unread", count: 2 };
+    expect(mergeRailStatuses([unread, undefined])).toBe(unread);
+    expect(mergeRailStatuses([{ kind: "unread", count: 2 }, { kind: "needsYou", count: 1 }, { kind: "needsYou", count: 3 }])).toEqual({ kind: "needsYou", count: 4 });
+    expect(mergeRailStatuses([{ kind: "busy", count: 1, running }, { kind: "paused", count: 1 }])).toEqual({ kind: "paused", count: 1 });
+  });
+  it("joins the running threads of two busy checkouts", () => {
+    const other = [{ id: "r2" }] as unknown as NonNullable<WorkspaceRailStatus["running"]>;
+    expect(mergeRailStatuses([{ kind: "busy", count: 1, running }, { kind: "busy", count: 1, running: other }])).toEqual({
+      kind: "busy",
+      count: 2,
+      running: [...running, ...other],
+    });
   });
 });

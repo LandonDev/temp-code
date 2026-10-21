@@ -23,6 +23,9 @@ function dispatch(id: string): void {
   win.webContents.send('native:menu', id)
 }
 
+/** The renderer's word on each checkbox item (its setting lives there). */
+const checked = new Map<string, boolean>()
+
 function toItem(node: MenuNode): MenuItemConstructorOptions {
   if (node.kind === 'separator') return { type: 'separator' }
   if (node.kind === 'role') return { role: node.role as MenuItemConstructorOptions['role'] }
@@ -30,8 +33,16 @@ function toItem(node: MenuNode): MenuItemConstructorOptions {
     id: node.id,
     label: node.label,
     ...(node.accelerator ? { accelerator: node.accelerator } : {}),
+    ...(node.checkbox ? { type: 'checkbox' as const, checked: checked.get(node.id) ?? false } : {}),
     click: () => dispatch(node.id)
   }
+}
+
+/** A checkbox item follows the renderer's setting (`menu:set-checked`). */
+export function setMenuChecked(id: string, value: boolean): void {
+  checked.set(id, value)
+  const item = (installed ?? Menu.getApplicationMenu())?.getMenuItemById(id)
+  if (item && item.type === 'checkbox') item.checked = value
 }
 
 export function buildMenu(): Menu {

@@ -143,6 +143,22 @@ export function workspaceRailStatuses(
   return out;
 }
 
+const RAIL_RANK: Record<WorkspaceRailStatusKind, number> = { paused: 0, needsYou: 1, busy: 2, unread: 3 };
+
+/**
+ * One status for a project whose checkouts sit on several hosts: the
+ * loudest kind among them, its count summed, the running threads joined.
+ */
+export function mergeRailStatuses(statuses: readonly (WorkspaceRailStatus | undefined)[]): WorkspaceRailStatus | undefined {
+  const present = statuses.filter((s): s is WorkspaceRailStatus => !!s?.kind);
+  if (present.length === 0) return statuses[0];
+  if (present.length === 1) return present[0];
+  const kind = present.reduce((best, s) => (RAIL_RANK[s.kind!] < RAIL_RANK[best] ? s.kind! : best), present[0].kind!);
+  const same = present.filter((s) => s.kind === kind);
+  const running = kind === "busy" ? same.flatMap((s) => s.running ?? []) : undefined;
+  return { kind, count: same.reduce((n, s) => n + s.count, 0), ...(running ? { running } : {}) };
+}
+
 /** The rail's per-workspace status map, recomputed only when the metas,
  *  catalog, or seen state actually change. */
 export function useWorkspaceRailStatuses(): Map<string, WorkspaceRailStatus> {

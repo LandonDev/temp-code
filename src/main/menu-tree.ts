@@ -15,6 +15,8 @@ export interface MenuCommand {
   id: string
   label: string
   accelerator?: string
+  /** A toggle: the native item shows a check the renderer keeps in step. */
+  checkbox?: boolean
 }
 
 export type MenuNode =
@@ -30,11 +32,12 @@ export interface MenuSection {
 
 const sep: MenuNode = { kind: 'separator' }
 const role = (name: string): MenuNode => ({ kind: 'role', role: name })
-const cmd = (id: string, label: string, accelerator?: string): MenuNode => ({
+const cmd = (id: string, label: string, accelerator?: string, options: { checkbox?: boolean } = {}): MenuNode => ({
   kind: 'command',
   id,
   label,
-  ...(accelerator ? { accelerator } : {})
+  ...(accelerator ? { accelerator } : {}),
+  ...(options.checkbox ? { checkbox: true } : {})
 })
 
 export const MENU_TREE: MenuSection[] = [
@@ -103,6 +106,7 @@ export const MENU_TREE: MenuSection[] = [
       cmd('open_notes', 'Notes'),
       cmd('next_environment', 'Next Environment', 'CmdOrCtrl+Alt+]'),
       cmd('prev_environment', 'Previous Environment', 'CmdOrCtrl+Alt+['),
+      cmd('toggle_group_by_host', 'Group by Host', undefined, { checkbox: true }),
       cmd('toggle_terminal', 'Toggle Terminal', 'CmdOrCtrl+J'),
       cmd('open_model_picker', 'Switch Model…', 'CmdOrCtrl+.'),
       sep,
@@ -124,9 +128,9 @@ export const MENU_TREE: MenuSection[] = [
 /** Every custom item, in menu order. */
 export const MENU_COMMANDS: MenuCommand[] = MENU_TREE.flatMap((section) =>
   section.items.filter((item): item is { kind: 'command' } & MenuCommand => item.kind === 'command')
-).map(({ id, label, accelerator }) => ({ id, label, ...(accelerator ? { accelerator } : {}) }))
+).map(({ id, label, accelerator, checkbox }) => ({ id, label, ...(accelerator ? { accelerator } : {}), ...(checkbox ? { checkbox } : {}) }))
 
-/** Quit acts in main; the other 35 go to the focused renderer (New Window
+/** Quit acts in main; the other 38 go to the focused renderer (New Window
  *  falls back to main only when no window is there to take it). */
 export const MAIN_MENU_IDS = ['quit'] as const
 
