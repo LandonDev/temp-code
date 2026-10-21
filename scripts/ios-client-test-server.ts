@@ -253,6 +253,47 @@ at(THREAD_IMPL, [
   status('waiting')
 ])
 
+// Implementation whose first edit is one big diff: 3,600 preview lines over
+// 60 hunks with a long line in each, for the diff screen's virtualization,
+// hunk navigation and per-hunk horizontal scroll. Past 2 KiB the host keeps
+// the lines, so opening it fetches them behind the shimmer.
+export const THREAD_BIG_DIFF = 'ios-big-diff'
+await makeTyped(THREAD_BIG_DIFF, 'implementation', 'Rewrite the gateway router')
+const bigLines: { kind: 'add' | 'del' | 'context'; text: string; number?: number }[] = []
+let bigAdds = 0
+let bigDels = 0
+for (let h = 0; h < 60; h++) {
+  for (let i = 0; i < 50; i++) {
+    const n = h * 120 + i + 1
+    const pick = (n * 7) % 5
+    const long = i === 25 ? `  // ${'─'.repeat(120)} a long line that scrolls sideways` : ''
+    if (pick === 1) {
+      bigLines.push({ kind: 'del', number: n, text: `  const route${n} = legacy.match(path, ${n})${long}` })
+      bigDels++
+    }
+    if (pick === 1 || pick === 3) {
+      bigLines.push({ kind: 'add', number: n, text: `  const route${n} = router.resolve(path, { scope: ${n} })${long}` })
+      bigAdds++
+    } else {
+      bigLines.push({ kind: 'context', number: n, text: `  forward(route${n}, request)${long}` })
+    }
+  }
+}
+at(THREAD_BIG_DIFF, [
+  { type: 'user-text', text: 'Rewrite the gateway router on top of resolve().', model: 'claude-sonnet-5-5', reasoning: 'medium', newPass: true },
+  todos('bt1', [['Rewrite the router', 'completed'], ['Run the gateway tests', 'in_progress']]),
+  {
+    type: 'tool-call',
+    callId: 'be1',
+    name: 'Edit',
+    input: { file_path: 'src/main/server/gateway/router.ts', old_string: 'legacy.match', new_string: 'router.resolve' },
+    preview: { kind: 'write', path: 'src/main/server/gateway/router.ts', fileName: 'router.ts', additions: bigAdds, deletions: bigDels, lines: bigLines }
+  },
+  { type: 'tool-result', callId: 'be1', output: 'The file src/main/server/gateway/router.ts has been updated.', isError: false },
+  ...shell('bs1', 'bun test src/main/server/gateway', ' ✓ gateway (12 tests) 340ms\n'),
+  status('running')
+])
+
 // Planning: a plan file on disk.
 export const THREAD_PLAN = 'ios-plan'
 const plan = await makeTyped(THREAD_PLAN, 'planning', 'Move the thread history onto the box')
