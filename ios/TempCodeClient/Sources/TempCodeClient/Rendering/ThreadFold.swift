@@ -386,10 +386,10 @@ public struct ThreadFold: Sendable, Hashable {
             append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .turnPass, text: event.actions.joined(separator: ", "), detail: nil, stopped: false)))
             board.inPass = true
         case .agentSpawned(let event):
-            append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .agentSpawned, text: "Spawned an agent", detail: event.childSessionId, stopped: false)))
+            append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .agentSpawned, text: "Spawned an agent", detail: event.childSessionId, stopped: false, agentId: event.childSessionId)))
             if !board.agents.contains(event.childSessionId) { board.agents.append(event.childSessionId) }
         case .agentReport(let event):
-            append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .agentReport, text: event.title, detail: event.status, stopped: false)))
+            append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .agentReport, text: event.title, detail: event.status, stopped: false, agentId: event.agentId)))
         case .backgroundTask(let event):
             append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .backgroundTask, text: event.description, detail: event.status.rawValue, stopped: false)))
         case .backgroundTasks(let event):

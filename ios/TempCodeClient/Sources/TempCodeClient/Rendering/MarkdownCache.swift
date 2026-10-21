@@ -9,6 +9,8 @@ public enum RenderedBlock: Sendable, Hashable {
     case code(String, language: String?)
     case quote(AttributedString)
     case rule
+    /// A pipe table: the header row first, then the body rows.
+    case table([[AttributedString]])
 }
 
 /// One row's markdown, parsed once per text version.
@@ -32,6 +34,7 @@ public struct MarkdownDocument: Sendable, Hashable {
             case .code(let code, let language): .code(code, language: language)
             case .quote(let q): .quote(MarkdownBlocks.inline(q))
             case .rule: .rule
+            case .table(let rows): .table(rows.map { $0.map(MarkdownBlocks.inline) })
             }
         }
         return MarkdownDocument(blocks: blocks, textHash: text.hashValue)

@@ -9,6 +9,8 @@ public enum MarkdownBlock: Sendable, Hashable {
     case code(String, language: String?)
     case quote(String)
     case rule
+    /// A pipe table: the header row first, then the body rows, every row padded to the header's width.
+    case table([[String]])
 }
 
 public enum MarkdownBlocks {
@@ -39,8 +41,11 @@ public enum MarkdownBlocks {
             flushQuote()
         }
 
-        for rawLine in text.split(separator: "\n", omittingEmptySubsequences: false) {
-            let line = String(rawLine)
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        var index = 0
+        while index < lines.count {
+            let line = lines[index]
+            index += 1
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if var open = code {
                 if trimmed.hasPrefix(open.fence) {
@@ -66,6 +71,17 @@ public enum MarkdownBlocks {
             if let heading = heading(trimmed) {
                 flushAll()
                 blocks.append(.heading(heading.level, heading.text))
+                continue
+            }
+            if let cells = tableRow(trimmed), index < lines.count, isTableSeparator(lines[index].trimmingCharacters(in: .whitespaces)) {
+                flushAll()
+                var rows: [[String]] = [cells]
+                index += 1
+                while index < lines.count, let body = tableRow(lines[index].trimmingCharacters(in: .whitespaces)) {
+                    rows.append(Array((body + Array(repeating: "", count: max(0, cells.count - body.count))).prefix(cells.count)))
+                    index += 1
+                }
+                blocks.append(.table(rows))
                 continue
             }
             if isRule(trimmed) {
@@ -111,6 +127,40 @@ public enum MarkdownBlocks {
         options.interpretedSyntax = .inlineOnlyPreservingWhitespace
         options.failurePolicy = .returnPartiallyParsedIfPossible
         return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
+    }
+
+    /// "| a | b |" → ["a", "b"]; nil unless the line is a pipe row.
+    static func tableRow(_ line: String) -> [String]? {
+        guard line.hasPrefix("|"), line.count >= 2 else { return nil }
+        var body = Substring(line.dropFirst())
+        if body.hasSuffix("|") { body = body.dropLast() }
+        var cells: [String] = []
+        var current = ""
+        var escaped = false
+        for character in body {
+            if escaped {
+                current.append(character)
+                escaped = false
+            } else if character == "\\" {
+                escaped = true
+            } else if character == "|" {
+                cells.append(current.trimmingCharacters(in: .whitespaces))
+                current = ""
+            } else {
+                current.append(character)
+            }
+        }
+        cells.append(current.trimmingCharacters(in: .whitespaces))
+        return cells
+    }
+
+    /// "| --- | :-: |": the row under a header that makes the block a table.
+    static func isTableSeparator(_ line: String) -> Bool {
+        guard let cells = tableRow(line), !cells.isEmpty else { return false }
+        return cells.allSatisfy { cell in
+            let bare = cell.trimmingCharacters(in: CharacterSet(charactersIn: ": "))
+            return !bare.isEmpty && bare.allSatisfy { $0 == "-" }
+        }
     }
 
     private static func heading(_ line: String) -> (level: Int, text: String)? {

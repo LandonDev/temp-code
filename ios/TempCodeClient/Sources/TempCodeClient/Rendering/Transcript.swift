@@ -120,6 +120,8 @@ public struct SystemLine: Sendable, Hashable {
     public var detail: String?
     /// `error` rows: the turn stopped here.
     public var stopped: Bool
+    /// `agentSpawned` and `agentReport` rows: the child session the row is about.
+    public var agentId: String? = nil
 }
 
 /// One thing the transcript shows, in order. Rows that are bookkeeping

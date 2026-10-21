@@ -6,8 +6,11 @@ import TempCodeContract
 
 /// The transcript: the newest 75 rows, one page more each time the top is
 /// reached, pinned to the bottom while the user is there, a "Jump to
-/// latest" pill once they scroll up. Rows keep their identity by seq, so a
-/// streaming row updates its own text and nothing above it moves.
+/// latest" pill once they scroll up. Rows keep their identity by seq and
+/// compare by value, so a streaming row updates its own text and nothing
+/// above it is laid out again. Nothing animates on first paint: every
+/// scroll the view makes on its own runs in a transaction with animations
+/// off, and the only animated changes are the ones a tap starts.
 struct TranscriptView: View {
     let client: EnvironmentClient
     let sessionId: String
@@ -65,7 +68,7 @@ struct TranscriptView: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .environment(\.defaultMinListRowHeight, 0)
-            .contentMargins(.vertical, 6, for: .scrollContent)
+            .contentMargins(.vertical, 8, for: .scrollContent)
             .navigationLinkIndicatorVisibility(.hidden)
             .buttonStyle(.plain)
             .scrollBounceBehavior(.basedOnSize)
@@ -118,7 +121,8 @@ struct TranscriptView: View {
         }
     }
 
-    private var rowInsets: EdgeInsets { EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16) }
+    /// The desktop's 4 px between rows of a turn, at the page's 16 pt margin.
+    private var rowInsets: EdgeInsets { EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16) }
 
     @State private var initializedScroll = false
     @State private var proofScrollView: UIScrollView?
@@ -272,7 +276,7 @@ private struct EmptyTranscript: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             } else {
-                Text("Nothing here yet")
+                Text("No messages yet")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
