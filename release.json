@@ -1,5 +1,5 @@
 {
-  "n": 266,
-  "notes": "ensureWorkspace only opens local workspaces for a window on this machine: on another host the folder is that host's and its catalog may still be loading, and a local workspace at the host's path claimed the folder for the Mac (the switcher then read This Mac over an empty sidebar and a switch to the box skipped its real workspace)",
-  "ts": 1792553088152
+  "n": 267,
+  "notes": "Fix: a window on the box no longer creates a local workspace at the box's path, which hid the box's threads behind This Mac after the history move",
+  "ts": 1792553151254
 }
