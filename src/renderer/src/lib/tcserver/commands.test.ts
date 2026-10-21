@@ -7,6 +7,7 @@ import {
   continueAllErrors,
   continueSession,
   pauseAllRunning,
+  sessionBatch,
   runSettingsFor,
   setGoal,
   setThreadRules,
@@ -70,6 +71,10 @@ class FakeLink implements Link {
     if (method === "file.read") return (params as any).path === "/repo/.temp-code/plan.md" ? Promise.resolve("# Plan" as T) : Promise.reject(new Error("outside"));
     if (method === "queue.add") return Promise.resolve({ id: "m1", text: (params as any).text, ts: 1 } as T);
     if (method === "queue.list") return Promise.resolve([{ id: "q1", text: "one", ts: 1 }, { id: "q2", text: "two", ts: 2 }] as T);
+    if (method === "session.batch") {
+      const p = params as any;
+      return Promise.resolve({ attempted: p.ids, succeeded: p.ids.slice(1), failed: p.ids.slice(0, 1).map((sessionId: string) => ({ sessionId, error: "harness not responding" })) } as T);
+    }
     if (method === "session.resumeAllPaused" || method === "session.continueAllErrors") {
       return Promise.resolve({ attempted: ["s1"], succeeded: ["s1"], failed: [] } as T);
     }
@@ -314,5 +319,13 @@ describe("session wrappers", () => {
     expect(link.of("session.setGoal")).toEqual([{ sessionId: "s1", condition: "tests pass" }]);
     expect(link.of("session.clearGoal")).toEqual([{ sessionId: "s1" }]);
     expect(link.of("session.setThreadRules")).toEqual([{ sessionId: "s1", threadRules: null }]);
+  });
+
+  it("session.batch carries the action, the ids and cleanup only when asked, and answers per id", async () => {
+    const result = await sessionBatch("local", "pause", ["s1", "s2"]);
+    expect(link.of("session.batch")).toEqual([{ action: "pause", ids: ["s1", "s2"] }]);
+    expect(result).toEqual({ attempted: ["s1", "s2"], succeeded: ["s2"], failed: [{ sessionId: "s1", error: "harness not responding" }] });
+    await sessionBatch("local", "archive", ["s3"], { cleanup: true });
+    expect(link.of("session.batch")[1]).toEqual({ action: "archive", ids: ["s3"], cleanup: true });
   });
 });

@@ -15,6 +15,13 @@ import {
 import { Sidebar } from "./chrome/Sidebar";
 import { HiddenApprovalToasts } from "./chrome/ApprovalToasts";
 import { MoveToasts } from "./chrome/ThreadHostChip";
+import { ThreadBatchDialog } from "./chrome/ThreadBatchDialog";
+import { requestThreadBatch, type BatchScope } from "./lib/threadBatch";
+import { selectionFor } from "./lib/threadBatchSelection";
+
+/** The View menu's fleet switches reach every host. */
+const EVERYWHERE: BatchScope = { kind: "all" };
+import { ThreadBatchToasts } from "./chrome/ThreadBatchToasts";
 import { MacBridgeToasts } from "./chrome/MacBridgeCards";
 import { WhatsNewDialog } from "./chrome/WhatsNewDialog";
 import { NewWorkspaceDialog } from "./chrome/ProjectDialogs";
@@ -3468,6 +3475,10 @@ export default function App() {
         case "open_inbox": return go(a.onOpenInbox);
         case "mark_all_read": return go(() => markAllSeen(sessionStore.metas().map((m) => m.id)));
         case "toggle_group_by_host": return go(() => saveRailGroupByHost(!loadRailGroupByHost()));
+        case "pause_all_threads": return go(() => void requestThreadBatch("pause", EVERYWHERE, () => selectionFor(EVERYWHERE)));
+        case "resume_all_threads": return go(() => void requestThreadBatch("resume", EVERYWHERE, () => selectionFor(EVERYWHERE)));
+        case "stop_all_threads": return go(() => void requestThreadBatch("stop", EVERYWHERE, () => selectionFor(EVERYWHERE)));
+        case "archive_done_threads": return go(() => void requestThreadBatch("archiveDone", EVERYWHERE, () => selectionFor(EVERYWHERE)));
         case "open_notes": return go(a.onOpenNotes);
         case "open_settings": return go(() => a.openSettings());
         case "check_for_updates": return go(() => void updateStore.check(true));
@@ -3882,6 +3893,8 @@ export default function App() {
       ) : null}
 
       <MoveToasts />
+      <ThreadBatchToasts onOpen={onOpenApprovalSession} />
+      <ThreadBatchDialog />
       <HiddenApprovalToasts
         onFocusSession={onOpenApprovalSession}
         onApproval={onApproval}

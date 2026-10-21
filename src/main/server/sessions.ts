@@ -5,6 +5,7 @@ import { homedir } from 'node:os'
 import { basename } from 'node:path'
 import { CreateSessionParams, type CreateSessionInput } from '@shared/contract'
 import type { SessionBatchResult } from '@shared/contract'
+import { runSessionBatch, type SessionBatchAction } from './sessionBatch'
 import { CATALOG, resolveModel, type ProviderId } from '@shared/catalog'
 import type { AgentEvent, Attachment, EventRow, SessionMeta, SessionStatus } from '@shared/events'
 import {
@@ -2340,6 +2341,40 @@ export class SessionRegistry {
     )
     return this.runRootBatch(roots, (root) => this.resumePausedRun(root.id))
   }
+
+  /** One action over the given threads (each through its root, once), at
+   *  most four calls in flight, every id answered: the menus' Pause all,
+   *  Resume all, Stop all and Archive done. Resume covers a paused tree;
+   *  Stop interrupts a running or waiting one; Archive stops first, as a
+   *  single archive does. `cleanup` also runs `resourceCleanup` after each
+   *  archive when a host has one. */
+  async batch(
+    action: SessionBatchAction,
+    ids: readonly string[],
+    options: { cleanup?: boolean } = {}
+  ): Promise<SessionBatchResult> {
+    return runSessionBatch(action, ids, {
+      rootOf: (id) => this.rootSessionOf(id),
+      run: (what, rootId) => {
+        switch (what) {
+          case 'pause':
+            return this.pauseRun(rootId)
+          case 'resume':
+            return this.resumePausedRun(rootId)
+          case 'stop':
+            return this.stopRun(rootId)
+          case 'archive':
+            return this.setArchived(rootId, true)
+        }
+      },
+      cleanup: this.resourceCleanup ?? undefined
+    }, options)
+  }
+
+  /** Releases what an archived thread held (worktree, simulator, …); set
+   *  by the server when the host has such a thing, else null and the
+   *  batch's `cleanup` is a no-op. */
+  resourceCleanup: ((sessionId: string) => Promise<void>) | null = null
 
   private async runRootBatch(
     roots: SessionMeta[],

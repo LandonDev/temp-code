@@ -507,6 +507,24 @@ routed to (aliax-core's `forward`). Two listeners:
   put a pairing link or a key in a file or a log; the scripts scrub their
   output.
 
+## The fleet switches: one click for every thread of a scope
+Pause all, Resume all, Stop all and Archive done sit beside Mark all read in
+a project's menu (rail row and project header), a host's menu (the `…` on
+the rail's host row, and Settings → Remote access), and the View menu for
+everything. Roots only, subagents follow their parent; a row with nothing to
+act on is disabled. The rules per row, the confirm copy with its live count
+and the toast line are `src/renderer/src/lib/threadBatch.ts` (unit-tested);
+the menus' rows are `threadBatchMenu.ts`; the dialog and toast are
+`chrome/ThreadBatchDialog.tsx` and `chrome/ThreadBatchToasts.tsx`. Pause,
+Stop and Archive confirm; Resume and Mark all read do not. The server side
+is `session.batch {action, ids, cleanup?}` (operate), answered by
+`SessionRegistry.batch` through `src/main/server/sessionBatch.ts`: ids
+mapped to roots once, the existing per-session calls four at a time, every
+id answered. `registry.resourceCleanup` (null today) is where the
+thread-resources build hangs its clean-up; `setResourceCleanup` in the
+renderer turns the Archive done checkbox on. Proof:
+`bun run script:e2e-thread-batch`. docs/box.md "The fleet switches".
+
 ## The prod worktree is retired
 ~/IdeaProjects/temp-code-prod was the old local updater's build checkout.
 The updater no longer reads it or the source repo at all; it can stay

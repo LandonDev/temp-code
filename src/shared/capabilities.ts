@@ -181,6 +181,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'session.continueAllErrors': 'operate',
   'session.pauseAllRunning': 'operate',
   'session.resumeAllPaused': 'operate',
+  'session.batch': 'operate',
   'session.rename': 'operate',
   'session.setThreadRules': 'operate',
   'session.archive': 'operate',

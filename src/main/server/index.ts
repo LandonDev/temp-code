@@ -1376,6 +1376,15 @@ export async function startServer(
           case 'session.resumeAllPaused':
             sendFrame({ id: req.id, ok: true, result: await registry.resumeAllPaused() })
             break
+          case 'session.batch':
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await registry.batch(req.params.action, req.params.ids, {
+                cleanup: req.params.cleanup
+              })
+            })
+            break
           case 'session.subscribe': {
             const { sessionId } = req.params
             // Opening a thread: its shown account is the one its next send uses.
