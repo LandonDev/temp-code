@@ -242,10 +242,10 @@ struct GoneLine: View {
             .foregroundStyle(.secondary)
             .padding(.horizontal, 16)
             .padding(.top, 40)
-            .transition(Motion.appear(reduced: reduceMotion))
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity)
+        .transition(Motion.appear(reduced: reduceMotion))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("thread-gone")
     }
@@ -256,9 +256,10 @@ struct GoneLine: View {
 /// The segmented control under the header. The raised pill is bound to the
 /// pager: `progress` is the pager's offset in pages, so during a swipe the
 /// pill follows the finger and on a tap it settles with the drawer curve the
-/// parent animates the page with. The labels change color by a mask that
-/// moves with the pill, so the transition is one movement and never a
-/// cross-fade of two labels. A warning dot beside the inactive segment's
+/// parent animates the page with. Each label's color follows the same
+/// offset (a primary copy over a secondary one, weighted by how close the
+/// pill is), so the recolor is one continuous movement with the pill and
+/// never a swap of two states. A warning dot beside the inactive segment's
 /// label marks a new needs-you card there; the label itself never moves.
 struct SegmentBar: View {
     let segments: [Segment]
@@ -276,55 +277,61 @@ struct SegmentBar: View {
     static let height: CGFloat = 32
 
     var body: some View {
-        labels(tint: .secondary, hit: true)
-            .background { pill }
-            .overlay {
-                labels(tint: .primary, hit: false)
-                    .mask { pillShape }
-                    .allowsHitTesting(false)
-            }
-            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: Self.trackRadius, style: .continuous))
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Segment")
-            .accessibilityIdentifier("thread-segments")
-    }
-
-    /// The row of labels. The hit-testing copy carries the buttons and the
-    /// dot; the masked copy on top only recolors.
-    private func labels(tint: Color, hit: Bool) -> some View {
         HStack(spacing: 0) {
-            ForEach(segments) { segment in
+            ForEach(Array(segments.enumerated()), id: \.element) { index, segment in
                 Button {
                     onSelect(segment)
                 } label: {
-                    Text(segment.title)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(tint)
-                        .lineLimit(1)
-                        .overlay(alignment: .trailing) {
-                            if hit, segment == dot {
-                                Circle()
-                                    .fill(Tint.warning)
-                                    .frame(width: 6, height: 6)
-                                    .offset(x: 10)
-                                    .transition(dotTransition)
-                                    .accessibilityLabel("Needs you")
-                            }
-                        }
+                    label(segment, weight: weight(of: index))
                         .frame(maxWidth: .infinity, minHeight: Self.height - 2 * Self.inset)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.pressable)
-                .disabled(!hit)
                 .accessibilityAddTraits(segment == selected ? [.isSelected] : [])
-                .accessibilityHidden(!hit)
                 .accessibilityIdentifier("segment-\(segment.rawValue)")
             }
         }
         .padding(Self.inset)
         .animation(reduceMotion ? Motion.crossFade : Motion.expand, value: dot)
+        .background { pill }
+        .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: Self.trackRadius, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Segment")
+        .accessibilityIdentifier("thread-segments")
+    }
+
+    /// How much of the pill sits under this segment, 0 ... 1.
+    private func weight(of index: Int) -> CGFloat {
+        let position = min(max(progress, 0), CGFloat(max(1, segments.count) - 1))
+        return max(0, 1 - abs(position - CGFloat(index)))
+    }
+
+    /// The label: the primary copy fades in over the secondary one as the
+    /// pill arrives, the two sharing one press scale. The dot hangs off the
+    /// text's trailing edge so the text never moves when it appears.
+    private func label(_ segment: Segment, weight: CGFloat) -> some View {
+        ZStack {
+            Text(segment.title)
+                .foregroundStyle(.secondary)
+                .opacity(1 - weight)
+            Text(segment.title)
+                .foregroundStyle(.primary)
+                .opacity(weight)
+        }
+        .font(.subheadline.weight(.medium))
+        .lineLimit(1)
+        .overlay(alignment: .trailing) {
+            if segment == dot {
+                Circle()
+                    .fill(Tint.warning)
+                    .frame(width: 6, height: 6)
+                    .offset(x: 10)
+                    .transition(dotTransition)
+                    .accessibilityLabel("Needs you")
+            }
+        }
     }
 
     /// The raised pill: white with a soft shadow in light, the raised step in dark.
@@ -334,16 +341,6 @@ struct SegmentBar: View {
             RoundedRectangle(cornerRadius: Self.pillRadius, style: .continuous)
                 .fill(Color(.tertiarySystemBackground))
                 .shadow(color: .black.opacity(0.12), radius: 2, y: 1)
-                .frame(width: rect.width, height: rect.height)
-                .offset(x: rect.minX, y: rect.minY)
-        }
-    }
-
-    /// The same rectangle as a mask for the recolored labels.
-    private var pillShape: some View {
-        GeometryReader { geometry in
-            let rect = pillRect(in: geometry.size)
-            RoundedRectangle(cornerRadius: Self.pillRadius, style: .continuous)
                 .frame(width: rect.width, height: rect.height)
                 .offset(x: rect.minX, y: rect.minY)
         }

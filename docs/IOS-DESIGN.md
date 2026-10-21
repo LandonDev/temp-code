@@ -94,18 +94,35 @@ the row.
 
 ## The thread screen
 
-One header for every type: back, title (inline rename later), a subtitle line
-with the type label tinted, the model, and the elapsed running time while
-live. Below the header, the type decides the body. The composer (L5) docks at
-the bottom, compact, growing on focus, with the desktop's reserved 28 pt
-working strip above it: spinner, flavour word, elapsed; paused shows the
-warning row with Stop and Continue. The strip never changes height.
+One header for every type, the way Messages and Notes title a screen: back,
+the title inline (long-press renames; the ellipsis menu also offers Rename,
+Pin and Archive through the same calls the Home row makes), and under it one
+quiet line: the status mark (the dot cross-fading to a spinner, nothing for
+idle and done so the line stays centered), the type label tinted, the model,
+and the elapsed running time ticking once a second in tabular digits while
+live. The host's name leads that line, in the tertiary step, only when more
+than one host is paired and only when it fits. The toolbar shows the agent
+glyph `person.2` with the running count beside it once the thread has
+spawned subagents; it pushes the subagent list (the desktop's right
+sidebar). Below the header, the type decides the body. The composer (L5)
+docks at the bottom, compact, growing on focus, with the desktop's reserved
+28 pt working strip above it: spinner, flavour word, elapsed; paused shows
+the warning row with Stop and Continue. The strip never changes height.
 
 Where the desktop splits board and chat side by side, the phone uses a
 segmented control under the header with two segments and a swipe between
-them. The segment chosen is remembered per thread. A dot on the inactive
-segment marks a new needs-you card there. The default segment is the one the
-desktop makes the hero.
+them. The control is bound to the pager: its raised pill sits at the pager's
+offset in pages, so it follows the finger during a swipe and settles with
+the drawer curve on a tap; the labels recolor through a mask that moves with
+the pill, never a cross-fade of two labels. The track is 9 pt radius on the
+fill step, the pill 7 pt inside a 2 pt inset (concentric), white with a soft
+shadow in light and the raised step in dark. The segment chosen is
+remembered per thread. A warning dot beside the inactive segment's label
+marks a new needs-you card there; the label never moves. The default segment
+is the one the desktop makes the hero.
+
+A thread moved or deleted while open shows one quiet line where the body
+was, keeps its last title in the header, and loses its composer and menu.
 
 ### Chat
 
