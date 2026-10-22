@@ -98,6 +98,9 @@ describe('METHOD_CAPABILITY', () => {
         // The reverse RPC a Mac's main process speaks on its link to this host, and its settle report (contract-crosshost.ts).
         ...methods.filter((m) => m.startsWith('peer.')),
         'crossHost.settled',
+        'crossHost.landing',
+        // A thread on this host asked for by another host's main process over its link (contract-crosshost.ts).
+        ...methods.filter((m) => m.startsWith('thread.')),
         // A deploy of this host, and its log, are asked over its link under an admin key (contract-host.ts).
         'host.deploy',
         'host.deployStatus',
