@@ -19,7 +19,7 @@ import { WebSocketServer, type WebSocket } from 'ws'
 import { createServer } from 'node:http'
 import { visibleCatalog } from '@shared/catalog'
 import { refusalCodeOf } from './failureKind'
-import { ClientRequestSchema, type ServerFrame, type ServerPush } from '@shared/contract'
+import { ClientRequestSchema, type ClientRequest, type ServerFrame, type ServerPush, type ServerResponse } from '@shared/contract'
 import {
   CONTRACT_VERSION,
   LOCAL_PRINCIPAL,
@@ -202,6 +202,7 @@ import {
 import { closeAllLiveWatchers, onLiveEdit } from './livediff'
 import { eventsPage, frameJson, profileFor, PushCoalescer, remoteDeflateOptions, sessionPage } from './wire'
 import { FocusSet } from './focus'
+import { bulkKey, LaneGate, laneOf } from './lane'
 import { ListChangeLog } from './listChanges'
 import { LaunchMirror } from './launchMirror'
 import { peerDelay, peerDelayMs } from './peerDelay'
@@ -366,6 +367,8 @@ export async function startServer(
   const focus = new FocusSet({ parentOf: (id) => registry.parentOf(id), masterOf: (id) => registry.masterOf(id) })
   // A send on a thread someone is looking at is admitted over the running cap (scheduler.ts).
   registry.scheduler.focused = (id) => focus.isInteractive(id)
+  // The bulk lane, one per host: polls and walks wait while the loop lags (lane.ts).
+  const laneGate = new LaneGate()
   // The temp-code workspace's default preamble, seeded once (projectPreamble.ts).
   seedHousePreamble(store)
   migrateHousePreamble(store)
@@ -1143,7 +1146,8 @@ export async function startServer(
         if (id) sendFrame({ id, ok: false, error: `bad request: ${parsed.error.message}` })
         return
       }
-      const req = parsed.data
+      // `lane: 'ui'` rides beside the method (lane.ts); the schema strips it.
+      const req: ClientRequest = (raw as { lane?: unknown }).lane === 'ui' ? Object.assign(parsed.data, { lane: 'ui' as const }) : parsed.data
       if (dropAnswer(req.method)) dropped.add(req.id)
       // TEMP_CODE_PEER_DELAY_MS (peerDelay.ts): a proof's slow box.
       if (PEER_DELAY_MS > 0) await peerDelay(principal.kind, PEER_DELAY_MS)
@@ -1157,8 +1161,39 @@ export async function startServer(
       trackRequest(requestKey, req.method)
       try {
         // A remote key names paths only inside the app-managed roots; the
-        // refusal is one typed error that never carries the path.
+        // refusal is one typed error that never carries the path. Ahead of
+        // the lane gate: a bulk request never joins one it may not make.
         if (principal.kind !== 'local') fenceRequest(req, managedRoots(), [ATTACH_DIR])
+        // The lane gate (lane.ts): interactive and normal run now; bulk waits
+        // its turn and a duplicate shares the answer of the one before it.
+        const lane = laneOf(req, focus)
+        if (lane === 'bulk') {
+          const answer = await laneGate.run(lane, bulkKey(req, connection), () => captureAnswer(req))
+          if (answer) sendFrame({ ...answer, id: req.id })
+        } else await serve(req, sendFrame)
+      } catch (err) {
+        sendFrame({
+          id: req.id,
+          ok: false,
+          error: err instanceof Error ? err.message : String(err)
+        })
+      } finally {
+        // A request this slow held the main thread or waited behind
+        // something that did; either way the boot log should say which.
+        untrackRequest(requestKey)
+        const ms = Date.now() - startedAt
+        if (ms > SLOW_REQUEST_MS) {
+          bootMark('slow-request', `${req.method} ${ms}ms`)
+          recordSlowRequest(req.method, ms)
+        }
+      }
+    })
+
+    /** One request, answered through `sendFrame`: the socket's own, or a
+     *  bulk request's capture (captureAnswer). Pushes a handler makes go to
+     *  the socket either way. */
+    const serve = async (req: ClientRequest, sendFrame: (frame: ServerFrame) => void): Promise<void> => {
+      try {
         // A pull marks the socket as another host's main process: it hears
         // every later rotation (never a renderer, which never pulls).
         if (req.method === 'page.read') {
@@ -2231,17 +2266,27 @@ export async function startServer(
           ok: false,
           error: err instanceof Error ? err.message : String(err)
         })
-      } finally {
-        // A request this slow held the main thread or waited behind
-        // something that did; either way the boot log should say which.
-        untrackRequest(requestKey)
-        const ms = Date.now() - startedAt
-        if (ms > SLOW_REQUEST_MS) {
-          bootMark('slow-request', `${req.method} ${ms}ms`)
-          recordSlowRequest(req.method, ms)
-        }
       }
-    })
+    }
+
+    /** A bulk request's answer frame, kept for every request that joined it
+     *  (lane.ts); null when the handler finished without one, so the slot
+     *  frees. An answer later than that still reaches this socket. */
+    const captureAnswer = (req: ClientRequest): Promise<ServerResponse | null> =>
+      new Promise((resolve) => {
+        let settled = false
+        const capture = (frame: ServerFrame): void => {
+          if ('push' in frame || frame.id !== req.id) return sendFrame(frame)
+          if (settled) return sendFrame(frame)
+          settled = true
+          resolve(frame)
+        }
+        void serve(req, capture).finally(() => {
+          if (settled) return
+          settled = true
+          resolve(null)
+        })
+      })
 
     ws.on('close', () => {
       coalescer.dispose()
@@ -2421,6 +2466,7 @@ export async function startServer(
       await remoteRestart
       await remote?.close()
       stopStallMonitor()
+      laneGate.dispose()
       clearTimeout(warmKickoff)
       clearInterval(warmTimer)
       builder.disposeAll()

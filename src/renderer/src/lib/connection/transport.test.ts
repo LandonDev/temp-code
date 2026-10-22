@@ -85,6 +85,14 @@ describe("Transport", () => {
     expect(t.pendingMethods()).toEqual([]);
   });
 
+  it("a click's lane rides beside the method; a plain request carries none", async () => {
+    const { t, ws } = await opened();
+    void t.request("session.pause", { sessionId: "s" }, { lane: "ui" });
+    expect(ws.last()).toMatchObject({ method: "session.pause", params: { sessionId: "s" }, lane: "ui" });
+    void t.request("session.events", { sessionId: "s" });
+    expect("lane" in ws.last()).toBe(false);
+  });
+
   it("streams pushes but keeps hello to itself", async () => {
     const { t, ws } = await opened();
     const pushes: unknown[] = [];

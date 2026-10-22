@@ -115,7 +115,10 @@ export class EnvLink implements Link {
   private once<T>(method: string, params: unknown, options: RequestOptions): Promise<T> {
     const session = this.session;
     if (!session || session.state !== "open") return Promise.reject(new ConnectionLostError("not connected"));
-    return session.request<T>(method, params, options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {});
+    return session.request<T>(method, params, {
+      ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+      ...(options.lane ? { lane: options.lane } : {}),
+    });
   }
 
   /** The backoff, cut short by a new socket. */

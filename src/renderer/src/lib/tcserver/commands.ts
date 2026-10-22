@@ -27,6 +27,9 @@ import type {
  * model switch or a cross-harness handoff happens).
  */
 
+/** A person's click: the host runs it ahead of its polls (src/main/server/lane.ts). */
+const UI = { lane: "ui" } as const;
+
 export type UserTurnExtra = {
   secondOpinion?: Block["secondOpinion"];
   noteCard?: Block["noteCard"];
@@ -171,7 +174,7 @@ export async function send(
     ...(session.harness !== meta.provider ? { provider: session.harness } : {}),
     ...(model !== meta.model ? { model } : {}),
     ...(reasoning && reasoning !== meta.reasoning ? { reasoning } : {}),
-  });
+  }, UI);
   await sessionStore.waitIdle(session.id);
 }
 
@@ -329,7 +332,7 @@ export async function continueSession(
 export async function interrupt(sessionId: string): Promise<void> {
   const link = linkFor(sessionId);
   if (sessionStore.isDraft(sessionId)) return;
-  await link.request("session.interrupt", { sessionId });
+  await link.request("session.interrupt", { sessionId }, UI);
 }
 
 /** Pause every running thread at once. */
@@ -348,11 +351,11 @@ export function sessionBatch(
   ids: readonly string[],
   options: { cleanup?: boolean } = {},
 ): Promise<SessionBatchResult> {
-  return registry.linkOf(environmentId).request<SessionBatchResult>("session.batch", {
-    action,
-    ids: [...ids],
-    ...(options.cleanup ? { cleanup: true } : {}),
-  });
+  return registry.linkOf(environmentId).request<SessionBatchResult>(
+    "session.batch",
+    { action, ids: [...ids], ...(options.cleanup ? { cleanup: true } : {}) },
+    UI,
+  );
 }
 
 /** Context-window breakdown for one thread, as the harness reports it
@@ -410,20 +413,20 @@ export function readAttachment(environmentId: string, path: string): Promise<str
 export async function pause(sessionId: string): Promise<void> {
   const link = linkFor(sessionId);
   if (sessionStore.isDraft(sessionId)) return;
-  await link.request("session.pause", { sessionId });
+  await link.request("session.pause", { sessionId }, UI);
 }
 
 export async function resume(sessionId: string): Promise<void> {
   const link = linkFor(sessionId);
   if (sessionStore.isDraft(sessionId)) return;
-  await link.request("session.resume", { sessionId });
+  await link.request("session.resume", { sessionId }, UI);
 }
 
 /** Start a queued thread now, past the host's cap and its `after` (the strip's Start now). */
 export async function startNow(sessionId: string): Promise<void> {
   const link = linkFor(sessionId);
   if (sessionStore.isDraft(sessionId)) return;
-  await link.request("session.start", { sessionId });
+  await link.request("session.start", { sessionId }, UI);
 }
 
 /** Change a thread's type. A draft just takes the new type; a created
@@ -483,7 +486,7 @@ export async function startThread(params: StartThreadParams, brief: string): Pro
   const meta: SessionMeta = { ...wire, environmentId };
   sessionStore.adopt(meta);
   await bridgeNewThread(environmentId, meta.id);
-  await link.request("session.send", { sessionId: meta.id, text: brief });
+  await link.request("session.send", { sessionId: meta.id, text: brief }, UI);
   return meta;
 }
 
@@ -493,7 +496,7 @@ export async function approve(
   allow: boolean,
 ): Promise<void> {
   const link = linkFor(sessionId);
-  await link.request("session.approve", { sessionId, requestId: String(requestId), allow });
+  await link.request("session.approve", { sessionId, requestId: String(requestId), allow }, UI);
 }
 
 export async function answer(
@@ -502,7 +505,7 @@ export async function answer(
   answers: string[][] | null,
 ): Promise<void> {
   const link = linkFor(sessionId);
-  await link.request("session.answer", { sessionId, requestId, answers });
+  await link.request("session.answer", { sessionId, requestId, answers }, UI);
 }
 
 export async function permission(sessionId: string, mode: RuntimeMode): Promise<void> {
@@ -530,7 +533,7 @@ export async function rename(sessionId: string, title: string): Promise<void> {
 export async function archive(sessionId: string, archived: boolean): Promise<void> {
   const link = linkFor(sessionId);
   if (sessionStore.isDraft(sessionId)) return;
-  await link.request("session.archive", { sessionId, archived });
+  await link.request("session.archive", { sessionId, archived }, UI);
 }
 
 /** Make a root thread a master, or stop it being one (CLAUDE.md "Master threads"). */

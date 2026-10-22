@@ -22,7 +22,11 @@ const UNAUTHORIZED_CODES = new Set([4401, 4403]);
 export const SLOW_MS = 8_000;
 
 /** How long a request may wait for its answer. */
-export type RequestOptions = { timeoutMs?: number };
+export type RequestOptions = {
+  timeoutMs?: number;
+  /** A person's click: the host runs it in its interactive lane (src/main/server/lane.ts). */
+  lane?: "ui";
+};
 
 /** A request whose answer did not come inside its deadline. */
 export class TimeoutError extends Error {
@@ -154,7 +158,7 @@ export class Transport {
         reject(new TimeoutError(method, timeoutMs));
       }, timeoutMs);
       this.pending.set(id, { method, sentAt: Date.now(), timeoutMs, timer, resolve: resolve as (v: unknown) => void, reject });
-      this.ws!.send(JSON.stringify({ id, method, params }));
+      this.ws!.send(JSON.stringify(options.lane ? { id, method, params, lane: options.lane } : { id, method, params }));
     });
   }
 

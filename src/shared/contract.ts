@@ -1146,7 +1146,11 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     params: z.object({ sessionId: z.string() })
   })
 ])
-export type ClientRequest = z.infer<typeof ClientRequestSchema>
+/** `ui`: a person's click (send, approve, answer, stop, pause, resume, start
+ *  now, archive) that the host runs in its interactive lane (src/main/server/lane.ts).
+ *  Rides beside `method` on the frame; the schema strips it, the socket reads it. */
+export type RequestLane = 'ui'
+export type ClientRequest = z.infer<typeof ClientRequestSchema> & { lane?: RequestLane }
 
 /** A thread's notes as `session.notes.get` answers and the `notes` push carries. */
 export interface ThreadNotesDoc {
