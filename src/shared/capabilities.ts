@@ -363,6 +363,14 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'relay.frames': 'admin',
   'relay.closed': 'admin',
   'relay.notice': 'admin',
+  // Dev servers forwarded to the Mac (contract-ports.ts): a Mac's main process over its admin
+  // link, each only from the socket that Mac registered on; the forwards and the switch are the Mac's own.
+  'ports.bound': 'admin',
+  'ports.open': 'admin',
+  'ports.data': 'admin',
+  'ports.close': 'admin',
+  'ports.forwards': 'local',
+  'ports.setForwarding': 'local',
   /** A proof seam: an isolated instance's presence, flipped by hand (TEMP_CODE_E2E_PRESENCE=1). */
   'presence.set': 'local',
   'mac.readFile': 'local',

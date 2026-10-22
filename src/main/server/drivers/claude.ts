@@ -1085,6 +1085,17 @@ export const claudeDriver: HarnessDriver = {
       return { continue: true }
     }
 
+    // A shell call that opened a dev server: the host forwards it to the Mac
+    // and the result's tail names the Mac's URL (threadPorts.ts, portTail.ts).
+    const bashTailHook = async (hookInput: unknown): Promise<HookJSONOutput> => {
+      const i = hookInput as { tool_use_id?: string; tool_response?: unknown }
+      if (!ctx.toolResultTail || !i.tool_use_id) return { continue: true }
+      const r = i.tool_response
+      const output = typeof r === 'string' ? r : r && typeof r === 'object' ? [(r as { stdout?: unknown }).stdout, (r as { stderr?: unknown }).stderr].filter((x) => typeof x === 'string').join('\n') : ''
+      const tail = await ctx.toolResultTail(i.tool_use_id, output).catch(() => null)
+      return tail ? { continue: true, hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: tail } } : { continue: true }
+    }
+
     // Approval flow (docs/PLAN.md M4): the harness asks, we emit an
     // approval-request event, the user answers through session.approve.
     const canUseTool: CanUseTool = (toolName, toolInput, opts) => {
@@ -1179,6 +1190,7 @@ export const claudeDriver: HarnessDriver = {
           { matcher: 'AskUserQuestion', hooks: [askUserQuestionHook] },
           { matcher: 'Edit|Write|MultiEdit|NotebookEdit|Bash', hooks: [baselineHook] }
         ],
+        PostToolUse: [{ matcher: 'Bash', hooks: [bashTailHook] }],
         // Session crons only surface here (see stopHookFor).
         Stop: [{ hooks: [stopHookFor(watchedCtx, state)] }]
       },

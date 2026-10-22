@@ -55,6 +55,11 @@ import { readSimulatorHolders } from './devices/ledger'
 import { MergeReviews, mergeReviews, setMergeReviews } from './mergeReview'
 import { MacThreadTokens, MacTools, macToolsHooks, rebootWhenSettled } from './macTools'
 import { OfflineError, ThreadResources } from './threadResources'
+import { SharedScanner, ThreadPorts } from './threadPorts'
+import { PortTail } from './portTail'
+import { PortForwardHost } from './remote/portForward'
+import { MacPortForwards, forwardSettingKey } from './remote/macPorts'
+import { PORTS_OFFER, type ForwardedPort } from '@shared/contract-ports'
 import { runMacCommand } from './remote/macRunner'
 import { MAC_APPROVAL_WAIT_MS, MAC_BRIDGE_OFFER, type MacRunResult } from '@shared/contract-macbridge'
 import type { MacHeldPush } from '@shared/contract-macbridge'
@@ -540,10 +545,15 @@ export async function startServer(
       onClose: (id) => {
         relayServer.linkDown(id)
         macBridge.linkDown(id)
+        macPorts.linkDown(id)
         accounts.nudge()
       },
       onPush: (from, push) => {
         projectLinker.onPeerPush(from, push)
+        // A linked host's dev servers, forwarded here (remote/macPorts.ts).
+        if (push.push === 'ports') return void macPorts.onPorts(from, push.ports)
+        if (push.push === 'ports.data') return macPorts.onData(from, push.streamId, push.seq, push.data)
+        if (push.push === 'ports.close') return macPorts.onClose(from, push.streamId, push.seq, push.error)
         if (relayServer.onPeerPush(from, push)) return
         if (hostDevices.onPeerPush(from, push)) return
         if (crossHostThreads.onPeerPush(from, push)) return
@@ -642,7 +652,7 @@ export async function startServer(
       const link = peers.get(id)
       return link?.connected ? (method, params, opts) => link.request(method, params, opts) : null
     },
-    offers: () => [...crossHostOffers(), ...hostDevicesOffers(), ...macPublishOffers(), ...relayOffers()],
+    offers: () => [...crossHostOffers(), ...hostDevicesOffers(), ...macPublishOffers(), ...relayOffers(), PORTS_OFFER],
     // The thread cap counts the threads a host started here that are live (crossHostThreads below).
     liveThreads: (envId) => crossHostThreads.liveThreadsOf(envId),
     // The relay's host row on the carrier: this host's name, presence and build.
@@ -759,6 +769,79 @@ export async function startServer(
     }
   })
   registry.onEvent((row) => resources.observeEvent(row))
+  // Dev servers (docs/box.md "Dev servers on the box"): a thread's ports land in the
+  // ledger (threadPorts.ts), go to every registered Mac (remote/portForward.ts), and
+  // the thread hears the Mac's URL (portTail.ts).
+  const listenerScanner = new SharedScanner()
+  const threadPorts = new ThreadPorts({ resources, environmentId, harnessPid: (id) => registry.harnessPid(id), scanner: listenerScanner })
+  registry.onEvent((row) => threadPorts.observeEvent(row))
+  const threadTitle = (id: string): string => registry.get(id)?.title ?? 'Thread'
+  /** A dev run's ports (devRuns below fills it in). */
+  const devPortOffers: { current: () => ForwardedPort[]; bound: (ids: string[]) => void } = { current: () => [], bound: () => {} }
+  const portOffers = (): ForwardedPort[] => [
+    ...resources.listAll({ kind: 'port', environmentId }).map((r) => ({
+      id: r.id,
+      port: Number(r.identifier),
+      label: r.label,
+      title: threadTitle(r.sessionId),
+      sessionId: r.sessionId,
+      runId: null
+    })),
+    ...devPortOffers.current()
+  ]
+  const portHost = new PortForwardHost({
+    environmentId,
+    offers: portOffers,
+    macs: () => peerCalls.registeredIds(PORTS_OFFER),
+    push: (id, frame) => peerCalls.push(id, frame),
+    buffered: (id) => peerCalls.buffered(id),
+    hostName: (id) => peerCalls.nameOf(id) ?? listEnvironments(store).find((e) => e.id === id)?.name ?? null
+  })
+  resources.decorate = (r) => (r.kind === 'port' && r.environmentId === environmentId ? { ...r, forwards: portHost.forwardsOf(r.id) } : r)
+  resources.onChange(() => portHost.refresh())
+  peerCalls.onRegister((id, offers) => {
+    if (offers.has(PORTS_OFFER)) portHost.macRegistered(id)
+  })
+  peerCalls.onDrop((id) => portHost.macDropped(id))
+  const portTail = new PortTail({
+    settle: (sessionId, callId, output) => threadPorts.settle(sessionId, callId, output),
+    whenBound: (ids, ms) => portHost.whenBound(ids, ms),
+    forwardsOf: (id) => portHost.forwardsOf(id),
+    row: (id) => {
+      const r = resources.get(id)
+      return r && r.removedAt === null ? r : null
+    },
+    running: (callId) => threadPorts.running(callId),
+    sessionOfCall: (callId) => threadPorts.sessionOfCall(callId),
+    whisper: (sessionId, text) => registry.whisper(sessionId, text)
+  })
+  registry.toolResultTail = (sessionId, callId, output) => portTail.tail(sessionId, callId, output)
+  threadPorts.onCallEnd((_sessionId, callId) => portTail.callEnded(resources.listAll({ kind: 'port', environmentId }).filter((r) => r.callId === callId).map((r) => r.id)))
+  portHost.onBound((ids) => {
+    portTail.bound(ids)
+    const owners = new Set<string>()
+    for (const id of ids) {
+      const r = resources.get(id)
+      if (r) owners.add(r.sessionId)
+    }
+    for (const o of owners) resources.notify(o)
+    devPortOffers.bound(ids)
+  })
+  // The Mac side: the hosts this machine links to forward their ports here (remote/macPorts.ts).
+  const macPorts = new MacPortForwards({
+    environmentId,
+    link: (id) => {
+      const link = peers.get(id)
+      return link?.connected ? { request: (method, params, opts) => link.request(method, params, opts), buffered: () => link.buffered() } : null
+    },
+    hosts: () => peers.all().map((l) => ({ id: l.id, name: l.env.name, connected: l.connected })),
+    enabled: (id) => store.getSetting(forwardSettingKey(id)) !== 'off',
+    setEnabled: (id, on) => store.setSetting(forwardSettingKey(id), on ? 'on' : 'off')
+  })
+  macPorts.onChange((hosts) => {
+    for (const sink of localSinks) sink({ push: 'port-forwards', hosts })
+  })
+  // The Mac bridge's peer.register carries the offer; the host's list follows on its own.
   // The fleet's Archive done (session.batch with cleanup, sessionBatch.ts) removes each archived thread's resources.
   registry.resourceCleanup = async (sessionId) => {
     await resources.remove(sessionId)
@@ -1348,9 +1431,29 @@ export async function startServer(
         // The reverse RPC (remote/peerCalls.ts): a Mac's main process registers
         // this socket and answers calls on it; then the bridge's own methods.
         if (req.method === 'peer.register' || req.method === 'peer.reply' || req.method === 'peer.chunk' || req.method === 'peer.progress') {
-          const peerSocket = { connection, keyId: principal.kind === 'remote' ? principal.keyId : null, keyName: principal.kind === 'remote' ? principal.name : null, remote: principal.kind === 'remote', send: sendFrame }
+          const peerSocket = { connection, keyId: principal.kind === 'remote' ? principal.keyId : null, keyName: principal.kind === 'remote' ? principal.name : null, remote: principal.kind === 'remote', send: sendFrame, buffered: () => ws.bufferedAmount }
           return sendFrame({ id: req.id, ok: true, result: handlePeerRequest(peerCalls, peerSocket, req) })
         }
+        // A Mac's side of a forwarded dev server (remote/portForward.ts), only from the socket it registered on.
+        if (req.method === 'ports.bound' || req.method === 'ports.open' || req.method === 'ports.data' || req.method === 'ports.close') {
+          if (principal.kind !== 'remote') throw new Error(`forbidden: ${req.method} is for another host's main process`)
+          if (peerCalls.connectionOf(req.params.from) !== connection) throw new Error(`forbidden: ${req.params.from} is not registered on this socket`)
+          const from = req.params.from
+          switch (req.method) {
+            case 'ports.bound':
+              return sendFrame({ id: req.id, ok: true, result: portHost.bound(from, req.params.bound) })
+            case 'ports.open':
+              return sendFrame({ id: req.id, ok: true, result: await portHost.open(from, req.params.streamId, req.params.forwardId) })
+            case 'ports.data':
+              return sendFrame({ id: req.id, ok: true, result: portHost.data(from, req.params.streamId, req.params.seq, req.params.data) })
+            case 'ports.close':
+              return sendFrame({ id: req.id, ok: true, result: portHost.close(from, req.params.streamId, req.params.seq, req.params.error) })
+          }
+        }
+        // This Mac's own forwards and their switch (Settings → Remote access).
+        if (req.method === 'ports.forwards') return sendFrame({ id: req.id, ok: true, result: { hosts: macPorts.hosts() } })
+        if (req.method === 'ports.setForwarding')
+          return sendFrame({ id: req.id, ok: true, result: { hosts: await macPorts.setEnabled(req.params.environmentId, req.params.enabled) } })
         // A Mac pulling a staged mac.writeFile, only on the socket the call went out on (macWriteStage.ts).
         if (req.method === 'peer.pull')
           return sendFrame({ id: req.id, ok: true, result: handlePeerPull(macWriteStages, { connection, remote: principal.kind === 'remote' }, req.params) })
@@ -2673,6 +2776,9 @@ export async function startServer(
       relayServer.close()
       hostRelay.close()
       macBridge.close()
+      macPorts.shutdown()
+      portHost.shutdown()
+      threadPorts.close()
       crossHostThreads.close()
       hostDevices.close()
       peerCalls.close()

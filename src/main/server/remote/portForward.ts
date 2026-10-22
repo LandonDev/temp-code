@@ -63,7 +63,10 @@ export class PortForwardHost {
     const json = JSON.stringify(ports)
     for (const envId of this.deps.macs()) {
       if (this.sent.get(envId) === json) continue
-      if (this.deps.push(envId, { push: 'ports', from: this.deps.environmentId, ports } as ServerFrame)) this.sent.set(envId, json)
+      if (this.deps.push(envId, { push: 'ports', from: this.deps.environmentId, ports } as ServerFrame)) {
+        this.sent.set(envId, json)
+        this.log(`${this.deps.hostName(envId) ?? envId}: ${ports.length} port${ports.length === 1 ? '' : 's'} offered`)
+      }
     }
     // Bindings of ports that left are dropped (the Mac closes their listeners and streams).
     const ids = new Set(ports.map((p) => p.id))
@@ -81,7 +84,7 @@ export class PortForwardHost {
     this.sent.delete(envId)
     const had = [...(this.bindings.get(envId)?.keys() ?? [])]
     this.bindings.delete(envId)
-    for (const [id, s] of [...this.streams]) if (s.envId === envId) s.stream.finish('link closed')
+    for (const s of [...this.streams.values()]) if (s.envId === envId) s.stream.finish('link closed')
     if (had.length) this.emitBound(had)
   }
 

@@ -170,6 +170,11 @@ export class PeerLink {
     }
   }
 
+  /** The socket's unsent bytes (a forwarded port pauses its reads while they pile up). */
+  buffered(): number {
+    return this.ws?.bufferedAmount ?? 0
+  }
+
   /** One request; `timeoutMs` raises the 30 s default for a call that carries a lot (a harness.file chunk). */
   request<T = unknown>(method: string, params?: unknown, opts: { timeoutMs?: number } = {}): Promise<T> {
     const ws = this.ws

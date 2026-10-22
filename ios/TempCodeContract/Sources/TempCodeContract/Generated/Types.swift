@@ -702,6 +702,32 @@ public struct SessionChanges: Codable, Hashable, Sendable {
 }
 
 public struct ThreadResource: Codable, Hashable, Sendable {
+    public struct Forward: Codable, Hashable, Sendable {
+        public let environmentId: String
+        public let hostName: String?
+        public let macPort: Int?
+        public let error: String?
+
+        public init(environmentId: String, hostName: String?, macPort: Int?, error: String?) {
+            self.environmentId = environmentId
+            self.hostName = hostName
+            self.macPort = macPort
+            self.error = error
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case environmentId, hostName, macPort, error
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(environmentId, forKey: .environmentId)
+            try container.encode(hostName, forKey: .hostName)
+            try container.encode(macPort, forKey: .macPort)
+            try container.encode(error, forKey: .error)
+        }
+    }
+
     public let id: String
     public let sessionId: String
     public let environmentId: String
@@ -713,8 +739,11 @@ public struct ThreadResource: Codable, Hashable, Sendable {
     public let removeRequestedAt: Int?
     public let removedAt: Int?
     public let note: String?
+    public let pid: Int?
+    public let callId: String?
+    public let forwards: [Forward]?
 
-    public init(id: String, sessionId: String, environmentId: String, kind: ThreadResourceKind, identifier: String, label: String, branch: String?, createdAt: Int, removeRequestedAt: Int?, removedAt: Int?, note: String?) {
+    public init(id: String, sessionId: String, environmentId: String, kind: ThreadResourceKind, identifier: String, label: String, branch: String?, createdAt: Int, removeRequestedAt: Int?, removedAt: Int?, note: String?, pid: Int? = nil, callId: String? = nil, forwards: [Forward]? = nil) {
         self.id = id
         self.sessionId = sessionId
         self.environmentId = environmentId
@@ -726,10 +755,13 @@ public struct ThreadResource: Codable, Hashable, Sendable {
         self.removeRequestedAt = removeRequestedAt
         self.removedAt = removedAt
         self.note = note
+        self.pid = pid
+        self.callId = callId
+        self.forwards = forwards
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, sessionId, environmentId, kind, identifier, label, branch, createdAt, removeRequestedAt, removedAt, note
+        case id, sessionId, environmentId, kind, identifier, label, branch, createdAt, removeRequestedAt, removedAt, note, pid, callId, forwards
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -745,6 +777,9 @@ public struct ThreadResource: Codable, Hashable, Sendable {
         try container.encode(removeRequestedAt, forKey: .removeRequestedAt)
         try container.encode(removedAt, forKey: .removedAt)
         try container.encode(note, forKey: .note)
+        try container.encodeIfPresent(pid, forKey: .pid)
+        try container.encodeIfPresent(callId, forKey: .callId)
+        try container.encodeIfPresent(forwards, forKey: .forwards)
     }
 }
 

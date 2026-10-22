@@ -12,6 +12,7 @@ import {
   type ThreadResourceRemoval
 } from './contract-resources'
 import type { BuildFacts } from './deployDrift'
+import type { PortForwardInfo } from './contract-ports'
 import type { PlanSettings } from './plans'
 import { PlanSettingsSchema } from './plans'
 import type { ReviewSettings } from './review'
@@ -563,7 +564,13 @@ export const BatchChildrenSchema = z.object({ children: z.array(SessionMetaSchem
 export const BatchStoppedSchema = z.object({ stopped: z.boolean() })
 
 
-// thread resources (contract-resources.ts)
+// thread resources (contract-resources.ts); a port's forwards (contract-ports.ts)
+export const PortForwardInfoSchema = z.object({
+  environmentId: z.string(),
+  hostName: z.string().nullable(),
+  macPort: z.number().int().nullable(),
+  error: z.string().nullable()
+})
 export const ThreadResourceKindSchema = z.enum(THREAD_RESOURCE_KINDS)
 export const ThreadResourceSchema = z.object({
   id: z.string(),
@@ -576,7 +583,10 @@ export const ThreadResourceSchema = z.object({
   createdAt: z.number().int(),
   removeRequestedAt: z.number().int().nullable(),
   removedAt: z.number().int().nullable(),
-  note: z.string().nullable()
+  note: z.string().nullable(),
+  pid: z.number().int().nullable().optional(),
+  callId: z.string().nullable().optional(),
+  forwards: z.array(PortForwardInfoSchema).optional()
 })
 export const ThreadResourceRemovalSchema = z.object({
   id: z.string(),
@@ -1175,6 +1185,7 @@ export type WireSchemaPins = [
   Expect<Equal<z.infer<typeof PlanSettingsSchema>, PlanSettings>>,
   Expect<Equal<z.infer<typeof ThreadResourceKindSchema>, ThreadResourceKind>>,
   Expect<Mirror<typeof ThreadResourceSchema, ThreadResource>>,
+  Expect<Mirror<typeof PortForwardInfoSchema, PortForwardInfo>>,
   Expect<Mirror<typeof ThreadResourceRemovalSchema, ThreadResourceRemoval>>,
   Expect<Mirror<typeof SessionBatchResultSchema, SessionBatchResult>>,
   Expect<Mirror<typeof ResourcesPushSchema, PushOf<'resources'>>>,

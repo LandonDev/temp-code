@@ -47,6 +47,11 @@ export interface DriverCtx {
   /** Resolves once the session's undo baseline (taken off the send path)
    *  has landed; a driver's first write-capable tool waits on it. */
   awaitBaseline?: () => Promise<void>
+  /** A line the host adds to a finished shell call's result (a dev server it
+   *  opened was forwarded: "Forwarded to http://localhost:5174 on the Mac");
+   *  null adds nothing. A driver with a post-tool hook asks it; the host
+   *  whispers the line into the turn for one without (threadPorts.ts). */
+  toolResultTail?: (callId: string, output: string) => Promise<string | null>
 }
 
 export interface DriverHandle {

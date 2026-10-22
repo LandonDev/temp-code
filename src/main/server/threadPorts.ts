@@ -101,9 +101,17 @@ export class ThreadPorts {
     return () => this.endListeners.delete(listener)
   }
 
-  /** Whether a shell call of the thread is still running. */
-  running(sessionId: string, callId: string): boolean {
-    return this.active.get(sessionId)?.calls.has(callId) ?? false
+  /** The session a shell call ran in (a subagent's call files its port under the root, but the subagent is the one to tell). */
+  private readonly callOwners = new Map<string, string>()
+
+  sessionOfCall(callId: string): string | null {
+    return this.callOwners.get(callId) ?? null
+  }
+
+  /** Whether a shell call is still running. */
+  running(callId: string): boolean {
+    const owner = this.callOwners.get(callId)
+    return owner ? (this.active.get(owner)?.calls.has(callId) ?? false) : false
   }
 
   observeEvent(row: EventRow): void {
@@ -126,6 +134,8 @@ export class ThreadPorts {
       void this.takeBaseline(sessionId, a)
     }
     a.calls.set(callId, command)
+    this.callOwners.set(callId, sessionId)
+    if (this.callOwners.size > 512) this.callOwners.delete(this.callOwners.keys().next().value as string)
     this.arm()
   }
 

@@ -97,6 +97,7 @@ public enum ResourceWords {
         case .worktree: "worktree"
         case .simulator: "simulator"
         case .devInstance: "dev instance"
+        case .port: "dev server"
         case .unknown(let value): value
         }
     }
@@ -106,6 +107,7 @@ public enum ResourceWords {
         case .worktree: "arrow.triangle.pull"
         case .simulator: "iphone"
         case .devInstance: "macwindow"
+        case .port: "network"
         case .unknown: "shippingbox"
         }
     }

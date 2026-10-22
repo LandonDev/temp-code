@@ -31,6 +31,8 @@ export interface PeerSocket {
   /** That key's name ("Landon Mac"): what this host calls the peer, which it never saved as an environment. */
   keyName?: string | null
   send: (frame: ServerFrame) => void
+  /** The socket's unsent bytes (a forwarded port pauses its reads while they pile up). */
+  buffered?: () => number
 }
 
 interface Registration {
@@ -344,6 +346,11 @@ export class PeerCalls {
   environmentOf(connection: number): string | null {
     for (const [envId, reg] of this.registered) if (reg.socket.connection === connection) return envId
     return null
+  }
+
+  /** A registered peer's unsent bytes; 0 when unknown. */
+  buffered(envId: string): number {
+    return this.registered.get(envId)?.socket.buffered?.() ?? 0
   }
 
   /** One frame down a registered peer's socket; false when it is not registered. */

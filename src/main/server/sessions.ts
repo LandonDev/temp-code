@@ -641,6 +641,9 @@ export class SessionRegistry {
     return pids
   }
 
+  /** The line the host adds to a finished shell call's result (index.ts: a dev server's forward). */
+  toolResultTail: ((sessionId: string, callId: string, output: string) => Promise<string | null>) | null = null
+
   /** One thread's harness pid, null without a live process (threadPorts.ts walks its tree). */
   harnessPid(sessionId: string): number | null {
     return this.handles.get(sessionId)?.pid?.() ?? null
@@ -3519,6 +3522,7 @@ export class SessionRegistry {
           emit: (event) => this.append(sessionId, event),
           requestApproval: (req) => this.requestApproval(sessionId, req),
           awaitBaseline: () => this.awaitBaseline(sessionId),
+          toolResultTail: (callId, output) => this.toolResultTail?.(sessionId, callId, output) ?? Promise.resolve(null),
           setNativeId: (nativeId) => {
             const next = this.store.updateSession(sessionId, { nativeId })
             if (next) this.notifyMeta(next)
