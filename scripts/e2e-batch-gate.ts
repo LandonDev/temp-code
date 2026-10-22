@@ -11,10 +11,13 @@
  *   2. child b, its typecheck stubbed red: HELD, a red gate row carrying the
  *      log tail, origin/master unmoved, the land step unchanged;
  *   3. the stub flipped and child b told to call merge_branch again: merged,
- *      "2 of 2 landed", land done;
+ *      "2 of 2 landed", land passed; with both children done the engine
+ *      runs the batch's rules on its own (gate and release) and rows the
+ *      master "Batch done";
  *   4. the master calls batch_gate: the gate (stubbed) streams its ✓ lines
- *      into the step's detail, the release step tags, the batch push fired
- *      on every change, gate and release rows on the master, every step done;
+ *      into the step's log with its progress and times, the release step
+ *      tags, the coalesced batch push carries it, gate and release rows on
+ *      the master (the engine's pair, then batch_gate's), every step passed;
  *   5. a child thread never gets batch_gate; the master does; the bridge
  *      maps it.
  * Run: bun run script:e2e-batch-gate
@@ -84,6 +87,7 @@ setOrchestrationRegistry(registry)
 setAppToolsRegistry(registry)
 registry.hostName = () => 'e2e-host'
 const batches = new Batches({ registry, store })
+batches.attach()
 setBatches(batches)
 setMergeReviews(new MergeReviews({ registry, store, onLanded: (l) => batches.landed(l) }))
 const pushes: BatchState[] = []
@@ -123,6 +127,22 @@ async function turn(id: string, text: string): Promise<void> {
   const seq = lastSeq(id)
   await registry.send(id, text)
   await settledAfter(id, seq)
+}
+function rowsUntil(id: string, pred: (rows: EventRow[]) => boolean, timeoutMs = 300_000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (pred(registry.eventsAfter(id, 0))) return resolve()
+    const timer = setTimeout(() => {
+      off()
+      reject(new Error(`timeout waiting on ${id}`))
+    }, timeoutMs)
+    const off = registry.subscribe(id, () => {
+      if (pred(registry.eventsAfter(id, 0))) {
+        clearTimeout(timer)
+        off()
+        resolve()
+      }
+    })
+  })
 }
 const notices = (id: string, kind: string) =>
   registry
@@ -176,8 +196,11 @@ const gatesB = notices(b.id, 'gate')
 check('a red typecheck row on b with the log tail', gatesB.length === 1 && gatesB[0].gate?.ok === false && gatesB[0].gate?.log.includes('TS2322') && gatesB[0].message === 'Typecheck failed on child-b · 1 error', JSON.stringify(gatesB.map((n) => [n.message, n.gate?.log])))
 check('the tool answered HELD', toolResults(b.id).some((t) => /^HELD: typecheck failed on child-b/.test(t)), toolResults(b.id).at(-1)?.slice(0, 120))
 check('no merge row on b yet', notices(b.id, 'review').length === 0)
+// Child b idled on its HELD: an idle child is done, so the engine ended the
+// batch once with b left out (gate and release ran on a's head).
+await rowsUntil(master.id, (rs) => rs.some((x) => x.event.type === 'notice' && x.event.kind === 'batch' && /^Batch done: 1 of 2 landed · 1 left out/.test(x.event.message)), 120_000)
 state = batches.get(master.id)
-check('land still 1 of 2', steps(state).land === 'running: 1 of 2 landed', JSON.stringify(steps(state)))
+check('the engine ended the first cycle with b left out', steps(state).land === 'passed: 1 of 2 landed · 1 left out' && steps(state).release === 'passed: release-1 tagged', JSON.stringify(steps(state)))
 
 // ── 3. the fix: b lands ──────────────────────────────────────────────────
 console.log('\n[3] child b again, green')
@@ -187,8 +210,10 @@ git(wtB, 'rebase', 'master')
 await turn(b.id, 'The typecheck is fixed now. Call the merge_branch tool ONCE more with branch "child-b" and report its answer in one sentence.')
 check('b.txt on origin/master', originHas('b.txt'))
 check('a green typecheck row followed the red one', notices(b.id, 'gate').map((n) => n.gate?.ok).join(',') === 'false,true')
+// b's landing reopened the steps; with both children done the engine ran them again.
+await rowsUntil(master.id, (rs) => rs.some((x) => x.event.type === 'notice' && x.event.kind === 'batch' && /^Batch done: 2 of 2 landed/.test(x.event.message)), 120_000)
 state = batches.get(master.id)
-check('land done, 2 of 2 landed', steps(state).land === 'passed: 2 of 2 landed' && state.pending.length === 0, JSON.stringify(steps(state)))
+check('land passed, 2 of 2 landed, the earlier landing kept', steps(state).land === 'passed: 2 of 2 landed' && state.pending.length === 0 && state.landed.length === 2, JSON.stringify(steps(state)))
 
 // ── 4. the master gates and releases ─────────────────────────────────────
 console.log('\n[4] batch_gate on the master')
@@ -198,10 +223,12 @@ const answer = toolResults(master.id).find((t) => /^passed in/.test(t))
 check('batch_gate answered passed and the tag', !!answer && answer.includes('release-1 tagged'), toolResults(master.id).at(-1)?.slice(0, 160))
 state = batches.get(master.id)
 check('every step done', steps(state).gate.startsWith('passed: passed in') && steps(state).release === 'passed: release-1 tagged', JSON.stringify(steps(state)))
-const details = pushes.slice(before).map((p) => p.steps.find((s) => s.id === 'gate')!.detail)
-check('the gate streamed its ✓ lines into the step detail (batch push)', details.includes('✓ typecheck 1s') && details.includes('✓ build 3s'), JSON.stringify(details))
+const gateLog = pushes.slice(before).at(-1)?.steps.find((s) => s.id === 'gate')?.log ?? []
+check('the gate streamed its ✓ lines into the step log (batch push, coalesced)', gateLog.some((l) => l.startsWith('✓ typecheck 1s')) && gateLog.some((l) => l.startsWith('✓ build 3s')), JSON.stringify(gateLog))
+check('the gate step carries its progress and times', (() => { const g = state.steps.find((s) => s.id === 'gate')!; return g.progress?.done === g.progress?.total && !!g.startedAt && !!g.endedAt })(), JSON.stringify(state.steps.find((s) => s.id === 'gate')))
 const masterGates = notices(master.id, 'gate').map((n) => [n.gate?.step, n.gate?.ok])
-check('gate and release rows on the master', JSON.stringify(masterGates) === JSON.stringify([['gate', true], ['release', true]]), JSON.stringify(masterGates))
+check("gate and release rows on the master: the engine's two cycles, then batch_gate's", JSON.stringify(masterGates) === JSON.stringify([['gate', true], ['release', true], ['gate', true], ['release', true], ['gate', true], ['release', true]]), JSON.stringify(masterGates))
+check('the engine ended the batch by its rules, twice', notices(master.id, 'batch').filter((n) => /^Batch done:/.test(n.message)).map((n) => n.message.slice(0, 40)).join(' | ') === 'Batch done: 1 of 2 landed · 1 left out · | Batch done: 2 of 2 landed · gate passed', notices(master.id, 'batch').map((n) => n.message).join(' | '))
 check('the release notes carry the master title and the landed subjects', batches.notes(master, { masterId: master.id, steps: [], landed: [a.id, b.id], branches: {}, subjects: { [a.id]: ['child a: add a.txt'], [b.id]: ['child b: add b.txt'] } } as never) === 'Batch proof; child a: add a.txt; child b: add b.txt')
 
 // ── 5. persistence ───────────────────────────────────────────────────────

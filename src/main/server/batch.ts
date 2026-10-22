@@ -369,7 +369,8 @@ export class Batches {
     return step
   }
 
-  /** A step starts: its log and progress start afresh. */
+  /** A step starts: its log and progress start afresh. The land step keeps
+   *  its log across cycles: its lines are the landings, which stay. */
   private begin(row: StoredBatch, id: BatchStepId, detail: string): void {
     const step = this.step(row, id)
     step.status = 'running'
@@ -377,8 +378,10 @@ export class Batches {
     step.at = this.now()
     step.startedAt = this.now()
     delete step.endedAt
-    delete step.progress
-    step.log = []
+    if (id !== 'land') {
+      delete step.progress
+      step.log = []
+    }
   }
 
   private end(row: StoredBatch, id: BatchStepId, status: 'passed' | 'failed' | 'skipped', detail: string): void {
@@ -432,13 +435,14 @@ export class Batches {
 
   private record(row: StoredBatch, sessionId: string, branch: string, subjects: string[]): void {
     const masterId = row.masterId
-    // A landing after the end: a new cycle. After a red step, or a late
-    // child after the gate ran: the steps after land have to run again.
-    if (row.finishedAt) {
-      Object.assign(row, freshRow(masterId, row.rules))
-    } else if (this.step(row, 'gate').status !== 'pending' && !this.gating.has(masterId)) {
+    // A landing after the end, after a red step, or after the gate ran: the
+    // steps after land run again on the new head. What landed before stays
+    // landed (it is on the branch); only the steps reopen.
+    if ((row.finishedAt || this.step(row, 'gate').status !== 'pending') && !this.gating.has(masterId)) {
       for (const id of ['gate', 'release', 'publish', 'deploy'] as const) this.reset(row, id)
+      row.finishedAt = null
       row.version = null
+      row.deployRef = null
     }
     if (!row.landed.includes(sessionId)) row.landed.push(sessionId)
     row.held = row.held.filter((id) => id !== sessionId)
@@ -532,6 +536,7 @@ export class Batches {
     const project = master.projectId ? this.deps.registry.getProject(master.projectId) : null
     if (!project) return
     row.armed = false
+    row.finishedAt = null
     this.gating.add(master.id)
     let handedOff = false
     try {

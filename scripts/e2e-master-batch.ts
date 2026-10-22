@@ -93,6 +93,7 @@ setOrchestrationRegistry(registry)
 setAppToolsRegistry(registry)
 registry.hostName = () => 'e2e-host'
 const batches = new Batches({ registry, store })
+batches.attach()
 setBatches(batches)
 setMergeReviews(new MergeReviews({ registry, store, onLanded: (l) => batches.landed(l) }))
 
@@ -294,13 +295,17 @@ stub(false)
 for (const k of [a, r, p, b]) await reportSettled(master.id, k.id)
 const masterSeq = lastSeq(master.id)
 await turn(a.id, 'The typecheck is fixed now. Call the merge_branch tool ONCE more with branch "child-a" and report its answer in one sentence.')
+// The merge lands inside that turn, but child a's notes-reminder turn from
+// the HELD can settle first: wait for the merge row itself, then the settle after it.
+await rowsUntil(a.id, (rs) => rs.some((x) => x.event.type === 'notice' && x.event.kind === 'review'), 300_000)
+await settledAfter(a.id, firstRow(a.id, (e) => e.type === 'notice' && e.kind === 'review')!.seq)
 // Child a's settle wakes the master once more; let that turn end before the next steer.
 await reportSettled(master.id, a.id, masterSeq)
 check('a.txt on origin/master', originHas('a.txt'))
 check('a green typecheck row followed the red one', notices(a.id, 'gate').map((n) => n.gate?.ok).join(',') === 'false,true')
 check('merge row on child a', notices(a.id, 'review').some((n) => n.review?.merged), JSON.stringify(notices(a.id, 'review').map((n) => n.message)))
 let state = batches.get(master.id)
-check('batch.get: 1 of 4 landed', steps(state).land === 'running: 1 of 4 landed' && state.landed[0] === a.id && state.pending.length === 3, JSON.stringify(steps(state)))
+check('batch.get: 1 of 4 landed (the engine may already have ended the cycle)', /^(running: 1 of 4 landed|passed: 1 of 4 landed · 3 left out)$/.test(steps(state).land) && state.landed[0] === a.id && state.pending.length === 3, JSON.stringify(steps(state)))
 
 // ── 4. threads follow no model policy; subagents do ─────────────────────
 console.log('\n[4] Fable: a thread from any thread, a subagent only from the master')
@@ -326,9 +331,11 @@ check('the Fable subagent is a subagent of the master, not a batch thread', !!fa
 console.log('\n[5] the batch ends by its rules; batch_gate on the master')
 if (fableChild) await reportSettled(master.id, fableChild.id, 0, 300_000)
 // Every child is done (a landed, r, p and b idle after a turn): the engine
-// ran the rules (gate, release, nothing to publish or deploy) and told the master.
-await rowsUntil(master.id, (rs) => rs.some((x) => x.event.type === 'notice' && x.event.kind === 'batch' && /^Batch done:/.test(x.event.message)), 300_000)
-const doneRow = notices(master.id, 'batch').find((n) => /^Batch done:/.test(n.message))
+// ran the rules (gate, release, nothing to publish or deploy) and told the
+// master. An earlier cycle ended with nothing landed (a idled on its HELD;
+// an idle child is done), so the row to read is the one after a's landing.
+await rowsUntil(master.id, (rs) => rs.some((x) => x.event.type === 'notice' && x.event.kind === 'batch' && /^Batch done: 1 of 4 landed/.test(x.event.message)), 300_000)
+const doneRow = notices(master.id, 'batch').filter((n) => /^Batch done:/.test(n.message)).at(-1)
 check('the engine finished the batch by its rules and rowed the master', !!doneRow && /1 of 4 landed · 3 left out · gate passed in .* · release-1 tagged/.test(doneRow.message), doneRow?.message)
 check('the batch-done report reached the master as a <batch-report>', reports(master.id).some((x) => x.agentId === master.id && x.status === 'done'), reports(master.id).map((x) => `${x.agentId}:${x.status}`).join(', '))
 await reportSettled(master.id, master.id, 0, 120_000)
@@ -341,7 +348,7 @@ state = batches.get(master.id)
 check('land done with the unlanded children left out', steps(state).land === 'passed: 1 of 4 landed · 3 left out', steps(state).land)
 check('gate and release done with the release detail', steps(state).gate.startsWith('passed: passed in') && steps(state).release === 'passed: release-1 tagged', JSON.stringify(steps(state)))
 const masterGates = notices(master.id, 'gate').map((n) => [n.gate?.step, n.gate?.ok])
-check('gate and release rows on the master', JSON.stringify(masterGates) === JSON.stringify([['gate', true], ['release', true]]), JSON.stringify(masterGates))
+check('gate and release rows on the master: the engine\'s pair, then batch_gate\'s', JSON.stringify(masterGates) === JSON.stringify([['gate', true], ['release', true], ['gate', true], ['release', true]]), JSON.stringify(masterGates))
 
 await registry.disposeAll()
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)

@@ -431,6 +431,39 @@ describe('Batches: the end of the batch', () => {
     expect(steps(b.get('m')).release).toEqual(['passed', 'release-277 tagged'])
   })
 
+  it('a landing after the end keeps what landed, reopens the steps after land, and runs them again on the new head', async () => {
+    const w = world()
+    const b = w.make()
+    // Cycle one: b idles on a HELD without landing; a landed. The engine ends the batch with b left out.
+    w.set('b', { status: 'idle' })
+    b.landed(w.landed('a', 'feat-a', ['a: one']))
+    await b.review('m')
+    expect(steps(b.get('m')).land).toEqual(['passed', '1 of 2 landed · 1 left out'])
+    expect(b.get('m').finishedAt).toBe(1000)
+    expect(w.runs.map((r) => r.step)).toEqual(['gate', 'release'])
+    // b runs again and lands: the earlier landing stays, the steps reopen, and the end runs once more.
+    w.set('b', { status: 'running' })
+    await b.review('m')
+    b.landed(w.landed('b', 'feat-b', ['b: two']))
+    let state = b.get('m')
+    expect(state.landed).toEqual(['a', 'b'])
+    expect(steps(state)).toMatchObject({ land: ['running', '2 of 2 landed'], gate: ['pending', ''], release: ['pending', ''] })
+    expect(state.finishedAt).toBeNull()
+    expect(state.steps[0].log).toEqual(['feat-a landed', 'feat-b landed'])
+    w.set('b', { status: 'idle' })
+    await b.review('m')
+    state = b.get('m')
+    expect(steps(state).land).toEqual(['passed', '2 of 2 landed'])
+    expect(w.runs.map((r) => [r.step, r.notes ?? ''])).toEqual([
+      ['gate', ''],
+      ['release', 'T m; a: one'],
+      ['gate', ''],
+      ['release', 'T m; a: one; b: two']
+    ])
+    expect(w.reports.map((r) => r.status)).toEqual(['done', 'done'])
+    expect(w.reports[1].text).toContain('2 of 2 landed')
+  })
+
   it('archive-children archives every done child at the end', async () => {
     const w = world()
     const b = w.make()
