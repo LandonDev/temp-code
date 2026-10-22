@@ -38,8 +38,7 @@ struct AgentDetailScreen: View {
         }
         .toolbar(.hidden, for: .tabBar)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Surface.background, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
+        .tcNavigationBar()
         .environment(\.markdownScope, MarkdownScope(environmentId: client.environment.id, sessionId: agentId))
         .onAppear {
             router.visible = ThreadKey(environmentId: client.environment.id, sessionId: agentId)

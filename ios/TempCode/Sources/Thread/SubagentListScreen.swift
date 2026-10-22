@@ -51,8 +51,7 @@ struct SubagentListScreen: View {
             }
         }
         .toolbar(.hidden, for: .tabBar)
-        .toolbarBackground(Surface.background, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
+        .tcNavigationBar()
         .fleetDestinations(registry: app.registry)
         .environment(\.markdownScope, MarkdownScope(environmentId: client.environment.id, sessionId: rootSessionId))
         // The root's rows name the hosts its agents were spawned on; hold them open while the list shows.

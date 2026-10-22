@@ -169,10 +169,13 @@ private func ids(_ action: BatchAction, _ metas: [SessionMeta], _ sel: BatchSele
         #expect(ThreadBatch.confirm(.archiveDone, count: 0, scope: project).title == "Nothing to archive in temp-code")
     }
 
-    @Test func `the toast line counts the successes and names the first failure`() {
+    @Test func `the toast counts the successes, then names the first failure on its own line`() {
         #expect(ThreadBatch.toast(.pause, succeeded: 14, failed: []).summary == "Paused 14")
+        #expect(ThreadBatch.toast(.pause, succeeded: 14, failed: []).failureLine == nil)
         let one = ThreadBatch.toast(.pause, succeeded: 14, failed: [BatchFailure(sessionId: "a", title: "Search", error: "harness not responding")])
-        #expect(one.summary == "Paused 14 · 1 failed: Search (harness not responding)")
+        #expect(one.headline == "Paused 14")
+        #expect(one.failureLine == "1 failed: Search (harness not responding)")
+        #expect(one.summary == "Paused 14. 1 failed: Search (harness not responding)", "VoiceOver reads the two lines as sentences")
         #expect(one.succeeded == 14)
         #expect(one.failed.count == 1)
         let three = ThreadBatch.toast(.archiveDone, succeeded: 2, failed: [
@@ -180,7 +183,8 @@ private func ids(_ action: BatchAction, _ metas: [SessionMeta], _ sel: BatchSele
             BatchFailure(sessionId: "b", title: "B", error: "y"),
             BatchFailure(sessionId: "c", title: "C", error: "z")
         ])
-        #expect(three.summary == "Archived 2 · 3 failed: Search (x) and 2 more")
+        #expect(three.headline == "Archived 2")
+        #expect(three.failureLine == "3 failed: Search (x) and 2 more")
         #expect(ThreadBatch.toast(.resume, succeeded: 0, failed: []).summary == "Resumed 0")
         #expect(ThreadBatch.toast(.stop, succeeded: 1, failed: []).summary == "Stopped 1")
     }

@@ -360,9 +360,9 @@ private struct EmptyTranscript: View {
     }
 }
 
-/// The one floating control in the transcript: a raised capsule (36 pt:
-/// 10 + 8 + 8 + 10) over the rows, the arrow 2 pt closer to its edge than
-/// the text is to the other, so the pair reads centered.
+/// The one floating control in the transcript: a glass capsule (36 pt, its
+/// hit area 44) over the rows, the arrow 2 pt closer to its edge than the
+/// text is to the other, so the pair reads centered.
 private struct JumpPill: View {
     let jump: () -> Void
 
@@ -375,11 +375,14 @@ private struct JumpPill: View {
                 Text("Jump to latest")
                     .font(.footnote.weight(.medium))
             }
-            .padding(.leading, 10)
-            .padding(.trailing, 12)
+            .foregroundStyle(Color.primary)
+            .padding(.leading, 12)
+            .padding(.trailing, 14)
             .padding(.vertical, 8)
             .frame(minHeight: 36)
-            .raised(radius: 18)
+            .tcGlass(in: Capsule(), interactive: true)
+            .padding(.vertical, 4)
+            .contentShape(Capsule())
         }
         .buttonStyle(.pressable)
     }

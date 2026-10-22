@@ -33,7 +33,7 @@ struct ResearchReportScreen: View {
             .background(Surface.background)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Surface.background, for: .navigationBar)
+            .tcNavigationBar(visible: false)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }

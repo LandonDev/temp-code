@@ -118,8 +118,7 @@ struct DiffScreen: View {
         // button's history and the screen's accessibility name.
         .navigationTitle(Board.fileName(titlePath))
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Surface.background, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
+        .tcNavigationBar()
         .toolbarBackground(.visible, for: .bottomBar)
         .toolbar(.hidden, for: .tabBar)
         .toolbar {

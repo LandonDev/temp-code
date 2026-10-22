@@ -67,6 +67,25 @@ extension View {
     }
 }
 
+extension View {
+    /// The navigation bar: on iOS 26 the system's, transparent over the
+    /// content with its glass buttons and the scroll edge effect under
+    /// them; before that the background step, always shown when `visible`
+    /// (a screen whose content starts under the bar), else only once
+    /// content scrolls beneath it.
+    @ViewBuilder
+    func tcNavigationBar(visible: Bool = true) -> some View {
+        if #available(iOS 26.0, *) {
+            self
+        } else if visible {
+            toolbarBackground(Surface.background, for: .navigationBar)
+                .toolbarBackground(.visible, for: .navigationBar)
+        } else {
+            toolbarBackground(Surface.background, for: .navigationBar)
+        }
+    }
+}
+
 /// Glass siblings that sit close together blend and morph as one surface
 /// (`GlassEffectContainer` on iOS 26; a plain stack of thin material
 /// before). `spacing` is how near two pieces must be to merge.
@@ -87,6 +106,12 @@ struct TCGlassContainer<Content: View>: View {
 enum GlassMetrics {
     /// Two glass pieces closer than this merge inside a container.
     static let mergeSpacing: CGFloat = 8
+
+    /// The More menu's glyph: the bare ellipsis on iOS 26, where the toolbar's
+    /// glass already draws the circle; the circled one before.
+    static var moreSymbol: String {
+        if #available(iOS 26.0, *) { "ellipsis" } else { "ellipsis.circle" }
+    }
 }
 
 private struct GlassSurface<S: Shape>: ViewModifier {

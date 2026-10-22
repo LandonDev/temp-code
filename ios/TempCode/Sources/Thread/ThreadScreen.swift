@@ -127,8 +127,7 @@ struct ThreadScreen: View {
         .environment(\.markdownScope, MarkdownScope(environmentId: client.environment.id, sessionId: sessionId))
         .toolbar(.hidden, for: .tabBar)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Surface.background, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
+        .tcNavigationBar()
         .navigationDestination(for: DiffRoute.self) { route in DiffScreen(client: client, route: route) }
         .navigationDestination(for: ReportRoute.self) { route in
             ReportScreen(route: route)

@@ -78,7 +78,7 @@ struct HomeView: View {
                     Menu {
                         hostMenu(client)
                     } label: {
-                        Image(systemName: "ellipsis.circle")
+                        Image(systemName: GlassMetrics.moreSymbol)
                     }
                     .accessibilityLabel(client.environment.name)
                 }

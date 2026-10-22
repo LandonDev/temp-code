@@ -66,7 +66,7 @@ struct ThreadMenu: View {
                 archiveItem
             }
         } label: {
-            Image(systemName: "ellipsis.circle")
+            Image(systemName: GlassMetrics.moreSymbol)
                 .frame(minWidth: 44, minHeight: 44)
         }
         .buttonStyle(.pressableStatic)

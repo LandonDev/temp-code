@@ -96,7 +96,7 @@ struct NotesSheet: View {
             .background(Surface.background)
             .navigationTitle("Notes")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Surface.background, for: .navigationBar)
+            .tcNavigationBar(visible: false)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Menu {
@@ -106,7 +106,7 @@ struct NotesSheet: View {
                         }
                         .disabled(doc == nil || Notes.isEmpty(current))
                     } label: {
-                        Image(systemName: "ellipsis.circle")
+                        Image(systemName: GlassMetrics.moreSymbol)
                     }
                     .accessibilityLabel("More")
                 }
