@@ -27,8 +27,8 @@ public final class NotesEditor {
     public let quiet: Duration
     private let save: @MainActor (String) async throws -> ThreadNotesDoc
     private var timer: Task<Void, Never>?
-    /// The text of the save in flight: the host pushes it back before it answers, and that is not a remote change.
-    private var sent: String?
+    /// The texts of the saves in flight: the host pushes each back before it answers, and that is not a remote change.
+    private var inFlight: [String] = []
     /// Bumped by `begin` and `loadTheirs`, so a save that answers after either changes nothing.
     private var generation = 0
 
@@ -42,6 +42,7 @@ public final class NotesEditor {
         timer?.cancel()
         timer = nil
         generation += 1
+        inFlight = []
         base = doc?.text ?? ""
         draft = Notes.isEmpty(base) ? Notes.empty() : base
         dirty = false
@@ -80,7 +81,7 @@ public final class NotesEditor {
     /// The thread wrote the notes since this edit began (or last saved).
     public func remoteChanged(_ doc: ThreadNotesDoc?) -> Bool {
         guard editing, let doc else { return false }
-        return doc.text != base && doc.text != sent && doc.text != draft
+        return doc.text != base && !inFlight.contains(doc.text) && doc.text != draft
     }
 
     /// Take the thread's text as the new starting point, dropping the draft.
@@ -88,6 +89,7 @@ public final class NotesEditor {
         timer?.cancel()
         timer = nil
         generation += 1
+        inFlight = []
         base = doc?.text ?? ""
         draft = Notes.isEmpty(base) ? Notes.empty() : base
         dirty = false
@@ -99,9 +101,9 @@ public final class NotesEditor {
     private func persist() async {
         let text = draft
         let started = generation
-        sent = text
+        inFlight.append(text)
         state = .saving
-        defer { if sent == text { sent = nil } }
+        defer { if let at = inFlight.firstIndex(of: text) { inFlight.remove(at: at) } }
         do {
             let saved = try await save(text)
             guard generation == started else { return }

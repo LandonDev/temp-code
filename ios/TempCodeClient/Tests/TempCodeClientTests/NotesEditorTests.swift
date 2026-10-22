@@ -19,6 +19,8 @@ private final class SaveRecorder {
         return ThreadNotesDoc(text: text, updatedAt: Double(saved.count), path: nil)
     }
 
+    var heldCount: Int { held.count }
+
     func release() {
         let waiting = held
         held = []
@@ -98,6 +100,23 @@ private let filled = ThreadNotesDoc(text: "## Goal\n\nShip.\n", updatedAt: 1, pa
         recorder.release()
         #expect(await wait { editor.state == .saved })
         #expect(!editor.remoteChanged(ThreadNotesDoc(text: "## Goal\n\nMine.\n", updatedAt: 9, path: nil)))
+    }
+
+    @Test func `an earlier save's push on a slow link is not a remote change either`() async {
+        let recorder = SaveRecorder()
+        recorder.holding = true
+        let editor = NotesEditor(quiet: quiet) { try await recorder.save($0) }
+        editor.begin(from: filled)
+        editor.change("## Goal\n\nA\n")
+        #expect(await wait { editor.state == .saving })
+        editor.change("## Goal\n\nAB\n")
+        #expect(await wait { recorder.heldCount == 2 }, "both saves are out")
+        #expect(!editor.remoteChanged(ThreadNotesDoc(text: "## Goal\n\nA\n", updatedAt: 9, path: nil)))
+        #expect(!editor.remoteChanged(ThreadNotesDoc(text: "## Goal\n\nAB\n", updatedAt: 9, path: nil)))
+        #expect(editor.remoteChanged(ThreadNotesDoc(text: "## Goal\n\nTheirs.\n", updatedAt: 9, path: nil)))
+        recorder.holding = false
+        recorder.release()
+        #expect(await wait { editor.state == .saved && !editor.dirty })
     }
 
     @Test func `a save answering after Load theirs changes nothing`() async {

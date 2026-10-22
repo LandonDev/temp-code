@@ -25,18 +25,23 @@ extension EnvironmentClient {
         if let held = notes[sessionId], held.doc != nil, !refresh { return held.doc }
         if notes[sessionId]?.isLoading == true { return notes[sessionId]?.doc }
         notes[sessionId, default: NotesState()].isLoading = true
-        defer { notes[sessionId]?.isLoading = false }
-        do {
-            let doc = try await request(Methods.SessionNotesGet.self, .init(sessionId: sessionId))
-            // A thread removed during the fetch stays gone.
-            guard notes[sessionId] != nil else { return doc }
-            notes[sessionId] = NotesState(doc: doc)
-            return doc
-        } catch {
-            // A screen leaving mid-fetch is not a failure to show.
-            if !Task.isCancelled, notes[sessionId] != nil { notes[sessionId]?.error = ActionError.wrap(error) }
-            return notes[sessionId]?.doc
+        // The fetch outlives the caller: a Home row leaving mid-fetch must not
+        // leave the thread with no doc and no error for the sheet to find.
+        let fetch = Task { [weak self] () -> ThreadNotesDoc? in
+            guard let self else { return nil }
+            defer { self.notes[sessionId]?.isLoading = false }
+            do {
+                let doc = try await self.request(Methods.SessionNotesGet.self, .init(sessionId: sessionId))
+                // A thread removed during the fetch stays gone.
+                guard self.notes[sessionId] != nil else { return doc }
+                self.notes[sessionId] = NotesState(doc: doc)
+                return doc
+            } catch {
+                if self.notes[sessionId] != nil { self.notes[sessionId]?.error = ActionError.wrap(error) }
+                return self.notes[sessionId]?.doc
+            }
         }
+        return await fetch.value
     }
 
     /// The person's whole-text edit: the host writes the file, mirrors it and

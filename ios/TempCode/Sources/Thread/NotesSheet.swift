@@ -21,6 +21,7 @@ struct NotesButton: View {
         let unread = Notes.unread(updatedAt: doc?.updatedAt, readAt: readAt == 0 ? nil : readAt)
         Button { showing = true } label: {
             Image(systemName: "note.text")
+                .font(.body.weight(.regular))
                 .overlay(alignment: .topTrailing) {
                     if unread {
                         Circle()
@@ -30,8 +31,12 @@ struct NotesButton: View {
                             .transition(.identity)
                     }
                 }
+                // The bar's glyphs share one 44 pt hit area and the same press (ThreadToolbar.swift).
+                .frame(minWidth: 44, minHeight: 44)
         }
+        .buttonStyle(.pressableStatic)
         .accessibilityLabel(unread ? "Notes, updated" : "Notes")
+        .accessibilityIdentifier("thread-notes")
         .task(id: sessionId) { _ = await client.loadNotes(sessionId) }
         .sheet(isPresented: $showing) { NotesSheet(client: client, sessionId: sessionId) }
     }
@@ -262,30 +267,42 @@ private struct NotesSectionView: View {
 }
 
 /// A section's markdown as plan blocks, parsed through the plan pages' cache
-/// (short text on first paint, off the main actor after, the old document
-/// kept until the new one lands). The old and new bodies overlap while they
-/// cross-fade, so the page never jumps twice.
+/// (a long body parses off the main actor and keeps the old document until
+/// the new one lands; a short one parses in place, so a reopened sheet never
+/// paints notes that are minutes old). The old and new bodies overlap while
+/// they cross-fade, so the page never jumps twice.
 private struct NotesBody: View {
     let text: String
     let key: String
 
     var body: some View {
+        // A leading blank line keeps a body that opens with `---` from being read as frontmatter.
+        let source = "\n" + text
+        let cached = ThreadCaches.plans.document(key, text: source)
+        let document = cached?.textHash == source.hashValue || source.utf8.count > PlanPages.syncLimit ? cached : PlanDocument.parse(source)
         ZStack(alignment: .topLeading) {
-            if let document = ThreadCaches.plans.document(key, text: text) {
+            if let document {
                 VStack(alignment: .leading, spacing: PlanType.gap) {
                     ForEach(Array(document.blocks.enumerated()), id: \.offset) { index, block in
-                        PlanBlockView(block: block, first: index == 0)
+                        PlanBlockView(block: Self.clamped(block), first: index == 0)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
                 .id(document.textHash)
                 .transition(.opacity.animation(Motion.crossFade))
             } else {
-                Text(text)
+                Text(String(text.prefix(PlanPages.syncLimit)))
                     .font(.body)
                     .lineSpacing(PlanType.lineSpacing)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .transition(.opacity.animation(Motion.crossFade))
             }
         }
+    }
+
+    /// A heading inside a body never outranks its section's `.headline`.
+    private static func clamped(_ block: PlanBlock) -> PlanBlock {
+        if case .heading(let level, let text) = block { return .heading(max(level, 4), text) }
+        return block
     }
 }
