@@ -34,17 +34,15 @@ struct SourcesView: View {
             LazyVStack(alignment: .leading, spacing: 0) {
                 if let report {
                     ReportPin(report: report, running: running, liveAngles: liveAngles) { readingReport = true }
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, Layout.textEdge)
                         .padding(.top, 12)
-                        .transition(Motion.appear(reduced: reduceMotion))
+                        .transition(settled ? Motion.appear(reduced: reduceMotion) : .identity)
                 }
                 if !coverage.isEmpty {
                     Text(coverage)
-                        .font(.footnote)
-                        .foregroundStyle(.tertiary)
-                        .monospacedDigit()
-                        .contentTransition(.numericText())
-                        .padding(.horizontal, 16)
+                        .textStep(.meta)
+                        .numeric(coverage)
+                        .padding(.horizontal, Layout.textEdge)
                         .padding(.top, report == nil ? 12 : 10)
                         .padding(.bottom, 8)
                 }
@@ -115,29 +113,25 @@ private struct ReportPin: View {
     let running: Bool
     let liveAngles: Int
     let open: () -> Void
-    @Environment(\.colorScheme) private var scheme
-    @Environment(\.displayScale) private var scale
 
     var body: some View {
         Button(action: open) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "doc.text")
-                    .font(.body.weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Tint.cyan)
-                    .frame(width: 22)
+                    .frame(width: Layout.glyphWidth)
                     .padding(.top, 1)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(report.title ?? "Report")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
+                        .textStep(.title, weight: .semibold)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                     ReportState(mark: mark, text: stateText)
                     if let summary = report.summary, !summary.isEmpty {
                         Text(summary)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .textStep(.meta)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
                     }
@@ -153,27 +147,11 @@ private struct ReportPin: View {
             .padding(.leading, 14)
             .padding(.trailing, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(card)
+            .raised(radius: Radius.field)
         }
         .buttonStyle(.pressable)
         .accessibilityLabel("\(report.title ?? "Report"), \(stateText)")
         .accessibilityHint("Opens the report")
-    }
-
-    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: Radius.field, style: .continuous) }
-
-    /// Light: white lifted by two soft offset shadows. Dark: the raised step with a hairline.
-    @ViewBuilder private var card: some View {
-        if scheme == .dark {
-            shape
-                .fill(Surface.raised)
-                .overlay(shape.strokeBorder(Surface.hairline, lineWidth: 1 / scale))
-        } else {
-            shape
-                .fill(Surface.background)
-                .shadow(color: .black.opacity(0.06), radius: 1, y: 1)
-                .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
-        }
     }
 
     private var mark: ReportState.Mark {
@@ -189,7 +167,8 @@ private struct ReportPin: View {
     }
 }
 
-/// The pin's state line: a 7 pt dot or the mini spinner, cross-fading, then the words.
+/// The report's state line, on the pin and in the report's lede: a dot or
+/// the mini spinner in the mark column, cross-fading, then the words.
 struct ReportState: View {
     enum Mark: Equatable {
         case spinner
@@ -210,17 +189,15 @@ struct ReportState: View {
                 case .dot(let color):
                     Circle()
                         .fill(color)
-                        .frame(width: 7, height: 7)
+                        .frame(width: Layout.dotSize, height: Layout.dotSize)
                         .transition(.opacity)
                 }
             }
-            .frame(width: 14, height: 14)
+            .frame(width: Layout.markWidth, height: Layout.markWidth)
             .animation(Motion.crossFade, value: mark)
             Text(text)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-                .contentTransition(.numericText())
+                .textStep(.meta)
+                .numeric(text)
                 .lineLimit(1)
         }
     }
@@ -245,9 +222,8 @@ private struct EmptyBoard: View {
                         .controlSize(.small)
                 }
                 Text(loading ? "Loading" : running ? "Searching" : "No sources yet")
+                    .textStep(.meta)
             }
-            .font(.footnote)
-            .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 56)
@@ -270,18 +246,11 @@ private struct AngleSection: View {
                 HStack(spacing: 6) {
                     ProgressView()
                         .controlSize(.mini)
-                    Text(activity)
-                        .contentTransition(.opacity)
+                    SwapText(activity, step: .meta)
                 }
-                .font(.footnote)
-                .foregroundStyle(.tertiary)
                 .transition(.opacity)
             } else if angle.sourceCount > 0 {
-                Text("\(angle.sourceCount)")
-                    .font(.footnote)
-                    .foregroundStyle(.tertiary)
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
+                CountText(angle.sourceCount, step: .meta)
                     .transition(.opacity)
             }
         }
@@ -296,9 +265,8 @@ private struct AngleSection: View {
         }
         if angle.queries.isEmpty, !live {
             Text("No sources")
-                .font(.footnote)
-                .foregroundStyle(.tertiary)
-                .padding(.horizontal, 16)
+                .textStep(.meta)
+                .padding(.horizontal, Layout.textEdge)
                 .frame(minHeight: 36)
         }
     }
@@ -315,24 +283,24 @@ private struct AngleSection: View {
 /// A search the angle ran, under the glass; its hits follow.
 private struct QueryRow: View {
     let query: String
-    @ScaledMetric(relativeTo: .subheadline) private var icon: CGFloat = 20
+    @ScaledMetric(relativeTo: .subheadline) private var icon: CGFloat = Layout.glyphWidth
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: Layout.rowGap) {
             Image(systemName: "magnifyingglass")
                 .font(.footnote)
                 .foregroundStyle(.tertiary)
                 .frame(width: icon)
                 .accessibilityHidden(true)
             Text(query)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+                .textStep(.meta)
                 .lineLimit(1)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, Layout.textEdge)
         .padding(.top, 10)
         .padding(.bottom, 4)
         .frame(minHeight: 32)
+        .accessibilityElement(children: .combine)
         .accessibilityLabel("Searched \(query)")
     }
 }
@@ -346,43 +314,41 @@ private struct SourceRowView: View {
     let divided: Bool
     let onOpen: (WebPage) -> Void
     @Environment(\.openURL) private var openURL
-    @ScaledMetric(relativeTo: .subheadline) private var icon: CGFloat = 20
+    @ScaledMetric(relativeTo: .subheadline) private var icon: CGFloat = Layout.glyphWidth
 
     var body: some View {
         let host = ResearchBoard.host(of: source.url)
         let url = URL(string: source.url)
+        let headline = headline(host)
         Button {
             if let url { onOpen(WebPage(url: url)) }
         } label: {
-            HStack(alignment: .top, spacing: 10) {
+            HStack(alignment: .top, spacing: Layout.rowGap) {
                 SiteIcon(host: host)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(headline(host))
-                        .font(.subheadline)
-                        .foregroundStyle(.primary)
+                    Text(headline)
+                        .textStep(.title)
                         .lineLimit(1)
-                    if !host.isEmpty, source.title != nil || source.claim != nil {
+                    if !host.isEmpty, headline != host {
                         Text(host)
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
+                            .textStep(.stamp)
                             .lineLimit(1)
                     }
                     if source.title != nil, let claim = source.claim, !claim.isEmpty {
                         Text(claim)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .textStep(.meta)
                             .lineLimit(1)
                     }
                 }
                 Spacer(minLength: 8)
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, Layout.textEdge)
             .padding(.vertical, 8)
-            .frame(minHeight: 44)
+            .frame(minHeight: Layout.rowHeight)
             .frame(maxWidth: .infinity, alignment: .leading)
             .overlay(alignment: .top) {
                 if divided {
-                    Hairline().padding(.leading, 16 + icon + 10)
+                    Hairline(inset: Layout.textEdge + icon + Layout.rowGap)
                 }
             }
         }
@@ -416,19 +382,17 @@ private struct SourcePreview: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
+            HStack(spacing: Layout.rowGap) {
                 SiteIcon(host: host)
                 Text(source.title ?? host)
-                    .font(.subheadline.weight(.semibold))
+                    .textStep(.title, weight: .semibold)
             }
             if let claim = source.claim, !claim.isEmpty {
                 Text(claim)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .textStep(.meta)
             }
             Text(source.url)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
+                .textStep(.stamp)
                 .lineLimit(2)
         }
         .padding(16)
@@ -446,7 +410,7 @@ struct SiteIcon: View {
     let host: String
     @Environment(\.colorScheme) private var scheme
     @Environment(\.displayScale) private var scale
-    @ScaledMetric(relativeTo: .subheadline) private var size: CGFloat = 20
+    @ScaledMetric(relativeTo: .subheadline) private var size: CGFloat = Layout.glyphWidth
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: size / 4, style: .continuous)
@@ -457,7 +421,7 @@ struct SiteIcon: View {
                     .interpolation(.high)
                     .scaledToFit()
             } else {
-                Color(.tertiarySystemFill)
+                Surface.fill
                 Text(host.prefix(1).uppercased())
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -471,7 +435,9 @@ struct SiteIcon: View {
     }
 }
 
-/// Favicons by host, fetched once through the shared session's URL cache.
+/// Favicons by host, fetched once per host through the shared session (the
+/// desktop reads the same service); a miss is remembered so a row never
+/// refetches.
 @MainActor @Observable
 final class FaviconCache {
     static let shared = FaviconCache()
