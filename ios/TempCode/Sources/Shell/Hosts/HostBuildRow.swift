@@ -4,26 +4,22 @@ import TempCodeContract
 
 /// `+3`: how many releases a host runs behind master, muted and tabular,
 /// for the Hosts row and Home's status row. Nothing when the host is current
-/// or either number is unknown. No motion: it changes a few times a day.
-/// It keeps master's release fresh while it is on screen; the zero-size
-/// stack holds the task when there is no mark to draw.
+/// or either number is unknown, taking no space then. No motion: it changes
+/// a few times a day. Master's release is kept fresh from RootView.
 struct DriftMark: View {
     let client: EnvironmentClient
 
     var body: some View {
         let behind = DriftLine.behind(master: MasterReleaseWatcher.shared.release?.release, running: client.status.lastHello?.build?.release)
-        ZStack {
-            if let behind, let mark = DriftLine.mark(behind: behind) {
-                Text(mark)
-                    .font(.footnote)
-                    .monospacedDigit()
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .fixedSize()
-                    .accessibilityLabel(DriftLine.accessibilityLabel(behind: behind))
-            }
+        if let behind, let mark = DriftLine.mark(behind: behind) {
+            Text(mark)
+                .font(.footnote)
+                .monospacedDigit()
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+                .fixedSize()
+                .accessibilityLabel(DriftLine.accessibilityLabel(behind: behind))
         }
-        .task { await MasterReleaseWatcher.shared.run() }
     }
 }
 
@@ -32,9 +28,6 @@ struct DriftMark: View {
 /// gap and the fix (or why it is out of reach) in at most two lines.
 struct HostBuildSection: View {
     let client: EnvironmentClient
-    /// The section's loops (HostActivitySections' `ActivityPollers`), held
-    /// behind the one row that is always here so they never restart.
-    let pollers: AnyView
     @State private var confirming = false
     @State private var showLog = false
     @State private var actionError: String?
@@ -43,7 +36,7 @@ struct HostBuildSection: View {
         let extras = client.extras
         let watcher = MasterReleaseWatcher.shared
         let build = client.status.lastHello?.build
-        let isMac = build?.platform == "darwin"
+        let isMac = isMacHost(client)
         let admin = HostExtrasAccess.deploy.allowed(client.environment)
         let open = client.status.transport == .open
         let job = extras.deployJob
@@ -55,7 +48,6 @@ struct HostBuildSection: View {
                 Text(watcher.release.map { "v\($0.version)" } ?? "—")
                     .monospacedDigit()
             }
-            .background { pollers }
             .alert("Deploy master to \(client.environment.name)?", isPresented: $confirming) {
                 Button("Cancel", role: .cancel) {}
                 Button("Deploy") { deploy() }
@@ -72,9 +64,10 @@ struct HostBuildSection: View {
                 Button("Deploy Master") { confirming = true }
                     .disabled(!canDeploy)
                     .accessibilityIdentifier("deploy-master")
-                if let job, job.phase != .idle {
-                    DeployJobRow(card: HostJobCard.deploy(status: job, text: extras.log.text, hostName: client.environment.name, linkUp: open, deployedVersion: build?.version)) {
-                        showLog = true
+                if let job {
+                    let card = HostJobCard.deploy(status: job, text: extras.log.text, hostName: client.environment.name, linkUp: open, deployedVersion: build?.version)
+                    if card.visible {
+                        DeployJobRow(card: card) { showLog = true }
                     }
                 }
                 RowErrorLine(message: $actionError)

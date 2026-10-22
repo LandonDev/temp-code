@@ -117,6 +117,16 @@ public final class HostExtras {
         return HostJobStatus(job: .deploy, phase: deploy.phase, target: deploy.target, startedAt: deploy.startedAt, finishedAt: deploy.finishedAt, exit: deploy.exit, stoppable: deploy.stoppable)
     }
 
+    // MARK: - the connection
+
+    /// The session closed: what it held on the host (the `host-log`
+    /// subscription, the devices watch) is gone with it. The next round of
+    /// each loop asks again, however quickly the socket comes back.
+    public func connectionLost() {
+        log.following = false
+        for mac in devices.keys { devices[mac]?.lastReportAt = nil }
+    }
+
     // MARK: - pushes
 
     /// `host.devices` and `host-log`; everything else is the client's.
@@ -206,6 +216,7 @@ public final class HostExtras {
             deviceHosts = try await call(Methods.HostDevicesHosts.self, .init())
             deviceHostsError = nil
         } catch {
+            if Task.isCancelled { return }
             deviceHostsError = error.message
         }
     }
@@ -215,6 +226,7 @@ public final class HostExtras {
         do {
             land(try await call(Methods.HostDevicesWatch.self, .init(environmentId: mac)))
         } catch {
+            if Task.isCancelled { return }
             devices[mac, default: DevicesState()].error = error.message
         }
     }
@@ -224,6 +236,7 @@ public final class HostExtras {
             deploy = try await call(Methods.HostDeployStatus.self, .init())
             deployError = nil
         } catch {
+            if Task.isCancelled { return }
             if error.isForbidden { deployForbidden = true } else { deployError = error.message }
         }
     }
@@ -237,6 +250,7 @@ public final class HostExtras {
             log.status = answer.status
             log.following = true
         } catch {
+            if Task.isCancelled { return }
             if error.isForbidden { deployForbidden = true } else { deployError = error.message }
         }
     }
@@ -246,6 +260,7 @@ public final class HostExtras {
             macBridge = try await call(Methods.MacBridgeActivity.self, .init())
             macBridgeError = nil
         } catch {
+            if Task.isCancelled { return }
             if error.isForbidden { macBridgeForbidden = true } else { macBridgeError = error.message }
         }
     }
@@ -255,6 +270,7 @@ public final class HostExtras {
         async let harness = Self.attempt { try await socket.request(Methods.HarnessStatus.self, .init()) }
         async let memory = Self.attempt { try await socket.request(Methods.MemoryStatus.self, .init()) }
         let (h, m) = await (harness, memory)
+        guard !Task.isCancelled else { return }
         land(harness: h, memory: m)
     }
 

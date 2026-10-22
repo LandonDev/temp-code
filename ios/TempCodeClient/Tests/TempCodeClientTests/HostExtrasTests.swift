@@ -264,6 +264,24 @@ private final class Flag {
         _ = run
     }
 
+    @Test func `a closed session drops what it held: the log is followed again and the watch renewed on the next round`() async throws {
+        let rig = try ExtrasRig(caps: [.read, .admin])
+        let fake = await rig.open(caps: ["read", "admin"])
+        let follow = Task { await rig.extras.followDeployLog() }
+        let log = try #require(await rig.request(fake, "host.log"))
+        fake.answer(id: log.id, result: #"{"text":"one\n","status":\#(status("running"))}"#)
+        await follow.value
+        fake.deliver(#"{"push":"host.devices","report":\#(json(report("env_mac", load: 2.1)))}"#)
+        #expect(await rig.wait { rig.extras.devices["env_mac"]?.lastReportAt != nil })
+        #expect(rig.extras.log.following)
+        rig.extras.connectionLost()
+        #expect(rig.extras.log.following == false)
+        #expect(rig.extras.devices["env_mac"]?.lastReportAt == nil)
+        // What was shown stays until the host answers again.
+        #expect(rig.extras.log.text == "one\n")
+        #expect(rig.extras.devices["env_mac"]?.report != nil)
+    }
+
     @Test func `a device action marks the device busy and lands the report after it`() async throws {
         let rig = try ExtrasRig(caps: [.read, .operate])
         let fake = await rig.open(caps: ["read", "operate"])

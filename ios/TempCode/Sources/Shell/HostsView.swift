@@ -285,6 +285,7 @@ struct HostDetailView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .background { ActivityPollers(client: client) } // the Activity sections' loops, outlive any row (Shell/Hosts)
         .scrollDismissesKeyboard(.interactively)
         .sheet(item: $pairingAgain) { AddEnvironmentSheet(replacing: $0) }
         .forgetHostDialog(host: $forgetting) { id in

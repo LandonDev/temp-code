@@ -64,6 +64,7 @@ struct RootView: View {
             }
         }
         .task(id: model.ready) { await followLaunchRoute() }
+        .task { await MasterReleaseWatcher.shared.run() } // master's release for the drift marks (Shell/Hosts, iOS 21)
         // The sheet the last run had up, handed to the view that owns it once
         // the restored stacks are on screen.
         .task {

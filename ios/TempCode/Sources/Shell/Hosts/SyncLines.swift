@@ -21,9 +21,10 @@ struct SyncSection: View {
             } else if !extras.syncLoaded {
                 LookingRow()
             } else {
-                TimelineView(.periodic(from: .now, by: 30)) { context in
-                    let now = context.date.timeIntervalSince1970 * 1000
-                    ForEach(peers(extras.sync), id: \.id) { peer in
+                // One timeline per row: a List splits a ForEach into rows, not a single view holding one.
+                ForEach(peers(extras.sync), id: \.id) { peer in
+                    TimelineView(.periodic(from: .now, by: 30)) { context in
+                        let now = context.date.timeIntervalSince1970 * 1000
                         SyncPeerRow(
                             name: peer.name,
                             harness: peer.harness.map { SyncWords.harnessLine($0, now: now) },
@@ -35,12 +36,11 @@ struct SyncSection: View {
                 }
                 if let conflicts = extras.sync.memory?.conflicts, !conflicts.isEmpty {
                     DisclosureGroup(SyncWords.conflictsTitle(conflicts.count)) {
-                        TimelineView(.periodic(from: .now, by: 30)) { context in
-                            let now = context.date.timeIntervalSince1970 * 1000
-                            ForEach(conflicts, id: \.path) { conflict in
+                        ForEach(conflicts, id: \.path) { conflict in
+                            TimelineView(.periodic(from: .now, by: 30)) { context in
                                 VStack(alignment: .leading, spacing: 2) {
                                     MonoLine(conflict.of, truncation: .middle)
-                                    Text(SyncWords.conflictLine(conflict, now: now))
+                                    Text(SyncWords.conflictLine(conflict, now: context.date.timeIntervalSince1970 * 1000))
                                         .textStep(.meta)
                                 }
                                 .padding(.vertical, 2)

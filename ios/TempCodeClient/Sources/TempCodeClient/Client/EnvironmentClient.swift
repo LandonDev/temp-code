@@ -582,6 +582,7 @@ public final class EnvironmentClient {
             await push?.sync(self)
         case .closed:
             subscriptions.sessionChanged()
+            extras.connectionLost()
             for id in Array(historyLoads.keys) { cancelHistory(id) }
             for id in threads.keys { threads[id]?.isLive = false }
         }

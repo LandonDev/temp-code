@@ -53,7 +53,8 @@ struct DeployLogSheet: View {
                         .padding(.horizontal, Layout.textEdge)
                         .padding(.vertical, 12)
                     }
-                    .defaultScrollAnchor(.bottom)
+                    // The first offset only: once the reader scrolls up, an append must not pull them back.
+                    .defaultScrollAnchor(.bottom, for: .initialOffset)
                     .onScrollGeometryChange(for: Bool.self) { geometry in
                         geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - 8
                     } action: { _, atBottom in

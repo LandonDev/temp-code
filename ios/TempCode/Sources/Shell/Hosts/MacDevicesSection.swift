@@ -45,18 +45,7 @@ struct MacDevicesSection: View {
             }
             RowErrorLine(message: $actionError)
         } header: {
-            // The alert rides on the header, drawn once: a Section's own modifiers may reach every row.
             Text(host.local ? "Devices" : "Devices on \(host.name)")
-                .alert(
-                    deleting.map { DeviceWords.deleteConfirm($0).title } ?? "",
-                    isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
-                    presenting: deleting
-                ) { sim in
-                    Button("Cancel", role: .cancel) {}
-                    Button("Delete", role: .destructive) { act { try await $0.deleteSimulator(mac: host.environmentId, udid: sim.udid) } }
-                } message: { sim in
-                    Text(DeviceWords.deleteConfirm(sim).body)
-                }
         } footer: {
             if let report = state?.report {
                 FooterText(lines: footer(report))
@@ -90,6 +79,16 @@ struct MacDevicesSection: View {
                 }
                 Button("Delete", systemImage: "trash", role: .destructive) { deleting = sim }
                     .disabled(!canAct)
+            }
+            // On the row it confirms: a header scrolls away and takes its alert with it.
+            .alert(
+                DeviceWords.deleteConfirm(sim).title,
+                isPresented: Binding(get: { deleting?.udid == sim.udid }, set: { if !$0 { deleting = nil } })
+            ) {
+                Button("Cancel", role: .cancel) {}
+                Button("Delete", role: .destructive) { act { try await $0.deleteSimulator(mac: host.environmentId, udid: sim.udid) } }
+            } message: {
+                Text(DeviceWords.deleteConfirm(sim).body)
             }
             .rowAppearTransition()
     }
