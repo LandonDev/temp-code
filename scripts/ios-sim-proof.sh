@@ -47,6 +47,10 @@
 #   push    A notification tap (L6): a payload shaped like the hub's, routed
 #           through the delegate at launch, lands on the named thread's row;
 #           the navigation report proves the seq; Settings shows the row.
+#   features The screens the 2026-10-22 batch added (master board and rules,
+#           project plan, notices, failures, preamble, handoff, streaming, notes,
+#           the account menu, resources, queued, stopped, the gate row, the
+#           fleet confirm), light and dark, the busiest at the accessibility size.
 #   all     shell, threads, scroll, actions and push (the default).
 # TC_SIM="TempCode L3" picks a device by name (default iPhone 17 Pro); TC_SIM_UDID one by id.
 #
@@ -488,6 +492,43 @@ diff_set() {
   xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
 }
 
+# The screens the 2026-10-22 batch added, on the test server's seeds: the
+# master's board with its rules sheet, the project plan, the host's notice
+# rows (review, gate, batch, account gone), every failure card, the preamble
+# row, the plan's handoff, a streaming turn, thread notes, the account chip's
+# menu, the resources sheet, a queued and a stopped root, a paused master,
+# the gate row opened, and Home's fleet switch confirm; light and dark, then
+# the busiest at the accessibility size.
+features_set() {
+  for mode in light dark; do
+    appearance "$mode"
+    shot "master-board-$mode" thread "Ship the stats pipeline" board
+    shot "master-chat-$mode" thread "Ship the stats pipeline" chat
+    shot "master-rules-$mode" thread "Ship the stats pipeline" board rules
+    shot "master-paused-$mode" thread "Port the admin pages"
+    shot "project-plan-$mode" thread "Project plan: the billing" plan
+    shot "notices-$mode" thread "Land the export endpoint" chat
+    shot "failures-$mode" thread "Every way a turn fails"
+    shot "preamble-$mode" thread "config keys (with rules)" chat
+    shot "handoff-$mode" thread "Plan the passkey rollout" chat
+    shot "streaming-$mode" thread "Streaming on the phone"
+    shot "notes-$mode" thread "Thread notes on the phone"
+    shot "account-$mode" thread "On the work account" "" account
+    TC_SHEET=resources shot "resources-$mode" thread "Build the share sheet"
+    shot "queued-$mode" thread "Backfill the rollups"
+    shot "stopped-$mode" thread "Rename the config keys again"
+    shot "gate-$mode" thread "dark mode" board gate
+    TC_SHEET=fleet:pause shot "fleet-pause-$mode" home
+  done
+  appearance light
+  xcrun simctl ui "$TC_SIM_UDID" content_size "$A11Y_SIZE" >/dev/null
+  shot master-board-a11y thread "Ship the stats pipeline" board
+  shot failures-a11y thread "Every way a turn fails"
+  shot account-a11y thread "On the work account" "" account
+  shot notices-a11y thread "Land the export endpoint" chat
+  xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
+}
+
 case "$SET" in
   f4) f4_set ;;
   settings) settings_set ;;
@@ -501,6 +542,7 @@ case "$SET" in
   actions) actions_set ;;
   box-actions) box_actions_set ;;
   push) push_set ;;
+  features) features_set ;;
   all) shell_set; threads_set; scroll_set; actions_set; push_set; host_gone_set ;;
   *) echo "ios-sim-proof: unknown TC_PROOF_SET $SET" >&2; exit 2 ;;
 esac
