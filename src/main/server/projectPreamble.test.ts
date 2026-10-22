@@ -26,6 +26,7 @@ import {
 import { appStartThread } from './apptools'
 import { orchSpawnAgent, setOrchestrationRegistry } from './orchestration'
 import { CrossHostThreads } from './remote/crossHostThreads'
+import { ProjectSettingsSync } from './remote/projectSettingsSync'
 
 // ── the pure parts ───────────────────────────────────────────────────
 
@@ -460,5 +461,35 @@ describe('the preamble rides the first message on every start path', () => {
     expect(seen.some((t) => t.includes(`${PREAMBLE_HEADING}\n\n${stamp!.text}\n\n${TASK_HEADING}\n\nheld task`))).toBe(true)
     const users = registry.eventsAfter(s.id, 0).map((r) => r.event).filter((e) => e.type === 'user-text')
     expect(users).toHaveLength(2)
+  })
+})
+
+describe('a linked project whose settings live on the box', () => {
+  it('a Mac thread opens with the box text once the follower has pulled it', async () => {
+    registry.setProjectPreamble(projectId, 'MAC RULES', true)
+    store.setProjectLink(projectId, 'pl_rail')
+    const boxProject = { ...store.getProject(projectId)!, id: 'p-box', workspaceId: 'w-box', settingsUpdatedAt: Date.now() + 60_000 }
+    const boxBundle = { ...registry.getProjectSettings(projectId), preamble: '- Box rules for {{project}}.', updatedAt: boxProject.settingsUpdatedAt }
+    const link = {
+      id: 'env_box',
+      env: { id: 'env_box', name: 'box' },
+      connected: true,
+      build: { platform: 'linux' },
+      request: async (method: string) => (method === 'project.list' ? [boxProject] : boxBundle)
+    }
+    const sync = new ProjectSettingsSync({
+      environmentId: 'env_mac',
+      platform: 'darwin',
+      registry,
+      store,
+      peers: { get: () => link, all: () => [link] } as never,
+      log: () => {}
+    })
+    await sync.syncWith('env_box')
+    const s = await registry.create({ projectId, provider: 'claude', title: 'On the Mac' })
+    await registry.send(s.id, 'go')
+    expect(firstUser(s.id)?.preamble?.text).toBe('- Box rules for Rail.')
+    expect(harnessText(s.id)).not.toContain('MAC RULES')
+    sync.close()
   })
 })

@@ -1812,8 +1812,8 @@ export class SessionRegistry {
 
   /** Tear down the chosen git leftovers of a worktree project. Runs
    *  against the workspace repo; order matters — a branch can't die while
-   *  its worktree has it checked out. */
-  private async cleanupProjectGit(projectId: string, cleanup: ProjectCleanup): Promise<void> {
+   *  its worktree has it checked out. Touches no setting. */
+  async cleanupProjectGit(projectId: string, cleanup: ProjectCleanup): Promise<void> {
     const p = this.store.getProject(projectId)
     if (!p || p.mode !== 'worktree') return
     const ws = this.store.listWorkspaces().find((w) => w.id === p.workspaceId)

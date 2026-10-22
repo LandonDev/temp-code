@@ -41,6 +41,7 @@ import { HarnessSync, handleHarness } from './remote/harnessSync'
 import { DeployTrigger, Publisher, handleHost, type HostJobs } from './hostJobs'
 import { MemorySync, handleMemory } from './remote/memorySync'
 import { ProjectLinker } from './remote/projectLinks'
+import { ProjectSettingsSync } from './remote/projectSettingsSync'
 import { SessionMover, handleSessionMove } from './remote/sessionMover'
 import { claudeConfigDir, codexHomeDir } from './sessionMove'
 import { PeerCalls, handlePeerRequest, type LinkRequest } from './remote/peerCalls'
@@ -537,6 +538,7 @@ export async function startServer(
         void harnessSync.syncWith(id, 'link-up')
         void memorySync.syncWith(id, 'link-up')
         projectLinker.linkUp(id)
+        projectSettings.linkUp(id)
         void sessionMover.settleWith(id)
         relayServer.linkUp(id)
         void macBridge.linkUp(id)
@@ -551,6 +553,7 @@ export async function startServer(
       },
       onPush: (from, push) => {
         projectLinker.onPeerPush(from, push)
+        projectSettings.onPeerPush(from, push)
         // A linked host's dev servers, forwarded here (remote/macPorts.ts).
         if (push.push === 'ports') return void macPorts.onPorts(from, push.ports)
         if (push.push === 'ports.data') return macPorts.onData(from, push.streamId, push.seq, push.data)
@@ -601,6 +604,11 @@ export async function startServer(
   // the link ids both copies share.
   const projectLinker = new ProjectLinker({ environmentId, registry, peers })
   projectLinker.start()
+  // A linked project's settings live on its home, the box
+  // (remote/projectSettingsSync.ts): this host follows the home's copy and
+  // sends every settings write of such a project there.
+  const projectSettings = new ProjectSettingsSync({ environmentId, platform: process.platform, registry, store, peers })
+  projectSettings.start()
   // Moving one thread between this host and a peer (remote/sessionMover.ts).
   const sessionMover = new SessionMover({
     host: {
@@ -1624,11 +1632,13 @@ export async function startServer(
             sendFrame({ id: req.id, ok: true, result: registry.listProjects() })
             break
           case 'project.rename':
-            registry.renameProject(req.params.projectId, req.params.name)
+            if (!(await projectSettings.forward(req.params.projectId, req.method, req.params)))
+              registry.renameProject(req.params.projectId, req.params.name)
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'project.setAccounts':
-            registry.setProjectAccounts(req.params.projectId, req.params.pins)
+            if (!(await projectSettings.forward(req.params.projectId, req.method, req.params)))
+              registry.setProjectAccounts(req.params.projectId, req.params.pins)
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'workspace.setAccounts':
@@ -1636,7 +1646,8 @@ export async function startServer(
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'project.setPreamble':
-            registry.setProjectPreamble(req.params.projectId, req.params.preamble, req.params.enabled)
+            if (!(await projectSettings.forward(req.params.projectId, req.method, req.params)))
+              registry.setProjectPreamble(req.params.projectId, req.params.preamble, req.params.enabled)
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'workspace.setPreamble':
@@ -1654,7 +1665,8 @@ export async function startServer(
             sendFrame({ id: req.id, ok: true, result: registry.getProjectSettings(req.params.projectId) })
             break
           case 'project.settings.set':
-            registry.setProjectSettings(req.params.projectId, req.params.bundle)
+            if (!(await projectSettings.forward(req.params.projectId, req.method, req.params)))
+              registry.setProjectSettings(req.params.projectId, req.params.bundle)
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'session.setMaster':
@@ -1669,14 +1681,15 @@ export async function startServer(
             )
             sendFrame({ id: req.id, ok: true, result: null })
             break
-          case 'project.archive':
-            await registry.archiveProject(
-              req.params.projectId,
-              req.params.archived,
-              req.params.cleanup
-            )
+          case 'project.archive': {
+            // The cleanup is this host's checkout: the home gets the flag alone.
+            const { cleanup, ...flag } = req.params
+            if (await projectSettings.forward(req.params.projectId, req.method, flag)) {
+              if (req.params.archived && cleanup) await registry.cleanupProjectGit(req.params.projectId, cleanup)
+            } else await registry.archiveProject(req.params.projectId, req.params.archived, cleanup)
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          }
           case 'project.delete':
             await registry.deleteProject(req.params.projectId, req.params.cleanup)
             sendFrame({ id: req.id, ok: true, result: null })
@@ -1943,7 +1956,8 @@ export async function startServer(
             break
           }
           case 'plans.set':
-            registry.setPlanSettings(req.params.projectId, req.params.settings)
+            if (!(await projectSettings.forward(req.params.projectId, req.method, req.params)))
+              registry.setPlanSettings(req.params.projectId, req.params.settings)
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'session.start':
@@ -1964,9 +1978,9 @@ export async function startServer(
             })
             break
           case 'turnpass.set':
-            if (req.params.projectId)
+            if (!req.params.projectId) registry.setTurnPass(req.params.workspaceId, req.params.pass)
+            else if (!(await projectSettings.forward(req.params.projectId, req.method, req.params)))
               registry.setProjectTurnPass(req.params.projectId, req.params.pass)
-            else registry.setTurnPass(req.params.workspaceId, req.params.pass)
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'build.get':
@@ -1979,8 +1993,9 @@ export async function startServer(
             })
             break
           case 'build.set':
-            if (req.params.projectId) registry.setProjectBuild(req.params.projectId, req.params.config)
-            else registry.setBuild(req.params.workspaceId, req.params.config)
+            if (!req.params.projectId) registry.setBuild(req.params.workspaceId, req.params.config)
+            else if (!(await projectSettings.forward(req.params.projectId, req.method, req.params)))
+              registry.setProjectBuild(req.params.projectId, req.params.config)
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'build.effective': {
@@ -2076,7 +2091,8 @@ export async function startServer(
             break
           }
           case 'review.set':
-            registry.setReviewSettings(req.params.projectId, req.params.settings)
+            if (!(await projectSettings.forward(req.params.projectId, req.method, req.params)))
+              registry.setReviewSettings(req.params.projectId, req.params.settings)
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'appshots.get':
@@ -2811,6 +2827,7 @@ export async function startServer(
       hostJobs.publish.dispose()
       memorySync.close()
       projectLinker.close()
+      projectSettings.close()
       uploads.close()
       sessionMover.close()
       relayServer.close()

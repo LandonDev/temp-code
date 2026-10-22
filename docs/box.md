@@ -2752,3 +2752,40 @@ assumes no platform, so whichever host holds a link runs it for that link.
 - **Status.** `projectLinker.status(hostId)` on the running server answers
   `{ lastRunAt, pairs: { workspaces, projects }, error? }`; no RPC yet.
 - **Proof.** `src/main/server/remote/projectLinks.test.ts`.
+
+### One project across hosts: settings live on the box
+
+A linked project (one `linkId` on its copy on each host) keeps its settings
+on one copy, its settings home: `settingsHomeOf` in
+`src/shared/projectLinks.ts` names the copy whose host is not a Mac (by the
+hello's `build.platform`), else the host whose id sorts first. The settings
+are one bundle (`project.settings.get` / `.set`): name, archived, preamble,
+account pins, review, plans, build and turn pass, with the time one of them
+last changed on its home (`projects.settings_updated_at`). Every setter
+stamps that time.
+
+The Mac follows the box (`src/main/server/remote/projectSettingsSync.ts`).
+On link-up, on the box's `projects` push and every 5 minutes, debounced per
+host, it reads the box's `project.list`; for each linked copy whose home is
+the box and whose stamp there is newer than the Mac's, it pulls the bundle
+and writes it under the Mac's id with the box's stamp. A home that never
+stamped a setting leaves the Mac's copy as it was. It never writes toward
+the box. So a rename or an archive on the box reaches the Mac's row, and a
+Mac thread of the project opens with the box's preamble.
+
+A settings write on the Mac for such a project (`project.rename`,
+`project.archive`, `project.setPreamble`, `project.setAccounts`,
+`project.settings.set`, and `review.set`, `plans.set`, `build.set`,
+`turnpass.set` for a project) goes to the box: the same method on the box's
+copy, then the box's bundle is written on the Mac, so the next pull has
+nothing to do. An archive's git cleanup runs on the Mac's own checkout only.
+With the box down the write is refused with
+`refused: settings of <project> live on <host>; it is offline` and nothing
+is written on the Mac. The Mac remembers which host holds a copy, and that
+host's platform, in the settings row `project-settings-sync:peer:<envId>`,
+so it refuses even after a restart with the box still down. An unlinked
+project, and every write on the box itself, behave as before.
+
+Tests: `remote/projectSettingsSync.test.ts` (the pull, an older stamp, a
+rename and an archive following, the forwarded write, the refusal, the cold
+refusal) and the linked-project case in `projectPreamble.test.ts`.
