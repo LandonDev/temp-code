@@ -57,7 +57,10 @@ struct PillButton: View {
                 }
                 Text(title)
                     .font(.footnote.weight(.medium))
+                    .lineLimit(1)
             }
+            // A capsule never wraps: beside a row's text that holds layout priority it was squeezed to a letter a line.
+            .fixedSize(horizontal: true, vertical: false)
             .padding(.leading, systemImage == nil ? 12 : 10)
             .padding(.trailing, 12)
             .padding(.vertical, 6)

@@ -66,7 +66,6 @@ struct HostsView: View {
         }
         .navigationTitle("Hosts")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(for: HostDetailRoute.self) { HostDetailView(environmentId: $0.environmentId) }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("Add a Host", systemImage: "plus") { adding = true }

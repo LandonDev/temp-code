@@ -34,6 +34,9 @@ struct RootView: View {
                     HomeView(path: $homePath, slots: FleetSwitches.homeSlots(homeSlots))
                         .fleetToastInset()
                         .navigationDestination(for: Route.self) { destination($0, path: $homePath) }
+                        // At the stack's root, not on Hosts: a push made while Hosts itself was still
+                        // arriving (the proof's hook) found no destination and drew the warning glyph.
+                        .navigationDestination(for: HostDetailRoute.self) { HostDetailView(environmentId: $0.environmentId) }
                 }
             }
             Tab("Inbox", systemImage: "tray", value: AppTab.inbox) {

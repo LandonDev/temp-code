@@ -138,6 +138,7 @@ struct DeviceRow: View {
     let busy: Bool
     let holder: DeviceHolder?
     let route: Route?
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         if let route {
@@ -163,17 +164,23 @@ struct DeviceRow: View {
                     .textStep(.meta)
                     .lineLimit(1)
                     .numeric(state.text)
+                // Stacked at accessibility sizes: trailing, the holder was squeezed to a letter.
+                if typeSize.isAccessibilitySize { holderText }
             }
             .layoutPriority(1)
             Spacer(minLength: Layout.rowGap)
-            Text(holder.map(DeviceWords.holder) ?? "—")
-                .font(.footnote)
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-                .truncationMode(.tail)
+            if !typeSize.isAccessibilitySize { holderText }
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .combine)
         .accessibilityValue(state.text)
+    }
+
+    private var holderText: some View {
+        Text(holder.map(DeviceWords.holder) ?? "—")
+            .font(.footnote)
+            .foregroundStyle(.tertiary)
+            .lineLimit(1)
+            .truncationMode(.tail)
     }
 }
