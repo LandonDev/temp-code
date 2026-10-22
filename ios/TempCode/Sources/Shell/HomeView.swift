@@ -405,9 +405,12 @@ private struct HostHeader: View {
     var body: some View {
         HStack(spacing: 8) {
             ConnectionDot(status: client.status)
-            Text(client.environment.name)
-                .textStep(.title, weight: .semibold)
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(client.environment.name)
+                    .textStep(.title, weight: .semibold)
+                    .lineLimit(1)
+                slots.hostSubline?(client)
+            }
             Spacer(minLength: 8)
             slots.hostTrailing?(client)
             if let hostMenu = slots.hostMenu {

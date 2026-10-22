@@ -31,10 +31,7 @@ struct RootView: View {
         TabView(selection: $tab) {
             Tab("Home", systemImage: "house", value: AppTab.home) {
                 NavigationStack(path: $homePath) {
-                    HomeView(path: $homePath, slots: FleetSwitches.homeSlots(HomeSlots(
-                        projectSettings: { client, project in AnyView(ProjectSettingsMenuItem(client: client, project: project)) },
-                        projectTrailing: { AnyView(ProjectPlanChip(client: $0, project: $1)) }
-                    )))
+                    HomeView(path: $homePath, slots: FleetSwitches.homeSlots(homeSlots))
                         .fleetToastInset()
                         .navigationDestination(for: Route.self) { destination($0, path: $homePath) }
                 }
@@ -105,6 +102,20 @@ struct RootView: View {
     private func reportVisibility() {
         let active = scenePhase == .active
         model.setVisible(thread: active ? router.visible : nil, listVisible: active && tab == .home && homePath.isEmpty)
+    }
+
+    /// What sibling features plug into Home; every slot optional.
+    private var homeSlots: HomeSlots {
+        var slots = HomeSlots(
+            projectSettings: { client, project in AnyView(ProjectSettingsMenuItem(client: client, project: project)) },
+            projectTrailing: { AnyView(ProjectPlanChip(client: $0, project: $1)) }
+        )
+        let registry = model.registry
+        // Thread 29: a relayed host's "through <carrier> · <presence>" line under its header's name.
+        slots.hostSubline = { client in
+            AnyView(HostSubline(client: client, carrierName: registry.carrier(of: client.environment.id)?.environment.name))
+        }
+        return slots
     }
 
     @ViewBuilder

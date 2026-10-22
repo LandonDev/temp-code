@@ -21,7 +21,8 @@ struct StatusLine: View {
 
     var body: some View {
         let status = client.status
-        let text = Self.text(for: status, host: client.environment.name, now: now)
+        // Thread 29: a relayed host names itself ("Reconnecting to the Mac…", "The Mac is unreachable since 9:14").
+        let text = RelayWords.statusLine(for: client, status: status, now: now) ?? Self.text(for: status, host: client.environment.name, now: now)
         Color.clear
             .frame(height: 0)
             .overlay(alignment: .top) {
@@ -33,7 +34,8 @@ struct StatusLine: View {
                             .lineLimit(1)
                             .truncationMode(.middle)
                         Spacer(minLength: 0)
-                        if Self.showsRetry(status) {
+                        // Thread 29: a lane the carrier holds has no Retry; the box retries the link.
+                        if Self.showsRetry(status), RelayWords.showsRetry(for: client) {
                             Button("Retry") { Task { await client.retry() } }
                                 .font(.footnote.weight(.medium))
                                 .buttonStyle(.plain)

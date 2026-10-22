@@ -40,7 +40,8 @@ struct WorkingStripView: View {
         ZStack {
             switch phase {
             case .idle:
-                Color.clear
+                // Thread 29: a locked relayed host's one line; `Color.clear` for any other host or state.
+                RelayStripLine(client: client)
             case .sending:
                 line {
                     Text("Sending…")
