@@ -4,16 +4,17 @@ import TempCodeContract
 /// What leads a thread row, in a 14 pt column. The desktop's `StatusDot`
 /// colors: waiting is warning, error destructive, starting and watching
 /// info; a running thread (or a settled root whose subagents still work)
-/// shows the spinner, a paused one the pause mark, idle and done nothing.
-/// Dot, spinner and mark cross-fade over 150 ms; the column never moves.
-/// The dot is a static cue too: VoiceOver reads it as the state.
+/// shows the spinner, a paused one the pause mark, a stopped one a still
+/// square, a queued one the quiet dot, idle and done nothing. Dot, spinner
+/// and mark cross-fade over 150 ms; the column never moves and scales with
+/// the title's Dynamic Type. The dot is a static cue too: VoiceOver reads
+/// it as the state, and an empty column is hidden from it.
 struct StatusDot: View {
     let status: SessionStatus
     /// The row is live: the spinner leads whatever the status says.
     var running = false
     /// The stroke of the pause mark follows the title beside it.
     var weight: Font.Weight = .regular
-    /// The column and the dot grow with the title's Dynamic Type, like the glyph beside them.
     @ScaledMetric(relativeTo: .subheadline) private var column = Layout.markWidth
     @ScaledMetric(relativeTo: .subheadline) private var dot = Layout.dotSize
 
@@ -37,8 +38,8 @@ struct StatusDot: View {
             case .stopped:
                 // The harness is gone: a still square, the quiet opposite of the spinner.
                 RoundedRectangle(cornerRadius: 1, style: .continuous)
-                    .fill(Color.secondary)
-                    .frame(width: 6, height: 6)
+                    .fill(Tint.quiet)
+                    .frame(width: dot - 1, height: dot - 1)
                     .transition(.opacity)
             case .none:
                 EmptyView()
@@ -60,16 +61,16 @@ struct StatusDot: View {
 
     private var mark: Mark {
         if running { return .spinner }
-        switch status {
-        case .running: return .spinner
-        case .starting, .watching: return .dot(Tint.info)
-        case .waiting: return .dot(Tint.warning)
-        case .error: return .dot(Tint.destructive)
-        case .paused: return .paused
-        case .stopped: return .stopped
-        // Created, not booted (the host's `queued`): the starting dot, still.
-        case .queued: return .dot(Color.secondary)
-        case .idle, .done, .unknown: return .none
+        return switch status {
+        case .running: .spinner
+        case .starting, .watching: .dot(Tint.info)
+        case .waiting: .dot(Tint.warning)
+        case .error: .dot(Tint.destructive)
+        case .paused: .paused
+        case .stopped: .stopped
+        // Created, not booted (the host's `queued`): a dot with no urgency.
+        case .queued: .dot(Tint.quiet)
+        case .idle, .done, .unknown: .none
         }
     }
 

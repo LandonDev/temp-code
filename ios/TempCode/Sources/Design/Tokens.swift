@@ -17,6 +17,8 @@ enum Tint {
     static let violet = Color(.systemPurple)
     /// Research type.
     static let cyan = Color(.systemCyan)
+    /// A state with no urgency: the queued dot, the stopped square.
+    static let quiet = Color(.systemGray2)
 }
 
 enum Surface {
@@ -88,24 +90,33 @@ enum TextStep {
 }
 
 extension View {
-    /// One of the three text steps, at a weight.
-    func textStep(_ step: TextStep, weight: Font.Weight = .regular) -> some View {
-        modifier(TextStepModifier(step: step, weight: weight))
+    /// One of the three text steps, at a weight. `tint` replaces the step's
+    /// color and nothing else (a failure summary in destructive).
+    func textStep(_ step: TextStep, weight: Font.Weight = .regular, tint: Color? = nil) -> some View {
+        modifier(TextStepModifier(step: step, weight: weight, tint: tint))
     }
 }
 
 private struct TextStepModifier: ViewModifier {
     let step: TextStep
     let weight: Font.Weight
+    let tint: Color?
+
+    private var color: AnyShapeStyle {
+        if let tint { return AnyShapeStyle(tint) }
+        return switch step {
+        case .title: AnyShapeStyle(.primary)
+        case .meta: AnyShapeStyle(.secondary)
+        case .stamp: AnyShapeStyle(.tertiary)
+        }
+    }
 
     func body(content: Content) -> some View {
         switch step {
-        case .title:
-            content.font(step.font.weight(weight)).foregroundStyle(.primary)
-        case .meta:
-            content.font(step.font.weight(weight)).foregroundStyle(.secondary)
+        case .title, .meta:
+            content.font(step.font.weight(weight)).foregroundStyle(color)
         case .stamp:
-            content.font(step.font.weight(weight)).monospacedDigit().foregroundStyle(.tertiary)
+            content.font(step.font.weight(weight)).monospacedDigit().foregroundStyle(color)
         }
     }
 }
@@ -130,6 +141,10 @@ enum Layout {
     /// Where a thread row's title begins, from the row's leading edge: the
     /// mark, the glyph and the two gaps. Separators start here.
     static let rowTextEdge: CGFloat = markWidth + rowGap + glyphWidth + rowGap
+    /// A thread row's vertical padding; with two lines a row lands near 50 pt.
+    static let rowVertical: CGFloat = 6
+    /// Between a row's title and the one muted word after it ("Master").
+    static let tagGap: CGFloat = 6
     /// A list row's insets: the text edge on both sides, nothing vertical.
     static let rowInsets = EdgeInsets(top: 0, leading: textEdge, bottom: 0, trailing: textEdge)
 }
@@ -167,8 +182,9 @@ extension View {
     }
 
     /// A layer that floats (a pill over the transcript, a card over content):
-    /// the raised surface, a hairline ring, and in light mode a soft shadow
-    /// with an offset. Dark mode keeps the ring only.
+    /// the raised surface, a hairline ring, and in light mode two soft shadows
+    /// with an offset (a tight one for the edge, a wide one for the lift).
+    /// Dark mode keeps the ring only.
     func raised(radius: CGFloat = Radius.field) -> some View {
         modifier(Raised(radius: radius))
     }
@@ -192,6 +208,7 @@ private struct Raised: ViewModifier {
         content
             .background(Surface.raised, in: RoundedRectangle.corner(radius))
             .hairlineBorder(RoundedRectangle.corner(radius))
-            .shadow(color: .black.opacity(scheme == .dark ? 0 : 0.08), radius: 8, y: 2)
+            .shadow(color: .black.opacity(scheme == .dark ? 0 : 0.06), radius: 1, y: 1)
+            .shadow(color: .black.opacity(scheme == .dark ? 0 : 0.08), radius: 12, y: 4)
     }
 }

@@ -33,7 +33,7 @@ extension ButtonStyle where Self == PressableStyle {
 /// the fill step, or filled with a tint and white text when it is the one
 /// thing to do, with the same press feedback as everything else. A glyph
 /// sits 2 pt closer to its edge than the text does to the other, so the
-/// pair reads centered.
+/// pair reads centered. The capsule is 28 pt tall; the hit area is 44 pt.
 struct PillButton: View {
     let title: String
     var systemImage: String?
@@ -63,6 +63,9 @@ struct PillButton: View {
             .padding(.vertical, 6)
             .foregroundStyle(tint == nil ? AnyShapeStyle(.primary) : AnyShapeStyle(.white))
             .background(tint ?? Surface.fill, in: Capsule())
+            // The capsule stays 28 pt; the hit area reaches 44 pt around it.
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.pressable)
     }

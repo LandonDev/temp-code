@@ -82,17 +82,20 @@ struct AgoText: View {
 /// A line that is replaced in place (the last activity, a flavour word, a
 /// status): the new text cross-fades over the old with 2 pt of blur, and
 /// the line keeps one height throughout. `nil` leaves the space empty, at
-/// the same height.
+/// the same height. `tint` replaces the step's color (a failure summary in
+/// destructive); the size and weight stay the step's.
 struct SwapText: View {
     let text: String?
     var step: TextStep = .meta
     var weight: Font.Weight = .regular
+    var tint: Color?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    init(_ text: String?, step: TextStep = .meta, weight: Font.Weight = .regular) {
+    init(_ text: String?, step: TextStep = .meta, weight: Font.Weight = .regular, tint: Color? = nil) {
         self.text = text
         self.step = step
         self.weight = weight
+        self.tint = tint
     }
 
     var body: some View {
@@ -103,7 +106,7 @@ struct SwapText: View {
                 .hidden()
             if let text {
                 Text(text)
-                    .textStep(step, weight: weight)
+                    .textStep(step, weight: weight, tint: tint)
                     .id(text)
                     .transition(Motion.swap(reduced: reduceMotion))
             }
