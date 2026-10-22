@@ -801,6 +801,88 @@ measurements (`DiffMetrics`) and the palette.
   line ("This edit left no lines to show."; for a patch, "No changes to
   show.", which covers a binary or truncated file).
 
+## Two hosts
+
+The phone pairs with more than one host (the Mac and the box) and, since the
+desktop learned to share work between them, four things follow on the phone.
+The models are pure and live in the client package (`ProjectPairs`,
+`CrossHost`, `PathHost`, `MovedThread`); the views are `Hosts/HostDot.swift`
+and `Thread/HostChip.swift`.
+
+**One project on two hosts.** Two workspaces are one project when they name
+the same GitHub repository (`repo:<owner/name>`, lowercased), else when their
+folders share a name (`name:<basename>`). Within one host the first workspace
+with a key keeps it, so a pair has at most one member per host; a second
+same-named folder on one host keys as `<env>:<workspace id>` and never folds.
+The phone reads no path map: the Mac's map (`/srv/agents/work/<X>` ↔
+`~/IdeaProjects/<X>`) gives both sides the basename `<X>`, which the name rule
+already covers, and the map is an admin setting a client key cannot read.
+Home's row for a paired project carries one 7 pt dot per host, 2 pt apart, in
+registry order, in the trailing cluster before the thread count, centered on
+the title line (`PairedHostMarks`; VoiceOver: "On Mac and box", the value the
+hosts' states). A thread row under it names its host as the first word of its
+second line in the stamp step (`HostWord`), only when more than one host is
+paired (`ProjectPairs.showsHost`); with one host nothing names it.
+
+**A thread's host.** The thread header's subtitle holds a chip
+(`HostChip`): a 6 pt dot in the host's tone and the host's name in `caption`
+on the fill step with row corners (8 pt continuous), 7 pt horizontal and
+2 pt vertical padding, a 44 × 28 pt hit area, the press scale; shown only
+with more than one host paired (the header's rule). The dot sits on the
+text's cap-height centre, not the line box's. A tap opens a compact popover
+anchored to the chip (`presentationCompactAdaptation(.popover)`, the system's
+own scale from the trigger): the host's name, its state line (the same
+`StatusText` as Home's host row, ticking while a retry is pending), and
+Retry when it helps (reconnecting, offline, refused). The phone offers no
+move: `session.move` is the Mac's own local RPC, which no remote key can call.
+
+The host tone, one rule for every dot that means a host's link:
+
+| Tone | When | Color |
+| --- | --- | --- |
+| fresh | open, re-listed | Success |
+| stale | open, not yet re-listed | Success at 50 % |
+| busy | connecting, reconnecting, suspended | Warning |
+| away | offline | `tertiaryLabel` |
+| refused | the key was refused | Destructive |
+
+The dot cross-fades 150 ms between tones after the first paint and never on
+it; its accessibility value is the state line's words, the static cue.
+
+**A moved thread.** The `session-moved` push says a thread now runs on
+another host; the client drops its rows and keeps a `MovedThread` record
+(where, when, which subagents) in memory for this process. A screen open on
+the thread shows one quiet line in its place, with the row appear motion:
+"Moved to box" as a full-width 44 pt row with a trailing `chevron.right`,
+whose tap opens the same thread on that host (same id, same seqs) through
+the router; when that host is not paired, "Moved to a host this phone is
+not paired with" as plain text. Only a client subscribed to the source host
+sees the push: a phone in the background sees the thread leave one host and
+appear on the other at the next list, with no line.
+
+**A cross-host subagent.** A box thread's child spawned on the Mac is an
+ordinary thread there with the box thread as its parent; the parent's log
+holds an `agent-spawned` row naming the child's host, and the host's tools
+name it `<env>:<session>`. `CrossHost` turns either form into a placement
+(the host, the session, remote or not, paired or not): the fleet reads the
+child from that host's client, its row names the host with `HostWord`, and a
+child on a host this phone has not paired reads "on a host this phone is not
+paired with" in place of its status and is not tappable. The note never
+names the host: the wire carries the environment id alone, and no client key
+can fetch a name for it.
+
+**Files and media by host.** A path a thread names opens on the host the
+desktop's rule picks (`PathHost`): a catalog root (a project cwd or a
+workspace path) is a definite answer; outside every root the thread's host.
+An `fs.media` URL carries `&host=<id>`, the host whose bytes they are; the
+image loads from that host's client when it is paired, else from the
+thread's. A missing file reads "No such file on <host>." (the host's name
+only with more than one host paired); every other failure keeps the host's
+words. A photo the phone sends has no home on any host, so every upload goes
+to the thread's host, whose attachment folder the fence admits; a cross-host
+subagent's composer uploads to the child's host, because its client is the
+child's.
+
 ## Visual system
 
 Everything maps to the desktop's `DESIGN.md`: quiet chrome, one gray step,
@@ -821,9 +903,9 @@ it in its own area on these names.
 | Hairline | `separator` at 1 px, inset to the text edge | rows, fields, chips | `Hairline(inset:)`, `.hairlineBorder(shape)`, `.separatorAtTextEdge()` |
 | Text | `label`, `secondaryLabel`, `tertiaryLabel` | three steps and no more; a tint replaces the color alone | `.textStep(.title / .meta / .stamp, weight:, tint:)` |
 | Info | `systemBlue` | chat type, starting and watching dots | `Tint.info` |
-| Success | `systemGreen` | implementation type, `+n`, completed | `Tint.success` |
-| Warning | `systemOrange` | orchestration type, waiting, paused, needs-you tint at 8 % | `Tint.warning`, `Surface.needsYou` |
-| Destructive | `systemRed` | errors, `−m`, failed tools, a failure summary | `Tint.destructive` |
+| Success | `systemGreen` | implementation type, `+n`, completed, a host link that is open (50 % until re-listed) | `Tint.success` |
+| Warning | `systemOrange` | orchestration type, waiting, paused, needs-you tint at 8 %, a host link connecting or reconnecting | `Tint.warning`, `Surface.needsYou` |
+| Destructive | `systemRed` | errors, `−m`, failed tools, a failure summary, a refused host key | `Tint.destructive` |
 | Violet | `systemPurple` | planning and project-plan types | `Tint.violet` |
 | Cyan | `systemCyan` | research type | `Tint.cyan` |
 | Quiet | `systemGray2` | a state with no urgency: the queued dot, the stopped square | `Tint.quiet` |

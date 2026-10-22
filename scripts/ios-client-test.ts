@@ -38,7 +38,7 @@ if (bundle.error || bundle.status !== 0) {
 }
 
 const server = spawn('node', [out], { cwd: repo, stdio: ['ignore', 'pipe', 'inherit'], env: process.env })
-type Ready = { ready: true; baseUrl: string; controlUrl: string; environmentId: string; keyId: string; key: string; operateKeyId: string; operateKey: string; operateOnlyKeyId: string; operateOnlyKey: string; threadA: string; threadB: string; projectId: string; workspaceId: string; planPath: string | null; threads: { planning: string; chat: string } }
+type Ready = { ready: true; baseUrl: string; controlUrl: string; environmentId: string; keyId: string; key: string; operateKeyId: string; operateKey: string; operateOnlyKeyId: string; operateOnlyKey: string; threadA: string; threadB: string; projectId: string; workspaceId: string; planPath: string | null; threads: { planning: string; chat: string }; threadCrossHost?: string; second?: { baseUrl: string; environmentId: string; key: string } }
 const ready = await new Promise<Ready>((resolveReady, reject) => {
   let buffer = ''
   const timer = setTimeout(() => reject(new Error('the test server did not come up in 60 s')), 60_000)
@@ -76,6 +76,14 @@ const env: NodeJS.ProcessEnv = {
   TC_TEST_THREAD_PLAN: ready.threads.planning,
   TC_TEST_THREAD_CHAT: ready.threads.chat,
   TC_TEST_PLAN_PATH: ready.planPath ?? ''
+}
+// The second host (the same project on another machine) and the thread whose
+// subagent runs there; the two-host live test is skipped without them.
+if (ready.second && ready.threadCrossHost) {
+  env.TC_TEST_SECOND_BASE_URL = ready.second.baseUrl
+  env.TC_TEST_SECOND_ENVIRONMENT_ID = ready.second.environmentId
+  env.TC_TEST_SECOND_KEY = ready.second.key
+  env.TC_TEST_THREAD_CROSS_HOST = ready.threadCrossHost
 }
 if (!env.DEVELOPER_DIR) {
   const selected = spawnSync('xcode-select', ['-p'], { encoding: 'utf8' }).stdout.trim()

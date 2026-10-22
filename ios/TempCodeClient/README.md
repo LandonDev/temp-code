@@ -19,11 +19,12 @@ Sources/TempCodeClient
                 WebSocketConnection (+ URLSessionWebSocket), Transport, TempCodeSocket
   Environments/ PairedEnvironment + PairingLink, KeyStore (Keychain, in-memory), RemoteAPI, EnvironmentStore
   Cache/        Database (sqlite3), SessionCache
-  Client/       Subscriptions, EnvironmentClient, ClientRegistry
+  Client/       Subscriptions, EnvironmentClient (+ MovedThread), ClientRegistry
   Rendering/    ThreadFold (rows → stamped items + BoardState), Transcript (item types), Board,
                 ResearchBoard, Fleet, PlanDoc, Inbox, DiffDocument (the diff screen's lines,
                 hunks and column geometry), MarkdownBlocks, MarkdownCache, PlanDocument,
-                PlanPages
+                PlanPages, ProjectPairs, CrossHost, PathHost (two hosts: pairs, cross-host
+                children, the host of a path)
   Design/       TimeFormat, ModelName, CompactNumber, ThreadRowModel: the design kit's pure
                 logic, tested here; the app's Design/ holds the views
   Support/      SocketClock (SystemClock, ManualClock)
@@ -164,7 +165,10 @@ moved since the tail was fetched (`peeked`), else one page from the host
 into the cache, and the cache alone with no socket. Pushes:
 `events` append to an open thread (ephemeral rows stay out of the cache),
 `sessions` merge newest-first, `session-removed` drops the thread,
-`projects`/`workspaces` replace. `openThread` paints the cached tail at once
+`session-moved` drops it too and keeps a `MovedThread` (the destination's
+environment id, the subagents, when) in `moved` under the root's and each
+subagent's id for this process, so a screen open on the thread can say where
+it went; `projects`/`workspaces` replace. `openThread` paints the cached tail at once
 and resumes without blocking the caller; `closeThread` leaves the set so a
 reconnect never replays what nobody looks at; `body(sessionId:seq:)` answers
 an omitted body from the cache or one `session.rowBody`; `assetRequest(host:
@@ -248,6 +252,34 @@ offsets the views set in weight), `SearchDebounce` and `footLine`.
 `build`'s body is the slot the cross-host selector (merge, rank, fold,
 typed filters) replaces; the screen calls it from one line.
 
+**ProjectPairs** (src/renderer/src/lib/projectPairs.ts, host-aware: the
+phone's `WorkspaceMeta` has no environment id, the client is the host): two
+hosts' workspaces pair when they name the same GitHub repository, else when
+their folders share a name; one member per host; `pairs(_:)` over
+`HostWorkspaces` in registry order, `pair(of:on:in:)` (the deepest member
+folder wins), `relative`, `partners`, and Home's `homeKey` / `homePairing`
+(the pair id for a host's first workspace with that key, `<env>:<id>` for a
+second same-named folder so it never folds); `showsHost(hostCount:)` is the
+one rule for naming a host on a row. No path map: the default map gives both
+sides one basename, and the map is an admin setting a client key cannot read.
+
+**CrossHost** (src/shared/contract-crosshost.ts): `encode`/`decode` of a
+`<env>:<session>` agent id (a local id has no colon; a malformed one stays a
+local id), `Placement` (host, session, remote, paired) from a spawn row's
+`childSessionId` + `environmentId` or from an encoded id, `hosts(in:)` over a
+parent's rows, `hostWord` for a remote paired child, and `unpairedNote`, the
+one line for a child on a host this phone has not paired (the wire carries
+the id only, so it never names the host).
+
+**PathHost** (src/renderer/src/lib/pathHost.ts): `host(forPath:owners:
+threadHost:primary:)` is the desktop's rule unchanged; `owners(of:catalogs:)`
+are the hosts whose project cwds or workspace paths hold the path;
+`host(ofPath:threadHost:catalogs:)` makes the thread's host the primary (the
+phone has no disk); `environment(ofMediaURL:)` reads `&host=` off an
+`fs.media` URL; `failureText` words an ENOENT or a nil read as "No such file
+on <host>."; `uploadHost(threadHost:)` is the one rule for a photo the phone
+sends: always the thread's host.
+
 ## Tests
 
 ```sh
@@ -259,6 +291,15 @@ bun run ios:test:client     # this package, every suite: boots scripts/ios-clien
 bun scripts/ios-sim-proof-local.ts     # the simulator proof against that local server
 TC_TEST_PAIR_LINK=… TC_TEST_PAIR_NAME=… scripts/ios-sim-proof.sh   # the proof against a real host
 ```
+
+The server also boots a second host (`TC_IOS_SECOND_HOST=1`, a child
+process of the same script on its own temp root: the same `ios-workspace`
+folder name, an implementation thread, and the cross-host child `ios-xhost-
+child` whose parent `ios-xhost` lives on the primary), exported to the test
+process as `TC_TEST_SECOND_BASE_URL`, `TC_TEST_SECOND_ENVIRONMENT_ID`,
+`TC_TEST_SECOND_KEY` and `TC_TEST_THREAD_CROSS_HOST`; the two-host live test
+(one pair with two members, the child placed on the second host, the ghost
+child unpaired, `fs.media` stamped with its host) runs only with them.
 
 Both `ios:test` and `ios:test:client` run in the release gate
 (scripts/release.ts). Without the live environment the `LiveServerTests`

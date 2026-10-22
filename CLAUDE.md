@@ -1121,6 +1121,17 @@ routed to (aliax-core's `forward`). Two listeners:
   (`TC_DEVICE_METHOD=ad-hoc bun run ios:device`: archive, export with
   automatic signing, install; `aps-environment` production, no DEBUG hooks,
   the pairing from an earlier Debug install carries over in the keychain).
+- Two hosts on the phone: `ProjectPairs` folds one checkout on both hosts
+  into one Home row (repo, else folder name; no path map), `HostChip` names a
+  thread's host in the header's subtitle with the five-tone `HostDot` (no
+  move: `session.move` is Mac-local), a `session-moved` push leaves a
+  `MovedThread` record the open screen shows as "Moved to <host>",
+  `CrossHost` places a `<env>:<sid>` child or an `agent-spawned` row's host,
+  `PathHost` picks the host of a path or an `fs.media` URL's `&host=` and
+  words a missing file "No such file on <host>."; the test server's
+  `TC_IOS_SECOND_HOST=1` child is the same project on a second host with the
+  cross-host child, exported as `TC_TEST_SECOND_*`. docs/IOS-DESIGN.md
+  "Two hosts".
 - Tests: `bun run ios:test` (contract) and `bun run ios:test:client` (the
   package, pure suites plus a live suite against scripts/ios-client-test-server.ts,
   a real server with a read key that lives only in the test process

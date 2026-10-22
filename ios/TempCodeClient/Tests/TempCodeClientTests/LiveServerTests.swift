@@ -18,6 +18,16 @@ enum LiveServer {
     static var keyId: String { environment["TC_TEST_KEY_ID"]! }
     static var threadA: String { environment["TC_TEST_THREAD_A"]! }
     static var threadB: String { environment["TC_TEST_THREAD_B"]! }
+    /// The second host (the same project on another machine) and the thread whose subagent runs there;
+    /// absent, the two-host test is skipped.
+    static var hasSecondHost: Bool {
+        ["TC_TEST_SECOND_BASE_URL", "TC_TEST_SECOND_ENVIRONMENT_ID", "TC_TEST_SECOND_KEY", "TC_TEST_THREAD_CROSS_HOST", "TC_TEST_THREAD_CHAT"].allSatisfy { environment[$0] != nil }
+    }
+    static var secondBaseURL: URL { URL(string: environment["TC_TEST_SECOND_BASE_URL"]!)! }
+    static var secondEnvironmentId: String { environment["TC_TEST_SECOND_ENVIRONMENT_ID"]! }
+    static var secondKey: String { environment["TC_TEST_SECOND_KEY"]! }
+    static var threadCrossHost: String { environment["TC_TEST_THREAD_CROSS_HOST"]! }
+    static var threadChat: String { environment["TC_TEST_THREAD_CHAT"]! }
 
     /// One control call; answers the JSON object.
     static func control(_ path: String, _ body: [String: Any]? = nil) async throws -> [String: Any] {
@@ -38,6 +48,16 @@ enum LiveServer {
     static func keys() throws -> InMemoryKeyStore {
         let keys = InMemoryKeyStore()
         try keys.set(key, for: environmentId)
+        return keys
+    }
+
+    static func secondEnvironment() -> PairedEnvironment {
+        PairedEnvironment(id: secondEnvironmentId, name: "second host", origin: secondBaseURL, caps: [.read], keyId: "second", keyName: "ios-test-second", addedAt: 0)
+    }
+
+    static func secondKeys() throws -> InMemoryKeyStore {
+        let keys = InMemoryKeyStore()
+        try keys.set(secondKey, for: secondEnvironmentId)
         return keys
     }
 
@@ -315,5 +335,50 @@ struct LiveServerTests {
         #expect(status.lastError == "the key was revoked" || status.lastError?.contains("credential") == true, "\(status.lastError ?? "")")
         #expect(status.nextRetryAt == nil)
         await socket.stop()
+    }
+
+    @Test(.enabled(if: LiveServer.hasSecondHost, "needs the second test host: bun run ios:test:client"))
+    func `two hosts: one project paired by folder name, a cross-host child placed on the second host, media stamped with its host`() async throws {
+        let primary = EnvironmentClient(environment: LiveServer.environment(), keys: try LiveServer.keys(), cache: try SessionCache.inMemory())
+        let second = EnvironmentClient(environment: LiveServer.secondEnvironment(), keys: try LiveServer.secondKeys(), cache: try SessionCache.inMemory())
+        await primary.start()
+        await second.start()
+        #expect(await LiveServer.until { primary.status.fresh && second.status.fresh })
+
+        // The same folder name on both hosts: one pair with two members.
+        let pairs = ProjectPairs.pairs([
+            HostWorkspaces(environmentId: primary.environment.id, workspaces: primary.workspaces),
+            HostWorkspaces(environmentId: second.environment.id, workspaces: second.workspaces)
+        ])
+        let pair = try #require(pairs.first { $0.id == "name:ios-workspace" })
+        #expect(pair.isPaired)
+        #expect(pair.members.map(\.environmentId) == [primary.environment.id, second.environment.id])
+        #expect(pair.members.allSatisfy { $0.name == "ios-workspace" })
+        let paired: Set<String> = [primary.environment.id, second.environment.id]
+
+        // The primary's thread spawned one child on the second host and one on a host nobody pairs.
+        await primary.openThread(LiveServer.threadCrossHost)
+        #expect(await LiveServer.until { CrossHost.hosts(in: primary.threads[LiveServer.threadCrossHost]?.rows ?? []).count == 2 })
+        let hosts = CrossHost.hosts(in: primary.threads[LiveServer.threadCrossHost]?.rows ?? [])
+        #expect(hosts["ios-xhost-child"] == second.environment.id)
+        #expect(hosts["ios-ghost-child"] == "env_" + String(repeating: "a", count: 22))
+        let child = CrossHost.placement(childSessionId: "ios-xhost-child", environmentId: hosts["ios-xhost-child"], home: primary.environment.id, paired: paired)
+        #expect(child.remote && child.paired && child.environmentId == second.environment.id)
+        let ghost = CrossHost.placement(childSessionId: "ios-ghost-child", environmentId: hosts["ios-ghost-child"], home: primary.environment.id, paired: paired)
+        #expect(ghost.remote && !ghost.paired)
+        #expect(second.sessions.contains { $0.id == "ios-xhost-child" && $0.parentId == LiveServer.threadCrossHost })
+        #expect(!primary.sessions.contains { $0.id == "ios-xhost-child" })
+
+        // fs.media stamps the minting host on every URL.
+        await primary.openThread(LiveServer.threadChat)
+        #expect(await LiveServer.until { primary.threads[LiveServer.threadChat]?.rows.contains { if case .userText(let t) = $0.event { return t.attachments?.isEmpty == false } else { return false } } == true })
+        let attachment = try #require(primary.threads[LiveServer.threadChat]?.rows.lazy.compactMap { row -> Attachment? in
+            if case .userText(let t) = row.event { return t.attachments?.first } else { return nil }
+        }.first)
+        let media = try #require(try await primary.request(Methods.FsMedia.self, .init(path: attachment.path)))
+        let url = try #require(URL(string: media.url))
+        #expect(PathHost.environment(ofMediaURL: url) == primary.environment.id)
+        await primary.stop()
+        await second.stop()
     }
 }

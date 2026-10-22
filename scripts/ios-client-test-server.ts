@@ -22,7 +22,7 @@
  *   POST /quit                  → closes everything
  */
 import { createServer } from 'node:http'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -49,8 +49,77 @@ const assets = async (request: Request): Promise<Response> =>
 const server = await startServer(join(root, 'app.db'), { claimShim: false, remotePort: 0, assets })
 if (!server.remote || server.remote.port === 0) throw new Error('the remote listener did not bind')
 
+// ── the second host: the same project on another machine ───────────────
+// Module-level state in the server (setMediaHost, the media tokens, the log
+// sinks) means two startServer calls in one process would share it, so the
+// second host is a child process of this script with TC_IOS_SECOND_HOST=1:
+// its own temp root and database, a lighter seed, one read key and pairing.
+// The workspace folder is named `ios-workspace` on both hosts, so the phone
+// pairs the two copies by name (ProjectPairs), and the cross-host child the
+// primary's `ios-xhost` spawned lives here with the primary's thread as its
+// parent (the way the Mac runs a box thread's subagent).
+const gitInit = (dir: string): void => {
+  execFileSync('git', ['-C', dir, 'init', '-q'])
+  execFileSync('git', ['-C', dir, '-c', 'user.name=fixture', '-c', 'user.email=fixture@example.com', 'commit', '-q', '--allow-empty', '-m', 'init'])
+}
+const workspaceDir = (prefix: string): string => {
+  const dir = join(mkdtempSync(join(tmpdir(), prefix)), 'ios-workspace')
+  mkdirSync(dir)
+  return dir
+}
+export const THREAD_CROSS_HOST = 'ios-xhost'
+export const THREAD_CROSS_HOST_CHILD = 'ios-xhost-child'
+if (process.env.TC_IOS_SECOND_HOST === '1') {
+  const secondRepo = workspaceDir('tc-ios-client-second-')
+  gitInit(secondRepo)
+  const secondWorkspace = await server.registry.createWorkspace(secondRepo, 'ios-workspace')
+  const secondProject = await server.registry.createProject(secondWorkspace.id, 'ios-project', 'local')
+  const talk = (id: string, user: string, assistant: string): void => {
+    server.registry.append(id, { type: 'user-text', text: user })
+    server.registry.append(id, { type: 'assistant-text', text: assistant, delta: false, msgId: `${id}-m1`, blockIndex: 0 })
+    server.registry.append(id, { type: 'turn-complete' })
+  }
+  await server.registry.create({ id: 'ios-second-thread', provider: 'claude', model: 'claude-sonnet-5-5', reasoning: 'low', agentType: 'implementer', permission: 'edits', projectId: secondProject.id, threadType: 'implementation', title: 'Same project, other host' })
+  talk('ios-second-thread', 'Check the clone on this host', 'The clone is at the same commit.')
+  await server.registry.create({ id: THREAD_CROSS_HOST_CHILD, parentId: THREAD_CROSS_HOST, provider: 'claude', model: 'claude-sonnet-5-5', reasoning: 'low', agentType: 'explorer', permission: 'edits', projectId: secondProject.id, title: 'Map the Mac build' })
+  talk(THREAD_CROSS_HOST_CHILD, 'Map the Mac build', 'Xcode 26 builds the app in 40 s.')
+  const secondKey = await server.remoteAuth.createKey({ name: 'ios-test-second', audience: 'client', caps: [], createdBy: 'local' })
+  const secondPairing = server.remoteAuth.createPairing({ name: 'ios-sim-second', audience: 'client', caps: [], createdBy: 'local' })
+  const stop = (): void => {
+    void server.close().then(() => process.exit(0))
+  }
+  process.on('SIGTERM', stop)
+  process.on('SIGINT', stop)
+  process.stdout.write(
+    JSON.stringify({
+      ready: true,
+      baseUrl: `http://127.0.0.1:${server.remote.port}`,
+      environmentId: server.environmentId,
+      keyId: secondKey.key.id,
+      key: secondKey.token,
+      pairingLink: `http://127.0.0.1:${server.remote.port}/pair#${secondPairing.code}`,
+      threadChild: THREAD_CROSS_HOST_CHILD
+    }) + '\n'
+  )
+  await new Promise<never>(() => {})
+}
+type SecondHost = { baseUrl: string; environmentId: string; keyId: string; key: string; pairingLink: string; threadChild: string }
+const secondProcess = spawn(process.execPath, [process.argv[1]], { env: { ...process.env, TC_IOS_SECOND_HOST: '1' }, stdio: ['ignore', 'pipe', 'inherit'] })
+const second = await new Promise<SecondHost>((resolveSecond, reject) => {
+  let buffer = ''
+  const timer = setTimeout(() => reject(new Error('the second host did not come up in 60 s')), 60_000)
+  secondProcess.stdout.on('data', (chunk: Buffer) => {
+    buffer += chunk.toString('utf8')
+    const line = buffer.split('\n').find((l) => l.startsWith('{') && l.includes('"ready":true'))
+    if (!line) return
+    clearTimeout(timer)
+    resolveSecond(JSON.parse(line) as SecondHost)
+  })
+  secondProcess.on('exit', (code) => reject(new Error(`the second host exited with ${code}`)))
+})
+
 // ── seed ────────────────────────────────────────────────────────────────
-const repo = mkdtempSync(join(tmpdir(), 'tc-ios-client-repo-'))
+const repo = workspaceDir('tc-ios-client-repo-')
 execFileSync('git', ['-C', repo, 'init', '-q'])
 execFileSync('git', ['-C', repo, '-c', 'user.name=fixture', '-c', 'user.email=fixture@example.com', 'commit', '-q', '--allow-empty', '-m', 'init'])
 // One file for the phone's Files scope: the proof's `hello` query matches it through search.project.
@@ -177,6 +246,12 @@ server.registry.append('ios-fleet-explorer', { type: 'status', status: 'running'
 server.registry.append('ios-fleet-explorer', { type: 'tool-call', callId: 'e1', name: 'Read', input: { file_path: 'plugins/README.md' } })
 await make('ios-fleet-reviewer', { parentId: 'ios-fleet', projectId: project.id, agentType: 'reviewer', model: 'claude-opus-5-5', title: 'Review the first port' })
 say('ios-fleet-reviewer', 'Review the first port', 'Two findings, both minor.')
+// A thread whose subagent runs on the second host (and one whose host nobody pairs).
+await make(THREAD_CROSS_HOST, { projectId: project.id, threadType: 'orchestration', agentType: 'orchestrator', title: 'Build the phone on the Mac' })
+server.registry.append(THREAD_CROSS_HOST, { type: 'user-text', text: 'Build the phone on the Mac and report the warnings' })
+server.registry.append(THREAD_CROSS_HOST, { type: 'status', status: 'running' })
+server.registry.append(THREAD_CROSS_HOST, { type: 'agent-spawned', childSessionId: THREAD_CROSS_HOST_CHILD, environmentId: second.environmentId })
+server.registry.append(THREAD_CROSS_HOST, { type: 'agent-spawned', childSessionId: 'ios-ghost-child', environmentId: 'env_' + 'a'.repeat(22) })
 
 // The thread screen's frame: a chat root with subagents, for the toolbar's agents button.
 await make('ios-chat-agents', { projectId: project.id, threadType: 'chat', title: 'Find the slow query' })
@@ -971,6 +1046,7 @@ const controlPort = (control.address() as { port: number }).port
 
 async function shutdown(): Promise<void> {
   control.close()
+  secondProcess.kill('SIGTERM')
   await server.close()
   process.exit(0)
 }
@@ -995,6 +1071,8 @@ process.stdout.write(
     pairingLink: `http://127.0.0.1:${server.remote.port}/pair#${pairing.code}`,
     threadA: THREAD_A,
     threadB: THREAD_B,
+    threadCrossHost: THREAD_CROSS_HOST,
+    second,
     localPort: server.port,
     shot,
     threads: { implementation: THREAD_IMPL, planning: THREAD_PLAN, orchestration: THREAD_ORCH, research: THREAD_RESEARCH, chat: THREAD_CHAT, long: THREAD_LONG, held: THREAD_HELD, queued: THREAD_QUEUED },

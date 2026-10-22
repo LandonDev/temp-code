@@ -102,6 +102,8 @@ public final class EnvironmentClient {
     public private(set) var seen: [String: SeenMark] = [:]
     /// Workspace icons as the cache holds them; `icon(_:)` asks the host once per launch.
     public private(set) var icons: [String: CachedIcon] = [:]
+    /// Threads this host moved elsewhere in this process, by the root's and each subagent's id.
+    public private(set) var moved: [String: MovedThread] = [:]
     private var iconRequests: Set<String> = []
 
     public let socket: TempCodeSocket
@@ -579,7 +581,10 @@ public final class EnvironmentClient {
         case .sessionMoved(let value):
             // The thread now runs on another host (docs/box.md "Moving a thread
             // between hosts"); this host keeps a hidden tombstone and sends a
-            // session-removed next, so the phone drops its copy here.
+            // session-removed next, so the phone drops its copy here, and
+            // remembers where it went for a screen that is open on it.
+            let record = MovedThread(sessionId: value.id, to: value.to, subagents: value.sessionIds.filter { $0 != value.id }, at: Int(Date().timeIntervalSince1970 * 1000))
+            for id in [value.id] + record.subagents { moved[id] = record }
             removeSessions(value.sessionIds)
         case .events(let value):
             guard threads[value.sessionId] != nil else { return }

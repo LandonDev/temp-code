@@ -424,6 +424,28 @@ private func seqs(_ rows: [EventRow]) -> [Int] { rows.map(\.seq) }
         #expect(!rig.client.subscriptions.has("s2"))
     }
 
+    @Test func `a moved push records the destination for the root and each subagent, then the sessions are gone`() async throws {
+        let rig = try ClientRig()
+        await rig.client.start()
+        let fake = await rig.sockets.socket(0)
+        fake.hello()
+        await rig.answerShell(fake, sessions: [clientSession("root", updatedAt: 2), clientSession("child", updatedAt: 1), clientSession("other", updatedAt: 3)])
+        #expect(await rig.wait { rig.client.sessions.count == 3 })
+        await rig.client.openThread("root")
+        let before = Int(Date().timeIntervalSince1970 * 1000)
+        fake.deliver(#"{"push":"session-moved","id":"root","sessionIds":["root","child"],"to":"env_mac"}"#)
+        #expect(await rig.wait { rig.client.sessions.count == 1 })
+        #expect(rig.client.sessions.map(\.id) == ["other"])
+        #expect(rig.client.threads["root"] == nil)
+        let record = try #require(rig.client.moved["root"])
+        #expect(record.to == "env_mac")
+        #expect(record.sessionId == "root")
+        #expect(record.subagents == ["child"])
+        #expect(record.at >= before)
+        #expect(rig.client.moved["child"] == record)
+        #expect(rig.client.moved["other"] == nil)
+    }
+
     @Test func `a body comes from the host once and from the cache after`() async throws {
         let rig = try ClientRig()
         await rig.client.start()
