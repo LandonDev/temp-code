@@ -829,6 +829,29 @@ describe("the mounted set", () => {
     expect(link.calls.filter((c) => c.method === "session.events").at(-1)?.params).toMatchObject({ sessionId: "b", afterSeq: 0 });
   });
 
+  it("a mounted master keeps its batch threads' transcripts (and their subagents'): the board opens them in its own pane", async () => {
+    link.metas = [
+      wireMeta({ id: "m", isMaster: true }),
+      wireMeta({ id: "child", masterId: "m" }),
+      wireMeta({ id: "kid", parentId: "child" }),
+      wireMeta({ id: "other" }),
+    ];
+    for (const id of ["child", "kid", "other"]) link.events.set(id, rowsFor(id, 2));
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    await Promise.all(["child", "kid", "other"].map((id) => sessionStore.ensureLoaded(id, "test")));
+    vi.useFakeTimers();
+    try {
+      sessionStore.setMounted(["m"]);
+      await vi.advanceTimersByTimeAsync(3100);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(sessionStore.get("child")?.loaded).toBe(true);
+    expect(sessionStore.get("kid")?.loaded).toBe(true);
+    expect(sessionStore.get("other")?.loaded).toBe(false);
+  });
+
   it("a transcript whose tab left the warm set unloads after the grace period, unless busy", async () => {
     link.metas = [wireMeta({ id: "a" }), wireMeta({ id: "b" }), wireMeta({ id: "busy", status: "running" })];
     for (const id of ["a", "b"]) link.events.set(id, rowsFor(id, 2));

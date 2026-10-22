@@ -496,8 +496,10 @@ rows, the foot and the add sheet are the UI thread's
 
 Files: surfaces/threads/MasterView.tsx (routed when the session is a
 master, whatever its type), master/useMasterModel.ts (the
-grouping, the sentence, `useBatchState`: `batch.get` on mount, every 5 s
-while the pane shows, and the push through `batchFromPush`),
+grouping, the sentence, `useBoard`: `batch.board` on mount and every 45 s
+while the pane shows, then the `board` and `batch` pushes through
+`batchFromPush` and `foldBatchPush`; `boardLayout`, the list's rows that
+change only when one joins, leaves or moves section, plan or host),
 master/MasterRow.tsx, master/BatchFoot.tsx, master/steps.ts,
 master/AddThreadDialog.tsx, lib/masterThread.ts (`isMasterThread`, the
 renderer's read of the flag on the thread).
@@ -510,7 +512,9 @@ renderer's read of the flag on the thread).
   written; `ProjectMeta.masterThreadId` left the wire (gen:swift ran).
 - `session.create { masterId?, after?, queue?, startedBy? }` (operate),
   `session.start { sessionId }` (operate), `session.setMaster { sessionId,
-  master }` (admin), `batch.get` and `batch.children` (read),
+  master }` (admin), `batch.get`, `batch.board` (the board in one answer:
+  children, a digest each, the state; src/main/server/boardDigest.ts) and
+  `batch.children` (read),
   `batch.setRules { masterId, rules }`, `batch.stopStep { masterId,
   stepId }`, `batch.adopt { masterId, sessionIds }` and `batch.archive
   { masterId, which, removeResources? }` (operate)

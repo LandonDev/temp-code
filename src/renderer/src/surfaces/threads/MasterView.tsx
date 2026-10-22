@@ -1,7 +1,9 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { measureElement, useVirtualizer, type VirtualizerOptions } from "@tanstack/react-virtual";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ConfirmDialog } from "../../chrome/ConfirmDialog";
 import { ExplorerMenu } from "../../chrome/ExplorerMenu";
 import { ChevronDown, ChevronRight, MoreHorizontal, Plus } from "../../chrome/icons";
+import { registry } from "../../lib/connection";
 import { useEnvironments, useEnvironmentStatuses } from "../../lib/connection/status";
 import * as commands from "../../lib/tcserver/commands";
 import { useSessionMetasWhen } from "../../lib/tcserver/store";
@@ -18,7 +20,19 @@ import { BatchFoot } from "./master/BatchFoot";
 import { addMenuItems, adoptCandidates, boardMenuItems, doneRows, pairedProjectIds, pausableRows, pausedRows, type ArchiveWhich } from "./master/boardActions";
 import { ChildPane } from "./master/ChildPane";
 import { MasterRow } from "./master/MasterRow";
-import { adoptThreads, archiveBatch, rowHost, setBatchRules, stopBatchStep, useMasterModel } from "./master/useMasterModel";
+import {
+  adoptThreads,
+  archiveBatch,
+  BoardDigestContext,
+  rowHost,
+  rowModels,
+  setBatchRules,
+  stopBatchStep,
+  useMasterModel,
+  type BoardGroup,
+  type BoardRowRef,
+  type RowHost,
+} from "./master/useMasterModel";
 import { SplitShell } from "./SplitShell";
 import type { ThreadViewProps } from "./ThreadView";
 
@@ -33,6 +47,12 @@ import type { ThreadViewProps } from "./ThreadView";
  * with one Back control (Escape and ⌘↩ too); the board comes back at the
  * scroll it was left at. Until the master has a first child the chat is
  * the whole view, the way an orchestration thread opens.
+ *
+ * The board paints from one `batch.board` answer (useMasterModel) and
+ * mounts only the rows on screen: the list is virtualized with the
+ * sections as their own header rows, each row memoized on its own data.
+ * Its first complete paint is reported once per open as
+ * `board-paint master=<id> n=<rows> ms=<since mount>` (stall.report).
  */
 
 const QUIET_ICON =
@@ -48,6 +68,32 @@ export function pausable(children: readonly SessionMeta[]): SessionMeta[] {
 
 type Menu = { kind: "board" | "add"; x: number; y: number };
 
+type BoardItem = { kind: "header"; key: string; group: BoardGroup } | { kind: "row"; key: string; row: BoardRowRef };
+
+const HEADER_PX = 36;
+const ROW_PX = 52;
+
+/** Row sizes come from the ResizeObserver (WorkspaceSessions' rule): a row
+ *  mounting while the list scrolls keeps its cached or estimated size
+ *  instead of reading a rect, which would force a layout per new row. */
+const measureRow: VirtualizerOptions<HTMLDivElement, HTMLDivElement>["measureElement"] = (node, entry, instance) => {
+  if (entry) return measureElement(node, entry, instance);
+  const index = instance.indexFromElement(node);
+  return instance.measurementsCache[index]?.size ?? instance.options.estimateSize(index);
+};
+
+/** The board's first complete paint, once per open, to this machine's stall log. */
+function reportBoardPaint(masterId: string, rows: number, ms: number): void {
+  try {
+    void registry
+      .primary()
+      .request("stall.report", { line: `board-paint master=${masterId} n=${rows} ms=${Math.round(ms)}` })
+      .catch(() => undefined);
+  } catch {
+    // No local link yet (web mode before connect): the report is a nicety.
+  }
+}
+
 const menuAt = (el: HTMLElement, kind: Menu["kind"]): Menu => {
   const rect = el.getBoundingClientRect();
   return { kind, x: rect.left, y: rect.bottom + 4 };
@@ -57,10 +103,19 @@ export function MasterView(props: ThreadViewProps) {
   const { session } = props;
   const meta = useMetaById(session.id);
   const model = useMasterModel(session);
-  const { rows, groups, batch, landed, openId, setOpenId, now } = model;
+  const { layout, batch, digests, loaded, landed, openId, setOpenId } = model;
   const environments = useEnvironments();
   const statuses = useEnvironmentStatuses();
   const hostNames = useMemo(() => new Map(environments.map((e) => [e.id, e.name])), [environments]);
+  // One host object per host, so a row's props stay the same while its host does.
+  const masterHost = session.environmentId;
+  const hostOf = useMemo(() => {
+    const cache = new Map<string, RowHost | null>();
+    return (environmentId: string): RowHost | null => {
+      if (!cache.has(environmentId)) cache.set(environmentId, rowHost({ environmentId }, { environmentId: masterHost }, environments, (id) => statuses.get(id)));
+      return cache.get(environmentId) ?? null;
+    };
+  }, [environments, statuses, masterHost]);
   const [chatOpen, setChatOpen] = useState(true);
   const [menu, setMenu] = useState<Menu | null>(null);
   const [adding, setAdding] = useState(false);
@@ -68,8 +123,11 @@ export function MasterView(props: ThreadViewProps) {
   const [archiving, setArchiving] = useState<ArchiveWhich | null>(null);
   const [pausing, setPausing] = useState(false);
   const [focusComposer, setFocusComposer] = useState(false);
+  const hasBoard = layout.rows.length > 0;
+  // The rows' metas are read when a menu or a dialog needs them, never per frame.
+  const reading = menu !== null || adding || archiving !== null || pausing;
+  const rows = useMemo(() => (reading ? rowModels(layout) : []), [reading, layout]);
   const children = useMemo(() => rows.map((r) => r.meta), [rows]);
-  const hasBoard = rows.length > 0;
   const toPause = pausableRows(rows);
   const paused = pausedRows(rows);
   const done = doneRows(rows);
@@ -87,6 +145,45 @@ export function MasterView(props: ThreadViewProps) {
     if (!openId && scroller.current) scroller.current.scrollTop = savedScroll.current;
   }, [openId]);
 
+  const items = useMemo<BoardItem[]>(
+    () =>
+      layout.groups.flatMap((group): BoardItem[] => [
+        { kind: "header", key: `h:${group.id}`, group },
+        ...group.rows.map((row): BoardItem => ({ kind: "row", key: `r:${row.key}`, row })),
+      ]),
+    [layout],
+  );
+  const estimateSize = useCallback((i: number) => (items[i]?.kind === "header" ? HEADER_PX : ROW_PX), [items]);
+  const getItemKey = useCallback((i: number) => items[i]?.key ?? i, [items]);
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => scroller.current,
+    estimateSize,
+    getItemKey,
+    overscan: 6,
+    gap: 1,
+    initialOffset: () => savedScroll.current,
+    measureElement: measureRow,
+  });
+
+  // The first complete paint: the answer is in and its rows are on screen.
+  const openedAt = useRef(performance.now());
+  const painted = useRef(false);
+  useEffect(() => {
+    if (painted.current || !loaded || openId) return;
+    painted.current = true;
+    const n = layout.rows.length;
+    requestAnimationFrame(() => reportBoardPaint(session.id, n, performance.now() - openedAt.current));
+  }, [loaded, openId, layout, session.id]);
+
+  const openRef = useRef<(id: string, focus?: boolean) => void>(() => {});
+  openRef.current = (id: string, focus = false) => {
+    savedScroll.current = scroller.current?.scrollTop ?? 0;
+    setFocusComposer(focus);
+    setOpenId(id);
+  };
+  const open = useCallback((id: string, focus?: boolean) => openRef.current(id, focus), []);
+
   if (!hasBoard) {
     return <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">{chatOf(props)}</div>;
   }
@@ -95,12 +192,6 @@ export function MasterView(props: ThreadViewProps) {
     const map = new Map<string, string[]>();
     for (const { meta: c } of list) (map.get(c.environmentId) ?? map.set(c.environmentId, []).get(c.environmentId)!).push(c.id);
     return Promise.allSettled([...map].map(([env, ids]) => commands.sessionBatch(env, action, ids)));
-  };
-
-  const open = (id: string, focus = false) => {
-    savedScroll.current = scroller.current?.scrollTop ?? 0;
-    setFocusComposer(focus);
-    setOpenId(id);
   };
 
   const onMenuPick = (id: string) => {
@@ -113,14 +204,14 @@ export function MasterView(props: ThreadViewProps) {
     else if (id === "adopt") setAdopting(true);
   };
 
-  const openRow = openId ? rows.find((r) => r.meta.id === openId) : undefined;
+  const openRow = openId ? layout.rows.find((r) => r.id === openId) : undefined;
   if (openId && openRow) {
     return (
       <div className="relative flex min-h-0 min-w-0 flex-1">
         <ChildPane
           key={openId}
           sessionId={openId}
-          environmentId={openRow.meta.environmentId}
+          environmentId={openRow.environmentId}
           focusComposer={focusComposer}
           onBack={() => setOpenId(null)}
           onOpenFile={props.onOpenFile}
@@ -160,35 +251,43 @@ export function MasterView(props: ThreadViewProps) {
           <ChevronDown className="-mr-0.5 size-3 text-content/50" strokeWidth={1.75} />
         </button>
       </div>
-      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-2.5 pt-1 pb-3" data-board-scroller>
-        {groups.map((group) => (
-          <section key={group.id} aria-label={group.label} data-group={group.id}>
-            <h3 className="flex items-baseline gap-2 px-3 pt-4 pb-1.5 text-xs font-normal text-content/40">
-              {group.label}
-              <span className="tabular-nums text-content/30">{group.rows.length}</span>
-            </h3>
-            <div className="flex flex-col gap-px">
-              {group.rows.map((row) => (
-                <MasterRow
-                  key={row.key}
-                  row={row}
-                  now={now}
-                  fleetSize={rows.length}
-                  landed={landed.has(row.meta.id)}
-                  host={rowHost(row.meta, session, environments, (id) => statuses.get(id))}
-                  onOpen={open}
-                />
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
-      <BatchFoot
-        batch={batch}
-        titleOf={(id) => rows.find((r) => r.meta.id === id)?.title}
-        onSave={(next) => setBatchRules(session.environmentId, session.id, next)}
-        onStop={(stepId) => stopBatchStep(session.environmentId, session.id, stepId)}
-      />
+      <BoardDigestContext.Provider value={digests}>
+        <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-2.5 pt-1 pb-3" data-board-scroller>
+          <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+            {virtualizer.getVirtualItems().map((v) => {
+              const item = items[v.index];
+              if (!item) return null;
+              return (
+                <div
+                  key={v.key}
+                  data-index={v.index}
+                  data-group={item.kind === "row" ? item.row.group : undefined}
+                  ref={virtualizer.measureElement}
+                  className="absolute top-0 left-0 w-full"
+                  style={{ transform: `translateY(${v.start}px)` }}
+                >
+                  {item.kind === "header" ? (
+                    <h3 className="flex items-baseline gap-2 px-3 pt-4 pb-1.5 text-xs font-normal text-content/40" data-group-header={item.group.id}>
+                      {item.group.label}
+                      <span className="tabular-nums text-content/30">{item.group.rows.length}</span>
+                    </h3>
+                  ) : (
+                    <MasterRow rowRef={item.row} landed={landed.has(item.row.id)} host={hostOf(item.row.environmentId)} onOpen={open} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </BoardDigestContext.Provider>
+      {loaded ? (
+        <BatchFoot
+          batch={batch}
+          titleOf={(id) => rowModels(layout).find((r) => r.meta.id === id)?.title}
+          onSave={(next) => setBatchRules(session.environmentId, session.id, next)}
+          onStop={(stepId) => stopBatchStep(session.environmentId, session.id, stepId)}
+        />
+      ) : null}
     </div>
   );
 
@@ -227,7 +326,7 @@ export function MasterView(props: ThreadViewProps) {
           ariaLabel={menu.kind === "board" ? "Batch actions" : "Add a thread"}
           items={
             menu.kind === "board"
-              ? boardMenuItems({ pausable: toPause.length, paused: paused.length, done: done.length, all: rows.length })
+              ? boardMenuItems({ pausable: toPause.length, paused: paused.length, done: done.length, all: layout.rows.length })
               : addMenuItems(candidates.length)
           }
           onPick={onMenuPick}
@@ -246,7 +345,7 @@ export function MasterView(props: ThreadViewProps) {
       {archiving ? (
         <ArchiveBatchDialog
           which={archiving}
-          count={archiving === "done" ? done.length : rows.length}
+          count={archiving === "done" ? done.length : layout.rows.length}
           resources={resourcesHeldBy((archiving === "done" ? done : rows).map((r) => r.meta.id))}
           onCancel={() => setArchiving(null)}
           onConfirm={(removeResources) => archiveBatch(session, rows, archiving, removeResources)}

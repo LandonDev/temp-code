@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_BATCH_RULES, DEFAULT_BATCH_STEPS } from "@server/shared/contract-batch";
+import { DEFAULT_BATCH_RULES, DEFAULT_BATCH_STEPS, emptyBatch, type BatchState } from "@server/shared/contract-batch";
 import type { SessionMeta, SessionStatus } from "../../../lib/tcserver/types";
 import {
   batchChildrenOf,
   batchFromPush,
   blockedLine,
+  boardLayout,
+  BoardDigests,
+  digestLine,
+  foldBatchPush,
   foldRows,
   groupOf,
   groupRows,
@@ -241,5 +245,107 @@ describe("the batch", () => {
     expect(batchFromPush({ push: "batch", masterId: "m", steps }, "m")).toBeNull();
     expect(batchFromPush({ push: "batch", state: { masterId: "x", steps } }, "m")).toBeNull();
     expect(batchFromPush({ push: "session" }, "m")).toBeNull();
+  });
+});
+
+describe("the row's line from its digest", () => {
+  it("is the question while waiting, else the approval with what it was doing; the failure when errored; the last words otherwise", () => {
+    expect(digestLine({ status: "waiting", activity: "Running rm", failure: null }, { question: "Ad Hoc or Debug?" })).toEqual({ text: "has a question — Ad Hoc or Debug?", tone: "warning" });
+    expect(digestLine({ status: "waiting", activity: "Running rm", failure: null }, {})).toEqual({ text: "waiting for approval — Running rm", tone: "warning" });
+    expect(digestLine({ status: "waiting", activity: null, failure: null }, {})).toEqual({ text: "waiting for approval", tone: "warning" });
+    expect(digestLine({ status: "error", activity: null, failure: null }, { failure: "Rate limited until 14:00" })).toEqual({ text: "Rate limited until 14:00", tone: "danger" });
+    expect(digestLine({ status: "error", activity: null, failure: null }, {}).text).toBe("failed");
+    expect(digestLine({ status: "watching", activity: null, failure: null }, { last: "x" }).text).toBe("waiting on background work");
+    expect(digestLine({ status: "idle", activity: null, failure: null }, { last: "Shipped it." })).toEqual({ text: "Shipped it.", tone: "muted" });
+    expect(digestLine({ status: "idle", activity: null, failure: null }, {}).text).toBe("");
+  });
+});
+
+describe("the digests", () => {
+  it("keep a digest's object while it reads the same, and tell subscribers only when one changed", () => {
+    const store = new BoardDigests();
+    let told = 0;
+    store.subscribe(() => told++);
+    store.replace({ a: { last: "One" }, b: { todos: [{ content: "x", status: "pending" }] } });
+    expect(told).toBe(1);
+    const a = store.get("a");
+    store.replace({ a: { last: "One" }, b: { todos: [{ content: "x", status: "pending" }] } });
+    expect(told).toBe(1);
+    expect(store.get("a")).toBe(a);
+    store.set("b", { todos: [{ content: "x", status: "completed" }] });
+    expect(told).toBe(2);
+    expect(store.get("a")).toBe(a);
+    expect(store.get("zz")).toEqual({});
+  });
+});
+
+describe("the batch push's log deltas", () => {
+  const state = (steps: unknown[]): BatchState => ({ ...emptyBatch("m"), steps: steps as BatchState["steps"] });
+  const gate = (extra: Record<string, unknown>) => ({ id: "gate", name: "Gate", kind: "gate", status: "running", detail: "", at: 1, startedAt: 100, ...extra });
+
+  it("appends the lines after what is held and drops an overlap", () => {
+    const held = state([gate({ log: ["a", "b"], logCount: 2 })]);
+    const next = foldBatchPush(held, state([gate({ log: { from: 2, lines: ["c", "d"] } })]));
+    expect(next.gap).toBe(false);
+    expect(next.state.steps[0].log).toEqual(["a", "b", "c", "d"]);
+    expect(next.state.steps[0].logCount).toBe(4);
+    const overlap = foldBatchPush(next.state, state([gate({ log: { from: 3, lines: ["d", "e"] } })]));
+    expect(overlap.state.steps[0].log).toEqual(["a", "b", "c", "d", "e"]);
+  });
+
+  it("starts a step that ran again from its first line, and calls a push past what is held a gap", () => {
+    const held = state([gate({ log: ["a", "b"], logCount: 2 })]);
+    const again = foldBatchPush(held, state([gate({ startedAt: 200, log: { from: 0, lines: ["fresh"] } })]));
+    expect(again.state.steps[0].log).toEqual(["fresh"]);
+    const missed = foldBatchPush(held, state([gate({ log: { from: 5, lines: ["f"] } })]));
+    expect(missed.gap).toBe(true);
+    expect(missed.state.steps[0].log).toEqual(["a", "b"]);
+    const missedRestart = foldBatchPush(held, state([gate({ startedAt: 200, log: { from: 3, lines: ["x"] } })]));
+    expect(missedRestart.gap).toBe(true);
+  });
+
+  it("keeps the newest 200 lines, and takes a whole log from an older host as it is", () => {
+    const held = state([gate({ log: Array.from({ length: 200 }, (_, i) => `l${i}`), logCount: 200 })]);
+    const next = foldBatchPush(held, state([gate({ log: { from: 200, lines: ["l200"] } })]));
+    expect(next.state.steps[0].log).toHaveLength(200);
+    expect(next.state.steps[0].log[0]).toBe("l1");
+    const whole = foldBatchPush(held, state([gate({ log: ["only"] })]));
+    expect(whole.state.steps[0].log).toEqual(["only"]);
+  });
+});
+
+describe("the board's layout", () => {
+  const child = (id: string, status: SessionStatus, extra: Partial<SessionMeta> = {}) => meta(status, { id, ...extra });
+  const of = (metas: SessionMeta[]) => {
+    const byId = new Map(metas.map((m) => [m.id, m]));
+    return (id: string) => byId.get(id) ?? null;
+  };
+
+  it("is the same object while only what a row shows changed, and new when a row changes section", () => {
+    const a = child("la", "running", { createdAt: 1 });
+    const b = child("lb", "running", { createdAt: 2 });
+    const first = boardLayout("m", [a, b], of([a, b]), [], []);
+    expect(first.groups.map((g) => [g.id, g.rows.map((r) => r.id)])).toEqual([["running", ["la", "lb"]]]);
+    const busier = { ...a, activity: "Running tests" } as SessionMeta;
+    expect(boardLayout("m", [busier, b], of([busier, b]), [], [], first)).toBe(first);
+    const waiting = { ...a, status: "waiting" } as SessionMeta;
+    const moved = boardLayout("m", [waiting, b], of([waiting, b]), [], [], first);
+    expect(moved).not.toBe(first);
+    expect(moved.groups.map((g) => g.id)).toEqual(["needsYou", "running"]);
+    // The untouched row keeps its ref, so its memoized row skips the render.
+    expect(moved.rows.find((r) => r.id === "lb")).toBe(first.rows.find((r) => r.id === "lb"));
+    expect(moved.counts).toEqual({ needsYou: 1, running: 1, queued: 0, done: 0 });
+  });
+
+  it("takes a child the answer names and the store does not hold as a row of its own, and the batch's word on a host", () => {
+    const a = child("lc", "running", { createdAt: 1 });
+    const answered = child("ld", "queued", { createdAt: 2 });
+    const layout = boardLayout("m", [a], of([a]), [answered], [{ sessionId: "lc", environmentId: "box", status: "waiting" }]);
+    expect(layout.rows.map((r) => [r.id, r.group, r.environmentId])).toEqual([
+      ["lc", "needsYou", "box"],
+      ["ld", "queued", "local"],
+    ]);
+    expect(layout.rows[0].override).toEqual({ environmentId: "box", status: "waiting" });
+    expect(layout.rows[1].fallback).toBe(answered);
   });
 });

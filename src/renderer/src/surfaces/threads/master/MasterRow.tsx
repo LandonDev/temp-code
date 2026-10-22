@@ -1,22 +1,20 @@
 import { useReducedMotion } from "motion/react";
-import { useState, type KeyboardEvent, type ReactNode } from "react";
+import { memo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Check, ChevronRight, Circle, MessageSquare, Pause, Play, Square, X } from "../../../chrome/icons";
 import { HarnessIcon } from "../../../chrome/HarnessIcon";
 import { ArchiveThreadDialog } from "../../../chrome/ThreadResourcesDialog";
 import * as commands from "../../../lib/tcserver/commands";
-import { asHarness } from "../../../lib/tcserver/store";
+import { asHarness, useSessionMeta } from "../../../lib/tcserver/store";
 import type { TodoItem } from "../../../lib/tcserver/todos";
 import type { SessionMeta } from "../../../lib/tcserver/types";
 import { hasRunningTurn } from "../../../lib/threadBatch";
-import { useThreadNotes } from "../../../lib/threadNotes";
 import { loadThreadResources, useThreadResources } from "../../../lib/threadResources";
 import { modelLabel, TONE_CLASS } from "../../../lib/threads/agents";
 import { TweenHeight } from "../../../motion";
 import { MatrixSpinner, THREAD_GLYPHS, THREAD_TINTS } from "../bits";
 import { StatusGlyph } from "../fleet/rowBits";
-import { useAgentModel } from "../fleet/useFleetModel";
 import { rowBody, taskList, taskProgress, tasksOpenByDefault, whatLine } from "./rowBody";
-import { typeWord, type MasterRowModel, type RowHost } from "./useMasterModel";
+import { digestLine, typeWord, useBoardDigest, useRowMeta, type BoardRowRef, type RowHost } from "./useMasterModel";
 
 /**
  * One row of the batch (docs/LAYOUT.md "Master"). Two lines: the type's
@@ -31,19 +29,20 @@ import { typeWord, type MasterRowModel, type RowHost } from "./useMasterModel";
  * or Resume, Stop and Remove. Every action goes to the row's own host (the
  * commands route by the thread's id). Nothing on the row is separated by
  * a dot.
+ *
+ * The row reads its own meta, its plan's and its digest (the host's
+ * `batch.board`), and takes nothing else that changes: one child's
+ * activity re-renders this row alone, and nothing here loads a
+ * transcript, polls a context or reads notes.
  */
 
-export function MasterRow({
-  row,
-  now,
-  fleetSize,
+export const MasterRow = memo(function MasterRow({
+  rowRef,
   landed,
   host,
   onOpen,
 }: {
-  row: MasterRowModel;
-  now: number;
-  fleetSize: number;
+  rowRef: BoardRowRef;
   /** The batch marked this row's branch landed. */
   landed: boolean;
   /** The thread's host when it is not the master's; null otherwise. */
@@ -51,15 +50,32 @@ export function MasterRow({
   /** Open the thread's full view; `focus` lands in its composer. */
   onOpen: (id: string, focus?: boolean) => void;
 }) {
-  const { meta, plan, title } = row;
-  const { session, line } = useAgentModel(meta, now, fleetSize);
-  const notes = useThreadNotes(
-    meta.threadType === "research" || meta.threadType === "orchestration" ? meta.environmentId : null,
-    meta.id,
-  );
-  const what = whatLine(meta, line, landed);
-  const body = rowBody(meta, session, notes?.text, what?.text);
-  const progress = taskProgress(taskList(session));
+  const meta = useRowMeta(rowRef);
+  const plan = useSessionMeta(rowRef.planId);
+  const digest = useBoardDigest(rowRef.id);
+  if (!meta) return null;
+  return <RowBodyView meta={meta} plan={plan} digest={digest} landed={landed} host={host} onOpen={onOpen} />;
+});
+
+function RowBodyView({
+  meta,
+  plan,
+  digest,
+  landed,
+  host,
+  onOpen,
+}: {
+  meta: SessionMeta;
+  plan: SessionMeta | null;
+  digest: ReturnType<typeof useBoardDigest>;
+  landed: boolean;
+  host: RowHost | null;
+  onOpen: (id: string, focus?: boolean) => void;
+}) {
+  const title = plan?.title || meta.title;
+  const what = whatLine(meta, digestLine(meta, digest), landed);
+  const body = rowBody(meta, digest, what?.text);
+  const progress = taskProgress(taskList(digest));
   // The person's own open or close holds while the row is on screen; until
   // then the list follows the thread (open while it works, folded once done).
   const [expanded, setExpanded] = useState<boolean | null>(null);

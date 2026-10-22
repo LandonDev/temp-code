@@ -1565,9 +1565,11 @@ this is the short one.
   group or stops the Mac's publish job. Seam: `TEMP_CODE_GATE_STUB=<json>`
   (rules `{ step, branch?, ok, log? }`) decides a gate or release step
   without spawning.
-- **Step telemetry on the wire.** `BatchState` (`batch.get`, and the
-  `batch` push to every client, coalesced to four a second while a log
-  streams; not in the phone's subset) carries `rules`, `steps`: the list
+- **Step telemetry on the wire.** `BatchState` (`batch.get`, `batch.board`,
+  and the `batch` push, coalesced to four a second while a log streams,
+  each step's log there as `{ from, lines }` since the last push; only to
+  sockets watching that master, boardWatch.ts; not in the phone's subset)
+  carries `rules`, `steps`: the list
   in order, each `{ id, name, kind }` with `status` pending | running |
   passed | failed | skipped, `detail`, `startedAt`, `endedAt`, `progress
   { done, total, label? }` (land: branches merged of total; gate: the

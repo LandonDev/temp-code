@@ -275,8 +275,8 @@ in the whole pane, with Back.
   nothing on a row at home). A row of a host whose link is not open sits
   under the offline tint (`opacity-50`, `data-host-offline`): its row is
   the launch mirror's and lifts when the host is back.
-  Under the lines, by type: an implementation its task list from the fold's
-  board state (`session.thread.todos`), a check once done, the spinner on
+  Under the lines, by type: an implementation its task list from its digest
+  (the host's task fold, `batch.board`), a check once done, the spinner on
   the one in hand, a hollow ring ahead. The list is open while the thread
   works or needs you and folded once it sits in Done (`tasksOpenByDefault`);
   the tally is its disclosure, a chevron at its end turning when open, its
@@ -284,8 +284,19 @@ in the whole pane, with Back.
   while the row is on screen. The fold is the foot's height tween
   (`TweenHeight`, a snap under reduced motion); a research or orchestration thread
   one summary line, the first line under `## State` in its notes, else its
-  latest words, never the line two already says. Chat and plan rows carry
-  the two lines only. Done and queued rows are dimmed.
+  last words (both from the digest), never the line two already says. Chat
+  and plan rows carry the two lines only. Done and queued rows are dimmed.
+- **The list paints from one answer.** `batch.board` on the master's host
+  answers its children there, a digest per child (`BoardDigest`: todos,
+  last words, State line, the question it waits on, the failure) and the
+  batch's state; the `board` push (one child's digest, at most every 250 ms)
+  and the `batch` push reach only sockets watching that master, so the
+  board asks again every 45 s while it shows. No row loads a transcript,
+  polls a context or reads notes. The list is virtualized (`useVirtualizer`,
+  the sections as their own header rows); a row is memoized on its ref,
+  host and landed mark and reads its own meta and digest, so one child's
+  activity renders that row alone. The first complete paint is reported
+  once per open as `board-paint master=<id> n=<rows> ms=<n>`.
 - **A plan and its build are one row** (`foldRows` in `useMasterModel.ts`):
   a build whose `planThreadId` names a thread of the batch takes that plan's
   row, keyed by the plan's id and titled with the plan's title, so the row
@@ -339,8 +350,9 @@ in the whole pane, with Back.
   back to the row. The grow and shrink are the app's height tween
   (`TweenHeight`: 200 ms, the ease-out curve, a snap under reduced motion),
   the idle row and the console both mounted so either can tween shut, the
-  hidden one inert. Read on mount, every 5 s while the pane shows, and from
-  the `batch` push when one arrives.
+  hidden one inert. Read from the `batch.board` answer and the `batch` push
+  (each step's log as the lines since the last push, `foldBatchPush`; a
+  push past what is held asks `batch.get` for the whole state).
 - **Edit** opens the rules (`master/RulesDialog.tsx`, Modal md; the pure
   moves in `master/rulesEdit.ts`): Branches land (As they finish / All at
   once, shown while a merge step is in the list), then the steps in order,

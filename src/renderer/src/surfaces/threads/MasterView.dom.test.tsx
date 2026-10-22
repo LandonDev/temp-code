@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_BATCH_RULES, type BatchState } from "@server/shared/contract-batch";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_BATCH_RULES, type BatchState, type BoardDigest } from "@server/shared/contract-batch";
 import type { AgentEvent, EventRow } from "@server/shared/events";
 import type { Session } from "../../lib/session";
 import type { Link } from "../../lib/tcserver/store";
@@ -18,11 +18,14 @@ import type { SessionMeta, ServerPush } from "../../lib/tcserver/types";
  * open on their host, count in the menus, and are archived through that
  * host's own `session.batch`; the add sheet's host row and the adopt
  * sheet's host names. The session store is real, fed through the fake
- * links that answer each thread's rows; the chat, the child's transcript
- * and the heavy pickers are stand-ins.
+ * links; the board is one `batch.board` answer (the rows' digests) and the
+ * `board` and `batch` pushes, never a row's transcript, context or notes.
+ * The list is virtualized: the scroller is given a height, a fleet of 300
+ * mounts only its window, and one child's meta re-renders its row alone.
+ * The chat, the child's transcript and the heavy pickers are stand-ins.
  */
 
-const { startThread, batch, link, boxLink, hosts, catalog } = vi.hoisted(() => {
+const { startThread, batch, link, boxLink, hosts, catalog, rowReads } = vi.hoisted(() => {
   class FakeLink implements Link {
     constructor(public environmentId: string) {}
     profile = "local" as const;
@@ -30,6 +33,7 @@ const { startThread, batch, link, boxLink, hosts, catalog } = vi.hoisted(() => {
     metas: Omit<SessionMeta, "environmentId">[] = [];
     rows = new Map<string, EventRow[]>();
     notes = new Map<string, string>();
+    digests = new Map<string, unknown>();
     calls: { method: string; params: unknown }[] = [];
     private pushListeners = new Set<(push: ServerPush) => void>();
     request<T>(method: string, params?: unknown): Promise<T> {
@@ -39,6 +43,7 @@ const { startThread, batch, link, boxLink, hosts, catalog } = vi.hoisted(() => {
       if (method === "session.events") return Promise.resolve((this.rows.get(p.sessionId ?? "") ?? []) as T);
       if (method === "session.notes.get") return Promise.resolve({ text: this.notes.get(p.sessionId ?? "") ?? "", updatedAt: null, path: null } as T);
       if (method === "batch.get") return Promise.resolve(batch as T);
+      if (method === "batch.board") return Promise.resolve({ children: [], digests: Object.fromEntries(this.digests), state: batch } as T);
       if (method === "batch.setRules") return Promise.resolve({ ...batch, rules: (params as { rules: unknown }).rules } as T);
       if (method === "batch.archive") return Promise.resolve({ attempted: [], succeeded: [], failed: [] } as T);
       if (method === "batch.adopt") {
@@ -63,6 +68,7 @@ const { startThread, batch, link, boxLink, hosts, catalog } = vi.hoisted(() => {
     }
   }
   return {
+  rowReads: [] as (string | null | undefined)[],
   startThread: vi.fn(async () => ({ id: "new" })),
   link: new FakeLink("local"),
   boxLink: new FakeLink("box"),
@@ -101,12 +107,25 @@ vi.mock("../../lib/connection", async (importOriginal) => ({
     link: (id: string) => (id === "box" ? boxLink : link),
     linkOf: (id: string) => (id === "box" ? boxLink : link),
     primaryEnvironmentId: "local",
+    primary: () => link,
     onLink: (listener: (link: unknown, event: string) => void) => {
       listener(link, "added");
       return () => {};
     },
   },
 }));
+// Every row reads its own meta through useSessionMeta: counting the reads by
+// id counts the rows' renders.
+vi.mock("../../lib/tcserver/store", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/tcserver/store")>();
+  return {
+    ...actual,
+    useSessionMeta: (id: string | null | undefined) => {
+      rowReads.push(id);
+      return actual.useSessionMeta(id);
+    },
+  };
+});
 vi.mock("../../lib/connection/status", () => ({
   useEnvironments: () => hosts.environments,
   useEnvironmentStatuses: () => hosts.statuses,
@@ -199,6 +218,28 @@ const flush = (): Promise<void> => act(() => new Promise((r) => setTimeout(r, 0)
 const rows = (sessionId: string, events: AgentEvent[]): EventRow[] =>
   events.map((event, i) => ({ sessionId, seq: i + 1, ts: 1_000 + i, event }));
 
+/** The board's section headers, in order. */
+const headers = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>("[data-group-header]")];
+const header = (group: string): HTMLElement => document.querySelector<HTMLElement>(`[data-group-header='${group}']`)!;
+/** The rows of one section. */
+const rowsIn = (group: string): HTMLElement[] => [...document.querySelectorAll<HTMLElement>(`[data-group='${group}'] [role='button'][tabindex='0']`)];
+/** What a board must never ask a host for. */
+const PER_ROW_READS = ["session.events", "session.tail", "session.head", "session.context", "session.notes.get"];
+
+// jsdom has no layout: the virtualizer reads the scroller's height from offsetHeight.
+const offsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+beforeAll(() => {
+  Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+    configurable: true,
+    get(this: HTMLElement) {
+      return this.hasAttribute("data-board-scroller") ? 600 : 0;
+    },
+  });
+});
+afterAll(() => {
+  if (offsetHeight) Object.defineProperty(HTMLElement.prototype, "offsetHeight", offsetHeight);
+});
+
 beforeEach(() => {
   sessionStore.reset();
   resetNotesStore();
@@ -207,7 +248,9 @@ beforeEach(() => {
     l.metas = [];
     l.rows.clear();
     l.notes.clear();
+    l.digests.clear();
   }
+  rowReads.length = 0;
   hosts.environments = [{ id: "local", name: "This Mac" }];
   hosts.statuses = new Map([["local", { transport: "open", fresh: true }]]);
   catalog.workspaces = [];
@@ -271,9 +314,9 @@ describe("the master view", () => {
     ]);
     render(<MasterView {...props} />);
     await flush();
-    const sections = screen.getAllByRole("region").map((s) => s.getAttribute("data-group"));
-    expect(sections).toEqual(["needsYou", "running", "queued", "done"]);
-    expect(within(screen.getByRole("region", { name: "Running" })).getByRole("heading").textContent).toBe("Running1");
+    expect(headers().map((h) => h.getAttribute("data-group-header"))).toEqual(["needsYou", "running", "queued", "done"]);
+    expect(header("running").textContent).toBe("Running1");
+    expect(header("running").tagName).toBe("H3");
     expect(screen.queryByText(/needs you/)).toBeNull();
     // Line two: the activity for a running row, the scheduler's note for a queued one, when a landed one landed.
     expect(screen.getByText("Running ios:test:client")).toBeTruthy();
@@ -292,10 +335,7 @@ describe("the master view", () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
     render(<MasterView {...props} />);
     await flush();
-    expect(screen.getByRole("region", { name: "Running" })).toBeTruthy();
-    expect(screen.queryByRole("region", { name: "Needs you" })).toBeNull();
-    expect(screen.queryByRole("region", { name: "Queued" })).toBeNull();
-    expect(screen.queryByRole("region", { name: "Done" })).toBeNull();
+    expect(headers().map((h) => h.getAttribute("data-group-header"))).toEqual(["running"]);
   });
 
   it("an implementation row carries its tally and its task list; chat and plan rows carry only two lines", async () => {
@@ -309,9 +349,7 @@ describe("the master view", () => {
       { content: "Write the view", status: "in_progress" },
       { content: "Tests", status: "pending" },
     ];
-    for (const id of ["c-impl", "c-chat", "c-plan"]) {
-      link.rows.set(id, rows(id, [{ type: "user-text", text: "go" }, { type: "tool-call", callId: "t1", name: "TodoWrite", input: { todos } }]));
-    }
+    for (const id of ["c-impl", "c-chat", "c-plan"]) link.digests.set(id, { todos });
     render(<MasterView {...props} />);
     await flush();
     await flush();
@@ -335,9 +373,7 @@ describe("the master view", () => {
       { content: "Read the brief", status: "completed" },
       { content: "Tests", status: "completed" },
     ];
-    for (const id of ["c-fold", "c-folded"]) {
-      link.rows.set(id, rows(id, [{ type: "user-text", text: "go" }, { type: "tool-call", callId: "t1", name: "TodoWrite", input: { todos } }]));
-    }
+    for (const id of ["c-fold", "c-folded"]) link.digests.set(id, { todos });
     render(<MasterView {...props} />);
     await flush();
     await flush();
@@ -362,27 +398,53 @@ describe("the master view", () => {
     expect(done.getAttribute("data-tasks-open")).toBe("false");
   });
 
-  it("research and orchestration rows carry a summary: the notes' State line, else the latest words", async () => {
+  it("research and orchestration rows carry a summary: the notes' State line, else the last words, all from the one answer", async () => {
     seed([
       meta({ id: "c-res", title: "Pricing survey", status: "running", threadType: "research" }),
-      meta({ id: "c-orc", title: "The fleet", status: "running", threadType: "orchestration" }),
+      meta({ id: "c-orc", title: "The fleet", status: "running", threadType: "orchestration", activity: "Running bun" }),
     ]);
-    link.notes.set("c-res", "## Goal\n\nx\n\n## State\n\nThree sources read, two to go\n");
-    link.rows.set(
-      "c-orc",
-      rows("c-orc", [
-        { type: "user-text", text: "go" },
-        { type: "assistant-text", text: "Spawned three implementers.", delta: false, msgId: "a", blockIndex: 0 },
-        { type: "tool-call", callId: "t1", name: "Bash", input: { command: "bun test" } },
-      ]),
-    );
+    link.digests.set("c-res", { state: "Three sources read, two to go", last: "Reading the fourth." });
+    link.digests.set("c-orc", { last: "Spawned three implementers." });
     render(<MasterView {...props} />);
     await flush();
     await flush();
     expect(within(screen.getByRole("button", { name: /Pricing survey/ })).getByText("Three sources read, two to go")).toBeTruthy();
     const fleet = screen.getByRole("button", { name: /The fleet/ });
     expect(fleet.querySelector("[data-summary]")?.textContent).toBe("Spawned three implementers.");
-    expect(link.calls.filter((c) => c.method === "session.notes.get")).toHaveLength(2);
+    // One batch.board, and nothing per row: no transcript, context or notes.
+    expect(link.calls.filter((c) => c.method === "batch.board")).toHaveLength(1);
+    expect(link.calls.filter((c) => PER_ROW_READS.includes(c.method))).toEqual([]);
+  });
+
+  it("a waiting row reads its question and an errored one its failure from the digest", async () => {
+    seed([
+      meta({ id: "c-ask", title: "Live Activity", status: "waiting", createdAt: 1 }),
+      meta({ id: "c-err", title: "Inbox", status: "error", createdAt: 2 }),
+    ]);
+    link.digests.set("c-ask", { question: "Ad Hoc or Debug?" });
+    link.digests.set("c-err", { failure: "Rate limited until 14:00" });
+    render(<MasterView {...props} />);
+    await flush();
+    expect(within(screen.getByRole("button", { name: /Live Activity/ })).getByText("has a question — Ad Hoc or Debug?")).toBeTruthy();
+    expect(within(screen.getByRole("button", { name: /Inbox/ })).getByText("Rate limited until 14:00")).toBeTruthy();
+  });
+
+  it("a board push changes that one row's digest", async () => {
+    seed([meta({ id: "c-impl", title: "Home screen", status: "running", createdAt: 1 }), meta({ id: "c-two", title: "Inbox", status: "running", createdAt: 2 })]);
+    link.digests.set("c-impl", { todos: [{ content: "Write the view", status: "in_progress" }] });
+    render(<MasterView {...props} />);
+    await flush();
+    const impl = () => screen.getByRole("button", { name: /Home screen/ });
+    expect(within(impl()).getByText("0/1")).toBeTruthy();
+    rowReads.length = 0;
+    const digest: BoardDigest = { todos: [{ content: "Write the view", status: "completed" }, { content: "Tests", status: "in_progress" }] };
+    act(() => link.push({ push: "board", masterId: "m", sessionId: "c-impl", digest } as ServerPush));
+    expect(within(impl()).getByText("1/2")).toBeTruthy();
+    expect(within(impl()).getAllByRole("listitem").map((t) => t.textContent)).toEqual(["Write the view", "Tests"]);
+    // Only that row rendered again; another master's push changes nothing.
+    expect(new Set(rowReads.filter(Boolean))).toEqual(new Set(["c-impl"]));
+    act(() => link.push({ push: "board", masterId: "other", sessionId: "c-impl", digest: {} } as ServerPush));
+    expect(within(impl()).getByText("1/2")).toBeTruthy();
   });
 
   it("a plan and the build it started are one row, keeping the plan's title", async () => {
@@ -499,11 +561,12 @@ describe("the master view", () => {
     expect(link.calls.some((c) => c.method === "session.send" && (c.params as { text: string }).text === "Ship it")).toBe(true);
   });
 
-  it("reads batch.get into the foot: the rules sentence first, then the console of the running step", async () => {
+  it("reads batch.board into the foot: the rules sentence first, then the console of the running step", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
     render(<MasterView {...props} />);
     await flush();
-    expect(link.calls.some((c) => c.method === "batch.get" && (c.params as { masterId: string }).masterId === "m")).toBe(true);
+    expect(link.calls.some((c) => c.method === "batch.board" && (c.params as { masterId: string }).masterId === "m")).toBe(true);
+    expect(link.calls.some((c) => c.method === "batch.get")).toBe(false);
     const foot = document.querySelector("[data-batch-foot]")!;
     expect(within(foot as HTMLElement).getByText("When the threads are done")).toBeTruthy();
     expect(foot.querySelector("[data-rules]")?.textContent).toBe("Branches land as they finish, then Gate and Release. Then you are notified.");
@@ -567,6 +630,17 @@ describe("the master view", () => {
     fireEvent.scroll(log);
     push(["a", "b", "c", "d", "e"]);
     expect(log.scrollTop).toBe(400);
+    // A host's push carries only the new lines, numbered from the step's start.
+    act(() => {
+      link.push({ push: "batch", state: { ...batch, steps: batch.steps.map((s) => (s.id === "gate" ? { ...s, log: { from: 5, lines: ["f"] } } : s)) } } as unknown as ServerPush);
+    });
+    expect(log.textContent).toBe("a\nb\nc\nd\ne\nf");
+    // One that starts past what is held asks batch.get for the whole state.
+    act(() => {
+      link.push({ push: "batch", state: { ...batch, steps: batch.steps.map((s) => (s.id === "gate" ? { ...s, log: { from: 40, lines: ["z"] } } : s)) } } as unknown as ServerPush);
+    });
+    await flush();
+    expect(link.calls.some((c) => c.method === "batch.get")).toBe(true);
     const foot = document.querySelector("[data-batch-foot]") as HTMLElement;
     fireEvent.click(within(foot).getByRole("button", { name: "Stop" }));
     await flush();
@@ -784,7 +858,7 @@ describe("the master view", () => {
     expect(params).not.toHaveProperty("parentId");
     // Nothing optimistic: the row arrives from the host's push.
     expect(screen.queryByRole("button", { name: /Search: the results screen/ })).toBeNull();
-    expect(screen.getAllByRole("region")).toHaveLength(1);
+    expect(headers()).toHaveLength(1);
   });
 
   it("a queued row offers Start now and Remove from queue in place of the live actions", async () => {
@@ -802,14 +876,63 @@ describe("the master view", () => {
   });
 });
 
+describe("the board's first paint", () => {
+  it("is reported once per open as board-paint with the row count, a trip into a child and back not counting", async () => {
+    seed([meta({ id: "c-run", title: "Home", status: "running", createdAt: 1 }), meta({ id: "c-two", title: "Inbox", status: "running", createdAt: 2 })]);
+    render(<MasterView {...props} />);
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    const reports = () => link.calls.filter((c) => c.method === "stall.report").map((c) => (c.params as { line: string }).line);
+    expect(reports()).toHaveLength(1);
+    expect(reports()[0]).toMatch(/^board-paint master=m n=2 ms=\d+$/);
+    fireEvent.click(screen.getByRole("button", { name: /Home/ }));
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: /Back/ }));
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(reports()).toHaveLength(1);
+  });
+});
+
+describe("a fleet of 300", () => {
+  const fleet = () =>
+    Array.from({ length: 300 }, (_, i) => meta({ id: `f${i}`, title: `Thread ${i}`, status: "running", createdAt: i + 1 }));
+
+  it("mounts only the rows on screen, from one answer and nothing per row", async () => {
+    seed(fleet());
+    render(<MasterView {...props} />);
+    await flush();
+    const mounted = document.querySelectorAll("[data-status]");
+    expect(mounted.length).toBeGreaterThan(5);
+    expect(mounted.length).toBeLessThan(30);
+    expect(header("running").textContent).toBe("Running300");
+    // The list is as tall as every row, though most are not in the DOM.
+    const sized = document.querySelector("[data-board-scroller] > div") as HTMLElement;
+    expect(parseInt(sized.style.height, 10)).toBeGreaterThan(300 * 50);
+    expect(link.calls.filter((c) => PER_ROW_READS.includes(c.method))).toEqual([]);
+    expect(link.calls.filter((c) => c.method === "batch.board")).toHaveLength(1);
+  });
+
+  it("one child's meta change renders that row again and no other", async () => {
+    seed(fleet());
+    render(<MasterView {...props} />);
+    await flush();
+    rowReads.length = 0;
+    const { environmentId: _e, ...wire } = meta({ id: "f2", title: "Thread 2", status: "running", createdAt: 3, activity: "Running lint" });
+    act(() => link.push({ push: "session", session: wire } as unknown as ServerPush));
+    // The store tells meta listeners once per frame.
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(screen.getByText("Running lint")).toBeTruthy();
+    expect(rowReads.filter((id) => id && id !== "f2")).toEqual([]);
+    expect(rowReads.filter((id) => id === "f2").length).toBeGreaterThan(0);
+  });
+});
+
 describe("the batch across hosts", () => {
   it("a child on another host carries that host's dot and name, under the offline tint while the host is out of reach", async () => {
     seed([meta({ id: "c-home", title: "Home", status: "running" })]);
     seedBox([boxMeta({ id: "c-box", title: "Inbox", status: "running", model: "gpt-6.1-sol", provider: "codex" })]);
     const { rerender } = render(<MasterView {...props} />);
     await flush();
-    const running = screen.getByRole("region", { name: "Running" });
-    expect(within(running).getAllByRole("button", { name: /Home|Inbox/ })).toHaveLength(2);
+    expect(rowsIn("running").map((r) => r.textContent?.split("Implementation")[0])).toEqual(["Home", "Inbox"]);
     const home = screen.getByRole("button", { name: /Home/ }).closest("[data-status]")!;
     const box = screen.getByRole("button", { name: /Inbox/ }).closest("[data-status]")!;
     expect(home.getAttribute("data-host")).toBeNull();

@@ -1,13 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Block, Session } from "../../../lib/session";
 import type { TodoItem } from "../../../lib/tcserver/todos";
 import { rowBody, summaryLine, taskProgress, tasksOpenByDefault, taskTally, whatLine } from "./rowBody";
-
-const block = (role: Block["role"], text: string, id = `b${text.length}`): Block => ({ id, role, text }) as unknown as Block;
-const withTodos = (todos: TodoItem[]): Pick<Session, "thread" | "blocks"> =>
-  ({ thread: { todos }, blocks: [] }) as unknown as Pick<Session, "thread" | "blocks">;
-
-const NOTES = "## Goal\n\nShip it\n\n## State\n\n- Composer done, strip in flight\n- blocked on nothing\n\n## Pointers\n";
 
 describe("what a row shows under its lines, by type", () => {
   it("an implementation shows its task list; nothing before the first list", () => {
@@ -16,8 +9,8 @@ describe("what a row shows under its lines, by type", () => {
       { content: "Write the view", status: "in_progress" },
       { content: "Tests", status: "pending" },
     ];
-    expect(rowBody({ threadType: "implementation" }, withTodos(todos), undefined)).toEqual({ kind: "tasks", tasks: todos });
-    expect(rowBody({ threadType: "implementation" }, withTodos([]), undefined)).toBeNull();
+    expect(rowBody({ threadType: "implementation" }, { todos })).toEqual({ kind: "tasks", tasks: todos });
+    expect(rowBody({ threadType: "implementation" }, {})).toBeNull();
     expect(taskTally(todos)).toBe("1/3");
     expect(taskTally([])).toBeNull();
     expect(taskProgress(todos)).toEqual({ done: 1, total: 3 });
@@ -29,27 +22,26 @@ describe("what a row shows under its lines, by type", () => {
     for (const status of ["done", "idle", "stopped"] as const) expect(tasksOpenByDefault(status)).toBe(false);
   });
 
-  it("research and orchestration show one summary: the notes' State line, else the latest words", () => {
-    const blocks = [block("user", "Find out"), block("assistant", "Looked at three sources.\nMore below.")];
-    expect(rowBody({ threadType: "research" }, { thread: undefined, blocks }, NOTES)).toEqual({
+  it("research and orchestration show one summary: the notes' State line, else the last words", () => {
+    expect(rowBody({ threadType: "research" }, { state: "Composer done, strip in flight", last: "Looked at three sources." })).toEqual({
       kind: "summary",
       text: "Composer done, strip in flight",
     });
-    expect(rowBody({ threadType: "orchestration" }, { thread: undefined, blocks }, "## State\n")).toEqual({
+    expect(rowBody({ threadType: "orchestration" }, { last: "Looked at three sources." })).toEqual({
       kind: "summary",
       text: "Looked at three sources.",
     });
-    expect(summaryLine(undefined, [])).toBe("");
+    expect(summaryLine({})).toBe("");
     // A summary that is the second line already is not drawn twice.
-    expect(rowBody({ threadType: "orchestration" }, { thread: undefined, blocks }, undefined, "Looked at three sources.")).toBeNull();
-    expect(rowBody({ threadType: "research" }, { thread: undefined, blocks: [] }, undefined)).toBeNull();
+    expect(rowBody({ threadType: "orchestration" }, { last: "Looked at three sources." }, "Looked at three sources.")).toBeNull();
+    expect(rowBody({ threadType: "research" }, {})).toBeNull();
   });
 
   it("chat and plan rows carry nothing more, whatever they hold", () => {
-    const todos: TodoItem[] = [{ content: "x", status: "pending" }];
-    expect(rowBody({ threadType: "chat" }, withTodos(todos), NOTES)).toBeNull();
-    expect(rowBody({ threadType: "planning" }, withTodos(todos), NOTES)).toBeNull();
-    expect(rowBody({ threadType: null }, withTodos(todos), NOTES)).toBeNull();
+    const digest = { todos: [{ content: "x", status: "pending" as const }], state: "Doing x" };
+    expect(rowBody({ threadType: "chat" }, digest)).toBeNull();
+    expect(rowBody({ threadType: "planning" }, digest)).toBeNull();
+    expect(rowBody({ threadType: null }, digest)).toBeNull();
   });
 });
 

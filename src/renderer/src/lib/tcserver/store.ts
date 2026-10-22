@@ -1009,10 +1009,16 @@ class SessionStore {
     }, UNLOAD_MS);
   }
 
-  /** Mounted sessions plus their children (the agent boards). */
+  /** Mounted sessions plus their children (the agent boards), and a
+   *  mounted master's batch threads (its board opens one in its own pane,
+   *  ChildPane, so the transcript it loaded stays while the board shows). */
   private mountedClosure(): Set<string> | null {
     if (!this.mounted) return null;
     const keep = new Set(this.mounted);
+    for (const entry of this.entries.values()) {
+      const master = entry.meta?.masterId;
+      if (master && !entry.meta!.parentId && keep.has(master)) keep.add(entry.meta!.id);
+    }
     for (const entry of this.entries.values()) {
       const parent = entry.meta?.parentId;
       if (parent && keep.has(parent)) keep.add(entry.meta!.id);
