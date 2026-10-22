@@ -91,6 +91,8 @@ public final class EnvironmentClient {
     public internal(set) var catalog: Catalog?
     /// What each thread created (worktrees, simulators, dev instances), from the `resources` push (thread iOS 20).
     public let resources = ResourceLedger()
+    /// The host's accounts snapshot (`accounts.list`, then the `accounts` push); the chip and the menu read it.
+    public let accounts = HostAccounts()
     /// The shell has been listed at least once in this process.
     public private(set) var hasShell = false
     /// Where the session list last came from.
@@ -614,6 +616,8 @@ public final class EnvironmentClient {
             bootResume = BootResumeNotice(count: value.count, at: value.at)
         case .notes(let value):
             applyNotes(value) // iOS 18: the thread's notes (Client/NotesState.swift)
+        case .accounts(let value):
+            accounts.apply(value.snapshot, now: Int(Date().timeIntervalSince1970 * 1000))
         case .queue, .liveEdits, .builds, .unknown:
             break
         }
