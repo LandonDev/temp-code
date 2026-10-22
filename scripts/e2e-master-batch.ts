@@ -95,6 +95,9 @@ const originHas = (file: string): boolean => {
 const dataDir = mkdtempSync(join(tmpdir(), 'tc-master-batch-data-'))
 const store = new Store(openDb(join(dataDir, 'app.db')))
 const registry = new SessionRegistry(store)
+// A running cap (admission.ts) well above this batch's thread count: the
+// "never queued" checks below hold with the cap in force, not without one.
+registry.admission = { cap: () => 64, memoryLow: () => false }
 setOrchestrationRegistry(registry)
 setAppToolsRegistry(registry)
 registry.hostName = () => 'e2e-host'
@@ -269,7 +272,7 @@ check('the children run in the project checkout', kids.every((k) => k.cwd === re
 const listed = toolResults(master.id).find((t) => t.includes('"kind":"thread"'))
 const listedRows = listed ? (JSON.parse(listed) as { kind: string; agentId: string; threadType?: string; host?: string; status: string }[]) : []
 check('list_agents marks the batch rows thread, with type, host and status', listedRows.filter((x) => x.kind === 'thread').length === 4 && listedRows.every((x) => x.kind !== 'thread' || (x.threadType && x.host === 'e2e-host' && x.status)), listed?.slice(0, 200))
-check('no cap: children a, r and p were never queued', ![a, r, p].some((k) => [...(lines.get(k.id) ?? [])].some((l) => l.startsWith('Queued'))), [a, r, p].map((k) => `${k.title}: ${[...(lines.get(k.id) ?? [])].join(' | ')}`).join('; '))
+check('under the cap: children a, r and p were never queued', ![a, r, p].some((k) => [...(lines.get(k.id) ?? [])].some((l) => l.startsWith('Queued'))), [a, r, p].map((k) => `${k.title}: ${[...(lines.get(k.id) ?? [])].join(' | ')}`).join('; '))
 check('child b was queued waiting for child a', [...(lines.get(b.id) ?? [])].some((l) => l === `Queued · waiting for ${a.title}`), [...(lines.get(b.id) ?? [])].join(' | '))
 
 // ── 2. the children run, settle and report ──────────────────────────────

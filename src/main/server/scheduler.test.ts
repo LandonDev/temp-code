@@ -78,7 +78,7 @@ async function queued(text: string, extra: { after?: string; masterId?: string; 
 }
 const idle = (id: string): void => emits.get(id)!({ type: 'status', status: 'idle' })
 
-describe('no running cap', () => {
+describe('no cap configured', () => {
   it('five queued roots all start at once, each with the message its create stored', async () => {
     const ids: string[] = []
     for (let i = 1; i <= 5; i++) ids.push(await queued(`task ${i}`, { title: `T${i}` }))

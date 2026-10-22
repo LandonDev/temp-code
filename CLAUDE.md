@@ -1400,24 +1400,50 @@ this is the short one.
   `context1m` where offered. `spawn_agent`'s refusal of an
   orchestrators-only model and the approved table point a thread at
   `app_start_thread` for the same model as a thread.
-- **The queue is `after` alone; there is no running cap.**
+- **The queue: `after` and the running cap.**
   `ThreadScheduler` (src/main/server/scheduler.ts) creates a thread
   `queued` (SessionStatusSchema: not live, never counted, never resumed by
-  the boot resumer or the liveness sweep) for one reason: its `after`
-  sibling has not finished (met when the sibling is `done`, or `idle` after
-  a turn, or archived or deleted; one that errored, stopped or paused keeps
-  the waiter queued). Only a request that opted in queues: `session.create
-  { queue: true }`, or any thread with a `masterId`. `admit` decides on the
-  FIRST message in `SessionRegistry.send` (the user row and its preamble
-  stamp land as a held-back boot stores them, the message waits at the
-  front of the thread's queue); `startQueued` (the scheduler when the
-  sibling settles; `session.start { sessionId }`, operate, the strip's
-  Start now, past `after`) sends it through the same path; `tick` runs
-  oldest-first on every meta change and removal and after boot once the
-  BootResumer is done (`holdUntil`). A queued root's `activity` reads
-  "Queued · waiting for <sibling>" ("(errored)" / "(stopped)" / "(paused)"
-  appended), pushed only when it changes. The fleet's Stop and Archive done
-  take a queued root as "remove from the queue" and archive it.
+  the liveness sweep) for two reasons. Its `after` sibling has not finished
+  (met when the sibling is `done`, or `idle` after a turn, or archived or
+  deleted; one that errored, stopped or paused keeps the waiter queued);
+  only a root whose create opted in waits on `after` (`session.create
+  { queue: true }`, or any thread with a `masterId`), on its first message.
+  Or the host is at its running cap (src/main/server/admission.ts): the
+  `admission.maxRunning` setting when pinned, else floor((budget − reserve)
+  / perProcess), budget the smaller of the cgroup's memory.high/max and the
+  machine's memory, reserve the larger of 25% and 8 GiB on Linux (50% and
+  16 GiB on macOS), perProcess the median harness RSS read every 60 s (450
+  MB until five readings); admission also pauses while available memory is
+  under 10% of the budget (MemAvailable on Linux, `kern.memorystatus_level`
+  on macOS: os.freemem() there counts only never-used pages). Every live
+  harness counts, roots and subagents, in starting, running, waiting or
+  watching, plus idle rows still holding a handle; warm processes and
+  queued rows never do. The cap applies to every start: create's eager
+  boot, a first message, a send on a thread whose handle is gone, a
+  `spawn_agent` child (created `queued`; `wait_for_agent` waits through
+  queued and starting; spawn, `list_agents` and `check_agent` say "queued ·
+  120 of 120 running"). `admit` decides in `SessionRegistry.send` (the user
+  row and its preamble stamp land as a held-back boot stores them, the
+  message waits at the front of the thread's queue); `startQueued` (the
+  scheduler; `session.start { sessionId }`, operate, the strip's Start now,
+  past `after` and past the cap) sends it through the same path; a focused
+  send is admitted over the cap, up to two (`scheduler.focused`, false
+  until a later step wires it). `tick` runs oldest-first on every meta
+  change and removal and after boot once the BootResumer is done
+  (`holdUntil`); a pass reserves the slots of the starts it picks before
+  launching them, and while rows wait on the cap it puts down the
+  longest-idle harnesses (`reclaimIdle`, 3 s grace, never one with a pass,
+  queued messages or reports due), which is how a settle frees a slot. The
+  BootResumer resumes up to the cap and leaves the rest `queued` with their
+  nudge stored (`queueResume`; their ledger rows stay). A queued row's
+  `activity` reads "Queued · waiting for <sibling>" ("(errored)" /
+  "(stopped)" / "(paused)" appended), "Queued · 120 of 120 running" or
+  "Queued · waiting for memory", pushed only when it changes. RPCs
+  `admission.get` (read: cap, pinned, default, running, queued, memory) and
+  `admission.set { cap | null }` (admin); Settings → Remote access →
+  Running threads shows each host's (surfaces/AdmissionSettings.tsx). The
+  fleet's Stop and Archive done take a queued root as "remove from the
+  queue" and archive it.
 - **The batch's rules are a steps list the master writes, and the engine
   runs it** (src/main/server/batch.ts, src/shared/contract-batch.ts
   `BatchRulesSchema`): `land` as-they-finish (merge_branch fast-forwards

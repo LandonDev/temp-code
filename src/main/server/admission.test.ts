@@ -111,15 +111,23 @@ describe('the memory floor', () => {
     expect(admission(fakeIo({ files: BOX_FILES })).memoryLow()).toBe(false)
   })
 
-  it('reads the kernel free percentage on a Mac, not os.freemem', async () => {
+  it('reads the kernel free percentage on a Mac, never os.freemem', async () => {
+    let pct: number | null = 60
     const a = admission(
-      fakeIo({ platform: 'darwin', totalmem: () => 48 * GiB, freemem: () => 2 * GiB, freePercent: async () => 60 })
+      fakeIo({ platform: 'darwin', totalmem: () => 48 * GiB, freemem: () => 0.1 * GiB, freePercent: async () => pct })
     )
-    // Before the first read: os.freemem's 2 GiB is under the 4.8 GiB floor.
-    expect(a.memoryLow()).toBe(true)
+    // Before the first read the floor is unknown, not tripped: os.freemem's 100 MB means nothing on a Mac.
+    expect(a.memoryLow()).toBe(false)
     await a.refreshFree()
     expect(a.memory().freeMB).toBe(Math.round(0.6 * 48 * 1024))
     expect(a.memoryLow()).toBe(false)
+    pct = 5
+    await a.refreshFree()
+    expect(a.memoryLow()).toBe(true)
+    // A failed read keeps the last answer.
+    pct = null
+    await a.refreshFree()
+    expect(a.memoryLow()).toBe(true)
   })
 })
 

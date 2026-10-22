@@ -128,7 +128,8 @@ export class Admission {
   private readonly io: AdmissionIo
   private readonly samples: number[] = []
   private budget: number
-  private freeBytes: number
+  /** Available memory; null on a Mac before the kernel's first answer (unknown is not low). */
+  private freeBytes: number | null
   private timers: ReturnType<typeof setInterval>[] = []
   private lastCap: number | null = null
   private lastLow: boolean | null = null
@@ -136,7 +137,12 @@ export class Admission {
   constructor(private readonly deps: AdmissionDeps) {
     this.io = deps.io ?? nodeIo()
     this.budget = budgetBytes(this.io)
-    this.freeBytes = this.syncFree()
+    this.freeBytes = this.kernelFree() ? null : this.syncFree()
+  }
+
+  /** macOS: free memory is the kernel's percentage, read off the main path. */
+  private kernelFree(): boolean {
+    return this.io.platform === 'darwin' && !!this.io.freePercent
   }
 
   /** Read RSS every minute and free memory every 15 s; both timers unref'd. */
@@ -172,12 +178,13 @@ export class Admission {
   }
 
   async refreshFree(): Promise<void> {
-    let bytes = this.syncFree()
-    if (this.io.platform === 'darwin' && this.io.freePercent) {
-      const pct = await this.io.freePercent().catch(() => null)
-      if (pct !== null) bytes = (pct / 100) * this.io.totalmem()
+    if (this.kernelFree()) {
+      // A failed read keeps the last answer: os.freemem() there would read low.
+      const pct = await this.io.freePercent!().catch(() => null)
+      if (pct !== null) this.freeBytes = (pct / 100) * this.io.totalmem()
+    } else {
+      this.freeBytes = this.syncFree()
     }
-    this.freeBytes = bytes
     this.changed()
   }
 
@@ -196,7 +203,7 @@ export class Admission {
       budgetMB,
       reserveMB: Math.round(reserveMB(budgetMB, this.io.platform)),
       perProcessMB: Math.round(this.samples.length >= MIN_SAMPLES ? median(this.samples) : DEFAULT_PER_PROCESS_MB),
-      freeMB: Math.round(this.freeBytes / MB),
+      freeMB: Math.round((this.freeBytes ?? this.io.freemem()) / MB),
       floorMB: Math.round(budgetMB * LOW_MEMORY_FRACTION)
     }
   }
@@ -212,6 +219,7 @@ export class Admission {
 
   /** Available memory is under the floor: admit nothing new until it recovers. */
   memoryLow(): boolean {
+    if (this.freeBytes === null) return false
     const m = this.memory()
     return m.freeMB < m.floorMB
   }
