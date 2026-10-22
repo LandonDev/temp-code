@@ -1384,6 +1384,7 @@ describe('the board: batch.board, digests and their watchers', () => {
     return {
       sessions,
       todos,
+      tails,
       digests,
       pushes,
       tailReads,
@@ -1507,6 +1508,18 @@ describe('the board: batch.board, digests and their watchers', () => {
     expect((await answer).digests.a.last).toBe('Mid-read.')
     await vi.advanceTimersByTimeAsync(250)
     expect(got.find((p) => p.sessionId === 'a')?.digest.last).toBe('Mid-read.')
+  })
+
+  it('a thread that joins with no new row (adopted) has its tail read before its first push', async () => {
+    vi.useFakeTimers()
+    const h = board()
+    await h.digests.board('m', () => state('m'))
+    // 'y' was another master's; it joins m's batch through a meta push alone.
+    h.tails.set('y', [h.row('y', 3, { type: 'assistant-text', text: 'Earlier words.', delta: false, msgId: 'y1', blockIndex: 0 } as AgentEvent)])
+    h.setMeta('y', { masterId: 'm' })
+    await vi.advanceTimersByTimeAsync(250)
+    expect(h.tailReads).toContain('y')
+    expect(h.pushes.find((p) => p.sessionId === 'y')).toEqual({ masterId: 'm', sessionId: 'y', digest: { last: 'Earlier words.' } })
   })
 
   it('nothing is computed or pushed for a master no socket watches', async () => {

@@ -124,13 +124,13 @@ export class BoardDigests {
     const offs = [
       this.deps.onEvent?.((row) => this.onRow(row)),
       this.deps.onMeta?.((meta) => {
-        if (meta.masterId && !meta.parentId) this.touch(meta.id, meta.masterId)
+        if (meta.masterId && !meta.parentId) this.moved(meta.id, meta.masterId)
       }),
       this.deps.onNotes?.((sessionId, text) => {
         if (!this.states.has(sessionId) && !this.deps.masterOf(sessionId)) return
         this.states.set(sessionId, stateLine(text))
         const master = this.deps.masterOf(sessionId)
-        if (master) this.touch(sessionId, master)
+        if (master) this.moved(sessionId, master)
       })
     ]
     this.detach = () => {
@@ -215,15 +215,20 @@ export class BoardDigests {
     }
     if (isStreamed(row.event)) return
     const master = this.deps.masterOf(row.sessionId)
-    if (!master) return
-    if (!this.deps.watched(master)) {
-      this.sent.delete(row.sessionId)
+    if (master) this.moved(row.sessionId, master)
+  }
+
+  /** A child's digest may have moved: looked at again within the window.
+   *  A read in flight, or a child that joined while its master was on
+   *  screen (adopted, started: its tail is read now), is looked at once
+   *  the read is in. */
+  private moved(sessionId: string, masterId: string): void {
+    if (!this.deps.watched(masterId)) {
+      this.sent.delete(sessionId)
       return
     }
-    if (this.lines.has(row.sessionId)) this.touch(row.sessionId, master)
-    // A read in flight, or a child that joined while its master was on
-    // screen (its tail is read now, this row with it): looked at once it is in.
-    else void this.ensureLines(row.sessionId).then(() => this.touch(row.sessionId, master))
+    if (this.lines.has(sessionId)) this.touch(sessionId, masterId)
+    else void this.ensureLines(sessionId).then(() => this.touch(sessionId, masterId))
   }
 
   private touch(sessionId: string, masterId: string): void {
