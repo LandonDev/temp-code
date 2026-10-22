@@ -2,16 +2,36 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// An edit's diff, from a transcript edit row or a board Changes row.
+/// An edit's diff, from a transcript edit row or a board Changes row. The
+/// bytes come from the thread's own host: `client` is that host's client, so
+/// a thread on the box reads from the box.
 struct DiffRoute: Hashable {
     let sessionId: String
     let card: ChangeCard
 }
 
-/// A unified patch opened from elsewhere: the Inbox's pull request detail.
-struct PatchDiffRoute: Hashable {
+/// A diff already in hand as the edit event's lines, with the host's own
+/// counts: what a caller holding a `ToolPreview` opens.
+struct LinesDiffRoute: Hashable {
+    /// The path; shown in two steps.
     let title: String
+    let lines: [ToolPreview.Line]
+    let adds: Int
+    let dels: Int
+}
+
+/// A unified patch (`diff --git`, `@@`), one file or many: the Inbox's pull
+/// request. `file` keeps one file of a many-file patch.
+struct PatchDiffRoute: Hashable {
+    /// The file path, or the PR title for the whole patch.
+    let title: String
+    /// `GitHubPrDiff.patch`.
     let patch: String
+    /// A `GitHubPrFile.path`; nil shows every file.
+    var file: String? = nil
+    /// The host's counts when known (`GitHubPrFile` / `GitHubPrDiff`); parsed otherwise.
+    var adds: Int? = nil
+    var dels: Int? = nil
 }
 
 /// The whole change to one file (or a patch across several), unified: mono
@@ -20,9 +40,10 @@ struct PatchDiffRoute: Hashable {
 /// own under a pinned gutter. Lines the host kept are fetched when the
 /// screen opens behind a shimmer of the height they will take.
 struct DiffScreen: View {
-    enum Source: Hashable {
+    private enum Source: Hashable {
         case card(sessionId: String, card: ChangeCard)
-        case patch(title: String, patch: String)
+        case lines(LinesDiffRoute)
+        case patch(PatchDiffRoute)
     }
 
     private enum Phase: Equatable {
@@ -33,79 +54,57 @@ struct DiffScreen: View {
         case failed
     }
 
-    let client: EnvironmentClient?
-    let source: Source
-    @State private var phase: Phase = .loading
+    private let client: EnvironmentClient?
+    private let source: Source
+    @State private var phase: Phase
     @State private var current = 0
+    @State private var position = ScrollPosition(edge: .top)
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(client: EnvironmentClient, route: DiffRoute) {
         self.client = client
         source = .card(sessionId: route.sessionId, card: route.card)
+        _phase = State(initialValue: .loading)
+    }
+
+    init(route: LinesDiffRoute) {
+        client = nil
+        source = .lines(route)
+        _phase = State(initialValue: Self.parsed(.lines(route)) ?? .loading)
     }
 
     init(route: PatchDiffRoute) {
         client = nil
-        source = .patch(title: route.title, patch: route.patch)
+        source = .patch(route)
+        _phase = State(initialValue: Self.parsed(.patch(route)) ?? .loading)
     }
 
     var body: some View {
         let metrics = DiffMetrics(size: typeSize)
-        ScrollViewReader { proxy in
-            ZStack(alignment: .top) {
-                switch phase {
-                case .loading:
-                    DiffShimmer(rows: estimatedRows, metrics: metrics)
-                        .transition(.opacity)
-                case .ready(let document, let partial):
-                    VStack(spacing: 0) {
-                        if partial {
-                            DiffNotice(text: "Part of this diff is gone from the host.", error: true) { reload() }
-                                .background(Surface.chrome)
-                        }
-                        DiffBody(document: document, metrics: metrics, current: $current)
-                    }
+        ZStack(alignment: .top) {
+            switch phase {
+            case .loading:
+                DiffShimmer(rows: estimatedRows, metrics: metrics)
                     .transition(.opacity)
-                case .empty:
-                    DiffNotice(text: "This edit left no lines to show.", error: false)
-                        .transition(.opacity)
-                case .failed:
-                    DiffNotice(text: "The diff is gone from the host.", error: true) { reload() }
-                        .transition(.opacity)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .toolbar {
-                if hunkCount > 1 {
-                    ToolbarItemGroup(placement: .bottomBar) {
-                        Button {
-                            go(to: current - 1, proxy: proxy)
-                        } label: {
-                            Image(systemName: "chevron.up")
-                        }
-                        .disabled(current <= 0)
-                        .accessibilityLabel("Previous hunk")
-                        Spacer()
-                        Text("\(current + 1) of \(hunkCount)")
-                            .font(.footnote)
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                            .contentTransition(.numericText())
-                            .animation(reduceMotion ? nil : Motion.crossFade, value: current)
-                            .accessibilityLabel("Hunk \(current + 1) of \(hunkCount)")
-                        Spacer()
-                        Button {
-                            go(to: current + 1, proxy: proxy)
-                        } label: {
-                            Image(systemName: "chevron.down")
-                        }
-                        .disabled(current >= hunkCount - 1)
-                        .accessibilityLabel("Next hunk")
+            case .ready(let document, let partial):
+                VStack(spacing: 0) {
+                    if partial {
+                        DiffNotice(text: "Part of this diff is gone from the host.", error: true) { reload() }
+                            .background(Surface.chrome)
                     }
+                    DiffBody(document: document, metrics: metrics, current: $current, position: $position)
                 }
+                .transition(.opacity)
+            case .empty:
+                DiffNotice(text: emptyText, error: false)
+                    .transition(.opacity)
+            case .failed:
+                DiffNotice(text: "The diff is gone from the host.", error: true) { reload() }
+                    .transition(.opacity)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Surface.background)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Surface.background, for: .navigationBar)
@@ -119,6 +118,33 @@ struct DiffScreen: View {
             ToolbarItem(placement: .topBarTrailing) {
                 ChangeStat(adds: stat.adds, dels: stat.dels)
             }
+            if hunkCount > 1 {
+                ToolbarItemGroup(placement: .bottomBar) {
+                    Button {
+                        go(to: current - 1)
+                    } label: {
+                        Image(systemName: "chevron.up")
+                    }
+                    .disabled(current <= 0)
+                    .accessibilityLabel("Previous hunk")
+                    Spacer()
+                    Text("\(current + 1) of \(hunkCount)")
+                        .font(.footnote)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .contentTransition(.numericText())
+                        .animation(reduceMotion ? nil : Motion.crossFade, value: current)
+                        .accessibilityLabel("Hunk \(current + 1) of \(hunkCount)")
+                    Spacer()
+                    Button {
+                        go(to: current + 1)
+                    } label: {
+                        Image(systemName: "chevron.down")
+                    }
+                    .disabled(current >= hunkCount - 1)
+                    .accessibilityLabel("Next hunk")
+                }
+            }
         }
         .task(id: source) { await load() }
     }
@@ -128,23 +154,33 @@ struct DiffScreen: View {
     private var titlePath: String {
         switch source {
         case .card(_, let card): card.path
-        case .patch(let title, _): title
+        case .lines(let route): route.title
+        case .patch(let route): route.title
         }
     }
 
-    /// The host's own count for an edit (its preview may hold fewer lines
-    /// than the change); the parsed count for a patch.
+    /// The host's own count when the route carries one (an edit's preview
+    /// may hold fewer lines than the change); the parsed count otherwise.
     private var stat: (adds: Int, dels: Int) {
         switch source {
-        case .card(_, let card): (card.adds, card.dels)
-        case .patch:
-            if case .ready(let document, _) = phase { (document.adds, document.dels) } else { (0, 0) }
+        case .card(_, let card): return (card.adds, card.dels)
+        case .lines(let route): return (route.adds, route.dels)
+        case .patch(let route):
+            if let adds = route.adds, let dels = route.dels { return (adds, dels) }
+            if case .ready(let document, _) = phase { return (document.adds, document.dels) }
+            return (0, 0)
         }
     }
 
-    private var hunkCount: Int {
-        if case .ready(let document, _) = phase { document.hunks.count } else { 0 }
+    private var emptyText: String {
+        if case .patch = source { "No changes to show." } else { "This edit left no lines to show." }
     }
+
+    private var document: DiffDocument? {
+        if case .ready(let document, _) = phase { document } else { nil }
+    }
+
+    private var hunkCount: Int { document?.hunks.count ?? 0 }
 
     /// Rows the diff will take, from the lines each edit carries or the
     /// count the host left behind with an omitted body.
@@ -161,17 +197,33 @@ struct DiffScreen: View {
         return max(rows, 4)
     }
 
-    private func go(to index: Int, proxy: ScrollViewProxy) {
-        let target = min(max(index, 0), hunkCount - 1)
+    /// Previous or next hunk: the header's exact `y` from the fixed heights,
+    /// so the jump lands where the position indicator says it will.
+    private func go(to index: Int) {
+        guard let document, !document.hunks.isEmpty else { return }
+        let target = min(max(index, 0), document.hunks.count - 1)
+        let starts = DiffMetrics(size: typeSize).layout.hunkStarts(document)
         current = target
         if reduceMotion {
-            proxy.scrollTo(DiffAnchor.hunk(target), anchor: .top)
+            position.scrollTo(y: starts[target])
         } else {
-            withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(DiffAnchor.hunk(target), anchor: .top) }
+            withAnimation(.timingCurve(0.23, 1, 0.32, 1, duration: 0.25)) { position.scrollTo(y: starts[target]) }
         }
     }
 
     // MARK: - loading
+
+    /// A route whose lines are already in hand parses before the first
+    /// frame: no shimmer, no fetch.
+    private static func parsed(_ source: Source) -> Phase? {
+        let document: DiffDocument
+        switch source {
+        case .card: return nil
+        case .lines(let route): document = DiffDocument.from(edits: [route.lines])
+        case .patch(let route): document = DiffDocument.from(patch: route.patch, file: route.file)
+        }
+        return document.isEmpty ? .empty : .ready(document, partial: false)
+    }
 
     private func reload() {
         phase = .loading
@@ -179,36 +231,39 @@ struct DiffScreen: View {
     }
 
     private func load() async {
-        switch source {
-        case .patch(_, let patch):
-            let document = DiffDocument.from(patch: patch)
-            settle(document.isEmpty ? .empty : .ready(document, partial: false))
-        case .card(let sessionId, let card):
-            guard let client else { settle(.failed); return }
-            var edits: [[ToolPreview.Line]] = []
-            var lost = false
-            for edit in card.edits {
-                if case .array(let held)? = edit.preview?.lines {
-                    edits.append(held)
-                    continue
-                }
-                guard case .omittedBody? = edit.preview?.lines else { continue }
-                if let row = await client.body(sessionId: sessionId, seq: edit.seq),
-                   case .toolCall(let call) = row.event,
-                   case .array(let fetched)? = call.preview?.lines {
-                    edits.append(fetched)
-                } else {
-                    lost = true
-                }
-                if Task.isCancelled { return }
-            }
-            let document = DiffDocument.from(edits: edits)
-            if Task.isCancelled { return }
-            settle(document.isEmpty ? (lost ? .failed : .empty) : .ready(document, partial: lost))
+        if let parsed = Self.parsed(source) {
+            settle(parsed)
+            return
         }
+        guard case .card(let sessionId, let card) = source, let client else {
+            settle(.failed)
+            return
+        }
+        var edits: [[ToolPreview.Line]] = []
+        var lost = false
+        for edit in card.edits {
+            if case .array(let held)? = edit.preview?.lines {
+                edits.append(held)
+                continue
+            }
+            guard case .omittedBody? = edit.preview?.lines else { continue }
+            let row = await client.body(sessionId: sessionId, seq: edit.seq)
+            if Task.isCancelled { return }
+            if let row,
+               case .toolCall(let call) = row.event,
+               case .array(let fetched)? = call.preview?.lines {
+                edits.append(fetched)
+            } else {
+                lost = true
+            }
+        }
+        let document = DiffDocument.from(edits: edits)
+        if Task.isCancelled { return }
+        settle(document.isEmpty ? (lost ? .failed : .empty) : .ready(document, partial: lost))
     }
 
     private func settle(_ next: Phase) {
+        guard next != phase else { return }
         if reduceMotion {
             phase = next
         } else {
@@ -217,15 +272,11 @@ struct DiffScreen: View {
     }
 }
 
-/// Scroll targets inside the diff: one per hunk header.
-private enum DiffAnchor: Hashable {
-    case hunk(Int)
-}
-
 // MARK: - chrome
 
 /// The file path in two steps on one line: the directory dim, the name in
-/// the title's own color; the head truncates so the name always shows.
+/// the title's own color; the head truncates so the name always shows. A
+/// long press copies the whole path.
 private struct DiffTitle: View {
     let path: String
 
@@ -237,6 +288,11 @@ private struct DiffTitle: View {
             .lineLimit(1)
             .truncationMode(.head)
             .accessibilityLabel(path)
+            .contextMenu {
+                Button("Copy path", systemImage: "doc.on.doc") {
+                    UIPasteboard.general.string = path
+                }
+            }
     }
 }
 
@@ -293,20 +349,27 @@ private struct DiffBody: View {
     let document: DiffDocument
     let metrics: DiffMetrics
     @Binding var current: Int
+    @Binding var position: ScrollPosition
     @State private var offsets: [Int: CGFloat] = [:]
     @State private var drag: DragState?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// One sideways gesture from its first change to its release. The scroll
+    /// view takes a vertical start and cancels the gesture without an end,
+    /// so a change whose start location differs is a new gesture.
     private struct DragState {
         let hunk: Int
-        let start: CGFloat
+        let startLocation: CGPoint
+        let from: CGFloat
         let horizontal: Bool
     }
 
     var body: some View {
         let gutter = metrics.gutterWidth(digits: document.digits)
         let numberWidth = metrics.numberWidth(digits: document.digits)
-        let starts = metrics.hunkStarts(document)
+        let layout = metrics.layout
+        let starts = layout.hunkStarts(document)
+        let currentBinding = $current
         GeometryReader { geometry in
             let textWidth = max(80, geometry.size.width - gutter)
             ScrollView(.vertical) {
@@ -331,25 +394,25 @@ private struct DiffBody: View {
                             }
                         } header: {
                             DiffHunkHeader(hunk: hunk, showFile: document.multiFile, height: metrics.headerHeight)
-                                .id(DiffAnchor.hunk(hunk.id))
                         }
                     }
                     // Room for the last header to reach the top when the
                     // column is taller than the screen, so next hunk always lands.
-                    Color.clear.frame(height: footer(starts: starts, viewport: geometry.size.height))
+                    Color.clear.frame(height: footer(layout: layout, starts: starts, viewport: geometry.size.height))
                 }
             }
+            .scrollPosition($position, anchor: .top)
             .scrollBounceBehavior(.basedOnSize)
             .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, y in
-                let index = metrics.hunkIndex(at: y, starts: starts)
-                if index != current { current = index }
+                let index = layout.hunkIndex(at: y, starts: starts)
+                if index != currentBinding.wrappedValue { currentBinding.wrappedValue = index }
             }
         }
     }
 
-    private func footer(starts: [CGFloat], viewport: CGFloat) -> CGFloat {
+    private func footer(layout: DiffLayout, starts: [CGFloat], viewport: CGFloat) -> CGFloat {
         guard let last = document.hunks.last, let start = starts.last else { return 24 }
-        let lastHeight = metrics.headerHeight + CGFloat(last.lines.count) * metrics.rowHeight
+        let lastHeight = layout.height(last)
         guard start + lastHeight > viewport else { return 24 }
         return max(24, viewport - lastHeight)
     }
@@ -360,28 +423,39 @@ private struct DiffBody: View {
         CGFloat(hunk.widestChars) * metrics.charWidth + 12 - textWidth
     }
 
+    /// The first change decides: the larger component is the gesture's axis
+    /// for its life, and a vertical start is left to the scroll view. The
+    /// release projects the throw, clamps it to the hunk's reach and settles
+    /// with no bounce in a time that follows the travel.
     private func sideways(hunk: DiffHunk, reach: CGFloat, width: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 12, coordinateSpace: .local)
             .onChanged { value in
-                if drag == nil {
+                if drag == nil || drag?.startLocation != value.startLocation {
                     let t = value.translation
-                    drag = DragState(hunk: hunk.id, start: offsets[hunk.id] ?? 0, horizontal: abs(t.width) > abs(t.height))
+                    drag = DragState(hunk: hunk.id, startLocation: value.startLocation, from: offsets[hunk.id] ?? 0, horizontal: abs(t.width) > abs(t.height))
                 }
                 guard let drag, drag.horizontal, drag.hunk == hunk.id else { return }
-                offsets[hunk.id] = Self.rubber(drag.start - value.translation.width, reach: reach, width: width)
+                offsets[hunk.id] = Self.rubber(drag.from - value.translation.width, reach: reach, width: width)
             }
             .onEnded { value in
                 guard let state = drag else { return }
                 drag = nil
                 guard state.horizontal, state.hunk == hunk.id else { return }
-                let projected = state.start - value.predictedEndTranslation.width
+                let projected = state.from - value.predictedEndTranslation.width
                 let target = min(max(0, projected), reach)
                 if reduceMotion {
                     offsets[hunk.id] = target
                 } else {
-                    withAnimation(Motion.expand) { offsets[hunk.id] = target }
+                    let travel = abs(target - (offsets[hunk.id] ?? 0))
+                    withAnimation(Self.settle(travel: travel)) { offsets[hunk.id] = target }
                 }
             }
+    }
+
+    /// The settle after a release: no bounce, 0.35 s plus 0.4 ms per point
+    /// of travel, never past 0.6 s, so a long flick glides and a nudge stops.
+    static func settle(travel: CGFloat) -> Animation {
+        .spring(duration: min(0.6, 0.35 + travel * 0.0004), bounce: 0)
     }
 
     /// Past either end the text follows the finger less and less: Apple's
@@ -465,10 +539,16 @@ private struct DiffLineRow: View, Equatable {
         .font(.system(.footnote, design: .monospaced))
         .lineLimit(1)
         .frame(height: metrics.rowHeight)
-        .background(color?.opacity(DiffPalette.tint) ?? .clear)
+        // A shape, not a bare Color: a Color background inside a scroll
+        // container takes the container's corner rounding on iOS 26.
+        .background {
+            if let color {
+                Rectangle().fill(color.opacity(DiffPalette.tint))
+            }
+        }
         .overlay(alignment: .leading) {
             if let color {
-                color.frame(width: DiffPalette.bar)
+                Rectangle().fill(color).frame(width: DiffPalette.bar)
             }
         }
         .contentShape(Rectangle())
