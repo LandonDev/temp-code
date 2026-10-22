@@ -20,6 +20,7 @@ import { HostRequestSchemas } from './contract-host'
 import { HostDevicesRequestSchemas } from './contract-hostdevices'
 import { ResourcesRequestSchemas } from './contract-resources'
 import { PortsRequestSchemas } from './contract-ports'
+import { DevServerRequestSchemas } from './contract-devservers'
 import { AdmissionRequestSchemas } from './contract-admission'
 import { AGENT_TYPES } from './catalog'
 import { AttachmentSchema, PermissionPolicySchema } from './events'
@@ -149,6 +150,7 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...HostDevicesRequestSchemas,
   ...ResourcesRequestSchemas,
   ...PortsRequestSchemas,
+  ...DevServerRequestSchemas,
   // Admission control (contract-admission.ts): the running cap and what it is sized from.
   ...AdmissionRequestSchemas,
   // refresh: re-probe the installed CLIs of the probed providers first.
@@ -1333,6 +1335,8 @@ export type ServerPush =
   | import('./contract-resources').ResourcesPush
   // Dev servers forwarded to the Mac (contract-ports.ts): the host's list and stream frames down a Mac's link, the Mac's forwards to its renderer.
   | import('./contract-ports').PortsPush
+  // The Dev Server button (contract-devservers.ts): a run's state plus any new log lines, to every client.
+  | import('./contract-devservers').DevRunPush
   // Watcher spine (M11): project-relative path, debounced ~100 ms.
   | { push: 'file-event'; projectId: string; path: string; kind: 'changed' | 'created' | 'deleted' }
   // Build rail: run state plus any new log lines (batched ~50 ms). A new

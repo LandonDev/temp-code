@@ -57,6 +57,7 @@ import { MacThreadTokens, MacTools, macToolsHooks, rebootWhenSettled } from './m
 import { OfflineError, ThreadResources } from './threadResources'
 import { SharedScanner, ThreadPorts } from './threadPorts'
 import { PortTail } from './portTail'
+import { DevRuns } from './devRuns'
 import { PortForwardHost } from './remote/portForward'
 import { MacPortForwards, forwardSettingKey } from './remote/macPorts'
 import { PORTS_OFFER, type ForwardedPort } from '@shared/contract-ports'
@@ -98,7 +99,7 @@ import { Linear, handleLinear } from './linear'
 import { GithubInbox, handleGithubInbox } from './githubInbox'
 import { SessionRegistry } from './sessions'
 import { readPage } from './htmlRender'
-import { resolveAppBridgeLaunch, runDoctor, updateProvider } from './drivers/binaries'
+import { harnessEnv, resolveAppBridgeLaunch, runDoctor, updateProvider } from './drivers/binaries'
 import { probeCatalogs } from './drivers/catalogProbe'
 import { codexTiersReady, probeCodexTiers, startCodexTiers } from './drivers/codexTiers'
 import { forgetCodexVersion, installedCodexVersion } from './drivers/codexVersion'
@@ -797,6 +798,16 @@ export async function startServer(
     buffered: (id) => peerCalls.buffered(id),
     hostName: (id) => peerCalls.nameOf(id) ?? listEnvironments(store).find((e) => e.id === id)?.name ?? null
   })
+  // The Dev Server button's runs (devRuns.ts): their ports join the list the Macs get.
+  const devRuns = new DevRuns({
+    project: (id) => registry.getProject(id),
+    scanner: listenerScanner,
+    forwardsOf: (id) => portHost.forwardsOf(id),
+    offersChanged: () => portHost.refresh(),
+    env: () => harnessEnv()
+  })
+  devPortOffers.current = () => devRuns.offers()
+  devPortOffers.bound = (ids) => devRuns.bound(ids)
   resources.decorate = (r) => (r.kind === 'port' && r.environmentId === environmentId ? { ...r, forwards: portHost.forwardsOf(r.id) } : r)
   resources.onChange(() => portHost.refresh())
   peerCalls.onRegister((id, offers) => {
@@ -1314,6 +1325,7 @@ export async function startServer(
     }
     checkpointSinks.add(onCheckpoint)
     const offBuild = builder.onPush((p) => emitPush(p))
+    const offDevRuns = devRuns.onPush((p) => emitPush(p))
     // The picture moves with every answer's usage headers: this socket hears
     // the newest one at most every 5 s (accounts.ts accountsPusher).
     const accountsPush = accountsPusher((snapshot) => emitPush({ push: 'accounts', snapshot }))
@@ -2011,6 +2023,21 @@ export async function startServer(
             })
             break
           }
+          case 'devServer.targets':
+            sendFrame({ id: req.id, ok: true, result: await devRuns.targets(req.params.projectId) })
+            break
+          case 'devServer.start':
+            sendFrame({ id: req.id, ok: true, result: { run: await devRuns.start(req.params.projectId, req.params.targetId) } })
+            break
+          case 'devServer.stop':
+            sendFrame({ id: req.id, ok: true, result: { run: await devRuns.stop(req.params.runId) } })
+            break
+          case 'devServer.restart':
+            sendFrame({ id: req.id, ok: true, result: { run: await devRuns.restart(req.params.runId) } })
+            break
+          case 'devServer.log':
+            sendFrame({ id: req.id, ok: true, result: devRuns.history(req.params.runId) })
+            break
           case 'build.detect':
             sendFrame({ id: req.id, ok: true, result: await detectBuild(req.params.path) })
             break
@@ -2580,6 +2607,7 @@ export async function startServer(
       offLive()
       checkpointSinks.delete(onCheckpoint)
       offBuild()
+      offDevRuns()
       offAccounts()
       offRemoved()
       offMoved()
@@ -2763,6 +2791,7 @@ export async function startServer(
       clearTimeout(warmKickoff)
       clearInterval(warmTimer)
       builder.disposeAll()
+      devRuns.disposeAll()
       await gateway.stop()
       clearInterval(syncTimer)
       accountSync.close()

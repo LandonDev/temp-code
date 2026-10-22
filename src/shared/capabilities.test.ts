@@ -51,7 +51,10 @@ describe('METHOD_CAPABILITY', () => {
         'host.publishStatus',
         'host.publish',
         'host.publishStop',
-        'host.releaseCheckout.set'
+        'host.releaseCheckout.set',
+        // This Mac's dev server forwards and their per-host switch (contract-ports.ts).
+        'ports.forwards',
+        'ports.setForwarding'
       ].sort()
     )
   })
@@ -100,6 +103,8 @@ describe('METHOD_CAPABILITY', () => {
         'page.read',
         // A slice of a media file by its token, the same way.
         'media.read',
+        // A forwarded dev server's binding and streams, from the Mac's main process (contract-ports.ts).
+        ...methods.filter((m) => m.startsWith('ports.') && m !== 'ports.forwards' && m !== 'ports.setForwarding'),
         // A thread crosses between hosts only under an admin key; the desktop's session.move drives these.
         ...methods.filter((m) => m.startsWith('session.import.') || m.startsWith('session.export.')),
         'session.move.status',

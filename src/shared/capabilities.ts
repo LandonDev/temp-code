@@ -371,6 +371,12 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'ports.close': 'admin',
   'ports.forwards': 'local',
   'ports.setForwarding': 'local',
+  // The Dev Server button (contract-devservers.ts): ids only; the command comes from the host's own detection.
+  'devServer.targets': 'read',
+  'devServer.log': 'read',
+  'devServer.start': 'operate',
+  'devServer.stop': 'operate',
+  'devServer.restart': 'operate',
   /** A proof seam: an isolated instance's presence, flipped by hand (TEMP_CODE_E2E_PRESENCE=1). */
   'presence.set': 'local',
   'mac.readFile': 'local',
