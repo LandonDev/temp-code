@@ -31,7 +31,7 @@ import {
 } from '@shared/capabilities'
 import { loadEnvironmentId } from './remote/environment'
 import { handleRemote, type RemoteContext } from './remote/handlers'
-import { buildFacts } from '../buildInfo'
+import { buildFacts, hostPlatform } from '../buildInfo'
 import type { BuildFacts } from '@shared/deployDrift'
 import type { MediaRange } from '@shared/contract-fsgit'
 import { MasterReleaseWatcher } from '../deployDrift'
@@ -602,12 +602,12 @@ export async function startServer(
   // One project across hosts (remote/projectLinks.ts): over the links this
   // host holds, pair its workspaces and projects with the peer's and stamp
   // the link ids both copies share.
-  const projectLinker = new ProjectLinker({ environmentId, registry, peers })
+  const projectLinker = new ProjectLinker({ environmentId, platform: hostPlatform(), registry, peers })
   projectLinker.start()
   // A linked project's settings live on its home, the box
   // (remote/projectSettingsSync.ts): this host follows the home's copy and
   // sends every settings write of such a project there.
-  const projectSettings = new ProjectSettingsSync({ environmentId, platform: process.platform, registry, store, peers })
+  const projectSettings = new ProjectSettingsSync({ environmentId, platform: hostPlatform(), registry, store, peers })
   projectSettings.start()
   // Moving one thread between this host and a peer (remote/sessionMover.ts).
   const sessionMover = new SessionMover({

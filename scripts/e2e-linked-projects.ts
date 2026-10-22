@@ -102,6 +102,8 @@ function launch(inst: Inst): void {
     TEMP_CODE_FAKE_PROVIDERS: 'http://127.0.0.1:9',
     TEMP_CODE_WORK_ROOT: inst.work,
     TEMP_CODE_E2E_STATUS: '1',
+    // Both instances run here on Linux; the seam makes the instance that plays the Mac say so, so the box is the settings home.
+    TEMP_CODE_BUILD_PLATFORM: inst.name === 'mac' ? 'darwin' : 'linux',
     AGENT_CLI_CREDENTIAL_STORE: 'file',
     NODE_ENV: 'production',
     SHELL: '/bin/bash'

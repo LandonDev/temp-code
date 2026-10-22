@@ -105,8 +105,16 @@ export function buildInfo(appPath?: string): BuildInfo {
   return { release: release.n, version: appVersion, sha: appPath ? readBuildSha(appPath) : null }
 }
 
+/** This host's platform as every host decision reads it (the hello's
+ *  `build.platform`, the settings home of a linked project, the box's id
+ *  winning a link conflict). `TEMP_CODE_BUILD_PLATFORM` lets an isolated
+ *  instance of a proof play a Mac on the box (scripts/e2e-linked-projects.ts). */
+export function hostPlatform(env: NodeJS.ProcessEnv = process.env): string {
+  return env.TEMP_CODE_BUILD_PLATFORM?.trim() || process.platform
+}
+
 /** The hello's `build`: this build plus the platform that decides how it is brought up to master. */
-export function buildFacts(appPath?: string, platform: string = process.platform): BuildFacts {
+export function buildFacts(appPath?: string, platform: string = hostPlatform()): BuildFacts {
   return { ...buildInfo(appPath), platform }
 }
 
