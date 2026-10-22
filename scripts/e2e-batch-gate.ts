@@ -228,7 +228,8 @@ check('the gate streamed its ✓ lines into the step log (batch push, coalesced)
 check('the gate step carries its progress and times', (() => { const g = state.steps.find((s) => s.id === 'gate')!; return g.progress?.done === g.progress?.total && !!g.startedAt && !!g.endedAt })(), JSON.stringify(state.steps.find((s) => s.id === 'gate')))
 const masterGates = notices(master.id, 'gate').map((n) => [n.gate?.step, n.gate?.ok])
 check("gate and release rows on the master: the engine's two cycles, then batch_gate's", JSON.stringify(masterGates) === JSON.stringify([['gate', true], ['release', true], ['gate', true], ['release', true], ['gate', true], ['release', true]]), JSON.stringify(masterGates))
-check('the engine ended the batch by its rules, twice', notices(master.id, 'batch').filter((n) => /^Batch done:/.test(n.message)).map((n) => n.message.slice(0, 40)).join(' | ') === 'Batch done: 1 of 2 landed · 1 left out · | Batch done: 2 of 2 landed · gate passed', notices(master.id, 'batch').map((n) => n.message).join(' | '))
+const doneRows = notices(master.id, 'batch').filter((n) => /^Batch done:/.test(n.message)).map((n) => n.message)
+check('the engine ended the batch by its rules, twice', doneRows.length === 2 && /^Batch done: 1 of 2 landed · 1 left out · gate passed in \d+s · release-1 tagged$/.test(doneRows[0]) && /^Batch done: 2 of 2 landed · gate passed in \d+s · release-1 tagged$/.test(doneRows[1]), doneRows.join(' | '))
 check('the release notes carry the master title and the landed subjects', batches.notes(master, { masterId: master.id, steps: [], landed: [a.id, b.id], branches: {}, subjects: { [a.id]: ['child a: add a.txt'], [b.id]: ['child b: add b.txt'] } } as never) === 'Batch proof; child a: add a.txt; child b: add b.txt')
 
 // ── 5. persistence ───────────────────────────────────────────────────────
