@@ -1,13 +1,19 @@
 {
   "push": "hello",
-  "environmentId": "env_LHZearOIC7cuZ8WFhQQreQ",
+  "environmentId": "env_R-SlMrCbMxQUMqYHwKG-Iw",
   "contract": 1,
   "caps": [
     "operate",
     "read"
   ],
   "key": {
-    "id": "ZJHA5ED4W3",
+    "id": "VR655KAS4D",
     "name": "iphone"
+  },
+  "build": {
+    "release": 291,
+    "version": "1.0.291",
+    "sha": null,
+    "platform": "linux"
   }
 }

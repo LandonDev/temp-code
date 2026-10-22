@@ -3,15 +3,17 @@
   "ok": true,
   "result": [
     {
-      "id": "WPMJhhx6sOOK",
-      "workspaceId": "nCGWdmBlQnM9",
+      "id": "rA4etZzB-X3M",
+      "workspaceId": "h6JtIo308iP6",
       "name": "fixture-project",
       "mode": "local",
-      "branch": "master",
-      "cwd": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-swift-fixtures-repo-9UI5NF",
+      "branch": "main",
+      "cwd": "/tmp/tc-swift-fixtures-repo-LCG9mj",
       "archived": false,
       "accountPins": {},
-      "createdAt": 1792443772818
+      "preamble": null,
+      "preambleEnabled": true,
+      "createdAt": 1792691341459
     }
   ]
 }

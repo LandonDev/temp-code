@@ -1,0 +1,12 @@
+{
+  "id": "35",
+  "ok": true,
+  "result": {
+    "sessionId": "fixture-thread",
+    "macPeer": null,
+    "inherited": false,
+    "online": false,
+    "registered": [],
+    "held": 0
+  }
+}

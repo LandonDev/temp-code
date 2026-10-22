@@ -4,8 +4,8 @@ import TempCodeContract
 @testable import TempCodeClient
 
 private let now: Double = 1_700_000_000_000
-private func build(release: Int, platform: String = "linux") -> HelloPush.Build {
-    HelloPush.Build(release: release, version: "1.0.\(release)", sha: nil, platform: platform)
+private func build(release: Int, platform: String = "linux") -> BuildFacts {
+    BuildFacts(release: release, version: "1.0.\(release)", sha: nil, platform: platform)
 }
 private func master(_ n: Int) -> MasterRelease { MasterRelease(release: n, version: "1.0.\(n)", fetchedAt: now) }
 private func jobStatus(_ phase: HostJobPhase, target: String? = "master", exit: Int? = nil) -> HostJobStatus {
@@ -76,7 +76,7 @@ struct DriftLineTests {
         (build(release: 273), master(273), false, true, true, "Up to date with master (v1.0.273)."),
         (build(release: 275), master(273), false, true, true, "Up to date with master (v1.0.273)."),
     ])
-    func `the footer names the count, both versions and the fix`(build: HelloPush.Build, master: MasterRelease, failed: Bool, canDeploy: Bool, admin: Bool, expected: String) {
+    func `the footer names the count, both versions and the fix`(build: BuildFacts, master: MasterRelease, failed: Bool, canDeploy: Bool, admin: Bool, expected: String) {
         #expect(DriftLine.footer(build: build, master: master, fetchFailed: failed, canDeploy: canDeploy, isAdmin: admin) == expected)
     }
 

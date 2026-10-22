@@ -1,0 +1,111 @@
+{
+  "id": "36",
+  "ok": true,
+  "result": {
+    "updatedAt": 1792691341980,
+    "providers": {
+      "claude": {
+        "pinned": "work@example.com",
+        "profiles": [
+          {
+            "name": "work@example.com",
+            "email": "work@example.com",
+            "nickname": "Work",
+            "color": "#2f6fed",
+            "active": true
+          },
+          {
+            "name": "spare@example.com",
+            "email": "spare@example.com",
+            "active": false,
+            "static": true
+          }
+        ],
+        "reports": [
+          {
+            "profileName": "work@example.com",
+            "windows": [
+              {
+                "label": "5h",
+                "usedPercent": 40,
+                "resetsAt": 1792693741980,
+                "periodMs": 18000000
+              },
+              {
+                "label": "Weekly",
+                "usedPercent": 22,
+                "resetsAt": 1792950541980,
+                "periodMs": 604800000
+              }
+            ]
+          },
+          {
+            "profileName": "spare@example.com",
+            "windows": [
+              {
+                "label": "5h",
+                "usedPercent": 100,
+                "resetsAt": 1792691941980,
+                "periodMs": 18000000
+              },
+              {
+                "label": "Weekly",
+                "usedPercent": 95,
+                "resetsAt": 1792777741980,
+                "periodMs": 604800000
+              }
+            ],
+            "note": "rate limited",
+            "rateLimit": {
+              "provider": "anthropic",
+              "until": 1792691941980
+            }
+          }
+        ],
+        "headroom": {
+          "work@example.com": {
+            "room": 0.8,
+            "resetsAt": 1792691401980,
+            "ratePerMin": 12,
+            "tier": "allowed",
+            "seenAt": 1792691336980
+          },
+          "spare@example.com": {
+            "room": 0.1,
+            "throttledUntil": 1792691941980,
+            "ratePerMin": 0,
+            "tier": "allowed_warning",
+            "seenAt": 1792691221980
+          }
+        }
+      },
+      "codex": {
+        "pinned": null,
+        "profiles": [
+          {
+            "name": "codex@example.com",
+            "email": "codex@example.com",
+            "active": true
+          }
+        ],
+        "reports": [
+          {
+            "profileName": "codex@example.com",
+            "windows": [
+              {
+                "label": "5h",
+                "usedPercent": 12
+              }
+            ]
+          }
+        ]
+      },
+      "cursor": {
+        "pinned": null,
+        "profiles": [],
+        "reports": [],
+        "note": "not signed in"
+      }
+    }
+  }
+}

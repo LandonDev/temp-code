@@ -66,7 +66,7 @@ public enum HostFix: Sendable, Hashable {
     ///   retries the link and the lane retries itself.
     public static func fix(for status: EnvironmentStatus, environment: PairedEnvironment? = nil) -> HostFix? {
         if environment?.isRelayed == true { return nil }
-        switch status.transport {
+        return switch status.transport {
         case .unauthorized: .pairAgain
         case .reconnecting: .retry
         case .offline:

@@ -1,0 +1,16 @@
+{
+  "id": "admin-37",
+  "ok": true,
+  "result": {
+    "job": "deploy",
+    "phase": "done",
+    "target": "master",
+    "startedAt": 1792691341328,
+    "finishedAt": 1792691341328,
+    "exit": 0,
+    "stoppable": false,
+    "installed": true,
+    "installHint": "bash scripts/box/apply.sh --from 87 --through 87",
+    "version": "1.0.291"
+  }
+}

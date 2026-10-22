@@ -86,13 +86,13 @@ import TempCodeContract
         let fold = ThreadFold.fold(rows([
             user("go", newPass: true),
             todoWrite("t1", [("a", "completed")]),
-            .notice(NoticeEvent(kind: "gate", message: "Typecheck passed on feature", gate: gate)),
-            .notice(NoticeEvent(kind: "account-gone", message: "Account a is gone")),
+            .notice(NoticeEvent(kind: .gate, message: "Typecheck passed on feature", gate: gate)),
+            .notice(NoticeEvent(kind: .accountGone, message: "Account a is gone")),
             answer("done", msgId: "m1"),
             .turnComplete(TurnCompleteEvent()),
             user("more", newPass: true),
             todoWrite("t2", [("b", "completed")]),
-            .notice(NoticeEvent(kind: "review", message: "Reviewed", review: review))
+            .notice(NoticeEvent(kind: .review, message: "Reviewed", review: review))
         ]))
         let board = ImplementationBoard.build(fold, running: false)
         #expect(board.rounds.count == 2)

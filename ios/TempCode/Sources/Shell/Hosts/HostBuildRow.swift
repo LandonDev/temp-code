@@ -79,7 +79,7 @@ struct HostBuildSection: View {
         }
     }
 
-    private func footer(build: HelloPush.Build?, isMac: Bool, admin: Bool, open: Bool, installed: Bool, canDeploy: Bool) -> [String] {
+    private func footer(build: BuildFacts?, isMac: Bool, admin: Bool, open: Bool, installed: Bool, canDeploy: Bool) -> [String] {
         let watcher = MasterReleaseWatcher.shared
         let drift = DriftLine.footer(build: build, master: watcher.release, fetchFailed: watcher.fetchFailed, canDeploy: canDeploy, isAdmin: admin)
         var lines: [String?] = [drift]

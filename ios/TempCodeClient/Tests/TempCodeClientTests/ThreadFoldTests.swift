@@ -172,8 +172,8 @@ import TempCodeContract
         let gate = GateNotice(step: .typecheck, branch: "feature", ok: true, log: "", at: 1_200)
         let fold = ThreadFold.fold(rows([
             user("go"),
-            .notice(NoticeEvent(kind: "gate", message: "Typecheck passed on feature", gate: gate)),
-            .notice(NoticeEvent(kind: "account-gone", message: "Account a is gone from this host"))
+            .notice(NoticeEvent(kind: .gate, message: "Typecheck passed on feature", gate: gate)),
+            .notice(NoticeEvent(kind: .accountGone, message: "Account a is gone from this host"))
         ]))
         guard case .system(let landed) = fold.items[1].item, case .system(let plain) = fold.items[2].item else {
             Issue.record("shape \(fold.items)")
@@ -194,8 +194,8 @@ import TempCodeContract
         let gate = GateNotice(step: .typecheck, branch: "ios/export", ok: true, log: "", at: 1)
         let fold = ThreadFold.fold(rows([
             user("go"),
-            .notice(NoticeEvent(kind: "gate", message: "Typecheck passed on ios/export", gate: gate)),
-            .notice(NoticeEvent(kind: "batch", message: "Merged by the batch"))
+            .notice(NoticeEvent(kind: .gate, message: "Typecheck passed on ios/export", gate: gate)),
+            .notice(NoticeEvent(kind: .batch, message: "Merged by the batch"))
         ]))
         guard case .system(let line) = fold.items[1].item, case .system(let batch) = fold.items[2].item else {
             Issue.record("shape \(fold.items)")
@@ -217,9 +217,9 @@ import TempCodeContract
         let over = ReviewNotice(runId: "r1", reviewerId: nil, provider: "codex", model: "gpt-6.1-sol", outcome: .mergedAnyway, branch: "b", target: "master", blocking: [], minor: [], merged: true, pushed: true)
         let fold = ThreadFold.fold(rows([
             user("go"),
-            .notice(NoticeEvent(kind: "review", message: "held one", review: held("r1"))),
-            .notice(NoticeEvent(kind: "review", message: "held two", review: held("r2"))),
-            .notice(NoticeEvent(kind: "review", message: "Merged anyway", review: over))
+            .notice(NoticeEvent(kind: .review, message: "held one", review: held("r1"))),
+            .notice(NoticeEvent(kind: .review, message: "held two", review: held("r2"))),
+            .notice(NoticeEvent(kind: .review, message: "Merged anyway", review: over))
         ]))
         let lines = fold.items.compactMap { entry -> SystemLine? in
             if case .system(let line) = entry.item { return line }
@@ -291,7 +291,7 @@ import TempCodeContract
 
     @Test func `host rows carry their event whole: the failure, the notice, the preamble, the handoff's child`() {
         let failure = Failure(kind: .rateLimited, account: "work", summary: "Rate limited", cause: "429 from the API")
-        let notice = NoticeEvent(kind: "account-gone", message: "Account work is gone from this host")
+        let notice = NoticeEvent(kind: .accountGone, message: "Account work is gone from this host")
         let preamble = PreambleStamp(text: "## Rules\nBe brief.", words: 3)
         let fold = ThreadFold.fold(rows([
             .userText(UserTextEvent(text: "go", preamble: preamble)),

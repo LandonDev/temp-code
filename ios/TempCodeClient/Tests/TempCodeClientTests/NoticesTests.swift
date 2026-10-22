@@ -100,12 +100,12 @@ private func review(_ outcome: ReviewNotice.Outcome, blocking: Int = 0, minor: I
 
 @Suite struct NoticeKindTests {
     @Test func `the host's kind string names the row`() {
-        #expect(NoticeKind("review") == .review)
-        #expect(NoticeKind("gate") == .gate)
-        #expect(NoticeKind("batch") == .batch)
-        #expect(NoticeKind("account-gone") == .accountGone)
-        #expect(NoticeKind("restart") == .other("restart"))
-        #expect(NoticeEvent(kind: "account-gone", message: "gone").noticeKind == .accountGone)
+        #expect(NoticeKind(rawValue: "review") == .review)
+        #expect(NoticeKind(rawValue: "gate") == .gate)
+        #expect(NoticeKind(rawValue: "batch") == .batch)
+        #expect(NoticeKind(rawValue: "account-gone") == .accountGone)
+        #expect(NoticeKind(rawValue: "restart") == .unknown("restart"))
+        #expect(NoticeEvent(kind: .accountGone, message: "gone").noticeKind == .accountGone)
     }
 }
 

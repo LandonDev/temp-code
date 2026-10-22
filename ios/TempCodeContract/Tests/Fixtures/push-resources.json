@@ -1,0 +1,45 @@
+{
+  "push": "resources",
+  "sessionId": "fixture-thread",
+  "resources": [
+    {
+      "id": "rnqokaA6E3kAY",
+      "sessionId": "fixture-thread",
+      "environmentId": "env_R-SlMrCbMxQUMqYHwKG-Iw",
+      "kind": "worktree",
+      "identifier": "/tmp/tc-swift-fixtures-repo-LCG9mj/.claude/worktrees/scratch",
+      "label": "scratch",
+      "branch": null,
+      "createdAt": 1792691341950,
+      "removeRequestedAt": null,
+      "removedAt": null,
+      "note": null
+    },
+    {
+      "id": "rRIRnjJOFT32g",
+      "sessionId": "fixture-thread",
+      "environmentId": "env_R-SlMrCbMxQUMqYHwKG-Iw",
+      "kind": "worktree",
+      "identifier": "/tmp/tc-swift-fixtures-repo-LCG9mj/.claude/worktrees/fixture",
+      "label": "fixture",
+      "branch": "fixture",
+      "createdAt": 1792691341950,
+      "removeRequestedAt": null,
+      "removedAt": null,
+      "note": null
+    },
+    {
+      "id": "rMyxrXXYLP2eX",
+      "sessionId": "fixture-thread",
+      "environmentId": "env_R-SlMrCbMxQUMqYHwKG-Iw",
+      "kind": "simulator",
+      "identifier": "11111111-AAAA-4BBB-8CCC-000000000001",
+      "label": "iPhone 17",
+      "branch": null,
+      "createdAt": 1792691341950,
+      "removeRequestedAt": null,
+      "removedAt": null,
+      "note": null
+    }
+  ]
+}

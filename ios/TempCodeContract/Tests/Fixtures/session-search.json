@@ -5,17 +5,19 @@
     "hits": [
       {
         "sessionId": "fixture-thread",
-        "seq": 4,
-        "role": "assistant",
-        "snippet": "Hello from the fixture thread.",
-        "ts": 1792443772823
-      },
-      {
-        "sessionId": "fixture-thread",
         "seq": 1,
         "role": "user",
         "snippet": "Turn 1: say hello",
-        "ts": 1792443772822
+        "ts": 1792691341464,
+        "rank": -1.0586241908937064
+      },
+      {
+        "sessionId": "fixture-thread",
+        "seq": 4,
+        "role": "assistant",
+        "snippet": "Hello from the fixture thread.",
+        "ts": 1792691341465,
+        "rank": -0.9744951161206967
       }
     ],
     "truncated": false

@@ -1,0 +1,9 @@
+{
+  "id": "21",
+  "ok": true,
+  "result": {
+    "text": "## Goal\n\nPut the thread notes on the phone: the drawer, the State line on the banner, the search icon.\nOne screen, read-only until the operate key lands.\n\n## Decisions\n\n- The drawer reads the `notes` push; no polling.\n- Markdown through the client package cache, off the main actor.\n- Edit lands later, behind the operate key.\n\n## State\n\nDrawer built; the banner line next.\nDone: the store on the push. In flight: the banner. Blocked: nothing.\n\n## Pointers\n\n- ios/TempCode/Sources/Thread/NotesDrawer.swift\n- `bun run ios:test:client --filter NotesTests`\n\n## Open questions\n\n- Does the search icon show on a thread with empty notes? (for the designer)\n",
+    "updatedAt": 1792691341927,
+    "path": "/tmp/tc-swift-fixtures-repo-LCG9mj/.temp-code/attachments/fixture-thread/notes.md"
+  }
+}

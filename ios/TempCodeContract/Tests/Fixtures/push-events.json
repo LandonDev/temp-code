@@ -4,26 +4,26 @@
   "rows": [
     {
       "sessionId": "fixture-thread",
-      "seq": 17,
-      "ts": 1792443773442,
+      "seq": 18,
+      "ts": 1792691341864,
       "event": {
-        "type": "assistant-text",
-        "text": "A live ",
-        "delta": true,
+        "type": "thinking",
+        "text": "Thinking before the live row.",
+        "delta": false,
         "msgId": "m4",
-        "blockIndex": 0
+        "blockIndex": 1
       }
     },
     {
       "sessionId": "fixture-thread",
-      "seq": 18,
-      "ts": 1792443773442,
+      "seq": 19,
+      "ts": 1792691341864,
       "event": {
         "type": "assistant-text",
         "text": "A live row after subscribe.",
         "delta": false,
         "msgId": "m4",
-        "blockIndex": 0
+        "blockIndex": 2
       }
     }
   ]

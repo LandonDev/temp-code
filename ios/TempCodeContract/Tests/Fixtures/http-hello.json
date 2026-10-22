@@ -1,15 +1,22 @@
 {
-  "environmentId": "env_LHZearOIC7cuZ8WFhQQreQ",
-  "name": "Landons-MBP.attlocal.net",
-  "version": "1.0.245",
+  "environmentId": "env_R-SlMrCbMxQUMqYHwKG-Iw",
   "contract": 1,
+  "name": "tempcode-box",
+  "version": "1.0.291",
+  "build": {
+    "release": 291,
+    "version": "1.0.291",
+    "sha": null,
+    "platform": "linux"
+  },
   "key": {
-    "id": "ZJHA5ED4W3",
+    "id": "VR655KAS4D",
     "name": "iphone",
     "caps": [
       "operate",
       "read"
     ],
     "audience": "client"
-  }
+  },
+  "hosts": []
 }

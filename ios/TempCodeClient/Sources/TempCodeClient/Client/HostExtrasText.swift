@@ -65,7 +65,7 @@ public enum DriftLine {
     /// sentence. Master unknown: a sentence only when a fetch failed and
     /// nothing is held, so the footer is silent before the first fetch. No
     /// build in the hello (an older host): nil.
-    public static func footer(build: HelloPush.Build?, master: MasterRelease?, fetchFailed: Bool, canDeploy: Bool, isAdmin: Bool) -> String? {
+    public static func footer(build: BuildFacts?, master: MasterRelease?, fetchFailed: Bool, canDeploy: Bool, isAdmin: Bool) -> String? {
         guard let build else { return nil }
         guard let master else { return fetchFailed ? "Master's version could not be read." : nil }
         let behind = behind(master: master.release, running: build.release) ?? 0

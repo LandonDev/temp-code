@@ -1,0 +1,169 @@
+{
+  "push": "batch",
+  "state": {
+    "masterId": "fixture-master",
+    "rules": {
+      "land": "as-they-finish",
+      "steps": [
+        {
+          "id": "land",
+          "name": "Land",
+          "kind": "land"
+        },
+        {
+          "id": "gate",
+          "name": "Gate",
+          "kind": "gate"
+        },
+        {
+          "id": "release",
+          "name": "Release",
+          "kind": "release"
+        },
+        {
+          "id": "smoke",
+          "name": "Smoke test",
+          "kind": "shell",
+          "run": "bun run smoke",
+          "when": "all-done"
+        }
+      ],
+      "then": "notify",
+      "summary": "Land as they finish, gate once, release, then the smoke test"
+    },
+    "steps": [
+      {
+        "id": "land",
+        "name": "Land",
+        "kind": "land",
+        "status": "passed",
+        "detail": "1 of 3 branches landed",
+        "at": 1792691221913,
+        "log": [],
+        "startedAt": 1792691211913,
+        "endedAt": 1792691221913,
+        "progress": {
+          "done": 1,
+          "total": 3
+        }
+      },
+      {
+        "id": "gate",
+        "name": "Gate",
+        "kind": "gate",
+        "status": "running",
+        "detail": "vitest",
+        "at": 1792691281913,
+        "log": [
+          "✓ typecheck 41s",
+          "✓ build 58s"
+        ],
+        "startedAt": 1792691281913,
+        "progress": {
+          "done": 2,
+          "total": 3,
+          "label": "vitest"
+        }
+      },
+      {
+        "id": "release",
+        "name": "Release",
+        "kind": "release",
+        "status": "pending",
+        "detail": "",
+        "at": null,
+        "log": []
+      },
+      {
+        "id": "smoke",
+        "name": "Smoke test",
+        "kind": "shell",
+        "status": "running",
+        "detail": "",
+        "at": 1792691336913,
+        "log": [
+          "$ bun run smoke",
+          "smoke 01: checking the billing page",
+          "smoke 02: checking the billing page",
+          "smoke 03: checking the billing page",
+          "smoke 04: checking the billing page",
+          "smoke 05: ok",
+          "smoke 06: checking the billing page",
+          "smoke 07: checking the billing page",
+          "smoke 08: checking the billing page",
+          "smoke 09: checking the billing page",
+          "smoke 10: ok",
+          "smoke 11: checking the billing page",
+          "smoke 12: checking the billing page",
+          "smoke 13: checking the billing page",
+          "smoke 14: checking the billing page",
+          "smoke 15: ok",
+          "smoke 16: checking the billing page",
+          "smoke 17: checking the billing page",
+          "smoke 18: checking the billing page",
+          "smoke 19: checking the billing page",
+          "smoke 20: ok",
+          "smoke 21: checking the billing page",
+          "smoke 22: checking the billing page",
+          "smoke 23: checking the billing page",
+          "smoke 24: checking the billing page",
+          "smoke 25: ok",
+          "smoke 26: checking the billing page",
+          "smoke 27: checking the billing page",
+          "smoke 28: checking the billing page",
+          "smoke 29: checking the billing page",
+          "smoke 30: ok",
+          "smoke 31: checking the billing page",
+          "smoke 32: checking the billing page",
+          "smoke 33: checking the billing page",
+          "smoke 34: checking the billing page",
+          "smoke 35: ok",
+          "smoke 36: checking the billing page",
+          "smoke 37: checking the billing page",
+          "smoke 38: checking the billing page",
+          "smoke 39: checking the billing page"
+        ],
+        "startedAt": 1792691336913
+      }
+    ],
+    "landed": [
+      "fixture-child-a"
+    ],
+    "pending": [
+      "fixture-child-b",
+      "fixture-child-c"
+    ],
+    "held": [],
+    "blocked": null,
+    "finishedAt": null,
+    "children": [
+      {
+        "sessionId": "fixture-child-a",
+        "environmentId": "env_R-SlMrCbMxQUMqYHwKG-Iw",
+        "title": "Rebuild the writer",
+        "status": "done",
+        "threadType": "implementation",
+        "provider": "claude",
+        "model": "claude-haiku-5-5"
+      },
+      {
+        "sessionId": "fixture-child-b",
+        "environmentId": "env_R-SlMrCbMxQUMqYHwKG-Iw",
+        "title": "Backfill the rollups",
+        "status": "idle",
+        "threadType": "implementation",
+        "provider": "claude",
+        "model": "claude-haiku-5-5"
+      },
+      {
+        "sessionId": "fixture-child-c",
+        "environmentId": "env_R-SlMrCbMxQUMqYHwKG-Iw",
+        "title": "Which rollups are read?",
+        "status": "idle",
+        "threadType": "research",
+        "provider": "claude",
+        "model": "claude-haiku-5-5"
+      }
+    ]
+  }
+}

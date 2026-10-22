@@ -1,0 +1,327 @@
+{
+  "id": "30",
+  "ok": true,
+  "result": {
+    "rows": [
+      {
+        "sessionId": "fixture-notices",
+        "seq": 1,
+        "ts": 1792691341956,
+        "event": {
+          "type": "user-text",
+          "text": "Land the notices thread with every card the phone draws.",
+          "preamble": {
+            "text": "Work in your own git worktree cut from the project branch and symlink the main checkout node_modules into it. Run the typecheck and the tests you wrote or touched, never the full suite or the build. Land with the merge tool: it typechecks the branch in a queue and holds the merge on a failure. When green, fetch origin, rebase onto the project branch, resolve conflicts, then call the merge tool. Commit messages are plain prose with no attribution trailers of any kind. Never touch the installed app, never run the box update or the release, never edit the Mac checkout. Update the docs so they say what is now true, and give every new behaviour a unit test. Keep the change small and the diff readable. Keep the change small and the diff readable. Keep the change small and the diff readable. Keep the change small and the diff readable. Keep the change small and the diff readable. Keep the change small and the diff readable. Keep the change small and the diff readable. Keep the change small and the diff readable. Keep the change small and the diff readable. Keep the change small and the diff readable. Keep the change small and the diff readable. Keep the change small and",
+            "words": 212
+          },
+          "newPass": true
+        }
+      },
+      {
+        "sessionId": "fixture-notices",
+        "seq": 2,
+        "ts": 1792691341956,
+        "event": {
+          "type": "status",
+          "status": "running"
+        }
+      },
+      {
+        "sessionId": "fixture-notices",
+        "seq": 3,
+        "ts": 1792691341957,
+        "event": {
+          "type": "notice",
+          "kind": "gate",
+          "message": "Typecheck passed on ios/notices",
+          "gate": {
+            "step": "typecheck",
+            "branch": "ios/notices",
+            "ok": true,
+            "log": "✓ typecheck 41s",
+            "at": 1760000000000
+          }
+        }
+      },
+      {
+        "sessionId": "fixture-notices",
+        "seq": 4,
+        "ts": 1792691341957,
+        "event": {
+          "type": "notice",
+          "kind": "gate",
+          "message": "HELD: gate failed on ios/notices · vitest",
+          "gate": {
+            "step": "gate",
+            "branch": "ios/notices",
+            "ok": false,
+            "log": "  1 | const value0 = 0\n  2 | const value1 = 1\n  3 | const value2 = 2\n  4 | const value3 = 3\n  5 | const value4 = 4\n  6 | const value5 = 5\n  7 | const value6 = 6\n  8 | const value7 = 7\n✓ step 8 10s\n  10 | const value9 = 9\n  11 | const value10 = 10\n  12 | const value11 = 11\n  13 | const value12 = 12\n  14 | const value13 = 13\n  15 | const value14 = 14\n  16 | const value15 = 15\n  17 | const value16 = 16\n✓ step 17 19s\n  19 | const value18 = 18\n  20 | const value19 = 19\n  21 | const value20 = 20\n  22 | const value21 = 21\n  23 | const value22 = 22\n  24 | const value23 = 23\n  25 | const value24 = 24\n  26 | const value25 = 25\n✓ step 26 28s\n  28 | const value27 = 27\n  29 | const value28 = 28\n  30 | const value29 = 29\n  31 | const value30 = 30\n  32 | const value31 = 31\n  33 | const value32 = 32\n  34 | const value33 = 33\n  35 | const value34 = 34\n✓ step 35 37s\n  37 | const value36 = 36\n  38 | const value37 = 37\n  39 | const value38 = 38\n✗ vitest 12s",
+            "at": 1760000060000
+          }
+        }
+      },
+      {
+        "sessionId": "fixture-notices",
+        "seq": 5,
+        "ts": 1792691341957,
+        "event": {
+          "type": "notice",
+          "kind": "review",
+          "message": "Review held: 1 blocking finding (2 minor)",
+          "review": {
+            "runId": "rv1",
+            "reviewerId": "ios-notices-reviewer",
+            "provider": "codex",
+            "model": "gpt-6.1-sol",
+            "outcome": "held",
+            "branch": "ios/notices",
+            "target": "master",
+            "blocking": [
+              {
+                "file": "src/a.ts",
+                "line": 12,
+                "summary": "The empty list is read before the guard",
+                "failure_scenario": "An empty `rows` crashes the fold on first paint",
+                "verdict": "CONFIRMED",
+                "category": "correctness"
+              }
+            ],
+            "minor": [
+              {
+                "file": "src/a.ts",
+                "line": 30,
+                "summary": "Two sorts where one would do",
+                "failure_scenario": "",
+                "verdict": "PLAUSIBLE",
+                "category": "efficiency"
+              },
+              {
+                "file": "src/b.ts",
+                "line": 4,
+                "summary": "The helper duplicates fold()",
+                "failure_scenario": "",
+                "verdict": "PLAUSIBLE",
+                "category": "simplification"
+              }
+            ],
+            "merged": false,
+            "pushed": false
+          }
+        }
+      },
+      {
+        "sessionId": "fixture-notices",
+        "seq": 6,
+        "ts": 1792691341957,
+        "event": {
+          "type": "notice",
+          "kind": "review",
+          "message": "Reviewed by GPT-6.1 Sol: no blocking findings",
+          "review": {
+            "runId": "rv2",
+            "reviewerId": "ios-notices-reviewer",
+            "provider": "codex",
+            "model": "gpt-6.1-sol",
+            "outcome": "pass",
+            "branch": "ios/notices",
+            "target": "master",
+            "blocking": [],
+            "minor": [],
+            "merged": true,
+            "pushed": true
+          }
+        }
+      },
+      {
+        "sessionId": "fixture-notices",
+        "seq": 7,
+        "ts": 1792691341957,
+        "event": {
+          "type": "notice",
+          "kind": "batch",
+          "message": "Merged by the batch: ios/x → master at 1a2b3c4d5e, pushed"
+        }
+      },
+      {
+        "sessionId": "fixture-notices",
+        "seq": 8,
+        "ts": 1792691341958,
+        "event": {
+          "type": "notice",
+          "kind": "account-gone",
+          "account": "ws@example.com",
+          "message": "Account ws@example.com is gone from this host; routing automatically from here (10:42)"
+        }
+      },
+      {
+        "sessionId": "fixture-notices",
+        "seq": 9,
+        "ts": 1792691341958,
+        "event": {
+          "type": "error",
+          "message": "work@example.com needs a sign-in: the OAuth session lapsed and its refresh was refused",
+          "failure": {
+            "kind": "oauth_expired",
+            "account": "work@example.com",
+            "summary": "work@example.com needs a sign-in",
+            "cause": "the OAuth session lapsed and its refresh was refused"
+          }
+        }
+      },
+      {
+        "sessionId": "fixture-notices",
+        "seq": 10,
+        "ts": 1792691341958,
+        "event": {
+          "type": "error",
+          "message": "The account spare@example.com is no longer on file: it was removed from this host",
+          "failure": {
+            "kind": "account_unknown",
+            "account": "work@example.com",
+            "summary": "The account spare@example.com is no longer on file",
+            "cause": "it was removed from this host"
+          }
+        }
+      },
+      {
+        "sessionId": "fixture-notices",
+        "seq": 11,
+        "ts": 1792691341958,
+        "event": {
+          "type": "error",
+          "message": "work@example.com answered 401 token_expired: this instance is not the account owner, so nothing refreshed the token",
+          "failure": {
+            "kind": "token_expired",
+            "account": "work@example.com",
+            "summary": "work@example.com answered 401 token_expired",
+            "cause": "this instance is not the account owner, so nothing refreshed the token"
+          }
+        }
+      },
+      {
+        "sessionId": "fixture-notices",
+        "seq": 12,
+        "ts": 1792691341958,
+        "event": {
+          "type": "error",
+          "message": "work@example.com hit the 5h window: the window is spent; it refills in 40 minutes",
+          "limit": {
+            "window": "5h"
+          },
+          "failure": {
+            "kind": "rate_limited",
+            "account": "work@example.com",
+            "summary": "work@example.com hit the 5h window",
+            "cause": "the window is spent; it refills in 40 minutes"
+          }
+        }
+      },
+      {
+        "sessionId": "fixture-notices",
+        "seq": 13,
+        "ts": 1792691341958,
+        "event": {
+          "type": "error",
+          "message": "work@example.com has nothing left to spend: the plan is out of credits",
+          "failure": {
+            "kind": "quota",
+            "account": "work@example.com",
+            "summary": "work@example.com has nothing left to spend",
+            "cause": "the plan is out of credits"
+          }
+        }
+      },
+      {
+        "sessionId": "fixture-notices",
+        "seq": 14,
+        "ts": 1792691341959,
+        "event": {
+          "type": "error",
+          "message": "claude-fable-5-1 is not available here: the model is orchestrators-only on this host",
+          "failure": {
+            "kind": "model_unavailable",
+            "account": "work@example.com",
+            "summary": "claude-fable-5-1 is not available here",
+            "cause": "the model is orchestrators-only on this host"
+          }
+        }
+      },
+      {
+        "sessionId": "fixture-notices",
+        "seq": 15,
+        "ts": 1792691341959,
+        "event": {
+          "type": "error",
+          "message": "api.anthropic.com could not be reached: the socket closed before the first byte",
+          "failure": {
+            "kind": "network",
+            "account": null,
+            "summary": "api.anthropic.com could not be reached",
+            "cause": "the socket closed before the first byte"
+          }
+        }
+      },
+      {
+        "sessionId": "fixture-notices",
+        "seq": 16,
+        "ts": 1792691341959,
+        "event": {
+          "type": "error",
+          "message": "The harness exited mid-turn: claude exited with code 137",
+          "failure": {
+            "kind": "harness_crashed",
+            "account": null,
+            "summary": "The harness exited mid-turn",
+            "cause": "claude exited with code 137"
+          }
+        }
+      },
+      {
+        "sessionId": "fixture-notices",
+        "seq": 17,
+        "ts": 1792691341959,
+        "event": {
+          "type": "error",
+          "message": "The turn failed: the harness gave no reason",
+          "failure": {
+            "kind": "unknown",
+            "account": null,
+            "summary": "The turn failed",
+            "cause": "the harness gave no reason"
+          }
+        }
+      },
+      {
+        "sessionId": "fixture-notices",
+        "seq": 18,
+        "ts": 1792691341959,
+        "event": {
+          "type": "errors-cleared"
+        }
+      },
+      {
+        "sessionId": "fixture-notices",
+        "seq": 19,
+        "ts": 1792691341959,
+        "event": {
+          "type": "plan-handoff",
+          "sessionId": "fixture-child-b",
+          "title": "Backfill the rollups",
+          "how": "auto"
+        }
+      },
+      {
+        "sessionId": "fixture-notices",
+        "seq": 20,
+        "ts": 1792691341959,
+        "event": {
+          "type": "status",
+          "status": "error"
+        }
+      }
+    ],
+    "moreBefore": false,
+    "moreAfter": false,
+    "reset": false
+  }
+}

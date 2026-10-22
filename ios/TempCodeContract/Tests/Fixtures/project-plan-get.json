@@ -1,0 +1,50 @@
+{
+  "id": "22",
+  "ok": true,
+  "result": {
+    "projectId": "rA4etZzB-X3M",
+    "path": "/tmp/tc-swift-fixtures-repo-LCG9mj/.temp-code/plans/project.md",
+    "exists": true,
+    "pinned": true,
+    "sessionId": "fixture-project-plan",
+    "complete": true,
+    "milestones": [
+      {
+        "index": 1,
+        "title": "Design foundations",
+        "done": true
+      },
+      {
+        "index": 2,
+        "title": "Home and the rail",
+        "done": true
+      },
+      {
+        "index": 3,
+        "title": "The transcript",
+        "done": true
+      },
+      {
+        "index": 4,
+        "title": "Search across hosts",
+        "done": false
+      },
+      {
+        "index": 5,
+        "title": "The thread screens",
+        "done": false
+      },
+      {
+        "index": 6,
+        "title": "Steering",
+        "done": false
+      },
+      {
+        "index": 7,
+        "title": "Push and the Live Activity",
+        "done": false
+      }
+    ],
+    "missing": []
+  }
+}

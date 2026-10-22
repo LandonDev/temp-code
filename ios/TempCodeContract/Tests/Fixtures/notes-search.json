@@ -1,0 +1,15 @@
+{
+  "id": "31",
+  "ok": true,
+  "result": {
+    "hits": [
+      {
+        "id": "fixture-note",
+        "title": "Cutover checklist",
+        "snippet": "Before the cutover: run the proofs, then grep for fixtureNeedle on both hosts.",
+        "updatedAt": 1792691341970
+      }
+    ],
+    "truncated": false
+  }
+}

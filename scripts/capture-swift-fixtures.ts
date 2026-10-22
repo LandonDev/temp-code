@@ -69,6 +69,14 @@ configure({
   secrets: { mode: 'chromiumKey', keychainItem: 'Test Safe Storage' },
   appName: 'temp-code-e2e'
 })
+// host.deployStatus and host.log read a scratch trigger directory, never the
+// machine's own deploy log (the box's would land in the fixture).
+const deployDir = join(root, 'deploy')
+mkdirSync(deployDir, { recursive: true })
+writeFileSync(join(deployDir, 'ref'), 'master\n')
+writeFileSync(join(deployDir, 'log'), ['box-update: master requested', 'stage 30: electron-vite build', 'box-update: done (v1.0.312)'].join('\n') + '\n')
+writeFileSync(join(deployDir, 'exit'), '0\n')
+process.env.TEMP_CODE_DEPLOY_DIR = deployDir
 const server = await startServer(join(root, 'app.db'), { claimShim: false, remotePort: 0 })
 const base = `http://127.0.0.1:${server.remote!.port}`
 
@@ -348,19 +356,29 @@ if (
 
 await request('session.subscribe', { sessionId: SESSION_ID })
 const liveFrom = frames.length
+// The events lane sends its first row at once and coalesces what follows
+// inside its window, so a lead row goes alone and the next two share a
+// frame. (A delta rides the previews lane, never this one.)
 server.registry.append(SESSION_ID, {
   type: 'assistant-text',
-  text: 'A live ',
-  delta: true,
+  text: 'A lead row.',
+  delta: false,
   msgId: 'm4',
   blockIndex: 0
+})
+server.registry.append(SESSION_ID, {
+  type: 'thinking',
+  text: 'Thinking before the live row.',
+  delta: false,
+  msgId: 'm4',
+  blockIndex: 1
 })
 server.registry.append(SESSION_ID, {
   type: 'assistant-text',
   text: 'A live row after subscribe.',
   delta: false,
   msgId: 'm4',
-  blockIndex: 0
+  blockIndex: 2
 })
 const eventsPush = await waitFrame(
   (f, i = frames.indexOf(f)) =>

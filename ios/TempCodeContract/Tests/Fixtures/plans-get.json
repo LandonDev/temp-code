@@ -1,0 +1,14 @@
+{
+  "id": "26",
+  "ok": true,
+  "result": {
+    "settings": {
+      "autoImplement": true,
+      "archiveAfterStart": true,
+      "implementModel": "",
+      "implementReasoning": "",
+      "implementContext": ""
+    },
+    "overridden": false
+  }
+}

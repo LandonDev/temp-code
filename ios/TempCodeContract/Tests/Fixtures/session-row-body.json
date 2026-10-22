@@ -5,7 +5,7 @@
     "row": {
       "sessionId": "fixture-thread",
       "seq": 8,
-      "ts": 1792443772823,
+      "ts": 1792691341466,
       "event": {
         "type": "tool-result",
         "callId": "c1",

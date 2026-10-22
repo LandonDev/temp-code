@@ -3,23 +3,9 @@ import TempCodeContract
 
 // MARK: - What a notice row is
 
-/// What a `notice` row is, by the host's `kind` string.
-public enum NoticeKind: Sendable, Hashable {
-    case review, gate, batch, accountGone, other(String)
-
-    public init(_ kind: String) {
-        switch kind {
-        case "review": self = .review
-        case "gate": self = .gate
-        case "batch": self = .batch
-        case "account-gone": self = .accountGone
-        default: self = .other(kind)
-        }
-    }
-}
-
 extension NoticeEvent {
-    public var noticeKind: NoticeKind { NoticeKind(kind) }
+    /// What the row is (the contract's `NoticeKind`, an unknown kind kept as `.unknown`).
+    public var noticeKind: NoticeKind { kind }
 }
 
 // MARK: - The gate row's words (src/shared/gate.ts, GateCard.tsx)

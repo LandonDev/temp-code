@@ -1,0 +1,17 @@
+{
+  "id": "25",
+  "ok": true,
+  "result": {
+    "override": null,
+    "global": null,
+    "settings": {
+      "beforeMerge": false,
+      "provider": "codex",
+      "model": "gpt-6.1-sol",
+      "reasoning": "high",
+      "blockOn": "confirmed",
+      "maxMinutes": 15
+    },
+    "source": "default"
+  }
+}
