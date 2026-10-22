@@ -572,3 +572,71 @@ seeded waiting plan.
 - Tests: `PushRegistrarTests` (the payload and URL parsing, the row's word,
   a register at open, a status read for the same token, a second register
   for a rotated one, the unregister on the switch, the activity token).
+
+## Relayed hosts: the Mac through the box
+
+- A host the box relays (its `hello` lists them under `hosts`, a `presence`
+  push follows every change, `/api/hello` carries the same list) is a
+  client of its own in `ClientRegistry`: `Client/RelayedHosts.swift` keeps
+  the rows (`RelayedHost`: id, carrier `via`, the wire's `HostPresence`,
+  `learnedAt`, and `stateSince`, the phone's clock when the state last
+  moved) in `relayed.json` beside `environments.json`, fed by `apply` (a
+  carrier's whole list: adds, keeps, moves, renames, drops the rows of that
+  carrier it no longer lists), `update` (a relayed lane's own hello row;
+  never adds) and `forget(via:)`; `onChange` hands the registry a
+  `RelayedChange` (added, removed, moved with the new `RelayState`, renamed).
+  `RelayState` is the one word the phone acts on, read from `link`, `screen`
+  and `power` in the wire's order (down → unreachable, asleep, locked,
+  available); `admitsSends` is true for available and locked.
+- `PairedEnvironment.relayed(_:through:)` builds the relayed environment:
+  the relayed host's own id and name, the carrier's origin, caps, key id and
+  name, `via` = the carrier's id. `isRelayed`, `keyOwner` (the id the
+  `KeyStore` holds the key under: the carrier's) and `socketURL`
+  (`wss://carrier/ws?host=<id>`; the socket appends the ticket) follow from
+  `via`, which decodes as optional so an older `environments.json` reads
+  unchanged. The registry's `sync()` wants the union (each stored
+  environment, then the hosts relayed through it, in `learnedAt` order;
+  `ordered` reads the same), rebuilds a relayed client whose carrier's key
+  or name changed (its cache kept), removes clients outside the union
+  (their caches cleared), and seeds each relayed client's `presence` from
+  the store before its socket starts so the cold paint and the first block
+  are right; `relayed(via:)` and `carrier(of:)` answer the views; `remove`
+  forgets the relayed hosts of a carrier with it. Syncs are serialized.
+- The socket: `TempCodeSocket.setHostReachable(_:reason:)` is the carrier's
+  word on a relayed lane. Down closes the session, holds `offline` with the
+  reason as `lastError` and tries nothing (not on a retry, a foreground or
+  the network coming back; `attempt`, `probe` and `retryFired` all guard on
+  it); up attempts at once in the foreground with the count reset, or waits
+  `suspended` for the foreground. The flag and `online` are independent.
+  `EnvironmentClient.applyRelayState` sets `presence` and `stateSince` and
+  moves the flag; `relayObserver` carries the hello's `hosts` (whole), a
+  lane's hello `presence` (one row) and the `presence` push (whole) to the
+  registry.
+- The words and the gate: `RelayWords` (pure; the subject is "the Mac" for a
+  darwin host, else the name; `since` prints `9:14` today and `21 Oct 9:14`
+  otherwise from the calendar and locale passed in; `rowLine`, `subline`,
+  `stripLine` (locked only), `heldLine`, `reconnecting`, and the status
+  line's `statusLine(for:status:)` and `showsRetry(for:)`), `RelayRefusal`
+  (the wire's `unavailable: …` and `linkDown: …` lines parsed to a kind and
+  the host's sentence capitalised; `ActionError.wrap` maps a `server`
+  refusal through it first), `ActionBlock.hostAsleep(subject:)` and
+  `.hostUnreachable(subject:since:)` with `EnvironmentClient.relayBlock`,
+  folded into `operateBlock` and `approveBlock` after the key and the
+  socket. `HostFix.fix(for:environment:)` answers nil for a relayed host;
+  `forgetCopy(carrier:relayed:)` is the Forget dialog's message;
+  `PushRegistrar.sync` returns at once for a relayed client (the box's row
+  covers the key). `remote.push.activity` answers `null` on a relayed lane:
+  no Live Activity for a relayed thread in this slice.
+- Tests: `RelayWordsTests` (the state order, the words, the refusal, the
+  blocks, the relayed environment, `forgetCopy`), `RelayedHostsTests` (the
+  store's apply/update/forget and its file; the registry: the carrier's
+  hello making the lane with the carrier's key, a presence push holding and
+  releasing the socket, a lane's own hello, the asleep block, a dropped host
+  and its cache, forget, the cold paint, a held lane at launch, the
+  carrier's key rewritten, the registrar skipping), the socket's three
+  `setHostReachable` cases in `TempCodeSocketTests`, and `LiveRelayTests`
+  (nested in `LiveServerTests`, enabled when the test server seeds thread
+  28's four relayed hosts, `TC_TEST_RELAY_HOSTS`): the http hello's list, a
+  lane under its own id, the locked host answering with Send admitted, the
+  asleep host's one-line refusal, the unreachable host held, a presence flip
+  over the carrier's socket.

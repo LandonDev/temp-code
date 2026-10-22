@@ -1107,6 +1107,32 @@ routed to (aliax-core's `forward`). Two listeners:
   client package's `Shell/HostPresentation.swift` with their tests; the
   `settings` proof set shoots them with `TC_TEST_OPEN=host` (pushed through
   the stack's path) and `TC_TEST_SHEET=pair|pair-error`.
+- Relayed hosts (thread 29, the phone side of the box's relay): a host the
+  box relays is a client of its own in `ClientRegistry` on the box's
+  `/ws?host=<id>` lane with the box's key (`PairedEnvironment.via`,
+  `isRelayed`, `keyOwner`, `socketURL`); `Client/RelayedHosts.swift` is the
+  store (`RelayedHosts`, `relayed.json` beside `environments.json`, fed by
+  the carrier's hello `hosts`, the `presence` push and a lane's hello
+  `presence`), `RelayState` (the one word, read from link/screen/power in
+  the wire's order), `RelayWords` (every sentence: the row line, the
+  subline, the strip line for locked, the held and reconnecting lines) and
+  `RelayRefusal` (`unavailable: …` / `linkDown: …` parsed to one line); the
+  registry syncs the union of stored and relayed environments and seeds
+  each relayed client's `presence` before its socket starts; the socket's
+  `setHostReachable` holds a lane the box says is down (no attempt, no
+  Retry) and tries at once when it is back; `relayBlock` folds into
+  `operateBlock`/`approveBlock` (asleep and unreachable block, locked keeps
+  Send). Views: `Shell/Hosts/PresenceLine.swift` (`PresenceLine`,
+  `HostSubline`, `RelayStripLine`) and `RelayedHostRow.swift` (the row under
+  its carrier in Settings → Hosts, the detail with no key, Pair Again or
+  Forget); hooks: HostsView (the relayed rows, the relayed detail, the
+  Forget copy), `HomeSlots.hostSubline` + HomeView's host header + RootView,
+  WorkingStrip's idle arm, StatusLine's words and Retry rule,
+  `PushRegistrar.sync`'s guard. Tests: RelayWordsTests, RelayedHostsTests,
+  the socket's `setHostReachable` cases, and `LiveRelayTests` in
+  LiveServerTests.swift (enabled by `TC_TEST_RELAY_HOSTS`, which
+  scripts/ios-client-test.ts passes from thread 28's `relayHosts` seed).
+  docs/IOS-DESIGN.md "Hosts through the box".
 - Steering (L5): `ios/TempCode/Sources/Thread/Composer.swift` (the bar on
   every segment, Send ↔ Stop, the model and reasoning chips on focus; a
   watching master's button is Send and a master mid-turn with text steers)

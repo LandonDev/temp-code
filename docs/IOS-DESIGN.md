@@ -156,13 +156,48 @@ with the connection dot, the name, a sibling's trailing mark (the deploy
 drift) and the menu. A host's one-off lines (the boot-resume note) are quiet
 rows under its header with the event motion and no action.
 
+**Hosts through the box.** A host the box relays (the Mac, when the phone is
+away from the LAN and only the box has a tunnel) is a host like any other:
+its own `EnvironmentClient` in the registry on a second `/ws` lane to the
+box's origin (`?host=<macId>`, minted with the box's key), its own mark,
+name, rows and cache on Home, in Search's fan-out, the Inbox's host name and
+the subagent list's host mark, listed right after its carrier. A cold launch
+paints its threads from the cache like any host's (`relayed.json` beside
+`environments.json` keeps the row). It adds two lines and nothing else: a
+presence line and a refusal line. The presence line is one dim line of text
+in the meta step, no badge, no icon; the only colour stays on the status
+dot. Its words per state (`RelayWords`): nothing when the Mac is up and
+unlocked; "locked since 9:14" (the time the phone saw the lock, "locked"
+alone before it has); "asleep"; "unreachable since 9:14" (the box's time of
+the link's drop). On a row whose title is the host's name the line has no
+subject ("through box · locked since 9:14" under the host header on Home and
+on the Settings row); on the thread screen the subject is "the Mac" for a
+darwin host and the host's name otherwise. Locked keeps Send: the relay
+forwards every method the phone uses on a locked Mac, so the working strip's
+idle slot says "The Mac is locked since 9:14" and the composer stays open.
+Asleep and unreachable block through the composer's own line, Send
+disabled: "The Mac is asleep: reading only until it wakes", "The Mac is
+unreachable since 9:14" (the lane is held by the box's word, the socket's
+`setHostReachable`, with no attempt and no Retry; the box retries the
+link). A refusal that still comes back from the host (a `screen` method on
+a locked Mac, a race at a transition) is one line on the action that hit it,
+the host's own words capitalised: "The Mac is asleep" (`RelayRefusal`). The
+status line under the bar reads "Reconnecting to the Mac…" past its 1.5 s
+hold and "The Mac is unreachable since 9:14" while held, with no Retry
+button then. The presence line cross-fades in place on a change
+(`Motion.crossFade`, blur; opacity alone under reduced motion), never on
+first paint, and re-renders once a minute at most. Forgetting the box
+forgets the Mac with it (the dialog names it: "Studio Mac goes with it."); a
+relayed host has no Pair Again and no Forget of its own.
+
 **Home's extension points** (`HomeSlots`, one value passed from `RootView`'s
 `HomeView(path: $homePath, slots: …)`; every slot optional, a nil slot draws
 nothing, so no menu is ever empty): `pairing` (paired projects), `hostNotes`
 and `hostMenu` and `projectBatch` (the fleet switches and the boot-resume
 note), `projectSettings` (the project settings entry in the project header's
 menu, after New thread and before the batch entries), `hostTrailing` (the
-deploy-drift mark on the status row and the host header). Masters need no
+deploy-drift mark on the status row and the host header), `hostSubline` (the
+relayed host's "through box · locked since 9:14" under the header's name). Masters need no
 slot: a master's row carries its word from `ThreadRow`, its batch children are
 roots that Home lists through `HomeModel`, and whatever fills
 `ThreadItem.children` nests under its root as subagents do.
@@ -1118,13 +1153,30 @@ so the bar's title is the host's name on either path with no principal item.
    host, the pairing date.
 5. **Pair Again** and the red **Forget This Host**.
 
+**Relayed hosts in Settings → Hosts.** A host reached through another sits
+under its carrier's row (`RelayedHostRow`): the lane's dot in the mark
+column, the name, "through <carrier> · <presence>" in the meta step (the
+presence line's words above, nothing after the carrier's name when the host
+is up and unlocked), the abbreviated id trailing; no swipe and no menu,
+since nothing waits on the person. Its detail (`RelayedHostDetailView`) has
+two sections: Status (the dot, the lane's `StatusText`, the presence line
+under it, a spinner while connecting; the footer names the carrier and that
+it relays the host's threads while the host is awake and its link is up; no
+Retry Now, `HostFix.fix(for:environment:)` answers nil for a relayed host)
+and Host (Name read-only, since it is the Mac's own hostname; Through;
+Environment id in mono; Version from the presence row's build, else the
+lane's hello; Contract). No Key section (a footer says whose key it uses),
+no Pair Again, no Forget: the footer says forgetting the carrier forgets
+this host with it.
+
 Forgetting is a confirmation dialog naming the host. `forgetHost` first
 sends `remote.push.unregister` on the host while the socket is open (best
 effort, so a forgotten host stops sending notices whose tap would land on an
 environment the phone no longer knows), then removes the key, stops the
 socket and clears the cache. The message says what holds: the threads stay
 on the host, it stops sending notifications here when it can be reached, and
-the key stays valid there until revoked.
+the key stays valid there until revoked; a carrier's names the relayed hosts
+that go with it (`forgetCopy`).
 
 **Pairing** (Add a Host, Pair Again) is a medium sheet, 16 pt radius
 (`Radius.sheet`), with the large detent for the keyboard: a segmented
