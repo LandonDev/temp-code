@@ -410,7 +410,7 @@ export const TOOLS = [
     // A copy of src/shared/gate.ts's BATCH_GATE_TOOL_DESCRIPTION and BATCH_GATE_PARAMS; app-bridge.test.ts keeps them equal.
     name: 'batch_gate',
     description:
-      "Run the batch's gate once on the merged tree, then tag the release. Only the project's master thread may call it, after its children have landed through merge_branch (a child still unlanded is left out and the land step says so). The gate is `bun run gate --tier commit` on the project checkout at the project branch's head, in the host's gate queue, so it never runs beside a child's typecheck or another batch's gate; with a green gate the release train (`bun scripts/release.ts`) commits the version bump and tags release-N. Answers \"passed in 4m 12s · release-N tagged\", or \"FAILED at <step>\" with the log tail: fix on a child branch, land it, call again.",
+      "Run the batch's gate step once on the merged tree now, then its release step. Only a master thread may call it, after its children have landed through merge_branch (a child still unlanded is left out and the land step says so). The gate is `bun run gate --tier commit` on the project checkout at the project branch's head, in the host's gate queue, so it never runs beside a child's typecheck or another batch's gate; with a green gate the release train (`bun scripts/release.ts`) commits the version bump and tags release-N. Answers \"passed in 4m 12s · release-N tagged\", or \"FAILED at <step>\" with the log tail: fix on a child branch, land it, call again. Refused when your steps name no gate.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -423,17 +423,43 @@ export const TOOLS = [
     // A copy of src/shared/gate.ts's BATCH_RULES_TOOL_DESCRIPTION and BATCH_RULES_PARAMS; app-bridge.test.ts keeps them equal.
     name: 'batch_rules',
     description:
-      "Read or set what the app does when every thread of your batch is done. Only the project's master thread may call it. With no field it answers the rules as they stand; with fields it sets those and keeps the rest. Set them when you open a batch and state them to the person. Defaults: land as-they-finish, gate, release, no deploy, then notify. The app runs the steps in order on the host's gate queue when the last thread is done (idle after a turn, done, archived or deleted; one that errored or stopped blocks the end and you are told); a red step stops the rest and you are told; the steps run again once a thread changes.",
+      "Read or set what the app does when every thread of your batch is done. Only a master thread may call it. With no field it answers the rules as they stand; with fields it sets those and keeps the rest. Set them when you open a batch and state them to the person in one line. `steps` is the whole list, in order: the built-in kinds land, gate (bun run gate --tier commit on the project head), release (scripts/release.ts: the tag, pushed), publish (the Mac's release job) and deploy (the box's deploy trigger), and `shell` steps of your own (a build, a deploy to a dev server, a smoke test: `run` through the login shell in `cwd`, default the project checkout; exit 0 passes). Write the steps that fit the project: a Minecraft plugin wants build, deploy to the dev server, smoke test; this app wants gate, release, publish, deploy. Default: land, gate, release. The app runs them in order on the host's gate queue when the last thread is done (idle after a turn, done, archived or deleted; one that errored or stopped blocks the end and you are told); a red step stops the rest and you are told; the steps run again once a thread changes.",
     inputSchema: {
       type: 'object',
       properties: {
         land: { type: 'string', enum: ['as-they-finish', 'all-at-once'], description: "as-they-finish: merge_branch fast-forwards each thread's branch as it lands. all-at-once: merge_branch answers HELD and records the branch; the app merges them in landing order at the end." },
-        gate: { type: 'boolean', description: 'Run the commit tier once on the project head after the last landing (bun run gate --tier commit).' },
-        release: { type: 'boolean', description: 'Tag with scripts/release.ts after a green gate, and push.' },
-        deploy: { type: 'string', enum: ['none', 'box'], description: "none, or box: after the release, fire the box's deploy trigger (host.deploy) for the project branch." },
-        then: { type: 'string', enum: ['notify', 'archive-children'], description: 'notify: a notice row on this thread and a wake. archive-children: the same, and every done thread of the batch archived.' },
-        summary: { type: 'string', description: 'One line in your words, e.g. "Land all seven, gate once, release, then tell me".' }
+        steps: {
+          type: 'array',
+          description: "The whole list in order. Each: { id (unique, letters/digits/dots/dashes), name (what the board shows), kind: land | gate | release | publish | deploy | shell, run (shell only: the command line), cwd (shell only: default the project checkout), when: all-done (default) | each-landing (shell only: run again after every landing) }. One step per built-in kind; a list without a land step gets one at the front.",
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              name: { type: 'string' },
+              kind: { type: 'string', enum: ['land', 'gate', 'release', 'publish', 'deploy', 'shell'] },
+              run: { type: 'string' },
+              cwd: { type: 'string' },
+              when: { type: 'string', enum: ['all-done', 'each-landing'] }
+            },
+            required: ['id', 'name', 'kind']
+          }
+        },
+        then: { type: 'string', enum: ['notify', 'archive-children'], description: "notify: a notice row on this thread and a wake. archive-children: the same, and every done thread of the batch archived." },
+        summary: { type: 'string', description: "One line in your words, e.g. \"Land all seven, gate once, release, then tell me\"." }
       }
+    }
+  },
+  {
+    // A copy of src/shared/gate.ts's ADOPT_THREAD_TOOL_DESCRIPTION and ADOPT_THREAD_PARAMS; app-bridge.test.ts keeps them equal.
+    name: 'adopt_thread',
+    description:
+      "Bring an existing root thread of this host into your batch: it takes your id as its master, and you as its starter when it had none, so its settles reach you and it counts toward the batch's end. Refused for a master thread, a subagent, an archived thread or a thread of another batch.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        threadId: { type: 'string', description: "The thread to adopt (app_list_threads shows ids)." }
+      },
+      required: ['threadId']
     }
   },
   {
@@ -699,7 +725,8 @@ const METHOD_FOR = {
   merge_branch: 'app.mergeBranch',
   report_findings: 'app.reportFindings',
   batch_gate: 'app.batchGate',
-  batch_rules: 'app.batchRules'
+  batch_rules: 'app.batchRules',
+  adopt_thread: 'app.adoptThread'
 }
 
 /** The MCP content parts a tool result turns into (the preview's PNG rides as an image). */

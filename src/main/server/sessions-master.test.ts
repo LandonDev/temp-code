@@ -86,7 +86,7 @@ async function pinnedMaster(): Promise<{ projectId: string; master: string }> {
   const ws = await registry.createWorkspace(root, 'ws')
   const project = await registry.createProject(ws.id, 'P', 'local')
   const master = await registry.create({ cwd: root, provider: 'claude', projectId: project.id, threadType: 'chat', title: 'Master' })
-  registry.setProjectMaster(project.id, master.id)
+  registry.setMaster(master.id, true)
   await registry.send(master.id, 'open the batch')
   await settle()
   return { projectId: project.id, master: master.id }
@@ -219,5 +219,38 @@ describe('pause and resume cascade', () => {
     const b = await child(projectId, master, 'B')
     await registry.pauseRun(a)
     expect([master, a, b].map(status)).toEqual(['running', 'paused', 'running'])
+  })
+})
+
+describe('the batch follows the starter', () => {
+  it("create from a master carries the master's id; from a batch root it inherits; from a plain thread nothing; an explicit masterId wins", async () => {
+    const { master } = await pinnedMaster()
+    const plan = await registry.create({ cwd: root, provider: 'claude', startedBy: master, title: 'Plan' })
+    expect(plan).toMatchObject({ masterId: master, startedBy: master })
+    const build = await registry.create({ cwd: root, provider: 'claude', startedBy: plan.id, title: 'Build' })
+    expect(build).toMatchObject({ masterId: master, startedBy: plan.id })
+    const chat = await registry.create({ cwd: root, provider: 'claude', title: 'Chat' })
+    const loose = await registry.create({ cwd: root, provider: 'claude', startedBy: chat.id, title: 'Loose' })
+    expect(loose).toMatchObject({ masterId: null, startedBy: chat.id })
+    const other = await registry.create({ cwd: root, provider: 'claude', startedBy: plan.id, masterId: chat.id, title: 'Other' })
+    expect(other.masterId).toBe(chat.id)
+  })
+
+  it('setMaster pins and unpins a root, refuses a subagent, and pushes the meta', async () => {
+    const t = await registry.create({ cwd: root, provider: 'claude', title: 'T' })
+    const pushed: boolean[] = []
+    const off = registry.onMeta((m) => {
+      if (m.id === t.id) pushed.push(!!m.isMaster)
+    })
+    registry.setMaster(t.id, true)
+    expect(registry.isMaster(t.id)).toBe(true)
+    registry.setMaster(t.id, true)
+    registry.setMaster(t.id, false)
+    expect(registry.isMaster(t.id)).toBe(false)
+    expect(pushed).toEqual([true, false])
+    off()
+    const sub = await registry.create({ cwd: root, provider: 'claude', parentId: t.id, title: 'Sub' })
+    expect(() => registry.setMaster(sub.id, true)).toThrow(/subagent/)
+    expect(() => registry.setMaster('nope', true)).toThrow(/unknown session/)
   })
 })

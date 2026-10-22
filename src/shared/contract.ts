@@ -222,11 +222,11 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('workspace.setPreamble'),
     params: z.object({ workspaceId: z.string(), preamble: z.string().nullable(), enabled: z.boolean() })
   }),
-  // The project's master thread (CLAUDE.md "Master threads"): pin one, or null to unpin.
+  // A master thread (CLAUDE.md "Master threads"): pin a root thread as one, or unpin it. Many per project.
   z.object({
     id: z.string(),
-    method: z.literal('project.setMaster'),
-    params: z.object({ projectId: z.string(), threadId: z.string().nullable() })
+    method: z.literal('session.setMaster'),
+    params: z.object({ sessionId: z.string(), master: z.boolean() })
   }),
   z.object({
     id: z.string(),
@@ -600,6 +600,12 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     id: z.string(),
     method: z.literal('app.batchRules'),
     params: z.object({ sessionId: z.string(), rules: BatchRulesSchema.partial().optional() })
+  }),
+  // The codex bridge's adopt_thread (batch.ts): an existing root thread joins the master's batch.
+  z.object({
+    id: z.string(),
+    method: z.literal('app.adoptThread'),
+    params: z.object({ sessionId: z.string(), threadId: z.string() })
   }),
   // Appshots (M10): global capture settings, one settings-table row.
   z.object({

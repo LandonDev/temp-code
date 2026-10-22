@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { DialogFooter, ErrorLine, errorText } from "../../../chrome/ConfirmDialog";
 import { Modal } from "../../../chrome/Modal";
-import { Input, Segmented, Toggle } from "../../settingsBits";
+import { Input, Segmented } from "../../settingsBits";
 import { rulesSentence, type Rules } from "./useMasterModel";
 
 /**
@@ -55,26 +55,6 @@ export function RulesDialog({
                 { value: "all-at-once", label: "All at once" },
               ]}
               onChange={(v) => set("land", v)}
-            />
-          </Field>
-          <Field label="Gate the merged tree">
-            <Toggle label="Gate the merged tree" on={rules.gate} onChange={(v) => set("gate", v)} />
-          </Field>
-          <Field label="Release">
-            <Toggle label="Release" on={rules.release} onChange={(v) => set("release", v)} />
-          </Field>
-          <Field label="Publish Mac release">
-            <Toggle label="Publish Mac release" on={!!rules.publish} onChange={(v) => set("publish", v)} />
-          </Field>
-          <Field label="Deploy">
-            <Segmented
-              label="Deploy"
-              value={rules.deploy}
-              options={[
-                { value: "none", label: "Nowhere" },
-                { value: "box", label: "The box" },
-              ]}
-              onChange={(v) => set("deploy", v)}
             />
           </Field>
           <Field label="Then">

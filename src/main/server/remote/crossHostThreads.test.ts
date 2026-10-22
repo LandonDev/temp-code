@@ -62,6 +62,8 @@ function fakeRegistry() {
       const meta = {
         id,
         parentId: (raw.parentId as string | null) ?? null,
+        startedBy: (raw.startedBy as string | null) ?? null,
+        masterId: (raw.masterId as string | null) ?? null,
         projectId: (raw.projectId as string | null) ?? null,
         workspaceId: null,
         threadType: (raw.threadType as SessionMeta['threadType']) ?? null,
@@ -178,6 +180,13 @@ describe('CrossHostThreads', () => {
     expect(meta.permission).toBe('auto')
     expect(registry.sent).toEqual([{ id: r.sessionId, text: 'hello' }])
     expect(settings.get(`${OWNER_PREFIX}${r.sessionId}`)).toBe(BOX)
+  })
+  it("thread.start stamps the box caller as the starter and carries the caller's batch (masterId) when one rides along", async () => {
+    const { svc, registry } = service()
+    const plain = (await svc.handle('thread.start', { caller, args: startArgs }, ctx)) as { sessionId: string }
+    expect(registry.get(plain.sessionId)).toMatchObject({ startedBy: 'box-thread', masterId: null })
+    const inBatch = (await svc.handle('thread.start', { caller, args: { ...startArgs, masterId: 'box-master' } }, ctx)) as { sessionId: string }
+    expect(registry.get(inBatch.sessionId)).toMatchObject({ startedBy: 'box-thread', masterId: 'box-master' })
   })
   it('a box path with no checkout here starts in the work root and says so', async () => {
     const { svc } = service({ exists: () => false })

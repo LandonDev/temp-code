@@ -284,25 +284,44 @@ export function questionLines(questions: unknown): string {
     .join('\n')
 }
 
-/** Who hears a session settle: its parent, else (a root thread of a
- *  batch) its master. Never itself. */
+/** Who hears a session settle first: its parent, else (a root thread of
+ *  a batch) its master. Never itself. */
 export const settleTarget = (child: Pick<SessionMeta, 'id' | 'parentId' | 'masterId'>): string | null => {
   const target = child.parentId ?? child.masterId ?? null
   return target && target !== child.id ? target : null
 }
 
+/** Everyone who hears a session settle, once each: the parent or the
+ *  master (settleTarget), and the thread that started it through
+ *  app_start_thread (`startedBy`) when that is someone else. A plan's
+ *  build started by the plan itself reports to the plan and to the
+ *  master; one started by the master reports to the master once. */
+export function settleTargets(child: Pick<SessionMeta, 'id' | 'parentId' | 'masterId' | 'startedBy'>): string[] {
+  const out: string[] = []
+  for (const id of [settleTarget(child), child.startedBy ?? null]) {
+    if (id && id !== child.id && !out.includes(id)) out.push(id)
+  }
+  return out
+}
+
+/** The batch a thread started from `starter` belongs to (CLAUDE.md
+ *  "Master threads"): a master's thread carries the master's id; a thread
+ *  started by a root that is itself in a batch (a plan starting its build)
+ *  inherits that batch; anything else carries none. The starter stays
+ *  `startedBy`, so it hears the settles too (settleTargets). */
+export function batchMembershipOf(starter: Pick<SessionMeta, 'id' | 'parentId' | 'isMaster' | 'masterId'> | null | undefined): { masterId: string } | {} {
+  if (!starter) return {}
+  if (isMasterSession(starter)) return { masterId: starter.id }
+  if (starter.masterId && !starter.parentId) return { masterId: starter.masterId }
+  return {}
+}
+
 /** Called by the registry when a child transitions out of running. Queues
- *  an automatic report to the parent (or the master, for a batch thread)
- *  unless a wait already covers it. */
+ *  an automatic report to the parent (or the master, for a batch thread),
+ *  and to the thread that started it, unless a wait already covers it. */
 export function notifyParentOfSettle(reg: SessionRegistry, child: SessionMeta): void {
-  const targetId = settleTarget(child)
-  if (!targetId || awaited.has(child.id) || settleSuppressed(child)) return
-  const parent = reg.get(targetId)
-  if (!parent || parent.archived) return
-  // Two threads naming each other as master would wake each other forever.
-  if (parent.masterId === child.id) return
-  const batch = !child.parentId
-  const what = batch ? `batch thread "${child.title}" (${child.id}, ${child.threadType ?? 'thread'})` : `subagent "${child.title}" (${child.id})`
+  const targets = settleTargets(child)
+  if (targets.length === 0 || awaited.has(child.id) || settleSuppressed(child)) return
   const turn = latestTurnRows(reg.eventsAfter(child.id, 0))
   const pending = child.status === 'waiting' ? pendingOf(turn) : null
   const tail = turnText(turn).slice(-600)
@@ -316,12 +335,23 @@ export function notifyParentOfSettle(reg: SessionRegistry, child: SessionMeta): 
       : tail
         ? `Latest reply:\n${tail}`
         : '(no reply text)'
-  reg.deliverAgentReport(targetId, {
-    agentId: child.id,
-    title: child.title,
-    status: child.status,
-    text: `<subagent-report>\nAutomatic notification: ${what} settled with status ${child.status}.\n${body}\nUse check_agent for detail, send_to_agent to follow up. Continue your work accordingly — do not reply to this notification itself.\n</subagent-report>`
-  })
+  for (const targetId of targets) {
+    const parent = reg.get(targetId)
+    if (!parent || parent.archived) continue
+    // Two threads naming each other as master would wake each other forever.
+    if (parent.masterId === child.id) continue
+    const what = child.parentId
+      ? `subagent "${child.title}" (${child.id})`
+      : child.masterId === targetId
+        ? `batch thread "${child.title}" (${child.id}, ${child.threadType ?? 'thread'})`
+        : `thread "${child.title}" (${child.id}, ${child.threadType ?? 'thread'}) you started`
+    reg.deliverAgentReport(targetId, {
+      agentId: child.id,
+      title: child.title,
+      status: child.status,
+      text: `<subagent-report>\nAutomatic notification: ${what} settled with status ${child.status}.\n${body}\nUse check_agent for detail, send_to_agent to follow up. Continue your work accordingly — do not reply to this notification itself.\n</subagent-report>`
+    })
+  }
 }
 
 const text = (t: string): { content: [{ type: 'text'; text: string }] } => ({
@@ -334,17 +364,15 @@ const text = (t: string): { content: [{ type: 'text'; text: string }] } => ({
 // both thin wrappers, so every provider spawns and supervises subagents
 // the same way — never by shelling out to another CLI.
 
-/** Is this session its project's master thread (CLAUDE.md "Master
- *  threads")? The pin lives on the project row. */
-export function isMasterSession(
-  session: Pick<SessionMeta, 'id' | 'projectId'>,
-  reg: Pick<SessionRegistry, 'getProject'> | null = registry
-): boolean {
-  return !!session.projectId && reg?.getProject(session.projectId)?.masterThreadId === session.id
+/** Is this session a master thread (CLAUDE.md "Master threads")? The pin
+ *  lives on the thread's row (`isMaster`, `session.setMaster`); several
+ *  threads of one project may be; a subagent never is. */
+export function isMasterSession(session: Pick<SessionMeta, 'parentId' | 'isMaster'>): boolean {
+  return !!session.isMaster && !session.parentId
 }
 
 /** May `caller` supervise `session`? Its own subagents (parentId), and, for
- *  a project's master, every root thread of its batch (masterId). */
+ *  a master, every root thread of its batch (masterId). */
 export function supervisedBy(caller: SessionMeta, session: SessionMeta): boolean {
   if (session.id === caller.id) return false
   if (session.parentId === caller.id) return true
@@ -1203,7 +1231,7 @@ judgment and user-facing work, low effort for trivial tasks.`
 
 /** What a project's master thread is told, on every turn (CLAUDE.md
  *  "Master threads"). Short: it rides every prompt of the master. */
-export const MASTER_MECHANICS = `## You are this project's master thread
+export const MASTER_MECHANICS = `## You are a master thread
 
 Your batch is the ROOT threads you start with app_start_thread: each one
 its own type, model, effort, context window and host (a thread is the
@@ -1211,19 +1239,24 @@ person's choice: any catalog model, no model policy), and \`after\` names
 a sibling it waits for. They carry your id, so the supervision tools
 (check_agent, wait_for_agent, send_to_agent, interrupt_agent, answer_agent,
 list_agents) work on them by id; list_agents marks each row \`thread\`
-(a batch thread) or \`subagent\`. You are woken by a <subagent-report>
-when a batch thread settles, including when it waits on a question you
-can relay or answer with answer_agent. You never edit code yourself: the
-editing tools are off for you; the threads do the work.
+(a batch thread) or \`subagent\`. A thread one of them starts (a plan's
+build) joins the batch too. adopt_thread brings an existing thread in.
+You are woken by a <subagent-report> when a batch thread settles,
+including when it waits on a question you can relay or answer with
+answer_agent. You never edit code yourself: the editing tools are off for
+you; the threads do the work.
 
-When you open a batch, call batch_rules to set what the app does when the
-last thread is done (land as they finish or all at once, the gate, the
-release, the box deploy, then notify or archive the children) and state
-the rules to the person in one line. The app runs those steps, not you
-and not the threads: do not run the gate or the release from here or ask
-a thread to; batch_gate exists to run the gate and the release early. You
-are told by a <batch-report> when the batch is blocked (a thread errored
-or stopped), when a step failed, and when everything is done.
+When you open a batch, call batch_rules with the whole list of steps the
+app runs when the last thread is done, written for THIS project: the
+built-in kinds (land, gate, release, publish, deploy) and shell steps of
+your own (a Minecraft plugin: build, deploy to the dev server, smoke test;
+this app: gate, release, publish, deploy), plus land as they finish or all
+at once and then notify or archive the children; state the steps to the
+person in one line. The app runs those steps, not you and not the threads:
+do not run the gate or the release from here or ask a thread to;
+batch_gate exists to run the gate and release steps early. You are told by
+a <batch-report> when the batch is blocked (a thread errored or stopped),
+when a step failed, and when everything is done.
 
 Prefer ending your turn to blocking in wait_for_agent: the batch's settles
 and reports wake you, and you stay live (watching) until the batch is

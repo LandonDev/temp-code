@@ -1199,8 +1199,8 @@ export async function startServer(
             registry.setWorkspacePreamble(req.params.workspaceId, req.params.preamble, req.params.enabled)
             sendFrame({ id: req.id, ok: true, result: null })
             break
-          case 'project.setMaster':
-            registry.setProjectMaster(req.params.projectId, req.params.threadId)
+          case 'session.setMaster':
+            registry.setMaster(req.params.sessionId, req.params.master)
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'project.setBranch':
@@ -2070,6 +2070,10 @@ export async function startServer(
           }
           case 'app.batchRules': {
             sendFrame({ id: req.id, ok: true, result: batchRuns.rulesTool(callerOf(registry, req.params.sessionId), req.params.rules ?? {}) })
+            break
+          }
+          case 'app.adoptThread': {
+            sendFrame({ id: req.id, ok: true, result: batchRuns.adoptTool(callerOf(registry, req.params.sessionId), { threadId: req.params.threadId }) })
             break
           }
           case 'review.override': {

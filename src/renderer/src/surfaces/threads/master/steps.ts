@@ -1,4 +1,4 @@
-import type { BatchRules, BatchState, BatchStep, BatchStepId } from "@server/shared/contract-batch";
+import type { BatchRules, BatchState, BatchStep } from "@server/shared/contract-batch";
 import { duration } from "../bits";
 
 /**
@@ -14,7 +14,7 @@ export type StepStatus = "pending" | "running" | "passed" | "failed" | "skipped"
 export type StepProgress = { done: number; total: number; label?: string };
 
 export type LiveStep = {
-  id: BatchStepId;
+  id: string;
   status: StepStatus;
   detail: string;
   startedAt?: number;
@@ -36,7 +36,7 @@ type WireStep = Omit<BatchStep, "status"> & {
 /** The rules with the publish choice between release and deploy. */
 export type RulesWithPublish = BatchRules & { publish?: boolean };
 
-export const STEP_LABEL: Record<BatchStepId | "publish", string> = {
+export const STEP_LABEL: Record<string, string> = {
   land: "Merging",
   gate: "Gate",
   release: "Release",

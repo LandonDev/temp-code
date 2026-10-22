@@ -7,6 +7,8 @@ import {
   extraWriteRoots,
   findingsContract,
   isMasterSession,
+  batchMembershipOf,
+  settleTargets,
   MASTER_MECHANICS,
   mechanicsFor,
   notifyParentOfSettle,
@@ -41,8 +43,8 @@ let children: SessionMeta[] = []
 let rules: OrchestrationRules = DEFAULT_RULES
 /** Other sessions the stub knows (a master's batch, strangers), by id. */
 let sessions: Record<string, SessionMeta> = {}
-/** Projects by id; `masterThreadId` is the pin. */
-let projects: Record<string, { id: string; masterThreadId: string | null }> = {}
+/** Projects by id. */
+let projects: Record<string, { id: string }> = {}
 const reports: { to: string; agentId: string; status: string; text: string }[] = []
 const stub = {
   get: (id: string) => (id === parent.id ? parent : (sessions[id] ?? null)),
@@ -383,10 +385,11 @@ const session = (id: string, extra: Partial<SessionMeta> = {}): SessionMeta =>
     ...extra
   }) as SessionMeta
 
-/** The parent pinned as project p1's master, with one batch thread and one subagent. */
+/** The parent pinned as a master (the flag on its row), with one batch thread and one subagent. */
 const pinParentAsMaster = (): { batch: SessionMeta; sub: SessionMeta; stranger: SessionMeta } => {
   ;(parent as { projectId: string | null }).projectId = 'p1'
-  projects = { p1: { id: 'p1', masterThreadId: parent.id } }
+  ;(parent as { isMaster?: boolean }).isMaster = true
+  projects = { p1: { id: 'p1' } }
   const batch = session('batch-1', { masterId: parent.id, threadType: 'planning', reasoning: 'high' })
   const sub = session('sub-1', { parentId: parent.id })
   const stranger = session('other-1')
@@ -397,6 +400,7 @@ const pinParentAsMaster = (): { batch: SessionMeta; sub: SessionMeta; stranger: 
 
 afterEach(() => {
   ;(parent as { projectId: string | null }).projectId = null
+  ;(parent as { isMaster?: boolean }).isMaster = false
 })
 
 it('supervisedBy admits a subagent and, for the master, a batch thread; never a stranger or itself', () => {
@@ -408,16 +412,17 @@ it('supervisedBy admits a subagent and, for the master, a batch thread; never a 
   // A subagent of a batch thread is the batch thread's, not the master's.
   expect(supervisedBy(parent, session('deep', { parentId: batch.id, masterId: parent.id }))).toBe(false)
   // Unpinned, the same batch thread is no longer the caller's to steer.
-  projects = { p1: { id: 'p1', masterThreadId: null } }
+  ;(parent as { isMaster?: boolean }).isMaster = false
   expect(supervisedBy(parent, batch)).toBe(false)
   expect(supervisedBy(parent, sub)).toBe(true)
 })
 
-it('isMasterSession reads the pin on the project row', () => {
+it('isMasterSession reads the flag on the thread row; a subagent is never one', () => {
   expect(isMasterSession(parent)).toBe(false)
   pinParentAsMaster()
   expect(isMasterSession(parent)).toBe(true)
   expect(isMasterSession(session('batch-1'))).toBe(false)
+  expect(isMasterSession(session('sub-m', { parentId: parent.id, isMaster: true }))).toBe(false)
 })
 
 it('the supervision tools answer a batch thread and refuse a stranger with the widened text', async () => {
@@ -443,7 +448,7 @@ it('list_agents marks subagents and batch threads, the batch rows with type, eff
   expect(row.host).toBe('box')
   expect(row.status).toBe('idle')
   // Not the master: the batch rows are gone, the subagent stays.
-  projects = { p1: { id: 'p1', masterThreadId: null } }
+  ;(parent as { isMaster?: boolean }).isMaster = false
   expect((JSON.parse(await orchListAgents(parent)) as { agentId: string }[]).map((r) => r.agentId)).toEqual([sub.id])
 })
 
@@ -453,6 +458,40 @@ it('settleTarget is the parent, else the master, never the session itself', () =
   expect(settleTarget(session('a', { masterId: 'm' }))).toBe('m')
   expect(settleTarget(session('a'))).toBeNull()
   expect(settleTarget(session('a', { masterId: 'a' }))).toBeNull()
+})
+
+it('settleTargets: the parent or master, then the starter when it is someone else, each once', () => {
+  expect(settleTargets(session('a', { masterId: 'm', startedBy: 'm' }))).toEqual(['m'])
+  expect(settleTargets(session('a', { masterId: 'm', startedBy: 'plan' }))).toEqual(['m', 'plan'])
+  expect(settleTargets(session('a', { parentId: 'p', masterId: 'm', startedBy: 'q' }))).toEqual(['p', 'q'])
+  expect(settleTargets(session('a', { startedBy: 'chat' }))).toEqual(['chat'])
+  expect(settleTargets(session('a', { startedBy: 'a' }))).toEqual([])
+  expect(settleTargets(session('a'))).toEqual([])
+})
+
+it('batchMembershipOf: a master gives its id, a batch root hands its own on, anything else nothing', () => {
+  expect(batchMembershipOf(session('m', { isMaster: true }))).toEqual({ masterId: 'm' })
+  expect(batchMembershipOf(session('plan', { masterId: 'm' }))).toEqual({ masterId: 'm' })
+  expect(batchMembershipOf(session('sub', { parentId: 'plan', masterId: 'm' }))).toEqual({})
+  expect(batchMembershipOf(session('chat'))).toEqual({})
+  expect(batchMembershipOf(null)).toEqual({})
+})
+
+it("a plan's build started by the plan itself reports to the master and to the plan, once each", () => {
+  pinParentAsMaster()
+  const plan = session('plan-1', { masterId: parent.id, startedBy: parent.id })
+  const build = session('build-1', { masterId: parent.id, startedBy: plan.id, threadType: 'implementation' })
+  sessions[plan.id] = plan
+  sessions[build.id] = build
+  notifyParentOfSettle(stub as unknown as SessionRegistry, { ...build, status: 'idle' })
+  expect(reports.map((r) => r.to)).toEqual([parent.id, plan.id])
+  expect(reports[0].text).toContain('batch thread "Thread build-1" (build-1, implementation) settled')
+  expect(reports[1].text).toContain('thread "Thread build-1" (build-1, implementation) you started settled')
+  // The plan archived: the master alone hears the next one.
+  sessions[plan.id] = { ...plan, archived: true }
+  notifyParentOfSettle(stub as unknown as SessionRegistry, { ...build, status: 'idle' })
+  expect(reports).toHaveLength(3)
+  expect(reports[2].to).toBe(parent.id)
 })
 
 it('a batch thread settling reports to its master, with its type; a stranger hears nothing', () => {

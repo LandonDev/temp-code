@@ -114,7 +114,9 @@ export const ThreadStartArgsSchema = z.object({
   /** The box path the thread would work in (its project cwd); the Mac maps it onto its own checkout. */
   cwd: z.string().max(2_000),
   /** The box's work root, so `<root>/<name>` maps onto the Mac's work root when no map names it. */
-  workRoot: z.string().max(2_000).optional()
+  workRoot: z.string().max(2_000).optional(),
+  /** The master (on the box) whose batch the thread belongs to: the caller when it is a master, the caller's own when it is a batch thread. */
+  masterId: z.string().max(64).optional()
 })
 export type ThreadStartArgs = z.infer<typeof ThreadStartArgsSchema>
 

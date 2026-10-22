@@ -5,7 +5,6 @@ import { ChatView } from "./ChatView";
 import { threadViewsChunk } from "../chunks";
 import { SurfaceSkeleton } from "../SurfaceSkeleton";
 import { isMasterThread } from "../../lib/masterThread";
-import { useProjects } from "../../lib/tcserver/workspaces";
 
 // Every view but the chat rides the thread-views chunk (surfaces/chunks.ts),
 // preloaded in the idle slot after the first thread opens (SessionPane).
@@ -37,7 +36,7 @@ export type ThreadViewProps = ChatSource & {
  *  digest instead). */
 export function ThreadView(props: ThreadViewProps) {
   const { session } = props;
-  const master = isMasterThread(session, useProjects());
+  const master = isMasterThread(session);
   const view = master ? <MasterView {...props} /> : typeView(props);
   if (session.parentId) return view;
   return (

@@ -88,11 +88,10 @@ export async function setProjectPreamble(
   await workspaceStore.refresh(link);
 }
 
-/** Pin a thread as the project's master (CLAUDE.md "Master threads"); null unpins. */
-export async function setProjectMaster(projectId: string, threadId: string | null): Promise<void> {
+/** Pin a thread of the project as a master (CLAUDE.md "Master threads"), or unpin it; the thread's meta push carries the flag. */
+export async function setProjectMaster(projectId: string, sessionId: string, master: boolean): Promise<void> {
   const link = linkOfProject(projectId);
-  await link.request("project.setMaster", { projectId, threadId });
-  await workspaceStore.refresh(link);
+  await link.request("session.setMaster", { sessionId, master });
 }
 
 /** The workspace's default preamble for its projects without one. */

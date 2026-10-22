@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { BatchStepSpecSchema } from '@shared/contract-batch'
 import {
   createSdkMcpServer,
   tool,
@@ -47,6 +48,9 @@ import {
   REVIEW_FINDING_PARAMS
 } from '@shared/review'
 import {
+  ADOPT_THREAD_PARAMS,
+  ADOPT_THREAD_TOOL_DESCRIPTION,
+  ADOPT_THREAD_TOOL_NAME,
   BATCH_GATE_PARAMS,
   BATCH_GATE_TOOL_DESCRIPTION,
   BATCH_GATE_TOOL_NAME,
@@ -62,7 +66,7 @@ import type { SessionRegistry } from './sessions'
 import { macToolsHooks } from './macTools'
 import type { CrossHostAgents } from './crossHostAgents'
 import type { ProjectPlans } from './projectPlan'
-import { HOST_PARAM_DESCRIPTION, isMasterSession, toolLine } from './orchestration'
+import { HOST_PARAM_DESCRIPTION, batchMembershipOf, isMasterSession, toolLine } from './orchestration'
 import { CROSS_HOST_EVENTS_MAX, type ThreadEventsResult } from '@shared/contract-crosshost'
 
 /**
@@ -298,6 +302,7 @@ export async function appStartThread(
   // Fresh read: the caller's CURRENT permission is what the new thread
   // inherits — it can never grant itself more than the user granted.
   const callerNow = reg.get(caller.id) ?? caller
+  const membership = batchMembershipOf(callerNow)
   const thread = await reg.create({
     provider,
     model,
@@ -311,10 +316,11 @@ export async function appStartThread(
     parentId: null,
     // The caller hears when a plan it started completes (planFlow.ts).
     startedBy: caller.id,
-    // A project's master starts its batch: the thread carries the master's
-    // id (supervision and settle reports, orchestration.ts) and the sibling
-    // it waits for.
-    ...(isMasterSession(callerNow, reg) ? { masterId: callerNow.id, ...(args.after ? { after: args.after } : {}) } : {}),
+    // The batch follows the starter (orchestration.ts batchMembershipOf): a
+    // master's thread carries the master's id, a batch thread's thread (a
+    // plan's build) inherits it; `after` names the sibling it waits for.
+    ...membership,
+    ...('masterId' in membership && args.after ? { after: args.after } : {}),
     ...(projectId ? {} : { cwd: caller.cwd })
   })
   await reg.send(thread.id, args.firstMessage, {
@@ -475,16 +481,18 @@ export const BATCH_GATE_SHAPE = {
 
 export const BATCH_RULES_SHAPE = {
   land: z.enum(['as-they-finish', 'all-at-once']).optional().describe(BATCH_RULES_PARAMS.land),
-  gate: z.boolean().optional().describe(BATCH_RULES_PARAMS.gate),
-  release: z.boolean().optional().describe(BATCH_RULES_PARAMS.release),
-  deploy: z.enum(['none', 'box']).optional().describe(BATCH_RULES_PARAMS.deploy),
+  steps: z.array(BatchStepSpecSchema).max(32).optional().describe(BATCH_RULES_PARAMS.steps),
   then: z.enum(['notify', 'archive-children']).optional().describe(BATCH_RULES_PARAMS.then),
   summary: z.string().optional().describe(BATCH_RULES_PARAMS.summary)
 }
 
-/** The project's master thread (projects.master_thread_id), which alone gets batch_gate. */
-export function isMaster(reg: Pick<SessionRegistry, 'getProject'> | null, session: SessionMeta): boolean {
-  return !!session.projectId && reg?.getProject(session.projectId)?.masterThreadId === session.id
+export const ADOPT_THREAD_SHAPE = {
+  threadId: z.string().describe(ADOPT_THREAD_PARAMS.threadId)
+}
+
+/** A master thread (the pin on its row), which alone gets the batch tools. */
+export function isMaster(session: SessionMeta): boolean {
+  return isMasterSession(session)
 }
 
 export const REPORT_FINDINGS_SHAPE = {
@@ -631,10 +639,10 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
         const live = registry?.get(session.id) ?? session
         return text(reviews ? await reviews.mergeBranch(live, args) : 'refused: merge reviews are not available here')
       }),
-      // batch_rules and batch_gate only on the project's master thread
-      // (batch.ts): what the app does when the batch is done, and the gate
-      // and release run early.
-      ...(isMaster(registry, session)
+      // batch_rules, batch_gate and adopt_thread only on a master thread
+      // (batch.ts): what the app does when the batch is done, the gate and
+      // release run early, and an existing thread brought into the batch.
+      ...(isMaster(session)
         ? [
             tool(BATCH_RULES_TOOL_NAME, BATCH_RULES_TOOL_DESCRIPTION, BATCH_RULES_SHAPE, async (args) => {
               const b = batches()
@@ -645,6 +653,11 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
               const b = batches()
               const live = registry?.get(session.id) ?? session
               return text(b ? await b.gate(live, args) : 'refused: batches are not available here')
+            }),
+            tool(ADOPT_THREAD_TOOL_NAME, ADOPT_THREAD_TOOL_DESCRIPTION, ADOPT_THREAD_SHAPE, async (args) => {
+              const b = batches()
+              const live = registry?.get(session.id) ?? session
+              return text(b ? b.adoptTool(live, args) : 'refused: batches are not available here')
             })
           ]
         : []),
@@ -680,5 +693,6 @@ export const APP_TOOLS = [
   `mcp__app__${MERGE_BRANCH_TOOL_NAME}`,
   `mcp__app__${REPORT_FINDINGS_TOOL_NAME}`,
   `mcp__app__${BATCH_GATE_TOOL_NAME}`,
-  `mcp__app__${BATCH_RULES_TOOL_NAME}`
+  `mcp__app__${BATCH_RULES_TOOL_NAME}`,
+  `mcp__app__${ADOPT_THREAD_TOOL_NAME}`
 ]

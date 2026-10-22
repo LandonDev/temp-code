@@ -378,6 +378,10 @@ export class CrossHostThreads {
       ...(planPath && existsSync(planPath) ? { planPath } : {}),
       title: args.title,
       parentId: null,
+      // The box thread started it, and its batch comes along (the ids are
+      // the box's; this host reports to neither, the box supervises).
+      startedBy: caller.sessionId,
+      ...(args.masterId ? { masterId: args.masterId } : {}),
       cwd: placed.cwd
     })
     this.remember(caller, thread.id)

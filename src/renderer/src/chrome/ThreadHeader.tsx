@@ -1,4 +1,4 @@
-import { sessionStore } from "../lib/tcserver/store";
+import { sessionStore, useSessionMetas } from "../lib/tcserver/store";
 import { bridgeableEnvironment, loadThreadBridge, setThreadBridge, useThreadBridge } from "../lib/macBridge";
 import type { MacBridgeThreadState } from "@server/shared/contract-macbridge";
 import { useCallback, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from "react";
@@ -21,7 +21,6 @@ import { liveResources, loadThreadResources, startThreadResources, useThreadReso
 import { ThreadHostChip } from "./ThreadHostChip";
 import { IconButton } from "./TitleBar";
 import { setProjectMaster } from "../lib/tcserver/projects";
-import { useProjects } from "../lib/tcserver/workspaces";
 
 /**
  * The deck title bar's thread surface: temp-code's strip and heading
@@ -146,11 +145,8 @@ export function ThreadHeader({
   const menuBridgeState = useThreadBridge(menu?.chip.id);
   const menuResources = useThreadResources(menu?.chip.id);
   const menuBridge: ChipBridge | undefined = menuEnv && bridgeableEnvironment(menuEnv) ? { state: menuBridgeState } : undefined;
-  const projects = useProjects();
-  const masterIds = useMemo(
-    () => new Set(projects.flatMap((p) => (p.masterThreadId ? [p.masterThreadId] : []))),
-    [projects],
-  );
+  const metas = useSessionMetas();
+  const masterIds = useMemo(() => new Set(metas.filter((m) => m.isMaster && !m.parentId).map((m) => m.id)), [metas]);
   const menuMaster = !!menu && masterIds.has(menu.chip.id);
 
   const onPick = (id: string) => {
@@ -163,7 +159,7 @@ export function ThreadHeader({
     else if (id === "archive") (liveResources(chip.id).length ? setArchiving(chip) : onArchive(chip.id));
     else if (id === "resources") setResourcesFor(chip);
     else if (id === "master" && chip.thread.projectId)
-      void setProjectMaster(chip.thread.projectId, menuMaster ? null : chip.id).catch((err) => console.warn("[master]", err));
+      void setProjectMaster(chip.thread.projectId, chip.id, !menuMaster).catch((err) => console.warn("[master]", err));
     else if (id === "delete") setDeleting(chip);
     else if (id === "mac-bridge-rules") setBridgeRules(chip);
     else if (id === "mac-bridge") {

@@ -18,7 +18,7 @@ import {
   type ThreadWaitResult
 } from '@shared/contract-crosshost'
 import type { SessionMeta, SessionStatus } from '@shared/events'
-import type { ResolvedSpawn } from './orchestration'
+import { batchMembershipOf, type ResolvedSpawn } from './orchestration'
 import { PeerOfflineError, type PeerCalls } from './remote/peerCalls'
 
 /**
@@ -230,7 +230,8 @@ export class CrossHostAgents {
     const host = this.resolveHost(session.id, environmentId)
     if (this.children(session.id).length >= CROSS_HOST_MAX_PER_THREAD)
       throw new Error(`this thread already has ${CROSS_HOST_MAX_PER_THREAD} threads on other hosts`)
-    const wire: ThreadStartArgs = { ...args, workRoot: this.deps.workRoot() }
+    // The batch follows the starter here as on this host (orchestration.ts batchMembershipOf).
+    const wire: ThreadStartArgs = { ...args, workRoot: this.deps.workRoot(), ...batchMembershipOf(session) }
     const result = await this.call<ThreadStartResult>(host, session, 'thread.start', wire)
     this.record(session.id, {
       environmentId: host,

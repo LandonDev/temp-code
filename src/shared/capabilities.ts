@@ -37,6 +37,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'app.reportFindings': 'local',
   'app.batchGate': 'local',
   'app.batchRules': 'local',
+  'app.adoptThread': 'local',
   'stall.report': 'local',
   'dap.connect': 'local',
   'lsp.ensure': 'local',
@@ -248,12 +249,14 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'workspace.setAccounts': 'admin',
   'project.setPreamble': 'admin',
   'workspace.setPreamble': 'admin',
-  'project.setMaster': 'admin',
-  // A master thread's batch (contract-batch.ts): reads, and the rules a person may set.
+  'session.setMaster': 'admin',
+  // A master thread's batch (contract-batch.ts): reads, the rules a person may set, the batch's membership and its end.
   'batch.get': 'read',
   'batch.children': 'read',
   'batch.setRules': 'operate',
   'batch.stopStep': 'operate',
+  'batch.adopt': 'operate',
+  'batch.archive': 'operate',
   'linear.setToken': 'admin',
   // A paired phone registers its own push token (thread L6): the key's own row, read suffices.
   'remote.push.register': 'read',

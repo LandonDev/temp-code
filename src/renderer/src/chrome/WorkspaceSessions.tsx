@@ -71,7 +71,7 @@ import { sessionPrefetch } from "../lib/sessionPrefetch";
 import { useSessionMetas } from "../lib/tcserver/store";
 import { useClock, useSlowClock } from "../lib/turnClock";
 import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
-import { useProjects, useWorkspaceCatalog } from "../lib/tcserver/workspaces";
+import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import { subagentRows, subagentRowsOpen, useSubagentRows } from "../stores/subagentRows";
 import {
   groupWorkspaceSessions,
@@ -281,13 +281,10 @@ function InlineRename({
   );
 }
 
-/** The ids pinned as a project's master, one set for every row. */
+/** The ids pinned as masters (the flag on the thread's row), one set for every row. */
 function useMasterIds(): ReadonlySet<string> {
-  const projects = useProjects();
-  return useMemo(
-    () => new Set(projects.flatMap((p) => (p.masterThreadId ? [p.masterThreadId] : []))),
-    [projects],
-  );
+  const metas = useSessionMetas();
+  return useMemo(() => new Set(metas.filter((m) => m.isMaster && !m.parentId).map((m) => m.id)), [metas]);
 }
 
 const menuAt = (anchor: HTMLElement) => {
@@ -399,7 +396,7 @@ const ChatRow = memo(function ChatRow({
         else if (id === "stop") void interrupt(thread.id);
         else if (id === "resume") void resume(thread.id);
         else if (id === "master" && thread.projectId)
-          void setProjectMaster(thread.projectId, actions.masterIds?.has(thread.id) ? null : thread.id);
+          void setProjectMaster(thread.projectId, thread.id, !actions.masterIds?.has(thread.id));
         else if (id === "delete") actions.onDelete(thread);
       },
     });

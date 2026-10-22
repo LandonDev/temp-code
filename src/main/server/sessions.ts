@@ -109,7 +109,7 @@ import {
   reportPathFor,
   threadPreamble
 } from './threads'
-import { isMasterSession, notifyParentOfSettle, settleTarget } from './orchestration'
+import { batchMembershipOf, isMasterSession, notifyParentOfSettle, settleTargets } from './orchestration'
 import { batches } from './batch'
 import { foldTodo, newTodoFold, tallyOf, type TaskTally, type TodoFold } from './todos'
 import { liveDiffOnStatus } from './livediff'
@@ -1443,17 +1443,25 @@ export class SessionRegistry {
     this.notifyCatalog('projects')
   }
 
-  /** The project's master thread (CLAUDE.md "Master threads"): a thread of
-   *  the project, or null to unpin. Clients hear it as a `projects` push. */
-  setProjectMaster(projectId: string, threadId: string | null): void {
-    if (!this.store.getProject(projectId)) throw new Error(`unknown project: ${projectId}`)
-    if (threadId !== null) {
-      const thread = this.store.getSession(threadId)
-      if (!thread) throw new Error(`unknown session: ${threadId}`)
-      if (thread.projectId !== projectId) throw new Error(`session ${threadId} is not in project ${projectId}`)
-    }
-    this.store.setProjectMaster(projectId, threadId)
-    this.notifyCatalog('projects')
+  /** Pin a root thread as a master (CLAUDE.md "Master threads"), or unpin
+   *  it. Several per project may be; a subagent never. Clients hear it as
+   *  the thread's meta; its harness reads the pin at its next spawn. */
+  setMaster(sessionId: string, master: boolean): void {
+    const thread = this.store.getSession(sessionId)
+    if (!thread) throw new Error(`unknown session: ${sessionId}`)
+    if (thread.parentId) throw new Error(`session ${sessionId} is a subagent; only a root thread can be a master`)
+    if (!!thread.isMaster === master) return
+    const next = this.store.updateSession(sessionId, { isMaster: master })
+    if (next) this.notifyMeta(next)
+  }
+
+  /** An existing root thread joins a master's batch (batch.ts adopt): its
+   *  masterId, and its startedBy when it had none. */
+  setBatchMembership(sessionId: string, masterId: string): void {
+    const thread = this.store.getSession(sessionId)
+    if (!thread) throw new Error(`unknown session: ${sessionId}`)
+    const next = this.store.updateSession(sessionId, { masterId, ...(thread.startedBy ? {} : { startedBy: masterId }) })
+    if (next) this.notifyMeta(next)
   }
 
   setWorkspacePreamble(workspaceId: string, preamble: string | null, enabled: boolean): void {
@@ -1732,6 +1740,7 @@ export class SessionRegistry {
     const params = CreateSessionParams.parse(raw)
     const now = Date.now()
     if (params.id && this.store.getSession(params.id)) throw new Error(`session id already taken: ${params.id}`)
+    const membership = batchMembershipOf(params.startedBy ? this.store.getSession(params.startedBy) : null)
     const id = params.id ?? nanoid(12)
     const project = params.projectId ? this.store.getProject(params.projectId) : null
     // One-off chats: a workspace chat runs at the workspace root, a fully
@@ -1808,7 +1817,10 @@ export class SessionRegistry {
       implementationId: null,
       planThreadId: null,
       startedBy: params.startedBy ?? null,
-      masterId: params.masterId ?? null,
+      // The batch follows the starter (orchestration.ts batchMembershipOf):
+      // a thread a master starts, or one a batch thread starts (a plan's
+      // build), carries the master's id unless the caller said otherwise.
+      masterId: params.masterId ?? ('masterId' in membership ? membership.masterId : null),
       after: params.after ?? null,
       createdAt: now,
       updatedAt: now
@@ -3398,11 +3410,12 @@ export class SessionRegistry {
       // wait_for_agent already covers this child. running → watching is
       // no settle (the child still has work in flight); watching → idle is.
       // A root thread of a master's batch (masterId) wakes the master the
-      // same way; a settle is one report whoever sent the message that
-      // started the turn, the master included.
+      // same way, and the thread that started it (startedBy) too, once
+      // each; a settle is one report per listener whoever sent the message
+      // that started the turn, the master included.
       if (
         next &&
-        settleTarget(next) &&
+        settleTargets(next).length > 0 &&
         (cur?.status === 'running' || cur?.status === 'watching') &&
         (event.status === 'idle' || event.status === 'error' || event.status === 'waiting')
       ) {
@@ -3673,10 +3686,10 @@ export class SessionRegistry {
     return this.store.hasCompletedTurn(sessionId)
   }
 
-  /** Is the thread its project's master (the pin on the project row)? */
+  /** Is the thread a master (the pin on its row)? */
   isMaster(sessionId: string): boolean {
     const meta = this.store.getSession(sessionId)
-    return !!meta && !meta.parentId && isMasterSession(meta, this)
+    return !!meta && isMasterSession(meta)
   }
 
   /** A master with an open batch (children not all done, or the engine

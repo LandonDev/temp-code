@@ -144,11 +144,7 @@ export type Rules = BatchRules & { publish?: boolean };
  *  you are notified." */
 export function rulesSentence(rules: Rules): string {
   const landing = rules.land === "all-at-once" ? "Branches land together once every thread is done" : "Branches land as they finish";
-  const after: string[] = [];
-  if (rules.gate) after.push("one gate on the merged tree");
-  if (rules.release) after.push("a release");
-  if (rules.publish) after.push("a Mac release");
-  if (rules.deploy === "box") after.push("a deploy to the box");
+  const after = rules.steps.filter((s) => s.kind !== "land").map((s) => s.name.toLowerCase());
   const first = after.length === 0 ? `${landing}, nothing runs after.` : `${landing}, then ${listWords(after)}.`;
   const then = rules.then === "archive-children" ? "Then the threads are archived." : "Then you are notified.";
   return `${first} ${then}`;

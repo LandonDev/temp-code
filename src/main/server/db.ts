@@ -263,7 +263,8 @@ export function openDb(path: string): DatabaseSync {
     `ALTER TABLE projects ADD COLUMN preamble_enabled INTEGER NOT NULL DEFAULT 1`,
     `ALTER TABLE workspaces ADD COLUMN preamble TEXT`,
     `ALTER TABLE workspaces ADD COLUMN preamble_enabled INTEGER NOT NULL DEFAULT 1`,
-    // The project's master thread (CLAUDE.md "Master threads"), one per project or none.
+    // The project's master thread, one per project: read once below into
+    // sessions.is_master and ignored since (the column stays; master only adds).
     `ALTER TABLE projects ADD COLUMN master_thread_id TEXT`,
     `ALTER TABLE resume_after_boot ADD COLUMN shutdown_at INTEGER`
   ]) {
@@ -272,6 +273,14 @@ export function openDb(path: string): DatabaseSync {
     } catch {
       // column already exists
     }
+  }
+  // Master threads (CLAUDE.md "Master threads"): the pin lives on the
+  // thread, several per project. A database from the project-pin days
+  // carries its one pin over the first time this column is added.
+  const hadMasterFlag = db.prepare(`SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'is_master'`).get()
+  if (!hadMasterFlag) {
+    db.exec(`ALTER TABLE sessions ADD COLUMN is_master INTEGER NOT NULL DEFAULT 0`)
+    db.exec(`UPDATE sessions SET is_master = 1 WHERE parent_id IS NULL AND id IN (SELECT master_thread_id FROM projects WHERE master_thread_id IS NOT NULL)`)
   }
   // The cold file holds the logs of archived threads, same schema, on the
   // same connection: an archived thread's rows leave the hot file so every
@@ -391,6 +400,7 @@ interface SessionRowRaw {
   implementation_id: string | null
   plan_thread_id: string | null
   started_by: string | null
+  is_master: number
   master_id: string | null
   after_id: string | null
   created_at: number
@@ -447,6 +457,7 @@ function toMeta(r: SessionRowRaw): SessionMeta {
     implementationId: r.implementation_id ?? null,
     planThreadId: r.plan_thread_id ?? null,
     startedBy: r.started_by ?? null,
+    isMaster: !!r.is_master,
     masterId: r.master_id ?? null,
     after: r.after_id ?? null,
     createdAt: r.created_at,
@@ -637,8 +648,8 @@ export class Store {
     this.turnIndex.markReady(meta.id)
     this
       .stmt(
-        `INSERT INTO sessions (id, parent_id, project_id, workspace_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, pinned, permission, fast, ultrafast, context_1m, busy_since, paused_at, frozen_active_elapsed, thread_rules, native_id, account_current, plan_completed_at, implementation_id, plan_thread_id, started_by, master_id, after_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO sessions (id, parent_id, project_id, workspace_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, pinned, permission, fast, ultrafast, context_1m, busy_since, paused_at, frozen_active_elapsed, thread_rules, native_id, account_current, plan_completed_at, implementation_id, plan_thread_id, started_by, is_master, master_id, after_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         meta.id,
@@ -670,6 +681,7 @@ export class Store {
         meta.implementationId ?? null,
         meta.planThreadId ?? null,
         meta.startedBy ?? null,
+        meta.isMaster ? 1 : 0,
         meta.masterId ?? null,
         meta.after ?? null,
         meta.createdAt,
@@ -706,6 +718,7 @@ export class Store {
         | 'implementationId'
         | 'planThreadId'
         | 'startedBy'
+        | 'isMaster'
         | 'masterId'
         | 'after'
       >
@@ -721,7 +734,7 @@ export class Store {
     this.sessionsVersion += 1
     this
       .stmt(
-        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, pinned = ?, provider = ?, model = ?, reasoning = ?, permission = ?, fast = ?, ultrafast = ?, context_1m = ?, busy_since = ?, paused_at = ?, frozen_active_elapsed = ?, thread_type = ?, plan_path = ?, agent_type = ?, thread_rules = ?, account_current = ?, plan_completed_at = ?, implementation_id = ?, plan_thread_id = ?, started_by = ?, master_id = ?, after_id = ?, updated_at = ? WHERE id = ?`
+        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, pinned = ?, provider = ?, model = ?, reasoning = ?, permission = ?, fast = ?, ultrafast = ?, context_1m = ?, busy_since = ?, paused_at = ?, frozen_active_elapsed = ?, thread_type = ?, plan_path = ?, agent_type = ?, thread_rules = ?, account_current = ?, plan_completed_at = ?, implementation_id = ?, plan_thread_id = ?, started_by = ?, is_master = ?, master_id = ?, after_id = ?, updated_at = ? WHERE id = ?`
       )
       .run(
         next.status,
@@ -748,6 +761,7 @@ export class Store {
         next.implementationId ?? null,
         next.planThreadId ?? null,
         next.startedBy ?? null,
+        next.isMaster ? 1 : 0,
         next.masterId ?? null,
         next.after ?? null,
         next.updatedAt,
@@ -1193,7 +1207,6 @@ export class Store {
       account_pins: string | null
       preamble: string | null
       preamble_enabled: number
-      master_thread_id: string | null
       created_at: number
     }[]
     return rows.map((r) => ({
@@ -1207,7 +1220,6 @@ export class Store {
       accountPins: parseAccountPins(r.account_pins),
       preamble: r.preamble,
       preambleEnabled: r.preamble_enabled !== 0,
-      masterThreadId: r.master_thread_id ?? null,
       createdAt: r.created_at
     }))
   }
@@ -1218,11 +1230,6 @@ export class Store {
     this
       .stmt(`UPDATE projects SET preamble = ?, preamble_enabled = ? WHERE id = ?`)
       .run(preamble, enabled ? 1 : 0, id)
-  }
-
-  /** The project's master thread, or null to unpin. */
-  setProjectMaster(id: string, threadId: string | null): void {
-    this.stmt(`UPDATE projects SET master_thread_id = ? WHERE id = ?`).run(threadId, id)
   }
 
   setProjectAccounts(id: string, pins: AccountPins): void {

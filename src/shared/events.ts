@@ -520,6 +520,9 @@ export interface SessionMeta {
   /** The thread that started this one through app_start_thread (not a parent:
    *  the thread is a root of its own); it is told when a plan here completes. */
   startedBy?: string | null
+  /** Pinned as a master thread (CLAUDE.md "Master threads"): it steers a
+   *  batch of root threads carrying its id; several per project may be. */
+  isMaster?: boolean
   /** The master thread this root thread belongs to (CLAUDE.md "Master threads");
    *  not a parent: the thread stays a root of its own in the rail. */
   masterId?: string | null
