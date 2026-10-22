@@ -204,6 +204,14 @@ public final class EnvironmentClient {
     /// while the person was elsewhere are simply there when they come back,
     /// with nothing travelling. Tests count the calls.
     public var quietly: @MainActor (() -> Void) -> Void = { $0() }
+    /// A relayed host's presence as the carrier last said it; nil on a paired host.
+    public internal(set) var presence: HostPresence?
+    /// When the relay state last moved, the phone's clock (ms); for the locked line.
+    public internal(set) var stateSince: Int?
+    /// The registry's ear for presence: the hello's `hosts` (`whole: true`),
+    /// the hello's `presence` on a relayed lane (`whole: false`), a `presence`
+    /// push (`whole: true`).
+    public var relayObserver: (@MainActor (EnvironmentClient, [HostPresence], _ whole: Bool) -> Void)?
     private let keys: any KeyStore
     private var loops: [Task<Void, Never>] = []
     private var started = false
@@ -212,10 +220,14 @@ public final class EnvironmentClient {
     /// Screens showing each thread right now; the subscription lives while any does.
     private var opens: [String: Int] = [:]
 
-    public init(environment: PairedEnvironment, keys: any KeyStore, cache: SessionCache, api: RemoteAPI = RemoteAPI(), connect: @escaping WebSocketFactory = URLSessionWebSocket.factory(), clock: any SocketClock = SystemClock(), configuration: SocketConfiguration = SocketConfiguration()) {
+    /// - Parameter presence: a relayed host's last known presence (the
+    ///   registry's store), so the cold paint and the first block are right
+    ///   before the carrier speaks.
+    public init(environment: PairedEnvironment, keys: any KeyStore, cache: SessionCache, api: RemoteAPI = RemoteAPI(), connect: @escaping WebSocketFactory = URLSessionWebSocket.factory(), clock: any SocketClock = SystemClock(), configuration: SocketConfiguration = SocketConfiguration(), presence: HostPresence? = nil) {
         self.environment = environment
         self.keys = keys
         self.cache = cache
+        self.presence = presence
         self.socket = TempCodeSocket(environment: environment, keys: keys, api: api, connect: connect, clock: clock, configuration: configuration)
         self.subscriptions = Subscriptions(socket: socket)
     }
@@ -281,6 +293,19 @@ public final class EnvironmentClient {
     public func retry() async { await socket.retry() }
     public func setForeground(_ foreground: Bool) async { await socket.setForeground(foreground) }
     public func setOnline(_ online: Bool) async { await socket.setOnline(online) }
+
+    /// The one word the phone acts on for a relayed host; nil on a paired one.
+    public var relayState: RelayState? { presence.map { RelayState($0) } }
+
+    /// The registry heard the carrier: the relayed host's state moved. A down
+    /// link holds the socket with the presence line as its reason; anything
+    /// else lets it try.
+    func applyRelayState(_ state: RelayState, presence: HostPresence, since: Int?) async {
+        self.presence = presence
+        self.stateSince = since
+        let reason = state == .unreachable ? RelayWords.heldLine(presence, now: .now) : nil
+        await socket.setHostReachable(state != .unreachable, reason: reason)
+    }
 
     /// One request over the live session; what L3's actions are built on.
     public func request<M: ContractMethod>(_ method: M.Type, _ params: M.Params) async throws -> M.Output {
@@ -518,7 +543,8 @@ public final class EnvironmentClient {
     /// A `GET` the host answers for `tempcode-asset://<host>/<path>` content
     /// (logos, media, agent pages), with the key as the bearer.
     public func assetRequest(host: String, path: String) -> URLRequest? {
-        guard let key = try? keys.key(for: environment.id) else { return nil }
+        // A relayed host's media is out of scope for this slice; the request carries the carrier's key.
+        guard let key = try? keys.key(for: environment.keyOwner) else { return nil }
         var request = URLRequest(url: environment.origin.appending(path: "/asset/\(host)/\(path)"))
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         return request
@@ -653,8 +679,12 @@ public final class EnvironmentClient {
 
     private func apply(_ push: ServerPush) async {
         switch push {
-        case .hello:
-            break
+        case .hello(let hello):
+            // A carrier's hello lists the hosts it relays; a relayed lane's carries its own row.
+            if let hosts = hello.hosts { relayObserver?(self, hosts, true) }
+            if let presence = hello.presence { relayObserver?(self, [presence], false) }
+        case .presence(let value):
+            relayObserver?(self, value.hosts, true)
         case .workspaces(let value):
             if value.workspaces != workspaces { publishList { workspaces = value.workspaces } }
             try? await cache.replaceWorkspaces(environment.id, value.workspaces)

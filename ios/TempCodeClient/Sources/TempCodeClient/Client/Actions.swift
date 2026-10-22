@@ -17,11 +17,21 @@ public enum ActionBlock: Sendable, Hashable {
     case noApprove
     /// The key reads the settings but does not change them (admin).
     case noAdmin
+    /// A relayed host is asleep: the relay refuses everything until it wakes.
+    /// `subject` is `RelayWords.subject`: "the Mac", or the host's name.
+    case hostAsleep(subject: String)
+    /// A relayed host's link is down: the lane is closed. `since` is the
+    /// formatted time (`RelayWords.since`).
+    case hostUnreachable(subject: String, since: String)
 
     /// The line shown in the composer field or under a card. `now` is clock
     /// milliseconds, for the retry countdown.
     public func text(now: Double) -> String {
         switch self {
+        case .hostAsleep(let subject):
+            return "\(subject.capitalisedFirst) is asleep: reading only until it wakes"
+        case .hostUnreachable(let subject, let since):
+            return "\(subject.capitalisedFirst) is unreachable since \(since)"
         case .connecting:
             return "Connecting…"
         case .reconnecting(let retryAt):
@@ -73,6 +83,10 @@ public enum ActionError: Error, Hashable, Sendable {
     static func wrap(_ error: any Error) -> ActionError {
         if let action = error as? ActionError { return action }
         if let transport = error as? TransportError {
+            // A relayed host's state said no: the host's own words, one line.
+            if case .server(_, let message) = transport, let refusal = RelayRefusal(message: message) {
+                return .refused(message: refusal.line, forbidden: false)
+            }
             switch transport {
             case .notConnected: return .blocked(.reconnecting(retryAt: nil))
             case .closed: return .blocked(.reconnecting(retryAt: nil))
@@ -285,9 +299,27 @@ public enum Actions {
 
 extension EnvironmentClient {
     /// Why the composer and the row actions are off right now, or nil.
-    public var operateBlock: ActionBlock? { Actions.block(status: status, environment: environment, needs: .operate) }
+    public var operateBlock: ActionBlock? { block(needs: .operate) }
     /// Why the approval card is read-only right now, or nil.
-    public var approveBlock: ActionBlock? { Actions.block(status: status, environment: environment, needs: .approve) }
+    public var approveBlock: ActionBlock? { block(needs: .approve) }
+
+    /// What a relayed host's presence forbids: asleep refuses everything, a
+    /// down link closes the lane. Locked admits every call the phone makes,
+    /// so it blocks nothing; nil on a paired host.
+    public var relayBlock: ActionBlock? {
+        guard let presence, let state = relayState else { return nil }
+        switch state {
+        case .asleep: return .hostAsleep(subject: RelayWords.subject(presence))
+        case .unreachable: return .hostUnreachable(subject: RelayWords.subject(presence), since: RelayWords.since(presence.since, now: .now))
+        case .available, .locked: return nil
+        }
+    }
+
+    /// The key and the socket first (a held lane is `offline` with the
+    /// presence line as `lastError`), then the relayed host's state.
+    func block(needs capability: Capability) -> ActionBlock? {
+        Actions.block(status: status, environment: environment, needs: capability) ?? relayBlock
+    }
 
     /// A user message into a thread. The turn shows at once as pending and
     /// the strip says Sending… until the host echoes it or starts the turn;
@@ -368,7 +400,7 @@ extension EnvironmentClient {
     /// adopted so the screen can open before the `sessions` push, then the
     /// kickoff brief when the draft carries one.
     public func createThread(_ draft: ThreadDraft) async throws -> SessionMeta {
-        if let block = Actions.block(status: status, environment: environment, needs: draft.needs) { throw ActionError.blocked(block) }
+        if let block = block(needs: draft.needs) { throw ActionError.blocked(block) }
         let meta: SessionMeta
         do {
             meta = try await request(Methods.SessionCreate.self, draft.params)
@@ -395,7 +427,7 @@ extension EnvironmentClient {
     }
 
     private func act(_ capability: Capability, _ body: () async throws -> Void) async throws {
-        if let block = Actions.block(status: status, environment: environment, needs: capability) { throw ActionError.blocked(block) }
+        if let block = block(needs: capability) { throw ActionError.blocked(block) }
         do {
             try await body()
         } catch {

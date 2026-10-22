@@ -14,8 +14,13 @@ public struct PairedEnvironment: Sendable, Hashable, Codable, Identifiable {
     public var keyName: String
     /// Wall-clock milliseconds of the pairing.
     public var addedAt: Double
+    /// A host reached through another (the Mac through the box): the carrier's
+    /// environment id. The origin and the key are the carrier's; the socket is
+    /// the carrier's `/ws?host=<id>` lane. Nil for a host paired directly.
+    /// Decoded as optional, so an `environments.json` from before reads unchanged.
+    public var via: String?
 
-    public init(id: String, name: String, origin: URL, caps: [Capability], keyId: String, keyName: String, addedAt: Double) {
+    public init(id: String, name: String, origin: URL, caps: [Capability], keyId: String, keyName: String, addedAt: Double, via: String? = nil) {
         self.id = id
         self.name = name
         self.origin = origin
@@ -23,7 +28,13 @@ public struct PairedEnvironment: Sendable, Hashable, Codable, Identifiable {
         self.keyId = keyId
         self.keyName = keyName
         self.addedAt = addedAt
+        self.via = via
     }
+
+    public var isRelayed: Bool { via != nil }
+
+    /// The environment id the `KeyStore` holds the key under: the carrier's for a relayed host.
+    public var keyOwner: String { via ?? id }
 
     /// The host as the list shows it: the origin without its scheme.
     public var host: String {
@@ -32,13 +43,16 @@ public struct PairedEnvironment: Sendable, Hashable, Codable, Identifiable {
         return host
     }
 
-    /// `wss://host/ws` (or `ws://` behind a plain-http origin), before the ticket.
+    /// `wss://host/ws` (or `ws://` behind a plain-http origin), before the
+    /// ticket; a relayed host's is the carrier's `wss://carrier/ws?host=<id>`
+    /// lane (the socket appends the ticket after it).
     public var socketURL: URL {
         var parts = URLComponents(url: origin, resolvingAgainstBaseURL: false) ?? URLComponents()
         parts.scheme = origin.scheme == "http" ? "ws" : "wss"
         parts.path = "/ws"
         parts.query = nil
         parts.fragment = nil
+        if isRelayed { parts.queryItems = [URLQueryItem(name: "host", value: id)] }
         return parts.url ?? origin
     }
 

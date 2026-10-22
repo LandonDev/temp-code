@@ -30,12 +30,15 @@ public enum EnvironmentStoreError: Error, Hashable, Sendable {
 public final class EnvironmentStore {
     public private(set) var environments: [PairedEnvironment]
     public let keys: any KeyStore
+    /// Where the list lives; the relayed hosts' file sits beside it.
+    public let directory: URL
     private let api: RemoteAPI
     private let file: URL
 
     /// - Parameter directory: where `environments.json` lives; created if missing.
     public init(directory: URL, keys: any KeyStore, api: RemoteAPI = RemoteAPI()) {
         self.keys = keys
+        self.directory = directory
         self.api = api
         self.file = directory.appending(path: "environments.json")
         self.environments = EnvironmentStore.load(file)

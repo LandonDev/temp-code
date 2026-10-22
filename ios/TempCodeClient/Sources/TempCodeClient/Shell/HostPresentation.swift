@@ -62,7 +62,10 @@ public enum HostFix: Sendable, Hashable {
         }
     }
 
-    public static func fix(for status: EnvironmentStatus) -> HostFix? {
+    /// - Parameter environment: a relayed host has no fix of its own: the box
+    ///   retries the link and the lane retries itself.
+    public static func fix(for status: EnvironmentStatus, environment: PairedEnvironment? = nil) -> HostFix? {
+        if environment?.isRelayed == true { return nil }
         switch status.transport {
         case .unauthorized: .pairAgain
         case .reconnecting: .retry
@@ -112,8 +115,13 @@ public enum HostFix: Sendable, Hashable {
 /// version and `platform` is the deploy line's, so neither is shown.
 public enum HostBuildLine {
     public static func text(_ build: HelloPush.Build) -> String {
-        guard let sha = build.sha, !sha.isEmpty else { return build.version }
-        return "\(build.version) · \(sha.prefix(7))"
+        text(version: build.version, sha: build.sha)
+    }
+
+    /// The same line from the fields alone (a relayed host's presence carries its build under another type).
+    public static func text(version: String, sha: String?) -> String {
+        guard let sha, !sha.isEmpty else { return version }
+        return "\(version) · \(sha.prefix(7))"
     }
 }
 
@@ -160,11 +168,27 @@ public extension Capability {
     }
 }
 
+/// The Forget dialog's message for a carrier: the sentence every host gets,
+/// then the relayed hosts that go with it, by name ("Studio Mac goes with
+/// it.", "Studio Mac and Office Mac go with it.").
+public func forgetCopy(carrier: String, relayed: [String]) -> String {
+    let base = "Its threads stay on the host, and it stops sending notifications here when it can be reached. The key stays valid there until revoked. Pair again to come back."
+    guard !relayed.isEmpty else { return base }
+    let names: String
+    if relayed.count == 1 {
+        names = relayed[0]
+    } else {
+        names = relayed.dropLast().joined(separator: ", ") + " and " + relayed[relayed.count - 1]
+    }
+    return "\(base) \(names) \(relayed.count == 1 ? "goes" : "go") with it."
+}
+
 /// Forgetting a host: drop its push registration there while the socket is
 /// open (best effort, no retry: the key stays valid on the host, so a
 /// registration left behind would keep sending notices for an environment
 /// the phone no longer knows), then remove the key here. The removal stops
-/// the socket, forgets the registrar's state and clears the cache.
+/// the socket, forgets the registrar's state and clears the cache. A host
+/// relayed through this one goes with it (`ClientRegistry.remove`).
 @MainActor
 public func forgetHost(_ id: String, registry: ClientRegistry) async {
     if registry.push.enabled, let client = registry.client(id), await client.socket.isOpen {

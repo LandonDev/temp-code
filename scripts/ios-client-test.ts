@@ -38,7 +38,7 @@ if (bundle.error || bundle.status !== 0) {
 }
 
 const server = spawn('node', [out], { cwd: repo, stdio: ['ignore', 'pipe', 'inherit'], env: process.env })
-type Ready = { ready: true; baseUrl: string; controlUrl: string; environmentId: string; keyId: string; key: string; operateKeyId: string; operateKey: string; operateOnlyKeyId: string; operateOnlyKey: string; threadA: string; threadB: string; projectId: string; workspaceId: string; planPath: string | null; threads: { planning: string; chat: string }; threadCrossHost?: string; second?: { baseUrl: string; environmentId: string; key: string } }
+type Ready = { ready: true; baseUrl: string; controlUrl: string; environmentId: string; keyId: string; key: string; operateKeyId: string; operateKey: string; operateOnlyKeyId: string; operateOnlyKey: string; threadA: string; threadB: string; projectId: string; workspaceId: string; planPath: string | null; threads: { planning: string; chat: string }; threadCrossHost?: string; second?: { baseUrl: string; environmentId: string; key: string }; relayHosts?: { environmentId: string; name: string; state: string }[] }
 const ready = await new Promise<Ready>((resolveReady, reject) => {
   let buffer = ''
   const timer = setTimeout(() => reject(new Error('the test server did not come up in 60 s')), 60_000)
@@ -75,7 +75,9 @@ const env: NodeJS.ProcessEnv = {
   TC_TEST_OPERATE_ONLY_KEY: ready.operateOnlyKey,
   TC_TEST_THREAD_PLAN: ready.threads.planning,
   TC_TEST_THREAD_CHAT: ready.threads.chat,
-  TC_TEST_PLAN_PATH: ready.planPath ?? ''
+  TC_TEST_PLAN_PATH: ready.planPath ?? '',
+  // Thread 28's relayed seed (four fake Macs, one per state); `[]` on a server without it.
+  TC_TEST_RELAY_HOSTS: JSON.stringify(ready.relayHosts ?? [])
 }
 // The second host (the same project on another machine) and the thread whose
 // subagent runs there; the two-host live test is skipped without them.

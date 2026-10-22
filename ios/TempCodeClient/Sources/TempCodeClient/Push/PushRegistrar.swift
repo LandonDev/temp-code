@@ -120,6 +120,8 @@ public final class PushRegistrar {
     /// Brings one host in line: a register when it lacks the token, a status
     /// read when it has it, an unregister when the row is off.
     public func sync(_ client: EnvironmentClient) async {
+        // A relayed host is covered by its carrier's row: the box answers the push methods for the key.
+        guard !client.environment.isRelayed else { return }
         guard await client.socket.isOpen else { return }
         let id = client.environment.id
         guard enabled else {
