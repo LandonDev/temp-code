@@ -64,7 +64,8 @@ struct AddEnvironmentSheet: View {
                                 .accessibilityIdentifier("pair-link")
                             if link.isEmpty {
                                 PasteButton(payloadType: String.self) { strings in
-                                    MainActor.assumeIsolated {
+                                    // Whichever thread hands the payload over, the state changes on the main actor.
+                                    Task { @MainActor in
                                         guard let text = strings.first else { return }
                                         link = text
                                         // A pasted link that reads cleanly is redeemed at once.

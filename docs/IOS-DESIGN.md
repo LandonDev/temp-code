@@ -273,8 +273,8 @@ sends `remote.push.unregister` on the host while the socket is open (best
 effort, so a forgotten host stops sending notices whose tap would land on an
 environment the phone no longer knows), then removes the key, stops the
 socket and clears the cache. The message says what holds: the threads stay
-on the host, it stops sending notifications here, the key stays valid there
-until revoked.
+on the host, it stops sending notifications here when it can be reached, and
+the key stays valid there until revoked.
 
 **Pairing** (Add a Host, Pair Again) is a medium sheet, 16 pt radius
 (`Radius.sheet`), with the large detent for the keyboard: a segmented

@@ -93,8 +93,8 @@ struct ForgetHostTests {
         await rig.registrar.setEnabled(true, clients: [])
         await rig.registrar.setDevice(device, clients: [])
         let fake = await rig.open()
-        #expect(await rig.wait { fake.sentRequests.contains { $0.method == "remote.push.register" } })
-        #expect(rig.registrar.statuses[ForgetRig.environmentId]?.registered == true)
+        #expect(await rig.wait { rig.registrar.statuses[ForgetRig.environmentId]?.registered == true })
+        #expect(fake.sentRequests.contains { $0.method == "remote.push.register" })
 
         await forgetHost(ForgetRig.environmentId, registry: rig.registry)
 

@@ -13,8 +13,8 @@ struct HostsView: View {
     @State private var adding = false
     @State private var pairingAgain: PairedEnvironment?
     @State private var forgetting: PairedEnvironment?
-    /// DEBUG: the proof's `TC_TEST_OPEN=host` pushes the first host's detail once.
-    @State private var hookPushed = false
+    /// DEBUG: the proof's hooks fire once, not again when Hosts reappears after Back.
+    @State private var hooksFired = false
 
     var body: some View {
         let clients = model.registry.ordered
@@ -25,7 +25,10 @@ struct HostsView: View {
                         HostRow(client: client)
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button("Forget", systemImage: "trash", role: .destructive) { forgetting = client.environment }
+                        // No destructive role here: a destructive swipe action slides the row
+                        // out at once, and this one only asks.
+                        Button("Forget", systemImage: "trash") { forgetting = client.environment }
+                            .tint(Tint.destructive)
                         Button("Pair Again", systemImage: "key") { pairingAgain = client.environment }
                             .tint(Tint.warning)
                     }
@@ -69,10 +72,11 @@ struct HostsView: View {
         }
         .onAppear {
             #if DEBUG
+            guard !hooksFired else { return }
+            hooksFired = true
             if TestHooks.sheet == "pair" || TestHooks.sheet == "pair-error" { adding = true }
-            if TestHooks.open == "host", !hookPushed, let first = clients.first {
+            if TestHooks.open == "host", let first = clients.first {
                 // The same push a row's tap makes.
-                hookPushed = true
                 path.append(HostDetailRoute(environmentId: first.environment.id))
             }
             #endif
@@ -96,6 +100,8 @@ struct HostRow: View {
         HStack(spacing: Layout.rowGap) {
             ConnectionDot(status: status)
                 .frame(width: Layout.markWidth)
+                // The second line says the state; the dot's label would say it again.
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(client.environment.name)
                     .lineLimit(1)
@@ -166,6 +172,7 @@ struct HostDetailView: View {
                 HStack(spacing: Layout.rowGap) {
                     ConnectionDot(status: status)
                         .frame(width: Layout.markWidth)
+                        .accessibilityHidden(true)
                     StatusText(status: status)
                         .lineLimit(2)
                     Spacer(minLength: Layout.rowGap)
@@ -305,7 +312,7 @@ private struct ForgetHostDialog: ViewModifier {
                 Task { await forget(environment.id) }
             }
         } message: { _ in
-            Text("Its threads stay on the host and it stops sending notifications here. The key stays valid there until revoked. Pair again to come back.")
+            Text("Its threads stay on the host, and it stops sending notifications here when it can be reached. The key stays valid there until revoked. Pair again to come back.")
         }
     }
 }
