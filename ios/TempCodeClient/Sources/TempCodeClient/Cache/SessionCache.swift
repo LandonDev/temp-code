@@ -56,6 +56,19 @@ public struct CachedIcon: Sendable, Hashable, Codable {
     }
 }
 
+/// Where the session list was last reconciled from: the head of the host's
+/// change log (`session.changes`), kept so the next session asks for what
+/// followed instead of listing whole.
+public struct ListCursor: Sendable, Hashable, Codable {
+    public var seq: Int
+    public var generation: String
+
+    public init(seq: Int, generation: String) {
+        self.seq = seq
+        self.generation = generation
+    }
+}
+
 /// Rows a thread keeps on disk at most; the oldest go first. Rows, not
 /// turns: an agent thread packs tens of thousands of rows into a few turns.
 public let cacheRowsPerThread = 1_000
@@ -104,6 +117,8 @@ public actor SessionCache {
         CREATE TABLE IF NOT EXISTS bodies (env TEXT NOT NULL, session_id TEXT NOT NULL, seq INTEGER NOT NULL, json BLOB NOT NULL, PRIMARY KEY (env, session_id, seq));
         CREATE TABLE IF NOT EXISTS seen (env TEXT NOT NULL, session_id TEXT NOT NULL, seen_at INTEGER NOT NULL, seen_seq INTEGER NOT NULL, PRIMARY KEY (env, session_id));
         CREATE TABLE IF NOT EXISTS icons (env TEXT NOT NULL, workspace_id TEXT NOT NULL, data_url TEXT, host TEXT, PRIMARY KEY (env, workspace_id));
+        CREATE TABLE IF NOT EXISTS cursors (env TEXT PRIMARY KEY, seq INTEGER NOT NULL, generation TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS notices (env TEXT NOT NULL, kind TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (env, kind));
         """)
     }
 
@@ -279,12 +294,46 @@ public actor SessionCache {
         return out
     }
 
+    // MARK: - the list cursor
+
+    /// The `session.changes` head the list was last reconciled to; nil when
+    /// the list has never been listed whole on this device.
+    public func cursor(_ env: String) throws(CacheError) -> ListCursor? {
+        var out: ListCursor?
+        try db.query("SELECT seq, generation FROM cursors WHERE env = ?", [.text(env)]) { (row) throws(CacheError) in
+            out = ListCursor(seq: row.int(0), generation: row.text(1))
+        }
+        return out
+    }
+
+    /// Saves the head a reconcile ended at; nil forgets it, so the next session lists whole.
+    public func setCursor(_ env: String, _ cursor: ListCursor?) throws(CacheError) {
+        if let cursor {
+            try db.run("INSERT OR REPLACE INTO cursors (env, seq, generation) VALUES (?, ?, ?)", [.text(env), .int(cursor.seq), .text(cursor.generation)])
+        } else {
+            try db.run("DELETE FROM cursors WHERE env = ?", [.text(env)])
+        }
+    }
+
+    // MARK: - notices
+
+    /// The stamp of the last notice of `kind` the person was shown (the
+    /// boot-resume push's `at`): a host repeats it on every socket, the
+    /// screen shows it once.
+    public func noticeSeen(_ env: String, kind: String) throws(CacheError) -> Int? {
+        try db.scalar("SELECT at FROM notices WHERE env = ? AND kind = ?", [.text(env), .text(kind)])
+    }
+
+    public func markNotice(_ env: String, kind: String, at: Int) throws(CacheError) {
+        try db.run("INSERT OR REPLACE INTO notices (env, kind, at) VALUES (?, ?, ?)", [.text(env), .text(kind), .int(at)])
+    }
+
     // MARK: - removal
 
     /// The environment was removed: forget everything of it.
     public func clear(_ env: String) throws(CacheError) {
         try db.transaction { () throws(CacheError) in
-            for table in ["workspaces", "projects", "sessions", "session_state", "rows", "bodies", "seen", "icons"] {
+            for table in ["workspaces", "projects", "sessions", "session_state", "rows", "bodies", "seen", "icons", "cursors", "notices"] {
                 try db.run("DELETE FROM \(table) WHERE env = ?", [.text(env)])
             }
         }

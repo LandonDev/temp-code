@@ -106,4 +106,33 @@ func textRow(_ sessionId: String, seq: Int, text: String? = nil, ephemeral: Bool
         #expect(try await cache.shell("e") == .empty)
         #expect(try await cache.tail("e", sessionId: "s2").rows.isEmpty)
     }
+
+    @Test func `the list cursor round-trips, survives a reopen and goes with the environment`() async throws {
+        do {
+            let cache = try SessionCache(path: path)
+            #expect(try await cache.cursor("env_a") == nil)
+            try await cache.setCursor("env_a", ListCursor(seq: 41, generation: "g1"))
+            try await cache.setCursor("env_a", ListCursor(seq: 42, generation: "g1"))   // the newer head replaces the old
+            try await cache.setCursor("env_b", ListCursor(seq: 7, generation: "g9"))
+        }
+        let reopened = try SessionCache(path: path)
+        #expect(try await reopened.cursor("env_a") == ListCursor(seq: 42, generation: "g1"))
+        #expect(try await reopened.cursor("env_b") == ListCursor(seq: 7, generation: "g9"))
+        try await reopened.setCursor("env_b", nil)
+        #expect(try await reopened.cursor("env_b") == nil)
+        try await reopened.clear("env_a")
+        #expect(try await reopened.cursor("env_a") == nil)
+    }
+
+    @Test func `a notice is marked once per stamp`() async throws {
+        let cache = try SessionCache.inMemory()
+        #expect(try await cache.noticeSeen("e", kind: "boot-resume") == nil)
+        try await cache.markNotice("e", kind: "boot-resume", at: 1_700_000_000_000)
+        #expect(try await cache.noticeSeen("e", kind: "boot-resume") == 1_700_000_000_000)
+        try await cache.markNotice("e", kind: "boot-resume", at: 1_700_000_050_000)
+        #expect(try await cache.noticeSeen("e", kind: "boot-resume") == 1_700_000_050_000)
+        #expect(try await cache.noticeSeen("e", kind: "other") == nil)
+        try await cache.clear("e")
+        #expect(try await cache.noticeSeen("e", kind: "boot-resume") == nil)
+    }
 }
