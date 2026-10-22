@@ -1454,6 +1454,19 @@ Linux pin waits for a build that has not expired), and vibrancy. Known gap:
 the local socket is the implicit admin for any process on the box's loopback,
 as on a Mac; the box has only `prod` as another user.
 
+What a key may see and do of the bridge. Every `macBridge.*` method the
+Mac's own pane reads is `local`, so the phone (or a box's /ui) reaches the
+bridge through two narrow methods on the Mac's listener:
+`macBridge.activity` (read) answers each saved host's caps and counts with
+how many requests wait for a decision there (never the requests), the load
+with its limit, and every call past the prompt (held with its standing,
+running, or paused on its box; no folder, remember offer or deadline);
+`macBridge.stop { id }` (operate) does what the Mac's Stop does for a
+running or held call and refuses one that waits for a decision ("that
+request waits for a decision on the Mac"). Deciding, remembering and every
+setting stay the Mac's own. The phone shows them on a box's host detail
+under "On <Mac>" (docs/IOS-DESIGN.md "Host activity").
+
 ### The fleet switches: Pause all, Resume all, Stop all, Archive done
 
 Fifteen threads need one click, not fifteen. Every scope has the same five
@@ -2258,6 +2271,15 @@ Install or refresh launcher files without deploying:
 scripts/box/apply.sh --from 75 --through 75
 scripts/box/apply.sh --from 85 --through 85
 ```
+
+The phone reads the same release.json itself (`MasterReleaseWatcher` in
+the iOS client package: every ten minutes while a drift mark or a host
+detail is on screen, and on foreground after fifteen idle minutes; a
+failure keeps the last value), because `deploy.master` is local-only. It
+shows the `+N` on the Hosts row and Home's host header and status row, and
+the host detail's Build section names both versions with Deploy Master for
+an admin key (`host.deploy`, the same trigger, its log in a sheet that
+follows the tail through the box's restart).
 
 ### Deploy from the app
 

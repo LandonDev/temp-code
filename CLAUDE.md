@@ -723,7 +723,10 @@ routed to (aliax-core's `forward`). Two listeners:
   (`remote/peerCalls.ts`: `peer.register`, `peer.call` push, `peer.reply`,
   `peer.chunk`). The Mac decides everything in `remote/macBridge.ts`: a
   per-host policy (off by default), shared folders, and a Mac-local prompt
-  for any other path and every command (`macBridge.decide` is local-only).
+  for any other path and every command (`macBridge.decide` is local-only;
+  a key sees what runs through `macBridge.activity`, read, and stops a
+  running or held call through `macBridge.stop`, operate; the prompts and
+  every setting stay the Mac's).
   Codex calls carry a per-thread token (`macTools.ts`). A thread in full
   access on its box (permission `auto`) is never prompted: the box sends its
   permission with every call and the Mac treats every call the policy admits
@@ -1166,6 +1169,25 @@ routed to (aliax-core's `forward`). Two listeners:
   LiveServerTests.swift (enabled by `TC_TEST_RELAY_HOSTS`, which
   scripts/ios-client-test.ts passes from thread 28's `relayHosts` seed).
   docs/IOS-DESIGN.md "Hosts through the box".
+- Host activity (thread 21): the host detail's Activity slot is
+  `ios/TempCode/Sources/Shell/Hosts/` (`HostActivitySections`: Build with
+  the `+N` drift mark, Deploy Master and the log sheet; the Mac bridge's
+  calls on a box's detail with Stop; Devices per Mac; Sync), every loop in
+  one `ActivityPollers`; the drift mark also fills Home's `hostTrailing`
+  slot. The stores are the client package's `Client/HostExtras.swift`
+  (`HostExtras` on `EnvironmentClient.extras`, and `MasterReleaseWatcher`,
+  which reads master's release.json from GitHub itself) and the words
+  `Client/HostExtrasText.swift`, ported from the desktop's, with their
+  suites. The wire it reads: `host.devices*`, `host.simulator.*`,
+  `host.device.openXcode`, `host.deployStatus`/`deploy`/`log` (admin),
+  `harness.status`/`sync` and `memory.status`/`sync` (admin), and
+  `macBridge.activity`/`stop`, with the `host.devices` and `host-log`
+  pushes in the subset. The test server seeds a saved host "box", two Mac
+  bridge calls for it (`MacBridge.seed`, behind `TEMP_CODE_E2E_SEED`), a
+  finished deploy (`TEMP_CODE_DEPLOY_DIR`) and an admin key
+  (`adminPairing`), beside thread 26's fake devices;
+  `TC_PROOF_SET=host-extras` shoots it (`TC_TEST_SHEET=deploy-log` opens
+  the log).
 - Steering (L5): `ios/TempCode/Sources/Thread/Composer.swift` (the bar on
   every segment, Send ↔ Stop, the model and reasoning chips on focus; a
   watching master's button is Send and a master mid-turn with text steers)

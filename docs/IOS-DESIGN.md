@@ -1138,11 +1138,9 @@ so the bar's title is the host's name on either path with no principal item.
    when the host is out of reach, Pair Again when the key was refused or the
    address answers as another host, nothing when the host needs an update
    the phone cannot do); the footer says why.
-2. **Activity**: what the host is doing. Thread 21 fills it with one line,
-   `HostActivitySections(client:)`, a view of its own under `Shell/Hosts/`
-   whose body is one or more `Section`s (deploy drift, the Mac bridge's
-   running and held calls, the devices, the harness and memory sync lines,
-   a running deploy's log). Empty until it lands.
+2. **Activity**: `HostActivitySections(client:)` (`Shell/Hosts/`): Build,
+   Mac bridge, Devices, Sync, in that order; "Host activity" below has
+   their rules.
 3. **Key**: Read, Operate, Approve, Admin, each with one line of what it
    allows and a checkmark in the tint when the key has it; the footer says
    a new key on the host is how to change it.
@@ -1177,6 +1175,72 @@ socket and clears the cache. The message says what holds: the threads stay
 on the host, it stops sending notifications here when it can be reached, and
 the key stays valid there until revoked; a carrier's names the relayed hosts
 that go with it (`forgetCopy`).
+
+**Host activity.** Four kinds of section, each absent when the host has
+nothing of the kind, all in the same inset grouped grammar: system headers,
+no glyphs on rows except the status column (`Layout.markWidth`: a dot, a
+spinner, a check or a cross), footers of at most two lines.
+
+- **Build**: a Master row with master's version, read by the phone itself
+  from GitHub (`MasterReleaseWatcher`: every ten minutes while a drift mark
+  or a detail shows, and on foreground after fifteen; a failure keeps the
+  last value). For a box, Deploy Master, behind a confirm naming both
+  versions ("v1.0.270 → v1.0.273, 3 releases. …"), and once a run exists the
+  job row: spinner, check or cross, the title swapping in place, the note or
+  ending under it, a chevron to the log sheet. The footer names the gap and
+  the fix ("3 releases behind master: v1.0.270 → v1.0.273. Deploy from
+  here.", "Publish from the Mac." on a Mac) or why it is out of reach (not
+  connected, not installed, an admin key). The host's own version stays in
+  the Host section; nothing says it twice. The `+N` mark (`DriftMark`)
+  trails the Hosts row before the id and fills Home's `hostTrailing` slot
+  (the status row and the host header), muted, tabular, never animated.
+- **The deploy log** is a medium/large sheet (`Radius.sheet`): the card's
+  title, its note under it ("Cannot be stopped mid-way; the box rolls back
+  on failure", or "The box is restarting; the log continues when it is
+  back" while the link is down), the last 40 lines in mono one step down,
+  selectable, and the ending line. It follows the tail while the reader is
+  at the bottom and holds still once they scroll up; appends never animate.
+  A deploy is never stoppable, so there is no Stop.
+- **Mac bridge** (a box's detail, from each paired Mac that serves it,
+  headed "On <Mac>"): the box's calls past the prompt, running first, then
+  held with their standing ("Waiting for the Mac · load 12.3 of 8 · 3rd in
+  line", swapping in place), then paused on the box; the command in mono,
+  the thread and its elapsed under it. Stop is a swipe (no destructive role:
+  the row stays until the Mac answers) and a context-menu item, never on a
+  paused row. Then Running and Threads against their caps and the Load row
+  with "Holding new commands until under 24" while the guard holds. The
+  footer says how many requests wait for a decision on the Mac; deciding
+  stays there.
+- **Devices** (one section per Mac this host can show: "Devices" on the Mac
+  itself, "Devices on <Mac>" on a box): simulators then iPhones, a dot in
+  success, warning or tertiary that cross-fades in place, the state line
+  with a booted simulator's CPU rolling (`.numeric`), the holder trailing in
+  the footnote's tertiary, pushing its thread when that host is paired here.
+  Shut Down and Delete on a swipe and in the context menu (Delete confirmed
+  by an alert naming the holder), Open in Xcode on a phone's; a spinner
+  replaces the dot while one is out. The footer is the summary, then the
+  Xcode in use, then any tool that did not answer.
+- **Sync** (admin): per peer its name, the harness config and memory lines
+  (cross-fading, up to three lines so "synced 2m ago" survives), and a Sync
+  Now pill; the conflict copies behind a disclosure. The footer is the rule
+  ("Skills, commands, hooks and settings go from the Mac to its hosts;
+  memory crosses both ways, the newer copy wins.") or that sync is off.
+
+A key that lacks a capability sees the section and its rows with the
+control disabled and the reason in the footer: "Deploying needs an admin
+key.", "Reading the sync state needs an admin key." (one quiet row instead
+of the lines), "Shutting down or deleting a simulator needs an operate
+key.", "Stopping a command needs an operate key on the Mac." An action the
+host refuses lands as the destructive footnote line under the section's
+rows (`RowErrorLine`), arriving like a needs-you row and leaving after four
+seconds. Motion: the first report paints still; rows that come and go after
+it use `.rowAppearTransition()`; the dot, the spinner and the check
+cross-fade on `Motion.crossFade`; counts and CPU roll on `Motion.numeric`;
+nothing else moves. Every loop runs in one `ActivityPollers` behind the
+Master row, so a row changing never restarts the devices watch; leaving the
+detail ends them all and sends the unwatch. The words are the client
+package's `Client/HostExtrasText.swift`, ported from the desktop's; the
+stores are `Client/HostExtras.swift`.
 
 **Pairing** (Add a Host, Pair Again) is a medium sheet, 16 pt radius
 (`Radius.sheet`), with the large detent for the keyboard: a segmented
