@@ -1,3 +1,4 @@
+import { realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
 import type { BatchState } from '@shared/contract-batch'
@@ -861,7 +862,8 @@ describe('Batches: shell steps', () => {
       ['gate', 'passed'],
       ['smoke', 'passed']
     ])
-    expect(state.steps[1].log).toEqual(['$ echo building; pwd', 'building', '/tmp', '== Build passed in 0s'])
+    // pwd prints the real path: /private/tmp on macOS, /tmp on Linux.
+    expect(state.steps[1].log).toEqual(['$ echo building; pwd', 'building', realpathSync('/tmp'), '== Build passed in 0s'])
     expect(state.steps[3].log.slice(0, 1)).toEqual(['$ echo smoke ok; echo warn >&2'])
     expect(state.steps[3].log.slice(1, 3).sort()).toEqual(['smoke ok', 'warn'])
     expect(state.steps[1].startedAt).toBe(1000)
