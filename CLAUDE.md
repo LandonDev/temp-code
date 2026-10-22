@@ -145,7 +145,10 @@ Two separate steps, on purpose, over one gate.
    --since release-N` (the commits since the last release decide whether
    the `publish` tier joins), bumps release.json to N and package.json to
    `1.0.N`, commits both, and tags `release-N`, using your commit subject
-   as the release notes. That is bookkeeping: no user sees it.
+   as the release notes. That is bookkeeping: no user sees it. With nothing
+   new since `release-N` (HEAD is the tagged commit, or only release
+   bookkeeping follows it; scripts/releaseCheck.ts) it prints "nothing to
+   release since release-N" and exits 0 with no bump, commit or tag.
    - If the hook skipped (tree was dirty at commit time, or the gate was
      red), the next green commit releases everything since; you can also
      run `bun scripts/release.ts "notes"` yourself (`--full` to run the
@@ -1515,7 +1518,9 @@ this is the short one.
   a list without one gets it); `gate` (the commit tier once on the project
   checkout at the project branch's head); `release` (`bun
   scripts/release.ts "<master title; landed subjects>" --push`: the tag,
-  and master with it pushed to origin); `publish` (the Mac's publish job
+  and master with it pushed to origin; with nothing new since the last
+  tag the step is skipped as "nothing to release since release-N" and a
+  publish or deploy after it takes that version); `publish` (the Mac's publish job
   for that commit over the peer link, "Releases" above; a person's
   decision); `deploy` (the box's deploy trigger of docs/box.md "Deploy from
   the app": `v1.0.N` when a publish passed, `master` otherwise; skipped as
@@ -1536,7 +1541,9 @@ this is the short one.
   The engine runs when the last child is done (every unarchived root
   carrying the masterId is `done`, or `idle` with a turn completed,
   `Store.hasCompletedTurn`); an errored or stopped child blocks the end,
-  `blocked` names it and the master is told once as a `<batch-report>`.
+  and so does one idle on a turn that ended in a failure (its row's
+  `failure`, a usage cap; `blocked.why` `failed`), `blocked` names it and
+  the master is told once as a `<batch-report>`.
   Steps run in order on the host's `GateQueue`, a gate or release outcome a
   `gate` notice row on the master; a red step stops the rest and tells the
   master; the steps after land run whenever the batch ends, on the project
@@ -1547,9 +1554,14 @@ this is the short one.
   a release"); the land step counts only threads with a branch to land
   (`canLand`: implementation and orchestration, a chat or research thread
   once it landed or holds one, a planner never); a planning child whose
-  plan is complete holds the batch open until its build exists; a child moving again
-  or a new one arms the engine for the next all-done, and a landing after
-  the end starts a new cycle. `batch_gate` stays the master's way to run
+  plan is complete holds the batch open until its build exists. The end
+  runs once per cycle: at all-done when it never ran, or when since it last
+  started a landing came in (landed, held, or reported by a far host), a
+  child joined that was not in the batch then, or the rules were set
+  (`batch_rules`/`batch.setRules`, even unchanged: the hand re-run); a
+  child resuming and settling idle again, a child leaving or a failed step
+  never starts it (`armed`, `ranChildren` on the row), so a failed publish
+  never cuts a fresh release on the next idle. `batch_gate` stays the master's way to run
   the gate and release steps early, with children still out left out of
   the land step (refused when the list names no gate). The deploy restarts
   the box's own process: the row is persisted before the trigger fires and
