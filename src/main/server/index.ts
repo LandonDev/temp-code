@@ -821,8 +821,10 @@ export async function startServer(
       }
     }
   })
-  // The gateway's own process reads the accounts from a copy main pushes: every snapshot moves it.
-  accounts.onChange(() => gateway.accountsChanged())
+  // The gateway's own process reads the accounts from a copy main pushes. It reads
+  // only what a pick reads (the profiles, the pin, the accounts out, the full
+  // windows), so it follows the pickable set, not every usage number.
+  accounts.onPickable(() => gateway.accountsChanged())
   const linear = new Linear(options.dataDir ?? dirname(dbPath))
   // Reads SQLite until the open inbox view asks it to refresh; no timer here.
   const githubInbox = new GithubInbox(store, registry)

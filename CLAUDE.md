@@ -377,8 +377,9 @@ routed to (aliax-core's `forward`). Two listeners:
   the marker (main's pid, the child's port), the TLS pair, the vault, the
   Keychain, every refresh and `askOwner`, the routing hooks, and mirrors of
   `url()`, `status()`, the codex ports and the warm map; it pushes the
-  accounts the forward reads (names, pins, usage reports, the out marks) on
-  change, answers credential misses (the child keeps a credential until a
+  accounts the forward reads (names, pins, usage reports, the out marks)
+  when the pickable set moves (`AccountsService.onPickable`; the out marks
+  also after every 401 and answer), answers credential misses (the child keeps a credential until a
   minute before its token ends; a vault save or a 401 drops it), and gets
   one `response` message per answer with the limit headers. aliax-core's
   `ForwardHooks.accounts` is what keeps the child's copy of core off the
