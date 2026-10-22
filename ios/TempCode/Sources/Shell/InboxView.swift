@@ -8,38 +8,38 @@ import TempCodeContract
 /// is a poll, so this is the one place a pull is right) and only then does
 /// the list reorder with the default animation. Rows name the host when
 /// there are several; a row is unread by weight alone, and the swipes mark
-/// it read or open it on GitHub.
+/// it read or open it on GitHub. The rules are `InboxModel`; this is the list.
 struct InboxView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
     @Binding var path: NavigationPath
     private let store = InboxStore.shared
-    @State private var refreshDenied = false
+    /// A refresh answered forbidden, so the key reads but cannot refresh.
+    @State private var refreshRefused = false
     @State private var opened = false
 
     var body: some View {
         let clients = model.registry.ordered
         let entries = store.entries(clients: clients)
-        let notices = Self.notices(clients: clients, snapshots: store.snapshots, refreshDenied: refreshDenied)
+        let notices = InboxModel.notices(hosts: store.hosts(clients), refreshDenied: refreshDenied(clients))
         List {
             ForEach(notices, id: \.self) { notice in
                 Text(notice)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .textStep(.meta)
                     .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
-                    .listRowInsets(rowInsets)
+                    .listRowInsets(Layout.rowInsets)
                     .listRowBackground(Surface.chrome)
             }
             ForEach(entries) { entry in
                 let unread = store.isUnread(entry)
                 Button { open(entry) } label: {
-                    InboxRow(entry: entry, unread: unread, status: InboxStatus.of(entry.item, viewer: store.snapshot(for: entry.environmentId)?.viewer), showHost: clients.count > 1)
+                    InboxRow(entry: entry, unread: unread, status: InboxModel.status(of: entry.item, viewer: store.snapshot(for: entry.environmentId)?.viewer), showHost: clients.count > 1)
                 }
                 .buttonStyle(.pressable)
-                .listRowInsets(rowInsets)
+                .listRowInsets(Layout.rowInsets)
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                     Button {
-                        if unread { store.markRead(entry) } else { store.markUnread(entry) }
+                        toggleRead(entry, unread: unread)
                     } label: {
                         Label(unread ? "Read" : "Unread", systemImage: unread ? "envelope.open" : "envelope.badge")
                     }
@@ -47,7 +47,7 @@ struct InboxView: View {
                 }
                 .swipeActions(edge: .leading, allowsFullSwipe: false) {
                     Button {
-                        if let url = URL(string: entry.item.url) { openURL(url) }
+                        openOnGitHub(entry)
                     } label: {
                         Label("GitHub", systemImage: "safari")
                     }
@@ -55,7 +55,7 @@ struct InboxView: View {
                 }
                 .contextMenu {
                     Button {
-                        if let url = URL(string: entry.item.url) { openURL(url) }
+                        openOnGitHub(entry)
                     } label: {
                         Label("Open on GitHub", systemImage: "safari")
                     }
@@ -66,7 +66,7 @@ struct InboxView: View {
                     }
                     Divider()
                     Button {
-                        if unread { store.markRead(entry) } else { store.markUnread(entry) }
+                        toggleRead(entry, unread: unread)
                     } label: {
                         Label(unread ? "Mark as Read" : "Mark as Unread", systemImage: unread ? "envelope.open" : "envelope.badge")
                     }
@@ -76,10 +76,13 @@ struct InboxView: View {
         .listStyle(.plain)
         .refreshable { await refresh(clients) }
         .overlay {
-            if entries.isEmpty, notices.isEmpty, Self.settled(clients, store: store) {
-                Text("Nothing in the inbox.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+            if entries.isEmpty, notices.isEmpty {
+                if Self.settled(clients, store: store) {
+                    Text("Nothing in the inbox.")
+                        .textStep(.meta)
+                } else {
+                    ProgressView()
+                }
             }
         }
         .navigationTitle("Inbox")
@@ -91,8 +94,27 @@ struct InboxView: View {
         path.append(Route.inboxItem(environmentId: entry.environmentId, item: entry.item))
     }
 
+    private func openOnGitHub(_ entry: InboxEntry) {
+        if let url = URL(string: entry.item.url) { openURL(url) }
+    }
+
+    /// The weight swaps at once: a mark is a keyboard-speed action, never animated.
+    private func toggleRead(_ entry: InboxEntry, unread: Bool) {
+        Motion.withoutAnimation {
+            if unread { store.markRead(entry) } else { store.markUnread(entry) }
+        }
+    }
+
     private func openKey(_ clients: [EnvironmentClient]) -> String {
         clients.map { "\($0.environment.id):\($0.status.transport == .open)" }.joined(separator: ",")
+    }
+
+    /// The key cannot refresh: every connected host's key is read-only, or a
+    /// refresh already came back forbidden.
+    private func refreshDenied(_ clients: [EnvironmentClient]) -> Bool {
+        if refreshRefused { return true }
+        let connected = clients.filter { $0.status.transport == .open }
+        return !connected.isEmpty && connected.allSatisfy { $0.operateBlock == .readOnly }
     }
 
     /// The host's stored snapshot (SQLite, never the network), landing without
@@ -102,28 +124,37 @@ struct InboxView: View {
         for client in clients where client.status.transport == .open && store.shouldAsk(client.environment.id) {
             store.markAsked(client.environment.id)
             guard let snapshot = try? await client.request(Methods.GithubInbox.self, .init()) else { continue }
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) { store.put(snapshot, for: client.environment.id) }
+            Motion.withoutAnimation { store.put(snapshot, for: client.environment.id) }
         }
         openForProof(clients)
     }
 
-    /// The pull: GitHub is asked again and the rows move under the default animation.
+    /// The pull: GitHub is asked again and the rows move under the default
+    /// animation. A read-only key is known before the call and reads the
+    /// stored snapshot instead; a refusal the host answers is read the same way.
     private func refresh(_ clients: [EnvironmentClient]) async {
-        refreshDenied = false
+        refreshRefused = false
         for client in clients where client.status.transport == .open {
+            if client.operateBlock == .readOnly {
+                refreshRefused = true
+                await readStored(client)
+                continue
+            }
             do {
                 let snapshot = try await client.request(Methods.GithubInboxRefresh.self, .init(reason: .manual))
                 withAnimation(.default) { store.put(snapshot, for: client.environment.id) }
             } catch let error as TransportError where error.isForbidden {
-                refreshDenied = true
-                if let snapshot = try? await client.request(Methods.GithubInbox.self, .init()) {
-                    withAnimation(.default) { store.put(snapshot, for: client.environment.id) }
-                }
+                refreshRefused = true
+                await readStored(client)
             } catch {
                 continue
             }
+        }
+    }
+
+    private func readStored(_ client: EnvironmentClient) async {
+        if let snapshot = try? await client.request(Methods.GithubInbox.self, .init()) {
+            withAnimation(.default) { store.put(snapshot, for: client.environment.id) }
         }
     }
 
@@ -136,68 +167,50 @@ struct InboxView: View {
         }
     }
 
-    /// What stands between the user and a full inbox: gh not signed in, a repo that failed, a key that cannot refresh.
-    static func notices(clients: [EnvironmentClient], snapshots: [String: GithubInboxSnapshot], refreshDenied: Bool) -> [String] {
-        var out: [String] = []
-        if refreshDenied { out.append("This key reads the inbox but cannot refresh it.") }
-        for client in clients {
-            guard let snapshot = snapshots[client.environment.id] else { continue }
-            let prefix = clients.count > 1 ? "\(client.environment.name): " : ""
-            if snapshot.auth.state.rawValue != "ok", !snapshot.auth.message.isEmpty {
-                out.append(prefix + snapshot.auth.message)
-            }
-            for repo in snapshot.repos {
-                if let error = repo.error, !error.isEmpty { out.append("\(prefix)\(repo.repo): \(error)") }
-            }
-        }
-        return out
-    }
-
-    /// DEBUG only: `TC_TEST_OPEN=item` (or `item-changes`) pushes the newest pull request for the proof's detail shots.
+    /// DEBUG only: `TC_TEST_OPEN=item` (or `item-diff`) pushes the newest pull request for the proof's detail shots.
     private func openForProof(_ clients: [EnvironmentClient]) {
-        guard TestHooks.open?.hasPrefix("item") == true, !opened else { return }
+        guard TestHooks.open == "item" || TestHooks.open == "item-diff", !opened else { return }
         let entries = store.entries(clients: clients)
-        guard let entry = entries.first(where: { $0.item.kind.rawValue == "pr" }) ?? entries.first else { return }
+        guard let entry = entries.first(where: { $0.item.kind == .pr }) ?? entries.first else { return }
         opened = true
         open(entry)
     }
 }
 
 /// One row, the way Mail lays a message out: the author's picture, the
-/// title (semibold while unread) with the time trailing in tabular digits,
+/// title (semibold while unread) with the time trailing in the stamp step,
 /// then a dim line with the kind, the author, the repository and number,
 /// what the item waits on in the one color that means it, and the host
-/// when there are several.
+/// when there are several. The separator starts at the title.
 struct InboxRow: View {
     let entry: InboxEntry
     let unread: Bool
     let status: InboxStatus?
     let showHost: Bool
     @Environment(\.dynamicTypeSize) private var typeSize
+    @ScaledMetric(relativeTo: .subheadline) private var avatarSize: CGFloat = 36
+    private let gap: CGFloat = 12
 
     var body: some View {
         let item = entry.item
-        HStack(alignment: .top, spacing: 12) {
-            InboxAvatar(url: item.author?.avatarUrl ?? "", login: item.author?.login ?? "", size: 36)
+        let weight: Font.Weight = unread ? .semibold : .regular
+        HStack(alignment: .top, spacing: gap) {
+            InboxAvatar(url: item.author?.avatarUrl ?? "", login: item.author?.login ?? "", size: avatarSize)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(item.title)
-                        .font(.subheadline.weight(unread ? .semibold : .regular))
+                        .textStep(.title, weight: weight)
                         .lineLimit(typeSize.isAccessibilitySize ? 3 : 2)
                     Spacer(minLength: 0)
-                    TimelineView(.periodic(from: .now, by: 30)) { context in
-                        Text(TimeFormat.ago(entry.updatedMs, now: context.date))
-                    }
-                    .font(.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(.tertiary)
+                    AgoText(entry.updatedMs)
                 }
-                InboxRowMeta(entry: entry, unread: unread, status: status, showHost: showHost)
+                InboxRowMeta(entry: entry, weight: weight, status: status, showHost: showHost)
             }
         }
         .padding(.vertical, 10)
-        .frame(minHeight: 44)
+        .frame(minHeight: Layout.rowHeight)
+        .separatorAtTextEdge(avatarSize + gap)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(unread ? "\(item.title), new" : item.title)
     }
@@ -208,13 +221,14 @@ struct InboxRow: View {
     }
 }
 
-/// The dim line under the title: the kind glyph, the author, the repository
-/// and number, the status word in its color, the host. One line that
-/// truncates the repository first; at accessibility sizes two lines, so the
-/// status never pushes the row past the screen.
+/// The dim line under the title: the kind glyph (its stroke the title's
+/// weight), the author, the repository and number, the status word in its
+/// color, the host. One line that truncates the repository first; at
+/// accessibility sizes two lines, who over what, so the status never pushes
+/// the row past the screen.
 private struct InboxRowMeta: View {
     let entry: InboxEntry
-    let unread: Bool
+    let weight: Font.Weight
     let status: InboxStatus?
     let showHost: Bool
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -234,18 +248,16 @@ private struct InboxRowMeta: View {
                 }
             }
         }
-        .font(.footnote)
+        .font(TextStep.meta.font)
     }
 
     @ViewBuilder private var who: some View {
         let item = entry.item
-        Image(systemName: item.kind.rawValue == "pr" ? "arrow.triangle.pull" : "circle.circle")
-            .font(.caption)
-            .foregroundStyle(.tertiary)
-            .accessibilityLabel(item.kind.rawValue == "pr" ? "Pull request" : "Issue")
+        let isPr = item.kind == .pr
+        MetaGlyph(isPr ? "arrow.triangle.pull" : "circle.circle", weight: weight, label: isPr ? "Pull request" : "Issue")
         if let author = item.author?.login, !author.isEmpty {
             Text(author)
-                .foregroundStyle(unread ? .secondary : .tertiary)
+                .foregroundStyle(weight == .semibold ? .secondary : .tertiary)
                 .lineLimit(1)
                 .layoutPriority(1)
             dot
@@ -259,7 +271,7 @@ private struct InboxRowMeta: View {
     @ViewBuilder private var what: some View {
         if let status {
             Text(status.text)
-                .foregroundStyle(status.tint ?? Color(.tertiaryLabel))
+                .foregroundStyle(status.tone.color)
                 .lineLimit(1)
                 .layoutPriority(1)
         }
