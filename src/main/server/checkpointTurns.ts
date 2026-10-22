@@ -15,14 +15,15 @@ import { statusBudget, withBudget } from './spawnBudget'
  * (turn-complete, or a status of idle, error or paused) the unsaved paths
  * are written in one manifest write together with one sync (the newly dirty
  * paths no other session claims), and the sockets watching the thread hear
- * `checkpoint-changed`. During a long turn the unsaved paths are written at
- * most FLUSH_MS after the first, so a crash loses no more than that.
+ * `checkpoint-changed`. During a long turn (and for the edits that settle
+ * after it) the unsaved paths are written at most FLUSH_MS after the first,
+ * asking git nothing, so a crash loses no more than that.
  *
- * Whether HEAD has a path comes from one `git ls-files` listing per root,
- * taken at the first write after an ensure; a path it does not know is
- * asked with one `ls-tree` for all of them at the settle. Nothing here runs
- * per window or per client, and a host with no socket open keeps the same
- * checkpoints.
+ * At the settle, whether HEAD has each path written since the last one comes
+ * from one `git ls-files` listing per root, taken at the first settle after
+ * an ensure; the paths it does not know are asked with one `ls-tree` for all
+ * of them. Nothing here runs per window or per client, and a host with no
+ * socket open keeps the same checkpoints.
  */
 
 export const FLUSH_MS = 5_000
@@ -51,7 +52,7 @@ interface Turn {
   known: Promise<Set<string> | null>
   /** Paths touched since the last write. */
   unsaved: Set<string>
-  /** Written paths the listing did not know; the settle asks HEAD. */
+  /** Paths written without asking HEAD; the settle asks. */
   unasked: Set<string>
   /** Armed or edited since the last settle. */
   open: boolean
@@ -123,7 +124,8 @@ export class CheckpointTurns {
     turn.timer ??= setTimeout(() => void this.flush(sessionId), FLUSH_MS)
   }
 
-  /** Mid-turn: write the unsaved paths, HEAD answered by the listing alone. */
+  /** Mid-turn (or after it): write the unsaved paths, asking git nothing;
+   *  the settle tells the store which of them HEAD has. */
   private flush(sessionId: string): Promise<void> {
     return this.queue(sessionId, async () => {
       const turn = this.turns.get(sessionId)
@@ -131,7 +133,9 @@ export class CheckpointTurns {
       this.stopTimer(turn)
       const known = await turn.known
       if (!known || turn.unsaved.size === 0) return
-      const touched = this.take(turn, await this.listing(turn.root), null)
+      const touched = [...turn.unsaved].map((relative): TouchedPath => ({ relative, inHead: null }))
+      for (const relative of turn.unsaved) turn.unasked.add(relative)
+      turn.unsaved.clear()
       const written = await this.deps.store.record(sessionId, turn.cwd, touched).catch(() => null)
       if (this.learn(turn, known, written)) this.changed(sessionId)
     })
@@ -147,14 +151,13 @@ export class CheckpointTurns {
       turn.open = false
       this.stopTimer(turn)
       if (known) {
-        const listed = turn.unsaved.size > 0 ? await this.listing(turn.root) : EMPTY
-        const ask = [...turn.unasked, ...[...turn.unsaved].filter((relative) => !listed.has(relative))]
-        const head = ask.length > 0 ? await this.deps.inHeadMany(turn.root, ask).catch(() => EMPTY) : EMPTY
-        const touched = [
-          ...[...turn.unasked].map((relative) => ({ relative, inHead: head.has(relative) })),
-          ...this.take(turn, listed, head)
-        ]
+        const pending = [...turn.unasked, ...turn.unsaved]
         turn.unasked.clear()
+        turn.unsaved.clear()
+        const listed = pending.length > 0 ? await this.listing(turn.root) : EMPTY
+        const ask = pending.filter((relative) => !listed.has(relative))
+        const head = ask.length > 0 ? await this.deps.inHeadMany(turn.root, ask).catch(() => EMPTY) : EMPTY
+        const touched = pending.map((relative) => ({ relative, inHead: listed.has(relative) || head.has(relative) }))
         // The settle's diff is a review diff: the panels' lane, never the sends'.
         const written = await withBudget(statusBudget, () =>
           this.deps.store.record(sessionId, turn.cwd, touched, { sync: true })
@@ -179,18 +182,6 @@ export class CheckpointTurns {
     return status
   }
 
-  /** The unsaved paths as marks, emptied. A path the listing does not know
-   *  takes `head`'s answer, or waits unasked for the settle without one. */
-  private take(turn: Turn, listed: ReadonlySet<string>, head: ReadonlySet<string> | null): TouchedPath[] {
-    const touched = [...turn.unsaved].map((relative): TouchedPath => {
-      const inHead = listed.has(relative) ? true : head ? head.has(relative) : null
-      if (inHead === null) turn.unasked.add(relative)
-      return { relative, inHead }
-    })
-    turn.unsaved.clear()
-    return touched
-  }
-
   /** Fold a write's answer into the turn; true when the checkpoint is there. */
   private learn(turn: Turn, known: Set<string>, written: Set<string> | null): boolean {
     if (!written) {
@@ -205,7 +196,8 @@ export class CheckpointTurns {
     this.deps.push(sessionId, { push: 'checkpoint-changed', sessionId })
   }
 
-  /** The tracked paths of a root, listed once until the next ensure there. */
+  /** The tracked paths of a root, listed once and kept until the next ensure
+   *  there, or until no turn there is open (release). */
   private listing(root: string): Promise<Set<string>> {
     let listed = this.listings.get(root)
     if (!listed) {

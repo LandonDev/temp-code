@@ -101,6 +101,19 @@ export function currentBudget(): ChildBudget {
 
 const children = new Set<ChildProcess>()
 
+type SpawnListener = (file: string, args: readonly string[]) => void
+const spawnListeners = new Set<SpawnListener>()
+
+/** Hear every helper the budget starts, as it starts (a proof counts git children with it). */
+export function onBudgetedSpawn(listener: SpawnListener): () => void {
+  spawnListeners.add(listener)
+  return () => spawnListeners.delete(listener)
+}
+
+function announce(file: string, args: readonly string[]): void {
+  for (const listener of spawnListeners) listener(file, args)
+}
+
 /** Remember a child until it exits so quit can kill whatever is left. */
 export function trackChild<T extends ChildProcess | undefined>(child: T): T {
   if (!child || typeof child.on !== 'function') return child
@@ -156,6 +169,7 @@ export function execFileBudgeted(
       new Promise((resolve, reject) => {
         const { detached: _detached, ...rest } = options as ExecOptions & { detached?: boolean }
         const opts = { timeout: DEFAULT_TIMEOUT_MS, encoding: 'utf8', ...rest } as ExecOptions
+        announce(file, args)
         const child = nodeExecFile(
           file,
           [...args],
@@ -186,6 +200,7 @@ export function execFileChildBudgeted(
         new Promise<void>((done) => {
           const { detached: _detached, ...rest } = options as ExecOptions & { detached?: boolean }
           const opts = { timeout: DEFAULT_TIMEOUT_MS, ...rest } as ExecFileOptions
+          announce(file, args)
           const child = nodeExecFile(file, [...args], opts, (error, stdout, stderr) => {
             done()
             callback(error, stdout, stderr)
@@ -205,6 +220,7 @@ export async function spawnBudgeted(
 ): Promise<ChildProcess> {
   const release = await currentBudget().acquire()
   const { detached: _detached, ...rest } = options
+  announce(command, args)
   const child = nodeSpawn(command, [...args], rest)
   trackChild(child)
   child.once('exit', release)

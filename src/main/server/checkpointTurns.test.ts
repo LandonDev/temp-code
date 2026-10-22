@@ -172,8 +172,11 @@ describe('checkpoint turns', () => {
     await t.turns.written('s1')
     expect(t.writes.mock.calls.length).toBe(armed + 1)
     expect(t.manifest().touched).toEqual(['a.txt', 'b.txt'])
-    expect(t.asked).toEqual([]) // b.txt waits for the settle to ask HEAD
+    expect([t.listings, t.asked, git.children]).toEqual([[], [], []]) // HEAD waits for the settle
     expect(t.pushed).toEqual([['s1']])
+    await t.end()
+    expect(t.manifest().tracked).toEqual(['a.txt'])
+    expect([t.listings.length, t.asked]).toEqual([1, [['b.txt']]])
   })
 
   it('asks HEAD once at the settle, for the paths the listing does not know', async () => {
