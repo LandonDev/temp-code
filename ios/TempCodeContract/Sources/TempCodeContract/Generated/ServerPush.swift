@@ -19,13 +19,19 @@ public struct HelloPush: Codable, Hashable, Sendable {
     public let caps: [Capability]
     public let key: Key?
     public let build: BuildFacts?
+    public let hosts: [HostPresence]?
+    public let via: String?
+    public let presence: HostPresence?
 
-    public init(environmentId: String, contract: Int, caps: [Capability], key: Key? = nil, build: BuildFacts? = nil) {
+    public init(environmentId: String, contract: Int, caps: [Capability], key: Key? = nil, build: BuildFacts? = nil, hosts: [HostPresence]? = nil, via: String? = nil, presence: HostPresence? = nil) {
         self.environmentId = environmentId
         self.contract = contract
         self.caps = caps
         self.key = key
         self.build = build
+        self.hosts = hosts
+        self.via = via
+        self.presence = presence
     }
 }
 
@@ -187,6 +193,14 @@ public struct MacBridgeHeldPush: Codable, Hashable, Sendable {
     }
 }
 
+public struct PresencePush: Codable, Hashable, Sendable {
+    public let hosts: [HostPresence]
+
+    public init(hosts: [HostPresence]) {
+        self.hosts = hosts
+    }
+}
+
 public enum ServerPush: Codable, Hashable, Sendable {
     case hello(HelloPush)
     case workspaces(WorkspacesPush)
@@ -206,6 +220,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
     case hostDevices(HostDevicesPush)
     case hostLog(HostLogPush)
     case macBridgeHeld(MacBridgeHeldPush)
+    case presence(PresencePush)
     /// A `push` this build does not know: the whole object, untouched.
     case unknown(JSONValue)
 
@@ -234,6 +249,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case "host.devices": self = .hostDevices(try HostDevicesPush(from: decoder))
         case "host-log": self = .hostLog(try HostLogPush(from: decoder))
         case "macBridge.held": self = .macBridgeHeld(try MacBridgeHeldPush(from: decoder))
+        case "presence": self = .presence(try PresencePush(from: decoder))
         default: self = .unknown(try JSONValue(from: decoder))
         }
     }
@@ -258,6 +274,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case .hostDevices(let value): try Self.encode(tag: "host.devices", value, to: encoder)
         case .hostLog(let value): try Self.encode(tag: "host-log", value, to: encoder)
         case .macBridgeHeld(let value): try Self.encode(tag: "macBridge.held", value, to: encoder)
+        case .presence(let value): try Self.encode(tag: "presence", value, to: encoder)
         case .unknown(let value): try value.encode(to: encoder)
         }
     }

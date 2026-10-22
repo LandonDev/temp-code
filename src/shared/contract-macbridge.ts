@@ -4,6 +4,7 @@ import type { PublishCallParams } from './contract-publish'
 import { MAC_RUN_BACKGROUND, type MacPeerMethod } from './contract-macjobs'
 import type { CrossHostCallParams } from './contract-crosshost'
 import type { HostDevicesCallParams } from './contract-hostdevices'
+import { MacPresenceSchema, type RelayCallParams } from './contract-relay'
 
 // The Mac bridge (docs/box.md "The Mac bridge: what a box thread may touch
 // on the Mac"). Threads run on the box; the user's files and macOS-only
@@ -442,8 +443,8 @@ export type MacBridgePush =
       push: 'peer.call'
       callId: string
       method: MacPeerMethod
-      /** A mac.* call names its thread and args; a thread.* call (contract-crosshost.ts) its caller and args; a host.* call (contract-hostdevices.ts) its args; a publish.* call its caller and args. */
-      params: MacCallParams | CrossHostCallParams | HostDevicesCallParams | PublishCallParams
+      /** A mac.* call names its thread and args; a thread.* call (contract-crosshost.ts) its caller and args; a host.* call (contract-hostdevices.ts) its args; a publish.* call its caller and args; a relay.* call (contract-relay.ts) the box and its args. */
+      params: MacCallParams | CrossHostCallParams | HostDevicesCallParams | PublishCallParams | RelayCallParams
       deadlineMs: number
     }
   | { push: 'macBridge.request'; request: MacBridgeRequest }
@@ -521,7 +522,15 @@ export const MacBridgeRequestSchemas = [
       from: envId,
       offers: z.array(z.string().max(64)).max(16),
       /** The Mac's home directory, for the box threads' tool text (absent from an older Mac). */
-      home: MacHomeSchema.optional()
+      home: MacHomeSchema.optional(),
+      /** The host's hostname, for the relay's host rows (contract-relay.ts). */
+      name: z.string().max(120).optional(),
+      /** What the host runs (deployDrift.ts BuildFacts; declared inline: wireSchemas.ts is never imported here). */
+      build: z
+        .object({ release: z.number().int(), version: z.string(), sha: z.string().nullable(), platform: z.string() })
+        .optional(),
+      /** The host's screen and power state at register time (src/main/presence.ts). */
+      presence: MacPresenceSchema.optional()
     })
   ),
   request(

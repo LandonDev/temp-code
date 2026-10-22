@@ -405,6 +405,58 @@ public enum LimitBucket: RawRepresentable, Codable, Hashable, Sendable {
     }
 }
 
+public enum ScreenState: RawRepresentable, Codable, Hashable, Sendable {
+    case unlocked
+    case locked
+    case unknown
+    /// A value this build does not know; `rawValue` keeps it.
+    case unrecognized(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "unlocked": self = .unlocked
+        case "locked": self = .locked
+        case "unknown": self = .unknown
+        default: self = .unrecognized(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .unlocked: "unlocked"
+        case .locked: "locked"
+        case .unknown: "unknown"
+        case .unrecognized(let value): value
+        }
+    }
+}
+
+public enum PowerState: RawRepresentable, Codable, Hashable, Sendable {
+    case awake
+    case asleep
+    case unknown
+    /// A value this build does not know; `rawValue` keeps it.
+    case unrecognized(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "awake": self = .awake
+        case "asleep": self = .asleep
+        case "unknown": self = .unknown
+        default: self = .unrecognized(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .awake: "awake"
+        case .asleep: "asleep"
+        case .unknown: "unknown"
+        case .unrecognized(let value): value
+        }
+    }
+}
+
 public enum GithubInboxChecks: RawRepresentable, Codable, Hashable, Sendable {
     case success
     case failure

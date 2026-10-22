@@ -348,6 +348,13 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'thread.resume': 'admin',
   'thread.archive': 'admin',
   'thread.adopt': 'admin',
+  // The relay (contract-relay.ts): a host's presence and its relayed lanes' frames, over its own link.
+  'peer.presence': 'admin',
+  'relay.frames': 'admin',
+  'relay.closed': 'admin',
+  'relay.notice': 'admin',
+  /** A proof seam: an isolated instance's presence, flipped by hand (TEMP_CODE_E2E_PRESENCE=1). */
+  'presence.set': 'local',
   'mac.readFile': 'local',
   'mac.listDir': 'local',
   'mac.fetchFile': 'local',

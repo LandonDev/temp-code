@@ -26,6 +26,7 @@ import {
   type Reasoning
 } from './catalog'
 import type { Capability } from './capabilities'
+import { PowerStateSchema, ScreenStateSchema, type HostPresence } from './contract-relay'
 import type {
   QueuedMessage,
   ServerPush,
@@ -771,6 +772,20 @@ export const BuildFactsSchema = z.object({
   platform: z.string()
 })
 
+/** The relay's host rows (contract-relay.ts HostPresence): a host reachable through this one and its state. */
+export { PowerStateSchema, ScreenStateSchema }
+export const HostPresenceSchema = z.object({
+  environmentId: z.string(),
+  name: z.string(),
+  platform: z.string(),
+  link: z.enum(['up', 'down']),
+  since: z.number().int(),
+  screen: ScreenStateSchema,
+  power: PowerStateSchema,
+  lastSeenAt: z.number().int().nullable(),
+  build: BuildFactsSchema.nullable()
+})
+
 /** `GET /api/hello`: public, with `key` when the bearer was accepted. */
 export const HelloResponseSchema = z.object({
   environmentId: z.string(),
@@ -786,7 +801,9 @@ export const HelloResponseSchema = z.object({
       caps: z.array(CapabilitySchema),
       audience: AudienceSchema
     })
-    .optional()
+    .optional(),
+  /** Hosts reachable through this one with their presence (contract-relay.ts); with a credential the host accepted. */
+  hosts: z.array(HostPresenceSchema).optional()
 })
 /** `POST /api/pair` with `kind: 'key'`: the raw key, readable once. */
 export const PairKeyResponseSchema = z.object({
@@ -827,8 +844,13 @@ export const HelloPushSchema = push('hello', {
   contract: z.number().int(),
   caps: z.array(CapabilitySchema),
   key: z.object({ id: z.string(), name: z.string() }).optional(),
-  build: BuildFactsSchema.optional()
+  build: BuildFactsSchema.optional(),
+  hosts: z.array(HostPresenceSchema).optional(),
+  via: z.string().optional(),
+  presence: HostPresenceSchema.optional()
 })
+/** A relayed host's presence changed: the whole list (contract-relay.ts). */
+export const PresencePushSchema = push('presence', { hosts: z.array(HostPresenceSchema) })
 export const WorkspacesPushSchema = push('workspaces', { workspaces: z.array(WorkspaceMetaSchema) })
 export const ProjectsPushSchema = push('projects', { projects: z.array(ProjectMetaSchema) })
 export const EventsPushSchema = push('events', {
@@ -934,7 +956,8 @@ export const RemotePushSchema = z.discriminatedUnion('push', [
   AccountsPushSchema,
   HostDevicesPushSchema,
   HostLogPushSchema,
-  MacBridgeHeldPushSchema
+  MacBridgeHeldPushSchema,
+  PresencePushSchema
 ])
 
 // ── the pins ────────────────────────────────────────────────────────────
@@ -993,7 +1016,9 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof BuildOutputSchema, BuildOutput>>,
   Expect<Equal<z.infer<typeof BuildRunSchema>['status'], BuildStatus>>,
   Expect<Mirror<typeof BuildRunSchema, BuildRun>>,
+  Expect<Mirror<typeof HostPresenceSchema, HostPresence>>,
   Expect<Mirror<typeof HelloPushSchema, PushOf<'hello'>>>,
+  Expect<Mirror<typeof PresencePushSchema, PushOf<'presence'>>>,
   Expect<Mirror<typeof WorkspacesPushSchema, PushOf<'workspaces'>>>,
   Expect<Mirror<typeof ProjectsPushSchema, PushOf<'projects'>>>,
   Expect<

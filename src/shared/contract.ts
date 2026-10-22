@@ -11,6 +11,7 @@ import { AttachmentRequestSchemas } from './contract-attachments'
 import { SessionMoveRequestSchemas } from './contract-session-move'
 import { MacBridgeRequestSchemas } from './contract-macbridge'
 import { CrossHostRequestSchemas } from './contract-crosshost'
+import { RelayRequestSchemas } from './contract-relay'
 import { MacBridgeRulesRequestSchemas } from './contract-macbridge-rules'
 import { ProjectPlanRequestSchemas } from './contract-projectplan'
 import { BatchRequestSchemas, BatchRulesSchema } from './contract-batch'
@@ -133,6 +134,8 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...SessionMoveRequestSchemas,
   ...MacBridgeRequestSchemas,
   ...CrossHostRequestSchemas,
+  // The relay (contract-relay.ts): a host's presence and the frames of its relayed lanes, over its link.
+  ...RelayRequestSchemas,
   ...MacBridgeRulesRequestSchemas,
   // The project plan (contract-projectplan.ts): pin, ticks, milestone links.
   ...ProjectPlanRequestSchemas,
@@ -1177,7 +1180,16 @@ export type ServerPush =
       key?: { id: string; name: string }
       /** What the host runs (release number, version, commit, platform); the deploy-drift mark reads it. */
       build?: import('./deployDrift').BuildFacts
+      /** Hosts reachable through this one (contract-relay.ts), with their presence; this host's own id is never in it. Absent on a host that relays nothing. */
+      hosts?: import('./contract-relay').HostPresence[]
+      /** On a relayed lane: the environment id of the host that carried the socket. */
+      via?: string
+      /** On a relayed lane: this host's presence as the carrier sees it, at open time. */
+      presence?: import('./contract-relay').HostPresence
     }
+  // A relayed host's presence changed (contract-relay.ts): the whole list, to
+  // every remote client socket of the carrier, direct lanes and relayed ones alike.
+  | { push: 'presence'; hosts: import('./contract-relay').HostPresence[] }
   | { push: 'workspaces'; workspaces: import('./domain').WorkspaceMeta[] }
   | { push: 'projects'; projects: import('./domain').ProjectMeta[] }
   | { push: 'event'; row: EventRow }

@@ -2644,6 +2644,70 @@ public struct CreatedPairing: Codable, Hashable, Sendable {
     }
 }
 
+public struct HostPresence: Codable, Hashable, Sendable {
+    public enum Link: RawRepresentable, Codable, Hashable, Sendable {
+        case up
+        case down
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "up": self = .up
+            case "down": self = .down
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .up: "up"
+            case .down: "down"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let environmentId: String
+    public let name: String
+    public let platform: String
+    public let link: Link
+    public let since: Int
+    public let screen: ScreenState
+    public let power: PowerState
+    public let lastSeenAt: Int?
+    public let build: BuildFacts?
+
+    public init(environmentId: String, name: String, platform: String, link: Link, since: Int, screen: ScreenState, power: PowerState, lastSeenAt: Int?, build: BuildFacts?) {
+        self.environmentId = environmentId
+        self.name = name
+        self.platform = platform
+        self.link = link
+        self.since = since
+        self.screen = screen
+        self.power = power
+        self.lastSeenAt = lastSeenAt
+        self.build = build
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case environmentId, name, platform, link, since, screen, power, lastSeenAt, build
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(environmentId, forKey: .environmentId)
+        try container.encode(name, forKey: .name)
+        try container.encode(platform, forKey: .platform)
+        try container.encode(link, forKey: .link)
+        try container.encode(since, forKey: .since)
+        try container.encode(screen, forKey: .screen)
+        try container.encode(power, forKey: .power)
+        try container.encode(lastSeenAt, forKey: .lastSeenAt)
+        try container.encode(build, forKey: .build)
+    }
+}
+
 public struct HelloResponse: Codable, Hashable, Sendable {
     public struct Key: Codable, Hashable, Sendable {
         public let id: String
@@ -2665,14 +2729,16 @@ public struct HelloResponse: Codable, Hashable, Sendable {
     public let build: BuildFacts?
     public let contract: Int
     public let key: Key?
+    public let hosts: [HostPresence]?
 
-    public init(environmentId: String, name: String? = nil, version: String? = nil, build: BuildFacts? = nil, contract: Int, key: Key? = nil) {
+    public init(environmentId: String, name: String? = nil, version: String? = nil, build: BuildFacts? = nil, contract: Int, key: Key? = nil, hosts: [HostPresence]? = nil) {
         self.environmentId = environmentId
         self.name = name
         self.version = version
         self.build = build
         self.contract = contract
         self.key = key
+        self.hosts = hosts
     }
 }
 

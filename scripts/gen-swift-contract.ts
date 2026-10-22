@@ -132,6 +132,8 @@ export const SUBSET: SubsetEntry[] = [
   type('PushEnvironment', PushEnvironmentSchema),
   type('PushEvent', PushEventSchema),
   type('LimitBucket', (LimitWindowSchema as z.ZodUnion<[z.ZodType, z.ZodType]>).options[0]),
+  type('ScreenState', W.ScreenStateSchema),
+  type('PowerState', W.PowerStateSchema),
   type('GithubInboxChecks', W.GithubInboxChecksSchema.unwrap()),
   type('GithubInboxReviewDecision', W.GithubInboxReviewDecisionSchema),
   type('NoticeKind', NoticeKindSchema),
@@ -232,6 +234,8 @@ export const SUBSET: SubsetEntry[] = [
   type('PushStatus', W.PushStatusSchema),
   type('CreatedKey', W.CreatedKeySchema),
   type('CreatedPairing', W.CreatedPairingSchema),
+  // the relay (contract-relay.ts): a host reachable through the paired one, and its state
+  type('HostPresence', W.HostPresenceSchema),
   type('HelloResponse', W.HelloResponseSchema),
   type('PairBody', PairBodySchema),
   type('PairKeyResponse', W.PairKeyResponseSchema),

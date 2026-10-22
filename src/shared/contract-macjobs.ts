@@ -3,6 +3,7 @@ import type { MacMethod } from './contract-macbridge'
 import type { CrossHostPeerMethod } from './contract-crosshost'
 import type { PublishPeerMethod } from './contract-publish'
 import type { HostDevicesPeerMethod } from './contract-hostdevices'
+import type { RelayPeerMethod } from './contract-relay'
 
 // Interactive commands over the Mac bridge (docs/box.md "The Mac bridge",
 // "Interactive jobs"). `mac.run` with `background: true` starts the command
@@ -46,7 +47,7 @@ export const MAC_PAUSE_PEER_METHODS = ['mac.cancel', 'mac.held'] as const
 export type MacPausePeerMethod = (typeof MAC_PAUSE_PEER_METHODS)[number]
 export const isMacPausePeerMethod = (m: string): m is MacPausePeerMethod =>
   (MAC_PAUSE_PEER_METHODS as readonly string[]).includes(m)
-/** Every method a `peer.call` may name: the Mac bridge's, the jobs', the pause's, the threads offer's (contract-crosshost.ts), the devices offer's and the publish offer's. */
+/** Every method a `peer.call` may name: the Mac bridge's, the jobs', the pause's, the threads offer's (contract-crosshost.ts), the devices offer's, the publish offer's and the relay offer's (contract-relay.ts). */
 export type MacPeerMethod =
   | MacMethod
   | MacJobPeerMethod
@@ -54,6 +55,7 @@ export type MacPeerMethod =
   | CrossHostPeerMethod
   | HostDevicesPeerMethod
   | PublishPeerMethod
+  | RelayPeerMethod
 
 export const isMacJobPeerMethod = (m: string): m is MacJobPeerMethod =>
   (MAC_JOB_PEER_METHODS as readonly string[]).includes(m)

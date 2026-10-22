@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { METHOD_CAPABILITY } from './capabilities'
 import { ClientRequestSchema } from './contract'
@@ -11,7 +13,6 @@ import {
   sinceText,
   type HostPresence
 } from './contract-relay'
-import { SUBSET } from '../../scripts/gen-swift-contract'
 
 const UTC = 'UTC'
 // 2026-03-04 09:14 UTC
@@ -100,8 +101,9 @@ describe('RELAY_METHODS', () => {
     expect(Object.entries(RELAY_METHODS).filter(([, need]) => need === 'screen').map(([m]) => m)).toEqual(['host.device.openXcode'])
   })
   it('covers every method the phone speaks (the Swift SUBSET)', () => {
-    // gen-swift-contract.ts runs main() only under import.meta.main, so the import is the list itself.
-    const spoken = SUBSET.filter((e) => e.kind === 'method').map((e) => (e as { method: string }).method)
+    // scripts/ is outside tsconfig.node.json, so the SUBSET is read off the generator's text: its method('…') rows.
+    const source = readFileSync(resolve(__dirname, '../../scripts/gen-swift-contract.ts'), 'utf8')
+    const spoken = [...source.matchAll(/^\s*method\('([^']+)'/gm)].map((m) => m[1])
     expect(spoken.length).toBeGreaterThan(20)
     const relayed = new Set<string>([...Object.keys(RELAY_METHODS), ...RELAY_BOX_LOCAL])
     // The key's own management rows (remote.*) are the box's business and never cross; everything else must.
