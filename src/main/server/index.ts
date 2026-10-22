@@ -252,6 +252,8 @@ export interface RunningServer {
   notifier: Notifier
   /** The shared Aliax accounts poll; the embedded Aliax pages nudge it after a change. */
   accounts: AccountsService
+  /** The app's notes, so a proof can seed one in-process. */
+  notes: Notes
   /** Account ownership and sync with the hosts this machine holds admin keys for (remote/accountSync.ts). */
   accountSync: AccountSync
   /** What this host runs: the hello's `build` (buildInfo.ts). */
@@ -2318,6 +2320,7 @@ export async function startServer(
     store,
     gateway,
     accounts: m3a.accounts,
+    notes: m3a.notes,
     build,
     masterRelease,
     close: async () => {

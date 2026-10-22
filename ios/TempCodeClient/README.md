@@ -19,7 +19,7 @@ Sources/TempCodeClient
                 WebSocketConnection (+ URLSessionWebSocket), Transport, TempCodeSocket
   Environments/ PairedEnvironment + PairingLink, KeyStore (Keychain, in-memory), RemoteAPI, EnvironmentStore
   Cache/        Database (sqlite3), SessionCache
-  Client/       Subscriptions, EnvironmentClient (+ MovedThread), ClientRegistry
+  Client/       Subscriptions, EnvironmentClient (+ MovedThread), ClientRegistry, SearchRows, CrossHostSearch
   Rendering/    ThreadFold (rows → stamped items + BoardState), Transcript (item types), Board,
                 ResearchBoard, Fleet, PlanDoc, Inbox, DiffDocument (the diff screen's lines,
                 hunks and column geometry), MarkdownBlocks, MarkdownCache, PlanDocument,
@@ -259,6 +259,13 @@ query's words longest first, case and diacritic insensitive, as character
 offsets the views set in weight), `SearchDebounce` and `footLine`.
 `build`'s body is the slot the cross-host selector (merge, rank, fold,
 typed filters) replaces; the screen calls it from one line.
+
+**CrossHostSearch** (`Client/CrossHostSearch.swift`) is that selector: the
+fan-out over every open host as an `AsyncStream<SearchAnswer>` (a batch per
+landed source, the three calls injected as `SearchAsk` closures), the
+host-neutral scoring and total ordering, the paired-file fold through a
+`PairLookup`, `ParsedQuery` (`host:`, `type:`, `project:`), and the per-host
+feet with the offline skip; `SearchRows` stays the row model it emits.
 
 **ProjectPairs** (src/renderer/src/lib/projectPairs.ts, host-aware: the
 phone's `WorkspaceMeta` has no environment id, the client is the host): two

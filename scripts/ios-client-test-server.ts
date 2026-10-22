@@ -350,6 +350,9 @@ say('ios-chat-loose', 'A regex for ISO dates?', 'Use a date parser instead.')
 await make('ios-retired', { projectId: retired.id, threadType: 'chat', title: 'Old migration notes' })
 say('ios-retired', 'Keep these notes.', 'Kept.')
 await server.registry.archiveProject(retired.id, true)
+// The Search tab's notes hits: a thread's working notes (session.search answers a source: 'notes' row for "gateway") and an app note (notes.search).
+server.registry.notes.write('ios-chat-workspace', '## Pointers\n\n- the gateway port is 8787\n', Date.now(), 'tool')
+server.notes.upsert({ id: 'ios-note-gateway', title: 'Gateway notes', body: 'the gateway trace flag is TEMP_CODE_GATEWAY_TRACE', sourceCwd: repo })
 // ── one thread per type, with realistic rows (the thread screens' proof) ──
 const at = (id: string, events: AgentEvent[]): void => {
   for (const event of events) server.registry.append(id, event)

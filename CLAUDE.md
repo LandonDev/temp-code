@@ -863,6 +863,11 @@ routed to (aliax-core's `forward`). Two listeners:
   0.5 s / 5 s to 2-72 ms / 3-338 ms; the backfill took 15 s. Measure on a
   copy with `bun run script:measure-turn-index <copy>`; proof
   `bun run script:e2e-cross-host-search`. docs/box.md "Search across hosts".
+- The phone runs the same fan-out, merge, fold and filters in
+  `ios/TempCodeClient/Sources/TempCodeClient/Client/CrossHostSearch.swift`
+  (pure, Swift Testing in CrossHostSearchTests.swift), emitting thread 4's
+  row model (`SearchRows.swift`) as an `AsyncStream<SearchAnswer>` the
+  Search tab iterates; `notes.search` is in the phone's subset for it.
 ## Thread notes: the document that survives a compaction
 - Every root thread keeps `notes.md` at `attachmentDir(session)/notes.md`
   (the project's `.temp-code/attachments/<sid>/`, so the harness can read

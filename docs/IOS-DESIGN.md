@@ -272,6 +272,23 @@ field and returns to the hint. Nothing animates on a keystroke or a scope
 tap; the press scale and the ticking time are the only motion. DEBUG
 hooks: `TC_TEST_SEARCH` is the query, `TC_TEST_SEARCH_SCOPE=files` opens
 the Files scope.
+Every paired host is asked at once and rows land per host as it answers
+(`CrossHostSearch.run` in `Client/CrossHostSearch.swift`, an `AsyncStream`
+of answers the screen writes inside `Motion.withoutAnimation`; the previous
+answer stays until the first batch lands, and stable row ids keep an
+unchanged row in place while a second host's rows insert). The ranking is
+by the hosts' bm25 rank and recency, never by host: thread groups by their
+best hit, then the app's notes, then file groups by newest mtime, then
+projects by name. A thread's working notes are hits under its head (the
+`note.text` glyph, `seq` nil) and the app's notes (`notes.search`) are note
+rows (`NoteRow`: the glyph, the title, the snippet with the match in weight,
+the host trailing when several; a fact, not a button). The same file in two
+copies of a paired project (`ProjectPairs` over every host's workspaces,
+through `CrossHostSearch.pairLookup`) is one row on the newer copy, "· newer"
+after its line number, the other hosts in the accessibility label. `host:` (a name,
+an id, or `mac`), `type:` (thread, file, note, project; it wins over the
+scope buttons) and `project:` are typed in the box; the foot names each host
+with its time, "…" while it is still answering, offline or failed.
 
 ## The thread screen
 
