@@ -56,7 +56,7 @@ const { startThread, batch, link } = vi.hoisted(() => {
   link: new FakeLink(),
   batch: {
     masterId: "m",
-    rules: { land: "as-they-finish", gate: true, release: true, deploy: "none", then: "notify" },
+    rules: { land: "as-they-finish", steps: [{ id: "land", name: "Land", kind: "land" }, { id: "gate", name: "Gate", kind: "gate" }, { id: "release", name: "Release", kind: "release" }], then: "notify" },
     steps: [
       { id: "land", status: "passed", detail: "ios/foundations, ios/contract", at: 1, startedAt: 1_000_000, endedAt: 1_120_000 },
       { id: "gate", status: "running", detail: "", at: 2, startedAt: 1_120_000, progress: { done: 3, total: 7, label: "vitest" }, log: ["✓ typecheck 12s", "vitest: 3 of 7 files"] },
@@ -353,7 +353,7 @@ describe("the master view", () => {
     const foot = document.querySelector("[data-batch-foot]")!;
     expect(within(foot as HTMLElement).getByText("When the threads are done")).toBeTruthy();
     expect(foot.querySelector("[data-rules]")?.textContent).toBe(
-      "Branches land as they finish, then one gate on the merged tree and a release. Then you are notified.",
+      "Branches land as they finish, then gate and release. Then you are notified.",
     );
     // The gate runs, so the foot is a console: the landed step above it with its time, the release still ahead.
     expect(foot.getAttribute("data-foot-mode")).toBe("console");
@@ -496,17 +496,14 @@ describe("the master view", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     const dialog = screen.getByRole("dialog");
     fireEvent.click(within(dialog).getByRole("radio", { name: "All at once" }));
-    fireEvent.click(within(dialog).getByRole("switch", { name: "Release" }));
-    fireEvent.click(within(dialog).getByRole("switch", { name: "Publish Mac release" }));
-    fireEvent.click(within(dialog).getByRole("radio", { name: "The box" }));
     fireEvent.change(within(dialog).getByPlaceholderText(/One line/), { target: { value: "Land all seven" } });
-    expect(within(dialog).getByText(/Branches land together once every thread is done, then one gate on the merged tree, a Mac release and a deploy to the box/)).toBeTruthy();
+    expect(within(dialog).getByText(/Branches land together once every thread is done, then gate and release/)).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await flush();
     const call = link.calls.find((c) => c.method === "batch.setRules");
     expect(call?.params).toEqual({
       masterId: "m",
-      rules: { land: "all-at-once", gate: true, release: false, publish: true, deploy: "box", then: "notify", summary: "Land all seven" },
+      rules: { land: "all-at-once", steps: [{ id: "land", name: "Land", kind: "land" }, { id: "gate", name: "Gate", kind: "gate" }, { id: "release", name: "Release", kind: "release" }], then: "notify", summary: "Land all seven" },
     });
     expect(screen.queryByRole("dialog")).toBeNull();
   });

@@ -311,7 +311,7 @@ export function settleTargets(child: Pick<SessionMeta, 'id' | 'parentId' | 'mast
  *  `startedBy`, so it hears the settles too (settleTargets). */
 export function batchMembershipOf(starter: Pick<SessionMeta, 'id' | 'parentId' | 'isMaster' | 'masterId'> | null | undefined): { masterId: string } | {} {
   if (!starter) return {}
-  if (isMasterSession(starter)) return { masterId: starter.id }
+  if (isMasterSession(starter, null)) return { masterId: starter.id }
   if (starter.masterId && !starter.parentId) return { masterId: starter.masterId }
   return {}
 }
@@ -366,9 +366,16 @@ const text = (t: string): { content: [{ type: 'text'; text: string }] } => ({
 
 /** Is this session a master thread (CLAUDE.md "Master threads")? The pin
  *  lives on the thread's row (`isMaster`, `session.setMaster`); several
- *  threads of one project may be; a subagent never is. */
-export function isMasterSession(session: Pick<SessionMeta, 'parentId' | 'isMaster'>): boolean {
-  return !!session.isMaster && !session.parentId
+ *  threads of one project may be; a subagent never is. The row is read
+ *  live when the registry knows the id: the harness boots eagerly at
+ *  create and the tool closures hold that meta, and a thread pinned after
+ *  that must still supervise its batch and get the batch tools at spawn. */
+export function isMasterSession(
+  session: Pick<SessionMeta, 'id' | 'parentId' | 'isMaster'>,
+  reg: Pick<SessionRegistry, 'get'> | null = registry
+): boolean {
+  const live = reg?.get(session.id) ?? session
+  return !!live.isMaster && !live.parentId
 }
 
 /** May `caller` supervise `session`? Its own subagents (parentId), and, for

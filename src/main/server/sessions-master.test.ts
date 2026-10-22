@@ -6,9 +6,9 @@ import { openDb, Store } from './db'
 import { SessionRegistry } from './sessions'
 import { Batches, setBatches } from './batch'
 import { cancelMirrors } from './mirror'
-import { orchWaitForAgent, setOrchestrationRegistry } from './orchestration'
+import { orchWaitForAgent, setOrchestrationRegistry, isMasterSession } from './orchestration'
 import type { DriverCtx, DriverHandle } from './drivers/types'
-import type { AgentEvent } from '../../shared/events'
+import type { SessionMeta, AgentEvent } from '../../shared/events'
 
 /**
  * The master thread on a real registry with a fake claude driver
@@ -21,6 +21,8 @@ import type { AgentEvent } from '../../shared/events'
 const emits = new Map<string, (e: AgentEvent) => void>()
 const sends = new Map<string, string[]>()
 const interrupts: string[] = []
+/** The session each spawn was handed: the harness boots eagerly at create, before the pin. */
+const spawnedWith = new Map<string, SessionMeta>()
 
 vi.mock('./drivers', () => ({
   BUILT_IN_DRIVERS: {
@@ -28,6 +30,7 @@ vi.mock('./drivers', () => ({
       id: 'claude',
       start: async (ctx: DriverCtx): Promise<DriverHandle> => {
         const id = ctx.session.id
+        spawnedWith.set(id, ctx.session)
         emits.set(id, ctx.emit)
         return {
           send: async (text: string) => {
@@ -102,8 +105,11 @@ async function child(_projectId: string, masterId: string, title: string): Promi
 }
 
 describe('the watching master', () => {
-  it('a master with no children idles as any thread', async () => {
+  it('a master with no children idles as any thread; its harness was spawned with the pin', async () => {
     const { master } = await pinnedMaster()
+    // The harness booted at create, before setMaster: the meta it holds has no pin, and the live read has it.
+    expect(spawnedWith.get(master)?.isMaster).toBe(false)
+    expect(isMasterSession(spawnedWith.get(master)!)).toBe(true)
     expect(status(master)).toBe('running')
     idle(master)
     await settle()
@@ -252,5 +258,25 @@ describe('the batch follows the starter', () => {
     const sub = await registry.create({ cwd: root, provider: 'claude', parentId: t.id, title: 'Sub' })
     expect(() => registry.setMaster(sub.id, true)).toThrow(/subagent/)
     expect(() => registry.setMaster('nope', true)).toThrow(/unknown session/)
+  })
+})
+
+describe('archive a batch', () => {
+  it("done archives the children idle after a turn; all stops the live ones first and archives every one; the master stays", async () => {
+    const { projectId, master } = await pinnedMaster()
+    const a = await child(projectId, master, 'A')
+    const b = await child(projectId, master, 'B')
+    finish(a)
+    await settle(80)
+    const done = await batches.archive(master, 'done')
+    expect(done.succeeded).toEqual([a])
+    expect(store.getSession(a)?.archived).toBe(true)
+    expect(store.getSession(b)?.archived).toBe(false)
+    expect(status(b)).toBe('running')
+    const all = await batches.archive(master, 'all')
+    expect(all.succeeded).toEqual([b])
+    expect(interrupts).toContain(b)
+    expect(store.getSession(b)?.archived).toBe(true)
+    expect(store.getSession(master)?.archived).toBe(false)
   })
 })

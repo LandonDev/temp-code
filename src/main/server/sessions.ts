@@ -3689,7 +3689,7 @@ export class SessionRegistry {
   /** Is the thread a master (the pin on its row)? */
   isMaster(sessionId: string): boolean {
     const meta = this.store.getSession(sessionId)
-    return !!meta && isMasterSession(meta)
+    return !!meta && isMasterSession(meta, null)
   }
 
   /** A master with an open batch (children not all done, or the engine

@@ -9,6 +9,9 @@ import { CITE_TOOL_DESCRIPTION, CITE_TOOL_PARAMS } from '@shared/research'
 import { UPDATE_NOTES_DESCRIPTION, UPDATE_NOTES_PARAMS, UPDATE_NOTES_TOOL_NAME } from '@shared/notes'
 import { ThreadTypeSchema } from '@shared/domain'
 import {
+  ADOPT_THREAD_PARAMS,
+  ADOPT_THREAD_TOOL_DESCRIPTION,
+  ADOPT_THREAD_TOOL_NAME,
   BATCH_GATE_PARAMS,
   BATCH_GATE_TOOL_DESCRIPTION,
   BATCH_GATE_TOOL_NAME,
@@ -16,7 +19,7 @@ import {
   BATCH_RULES_TOOL_DESCRIPTION,
   BATCH_RULES_TOOL_NAME
 } from '@shared/gate'
-import { BATCH_GATE_SHAPE, BATCH_RULES_SHAPE, CITE_SHAPE, HTML_PREVIEW_SHAPE, HTML_RENDER_SHAPE, MERGE_BRANCH_SHAPE, REPORT_FINDINGS_SHAPE } from './apptools'
+import { ADOPT_THREAD_SHAPE, BATCH_GATE_SHAPE, BATCH_RULES_SHAPE, CITE_SHAPE, HTML_PREVIEW_SHAPE, HTML_RENDER_SHAPE, MERGE_BRANCH_SHAPE, REPORT_FINDINGS_SHAPE } from './apptools'
 import {
   MERGE_BRANCH_PARAMS,
   MERGE_BRANCH_TOOL_DESCRIPTION,
@@ -149,6 +152,17 @@ describe('app-mcp-bridge batch_rules', () => {
     expect(Object.keys(t.inputSchema.properties)).toEqual(Object.keys(BATCH_RULES_SHAPE))
     for (const [name, schema] of Object.entries(t.inputSchema.properties)) {
       expect(schema.description).toBe(BATCH_RULES_PARAMS[name as keyof typeof BATCH_RULES_PARAMS])
+    }
+  })
+})
+
+describe('app-mcp-bridge adopt_thread', () => {
+  it("the bridge's adopt_thread matches the shared description and params, and maps to app.adoptThread", () => {
+    const t = bridge.TOOLS.find((x) => x.name === ADOPT_THREAD_TOOL_NAME)!
+    expect(t.description).toBe(ADOPT_THREAD_TOOL_DESCRIPTION)
+    expect(Object.keys(t.inputSchema.properties)).toEqual(Object.keys(ADOPT_THREAD_SHAPE))
+    for (const [name, schema] of Object.entries(t.inputSchema.properties)) {
+      expect(schema.description).toBe(ADOPT_THREAD_PARAMS[name as keyof typeof ADOPT_THREAD_PARAMS])
     }
   })
 })

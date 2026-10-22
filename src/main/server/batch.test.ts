@@ -1,14 +1,25 @@
+import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
 import type { BatchState } from '@shared/contract-batch'
 import type { DeployStatus, HostLogPush } from '@shared/contract-host'
 import type { AgentEvent, SessionMeta } from '@shared/events'
-import { Batches, handleBatch, releaseTag, type BatchesDeps, type PublishRun } from './batch'
+import { Batches, handleBatch, releaseTag, spawnShellStep, type BatchesDeps, type PublishRun } from './batch'
 import { GateQueue } from './gateQueue'
 import type { GateRunOptions, GateRunResult } from './gateRun'
 import type { Landed } from './mergeReview'
 
 const meta = (id: string, patch: Partial<SessionMeta> = {}): SessionMeta =>
   ({ id, parentId: null, archived: false, createdAt: 1, status: 'idle', title: `T ${id}`, projectId: 'p1', ...patch }) as SessionMeta
+
+/** Step specs by kind, the default names. */
+const S = {
+  land: { id: 'land', name: 'Land', kind: 'land' } as const,
+  gate: { id: 'gate', name: 'Gate', kind: 'gate' } as const,
+  release: { id: 'release', name: 'Release', kind: 'release' } as const,
+  publish: { id: 'publish', name: 'Publish', kind: 'publish' } as const,
+  deploy: { id: 'deploy', name: 'Deploy', kind: 'deploy' } as const
+}
+const FIVE = [S.land, S.gate, S.release, S.publish, S.deploy]
 
 /** A fake deploy trigger: the files as a status, the log as pushes. */
 function fakeDeploy() {
@@ -90,7 +101,11 @@ function world(opts: { master?: string | null; branch?: string | null; children?
     ).map((s) => [s.id, s])
   )
   if (!sessions.has('m')) sessions.set('m', meta('m'))
+  // The pin lives on the thread: 'm' unless the world names another master (or none).
+  const pinned = opts.master === undefined ? 'm' : opts.master
+  if (pinned && sessions.has(pinned)) sessions.set(pinned, { ...sessions.get(pinned)!, isMaster: true })
   const rows: Record<string, AgentEvent[]> = {}
+  const batchCalls: { action: string; ids: string[]; cleanup?: boolean }[] = []
   const reports: { to: string; status: string; text: string }[] = []
   const settings = new Map<string, string>()
   const metaListeners = new Set<(s: SessionMeta) => void>()
@@ -98,7 +113,7 @@ function world(opts: { master?: string | null; branch?: string | null; children?
   const registry: BatchesDeps['registry'] = {
     list: () => [...sessions.values()].filter((s) => !s.archived),
     get: (id) => sessions.get(id) ?? null,
-    getProject: () => ({ id: 'p1', workspaceId: 'w1', name: 'p', mode: 'local', branch: 'master', cwd: '/repo', archived: false, createdAt: 1, masterThreadId: opts.master === undefined ? 'm' : opts.master }),
+    getProject: () => ({ id: 'p1', workspaceId: 'w1', name: 'p', mode: 'local', branch: 'master', cwd: '/repo', archived: false, createdAt: 1 }),
     append: (id, e) => void (rows[id] ??= []).push(e),
     hasCompletedTurn: (id) => spoke.has(id),
     setArchived: async (id, archived) => {
@@ -110,7 +125,20 @@ function world(opts: { master?: string | null; branch?: string | null; children?
       metaListeners.add(l)
       return () => metaListeners.delete(l)
     },
-    onRemoved: () => () => {}
+    onRemoved: () => () => {},
+    setBatchMembership: (id, masterId) => {
+      const s = sessions.get(id)!
+      sessions.set(id, { ...s, masterId, startedBy: s.startedBy ?? masterId })
+    },
+    batch: async (action, ids, options) => {
+      batchCalls.push({ action, ids: [...ids], ...(options?.cleanup !== undefined ? { cleanup: options.cleanup } : {}) })
+      for (const id of ids) {
+        const s = sessions.get(id)
+        if (!s) continue
+        sessions.set(id, action === 'archive' ? { ...s, archived: true } : { ...s, status: 'stopped' })
+      }
+      return { attempted: [...ids], succeeded: [...ids], failed: [] }
+    }
   }
   const store = {
     getSetting: (k: string) => settings.get(k) ?? null,
@@ -179,6 +207,7 @@ function world(opts: { master?: string | null; branch?: string | null; children?
     sessions,
     rows,
     reports,
+    batchCalls,
     runs,
     merges,
     pushes,
@@ -196,19 +225,30 @@ function world(opts: { master?: string | null; branch?: string | null; children?
 
 const steps = (s: BatchState) => Object.fromEntries(s.steps.map((x) => [x.id, [x.status, x.detail]]))
 const flush = () => new Promise((r) => setTimeout(r, 0))
+/** Poll until `cond` holds, a few seconds at most. */
+const until = async (cond: () => boolean, ms = 5000): Promise<void> => {
+  const end = Date.now() + ms
+  while (!cond()) {
+    if (Date.now() > end) throw new Error('timed out')
+    await new Promise((r) => setTimeout(r, 5))
+  }
+}
+/** A real shell for the shell steps: /bin/sh, so the test never sources a login profile. */
+const sh: BatchesDeps['shell'] = (run, cwd, onLine) => spawnShellStep(run, cwd, onLine, '/bin/sh')
+/** A shell step spec; the cwd is a real directory (the world's /repo is not one) unless the test says otherwise. */
+const shell = (id: string, run: string, extra: Partial<{ name: string; cwd: string | null; when: 'all-done' | 'each-landing' }> = {}) =>
+  ({ id, name: extra.name ?? id[0].toUpperCase() + id.slice(1), kind: 'shell' as const, run, ...(extra.cwd === null ? {} : { cwd: extra.cwd ?? tmpdir() }), ...(extra.when ? { when: extra.when } : {}) })
 
 describe('Batches: the rows and the rules', () => {
   it("an untouched batch is empty with the master's roots pending, oldest first", () => {
     const w = world()
     const b = w.make()
     const state = b.get('m')
-    expect(state.rules).toEqual({ land: 'as-they-finish', gate: true, release: true, publish: false, deploy: 'none', then: 'notify' })
-    expect(state.steps.map((s) => [s.id, s.status, s.log])).toEqual([
-      ['land', 'pending', []],
-      ['gate', 'pending', []],
-      ['release', 'pending', []],
-      ['publish', 'pending', []],
-      ['deploy', 'pending', []]
+    expect(state.rules).toEqual({ land: 'as-they-finish', steps: [S.land, S.gate, S.release], then: 'notify' })
+    expect(state.steps.map((s) => [s.id, s.kind, s.status, s.log])).toEqual([
+      ['land', 'land', 'pending', []],
+      ['gate', 'gate', 'pending', []],
+      ['release', 'release', 'pending', []]
     ])
     expect(state).toMatchObject({ landed: [], pending: ['a', 'b'], held: [], blocked: null, finishedAt: null })
     expect(w.pushes).toEqual([])
@@ -218,13 +258,22 @@ describe('Batches: the rows and the rules', () => {
     const w = world()
     const b = w.make()
     const master = w.sessions.get('m')!
-    expect(b.rulesTool(master)).toBe('Rules: land as they finish · gate · release · then notify.')
-    const answer = b.rulesTool(master, { land: 'all-at-once', deploy: 'box', summary: 'Land all, gate, release, deploy' })
-    expect(answer).toMatch(/^Rules set: land all at once · gate · release · deploy to the box · then notify — "Land all, gate, release, deploy"\. The app runs them when every thread of the batch is done \(2 now\)/)
-    expect(b.rules('m')).toMatchObject({ land: 'all-at-once', gate: true, deploy: 'box', publish: false })
+    expect(b.rulesTool(master)).toBe('Rules: land as they finish · Gate · Release · then notify.')
+    const answer = b.rulesTool(master, { land: 'all-at-once', steps: [S.land, S.gate, S.release, { ...S.deploy, name: 'Deploy to the box' }], summary: 'Land all, gate, release, deploy' })
+    expect(answer).toMatch(/^Rules set: land all at once · Gate · Release · Deploy to the box · then notify — "Land all, gate, release, deploy"\. The app runs the steps when every thread of the batch is done \(2 now\)/)
+    expect(b.rules('m')).toMatchObject({ land: 'all-at-once', steps: [S.land, S.gate, S.release, { ...S.deploy, name: 'Deploy to the box' }] })
     expect(w.pushes.at(-1)?.rules.land).toBe('all-at-once')
-    expect(b.rulesTool(master, { deploy: 'moon' as never })).toMatch(/^refused: deploy/)
-    expect(b.rulesTool(w.sessions.get('a')!, { gate: false })).toMatch(/^refused: batch_rules is for the project's master thread/)
+    expect(b.get('m').steps.map((s) => s.id)).toEqual(['land', 'gate', 'release', 'deploy'])
+    expect(b.rulesTool(master, { land: 'moon' as never })).toMatch(/^refused: land/)
+    // The list's own rules: unique ids, one per built-in kind, run on shell steps alone, a land step added at the front.
+    expect(b.rulesTool(master, { steps: [S.gate, { ...S.gate, id: 'gate2' }] })).toBe('refused: two gate steps; one per built-in kind')
+    expect(b.rulesTool(master, { steps: [S.gate, { id: 'gate', name: 'Smoke', kind: 'shell', run: 'true' }] })).toBe('refused: step id "gate" is used twice')
+    expect(b.rulesTool(master, { steps: [{ id: 'smoke', name: 'Smoke', kind: 'shell' }] })).toBe('refused: shell step "smoke" has no run')
+    expect(b.rulesTool(master, { steps: [{ ...S.gate, run: 'x' }] })).toBe('refused: step "gate" is gate, which takes no run')
+    expect(b.rulesTool(master, { steps: [{ id: 'bad id', name: 'x', kind: 'shell', run: 'true' }] })).toMatch(/^refused: step id "bad id"/)
+    expect(b.rulesTool(master, { steps: [{ id: 'smoke', name: 'Smoke', kind: 'shell', run: 'true' }] })).toMatch(/^Rules set: land all at once · Smoke · then notify/)
+    expect(b.get('m').steps.map((s) => s.id)).toEqual(['land', 'smoke'])
+    expect(b.rulesTool(w.sessions.get('a')!, { then: 'notify' })).toMatch(/^refused: batch_rules is for a master thread/)
     // A new instance reads them back.
     expect(w.make().rules('m').summary).toBe('Land all, gate, release, deploy')
   })
@@ -238,8 +287,8 @@ describe('Batches: the rows and the rules', () => {
     const children = await handleBatch({ id: '2', method: 'batch.children', params: { masterId: 'm' } } as never, b, w.registry)
     expect(children.handled && (children.result as { children: SessionMeta[] }).children.map((s) => s.id)).toEqual(['a', 'b'])
     const set = await handleBatch({ id: '3', method: 'batch.setRules', params: { masterId: 'm', rules: { then: 'archive-children' } } } as never, b, w.registry)
-    expect(set.handled && (set.result as BatchState).rules).toMatchObject({ then: 'archive-children', gate: true })
-    const stop = await handleBatch({ id: '4', method: 'batch.stopStep', params: { masterId: 'm' } } as never, b, w.registry)
+    expect(set.handled && (set.result as BatchState).rules).toMatchObject({ then: 'archive-children', steps: [S.land, S.gate, S.release] })
+    const stop = await handleBatch({ id: '4', method: 'batch.stopStep', params: { masterId: 'm', stepId: 'gate' } } as never, b, w.registry)
     expect(stop.handled && stop.result).toEqual({ stopped: false })
     expect(await handleBatch({ id: '5', method: 'session.list', params: {} } as never, b, w.registry)).toEqual({ handled: false })
   })
@@ -254,7 +303,43 @@ describe('Batches: the rows and the rules', () => {
     expect(steps(state).land).toEqual(['passed', '2 of 2 landed'])
     expect(steps(state).gate).toEqual(['running', ''])
     expect(state.steps.every((s) => Array.isArray(s.log))).toBe(true)
-    expect(state.steps.map((s) => s.id)).toEqual(['land', 'gate', 'release', 'publish', 'deploy'])
+    expect(state.steps.map((s) => s.id)).toEqual(['land', 'gate', 'release'])
+  })
+
+  it("a row from the fixed-five days reads its booleans as a steps list, keeping each step's telemetry", () => {
+    const w = world()
+    w.store.setSetting(
+      'batch:m',
+      JSON.stringify({
+        masterId: 'm',
+        rules: { land: 'all-at-once', gate: false, release: true, publish: true, deploy: 'box', then: 'archive-children' },
+        steps: [{ id: 'land', status: 'passed', detail: '2 of 2 landed', at: 5, log: ['x landed'] }, { id: 'release', status: 'passed', detail: 'release-9 tagged', at: 6, log: [] }],
+        landed: ['a']
+      })
+    )
+    const state = w.make().get('m')
+    expect(state.rules).toEqual({ land: 'all-at-once', steps: [S.land, S.release, S.publish, S.deploy], then: 'archive-children' })
+    expect(state.steps.map((s) => [s.id, s.status, s.detail])).toEqual([
+      ['land', 'passed', '2 of 2 landed'],
+      ['release', 'passed', 'release-9 tagged'],
+      ['publish', 'pending', ''],
+      ['deploy', 'pending', '']
+    ])
+  })
+
+  it('a new steps list keeps the telemetry of a step whose id and kind stay, renames it, and drops the rest', () => {
+    const w = world()
+    const b = w.make()
+    b.landed(w.landed('a'))
+    expect(steps(b.get('m')).land[0]).toBe('running')
+    b.setRules('m', { steps: [{ ...S.gate, name: 'Check' }, { id: 'smoke', name: 'Smoke', kind: 'shell', run: 'true' }] })
+    const state = b.get('m')
+    expect(state.steps.map((s) => [s.id, s.name, s.status])).toEqual([
+      ['land', 'Land', 'running'],
+      ['gate', 'Check', 'pending'],
+      ['smoke', 'Smoke', 'pending']
+    ])
+    expect(state.steps[0].log).toEqual(['br-a landed'])
   })
 })
 
@@ -291,7 +376,7 @@ describe('Batches: land', () => {
 })
 
 describe('Batches: the end of the batch', () => {
-  it('runs gate, release (pushed), skips publish and deploy, rows the master and wakes it; then the batch is closed', async () => {
+  it('runs gate, release (pushed), rows the master and wakes it; then the batch is closed', async () => {
     const w = world()
     const b = w.make()
     b.landed(w.landed('a', 'feat-a', ['a: one']))
@@ -310,9 +395,7 @@ describe('Batches: the end of the batch', () => {
     expect(steps(state)).toEqual({
       land: ['passed', '2 of 2 landed'],
       gate: ['passed', 'passed in 1m 12s'],
-      release: ['passed', 'release-277 tagged'],
-      publish: ['skipped', 'off by the rules'],
-      deploy: ['skipped', 'off by the rules']
+      release: ['passed', 'release-277 tagged']
     })
     expect(state.finishedAt).toBe(1000)
     expect(state.steps[1].log).toContain('✓ vitest 40s passed')
@@ -333,22 +416,23 @@ describe('Batches: the end of the batch', () => {
     expect(w.runs).toHaveLength(2)
   })
 
-  it('gate and release off: both skipped, nothing run, the master still told', async () => {
+  it('a list of land alone: nothing run, the master still told', async () => {
     const w = world()
     const b = w.make()
-    b.setRules('m', { gate: false, release: false })
+    b.setRules('m', { steps: [S.land] })
     w.set('b', { status: 'idle' })
     b.landed(w.landed('a'))
     await b.review('m')
     expect(w.runs).toHaveLength(0)
-    expect(steps(b.get('m'))).toMatchObject({ gate: ['skipped', 'off by the rules'], release: ['skipped', 'off by the rules'], land: ['passed', '1 of 2 landed · 1 left out'] })
+    expect(steps(b.get('m'))).toEqual({ land: ['passed', '1 of 2 landed · 1 left out'] })
     expect(w.reports.map((r) => r.status)).toEqual(['done'])
+    expect(w.reports[0].text).toContain('The batch is done: 1 of 2 landed · 1 left out.')
   })
 
   it('nothing landed (research only): gate, release and deploy are skipped as such', async () => {
     const w = world({ children: [meta('m'), meta('r', { masterId: 'm', createdAt: 2 })] })
     const b = w.make()
-    b.setRules('m', { deploy: 'box' })
+    b.setRules('m', { steps: [S.land, S.gate, S.release, S.deploy] })
     await b.review('m')
     expect(w.runs).toHaveLength(0)
     expect(steps(b.get('m'))).toMatchObject({ land: ['passed', '0 of 1 landed · 1 left out'], gate: ['skipped', 'nothing landed'], release: ['skipped', 'nothing landed'], deploy: ['skipped', 'nothing landed'] })
@@ -470,7 +554,7 @@ describe('Batches: the end of the batch', () => {
   it('archive-children archives every done child at the end', async () => {
     const w = world()
     const b = w.make()
-    b.setRules('m', { then: 'archive-children', gate: false, release: false })
+    b.setRules('m', { then: 'archive-children', steps: [S.land] })
     w.set('b', { status: 'idle' })
     b.landed(w.landed('a'))
     await b.review('m')
@@ -485,7 +569,7 @@ describe('Batches: publish and deploy', () => {
   it("publish runs the Mac's job for the released commit, streams its lines, and passes; deploy then takes v1.0.N", async () => {
     const w = world()
     const b = w.make()
-    b.setRules('m', { publish: true, deploy: 'box' })
+    b.setRules('m', { steps: FIVE })
     w.set('b', { status: 'idle' })
     b.landed(w.landed('a', 'feat-a', ['a: one']))
     const review = b.review('m')
@@ -502,7 +586,7 @@ describe('Batches: publish and deploy', () => {
     w.publish.line('phase ✓ gate 1m11s')
     w.publish.line('phase › sign')
     expect(b.get('m').steps[3].progress).toEqual({ done: 2, total: 8, label: 'sign' })
-    expect(await b.stopStep('m')).toEqual({ stopped: true })
+    expect(await b.stopStep('m', 'publish')).toEqual({ stopped: true })
     expect(w.publish.stops).toEqual(['m'])
     for (const l of ['phase ✓ sign 40s', 'phase › zip', 'phase › pack', 'phase ✓ pack 15s', 'phase ✓ zip 22s', 'phase › upload', 'phase ✓ upload 48s', 'phase › feed', 'phase ✓ feed 6s', 'phase ✓ total 4m12s 1.0.277', 'phase › update', 'phase ✓ update 31s']) w.publish.line(l)
     expect(b.get('m').steps[3].progress).toEqual({ done: 8, total: 8 })
@@ -535,14 +619,14 @@ describe('Batches: publish and deploy', () => {
     expect(w.reports.at(-1)?.text).toContain('gate passed in 1m 12s · release-277 tagged in 0s · v1.0.277 published in 4m43s · v1.0.277 deployed in 3m10s')
     // The deploy of a v1.0.N says so again (the publish may have run elsewhere).
     expect(w.announced).toEqual(['1.0.277', '1.0.277'])
-    expect(await b.stopStep('m')).toEqual({ stopped: false })
+    expect(await b.stopStep('m', 'publish')).toEqual({ stopped: false })
   })
 
   it('publish without a Mac fails the step with the reason; a Mac failure names the exit; deploy without publish takes master', async () => {
     const w = world()
     const b = w.make()
     w.publish.noMac()
-    b.setRules('m', { publish: true })
+    b.setRules('m', { steps: [S.land, S.gate, S.release, S.publish] })
     w.set('b', { status: 'idle' })
     b.landed(w.landed('a'))
     await b.review('m')
@@ -551,7 +635,7 @@ describe('Batches: publish and deploy', () => {
 
     const w2 = world()
     const b2 = w2.make()
-    b2.setRules('m', { publish: true })
+    b2.setRules('m', { steps: [S.land, S.gate, S.release, S.publish] })
     w2.set('b', { status: 'idle' })
     b2.landed(w2.landed('a'))
     const review = b2.review('m')
@@ -562,7 +646,7 @@ describe('Batches: publish and deploy', () => {
 
     const w3 = world()
     const b3 = w3.make()
-    b3.setRules('m', { deploy: 'box' })
+    b3.setRules('m', { steps: [S.land, S.gate, S.release, S.deploy] })
     w3.set('b', { status: 'idle' })
     b3.landed(w3.landed('a'))
     const r3 = b3.review('m')
@@ -580,7 +664,7 @@ describe('Batches: publish and deploy', () => {
   it('a refused deploy fails the step without a follower; no trigger on this host fails it too', async () => {
     const w = world()
     const b = w.make()
-    b.setRules('m', { deploy: 'box' })
+    b.setRules('m', { steps: [S.land, S.gate, S.release, S.deploy] })
     w.deploy.refuse('a deploy of the box is in progress; wait for it to finish')
     w.set('b', { status: 'idle' })
     b.landed(w.landed('a'))
@@ -589,7 +673,7 @@ describe('Batches: publish and deploy', () => {
     expect(b.open('m')).toBe(false)
     const w2 = world()
     const b2 = w2.make({ deploy: undefined })
-    b2.setRules('m', { deploy: 'box' })
+    b2.setRules('m', { steps: [S.land, S.gate, S.release, S.deploy] })
     w2.set('b', { status: 'idle' })
     b2.landed(w2.landed('a'))
     await b2.review('m')
@@ -600,7 +684,7 @@ describe('Batches: publish and deploy', () => {
   it('the deploy survives a restart: a new instance over the same store reads the exit file, closes the step and runs then', async () => {
     const w = world()
     const b = w.make()
-    b.setRules('m', { deploy: 'box', then: 'archive-children' })
+    b.setRules('m', { steps: [S.land, S.gate, S.release, S.deploy], then: 'archive-children' })
     w.set('b', { status: 'idle' })
     b.landed(w.landed('a'))
     const review = b.review('m')
@@ -620,7 +704,7 @@ describe('Batches: publish and deploy', () => {
     expect(b2.get('m').finishedAt).toBe(1000)
     expect(w.sessions.get('a')?.archived).toBe(true)
     expect(w.reports.at(-1)?.status).toBe('done')
-    expect(b2.get('m').steps[4].log).toContain('== host restarted; following the deploy of master')
+    expect(b2.get('m').steps[3].log).toContain('== host restarted; following the deploy of master')
     await review
   })
 
@@ -628,7 +712,7 @@ describe('Batches: publish and deploy', () => {
     const w = world()
     w.store.setSetting(
       'batch:m',
-      JSON.stringify({ masterId: 'm', rules: { publish: true }, steps: [{ id: 'publish', status: 'running', detail: 'v1.0.9 on the Mac', at: 1, log: [] }], landed: ['a'] })
+      JSON.stringify({ masterId: 'm', rules: { land: 'as-they-finish', steps: [S.land, S.gate, S.release, S.publish], then: 'notify' }, steps: [{ id: 'publish', status: 'running', detail: 'v1.0.9 on the Mac', at: 1, log: [] }], landed: ['a'] })
     )
     const b = w.make()
     await b.resumeAfterBoot()
@@ -640,7 +724,7 @@ describe('Batches: publish and deploy', () => {
     const w = world()
     w.store.setSetting(
       'batch:m',
-      JSON.stringify({ masterId: 'm', rules: { publish: true }, version: '1.0.9', steps: [{ id: 'publish', status: 'running', detail: 'v1.0.9 on this Mac', at: 1, log: [] }], landed: ['a'] })
+      JSON.stringify({ masterId: 'm', rules: { land: 'as-they-finish', steps: [S.land, S.gate, S.release, S.publish], then: 'notify' }, version: '1.0.9', steps: [{ id: 'publish', status: 'running', detail: 'v1.0.9 on this Mac', at: 1, log: [] }], landed: ['a'] })
     )
     const b = w.make({ version: '1.0.9' })
     await b.resumeAfterBoot()
@@ -661,13 +745,13 @@ describe('Batches: publish and deploy', () => {
         }
       }
     })
-    b.setRules('m', { deploy: 'box' })
+    b.setRules('m', { steps: [S.land, S.gate, S.release, S.deploy] })
     w.set('b', { status: 'idle' })
     b.landed(w.landed('a'))
     reachable.value = false
     const review = b.review('m')
     await flush()
-    expect(b.get('m').steps[4].log).toContain('== waiting for the box: the box is not connected')
+    expect(b.get('m').steps[3].log).toContain('== waiting for the box: the box is not connected')
     expect(steps(b.get('m')).deploy[0]).toBe('running')
     w.deploy.exit(0)
     await review
@@ -702,7 +786,7 @@ describe('Batches: the push and the log', () => {
     b.landed(w.landed('a'))
     expect(w.pushes).toHaveLength(1)
     w.tick(300)
-    b.setRules('m', { gate: false })
+    b.setRules('m', { steps: [S.land, S.release] })
     expect(w.pushes).toHaveLength(2)
   })
 })
@@ -711,7 +795,7 @@ describe('Batches: batch_gate', () => {
   it('refused off the master or before anything landed', async () => {
     const w = world({ master: 'z' })
     const b = w.make()
-    expect(await b.gate(w.sessions.get('m')!)).toMatch(/^refused: batch_gate is for the project's master thread/)
+    expect(await b.gate(w.sessions.get('m')!)).toMatch(/^refused: batch_gate is for a master thread/)
     const w2 = world()
     const b2 = w2.make()
     expect(await b2.gate(w2.sessions.get('m')!)).toBe('refused: nothing has landed yet; children land through merge_branch first')
@@ -759,5 +843,187 @@ describe('Batches: batch_gate', () => {
   it('helpers: releaseTag', () => {
     expect(releaseTag('released v277 (tag release-277, package.json 1.0.277) — publish it with: bun run release:publish')).toBe('release-277')
     expect(releaseTag('nothing')).toBeNull()
+  })
+})
+
+describe('Batches: shell steps', () => {
+  it('run in the order written among the built-in kinds, through the shell in the cwd given, their lines in the log; the done line names each', async () => {
+    const w = world()
+    const b = w.make({ shell: sh })
+    b.setRules('m', { steps: [S.land, shell('build', 'echo building; pwd', { cwd: '/tmp' }), S.gate, shell('smoke', 'echo smoke ok; echo warn >&2', { name: 'Smoke test' })] })
+    w.set('b', { status: 'idle' })
+    b.landed(w.landed('a'))
+    await b.review('m')
+    const state = b.get('m')
+    expect(state.steps.map((s) => [s.id, s.status])).toEqual([
+      ['land', 'passed'],
+      ['build', 'passed'],
+      ['gate', 'passed'],
+      ['smoke', 'passed']
+    ])
+    expect(state.steps[1].log).toEqual(['$ echo building; pwd', 'building', '/tmp', '== Build passed in 0s'])
+    expect(state.steps[3].log.slice(0, 1)).toEqual(['$ echo smoke ok; echo warn >&2'])
+    expect(state.steps[3].log.slice(1, 3).sort()).toEqual(['smoke ok', 'warn'])
+    expect(state.steps[1].startedAt).toBe(1000)
+    expect(state.steps[1].endedAt).toBe(1000)
+    // The gate ran between the two shell steps.
+    expect(w.runs.map((r) => r.step)).toEqual(['gate'])
+    expect(w.reports.at(-1)?.text).toContain('The batch is done: 1 of 2 landed · 1 left out · Build passed in 0s · gate passed in 1m 12s · Smoke test passed in 0s.')
+    expect(b.open('m')).toBe(false)
+    // A step without a cwd runs in the project checkout; a missing directory is the step's failure.
+    const w2 = world()
+    const seen: { run: string; cwd: string }[] = []
+    const b2 = w2.make({
+      shell: (run, cwd, onLine) => {
+        seen.push({ run, cwd })
+        return sh(run, cwd, onLine)
+      }
+    })
+    b2.setRules('m', { steps: [S.land, shell('here', 'true', { cwd: null })] })
+    w2.set('b', { status: 'idle' })
+    b2.landed(w2.landed('a'))
+    await b2.review('m')
+    expect(seen).toEqual([{ run: 'true', cwd: '/repo' }])
+    expect(steps(b2.get('m')).here[0]).toBe('failed')
+    expect(b2.get('m').steps[1].log.some((l) => /ENOENT/.test(l))).toBe(true)
+  })
+
+  it('a non-zero exit fails the step with the exit and the last line, tells the master, and runs nothing after', async () => {
+    const w = world()
+    const b = w.make({ shell: sh })
+    b.setRules('m', { steps: [S.land, shell('build', 'echo compiling; echo "error: boom" >&2; exit 3'), S.gate] })
+    w.set('b', { status: 'idle' })
+    b.landed(w.landed('a'))
+    await b.review('m')
+    expect(steps(b.get('m'))).toEqual({ land: ['passed', '1 of 2 landed · 1 left out'], build: ['failed', 'exit 3 after 0s · error: boom'], gate: ['pending', ''] })
+    expect(w.runs).toHaveLength(0)
+    expect(w.reports.map((r) => r.status)).toEqual(['failed'])
+    expect(w.reports[0].text).toContain('The batch\'s step "Build" FAILED: exit 3 after 0s · error: boom')
+    expect(w.reports[0].text).toContain('error: boom')
+    expect(b.get('m').finishedAt).toBeNull()
+  })
+
+  it('stopStep kills a running shell step, which fails as stopped; a step not running cannot be stopped', async () => {
+    const w = world()
+    const b = w.make({ shell: sh })
+    b.setRules('m', { steps: [S.land, shell('slow', 'echo started; sleep 30; echo never'), S.gate] })
+    w.set('b', { status: 'idle' })
+    b.landed(w.landed('a'))
+    const review = b.review('m')
+    await until(() => b.get('m').steps[1].log.includes('started'))
+    expect(steps(b.get('m')).slow).toEqual(['running', 'running'])
+    expect(await b.stopStep('m', 'gate')).toEqual({ stopped: false })
+    expect(await b.stopStep('m', 'nope')).toEqual({ stopped: false })
+    expect(await b.stopStep('m', 'slow')).toEqual({ stopped: true })
+    await review
+    expect(steps(b.get('m')).slow).toEqual(['failed', 'stopped after 0s'])
+    expect(steps(b.get('m')).gate).toEqual(['pending', ''])
+    expect(w.reports[0].text).toContain('"Slow" FAILED: stopped after 0s')
+  })
+
+  it('an each-landing step runs after every landing and keeps its last outcome at the end; a red one tells the master and never blocks the end', async () => {
+    const w = world()
+    const b = w.make({ shell: sh })
+    const log: string[] = []
+    const counting: BatchesDeps['shell'] = (run, cwd, onLine) => {
+      log.push(run)
+      return sh(run, cwd, onLine)
+    }
+    const b2 = w.make({ shell: counting })
+    void b
+    b2.setRules('m', { steps: [S.land, shell('dev', 'echo deployed to dev', { name: 'Deploy to dev', when: 'each-landing' }), S.gate] })
+    b2.landed(w.landed('a'))
+    await until(() => steps(b2.get('m')).dev?.[0] === 'passed')
+    expect(log).toEqual(['echo deployed to dev'])
+    expect(b2.get('m').steps[1].log).toContain('deployed to dev')
+    // The gate has not run: b is still queued.
+    expect(w.runs).toHaveLength(0)
+    w.set('b', { status: 'idle' })
+    b2.landed(w.landed('b'))
+    await until(() => log.length === 2)
+    await until(() => b2.get('m').finishedAt !== null)
+    // The end ran the gate and release, and left the each-landing step as it stood.
+    expect(w.runs.map((r) => r.step)).toEqual(['gate'])
+    expect(steps(b2.get('m'))).toEqual({ land: ['passed', '2 of 2 landed'], dev: ['passed', 'passed in 0s'], gate: ['passed', 'passed in 1m 12s'] })
+    expect(w.reports.at(-1)?.text).toContain('The batch is done: 2 of 2 landed · Deploy to dev passed in 0s · gate passed in 1m 12s.')
+    // A red each-landing step: the master hears, the end still comes.
+    const w3 = world()
+    const b3 = w3.make({ shell: sh })
+    b3.setRules('m', { steps: [S.land, shell('dev', 'exit 2', { when: 'each-landing' }), S.gate] })
+    w3.set('b', { status: 'idle' })
+    b3.landed(w3.landed('a'))
+    await until(() => w3.reports.length >= 2)
+    expect(w3.reports.map((r) => r.status)).toEqual(['failed', 'done'])
+    expect(w3.reports[0].text).toContain('"Dev" FAILED after a landing: exit 2 after 0s')
+    expect(steps(b3.get('m')).gate[0]).toBe('passed')
+  })
+
+  it('a shell step running at a restart is failed as such, and the master told', async () => {
+    const w = world()
+    w.store.setSetting(
+      'batch:m',
+      JSON.stringify({ masterId: 'm', rules: { land: 'as-they-finish', steps: [S.land, shell('build', 'make'), S.gate], then: 'notify' }, steps: [{ id: 'build', status: 'running', detail: 'running', at: 1, log: ['$ make'] }], landed: ['a'] })
+    )
+    const b = w.make({ shell: sh })
+    await b.resumeAfterBoot()
+    expect(steps(b.get('m')).build).toEqual(['failed', 'the host restarted during the step'])
+    expect(w.reports[0]).toMatchObject({ status: 'failed', text: expect.stringContaining('"Build" was running when this host restarted') })
+  })
+})
+
+describe('Batches: adopt and archive', () => {
+  it('adopt takes unarchived roots of no batch into the master\'s, setting startedBy when empty; refuses the rest, each with its why; pushes', () => {
+    const w = world({ children: [meta('m'), meta('a', { masterId: 'm' }), meta('loose'), meta('started', { startedBy: 'chat' }), meta('n', { isMaster: true }), meta('sub', { parentId: 'loose' }), meta('gone', { archived: true }), meta('other', { masterId: 'n' })] })
+    const b = w.make()
+    const r = b.adopt('m', ['loose', 'started', 'a', 'm', 'n', 'sub', 'gone', 'other', 'nope', 'loose'])
+    expect(r.adopted).toEqual(['loose', 'started', 'a'])
+    expect(r.refused).toEqual([
+      { sessionId: 'm', why: 'it is the master itself' },
+      { sessionId: 'n', why: 'it is a master thread' },
+      { sessionId: 'sub', why: 'it is a subagent' },
+      { sessionId: 'gone', why: 'it is archived' },
+      { sessionId: 'other', why: 'it is in the batch of n' },
+      { sessionId: 'nope', why: 'unknown thread' }
+    ])
+    expect(w.sessions.get('loose')).toMatchObject({ masterId: 'm', startedBy: 'm' })
+    expect(w.sessions.get('started')).toMatchObject({ masterId: 'm', startedBy: 'chat' })
+    expect(r.state.pending).toEqual(['a', 'loose', 'started'])
+    expect(w.pushes.at(-1)?.pending).toEqual(['a', 'loose', 'started'])
+    // Off a master: everything refused.
+    expect(b.adopt('loose', ['a']).refused).toEqual([{ sessionId: 'a', why: 'loose is not a master thread' }])
+    // The tool's answer.
+    expect(b.adoptTool(w.sessions.get('m')!, { threadId: 'sub' })).toBe('refused: it is a subagent')
+    expect(b.adoptTool(w.sessions.get('loose')!, { threadId: 'a' })).toMatch(/^refused: adopt_thread is for a master thread/)
+    w.sessions.set('fresh', meta('fresh', { title: 'Fresh one' }))
+    expect(b.adoptTool(w.sessions.get('m')!, { threadId: 'fresh' })).toBe('Adopted "Fresh one" (fresh) into your batch: its settles reach you from here, and it counts toward the batch\'s end.')
+  })
+
+  it('archive done archives the done children through the fleet\'s batch with the cleanup flag; all stops the live ones first; the master stays', async () => {
+    const w = world({ children: [meta('m'), meta('a', { masterId: 'm', createdAt: 2 }), meta('b', { masterId: 'm', createdAt: 3, status: 'running' }), meta('q', { masterId: 'm', createdAt: 4, status: 'queued' }), meta('f', { masterId: 'm', createdAt: 5, status: 'idle' })] })
+    const b = w.make()
+    // a has a turn behind it (done); f is idle with none (not done).
+    const done = await b.archive('m', 'done', true)
+    expect(done.succeeded).toEqual(['a'])
+    expect(w.batchCalls).toEqual([{ action: 'archive', ids: ['a'], cleanup: true }])
+    expect(w.sessions.get('a')?.archived).toBe(true)
+    expect(w.sessions.get('m')?.archived).toBe(false)
+    const all = await b.archive('m', 'all')
+    expect(all.succeeded).toEqual(['b', 'q', 'f'])
+    expect(w.batchCalls.slice(1)).toEqual([
+      { action: 'stop', ids: ['b', 'f'] },
+      { action: 'archive', ids: ['b', 'q', 'f'], cleanup: false }
+    ])
+    expect(w.sessions.get('m')?.archived).toBe(false)
+    expect(await b.archive('m', 'all')).toEqual({ attempted: [], succeeded: [], failed: [] })
+  })
+
+  it('handleBatch: batch.adopt and batch.archive', async () => {
+    const w = world({ children: [meta('m'), meta('a', { masterId: 'm' }), meta('loose')] })
+    const b = w.make()
+    const adopt = await handleBatch({ id: '1', method: 'batch.adopt', params: { masterId: 'm', sessionIds: ['loose'] } } as never, b, w.registry)
+    expect(adopt.handled && (adopt.result as { adopted: string[] }).adopted).toEqual(['loose'])
+    const archive = await handleBatch({ id: '2', method: 'batch.archive', params: { masterId: 'm', which: 'done' } } as never, b, w.registry)
+    expect(archive.handled && (archive.result as { succeeded: string[] }).succeeded).toEqual(['a'])
+    expect(w.batchCalls).toEqual([{ action: 'archive', ids: ['a'], cleanup: false }])
   })
 })

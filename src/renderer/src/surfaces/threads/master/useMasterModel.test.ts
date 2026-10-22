@@ -99,15 +99,14 @@ describe("a plan and its build are one row", () => {
 
 describe("the rules sentence", () => {
   it("reads the defaults as one sentence", () => {
-    expect(rulesSentence(DEFAULT_BATCH_RULES)).toBe(
-      "Branches land as they finish, then one gate on the merged tree and a release. Then you are notified.",
-    );
+    expect(rulesSentence(DEFAULT_BATCH_RULES)).toBe("Branches land as they finish, then gate and release. Then you are notified.");
   });
   it("names every step the rules ask for, and none when they ask for nothing", () => {
-    expect(rulesSentence({ land: "all-at-once", gate: true, release: true, deploy: "box", then: "archive-children" })).toBe(
-      "Branches land together once every thread is done, then one gate on the merged tree, a release and a deploy to the box. Then the threads are archived.",
+    const steps = [...DEFAULT_BATCH_RULES.steps, { id: "deploy", name: "Deploy to the box", kind: "deploy" as const }];
+    expect(rulesSentence({ land: "all-at-once", steps, then: "archive-children" })).toBe(
+      "Branches land together once every thread is done, then gate, release and deploy to the box. Then the threads are archived.",
     );
-    expect(rulesSentence({ land: "as-they-finish", gate: false, release: false, deploy: "none", then: "notify" })).toBe(
+    expect(rulesSentence({ land: "as-they-finish", steps: [DEFAULT_BATCH_RULES.steps[0]], then: "notify" })).toBe(
       "Branches land as they finish, nothing runs after. Then you are notified.",
     );
   });

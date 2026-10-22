@@ -29,6 +29,12 @@
  *      once that turn ends (it was watching while the batch was open).
  *      Then the master calls batch_gate: batch.get shows land, gate and
  *      release passed with the release tag in the detail.
+ *   Wave 4: the pin is on the thread (session.setMaster; two masters in
+ *      one project), the rules are a steps list with a shell step that runs
+ *      last in the project checkout, a thread a batch child starts inherits
+ *      the masterId with the child as its starter, batch.adopt brings a
+ *      loose thread in and refuses a master, and batch.archive done
+ *      archives the done children and leaves the master.
  * Run: bun run script:e2e-master-batch
  */
 import { execFileSync } from 'node:child_process'
@@ -205,8 +211,13 @@ const MODEL = 'claude-haiku-5-5'
 // A chat as a person starts one (the default agentType): the pin alone makes it an orchestrator under the policy.
 const master = await registry.create({ provider: 'claude', model: MODEL, reasoning: 'low', permission: 'auto', projectId: project.id, threadType: 'chat', parentId: null, title: 'Batch proof' })
 masterId = master.id
-registry.setProjectMaster(project.id, master.id)
-check('the master is pinned on the project', registry.getProject(project.id)?.masterThreadId === master.id)
+registry.setMaster(master.id, true)
+check('the master is pinned on its own row', store.getSession(master.id)?.isMaster === true && registry.isMaster(master.id))
+// A second master in the same project is its own batch, keyed by its id.
+const second = await registry.create({ provider: 'claude', model: MODEL, reasoning: 'low', permission: 'auto', projectId: project.id, threadType: 'chat', parentId: null, title: 'Second master' })
+registry.setMaster(second.id, true)
+check('two masters in one project, each pinned', registry.isMaster(second.id) && registry.isMaster(master.id))
+check("the second master's batch is empty while the first's fills", batches.get(second.id).pending.length === 0)
 
 const NO = 'This is a test; ask no questions and spawn nothing.'
 const briefA = `${NO} The directory ${wtA} is a worktree of this repo on branch child-a. There (use \`git -C ${wtA}\` for every git command) create the file a.txt containing exactly "a", run \`git -C ${wtA} add a.txt\` and \`git -C ${wtA} commit -m "child a: add a.txt"\`, then call the merge_branch tool ONCE with branch "child-a" and report its whole answer in one short sentence. Do not run typecheck, tests, git merge or git push yourself. If the tool answers HELD, stop and wait.`
@@ -214,7 +225,7 @@ const briefR = `This is a test; spawn nothing and write no files. Call the AskUs
 const briefP = `This is a test; ask no questions and spawn nothing. Write the plan document to your plan file NOW with exactly these sections: "# Greeting file", "## Overview" (one line), "## Approach" (one line), "## Tasks" with one checklist item "- [ ] Create greeting.txt in the project root containing hello", and "## Risks" (one line). Then call the plan_complete tool once, say the plan is ready in one sentence, and stop.`
 const briefB = `This is a test. Reply with exactly: b done. Use no tools and nothing else.`
 const masterBrief = `This is a test of your batch tools; the user has asked for all of it. Do exactly this, in order, with no other tools:
-0. Call batch_rules ONCE with summary "Proof batch: land as they finish, gate, release, then tell me" and no other field.
+0. Call batch_rules ONCE with summary "Proof batch: land as they finish, gate, release, smoke, then tell me" and steps exactly: [{"id":"land","name":"Land","kind":"land"},{"id":"gate","name":"Gate","kind":"gate"},{"id":"release","name":"Release","kind":"release"},{"id":"smoke","name":"Smoke test","kind":"shell","run":"echo smoke ok; test -f ${repo}/a.txt"}] and no other field.
 1. Call app_start_thread with threadType "implementation", provider "claude", model "${MODEL}", reasoning "low", title "child a", firstMessage exactly: <<<${briefA}>>>
 2. Call app_start_thread with threadType "research", provider "claude", model "${MODEL}", reasoning "low", title "child r", firstMessage exactly: <<<${briefR}>>>
 3. Call app_start_thread with threadType "planning", provider "claude", model "${MODEL}", reasoning "low", title "child p", firstMessage exactly: <<<${briefP}>>>
@@ -240,9 +251,20 @@ if (!a || !r || !p || !b) {
   process.exit(1)
 }
 check('three types', a.threadType === 'implementation' && r.threadType === 'research' && p.threadType === 'planning' && b.threadType === 'implementation')
-check('the master set the batch rules with batch_rules', batches.get(master.id).rules.summary === 'Proof batch: land as they finish, gate, release, then tell me' && batches.get(master.id).rules.land === 'as-they-finish', JSON.stringify(batches.get(master.id).rules))
+check('the master set the batch rules with batch_rules, a shell step among them', batches.get(master.id).rules.summary === 'Proof batch: land as they finish, gate, release, smoke, then tell me' && batches.get(master.id).rules.land === 'as-they-finish' && batches.get(master.id).rules.steps.map((s) => `${s.id}:${s.kind}`).join(',') === 'land:land,gate:gate,release:release,smoke:shell', JSON.stringify(batches.get(master.id).rules))
 check('the master is watching, not idle, while its batch is open', ['watching', 'running', 'starting'].includes(store.getSession(master.id)?.status ?? ''), store.getSession(master.id)?.status)
 check('child b waits after child a', store.getSession(b.id)?.after === a.id, `after=${store.getSession(b.id)?.after}`)
+// The batch follows the starter: a thread a batch child starts (a plan's own build) carries the master's id and the child as its starter.
+const fromChild = await registry.create({ provider: 'claude', model: MODEL, reasoning: 'low', permission: 'auto', projectId: project.id, threadType: 'chat', parentId: null, title: 'started by child a', startedBy: a.id })
+check('a thread started by a batch child inherits the masterId and keeps the child as startedBy', fromChild.masterId === master.id && fromChild.startedBy === a.id, `masterId=${fromChild.masterId} startedBy=${fromChild.startedBy}`)
+await registry.setArchived(fromChild.id, true)
+// adopt: a loose thread joins the batch, a subagent and the second master are refused.
+const loose = await registry.create({ provider: 'claude', model: MODEL, reasoning: 'low', permission: 'auto', projectId: project.id, threadType: 'chat', parentId: null, title: 'loose' })
+const adopted = batches.adopt(master.id, [loose.id, second.id])
+check('batch.adopt takes a loose root and refuses a master', adopted.adopted.length === 1 && adopted.adopted[0] === loose.id && adopted.refused.length === 1 && adopted.refused[0].why === 'it is a master thread', JSON.stringify(adopted.refused))
+check('the adopted thread carries the master id and the master as its starter', store.getSession(loose.id)?.masterId === master.id && store.getSession(loose.id)?.startedBy === master.id)
+// Out again before the end: an idle thread with no turn behind it is not done and would hold the batch open.
+await registry.setArchived(loose.id, true)
 check('the children run in the project checkout', kids.every((k) => k.cwd === repo))
 const listed = toolResults(master.id).find((t) => t.includes('"kind":"thread"'))
 const listedRows = listed ? (JSON.parse(listed) as { kind: string; agentId: string; threadType?: string; host?: string; status: string }[]) : []
@@ -336,7 +358,8 @@ if (fableChild) await reportSettled(master.id, fableChild.id, 0, 300_000)
 // an idle child is done), so the row to read is the one after a's landing.
 await rowsUntil(master.id, (rs) => rs.some((x) => x.event.type === 'notice' && x.event.kind === 'batch' && /^Batch done: 1 of 4 landed/.test(x.event.message)), 300_000)
 const doneRow = notices(master.id, 'batch').filter((n) => /^Batch done:/.test(n.message)).at(-1)
-check('the engine finished the batch by its rules and rowed the master', !!doneRow && /1 of 4 landed · 3 left out · gate passed in .* · release-1 tagged/.test(doneRow.message), doneRow?.message)
+check('the engine finished the batch by its rules and rowed the master, the shell step last', !!doneRow && /1 of 4 landed · 3 left out · gate passed in .* · release-1 tagged in \d+s · Smoke test passed in \d+s/.test(doneRow.message), doneRow?.message)
+check('the shell step ran in the project checkout with its lines in the log', batches.get(master.id).steps.find((s) => s.id === 'smoke')?.log.includes('smoke ok') === true, JSON.stringify(batches.get(master.id).steps.find((s) => s.id === 'smoke')?.log))
 check('the batch-done report reached the master as a <batch-report>', reports(master.id).some((x) => x.agentId === master.id && x.status === 'done'), reports(master.id).map((x) => `${x.agentId}:${x.status}`).join(', '))
 await reportSettled(master.id, master.id, 0, 120_000)
 await sleep(500)
@@ -349,6 +372,12 @@ check('land done with the unlanded children left out', steps(state).land === 'pa
 check('gate and release done with the release detail', steps(state).gate.startsWith('passed: passed in') && steps(state).release === 'passed: release-1 tagged', JSON.stringify(steps(state)))
 const masterGates = notices(master.id, 'gate').map((n) => [n.gate?.step, n.gate?.ok])
 check('gate and release rows on the master: the engine\'s pair, then batch_gate\'s', JSON.stringify(masterGates) === JSON.stringify([['gate', true], ['release', true], ['gate', true], ['release', true]]), JSON.stringify(masterGates))
+
+// ── 6. archive the batch: the done children leave, the master stays ──────
+console.log('\n[6] batch.archive done')
+const archived = await batches.archive(master.id, 'done', false)
+check('batch.archive done archives every done child and leaves the master', [a, r, p, b].every((k) => archived.succeeded.includes(k.id) && store.getSession(k.id)?.archived === true) && store.getSession(master.id)?.archived === false, JSON.stringify(archived))
+check('the second master is untouched', store.getSession(second.id)?.archived === false && !registry.list({ archived: false }).some((s) => s.masterId === second.id))
 
 await registry.disposeAll()
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)

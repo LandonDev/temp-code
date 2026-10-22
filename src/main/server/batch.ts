@@ -222,8 +222,8 @@ const DEPLOY_LOG_CONNECTION = -7
 const PUSH_EVERY_MS = 250
 
 /** `run` through the login shell in `cwd`, detached so Stop kills the whole process group. */
-export function spawnShellStep(run: string, cwd: string, onLine: (line: string) => void): ShellRun {
-  const child = spawn(loginShell(), ['-lc', run], { cwd, detached: true, stdio: ['ignore', 'pipe', 'pipe'], env: process.env })
+export function spawnShellStep(run: string, cwd: string, onLine: (line: string) => void, shell: string = loginShell()): ShellRun {
+  const child = spawn(shell, ['-lc', run], { cwd, detached: true, stdio: ['ignore', 'pipe', 'pipe'], env: process.env })
   for (const stream of [child.stdout, child.stderr]) {
     if (stream) createInterface({ input: stream }).on('line', onLine)
   }
