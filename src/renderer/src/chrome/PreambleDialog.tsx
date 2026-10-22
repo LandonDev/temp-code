@@ -4,6 +4,7 @@ import { DialogFooter as Footer, ErrorLine, GHOST, errorText } from "./ConfirmDi
 import { Toggle } from "../surfaces/settingsBits";
 import { setProjectPreamble, setWorkspacePreamble } from "../lib/tcserver/projects";
 import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
+import { useProjectHome } from "../lib/projectHome";
 import {
   PREAMBLE_VARIABLES,
   normalizePreamble,
@@ -37,9 +38,48 @@ const words = (n: number) => `${n} word${n === 1 ? "" : "s"}`;
  * (prepended by the main process to its first message as "## Project
  * rules"), a live preview of how it reads, the word count the transcript
  * row will show, and the switch that keeps the text while nothing is
- * prepended. Saving reaches new threads only.
+ * prepended. Saving reaches new threads only. A linked project's preamble
+ * lives on its settings home (lib/projectHome.ts): read from and saved to
+ * that copy, the footer saying where, Save off while the home is offline.
  */
 export function PreambleDialog({ scope, onClose }: { scope: PreambleScope; onClose: () => void }) {
+  return scope.kind === "project" ? (
+    <ProjectPreambleDialog scope={scope} onClose={onClose} />
+  ) : (
+    <PreambleEditor scope={scope} onClose={onClose} />
+  );
+}
+
+function ProjectPreambleDialog({
+  scope,
+  onClose,
+}: {
+  scope: Extract<PreambleScope, { kind: "project" }>;
+  onClose: () => void;
+}) {
+  const at = useProjectHome(scope.project);
+  return (
+    <PreambleEditor
+      key={`${at.home.environmentId}:${at.home.id}`}
+      scope={{ kind: "project", project: at.home, workspace: at.workspace ?? scope.workspace }}
+      note={at.blocked ?? (at.linked ? `Saved on ${at.hostName}` : undefined)}
+      blocked={at.blocked}
+      onClose={onClose}
+    />
+  );
+}
+
+function PreambleEditor({
+  scope,
+  onClose,
+  note,
+  blocked = null,
+}: {
+  scope: PreambleScope;
+  onClose: () => void;
+  note?: string;
+  blocked?: string | null;
+}) {
   const own = scope.kind === "project" ? scope.project : scope.workspace;
   const saved = own.preamble ?? "";
   const savedEnabled = own.preambleEnabled !== false;
@@ -66,7 +106,7 @@ export function PreambleDialog({ scope, onClose }: { scope: PreambleScope; onClo
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!dirty || pending) return;
+    if (!dirty || pending || blocked) return;
     setPending(true);
     setError(null);
     try {
@@ -159,7 +199,13 @@ export function PreambleDialog({ scope, onClose }: { scope: PreambleScope; onClo
           </p>
           <ErrorLine error={error} />
         </div>
-        <Footer onCancel={onClose} confirmLabel="Save" pending={pending} disabled={!dirty} />
+        <Footer
+          onCancel={onClose}
+          confirmLabel="Save"
+          pending={pending}
+          disabled={!dirty || !!blocked}
+          note={note}
+        />
       </form>
     </Modal>
   );

@@ -65,6 +65,29 @@ ambient chrome; it earns its place because agents run in background threads
 | Row menu | BeUI *Animated Context Menu* (pointer-origin morph) | rename, change branch, archive, delete (delete → ReUI dialog confirm) |
 | Bottom | connection strip (exists) + settings gear | unchanged |
 
+### Project dialogs on a linked project
+
+A project whose `linkId` another host's row shares keeps its settings on
+one copy, the box's (`settingsHomeOf`; `lib/projectHome.ts` resolves it
+from the catalog and each host's hello). The dialogs act on that copy over
+its host's link, so a Mac whose own copy has not pulled the box's last edit
+never shows the old values:
+
+- **Project settings** (`chrome/ProjectDialogs.tsx`) and **Preamble**
+  (`chrome/PreambleDialog.tsx`) read every field from the home copy and
+  save it there; only the branch is this copy's own. The footer says
+  "Saved on box" once, muted, left of Cancel. While the home's link is not
+  open, Save is off and the footer says "box is offline" instead.
+- **Rename** renames the home copy; the others follow.
+- **Archive** (and restore) takes every copy, the home first; a home that
+  is offline opens the archive dialog with Archive off and the reason. The
+  worktree and branch clean-up apply to the copy it was opened on.
+- **Delete** deletes this copy and asks "Also delete the copy on box", off
+  by default, one switch per other copy, off while that host is offline.
+
+An unlinked project's dialogs act on the project itself, with no footer
+note.
+
 ### Thread strip
 
 BeUI *Tabs*, underline variant, `SPRING_LAYOUT` indicator. Each tab: type

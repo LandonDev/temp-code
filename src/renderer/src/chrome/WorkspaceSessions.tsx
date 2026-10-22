@@ -62,11 +62,8 @@ import type { AliaxPageId } from "../stores/shell";
 import { archive as archiveThread, interrupt, pause, resume, setMaster } from "../lib/tcserver/commands";
 import { masterMenuLabel, useMasterIds } from "../lib/masterThread";
 import { dormantByType, dormantThreads, focusedTree } from "../lib/threadStripModel";
-import {
-  archiveProject,
-  deleteProject,
-  renameProject,
-} from "../lib/tcserver/projects";
+import { deleteProject } from "../lib/tcserver/projects";
+import { archiveLinked, projectHomeNow, renameLinked } from "../lib/projectHome";
 import { sessionPrefetch } from "../lib/sessionPrefetch";
 import { useSessionMetas } from "../lib/tcserver/store";
 import { useClock, useSlowClock } from "../lib/turnClock";
@@ -1286,7 +1283,9 @@ export default function WorkspaceSessions({
     (id: string, title: string) => latest.current.onRenameSession(id, title),
     [],
   );
-  const rename = useCallback((id: string, name: string) => void renameProject(id, name), []);
+  // A linked project's name and archived state live on its settings home
+  // (lib/projectHome.ts); the copies follow.
+  const rename = useCallback((id: string, name: string) => void renameLinked(id, name).catch(() => {}), []);
   const openSettings = useCallback(
     (project: ProjectMeta) => setDialog({ kind: "settings", project }),
     [],
@@ -1297,10 +1296,16 @@ export default function WorkspaceSessions({
   );
   const teardownOrConfirm = useCallback(
     (project: ProjectMeta, action: "archive" | "delete") => {
-      if (project.mode === "worktree" && project.branch)
+      const at = projectHomeNow(project);
+      // A linked delete asks about the other copies; a linked archive whose
+      // home is offline says so instead of failing out of sight.
+      if (
+        (project.mode === "worktree" && project.branch) ||
+        (at.linked && (action === "delete" || at.blocked))
+      )
         setDialog({ kind: "teardown", project, action });
       else if (action === "delete") setDialog({ kind: "delete-project", project });
-      else void archiveProject(project.id, true);
+      else void archiveLinked(project, true).catch(() => {});
     },
     [],
   );
@@ -1312,7 +1317,10 @@ export default function WorkspaceSessions({
     (project: ProjectMeta) => teardownOrConfirm(project, "delete"),
     [teardownOrConfirm],
   );
-  const restore = useCallback((project: ProjectMeta) => void archiveProject(project.id, false), []);
+  const restore = useCallback(
+    (project: ProjectMeta) => void archiveLinked(project, false).catch(() => {}),
+    [],
+  );
   const toggleChats = useCallback(() => setChatsOpen((o) => !o), []);
   const morePages = useCallback(
     (key: string) => setPages((prev) => ({ ...prev, [key]: nextPage(pageOf(prev, key)) })),

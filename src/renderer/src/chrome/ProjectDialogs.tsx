@@ -25,15 +25,14 @@ import type { BuildConfig } from "@server/shared/build";
 import { TURN_PASS_OFF, passActions, passEnabled, type TurnPass } from "@server/shared/turnpass";
 import { prettyCwd } from "../lib/paths";
 import {
-  archiveProject,
   createProject,
   createWorkspace,
-  deleteProject,
   listBranches,
   renameProject,
   setProjectAccounts,
   setProjectBranch,
 } from "../lib/tcserver/projects";
+import { archiveLinked, deleteLinked, liveHostFacts, useProjectHome } from "../lib/projectHome";
 import type {
   BranchList,
   ProjectCleanup,
@@ -524,6 +523,13 @@ export function NewProjectDialog({
   );
 }
 
+/**
+ * A project's settings. A linked project's live on its settings home (the
+ * box's copy, lib/projectHome.ts): every field but the branch is read from
+ * that copy and saved to it over its host's link, the footer says where,
+ * and a home out of reach disables Save with the reason. The branch and the
+ * folder are this copy's own.
+ */
 export function ProjectSettingsDialog({
   project,
   workspace,
@@ -533,7 +539,43 @@ export function ProjectSettingsDialog({
   workspace: WorkspaceMeta;
   onClose: () => void;
 }) {
-  const [name, setName] = useState(project.name);
+  const at = useProjectHome(project);
+  const note = at.blocked ?? (at.linked ? `Saved on ${at.hostName}` : undefined);
+  // A new home (a host's hello naming its platform late) starts the drafts over.
+  return (
+    <ProjectSettingsBody
+      key={`${at.home.environmentId}:${at.home.id}`}
+      project={project}
+      workspace={workspace}
+      home={at.home}
+      homeWorkspace={at.workspace ?? workspace}
+      note={note}
+      blocked={at.blocked}
+      onClose={onClose}
+    />
+  );
+}
+
+function ProjectSettingsBody({
+  project,
+  workspace,
+  home,
+  homeWorkspace,
+  note,
+  blocked,
+  onClose,
+}: {
+  /** The copy the dialog was opened on: its branch and folder. */
+  project: ProjectMeta;
+  workspace: WorkspaceMeta;
+  /** The copy holding the settings, and its workspace. */
+  home: ProjectMeta;
+  homeWorkspace: WorkspaceMeta;
+  note?: string;
+  blocked: string | null;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(home.name);
   const [branch, setBranch] = useState(project.branch ?? "");
   const [baseRef, setBaseRef] = useState("@head");
   const [pending, setPending] = useState(false);
@@ -548,30 +590,30 @@ export function ProjectSettingsDialog({
   const [detected, setDetected] = useState<BuildConfig | null>(null);
   useEffect(() => {
     let live = true;
-    void registry.linkOf(project.environmentId)
-      .request<BuildConfig | null>("build.get", { workspaceId: workspace.id, projectId: project.id })
+    void registry.linkOf(home.environmentId)
+      .request<BuildConfig | null>("build.get", { workspaceId: homeWorkspace.id, projectId: home.id })
       .then((c) => {
         if (!live) return;
         setSavedBuild(c);
         setBuildOverride(c);
       })
       .catch(() => live && setSavedBuild(null));
-    void registry.linkOf(project.environmentId)
-      .request<BuildConfig | null>("build.get", { workspaceId: workspace.id })
+    void registry.linkOf(home.environmentId)
+      .request<BuildConfig | null>("build.get", { workspaceId: homeWorkspace.id })
       .then((c) => live && setWsBuild(c))
       .catch(() => {});
-    void registry.linkOf(project.environmentId)
-      .request<BuildConfig | null>("build.detect", { path: project.cwd })
+    void registry.linkOf(home.environmentId)
+      .request<BuildConfig | null>("build.detect", { path: home.cwd })
       .then((d) => live && setDetected(d))
       .catch(() => {});
     return () => {
       live = false;
     };
-  }, [workspace.id, project.id, project.cwd, project.environmentId]);
-  const [pins, setPins] = useState<AccountPins>(project.accountPins ?? {});
-  const { snapshot } = useAccounts(project.environmentId);
-  const { pass, setPass, inherited } = useTurnPass(workspace.id, project.id);
-  const reviewScope = useReviewScope(project.environmentId, project.id);
+  }, [homeWorkspace.id, home.id, home.cwd, home.environmentId]);
+  const [pins, setPins] = useState<AccountPins>(home.accountPins ?? {});
+  const { snapshot } = useAccounts(home.environmentId);
+  const { pass, setPass, inherited } = useTurnPass(homeWorkspace.id, home.id);
+  const reviewScope = useReviewScope(home.environmentId, home.id);
   // undefined until the scope loads; null = follows the global set.
   const [review, setReview] = useState<ReviewSettings | null | undefined>(undefined);
   useEffect(() => {
@@ -585,8 +627,8 @@ export function ProjectSettingsDialog({
   }, [pass, savedPass]);
   const shownPass = pass ?? inherited ?? TURN_PASS_OFF;
   // Plans: the project's override, else what it inherits from the host's global set.
-  const planScope = usePlanSettings(project.environmentId, project.id);
-  const globalPlans = usePlanSettings(project.environmentId, null);
+  const planScope = usePlanSettings(home.environmentId, home.id);
+  const globalPlans = usePlanSettings(home.environmentId, null);
   const [plans, setPlans] = useState<PlanSettings | null | undefined>(undefined);
   useEffect(() => {
     if (planScope && plans === undefined) setPlans(planScope.overridden ? planScope.settings : null);
@@ -597,7 +639,7 @@ export function ProjectSettingsDialog({
     plans !== undefined &&
     (planScope.overridden ? !plans || !samePlanSettings(plans, planScope.settings) : plans !== null);
 
-  const nameDirty = name.trim() !== project.name && !!name.trim();
+  const nameDirty = name.trim() !== home.name && !!name.trim();
   const branchDirty =
     worktree && !!branch.trim() && branch.trim() !== (project.branch ?? "");
   const nextBuild = buildOrNull(buildOverride);
@@ -606,7 +648,7 @@ export function ProjectSettingsDialog({
     ((nextBuild?.command ?? "") !== (savedBuild?.command ?? "") ||
       (nextBuild?.outputs ?? "") !== (savedBuild?.outputs ?? ""));
   const passDirty = savedPass !== undefined && !samePass(pass ?? null, savedPass);
-  const pinsDirty = !samePins(pins, project.accountPins ?? {});
+  const pinsDirty = !samePins(pins, home.accountPins ?? {});
   const dirty = nameDirty || branchDirty || buildDirty || passDirty || pinsDirty || plansDirty || reviewDirty;
   const pinsSummary =
     ROUTED_PROVIDERS.map((p) => {
@@ -627,7 +669,7 @@ export function ProjectSettingsDialog({
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!dirty || pending) return;
+    if (!dirty || pending || blocked) return;
     setPending(true);
     setError(null);
     try {
@@ -638,15 +680,15 @@ export function ProjectSettingsDialog({
           !exists && baseRef !== "@head" ? baseRef : undefined,
         );
       }
-      if (nameDirty) await renameProject(project.id, name.trim());
-      if (passDirty) await saveTurnPass(workspace.id, pass ?? null, project.id);
-      if (reviewDirty) await saveReviewSettings(project.environmentId, project.id, review ?? null);
-      if (pinsDirty) await setProjectAccounts(project.id, pins);
-      if (plansDirty) await savePlanSettings(project.environmentId, project.id, plans ?? null);
+      if (nameDirty) await renameProject(home.id, name.trim());
+      if (passDirty) await saveTurnPass(homeWorkspace.id, pass ?? null, home.id);
+      if (reviewDirty) await saveReviewSettings(home.environmentId, home.id, review ?? null);
+      if (pinsDirty) await setProjectAccounts(home.id, pins);
+      if (plansDirty) await savePlanSettings(home.environmentId, home.id, plans ?? null);
       if (buildDirty) {
-        await registry.linkOf(project.environmentId).request("build.set", {
-          workspaceId: workspace.id,
-          projectId: project.id,
+        await registry.linkOf(home.environmentId).request("build.set", {
+          workspaceId: homeWorkspace.id,
+          projectId: home.id,
           config: nextBuild,
         });
       }
@@ -708,9 +750,9 @@ export function ProjectSettingsDialog({
           </Disclosure>
           <Disclosure
             label="Reviews"
-            summary={`${reviewSummary(shownReview, project.environmentId)}${review ? "" : " · global"}`}
+            summary={`${reviewSummary(shownReview, home.environmentId)}${review ? "" : " · global"}`}
           >
-            <ReviewFields value={shownReview} onChange={setReview} environmentId={project.environmentId} compact />
+            <ReviewFields value={shownReview} onChange={setReview} environmentId={home.environmentId} compact />
             {review ? (
               <button type="button" onClick={() => setReview(null)} className={`${GHOST} self-start`}>
                 Use global setting
@@ -719,10 +761,10 @@ export function ProjectSettingsDialog({
           </Disclosure>
           <Disclosure label="Accounts" summary={pinsSummary}>
             <AccountPinFields
-              environmentId={project.environmentId}
+              environmentId={home.environmentId}
               value={pins}
               onChange={setPins}
-              inheritLabel={projectInheritLabel(workspace, [...snapshot.providers.claude.profiles, ...snapshot.providers.codex.profiles])}
+              inheritLabel={projectInheritLabel(homeWorkspace, [...snapshot.providers.claude.profiles, ...snapshot.providers.codex.profiles])}
               compact
             />
           </Disclosure>
@@ -734,7 +776,7 @@ export function ProjectSettingsDialog({
               <PlanSettingsFields
                 value={shownPlans}
                 onChange={setPlans}
-                environmentId={project.environmentId}
+                environmentId={home.environmentId}
                 compact
               />
             ) : null}
@@ -767,7 +809,8 @@ export function ProjectSettingsDialog({
           onCancel={onClose}
           confirmLabel="Save"
           pending={pending}
-          disabled={!dirty}
+          disabled={!dirty || !!blocked}
+          note={note}
         />
       </form>
     </Modal>
@@ -793,6 +836,12 @@ export function ProjectTeardownDialog({
   const deleting = action === "delete";
   const any = worktree || localBranch || remoteBranch;
   const cleanable = project.mode === "worktree" && !!project.branch;
+  // A linked project: archive takes every copy (the home first, so a home out
+  // of reach blocks it); delete takes this copy, the others only when asked.
+  const at = useProjectHome(project);
+  const blocked = deleting ? null : at.blocked;
+  const others = deleting ? at.copies.filter((c) => c.environmentId !== project.environmentId) : [];
+  const [also, setAlso] = useState<ReadonlySet<string>>(() => new Set());
 
   const confirm = async () => {
     if (pending) return;
@@ -802,8 +851,8 @@ export function ProjectTeardownDialog({
       ? { worktree: worktree || localBranch, localBranch, remoteBranch }
       : undefined;
     try {
-      if (deleting) await deleteProject(project.id, cleanup);
-      else await archiveProject(project.id, true, cleanup);
+      if (deleting) await deleteLinked(project, [...also], cleanup);
+      else await archiveLinked(project, true, cleanup);
       onDone();
     } catch (err) {
       setError(errorText(err));
@@ -838,6 +887,25 @@ export function ProjectTeardownDialog({
         },
       ]
     : [];
+  const copyBoxes = others.map((copy) => {
+    const text = `Also delete the copy on ${liveHostFacts.nameOf(copy.environmentId)}`;
+    const offline = !liveHostFacts.isOpen(copy.environmentId);
+    return {
+      key: `copy:${copy.environmentId}:${copy.id}`,
+      text,
+      label: text,
+      checked: also.has(copy.id),
+      disabled: offline,
+      set: (on: boolean) =>
+        setAlso((prev) => {
+          const next = new Set(prev);
+          if (on) next.add(copy.id);
+          else next.delete(copy.id);
+          return next;
+        }),
+    };
+  });
+  const rows = [...boxes, ...copyBoxes];
 
   return (
     <Modal
@@ -852,9 +920,9 @@ export function ProjectTeardownDialog({
             ? "Its threads are deleted for good."
             : "The project leaves the sidebar. Its threads stay; restore it anytime."}
         </p>
-        {boxes.length ? (
+        {rows.length ? (
         <div className="flex flex-col">
-          {boxes.map((b) => (
+          {rows.map((b) => (
             <div
               key={b.key}
               className={`flex h-7 items-center justify-between gap-3 text-[12px] text-content/70 ${
@@ -875,6 +943,8 @@ export function ProjectTeardownDialog({
         confirmLabel={deleting ? "Delete project" : "Archive"}
         danger={deleting || any}
         pending={pending}
+        disabled={!!blocked}
+        note={blocked ?? undefined}
       />
     </Modal>
   );

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Modal } from "./Modal";
 import { MatrixSpinner } from "../surfaces/threads/bits";
 
@@ -19,7 +19,8 @@ export function ErrorLine({ error }: { error: string | null }) {
 }
 
 /** Modal footer: a hairline, Cancel at left of the confirm, the confirm
- *  showing a spinner while pending. */
+ *  showing a spinner while pending; an optional quiet note at the far left
+ *  (where a save lands, or why it cannot). */
 export function DialogFooter({
   onCancel,
   confirmLabel,
@@ -27,7 +28,9 @@ export function DialogFooter({
   pending,
   disabled,
   onConfirm,
+  note,
 }: {
+  note?: ReactNode;
   onCancel: () => void;
   confirmLabel: string;
   danger?: boolean;
@@ -37,6 +40,11 @@ export function DialogFooter({
 }) {
   return (
     <div className="flex items-center justify-end gap-2 border-t border-content/10 px-4 py-3">
+      {note ? (
+        <span data-footer-note className="mr-auto min-w-0 truncate text-[11px] text-content/40">
+          {note}
+        </span>
+      ) : null}
       <button type="button" onClick={onCancel} className={GHOST}>
         Cancel
       </button>
