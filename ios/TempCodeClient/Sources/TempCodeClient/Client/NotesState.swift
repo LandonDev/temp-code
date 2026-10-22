@@ -28,10 +28,13 @@ extension EnvironmentClient {
         defer { notes[sessionId]?.isLoading = false }
         do {
             let doc = try await request(Methods.SessionNotesGet.self, .init(sessionId: sessionId))
+            // A thread removed during the fetch stays gone.
+            guard notes[sessionId] != nil else { return doc }
             notes[sessionId] = NotesState(doc: doc)
             return doc
         } catch {
-            notes[sessionId]?.error = ActionError.wrap(error)
+            // A screen leaving mid-fetch is not a failure to show.
+            if !Task.isCancelled, notes[sessionId] != nil { notes[sessionId]?.error = ActionError.wrap(error) }
             return notes[sessionId]?.doc
         }
     }
@@ -42,7 +45,7 @@ extension EnvironmentClient {
         if let block = operateBlock { throw ActionError.blocked(block) }
         do {
             let doc = try await request(Methods.SessionNotesSet.self, .init(sessionId: sessionId, text: text))
-            notes[sessionId] = NotesState(doc: doc)
+            if session(sessionId) != nil { notes[sessionId] = NotesState(doc: doc) }
             return doc
         } catch {
             throw ActionError.wrap(error)

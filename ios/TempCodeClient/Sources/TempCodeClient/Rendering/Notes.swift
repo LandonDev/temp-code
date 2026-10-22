@@ -151,11 +151,11 @@ public enum Notes {
 
     /// `^\s*(?:[-*+]|\d+[.)])\s+` removed; the line untouched when it has no marker.
     private static func dropListMarker(_ line: String) -> String {
-        var rest = Substring(line).drop { $0 == " " || $0 == "\t" }
+        var rest = Substring(line).drop { $0.isWhitespace }
         if let first = rest.first, "-*+".contains(first) {
             rest = rest.dropFirst()
         } else {
-            let digits = rest.prefix { $0.isNumber }
+            let digits = rest.prefix { $0.isASCII && $0.isNumber }
             guard !digits.isEmpty else { return line }
             let after = rest.dropFirst(digits.count)
             guard let mark = after.first, mark == "." || mark == ")" else { return line }
@@ -177,7 +177,7 @@ public enum Notes {
     private static func boldLabel(_ line: String) -> String {
         guard line.hasPrefix("**") else { return line }
         let inner = line.dropFirst(2)
-        guard let close = inner.range(of: "**"), close.lowerBound > inner.startIndex else { return line }
+        guard !inner.isEmpty, let close = inner.range(of: "**", range: inner.index(after: inner.startIndex)..<inner.endIndex) else { return line }
         let label = inner[inner.startIndex..<close.lowerBound]
         var rest = inner[close.upperBound...]
         if rest.first == ":" { rest = rest.dropFirst() }
@@ -221,7 +221,18 @@ public enum Notes {
     /// empty headings.
     public static func display(_ text: String) -> ParsedNotes {
         let parsed = parse(text)
-        return ParsedNotes(preamble: parsed.preamble, sections: ordered(parsed.sections))
+        // The page keys its sections by heading, so a repeated extra merges too (the file keeps both).
+        var sections: [NoteSection] = []
+        var at: [String: Int] = [:]
+        for section in ordered(parsed.sections) {
+            if let index = at[section.heading] {
+                sections[index].body = trim("\(sections[index].body)\n\n\(section.body)")
+            } else {
+                at[section.heading] = sections.count
+                sections.append(section)
+            }
+        }
+        return ParsedNotes(preamble: parsed.preamble, sections: sections)
     }
 
     /// The glyph's dot: notes exist and changed after this device last read them.

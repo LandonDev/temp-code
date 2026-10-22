@@ -144,6 +144,25 @@ private let goal = ThreadNotesDoc(text: "## Goal\n\nShip.\n", updatedAt: 5, path
         await rig.client.stop()
     }
 
+    @Test func `a cancelled fetch holds no error, and a thread removed mid-fetch stays gone`() async throws {
+        let rig = try NotesRig()
+        let fake = try await rig.open()
+        let loading = Task { await rig.client.loadNotes("s1") }
+        _ = try #require(await rig.request(fake, "session.notes.get"))
+        loading.cancel()
+        _ = await loading.value
+        #expect(rig.client.notes["s1"]?.error == nil)
+        #expect(rig.client.notes["s1"]?.isLoading == false)
+        let again = Task { await rig.client.loadNotes("s2") }
+        let request = try #require(await rig.request(fake, "session.notes.get", count: 2))
+        fake.deliver(json(ServerPush.sessionRemoved(SessionRemovedPush(sessionIds: ["s2"]))))
+        #expect(await rig.wait { !rig.client.sessions.contains { $0.id == "s2" } })
+        fake.answer(id: request.id, result: json(goal))
+        _ = await again.value
+        #expect(rig.client.notes["s2"] == nil)
+        await rig.client.stop()
+    }
+
     @Test func `a failed fetch leaves no doc, loading off and the error held`() async throws {
         let rig = try NotesRig()
         let fake = try await rig.open()

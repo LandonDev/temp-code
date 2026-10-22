@@ -121,10 +121,7 @@ struct NotesSheet: View {
                         }
                         .font(.body.weight(.semibold))
                     } else {
-                        Button("Edit") {
-                            editor.begin(from: doc)
-                            focused = true
-                        }
+                        Button("Edit") { editor.begin(from: doc) }
                         .disabled(doc == nil)
                     }
                 }
@@ -145,7 +142,10 @@ struct NotesSheet: View {
                 painted = true
             }
         }
-        .onDisappear { Task { await editor.flush() } }
+        .onDisappear {
+            let editor = editor
+            Task { await editor.flush() }
+        }
     }
 
     /// The fetch failed and nothing is held: one line, the reason, Retry.
@@ -178,6 +178,8 @@ struct NotesSheet: View {
                 .scrollContentBackground(.hidden)
                 .textInputAutocapitalization(.sentences)
                 .focused($focused)
+                // The keyboard comes up once the editor is on screen, not in the update that inserts it.
+                .onAppear { focused = true }
                 // TextEditor's own 5 pt text inset keeps the page's 20 pt edge.
                 .padding(.horizontal, NotesStyles.inset - 5)
                 .padding(.top, NotesStyles.pageTop - 8)
@@ -216,7 +218,7 @@ private struct NotesDocument: View {
             VStack(alignment: .leading, spacing: NotesStyles.sectionGap) {
                 if !display.preamble.isEmpty {
                     MarkdownView(seq: NotesStyles.seq(sessionId, 0), text: display.preamble)
-                        .id("preamble")
+                        .id("\u{0}preamble")
                 }
                 ForEach(Array(display.sections.enumerated()), id: \.element.heading) { index, section in
                     NotesSectionView(section: section, seq: NotesStyles.seq(sessionId, index + 1), painted: painted)
@@ -251,9 +253,12 @@ private struct NotesSectionView: View {
                 .foregroundStyle(empty ? Color(.tertiaryLabel) : Color(.label))
                 .animation(painted ? Motion.crossFade : nil, value: empty)
             if !empty {
-                MarkdownView(seq: seq, text: section.body)
-                    .id(section.body)
-                    .transition(.opacity.animation(Motion.crossFade))
+                // The old and new bodies overlap while they cross-fade, so the page never jumps twice.
+                ZStack(alignment: .topLeading) {
+                    MarkdownView(seq: seq, text: section.body)
+                        .id(section.body)
+                        .transition(.opacity.animation(Motion.crossFade))
+                }
             }
         }
         .accessibilityElement(children: .contain)

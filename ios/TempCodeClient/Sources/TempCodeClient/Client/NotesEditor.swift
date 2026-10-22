@@ -27,6 +27,10 @@ public final class NotesEditor {
     public let quiet: Duration
     private let save: @MainActor (String) async throws -> ThreadNotesDoc
     private var timer: Task<Void, Never>?
+    /// The text of the save in flight: the host pushes it back before it answers, and that is not a remote change.
+    private var sent: String?
+    /// Bumped by `begin` and `loadTheirs`, so a save that answers after either changes nothing.
+    private var generation = 0
 
     public init(quiet: Duration = .milliseconds(800), save: @escaping @MainActor (String) async throws -> ThreadNotesDoc) {
         self.quiet = quiet
@@ -37,6 +41,7 @@ public final class NotesEditor {
     public func begin(from doc: ThreadNotesDoc?) {
         timer?.cancel()
         timer = nil
+        generation += 1
         base = doc?.text ?? ""
         draft = Notes.isEmpty(base) ? Notes.empty() : base
         dirty = false
@@ -53,6 +58,8 @@ public final class NotesEditor {
         timer = Task { [weak self, quiet] in
             try? await Task.sleep(for: quiet)
             guard !Task.isCancelled, let self else { return }
+            // Past the quiet period: the next keystroke must not cancel this save.
+            self.timer = nil
             await self.persist()
         }
     }
@@ -73,13 +80,14 @@ public final class NotesEditor {
     /// The thread wrote the notes since this edit began (or last saved).
     public func remoteChanged(_ doc: ThreadNotesDoc?) -> Bool {
         guard editing, let doc else { return false }
-        return doc.text != base
+        return doc.text != base && doc.text != sent && doc.text != draft
     }
 
     /// Take the thread's text as the new starting point, dropping the draft.
     public func loadTheirs(_ doc: ThreadNotesDoc?) {
         timer?.cancel()
         timer = nil
+        generation += 1
         base = doc?.text ?? ""
         draft = Notes.isEmpty(base) ? Notes.empty() : base
         dirty = false
@@ -90,13 +98,18 @@ public final class NotesEditor {
     /// so the next quiet period saves it. The draft is never touched.
     private func persist() async {
         let text = draft
+        let started = generation
+        sent = text
         state = .saving
+        defer { if sent == text { sent = nil } }
         do {
             let saved = try await save(text)
+            guard generation == started else { return }
             base = saved.text
             if draft == text { dirty = false }
             state = .saved
         } catch {
+            guard generation == started else { return }
             state = .failed
         }
     }

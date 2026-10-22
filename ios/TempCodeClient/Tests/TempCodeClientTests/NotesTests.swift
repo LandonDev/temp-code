@@ -79,6 +79,15 @@ import Testing
         #expect(some.sections[0].body == "Ship.")
         #expect(some.sections[2].body == "- half")
         #expect(some.sections[5].body == "- none")
+        let twice = Notes.display("## Risks\n\n- one\n\n## Risks\n\n- two\n")
+        #expect(twice.sections.map(\.heading) == Notes.sections + ["Risks"], "the page keys by heading, so a repeated extra merges")
+        #expect(twice.sections[5].body == "- one\n\n- two")
+    }
+
+    @Test func `the State line's markers are ASCII, and a bold label needs a character inside`() {
+        #expect(Notes.stateLine(Notes.apply("", section: "State", content: "   - indented")) == "indented")
+        #expect(Notes.stateLine(Notes.apply("", section: "State", content: "٣. arabic digit stays")) == "٣. arabic digit stays")
+        #expect(Notes.stateLine(Notes.apply("", section: "State", content: "****x**")) == "**x:", "the lazy match, as the TypeScript reads it")
     }
 
     @Test func `unread is a change after this device last read`() {

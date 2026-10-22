@@ -896,7 +896,7 @@ routed to (aliax-core's `forward`). Two listeners:
 - Wire: `session.notes.get` (read), `session.notes.set` (operate, the
   person's whole-text edit), the `notes` push to every client. The phone
   speaks all three (`ios/TempCode/Sources/Thread/NotesSheet.swift` on the
-  client package's `notes` state, `Client/Notes.swift`; the edit session is
+  client package's `notes` state, `Client/NotesState.swift`; the edit session is
   `Client/NotesEditor.swift`, the text port `Rendering/Notes.swift`; a
   waiting thread's needs-you row on Home reads its State line through
   `Shell/NeedsYouNotes.swift`). `session.search`

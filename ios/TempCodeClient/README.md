@@ -285,7 +285,7 @@ sends: always the thread's host.
 `Rendering/Notes.swift` is the port of src/shared/notes.ts: parse, the fixed
 order, replace and append, the State line, compact, demote, the brief, the
 display model, `unread(updatedAt:readAt:)` for the glyph's dot and
-`needsYouLine` for Home. `Client/Notes.swift` holds one `NotesState` per
+`needsYouLine` for Home. `Client/NotesState.swift` holds one `NotesState` per
 thread on the client (`loadNotes`: memory, else one `session.notes.get`;
 `saveNotes`: `session.notes.set` behind the operate gate; the `notes` push
 replaces the doc in place; a removed thread drops it). `Client/NotesEditor.swift`

@@ -3,16 +3,26 @@ import Testing
 import TempCodeContract
 @testable import TempCodeClient
 
-/// Records every save; `failing` makes each one throw.
+/// Records every save; `failing` makes each one throw; `holding` keeps each
+/// one waiting until `release()`.
 @MainActor
 private final class SaveRecorder {
     var saved: [String] = []
     var failing = false
+    var holding = false
+    private var held: [CheckedContinuation<Void, Never>] = []
 
     func save(_ text: String) async throws -> ThreadNotesDoc {
+        if holding { await withCheckedContinuation { held.append($0) } }
         if failing { throw ActionError.refused(message: "no", forbidden: false) }
         saved.append(text)
         return ThreadNotesDoc(text: text, updatedAt: Double(saved.count), path: nil)
+    }
+
+    func release() {
+        let waiting = held
+        held = []
+        for continuation in waiting { continuation.resume() }
     }
 }
 
@@ -48,7 +58,7 @@ private let filled = ThreadNotesDoc(text: "## Goal\n\nShip.\n", updatedAt: 1, pa
 
     @Test func `two keystrokes inside the window save once with the last text`() async {
         let recorder = SaveRecorder()
-        let editor = NotesEditor(quiet: quiet) { try await recorder.save($0) }
+        let editor = NotesEditor(quiet: .milliseconds(200)) { try await recorder.save($0) }
         editor.begin(from: filled)
         editor.change("## Goal\n\nShip i\n")
         try? await Task.sleep(for: .milliseconds(5))
@@ -56,6 +66,57 @@ private let filled = ThreadNotesDoc(text: "## Goal\n\nShip.\n", updatedAt: 1, pa
         #expect(await wait { editor.state == .saved })
         try? await Task.sleep(for: .milliseconds(40))
         #expect(recorder.saved == ["## Goal\n\nShip it.\n"])
+    }
+
+    @Test func `a keystroke during a save does not cancel it, and is saved after it`() async {
+        let recorder = SaveRecorder()
+        recorder.holding = true
+        let editor = NotesEditor(quiet: quiet) { try await recorder.save($0) }
+        editor.begin(from: filled)
+        editor.change("## Goal\n\nA\n")
+        #expect(await wait { editor.state == .saving })
+        editor.change("## Goal\n\nAB\n")
+        #expect(editor.state == .saving, "the first save is still out")
+        recorder.holding = false
+        recorder.release()
+        #expect(await wait { recorder.saved.count == 2 })
+        #expect(recorder.saved == ["## Goal\n\nA\n", "## Goal\n\nAB\n"])
+        #expect(await wait { editor.state == .saved && !editor.dirty })
+        #expect(editor.base == "## Goal\n\nAB\n")
+    }
+
+    @Test func `the host pushing back the text in flight is not a remote change`() async {
+        let recorder = SaveRecorder()
+        recorder.holding = true
+        let editor = NotesEditor(quiet: quiet) { try await recorder.save($0) }
+        editor.begin(from: filled)
+        editor.change("## Goal\n\nMine.\n")
+        #expect(await wait { editor.state == .saving })
+        #expect(!editor.remoteChanged(ThreadNotesDoc(text: "## Goal\n\nMine.\n", updatedAt: 9, path: nil)))
+        #expect(editor.remoteChanged(ThreadNotesDoc(text: "## Goal\n\nTheirs.\n", updatedAt: 9, path: nil)))
+        recorder.holding = false
+        recorder.release()
+        #expect(await wait { editor.state == .saved })
+        #expect(!editor.remoteChanged(ThreadNotesDoc(text: "## Goal\n\nMine.\n", updatedAt: 9, path: nil)))
+    }
+
+    @Test func `a save answering after Load theirs changes nothing`() async {
+        let recorder = SaveRecorder()
+        recorder.holding = true
+        let editor = NotesEditor(quiet: quiet) { try await recorder.save($0) }
+        editor.begin(from: filled)
+        editor.change("## Goal\n\nMine.\n")
+        #expect(await wait { editor.state == .saving })
+        let theirs = ThreadNotesDoc(text: "## Goal\n\nTheirs.\n", updatedAt: 2, path: nil)
+        editor.loadTheirs(theirs)
+        recorder.holding = false
+        recorder.release()
+        #expect(await wait { recorder.saved.count == 1 })
+        try? await Task.sleep(for: .milliseconds(10))
+        #expect(editor.base == theirs.text)
+        #expect(editor.draft == theirs.text)
+        #expect(!editor.dirty)
+        #expect(editor.state == .idle)
     }
 
     @Test func `finish saves at once when dirty, not when clean, and ends the edit`() async {

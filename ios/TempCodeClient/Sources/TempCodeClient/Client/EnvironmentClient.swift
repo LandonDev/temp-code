@@ -105,7 +105,7 @@ public final class EnvironmentClient {
     /// Threads this host moved elsewhere in this process, by the root's and each subagent's id.
     public private(set) var moved: [String: MovedThread] = [:]
     private var iconRequests: Set<String> = []
-    /// Each thread's notes (Client/Notes.swift, iOS 18): fetched on first use, kept by the notes push.
+    /// Each thread's notes (Client/NotesState.swift, iOS 18): fetched on first use, kept by the notes push.
     public internal(set) var notes: [String: NotesState] = [:]
 
     public let socket: TempCodeSocket
@@ -604,7 +604,7 @@ public final class EnvironmentClient {
             try? await cache.markNotice(environment.id, kind: Self.bootResumeKind, at: value.at)
             bootResume = BootResumeNotice(count: value.count, at: value.at)
         case .notes(let value):
-            applyNotes(value) // iOS 18: the thread's notes (Client/Notes.swift)
+            applyNotes(value) // iOS 18: the thread's notes (Client/NotesState.swift)
         case .queue, .liveEdits, .builds, .unknown:
             break
         }
