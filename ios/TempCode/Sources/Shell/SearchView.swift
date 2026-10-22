@@ -2,83 +2,17 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-enum SearchScope: String, CaseIterable {
-    case threads
-    case files
-}
-
-/// One matching row of a thread, its snippet with the query set in weight.
-struct SearchHit: Identifiable, Sendable {
-    let hit: SessionSearchHit
-    let text: AttributedString
-
-    var id: Int { hit.seq }
-
-    init(_ hit: SessionSearchHit, query: String) {
-        self.hit = hit
-        self.text = MatchEmphasis.attributed(hit.snippet.trimmingCharacters(in: .whitespacesAndNewlines), query: query, font: .footnote)
-    }
-}
-
-/// One thread's hits, in the order the host ranked them.
-struct ThreadResult: Identifiable, Sendable {
-    let group: ThreadHits
-    let hits: [SearchHit]
-
-    var id: EnvironmentResourceID { group.id }
-
-    init(_ group: ThreadHits, query: String) {
-        self.group = group
-        self.hits = group.hits.map { SearchHit($0, query: query) }
-    }
-}
-
-/// One matching line of a project file, the preview with the query set in weight.
-struct FileMatch: Identifiable, Sendable {
-    let match: ProjectSearchMatch
-    let text: AttributedString
-
-    var id: String { "\(match.relative):\(match.line):\(match.column)" }
-
-    init(_ match: ProjectSearchMatch, query: String) {
-        self.match = match
-        self.text = MatchEmphasis.attributed(match.preview.trimmingCharacters(in: .whitespaces), query: query, font: .caption.monospaced())
-    }
-}
-
-/// The file matches of one project.
-struct ProjectMatches: Identifiable, Sendable {
-    let environmentId: String
-    let project: ProjectMeta
-    let matches: [FileMatch]
-    let truncated: Bool
-
-    var id: EnvironmentResourceID { EnvironmentResourceID(environmentId: environmentId, resourceId: project.id) }
-}
-
-/// What the list shows: every host's answer to one query in one scope. The
-/// next answer replaces it whole; nothing clears it first, so the screen
-/// never flashes to empty between two queries.
-struct SearchAnswer: Sendable {
-    var query = ""
-    var scope = SearchScope.threads
-    var threads: [ThreadResult] = []
-    var files: [ProjectMatches] = []
-    var truncated = false
-
-    var isEmpty: Bool { threads.isEmpty && files.isEmpty }
-
-    static let none = SearchAnswer()
-}
-
 /// Search every host: thread rows that mention the query (`session.search`),
 /// grouped by thread with the matching rows quoted, or lines of each live
-/// project's files (`search.project`). The field is the system one in the
-/// navigation bar; the scopes show only when a host has a project to grep.
-/// Queries wait 250 ms after the last keystroke and run on every open host at
-/// once, off the main actor; the previous answer stays on screen until the
-/// next one lands. Tap a thread to open it, tap a hit to land on its row.
-/// Nothing here animates on a keystroke.
+/// project's files (`search.project`). The field is the system one; the
+/// scopes show only when an open host has a project to grep. A query waits
+/// 250 ms after the last keystroke and runs on every open host at once, off
+/// the main actor; the previous answer stays on screen until the next one
+/// lands, whole, so two queries' rows never mix. Tap a thread to open it,
+/// tap a hit to land on its row. Nothing here animates on a keystroke.
+///
+/// The rows are `SearchRows.build`'s: the one call in `run()` is where the
+/// cross-host selector lands, and the view draws whatever it emits.
 struct SearchView: View {
     @Environment(AppModel.self) private var model
     @Binding var path: NavigationPath
@@ -87,110 +21,124 @@ struct SearchView: View {
     @State private var scope = SearchScope.threads
     @State private var answer = SearchAnswer.none
     @State private var searching = false
+    /// Where a head's title starts past the text edge: the glyph column and
+    /// its gap, scaled with the glyph. Hits and separators start here.
+    @ScaledMetric(relativeTo: .subheadline) private var glyphEdge = Layout.glyphWidth + Layout.rowGap
 
     private var trimmed: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var clients: [EnvironmentClient] { model.registry.ordered.filter { $0.status.transport == .open } }
-    private var offersFiles: Bool { clients.contains { client in client.projects.contains { !$0.archived } } }
-    /// Host names by environment, only when there are several to tell apart.
-    private var hostNames: [String: String]? {
-        guard clients.count > 1 else { return nil }
-        return Dictionary(clients.map { ($0.environment.id, $0.environment.name) }, uniquingKeysWith: { first, _ in first })
+    /// Every paired host in rail order, open or not.
+    private var paired: [EnvironmentClient] { model.registry.ordered }
+    private var open: [EnvironmentClient] { paired.filter { $0.status.transport == .open } }
+    private var offersFiles: Bool { open.contains { client in client.projects.contains { !$0.archived } } }
+    private var severalHosts: Bool { paired.count > 1 }
+    private var hitInsets: EdgeInsets {
+        EdgeInsets(top: 0, leading: Layout.textEdge + glyphEdge, bottom: 0, trailing: Layout.textEdge)
     }
 
-    /// Text starts after the 20 pt glyph column and its 10 pt gap.
-    private static let textEdge: CGFloat = 30
-    private static let rowInsets = EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16)
-    private static let hitInsets = EdgeInsets(top: 0, leading: 16 + textEdge, bottom: 0, trailing: 16)
+    /// What `.task(id:)` keys on: the query, the scope and the open hosts, so
+    /// a host coming or going re-runs the search.
+    nonisolated private struct SearchKey: Hashable {
+        let query: String
+        let scope: SearchScope
+        let hosts: [String]
+    }
 
     var body: some View {
         List {
-            switch answer.scope {
-            case .threads:
-                ForEach(answer.threads) { result in
-                    Button { open(result.group, seq: nil) } label: {
-                        ThreadHeadRow(group: result.group, host: hostNames?[result.group.environmentId])
+            ForEach(answer.rows) { row in
+                switch row {
+                case .threadHead(let head):
+                    Button { open(head.environmentId, head.sessionId, seq: nil) } label: {
+                        ThreadHeadRow(head: head)
                     }
                     .buttonStyle(.pressable)
-                    .listRowInsets(Self.rowInsets)
-                    .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] + Self.textEdge }
-                    ForEach(result.hits) { hit in
-                        Button { open(result.group, seq: hit.hit.seq) } label: {
-                            SearchHitRow(hit: hit)
-                        }
-                        .buttonStyle(.pressable)
-                        .listRowInsets(Self.hitInsets)
+                    .listRowInsets(Layout.rowInsets)
+                    .separatorAtTextEdge(glyphEdge)
+                    .listRowSeparator(.hidden, edges: .top)
+                case .hit(let hit):
+                    Button { open(hit.environmentId, hit.sessionId, seq: hit.seq) } label: {
+                        HitRow(hit: hit)
                     }
-                }
-                if answer.truncated {
+                    .buttonStyle(.pressable)
+                    .listRowInsets(hitInsets)
+                case .projectHead(let head):
+                    ProjectHeadRow(head: head)
+                        .listRowInsets(EdgeInsets())
+                        .listRowSeparator(.hidden)
+                case .file(let file):
+                    FileRow(file: file)
+                        .listRowInsets(Layout.rowInsets)
+                        .separatorAtTextEdge(glyphEdge)
+                case .project(let project):
+                    ProjectRow(project: project)
+                        .listRowInsets(Layout.rowInsets)
+                        .separatorAtTextEdge(glyphEdge)
+                case .more:
                     MoreRow()
-                        .listRowInsets(Self.rowInsets)
+                        .listRowInsets(Layout.rowInsets)
+                        .listRowSeparator(.hidden)
                 }
-            case .files:
-                ForEach(answer.files) { group in
-                    SectionHeader(group.project.name, branch: group.project.branch, worktree: group.project.mode == .worktree) {
-                        if let host = hostNames?[group.environmentId] {
-                            Text(host)
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                                .lineLimit(1)
-                        }
-                    }
-                    .listRowInsets(EdgeInsets())
+            }
+            if severalHosts, !answer.isEmpty, let foot = SearchRows.footLine(answer.hosts) {
+                FootRow(text: foot)
+                    .listRowInsets(Layout.rowInsets)
                     .listRowSeparator(.hidden)
-                    ForEach(group.matches) { match in
-                        FileMatchRow(match: match)
-                            .listRowInsets(Self.rowInsets)
-                            .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] + Self.textEdge }
-                    }
-                    if group.truncated {
-                        MoreRow()
-                            .listRowInsets(Self.rowInsets)
-                    }
-                }
             }
         }
         .listStyle(.plain)
-        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: offersFiles ? "Threads and files" : "Threads")
+        .modifier(SearchField(query: $query, prompt: offersFiles ? "Threads and files" : "Threads"))
+        .searchPresentationToolbarBehavior(.avoidHidingContent)
         .modifier(SearchScopes(scope: $scope, offered: offersFiles))
         .autocorrectionDisabled()
         .textInputAutocapitalization(.never)
         .overlay(alignment: .top) {
             status
-                .padding(.top, 28)
+                .padding(.top, 24)
         }
         .navigationTitle("Search")
         .onAppear {
             if query.isEmpty, let initialQuery { query = initialQuery }
+            #if DEBUG
+            // The simulator proof's shot of the Files scope; nothing else reads it.
+            if ProcessInfo.processInfo.environment["TC_TEST_SEARCH_SCOPE"] == "files" { scope = .files }
+            #endif
         }
         .onChange(of: offersFiles) {
             if !offersFiles, scope == .files { scope = .threads }
         }
-        .task(id: [trimmed, scope.rawValue] + clients.map(\.environment.id)) { await run() }
+        .task(id: SearchKey(query: trimmed, scope: scope, hosts: open.map(\.environment.id))) { await run() }
     }
 
     /// One calm line over the empty list; nothing while an older answer is still showing.
     @ViewBuilder private var status: some View {
-        if clients.isEmpty {
-            SearchStatusLine("No host is connected.")
-        } else if trimmed.count < 2 {
-            SearchStatusLine(offersFiles ? "Threads and project files on every host." : "Every thread on every host.")
-        } else if answer.isEmpty, searching {
-            ProgressView()
-                .controlSize(.small)
-                .accessibilityLabel("Searching")
-        } else if answer.isEmpty, answer.query == trimmed, answer.scope == scope {
-            SearchStatusLine("No results for “\(answer.query)”")
+        if answer.isEmpty {
+            if paired.isEmpty {
+                SearchStatusLine("No host is connected.")
+            } else if open.isEmpty {
+                SearchStatusLine("Every host is offline.")
+            } else if trimmed.count < SearchDebounce.minimumLength {
+                SearchStatusLine(offersFiles ? "Threads and project files on every host." : "Every thread on every host.")
+            } else if searching {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel("Searching")
+            } else if answer.query == trimmed, answer.scope == scope {
+                SearchStatusLine("No results for “\(answer.query)”")
+            }
         }
     }
 
-    private func open(_ group: ThreadHits, seq: Int?) {
-        path.append(Route.thread(environmentId: group.environmentId, sessionId: group.sessionId, seq: seq))
+    private func open(_ environmentId: String, _ sessionId: String, seq: Int?) {
+        path.append(Route.thread(environmentId: environmentId, sessionId: sessionId, seq: seq))
     }
 
-    /// One host to ask, with what its answer needs snapshotted on the main actor.
-    private struct Target: Sendable {
+    /// One host to ask, with what its answer needs snapshotted on the main
+    /// actor before the task group starts. `EnvironmentClient` is main-actor,
+    /// so the reference is Sendable; the children only call `request` on it.
+    nonisolated private struct Target: Sendable {
         let client: EnvironmentClient
         let id: String
+        let name: String
         let sessions: [SessionMeta]
         let projects: [ProjectMeta]
     }
@@ -198,65 +146,89 @@ struct SearchView: View {
     private func run() async {
         let text = trimmed
         let scope = scope
-        guard text.count >= 2 else {
+        guard text.count >= SearchDebounce.minimumLength else {
             answer = .none
             searching = false
             return
         }
-        // A new query waits for the typing to pause; a scope change does not.
-        if text != answer.query {
-            try? await Task.sleep(for: .milliseconds(250))
+        let delay = SearchDebounce.delay(previousQuery: answer.query, nextQuery: text)
+        if delay > .zero {
+            try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
         }
-        let targets = clients.map {
-            Target(client: $0, id: $0.environment.id, sessions: $0.sessions, projects: Array($0.projects.filter { !$0.archived }.prefix(8)))
+        let targets = open.map {
+            Target(client: $0, id: $0.environment.id, name: $0.environment.name, sessions: $0.sessions, projects: Array($0.projects.filter { !$0.archived }.prefix(8)))
+        }
+        let hosts = paired.map {
+            SearchHost(id: $0.environment.id, name: $0.environment.name, open: $0.status.transport == .open)
         }
         searching = true
         // A cancelled search may finish after its replacement started; only the live one clears the cue.
         defer { if !Task.isCancelled { searching = false } }
-        var next = SearchAnswer(query: text, scope: scope)
+        let answers = await withTaskGroup(of: SearchHostAnswer.self) { group in
+            for target in targets {
+                group.addTask { await Self.ask(target, text: text, scope: scope) }
+            }
+            var out: [SearchHostAnswer] = []
+            for await one in group { out.append(one) }
+            return out
+        }
+        // The one line the cross-host selector slots into.
+        let next = SearchRows.build(query: text, scope: scope, hosts: hosts, answers: answers)
+        guard !Task.isCancelled else { return }
+        Motion.withoutAnimation { answer = next }
+    }
+
+    /// One host's calls, off the main actor: the thread search, or one
+    /// project search per project in turn. Measures what the host took and
+    /// marks the answer failed when every call threw.
+    private nonisolated static func ask(_ target: Target, text: String, scope: SearchScope) async -> SearchHostAnswer {
+        let clock = ContinuousClock()
+        let start = clock.now
+        var threads: SessionSearchResult?
+        var files: [SearchHostAnswer.ProjectFiles] = []
+        var failed = false
         switch scope {
         case .threads:
-            let answers = await withTaskGroup(of: (Int, [ThreadResult], Bool)?.self) { group in
-                for (index, target) in targets.enumerated() {
-                    group.addTask {
-                        guard let result = try? await target.client.request(Methods.SessionSearch.self, .init(query: text, limit: 60)) else { return nil }
-                        let groups = ThreadHits.group(environmentId: target.id, hits: result.hits, sessions: target.sessions)
-                        return (index, groups.map { ThreadResult($0, query: text) }, result.truncated)
-                    }
-                }
-                var out: [(Int, [ThreadResult], Bool)] = []
-                for await one in group {
-                    if let one { out.append(one) }
-                }
-                return out.sorted { $0.0 < $1.0 }
-            }
-            for (_, groups, truncated) in answers {
-                next.threads += groups
-                next.truncated = next.truncated || truncated
-            }
+            threads = try? await target.client.request(Methods.SessionSearch.self, .init(query: text, limit: 60))
+            failed = threads == nil
         case .files:
-            let answers = await withTaskGroup(of: (Int, [ProjectMatches]).self) { group in
-                for (index, target) in targets.enumerated() {
-                    group.addTask {
-                        var groups: [ProjectMatches] = []
-                        for project in target.projects {
-                            guard let result = try? await target.client.request(Methods.SearchProject.self, .init(options: .init(cwd: project.cwd, query: text))) else { continue }
-                            if result.matches.isEmpty { continue }
-                            let shown = result.matches.prefix(40).map { FileMatch($0, query: text) }
-                            groups.append(ProjectMatches(environmentId: target.id, project: project, matches: shown, truncated: result.truncated || result.matches.count > 40))
-                        }
-                        return (index, groups)
-                    }
+            var threw = 0
+            for project in target.projects {
+                if let result = try? await target.client.request(Methods.SearchProject.self, .init(options: .init(cwd: project.cwd, query: text))) {
+                    files.append(.init(project: project, result: result))
+                } else {
+                    threw += 1
                 }
-                var out: [(Int, [ProjectMatches])] = []
-                for await one in group { out.append(one) }
-                return out.sorted { $0.0 < $1.0 }
             }
-            for (_, groups) in answers { next.files += groups }
+            failed = !target.projects.isEmpty && threw == target.projects.count
         }
-        guard !Task.isCancelled else { return }
-        answer = next
+        let elapsed = clock.now - start
+        return SearchHostAnswer(
+            environmentId: target.id,
+            name: target.name,
+            sessions: target.sessions,
+            threads: threads,
+            files: files,
+            elapsedMs: Int(elapsed / .milliseconds(1)),
+            failed: failed
+        )
+    }
+}
+
+/// The system field, placed by version: on iOS 26 `.automatic` keeps the
+/// search-role tab's own field; before it the navigation drawer, always shown.
+private struct SearchField: ViewModifier {
+    @Binding var query: String
+    let prompt: String
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.searchable(text: $query, placement: .automatic, prompt: prompt)
+        } else {
+            content.searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: prompt)
+        }
     }
 }
 
@@ -275,93 +247,5 @@ private struct SearchScopes: ViewModifier {
         } else {
             content
         }
-    }
-}
-
-/// The thread a group of hits belongs to: its type glyph and title, the host
-/// when there are several. Opens the thread itself.
-private struct ThreadHeadRow: View {
-    let group: ThreadHits
-    let host: String?
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            TypeGlyph(type: group.type, weight: .semibold)
-            Text(group.title)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
-            if let host {
-                Text(host)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .layoutPriority(-1)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.top, 12)
-        .padding(.bottom, 6)
-        .frame(minHeight: 44)
-        .accessibilityElement(children: .combine)
-    }
-}
-
-/// A matching row: the snippet with the query in weight, when it was said.
-private struct SearchHitRow: View {
-    let hit: SearchHit
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(hit.text)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-            Spacer(minLength: 0)
-            Text(TimeFormat.ago(hit.hit.ts))
-                .font(.caption2)
-                .monospacedDigit()
-                .foregroundStyle(.tertiary)
-        }
-        .padding(.vertical, 8)
-        .frame(minHeight: 44)
-        .accessibilityElement(children: .combine)
-    }
-}
-
-/// A file line: the path with its line number dim, the line itself in mono
-/// with the query in weight. The phone has no editor, so the row is a fact.
-private struct FileMatchRow: View {
-    let match: FileMatch
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Image(systemName: "doc.text")
-                .font(.footnote)
-                .foregroundStyle(.tertiary)
-                .frame(width: 20)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                (Text(match.match.relative) + Text(":\(match.match.line)").foregroundStyle(.tertiary))
-                    .font(.footnote)
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .truncationMode(.head)
-                Text(match.text)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-        }
-        .padding(.vertical, 8)
-        .frame(minHeight: 44)
-        .accessibilityElement(children: .combine)
-    }
-}
-
-/// The host cut its answer short: one dim line after the last match.
-private struct MoreRow: View {
-    var body: some View {
-        Text("More matches than shown")
-            .font(.footnote)
-            .foregroundStyle(.tertiary)
-            .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
     }
 }
