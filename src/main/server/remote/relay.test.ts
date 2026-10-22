@@ -334,6 +334,8 @@ describe('HostRelay lanes', () => {
     expect(ws.answers()).toEqual([{ id: '1', ok: false, error: 'unavailable: the Mac is locked' }])
     expect(transport.frames.map((f) => (f.frame as { id: string }).id)).toEqual(['2'])
     relay.onPeerPresence('env_mac', { screen: 'locked', power: 'asleep', at: T0 })
+    // the lane itself hears the change, as the box's own frame
+    expect(ws.sent.filter((f) => 'push' in f && f.push === 'presence').at(-1)).toMatchObject({ push: 'presence', hosts: [{ environmentId: 'env_mac', power: 'asleep' }] })
     ws.request('3', 'session.list', {})
     await tick()
     expect(ws.answers()[1]).toEqual({ id: '3', ok: false, error: 'unavailable: the Mac is asleep' })

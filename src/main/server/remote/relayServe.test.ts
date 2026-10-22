@@ -324,7 +324,7 @@ describe('RelayServer', () => {
   it('a notice goes to every link as relay.notice only when the host delivers nothing itself', async () => {
     const own = make({ deliversNotices: true, links: ['env_box'] })
     own.server.linkUp('env_box')
-    const notice = { event: 'needs_you' as const, threadId: 't1', title: 'T', body: 'B', url: 'http://x', ts: 5, seq: 9 }
+    const notice = { event: 'needs_you' as const, kind: 'approval' as const, threadId: 't1', title: 'T', subtitle: 'proj', body: 'B', url: 'http://x', ts: 5, seq: 9, requestId: 'r1', hostName: 'Studio' }
     own.server.onNotice(notice)
     await tick()
     expect(own.requests.filter((r) => r.method === 'relay.notice')).toEqual([])
@@ -337,7 +337,10 @@ describe('RelayServer', () => {
     const sent = relayed.requests.filter((r) => r.method === 'relay.notice')
     expect(sent.map((r) => r.to).sort()).toEqual(['env_box', 'env_other'])
     // url stays home: the box's /ui cannot open a Mac thread
-    expect(sent[0].params).toEqual({ from: 'env_mac', notice: { event: 'needs_you', threadId: 't1', title: 'T', body: 'B', ts: 5, seq: 9 } })
+    expect(sent[0].params).toEqual({
+      from: 'env_mac',
+      notice: { event: 'needs_you', kind: 'approval', threadId: 't1', title: 'T', subtitle: 'proj', body: 'B', ts: 5, seq: 9, requestId: 'r1', hostName: 'Studio' }
+    })
   })
 
   it('onPeerPush serves relay.* pushes and leaves every other push alone', async () => {

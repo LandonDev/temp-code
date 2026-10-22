@@ -93,7 +93,7 @@ export interface HostRelayDeps {
   calls: Pick<PeerCalls, 'onRegister' | 'onDrop' | 'info' | 'registeredIds'>
   /** `relay.hosts`: the last picture of every host, so a down one is listed across a restart. */
   store: { getSetting(key: string): string | null; setSetting(key: string, value: string | null): void }
-  /** Every remote client socket of this host (direct lanes and relayed ones): the presence push. */
+  /** Every direct remote client socket of this host: the presence push (relayed lanes get it from HostRelay itself). */
   broadcast: (push: Extract<ServerPush, { push: 'presence' }>) => void
   /** A relayed lane's remote.push.* (handlers.ts handleRemote with the key as createdBy). */
   pushLocal: (req: ClientRequest, principal: Principal & { kind: 'remote' }) => Promise<unknown>
@@ -228,8 +228,11 @@ export class HostRelay {
     }
   }
 
+  /** To every direct remote socket (deps.broadcast) and every relayed lane here (the box's own frame on it). */
   private broadcast(): void {
-    this.deps.broadcast({ push: 'presence', hosts: this.hosts() })
+    const push = { push: 'presence' as const, hosts: this.hosts() }
+    this.deps.broadcast(push)
+    for (const lane of this.lanes.values()) this.send(lane, push)
   }
 
   private load(): void {

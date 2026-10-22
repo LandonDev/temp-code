@@ -342,7 +342,19 @@ export class RelayServer {
   /** A notice of a local root thread (notifier.onNotice): to every connected link as relay.notice when this host delivers nothing itself. */
   onNotice(notice: Notice): void {
     if (this.closed || this.deps.deliversNotices()) return
-    const body = { event: notice.event, threadId: notice.threadId, title: notice.title, body: notice.body, ts: notice.ts, seq: notice.seq }
+    // Everything but url: the carrier's /ui cannot open this host's thread.
+    const body = {
+      event: notice.event,
+      kind: notice.kind,
+      threadId: notice.threadId,
+      title: notice.title,
+      ...(notice.subtitle ? { subtitle: notice.subtitle } : {}),
+      body: notice.body,
+      ts: notice.ts,
+      seq: notice.seq,
+      ...(notice.requestId ? { requestId: notice.requestId } : {}),
+      ...(notice.hostName ? { hostName: notice.hostName } : {})
+    }
     for (const envId of this.heartbeats.keys()) {
       const request = this.deps.link(envId)
       if (!request) continue

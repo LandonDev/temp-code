@@ -274,11 +274,19 @@ const from = z.string().min(1).max(200)
 /** A notice of a thread on the host (remote/notifier.ts Notice, without `url`: the box's /ui cannot open it). */
 export const RelayNoticeSchema = z.object({
   event: z.enum(['needs_you', 'finished', 'failed', 'stuck']),
+  /** The phone's category and actions (notifier.ts NoticeKind); an older host leaves it out and the box reads it off `event`. */
+  kind: z.enum(['approval', 'question', 'plan', 'waiting', 'finished', 'failed', 'stuck', 'batch', 'stopped']).optional(),
   threadId: z.string().min(1).max(200),
   title: z.string().max(300),
+  /** The project or workspace the thread is in. */
+  subtitle: z.string().max(300).optional(),
   body: z.string().max(1_000),
   ts: z.number().int(),
-  seq: z.number().int()
+  seq: z.number().int(),
+  /** The approval a phone may decide from the notification (kind `approval`), on the host the notice names. */
+  requestId: z.string().max(200).optional(),
+  /** The host's own name: the phone adds it to the subtitle when several hosts are paired. */
+  hostName: z.string().max(120).optional()
 })
 export type RelayNotice = z.infer<typeof RelayNoticeSchema>
 export const RelayRequestSchemas = [
