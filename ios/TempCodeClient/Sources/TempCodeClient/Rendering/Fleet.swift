@@ -4,11 +4,13 @@ import TempCodeContract
 /// Fleet selectors: which children a thread has, how they rank, and the one
 /// line and stats a row shows for each (the desktop's agents.ts).
 public enum Fleet {
-    /// Rows sort by what needs the user first: waiting, failed, working, done.
+    /// Rows sort by what needs the user first: waiting, then failed and
+    /// stopped (a gone harness needs the person like a failure does), then
+    /// working, then the rest (queued among them).
     public static func rank(_ status: SessionStatus?) -> Int {
         switch status {
         case .waiting?: 0
-        case .error?: 1
+        case .error?, .stopped?: 1
         case .starting?, .running?: 2
         default: 3
         }
@@ -33,12 +35,18 @@ public enum Fleet {
         public var waiting = 0
         public var failed = 0
         public var done = 0
+        /// Created, not booted: waiting for a sibling to finish.
+        public var queued = 0
+        /// The harness behind the turn is gone.
+        public var stopped = 0
 
-        public init(working: Int = 0, waiting: Int = 0, failed: Int = 0, done: Int = 0) {
+        public init(working: Int = 0, waiting: Int = 0, failed: Int = 0, done: Int = 0, queued: Int = 0, stopped: Int = 0) {
             self.working = working
             self.waiting = waiting
             self.failed = failed
             self.done = done
+            self.queued = queued
+            self.stopped = stopped
         }
 
         /// A child works or waits.
@@ -51,6 +59,8 @@ public enum Fleet {
             if isLive(status) || status == .watching { out.working += 1 }
             else if status == .waiting { out.waiting += 1 }
             else if status == .error { out.failed += 1 }
+            else if status == .queued { out.queued += 1 }
+            else if status == .stopped { out.stopped += 1 }
             else { out.done += 1 }
         }
         return out
@@ -69,15 +79,17 @@ public enum Fleet {
     // MARK: - groups
 
     /// How the phone's list groups a fleet: what runs, what needs the user,
-    /// what has settled (done, idle, paused and failed alike; a failed
-    /// agent keeps its red mark and its rank puts it first in the group).
+    /// what is queued behind a sibling, what has settled (done, idle, paused,
+    /// stopped and failed alike; a failed or stopped agent keeps its mark and
+    /// its rank puts it first in the group).
     public enum Group: Int, CaseIterable, Sendable, Hashable {
-        case running, waiting, done
+        case running, waiting, queued, done
 
         public var title: String {
             switch self {
             case .running: "Running"
             case .waiting: "Waiting"
+            case .queued: "Queued"
             case .done: "Done"
             }
         }
@@ -86,6 +98,7 @@ public enum Fleet {
     public static func group(_ status: SessionStatus?) -> Group {
         if isLive(status) || status == .watching { return .running }
         if status == .waiting { return .waiting }
+        if status == .queued { return .queued }
         return .done
     }
 
@@ -101,7 +114,7 @@ public enum Fleet {
         public var id: Group { group }
     }
 
-    /// The fleet in its three groups, in group order, empty groups left out;
+    /// The fleet in its groups, in group order, empty groups left out;
     /// inside a group the rank order holds (a failed agent before a settled one).
     public static func sections(_ agents: [SessionMeta]) -> [Section] {
         var byGroup: [Group: [SessionMeta]] = [:]
@@ -109,6 +122,93 @@ public enum Fleet {
         return Group.allCases.compactMap { group in
             guard let list = byGroup[group], !list.isEmpty else { return nil }
             return Section(group: group, agents: list)
+        }
+    }
+
+    // MARK: - agents across hosts
+
+    /// One paired host as the fleet reads it: its id, its name, every session
+    /// it lists, and whether its socket is open right now.
+    public struct Host: Sendable, Hashable {
+        public let id: String
+        public let name: String
+        public let sessions: [SessionMeta]
+        public let reachable: Bool
+
+        public init(id: String, name: String, sessions: [SessionMeta], reachable: Bool) {
+            self.id = id
+            self.name = name
+            self.sessions = sessions
+            self.reachable = reachable
+        }
+    }
+
+    /// A subagent with the host it lives on. A box thread's `spawn_agent`
+    /// with `environmentId: 'mac'` lands an ordinary session on the Mac whose
+    /// `parentId` is the box thread, so a phone paired with both sees it in
+    /// the Mac client's list under the box root's id.
+    public struct Agent: Sendable, Hashable, Identifiable {
+        public let meta: SessionMeta
+        public let environmentId: String
+        /// The agent lives on a host other than its root's.
+        public let remote: Bool
+
+        public init(meta: SessionMeta, environmentId: String, remote: Bool) {
+            self.meta = meta
+            self.environmentId = environmentId
+            self.remote = remote
+        }
+
+        public var id: String { "\(environmentId):\(meta.id)" }
+    }
+
+    public struct AgentSection: Sendable, Hashable, Identifiable {
+        public let group: Group
+        public let agents: [Agent]
+
+        public init(group: Group, agents: [Agent]) {
+            self.group = group
+            self.agents = agents
+        }
+
+        public var id: Group { group }
+    }
+
+    /// Every unarchived child of `rootId` on every paired host: the root's
+    /// host first, then the rest in the order given; de-duplicated by
+    /// (host, id); rank order then age across hosts.
+    public static func gather(rootId: String, rootHost: String, hosts: [Host]) -> [Agent] {
+        let ordered = hosts.filter { $0.id == rootHost } + hosts.filter { $0.id != rootHost }
+        var seen = Set<String>()
+        var out: [Agent] = []
+        for host in ordered {
+            for meta in children(of: rootId, in: host.sessions) {
+                let agent = Agent(meta: meta, environmentId: host.id, remote: host.id != rootHost)
+                guard seen.insert(agent.id).inserted else { continue }
+                out.append(agent)
+            }
+        }
+        return out.sorted { (rank($0.meta.status), $0.meta.createdAt) < (rank($1.meta.status), $1.meta.createdAt) }
+    }
+
+    /// `sections(_:)` over agents with hosts: the same groups, the same order.
+    public static func sections(_ agents: [Agent]) -> [AgentSection] {
+        var byGroup: [Group: [Agent]] = [:]
+        let ranked = agents.sorted { (rank($0.meta.status), $0.meta.createdAt) < (rank($1.meta.status), $1.meta.createdAt) }
+        for agent in ranked { byGroup[group(agent.meta.status), default: []].append(agent) }
+        return Group.allCases.compactMap { group in
+            guard let list = byGroup[group], !list.isEmpty else { return nil }
+            return AgentSection(group: group, agents: list)
+        }
+    }
+
+    /// How many agent-spawned events of the root name a host this phone is
+    /// not paired with: the fold keeps only the child id, so this reads the
+    /// raw rows. An event with no host is local and never counts.
+    public static func unpaired(rows: [EventRow], paired: Set<String>) -> Int {
+        rows.reduce(0) { count, row in
+            guard case .agentSpawned(let spawned) = row.event, let host = spawned.environmentId, !paired.contains(host) else { return count }
+            return count + 1
         }
     }
 
@@ -123,12 +223,17 @@ public enum Fleet {
         case .waiting?: return "Waiting on you"
         case .error?: return "Failed"
         case .paused?: return "Paused"
+        case .stopped?: return "Stopped"
+        case .queued?: return "Queued"
         case .watching?: return "Waiting on background work"
         default: break
         }
         if counts.working > 0 { return "Waiting on its subagents" }
         if counts.waiting > 0 { return counts.waiting == 1 ? "A subagent needs you" : "Subagents need you" }
+        // A queued child is coming: nothing to do but wait for it.
+        if counts.queued > 0 { return "Waiting on its subagents" }
         if counts.failed > 0 { return counts.failed == 1 ? "Done, one agent failed" : "Done, \(counts.failed) agents failed" }
+        if counts.stopped > 0 { return counts.stopped == 1 ? "Done, one agent stopped" : "Done, \(counts.stopped) agents stopped" }
         return counts.done > 0 ? "Done" : ""
     }
 
@@ -140,12 +245,19 @@ public enum Fleet {
         return own.split(separator: "/").last.map(String.init)
     }
 
-    /// How long the agent has run: since its start while live, else its
-    /// whole span once settled; nil when that span is too short to mean anything.
+    /// How long the agent has run: since its start while live; nothing while
+    /// queued (it has not started); the host's frozen working time once
+    /// paused or stopped; else its whole span once settled, nil when that
+    /// span is too short to mean anything.
     public static func elapsedMs(_ agent: SessionMeta, now: Int) -> Int? {
         if isLive(agent.status) { return max(0, now - agent.createdAt) }
         let span = agent.updatedAt - agent.createdAt
-        return span > 2_000 ? span : nil
+        let settled: Int? = span > 2_000 ? span : nil
+        switch agent.status {
+        case .queued: return nil
+        case .paused, .stopped: return agent.frozenActiveElapsed ?? settled
+        default: return settled
+        }
     }
 
     // MARK: - transcript lines
@@ -207,8 +319,18 @@ public enum Fleet {
     }
 
     /// The row's one-line status and its colour; compaction shows while live.
-    public static func line(status: SessionStatus?, items: [ThreadEntry], compacting: Bool = false) -> Line {
+    /// `activity` is the host's own line for the row (`SessionMeta.activity`,
+    /// "Queued · waiting for <sibling>"), read for a queued agent.
+    public static func line(status: SessionStatus?, items: [ThreadEntry], compacting: Bool = false, activity: String? = nil) -> Line {
         if isLive(status), compacting { return Line("compacting the context…", tone: .muted) }
+        switch status {
+        case .queued?:
+            let own = activity?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return Line(own.isEmpty ? "Queued" : own, tone: .muted)
+        case .stopped?: return Line("stopped · the harness is gone", tone: .muted)
+        case .paused?: return Line("paused", tone: .muted)
+        default: break
+        }
         if status == .waiting {
             for entry in items.reversed() {
                 switch entry.item {

@@ -14,6 +14,19 @@ import TempCodeContract
         #expect(Fleet.rank(nil) == 3)
     }
 
+    @Test func `a stopped agent ranks beside a failed one and a queued one with the rest`() {
+        #expect(Fleet.rank(.stopped) == 1)
+        #expect(Fleet.rank(.queued) == 3)
+        #expect(Fleet.group(.queued) == .queued)
+        #expect(Fleet.group(.stopped) == .done)
+        #expect(!Fleet.isLive(.queued))
+        #expect(!Fleet.isLive(.stopped))
+        let counts = Fleet.counts([.queued, .queued, .stopped, .running, .done])
+        #expect(counts == Fleet.Counts(working: 1, done: 1, queued: 2, stopped: 1))
+        #expect(!Fleet.counts([.queued, .stopped]).active)
+        #expect(Fleet.Group.allCases.map(\.title) == ["Running", "Waiting", "Queued", "Done"])
+    }
+
     @Test func `sorts by rank then age and keeps unarchived children only`() {
         let list = Fleet.sort([
             meta("b", status: .running, createdAt: 5),
@@ -115,6 +128,99 @@ import TempCodeContract
         #expect(Fleet.sections([meta("a", status: .waiting)]).map(\.group) == [.waiting])
         #expect(Fleet.group(.paused) == .done)
         #expect(Fleet.group(nil) == .done)
+    }
+
+    @Test func `sections put queued between waiting and done, and a stopped agent first in done`() {
+        let agents = [
+            meta("done", status: .done, createdAt: 1),
+            meta("stop", status: .stopped, createdAt: 9),
+            meta("q2", status: .queued, createdAt: 7),
+            meta("run", status: .running, createdAt: 2),
+            meta("q1", status: .queued, createdAt: 3),
+            meta("wait", status: .waiting, createdAt: 4),
+            meta("fail", status: .error, createdAt: 5)
+        ]
+        let sections = Fleet.sections(agents)
+        #expect(sections.map(\.group) == [.running, .waiting, .queued, .done])
+        #expect(sections[2].agents.map(\.id) == ["q1", "q2"])
+        #expect(sections[3].agents.map(\.id) == ["fail", "stop", "done"])
+        #expect(Fleet.sections([meta("a", status: .queued), meta("b", status: .stopped)]).map(\.group) == [.queued, .done])
+    }
+
+    @Test func `the orchestrator line names stopped agents, lets failed win, and waits on a queued one`() {
+        #expect(Fleet.orchestratorLine(status: .idle, counts: Fleet.Counts(done: 2, stopped: 1)) == "Done, one agent stopped")
+        #expect(Fleet.orchestratorLine(status: .idle, counts: Fleet.Counts(stopped: 3)) == "Done, 3 agents stopped")
+        #expect(Fleet.orchestratorLine(status: .idle, counts: Fleet.Counts(failed: 1, stopped: 2)) == "Done, one agent failed")
+        #expect(Fleet.orchestratorLine(status: .idle, counts: Fleet.Counts(queued: 1)) == "Waiting on its subagents")
+        #expect(Fleet.orchestratorLine(status: .idle, counts: Fleet.Counts(waiting: 1, queued: 1)) == "A subagent needs you")
+        #expect(Fleet.orchestratorLine(status: .idle, counts: Fleet.Counts(done: 1, queued: 1, failed: 1)) == "Waiting on its subagents")
+        #expect(Fleet.orchestratorLine(status: .stopped, counts: Fleet.Counts(working: 2)) == "Stopped")
+        #expect(Fleet.orchestratorLine(status: .queued, counts: Fleet.Counts()) == "Queued")
+    }
+
+    @Test func `the line reads the host activity while queued and names a stopped or paused harness`() {
+        let tool = item(toolItem(2, name: "Grep", input: ["pattern": .string("foo")]))
+        #expect(Fleet.line(status: .queued, items: [tool], activity: "Queued · waiting for Port module 3") == Fleet.Line("Queued · waiting for Port module 3", tone: .muted))
+        #expect(Fleet.line(status: .queued, items: [tool]) == Fleet.Line("Queued", tone: .muted))
+        #expect(Fleet.line(status: .queued, items: [], activity: "  ") == Fleet.Line("Queued", tone: .muted))
+        #expect(Fleet.line(status: .stopped, items: [tool], activity: "ignored") == Fleet.Line("stopped · the harness is gone", tone: .muted))
+        #expect(Fleet.line(status: .paused, items: [tool]) == Fleet.Line("paused", tone: .muted))
+        // The activity argument changes nothing for the other states.
+        #expect(Fleet.line(status: .running, items: [tool], activity: "x") == Fleet.Line("Grep · foo", tone: .muted))
+        #expect(Fleet.line(status: .idle, items: [item(textItem(1, "Done."))], activity: "x") == Fleet.Line("Done.", tone: .muted))
+    }
+
+    @Test func `elapsed is nothing while queued and the frozen time once paused or stopped`() {
+        #expect(Fleet.elapsedMs(meta("a", status: .queued, createdAt: 1_000, updatedAt: 9_000), now: 50_000) == nil)
+        #expect(Fleet.elapsedMs(meta("a", status: .paused, createdAt: 1_000, updatedAt: 9_000, frozenActiveElapsed: 4_200), now: 50_000) == 4_200)
+        #expect(Fleet.elapsedMs(meta("a", status: .stopped, createdAt: 1_000, updatedAt: 9_000, frozenActiveElapsed: 300), now: 50_000) == 300)
+        #expect(Fleet.elapsedMs(meta("a", status: .stopped, createdAt: 1_000, updatedAt: 9_000), now: 50_000) == 8_000)
+        #expect(Fleet.elapsedMs(meta("a", status: .paused, createdAt: 1_000, updatedAt: 2_000), now: 50_000) == nil)
+        // Live and settled rows ignore the frozen time.
+        #expect(Fleet.elapsedMs(meta("a", status: .running, createdAt: 1_000, frozenActiveElapsed: 5), now: 4_500) == 3_500)
+        #expect(Fleet.elapsedMs(meta("a", status: .done, createdAt: 1_000, updatedAt: 9_000, frozenActiveElapsed: 5), now: 50_000) == 8_000)
+    }
+
+    @Test func `gather unions the children of every host, the root host first, and marks the remote ones`() {
+        let box = Fleet.Host(id: "box", name: "The box", sessions: [
+            meta("root"),
+            meta("b1", parentId: "root", status: .idle, createdAt: 5),
+            meta("b2", parentId: "root", status: .running, createdAt: 6),
+            meta("gone", parentId: "root", archived: true, createdAt: 1),
+            meta("other", parentId: "elsewhere", status: .waiting)
+        ], reachable: true)
+        let mac = Fleet.Host(id: "mac", name: "Mac", sessions: [
+            meta("m1", parentId: "root", status: .waiting, createdAt: 7),
+            meta("b1", parentId: "root", status: .idle, createdAt: 5)
+        ], reachable: false)
+        let agents = Fleet.gather(rootId: "root", rootHost: "box", hosts: [mac, box])
+        #expect(agents.map(\.id) == ["mac:m1", "box:b2", "box:b1", "mac:b1"])
+        #expect(agents.map(\.remote) == [true, false, false, true])
+        #expect(agents.map(\.environmentId) == ["mac", "box", "box", "mac"])
+        // The same list twice yields each agent once.
+        #expect(Fleet.gather(rootId: "root", rootHost: "box", hosts: [box, box]).map(\.id) == ["box:b2", "box:b1"])
+        #expect(Fleet.gather(rootId: "root", rootHost: "box", hosts: []).isEmpty)
+        // A root host not in the list still works: everything is remote.
+        #expect(Fleet.gather(rootId: "root", rootHost: "phone", hosts: [box]).map(\.remote) == [true, true])
+        let sections = Fleet.sections(agents)
+        #expect(sections.map(\.group) == [.running, .waiting, .done])
+        #expect(sections[0].agents.map(\.id) == ["box:b2"])
+        #expect(sections[2].agents.map(\.id) == ["box:b1", "mac:b1"])
+        #expect(Fleet.sections([Fleet.Agent]()).isEmpty)
+    }
+
+    @Test func `unpaired counts the spawned events naming a host this phone lacks`() {
+        let spawned = rows([
+            .agentSpawned(AgentSpawnedEvent(childSessionId: "a", environmentId: "mac")),
+            .agentSpawned(AgentSpawnedEvent(childSessionId: "b", environmentId: "mac")),
+            .agentSpawned(AgentSpawnedEvent(childSessionId: "c", environmentId: nil)),
+            .agentSpawned(AgentSpawnedEvent(childSessionId: "d", environmentId: "box")),
+            user("hi")
+        ])
+        #expect(Fleet.unpaired(rows: spawned, paired: ["box"]) == 2)
+        #expect(Fleet.unpaired(rows: spawned, paired: ["box", "mac"]) == 0)
+        #expect(Fleet.unpaired(rows: spawned, paired: []) == 3)
+        #expect(Fleet.unpaired(rows: [], paired: []) == 0)
     }
 
     @Test func `the orchestrator line follows its status, then its fleet`() {
