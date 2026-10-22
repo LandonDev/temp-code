@@ -1,17 +1,25 @@
-import { existsSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, statSync } from 'node:fs'
 import { LIVE_STATUSES } from '@shared/session-lifecycle'
 import { isAbsolute, join } from 'node:path'
 import type { ServerPush } from '@shared/contract'
 import {
+  CROSS_HOST_ATTACHMENTS_MAX,
+  CROSS_HOST_CALL_MS,
+  CROSS_HOST_DEFAULT_MAX_THREADS,
+  CROSS_HOST_MAX_THREADS_CAP,
+  CROSS_HOST_MAX_THREADS_PREFIX,
   CROSS_HOST_OFFER,
   CROSS_HOST_REPLY_MAX,
   CROSS_HOST_ROW_TEXT_MAX,
   CrossHostCallerSchema,
+  ThreadAdoptArgsSchema,
   ThreadAnswerArgsSchema,
+  ThreadArchiveArgsSchema,
   ThreadCheckArgsSchema,
   ThreadEventsArgsSchema,
   ThreadInterruptArgsSchema,
   ThreadListArgsSchema,
+  ThreadPauseArgsSchema,
   ThreadSendArgsSchema,
   ThreadSpawnArgsSchema,
   ThreadStartArgsSchema,
@@ -19,6 +27,8 @@ import {
   isCrossHostPeerMethod,
   type CrossHostCallParams,
   type CrossHostCaller,
+  type CrossHostLanding,
+  type CrossHostLandingResult,
   type CrossHostPeerMethod,
   type CrossHostThreadState,
   type ThreadCheckResult,
@@ -39,31 +49,43 @@ import {
   waitForSettled,
   worktreeFor
 } from '../orchestration'
-import { stripSlash, type HistoryMapping } from '../pathMap'
+import { attachmentDirsOf } from '../attachmentDir'
+import { pushBranch as pushBranchToOrigin } from '../mergeBranch'
+import { remapper, stripSlash, type HistoryMapping } from '../pathMap'
 import type { SessionRegistry } from '../sessions'
+import type { HostTransport } from './hostLinks'
 import { servePeerCall, type LinkRequest } from './peerCalls'
 
 /**
- * The Mac side of threads started from another host (docs/box.md "Starting
- * a thread on the Mac from the box"). A box thread's thread.* call arrives
- * as a `peer.call` push on the link this Mac's main process holds to that
- * box (the same reverse RPC the Mac bridge uses, remote/peerCalls.ts), and
- * this Mac runs it against its own registry exactly as the local app tools
- * would: the thread is an ordinary thread here, listed under This Mac the
- * moment it is created, with the box thread's permission.
+ * The serving side of threads started from another host (docs/box.md
+ * "Threads across hosts"). Another host's thread.* call arrives either as
+ * a `peer.call` push on the link this host's main process holds to it (the
+ * Mac serving the box, the reverse RPC the Mac bridge uses,
+ * remote/peerCalls.ts) or as an ordinary admin request on this host's
+ * listener from the socket that host registered (the box serving the Mac);
+ * `handle` serves both against this registry exactly as the local app
+ * tools would: the thread is an ordinary thread here, listed under this
+ * host the moment it is created, with the calling thread's permission.
  *
  *  - Only a saved host may call, and every later call must name a thread
- *    this host started or spawned here (`crossHost.owner.<sessionId>`): a
- *    box never reaches a thread of this Mac's own or another host's.
- *  - The box names where it works (its project cwd); the Mac maps that
- *    onto its own checkout through the inverse of its path map (the one
- *    the harness sync and the history import share) and its work root.
- *    When nothing is there, the thread starts in the Mac's work root and
- *    the result says so.
- *  - A spawned agent carries the box thread's id as its parentId, so this
- *    Mac's fleet view shows it under the box thread it lists over the
- *    link, and a settle is reported back to the box (`crossHost.settled`,
- *    which wakes the box thread the way a local child's settle would).
+ *    that host started or spawned here (`crossHost.owner.<sessionId>`): a
+ *    host never reaches a thread of this host's own or another host's.
+ *  - The caller names where it works (its project cwd); this host maps
+ *    that onto its own checkout through its path map (the one the harness
+ *    sync and the history import share: Mac paths → box paths, read in
+ *    both directions, since a Mac path never matches the box side and the
+ *    other way round) and the two work roots. When nothing is there, the
+ *    thread starts in this host's work root and the result says so.
+ *  - A spawned agent carries the calling thread's id as its parentId, so
+ *    this host's fleet view shows it under the thread it lists over the
+ *    link, and a settle is reported back (`crossHost.settled`, which wakes
+ *    the calling thread the way a local child's settle would). A batch
+ *    thread's merge_branch here asks its owner before the fast-forward
+ *    (`crossHost.landing`): under all-at-once the branch is pushed to
+ *    origin and held for the owner's end; otherwise the landing is
+ *    reported after the merge so the owner's land step fetches it.
+ *  - Admission: the Mac bridge's thread cap when this host has one
+ *    (`admit`), else this host's own `crossHost.maxThreads.<envId>`.
  */
 
 export const OWNER_PREFIX = 'crossHost.owner.'
@@ -92,11 +114,14 @@ export interface CrossHostThreadsDeps {
     | 'onMeta'
     | 'listProjects'
     | 'list'
-  >
+  > &
+    Partial<Pick<SessionRegistry, 'pauseRun' | 'resumePausedRun' | 'setArchived' | 'setBatchMembership'>>
   /** The saved hosts (remote.environments), by id and name. */
   environments: () => { id: string; name: string }[]
-  /** How to send on the link to a host, while it is up. */
+  /** How to send on the link to a host, while it is up: the reply path of a `peer.call` served here. */
   link: (envId: string) => LinkRequest | null
+  /** How a report reaches the owner of a thread here, whichever way its socket runs (remote/hostLinks.ts); absent: the link alone. */
+  links?: HostTransport
   /** This Mac's path map: its own paths → the box's (remote/harnessSync.ts pathMap). */
   pathMap: () => HistoryMapping
   /** Where this Mac's checkouts live (workRoot.ts). */
@@ -110,6 +135,10 @@ export interface CrossHostThreadsDeps {
    * tool's error, nothing is queued.
    */
   admit?: (envId: string) => { ok: boolean; reason?: string }
+  /** The directories a thread's attachments may sit in (attachmentDir.ts); tests pass their own. */
+  attachmentDirs?: (meta: SessionMeta) => string[]
+  /** Push a branch to origin before it is held for the owner's end (mergeBranch.ts). */
+  pushBranch?: (cwd: string, branch: string) => Promise<void>
 }
 
 const isDir = (path: string): boolean => {
@@ -148,6 +177,78 @@ export function macPathFor(
     if (root !== '/' && under(clean, root)) return join(stripSlash(macWorkRoot), clean.slice(root.length))
   }
   return null
+}
+
+/**
+ * A Mac path on the box: the map's own direction (Mac sources → box
+ * destinations, longest first), else `<boxWorkRoot>/<rest>` under this
+ * host's work root, else nothing. The mirror of macPathFor.
+ */
+export function boxPathFor(
+  macPath: string,
+  mapping: HistoryMapping,
+  boxWorkRoot: string,
+  macWorkRoot?: string
+): string | null {
+  if (!isAbsolute(macPath)) return null
+  const clean = stripSlash(macPath)
+  const mapped = remapper(mapping).path(clean)
+  if (mapped !== clean) return mapped
+  if (macWorkRoot) {
+    const root = stripSlash(macWorkRoot)
+    const under = clean === root || clean.startsWith(root === '/' ? '/' : root + '/')
+    if (root !== '/' && under) return join(stripSlash(boxWorkRoot), clean.slice(root.length))
+  }
+  return null
+}
+
+/**
+ * Where a caller's path lands on this host: the inverse map (a box path
+ * on the Mac), else the forward map (a Mac path on the box), else the
+ * work-root fallback, the first that exists; null when none does. A path
+ * matches only its own side of the map, so both directions are safe to try.
+ */
+export function hostPathFor(
+  callerPath: string,
+  mapping: HistoryMapping,
+  myWorkRoot: string,
+  callerWorkRoot: string | undefined,
+  exists: (path: string) => boolean
+): { path: string; exists: boolean } | null {
+  const candidates = [
+    macPathFor(callerPath, mapping, myWorkRoot, callerWorkRoot),
+    boxPathFor(callerPath, mapping, myWorkRoot, callerWorkRoot)
+  ].filter((p): p is string => !!p)
+  if (!candidates.length) return null
+  const found = candidates.find((p) => exists(p))
+  return found ? { path: stripSlash(found), exists: true } : { path: candidates[0], exists: false }
+}
+
+/** The files under a thread's attachment directories, relative to none (absolute), newest last, capped. */
+export function listAttachments(dirs: readonly string[], max = CROSS_HOST_ATTACHMENTS_MAX): string[] {
+  const out: string[] = []
+  const walk = (dir: string, depth: number): void => {
+    if (out.length >= max || depth > 4) return
+    let names: string[]
+    try {
+      names = readdirSync(dir)
+    } catch {
+      return
+    }
+    for (const name of names.sort()) {
+      if (out.length >= max) return
+      const path = join(dir, name)
+      try {
+        const st = statSync(path)
+        if (st.isDirectory()) walk(path, depth + 1)
+        else if (st.isFile() && !name.startsWith('.')) out.push(path)
+      } catch {
+        /* gone */
+      }
+    }
+  }
+  for (const dir of dirs) walk(dir, 0)
+  return out
 }
 
 /** The long strings of an event cut to the wire bound; nothing else changes. */
@@ -205,11 +306,27 @@ export class CrossHostThreads {
       .filter((m) => LIVE_STATUSES.has(m.status) && this.ownerOf(m.id) === envId).length
   }
 
-  /** The thread cap, before a start or spawn. */
+  /** Threads a host may have live here at once when this host has no Mac bridge cap: `crossHost.maxThreads.<envId>`, default 4. */
+  maxThreadsOf(envId: string): number {
+    const raw = this.deps.store.getSetting(`${CROSS_HOST_MAX_THREADS_PREFIX}${envId}`)
+    const n = raw === null ? NaN : Number(raw)
+    if (!Number.isInteger(n) || n < 0) return CROSS_HOST_DEFAULT_MAX_THREADS
+    return Math.min(n, CROSS_HOST_MAX_THREADS_CAP)
+  }
+
+  /** The thread cap, before a start or spawn: the Mac bridge's when given, else this host's own. */
+  admitThread(envId: string): { ok: boolean; reason?: string } {
+    if (this.deps.admit) return this.deps.admit(envId)
+    const max = this.maxThreadsOf(envId)
+    const live = this.liveThreadsOf(envId)
+    if (live < max) return { ok: true }
+    const name = this.deps.environments().find((e) => e.id === envId)?.name ?? envId
+    return { ok: false, reason: `this host runs ${live} of at most ${max} threads for ${name} already (crossHost.maxThreads.${envId}); wait for one to finish` }
+  }
+
   private admitted(caller: CrossHostCaller): void {
-    const verdict = this.deps.admit?.(caller.environmentId)
-    if (verdict && !verdict.ok)
-      throw new Error(verdict.reason ?? 'the Mac takes no more threads from this host right now')
+    const verdict = this.admitThread(caller.environmentId)
+    if (!verdict.ok) throw new Error(verdict.reason ?? 'this host takes no more threads from that host right now')
   }
 
   private startedKey(caller: CrossHostCaller): string {
@@ -230,6 +347,17 @@ export class CrossHostThreads {
     this.deps.store.setSetting(`${OWNER_PREFIX}${sessionId}`, caller.environmentId)
     const list = this.startedBy(caller)
     if (!list.includes(sessionId)) this.deps.store.setSetting(this.startedKey(caller), JSON.stringify([...list, sessionId].slice(-200)))
+  }
+
+  /**
+   * A thread.* request on this host's listener (the Mac asking the box over
+   * its own link): served by the same handler, the caller being the
+   * environment the socket registered as.
+   */
+  handleRequest(method: string, params: unknown, from: string | null): Promise<unknown> | null {
+    if (!isCrossHostPeerMethod(method)) return null
+    if (!from) return Promise.reject(new Error(`${method} needs a registered peer: send peer.register on this socket first`))
+    return this.handle(method, params as CrossHostCallParams, { from, deadlineAt: Date.now() + CROSS_HOST_CALL_MS })
   }
 
   /** A push from a host: a thread.* peer.call is served and answered on the same link. */
@@ -290,11 +418,13 @@ export class CrossHostThreads {
         const meta = this.own(caller, a.sessionId)
         const all = this.deps.registry.eventsAfter(a.sessionId, a.afterSeq ?? 0)
         const rows = all.slice(0, a.limit ?? 200)
+        const dirs = (this.deps.attachmentDirs ?? ((m: SessionMeta) => attachmentDirsOf(m)))(meta)
         const result: ThreadEventsResult = {
           sessionId: a.sessionId,
           rows: rows.map((r) => ({ seq: r.seq, ts: r.ts, event: trimEvent(r.event as unknown as Record<string, unknown>) })),
           lastSeq: all.length ? all[all.length - 1].seq : (a.afterSeq ?? 0),
-          status: meta.status
+          status: meta.status,
+          attachments: listAttachments(dirs)
         }
         return result
       }
@@ -332,6 +462,56 @@ export class CrossHostThreads {
         line(`answered ${a.requestId} on ${a.sessionId}`)
         return { ok: true, kind: 'question' }
       }
+      case 'thread.pause': {
+        const a = ThreadPauseArgsSchema.parse(args)
+        this.own(caller, a.sessionId)
+        if (!this.deps.registry.pauseRun) throw new Error('this host cannot pause threads over the link')
+        await this.deps.registry.pauseRun(a.sessionId)
+        line(`paused ${a.sessionId}`)
+        return { ok: true }
+      }
+      case 'thread.resume': {
+        const a = ThreadPauseArgsSchema.parse(args)
+        this.own(caller, a.sessionId)
+        if (!this.deps.registry.resumePausedRun) throw new Error('this host cannot resume threads over the link')
+        await this.deps.registry.resumePausedRun(a.sessionId)
+        line(`resumed ${a.sessionId}`)
+        return { ok: true }
+      }
+      case 'thread.archive': {
+        const a = ThreadArchiveArgsSchema.parse(args)
+        const meta = this.own(caller, a.sessionId)
+        if (!this.deps.registry.setArchived) throw new Error('this host cannot archive threads over the link')
+        // setArchived stops a live thread's tree first, as the fleet's archive does.
+        await this.deps.registry.setArchived(meta.id, true)
+        line(`archived ${a.sessionId}`)
+        return { ok: true }
+      }
+      case 'thread.adopt': {
+        const a = ThreadAdoptArgsSchema.parse(args)
+        const meta = this.deps.registry.get(a.sessionId)
+        const owner = this.ownerOf(a.sessionId)
+        const why = !meta
+          ? 'unknown thread'
+          : meta.parentId
+            ? 'it is a subagent'
+            : meta.isMaster
+              ? 'it is a master thread'
+              : meta.archived
+                ? 'it is archived'
+                : meta.masterId && meta.masterId !== a.masterId
+                  ? `it is in the batch of ${meta.masterId}`
+                  : owner && owner !== caller.environmentId
+                    ? `it belongs to a thread on ${this.deps.environments().find((e) => e.id === owner)?.name ?? owner}`
+                    : null
+        if (why) throw new Error(why)
+        if (!this.deps.registry.setBatchMembership) throw new Error('this host cannot adopt threads over the link')
+        if (meta!.masterId !== a.masterId) this.deps.registry.setBatchMembership(a.sessionId, a.masterId)
+        this.remember(caller, a.sessionId)
+        this.lastStatus.set(a.sessionId, meta!.status)
+        line(`adopted ${a.sessionId} into the batch of ${a.masterId}`)
+        return { ok: true, ...this.stateOf(this.deps.registry.get(a.sessionId) ?? meta!) }
+      }
     }
   }
 
@@ -344,19 +524,25 @@ export class CrossHostThreads {
     return meta
   }
 
-  /** Where a thread for a box path works here, and the project that is, if any. */
-  private place(boxCwd: string, boxWorkRoot?: string): { cwd: string; projectId: string | null; cwdNote?: string } {
+  /** The caller's path on this host, when a mapping names one (whether or not it exists). */
+  private mapPath(callerPath: string, callerWorkRoot?: string): string | null {
+    const exists = this.deps.exists ?? isDir
+    return hostPathFor(callerPath, this.deps.pathMap(), stripSlash(this.deps.workRoot()), callerWorkRoot, exists)?.path ?? null
+  }
+
+  /** Where a thread for a caller's path works here, and the project that is, if any. */
+  private place(callerCwd: string, callerWorkRoot?: string): { cwd: string; projectId: string | null; cwdNote?: string } {
     const exists = this.deps.exists ?? isDir
     const root = stripSlash(this.deps.workRoot())
-    const mapped = macPathFor(boxCwd, this.deps.pathMap(), root, boxWorkRoot)
-    const cwd = mapped && exists(mapped) ? stripSlash(mapped) : null
+    const mapped = hostPathFor(callerCwd, this.deps.pathMap(), root, callerWorkRoot, exists)
+    const cwd = mapped?.exists ? mapped.path : null
     const projectOf = (path: string): string | null =>
       this.deps.registry.listProjects().find((p) => stripSlash(p.cwd) === path)?.id ?? null
     if (cwd) return { cwd, projectId: projectOf(cwd) }
     return {
       cwd: root,
       projectId: projectOf(root),
-      cwdNote: `the Mac has no checkout for ${boxCwd}${mapped ? ` (looked for ${mapped})` : ''}; the thread starts in the Mac's work root ${root}`
+      cwdNote: `this host has no checkout for ${callerCwd}${mapped ? ` (looked for ${mapped.path})` : ''}; the thread starts in its work root ${root}`
     }
   }
 
@@ -364,7 +550,7 @@ export class CrossHostThreads {
     const placed = this.place(args.cwd, args.workRoot)
     const planPath =
       args.planPath && (args.threadType === 'implementation' || args.threadType === 'orchestration')
-        ? (macPathFor(args.planPath, this.deps.pathMap(), stripSlash(this.deps.workRoot()), args.workRoot) ?? undefined)
+        ? (this.mapPath(args.planPath, args.workRoot) ?? undefined)
         : undefined
     this.admitted(caller)
     const thread = await this.deps.registry.create({
@@ -493,24 +679,90 @@ export class CrossHostThreads {
     this.settleTimers.set(meta.id, timer)
   }
 
-  private async reportSettle(owner: string, meta: SessionMeta): Promise<void> {
+  /** One report to the owner of a thread here, whichever way its socket runs. */
+  private reportTo<T>(owner: string, method: 'crossHost.settled' | 'crossHost.landing', params: unknown): Promise<T> {
+    if (this.deps.links) return this.deps.links.call<T>(owner, method, params, CROSS_HOST_CALL_MS)
     const request = this.deps.link(owner)
-    if (!request) return
+    if (!request) return Promise.reject(new Error(`${owner} is not linked`))
+    return request(method, params, { timeoutMs: CROSS_HOST_CALL_MS }) as Promise<T>
+  }
+
+  private async reportSettle(owner: string, meta: SessionMeta): Promise<void> {
     const report = this.report(meta, true)
     try {
-      await request('crossHost.settled', {
+      await this.reportTo(owner, 'crossHost.settled', {
         from: this.deps.environmentId,
         sessionId: meta.id,
-        parentSessionId: meta.parentId,
+        // The thread that spawned it, else the one that started it: the owner's record sits under that thread.
+        parentSessionId: meta.parentId ?? meta.startedBy ?? null,
         title: meta.title,
         status: meta.status,
         reply: report.reply.slice(-600),
         pending: report.pending
       })
     } catch (err) {
-      // An older box has no crossHost.settled; its wait still sees the state.
+      // An older host has no crossHost.settled, or the link is down; a wait still sees the state.
       this.log(`${owner}: settle of ${meta.id} not reported (${err instanceof Error ? err.message : String(err)})`)
     }
+  }
+
+  // ── a batch thread here landing (merge_branch on this host) ────────
+
+  /** True when a thread here belongs to another host's batch: its owner decides its landing. */
+  private remoteBatchOwner(session: SessionMeta): string | null {
+    const owner = this.ownerOf(session.id)
+    return owner && session.masterId ? owner : null
+  }
+
+  /**
+   * merge_branch's hold hook for a thread of another host's batch: the
+   * branch goes to origin first, then the owner is asked; under
+   * all-at-once the answer is the HELD text the thread reads, else null
+   * (merge now). A local thread answers null (the local engine decides).
+   * An owner out of reach refuses the merge rather than landing blind.
+   */
+  async landingHold(session: SessionMeta, landing: { cwd: string; branch: string; target: string; subjects: string[] }): Promise<string | null> {
+    const owner = this.remoteBatchOwner(session)
+    if (!owner) return null
+    await (this.deps.pushBranch ?? pushBranchToOrigin)(landing.cwd, landing.branch)
+    const params: CrossHostLanding = {
+      from: this.deps.environmentId,
+      sessionId: session.id,
+      masterId: session.masterId!,
+      phase: 'ask',
+      branch: landing.branch,
+      target: landing.target,
+      subjects: landing.subjects
+    }
+    let verdict: CrossHostLandingResult
+    try {
+      verdict = await this.reportTo<CrossHostLandingResult>(owner, 'crossHost.landing', params)
+    } catch (err) {
+      throw new Error(`the master's host (${this.deps.environments().find((e) => e.id === owner)?.name ?? owner}) could not be asked about this landing: ${err instanceof Error ? err.message : String(err)}`)
+    }
+    if (!verdict.hold) return null
+    this.log(`${owner}: ${landing.branch} of ${session.id} held for the batch's end (pushed to origin)`)
+    return `HELD: the batch lands all at once; the master (on ${this.deps.environments().find((e) => e.id === owner)?.name ?? owner}) will merge ${landing.branch} from origin when every thread is done. Your work is recorded; you are done with it.`
+  }
+
+  /** merge_branch's landed hook for a thread of another host's batch: the owner's land step counts it and fetches origin. */
+  landingDone(session: SessionMeta, landed: { branch: string; target: string; sha: string; subjects: string[] }): boolean {
+    const owner = this.remoteBatchOwner(session)
+    if (!owner) return false
+    const params: CrossHostLanding = {
+      from: this.deps.environmentId,
+      sessionId: session.id,
+      masterId: session.masterId!,
+      phase: 'landed',
+      branch: landed.branch,
+      target: landed.target,
+      subjects: landed.subjects,
+      sha: landed.sha
+    }
+    void this.reportTo(owner, 'crossHost.landing', params).catch((err: unknown) => {
+      this.log(`${owner}: landing of ${session.id} not reported (${err instanceof Error ? err.message : String(err)})`)
+    })
+    return true
   }
 }
 

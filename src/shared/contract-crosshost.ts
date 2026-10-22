@@ -3,19 +3,24 @@ import { AGENT_TYPES } from './catalog'
 import { ThreadTypeSchema } from './domain'
 import { PermissionPolicySchema, type SessionStatus } from './events'
 
-// Threads on another host (docs/box.md "Starting a thread on the Mac from
-// the box"). A thread on the box starts a thread, or spawns a subagent, on
-// the Mac and supervises it from there, so work that needs Xcode, the
-// simulator or a Mac app runs where those are. The transport is the Mac
-// bridge's reverse RPC (contract-macbridge.ts, remote/peerCalls.ts): the
-// Mac registers the `threads` offer on its admin link to the box and the
-// box sends `peer.call` pushes naming the thread.* methods below; the Mac
-// serves them against its own registry (remote/crossHostThreads.ts) and
-// the box routes the app tools to them (crossHostAgents.ts).
+// Threads on another host (docs/box.md "Threads across hosts"). A thread
+// on either host starts a thread, or spawns a subagent, on the other and
+// supervises it from there, so work that needs Xcode, the simulator or a
+// Mac app runs on the Mac and work that needs the box's checkouts runs
+// there. Two transports carry the same thread.* methods, and one handler
+// serves both (remote/crossHostThreads.ts):
 //
-// None of these methods is a contract request: they ride only inside
-// `peer.call`, whose register/reply/chunk frames are admin, so a remote key
-// never names them. The app tools that reach them stay local.
+//  - box → Mac: the Mac bridge's reverse RPC (contract-macbridge.ts,
+//    remote/peerCalls.ts). The Mac registers the `threads` offer on its
+//    admin link to the box and the box sends `peer.call` pushes naming
+//    the methods below.
+//  - Mac → box: the methods below as ordinary admin requests on the box's
+//    listener, sent on the Mac's own peer link (remote/peers.ts); the
+//    caller is the environment id that link registered with, never what
+//    the params say.
+//
+// The app tools that reach them stay local (crossHostAgents.ts routes a
+// `<host>:<id>` agent id to whichever transport reaches that host).
 
 /** The offer a Mac makes in `peer.register` when it will run threads for a host. */
 export const CROSS_HOST_OFFER = 'threads'
@@ -29,7 +34,11 @@ export const CROSS_HOST_PEER_METHODS = [
   'thread.check',
   'thread.wait',
   'thread.interrupt',
-  'thread.answer'
+  'thread.answer',
+  'thread.pause',
+  'thread.resume',
+  'thread.archive',
+  'thread.adopt'
 ] as const
 export type CrossHostPeerMethod = (typeof CROSS_HOST_PEER_METHODS)[number]
 export const isCrossHostPeerMethod = (m: string): m is CrossHostPeerMethod =>
@@ -157,6 +166,16 @@ export const ThreadWaitArgsSchema = z.object({
   deadlineMs: z.number().int().min(0).max(CROSS_HOST_WAIT_WINDOW_MS)
 })
 export const ThreadInterruptArgsSchema = z.object({ sessionId: z.string().min(1).max(200) })
+/** thread.pause / thread.resume: a master's cascade reaching a batch thread on this host. */
+export const ThreadPauseArgsSchema = z.object({ sessionId: z.string().min(1).max(200) })
+/** thread.archive: the batch's archive reaching a thread here; a live one is stopped first. */
+export const ThreadArchiveArgsSchema = z.object({ sessionId: z.string().min(1).max(200) })
+/** thread.adopt: an unarchived root of this host, in no batch, joins the caller's batch (`batch.adopt` with a `<envId>:<sessionId>` id). */
+export const ThreadAdoptArgsSchema = z.object({
+  sessionId: z.string().min(1).max(200),
+  /** The master on the caller's host. */
+  masterId: z.string().min(1).max(200)
+})
 export const ThreadAnswerArgsSchema = z.object({
   sessionId: z.string().min(1).max(200),
   requestId: z.string().min(1).max(200),
@@ -173,6 +192,26 @@ export type ThreadCheckArgs = z.infer<typeof ThreadCheckArgsSchema>
 export type ThreadWaitArgs = z.infer<typeof ThreadWaitArgsSchema>
 export type ThreadInterruptArgs = z.infer<typeof ThreadInterruptArgsSchema>
 export type ThreadAnswerArgs = z.infer<typeof ThreadAnswerArgsSchema>
+export type ThreadPauseArgs = z.infer<typeof ThreadPauseArgsSchema>
+export type ThreadArchiveArgs = z.infer<typeof ThreadArchiveArgsSchema>
+export type ThreadAdoptArgs = z.infer<typeof ThreadAdoptArgsSchema>
+
+/** The args schema of each thread.* method. */
+export const THREAD_ARGS_SCHEMAS = {
+  'thread.start': ThreadStartArgsSchema,
+  'thread.spawn': ThreadSpawnArgsSchema,
+  'thread.send': ThreadSendArgsSchema,
+  'thread.list': ThreadListArgsSchema,
+  'thread.events': ThreadEventsArgsSchema,
+  'thread.check': ThreadCheckArgsSchema,
+  'thread.wait': ThreadWaitArgsSchema,
+  'thread.interrupt': ThreadInterruptArgsSchema,
+  'thread.answer': ThreadAnswerArgsSchema,
+  'thread.pause': ThreadPauseArgsSchema,
+  'thread.resume': ThreadPauseArgsSchema,
+  'thread.archive': ThreadArchiveArgsSchema,
+  'thread.adopt': ThreadAdoptArgsSchema
+} as const satisfies Record<CrossHostPeerMethod, z.ZodType>
 
 export type CrossHostArgs =
   | ThreadStartArgs
@@ -184,6 +223,9 @@ export type CrossHostArgs =
   | ThreadWaitArgs
   | ThreadInterruptArgs
   | ThreadAnswerArgs
+  | ThreadPauseArgs
+  | ThreadArchiveArgs
+  | ThreadAdoptArgs
 
 /** `peer.call` params for a thread.* method: the args plus the box thread asking. */
 export interface CrossHostCallParams {
@@ -256,16 +298,36 @@ export interface ThreadEventsResult {
   /** The last seq on the Mac; more rows wait when it is past the last row here. */
   lastSeq: number
   status: SessionStatus
+  /** Files under the thread's attachments directory on its host (screenshots, notes, what a computer-use run saved), at most CROSS_HOST_ATTACHMENTS_MAX. */
+  attachments?: string[]
 }
+/** thread.events names at most this many files of the attachments directory. */
+export const CROSS_HOST_ATTACHMENTS_MAX = 100
 
-/** The alias a model may pass for the host: the thread's Mac, or the only one registered. */
+/** The alias a model may pass for the host: the thread's Mac, or the only one registered here. */
 export const MAC_HOST_ALIAS = 'mac'
+/** The other alias: the only saved host this process holds a link to (the box, from the Mac). */
+export const BOX_HOST_ALIAS = 'box'
 
-// ── the Mac → the box, over the peer link (admin) ────────────────────
+/** Threads another host may have live here at once, when this host has no Mac bridge cap (the box): `crossHost.maxThreads.<envId>`. */
+export const CROSS_HOST_MAX_THREADS_PREFIX = 'crossHost.maxThreads.'
+export const CROSS_HOST_DEFAULT_MAX_THREADS = 4
+export const CROSS_HOST_MAX_THREADS_CAP = 32
 
-/** A thread this Mac runs for the box settled: the box wakes the thread that started it, as a local child's settle would. */
+// ── reports back to the host that asked (admin) ──────────────────────
+// From the host running the thread to the host that started it: an RPC on
+// the owner's listener when the runner holds a link to it (the Mac → the
+// box), else a `peer.call` push down the owner's registered socket (the
+// box → the Mac), served by crossHostAgents.ts onPeerPush.
+
+export const CROSS_HOST_REPORT_METHODS = ['crossHost.settled', 'crossHost.landing'] as const
+export type CrossHostReportMethod = (typeof CROSS_HOST_REPORT_METHODS)[number]
+export const isCrossHostReportMethod = (m: string): m is CrossHostReportMethod =>
+  (CROSS_HOST_REPORT_METHODS as readonly string[]).includes(m)
+
+/** A thread this host runs for another settled: the owner wakes the thread that started it, as a local child's settle would. */
 export const CrossHostSettledSchema = z.object({
-  /** The Mac's environment id. */
+  /** The running host's environment id. */
   from: z.string().min(1).max(200),
   sessionId: z.string().min(1).max(200),
   /** The box thread it was spawned by (null for a thread started with app.startThread). */
@@ -285,6 +347,54 @@ export const CrossHostSettledSchema = z.object({
 })
 export type CrossHostSettled = z.infer<typeof CrossHostSettledSchema>
 
+/**
+ * A batch thread this host runs for another is landing (merge_branch on
+ * this host): `ask` before the fast-forward, which the owner answers
+ * `{ hold: true }` under all-at-once (the branch is already pushed to
+ * origin, the owner merges it from there at the end); `landed` after a
+ * merge that went through, so the owner's land step counts it and fetches.
+ */
+export const CrossHostLandingSchema = z.object({
+  from: z.string().min(1).max(200),
+  sessionId: z.string().min(1).max(200),
+  /** The master on the owner whose batch the thread belongs to. */
+  masterId: z.string().min(1).max(200),
+  phase: z.enum(['ask', 'landed']),
+  branch: z.string().min(1).max(300),
+  target: z.string().min(1).max(300),
+  subjects: z.array(z.string().max(500)).max(200),
+  /** `landed`: the target's commit after the merge. */
+  sha: z.string().max(64).optional()
+})
+export type CrossHostLanding = z.infer<typeof CrossHostLandingSchema>
+export interface CrossHostLandingResult {
+  hold: boolean
+}
+
+const req = <M extends string, P extends z.ZodType>(method: M, params: P) =>
+  z.object({ id: z.string(), method: z.literal(method), params })
+
 export const CrossHostRequestSchemas = [
-  z.object({ id: z.string(), method: z.literal('crossHost.settled'), params: CrossHostSettledSchema })
+  req('crossHost.settled', CrossHostSettledSchema),
+  req('crossHost.landing', CrossHostLandingSchema),
+  // The thread.* methods as requests on a listener (the Mac → the box): the
+  // caller inside `params` must be the environment the socket registered as.
+  req('thread.start', z.object({ caller: CrossHostCallerSchema, args: ThreadStartArgsSchema })),
+  req('thread.spawn', z.object({ caller: CrossHostCallerSchema, args: ThreadSpawnArgsSchema })),
+  req('thread.send', z.object({ caller: CrossHostCallerSchema, args: ThreadSendArgsSchema })),
+  req('thread.list', z.object({ caller: CrossHostCallerSchema, args: ThreadListArgsSchema })),
+  req('thread.events', z.object({ caller: CrossHostCallerSchema, args: ThreadEventsArgsSchema })),
+  req('thread.check', z.object({ caller: CrossHostCallerSchema, args: ThreadCheckArgsSchema })),
+  req('thread.wait', z.object({ caller: CrossHostCallerSchema, args: ThreadWaitArgsSchema })),
+  req('thread.interrupt', z.object({ caller: CrossHostCallerSchema, args: ThreadInterruptArgsSchema })),
+  req('thread.answer', z.object({ caller: CrossHostCallerSchema, args: ThreadAnswerArgsSchema })),
+  req('thread.pause', z.object({ caller: CrossHostCallerSchema, args: ThreadPauseArgsSchema })),
+  req('thread.resume', z.object({ caller: CrossHostCallerSchema, args: ThreadPauseArgsSchema })),
+  req('thread.archive', z.object({ caller: CrossHostCallerSchema, args: ThreadArchiveArgsSchema })),
+  req('thread.adopt', z.object({ caller: CrossHostCallerSchema, args: ThreadAdoptArgsSchema }))
 ] as const
+
+/** What thread.adopt answers: the thread as it stands there, for the caller's record. */
+export interface ThreadAdoptResult extends CrossHostThreadState {
+  ok: true
+}

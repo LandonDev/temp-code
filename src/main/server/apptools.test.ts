@@ -5,7 +5,7 @@ import type { SessionMeta } from '@shared/events'
 import type { SessionRegistry } from './sessions'
 import { DEFAULT_RULES, type OrchestrationRules } from '@shared/rules'
 import { CATALOG } from '@shared/catalog'
-import { appStartThread, bridgeMcpConfig, setAppBridge } from './apptools'
+import { appStartThread, bridgeMcpConfig, remoteDigest, setAppBridge, writtenPathOf } from './apptools'
 import { setOrchestrationRegistry } from './orchestration'
 
 afterEach(() => {
@@ -386,4 +386,30 @@ it('app_start_thread from any other thread stamps no masterId and drops after', 
   })
   expect(created[0].masterId).toBeUndefined()
   expect(created[0].after).toBeUndefined()
+})
+
+it("a remote thread's digest names the host, the files its tool calls wrote and what its attachments directory holds", () => {
+  const host = `env_${'m'.repeat(22)}`
+  const row = (seq: number, event: Record<string, unknown>) => ({ seq, ts: 1, event })
+  const digest = remoteDigest(`${host}:s1`, {
+    sessionId: 's1',
+    status: 'idle',
+    lastSeq: 4,
+    rows: [
+      row(1, { type: 'user-text', text: 'take a screenshot' }),
+      row(2, { type: 'tool-call', name: 'Write', input: { file_path: '/Users/landon/notes.md', content: 'x' } }),
+      row(3, { type: 'tool-call', name: 'Read', input: { file_path: '/Users/landon/other.md' } }),
+      row(4, { type: 'assistant-text', text: 'done' })
+    ],
+    attachments: ['/Users/landon/IdeaProjects/x/.temp-code/attachments/s1/shot.png', '/Users/landon/notes.md']
+  })
+  expect(digest).toContain(`_${host}:s1 on host ${host} · status idle · 4 rows (through seq 4)_`)
+  expect(digest).toContain(`**Files on host ${host}**`)
+  expect(digest.split('\n').filter((l) => l.startsWith('- /'))).toEqual(['- /Users/landon/notes.md', '- /Users/landon/IdeaProjects/x/.temp-code/attachments/s1/shot.png'])
+  expect(digest).toContain('mac_fetch_file')
+  expect(remoteDigest(`${host}:s2`, { sessionId: 's2', status: 'idle', lastSeq: 0, rows: [] })).not.toContain('Files on host')
+  expect(writtenPathOf('Edit', { file_path: '/a' })).toBe('/a')
+  expect(writtenPathOf('Read', { file_path: '/a' })).toBeNull()
+  expect(writtenPathOf('Write', { file_path: 'relative' })).toBeNull()
+  expect(writtenPathOf('screenshot', { path: '/shots/1.png' })).toBe('/shots/1.png')
 })

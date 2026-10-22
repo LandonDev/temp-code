@@ -66,7 +66,7 @@ import type { SessionRegistry } from './sessions'
 import { macToolsHooks } from './macTools'
 import type { CrossHostAgents } from './crossHostAgents'
 import type { ProjectPlans } from './projectPlan'
-import { HOST_PARAM_DESCRIPTION, batchMembershipOf, isMasterSession, toolLine } from './orchestration'
+import { batchMembershipOf, hostParamDescription, isMasterSession, toolLine } from './orchestration'
 import { CROSS_HOST_EVENTS_MAX, type ThreadEventsResult } from '@shared/contract-crosshost'
 
 /**
@@ -184,9 +184,27 @@ export async function appReadThread(
   return digest
 }
 
-/** The rows of a thread on another host as the same kind of digest: dialogue plus one-line tool actions. */
+/** The file a tool call wrote or saved, by the input keys the harnesses use (Write, Edit, apply_patch's path, a screenshot's path). */
+export function writtenPathOf(name: string, input: unknown): string | null {
+  if (!input || typeof input !== 'object') return null
+  const i = input as Record<string, unknown>
+  const key = ['file_path', 'path', 'filePath', 'notebook_path', 'output_path', 'save_path', 'screenshot_path'].find((k) => typeof i[k] === 'string' && (i[k] as string).startsWith('/'))
+  if (!key) return null
+  const writes = /write|edit|save|create|patch|screenshot|notebook|put/i.test(name)
+  return writes ? (i[key] as string) : null
+}
+
+/**
+ * The rows of a thread on another host as the same kind of digest:
+ * dialogue plus one-line tool actions, then the files it left on its host
+ * (what it wrote by tool call, and what sits in its attachments directory:
+ * screenshots, notes), each named with the host, so `mac_fetch_file` or a
+ * thread there can pull them.
+ */
 export function remoteDigest(threadId: string, r: ThreadEventsResult): string {
-  const lines: string[] = [`_${threadId} on its host · status ${r.status} · ${r.rows.length} rows (through seq ${r.lastSeq})_`, '']
+  const host = threadId.slice(0, Math.max(0, threadId.indexOf(':')))
+  const lines: string[] = [`_${threadId} on host ${host} · status ${r.status} · ${r.rows.length} rows (through seq ${r.lastSeq})_`, '']
+  const written: string[] = []
   for (const { event } of r.rows) {
     const e = event as { type?: string; text?: string; delta?: boolean; name?: string; input?: unknown; message?: string; status?: string; parentCallId?: string }
     switch (e.type) {
@@ -196,9 +214,12 @@ export function remoteDigest(threadId: string, r: ThreadEventsResult): string {
       case 'assistant-text':
         if (!e.delta && !e.parentCallId && e.text) lines.push(e.text, '')
         break
-      case 'tool-call':
+      case 'tool-call': {
         if (e.name) lines.push(`- ${toolLine(e.name, e.input)}`)
+        const path = e.name ? writtenPathOf(e.name, e.input) : null
+        if (path && !written.includes(path)) written.push(path)
         break
+      }
       case 'error':
         lines.push(`_error: ${e.message ?? ''}_`, '')
         break
@@ -206,6 +227,11 @@ export function remoteDigest(threadId: string, r: ThreadEventsResult): string {
         if (e.status && e.status !== 'running' && e.status !== 'starting') lines.push(`_status: ${e.status}_`, '')
         break
     }
+  }
+  const files = [...written, ...(r.attachments ?? []).filter((p) => !written.includes(p))]
+  if (files.length) {
+    lines.push('', `**Files on host ${host}** (paths there; a Mac path is fetched with mac_fetch_file, a box path read by a thread on the box):`)
+    for (const f of files) lines.push(`- ${f}`)
   }
   let digest = lines.join('\n')
   if (digest.length > INLINE_DIGEST_MAX_CHARS) digest = `_[earlier turns trimmed]_\n\n…${digest.slice(-INLINE_DIGEST_MAX_CHARS)}`
@@ -597,7 +623,7 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
               'Claude models only: run the thread with the 1M context window. Rejected for models that do not offer it.'
             ),
           projectId: z.string().optional().describe("Defaults to this thread's project"),
-          environmentId: z.string().optional().describe(HOST_PARAM_DESCRIPTION),
+          environmentId: z.string().optional().describe(hostParamDescription()),
           planPath: z
             .string()
             .optional()
@@ -657,7 +683,7 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
             tool(ADOPT_THREAD_TOOL_NAME, ADOPT_THREAD_TOOL_DESCRIPTION, ADOPT_THREAD_SHAPE, async (args) => {
               const b = batches()
               const live = registry?.get(session.id) ?? session
-              return text(b ? b.adoptTool(live, args) : 'refused: batches are not available here')
+              return text(b ? await b.adoptTool(live, args) : 'refused: batches are not available here')
             })
           ]
         : []),

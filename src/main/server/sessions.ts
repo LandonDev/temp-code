@@ -2330,12 +2330,17 @@ export class SessionRegistry {
   private async cascadeBatch(action: 'pause' | 'resume', rootId: string): Promise<void> {
     if (!this.isMaster(rootId)) return
     const ids = batchChildIds(this.store.listSessions(), rootId)
-    if (ids.length === 0) return
+    if (ids.length === 0) {
+      await batches()?.cascade(rootId, action)
+      return
+    }
     const result = await runSessionBatch(action, ids, {
       rootOf: (id) => this.rootSessionOf(id),
       run: (what, id) => (what === 'pause' ? this.pauseTree(id) : this.resumeTree(id))
     })
     for (const f of result.failed) console.log(`[master] ${action} of batch thread ${f.sessionId} failed: ${f.error}`)
+    // The batch's threads on other hosts follow over their links (batch.ts cascade).
+    await batches()?.cascade(rootId, action)
   }
 
   private async resumeTree(rootId: string): Promise<void> {

@@ -3,13 +3,15 @@ import type { ServerFrame } from '@shared/contract'
 import type { MacBridgePush } from '@shared/contract-macbridge'
 import { CROSS_HOST_OFFER, encodeAgentId, type CrossHostCallParams } from '@shared/contract-crosshost'
 import type { SessionMeta } from '@shared/events'
-import { CHILDREN_PREFIX, CrossHostAgents } from './crossHostAgents'
-import { PeerCalls, handlePeerRequest, servePeerCall, type PeerCallHandler, type PeerSocket } from './remote/peerCalls'
+import { CHILDREN_PREFIX, CrossHostAgents, type RemoteLanding } from './crossHostAgents'
+import { HostLinks } from './remote/hostLinks'
+import { PeerCalls, handlePeerRequest, servePeerCall, type LinkRequest, type PeerCallHandler, type PeerSocket } from './remote/peerCalls'
 
 type Call = Extract<MacBridgePush, { push: 'peer.call' }>
 const MAC = `env_${'m'.repeat(22)}`
 const MAC2 = `env_${'n'.repeat(22)}`
 const BOX = `env_${'b'.repeat(22)}`
+const BOX2 = `env_${'x'.repeat(22)}`
 
 const parent = { id: 'box-thread', title: 'Box thread', permission: 'auto', cwd: '/srv/agents/work/temp-code', status: 'running', archived: false, provider: 'claude' } as unknown as SessionMeta
 
@@ -30,11 +32,12 @@ function mac(calls: PeerCalls, envId: string, handler: PeerCallHandler, connecti
   return socket
 }
 
-function setup(opts: { bridged?: string | null } = {}) {
+function setup(opts: { bridged?: string | null; linked?: Record<string, LinkRequest | null>; parent?: SessionMeta; landing?: (l: RemoteLanding) => { hold: boolean } } = {}) {
   const calls = new PeerCalls(BOX, () => {})
   const settings = new Map<string, string>()
   const appended: unknown[] = []
   const reports: unknown[] = []
+  const changed: string[] = []
   const seen: { method: string; params: CrossHostCallParams }[] = []
   let n = 0
   const states = new Map<string, { status: string; title: string }>()
@@ -70,18 +73,23 @@ function setup(opts: { bridged?: string | null } = {}) {
     }
   }
   const socket = mac(calls, MAC, handler, 1)
+  const linked = opts.linked ?? {}
+  const me = opts.parent ?? parent
   const agents = new CrossHostAgents({
     environmentId: BOX,
     store: { getSetting: (k) => settings.get(k) ?? null, setSetting: (k, v) => (v === null ? settings.delete(k) : settings.set(k, v)) },
     sessions: {
-      get: (id) => (id === parent.id ? parent : null),
+      get: (id) => (id === me.id ? me : null),
       append: (_id, event) => appended.push(event),
       deliverAgentReport: (_id, report) => reports.push(report)
     },
-    calls,
+    links: new HostLinks({ calls, offer: CROSS_HOST_OFFER, link: (id) => linked[id] ?? null, linkIds: () => Object.keys(linked) }),
+    link: (id) => linked[id] ?? null,
     macPeerOf: () => opts.bridged ?? null,
-    hostName: (id) => (id === MAC ? 'Landon Mac' : null),
+    hostName: (id) => (id === MAC ? 'Landon Mac' : id === BOX2 ? 'The box' : null),
     workRoot: () => '/srv/agents/work',
+    landing: opts.landing,
+    batchChanged: (id) => changed.push(id),
     log: () => {}
   })
   const settle = (id: string, status = 'idle'): void => {
@@ -89,14 +97,14 @@ function setup(opts: { bridged?: string | null } = {}) {
     waitGate?.()
     waitGate = null
   }
-  return { agents, calls, settings, appended, reports, seen, socket, settle, states }
+  return { agents, calls, settings, appended, reports, seen, socket, settle, states, changed, handler }
 }
 
 describe('CrossHostAgents: which Mac', () => {
   it('an explicit id must be registered with the threads offer; `mac` and nothing mean the bridge peer, else the only Mac', () => {
     const { agents } = setup()
     expect(agents.resolveHost('box-thread', MAC)).toBe(MAC)
-    expect(() => agents.resolveHost('box-thread', MAC2)).toThrow('Mac offline')
+    expect(() => agents.resolveHost('box-thread', MAC2)).toThrow('offline')
     expect(agents.resolveHost('box-thread', 'mac')).toBe(MAC)
     expect(agents.resolveHost('box-thread')).toBe(MAC)
   })
@@ -200,5 +208,177 @@ describe('CrossHostAgents: start, spawn, supervise', () => {
     expect(reports).toHaveLength(1)
     expect(reports[0]).toMatchObject({ agentId, status: 'idle' })
     expect((reports[0] as { text: string }).text).toContain('on host Landon Mac')
+  })
+})
+
+// ── the other direction: a host linked from here, and the batch index ──
+
+const master = { id: 'master-1', title: 'Master', permission: 'auto', cwd: '/srv/agents/work/temp-code', status: 'watching', archived: false, provider: 'claude', isMaster: true, parentId: null, masterId: null } as unknown as SessionMeta
+
+/** A fake box on a link from here: answers thread.* requests the way the box's listener would. */
+function linkedBox(opts: { down?: () => boolean; refuseAdopt?: string } = {}) {
+  const seen: { method: string; params: { caller: { environmentId: string; sessionId: string }; args: Record<string, unknown> } }[] = []
+  const states = new Map<string, { status: string; title: string }>()
+  let n = 0
+  const request: LinkRequest = async (method, params) => {
+    if (opts.down?.()) throw new Error('socket closed')
+    const p = params as (typeof seen)[number]['params']
+    seen.push({ method, params: p })
+    const a = p.args
+    switch (method) {
+      case 'thread.start': {
+        const id = `box${++n}`
+        states.set(id, { status: 'running', title: (a.title as string) ?? 'Started' })
+        return { sessionId: id, title: states.get(id)!.title, cwd: '/srv/agents/work/temp-code', projectId: 'bp1' }
+      }
+      case 'thread.list':
+        return (a.sessionIds as string[]).map((id) => ({ sessionId: id, ...states.get(id), provider: 'claude', model: 'm', agentType: 'implementer', threadType: 'implementation', cwd: '/x', idleForSeconds: 1, parentSessionId: null }))
+      case 'thread.adopt':
+        if (opts.refuseAdopt) throw new Error(opts.refuseAdopt)
+        states.set(a.sessionId as string, { status: 'running', title: 'Loose on the box' })
+        return { ok: true, sessionId: a.sessionId, title: 'Loose on the box', provider: 'codex', model: 'gpt', agentType: 'implementer', threadType: 'chat', status: 'running', cwd: '/x', idleForSeconds: 0, parentSessionId: null }
+      case 'thread.pause':
+      case 'thread.resume':
+      case 'thread.archive':
+      case 'thread.send':
+        return { ok: true }
+      default:
+        throw new Error(`unexpected ${method}`)
+    }
+  }
+  return { request, seen, states }
+}
+
+describe('CrossHostAgents: the Mac asking the box over its own link', () => {
+  it('`box` means the one host linked from here; an id linked from here works too; `mac` still means a host registered here', () => {
+    const box = linkedBox()
+    const { agents } = setup({ linked: { [BOX2]: box.request } })
+    expect(agents.resolveHost('box-thread', 'box')).toBe(BOX2)
+    expect(agents.resolveHost('box-thread', BOX2)).toBe(BOX2)
+    expect(agents.resolveHost('box-thread', 'mac')).toBe(MAC)
+    // Nothing named, two hosts reachable: the refusal names both.
+    expect(() => agents.resolveHost('box-thread')).toThrow('several hosts are linked')
+    expect(agents.hostsOnline()).toEqual([
+      { id: MAC, name: 'Landon Mac', alias: 'mac' },
+      { id: BOX2, name: 'The box', alias: 'box' }
+    ])
+    expect(agents.hostsLine()).toBe(`mac = Landon Mac (${MAC}), box = The box (${BOX2})`)
+  })
+  it('`box` with no link from here, or several, refuses with what to do', () => {
+    const { agents } = setup()
+    expect(() => agents.resolveHost('box-thread', 'box')).toThrow('no host is linked from here')
+    const two = setup({ linked: { [BOX2]: linkedBox().request, [MAC2]: linkedBox().request } })
+    expect(() => two.agents.resolveHost('box-thread', 'box')).toThrow('several hosts are linked from here')
+  })
+  it('startThread on the box goes as a thread.start request on the link with the caller inside, and records the thread', async () => {
+    const box = linkedBox()
+    const { agents, settings } = setup({ linked: { [BOX2]: box.request } })
+    const r = await agents.startThread(parent, 'box', { threadType: 'implementation', provider: 'codex', firstMessage: 'build it', cwd: '/Users/landon/IdeaProjects/temp-code' })
+    expect(r).toMatchObject({ threadId: encodeAgentId(BOX2, 'box1'), host: BOX2, cwd: '/srv/agents/work/temp-code' })
+    expect(box.seen[0]).toMatchObject({ method: 'thread.start', params: { caller: { environmentId: BOX, sessionId: 'box-thread' }, args: { cwd: '/Users/landon/IdeaProjects/temp-code', workRoot: '/srv/agents/work' } } })
+    expect(JSON.parse(settings.get(`${CHILDREN_PREFIX}box-thread`)!)).toMatchObject([{ environmentId: BOX2, sessionId: 'box1', kind: 'started', threadType: 'implementation' }])
+    expect(await agents.send(parent, r.threadId, 'more')).toBe('sent')
+    expect(box.seen.at(-1)?.method).toBe('thread.send')
+  })
+})
+
+describe('CrossHostAgents: a master\'s batch across hosts', () => {
+  it('a thread a master starts on another host carries the masterId there and is indexed under the master here', async () => {
+    const box = linkedBox()
+    const { agents, changed } = setup({ linked: { [BOX2]: box.request }, parent: master })
+    const r = await agents.startThread(master, 'box', { threadType: 'implementation', provider: 'codex', firstMessage: 'go', cwd: '/Users/landon/IdeaProjects/temp-code' })
+    expect(box.seen[0].params.args.masterId).toBe('master-1')
+    expect(agents.batchChildren('master-1')).toEqual([expect.objectContaining({ environmentId: BOX2, sessionId: 'box1', masterId: 'master-1', status: 'running' })])
+    expect(changed).toEqual(['master-1'])
+    // refresh reads the host's state and touches the record; a changed status tells the engine.
+    box.states.set('box1', { status: 'idle', title: 'Started' })
+    const refreshed = await agents.refreshBatch('master-1')
+    expect(refreshed.unreachable).toEqual([])
+    expect(refreshed.children[0].status).toBe('idle')
+    expect(changed).toEqual(['master-1', 'master-1'])
+    // A settle for the thread (its starter as the parent) touches the record and wakes the master.
+    const { reports } = setup({ linked: { [BOX2]: box.request }, parent: master })
+    void reports
+    expect(r.threadId).toBe(encodeAgentId(BOX2, 'box1'))
+  })
+  it('refresh names a host out of reach and keeps the last state; batchAction pauses, resumes and archives on the host, and archive leaves the index', async () => {
+    const box = linkedBox()
+    const linked: Record<string, LinkRequest | null> = { [BOX2]: box.request }
+    const { agents } = setup({ linked, parent: master })
+    await agents.startThread(master, 'box', { threadType: 'chat', provider: 'claude', firstMessage: 'go', cwd: '/x' })
+    linked[BOX2] = null
+    const r = await agents.refreshBatch('master-1')
+    expect(r.unreachable).toEqual([BOX2])
+    expect(r.children[0].status).toBe('running')
+    const failed = await agents.batchAction('master-1', 'pause')
+    expect(failed.failed[0].error).toContain('the link to The box is down')
+    linked[BOX2] = box.request
+    expect(await agents.batchAction('master-1', 'pause')).toEqual({ succeeded: [encodeAgentId(BOX2, 'box1')], failed: [] })
+    expect(box.seen.at(-1)).toMatchObject({ method: 'thread.pause', params: { caller: { sessionId: 'master-1' }, args: { sessionId: 'box1' } } })
+    await agents.batchAction('master-1', 'resume')
+    expect(box.seen.at(-1)?.method).toBe('thread.resume')
+    expect(await agents.batchAction('master-1', 'archive')).toEqual({ succeeded: [encodeAgentId(BOX2, 'box1')], failed: [] })
+    expect(agents.batchChildren('master-1')).toEqual([])
+    expect(agents.children('master-1')[0]).toMatchObject({ sessionId: 'box1', status: 'done' })
+    expect(agents.children('master-1')[0].masterId).toBeUndefined()
+  })
+  it('adopt takes a `<env>:<id>` root on its host into the batch, records it, and answers refusals per id', async () => {
+    const box = linkedBox()
+    const { agents } = setup({ linked: { [BOX2]: box.request }, parent: master })
+    const r = await agents.adopt(master, [encodeAgentId(BOX2, 'loose'), 'plain-id', encodeAgentId(MAC2, 'elsewhere')])
+    expect(r.adopted).toEqual([encodeAgentId(BOX2, 'loose')])
+    expect(r.refused).toEqual([
+      { sessionId: 'plain-id', why: 'not a thread on another host' },
+      { sessionId: encodeAgentId(MAC2, 'elsewhere'), why: expect.stringContaining('is down') }
+    ])
+    expect(box.seen[0]).toMatchObject({ method: 'thread.adopt', params: { caller: { sessionId: 'master-1' }, args: { sessionId: 'loose', masterId: 'master-1' } } })
+    expect(agents.batchChildren('master-1')).toEqual([expect.objectContaining({ sessionId: 'loose', title: 'Loose on the box', provider: 'codex', masterId: 'master-1' })])
+    const refused = setup({ linked: { [BOX2]: linkedBox({ refuseAdopt: 'it is a subagent' }).request }, parent: master })
+    expect((await refused.agents.adopt(master, [encodeAgentId(BOX2, 'sub')])).refused).toEqual([{ sessionId: encodeAgentId(BOX2, 'sub'), why: 'it is a subagent' }])
+  })
+  it('a landing report from the host reaches the engine with the batch child named; an unknown thread is refused', async () => {
+    const box = linkedBox()
+    const landings: RemoteLanding[] = []
+    const { agents } = setup({ linked: { [BOX2]: box.request }, parent: master, landing: (l) => (landings.push(l), { hold: l.phase === 'ask' }) })
+    await agents.startThread(master, 'box', { threadType: 'chat', provider: 'claude', firstMessage: 'go', cwd: '/x' })
+    const report = { from: BOX2, sessionId: 'box1', masterId: 'master-1', phase: 'ask' as const, branch: 'feat', target: 'master', subjects: ['one'] }
+    expect(agents.landing(BOX2, report)).toEqual({ hold: true })
+    expect(agents.landing(BOX2, { ...report, phase: 'landed', sha: 'abc' })).toEqual({ hold: false })
+    expect(landings).toEqual([
+      expect.objectContaining({ masterId: 'master-1', environmentId: BOX2, sessionId: 'box1', phase: 'ask', branch: 'feat' }),
+      expect.objectContaining({ phase: 'landed', sha: 'abc' })
+    ])
+    expect(() => agents.landing(BOX2, { ...report, sessionId: 'nope' })).toThrow('is not a thread of the batch')
+    expect(() => agents.landing(MAC, report)).toThrow('another host')
+  })
+  it('a settle for a started thread names its starter as the parent: the record moves and the starter is woken', async () => {
+    const box = linkedBox()
+    const { agents, reports, changed } = setup({ linked: { [BOX2]: box.request }, parent: master })
+    await agents.startThread(master, 'box', { threadType: 'chat', provider: 'claude', firstMessage: 'go', cwd: '/x' })
+    agents.settled(BOX2, { from: BOX2, sessionId: 'box1', parentSessionId: 'master-1', title: 'Started', status: 'idle', reply: 'done here', pending: null })
+    expect(agents.batchChildren('master-1')[0].status).toBe('idle')
+    expect(changed).toEqual(['master-1', 'master-1'])
+    expect(reports).toHaveLength(1)
+    expect((reports[0] as { text: string }).text).toContain('on host The box')
+  })
+  it("a report pushed down this host's link as a peer.call is served and answered on it", async () => {
+    const box = linkedBox()
+    const replies: { method: string; params: unknown }[] = []
+    const linkedWithReplies: LinkRequest = async (method, params, opts) => {
+      if (method.startsWith('peer.')) {
+        replies.push({ method, params })
+        return { ok: true }
+      }
+      return box.request(method, params, opts)
+    }
+    const landings: RemoteLanding[] = []
+    const { agents } = setup({ linked: { [BOX2]: linkedWithReplies }, parent: master, landing: (l) => (landings.push(l), { hold: false }) })
+    await agents.startThread(master, 'box', { threadType: 'chat', provider: 'claude', firstMessage: 'go', cwd: '/x' })
+    const push = { push: 'peer.call' as const, callId: 'c9', method: 'crossHost.landing', params: { from: BOX2, sessionId: 'box1', masterId: 'master-1', phase: 'landed', branch: 'b', target: 'master', subjects: [], sha: 'abc' }, deadlineMs: 10_000 }
+    expect(agents.onPeerPush(BOX2, push as never)).toBe(true)
+    await new Promise((r) => setTimeout(r, 5))
+    expect(landings).toHaveLength(1)
+    expect(replies).toEqual([{ method: 'peer.reply', params: { callId: 'c9', ok: true, result: { hold: false } } }])
+    expect(agents.onPeerPush(BOX2, { push: 'peer.call', callId: 'c1', method: 'mac.run', params: {}, deadlineMs: 1 } as never)).toBe(false)
   })
 })

@@ -275,6 +275,24 @@ export class PeerCalls {
   connectionOf(envId: string): number | null {
     return this.registered.get(envId)?.socket.connection ?? null
   }
+
+  /** The environment a socket registered as, while it is registered: the caller of a thread.* request on it (remote/crossHostThreads.ts). */
+  environmentOf(connection: number): string | null {
+    for (const [envId, reg] of this.registered) if (reg.socket.connection === connection) return envId
+    return null
+  }
+
+  /** One frame down a registered peer's socket; false when it is not registered. */
+  push(envId: string, frame: ServerFrame): boolean {
+    const reg = this.registered.get(envId)
+    if (!reg) return false
+    try {
+      reg.socket.send(frame)
+      return true
+    } catch {
+      return false
+    }
+  }
 }
 
 /** The peer.* requests on the box. Remote principals only: the box's own loopback never registers as a Mac. */

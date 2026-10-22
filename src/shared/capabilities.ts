@@ -329,8 +329,25 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'peer.chunk': 'admin',
   'peer.progress': 'admin',
   'peer.pull': 'admin',
-  // A Mac reporting that a thread it runs for this host settled (contract-crosshost.ts); rides its admin link.
+  // Threads across hosts (contract-crosshost.ts), all on a host's admin link: a
+  // runner reporting a settle or a landing to the owner, and the thread.* methods
+  // as requests on the box's listener (the Mac asking; the box → Mac direction
+  // rides peer.call). The caller is the environment the socket registered as.
   'crossHost.settled': 'admin',
+  'crossHost.landing': 'admin',
+  'thread.start': 'admin',
+  'thread.spawn': 'admin',
+  'thread.send': 'admin',
+  'thread.list': 'admin',
+  'thread.events': 'admin',
+  'thread.check': 'admin',
+  'thread.wait': 'admin',
+  'thread.interrupt': 'admin',
+  'thread.answer': 'admin',
+  'thread.pause': 'admin',
+  'thread.resume': 'admin',
+  'thread.archive': 'admin',
+  'thread.adopt': 'admin',
   'mac.readFile': 'local',
   'mac.listDir': 'local',
   'mac.fetchFile': 'local',

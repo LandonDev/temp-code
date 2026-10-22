@@ -1025,7 +1025,7 @@ describe('Batches: shell steps', () => {
 })
 
 describe('Batches: adopt and archive', () => {
-  it('adopt takes unarchived roots of no batch into the master\'s, setting startedBy when empty; refuses the rest, each with its why; pushes', () => {
+  it('adopt takes unarchived roots of no batch into the master\'s, setting startedBy when empty; refuses the rest, each with its why; pushes', async () => {
     const w = world({ children: [meta('m'), meta('a', { masterId: 'm' }), meta('loose'), meta('started', { startedBy: 'chat' }), meta('n', { isMaster: true }), meta('sub', { parentId: 'loose' }), meta('gone', { archived: true }), meta('other', { masterId: 'n' })] })
     const b = w.make()
     const r = b.adopt('m', ['loose', 'started', 'a', 'm', 'n', 'sub', 'gone', 'other', 'nope', 'loose'])
@@ -1045,10 +1045,10 @@ describe('Batches: adopt and archive', () => {
     // Off a master: everything refused.
     expect(b.adopt('loose', ['a']).refused).toEqual([{ sessionId: 'a', why: 'loose is not a master thread' }])
     // The tool's answer.
-    expect(b.adoptTool(w.sessions.get('m')!, { threadId: 'sub' })).toBe('refused: it is a subagent')
-    expect(b.adoptTool(w.sessions.get('loose')!, { threadId: 'a' })).toMatch(/^refused: adopt_thread is for a master thread/)
+    expect(await b.adoptTool(w.sessions.get('m')!, { threadId: 'sub' })).toBe('refused: it is a subagent')
+    expect(await b.adoptTool(w.sessions.get('loose')!, { threadId: 'a' })).toMatch(/^refused: adopt_thread is for a master thread/)
     w.sessions.set('fresh', meta('fresh', { title: 'Fresh one' }))
-    expect(b.adoptTool(w.sessions.get('m')!, { threadId: 'fresh' })).toBe('Adopted "Fresh one" (fresh) into your batch: its settles reach you from here, and it counts toward the batch\'s end.')
+    expect(await b.adoptTool(w.sessions.get('m')!, { threadId: 'fresh' })).toBe('Adopted "Fresh one" (fresh) into your batch: its settles reach you from here, and it counts toward the batch\'s end.')
   })
 
   it('archive done archives the done children through the fleet\'s batch with the cleanup flag; all stops the live ones first; the master stays', async () => {
@@ -1078,5 +1078,174 @@ describe('Batches: adopt and archive', () => {
     const archive = await handleBatch({ id: '2', method: 'batch.archive', params: { masterId: 'm', which: 'done' } } as never, b, w.registry)
     expect(archive.handled && (archive.result as { succeeded: string[] }).succeeded).toEqual(['a'])
     expect(w.batchCalls).toEqual([{ action: 'archive', ids: ['a'], cleanup: false }])
+  })
+})
+
+// ── the batch across hosts ───────────────────────────────────────────
+
+import type { RemoteChildRecord } from './crossHostAgents'
+const MACID = `env_${'m'.repeat(22)}`
+const far = (sessionId: string, patch: Partial<RemoteChildRecord> = {}): RemoteChildRecord => ({
+  environmentId: MACID,
+  sessionId,
+  title: `Far ${sessionId}`,
+  kind: 'started',
+  status: 'running',
+  cwd: '/Users/landon/IdeaProjects/repo',
+  provider: 'codex',
+  model: 'gpt-6.1-sol',
+  agentType: 'implementer',
+  threadType: 'implementation',
+  masterId: 'm',
+  seenAt: 5,
+  ...patch
+})
+
+/** A fake of the batch's reach to other hosts (crossHostAgents.ts): records set by hand, actions logged. */
+function fakeRemote(records: RemoteChildRecord[]) {
+  const acts: { action: string; ids?: readonly string[] }[] = []
+  const adopts: string[][] = []
+  let unreachable: string[] = []
+  const remote = {
+    records,
+    acts,
+    adopts,
+    down: (hosts: string[]) => (unreachable = hosts),
+    children: (masterId: string) => records.filter((r) => r.masterId === masterId),
+    refresh: async (masterId: string) => ({ children: records.filter((r) => r.masterId === masterId), unreachable }),
+    act: async (_masterId: string, action: string, ids?: readonly string[]) => {
+      acts.push({ action, ...(ids ? { ids } : {}) })
+      const hit = records.filter((r) => !ids || ids.includes(`${r.environmentId}:${r.sessionId}`))
+      if (action === 'archive') for (const r of hit) delete r.masterId
+      return { succeeded: hit.map((r) => `${r.environmentId}:${r.sessionId}`), failed: [] }
+    },
+    adopt: async (_master: SessionMeta, ids: readonly string[]) => {
+      adopts.push([...ids])
+      return { adopted: ids.filter((id) => id.endsWith(':ok')), refused: ids.filter((id) => !id.endsWith(':ok')).map((id) => ({ sessionId: id, why: 'it is a subagent' })) }
+    },
+    hostName: (id: string) => (id === MACID ? 'Landon Mac' : null)
+  }
+  return remote
+}
+
+describe('Batches: children on other hosts', () => {
+  it('batch.get lists every child with its host and type; a far child running keeps the batch open; idle counts as done there', async () => {
+    const w = world({ children: [meta('m'), meta('a', { masterId: 'm', threadType: 'implementation', provider: 'claude', model: 'sonnet' })] })
+    const remote = fakeRemote([far('x1')])
+    const b = w.make({ environmentId: 'env_box', remote })
+    const state = b.get('m')
+    expect(state.children).toEqual([
+      { sessionId: 'a', environmentId: 'env_box', title: 'T a', status: 'idle', threadType: 'implementation', provider: 'claude', model: 'sonnet' },
+      { sessionId: 'x1', environmentId: MACID, title: 'Far x1', status: 'running', threadType: 'implementation', provider: 'codex', model: 'gpt-6.1-sol', seenAt: 5, linkDown: false }
+    ])
+    expect(state.pending).toEqual(['a', `${MACID}:x1`])
+    expect(b.open('m')).toBe(true)
+    b.landed(w.landed('a'))
+    await b.review('m')
+    expect(w.runs).toHaveLength(0)
+    remote.records[0].status = 'idle'
+    await b.review('m')
+    expect(w.runs.map((r) => r.step)).toEqual(['gate', 'release'])
+    expect(b.open('m')).toBe(false)
+  })
+  it('a far landing is recorded under <env>:<id>, the land step fetches origin before the gate, and the log names the host', async () => {
+    const w = world({ children: [meta('m'), meta('a', { masterId: 'm' })] })
+    const remote = fakeRemote([far('x1')])
+    const fetched: string[] = []
+    const b = w.make({ remote, fetchFastForward: async (cwd, target) => (fetched.push(`${cwd}@${target}`), { sha: 'feedface00000000', merged: true, pushed: false }) })
+    b.landed(w.landed('a'))
+    expect(b.remoteLanding({ masterId: 'm', environmentId: MACID, sessionId: 'x1', phase: 'ask', branch: 'far-branch', target: 'master', subjects: ['x1: far work'] })).toEqual({ hold: false })
+    expect(b.remoteLanding({ masterId: 'm', environmentId: MACID, sessionId: 'x1', phase: 'landed', branch: 'far-branch', target: 'master', subjects: ['x1: far work'], sha: 'abc' })).toEqual({ hold: false })
+    expect(b.get('m').landed).toEqual(['a', `${MACID}:x1`])
+    expect(b.get('m').steps[0].log).toContain('far-branch landed on Landon Mac')
+    remote.records[0].status = 'done'
+    await b.review('m')
+    expect(fetched).toEqual(['/repo@master'])
+    expect(b.get('m').steps[0].log).toContain('fetched origin: master at feedface00')
+    expect(w.runs.map((r) => [r.step, r.notes])).toEqual([
+      ['gate', undefined],
+      ['release', 'T m; a: did it; x1: far work']
+    ])
+    expect(b.get('m').steps[0].detail).toBe('2 of 2 landed')
+  })
+  it('all at once: a far landing is held with its host (pushed to origin there), and the end merges it from origin in landing order', async () => {
+    const w = world({ children: [meta('m'), meta('a', { masterId: 'm' })] })
+    const remote = fakeRemote([far('x1', { status: 'idle' })])
+    const fromOrigin: string[] = []
+    const b = w.make({ remote, mergeFromOrigin: async (cwd, branch, target, push) => (fromOrigin.push(`${cwd} ${branch}→${target} push=${push}`), { sha: 'beef000000000000', merged: true, pushed: push }), fetchFastForward: async () => ({ sha: 'x', merged: false, pushed: false }) })
+    b.setRules('m', { land: 'all-at-once' })
+    expect(b.remoteLanding({ masterId: 'm', environmentId: MACID, sessionId: 'x1', phase: 'ask', branch: 'far-branch', target: 'master', subjects: ['x1: far'] })).toEqual({ hold: true })
+    expect(b.hold(w.sessions.get('a')!, { cwd: '/wt-a', branch: 'near', target: 'master', push: true, subjects: ['a: near'] })).toContain('HELD')
+    expect(b.get('m').held).toEqual([`${MACID}:x1`, 'a'])
+    expect(b.get('m').steps[0].log).toContain('far-branch held for the end (pushed to origin from Landon Mac)')
+    await b.review('m')
+    expect(fromOrigin).toEqual(['/repo far-branch→master push=true'])
+    expect(w.merges).toEqual([{ cwd: '/wt-a', branch: 'near', target: 'master', push: true }])
+    expect(b.get('m').landed).toEqual([`${MACID}:x1`, 'a'])
+    expect(b.get('m').steps[0].log).toContain('far-branch merged from origin at beef000000')
+    expect(w.runs.map((r) => r.step)).toEqual(['gate', 'release'])
+  })
+  it('a host out of reach blocks the end naming the host and the child; the master is told once; the host back unblocks', async () => {
+    const w = world({ children: [meta('m'), meta('a', { masterId: 'm' })] })
+    const remote = fakeRemote([far('x1')])
+    const b = w.make({ remote, fetchFastForward: async () => ({ sha: 'x', merged: false, pushed: false }) })
+    b.landed(w.landed('a'))
+    remote.down([MACID])
+    await b.review('m')
+    expect(b.get('m').blocked).toEqual({ sessionId: `${MACID}:x1`, why: 'unreachable', environmentId: MACID })
+    expect(b.get('m').children?.[1].linkDown).toBe(true)
+    expect(w.reports).toEqual([{ to: 'm', status: 'blocked', text: expect.stringContaining('"Far x1" (' + MACID + ':x1) on Landon Mac is out of reach') }])
+    await b.review('m')
+    expect(w.reports).toHaveLength(1)
+    expect(w.runs).toHaveLength(0)
+    remote.down([])
+    remote.records[0].status = 'error'
+    await b.review('m')
+    expect(b.get('m').blocked).toEqual({ sessionId: `${MACID}:x1`, why: 'errored' })
+    expect(w.reports.at(-1)?.text).toContain('on Landon Mac errored')
+    remote.records[0].status = 'done'
+    await b.review('m')
+    expect(b.get('m').blocked).toBeNull()
+    expect(w.runs.map((r) => r.step)).toEqual(['gate', 'release'])
+  })
+  it('cascade reaches the far children; archive done lists them in succeeded and takes them out of the batch; all archives the running ones too; then archive-children does the same', async () => {
+    const w = world({ children: [meta('m'), meta('a', { masterId: 'm' })] })
+    const remote = fakeRemote([far('x1', { status: 'idle' }), far('x2')])
+    const b = w.make({ remote })
+    await b.cascade('m', 'pause')
+    await b.cascade('m', 'resume')
+    expect(remote.acts).toEqual([{ action: 'pause' }, { action: 'resume' }])
+    const done = await b.archive('m', 'done')
+    expect(done.succeeded).toEqual(['a', `${MACID}:x1`])
+    expect(remote.acts.at(-1)).toEqual({ action: 'archive', ids: [`${MACID}:x1`] })
+    expect(b.get('m').children?.map((c) => c.sessionId)).toEqual(['x2'])
+    const all = await b.archive('m', 'all')
+    expect(all.succeeded).toEqual([`${MACID}:x2`])
+    expect(b.get('m').children).toEqual([])
+    // then: archive-children at the end archives the far done ones.
+    const w2 = world({ children: [meta('m'), meta('a', { masterId: 'm' })] })
+    const remote2 = fakeRemote([far('y1', { status: 'done' })])
+    const b2 = w2.make({ remote: remote2, fetchFastForward: async () => ({ sha: 'x', merged: false, pushed: false }) })
+    b2.setRules('m', { then: 'archive-children' })
+    b2.landed(w2.landed('a'))
+    await b2.review('m')
+    expect(remote2.acts).toEqual([{ action: 'archive', ids: [`${MACID}:y1`] }])
+  })
+  it('adoptAll sends <env>:<id> ids to their hosts and merges the refusals with the local ones; without the reach they are refused as such', async () => {
+    const w = world({ children: [meta('m'), meta('loose')] })
+    const remote = fakeRemote([])
+    const b = w.make({ remote })
+    const r = await b.adoptAll('m', ['loose', `${MACID}:ok`, `${MACID}:sub`, 'nope'])
+    expect(r.adopted).toEqual(['loose', `${MACID}:ok`])
+    expect(r.refused).toEqual([
+      { sessionId: 'nope', why: 'unknown thread' },
+      { sessionId: `${MACID}:sub`, why: 'it is a subagent' }
+    ])
+    expect(remote.adopts).toEqual([[`${MACID}:ok`, `${MACID}:sub`]])
+    const plain = world({ children: [meta('m')] }).make()
+    expect((await plain.adoptAll('m', [`${MACID}:ok`])).refused).toEqual([{ sessionId: `${MACID}:ok`, why: 'threads on other hosts are not available here' }])
+    const { handled, result } = await handleBatch({ id: '1', method: 'batch.adopt', params: { masterId: 'm', sessionIds: [`${MACID}:ok`] } } as never, b, w.registry as never)
+    expect(handled).toBe(true)
+    expect((result as { adopted: string[] }).adopted).toEqual([`${MACID}:ok`])
   })
 })

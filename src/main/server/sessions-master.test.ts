@@ -219,6 +219,30 @@ describe('pause and resume cascade', () => {
     expect([master, a, b].map(status).every((s) => s !== 'paused')).toBe(true)
   })
 
+  it("pausing and resuming the master reach the batch's threads on other hosts through the engine's cascade", async () => {
+    const { projectId, master } = await pinnedMaster()
+    const a = await child(projectId, master, 'A')
+    const acts: string[] = []
+    const far = {
+      children: () => [{ environmentId: 'env_m', sessionId: 'x', title: 'Far', kind: 'started' as const, status: 'running' as const, cwd: '/x', provider: 'codex', model: 'g', agentType: 'implementer', masterId: master, seenAt: 1 }],
+      refresh: async () => ({ children: [], unreachable: [] }),
+      act: async (_m: string, action: string) => (acts.push(action), { succeeded: ['env_m:x'], failed: [] }),
+      adopt: async () => ({ adopted: [], refused: [] })
+    }
+    batches.dispose()
+    batches = new Batches({ registry, store, runGate: async () => ({ ok: true, log: 'stub', ms: 1, exitCode: 0 }), branchOf: async () => 'master', remote: far })
+    batches.attach()
+    setBatches(batches)
+    await registry.pauseRun(master)
+    expect([master, a].map(status)).toEqual(['paused', 'paused'])
+    await registry.resumePausedRun(master)
+    await settle(50)
+    expect(acts).toEqual(['pause', 'resume'])
+    // A child alone never cascades.
+    await registry.pauseRun(a)
+    expect(acts).toEqual(['pause', 'resume'])
+  })
+
   it('pausing a child alone never touches its master or its siblings', async () => {
     const { projectId, master } = await pinnedMaster()
     const a = await child(projectId, master, 'A')

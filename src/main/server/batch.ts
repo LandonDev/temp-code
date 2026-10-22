@@ -25,7 +25,9 @@ import { PUBLISH_PHASES, PhaseTracker, deployProgress, formatDuration } from '@s
 import { gateQueue, type GateQueue, type GateWait } from './gateQueue'
 import { runGateStep } from './gateRun'
 import { loginShell } from './loginShell'
-import { branchOf, fastForwardMerge, revParse, type MergeResult } from './mergeBranch'
+import { encodeAgentId, isRemoteAgentId } from '@shared/contract-crosshost'
+import type { RemoteBatchAction, RemoteChildRecord, RemoteLanding } from './crossHostAgents'
+import { branchOf, fastForwardFromOrigin, fastForwardMerge, fetchFastForward, revParse, type MergeResult } from './mergeBranch'
 import type { Landed } from './mergeReview'
 import type { SessionBatchAction } from './sessionBatch'
 import type { SessionRegistry } from './sessions'
@@ -111,6 +113,31 @@ export interface HeldLanding {
   target: string
   push: boolean
   subjects: string[]
+  /** A thread on another host: its host pushed the branch to origin, the end merges it from there. */
+  host?: string
+}
+
+/** One thread of the batch, on this host or another: what the engine reads of it. */
+export interface BatchMember {
+  /** the engine's key: the session id here, `<env>:<id>` on another host */
+  id: string
+  sessionId: string
+  environmentId: string | null
+  title: string
+  status: SessionMeta['status']
+  local: SessionMeta | null
+  remote: RemoteChildRecord | null
+}
+
+/** The batch's children on other hosts (crossHostAgents.ts), as the engine needs them. */
+export interface RemoteBatchLike {
+  children(masterId: string): RemoteChildRecord[]
+  /** their state as their hosts see it now; a host out of reach is named */
+  refresh(masterId: string): Promise<{ children: RemoteChildRecord[]; unreachable: string[] }>
+  act(masterId: string, action: RemoteBatchAction, ids?: readonly string[]): Promise<{ succeeded: string[]; failed: { sessionId: string; error: string }[] }>
+  /** roots of other hosts, as `<envId>:<sessionId>`, into the batch */
+  adopt(master: SessionMeta, ids: readonly string[]): Promise<{ adopted: string[]; refused: { sessionId: string; why: string }[] }>
+  hostName?(id: string): string | null
 }
 
 /** What the row keeps beyond the wire shape: each landed child's branch and subjects (the notes), the held landings, the deploy in flight. */
@@ -179,6 +206,8 @@ export interface ShellRun {
 }
 
 export interface BatchesDeps {
+  /** this host's environment id, stamped on the local children of `batch.get` */
+  environmentId?: string
   registry: Pick<SessionRegistry, 'list' | 'get' | 'getProject' | 'append'> & {
     /** has the thread finished a turn: an idle child counts as done only then (a fresh thread between its first row and its first turn is idle too) */
     hasCompletedTurn?(sessionId: string): boolean
@@ -206,6 +235,12 @@ export interface BatchesDeps {
   revParse?: typeof revParse
   /** the fast-forward of a held branch at the end (mergeBranch.ts) */
   merge?: typeof fastForwardMerge
+  /** the fast-forward of a held branch another host pushed to origin (mergeBranch.ts) */
+  mergeFromOrigin?: typeof fastForwardFromOrigin
+  /** the project checkout brought up to origin after a child on another host landed there (mergeBranch.ts) */
+  fetchFastForward?: typeof fetchFastForward
+  /** the batch's children on other hosts; absent where there are none */
+  remote?: RemoteBatchLike
   /** the Mac's publish job over the peer link; absent where there is no peer link */
   publish?: PublishLike
   /** the box's deploy trigger (hostJobs.ts `host.deploy`); absent where there is none */
@@ -224,6 +259,8 @@ export interface BatchesDeps {
 const ROW_PREFIX = 'batch:'
 const DONE = new Set<SessionMeta['status']>(['done'])
 const BLOCKS: Partial<Record<SessionMeta['status'], 'errored' | 'stopped'>> = { error: 'errored', stopped: 'stopped' }
+/** A thread on another host is done when its host said so, or when it went idle (its host reports a settle only after a turn). */
+const REMOTE_DONE = new Set<SessionMeta['status']>(['done', 'idle'])
 /** The connection number the engine subscribes to the deploy log with (never a socket's). */
 const DEPLOY_LOG_CONNECTION = -7
 const PUSH_EVERY_MS = 250
@@ -265,6 +302,8 @@ export class Batches {
   private readonly queue: GateQueue
   private readonly branchOf: typeof branchOf
   private readonly revParse: typeof revParse
+  private readonly mergeFromOrigin: typeof fastForwardFromOrigin
+  private readonly fetchFastForward: typeof fetchFastForward
   private readonly merge: typeof fastForwardMerge
   private readonly shell: NonNullable<BatchesDeps['shell']>
   private readonly now: () => number
@@ -295,6 +334,8 @@ export class Batches {
     this.branchOf = deps.branchOf ?? branchOf
     this.revParse = deps.revParse ?? revParse
     this.merge = deps.merge ?? fastForwardMerge
+    this.mergeFromOrigin = deps.mergeFromOrigin ?? fastForwardFromOrigin
+    this.fetchFastForward = deps.fetchFastForward ?? fetchFastForward
     this.shell = deps.shell ?? spawnShellStep
     this.now = deps.now ?? Date.now
     this.pushEveryMs = deps.pushEveryMs ?? PUSH_EVERY_MS
@@ -368,18 +409,52 @@ export class Batches {
   /** The live state: the persisted steps and landings, the pending children from the sessions table. */
   get(masterId: string): BatchState {
     const row = this.row(masterId)
-    const children = batchChildren(this.deps.registry, masterId).map((s) => s.id)
-    const known = (id: string): boolean => children.includes(id) || !!this.deps.registry.get(id)
+    const members = this.members(masterId)
+    const ids = members.map((m) => m.id)
+    const known = (id: string): boolean => ids.includes(id) || (!isRemoteAgentId(id) && !!this.deps.registry.get(id))
     return {
       masterId,
       rules: { ...row.rules, steps: row.rules.steps.map((s) => ({ ...s })) },
       steps: row.steps.map((s) => ({ ...s, log: [...s.log], ...(s.progress ? { progress: { ...s.progress } } : {}) })),
       landed: row.landed.filter(known),
-      pending: children.filter((id) => !row.landed.includes(id)),
+      pending: ids.filter((id) => !row.landed.includes(id)),
       held: row.held.filter(known),
       blocked: row.blocked,
-      finishedAt: row.finishedAt
+      finishedAt: row.finishedAt,
+      children: members.map((m) => ({
+        sessionId: m.sessionId,
+        environmentId: m.environmentId ?? this.deps.environmentId ?? 'local',
+        title: m.title,
+        status: m.status,
+        threadType: m.local?.threadType ?? m.remote?.threadType ?? null,
+        provider: m.local?.provider ?? m.remote?.provider ?? '',
+        model: m.local?.model ?? m.remote?.model ?? '',
+        ...(m.remote ? { seenAt: m.remote.seenAt, linkDown: this.unreachable.get(masterId)?.has(m.remote.environmentId) ?? false } : {})
+      }))
     }
+  }
+
+  /** The batch's children here and on other hosts, oldest first by what this host knows. */
+  members(masterId: string): BatchMember[] {
+    const local: BatchMember[] = batchChildren(this.deps.registry, masterId).map((s) => ({
+      id: s.id,
+      sessionId: s.id,
+      environmentId: null,
+      title: s.title,
+      status: s.status,
+      local: s,
+      remote: null
+    }))
+    const remote: BatchMember[] = (this.deps.remote?.children(masterId) ?? []).map((r) => ({
+      id: encodeAgentId(r.environmentId, r.sessionId),
+      sessionId: r.sessionId,
+      environmentId: r.environmentId,
+      title: r.title,
+      status: r.status,
+      local: null,
+      remote: r
+    }))
+    return [...local, ...remote]
   }
 
   /** The rules as they stand. */
@@ -408,11 +483,18 @@ export class Batches {
    *  engine has not run on them all done (sessions.ts keeps such a master
    *  `watching` instead of `idle`). */
   open(masterId: string): boolean {
-    const children = batchChildren(this.deps.registry, masterId)
-    if (children.length === 0) return false
+    const members = this.members(masterId)
+    if (members.length === 0) return false
     if (this.gating.has(masterId)) return true
     const row = this.row(masterId)
-    return !this.allDone(children) || row.armed || row.steps.some((s) => s.status === 'running')
+    return !this.allDone(members) || row.armed || row.steps.some((s) => s.status === 'running')
+  }
+
+  /** Pause or Resume on the master reaching the batch's children on other hosts (sessions.ts cascadeBatch runs the local ones). */
+  async cascade(masterId: string, action: 'pause' | 'resume'): Promise<void> {
+    if (!this.deps.remote || this.deps.remote.children(masterId).length === 0) return
+    const r = await this.deps.remote.act(masterId, action)
+    for (const f of r.failed) console.log(`[batch] ${action} of ${f.sessionId} failed: ${f.error}`)
   }
 
   /** Stop a running step that can be stopped: a shell step's process group, or the Mac's publish job. */
@@ -478,14 +560,27 @@ export class Batches {
     return { adopted, refused, state: this.get(masterId) }
   }
 
-  /** The `adopt_thread` tool: one thread into the caller's batch. Never throws. */
-  adoptTool(master: SessionMeta, args: { threadId: string }): string {
+  /** `batch.adopt` over ids of this host and `<envId>:<sessionId>` ids of other hosts (adopted there over the link). Never throws. */
+  async adoptAll(masterId: string, sessionIds: readonly string[]): Promise<BatchAdoptResult> {
+    const remote = sessionIds.filter((id) => isRemoteAgentId(id))
+    const local = this.adopt(masterId, sessionIds.filter((id) => !isRemoteAgentId(id)))
+    if (!remote.length) return local
+    const master = this.deps.registry.get(masterId)
+    const far =
+      master && master.isMaster && !master.parentId && this.deps.remote
+        ? await this.deps.remote.adopt(master, remote)
+        : { adopted: [], refused: remote.map((id) => ({ sessionId: id, why: !this.deps.remote ? 'threads on other hosts are not available here' : `${masterId} is not a master thread` })) }
+    return { adopted: [...local.adopted, ...far.adopted], refused: [...local.refused, ...far.refused], state: this.get(masterId) }
+  }
+
+  /** The `adopt_thread` tool: one thread into the caller's batch, here or (`<envId>:<sessionId>`) on another host. Never throws. */
+  async adoptTool(master: SessionMeta, args: { threadId: string }): Promise<string> {
     const refusal = this.refusal(master, ADOPT_THREAD_TOOL_NAME)
     if (refusal) return refusal
-    const result = this.adopt(master.id, [args.threadId])
+    const result = await this.adoptAll(master.id, [args.threadId])
     if (result.refused.length) return `refused: ${result.refused[0].why}`
-    const thread = this.deps.registry.get(args.threadId)
-    return `Adopted "${thread?.title ?? args.threadId}" (${args.threadId}) into your batch: its settles reach you from here, and it counts toward the batch's end.`
+    const title = isRemoteAgentId(args.threadId) ? this.members(master.id).find((m) => m.id === args.threadId)?.title : this.deps.registry.get(args.threadId)?.title
+    return `Adopted "${title ?? args.threadId}" (${args.threadId}) into your batch: its settles reach you from here, and it counts toward the batch's end.`
   }
 
   /** The batch's children leave (`batch.archive`): `done` = the done ones
@@ -495,12 +590,20 @@ export class Batches {
   async archive(masterId: string, which: 'done' | 'all', removeResources = false): Promise<SessionBatchResult> {
     const children = batchChildren(this.deps.registry, masterId)
     const targets = (which === 'all' ? children : children.filter((s) => this.done(s))).map((s) => s.id)
-    if (targets.length === 0 || !this.deps.registry.batch) return { attempted: [], succeeded: [], failed: [] }
-    if (which === 'all') {
-      const live = children.filter((s) => !this.done(s) && s.status !== 'queued').map((s) => s.id)
-      if (live.length) await this.deps.registry.batch('stop', live)
+    let result: SessionBatchResult = { attempted: [], succeeded: [], failed: [] }
+    if (targets.length && this.deps.registry.batch) {
+      if (which === 'all') {
+        const live = children.filter((s) => !this.done(s) && s.status !== 'queued').map((s) => s.id)
+        if (live.length) await this.deps.registry.batch('stop', live)
+      }
+      result = await this.deps.registry.batch('archive', targets, { cleanup: removeResources })
     }
-    const result = await this.deps.registry.batch('archive', targets, { cleanup: removeResources })
+    // The children on other hosts: each archived on its host (a live one stopped there first).
+    const remote = this.members(masterId).filter((m) => m.remote && (which === 'all' || this.memberDone(m)))
+    if (remote.length && this.deps.remote) {
+      const r = await this.deps.remote.act(masterId, 'archive', remote.map((m) => m.id))
+      result = { attempted: [...result.attempted, ...remote.map((m) => m.id)], succeeded: [...result.succeeded, ...r.succeeded], failed: [...result.failed, ...r.failed] }
+    }
     this.schedule(masterId)
     return result
   }
@@ -625,12 +728,12 @@ export class Batches {
   /** The children with a branch to land: implementation and orchestration
    *  threads, and any other that landed or holds a branch. A planning
    *  thread has none, so the land step never counts it. */
-  private landers(row: StoredBatch, children = batchChildren(this.deps.registry, row.masterId)): SessionMeta[] {
-    return children.filter((s) => canLand(s) || row.landed.includes(s.id) || row.held.includes(s.id))
+  private landers(row: StoredBatch, members = this.members(row.masterId)): BatchMember[] {
+    return members.filter((m) => canLand({ threadType: (m.local?.threadType ?? m.remote?.threadType ?? null) as SessionMeta['threadType'] }) || row.landed.includes(m.id) || row.held.includes(m.id))
   }
 
-  private leftOut(row: StoredBatch, children?: SessionMeta[]): number {
-    return this.landers(row, children).filter((s) => !row.landed.includes(s.id)).length
+  private leftOut(row: StoredBatch, members?: BatchMember[]): number {
+    return this.landers(row, members).filter((m) => !row.landed.includes(m.id)).length
   }
 
   private landDetail(row: StoredBatch, leftOut = 0): string {
@@ -674,11 +777,48 @@ export class Batches {
     row.branches[sessionId] = branch
     row.subjects[sessionId] = subjects
     row.armed = true
-    const children = batchChildren(this.deps.registry, masterId)
+    const members = this.members(masterId)
     if (this.step(row, land).status !== 'running') this.begin(row, land, '')
-    this.logLine(row, land, `${branch} landed`)
-    this.progress(row, land, { done: row.landed.length, total: Math.max(children.length, row.landed.length) })
+    this.logLine(row, land, `${branch} landed${isRemoteAgentId(sessionId) ? ` on ${this.hostName(sessionId)}` : ''}`)
+    this.progress(row, land, { done: row.landed.length, total: Math.max(members.length, row.landed.length) })
     this.detail(row, land, this.landDetail(row))
+  }
+
+  /** The name of the host an encoded id lives on, for the log. */
+  private hostName(encoded: string): string {
+    const env = encoded.slice(0, encoded.indexOf(':'))
+    return this.deps.remote?.hostName?.(env) ?? env
+  }
+
+  /**
+   * A batch thread on another host is landing through that host's
+   * merge_branch (crossHostAgents.ts landing → here): `ask` before its
+   * fast-forward, held under all-at-once (its host pushed the branch to
+   * origin; the end merges it from there), else let through; `landed`
+   * after a merge that went through, recorded under `<env>:<id>` so the
+   * land step fetches origin before the gate.
+   */
+  remoteLanding(l: RemoteLanding): { hold: boolean } {
+    const row = this.row(l.masterId)
+    const id = encodeAgentId(l.environmentId, l.sessionId)
+    const land = this.landId(row)
+    if (l.phase === 'ask') {
+      if (row.rules.land !== 'all-at-once') return { hold: false }
+      if (!row.held.includes(id)) row.held.push(id)
+      row.holds[id] = { sessionId: id, cwd: '', branch: l.branch, target: l.target, push: true, subjects: l.subjects, host: l.environmentId }
+      row.armed = true
+      if (this.step(row, land).status !== 'running') this.begin(row, land, '')
+      this.logLine(row, land, `${l.branch} held for the end (pushed to origin from ${this.hostName(id)})`)
+      this.detail(row, land, `${row.held.length} held for the end${row.landed.length ? ` · ${row.landed.length} landed` : ''}`)
+      this.save(row)
+      this.schedule(l.masterId)
+      return { hold: true }
+    }
+    this.record(row, id, l.branch, l.subjects)
+    this.save(row)
+    this.runLandingSteps(row)
+    this.schedule(l.masterId)
+    return { hold: false }
   }
 
   /** The `each-landing` steps, in order, after a landing: serialized per
@@ -741,9 +881,16 @@ export class Batches {
     return s.status === 'idle' && (this.deps.registry.hasCompletedTurn?.(s.id) ?? true)
   }
 
-  private allDone(children: SessionMeta[]): boolean {
-    return children.every((s) => this.done(s))
+  private memberDone(m: BatchMember): boolean {
+    return m.local ? this.done(m.local) : REMOTE_DONE.has(m.status)
   }
+
+  private allDone(members: BatchMember[]): boolean {
+    return members.every((m) => this.memberDone(m))
+  }
+
+  /** hosts whose children could not be reached at the last review, per master */
+  private readonly unreachable = new Map<string, Set<string>>()
 
   /** Something changed for a master's batch: review it soon, once per burst. */
   schedule(masterId: string): void {
@@ -761,37 +908,60 @@ export class Batches {
     const master = this.deps.registry.get(masterId)
     if (!master || master.archived || !master.isMaster) return
     const row = this.row(masterId)
-    const children = batchChildren(this.deps.registry, masterId)
+    let members = this.members(masterId)
+    // The children on other hosts, as their hosts see them now, once the
+    // local ones are done (their settles reach here on their own; this is
+    // the check that nothing moved unseen). A host out of reach blocks.
+    const remote = members.filter((m) => m.remote)
+    if (remote.length && this.deps.remote && row.armed && !this.gating.has(masterId) && members.filter((m) => m.local).every((m) => this.memberDone(m))) {
+      const r = await this.deps.remote.refresh(masterId)
+      this.unreachable.set(masterId, new Set(r.unreachable))
+      members = this.members(masterId)
+    }
     // Any child moving again arms the engine for the next all-done.
-    if (children.some((s) => !this.done(s) && !BLOCKS[s.status]) && !row.armed) {
+    if (members.some((m) => !this.memberDone(m) && !BLOCKS[m.status]) && !row.armed) {
       row.armed = true
       this.save(row)
     }
-    const blocker = children.find((s) => BLOCKS[s.status])
-    const blocked = blocker ? { sessionId: blocker.id, why: BLOCKS[blocker.status]! } : null
+    const down = this.unreachable.get(masterId)
+    const away = down?.size ? members.find((m) => m.remote && down.has(m.remote.environmentId) && !this.memberDone(m)) : undefined
+    const blocker = members.find((m) => BLOCKS[m.status])
+    const blocked: BatchState['blocked'] = blocker
+      ? { sessionId: blocker.id, why: BLOCKS[blocker.status]! }
+      : away
+        ? { sessionId: away.id, why: 'unreachable', environmentId: away.environmentId! }
+        : null
     if (JSON.stringify(blocked) !== JSON.stringify(row.blocked)) {
       row.blocked = blocked
       this.save(row)
     }
-    if (blocker && blocked) {
-      const key = `${blocker.id}:${blocked.why}`
+    if (blocked) {
+      const key = `${blocked.sessionId}:${blocked.why}`
       if (!this.toldBlocked.has(key)) {
         this.toldBlocked.add(key)
-        this.tell(master, 'blocked', `The batch cannot finish: batch thread "${blocker.title}" (${blocker.id}) ${blocked.why}. Fix it (a message, a new thread) or remove it (archive); the batch's steps run once every thread is done.`)
+        const who = blocker ?? away!
+        const where = who.environmentId ? ` on ${this.deps.remote?.hostName?.(who.environmentId) ?? who.environmentId}` : ''
+        this.tell(
+          master,
+          'blocked',
+          blocked.why === 'unreachable'
+            ? `The batch cannot finish yet: batch thread "${who.title}" (${who.id})${where} is out of reach (the link to its host is down). It stays in the batch; the batch's steps run once the host is back and every thread is done.`
+            : `The batch cannot finish: batch thread "${who.title}" (${who.id})${where} ${blocked.why}. Fix it (a message, a new thread) or remove it (archive); the batch's steps run once every thread is done.`
+        )
       }
       return
     }
-    if (children.length === 0 || !row.armed || this.gating.has(masterId)) {
+    if (members.length === 0 || !row.armed || this.gating.has(masterId)) {
       if (master.status === 'watching' && !this.open(masterId)) this.deps.registry.masterIdle?.(masterId)
       return
     }
-    if (!this.allDone(children)) return
-    await this.finish(master, row, children)
+    if (!this.allDone(members)) return
+    await this.finish(master, row, members)
   }
 
   /** The land step (what was held, in landing order), then the steps the
    *  rules name in order; a red one stops the rest. */
-  private async finish(master: SessionMeta, row: StoredBatch, children: SessionMeta[]): Promise<void> {
+  private async finish(master: SessionMeta, row: StoredBatch, members: BatchMember[]): Promise<void> {
     const project = master.projectId ? this.deps.registry.getProject(master.projectId) : null
     if (!project) return
     row.armed = false
@@ -801,7 +971,8 @@ export class Batches {
     try {
       const target = project.branch ?? (await this.branchOf(project.cwd))
       const land = this.landId(row)
-      // land: merge what was held, in landing order.
+      // land: merge what was held, in landing order; a branch held on
+      // another host comes from origin, into the project checkout here.
       if (this.step(row, land).status !== 'running') this.begin(row, land, this.landDetail(row))
       const toMerge = [...row.held]
       for (const [i, id] of toMerge.entries()) {
@@ -810,18 +981,32 @@ export class Batches {
         this.progress(row, land, { done: i, total: toMerge.length, label: h.branch })
         let result: MergeResult
         try {
-          result = await this.merge(h.cwd, h.branch, h.target, h.push)
+          result = h.host ? await this.mergeFromOrigin(project.cwd, h.branch, h.target, h.push) : await this.merge(h.cwd, h.branch, h.target, h.push)
         } catch (err) {
           const why = err instanceof Error ? err.message : String(err)
           this.logLine(row, land, `✗ ${h.branch}: ${why}`)
           return this.fail(master, row, land, `The batch's merge of ${h.branch} failed: ${why}. Rebase it on a child and call merge_branch there again; the batch finishes once every thread is done.`)
         }
         this.record(row, id, h.branch, h.subjects)
-        this.deps.registry.append(id, { type: 'notice', kind: 'batch', message: `Merged by the batch: ${h.branch} → ${h.target} at ${result.sha.slice(0, 10)}${result.pushed ? ', pushed' : ''}` })
+        if (!h.host) this.deps.registry.append(id, { type: 'notice', kind: 'batch', message: `Merged by the batch: ${h.branch} → ${h.target} at ${result.sha.slice(0, 10)}${result.pushed ? ', pushed' : ''}` })
+        else this.logLine(row, land, `${h.branch} merged from origin at ${result.sha.slice(0, 10)}`)
         this.save(row)
       }
-      row.leftOut = this.leftOut(row, children)
-      this.progress(row, land, { done: row.landed.length, total: Math.max(this.landers(row, children).length, row.landed.length) })
+      // A child on another host landed through its own host's merge_branch,
+      // which pushed: the checkout here takes the project branch's origin
+      // head before the gate and the release run on it.
+      if (target && row.landed.some((id) => isRemoteAgentId(id))) {
+        try {
+          const r = await this.fetchFastForward(project.cwd, target)
+          this.logLine(row, land, `fetched origin: ${target} at ${r.sha.slice(0, 10)}${r.merged ? '' : ' (already there)'}`)
+        } catch (err) {
+          const why = err instanceof Error ? err.message : String(err)
+          this.logLine(row, land, `✗ fetch: ${why}`)
+          return this.fail(master, row, land, `The batch could not bring ${project.cwd} up to origin/${target}: ${why}. Fix the checkout and send a message to run the batch's end again.`)
+        }
+      }
+      row.leftOut = this.leftOut(row, members)
+      this.progress(row, land, { done: row.landed.length, total: Math.max(this.landers(row, members).length, row.landed.length) })
       this.end(row, land, 'passed', this.landDetail(row, row.leftOut))
       this.save(row)
       const outcome = await this.runSteps(master, row, project, target, 0)
@@ -1068,6 +1253,8 @@ export class Batches {
     this.deps.registry.append(master.id, { type: 'notice', kind: 'batch', message: `Batch done: ${line}` })
     if (row.rules.then === 'archive-children') {
       for (const s of children) if (this.done(s)) await this.deps.registry.setArchived?.(s.id, true)
+      const remote = this.members(row.masterId).filter((m) => m.remote && this.memberDone(m))
+      if (remote.length) await this.deps.remote?.act(row.masterId, 'archive', remote.map((m) => m.id))
     }
     this.tell(
       master,
@@ -1373,7 +1560,7 @@ function ordinal(n: number): string {
 
 export async function handleBatch(
   req: ClientRequest,
-  batches: Pick<Batches, 'get' | 'setRules' | 'stopStep' | 'adopt' | 'archive'>,
+  batches: Pick<Batches, 'get' | 'setRules' | 'stopStep' | 'adoptAll' | 'archive'>,
   registry: Pick<SessionRegistry, 'list'>
 ): Promise<{ handled: true; result: unknown } | { handled: false }> {
   switch (req.method) {
@@ -1386,7 +1573,7 @@ export async function handleBatch(
     case 'batch.stopStep':
       return { handled: true, result: await batches.stopStep(req.params.masterId, req.params.stepId) }
     case 'batch.adopt':
-      return { handled: true, result: batches.adopt(req.params.masterId, req.params.sessionIds) }
+      return { handled: true, result: await batches.adoptAll(req.params.masterId, req.params.sessionIds) }
     case 'batch.archive':
       return { handled: true, result: await batches.archive(req.params.masterId, req.params.which, req.params.removeResources ?? false) }
     default:

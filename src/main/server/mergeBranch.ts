@@ -184,3 +184,62 @@ export async function fastForwardMerge(
   const sha = (await git(cwd, ['rev-parse', target])).trim()
   return { sha, merged, pushed }
 }
+
+// ── across hosts (docs/box.md "Threads across hosts") ─────────────────
+
+/** Push a branch to origin so another host can merge it from there (a held branch of a batch that lands all at once). */
+export async function pushBranch(cwd: string, branch: string): Promise<void> {
+  try {
+    await git(cwd, ['push', '-u', 'origin', branch])
+  } catch (err) {
+    const text = err instanceof Error && 'stderr' in err ? String((err as { stderr: unknown }).stderr) : String(err)
+    throw new MergeRefusal(`git push origin ${branch} failed: ${text.trim()}`)
+  }
+}
+
+/**
+ * Bring a checkout up to the project branch's origin head: `git fetch
+ * origin`, then a fast-forward of `target` to `origin/<target>`. What a
+ * master's host runs after a child on another host landed through that
+ * host's merge_branch (which pushed), before the gate and release steps.
+ * The checkout must be on the target with no changes to tracked files; a
+ * target already at the origin head is a no-op.
+ */
+export async function fetchFastForward(cwd: string, target: string): Promise<MergeResult> {
+  if (!(await hasOrigin(cwd))) return { sha: await revParse(cwd, target), merged: false, pushed: false }
+  const current = await branchOf(cwd)
+  if (current !== target) throw new MergeRefusal(`the checkout at ${cwd} is on ${current ?? 'a detached HEAD'}, not ${target}; check out ${target} there first`)
+  if (!(await gitOk(cwd, ['diff', '--quiet'])) || !(await gitOk(cwd, ['diff', '--cached', '--quiet'])))
+    throw new MergeRefusal(`the checkout at ${cwd} has uncommitted changes to tracked files; commit or discard them before merging`)
+  try {
+    await git(cwd, ['fetch', 'origin', target])
+  } catch (err) {
+    const text = err instanceof Error && 'stderr' in err ? String((err as { stderr: unknown }).stderr) : String(err)
+    throw new MergeRefusal(`git fetch origin ${target} failed: ${text.trim()}`)
+  }
+  const before = await revParse(cwd, target)
+  try {
+    await git(cwd, ['merge', '--ff-only', `origin/${target}`])
+  } catch (err) {
+    const text = err instanceof Error && 'stderr' in err ? String((err as { stderr: unknown }).stderr) : String(err)
+    throw new MergeRefusal(`git merge --ff-only origin/${target} failed: ${text.trim() || 'not a fast-forward'}`)
+  }
+  const sha = await revParse(cwd, target)
+  return { sha, merged: sha !== before, pushed: false }
+}
+
+/**
+ * Merge a branch another host pushed to origin: `git fetch origin <branch>`
+ * then the same fast-forward as a local branch, from `origin/<branch>`.
+ * The end of a batch that lands all at once merges its held remote
+ * branches this way.
+ */
+export async function fastForwardFromOrigin(cwd: string, branch: string, target: string, push: boolean): Promise<MergeResult> {
+  try {
+    await git(cwd, ['fetch', 'origin', branch])
+  } catch (err) {
+    const text = err instanceof Error && 'stderr' in err ? String((err as { stderr: unknown }).stderr) : String(err)
+    throw new MergeRefusal(`git fetch origin ${branch} failed: ${text.trim()}`)
+  }
+  return fastForwardMerge(cwd, `origin/${branch}`, target, push)
+}

@@ -1014,7 +1014,13 @@ const spawnSpecShape = {
     )
 }
 /** The host field a single spawn (not a batch entry) and app_start_thread take. */
-export const HOST_PARAM_DESCRIPTION = "Which host runs it: omit for this machine; `mac` for this thread's Mac (or the only Mac linked), or a host's environment id. Use a Mac host for anything that needs Xcode, the iOS simulator, a Mac app, or files that live on the Mac: the thread runs there, as an ordinary thread the Mac app shows under This Mac, and its agent id comes back as `<host>:<id>` so every later call reaches it."
+export const HOST_PARAM_DESCRIPTION = "Which host runs it: omit for this machine; `mac` for this thread's Mac (or the only Mac linked here), `box` for the one host linked from here, or a host's environment id. Use the Mac for anything that needs Xcode, the iOS simulator, a Mac app, computer use, or files that live on the Mac; use the box for its checkouts and services. The thread runs there as an ordinary thread of that host, and its agent id comes back as `<host>:<id>` so every later call reaches it."
+
+/** The description with the hosts reachable right now appended: "Reachable now: mac = Landon Mac (env_…)". */
+export function hostParamDescription(): string {
+  const line = crossHost?.hostsLine()
+  return line ? `${HOST_PARAM_DESCRIPTION} Reachable now: ${line}.` : HOST_PARAM_DESCRIPTION
+}
 
 export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInstance {
   return createSdkMcpServer({
@@ -1026,7 +1032,7 @@ export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInst
         `Spawn a subagent session and send it its task. Returns the agent id. The agent works asynchronously — use wait_for_agent to collect its result. To fan out, pass \`agents\` (up to ${SPAWN_BATCH_MAX} entries, each with its own task) instead of \`task\`: one call starts the whole batch and returns every agent id; the top-level fields are defaults each entry may override.`,
         {
           ...spawnSpecShape,
-          environmentId: z.string().optional().describe(HOST_PARAM_DESCRIPTION),
+          environmentId: z.string().optional().describe(hostParamDescription()),
           task: z
             .string()
             .optional()

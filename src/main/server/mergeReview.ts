@@ -88,8 +88,9 @@ export interface MergeReviewDeps {
   queue?: GateQueue
   /** a merge landed: the batch records it (batch.ts) */
   onLanded?: (landed: Landed) => void
-  /** before a batch child's fast-forward: the batch may hold it (all-at-once) and answer the text instead (batch.ts) */
-  hold?: (session: SessionMeta, landing: { cwd: string; branch: string; target: string; push: boolean; subjects: string[] }) => string | null
+  /** before a batch child's fast-forward: the batch may hold it (all-at-once) and answer the text instead (batch.ts;
+   *  for a thread of another host's batch, remote/crossHostThreads.ts asks that host, so it may take a moment or refuse) */
+  hold?: (session: SessionMeta, landing: { cwd: string; branch: string; target: string; push: boolean; subjects: string[] }) => string | null | Promise<string | null>
 }
 
 /** What a landed merge tells the batch. */
@@ -507,7 +508,14 @@ ${bundle.diff}
       return gate.text
     }
     // A batch that lands all at once: the branch is recorded, the merge waits for the end.
-    const held = this.deps.hold?.(session, { cwd: run.cwd, branch: run.branch, target: run.target, push: run.push, subjects: run.subjects ?? [] })
+    let held: string | null
+    try {
+      held = (await this.deps.hold?.(session, { cwd: run.cwd, branch: run.branch, target: run.target, push: run.push, subjects: run.subjects ?? [] })) ?? null
+    } catch (err) {
+      // The batch could not be asked (the master's host out of reach, the push refused): the review stands, the merge does not.
+      if (run.state === 'done') this.forget(run)
+      return `refused: ${err instanceof Error ? err.message : String(err)}`
+    }
     if (held) {
       this.forget(run)
       this.row(session.id, run, outcome, false, false, reason)

@@ -40,10 +40,12 @@ import { DeployTrigger, Publisher, handleHost, type HostJobs } from './hostJobs'
 import { MemorySync, handleMemory } from './remote/memorySync'
 import { SessionMover, handleSessionMove } from './remote/sessionMover'
 import { claudeConfigDir, codexHomeDir } from './sessionMove'
-import { PeerCalls, handlePeerRequest } from './remote/peerCalls'
+import { PeerCalls, handlePeerRequest, type LinkRequest } from './remote/peerCalls'
 import { handlePeerPull, macWriteStages } from './macWriteStage'
 import { MacBridge, handleMacBridge } from './remote/macBridge'
 import { CrossHostThreads, crossHostOffers } from './remote/crossHostThreads'
+import { HostLinks } from './remote/hostLinks'
+import { CROSS_HOST_OFFER } from '@shared/contract-crosshost'
 import { CrossHostAgents } from './crossHostAgents'
 import { HostDevicesHub, MacDevices, handleHostDevices, hostDevicesOffers, isMacHost } from './devices/hostDevices'
 import { readSimulatorHolders } from './devices/ledger'
@@ -448,6 +450,7 @@ export async function startServer(
       onPush: (from, push) => {
         if (hostDevices.onPeerPush(from, push)) return
         if (crossHostThreads.onPeerPush(from, push)) return
+        if (crossHostAgents.onPeerPush(from, push)) return
         if (macPublish.onPeerPush(from, push)) return
         if (memorySync.onPeerPush(from, push)) return
         if (releaseAnnouncer.onPeerPush(from, push)) return
@@ -509,6 +512,15 @@ export async function startServer(
     flush: () => store.flushEvents()
   })
   sessionMover.thawStale()
+  const peerCalls = new PeerCalls(environmentId)
+  // How another host's main process is reached, whichever way the socket runs
+  // (remote/hostLinks.ts): a peer.call down a socket it registered here, or a
+  // request on its listener over this host's own link to it.
+  const peerRequest = (id: string): LinkRequest | null => {
+    const link = peers.get(id)
+    return link?.connected ? (method, params, opts) => link.request(method, params, opts) : null
+  }
+  const hostLinks = new HostLinks({ calls: peerCalls, offer: CROSS_HOST_OFFER, link: peerRequest, linkIds: () => listEnvironments(store).map((e) => e.id) })
   // The Mac bridge (docs/box.md): this host as the Mac, answering the hosts it
   // links to under its own policy; and as the box, asking a registered Mac.
   const macBridge = new MacBridge({
@@ -524,20 +536,20 @@ export async function startServer(
     // The thread cap counts the threads a host started here that are live (crossHostThreads below).
     liveThreads: (envId) => crossHostThreads.liveThreadsOf(envId)
   })
-  // Threads another host starts here (the Mac side of docs/box.md "Starting a
-  // thread on the Mac from the box"): served over the same link as the bridge.
+  // Threads another host starts here (docs/box.md "Threads across hosts"):
+  // served over the Mac's link as peer.call pushes, and on this listener as
+  // thread.* requests from a registered peer. The Mac bridge's thread cap
+  // admits them on a Mac; the box keeps its own (crossHost.maxThreads.<envId>).
   const crossHostThreads = new CrossHostThreads({
     environmentId,
     store,
     registry,
     environments: () => listEnvironments(store).map((e) => ({ id: e.id, name: e.name })),
-    link: (id) => {
-      const link = peers.get(id)
-      return link?.connected ? (method, params, opts) => link.request(method, params, opts) : null
-    },
+    link: peerRequest,
+    links: hostLinks,
     pathMap: () => harnessSync.pathMap(),
     workRoot: () => workRoot(store).root,
-    admit: (envId) => macBridge.admitThread(envId)
+    ...(isMacHost() ? { admit: (envId: string) => macBridge.admitThread(envId) } : {})
   })
   // A batch's publish step, served on this Mac for the box (remote/macPublish.ts):
   // the box cut and pushed the release; the Mac pulls it and runs release:publish.
@@ -550,7 +562,6 @@ export async function startServer(
     },
     publisher: hostJobs.publish
   })
-  const peerCalls = new PeerCalls(environmentId)
   // Devices on a Mac (devices/hostDevices.ts, docs/box.md "Devices on the Mac"):
   // gathered on this Mac while a viewer is open, or asked of a registered Mac
   // over the peer link; the ledger join names the thread that holds each one.
@@ -636,10 +647,14 @@ export async function startServer(
     environmentId,
     store,
     sessions: registry,
-    calls: peerCalls,
+    links: hostLinks,
+    link: peerRequest,
     macPeerOf: (id) => macTools.macPeerOf(id).macPeer,
     hostName: (id) => listEnvironments(store).find((e) => e.id === id)?.name ?? null,
-    workRoot: () => workRoot(store).root
+    workRoot: () => workRoot(store).root,
+    // A batch child on another host landing, or changing state: the engine here (batch.ts) decides and reviews.
+    landing: (l) => batchRuns.remoteLanding(l),
+    batchChanged: (masterId) => batchRuns.schedule(masterId)
   })
   setCrossHostAgents(crossHostAgents)
   setAppCrossHost(crossHostAgents)
@@ -668,17 +683,36 @@ export async function startServer(
   })
   const onMac = isMacHost() && !isHeadless()
   const batchRuns = new Batches({
+    environmentId,
     registry,
     store,
     deploy: onMac && !hostJobs.deploy.installed() ? peerDeploy : hostJobs.deploy,
     publish: onMac ? localPublish : peerPublish,
     announce: (version) => releaseAnnouncer.announce(version),
-    version: appVersion
+    version: appVersion,
+    // The batch's children on other hosts (crossHostAgents.ts): counted, paused, archived over their links.
+    remote: {
+      children: (masterId) => crossHostAgents.batchChildren(masterId),
+      refresh: (masterId) => crossHostAgents.refreshBatch(masterId),
+      act: (masterId, action, ids) => crossHostAgents.batchAction(masterId, action, ids),
+      adopt: (master, ids) => crossHostAgents.adopt(master, ids),
+      hostName: (id) => listEnvironments(store).find((e) => e.id === id)?.name ?? null
+    }
   })
 
   batchRuns.attach()
   setBatches(batchRuns)
-  setMergeReviews(new MergeReviews({ registry, store, onLanded: (l) => batchRuns.landed(l), hold: (s, l) => batchRuns.hold(s, l) }))
+  // A thread of another host's batch lands by asking that host (remote/crossHostThreads.ts); a local one by the engine here.
+  setMergeReviews(
+    new MergeReviews({
+      registry,
+      store,
+      onLanded: (l) => {
+        if (!crossHostThreads.landingDone(l.session, l)) batchRuns.landed(l)
+      },
+      hold: (s, l) => (crossHostThreads.ownerOf(s.id) ? crossHostThreads.landingHold(s, l) : batchRuns.hold(s, l))
+    })
+  )
   // A thread that ends here (archived, deleted, moved away) takes its interactive jobs on the Mac with it.
   registry.onRemoved((ids) => macTools.threadsEnded(ids))
   registry.onMeta((m) => {
@@ -1071,10 +1105,21 @@ export async function startServer(
         // A Mac pulling a staged mac.writeFile, only on the socket the call went out on (macWriteStage.ts).
         if (req.method === 'peer.pull')
           return sendFrame({ id: req.id, ok: true, result: handlePeerPull(macWriteStages, { connection, remote: principal.kind === 'remote' }, req.params) })
-        // A Mac reporting that a thread it runs for this host settled (remote/crossHostThreads.ts).
-        if (req.method === 'crossHost.settled') {
+        // Another host reporting on a thread it runs for this one (remote/crossHostThreads.ts): a settle, or a batch landing.
+        if (req.method === 'crossHost.settled' || req.method === 'crossHost.landing') {
           if (principal.kind !== 'remote') throw new Error(`forbidden: ${req.method} is for another host's main process`)
-          return sendFrame({ id: req.id, ok: true, result: crossHostAgents.settled(req.params.from, req.params) })
+          const from = peerCalls.environmentOf(connection) ?? req.params.from
+          return sendFrame({
+            id: req.id,
+            ok: true,
+            result: req.method === 'crossHost.settled' ? crossHostAgents.settled(from, req.params) : crossHostAgents.landing(from, req.params)
+          })
+        }
+        // Another host asking for a thread here (the Mac → the box): the thread.* methods as requests, the caller the socket's registration.
+        if (req.method.startsWith('thread.')) {
+          if (principal.kind !== 'remote') throw new Error(`forbidden: ${req.method} is for another host's main process`)
+          const served = crossHostThreads.handleRequest(req.method, 'params' in req ? req.params : undefined, peerCalls.environmentOf(connection))
+          if (served) return sendFrame({ id: req.id, ok: true, result: await served })
         }
         if (req.method === 'deploy.master') return sendFrame({ id: req.id, ok: true, result: masterRelease.current() })
         const planned = handleProjectPlan(req, projectPlans)
@@ -2073,7 +2118,7 @@ export async function startServer(
             break
           }
           case 'app.adoptThread': {
-            sendFrame({ id: req.id, ok: true, result: batchRuns.adoptTool(callerOf(registry, req.params.sessionId), { threadId: req.params.threadId }) })
+            sendFrame({ id: req.id, ok: true, result: await batchRuns.adoptTool(callerOf(registry, req.params.sessionId), { threadId: req.params.threadId }) })
             break
           }
           case 'review.override': {

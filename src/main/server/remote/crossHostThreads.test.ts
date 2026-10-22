@@ -143,6 +143,7 @@ function service(opts: { exists?: (p: string) => boolean; link?: (m: string, p: 
   const settings = new Map<string, string>()
   const registry = fakeRegistry()
   const requests: { method: string; params: unknown }[] = []
+  const pushed: string[] = []
   const svc = new CrossHostThreads({
     ...(opts.admit ? { admit: opts.admit } : {}),
     environmentId: MAC,
@@ -157,9 +158,11 @@ function service(opts: { exists?: (p: string) => boolean; link?: (m: string, p: 
     workRoot: () => '/Users/landon/IdeaProjects',
     exists: opts.exists ?? ((p) => p.startsWith('/Users/landon/IdeaProjects/temp-code')),
     worktree: async (cwd) => `${cwd}/.wt`,
+    attachmentDirs: () => [],
+    pushBranch: async (cwd, branch) => void pushed.push(`${cwd}:${branch}`),
     log: () => {}
   })
-  return { svc, registry, settings, requests }
+  return { svc, registry, settings, requests, pushed }
 }
 const caller: CrossHostCaller = { environmentId: BOX, sessionId: 'box-thread', title: 'Box thread', permission: 'auto' }
 const ctx = { from: BOX, callId: 'c1', deadlineAt: Date.now() + 120_000 }
@@ -275,10 +278,184 @@ describe('CrossHostThreads', () => {
     registry.setStatus(sessionId, 'idle')
     await vi.advanceTimersByTimeAsync(500)
     const settled = requests.find((r) => r.method === 'crossHost.settled')
-    expect(settled?.params).toMatchObject({ from: MAC, sessionId, parentSessionId: null, status: 'idle', reply: 'finished' })
+    // A started thread names its starter as the parent (the owner's record sits under that thread); a spawned one its parentId.
+    expect(settled?.params).toMatchObject({ from: MAC, sessionId, parentSessionId: 'box-thread', status: 'idle', reply: 'finished' })
     // Idle → idle again (a meta change with no settle) reports nothing more.
     registry.setStatus(sessionId, 'idle')
     await vi.advanceTimersByTimeAsync(500)
     expect(requests.filter((r) => r.method === 'crossHost.settled')).toHaveLength(1)
+  })
+})
+
+// ── both directions: the box serving the Mac, the batch's reach, the landing hooks ──
+
+import { boxPathFor, hostPathFor, listAttachments } from './crossHostThreads'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+describe('boxPathFor and hostPathFor', () => {
+  it('maps a Mac root onto the box checkout, a Mac home path through the prefix, and a Mac work-root checkout onto the box work root', () => {
+    expect(boxPathFor('/Users/landon/IdeaProjects/temp-code/src', MAP, '/srv/agents/work')).toBe('/srv/agents/work/temp-code/src')
+    expect(boxPathFor('/Users/landon/.claude/x', MAP, '/srv/agents/work')).toBe('/srv/agents/home/.claude/x')
+    // The map first (the home prefix covers IdeaProjects here), the work roots for a path outside it.
+    expect(boxPathFor('/Users/landon/IdeaProjects/other', MAP, '/srv/agents/work', '/Users/landon/IdeaProjects')).toBe('/srv/agents/home/IdeaProjects/other')
+    expect(boxPathFor('/Volumes/work/other', MAP, '/srv/agents/work', '/Volumes/work')).toBe('/srv/agents/work/other')
+    expect(boxPathFor('/opt/x', MAP, '/srv/agents/work', '/Users/landon/IdeaProjects')).toBeNull()
+    expect(boxPathFor('rel', MAP, '/srv/agents/work')).toBeNull()
+  })
+  it('hostPathFor tries the inverse map, the forward map and the work roots, and says whether the first hit exists', () => {
+    const exists = (p: string): boolean => p.startsWith('/srv/agents/work/temp-code') || p === '/Users/landon/IdeaProjects/temp-code'
+    // A box path on the Mac (inverse), a Mac path on the box (forward): each matches only its own side.
+    expect(hostPathFor('/srv/agents/work/temp-code', MAP, '/Users/landon/IdeaProjects', '/srv/agents/work', exists)).toEqual({ path: '/Users/landon/IdeaProjects/temp-code', exists: true })
+    expect(hostPathFor('/Users/landon/IdeaProjects/temp-code', MAP, '/srv/agents/work', '/Users/landon/IdeaProjects', exists)).toEqual({ path: '/srv/agents/work/temp-code', exists: true })
+    expect(hostPathFor('/Users/landon/IdeaProjects/missing', MAP, '/srv/agents/work', '/Users/landon/IdeaProjects', exists)).toEqual({ path: '/srv/agents/work/missing', exists: false })
+    expect(hostPathFor('/elsewhere', MAP, '/srv/agents/work', '/Users/landon/IdeaProjects', exists)).toBeNull()
+  })
+  it('listAttachments walks the directories, skips dotfiles, and caps', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tc-att-'))
+    try {
+      mkdirSync(join(dir, 'shots'))
+      writeFileSync(join(dir, 'notes.md'), 'n')
+      writeFileSync(join(dir, '.hidden'), 'h')
+      writeFileSync(join(dir, 'shots', 'one.png'), 'p')
+      writeFileSync(join(dir, 'shots', 'two.png'), 'p')
+      expect(listAttachments([dir, join(dir, 'nope')])).toEqual([join(dir, 'notes.md'), join(dir, 'shots', 'one.png'), join(dir, 'shots', 'two.png')])
+      expect(listAttachments([dir], 2)).toHaveLength(2)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('CrossHostThreads: the box serving the Mac', () => {
+  it('handleRequest serves a thread.* request from a registered peer and refuses one from a socket that never registered', async () => {
+    const { svc, registry } = service()
+    const r = (await svc.handleRequest('thread.start', { caller, args: startArgs }, BOX)) as { sessionId: string }
+    expect(registry.get(r.sessionId)?.startedBy).toBe('box-thread')
+    await expect(svc.handleRequest('thread.check', { caller, args: { sessionId: r.sessionId } }, null)).rejects.toThrow('peer.register')
+    expect(svc.handleRequest('session.list', {}, BOX)).toBeNull()
+  })
+  it("a Mac caller's path lands in the box checkout through the forward map", async () => {
+    const { svc } = service({ exists: (p) => p === '/srv/agents/work/temp-code' })
+    const r = (await svc.handle('thread.start', { caller, args: { ...startArgs, cwd: '/Users/landon/IdeaProjects/temp-code', workRoot: '/Users/landon/IdeaProjects' } }, ctx)) as { cwd: string; cwdNote?: string }
+    expect(r.cwd).toBe('/srv/agents/work/temp-code')
+    expect(r.cwdNote).toBeUndefined()
+  })
+  it("without a Mac bridge cap this host's own crossHost.maxThreads.<env> admits (default 4), and a settings row changes it", async () => {
+    const { svc, settings, registry } = service()
+    for (let i = 0; i < 4; i++) await svc.handle('thread.start', { caller, args: startArgs }, ctx)
+    await expect(svc.handle('thread.start', { caller, args: startArgs }, ctx)).rejects.toThrow('4 of at most 4 threads for box already (crossHost.maxThreads.')
+    settings.set(`crossHost.maxThreads.${BOX}`, '6')
+    await svc.handle('thread.start', { caller, args: startArgs }, ctx)
+    expect(svc.liveThreadsOf(BOX)).toBe(5)
+    registry.setStatus('s1', 'idle')
+    expect(svc.admitThread(BOX)).toEqual({ ok: true })
+    settings.set(`crossHost.maxThreads.${BOX}`, '0')
+    expect(svc.admitThread(BOX).ok).toBe(false)
+  })
+  it('thread.pause, thread.resume and thread.archive reach the registry for a thread this caller started, and nothing else', async () => {
+    const { svc, registry } = service()
+    const calls: string[] = []
+    Object.assign(registry, {
+      pauseRun: async (id: string) => void calls.push(`pause ${id}`),
+      resumePausedRun: async (id: string) => void calls.push(`resume ${id}`),
+      setArchived: async (id: string, a: boolean) => {
+        calls.push(`archive ${id} ${a}`)
+        registry.sessions.set(id, { ...registry.sessions.get(id)!, archived: true })
+      }
+    })
+    const { sessionId } = (await svc.handle('thread.start', { caller, args: startArgs }, ctx)) as { sessionId: string }
+    expect(await svc.handle('thread.pause', { caller, args: { sessionId } }, ctx)).toEqual({ ok: true })
+    expect(await svc.handle('thread.resume', { caller, args: { sessionId } }, ctx)).toEqual({ ok: true })
+    expect(await svc.handle('thread.archive', { caller, args: { sessionId } }, ctx)).toEqual({ ok: true })
+    expect(calls).toEqual([`pause ${sessionId}`, `resume ${sessionId}`, `archive ${sessionId} true`])
+    const other = await registry.create({ provider: 'claude', cwd: '/x', title: 'own' })
+    await expect(svc.handle('thread.pause', { caller, args: { sessionId: other.id } }, ctx)).rejects.toThrow('not a thread this host started')
+  })
+  it('thread.adopt takes an unarchived root of no batch into the caller\'s batch, makes the caller its owner, and refuses the rest with why', async () => {
+    const { svc, registry, settings } = service()
+    const members: string[] = []
+    Object.assign(registry, { setBatchMembership: (id: string, masterId: string) => void members.push(`${id}→${masterId}`) })
+    const loose = await registry.create({ provider: 'codex', cwd: '/x', title: 'Loose' })
+    const r = (await svc.handle('thread.adopt', { caller, args: { sessionId: loose.id, masterId: 'box-master' } }, ctx)) as { ok: true; sessionId: string; title: string }
+    expect(r).toMatchObject({ ok: true, sessionId: loose.id, title: 'Loose', provider: 'codex' })
+    expect(members).toEqual([`${loose.id}→box-master`])
+    expect(settings.get(`${OWNER_PREFIX}${loose.id}`)).toBe(BOX)
+    expect(await svc.handle('thread.check', { caller, args: { sessionId: loose.id } }, ctx)).toMatchObject({ sessionId: loose.id })
+    const sub = await registry.create({ provider: 'claude', cwd: '/x', parentId: loose.id })
+    await expect(svc.handle('thread.adopt', { caller, args: { sessionId: sub.id, masterId: 'box-master' } }, ctx)).rejects.toThrow('it is a subagent')
+    const taken = await registry.create({ provider: 'claude', cwd: '/x', masterId: 'other-master' })
+    await expect(svc.handle('thread.adopt', { caller, args: { sessionId: taken.id, masterId: 'box-master' } }, ctx)).rejects.toThrow('in the batch of other-master')
+    await expect(svc.handle('thread.adopt', { caller, args: { sessionId: 'nope', masterId: 'box-master' } }, ctx)).rejects.toThrow('unknown thread')
+    settings.set(`${OWNER_PREFIX}${loose.id}`, MAC)
+    await expect(svc.handle('thread.adopt', { caller, args: { sessionId: loose.id, masterId: 'box-master' } }, ctx)).rejects.toThrow('belongs to a thread on')
+  })
+  it('thread.events names the files under the attachments directories', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tc-att-'))
+    try {
+      writeFileSync(join(dir, 'shot.png'), 'p')
+      const settings = new Map<string, string>()
+      const registry = fakeRegistry()
+      const svc = new CrossHostThreads({
+        environmentId: MAC,
+        store: { getSetting: (k) => settings.get(k) ?? null, setSetting: (k, v) => (v === null ? settings.delete(k) : settings.set(k, v)) },
+        registry: registry as never,
+        environments: () => [{ id: BOX, name: 'box' }],
+        link: () => null,
+        pathMap: () => MAP,
+        workRoot: () => '/Users/landon/IdeaProjects',
+        exists: () => true,
+        attachmentDirs: () => [dir],
+        log: () => {}
+      })
+      const { sessionId } = (await svc.handle('thread.start', { caller, args: startArgs }, ctx)) as { sessionId: string }
+      const r = (await svc.handle('thread.events', { caller, args: { sessionId } }, ctx)) as { attachments: string[] }
+      expect(r.attachments).toEqual([join(dir, 'shot.png')])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('CrossHostThreads: a batch thread here landing', () => {
+  it('landingHold pushes the branch, asks the owner, and holds when told to; a thread of no batch, or of this host, is nobody\'s to ask', async () => {
+    const answers: unknown[] = []
+    const { svc, registry, requests, pushed } = service({
+      link: async (method, params) => {
+        if (method === 'crossHost.landing') {
+          answers.push(params)
+          return { hold: (params as { branch: string }).branch === 'held-one' }
+        }
+        return { ok: true }
+      }
+    })
+    const { sessionId } = (await svc.handle('thread.start', { caller, args: { ...startArgs, masterId: 'box-master' } }, ctx)) as { sessionId: string }
+    const session = registry.get(sessionId)!
+    const held = await svc.landingHold(session, { cwd: '/wt', branch: 'held-one', target: 'master', subjects: ['one'] })
+    expect(held).toContain('HELD: the batch lands all at once; the master (on box) will merge held-one from origin')
+    expect(pushed).toEqual(['/wt:held-one'])
+    expect(answers[0]).toMatchObject({ from: MAC, sessionId, masterId: 'box-master', phase: 'ask', branch: 'held-one', target: 'master', subjects: ['one'] })
+    expect(await svc.landingHold(session, { cwd: '/wt', branch: 'free', target: 'master', subjects: [] })).toBeNull()
+    expect(pushed).toEqual(['/wt:held-one', '/wt:free'])
+    // landed: reported, counted on the owner.
+    expect(svc.landingDone(session, { branch: 'free', target: 'master', sha: 'abc', subjects: [] })).toBe(true)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(requests.filter((r) => r.method === 'crossHost.landing').at(-1)?.params).toMatchObject({ phase: 'landed', sha: 'abc', branch: 'free' })
+    // Not a batch thread: nothing asked, nothing pushed.
+    const plain = (await svc.handle('thread.start', { caller, args: startArgs }, ctx)) as { sessionId: string }
+    expect(await svc.landingHold(registry.get(plain.sessionId)!, { cwd: '/wt', branch: 'x', target: 'master', subjects: [] })).toBeNull()
+    expect(svc.landingDone(registry.get(plain.sessionId)!, { branch: 'x', target: 'master', sha: 'a', subjects: [] })).toBe(false)
+    expect(pushed).toHaveLength(2)
+  })
+  it('an owner that cannot be asked refuses the merge rather than landing blind', async () => {
+    const { svc, registry } = service({
+      link: async (method) => {
+        if (method === 'crossHost.landing') throw new Error('box is not connected')
+        return { ok: true }
+      }
+    })
+    const { sessionId } = (await svc.handle('thread.start', { caller, args: { ...startArgs, masterId: 'box-master' } }, ctx)) as { sessionId: string }
+    await expect(svc.landingHold(registry.get(sessionId)!, { cwd: '/wt', branch: 'b', target: 'master', subjects: [] })).rejects.toThrow("the master's host (box) could not be asked")
   })
 })

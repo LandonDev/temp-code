@@ -125,6 +125,22 @@ export function stepsProblem(steps: readonly BatchStepSpec[]): string | null {
   return null
 }
 
+/** One thread of the batch as the board draws it: on this host or another (`environmentId`), with the state the host last saw. */
+export const BatchChildSchema = z.object({
+  /** the host's own session id; a child on another host is keyed `<environmentId>:<sessionId>` in `landed`, `pending` and `held` */
+  sessionId: z.string(),
+  environmentId: z.string(),
+  title: z.string(),
+  status: z.string(),
+  threadType: z.string().nullable(),
+  provider: z.string(),
+  model: z.string(),
+  /** a child on another host: when its host last answered, and whether the link to it is down */
+  seenAt: z.number().optional(),
+  linkDown: z.boolean().optional()
+})
+export type BatchChild = z.infer<typeof BatchChildSchema>
+
 /** What `batch.get` answers. */
 export const BatchStateSchema = z.object({
   masterId: z.string(),
@@ -137,10 +153,19 @@ export const BatchStateSchema = z.object({
   pending: z.array(z.string()),
   /** under `all-at-once`: children whose merge_branch was held, their branch recorded, in landing order */
   held: z.array(z.string()),
-  /** the child that blocks the batch's end (errored or stopped), with why; null when nothing blocks */
-  blocked: z.object({ sessionId: z.string(), why: z.enum(['errored', 'stopped']) }).nullable(),
+  /** the child that blocks the batch's end (errored, stopped, or on a host out of reach), with why; null when nothing blocks */
+  blocked: z
+    .object({
+      sessionId: z.string(),
+      why: z.enum(['errored', 'stopped', 'unreachable']),
+      /** `unreachable`: the host the child lives on */
+      environmentId: z.string().optional()
+    })
+    .nullable(),
   /** when the engine finished the last step the rules named; null until then */
-  finishedAt: z.number().int().nullable()
+  finishedAt: z.number().int().nullable(),
+  /** every child of the batch, local and on other hosts, oldest first (additive: an older host leaves it out) */
+  children: z.array(BatchChildSchema).optional()
 })
 export type BatchState = z.infer<typeof BatchStateSchema>
 
@@ -194,8 +219,9 @@ export const BatchRequestSchemas = [
   request('batch.setRules', z.object({ masterId: z.string(), rules: BatchRulesSchema.partial() })),
   // → { stopped: boolean }: stop a running step that can be stopped (a shell step's process group, the Mac's publish job).
   request('batch.stopStep', z.object({ masterId: z.string(), stepId: z.string() })),
-  // → BatchAdoptResult: existing unarchived root threads of this host join the batch
-  //   (a master, a subagent or a thread of another batch is refused).
+  // → BatchAdoptResult: existing unarchived root threads join the batch: this host's by id, another
+  //   host's as `<envId>:<sessionId>` (adopted there over the link); a master, a subagent, a thread
+  //   of another batch or a host out of reach is refused, each id with its reason.
   request('batch.adopt', z.object({ masterId: z.string(), sessionIds: z.array(z.string()).min(1).max(200) })),
   // → SessionBatchResult: archive the batch's children (done = done, or idle after a turn; all = every one,
   //   live ones stopped first), through the fleet's cleanup when removeResources; the master stays.
