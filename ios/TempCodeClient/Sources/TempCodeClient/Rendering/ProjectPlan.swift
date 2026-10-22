@@ -102,13 +102,14 @@ public enum ProjectPlan {
 
     // MARK: - parsing
 
-    private static let h1 = #/\#\s+(.+?)\s*/#
-    private static let h2 = #/\#\#\s+(.+?)\s*/#
-    private static let milestoneHeading = #/\#\#\#\s+(?:\[([ xX])\]\s+)?(?:(\d+)[.)]\s+)?(.+?)\s*/#
-    private static let frontmatterField = #/([A-Za-z_][\w-]*):\s*(.*)/#
-    private static let scopeField = #/\s*(?:[-*]\s*)?(?:\*\*)?(?:Scope)(?:\*\*)?\s*:\s*(?:\*\*)?\s*(.*)/#.ignoresCase()
-    private static let dependenciesField = #/\s*(?:[-*]\s*)?(?:\*\*)?(?:Dependencies|Depends on)(?:\*\*)?\s*:\s*(?:\*\*)?\s*(.*)/#.ignoresCase()
-    private static let doneWhenField = #/\s*(?:[-*]\s*)?(?:\*\*)?(?:Done when|Done-when)(?:\*\*)?\s*:\s*(?:\*\*)?\s*(.*)/#.ignoresCase()
+    // Compiled once and only read: never mutated after the first use.
+    nonisolated(unsafe) private static let h1 = #/\#\s+(.+?)\s*/#
+    nonisolated(unsafe) private static let h2 = #/\#\#\s+(.+?)\s*/#
+    nonisolated(unsafe) private static let milestoneHeading = #/\#\#\#\s+(?:\[([ xX])\]\s+)?(?:(\d+)[.)]\s+)?(.+?)\s*/#
+    nonisolated(unsafe) private static let frontmatterField = #/([A-Za-z_][\w-]*):\s*(.*)/#
+    nonisolated(unsafe) private static let scopeField = #/\s*(?:[-*]\s*)?(?:\*\*)?(?:Scope)(?:\*\*)?\s*:\s*(?:\*\*)?\s*(.*)/#.ignoresCase()
+    nonisolated(unsafe) private static let dependenciesField = #/\s*(?:[-*]\s*)?(?:\*\*)?(?:Dependencies|Depends on)(?:\*\*)?\s*:\s*(?:\*\*)?\s*(.*)/#.ignoresCase()
+    nonisolated(unsafe) private static let doneWhenField = #/\s*(?:[-*]\s*)?(?:\*\*)?(?:Done when|Done-when)(?:\*\*)?\s*:\s*(?:\*\*)?\s*(.*)/#.ignoresCase()
 
     /// The TypeScript's `/^---\n([\s\S]*?)\n---\n?/`: the file starts with
     /// `---`, the fields run to the first `\n---`, and an optional newline
