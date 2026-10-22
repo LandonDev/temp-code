@@ -269,6 +269,24 @@ struct RelayedHostsTests {
         #expect(rig.registry.ordered.count == 2)
     }
 
+    @Test @MainActor func `a lane's hello presence reaches the lane itself, without a registry`() async throws {
+        let sockets = FakeSocketFactory()
+        let keys = InMemoryKeyStore()
+        try keys.set("tc_K1.secret", for: RelayRig.macId)
+        let api = RemoteAPI { request in
+            (Data(#"{"ticket":"t","expiresIn":30}"#.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        let environment = PairedEnvironment(id: RelayRig.macId, name: "Studio Mac", origin: URL(string: "https://box.example")!, caps: [.read, .operate], keyId: "K1", keyName: "iphone", addedAt: 0, via: RelayRig.carrierId)
+        let client = EnvironmentClient(environment: environment, keys: keys, cache: try SessionCache.inMemory(), api: api, connect: sockets.factory, clock: ManualClock(random: [0]))
+        await client.start()
+        let lane = await sockets.socket(0)
+        let rig = try RelayRig()
+        lane.deliver(rig.helloJSON(environmentId: RelayRig.macId, via: RelayRig.carrierId, presence: presenceJSON(power: "asleep")))
+        #expect(await rig.wait { client.relayState == .asleep })
+        #expect(client.presence?.environmentId == RelayRig.macId)
+        await client.stop()
+    }
+
     @Test @MainActor func `an asleep host blocks the composer with its line`() async throws {
         let rig = try RelayRig()
         let carrier = await rig.openCarrier(hosts: [presenceJSON()])
@@ -295,6 +313,8 @@ struct RelayedHostsTests {
         #expect(await rig.wait { rig.mac == nil })
         #expect(rig.relayed.hosts.isEmpty)
         #expect(rig.registry.ordered.map(\.environment.id) == [RelayRig.carrierId])
+        // The client leaves the registry before its cache is wiped; syncs are serialized, so this one waits for that wipe.
+        await rig.registry.sync()
         let shell = try await rig.cache.shell(RelayRig.macId)
         #expect(shell.sessions.isEmpty)
     }
@@ -344,8 +364,9 @@ struct RelayedHostsTests {
         _ = await rig.sockets.socket(0)
         await rig.clock.advance(ms: 60_000)
         await rig.clock.settle()
-        // Only the carrier's socket was opened.
-        #expect(rig.sockets.urls.count == 1)
+        // Only the carrier's socket was dialled (it redials while nothing answers its hello); never the held lane.
+        #expect(!rig.sockets.urls.isEmpty)
+        #expect(rig.sockets.urls.allSatisfy { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.queryItems?.contains { $0.name == "host" } != true })
     }
 
     @Test @MainActor func `relayed json survives a rewrite of the carrier's key`() async throws {

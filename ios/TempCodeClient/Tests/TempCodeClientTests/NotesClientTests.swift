@@ -150,8 +150,10 @@ private let goal = ThreadNotesDoc(text: "## Goal\n\nShip.\n", updatedAt: 5, path
         let rig = try NotesRig()
         let fake = try await rig.open()
         let loading = Task { await rig.client.loadNotes("s1") }
-        _ = try #require(await rig.request(fake, "session.notes.get"))
+        let first = try #require(await rig.request(fake, "session.notes.get"))
         loading.cancel()
+        // The fetch outlives its caller (NotesState.loadNotes): the answer still lands.
+        fake.answer(id: first.id, result: json(goal))
         _ = await loading.value
         #expect(rig.client.notes["s1"]?.error == nil)
         #expect(rig.client.notes["s1"]?.isLoading == false)

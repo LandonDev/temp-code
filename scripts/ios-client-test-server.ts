@@ -14,6 +14,7 @@
  *   POST /append { sessionId, count, big? }  → appends rows to a thread; answers { appended }
  *   POST /clock  { offsetMs }   → shifts the auth clock (31_000 expires every ticket)
  *   POST /revoke { keyId }      → revokes a key (the listener closes its sockets with 4001)
+ *   POST /key                   → { keyId, key } a fresh read key, for a test that revokes one
  *   GET  /actions               → { actions: [{ kind, sessionId, at, … }] } the sends, stops, approvals,
  *                                 answers, creates, renames, archives and pins the stubs recorded
  *   POST /actions/clear         → forgets them
@@ -1243,6 +1244,8 @@ stub('pauseRun', async (sessionId) => {
 })
 stub('resumePausedRun', async (sessionId) => {
   record('resume', sessionId)
+  // As the real resumePausedSession: the row leaves paused first (append drops a status on a paused row).
+  server.store.updateSession(sessionId, { status: 'running', pausedAt: null, frozenActiveElapsed: null })
   registry.append(sessionId, { type: 'status', status: 'running' })
 })
 // The seeds have no harness, so the liveness sweep would mark every running one stopped after 20 s.
@@ -1727,6 +1730,10 @@ const control = createServer((req, res) => {
       case '/clock':
         clockOffsetMs = Number(body.offsetMs ?? 0)
         return answer(200, { clockOffsetMs })
+      case '/key': {
+        const minted = await server.remoteAuth.createKey({ name: 'ios-test-revoke', audience: 'client', caps: [], createdBy: 'local' })
+        return answer(200, { keyId: minted.key.id, key: minted.token })
+      }
       case '/revoke':
         return answer(200, { ok: server.remoteAuth.revokeKey(String(body.keyId ?? '')) })
       case '/stream': {

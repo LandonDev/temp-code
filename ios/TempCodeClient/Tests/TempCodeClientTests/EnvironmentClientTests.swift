@@ -210,6 +210,8 @@ private func seqs(_ rows: [EventRow]) -> [Int] { rows.map(\.seq) }
         let fake = await rig.sockets.socket(0)
         fake.hello()
         await rig.answerShell(fake, sessions: [clientSession("s1")])
+        // The list answer lands before the pushes below, or it would overwrite their title.
+        #expect(await rig.wait { rig.client.hasShell })
         let subscribe = try #require(await rig.waitForRequest(fake, "session.subscribe"))
         fake.deliver(#"{"push":"events","sessionId":"s1","rows":\#(json([textRow("s1", seq: 100)]))}"#)
         // A shell push after the events push proves the push loop consumed it.

@@ -568,7 +568,12 @@ public final class EnvironmentClient {
             // The transport keeps the hello off the push stream: a carrier's hello lists the
             // hosts it relays, a relayed lane's carries its own row; the registry hears both here.
             if let hosts = hello.hosts { relayObserver?(self, hosts, true) }
-            if let presence = hello.presence { relayObserver?(self, [presence], false) }
+            if let presence = hello.presence {
+                // A relayed lane's hello carries its own row: the lane knows its
+                // state without a registry (the registry then stamps `since`).
+                if presence.environmentId == environment.id { await applyRelayState(RelayState(presence), presence: presence, since: stateSince) }
+                relayObserver?(self, [presence], false)
+            }
             subscriptions.sessionChanged()
             // The thread on screen catches up first, the rest of the open set
             // after it, while the shell lists alongside: the person came back

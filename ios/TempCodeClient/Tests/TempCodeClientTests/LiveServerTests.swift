@@ -261,10 +261,12 @@ struct LiveServerTests {
         #expect(client.threads[LiveServer.threadB]?.isLive == false)
         #expect(client.threads[LiveServer.threadB]?.rows.count == before.count, "the screen keeps what it had")
         _ = try await LiveServer.control("/append", ["sessionId": LiveServer.threadB, "count": 5])
+        // The turn ends while away too (reply, turn-complete, idle: three rows): that moves the thread's meta, so the list has something to republish.
+        _ = try await LiveServer.control("/finish", ["sessionId": LiveServer.threadB])
 
         await client.setForeground(true)
         #expect(await LiveServer.until(15) { client.status.transport == .open && client.threads[LiveServer.threadB]?.isLive == true })
-        #expect(await LiveServer.until { (client.threads[LiveServer.threadB]?.rows.count ?? 0) == before.count + 5 })
+        #expect(await LiveServer.until { (client.threads[LiveServer.threadB]?.rows.count ?? 0) == before.count + 8 })
         #expect(await LiveServer.until { client.status.fresh })
         let rows = client.threads[LiveServer.threadB]!.rows
         let seqs = rows.map(\.seq)
@@ -314,6 +316,8 @@ struct LiveServerTests {
         await first.stop()
         #expect(try await cache.cursor(LiveServer.environmentId) == head)
         _ = try await LiveServer.control("/append", ["sessionId": LiveServer.threadB, "count": 2])
+        // Rows alone leave the list as it was (no meta moves); a turn that ends while away moves it.
+        _ = try await LiveServer.control("/finish", ["sessionId": LiveServer.threadB])
 
         let next = EnvironmentClient(environment: LiveServer.environment(), keys: try LiveServer.keys(), cache: cache)
         await next.start()
@@ -352,18 +356,20 @@ struct LiveServerTests {
     }
 
     @Test func `revoking the key closes the socket as unauthorized and nothing retries`() async throws {
-        // A second key so the suite's own key survives.
-        let api = RemoteAPI()
-        let hello = try await api.hello(origin: LiveServer.baseURL, key: LiveServer.key)
-        #expect(hello.key != nil)
-        let state = try await LiveServer.control("/state")
-        _ = state
-        let keys = try LiveServer.keys()
-        let socket = TempCodeSocket(environment: LiveServer.environment(), keys: keys)
+        // A key minted for this test, so the suite's own read key survives for the tests that run after it.
+        let minted = try await LiveServer.control("/key", [:])
+        let keyId = try #require(minted["keyId"] as? String)
+        let token = try #require(minted["key"] as? String)
+        let hello = try await RemoteAPI().hello(origin: LiveServer.baseURL, key: token)
+        #expect(hello.key?.id == keyId)
+        let keys = InMemoryKeyStore()
+        try keys.set(token, for: LiveServer.environmentId)
+        let environment = PairedEnvironment(id: LiveServer.environmentId, name: "test host", origin: LiveServer.baseURL, caps: [.read], keyId: keyId, keyName: "ios-test-revoke", addedAt: 0)
+        let socket = TempCodeSocket(environment: environment, keys: keys)
         await socket.start()
         #expect(await LiveServer.until { await socket.status.transport == .open })
-        // Revoke through the control panel; this is the suite's only key, so run last.
-        _ = try await LiveServer.control("/revoke", ["keyId": LiveServer.keyId])
+        // Revoke through the control panel.
+        _ = try await LiveServer.control("/revoke", ["keyId": keyId])
         #expect(await LiveServer.until { await socket.status.transport == .unauthorized })
         let status = await socket.status
         #expect(status.lastError == "the key was revoked" || status.lastError?.contains("credential") == true, "\(status.lastError ?? "")")
