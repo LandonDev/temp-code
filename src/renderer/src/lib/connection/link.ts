@@ -1,6 +1,42 @@
 import type { ServerPush } from "@server/shared/contract";
 import type { WireProfile } from "@server/shared/wire";
-import type { Transport } from "./transport";
+import { ConnectionLostError, SLOW_MS, TimeoutError, type RequestOptions, type Transport } from "./transport";
+
+/** Waits between retries of a failed load or read: 1, 2, 4, 8, then 15 s. */
+export const RETRY_BACKOFF_MS = [1_000, 2_000, 4_000, 8_000, 15_000] as const;
+
+/** The wait before retry `attempt` (0-based); past the list it stays at the last. */
+export function retryDelay(attempt: number): number {
+  return RETRY_BACKOFF_MS[Math.min(attempt, RETRY_BACKOFF_MS.length - 1)];
+}
+
+/** Reads that change nothing on the host: the link asks again when the
+ *  socket drops or the answer is late. Writes are never replayed. */
+export const SAFE_READS: ReadonlySet<string> = new Set([
+  "session.events",
+  "session.head",
+  "session.tail",
+  "session.list",
+  "session.context",
+  "notes.get",
+  "batch.get",
+  "batch.board",
+  "fs.read",
+]);
+
+/** A failure of the socket rather than an answer from the host. */
+export function isConnectionFailure(e: unknown): boolean {
+  return e instanceof TimeoutError || e instanceof ConnectionLostError;
+}
+
+export type LinkRequestOptions = RequestOptions & {
+  /** Ask again on a dropped socket or a timeout; defaults to true for SAFE_READS. */
+  retry?: boolean;
+};
+
+/** How the host has been answering: `slowSince` is set by an answer later
+ *  than SLOW_MS or a timeout and cleared by the next answer inside it. */
+export type LinkHealth = { slowSince: number | null; lastAnswerMs: number | null };
 
 /**
  * What a store holds for one environment: a request path, the push
@@ -13,7 +49,7 @@ export type Link = {
   readonly connected: boolean;
   /** The wire profile the live socket opened with. */
   readonly profile: WireProfile;
-  request<T>(method: string, params?: unknown): Promise<T>;
+  request<T>(method: string, params?: unknown, options?: LinkRequestOptions): Promise<T>;
   onPush(listener: (push: ServerPush) => void): () => void;
   onOpen(listener: () => void): () => void;
   onClose(listener: () => void): () => void;
@@ -25,6 +61,8 @@ export class EnvLink implements Link {
   private pushListeners = new Set<(push: ServerPush) => void>();
   private openListeners = new Set<() => void>();
   private closeListeners = new Set<() => void>();
+  private healthListeners = new Set<() => void>();
+  private healthState: LinkHealth = { slowSince: null, lastAnswerMs: null };
 
   constructor(
     readonly environmentId: string,
@@ -44,10 +82,51 @@ export class EnvLink implements Link {
     return this.session;
   }
 
-  request<T>(method: string, params?: unknown): Promise<T> {
+  get health(): LinkHealth {
+    return this.healthState;
+  }
+
+  /** Fires when the link turns slow or stops being slow. */
+  onHealth(listener: () => void): () => void {
+    this.healthListeners.add(listener);
+    return () => this.healthListeners.delete(listener);
+  }
+
+  /**
+   * One request on the live socket. A safe read that fails for the socket's
+   * sake (it dropped, it was down, the answer was late) is asked again after
+   * 1, 2, 4, 8 and 15 s, at once when a new socket opens first; then the
+   * last failure stands. A host's own refusal is never retried.
+   */
+  async request<T>(method: string, params?: unknown, options: LinkRequestOptions = {}): Promise<T> {
+    const retry = options.retry ?? SAFE_READS.has(method);
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.once<T>(method, params, options);
+      } catch (e) {
+        if (!retry || !isConnectionFailure(e) || attempt >= RETRY_BACKOFF_MS.length) throw e;
+        await this.nextChance(retryDelay(attempt));
+      }
+    }
+  }
+
+  private once<T>(method: string, params: unknown, options: RequestOptions): Promise<T> {
     const session = this.session;
-    if (!session || session.state !== "open") return Promise.reject(new Error("not connected"));
-    return session.request<T>(method, params);
+    if (!session || session.state !== "open") return Promise.reject(new ConnectionLostError("not connected"));
+    return session.request<T>(method, params, options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {});
+  }
+
+  /** The backoff, cut short by a new socket. */
+  private nextChance(ms: number): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const done = (): void => {
+        clearTimeout(timer);
+        off();
+        resolve();
+      };
+      const timer = setTimeout(done, ms);
+      const off = this.onOpen(done);
+    });
   }
 
   pendingMethods(): string[] {
@@ -84,6 +163,7 @@ export class EnvLink implements Link {
       session.onPush((push) => {
         for (const l of this.pushListeners) l(push);
       }),
+      session.onAnswer((ms, timedOut) => this.noteAnswer(ms, timedOut)),
       session.onClose(() => {
         if (this.session !== session) return;
         this.session = null;
@@ -91,6 +171,16 @@ export class EnvLink implements Link {
         for (const l of this.closeListeners) l();
       }),
     ];
-    for (const l of this.openListeners) l();
+    for (const l of [...this.openListeners]) l();
+  }
+
+  private noteAnswer(ms: number, timedOut: boolean): void {
+    const slow = timedOut || ms > SLOW_MS;
+    const wasSlow = this.healthState.slowSince !== null;
+    this.healthState = {
+      slowSince: slow ? (this.healthState.slowSince ?? Date.now()) : null,
+      lastAnswerMs: ms,
+    };
+    if (slow !== wasSlow) for (const l of this.healthListeners) l();
   }
 }

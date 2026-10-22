@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Transport, type SocketLike } from "./transport";
+import { ConnectionLostError, TimeoutError, Transport, requestTimeoutMs, type SocketLike } from "./transport";
 import type { CloseReason } from "./types";
 
 class FakeSocket implements SocketLike {
@@ -159,5 +159,68 @@ describe("Transport", () => {
     const reasons: CloseReason[] = [];
     t.onClose((r) => reasons.push(r));
     expect(reasons.map((r) => r.kind)).toEqual(["network"]);
+  });
+
+  it("rejects a request past its deadline with a TimeoutError, drops it from pending and ignores the late reply", async () => {
+    const { t, ws } = await opened();
+    const answers: [number, boolean][] = [];
+    t.onAnswer((ms, timedOut) => answers.push([ms, timedOut]));
+    const late = t.request("session.events", { sessionId: "s1" }, { timeoutMs: 5000 });
+    const id = ws.last().id;
+    const caught = late.catch((e: unknown) => e);
+    vi.advanceTimersByTime(4999);
+    expect(t.pendingMethods()).toEqual(["session.events"]);
+    vi.advanceTimersByTime(1);
+    const error = await caught;
+    expect(error).toBeInstanceOf(TimeoutError);
+    expect(error).toMatchObject({ method: "session.events", timeoutMs: 5000, message: "session.events timed out after 5 s" });
+    expect(t.pendingMethods()).toEqual([]);
+    expect(answers).toEqual([[5000, true]]);
+    // The answer that comes after the deadline settles nothing and counts nothing.
+    ws.receive({ id, ok: true, result: [] });
+    expect(answers).toHaveLength(1);
+    expect(t.state).toBe("open");
+  });
+
+  it("times each answer and clears its deadline", async () => {
+    const { t, ws } = await opened();
+    const answers: [number, boolean][] = [];
+    t.onAnswer((ms, timedOut) => answers.push([ms, timedOut]));
+    const p = t.request<string>("catalog.get");
+    vi.advanceTimersByTime(9000);
+    ws.receive({ id: ws.last().id, ok: true, result: "ok" });
+    await expect(p).resolves.toBe("ok");
+    vi.advanceTimersByTime(60_000);
+    expect(answers).toEqual([[9000, false]]);
+  });
+
+  it("gives each class of method its own deadline by default", async () => {
+    expect(requestTimeoutMs("session.events")).toBe(30_000);
+    expect(requestTimeoutMs("session.send")).toBe(30_000);
+    expect(requestTimeoutMs("something.new")).toBe(30_000);
+    expect(requestTimeoutMs("search.project")).toBe(120_000);
+    expect(requestTimeoutMs("session.search")).toBe(120_000);
+    expect(requestTimeoutMs("git.push")).toBe(120_000);
+    expect(requestTimeoutMs("github.inbox")).toBe(120_000);
+    expect(requestTimeoutMs("doctor.get")).toBe(120_000);
+    expect(requestTimeoutMs("doctor.profile", { seconds: 20 })).toBe(25_000);
+    expect(requestTimeoutMs("doctor.profile")).toBe(120_000);
+    const { t } = await opened();
+    const p = t.request("git.log").catch((e: unknown) => e);
+    vi.advanceTimersByTime(119_999);
+    expect(t.pendingMethods()).toEqual(["git.log"]);
+    vi.advanceTimersByTime(1);
+    expect(await p).toBeInstanceOf(TimeoutError);
+  });
+
+  it("a close rejects pending requests with a ConnectionLostError and stops their deadlines", async () => {
+    const { t, ws } = await opened();
+    const p = t.request("session.events").catch((e: unknown) => e);
+    ws.drop(1006);
+    const error = await p;
+    expect(error).toBeInstanceOf(ConnectionLostError);
+    expect((error as Error).message).toBe("connection closed");
+    expect(vi.getTimerCount()).toBe(0);
+    expect(await t.request("x").catch((e: unknown) => e)).toBeInstanceOf(ConnectionLostError);
   });
 });

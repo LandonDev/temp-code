@@ -317,3 +317,25 @@ describe("detach", () => {
     expect(sessionStore.isMirrored("box")).toBe(false);
   });
 });
+
+describe("launch mirror: the load phase", () => {
+  it("a mirrored row reads loading, never loaded-empty, until its host answers", async () => {
+    vi.useFakeTimers();
+    sessionStore.hydrate([host("box", [meta({ id: "a" })], { seq: 1, generation: "g" })]);
+    expect(sessionStore.get("a")?.load?.phase).toBe("loading");
+    expect(sessionStore.get("a")?.loaded).toBeFalsy();
+    const box = new FakeLink("box");
+    box.changes = { seq: 1, generation: "g", reset: false, sessions: [], removed: [] };
+    sessionStore.attach(box);
+    // The pane asks before the socket is up: nothing goes out, it waits loading.
+    await expect(sessionStore.ensureLoaded("a", "pane")).rejects.toThrow("not connected");
+    expect(box.count("session.events")).toBe(0);
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(sessionStore.get("a")?.load?.phase).toBe("slow");
+    box.open();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(box.count("session.events")).toBe(1);
+    expect(sessionStore.get("a")?.load?.phase).toBe("loaded");
+    expect(sessionStore.get("a")?.loaded).toBe(true);
+  });
+});

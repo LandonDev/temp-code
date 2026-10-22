@@ -336,10 +336,22 @@ export type Session = {
   treeFrozenActiveElapsed?: number | null;
   /** The transcript has been fetched from the server at least once. */
   loaded?: boolean;
+  /** Where the transcript's fetch stands (lib/tcserver/store.ts); the pane
+   *  draws loading, slow and failed apart from a thread that is empty. */
+  load?: LoadState;
   archived?: boolean;
   /** Board state folded from the event log (todos, rounds, cost, sources). */
   thread?: ThreadState;
 };
+
+/**
+ * A transcript's fetch: `loading` until the first answer, `slow` once
+ * SLOW_MS pass without one, `failed` with the error while a retry waits
+ * (`retryAt`), `loaded` once the rows are in. `since` is when this load
+ * began; `attempt` counts the failed tries so far.
+ */
+export type LoadPhase = "loading" | "loaded" | "slow" | "failed";
+export type LoadState = { phase: LoadPhase; since: number; attempt: number; error?: string; retryAt?: number };
 
 export type PendingHarnessSwitch = {
   from: HarnessId;

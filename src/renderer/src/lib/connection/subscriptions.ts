@@ -130,11 +130,13 @@ export class Subscriptions {
         }
         const afterSeq = handlers.cursor();
         const tailFirst = options.tail !== undefined && afterSeq === 0;
-        const result = await this.link.request<EventRow[] | EventsPage>("session.events", {
-          sessionId,
-          afterSeq,
-          ...(tailFirst ? { tail: options.tail } : {}),
-        });
+        // The owner retries a failed resume itself (the store's load, the
+        // next replacement session), so the link does not ask again here.
+        const result = await this.link.request<EventRow[] | EventsPage>(
+          "session.events",
+          { sessionId, afterSeq, ...(tailFirst ? { tail: options.tail } : {}) },
+          { retry: false },
+        );
         const page = asPage(result, tailFirst);
         if (this.handlers.get(sessionId) === handlers) handlers.page(page);
         return page;

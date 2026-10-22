@@ -18,6 +18,45 @@ export const HELLO_TIMEOUT_MS = 10_000;
 /** Close codes the server uses when a credential stops being good. */
 const UNAUTHORIZED_CODES = new Set([4401, 4403]);
 
+/** An answer later than this marks the link slow (and a load on it). */
+export const SLOW_MS = 8_000;
+
+/** How long a request may wait for its answer. */
+export type RequestOptions = { timeoutMs?: number };
+
+/** A request whose answer did not come inside its deadline. */
+export class TimeoutError extends Error {
+  constructor(
+    readonly method: string,
+    readonly timeoutMs: number,
+  ) {
+    super(`${method} timed out after ${Math.round(timeoutMs / 1000)} s`);
+    this.name = "TimeoutError";
+  }
+}
+
+/** The socket was gone when the request went out, or went while it waited. */
+export class ConnectionLostError extends Error {
+  constructor(message: "not connected" | "connection closed") {
+    super(message);
+    this.name = "ConnectionLostError";
+  }
+}
+
+const READ_TIMEOUT_MS = 30_000;
+const LONG_TIMEOUT_MS = 120_000;
+/** Searches, git and the doctor walk disks or networks; everything else is a read or a send. */
+const LONG_METHOD = /^(search|git|github|doctor)\.|\.search$/;
+
+/** The deadline a method gets by default: by its name, so an unknown method gets the read's 30 s. */
+export function requestTimeoutMs(method: string, params?: unknown): number {
+  if (method === "doctor.profile") {
+    const seconds = (params as { seconds?: unknown } | undefined)?.seconds;
+    if (typeof seconds === "number" && seconds > 0) return (seconds + 5) * 1000;
+  }
+  return LONG_METHOD.test(method) ? LONG_TIMEOUT_MS : READ_TIMEOUT_MS;
+}
+
 export type TransportOptions = {
   socket?: SocketFactory;
   helloTimeoutMs?: number;
@@ -40,8 +79,15 @@ export class Transport {
   private nextId = 1;
   private pending = new Map<
     string,
-    { method: string; resolve: (v: unknown) => void; reject: (e: Error) => void }
+    {
+      method: string;
+      sentAt: number;
+      timer: ReturnType<typeof setTimeout>;
+      resolve: (v: unknown) => void;
+      reject: (e: Error) => void;
+    }
   >();
+  private answerListeners = new Set<(ms: number, timedOut: boolean) => void>();
   private pushListeners = new Set<(push: ServerPush) => void>();
   private closeListeners = new Set<(reason: CloseReason) => void>();
   private helloWaiters: { resolve: (h: Hello) => void; reject: (e: Error) => void }[] = [];
@@ -73,13 +119,31 @@ export class Transport {
     });
   }
 
-  request<T>(method: string, params?: unknown): Promise<T> {
-    if (this.state !== "open" || !this.ws) return Promise.reject(new Error("not connected"));
+  /** One request; it rejects with a TimeoutError past its deadline, and a
+   *  reply that comes later is dropped. */
+  request<T>(method: string, params?: unknown, options: RequestOptions = {}): Promise<T> {
+    if (this.state !== "open" || !this.ws) return Promise.reject(new ConnectionLostError("not connected"));
     const id = String(this.nextId++);
+    const timeoutMs = options.timeoutMs ?? requestTimeoutMs(method, params);
     return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { method, resolve: resolve as (v: unknown) => void, reject });
+      const timer = setTimeout(() => {
+        if (!this.pending.delete(id)) return;
+        this.noteAnswer(timeoutMs, true);
+        reject(new TimeoutError(method, timeoutMs));
+      }, timeoutMs);
+      this.pending.set(id, { method, sentAt: Date.now(), timer, resolve: resolve as (v: unknown) => void, reject });
       this.ws!.send(JSON.stringify({ id, method, params }));
     });
+  }
+
+  /** Every answer's time (ms) as it lands, and every timeout; the link's health reads these. */
+  onAnswer(listener: (ms: number, timedOut: boolean) => void): () => void {
+    this.answerListeners.add(listener);
+    return () => this.answerListeners.delete(listener);
+  }
+
+  private noteAnswer(ms: number, timedOut: boolean): void {
+    for (const l of this.answerListeners) l(ms, timedOut);
   }
 
   /** Methods still waiting on a reply, oldest first. */
@@ -142,6 +206,8 @@ export class Transport {
     const p = this.pending.get(frame.id);
     if (!p) return;
     this.pending.delete(frame.id);
+    clearTimeout(p.timer);
+    this.noteAnswer(Date.now() - p.sentAt, false);
     if (frame.ok) p.resolve(frame.result);
     else p.reject(new Error(frame.error));
   }
@@ -169,8 +235,12 @@ export class Transport {
     const ws = this.ws;
     this.ws = null;
     if (ws) ws.onclose = ws.onmessage = ws.onerror = ws.onopen = null;
-    for (const p of this.pending.values()) p.reject(new Error("connection closed"));
+    for (const p of this.pending.values()) {
+      clearTimeout(p.timer);
+      p.reject(new ConnectionLostError("connection closed"));
+    }
     this.pending.clear();
+    this.answerListeners.clear();
     const waiters = this.helloWaiters;
     this.helloWaiters = [];
     for (const w of waiters) w.reject(new Error(reason.message));

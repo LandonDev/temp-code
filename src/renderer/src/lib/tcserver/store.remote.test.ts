@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sessionStore, type Link } from "./store";
 import { newSession } from "../session";
 import type { EventRow, ServerPush, SessionMeta } from "./types";
@@ -408,5 +408,53 @@ describe("remote profile: bodies off the wire", () => {
     await sessionStore.loadRowBodies(block);
     const after = sessionStore.get("s1")!.blocks.find((b) => b.tool?.callId === "c1")!;
     expect(after.tool?.omitted).toMatchObject({ seqs: [2], loading: false, failed: true });
+  });
+});
+
+describe("remote profile: the load phase", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("a socket that is down keeps the thread loading (slow after 8 s) and the load starts when it opens", async () => {
+    vi.useFakeTimers();
+    link.pages = [[wireMeta()]];
+    link.events.set("s1", turns("s1", 2));
+    await boot(link);
+    link.connected = false;
+    const since = Date.now();
+    await expect(sessionStore.ensureLoaded("s1", "pane")).rejects.toThrow("not connected");
+    expect(sessionStore.get("s1")?.load).toEqual({ phase: "loading", since, attempt: 0 });
+    expect(link.count("session.events")).toBe(0);
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(sessionStore.get("s1")?.load?.phase).toBe("slow");
+    link.connected = true;
+    link.open();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sessionStore.get("s1")?.load).toEqual({ phase: "loaded", since, attempt: 0 });
+    expect(sessionStore.get("s1")?.blocks.length).toBeGreaterThan(0);
+  });
+
+  it("a socket that comes back cuts a failed load's wait short without resetting its count", async () => {
+    vi.useFakeTimers();
+    link.pages = [[wireMeta()]];
+    link.events.set("s1", turns("s1", 2));
+    await boot(link);
+    const request = link.request.bind(link);
+    let failures = 3;
+    link.request = <T,>(method: string, params?: unknown): Promise<T> =>
+      method === "session.events" && failures-- > 0 ? Promise.reject(new Error("connection closed")) : request<T>(method, params);
+    await sessionStore.ensureLoaded("s1").catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(sessionStore.get("s1")?.load).toMatchObject({ phase: "failed", attempt: 2, retryAt: Date.now() + 2_000 });
+    link.connected = false;
+    await vi.advanceTimersByTimeAsync(2_000);
+    // The retry found the socket down: still failed, the count goes on.
+    expect(sessionStore.get("s1")?.load).toMatchObject({ phase: "failed", attempt: 3, error: "not connected", retryAt: Date.now() + 4_000 });
+    link.connected = true;
+    link.open();
+    await vi.advanceTimersByTimeAsync(0);
+    // The third failure is used up by the open's attempt; the fourth try loads.
+    expect(sessionStore.get("s1")?.load).toMatchObject({ phase: "failed", attempt: 4, retryAt: Date.now() + 8_000 });
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(sessionStore.get("s1")?.load?.phase).toBe("loaded");
   });
 });

@@ -15,3 +15,8 @@ export function useEnvironmentStatus(id: string): EnvironmentStatus {
 export function useEnvironments(): Environment[] {
   return useSyncExternalStore(registry.subscribe.bind(registry), () => registry.environmentsSnapshot());
 }
+
+/** Since when the environment's host has been slow to answer (lib/connection/link.ts), or null. */
+export function useLinkSlowSince(id: string): number | null {
+  return useSyncExternalStore(registry.subscribe.bind(registry), () => registry.slowSince(id));
+}

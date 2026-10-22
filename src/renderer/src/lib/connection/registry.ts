@@ -20,7 +20,7 @@ export type RegistryOptions = {
   clock?: Clock;
 };
 
-type Entry = { environment: Environment; supervisor: Supervisor; link: EnvLink };
+type Entry = { environment: Environment; supervisor: Supervisor; link: EnvLink; offHealth: () => void };
 
 /**
  * Every environment this window talks to: its supervisor, its link and its
@@ -113,7 +113,7 @@ export class ConnectionRegistry {
         : new EnvLink(environment.id, this.defaultProfile(environment));
     if (link === this.pendingPrimary) this.pendingPrimary = null;
     const supervisor = this.createSupervisor(environment, link);
-    const entry: Entry = { environment, supervisor, link };
+    const entry: Entry = { environment, supervisor, link, offHealth: link.onHealth(() => this.emit()) };
     this.entries.set(environment.id, entry);
     this.environmentList = this.environments();
     this.setStatus(environment.id, supervisor.status);
@@ -157,6 +157,7 @@ export class ConnectionRegistry {
     const entry = this.entries.get(id);
     if (!entry) return;
     entry.supervisor.stop();
+    entry.offHealth();
     this.entries.delete(id);
     this.environmentList = this.environments();
     const next = new Map(this.statusSnapshot);
@@ -191,6 +192,11 @@ export class ConnectionRegistry {
 
   statusOf(id: string): EnvironmentStatus {
     return this.statusSnapshot.get(id) ?? IDLE_STATUS;
+  }
+
+  /** Since when the environment's host has been slow to answer; null when it is not. */
+  slowSince(id: string): number | null {
+    return this.entries.get(id)?.link.health.slowSince ?? null;
   }
 
   /** One stable map per change, for useSyncExternalStore. */

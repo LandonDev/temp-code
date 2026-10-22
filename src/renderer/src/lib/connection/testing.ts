@@ -89,6 +89,9 @@ export class FakeTransport {
   onPush(): () => void {
     return () => undefined;
   }
+  onAnswer(): () => void {
+    return () => undefined;
+  }
   onClose(l: (r: CloseReason) => void): () => void {
     if (this.state === "closed" && this.closeReason) l(this.closeReason);
     this.closeListeners.add(l);

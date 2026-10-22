@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { newSession } from "../session";
 import { applyMeta, sessionFromMeta, sessionStore, type Link } from "./store";
+import { TimeoutError } from "../connection";
 import type { EventRow, ServerPush, SessionMeta } from "./types";
 
 function meta(over: Partial<SessionMeta> = {}): SessionMeta {
@@ -56,6 +57,10 @@ class FakeLink implements Link {
   events = new Map<string, EventRow[]>();
   /** When set, head (beforeSeq) fetches wait on it. */
   holdHead: Promise<void> | null = null;
+  /** When set, a resume or tail fetch waits on it. */
+  holdEvents: Promise<void> | null = null;
+  /** The next resume or tail fetches fail with these, in order. */
+  eventErrors: Error[] = [];
   private pushListeners = new Set<(push: ServerPush) => void>();
   private openListeners = new Set<() => void>();
 
@@ -88,6 +93,11 @@ class FakeLink implements Link {
       }
       const result = rows as T;
       if (beforeSeq !== Infinity && this.holdHead) return this.holdHead.then(() => result);
+      if (beforeSeq === Infinity) {
+        const error = this.eventErrors.shift();
+        if (error) return Promise.reject(error);
+        if (this.holdEvents) return this.holdEvents.then(() => result);
+      }
       return Promise.resolve(result);
     }
     return Promise.resolve(null as T);
@@ -867,5 +877,122 @@ describe("the mounted set", () => {
     expect(head.map((c) => c.limit)).toEqual([4000, 4000, 4000]);
     expect(head.map((c) => c.afterSeq)).toEqual([0, 4000, 8000]);
     expect(sessionStore.get("s1")?.blocks).toHaveLength(9000);
+  });
+});
+
+describe("the load phase", () => {
+  afterEach(() => vi.useRealTimers());
+
+  const phase = (id = "s1") => sessionStore.get(id)?.load?.phase;
+
+  it("a first load reads loading, slow once 8 s pass, and loaded on the answer", async () => {
+    vi.useFakeTimers();
+    link.metas = [wireMeta()];
+    link.events.set("s1", [row("s1", 1, { type: "user-text", text: "hi" })]);
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    expect(phase()).toBe("loading");
+    let release!: () => void;
+    link.holdEvents = new Promise<void>((r) => (release = r));
+    const since = Date.now();
+    const loaded = sessionStore.ensureLoaded("s1");
+    expect(sessionStore.get("s1")?.load).toEqual({ phase: "loading", since, attempt: 0 });
+    await vi.advanceTimersByTimeAsync(7_999);
+    expect(phase()).toBe("loading");
+    await vi.advanceTimersByTimeAsync(1);
+    expect(sessionStore.get("s1")?.load).toEqual({ phase: "slow", since, attempt: 0 });
+    expect(sessionStore.get("s1")?.blocks).toEqual([]);
+    release();
+    await loaded;
+    expect(phase()).toBe("loaded");
+    expect(sessionStore.get("s1")?.loaded).toBe(true);
+    expect(sessionStore.get("s1")?.blocks.map((b) => b.text)).toEqual(["hi"]);
+    // Nothing flips it back once the answer is in.
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(phase()).toBe("loaded");
+  });
+
+  it("a failed first load says why and retries by itself after 1, 2, 4 s, on the same socket", async () => {
+    vi.useFakeTimers();
+    link.metas = [wireMeta()];
+    link.events.set("s1", [row("s1", 1, { type: "user-text", text: "hi" })]);
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    link.eventErrors = [new Error("connection closed"), new TimeoutError("session.events", 30_000), new Error("connection closed")];
+    const first = await sessionStore.ensureLoaded("s1").catch((e: unknown) => e);
+    expect((first as Error).message).toBe("connection closed");
+    const since = sessionStore.get("s1")!.load!.since;
+    expect(sessionStore.get("s1")?.load).toEqual({ phase: "failed", since, attempt: 1, error: "connection closed", retryAt: Date.now() + 1_000 });
+    expect(link.method("session.events")).toBe(1);
+    await vi.advanceTimersByTimeAsync(999);
+    expect(link.method("session.events")).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(link.method("session.events")).toBe(2);
+    expect(sessionStore.get("s1")?.load).toMatchObject({ phase: "failed", attempt: 2, error: "timed out", retryAt: Date.now() + 2_000 });
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(sessionStore.get("s1")?.load).toMatchObject({ phase: "failed", attempt: 3, retryAt: Date.now() + 4_000 });
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(link.method("session.events")).toBe(4);
+    expect(sessionStore.get("s1")?.load).toEqual({ phase: "loaded", since, attempt: 0 });
+    expect(sessionStore.get("s1")?.blocks.map((b) => b.text)).toEqual(["hi"]);
+    // No reconnect was needed: the list ran once.
+    expect(link.method("session.list")).toBe(1);
+  });
+
+  it("Retry now tries a failed load at once; a load nobody shows stops retrying", async () => {
+    vi.useFakeTimers();
+    link.metas = [wireMeta(), wireMeta({ id: "s2" })];
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    link.eventErrors = [new Error("down")];
+    await sessionStore.ensureLoaded("s1").catch(() => undefined);
+    expect(phase("s1")).toBe("failed");
+    sessionStore.retryLoad("s1");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(phase("s1")).toBe("loaded");
+    expect(link.method("session.events")).toBe(2);
+    // s2 keeps failing, then leaves the mounted set: after the grace period
+    // it reads as not started and no longer retries.
+    link.eventErrors = Array.from({ length: 20 }, () => new Error("down"));
+    await sessionStore.ensureLoaded("s2").catch(() => undefined);
+    sessionStore.setMounted(["s1"]);
+    await vi.advanceTimersByTimeAsync(3_000);
+    // One retry at 1 s; the grace period ends before the next one at 3 s.
+    expect(link.method("session.events")).toBe(4);
+    expect(phase("s2")).toBe("loading");
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(link.method("session.events")).toBe(4);
+  });
+
+  it("a draft reads loading until its host has listed, and a new one after that is loaded", async () => {
+    const early = { ...newSession("local", "claude", "/repo"), id: "early" };
+    sessionStore.mutate([early]);
+    expect(phase("early")).toBe("loading");
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    await vi.waitFor(() => expect(phase("early")).toBe("loaded"));
+    const late = { ...newSession("local", "claude", "/repo"), id: "late" };
+    sessionStore.mutate((prev) => [...prev, late]);
+    expect(phase("late")).toBe("loaded");
+    // An updater never sets the phase: the store keeps its own.
+    sessionStore.mutate((prev) => prev.map((s) => ({ ...s, load: undefined })));
+    expect(phase("late")).toBe("loaded");
+  });
+
+  it("a layout stub the host claims stays loading until its rows are in, never loaded-empty", async () => {
+    link.metas = [wireMeta()];
+    link.events.set("s1", [row("s1", 1, { type: "user-text", text: "hi" })]);
+    let release!: () => void;
+    link.holdEvents = new Promise<void>((r) => (release = r));
+    sessionStore.mutate([{ ...newSession("local", "claude", "/repo"), id: "s1" }]);
+    expect(phase()).toBe("loading");
+    sessionStore.attach(link);
+    await vi.waitFor(() => expect(link.method("session.events")).toBe(1));
+    expect(sessionStore.isDraft("s1")).toBe(false);
+    expect(phase()).toBe("loading");
+    expect(sessionStore.get("s1")?.blocks).toEqual([]);
+    release();
+    await vi.waitFor(() => expect(phase()).toBe("loaded"));
+    expect(sessionStore.get("s1")?.blocks.map((b) => b.text)).toEqual(["hi"]);
   });
 });

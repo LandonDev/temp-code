@@ -1,9 +1,9 @@
 import { useSyncExternalStore } from "react";
 import { noteBootResume } from "../bootResume";
-import type { Attachment, Block, HarnessId, Session } from "../session";
+import type { Attachment, Block, HarnessId, LoadState, Session } from "../session";
 import { HARNESSES } from "../session";
 import { resolveModel } from "../models";
-import { Subscriptions, asPage, type Link } from "../connection";
+import { SLOW_MS, Subscriptions, TimeoutError, asPage, retryDelay, type Link } from "../connection";
 import { modeForPolicy } from "./access";
 import { applyRowBody, emptyFold, foldEvent, foldOptimisticUser, type FoldState } from "./fold";
 import type { EventsPage, SessionChanges, SessionPage } from "@server/shared/wire";
@@ -140,6 +140,16 @@ type Entry = {
   nextId: number;
   loaded: boolean;
   loading: Promise<void> | null;
+  /** The first load's phase, mirrored on `session.load`. */
+  load: LoadState;
+  /** Someone asked for the transcript (a pane, a prefetch): a load that
+   *  could not start or failed is retried until it lands or the entry leaves
+   *  the mounted set. */
+  wanted: boolean;
+  /** Flips a load still waiting to `slow`. */
+  slowTimer: ReturnType<typeof setTimeout> | null;
+  /** The next try of a failed load. */
+  retryTimer: ReturnType<typeof setTimeout> | null;
   /** The next resume is a cold open: a tail, with history behind it. */
   coldOpen: boolean;
   /** Pushes held back while a history fetch is in flight; they fold after
@@ -194,6 +204,15 @@ const READY_TIMEOUT_MS = 10_000;
  *  launch mirror had for it (CLAUDE.md "Launch: the rail paints from the
  *  launch mirror"). */
 export const BOOT_SETTLE_MS = 2_000;
+
+const loadingState = (since = Date.now()): LoadState => ({ phase: "loading", since, attempt: 0 });
+
+/** The error as the pane's line shows it: short, no method names. */
+function shortError(e: unknown): string {
+  if (e instanceof TimeoutError) return "timed out";
+  const message = e instanceof Error ? e.message : String(e);
+  return message.length > 60 ? `${message.slice(0, 59)}…` : message;
+}
 
 export function isOpenStatus(status: SessionMeta["status"]): boolean {
   return OPEN_STATUSES.has(status);
@@ -384,6 +403,9 @@ class SessionStore {
   private listedBy: string | null = null;
   /** Environments whose first list on the current socket has landed. */
   private listedDone = new Set<string>();
+  /** Environments that have answered a list this run: a draft on one the
+   *  host did not claim is a new thread, not a transcript on its way. */
+  private listedOk = new Set<string>();
   /** Environments hydrated from the launch mirror this boot, and the ids
    *  still unconfirmed by the host (a resync confirms or drops them). */
   private mirrored = new Map<string, Set<string>>();
@@ -399,6 +421,7 @@ class SessionStore {
    *  list on a replacement session has landed. */
   private registryRef: {
     markFresh?(environmentId: string, fresh: boolean): void;
+    retry?(environmentId: string): void;
     statusOf?(environmentId: string): { lastHello: { environmentId: string } | null };
     primaryEnvironmentId?: string;
   } | null = null;
@@ -408,6 +431,7 @@ class SessionStore {
   connect(registry: {
     onLink(listener: (link: Link, event: "added" | "removed") => void): () => void;
     markFresh?(environmentId: string, fresh: boolean): void;
+    retry?(environmentId: string): void;
     statusOf?(environmentId: string): { lastHello: { environmentId: string } | null };
     primaryEnvironmentId?: string;
   }): void {
@@ -432,8 +456,13 @@ class SessionStore {
     const subs = new Subscriptions(link);
     const entry: Attached = { link, subs, detach: [], listed: null };
     const list = (): void => {
+      // Transcripts asked for while the host was away load now, beside the list.
+      this.kickWanted(link.environmentId);
       entry.listed = this.resync(link)
-        .then(() => this.registryRef?.markFresh?.(link.environmentId, true))
+        .then(() => {
+          this.registryRef?.markFresh?.(link.environmentId, true);
+          this.settleDrafts(link.environmentId);
+        })
         .catch(() => undefined)
         .then(() => {
           this.readyDone = true;
@@ -462,6 +491,7 @@ class SessionStore {
     entry.subs.dispose();
     this.attached.delete(environmentId);
     this.listedDone.delete(environmentId);
+    this.listedOk.delete(environmentId);
     this.mirrored.delete(environmentId);
     this.cursors.delete(environmentId);
     for (const [id, e] of [...this.entries]) {
@@ -531,7 +561,10 @@ class SessionStore {
     }
     this.attached.clear();
     this.opened = Promise.resolve();
-    for (const entry of this.entries.values()) this.settleHead(entry);
+    for (const entry of this.entries.values()) {
+      this.settleHead(entry);
+      this.stopTimers(entry);
+    }
     this.entries.clear();
     this.openOrder = [];
     this.queues.clear();
@@ -539,6 +572,7 @@ class SessionStore {
     this.listed = null;
     this.listedBy = null;
     this.listedDone.clear();
+    this.listedOk.clear();
     this.mirrored.clear();
     this.cursors.clear();
     this.settleWaiters.clear();
@@ -640,10 +674,7 @@ class SessionStore {
     this.onPush(push, environmentId);
     if (!draft) return;
     const entry = this.entries.get(push.session.id);
-    if (entry) {
-      entry.loaded = true;
-      entry.session = { ...entry.session, loaded: true };
-    }
+    if (entry) this.finishLoad(entry);
   }
 
   /** Every server-known meta (drafts excluded). The same array until a meta changes. */
@@ -941,7 +972,13 @@ class SessionStore {
       if (!keep || keep.has(entry.meta.id)) replay.push(entry);
       else this.unload(entry);
     }
-    await Promise.all(replay.map((entry) => this.replayGap(entry, "resync")));
+    // A pane restored from a saved layout is a loaded draft until its host
+    // claims it; its first fetch is a load with a phase like any other.
+    await Promise.all(
+      replay.map((entry) =>
+        entry.load.phase === "loaded" ? this.replayGap(entry, "resync") : this.startLoad(entry, "resync").catch(() => undefined),
+      ),
+    );
     this.bump();
   }
 
@@ -980,7 +1017,12 @@ class SessionStore {
     if (!keep) return;
     let dropped = 0;
     for (const entry of this.entries.values()) {
-      if (!entry.loaded || !entry.meta || keep.has(entry.meta.id)) continue;
+      if (!entry.meta || keep.has(entry.meta.id)) continue;
+      if (!entry.loaded) {
+        // A load nobody shows any more stops retrying.
+        if (this.forgetLoad(entry)) dropped++;
+        continue;
+      }
       if (this.unload(entry)) dropped++;
     }
     if (dropped) this.bump();
@@ -999,7 +1041,21 @@ class SessionStore {
     entry.nextId = 1;
     entry.held = null;
     entry.rows = null;
-    entry.session = { ...sessionFromMeta(entry.meta), loaded: false };
+    this.stopTimers(entry);
+    entry.wanted = false;
+    entry.load = loadingState();
+    entry.session = { ...sessionFromMeta(entry.meta), loaded: false, load: entry.load };
+    return true;
+  }
+
+  /** A first load that is not in flight and no longer wanted: its retry and
+   *  slow timers stop and it reads as not started. True when it changed. */
+  private forgetLoad(entry: Entry): boolean {
+    if (entry.loading || (!entry.wanted && entry.load.phase === "loading")) return false;
+    this.stopTimers(entry);
+    entry.wanted = false;
+    entry.load = loadingState();
+    entry.session = { ...entry.session, load: entry.load };
     return true;
   }
 
@@ -1058,16 +1114,141 @@ class SessionStore {
     if (!entry || !entry.meta) return Promise.resolve();
     if (entry.loaded) return Promise.resolve();
     if (entry.loading) return entry.loading;
-    entry.loading = this.replayGap(entry, why)
-      .then(() => {
-        entry.loaded = true;
-        entry.session = { ...entry.session, loaded: true };
-        this.bump();
-      })
+    return this.startLoad(entry, why);
+  }
+
+  // ── the load phase ─────────────────────────────────────────────────
+
+  /**
+   * One try at a transcript's first load, its phase on the session: loading,
+   * slow past SLOW_MS, loaded on the answer, failed on an error with the
+   * next try scheduled (1, 2, 4, 8, then every 15 s) on whatever socket the
+   * link has then, until it loads or leaves the mounted set. A host that is
+   * not connected yet keeps it loading: the load starts when the socket
+   * opens (`kickWanted`), which also cuts a failed one's wait short without
+   * resetting its count.
+   */
+  private startLoad(entry: Entry, why: string): Promise<void> {
+    if (entry.loading) return entry.loading;
+    this.clearRetry(entry);
+    // A load nobody had asked for begins now; a retry keeps when it began.
+    const fresh = !entry.wanted || entry.load.phase === "loaded";
+    entry.wanted = true;
+    const link = this.linkOf(entry);
+    if (!link?.connected) {
+      const down = new Error("not connected");
+      if (entry.load.phase === "failed") this.failLoad(entry, down);
+      else this.markLoading(entry, fresh);
+      return Promise.reject(down);
+    }
+    this.markLoading(entry, fresh);
+    const id = entry.session.id;
+    const tracked: Promise<void> = this.replayGap(entry, why)
+      .then(
+        () => {
+          if (this.entries.get(id) === entry) this.finishLoad(entry);
+        },
+        (e: unknown) => {
+          if (this.entries.get(id) === entry && entry.wanted) this.failLoad(entry, e);
+          throw e;
+        },
+      )
       .finally(() => {
-        entry.loading = null;
+        if (entry.loading === tracked) entry.loading = null;
       });
-    return entry.loading;
+    entry.loading = tracked;
+    return tracked;
+  }
+
+  /** Loading from now (`fresh`) or still (keeping when it began), slow at SLOW_MS. */
+  private markLoading(entry: Entry, fresh: boolean): void {
+    if (!fresh && entry.load.phase === "loading" && entry.slowTimer) return;
+    const since = fresh ? Date.now() : entry.load.since;
+    const attempt = fresh ? 0 : entry.load.attempt;
+    this.stopTimers(entry);
+    if (fresh || entry.load.phase !== "slow") this.setLoad(entry, { phase: "loading", since, attempt });
+    entry.slowTimer = setTimeout(() => {
+      entry.slowTimer = null;
+      if (entry.load.phase === "loading" && this.entries.get(entry.session.id) === entry) {
+        this.setLoad(entry, { ...entry.load, phase: "slow" });
+      }
+    }, SLOW_MS);
+  }
+
+  private finishLoad(entry: Entry): void {
+    this.stopTimers(entry);
+    entry.loaded = true;
+    entry.wanted = false;
+    entry.load = { phase: "loaded", since: entry.load.since, attempt: 0 };
+    entry.session = { ...entry.session, loaded: true, load: entry.load };
+    this.bump();
+  }
+
+  private failLoad(entry: Entry, e: unknown): void {
+    this.stopTimers(entry);
+    const attempt = entry.load.attempt + 1;
+    const wait = retryDelay(attempt - 1);
+    this.setLoad(entry, { phase: "failed", since: entry.load.since, attempt, error: shortError(e), retryAt: Date.now() + wait });
+    entry.retryTimer = setTimeout(() => {
+      entry.retryTimer = null;
+      if (this.entries.get(entry.session.id) !== entry || !entry.wanted) return;
+      void this.startLoad(entry, "retry").catch(() => undefined);
+    }, wait);
+  }
+
+  private setLoad(entry: Entry, load: LoadState): void {
+    entry.load = load;
+    entry.session = { ...entry.session, load };
+    this.bump();
+  }
+
+  private clearRetry(entry: Entry): void {
+    if (entry.retryTimer) clearTimeout(entry.retryTimer);
+    entry.retryTimer = null;
+  }
+
+  private stopTimers(entry: Entry): void {
+    this.clearRetry(entry);
+    if (entry.slowTimer) clearTimeout(entry.slowTimer);
+    entry.slowTimer = null;
+  }
+
+  /** A host's socket opened: every transcript asked for there and not in yet tries now. */
+  private kickWanted(environmentId: string): void {
+    for (const entry of this.entries.values()) {
+      if (!entry.wanted || entry.loaded || entry.loading || entry.meta?.environmentId !== environmentId) continue;
+      void this.startLoad(entry, "open").catch(() => undefined);
+    }
+  }
+
+  /** The host listed: drafts it did not claim are new threads, nothing is on its way. */
+  private settleDrafts(environmentId: string): void {
+    this.listedOk.add(environmentId);
+    let changed = false;
+    for (const entry of this.entries.values()) {
+      if (entry.meta || entry.session.environmentId !== environmentId || entry.load.phase === "loaded") continue;
+      this.stopTimers(entry);
+      entry.load = { phase: "loaded", since: entry.load.since, attempt: 0 };
+      entry.session = { ...entry.session, load: entry.load };
+      changed = true;
+    }
+    if (changed) this.bump();
+  }
+
+  /**
+   * The pane's Retry: a failed load tries at once; a load still waiting
+   * asks the connection to check its socket (a dead one reconnects, and the
+   * load fails over to its own retry).
+   */
+  retryLoad(id: string): void {
+    const entry = this.entries.get(id);
+    if (!entry || entry.load.phase === "loaded") return;
+    const environmentId = entry.meta?.environmentId ?? entry.session.environmentId;
+    if (entry.load.phase === "failed" && entry.meta && this.linkOf(entry)?.connected) {
+      void this.startLoad(entry, "retry").catch(() => undefined);
+      return;
+    }
+    this.registryRef?.retry?.(environmentId);
   }
 
   /** Loaded and every row of the log folded (no head still on its way). */
@@ -1173,7 +1354,7 @@ class SessionStore {
     entry.lastSeq = 0;
     entry.nextId = 1;
     if (entry.rows) entry.rows = [];
-    entry.session = { ...sessionFromMeta(entry.meta), loaded: entry.session.loaded, blocks: pending };
+    entry.session = { ...sessionFromMeta(entry.meta), loaded: entry.session.loaded, load: entry.load, blocks: pending };
   }
 
   /** Remote profile: whether rows older than the loaded ones remain on the server. */
@@ -1508,13 +1689,18 @@ class SessionStore {
     this.metasSnapshot = null;
     const entry = this.entries.get(meta.id);
     if (!entry) {
+      const load = loadingState();
       this.entries.set(meta.id, {
-        session: sessionFromMeta(meta),
+        session: { ...sessionFromMeta(meta), load },
         meta,
         lastSeq: 0,
         nextId: 1,
         loaded: false,
         loading: null,
+        load,
+        wanted: false,
+        slowTimer: null,
+        retryTimer: null,
         coldOpen: false,
         held: null,
         head: null,
@@ -1621,7 +1807,10 @@ class SessionStore {
   private drop(id: string): void {
     this.metasSnapshot = null;
     const entry = this.entries.get(id);
-    if (entry) this.settleHead(entry);
+    if (entry) {
+      this.settleHead(entry);
+      this.stopTimers(entry);
+    }
     this.entries.delete(id);
     this.queues.delete(id);
     this.liveEdits.delete(id);
@@ -1644,20 +1833,31 @@ class SessionStore {
       order.push(session.id);
       const entry = this.entries.get(session.id);
       if (!entry) {
+        // A draft is a new thread once its host has listed without it; until
+        // then it may be a pane restored from a saved layout whose rows are
+        // on their way, so it reads as loading, never as an empty thread.
+        const load: LoadState = this.listedOk.has(session.environmentId)
+          ? { phase: "loaded", since: Date.now(), attempt: 0 }
+          : loadingState();
         this.entries.set(session.id, {
-          session,
+          session: { ...session, load },
           meta: null,
           lastSeq: 0,
           nextId: 1,
           loaded: true,
           loading: null,
+          load,
+          wanted: false,
+          slowTimer: null,
+          retryTimer: null,
           coldOpen: false,
           held: null,
           head: null,
           rows: null,
         });
       } else if (entry.session !== session) {
-        entry.session = session;
+        // The load phase is the store's: an updater never sets it.
+        entry.session = session.load === entry.load ? session : { ...session, load: entry.load };
       }
     }
     this.openOrder = order;
@@ -1672,7 +1872,8 @@ class SessionStore {
     this.mergeMeta(meta);
     const entry = this.entries.get(meta.id);
     if (entry) {
-      entry.loaded = true;
+      // Created here: its rows arrive as pushes from the start.
+      if (entry.load.phase !== "loaded" || !entry.loaded) this.finishLoad(entry);
       const subs = this.subsOf(entry);
       if (subs && !subs.isLive(meta.id)) {
         subs.add(meta.id, this.handlersFor(entry));
