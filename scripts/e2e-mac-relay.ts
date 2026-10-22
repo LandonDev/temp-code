@@ -286,7 +286,9 @@ try {
   check('a local method is refused on the box', (await l.request('app.listThreads', { sessionId: 'x' })).error === 'forbidden: app.listThreads is local-only')
   check('a method outside the relay table does not cross', (await l.request('doctor.get', {})).error === 'forbidden: doctor.get does not relay to another host')
   check("the box answers the key's own push status", (await l.request('remote.push.status', {})).ok === true)
-  check("the Mac's fence refuses a path outside its roots", ((await l.request('fs.readText', { path: join(mac.home, '.ssh', 'id_ed25519') })).error ?? '').includes('outside app-managed roots'))
+  // fs.readPreview: path-fenced and on the relay table (fs.readText never relays, so the box refused it before the Mac's fence saw it).
+  const fenced = await l.request('fs.readPreview', { path: join(mac.home, '.ssh', 'id_ed25519'), maxLines: 5 })
+  check("the Mac's fence refuses a path outside its roots", (fenced.error ?? '').includes('outside app-managed roots'), JSON.stringify(fenced).slice(0, 300))
 
   // ── 7. lock, sleep, wake ─────────────────────────────────────────────
   await rpc(mac, 'presence.set', { screen: 'locked' })
