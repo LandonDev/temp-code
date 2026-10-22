@@ -92,6 +92,34 @@ it('300 metas changing (context ticks, statuses, accounts) cost no listSessions 
   expect(store.getSession(ids[2])?.account).toBe(registry.get(ids[2])?.account)
 })
 
+it('the running cap counts from the index: queued roots and subagents, passes, starts and the reclaim cost no listSessions call', async () => {
+  registry.admission = { cap: () => 2, memoryLow: () => false }
+  registry.reclaimGraceMs = 0
+  const parent = await registry.create({ cwd: root, provider: 'claude' })
+  await registry.send(parent.id, 'go')
+  const lists = vi.spyOn(store, 'listSessions')
+  const ids: string[] = []
+  for (let i = 0; i < 4; i++) {
+    const s = await registry.create({ cwd: root, provider: 'claude', ...(i === 3 ? { parentId: parent.id } : {}) })
+    await registry.send(s.id, `t${i}`)
+    ids.push(s.id)
+  }
+  await registry.scheduler.tick()
+  // The parent and the first new thread hold the two slots; the rest wait, the subagent among them.
+  // This file's driver never reports running: a started thread reads starting.
+  expect(ids.map((id) => store.getSession(id)?.status)).toEqual(['starting', 'queued', 'queued', 'queued'])
+  expect(registry.scheduler.counts()).toEqual({ running: 2, queued: 3 })
+  expect(registry.get(ids[3]!)?.activity).toBe('Queued · 2 of 2 running')
+  // A settle frees a slot: the idle harness is put down and the oldest waiting thread starts.
+  registry.append(ids[0]!, { type: 'status', status: 'idle' })
+  await registry.scheduler.tick()
+  for (let i = 0; i < 50 && store.getSession(ids[1]!)?.status === 'queued'; i++) await new Promise((r) => setTimeout(r, 10))
+  expect(store.getSession(ids[1]!)?.status).toBe('starting')
+  expect(store.getSession(ids[2]!)?.status).toBe('queued')
+  expect(registry.liveIds().has(ids[0]!)).toBe(false)
+  expect(lists).not.toHaveBeenCalled()
+})
+
 it('writes the store can describe patch the index; only the rest bump the version', async () => {
   const session = await registry.create({ cwd: root })
   const child = await registry.create({ cwd: root, parentId: session.id })

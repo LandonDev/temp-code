@@ -263,7 +263,7 @@ export async function appStartThread(
   reg: SessionRegistry,
   caller: SessionMeta,
   args: StartThreadArgs
-): Promise<{ threadId: string; title: string; host?: string; cwd?: string; cwdNote?: string } | string> {
+): Promise<{ threadId: string; title: string; host?: string; cwd?: string; cwdNote?: string; status?: string } | string> {
   // A thread is a person's choice, whoever starts it: the model policy
   // (shared/rules.ts) governs subagents only. What is checked here is the
   // catalog: the model exists for some provider (a gpt model requested under
@@ -360,7 +360,9 @@ export async function appStartThread(
       : undefined
   })
   const created = reg.get(thread.id) ?? thread
-  return { threadId: thread.id, title: created.title }
+  // Held by `after` or the host's running cap (scheduler.ts): say why, in the words list_agents uses.
+  const queued = created.status === 'queued' ? (reg.queuedLine(thread.id) ?? 'Queued').replace(/^Queued/, 'queued') : null
+  return { threadId: thread.id, title: created.title, ...(queued ? { status: queued } : {}) }
 }
 
 // ── thread notes (threadNotes.ts) ────────────────────────────────────
@@ -650,7 +652,9 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
           return text(
             JSON.stringify({
               ...result,
-              note: 'thread created and working — visible to the user now'
+              note: result.status
+                ? 'thread created and queued — it starts on its own when it may; visible to the user now'
+                : 'thread created and working — visible to the user now'
             })
           )
         }

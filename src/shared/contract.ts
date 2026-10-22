@@ -18,6 +18,7 @@ import { MacJobRequestSchemas } from './contract-macjobs'
 import { HostRequestSchemas } from './contract-host'
 import { HostDevicesRequestSchemas } from './contract-hostdevices'
 import { ResourcesRequestSchemas } from './contract-resources'
+import { AdmissionRequestSchemas } from './contract-admission'
 import { AGENT_TYPES } from './catalog'
 import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
@@ -142,6 +143,8 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...HostRequestSchemas,
   ...HostDevicesRequestSchemas,
   ...ResourcesRequestSchemas,
+  // Admission control (contract-admission.ts): the running cap and what it is sized from.
+  ...AdmissionRequestSchemas,
   // refresh: re-probe the installed CLIs of the probed providers first.
   z.object({
     id: z.string(),

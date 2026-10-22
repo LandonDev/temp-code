@@ -108,6 +108,16 @@ it('app_start_thread refuses context1m on a codex model and creates nothing', as
   expect(created).toHaveLength(0)
 })
 
+it('app_start_thread says when the thread it started is queued at the running cap', async () => {
+  const queuedRegistry = {
+    ...fakeRegistry,
+    get: (id: string) => (id === caller.id ? caller : id === 'thread-1' ? { id, title: 'a thread', status: 'queued' } : null),
+    queuedLine: () => 'Queued · 120 of 120 running'
+  } as unknown as SessionRegistry
+  const result = await appStartThread(queuedRegistry, caller, { threadType: 'chat', provider: 'claude', model: 'claude-opus-5', firstMessage: 'go' })
+  expect(result).toEqual({ threadId: 'thread-1', title: 'a thread', status: 'queued · 120 of 120 running' })
+})
+
 // ── app_start_thread follows no model policy ─────────────────────────
 // A thread is a person's choice whoever starts it: the policy in
 // shared/rules.ts (Fable orchestrators-only by default, a model switched

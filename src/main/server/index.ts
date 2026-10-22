@@ -11,6 +11,7 @@ import { AccountsService, accountsPusher } from './accounts'
 import { isRoutedProvider, PROVIDER_OF, SERVICE_OF } from '@shared/accounts'
 import { startGateway, type Gateway } from './gateway'
 import { BootResumer } from './resumeAfterBoot'
+import { Admission } from './admission'
 import { closeWarmPools, retireWarmPools, warmStatuses } from './drivers/warm'
 import { observeHooks } from './gatewayObserve'
 import { HeadroomStore } from './headroom'
@@ -820,6 +821,17 @@ export async function startServer(
   registry.resetStaleStatuses()
   registry.startIdleSweep()
   registry.startLivenessSweep()
+  // The running cap (admission.ts): sized from memory unless pinned; the
+  // scheduler holds every start past it.
+  const admission = new Admission({
+    getSetting: (key) => store.getSetting(key),
+    setSetting: (key, value) => store.setSetting(key, value),
+    pids: () => registry.harnessPids(),
+    counts: () => registry.scheduler.counts(),
+    onChange: () => registry.scheduler.schedule()
+  })
+  registry.admission = admission
+  admission.start()
   // Threads the last shutdown cut mid-turn come back once everything
   // listens (run() below); the renderer hears the count once per boot.
   const bootResumer = new BootResumer({ store, registry })
@@ -1914,6 +1926,12 @@ export async function startServer(
           case 'resources.list':
             sendFrame({ id: req.id, ok: true, result: { resources: resources.list(resources.ownerOf(req.params.sessionId), req.params.includeRemoved ?? false) } })
             break
+          case 'admission.get':
+            sendFrame({ id: req.id, ok: true, result: admission.state() })
+            break
+          case 'admission.set':
+            sendFrame({ id: req.id, ok: true, result: admission.set(req.params.cap) })
+            break
           case 'resources.listAll':
             sendFrame({ id: req.id, ok: true, result: { resources: resources.listAll(req.params ?? {}) } })
             break
@@ -2397,6 +2415,7 @@ export async function startServer(
       m3a.accounts.stop()
       if (headroomRows) clearTimeout(headroomRows)
       headroom.flush()
+      admission.stop()
       await registry.disposeAll()
       offCheckpointEdits()
       closeWarmPools()

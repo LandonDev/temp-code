@@ -205,6 +205,9 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'resources.list': 'read',
   'resources.listAll': 'read',
   'resources.remove': 'operate',
+  // Admission control (contract-admission.ts): read the cap and its sizing; only an admin pins it.
+  'admission.get': 'read',
+  'admission.set': 'admin',
   'session.delete': 'operate',
   'session.restart': 'operate',
   'session.continue': 'operate',

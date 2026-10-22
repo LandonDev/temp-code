@@ -1,3 +1,4 @@
+import type { ChildProcess } from 'node:child_process'
 import {
   query,
   type CanUseTool,
@@ -1287,14 +1288,18 @@ export const claudeDriver: HarnessDriver = {
     // (`--resume` in its argv) and a thread the shim routes elsewhere spawn
     // cold and warm nothing.
     const gw = gateway()
+    // The CLI process behind this handle, for its pid (admission.ts samples its RSS).
+    let cli: ChildProcess | null = null
     const own = gw?.url('claude')
     const warmable = !session.nativeId && !!gw && !!endpoint && !!own && (gw.status().owner || endpoint.startsWith(own))
-    options.spawnClaudeCodeProcess = (spawnOpts) =>
-      spawnOrAdoptClaude(
+    options.spawnClaudeCodeProcess = (spawnOpts) => {
+      cli = spawnOrAdoptClaude(
         { command: spawnOpts.command, args: spawnOpts.args, cwd: spawnOpts.cwd, env: spawnOpts.env },
         (spawnOpts as { signal?: AbortSignal }).signal,
         { thread: session.id, scope: ctx.route ? { thread: session.id, ...ctx.route, model: session.model } : null, warmable }
-      ).proc as unknown as SpawnedProcess
+      ).proc
+      return cli as unknown as SpawnedProcess
+    }
     const q = query({ prompt: input, options })
 
     // Overdue-result watchdog. The CLI has been seen going silent AFTER the
@@ -1488,6 +1493,9 @@ export const claudeDriver: HarnessDriver = {
       },
       alive(): boolean {
         return !dead
+      },
+      pid(): number | null {
+        return cli && cli.exitCode === null && !cli.killed ? (cli.pid ?? null) : null
       },
       async dispose(): Promise<void> {
         disposed = true

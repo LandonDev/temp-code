@@ -379,3 +379,38 @@ it('Resume on a stopped thread boots a fresh harness and the thread runs again',
   expect(registry.sweepLiveness(0, 3)).toEqual([])
   expect(registry.sweepLiveness(0, 4)).toEqual([])
 })
+
+it('resumes up to the running cap and leaves the rest queued with their nudge, started oldest first as slots free', async () => {
+  const ids = [await live(), await live(), await live(), await live()]
+  registry.recordForResume(10)
+  await registry.disposeAll()
+  registry = new SessionRegistry(store)
+  registry.resetStaleStatuses()
+  registry.admission = { cap: () => 2, memoryLow: () => false }
+  registry.reclaimGraceMs = 0
+  sends.clear()
+  const resumer = new BootResumer({ store, registry, gapMs: 0, now: () => 777, log: () => {} })
+  registry.scheduler.holdUntil(resumer.run())
+  const result = await resumer.run()
+  await settle()
+  expect(result.resumed).toHaveLength(2)
+  expect(result.queued).toHaveLength(2)
+  expect(resumer.notice).toEqual({ count: 2, at: 777 })
+  for (const id of result.queued) {
+    expect(store.getSession(id)?.status).toBe('queued')
+    expect(registry.get(id)?.activity).toBe('Queued · 2 of 2 running')
+    expect(sends.has(id)).toBe(false)
+  }
+  // The queued ones keep their ledger rows: another restart now resumes them all the same.
+  expect(store.listResumeAfterBoot().map((r) => r.sessionId).sort()).toEqual([...ids].sort())
+  // A resumed thread settles: its slot goes to the oldest queued one, resumed with the restart's nudge.
+  const [first, second] = [...result.queued].sort((a, b) => ids.indexOf(a) - ids.indexOf(b))
+  emits.get(result.resumed[0]!)!({ type: 'status', status: 'idle' })
+  await settle()
+  expect(store.getSession(first!)?.status).toBe('running')
+  expect(store.getSession(second!)?.status).toBe('queued')
+  expect(sends.get(first!)).toHaveLength(1)
+  expect(sends.get(first!)![0]).toContain(`The host restarted during your turn at ${new Date(10).toISOString()}`)
+  // No user row was added for the resume: the transcript keeps the one message.
+  expect(registry.eventsAfter(first!, 0).filter((r) => r.event.type === 'user-text')).toHaveLength(1)
+})

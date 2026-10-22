@@ -17,7 +17,11 @@ import type { SessionRegistry } from './sessions'
  * worker pausing a little between its threads, so fifty threads do not
  * start in one instant; subagents go before their parents, so an
  * orchestrator wakes to a fleet already moving. A thread the user paused
- * stays paused, and a thread that is gone is just forgotten.
+ * stays paused, and a thread that is gone is just forgotten. The running
+ * cap (admission.ts) holds here too: once the host is full, the rest are
+ * left `queued` with their nudge stored and the scheduler starts them oldest
+ * first as slots free (`queueResume`); their ledger rows stay, so another
+ * restart meanwhile brings them back the same way.
  *
  * The result feeds one toast per boot in the rail ("7 threads resumed
  * after restart"): `notice` is what a socket connecting later is told, and
@@ -25,6 +29,8 @@ import type { SessionRegistry } from './sessions'
  */
 export interface BootResumeResult {
   resumed: string[]
+  /** Past the running cap: queued with the nudge, started as slots free. */
+  queued: string[]
   /** Paused, archived, or no longer there. */
   skipped: string[]
   /** The harness did not boot or refused the nudge; the row reads error. */
@@ -40,7 +46,8 @@ export interface BootResumeNotice {
 
 export interface BootResumerDeps {
   store: Pick<Store, 'listResumeAfterBoot' | 'clearResumeAfterBoot' | 'getSession'>
-  registry: Pick<SessionRegistry, 'resumeStopped' | 'resumePending'>
+  registry: Pick<SessionRegistry, 'resumeStopped' | 'resumePending'> &
+    Partial<Pick<SessionRegistry, 'bootResumeRoom' | 'queueResume'>>
   /** How many harnesses boot at once. */
   width?: number
   /** The pause a worker takes between two of its threads. */
@@ -80,7 +87,7 @@ export class BootResumer {
     const now = this.deps.now ?? Date.now
     const log = this.deps.log ?? ((line: string) => console.log(line))
     const at = now()
-    const result: BootResumeResult = { resumed: [], skipped: [], failed: [], at }
+    const result: BootResumeResult = { resumed: [], queued: [], skipped: [], failed: [], at }
     const rows = store.listResumeAfterBoot()
     if (rows.length === 0) return result
 
@@ -113,6 +120,14 @@ export class BootResumer {
     const worker = async (): Promise<void> => {
       while (next < queue.length) {
         const item = queue[next++]!
+        // A slot under the cap, not counting the threads still waiting here
+        // (their rows say running with no harness behind them yet).
+        const room = registry.bootResumeRoom?.([item.id, ...queue.slice(next).map((q) => q.id)]) ?? Number.POSITIVE_INFINITY
+        if (room <= 0 && registry.queueResume) {
+          registry.queueResume(item.id, item.restartedAt)
+          result.queued.push(item.id)
+          continue
+        }
         try {
           // A resumed thread writes its own fresh row (it is mid-turn again);
           // a skipped or failed one settled its row through its status.
@@ -131,7 +146,7 @@ export class BootResumer {
     }
     await Promise.all(Array.from({ length: Math.min(width, queue.length) }, worker))
 
-    log(`[resume] ${result.resumed.length} resumed, ${result.skipped.length} skipped, ${result.failed.length} failed`)
+    log(`[resume] ${result.resumed.length} resumed, ${result.queued.length} queued at the cap, ${result.skipped.length} skipped, ${result.failed.length} failed`)
     if (result.resumed.length > 0) {
       this.done = { count: result.resumed.length, at }
       for (const listener of this.listeners) listener(this.done)

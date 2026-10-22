@@ -19,6 +19,7 @@ import { CreateSessionParams, type CreateSessionInput } from '@shared/contract'
 import type { SessionBatchResult } from '@shared/contract'
 import { batchChildIds, runSessionBatch, type SessionBatchAction } from './sessionBatch'
 import { ThreadScheduler } from './scheduler'
+import type { Admission } from './admission'
 import { CATALOG, resolveModel, visibleModels, type ProviderId } from '@shared/catalog'
 import type { AgentEvent, Attachment, EventRow, Failure, SessionMeta, SessionStatus } from '@shared/events'
 import { classifyFailure, type GatewayRefusal } from './failureKind'
@@ -202,6 +203,8 @@ interface AgentReport {
 
 /** Dispose idle harness handles after this long; resume restores them. */
 const IDLE_DISPOSE_MS = 10 * 60 * 1000
+/** An idle harness holds its slot this long before a queued thread may take it (reclaimIdle). */
+const RECLAIM_GRACE_MS = 3000
 /** How long a running thread may stand with no harness behind it before it reads stopped. */
 export const HARNESS_GONE_GRACE_MS = 20_000
 const HARNESS_GONE_SWEEP_MS = 5_000
@@ -408,8 +411,14 @@ export class SessionRegistry {
   private queuedLines = new Map<string, string>()
   /** wait_for_agent calls of a master waiting for the person's next steer (nextSteer). */
   private steerWaiters = new Map<string, Set<(text: string) => void>>()
-  /** The thread scheduler: `after` (CLAUDE.md "Master threads"). */
+  /** The thread scheduler: `after` and the running cap (CLAUDE.md "Master threads"). */
   readonly scheduler: ThreadScheduler
+  /** The running cap and the memory floor (admission.ts). Set by the server; null runs uncapped. */
+  admission: Pick<Admission, 'cap' | 'memoryLow'> | null = null
+  /** Boot-resume threads past the cap, queued with their nudge (the restart's time) until a slot frees. */
+  private readonly queuedResumes = new Map<string, number>()
+  /** Queued threads whose start is in flight: Start now and the scheduler never start one twice. */
+  private readonly startingQueued = new Set<string>()
   private queueListeners = new Set<QueueListener>()
   private draining = new Set<string>()
   /** Subagent settle reports awaiting a busy parent — delivered straight
@@ -554,7 +563,7 @@ export class SessionRegistry {
     for (const s of this.indexOf().byId.values()) if (s.context) this.liveContexts.set(s.id, s.context)
     this.scheduler = new ThreadScheduler({
       session: (id) => this.indexOf().byId.get(id) ?? null,
-      queuedRoots: () => [...this.indexOf().queued.values()],
+      queued: () => [...this.indexOf().queued.values()],
       hasUserText: (id) => this.store.hasUserText(id),
       startQueued: (id) => this.startQueued(id),
       setQueuedLine: (id, line) => {
@@ -565,6 +574,10 @@ export class SessionRegistry {
       },
       onMeta: (l) => this.onMeta(l),
       onRemoved: (l) => this.onRemoved(l),
+      liveIds: () => this.liveIds(),
+      cap: () => this.admission?.cap() ?? Number.POSITIVE_INFINITY,
+      reclaimIdle: (n) => this.reclaimIdle(n),
+      memoryLow: () => this.admission?.memoryLow() ?? false,
       log: (line) => console.log(line)
     })
     this.scheduler.attach()
@@ -577,30 +590,128 @@ export class SessionRegistry {
     return this.queueOptIn.has(meta.id) || !!meta.masterId
   }
 
-  /** Start a queued thread now: boot the harness and send the first message
-   *  its create stored — the path a first message takes, past `after` (the
-   *  scheduler when the sibling settles; the strip's Start now). */
+  /** Every id holding a running slot (admission.ts): a live harness, or a row in a live status. */
+  liveIds(): Set<string> {
+    // The index's live rows (unarchived, in a live status) and every harness up or booting; no table read.
+    return new Set<string>([...this.handles.keys(), ...this.starting.keys(), ...this.indexOf().live.keys()])
+  }
+
+  /** How long a thread sits idle before its harness may give its slot to the queue. */
+  reclaimGraceMs = RECLAIM_GRACE_MS
+
+  /** Put down up to `n` idle harnesses, longest idle first, so queued
+   *  threads get their slots (scheduler.ts); what the idle sweep does after
+   *  ten minutes, sooner because someone waits. A thread with anything
+   *  still coming at its idle (the turn pass, queued messages, reports, a
+   *  drain) keeps its harness; one idle under the grace is counted in
+   *  `nextAt`. */
+  reclaimIdle(n: number, now = Date.now()): { freed: number; nextAt: number | null } {
+    const ready: { id: string; last: number }[] = []
+    let nextAt: number | null = null
+    const index = this.indexOf()
+    for (const id of this.handles.keys()) {
+      if (index.byId.get(id)?.status !== 'idle') continue
+      if (this.passActive.has(id) || this.passPending.has(id) || this.draining.has(id)) continue
+      if ((this.queues.get(id)?.length ?? 0) > 0 || (this.pendingReports.get(id)?.length ?? 0) > 0) continue
+      const last = this.lastActivity.get(id) ?? 0
+      if (now - last < this.reclaimGraceMs) {
+        nextAt = Math.min(nextAt ?? Infinity, last + this.reclaimGraceMs)
+        continue
+      }
+      ready.push({ id, last })
+    }
+    ready.sort((a, b) => a.last - b.last)
+    const picked = ready.slice(0, n)
+    for (const { id } of picked) {
+      const handle = this.handles.get(id)
+      this.handles.delete(id)
+      void handle?.dispose().catch(() => {})
+    }
+    return { freed: picked.length, nextAt: picked.length < n ? nextAt : null }
+  }
+
+  /** The pids of the live harness processes, for the admission sampler. */
+  harnessPids(): number[] {
+    const pids: number[] = []
+    for (const handle of this.handles.values()) {
+      const pid = handle.pid?.()
+      if (pid) pids.push(pid)
+    }
+    return pids
+  }
+
+  /** The line a queued row carries ("Queued · 120 of 120 running"), null when not queued. */
+  queuedLine(sessionId: string): string | null {
+    const line = this.queuedLines.get(sessionId)
+    if (line) return line
+    const meta = this.indexOf().byId.get(sessionId)
+    return meta?.status === 'queued' ? this.scheduler.describe(meta) : null
+  }
+
+  /** The boot resume's room (resumeAfterBoot.ts): slots free under the cap,
+   *  not counting the threads it is about to resume, whose rows still say
+   *  running with no harness behind them. */
+  bootResumeRoom(pending: readonly string[]): number {
+    const cap = this.admission?.cap() ?? Number.POSITIVE_INFINITY
+    const waiting = new Set(pending)
+    let live = 0
+    for (const id of this.liveIds()) {
+      if (waiting.has(id) && !this.handles.has(id) && !this.starting.has(id)) continue
+      live++
+    }
+    return Math.max(0, cap - live)
+  }
+
+  /** A boot-resume thread past the cap: queued with its nudge, started by the
+   *  scheduler as a slot frees (startQueued → resumeStopped). Its ledger row
+   *  stays, so another restart before then resumes it all the same. */
+  queueResume(sessionId: string, restartedAt: number): void {
+    this.resumePending.delete(sessionId)
+    const meta = this.store.getSession(sessionId)
+    if (!meta || meta.archived || meta.status === 'paused') return
+    this.queuedResumes.set(sessionId, restartedAt)
+    this.scheduler.noteQueued(sessionId)
+    this.append(sessionId, { type: 'status', status: 'queued' })
+    this.scheduler.schedule()
+  }
+
+  /** Start a queued thread now: boot the harness and send the message it
+   *  holds — the path a send takes, past `after` and past the cap (the
+   *  scheduler when the sibling settles or a slot frees; the strip's Start
+   *  now). A boot-resume thread is resumed with its nudge instead. */
   async startQueued(sessionId: string): Promise<boolean> {
     const meta = this.store.getSession(sessionId)
     if (!meta || meta.status !== 'queued' || meta.archived) return false
+    if (this.startingQueued.has(sessionId)) return false
     this.assertNotMoving(sessionId)
-    const q = this.queues.get(sessionId) ?? []
-    const held = q.shift()
-    if (held) {
-      this.queues.set(sessionId, q)
-      this.notifyQueue(sessionId)
-      await this.send(sessionId, held.text, held)
+    this.startingQueued.add(sessionId)
+    try {
+      const restartedAt = this.queuedResumes.get(sessionId)
+      if (restartedAt !== undefined) {
+        this.queuedResumes.delete(sessionId)
+        return await this.resumeStopped(sessionId, { restartedAt })
+      }
+      const q = this.queues.get(sessionId) ?? []
+      const held = q.shift()
+      if (held) {
+        this.queues.set(sessionId, q)
+        this.notifyQueue(sessionId)
+        await this.send(sessionId, held.text, held)
+        return true
+      }
+      // Nothing held (the host restarted since): the last user row is the
+      // message; its stamp is read back the way an echoed send does.
+      const users = this.store.eventsAfter(sessionId, 0).filter((r) => r.event.type === 'user-text')
+      const row = users.at(-1)
+      if (!row || row.event.type !== 'user-text') {
+        this.append(sessionId, { type: 'status', status: 'idle' })
+        return false
+      }
+      await this.send(sessionId, row.event.text, { attachments: row.event.attachments, echoed: { first: users.length === 1 } })
       return true
+    } finally {
+      this.startingQueued.delete(sessionId)
     }
-    // Nothing held (the host restarted since the create): the first user
-    // row is the message; its stamp is read back the way an echoed send does.
-    const row = this.store.eventsAfter(sessionId, 0).find((r) => r.event.type === 'user-text')
-    if (!row || row.event.type !== 'user-text') {
-      this.append(sessionId, { type: 'status', status: 'idle' })
-      return false
-    }
-    await this.send(sessionId, row.event.text, { attachments: row.event.attachments, echoed: { first: true } })
-    return true
   }
 
   // ── folds ───────────────────────────────────────────────────────────
@@ -789,6 +900,8 @@ export class SessionRegistry {
         if (meta?.status === 'idle' && now - last > idleMs) {
           this.handles.delete(id)
           void handle.dispose().catch(() => {})
+          // A slot freed: the queue moves.
+          this.scheduler.schedule()
         }
       }
     }, 60_000)
@@ -1963,8 +2076,12 @@ export class SessionRegistry {
     // A requested goal waits for the kickoff message (send() applies it
     // just before the text), so goal and work arrive in order.
     if (params.goal?.trim()) this.pendingGoals.set(id, params.goal.trim())
-    // Start the harness eagerly so status/errors surface immediately.
-    void this.handleFor(created.id).catch(() => {})
+    // Start the harness eagerly so status/errors surface immediately; a
+    // thread that will queue (its `after`, the running cap) boots when it
+    // starts instead, so a queued thread holds no process.
+    if (this.scheduler.admit(created, { first: true, optIn: this.wantsQueue(created) }) === 'start') {
+      void this.handleFor(created.id).catch(() => {})
+    }
     return created
   }
 
@@ -2143,12 +2260,16 @@ export class SessionRegistry {
         }
       }
     }
-    // The queue (scheduler.ts): a first message on a thread that opted in
-    // (`queue: true`, or a master's child) holds here when the `after`
-    // sibling has not settled. The user row and its
-    // stamp are stored exactly as a held-back boot stores them; the message
-    // waits at the front of the queue and `startQueued` sends it.
-    if (first && !opts?.echoed && this.wantsQueue(meta) && this.scheduler.admit(meta) === 'queue') {
+    // The queue (scheduler.ts) holds a send here for two reasons: a first
+    // message on a thread that opted in (`queue: true`, or a master's
+    // child) whose `after` sibling has not settled, and the running cap
+    // (admission.ts) for any send that needs a harness not there (a thread
+    // whose create found no slot, one whose handle the idle sweep dropped);
+    // a thread with a harness up already holds its slot. The user row and
+    // its stamp are stored exactly as a held-back boot stores them; the
+    // message waits at the front of the queue and `startQueued` sends it.
+    const harness = this.handles.has(sessionId) || this.starting.has(sessionId)
+    if (!opts?.echoed && this.scheduler.admit(meta, { first, optIn: this.wantsQueue(meta), harness }) === 'queue') {
       this.queueOptIn.delete(sessionId)
       this.append(sessionId, { type: 'status', status: 'queued' })
       this.queueAdd(sessionId, text, { ...opts, echoed: { first } }, true)
@@ -3218,6 +3339,7 @@ export class SessionRegistry {
     this.handles.delete(sessionId)
     this.starting.delete(sessionId)
     if (handle) await handle.dispose().catch(() => {})
+    if (handle || inflight) this.scheduler.schedule()
     // The process took its background tasks with it: a watching row has
     // nothing left to wait on (the disposed handle stays mute, so this is
     // the only idle it will get).
@@ -3305,6 +3427,9 @@ export class SessionRegistry {
       .then((handle) => {
         this.handles.set(sessionId, handle)
         this.starting.delete(sessionId)
+        // A thread that went idle while its harness booted can now give its
+        // slot to the queue (reclaimIdle only puts down a booted harness).
+        if (this.indexOf().byId.get(sessionId)?.status === 'idle') this.scheduler.schedule()
         return handle
       })
       .catch((err) => {
@@ -3496,7 +3621,10 @@ export class SessionRegistry {
       // harness works the turn, gone the moment it settles, so a boot after
       // any kind of death knows exactly what to bring back.
       if (event.status === 'running' || event.status === 'starting' || masterWatch) this.recordMidTurn(sessionId, row.ts)
-      else this.store.clearResumeAfterBoot([sessionId])
+      else if (!(event.status === 'queued' && this.queuedResumes.has(sessionId))) {
+        this.queuedResumes.delete(sessionId)
+        this.store.clearResumeAfterBoot([sessionId])
+      }
       // Live change stream (M22): watchers follow running sessions.
       if (next) liveDiffOnStatus(this, next, cur?.status)
       // A settled turn runs the pending completed-turn pass first; only a

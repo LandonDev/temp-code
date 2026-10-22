@@ -17,16 +17,21 @@ export interface SessionIndex {
   byParent: ParentIndex
   /** Root threads keyed by their master's id (CLAUDE.md "Master threads"), archived ones included. */
   byMaster: Map<string, SessionMeta[]>
-  /** Unarchived queued roots: the scheduler's pass reads only these. */
+  /** Unarchived queued threads, roots and subagents: the scheduler's pass reads only these. */
   queued: Map<string, SessionMeta>
+  /** Unarchived rows in a live status (starting, running, waiting, watching): the running cap counts these with the live handles (admission.ts). */
+  live: Map<string, SessionMeta>
 }
 
 const masterOf = (s: SessionMeta | null | undefined): string | null => (s && !s.parentId ? (s.masterId ?? null) : null)
-const isQueuedRoot = (s: SessionMeta): boolean => s.status === 'queued' && !s.parentId && !s.archived
+const isQueued = (s: SessionMeta): boolean => s.status === 'queued' && !s.archived
+const LIVE: ReadonlySet<SessionMeta['status']> = new Set(['starting', 'running', 'waiting', 'watching'])
+const isLive = (s: SessionMeta): boolean => LIVE.has(s.status) && !s.archived
 
 export function buildSessionIndex(rows: SessionMeta[]): SessionIndex {
   const byMaster = new Map<string, SessionMeta[]>()
   const queued = new Map<string, SessionMeta>()
+  const live = new Map<string, SessionMeta>()
   for (const s of rows) {
     const master = masterOf(s)
     if (master) {
@@ -34,9 +39,10 @@ export function buildSessionIndex(rows: SessionMeta[]): SessionIndex {
       if (group) group.push(s)
       else byMaster.set(master, [s])
     }
-    if (isQueuedRoot(s)) queued.set(s.id, s)
+    if (isQueued(s)) queued.set(s.id, s)
+    if (isLive(s)) live.set(s.id, s)
   }
-  return { byId: new Map(rows.map((s) => [s.id, s])), byParent: indexByParent(rows), byMaster, queued }
+  return { byId: new Map(rows.map((s) => [s.id, s])), byParent: indexByParent(rows), byMaster, queued, live }
 }
 
 /** One write, applied: the row replaces its old self in every lookup. */
@@ -52,8 +58,10 @@ export function applyRowChange(index: SessionIndex, change: SessionRowChange): v
   else index.byId.delete(change.id)
   regroup(index.byParent, prev?.parentId ?? null, next?.parentId ?? null, change.id, next)
   regroup(index.byMaster, masterOf(prev), masterOf(next), change.id, next)
-  if (next && isQueuedRoot(next)) index.queued.set(next.id, next)
+  if (next && isQueued(next)) index.queued.set(next.id, next)
   else index.queued.delete(change.id)
+  if (next && isLive(next)) index.live.set(next.id, next)
+  else index.live.delete(change.id)
 }
 
 /** Move a row between groups (or replace it in place); a new row goes

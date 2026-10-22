@@ -64,6 +64,7 @@ const stub = {
   },
   researchRootOf: () => null,
   reportsRootFor: () => '/tmp/ws',
+  queuedLine: (_id: string): string | null => null,
   create: async (params: Record<string, unknown>) => {
     created.push(params)
     return { id: String(params.id ?? `child-${created.length}`), title: String(params.title ?? '') }
@@ -284,6 +285,49 @@ it('the total cap counts the whole batch too', async () => {
   expect(await orchSpawnAgent(parent, { model: 'claude-opus-5', task: 'a' })).toMatch(
     /^refused: the user capped this thread at 10 subagents total \(10 already spawned\)\. Reuse/
   )
+})
+
+it('a spawn_agent child past the host running cap is created queued and says so in the spawn, list_agents and check_agent', async () => {
+  vi.spyOn(stub, 'queuedLine').mockReturnValue('Queued · 120 of 120 running')
+  const child = { id: 'child-1', title: 'do the thing', status: 'queued', parentId: parent.id } as unknown as SessionMeta
+  sessions[child.id] = child
+  const reply = JSON.parse(await orchSpawnAgent(parent, { model: 'claude-opus-5', task: 'do the thing', useWorktree: false }))
+  expect(reply.agentId).toBe('child-1')
+  expect(reply.status).toBe('queued · 120 of 120 running')
+  expect(reply.note).toMatch(/^queued at this host's running cap: it starts when a slot frees/)
+  children = [child]
+  const rows = JSON.parse(await orchListAgents(parent)) as { agentId: string; status: string }[]
+  expect(rows).toMatchObject([{ agentId: 'child-1', status: 'queued · 120 of 120 running' }])
+  expect(JSON.parse(await orchCheckAgent(parent, 'child-1')).status).toBe('queued · 120 of 120 running')
+  // A running child reads its plain status.
+  sessions[child.id] = { ...child, status: 'running' } as SessionMeta
+  expect(JSON.parse(await orchCheckAgent(parent, 'child-1')).status).toBe('running')
+})
+
+it('waitForSettled waits through queued and the starting it leaves by, and resolves on the idle after the turn', async () => {
+  let status: SessionMeta['status'] = 'queued'
+  const listeners: ((row: { event: { type: string; status: string } }) => void)[] = []
+  const reg = {
+    get: () => ({ id: 'c', status }) as SessionMeta,
+    subscribe: (_id: string, l: (row: { event: { type: string; status: string } }) => void) => {
+      listeners.push(l)
+      return () => {}
+    }
+  } as unknown as SessionRegistry
+  let settled: SessionMeta | null | undefined
+  void waitForSettled(reg, 'c', 0).then((m) => (settled = m))
+  await Promise.resolve()
+  for (const next of ['starting', 'running'] as const) {
+    status = next
+    for (const l of listeners) l({ event: { type: 'status', status: next } })
+    await Promise.resolve()
+  }
+  expect(settled).toBeUndefined()
+  status = 'idle'
+  for (const l of listeners) l({ event: { type: 'status', status: 'idle' } })
+  await Promise.resolve()
+  await Promise.resolve()
+  expect(settled?.status).toBe('idle')
 })
 
 it('waitForSettled sleeps through watching and resolves on the idle that follows', async () => {

@@ -186,10 +186,19 @@ function tokensOf(
 
 /** Wait until the child finishes its current turn (idle/error/waiting).
  *  'watching' is not settled: the child is idle only until its background
- *  work (a CI poll, a Monitor) wakes it. timeoutMs <= 0 waits
+ *  work (a CI poll, a Monitor) wakes it. Nor is 'queued' (held at the
+ *  host's running cap, scheduler.ts) or the 'starting' it leaves through:
+ *  the wait covers the turn it has not begun yet. timeoutMs <= 0 waits
  *  indefinitely — dormant, no polling. */
 const unsettled = (status: SessionMeta['status']): boolean =>
-  status === 'running' || status === 'watching'
+  status === 'running' || status === 'watching' || status === 'queued' || status === 'starting'
+
+/** The status an agent reads as; a queued one says why ("queued · 120 of 120 running"). */
+function statusOf(s: Pick<SessionMeta, 'id' | 'status'>): string {
+  if (s.status !== 'queued') return s.status
+  const line = registry?.queuedLine(s.id)
+  return line ? line.replace(/^Queued/, 'queued') : 'queued'
+}
 
 export function waitForSettled(
   reg: SessionRegistry,
@@ -708,7 +717,7 @@ export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs):
     return JSON.stringify({ agents: started, ...parallel, note: `${n} agents working on ${started[0]?.host} — wait_for_agent with agentIds and mode "any" collects them in completion order` })
   }
   const stamp = Date.now() % 100000
-  const started: { agentId: string; title: string; cwd: string; findingsFile?: string }[] = []
+  const started: { agentId: string; title: string; cwd: string; findingsFile?: string; status?: string }[] = []
   for (const [i, r] of resolved.entries()) {
     const writer = r.agentType === 'implementer' && !researchRoot
     // Worktrees are added one after another: parallel `git worktree add`
@@ -747,13 +756,16 @@ export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs):
     await registry.send(child.id, anglePath ? `${r.task}\n\n${findingsContract(anglePath)}` : r.task, {
       preamble: r.preamble
     })
+    const queued = registry.get(child.id)?.status === 'queued' ? statusOf({ id: child.id, status: 'queued' }) : null
     started.push({
       agentId: child.id,
       title: child.title,
       cwd,
-      ...(anglePath ? { findingsFile: anglePath } : {})
+      ...(anglePath ? { findingsFile: anglePath } : {}),
+      ...(queued ? { status: queued } : {})
     })
   }
+  const anyQueued = started.some((s) => s.status)
   // Live headroom rides every spawn result: the boot prompt's cap goes
   // stale when the user retunes mid-run, and a model told "at most 4"
   // self-limits — this is how it learns the current ceiling.
@@ -761,13 +773,15 @@ export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs):
     return JSON.stringify({
       ...started[0],
       ...parallel,
-      note: 'working — use wait_for_agent to collect the result'
+      note: anyQueued
+        ? 'queued at this host\'s running cap: it starts when a slot frees — wait_for_agent waits for it to run and finish'
+        : 'working — use wait_for_agent to collect the result'
     })
   }
   return JSON.stringify({
     agents: started,
     ...parallel,
-    note: `${n} agents working — wait_for_agent with agentIds and mode "any" collects them in completion order`
+    note: `${n} agents ${anyQueued ? 'started (the ones marked queued start as slots free at this host\'s running cap)' : 'working'} — wait_for_agent with agentIds and mode "any" collects them in completion order`
   })
 }
 
@@ -813,7 +827,7 @@ export async function orchCheckAgent(parent: SessionMeta, agentId: string): Prom
   return JSON.stringify({
     agentId,
     title: meta.title,
-    status: meta.status,
+    status: statusOf(meta),
     idleForSeconds: idleSeconds(agentId),
     currentTurn: {
       toolCalls: toolLinesOf(turn),
@@ -953,7 +967,7 @@ export async function orchListAgents(parent: SessionMeta): Promise<string> {
       provider: s.provider,
       model: s.model,
       agentType: s.agentType,
-      status: s.status,
+      status: statusOf(s),
       idleForSeconds: idleSeconds(s.id),
       cwd: s.cwd,
       ...(s.parentId && s.planPath ? { findingsFile: s.planPath } : {})
@@ -969,7 +983,7 @@ export async function orchListAgents(parent: SessionMeta): Promise<string> {
     model: s.model,
     reasoning: s.reasoning,
     host,
-    status: s.status,
+    status: statusOf(s),
     idleForSeconds: idleSeconds(s.id),
     cwd: s.cwd
   }))

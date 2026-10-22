@@ -5,14 +5,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openDb, Store } from './db'
 import { SessionRegistry } from './sessions'
 import { BootResumer } from './resumeAfterBoot'
+import { ThreadScheduler, type SchedulerRegistry } from './scheduler'
 import type { DriverCtx, DriverHandle } from './drivers/types'
-import type { AgentEvent } from '../../shared/events'
+import type { AgentEvent, SessionMeta } from '../../shared/events'
 
 /**
  * The thread scheduler (scheduler.ts) on a real registry with a fake
- * claude driver: `after` (the one reason to queue), the stored first
- * message, the activity lines, Start now, the boot order and the batch's
- * Stop on a queued row.
+ * claude driver: `after`, the running cap (admission.ts: the cap in admit
+ * and in the pass with its reservation, Start now past it, the focused
+ * exemption, a settle freeing a slot oldest first), the stored first
+ * message, the activity lines, the boot order and the batch's Stop on a
+ * queued row.
  */
 const emits = new Map<string, (e: AgentEvent) => void>()
 const sends = new Map<string, string[]>()
@@ -218,5 +221,187 @@ describe('the batch', () => {
     expect(result.succeeded).toEqual([q])
     expect(store.getSession(q)?.archived).toBe(true)
     expect(sends.has(q)).toBe(false)
+  })
+})
+
+describe('the running cap', () => {
+  let cap = Number.POSITIVE_INFINITY
+  const capAt = (n: number, graceMs = 0): void => {
+    cap = n
+    registry.admission = { cap: () => cap, memoryLow: () => false }
+    registry.reclaimGraceMs = graceMs
+  }
+  /** A thread created and sent like the composer does: no queue flag. */
+  async function plain(text: string, extra: { title?: string } = {}): Promise<string> {
+    const s = await registry.create({ cwd: root, provider: 'claude', ...extra })
+    await registry.send(s.id, text)
+    await settle()
+    return s.id
+  }
+
+  it('holds every start past the cap, with no harness booted for the queued one', async () => {
+    capAt(2)
+    const ids = [await plain('a'), await plain('b'), await plain('c')]
+    expect(ids.map(status)).toEqual(['running', 'running', 'queued'])
+    expect(boots).not.toContain(ids[2])
+    expect(line(ids[2]!)).toBe('Queued · 2 of 2 running')
+    expect(registry.scheduler.counts()).toEqual({ running: 2, queued: 1 })
+  })
+
+  it('a settle frees a slot, oldest first', async () => {
+    capAt(1)
+    const a = await plain('a')
+    const b = await plain('b')
+    const c = await plain('c')
+    expect([a, b, c].map(status)).toEqual(['running', 'queued', 'queued'])
+    idle(a)
+    await settle()
+    // The idle harness gave its slot up; the oldest queued thread took it.
+    expect(registry.liveIds().has(a)).toBe(false)
+    expect([b, c].map(status)).toEqual(['running', 'queued'])
+    expect(sends.get(b)).toEqual(['b'])
+    expect(line(c)).toBe('Queued · 1 of 1 running')
+    idle(b)
+    await settle()
+    expect(status(c)).toBe('running')
+    expect(sends.get(c)).toEqual(['c'])
+  })
+
+  it('Start now starts one thread past the cap', async () => {
+    capAt(1)
+    await plain('a')
+    const b = await plain('b')
+    expect(status(b)).toBe('queued')
+    expect(await registry.startQueued(b)).toBe(true)
+    await settle()
+    expect(status(b)).toBe('running')
+    expect(registry.scheduler.counts().running).toBe(2)
+  })
+
+  it('a focused thread is admitted past the cap, up to two', async () => {
+    capAt(1)
+    await plain('busy')
+    const focused = new Set<string>()
+    registry.scheduler.focused = (id) => focused.has(id)
+    const ids: string[] = []
+    for (const text of ['one', 'two', 'three']) {
+      const s = await registry.create({ cwd: root, provider: 'claude' })
+      focused.add(s.id)
+      await registry.send(s.id, text)
+      await settle()
+      ids.push(s.id)
+    }
+    expect(ids.map(status)).toEqual(['running', 'running', 'queued'])
+  })
+
+  it('after and the cap: the sibling settling meets after, the slot frees once its harness is put down', async () => {
+    capAt(1, 60_000)
+    const sibling = await plain('go', { title: 'Sibling' })
+    const waiter = await queued('wait', { after: sibling })
+    expect(line(waiter)).toBe('Queued · waiting for Sibling')
+    idle(sibling)
+    await settle()
+    // After is met; the idle sibling still holds the one slot inside its grace.
+    expect(status(waiter)).toBe('queued')
+    expect(line(waiter)).toBe('Queued · 1 of 1 running')
+    registry.reclaimGraceMs = 0
+    await registry.scheduler.tick()
+    await settle()
+    expect(status(waiter)).toBe('running')
+  })
+
+  it('a send on an idle thread whose harness is gone takes a slot through the same admit', async () => {
+    capAt(1)
+    const a = await plain('a')
+    idle(a)
+    const b = await plain('b')
+    // a's idle harness gave b its slot.
+    expect(status(b)).toBe('running')
+    expect(registry.liveIds().has(a)).toBe(false)
+    await registry.send(a, 'again')
+    await settle()
+    expect(status(a)).toBe('queued')
+    expect(line(a)).toBe('Queued · 1 of 1 running')
+    idle(b)
+    await settle()
+    expect(status(a)).toBe('running')
+    expect(sends.get(a)?.at(-1)).toBe('again')
+    expect(registry.eventsAfter(a, 0).filter((r) => r.event.type === 'user-text')).toHaveLength(2)
+  })
+
+  it('a waiting or watching thread keeps its slot; an idle one with anything queued keeps its harness', async () => {
+    capAt(1)
+    const a = await plain('a')
+    emits.get(a)!({ type: 'status', status: 'watching' })
+    const b = await plain('b')
+    await settle()
+    expect(status(b)).toBe('queued')
+    expect(registry.reclaimIdle(5)).toEqual({ freed: 0, nextAt: null })
+  })
+})
+
+describe('the scheduler alone', () => {
+  /** A fake registry whose starts never finish: the reservation is all that counts them. */
+  function fakeRegistry(rows: SessionMeta[]) {
+    const started: string[] = []
+    const reg: SchedulerRegistry = {
+      session: (id) => rows.find((s) => s.id === id) ?? null,
+      queued: () => rows.filter((s) => s.status === 'queued' && !s.archived),
+      liveIds: () => new Set(rows.filter((s) => s.status === 'running').map((s) => s.id)),
+      hasUserText: () => true,
+      startQueued: (id) => {
+        started.push(id)
+        return new Promise<boolean>(() => {})
+      },
+      setQueuedLine: () => {},
+      onMeta: () => () => {},
+      onRemoved: () => () => {},
+      cap: () => 2
+    }
+    return { reg, started }
+  }
+  const row = (id: string, createdAt: number, status: SessionMeta['status'] = 'queued'): SessionMeta =>
+    ({ id, createdAt, status, archived: false, parentId: null, after: null, title: id }) as unknown as SessionMeta
+
+  it('a pass reserves the slots of the starts it picks: passes in a row never start past the cap', async () => {
+    const { reg, started } = fakeRegistry([row('e', 5), row('a', 1), row('c', 3), row('b', 2), row('d', 4)])
+    const scheduler = new ThreadScheduler(reg)
+    await scheduler.tick()
+    await scheduler.tick()
+    await scheduler.tick()
+    expect(started).toEqual(['a', 'b'])
+    expect(scheduler.counts()).toEqual({ running: 2, queued: 5 })
+    expect(scheduler.lineOf('c')).toBe('Queued · 2 of 2 running')
+  })
+
+  it('threads created in the same millisecond start in the order they were queued', async () => {
+    const rows = [row('z', 7), row('m', 7), row('a', 7)]
+    const { reg, started } = fakeRegistry(rows)
+    const scheduler = new ThreadScheduler(reg)
+    for (const id of ['z', 'm', 'a']) scheduler.noteQueued(id)
+    await scheduler.tick()
+    expect(started).toEqual(['z', 'm'])
+  })
+
+  it('a queued subagent waits on the cap like a root', async () => {
+    const child = { ...row('child', 1), parentId: 'p' } as SessionMeta
+    const { reg, started } = fakeRegistry([row('x', 0, 'running'), row('y', 0, 'running'), child])
+    const scheduler = new ThreadScheduler(reg)
+    await scheduler.tick()
+    expect(started).toEqual([])
+    expect(scheduler.admit(child)).toBe('queue')
+  })
+
+  it('nothing is focused until a later step says so', () => {
+    const scheduler = new ThreadScheduler(fakeRegistry([]).reg)
+    expect(scheduler.focused('anything')).toBe(false)
+  })
+
+  it('under the memory floor nothing new starts and the line says why', async () => {
+    const { reg, started } = fakeRegistry([row('a', 1)])
+    const scheduler = new ThreadScheduler({ ...reg, memoryLow: () => true })
+    await scheduler.tick()
+    expect(started).toEqual([])
+    expect(scheduler.lineOf('a')).toBe('Queued · waiting for memory')
   })
 })

@@ -75,6 +75,9 @@ export interface DriverHandle {
    *  driver that cannot tell leaves it out; false lets the registry's
    *  liveness sweep (sessions.ts) read a running row as stopped. */
   alive?: () => boolean
+  /** The harness process's pid, for the admission sampler's RSS reading
+   *  (admission.ts); null or absent when the driver has no process of its own. */
+  pid?: () => number | null
   dispose: () => Promise<void>
 }
 

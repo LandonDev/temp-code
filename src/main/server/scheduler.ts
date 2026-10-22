@@ -1,33 +1,49 @@
 import type { SessionMeta } from '@shared/events'
 
 /**
- * The thread scheduler (CLAUDE.md "Master threads"): a thread whose
- * `after` sibling has not finished is created `queued` and started later,
- * instead of being refused. That is the one reason to queue; there is no
- * running cap. `after` is met when the sibling has settled in `done`, or
- * `idle` after at least one turn, or was archived or deleted. A sibling
- * that errored, stopped or paused keeps the waiter queued, and the
- * waiter's activity line says so.
+ * The thread scheduler (CLAUDE.md "Master threads"): a thread is created
+ * `queued` and started later, instead of being refused, for one of two
+ * reasons. Its `after` sibling has not finished: met when the sibling has
+ * settled in `done`, or `idle` after at least one turn, or was archived or
+ * deleted; one that errored, stopped or paused keeps the waiter queued and
+ * the waiter's line says so. Or the host is at its running cap
+ * (admission.ts): every live harness process counts, roots and subagents,
+ * in starting, running, waiting or watching, plus idle rows still holding
+ * a handle (`liveIds`); warm processes and queued rows never do.
  *
- * `admit` is the registry's question on a thread's first message; `tick`
- * starts queued roots oldest-first once their `after` is met, on every
- * meta change (settle, archive, delete, status) and after boot once the
- * BootResumer has done its resume (`holdUntil`). Starting is the
- * registry's `startQueued`: the same path a first message takes (boot the
- * harness, send the stored first message), so the status moves off
- * `queued` through `starting`.
+ * `admit` is the registry's question whenever a send needs a harness that
+ * is not there (a first message, a thread whose handle the idle sweep
+ * dropped). `after` and the boot hold apply to a root's first message when
+ * its create opted in (`optIn`); the cap applies to every start. A send on
+ * a focused thread (`focused`) is admitted over the cap, up to
+ * FOCUSED_OVER_CAP such, so the person is never held. `tick` starts queued
+ * rows oldest-first as their `after` is met and slots free, on every meta
+ * change (settle, archive, delete, status) and after boot once the
+ * BootResumer has done its resume (`holdUntil`). A pass reserves the slots
+ * of the starts it picks before launching them (`inFlight`), so a burst of
+ * passes never starts more than the cap. Starting is the registry's
+ * `startQueued`: the same path a first message takes, so the status moves
+ * off `queued` through `starting`; `session.start` (Start now) calls it
+ * directly, past `after` and past the cap.
  *
- * Every queued root's `activity` line (what the rail and the working strip
- * read) is "Queued · waiting for <sibling title>", with "(errored)",
- * "(stopped)" or "(paused)" appended, recomputed on every tick and pushed
- * only when it changed.
+ * Every queued row's `activity` line (what the rail, the board and the
+ * working strip read) is "Queued · waiting for <sibling title>" (with
+ * "(errored)", "(stopped)" or "(paused)" appended) for an `after` wait, and
+ * "Queued · 120 of 120 running" for the cap, recomputed on every tick and
+ * pushed only when it changed.
+ *
+ * An idle thread still holding its harness holds a slot, so while rows
+ * wait on the cap the pass asks the registry to put down the longest-idle
+ * harnesses (`reclaimIdle`, what the 10-minute idle sweep does, only
+ * sooner); the next send on such a thread resumes it. That is how a
+ * settle frees a slot.
  */
 
 export interface SchedulerRegistry {
   /** One stored row, raw (not decorated), archived ones included; null when gone. */
   session(sessionId: string): SessionMeta | null
-  /** The unarchived queued root threads, raw: a pass reads only these, never the whole table. */
-  queuedRoots(): SessionMeta[]
+  /** The unarchived queued threads, roots and subagents, raw: a pass reads only these, never the whole table. */
+  queued(): SessionMeta[]
   /** Has the thread sent at least one user message (a turn happened or is held)? */
   hasUserText(sessionId: string): boolean
   /** Boot a queued thread and send its stored first message. */
@@ -36,10 +52,22 @@ export interface SchedulerRegistry {
   setQueuedLine(sessionId: string, line: string | null): void
   onMeta(listener: (session: SessionMeta) => void): () => void
   onRemoved(listener: (sessionIds: string[]) => void): () => void
+  /** The ids holding a running slot now (from the index and the live handles, never a table read); the scheduler adds the starts it reserved. */
+  liveIds?(): Set<string>
+  /** The running cap (admission.ts); absent: no cap. */
+  cap?(): number
+  /** Available memory is under the floor: nothing new is admitted. */
+  memoryLow?(): boolean
+  /** Put down up to `n` idle harnesses to free slots for the queue; when
+   *  fewer were old enough, `nextAt` is when the next one will be. */
+  reclaimIdle?(n: number): { freed: number; nextAt: number | null }
   log?(line: string): void
 }
 
 export type Admission = 'start' | 'queue'
+
+/** Focused threads a send may start past the cap at once. */
+export const FOCUSED_OVER_CAP = 2
 
 export type AfterState =
   | { met: true }
@@ -53,6 +81,15 @@ export class ThreadScheduler {
   private dirty = false
   private running: Promise<void> | null = null
   private detach: (() => void) | null = null
+  private reclaimTimer: ReturnType<typeof setTimeout> | null = null
+  /** The order threads were queued in, for threads created in the same millisecond. */
+  private readonly order = new Map<string, number>()
+  private orderSeq = 0
+  /** Threads a focused send started past the cap, while they stay live. */
+  private readonly overCap = new Set<string>()
+
+  /** Is the person looking at this thread (a later step wires it to the windows)? */
+  focused: (sessionId: string) => boolean = () => false
 
   constructor(private readonly reg: SchedulerRegistry) {}
 
@@ -99,12 +136,63 @@ export class ThreadScheduler {
     return { met: false, title: sibling.title, why }
   }
 
-  /** The registry's question on a thread's first message. */
-  admit(session: Pick<SessionMeta, 'id' | 'after' | 'parentId'>): Admission {
-    if (session.parentId) return 'start'
-    // The boot resume is still bringing threads back: wait for the picture to settle.
-    if (this.held) return 'queue'
-    return this.afterState(session).met ? 'start' : 'queue'
+  /** The cap in force; Infinity with no admission control. */
+  cap(): number {
+    return this.reg.cap?.() ?? Number.POSITIVE_INFINITY
+  }
+
+  /** Every id holding a running slot, the reserved starts included. */
+  live(): Set<string> {
+    const ids = new Set(this.reg.liveIds?.() ?? [])
+    for (const id of this.inFlight) ids.add(id)
+    return ids
+  }
+
+  /** Running slots taken and threads queued, for admission.get. */
+  counts(): { running: number; queued: number } {
+    return { running: this.live().size, queued: this.reg.queued().length }
+  }
+
+  /**
+   * The registry's question on a send, and at create before the eager
+   * boot. `first` and `optIn` (the create asked to queue, or a master made
+   * it) bring `after` and the boot hold in; the cap applies to every start
+   * that needs a harness (`harness`: one is already up or booting, so its
+   * slot is held).
+   */
+  admit(
+    session: Pick<SessionMeta, 'id' | 'after' | 'parentId'>,
+    opts: { first?: boolean; optIn?: boolean; harness?: boolean } = {}
+  ): Admission {
+    if (!session.parentId && opts.optIn && opts.first !== false) {
+      // The boot resume is still bringing threads back: wait for the picture to settle.
+      if (this.held) return 'queue'
+      if (!this.afterState(session).met) {
+        this.noteQueued(session.id)
+        return 'queue'
+      }
+    }
+    if (opts.harness) return 'start'
+    if (this.takeSlot(session.id)) return 'start'
+    this.noteQueued(session.id)
+    return 'queue'
+  }
+
+  /** Remember when a thread joined the queue: oldest first breaks a createdAt tie by it. */
+  noteQueued(sessionId: string): void {
+    if (!this.order.has(sessionId)) this.order.set(sessionId, ++this.orderSeq)
+  }
+
+  /** A slot for this start: one free under the cap, or a focused thread's exemption. */
+  private takeSlot(sessionId: string): boolean {
+    const live = this.live()
+    if (live.has(sessionId)) return true
+    if (!this.reg.memoryLow?.() && live.size < this.cap()) return true
+    if (!this.focused(sessionId)) return false
+    for (const id of this.overCap) if (!live.has(id)) this.overCap.delete(id)
+    if (this.overCap.size >= FOCUSED_OVER_CAP) return false
+    this.overCap.add(sessionId)
+    return true
   }
 
   /** Something changed: run a pass soon, coalescing bursts into one. */
@@ -139,12 +227,22 @@ export class ThreadScheduler {
 
   private async pass(): Promise<void> {
     const queued = this.reg
-      .queuedRoots()
-      .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
-    for (const id of this.inFlight) {
-      if (!queued.some((s) => s.id === id)) this.inFlight.delete(id)
-    }
+      .queued()
+      .sort(
+        (a, b) =>
+          a.createdAt - b.createdAt ||
+          (this.order.get(a.id) ?? Infinity) - (this.order.get(b.id) ?? Infinity) ||
+          a.id.localeCompare(b.id)
+      )
+    const queuedIds = new Set(queued.map((s) => s.id))
+    for (const id of this.inFlight) if (!queuedIds.has(id)) this.inFlight.delete(id)
+    for (const id of this.order.keys()) if (!queuedIds.has(id)) this.order.delete(id)
+    const live = this.live()
+    const cap = this.cap()
+    const low = this.reg.memoryLow?.() ?? false
+    let free = low ? 0 : cap - live.size
     const starts: SessionMeta[] = []
+    const capped: string[] = []
     const lines = new Map<string, string>()
     for (const s of queued) {
       if (this.inFlight.has(s.id)) continue
@@ -157,10 +255,31 @@ export class ThreadScheduler {
         lines.set(s.id, 'Queued')
         continue
       }
+      if (free <= 0) {
+        capped.push(s.id)
+        continue
+      }
+      free--
       starts.push(s)
     }
+    // Rows still wait on the cap: idle harnesses give their slots up, and
+    // the next pass starts the rows behind them.
+    if (capped.length > 0 && !low && this.reg.reclaimIdle) {
+      const { freed, nextAt } = this.reg.reclaimIdle(capped.length)
+      if (freed > 0) this.schedule()
+      else if (nextAt !== null && !this.reclaimTimer) {
+        this.reclaimTimer = setTimeout(() => {
+          this.reclaimTimer = null
+          this.schedule()
+        }, Math.max(0, nextAt - Date.now()))
+        this.reclaimTimer.unref?.()
+      }
+    }
+    // Reserve every picked start's slot before any launches.
+    for (const s of starts) this.inFlight.add(s.id)
+    const running = live.size + starts.length
+    for (const id of capped) lines.set(id, capLine(running, cap, low))
     for (const s of starts) {
-      this.inFlight.add(s.id)
       this.lines.delete(s.id)
       void this.reg
         .startQueued(s.id)
@@ -185,6 +304,14 @@ export class ThreadScheduler {
     }
   }
 
+  /** Why a queued row waits, as it stands now (the line before a pass has pushed one). */
+  describe(session: Pick<SessionMeta, 'after'>): string {
+    const after = this.afterState(session)
+    if (!after.met) return waitingLine(after)
+    if (this.held) return 'Queued'
+    return capLine(this.live().size, this.cap(), this.reg.memoryLow?.() ?? false)
+  }
+
   /** The line a queued row carries, null for a row not queued. */
   lineOf(sessionId: string): string | null {
     return this.lines.get(sessionId) ?? null
@@ -194,7 +321,15 @@ export class ThreadScheduler {
     this.detach?.()
     this.lines.clear()
     this.inFlight.clear()
+    this.overCap.clear()
+    this.order.clear()
+    if (this.reclaimTimer) clearTimeout(this.reclaimTimer)
+    this.reclaimTimer = null
   }
+}
+
+function capLine(running: number, cap: number, low: boolean): string {
+  return low ? 'Queued · waiting for memory' : `Queued · ${running} of ${cap} running`
 }
 
 function waitingLine(after: Extract<AfterState, { met: false }>): string {

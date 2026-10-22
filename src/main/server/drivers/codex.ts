@@ -181,6 +181,11 @@ export class AppServerConn {
     this.onExit = onExit
   }
 
+  /** The app-server's pid while it is up. */
+  get pid(): number | null {
+    return this.settled ? null : (this.proc.pid ?? null)
+  }
+
   /** Whether the process is still up. */
   get alive(): boolean {
     return !this.settled
@@ -1003,6 +1008,9 @@ export const codexDriver: HarnessDriver = {
       },
       alive(): boolean {
         return !conn.exited
+      },
+      pid(): number | null {
+        return conn.pid
       },
       async dispose(): Promise<void> {
         disposed = true
