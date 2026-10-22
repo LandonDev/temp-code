@@ -249,6 +249,34 @@ struct LiveServerTests {
         await next.stop()
     }
 
+    @Test @MainActor func `a second launch reconciles the list from the saved cursor`() async throws {
+        let cache = try SessionCache.inMemory()
+        let first = EnvironmentClient(environment: LiveServer.environment(), keys: try LiveServer.keys(), cache: cache)
+        await first.start()
+        #expect(await LiveServer.until { first.status.fresh })
+        #expect(first.shellSource == .list, "the first launch has no cursor and lists whole")
+        let head = try #require(first.listCursor)
+        let listedB = try #require(first.session(LiveServer.threadB))
+        await first.stop()
+        #expect(try await cache.cursor(LiveServer.environmentId) == head)
+        _ = try await LiveServer.control("/append", ["sessionId": LiveServer.threadB, "count": 2])
+
+        let next = EnvironmentClient(environment: LiveServer.environment(), keys: try LiveServer.keys(), cache: cache)
+        await next.start()
+        #expect(next.shellSource == .cache, "the shell painted from the cache before anything connected")
+        #expect(next.listCursor == head)
+        #expect(await LiveServer.until(15) { next.status.fresh })
+        #expect(next.shellSource == .changes, "the list reconciled from the cursor instead of listing whole")
+        let reconciled = try #require(next.session(LiveServer.threadB))
+        #expect(reconciled.updatedAt > listedB.updatedAt, "the thread that moved while away carries its new updatedAt")
+        #expect(Set(next.sessions.map(\.id)).isSuperset(of: [LiveServer.threadA, LiveServer.threadB]))
+        let cursor = try #require(next.listCursor)
+        #expect(cursor.generation == head.generation)
+        #expect(cursor.seq > head.seq, "the cursor moved past the append")
+        #expect(await LiveServer.until { (try? await cache.cursor(LiveServer.environmentId)) == cursor })
+        await next.stop()
+    }
+
     @Test @MainActor func `a host that is down leaves the other host's client untouched`() async throws {
         let live = EnvironmentClient(environment: LiveServer.environment(), keys: try LiveServer.keys(), cache: try SessionCache.inMemory())
         let keys = InMemoryKeyStore()
