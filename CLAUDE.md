@@ -1120,7 +1120,10 @@ proof and the sizing rules; the pieces, by name:
   `bun run ios:test` (in the gate too) builds and tests the package.
   Fixtures under `Tests/Fixtures` come from a real server through
   `bun run script:capture-swift-fixtures`; re-record them when a captured
-  shape changes. The package README has the subset policy and what L2
+  shape changes (on the box, where the esbuild → node path fails:
+  `bun --preload ./scripts/lib/electron-stub.ts scripts/capture-swift-fixtures.ts`).
+  The capture reads a scratch deploy directory, never the machine's own log.
+  The package README has the subset policy and what L2
   (the socket actor) builds on it. The subset covers the master, notes,
   project-plan, review, plans, resources, devices, deploy, Mac bridge and
   accounts methods and their pushes (`notes`, `batch`, `resources`,
@@ -1458,7 +1461,10 @@ proof and the sizing rules; the pieces, by name:
   `TC_PROOF_SET=box TC_TEST_THREADS="a|b" scripts/ios-sim-proof.sh` with
   `TC_TEST_PAIR_LINK` from `tc-local remote.pairings.create` on the box; it
   drives the simulator with `simctl` because XCUITest cannot run while the
-  Command Line Tools are the selected developer directory. The `actions` set
+  Command Line Tools are the selected developer directory. The `features` set
+  shoots the screens the 2026-10-22 batch added (the master's board and
+  rules, the project plan, notices, failures, the account menu, resources,
+  queued and stopped roots, the gate row, Home's fleet confirm). The `actions` set
   (in `all`) re-pairs with the test server's acting key and performs every
   steering action, then reads back what landed from the control panel;
   `bun scripts/ios-sim-proof-box-actions.ts` is the live pass against the
