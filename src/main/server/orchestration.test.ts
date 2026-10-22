@@ -112,7 +112,7 @@ it('the table by role: a thread sees orchestrators-only rows marked with the not
   }
   const thread = spawnableModels(rules, 'thread')
   expect(thread).toContain('claude-fable-5-1 (low|medium|high|xhigh|max) +1m (orchestrators only)')
-  expect(thread).toContain('Models marked orchestrators-only are available to an orchestration or master thread')
+  expect(thread).toContain('Models marked orchestrators-only cannot be spawned as subagents from here; app_start_thread may still start them as threads')
   expect(thread).not.toContain('claude-opus-5-5')
   const orch = spawnableModels(rules, 'orchestrator')
   expect(orch).toContain('claude-fable-5-1 (low|medium|high|xhigh|max) +1m\n')
@@ -150,9 +150,10 @@ it('spawn_agent without context1m leaves a codex model unset', async () => {
   expect(created[0].context1m).toBeUndefined()
 })
 
-it('spawn_agent names an orchestrators-only model as app_start_thread does, and an off model as not approved', async () => {
+it('spawn_agent names an orchestrators-only model and points at app_start_thread, and an off model as not approved', async () => {
   const fable = await orchSpawnAgent(parent, { model: 'claude-fable-5-1', task: 'do the thing' })
-  expect(fable).toMatch(/^refused: claude-fable-5-1 is approved for orchestrators only, and this thread \(role: thread\) may not start it/)
+  expect(fable).toMatch(/^refused: claude-fable-5-1 is approved for orchestrators only, and this thread \(role: thread\) may not spawn it as a subagent/)
+  expect(fable).toContain('start the work as a thread with app_start_thread')
   expect(fable).toContain('Approved models:')
   rules = { ...DEFAULT_RULES, models: { ...DEFAULT_RULES.models, 'claude:claude-opus-5-5': { approved: false } } }
   const off = await orchSpawnAgent(parent, { model: 'claude-opus-5-5', task: 'do the thing' })

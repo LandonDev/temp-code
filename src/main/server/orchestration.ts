@@ -385,8 +385,9 @@ const settledReport = (id: string, meta: SessionMeta): Record<string, unknown> =
  *  effort range the policy leaves open. */
 export function spawnableModels(rules: OrchestrationRules, role: PolicyRole = 'thread'): string {
   // A thread caller sees the orchestrators-only rows marked, so it can
-  // name them when it asks the user for an orchestration or master
-  // thread, rather than taking a missing row for a missing model.
+  // start them as threads or name them when it asks the user for an
+  // orchestration or master thread, rather than taking a missing row for
+  // a missing model.
   let marked = 0
   const blocks = Object.values(visibleCatalog())
     .map((p) => {
@@ -406,7 +407,7 @@ export function spawnableModels(rules: OrchestrationRules, role: PolicyRole = 't
     .filter(Boolean)
   if (blocks.length === 0) return '(none — the user has approved no subagent models)'
   const note = marked
-    ? '\n  Models marked orchestrators-only are available to an orchestration or master thread; ask the user to start one if the task needs them.'
+    ? '\n  Models marked orchestrators-only cannot be spawned as subagents from here; app_start_thread may still start them as threads (a thread is the person\'s choice and follows no model policy), or ask the user for an orchestration or master thread.'
     : ''
   return `${blocks.join('\n')}\n  +1m: spawn_agent runs that model with the 1M context window unless you pass context1m: false; app_start_thread only with context1m: true.${note}`
 }
@@ -470,12 +471,13 @@ function resolveSpawnTarget(
       provider && exactIn.includes(provider) ? [provider, ...exactIn] : exactIn
     const ok = serving.find((p) => modelApproved(rules, p, rawModel, role))
     if (ok) return { provider: ok, model: rawModel }
-    // The same words app_start_thread uses (apptools.ts): a model kept for
-    // orchestrators is named as such, so a thread knows who may start it.
+    // A model kept for orchestrators is named as such, so a thread knows
+    // the way round: a thread is the person's choice and follows no policy,
+    // so app_start_thread may start the same model as a thread.
     if (serving.some((p) => rules.models[modelKey(p, rawModel)]?.approved === 'orchestrators')) {
       const who = role === 'thread' ? 'this thread (role: thread)' : 'this orchestrator'
       return {
-        error: `refused: ${rawModel} is approved for orchestrators only, and ${who} may not start it. Pick an approved model, or ask the user to start an orchestration or master thread for the work. ${table()}`
+        error: `refused: ${rawModel} is approved for orchestrators only, and ${who} may not spawn it as a subagent. Pick an approved model, or start the work as a thread with app_start_thread (threads follow no model policy), or ask the user for an orchestration or master thread. ${table()}`
       }
     }
     return {

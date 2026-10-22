@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it } from 'vitest'
 import type { SessionMeta } from '@shared/events'
 import type { SessionRegistry } from './sessions'
 import { DEFAULT_RULES, type OrchestrationRules } from '@shared/rules'
+import { CATALOG } from '@shared/catalog'
 import { appStartThread, bridgeMcpConfig, setAppBridge } from './apptools'
 import { setOrchestrationRegistry } from './orchestration'
 
@@ -107,15 +108,14 @@ it('app_start_thread refuses context1m on a codex model and creates nothing', as
   expect(created).toHaveLength(0)
 })
 
-// ── app_start_thread and the model policy by role ────────────────────
-// What a thread may start is what it may spawn: Fable is orchestrators-only
-// by default, so a chat refuses it with the table and an orchestration
-// thread (or a project's master) starts it. The orchestration module's
-// registry answers the rules and the master pin; it is set per test.
+// ── app_start_thread follows no model policy ─────────────────────────
+// A thread is a person's choice whoever starts it: the policy in
+// shared/rules.ts (Fable orchestrators-only by default, a model switched
+// off) governs spawn_agent alone. app_start_thread checks the catalog
+// only: the model exists, the effort is on its ladder, context1m where
+// offered. The orchestration module's registry is set per test so a
+// policy that WOULD refuse is in force and ignored.
 
-/** The caller as the registries answer it: appStartThread reads the caller
- *  fresh (its permission, and now its role) rather than trusting the
- *  boot-time snapshot the MCP closure holds. */
 let callerNow: SessionMeta = caller
 const asRole = (patch: Partial<SessionMeta>): SessionMeta => {
   callerNow = { ...caller, ...patch } as SessionMeta
@@ -135,71 +135,41 @@ afterEach(() => {
   setOrchestrationRegistry(null as unknown as SessionRegistry)
 })
 
-it('app_start_thread refuses an orchestrators-only model to a chat thread, naming the role and the table', async () => {
-  policyRegistry(DEFAULT_RULES)
+it('app_start_thread starts an orchestrators-only model from a chat thread, at the effort asked', async () => {
+  policyRegistry({ ...DEFAULT_RULES, models: { 'claude:claude-fable-5-1': { approved: 'orchestrators', maxReasoning: 'medium' } } })
   const result = await appStartThread(policyFake, asRole({ threadType: 'chat' }), {
     threadType: 'implementation',
     provider: 'claude',
     model: 'claude-fable-5-1',
-    firstMessage: 'go'
-  })
-  expect(result).toMatch(/^refused: claude-fable-5-1 is approved for orchestrators only, and this thread \(role: thread\) may not start it/)
-  expect(result).toContain('ask the user to start an orchestration or master thread')
-  expect(result).toContain('Approved models:')
-  expect(result).toContain('claude-fable-5-1 (low|medium|high|xhigh|max) +1m (orchestrators only)')
-  expect(result).toContain('Models marked orchestrators-only are available to an orchestration or master thread')
-  expect(created).toHaveLength(0)
-})
-
-it('app_start_thread lets an orchestration thread and a master start an orchestrators-only model, and clamps the effort to the policy', async () => {
-  policyRegistry({
-    ...DEFAULT_RULES,
-    models: { 'claude:claude-fable-5-1': { approved: 'orchestrators', maxReasoning: 'medium' } }
-  })
-  const fromOrchestration = await appStartThread(policyFake, asRole({ threadType: 'orchestration' }), {
-    threadType: 'implementation',
-    provider: 'claude',
-    model: 'claude-fable-5-1',
     reasoning: 'high',
     firstMessage: 'go'
   })
-  expect(fromOrchestration).toEqual({ threadId: 'thread-1', title: 'a thread' })
-  expect(created[0]).toMatchObject({ model: 'claude-fable-5-1', reasoning: 'medium' })
-
-  policyRegistry(DEFAULT_RULES, caller.id)
-  const fromMaster = await appStartThread(policyFake, asRole({ threadType: 'chat', projectId: 'proj' }), {
-    threadType: 'implementation',
-    provider: 'claude',
-    model: 'claude-fable-5-1',
-    reasoning: 'high',
-    firstMessage: 'go'
-  })
-  expect(fromMaster).toEqual({ threadId: 'thread-1', title: 'a thread' })
-  expect(created[1]).toMatchObject({ model: 'claude-fable-5-1', reasoning: 'high' })
+  expect(result).toEqual({ threadId: 'thread-1', title: 'a thread' })
+  expect(created[0]).toMatchObject({ model: 'claude-fable-5-1', reasoning: 'high' })
 })
 
-it("app_start_thread with no model takes the provider's default under the policy: the first approved claude model for a chat, Fable for an orchestrator", async () => {
+it('app_start_thread starts a model the user switched off for subagents, for every role', async () => {
+  policyRegistry({ ...DEFAULT_RULES, models: { 'claude:claude-opus-5-5': { approved: false } } })
+  for (const threadType of ['chat', 'orchestration'] as const) {
+    const result = await appStartThread(policyFake, asRole({ threadType }), {
+      threadType: 'chat',
+      provider: 'claude',
+      model: 'claude-opus-5-5',
+      firstMessage: 'go'
+    })
+    expect(result).toEqual({ threadId: 'thread-1', title: 'a thread' })
+  }
+  expect(created.map((c) => c.model)).toEqual(['claude-opus-5-5', 'claude-opus-5-5'])
+})
+
+it("app_start_thread with no model takes the provider's catalog default, whatever the policy", async () => {
   policyRegistry(DEFAULT_RULES)
   const chat = await appStartThread(policyFake, asRole({ threadType: 'chat' }), { threadType: 'chat', provider: 'claude', firstMessage: 'go' })
   expect(chat).toEqual({ threadId: 'thread-1', title: 'a thread' })
-  expect(created[0].model).not.toMatch(/fable/)
-  expect(created[0].provider).toBe('claude')
-  const orch = await appStartThread(policyFake, asRole({ threadType: 'orchestration' }), { threadType: 'chat', provider: 'claude', firstMessage: 'go' })
-  expect(orch).toEqual({ threadId: 'thread-1', title: 'a thread' })
-  expect(created[1].model).toBe('claude-fable-5-1')
+  expect(created[0]).toMatchObject({ provider: 'claude', model: CATALOG.claude.defaultModel })
 })
 
-it('app_start_thread refuses a model the user switched off, for every role, and keeps the ladder refusal', async () => {
-  policyRegistry({ ...DEFAULT_RULES, models: { 'claude:claude-opus-5-5': { approved: false } } })
-  const off = await appStartThread(policyFake, asRole({ threadType: 'orchestration' }), {
-    threadType: 'chat',
-    provider: 'claude',
-    model: 'claude-opus-5-5',
-    firstMessage: 'go'
-  })
-  expect(off).toMatch(/^refused: the user has not approved claude-opus-5-5 for threads/)
-  expect(off).toContain('Approved models:')
-  expect(off).not.toContain('claude-opus-5-5 (')
+it('app_start_thread keeps the catalog refusals: an effort off the ladder, an unknown model', async () => {
   policyRegistry(DEFAULT_RULES)
   const ladder = await appStartThread(policyFake, caller, {
     threadType: 'chat',
@@ -209,6 +179,8 @@ it('app_start_thread refuses a model the user switched off, for every role, and 
     firstMessage: 'go'
   })
   expect(ladder).toMatch(/^refused: claude-opus-5-5 supports reasoning/)
+  const unknown = await appStartThread(policyFake, caller, { threadType: 'chat', provider: 'claude', model: 'claude-nope', firstMessage: 'go' })
+  expect(unknown).toMatch(/^refused: no provider serves model "claude-nope"/)
   expect(created).toHaveLength(0)
 })
 

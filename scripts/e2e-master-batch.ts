@@ -19,8 +19,9 @@
  *   3. A child lands through merge_branch: typecheck stubbed red (HELD, a
  *      red GateNotice row) then green (merged, a review row, batch.get says
  *      1 landed).
- *   4. A chat thread that is not the master is refused Fable by
- *      app_start_thread and by spawn_agent; the master is not.
+ *   4. A chat thread that is not the master starts a Fable THREAD with
+ *      app_start_thread (threads follow no model policy) and is refused a
+ *      Fable SUBAGENT by spawn_agent; the master spawns one.
  *   5. The master calls batch_gate (stubbed green): batch.get shows land,
  *      gate and release done with the release tag in the detail.
  * Run: bun run script:e2e-master-batch
@@ -293,14 +294,20 @@ check('merge row on child a', notices(a.id, 'review').some((n) => n.review?.merg
 let state = batches.get(master.id)
 check('batch.get: 1 of 4 landed', steps(state).land === 'running: 1 of 4 landed' && state.landed[0] === a.id && state.pending.length === 3, JSON.stringify(steps(state)))
 
-// ── 4. the policy by role ───────────────────────────────────────────────
-console.log('\n[4] Fable: refused off the master, allowed on it')
+// ── 4. threads follow no model policy; subagents do ─────────────────────
+console.log('\n[4] Fable: a thread from any thread, a subagent only from the master')
 const other = await registry.create({ provider: 'claude', model: MODEL, reasoning: 'low', permission: 'auto', projectId: project.id, threadType: 'chat', parentId: null, title: 'Not the master' })
-await turn(other.id, `This is a test. First call app_start_thread with threadType "chat", provider "claude", model "claude-fable-5-1", firstMessage "hi". Then call spawn_agent with model "claude-fable-5-1" and task "hi". Report both answers verbatim in one short message, then stop. Do nothing else.`)
-const refusals = toolResults(other.id).filter((t) => /approved for orchestrators only/.test(t))
-check('app_start_thread and spawn_agent both refused Fable to a plain chat thread', refusals.length === 2 && refusals.every((t) => /this thread \(role: thread\)/.test(t)), toolResults(other.id).map((t) => t.slice(0, 90)).join(' || '))
-check('no thread of that chat was created', store.listSessions().every((s) => s.model !== 'claude-fable-5-1'))
-check('the master is an orchestrator under the policy', !toolResults(master.id).some((t) => /approved for orchestrators only/.test(t)))
+await turn(other.id, `This is a test. First call app_start_thread with threadType "chat", provider "claude", model "claude-fable-5-1", reasoning "low", title "fable thread", firstMessage "This is a test. Reply with exactly: fable thread ok. Use no tools and nothing else.". Then call spawn_agent with model "claude-fable-5-1" and task "hi". Report both answers verbatim in one short message, then stop. Do nothing else.`)
+const fableThread = store.listSessions().find((s) => s.model === 'claude-fable-5-1' && !s.parentId)
+check('app_start_thread started a Fable thread from a plain chat thread (no policy for threads)', !!fableThread && fableThread.threadType === 'chat' && toolResults(other.id).some((t) => t.includes(fableThread!.id)), toolResults(other.id).map((t) => t.slice(0, 90)).join(' || '))
+const spawnRefusal = toolResults(other.id).find((t) => /approved for orchestrators only/.test(t)) ?? ''
+check('spawn_agent still refused Fable as a subagent of that chat, pointing at app_start_thread', /this thread \(role: thread\) may not spawn it as a subagent/.test(spawnRefusal) && /app_start_thread/.test(spawnRefusal), spawnRefusal.slice(0, 160))
+check('no Fable subagent of that chat was created', registry.childrenOf(other.id).every((s) => s.model !== 'claude-fable-5-1'))
+if (fableThread) {
+  await settledAfter(fableThread.id, 0, 300_000)
+  check('the Fable thread ran and answered', /fable thread ok/i.test(finalText(fableThread.id)), finalText(fableThread.id).slice(-60))
+  await registry.setArchived(fableThread.id, true)
+}
 await turn(master.id, `This is a test. Call spawn_agent ONCE with model "claude-fable-5-1", reasoning "low", useWorktree false and task "Reply with exactly: fable ok. Use no tools." Report its answer verbatim in one short message and stop. Do not wait for it.`)
 const fableSpawn = toolResults(master.id).filter((t) => /fable/.test(t)).at(-1) ?? ''
 check('spawn_agent on the master accepted Fable', /agentId/.test(fableSpawn) && !/refused/.test(fableSpawn), fableSpawn.slice(0, 120))
