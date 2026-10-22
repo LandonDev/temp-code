@@ -60,10 +60,13 @@ export class SharedScanner {
 export const POLL_MS = 2_000
 export const GRACE_MS = 10_000
 export const LIVE_MS = 10_000
+export const STALE_CALL_MS = 30 * 60_000
 
 interface Active {
   /** Shell calls running now, oldest first: callId → command text. */
   calls: Map<string, string>
+  /** When each call started: one whose result never came (an interrupted turn) stops counting after STALE_CALL_MS. */
+  startedAt: Map<string, number>
   last: { callId: string; command: string } | null
   until: number
   /** Ports under the harness when the thread was first seen; null until the first scan lands. */
@@ -129,11 +132,12 @@ export class ThreadPorts {
   callStarted(sessionId: string, callId: string, command: string): void {
     let a = this.active.get(sessionId)
     if (!a) {
-      a = { calls: new Map(), last: null, until: 0, baseline: null }
+      a = { calls: new Map(), startedAt: new Map(), last: null, until: 0, baseline: null }
       this.active.set(sessionId, a)
       void this.takeBaseline(sessionId, a)
     }
     a.calls.set(callId, command)
+    a.startedAt.set(callId, this.now())
     this.callOwners.set(callId, sessionId)
     if (this.callOwners.size > 512) this.callOwners.delete(this.callOwners.keys().next().value as string)
     this.arm()
@@ -156,10 +160,17 @@ export class ThreadPorts {
     const command = a?.calls.get(callId) ?? (a?.last?.callId === callId ? a.last.command : '')
     if (a?.calls.has(callId)) {
       a.calls.delete(callId)
+      a.startedAt.delete(callId)
       a.last = { callId, command }
       a.until = this.now() + GRACE_MS
     }
     const announced = announcedPorts(output)
+    // Most calls announce nothing: the poll (every POLL_MS, through the grace) finds what they left listening.
+    if (!announced.length) {
+      for (const l of this.endListeners) l(sessionId, callId)
+      this.arm()
+      return this.callPorts(callId)
+    }
     const scan = await this.deps.scanner.get(0)
     const ports = byPort(scan.listeners)
     for (const ann of announced) {
@@ -170,6 +181,10 @@ export class ThreadPorts {
     if (a) this.fromTree(sessionId, a, scan, callId, command)
     for (const l of this.endListeners) l(sessionId, callId)
     this.arm()
+    return this.callPorts(callId)
+  }
+
+  private callPorts(callId: string): ThreadResource[] {
     return this.deps.resources.listAll({ kind: 'port', environmentId: this.deps.environmentId }).filter((r) => r.callId === callId)
   }
 
@@ -215,7 +230,14 @@ export class ThreadPorts {
   /** One poll: the active threads' trees, then (every LIVE_MS) the live rows. Exposed for tests. */
   async tick(): Promise<void> {
     const now = this.now()
-    for (const [id, a] of this.active) if (!a.calls.size && a.until <= now) this.active.delete(id)
+    for (const [id, a] of this.active) {
+      for (const [callId, at] of a.startedAt)
+        if (now - at > STALE_CALL_MS) {
+          a.calls.delete(callId)
+          a.startedAt.delete(callId)
+        }
+      if (!a.calls.size && a.until <= now) this.active.delete(id)
+    }
     const rows = this.deps.resources.listAll({ kind: 'port', environmentId: this.deps.environmentId })
     const live = rows.length > 0 && now - this.lastLive >= LIVE_MS
     if (!this.active.size && !live) return

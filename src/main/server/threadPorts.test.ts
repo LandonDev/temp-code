@@ -162,3 +162,32 @@ describe('removing a port', () => {
     expect(runs).toEqual(['ss', 'lsof'])
   })
 })
+
+describe('ThreadPorts upkeep', () => {
+  it('scans nothing when a call announced nothing, and forgets a call whose result never came', async () => {
+    const db = openDb(':memory:')
+    const ledger = new ThreadResources({ db, environmentId: ME, sessions: { get: () => session('root') }, runOn: async () => ({ exitCode: 0, stdout: '', stderr: '' }), log: () => {} })
+    let scans = 0
+    let now = 0
+    const ports = new ThreadPorts({
+      resources: ledger,
+      environmentId: ME,
+      harnessPid: () => HARNESS,
+      scanner: new SharedScanner(async () => (scans++, { listeners: [], parents: new Map() }), () => now),
+      now: () => now,
+      log: () => {}
+    })
+    ports.callStarted('root', 'c1', 'ls')
+    await new Promise((r) => setTimeout(r, 0))
+    const baseline = scans
+    expect(await ports.settle('root', 'c1', 'a\nb')).toEqual([])
+    expect(scans).toBe(baseline)
+    ports.callStarted('root', 'c2', 'sleep 9999')
+    expect(ports.running('c2')).toBe(true)
+    now += 31 * 60_000
+    await ports.tick()
+    expect(ports.running('c2')).toBe(false)
+    ports.close()
+    db.close()
+  })
+})
