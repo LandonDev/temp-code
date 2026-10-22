@@ -303,6 +303,7 @@ private struct HomeRowView: View {
         case .project(_, let group, let paired):
             let workspace = client.workspaces.first { $0.id == group.project.workspaceId }
             ProjectHeaderRow(project: group.project, host: paired ? client.environment.name : nil) {
+                slots.projectTrailing?(client, group.project)
                 if let workspace {
                     NewThreadButton { newThread(client, workspace, group.project) }
                 }

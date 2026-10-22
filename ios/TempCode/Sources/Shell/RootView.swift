@@ -29,7 +29,7 @@ struct RootView: View {
         TabView(selection: $tab) {
             Tab("Home", systemImage: "house", value: AppTab.home) {
                 NavigationStack(path: $homePath) {
-                    HomeView(path: $homePath)
+                    HomeView(path: $homePath, slots: HomeSlots(projectTrailing: { AnyView(ProjectPlanChip(client: $0, project: $1)) }))
                         .navigationDestination(for: Route.self) { destination($0, path: $homePath) }
                 }
             }

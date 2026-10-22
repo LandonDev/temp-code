@@ -28,6 +28,9 @@ struct HomeSlots {
     /// Deploy drift: the "+N" mark, trailing on the host status row and the
     /// host header.
     var hostTrailing: ((EnvironmentClient) -> AnyView)?
+    /// The project plan: the "Plan" / "Plan · 3/7" chip before the plus in a
+    /// project header (ProjectPlanChip.swift).
+    var projectTrailing: ((EnvironmentClient, ProjectMeta) -> AnyView)?
 
     /// A project header gets a menu only when something fills it.
     var hasProjectMenu: Bool { projectBatch != nil || projectSettings != nil }

@@ -352,8 +352,11 @@ struct ThreadScreen: View {
             // Slot (e), thread 16: `if kind == .master { MasterView(client:sessionId:session:thread:) } else { … }`.
             ImplementationBoardView(client: client, sessionId: sessionId, session: session, thread: thread, document: model.document)
         case .plan:
-            // Slot (f), thread 17: `if kind == .projectPlan { ProjectPlanView(…) } else { … }`.
-            PlanView(sessionId: sessionId, document: model.document, running: phase.running)
+            if kind == .projectPlan {
+                ProjectPlanView(client: client, sessionId: sessionId, session: session, document: model.document, running: phase.running)
+            } else {
+                PlanView(sessionId: sessionId, document: model.document, running: phase.running)
+            }
         case .fleet:
             FleetView(client: client, sessionId: sessionId, session: session, thread: thread)
         case .sources:
