@@ -1,5 +1,5 @@
 {
-  "n": 277,
-  "notes": "Master threads: a project's master runs a batch of root threads, queued under a host cap, with the gate out of the children and Fable for orchestrators only",
-  "ts": 1792622432691
+  "n": 278,
+  "notes": "Master threads wave 3: batch rules, the engine, the board redone, threads free of the model policy, no running cap; the fast release; box transcript paths open from the box",
+  "ts": 1792644056260
 }
