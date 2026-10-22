@@ -2,9 +2,10 @@ import SafariServices
 import SwiftUI
 
 /// A web page inside the app: Safari's view controller as a full-screen
-/// cover, with the reader mode the research sources read well in. Used by
-/// the source rows and the report's citations; `.safariCover(url:)` presents
-/// it for an optional url binding.
+/// cover with a Done button and the research tint on its controls; reader
+/// mode stays off so the page opens as the site serves it. Used by the
+/// source rows and the report's citations; `.safariCover(_:)` presents it
+/// for an optional page binding.
 struct SafariView: UIViewControllerRepresentable {
     let url: URL
 
