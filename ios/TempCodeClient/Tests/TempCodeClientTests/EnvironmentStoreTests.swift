@@ -81,6 +81,26 @@ private func fakeHost(environmentId: String = "env_fake", refusePairing: Bool = 
         #expect(reopened.environments == [added])
     }
 
+    @Test func `the platform a hello names is remembered across launches and a second pairing`() async throws {
+        let keys = InMemoryKeyStore()
+        let store = EnvironmentStore(directory: directory, keys: keys, api: fakeHost())
+        let added = try await store.add(pairingLink: "https://box.example/pair#AB1CD-EF2GH")
+        #expect(added.platform == nil)
+        store.setPlatform(added.id, "linux")
+        store.setPlatform("env_unknown", "darwin")
+        #expect(store.environment(added.id)?.platform == "linux")
+        #expect(EnvironmentStore(directory: directory, keys: keys, api: fakeHost()).environment(added.id)?.platform == "linux")
+        try await store.add(pairingLink: "https://box.example/pair#ZZ1ZZ-ZZ2ZZ")
+        #expect(store.environment(added.id)?.platform == "linux")
+    }
+
+    @Test func `an environments file from before the platform reads unchanged`() throws {
+        let old = #"[{"id":"env_1","name":"box","origin":"https://h","caps":["read"],"keyId":"k","keyName":"p","addedAt":0}]"#
+        let decoded = try JSONDecoder().decode([PairedEnvironment].self, from: Data(old.utf8))
+        #expect(decoded.first?.platform == nil)
+        #expect(decoded.first?.name == "box")
+    }
+
     @Test func `adding by key asks hello who the host is`() async throws {
         let keys = InMemoryKeyStore()
         let store = EnvironmentStore(directory: directory, keys: keys, api: fakeHost())

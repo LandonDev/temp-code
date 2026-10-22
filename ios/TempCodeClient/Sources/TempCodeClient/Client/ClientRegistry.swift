@@ -54,6 +54,7 @@ public final class ClientRegistry {
         client.sessionObserver = sessionObserver
         client.quietly = quietly
         client.relayObserver = { [weak self] client, hosts, whole in self?.heard(client, hosts, whole: whole) }
+        client.platformObserver = { [weak self] client, platform in self?.store.setPlatform(client.environment.id, platform) }
         if let host = relayed.host(environment.id) {
             client.presence = host.presence
             client.stateSince = host.stateSince
@@ -114,6 +115,12 @@ public final class ClientRegistry {
     }
 
     public func client(_ id: String) -> EnvironmentClient? { clients[id] }
+
+    /// A host's platform: the live hello's, else the one the store remembers
+    /// (a relayed host's from its presence); nil for a host never heard from.
+    public func platform(_ id: String) -> String? {
+        clients[id]?.status.lastHello?.build?.platform ?? store.environment(id)?.platform ?? clients[id]?.environment.platform
+    }
 
     /// What is on screen: the thread (on whichever host), and whether Home's
     /// lists are. Every client publishes what nobody is looking at quietly.

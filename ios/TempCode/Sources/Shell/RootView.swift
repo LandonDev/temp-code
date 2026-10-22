@@ -57,8 +57,8 @@ struct RootView: View {
         .onChange(of: model.registry.ordered.map { $0.bootResume }) { BootResumeNotes.shared.observe(model.registry.ordered) }
         .environment(projectSettings)
         .sheet(item: $projectSettings.target) { target in
-            if let client = model.registry.client(target.environmentId) {
-                ProjectSettingsSheet(client: client, projectId: target.projectId)
+            if let client = model.registry.client(target.home.environmentId) {
+                ProjectSettingsSheet(client: client, target: target)
             } else {
                 Color.clear.onAppear { projectSettings.target = nil }
             }

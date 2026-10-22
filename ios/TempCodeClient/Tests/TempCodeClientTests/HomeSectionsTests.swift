@@ -4,17 +4,17 @@ import TempCodeContract
 @testable import TempCodeClient
 
 /// Home's sections from value inputs: the order, what is absent when empty,
-/// the fold, the nested subagents, pairing across hosts and the host notes.
-private func ws(_ id: String, _ path: String, repo: String? = nil) -> WorkspaceMeta {
-    WorkspaceMeta(id: id, name: id, path: path, git: true, accountPins: nil, githubRepo: repo, githubRepoCheckedAt: nil, createdAt: 1)
+/// the fold, the nested subagents, linked copies across hosts and the host notes.
+private func ws(_ id: String, _ path: String, repo: String? = nil, link: String? = nil) -> WorkspaceMeta {
+    WorkspaceMeta(id: id, name: id, path: path, git: true, accountPins: nil, githubRepo: repo, githubRepoCheckedAt: nil, linkId: link, createdAt: 1)
 }
 
-private func project(_ id: String, _ workspaceId: String, archived: Bool = false) -> ProjectMeta {
-    ProjectMeta(id: id, workspaceId: workspaceId, name: id, mode: .worktree, branch: "tc/\(id)", cwd: "/wt/\(id)", archived: archived, accountPins: nil, createdAt: 10)
+private func project(_ id: String, _ workspaceId: String, archived: Bool = false, link: String? = nil) -> ProjectMeta {
+    ProjectMeta(id: id, workspaceId: workspaceId, name: id, mode: .worktree, branch: "tc/\(id)", cwd: "/wt/\(id)", archived: archived, accountPins: nil, linkId: link, createdAt: 10)
 }
 
-private func meta(_ id: String, parentId: String? = nil, projectId: String? = nil, workspaceId: String? = nil, cwd: String = "/repo/a", status: SessionStatus = .idle, archived: Bool = false, createdAt: Int = 1, updatedAt: Int = 100, treeHasLiveWork: Bool? = nil) -> SessionMeta {
-    SessionMeta(id: id, parentId: parentId, projectId: projectId, workspaceId: workspaceId, threadType: .chat, planPath: nil, provider: .claude, model: "claude-sonnet-5-5", reasoning: .low, agentType: .implementer, title: id, cwd: cwd, status: status, pinned: false, archived: archived, permission: .edits, fast: false, ultrafast: false, context1m: false, busySince: nil, pausedAt: nil, frozenActiveElapsed: nil, nativeId: nil, treeHasLiveWork: treeHasLiveWork, createdAt: createdAt, updatedAt: updatedAt)
+private func meta(_ id: String, parentId: String? = nil, projectId: String? = nil, workspaceId: String? = nil, cwd: String = "/repo/a", status: SessionStatus = .idle, pinned: Bool = false, archived: Bool = false, createdAt: Int = 1, updatedAt: Int = 100, treeHasLiveWork: Bool? = nil) -> SessionMeta {
+    SessionMeta(id: id, parentId: parentId, projectId: projectId, workspaceId: workspaceId, threadType: .chat, planPath: nil, provider: .claude, model: "claude-sonnet-5-5", reasoning: .low, agentType: .implementer, title: id, cwd: cwd, status: status, pinned: pinned, archived: archived, permission: .edits, fast: false, ultrafast: false, context1m: false, busySince: nil, pausedAt: nil, frozenActiveElapsed: nil, nativeId: nil, treeHasLiveWork: treeHasLiveWork, createdAt: createdAt, updatedAt: updatedAt)
 }
 
 private func host(_ env: String, troubled: Bool = false, hasShell: Bool = true, workspaces: [WorkspaceMeta] = [], projects: [ProjectMeta] = [], sessions: [SessionMeta] = [], notes: [HomeNote] = []) -> HomeHostInput {
@@ -28,8 +28,8 @@ private func status(_ transport: TransportState, attempts: Int = 0, retry: Doubl
 private let wa = ws("wa", "/repo/a")
 private let p1 = project("p1", "wa")
 
-private func sections(_ hosts: [HomeHostInput], folded: Set<String> = [], pairing: HomePairing = .none) -> [HomeSection] {
-    HomeSections.build(hosts: hosts, folded: folded, pairing: pairing)
+private func sections(_ hosts: [HomeHostInput], folded: Set<String> = []) -> [HomeSection] {
+    HomeSections.build(hosts: hosts, folded: folded)
 }
 
 private func ids(_ out: [HomeSection]) -> [String] { out.map(\.id) }
@@ -206,9 +206,10 @@ private func ids(_ out: [HomeSection]) -> [String] { out.map(\.id) }
         #expect(folded.first { $0.id == "workspace:box:wa" }?.rows.isEmpty == true)
     }
 
-    @Test func `project rows carry the host only when the workspace is paired`() {
+    @Test func `an unlinked project is a row of one copy on its own host`() {
         let out = sections([host("box", workspaces: [wa], projects: [p1], sessions: [meta("t", projectId: "p1")])])
-        #expect(out.first { $0.id == "workspace:box:wa" }?.rows.first == .project(environmentId: "box", ThreadGroups.group([meta("t", projectId: "p1")], projects: [p1], workspaces: [wa], workspaceId: "wa").projects[0], paired: false))
+        let group = ThreadGroups.group([meta("t", projectId: "p1")], projects: [p1], workspaces: [wa], workspaceId: "wa").projects[0]
+        #expect(out.first { $0.id == "workspace:box:wa" }?.rows.first == .project(environmentId: "box", HomeProject(id: "box:p1", members: [.init(environmentId: "box", group: group)])))
     }
 }
 
@@ -244,23 +245,33 @@ private func ids(_ out: [HomeSection]) -> [String] { out.map(\.id) }
     }
 }
 
-@Suite struct HomeSectionsPairingTests {
-    private let boxWs = ws("ws-box", "/srv/agents/work/temp-code", repo: "LandonDev/temp-code")
-    private let macWs = ws("ws-mac", "/Users/me/IdeaProjects/temp-code", repo: "LandonDev/temp-code")
-    private let byRepo = HomePairing { env, workspace in workspace.githubRepo ?? "\(env):\(workspace.id)" }
+@Suite struct HomeSectionsLinkTests {
+    private let boxWs = ws("ws-box", "/srv/agents/work/temp-code", repo: "LandonDev/temp-code", link: "wl_tc")
+    private let macWs = ws("ws-mac", "/Users/me/IdeaProjects/temp-code", repo: "LandonDev/temp-code", link: "wl_tc")
 
+    /// The box's and the Mac's copies of one workspace (wl_tc) holding one
+    /// linked project (pl_ios), and one project of the box's own; the box's
+    /// workspace "wa" is unlinked.
     private var hosts: [HomeHostInput] {
         [
-            host("box", workspaces: [boxWs, wa], projects: [project("pb", "ws-box"), p1], sessions: [meta("box-t", projectId: "pb", updatedAt: 3), meta("a-t", projectId: "p1")]),
-            host("mac", workspaces: [macWs], projects: [project("pm", "ws-mac")], sessions: [meta("mac-t1", projectId: "pm", updatedAt: 2), meta("mac-t2", projectId: "pm", updatedAt: 1)])
+            host("box", workspaces: [boxWs, wa], projects: [project("pb", "ws-box", link: "pl_ios"), project("pb-own", "ws-box"), p1], sessions: [
+                meta("box-t", projectId: "pb", updatedAt: 3),
+                meta("box-own", projectId: "pb-own", updatedAt: 1),
+                meta("box-chat", workspaceId: "ws-box", updatedAt: 6),
+                meta("a-t", projectId: "p1")
+            ]),
+            host("mac", workspaces: [macWs], projects: [project("pm", "ws-mac", link: "pl_ios")], sessions: [
+                meta("mac-t1", projectId: "pm", updatedAt: 4),
+                meta("mac-t2", projectId: "pm", updatedAt: 2),
+                meta("mac-chat", workspaceId: "ws-mac", updatedAt: 5)
+            ])
         ]
     }
 
-    @Test func `two hosts' copies of one repo fold into one workspace listed before any host, with both members' rows`() {
-        let out = sections(hosts, pairing: byRepo)
-        #expect(ids(out) == ["calm", "workspace:LandonDev/temp-code", "host:box", "workspace:box:wa", "host:mac"])
-        let paired = out[1]
-        guard case .workspace(let workspace, let collapsed, let threads) = paired.header else {
+    @Test func `two hosts' copies with one link fold into one workspace listed before any host`() {
+        let out = sections(hosts)
+        #expect(ids(out) == ["calm", "workspace:link:wl_tc", "host:box", "workspace:box:wa", "host:mac"])
+        guard case .workspace(let workspace, let collapsed, let threads) = out[1].header else {
             Issue.record("no workspace header")
             return
         }
@@ -268,42 +279,78 @@ private func ids(_ out: [HomeSection]) -> [String] { out.map(\.id) }
         #expect(workspace.members.map(\.environmentId) == ["box", "mac"])
         #expect(workspace.repo == "LandonDev/temp-code")
         #expect(!collapsed)
-        #expect(threads == 3)
-        #expect(paired.rows.map(\.id) == ["project:box:pb", "thread:box:box-t", "project:mac:pm", "thread:mac:mac-t1", "thread:mac:mac-t2"])
-        guard case .project(_, _, let flagged)? = paired.rows.first else {
-            Issue.record("no project row")
-            return
-        }
-        #expect(flagged)
+        #expect(threads == 6)
     }
 
-    @Test func `a paired workspace folds by its pairing key, folding both copies`() {
-        let out = sections(hosts, folded: ["LandonDev/temp-code"], pairing: byRepo)
-        let paired = out.first { $0.id == "workspace:LandonDev/temp-code" }
-        #expect(paired?.rows.isEmpty == true)
-        guard case .workspace(let workspace, let collapsed, let threads)? = paired?.header else {
+    @Test func `a linked project is one row with every host's threads mixed by recency`() {
+        let rows = sections(hosts)[1].rows
+        #expect(rows.map(\.id) == [
+            "thread:box:box-chat", "thread:mac:mac-chat",
+            "project:link:pl_ios", "thread:mac:mac-t1", "thread:box:box-t", "thread:mac:mac-t2",
+            "project:box:pb-own", "thread:box:box-own"
+        ])
+        guard case .project(let env, let linked)? = rows.first(where: { $0.id == "project:link:pl_ios" }) else {
+            Issue.record("no linked project row")
+            return
+        }
+        #expect(env == "box")
+        #expect(linked.isLinked)
+        #expect(linked.members.map(\.environmentId) == ["box", "mac"])
+        #expect(linked.project.id == "pb")
+        #expect(linked.latest == 4)
+        #expect(linked.threadCount == 3)
+    }
+
+    @Test func `a pinned thread of either host leads the mixed list`() {
+        let mixed = HomeSections.mixed([
+            ("box", [ThreadItem(meta: meta("b1", updatedAt: 9))]),
+            ("mac", [ThreadItem(meta: meta("m1", pinned: true, updatedAt: 1)), ThreadItem(meta: meta("m2", updatedAt: 5))])
+        ])
+        #expect(mixed.map { "\($0.environmentId):\($0.item.id)" } == ["mac:m1", "box:b1", "mac:m2"])
+    }
+
+    @Test func `each copy's archived threads keep their own row on their own host`() {
+        let box = host("box", workspaces: [boxWs], projects: [project("pb", "ws-box", link: "pl_ios")], sessions: [meta("live", projectId: "pb"), meta("old", projectId: "pb", archived: true)])
+        let mac = host("mac", workspaces: [macWs], projects: [project("pm", "ws-mac", link: "pl_ios")], sessions: [meta("gone", projectId: "pm", archived: true)])
+        let rows = sections([box, mac]).first { $0.id == "workspace:link:wl_tc" }?.rows ?? []
+        #expect(rows.map(\.id) == ["project:link:pl_ios", "thread:box:live", "archived:box:pb", "archived:mac:pm"])
+    }
+
+    @Test func `a linked workspace folds by its link, folding every copy`() {
+        let out = sections(hosts, folded: ["link:wl_tc"])
+        let linked = out.first { $0.id == "workspace:link:wl_tc" }
+        #expect(linked?.rows.isEmpty == true)
+        guard case .workspace(let workspace, let collapsed, let threads)? = linked?.header else {
             Issue.record("no workspace header")
             return
         }
-        #expect(HomeSections.foldKey(workspace) == "LandonDev/temp-code")
+        #expect(HomeSections.foldKey(workspace) == "link:wl_tc")
         #expect(collapsed)
-        #expect(threads == 3)
+        #expect(threads == 6)
     }
 
-    @Test func `the default pairing keeps every workspace under its host`() {
-        let out = sections(hosts)
-        #expect(ids(out) == ["calm", "host:box", "workspace:box:ws-box", "workspace:box:wa", "host:mac", "workspace:mac:ws-mac"])
+    @Test func `the same repo without a link keeps every workspace under its host`() {
+        let unlinked = [
+            host("box", workspaces: [ws("ws-box", "/srv/agents/work/temp-code", repo: "LandonDev/temp-code"), wa]),
+            host("mac", workspaces: [ws("ws-mac", "/Users/me/IdeaProjects/temp-code", repo: "LandonDev/temp-code")])
+        ]
+        #expect(ids(sections(unlinked)) == ["calm", "host:box", "workspace:box:ws-box", "workspace:box:wa", "host:mac", "workspace:mac:ws-mac"])
     }
 
-    @Test func `two workspaces of one host under one key stay apart`() {
-        let twin = ws("ws-box-2", "/srv/other", repo: "LandonDev/temp-code")
-        let out = sections([host("box", workspaces: [boxWs, twin]), host("mac", workspaces: [macWs])], pairing: byRepo)
-        #expect(ids(out) == ["calm", "workspace:LandonDev/temp-code", "host:box", "workspace:box:ws-box-2", "host:mac"])
+    @Test func `two workspaces of one host under one link stay apart`() {
+        let twin = ws("ws-box-2", "/srv/other", link: "wl_tc")
+        let out = sections([host("box", workspaces: [boxWs, twin]), host("mac", workspaces: [macWs])])
+        #expect(ids(out) == ["calm", "workspace:link:wl_tc", "host:box", "workspace:box:ws-box-2", "host:mac"])
     }
 
-    @Test func `a host whose only workspace is paired away has no nothing row`() {
-        let out = sections(hosts, pairing: byRepo)
-        #expect(!ids(out).contains("nothing:mac"))
+    @Test func `two projects of one host under one link stay apart`() {
+        let box = host("box", workspaces: [boxWs], projects: [project("pb", "ws-box", link: "pl_x"), project("pb2", "ws-box", link: "pl_x")], sessions: [meta("t", projectId: "pb", updatedAt: 500)])
+        let rows = sections([box, host("mac", workspaces: [macWs])]).first { $0.id == "workspace:link:wl_tc" }?.rows ?? []
+        #expect(rows.map(\.id) == ["project:link:pl_x", "thread:box:t", "project:box:pb2"])
+    }
+
+    @Test func `a host whose only workspace is linked away has no nothing row`() {
+        #expect(!ids(sections(hosts)).contains("nothing:mac"))
     }
 }
 

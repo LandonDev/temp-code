@@ -45,7 +45,7 @@ public struct HomeNote: Sendable, Hashable, Identifiable {
 }
 
 /// A workspace as Home lists it: one host's, or one copy per host when the
-/// same project is paired across hosts.
+/// hosts linked their copies (the same `linkId`).
 public struct HomeWorkspace: Sendable, Hashable, Identifiable {
     public struct Member: Sendable, Hashable {
         public var environmentId: String
@@ -57,7 +57,7 @@ public struct HomeWorkspace: Sendable, Hashable, Identifiable {
         }
     }
 
-    /// The pairing key; `"<env>:<ws>"` when unpaired. Also the fold key.
+    /// The fold key (`ProjectPairs.key`): "link:<linkId>", or "<env>:<ws>" when unlinked.
     public var id: String
     public var name: String
     public var repo: String?
@@ -73,17 +73,40 @@ public struct HomeWorkspace: Sendable, Hashable, Identifiable {
     public var isPaired: Bool { members.count > 1 }
 }
 
-/// Which workspaces are two copies of one project: the same key for both.
-/// The default pairs nothing; the paired-projects thread supplies the
-/// selector (same GitHub repo, else same folder name).
-public struct HomePairing: Sendable {
-    public var key: @Sendable (_ environmentId: String, _ workspace: WorkspaceMeta) -> String
+/// A project as Home lists it: one row for every host's copy of it (the same
+/// `linkId`), its threads mixed by recency. The lead member (the first host
+/// in registry order) is the one the header's plus and menu act on.
+public struct HomeProject: Sendable, Hashable, Identifiable {
+    public struct Member: Sendable, Hashable {
+        public var environmentId: String
+        public var group: ProjectGroup
 
-    public init(key: @escaping @Sendable (_ environmentId: String, _ workspace: WorkspaceMeta) -> String) {
-        self.key = key
+        public init(environmentId: String, group: ProjectGroup) {
+            self.environmentId = environmentId
+            self.group = group
+        }
     }
 
-    public static let none = HomePairing { environmentId, workspace in "\(environmentId):\(workspace.id)" }
+    /// The fold key (`ProjectPairs.key`): "link:<linkId>", or "<env>:<project id>".
+    public var id: String
+    public var members: [Member]
+
+    public init(id: String, members: [Member]) {
+        self.id = id
+        self.members = members
+    }
+
+    /// The lead copy: what the header draws.
+    public var project: ProjectMeta { members[0].group.project }
+    public var environmentId: String { members[0].environmentId }
+    public var isLinked: Bool { members.count > 1 }
+    /// Newest thread activity across every copy.
+    public var latest: Int { members.map(\.group.latest).max() ?? 0 }
+    /// Every copy's live roots, pinned first, then newest first, each with its host.
+    public var threads: [(environmentId: String, item: ThreadItem)] {
+        HomeSections.mixed(members.map { ($0.environmentId, $0.group.threads) })
+    }
+    public var threadCount: Int { members.reduce(0) { $0 + $1.group.threads.count } }
 }
 
 /// One row of Home. Rows carry ids and metas, never a client; the view
@@ -97,8 +120,8 @@ public enum HomeRow: Sendable, Hashable, Identifiable {
     case running(environmentId: String, SessionMeta)
     /// Nothing needs you and nothing runs: one calm line and the way to start a thread.
     case calm(environmentId: String, WorkspaceMeta)
-    /// `paired` when the workspace is listed across hosts, so the header names the host.
-    case project(environmentId: String, ProjectGroup, paired: Bool)
+    /// One row for every host's copy of a project; `environmentId` is the lead copy's host.
+    case project(environmentId: String, HomeProject)
     case thread(environmentId: String, ThreadItem)
     case moreAgents(environmentId: String, root: SessionMeta, hidden: Int)
     case archivedThreads(environmentId: String, ProjectGroup)
@@ -115,7 +138,7 @@ public enum HomeRow: Sendable, Hashable, Identifiable {
         case .needsYou(let env, let item): "needs:\(env):\(item.id)"
         case .running(let env, let meta): "running:\(env):\(meta.id)"
         case .calm(let env, _): "calm:\(env)"
-        case .project(let env, let group, _): "project:\(env):\(group.id)"
+        case .project(_, let project): "project:\(project.id)"
         case .thread(let env, let item): "thread:\(env):\(item.id)"
         case .moreAgents(let env, let root, _): "more:\(env):\(root.id)"
         case .archivedThreads(let env, let group): "archived:\(env):\(group.id)"
@@ -129,7 +152,7 @@ public enum HomeRow: Sendable, Hashable, Identifiable {
     public var environmentId: String {
         switch self {
         case .status(let env), .hostNote(let env, _), .needsYou(let env, _), .running(let env, _), .calm(let env, _),
-             .project(let env, _, _), .thread(let env, _), .moreAgents(let env, _, _), .archivedThreads(let env, _),
+             .project(let env, _), .thread(let env, _), .moreAgents(let env, _, _), .archivedThreads(let env, _),
              .archivedProjects(let env, _, _), .emptyWorkspace(let env, _), .nothing(let env, _, _):
             env
         }
@@ -188,13 +211,13 @@ public enum HomeSections {
         }
     }
 
-    /// What `folded` remembers a workspace by: its pairing key, so folding a
-    /// paired workspace folds both copies.
+    /// What `folded` remembers a workspace by: its fold key, so folding a
+    /// linked workspace folds every copy.
     public nonisolated static func foldKey(_ workspace: HomeWorkspace) -> String {
         workspace.id
     }
 
-    public nonisolated static func build(hosts: [HomeHostInput], folded: Set<String>, pairing: HomePairing = .none) -> [HomeSection] {
+    public nonisolated static func build(hosts: [HomeHostInput], folded: Set<String>) -> [HomeSection] {
         var sections: [HomeSection] = []
 
         let status = hosts.filter(\.troubled).map { HomeRow.status(environmentId: $0.environmentId) }
@@ -219,9 +242,9 @@ public enum HomeSections {
             sections.append(HomeSection(id: "calm", header: .none, rows: [.calm(environmentId: calm.environmentId, workspace)]))
         }
 
-        // Workspaces keyed through the pairing; a key on more than one host is
-        // one workspace, listed before any host so it is never under one host's name.
-        let (paired, unpaired) = workspaces(of: hosts, pairing: pairing)
+        // Workspaces keyed by their link; a link on more than one host is one
+        // workspace, listed before any host so it is never under one host's name.
+        let (paired, unpaired) = workspaces(of: hosts)
         for workspace in paired {
             sections.append(workspaceSection(workspace, hosts: hosts, folded: folded))
         }
@@ -249,62 +272,84 @@ public enum HomeSections {
         return sections
     }
 
-    /// Every workspace keyed by `pairing`, in first-seen order: the paired
-    /// ones (members on more than one host) and the rest, one member each.
-    nonisolated static func workspaces(of hosts: [HomeHostInput], pairing: HomePairing) -> (paired: [HomeWorkspace], unpaired: [HomeWorkspace]) {
-        var order: [String] = []
-        var byKey: [String: HomeWorkspace] = [:]
-        for host in hosts {
-            for workspace in host.workspaces {
-                let key = pairing.key(host.environmentId, workspace)
-                let member = HomeWorkspace.Member(environmentId: host.environmentId, workspace: workspace)
-                if var known = byKey[key] {
-                    // One copy per host: a second workspace of the same host under one key stays its own.
-                    if known.members.contains(where: { $0.environmentId == host.environmentId }) {
-                        let own = "\(host.environmentId):\(workspace.id)"
-                        order.append(own)
-                        byKey[own] = HomeWorkspace(id: own, name: workspace.name, repo: workspace.githubRepo, members: [member])
-                        continue
-                    }
-                    known.members.append(member)
-                    if known.repo == nil { known.repo = workspace.githubRepo }
-                    byKey[key] = known
-                } else {
-                    order.append(key)
-                    byKey[key] = HomeWorkspace(id: key, name: workspace.name, repo: workspace.githubRepo, members: [member])
-                }
-            }
+    /// Every workspace keyed by its link (`ProjectPairs.key`), in first-seen
+    /// order: the linked ones (members on more than one host) and the rest,
+    /// one member each.
+    nonisolated static func workspaces(of hosts: [HomeHostInput]) -> (paired: [HomeWorkspace], unpaired: [HomeWorkspace]) {
+        let all = fold(hosts.flatMap { host in host.workspaces.map { (host.environmentId, $0) } }, key: { ProjectPairs.key($0, $1) }, own: { "\($0):\($1.id)" }) { key, members in
+            HomeWorkspace(id: key, name: members[0].1.name, repo: members.lazy.compactMap { $0.1.githubRepo }.first, members: members.map { HomeWorkspace.Member(environmentId: $0.0, workspace: $0.1) })
         }
-        let all = order.compactMap { byKey[$0] }
         return (all.filter(\.isPaired), all.filter { !$0.isPaired })
     }
 
+    /// Folds rows of several hosts by `key`, in first-seen order, one member
+    /// per host: a second row of one host under a key already holding that
+    /// host stays its own, under `own`.
+    nonisolated static func fold<Row, Out>(_ rows: [(String, Row)], key: (String, Row) -> String, own: (String, Row) -> String, make: (String, [(String, Row)]) -> Out) -> [Out] {
+        var order: [String] = []
+        var byKey: [String: [(String, Row)]] = [:]
+        for row in rows {
+            var rowKey = key(row.0, row.1)
+            if byKey[rowKey]?.contains(where: { $0.0 == row.0 }) == true { rowKey = own(row.0, row.1) }
+            if byKey[rowKey] == nil { order.append(rowKey) }
+            byKey[rowKey, default: []].append(row)
+        }
+        return order.map { make($0, byKey[$0] ?? []) }
+    }
+
+    /// Several hosts' roots as one list: pinned first, then newest first, each with its host.
+    public nonisolated static func mixed(_ lists: [(String, [ThreadItem])]) -> [(environmentId: String, item: ThreadItem)] {
+        lists
+            .flatMap { list in list.1.map { (environmentId: list.0, item: $0) } }
+            .sorted {
+                if $0.item.meta.pinned != $1.item.meta.pinned { return $0.item.meta.pinned }
+                return ($0.item.meta.updatedAt, $0.item.meta.id, $0.environmentId) > ($1.item.meta.updatedAt, $1.item.meta.id, $1.environmentId)
+            }
+    }
+
     /// A workspace's section: the fold row as its header, and under it (when
-    /// open) every member's chats, projects and archived rows in member order.
+    /// open) its chats from every copy mixed by recency, then one row per
+    /// project (every copy's threads under it, mixed by recency), then each
+    /// copy's archived rows.
     nonisolated static func workspaceSection(_ workspace: HomeWorkspace, hosts: [HomeHostInput], folded: Set<String>) -> HomeSection {
         let collapsed = folded.contains(foldKey(workspace))
-        var threads = 0
-        var rows: [HomeRow] = []
+        var chats: [(String, [ThreadItem])] = []
+        var projects: [(String, ProjectGroup)] = []
+        var archived: [(String, WorkspaceMeta, Int)] = []
         for member in workspace.members {
             guard let host = hosts.first(where: { $0.environmentId == member.environmentId }) else { continue }
-            let env = host.environmentId
             let groups = ThreadGroups.group(host.sessions, projects: host.projects, workspaces: host.workspaces, workspaceId: member.workspace.id, seen: host.seen, floor: host.floor)
-            threads += groups.chats.count + groups.projects.reduce(0) { $0 + $1.threads.count }
-            guard !collapsed else { continue }
-            rows += threadRows(env, groups.chats)
-            for group in groups.projects {
-                rows.append(.project(environmentId: env, group, paired: workspace.isPaired))
-                rows += threadRows(env, group.threads)
-                if group.archivedCount > 0 { rows.append(.archivedThreads(environmentId: env, group)) }
-            }
-            if !groups.archived.isEmpty {
-                rows.append(.archivedProjects(environmentId: env, member.workspace, count: groups.archived.count))
-            }
+            chats.append((host.environmentId, groups.chats))
+            projects += groups.projects.map { (host.environmentId, $0) }
+            if !groups.archived.isEmpty { archived.append((host.environmentId, member.workspace, groups.archived.count)) }
         }
-        if !collapsed, rows.isEmpty, let first = workspace.members.first {
-            rows.append(.emptyWorkspace(environmentId: first.environmentId, first.workspace))
+        let linked = fold(projects, key: { ProjectPairs.key($0, $1.project) }, own: { "\($0):\($1.project.id)" }) { key, members in
+            HomeProject(id: key, members: members.map { HomeProject.Member(environmentId: $0.0, group: $0.1) })
+        }
+        .sorted { ($0.latest, $0.id) > ($1.latest, $1.id) }
+        let threads = chats.reduce(0) { $0 + $1.1.count } + linked.reduce(0) { $0 + $1.threadCount }
+
+        var rows: [HomeRow] = []
+        if !collapsed {
+            rows += threadRows(mixed(chats))
+            for project in linked {
+                rows.append(.project(environmentId: project.environmentId, project))
+                rows += threadRows(project.threads)
+                for member in project.members where member.group.archivedCount > 0 {
+                    rows.append(.archivedThreads(environmentId: member.environmentId, member.group))
+                }
+            }
+            rows += archived.map { .archivedProjects(environmentId: $0.0, $0.1, count: $0.2) }
+            if rows.isEmpty, let first = workspace.members.first {
+                rows.append(.emptyWorkspace(environmentId: first.environmentId, first.workspace))
+            }
         }
         return HomeSection(id: "workspace:\(workspace.id)", header: .workspace(workspace, collapsed: collapsed, threads: threads), rows: rows)
+    }
+
+    /// Roots of several hosts in the order given, each with its subagents.
+    public nonisolated static func threadRows(_ items: [(environmentId: String, item: ThreadItem)]) -> [HomeRow] {
+        items.flatMap { threadRows($0.environmentId, [$0.item]) }
     }
 
     /// A root, then whatever fills its `children`, nested one step in: every

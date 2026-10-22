@@ -147,8 +147,8 @@ struct HomeView: View {
     }
 
     /// Fold or unfold a workspace: its rows leave with the collapse curve and
-    /// come back with the expand spring; reduced motion cross-fades. A paired
-    /// workspace folds by its pairing key, so both copies fold at once.
+    /// come back with the expand spring; reduced motion cross-fades. A linked
+    /// workspace folds by its link, so every copy folds at once.
     private func toggleFold(_ workspace: HomeWorkspace) {
         var keys = folded
         let key = HomeSections.foldKey(workspace)
@@ -295,7 +295,7 @@ private struct HomeRowView: View {
                 .listRowSeparator(.hidden)
         case .needsYou(_, let item):
             Button { open(item.meta.id, seq: cue?.seq) } label: {
-                ThreadRow(row: .needsYou(item: item, cue: cue))
+                ThreadRow(row: .needsYou(item: item, cue: cue)) { HostGlyph(environmentId: client.environment.id) }
             }
             .buttonStyle(.pressable)
             .listRowInsets(Layout.rowInsets)
@@ -307,25 +307,37 @@ private struct HomeRowView: View {
             QuietNote(text: "Nothing needs you right now.", action: ("New thread", { newThread(client, workspace, nil) }))
                 .listRowInsets(Layout.rowInsets)
                 .listRowSeparator(.hidden)
-        case .project(_, let group, let paired):
-            let workspace = client.workspaces.first { $0.id == group.project.workspaceId }
-            ProjectHeaderRow(project: group.project, host: paired ? client.environment.name : nil) {
-                slots.projectTrailing?(client, group.project)
+        case .project(_, let linked):
+            // The lead copy (the first host in registry order) takes the plus and the menu;
+            // the settings entry finds the copy the settings live on itself.
+            let project = linked.project
+            let workspace = client.workspaces.first { $0.id == project.workspaceId }
+            ProjectHeaderRow(project: project) {
+                slots.projectTrailing?(client, project)
                 if let workspace {
-                    NewThreadButton { newThread(client, workspace, group.project) }
+                    NewThreadButton { newThread(client, workspace, project) }
                 }
                 if slots.hasProjectMenu {
-                    HeaderMenu(systemImage: "ellipsis", label: "\(group.project.name) menu") {
+                    HeaderMenu(systemImage: "ellipsis", label: "\(project.name) menu") {
                         if let workspace {
-                            Button("New thread") { newThread(client, workspace, group.project) }
+                            Button("New thread") { newThread(client, workspace, project) }
                         }
                         if let settings = slots.projectSettings {
                             Divider()
-                            settings(client, group.project)
+                            settings(client, project)
                         }
                         if let batch = slots.projectBatch {
                             Divider()
-                            batch(client, group.project)
+                            if linked.isLinked {
+                                // One set per host: each acts on that host's copy alone.
+                                ForEach(linked.members, id: \.environmentId) { member in
+                                    if let memberClient = model.registry.client(member.environmentId) {
+                                        Section(memberClient.environment.name) { batch(memberClient, member.group.project) }
+                                    }
+                                }
+                            } else {
+                                batch(client, project)
+                            }
                         }
                     }
                 }
@@ -343,7 +355,10 @@ private struct HomeRowView: View {
             .listRowInsets(Layout.rowInsets)
         case .archivedThreads(_, let group):
             Button { path.append(Route.archivedThreads(environmentId: client.environment.id, projectId: group.id)) } label: {
-                DimRow(group.archivedCount == 1 ? "1 archived" : "\(group.archivedCount) archived")
+                HStack(spacing: 6) {
+                    DimRow(group.archivedCount == 1 ? "1 archived" : "\(group.archivedCount) archived")
+                    HostGlyph(environmentId: client.environment.id)
+                }
             }
             .buttonStyle(.pressable)
             .listRowInsets(Layout.rowInsets)
@@ -378,7 +393,7 @@ private struct HomeRowView: View {
 
     private func threadButton(_ meta: SessionMeta, _ row: ThreadRowModel) -> some View {
         Button { open(meta.id) } label: {
-            ThreadRow(row: row)
+            ThreadRow(row: row) { HostGlyph(environmentId: client.environment.id) }
         }
         .buttonStyle(.pressable)
         .listRowInsets(Layout.rowInsets)
@@ -433,7 +448,7 @@ private struct HostHeader: View {
 }
 
 /// A workspace-level group's header row: its mark, its name, the repo dim
-/// under it, one connection dot per member host when paired, and while
+/// under it, one connection dot per member host when linked, and while
 /// folded the number of threads inside. The whole row is the fold; no
 /// chevron. The chats group draws the same row with a glyph and no fold.
 private struct GroupHeaderRow<Icon: View>: View {
@@ -443,7 +458,7 @@ private struct GroupHeaderRow<Icon: View>: View {
     let repo: String?
     let collapsed: Bool
     let threads: Int
-    /// The member hosts when the workspace is paired; empty otherwise.
+    /// The member hosts when the workspace is linked across hosts; empty otherwise.
     let members: [HomeWorkspace.Member]
     @ViewBuilder let icon: () -> Icon
 

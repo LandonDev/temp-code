@@ -122,6 +122,13 @@ public final class EnvironmentStore {
         save()
     }
 
+    /// Remembers the platform a hello named; nothing is written when it is already known.
+    public func setPlatform(_ id: String, _ platform: String) {
+        guard let index = environments.firstIndex(where: { $0.id == id }), environments[index].platform != platform else { return }
+        environments[index].platform = platform
+        save()
+    }
+
     /// Forgets the host and its key. The caller stops its socket and clears its cache.
     public func remove(_ id: String) {
         environments.removeAll { $0.id == id }
@@ -133,6 +140,7 @@ public final class EnvironmentStore {
         if let index = environments.firstIndex(where: { $0.id == environment.id }) {
             var kept = environment
             kept.addedAt = environments[index].addedAt
+            kept.platform = kept.platform ?? environments[index].platform
             environments[index] = kept
         } else {
             environments.append(environment)

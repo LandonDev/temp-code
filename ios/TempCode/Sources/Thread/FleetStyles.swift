@@ -25,13 +25,11 @@ enum FleetLayout {
 // MARK: - routes
 
 /// A subagent's detail, pushed from any fleet row: the host it lives on,
-/// its id, the root's directory (for the worktree name) and the host's name
-/// when it differs from the root's.
+/// its id and the root's directory (for the worktree name).
 struct AgentDetailRoute: Hashable {
     let environmentId: String
     let agentId: String
     var parentCwd: String?
-    var hostName: String?
 }
 
 extension View {
@@ -41,7 +39,7 @@ extension View {
     func fleetDestinations(registry: ClientRegistry) -> some View {
         navigationDestination(for: AgentDetailRoute.self) { route in
             if let client = registry.client(route.environmentId) {
-                AgentDetailScreen(client: client, agentId: route.agentId, parentCwd: route.parentCwd, hostName: route.hostName)
+                AgentDetailScreen(client: client, agentId: route.agentId, parentCwd: route.parentCwd)
             } else {
                 FleetEmpty(text: "This host is no longer paired")
             }
@@ -207,7 +205,8 @@ struct AgentStatusMark: View {
 struct AgentMetaLine: View {
     let agent: SessionMeta
     var branch: String?
-    var host: String?
+    /// The agent's host, drawn as its glyph when more than one host is paired.
+    var environmentId: String?
 
     var body: some View {
         HStack(spacing: 5) {
@@ -223,10 +222,8 @@ struct AgentMetaLine: View {
                 MetaGlyph("arrow.triangle.branch", label: "Worktree")
                 Text(branch)
             }
-            if let host {
-                Separator()
-                MetaGlyph("desktopcomputer", label: "Host")
-                Text(host)
+            if let environmentId {
+                HostGlyph(environmentId: environmentId)
             }
         }
         .textStep(.meta)
@@ -373,7 +370,6 @@ struct AgentRow: View {
     let client: EnvironmentClient
     let fleetSize: Int
     var parentCwd: String?
-    var hostName: String?
     var hostLine: String?
 
     var body: some View {
@@ -387,7 +383,7 @@ struct AgentRow: View {
         let waiting = meta.status == .waiting
         let away = hostLine != nil
         let cost = child?.fold.board.cost
-        NavigationLink(value: AgentDetailRoute(environmentId: agent.environmentId, agentId: meta.id, parentCwd: parentCwd, hostName: agent.remote ? hostName : nil)) {
+        NavigationLink(value: AgentDetailRoute(environmentId: agent.environmentId, agentId: meta.id, parentCwd: parentCwd)) {
             HStack(alignment: .top, spacing: Layout.rowGap) {
                 AgentStatusMark(status: meta.status, weight: emphasized ? .medium : .regular)
                     .padding(.top, 2)
@@ -407,7 +403,7 @@ struct AgentRow: View {
                             AgentFigures(elapsedMs: Fleet.elapsedMs(meta, now: away ? meta.updatedAt : Int(Date.now.timeIntervalSince1970 * 1000)), cost: cost)
                         }
                     }
-                    AgentMetaLine(agent: meta, branch: Fleet.branch(cwd: meta.cwd, parentCwd: parentCwd), host: agent.remote ? hostName : nil)
+                    AgentMetaLine(agent: meta, branch: Fleet.branch(cwd: meta.cwd, parentCwd: parentCwd), environmentId: agent.environmentId)
                     ActivityLine(line: line, live: live, override: agent.remote ? hostLine : nil)
                     if !stats.isEmpty {
                         AgentStatsLine(stats: stats)
@@ -447,7 +443,6 @@ struct FleetSections: View {
     let agents: [Fleet.Agent]
     let clients: [String: EnvironmentClient]
     var parentCwd: String?
-    var hostNames: [String: String] = [:]
     var hostLines: [String: String] = [:]
     /// The first non-empty list has rendered: moves animate from here on.
     @State private var painted = false
@@ -475,7 +470,7 @@ struct FleetSections: View {
                         .transition(.opacity)
                 }
                 if let client = clients[agent.environmentId] {
-                    AgentRow(agent: agent, client: client, fleetSize: agents.count, parentCwd: parentCwd, hostName: hostNames[agent.environmentId], hostLine: hostLines[agent.environmentId])
+                    AgentRow(agent: agent, client: client, fleetSize: agents.count, parentCwd: parentCwd, hostLine: hostLines[agent.environmentId])
                         .rowAppearTransition()
                 }
             }
@@ -562,7 +557,6 @@ struct FleetUnpairedNote: View {
 struct FleetGather {
     let agents: [Fleet.Agent]
     let clients: [String: EnvironmentClient]
-    let hostNames: [String: String]
     let hostLines: [String: String]
     let unpaired: Int
 
@@ -572,7 +566,6 @@ struct FleetGather {
         let hosts = ordered.map { Fleet.Host(id: $0.environment.id, name: $0.environment.name, sessions: $0.sessions) }
         agents = Fleet.gather(rootId: rootId, rootHost: client.environment.id, hosts: hosts)
         clients = Dictionary(ordered.map { ($0.environment.id, $0) }, uniquingKeysWith: { first, _ in first })
-        hostNames = Dictionary(ordered.map { ($0.environment.id, $0.environment.name) }, uniquingKeysWith: { first, _ in first })
         let now = Date().timeIntervalSince1970 * 1000
         var lines: [String: String] = [:]
         for host in ordered {

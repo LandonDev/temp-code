@@ -205,7 +205,7 @@ public extension PairedEnvironment {
     /// under the relayed host's own id. Rebuilt from the carrier on every
     /// launch, never persisted itself.
     static func relayed(_ host: RelayedHost, through carrier: PairedEnvironment) -> PairedEnvironment {
-        PairedEnvironment(id: host.id, name: host.name, origin: carrier.origin, caps: carrier.caps, keyId: carrier.keyId, keyName: carrier.keyName, addedAt: host.learnedAt, via: carrier.id)
+        PairedEnvironment(id: host.id, name: host.name, origin: carrier.origin, caps: carrier.caps, keyId: carrier.keyId, keyName: carrier.keyName, addedAt: host.learnedAt, via: carrier.id, platform: host.presence.platform)
     }
 }
 

@@ -1,23 +1,16 @@
 import Foundation
 import TempCodeContract
 
-/// The same project on two hosts: the Mac's checkout and the box's clone of
-/// one repository. Home lists every host's workspaces under its own header;
-/// the pairs say which copies are one project, so Home folds them into one
-/// row and a path on either host has a partner on the other.
+/// One project on two hosts: the Mac's checkout and the box's clone of one
+/// repository. The hosts link their copies themselves (the Mac's linker,
+/// src/main/server/remote/projectLinks.ts): every copy of a workspace carries
+/// one `linkId`, and so does every copy of a project inside it. The phone
+/// guesses nothing: two rows are copies of one only when they carry the same
+/// link id; a row without one is a pair of one.
 ///
-/// The desktop's rule (src/renderer/src/lib/projectPairs.ts), host-aware
-/// because the phone's `WorkspaceMeta` carries no environment id (the client
-/// is the host): two workspaces pair when they name the same GitHub
-/// repository, else when their folders share a name. Within one host the
-/// first workspace with a key keeps it, so a pair has at most one member per
-/// host; a workspace with no partner is a pair of one.
-///
-/// Why no path map: the desktop also knows the Mac's path map (box
-/// `/srv/agents/work/<X>` ↔ Mac `~/IdeaProjects/<X>`), but its default gives
-/// both sides the same basename `<X>`, so the name rule already covers it;
-/// and the map itself is a Mac setting (`harness.sync.pathMap`, admin) a
-/// client key cannot read. The phone reads no map.
+/// Within one host the first row with a link id keeps it, so a pair has at
+/// most one member per host (the linker never gives two rows of one host the
+/// same id; the rule keeps a bad catalog from folding a host into itself).
 public struct PairMember: Sendable, Hashable {
     public var environmentId: String
     public var workspaceId: String
@@ -34,7 +27,7 @@ public struct PairMember: Sendable, Hashable {
 }
 
 public struct ProjectPair: Sendable, Hashable, Identifiable {
-    /// "repo:<owner/name lowercased>" or "name:<basename lowercased>".
+    /// "link:<linkId>", or "<env>:<workspace id>" for a row with no link.
     public var id: String
     /// The first member's name: what every host's rows show.
     public var name: String
@@ -66,29 +59,37 @@ public enum ProjectPairs {
         ThreadGroups.normalize(path)
     }
 
-    /// The last path segment, after normalizing.
-    public static func basename(_ path: String) -> String {
-        let stripped = normalize(path)
-        return stripped.split(separator: "/").last.map(String.init) ?? stripped
+    /// The fold key of a row with an optional link id: "link:<id>" when it
+    /// carries one, else "<env>:<row id>", which never folds.
+    public static func key(linkId: String?, environmentId: String, id: String) -> String {
+        let link = linkId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return link.isEmpty ? "\(environmentId):\(id)" : "link:\(link)"
     }
 
-    /// "repo:…" when the workspace names a GitHub repository (trimmed, lowercased), else "name:…".
-    public static func key(_ workspace: WorkspaceMeta) -> String {
-        let repo = workspace.githubRepo?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
-        return repo.isEmpty ? "name:\(basename(workspace.path).lowercased())" : "repo:\(repo)"
+    /// A workspace's fold key.
+    public static func key(_ environmentId: String, _ workspace: WorkspaceMeta) -> String {
+        key(linkId: workspace.linkId, environmentId: environmentId, id: workspace.id)
     }
 
-    /// Hosts in registry order; within one host the first workspace with a key keeps it,
-    /// so a pair has at most one member per host. Pairs come out in the order their keys were first seen.
+    /// A project's fold key.
+    public static func key(_ environmentId: String, _ project: ProjectMeta) -> String {
+        key(linkId: project.linkId, environmentId: environmentId, id: project.id)
+    }
+
+    /// Hosts in registry order; within one host the first workspace with a key keeps it.
+    /// Pairs come out in the order their keys were first seen.
     public static func pairs(_ hosts: [HostWorkspaces]) -> [ProjectPair] {
         var order: [String] = []
         var byKey: [String: ProjectPair] = [:]
         for host in hosts {
             for workspace in host.workspaces {
-                let pairKey = key(workspace)
+                let member = PairMember(environmentId: host.environmentId, workspaceId: workspace.id, cwd: normalize(workspace.path), name: workspace.name)
+                var pairKey = key(host.environmentId, workspace)
+                if byKey[pairKey]?.members.contains(where: { $0.environmentId == host.environmentId }) == true {
+                    pairKey = "\(host.environmentId):\(workspace.id)"
+                }
                 var pair = byKey[pairKey] ?? ProjectPair(id: pairKey, name: workspace.name, members: [])
-                if pair.members.contains(where: { $0.environmentId == host.environmentId }) { continue }
-                pair.members.append(PairMember(environmentId: host.environmentId, workspaceId: workspace.id, cwd: normalize(workspace.path), name: workspace.name))
+                pair.members.append(member)
                 if byKey[pairKey] == nil { order.append(pairKey) }
                 byKey[pairKey] = pair
             }
@@ -123,20 +124,6 @@ public enum ProjectPairs {
     public static func partners(of path: String, on environmentId: String, in pairs: [ProjectPair]) -> [PairMember] {
         guard let found = pair(of: path, on: environmentId, in: pairs) else { return [] }
         return found.pair.members.filter { $0.environmentId != environmentId }
-    }
-
-    /// Home's slot (`HomePairing.key`): the pair id for a workspace that is its host's first with
-    /// that key, else "<env>:<workspace id>", so a second same-named folder on one host never folds.
-    public static func homeKey(_ environmentId: String, _ workspace: WorkspaceMeta, hosts: [HostWorkspaces]) -> String {
-        let pairKey = key(workspace)
-        let own = hosts.first { $0.environmentId == environmentId }?.workspaces ?? []
-        let first = own.first { key($0) == pairKey }
-        return first == nil || first?.id == workspace.id ? pairKey : "\(environmentId):\(workspace.id)"
-    }
-
-    /// The closure Home's slot takes, over a snapshot of every host's workspaces.
-    public static func homePairing(_ hosts: [HostWorkspaces]) -> @Sendable (String, WorkspaceMeta) -> String {
-        { environmentId, workspace in homeKey(environmentId, workspace, hosts: hosts) }
     }
 
     /// Whether a row names its host: only with more than one paired host.

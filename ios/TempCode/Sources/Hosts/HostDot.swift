@@ -60,31 +60,18 @@ struct HostDot: View {
     }
 }
 
-/// A paired project's two (or more) hosts: one dot per member, 2 pt apart,
-/// in registry order. One accessibility element: "On Mac and box".
-struct PairedHostMarks: View {
-    let statuses: [(name: String, status: EnvironmentStatus)]
+/// The host a thread or agent runs on, as one small monochrome glyph: a
+/// laptop for a Mac, a rack for anything else (the box), from the platform
+/// the host's hello named and the paired environment remembers. Drawn only
+/// when two or more hosts are paired; colour stays for the status dots.
+/// VoiceOver reads "On box".
+struct HostGlyph: View {
+    let environmentId: String
+    @Environment(AppModel.self) private var app
 
     var body: some View {
-        HStack(spacing: 2) {
-            ForEach(statuses.indices, id: \.self) { index in
-                HostDot(status: statuses[index].status)
-            }
+        if ProjectPairs.showsHost(hostCount: app.registry.ordered.count), let client = app.registry.client(environmentId) {
+            MetaGlyph(HostKind(platform: app.registry.platform(environmentId)).symbol, tint: .secondary, label: "On \(client.environment.name)")
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("On " + statuses.map(\.name).formatted(.list(type: .and)))
-        .accessibilityValue(statuses.map { "\($0.name) \(HostTone($0.status).label($0.status, now: .now).lowercased())" }.joined(separator: ", "))
-    }
-}
-
-/// The host a row names when more than one is paired: a stamp-step word, nothing else.
-struct HostWord: View {
-    let name: String
-
-    var body: some View {
-        Text(name)
-            .textStep(.stamp)
-            .lineLimit(1)
-            .fixedSize()
     }
 }

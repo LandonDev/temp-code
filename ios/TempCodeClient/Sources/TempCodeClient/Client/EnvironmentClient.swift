@@ -221,6 +221,8 @@ public final class EnvironmentClient {
     /// the hello's `presence` on a relayed lane (`whole: false`), a `presence`
     /// push (`whole: true`).
     public var relayObserver: (@MainActor (EnvironmentClient, [HostPresence], _ whole: Bool) -> Void)?
+    /// The registry's ear for the platform a hello names (`build.platform`), so the store remembers it.
+    public var platformObserver: (@MainActor (EnvironmentClient, String) -> Void)?
     private let keys: any KeyStore
     private var loops: [Task<Void, Never>] = []
     private var started = false
@@ -568,6 +570,7 @@ public final class EnvironmentClient {
             // The transport keeps the hello off the push stream: a carrier's hello lists the
             // hosts it relays, a relayed lane's carries its own row; the registry hears both here.
             if let hosts = hello.hosts { relayObserver?(self, hosts, true) }
+            if let platform = hello.build?.platform { platformObserver?(self, platform) }
             if let presence = hello.presence {
                 // A relayed lane's hello carries its own row: the lane knows its
                 // state without a registry (the registry then stamps `since`).

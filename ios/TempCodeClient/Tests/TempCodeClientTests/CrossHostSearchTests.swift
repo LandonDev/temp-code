@@ -39,8 +39,8 @@ private func project(_ id: String, name: String, cwd: String, branch: String? = 
     ProjectMeta(id: id, workspaceId: "w", name: name, mode: mode, branch: branch, cwd: cwd, archived: false, createdAt: 1)
 }
 
-private func workspace(_ id: String, name: String, path: String) -> WorkspaceMeta {
-    WorkspaceMeta(id: id, name: name, path: path, git: true, createdAt: 1)
+private func workspace(_ id: String, name: String, path: String, link: String? = nil) -> WorkspaceMeta {
+    WorkspaceMeta(id: id, name: name, path: path, git: true, linkId: link, createdAt: 1)
 }
 
 private struct Boom: Error, LocalizedError {
@@ -268,14 +268,14 @@ private func untilSettled(_ answers: inout AsyncStream<SearchAnswer>.AsyncIterat
 }
 
 @Suite struct PairLookupTests {
-    @Test func `thread 22's pairs fold the same repo on two hosts and leave a lone workspace a pair of one`() {
+    @Test func `linked copies on two hosts fold and a lone workspace is a pair of one`() {
         let found = ProjectPairs.pairs([
-            HostWorkspaces(environmentId: "local", workspaces: [workspace("w1", name: "app", path: "/Users/me/app"), workspace("w2", name: "solo", path: "/Users/me/solo")]),
-            HostWorkspaces(environmentId: "box", workspaces: [workspace("w3", name: "app", path: "/work/app")])
+            HostWorkspaces(environmentId: "local", workspaces: [workspace("w1", name: "app", path: "/Users/me/app", link: "wl_app"), workspace("w2", name: "solo", path: "/Users/me/solo")]),
+            HostWorkspaces(environmentId: "box", workspaces: [workspace("w3", name: "app", path: "/work/app", link: "wl_app")])
         ])
         let lookup = CrossHostSearch.pairLookup(found)
-        #expect(lookup("box", "/work/app/src/a.ts") == PairedPath(pairId: "name:app", pairName: "app", relative: "src/a.ts", copies: 2))
-        #expect(lookup("local", "/Users/me/app") == PairedPath(pairId: "name:app", pairName: "app", relative: "", copies: 2))
+        #expect(lookup("box", "/work/app/src/a.ts") == PairedPath(pairId: "link:wl_app", pairName: "app", relative: "src/a.ts", copies: 2))
+        #expect(lookup("local", "/Users/me/app") == PairedPath(pairId: "link:wl_app", pairName: "app", relative: "", copies: 2))
         #expect(lookup("local", "/Users/me/solo/x.ts")?.copies == 1)
         #expect(lookup("box", "/elsewhere/x.ts") == nil)
     }

@@ -19,8 +19,12 @@ public struct PairedEnvironment: Sendable, Hashable, Codable, Identifiable {
     /// the carrier's `/ws?host=<id>` lane. Nil for a host paired directly.
     /// Decoded as optional, so an `environments.json` from before reads unchanged.
     public var via: String?
+    /// The host's `build.platform` from its last hello ("darwin" for a Mac),
+    /// remembered so a cold paint draws the right host glyph before any
+    /// socket opens; nil until the first hello. Optional, so an older file reads unchanged.
+    public var platform: String?
 
-    public init(id: String, name: String, origin: URL, caps: [Capability], keyId: String, keyName: String, addedAt: Double, via: String? = nil) {
+    public init(id: String, name: String, origin: URL, caps: [Capability], keyId: String, keyName: String, addedAt: Double, via: String? = nil, platform: String? = nil) {
         self.id = id
         self.name = name
         self.origin = origin
@@ -29,6 +33,7 @@ public struct PairedEnvironment: Sendable, Hashable, Codable, Identifiable {
         self.keyName = keyName
         self.addedAt = addedAt
         self.via = via
+        self.platform = platform
     }
 
     public var isRelayed: Bool { via != nil }

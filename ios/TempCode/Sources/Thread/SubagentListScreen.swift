@@ -23,7 +23,7 @@ struct SubagentListScreen: View {
                 if fleet.agents.isEmpty {
                     FleetEmpty(text: "No subagents yet. They appear here the moment the thread spawns one.")
                 } else {
-                    FleetSections(agents: fleet.agents, clients: fleet.clients, parentCwd: root?.cwd, hostNames: fleet.hostNames, hostLines: fleet.hostLines)
+                    FleetSections(agents: fleet.agents, clients: fleet.clients, parentCwd: root?.cwd, hostLines: fleet.hostLines)
                 }
                 if fleet.unpaired > 0 {
                     FleetUnpairedNote(count: fleet.unpaired)

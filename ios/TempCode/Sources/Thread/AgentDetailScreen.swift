@@ -8,12 +8,11 @@ import TempCodeContract
 /// card sits at the end of its transcript, where the screen opens. Pushed
 /// from any fleet row. `client` is the agent's own host's client, so an
 /// agent on the Mac reads from the Mac and the field carries the Mac key's
-/// standing; `hostName` names that host when it is not the root's.
+/// standing; its meta line carries that host's glyph.
 struct AgentDetailScreen: View {
     let client: EnvironmentClient
     let agentId: String
     var parentCwd: String?
-    var hostName: String?
     @Environment(NavigationRouter.self) private var router
     /// DEBUG proof: the launch action ran once on this screen.
     @State private var acted = false
@@ -24,7 +23,7 @@ struct AgentDetailScreen: View {
         VStack(spacing: 0) {
             StatusLine(client: client)
             if let session {
-                AgentIdentity(agent: session, thread: thread, parentCwd: parentCwd, hostName: hostName)
+                AgentIdentity(agent: session, thread: thread, parentCwd: parentCwd, environmentId: client.environment.id)
             }
             TranscriptView(client: client, sessionId: agentId, thread: thread)
         }
@@ -113,7 +112,7 @@ private struct AgentIdentity: View {
     let agent: SessionMeta
     let thread: ThreadState
     var parentCwd: String?
-    var hostName: String?
+    let environmentId: String
 
     var body: some View {
         let live = Fleet.isLive(agent.status)
@@ -126,7 +125,7 @@ private struct AgentIdentity: View {
                     .padding(.top, 1)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        AgentMetaLine(agent: agent, branch: Fleet.branch(cwd: agent.cwd, parentCwd: parentCwd), host: hostName)
+                        AgentMetaLine(agent: agent, branch: Fleet.branch(cwd: agent.cwd, parentCwd: parentCwd), environmentId: environmentId)
                         Spacer(minLength: 8)
                         if live {
                             TimelineView(.periodic(from: .now, by: 1)) { context in

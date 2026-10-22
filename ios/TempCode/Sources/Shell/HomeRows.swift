@@ -24,6 +24,6 @@ enum HomeRows {
     }
 
     static func build(clients: [EnvironmentClient], folded: Set<String>, slots: HomeSlots) -> [HomeSection] {
-        HomeSections.build(hosts: inputs(clients, notes: slots.hostNotes), folded: folded, pairing: slots.pairing)
+        HomeSections.build(hosts: inputs(clients, notes: slots.hostNotes), folded: folded)
     }
 }

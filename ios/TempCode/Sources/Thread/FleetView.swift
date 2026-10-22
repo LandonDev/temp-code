@@ -27,7 +27,7 @@ struct FleetView: View {
                 } else if fleet.agents.isEmpty {
                     FleetEmpty(text: "No agents yet. The orchestrator's first spawn lands here.")
                 } else {
-                    FleetSections(agents: fleet.agents, clients: fleet.clients, parentCwd: session?.cwd, hostNames: fleet.hostNames, hostLines: fleet.hostLines)
+                    FleetSections(agents: fleet.agents, clients: fleet.clients, parentCwd: session?.cwd, hostLines: fleet.hostLines)
                 }
                 if fleet.unpaired > 0 {
                     FleetUnpairedNote(count: fleet.unpaired)
@@ -43,7 +43,7 @@ struct FleetView: View {
                 SubagentListScreen(client: client, rootSessionId: sessionId)
             case .detail(let route):
                 if let host = app.registry.client(route.environmentId) {
-                    AgentDetailScreen(client: host, agentId: route.agentId, parentCwd: route.parentCwd, hostName: route.hostName)
+                    AgentDetailScreen(client: host, agentId: route.agentId, parentCwd: route.parentCwd)
                 }
             }
         }
@@ -52,7 +52,7 @@ struct FleetView: View {
             if open == "agents" {
                 launchPush = .list
             } else if open == "agent-detail", let first = fleet.agents.first {
-                launchPush = .detail(AgentDetailRoute(environmentId: first.environmentId, agentId: first.meta.id, parentCwd: session?.cwd, hostName: first.remote ? fleet.hostNames[first.environmentId] : nil))
+                launchPush = .detail(AgentDetailRoute(environmentId: first.environmentId, agentId: first.meta.id, parentCwd: session?.cwd))
             }
         }
     }

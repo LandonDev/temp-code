@@ -2,30 +2,29 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// Which project's settings the root presents; nil presents nothing.
-struct ProjectSettingsTarget: Hashable, Identifiable {
-    let environmentId: String
-    let projectId: String
-    var id: String { "\(environmentId)/\(projectId)" }
-}
-
 /// A `.sheet` on a menu item never presents (the menu dismisses the item
 /// first), so the item asks the root to present instead. One instance lives
-/// in the environment from `RootView`.
+/// in the environment from `RootView`. The target is the copy the settings
+/// live on (`ProjectLinks.target`); nil presents nothing.
 @Observable
 final class ProjectSettingsPresenter {
-    var target: ProjectSettingsTarget?
+    var target: SettingsTarget?
 }
 
-/// "Project settings…" in the project header's menu (Home's slot).
+/// "Project settings…" in the project header's menu (Home's slot). A linked
+/// project's settings live on the box, so the sheet opens on the box's copy
+/// whichever copy the menu was opened on.
 struct ProjectSettingsMenuItem: View {
     let client: EnvironmentClient
     let project: ProjectMeta
     @Environment(ProjectSettingsPresenter.self) private var presenter
+    @Environment(AppModel.self) private var app
 
     var body: some View {
         Button("Project settings…", systemImage: "slider.horizontal.3") {
-            presenter.target = ProjectSettingsTarget(environmentId: client.environment.id, projectId: project.id)
+            let registry = app.registry
+            let hosts = registry.ordered.map { (environmentId: $0.environment.id, projects: $0.projects) }
+            presenter.target = ProjectLinks.target(for: project, on: client.environment.id, hosts: hosts) { registry.platform($0) }
         }
     }
 }
@@ -104,17 +103,24 @@ final class ProjectSettingsModel {
 
 /// Project settings from the project header's menu: the preamble, review
 /// before merge and the plan flow, as the desktop's project dialog has
-/// them, one sheet at the large detent. A key without admin sees every
-/// control disabled with the reason once, at the top.
+/// them, one sheet at the large detent. `client` is the settings home's
+/// (the box's copy of a linked project): every read and save goes there.
+/// A key without admin, or a home out of reach, sees every control disabled
+/// with the reason once, at the top; a linked project's last footer says
+/// where the save lands.
 struct ProjectSettingsSheet: View {
     let client: EnvironmentClient
-    let projectId: String
+    let target: SettingsTarget
     @Environment(\.dismiss) private var dismiss
     @State private var model = ProjectSettingsModel()
 
+    private var projectId: String { target.home.projectId }
     private var project: ProjectMeta? { client.projects.first { $0.id == projectId } }
     private var workspace: WorkspaceMeta? { client.workspaces.first { $0.id == project?.workspaceId } }
     private var readOnly: Bool { client.adminBlock != nil }
+    private var hostName: String { client.environment.name }
+    /// Why the home cannot be read right now: its link, never the key.
+    private var readBlock: ActionBlock? { Actions.block(status: client.status, environment: client.environment, needs: .read) }
 
     var body: some View {
         NavigationStack {
@@ -143,13 +149,24 @@ struct ProjectSettingsSheet: View {
         .presentationDetents([.large])
         .presentationCornerRadius(Radius.sheet)
         .interactiveDismissDisabled(model.saving)
-        .task { await model.load(client: client, projectId: projectId) }
+        // Loads once the home's link is up; a reconnect after the load keeps the drafts.
+        .task(id: readBlock == nil) {
+            guard readBlock == nil, model.review == nil else { return }
+            await model.load(client: client, projectId: projectId)
+        }
         .accessibilityIdentifier("project-settings")
     }
 
     @ViewBuilder
     private var content: some View {
-        if model.loading {
+        if model.review == nil, let reason = target.saveReason(readBlock, hostName: hostName, now: Date().timeIntervalSince1970 * 1000) {
+            // The home is out of reach before anything loaded: the reason, and the load runs when it is back.
+            Text(reason)
+                .textStep(.meta)
+                .multilineTextAlignment(.center)
+                .padding(Layout.textEdge)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if model.loading {
             ProgressView()
                 .controlSize(.regular)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -164,9 +181,9 @@ struct ProjectSettingsSheet: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             List {
-                if let block = client.adminBlock {
+                if let reason = target.saveReason(client.adminBlock, hostName: hostName, now: Date().timeIntervalSince1970 * 1000) {
                     Section {} footer: {
-                        Text(block.text(now: Date().timeIntervalSince1970 * 1000))
+                        Text(reason)
                     }
                 }
                 if let project {
@@ -200,6 +217,11 @@ struct ProjectSettingsSheet: View {
                 if model.plans != nil {
                     PlanSettingsSection(model: model)
                         .disabled(readOnly)
+                }
+                if !readOnly, let footer = target.footer(hostName: hostName) {
+                    Section {} footer: {
+                        Text(footer)
+                    }
                 }
             }
             .listStyle(.insetGrouped)

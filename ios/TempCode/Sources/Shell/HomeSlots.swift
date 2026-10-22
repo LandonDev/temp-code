@@ -7,10 +7,6 @@ import TempCodeContract
 /// `HomeView(path: $homePath, slots: …)`. The `AnyView` slots are menu
 /// contents and trailing marks, built on open; never a list row.
 struct HomeSlots {
-    /// Paired projects: the pairing key selector (same GitHub repo, else the
-    /// same folder name). Home draws one row for both copies, a connection dot
-    /// per member host beside the logo, the project headers naming the host.
-    var pairing: HomePairing = .none
     /// Fleet switches: a host's one-off lines, the boot-resume note
     /// ("3 threads resumed after restart") once per boot, drawn as quiet notes
     /// under the host header with the event motion and no action.

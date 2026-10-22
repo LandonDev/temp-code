@@ -8,18 +8,15 @@ import TempCodeContract
 /// here paints a band of chrome.
 
 /// A project under its workspace: the name, the worktree mark when it runs
-/// in one, the branch dim, the host when the workspace is paired across
-/// hosts, and whatever trails (the plus, a menu). A sub-header, not a band:
-/// it sits in the list's own flow.
+/// in one, the branch dim, and whatever trails (the plus, a menu). One row
+/// for every host's copy; the threads under it carry their hosts' glyphs.
+/// A sub-header, not a band: it sits in the list's own flow.
 struct ProjectHeaderRow<Trailing: View>: View {
     let project: ProjectMeta
-    /// The host's name, when the workspace lists projects from more than one.
-    var host: String?
     let trailing: Trailing
 
-    init(project: ProjectMeta, host: String? = nil, @ViewBuilder trailing: () -> Trailing) {
+    init(project: ProjectMeta, @ViewBuilder trailing: () -> Trailing) {
         self.project = project
-        self.host = host
         self.trailing = trailing()
     }
 
@@ -38,11 +35,6 @@ struct ProjectHeaderRow<Trailing: View>: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
-            if let host {
-                Text(host)
-                    .textStep(.stamp)
-                    .lineLimit(1)
-            }
             Spacer(minLength: 8)
             trailing
         }
@@ -54,7 +46,7 @@ struct ProjectHeaderRow<Trailing: View>: View {
 }
 
 extension ProjectHeaderRow where Trailing == EmptyView {
-    init(project: ProjectMeta, host: String? = nil) { self.init(project: project, host: host) { EmptyView() } }
+    init(project: ProjectMeta) { self.init(project: project) { EmptyView() } }
 }
 
 /// A quiet row that pushes a list: "3 archived", "2 more subagents".
