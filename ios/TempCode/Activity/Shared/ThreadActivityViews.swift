@@ -61,7 +61,7 @@ struct ActivityTitleRow: View {
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
             Spacer(minLength: 8)
-            ElapsedText(state: state)
+            ActivityElapsedText(state: state)
                 .font(.footnote)
                 .foregroundStyle(.tertiary)
         }
@@ -167,7 +167,6 @@ struct PhaseMark: View {
             }
         }
         .frame(width: 14, height: 14)
-        .accessibilityHidden(true)
     }
 }
 
@@ -175,7 +174,7 @@ struct PhaseMark: View {
 /// clock runs; a paused or settled one is frozen at the state's time, so the
 /// final state reads as it was (a waiting end shows the work time, not the
 /// time spent waiting: that count belongs to the app's Needs-you row).
-struct ElapsedText: View {
+struct ActivityElapsedText: View {
     let state: ThreadActivityAttributes.ContentState
 
     var body: some View {
@@ -197,7 +196,7 @@ struct ActivityCompactLeading: View {
     var body: some View {
         if state.phase.isSettled {
             PhaseMark(phase: state.phase, type: type)
-                .accessibilityHidden(false)
+                .accessibilityElement(children: .ignore)
                 .accessibilityLabel(state.phase.word)
         } else {
             TypeGlyph(type: type, weight: .semibold)
@@ -218,7 +217,7 @@ struct ActivityCompactTrailing: View {
                 Text(tally)
                     .contentTransition(.numericText())
             } else {
-                ElapsedText(state: state)
+                ActivityElapsedText(state: state)
                     .frame(maxWidth: ActivityMetrics.compactClockWidth)
                     .minimumScaleFactor(0.8)
             }
@@ -248,6 +247,7 @@ struct ActivityMinimal: View {
                     .frame(width: 8, height: 8)
             }
         }
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(state.phase.word)
     }
 }

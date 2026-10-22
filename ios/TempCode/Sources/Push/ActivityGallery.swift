@@ -133,7 +133,7 @@ private struct IslandExpandedFrame: View {
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
                 Spacer(minLength: 8)
-                ElapsedText(state: state)
+                ActivityElapsedText(state: state)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .padding(.trailing, 4)

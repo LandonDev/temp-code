@@ -171,9 +171,10 @@ final class ActivityCoordinator {
         for meta in metas {
             let key = ThreadKey(environmentId: client.environment.id, sessionId: meta.id)
             guard let id = activities[key] else {
-                if sentInto.contains(key), let state = Self.state(meta), state.phase.isLive {
+                // Sent into while queued: the card starts when the host boots it; a thread that left the queue any other way is forgotten.
+                if sentInto.contains(key), let state = Self.state(meta) {
                     sentInto.remove(key)
-                    start(client, meta, state: state, registry: registry)
+                    if state.phase.isLive { start(client, meta, state: state, registry: registry) }
                 }
                 continue
             }
@@ -258,13 +259,13 @@ final class ActivityCoordinator {
     /// Answers true when a hook ran, so the real reconcile is skipped.
     private func applyTestHooks() -> Bool {
         let env = ProcessInfo.processInfo.environment
-        if env["TC_TEST_ACTIVITY_GALLERY"] == "1" {
+        if let gallery = env["TC_TEST_ACTIVITY_GALLERY"], gallery == "1" || ThreadActivityAttributes.Phase(rawValue: gallery) != nil {
             ActivityGallery.present()
             return true
         }
         guard let spec = env["TC_TEST_ACTIVITY"], !spec.isEmpty else { return false }
         let parts = spec.split(separator: ",").map(String.init)
-        guard let phase = ThreadActivityAttributes.Phase(rawValue: parts[0]) else { return false }
+        guard let first = parts.first, let phase = ThreadActivityAttributes.Phase(rawValue: first) else { return false }
         let state = ActivityGallery.sample(phase: phase, tasks: !parts.contains("notasks"), threads: parts.contains("threads"))
         for activity in Activity<ThreadActivityAttributes>.activities {
             let id = activity.id

@@ -52,7 +52,7 @@ extension PushHandler {
 }
 
 /// An Approve or Deny tapped on an approval notice.
-struct PushDecision: Sendable, Hashable {
+nonisolated struct PushDecision: Sendable, Hashable {
     let target: PushTarget
     let requestId: String
     let allow: Bool

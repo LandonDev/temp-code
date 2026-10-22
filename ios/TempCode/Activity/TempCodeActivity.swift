@@ -37,7 +37,7 @@ struct ThreadActivityWidget: Widget {
                         .padding(.top, 2)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    ElapsedText(state: context.state)
+                    ActivityElapsedText(state: context.state)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .padding(.trailing, 4)
