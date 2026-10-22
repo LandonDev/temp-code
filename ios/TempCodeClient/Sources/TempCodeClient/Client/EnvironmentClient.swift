@@ -105,6 +105,8 @@ public final class EnvironmentClient {
     /// Threads this host moved elsewhere in this process, by the root's and each subagent's id.
     public private(set) var moved: [String: MovedThread] = [:]
     private var iconRequests: Set<String> = []
+    /// Each thread's notes (Client/Notes.swift, iOS 18): fetched on first use, kept by the notes push.
+    public internal(set) var notes: [String: NotesState] = [:]
 
     public let socket: TempCodeSocket
     public let cache: SessionCache
@@ -601,6 +603,8 @@ public final class EnvironmentClient {
             guard shown != value.at else { return }
             try? await cache.markNotice(environment.id, kind: Self.bootResumeKind, at: value.at)
             bootResume = BootResumeNotice(count: value.count, at: value.at)
+        case .notes(let value):
+            applyNotes(value) // iOS 18: the thread's notes (Client/Notes.swift)
         case .queue, .liveEdits, .builds, .unknown:
             break
         }
@@ -646,6 +650,7 @@ public final class EnvironmentClient {
             cancelHistory(id)
             seen[id] = nil
             peeked[id] = nil
+            notes[id] = nil // iOS 18: a removed thread's notes go with it
         }
         let env = environment.id
         let cache = self.cache
