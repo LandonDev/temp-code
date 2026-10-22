@@ -1,5 +1,5 @@
 {
-  "n": 292,
-  "notes": "The shape that scales: host-side checkpoints, the gateway in its own process, the interactive lane, admission control, honest loading and the master board's digests; merged with the box's releases 290-291 (threads across hosts both ways, the phone's master board and host activity)",
-  "ts": 1792701234671
+  "n": 293,
+  "notes": "Fix the splash hang: FocusSignal called queueMicrotask unbound, which threw Illegal invocation in initServerLink at boot",
+  "ts": 1792702469585
 }
