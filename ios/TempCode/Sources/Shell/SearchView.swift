@@ -28,8 +28,8 @@ struct SearchView: View {
     private var trimmed: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
     /// Every paired host in rail order, open or not.
     private var paired: [EnvironmentClient] { model.registry.ordered }
-    private var open: [EnvironmentClient] { paired.filter { $0.status.transport == .open } }
-    private var offersFiles: Bool { open.contains { client in client.projects.contains { !$0.archived } } }
+    private var openHosts: [EnvironmentClient] { paired.filter { $0.status.transport == .open } }
+    private var offersFiles: Bool { openHosts.contains { client in client.projects.contains { !$0.archived } } }
     private var severalHosts: Bool { paired.count > 1 }
     private var hitInsets: EdgeInsets {
         EdgeInsets(top: 0, leading: Layout.textEdge + glyphEdge, bottom: 0, trailing: Layout.textEdge)
@@ -106,7 +106,7 @@ struct SearchView: View {
         .onChange(of: offersFiles) {
             if !offersFiles, scope == .files { scope = .threads }
         }
-        .task(id: SearchKey(query: trimmed, scope: scope, hosts: open.map(\.environment.id))) { await run() }
+        .task(id: SearchKey(query: trimmed, scope: scope, hosts: openHosts.map(\.environment.id))) { await run() }
     }
 
     /// One calm line over the empty list; nothing while an older answer is still showing.
@@ -114,7 +114,7 @@ struct SearchView: View {
         if answer.isEmpty {
             if paired.isEmpty {
                 SearchStatusLine("No host is connected.")
-            } else if open.isEmpty {
+            } else if openHosts.isEmpty {
                 SearchStatusLine("Every host is offline.")
             } else if trimmed.count < SearchDebounce.minimumLength {
                 SearchStatusLine(offersFiles ? "Threads and project files on every host." : "Every thread on every host.")
@@ -156,7 +156,7 @@ struct SearchView: View {
             try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
         }
-        let targets = open.map {
+        let targets = openHosts.map {
             Target(client: $0, id: $0.environment.id, name: $0.environment.name, sessions: $0.sessions, projects: Array($0.projects.filter { !$0.archived }.prefix(8)))
         }
         let hosts = paired.map {

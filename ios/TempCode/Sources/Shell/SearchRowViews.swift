@@ -19,13 +19,12 @@ enum MatchEmphasis {
         var out = AttributedString(text)
         out.font = font
         let strong = font.weight(weight)
-        let count = text.count
+        let characters = out.characters
+        let count = characters.count
         for range in matches where range.lowerBound >= 0 && range.upperBound <= count && !range.isEmpty {
-            let lower = text.index(text.startIndex, offsetBy: range.lowerBound)
-            let upper = text.index(lower, offsetBy: range.count)
-            if let from = AttributedString.Index(lower, within: out), let to = AttributedString.Index(upper, within: out), from < to {
-                out[from..<to].font = strong
-            }
+            let from = characters.index(characters.startIndex, offsetBy: range.lowerBound)
+            let to = characters.index(from, offsetBy: range.count)
+            out[from..<to].font = strong
         }
         return out
     }
@@ -149,14 +148,14 @@ struct ProjectRow: View {
             Text(MatchEmphasis.attributed(project.name, matches: project.matches, step: .title))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
-            if project.worktree {
-                MetaGlyph("arrow.triangle.pull", label: "Worktree")
-            }
             if let branch = project.branch {
                 Text(branch)
                     .textStep(.stamp)
                     .lineLimit(1)
                     .truncationMode(.middle)
+            }
+            if project.worktree {
+                MetaGlyph("arrow.triangle.pull", label: "Worktree")
             }
             Spacer(minLength: 8)
             if let host = project.host {
