@@ -120,6 +120,20 @@ export function updaterCacheDirName(appUpdateYml: string): string | null {
   return m ? m[1] : null
 }
 
+/** The feed electron-builder's app-update.yml names for a published build (electron-builder.yml `publish`). */
+export const RELEASE_FEED = { provider: 'github', owner: 'LandonDev', repo: 'temp-code' } as const
+
+/**
+ * The feed to set by hand when the bundle has no app-update.yml. electron-
+ * builder writes that file only in a pack whose targets include zip or dmg;
+ * 1.0.278 was signed with `--dir` and zipped `--prepackaged`, shipped without
+ * it, and every check failed with ENOENT. With the file present the updater
+ * reads it itself: null.
+ */
+export function feedFallback(appUpdateYmlPresent: boolean): typeof RELEASE_FEED | null {
+  return appUpdateYmlPresent ? null : RELEASE_FEED
+}
+
 /** The staged bundle an XML ShipItState.plist points at, as a path. */
 export function stagedBundlePath(shipItStateXml: string): string | null {
   const m = /<key>updateBundleURL<\/key>\s*<string>file:\/\/([^<]+)<\/string>/.exec(shipItStateXml)

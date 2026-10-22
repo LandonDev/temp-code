@@ -9,13 +9,15 @@ import {
   bundleShortVersion,
   compareVersions,
   describeInstallFailure,
+  feedFallback,
   judgeAttempt,
   parseAttempt,
   serializeAttempt,
   shipItLinesSince,
   stagedBundlePath,
   stalePaths,
-  updaterCacheDirName
+  updaterCacheDirName,
+  RELEASE_FEED
 } from './updateInstall'
 
 // The real log of the failed 1.0.205 install (2026-10-10), two attempts.
@@ -144,5 +146,15 @@ describe('stalePaths', () => {
       '/c/dev.landon.tempcode.ShipIt/ShipItState.plist',
       '/c/dev.landon.tempcode.ShipIt/update.a'
     ])
+  })
+})
+
+describe('feedFallback', () => {
+  it('leaves a bundle with app-update.yml to electron-updater', () => {
+    expect(feedFallback(true)).toBeNull()
+  })
+  it('names the public repo for a bundle shipped without the file', () => {
+    expect(feedFallback(false)).toEqual({ provider: 'github', owner: 'LandonDev', repo: 'temp-code' })
+    expect(feedFallback(false)).toBe(RELEASE_FEED)
   })
 })

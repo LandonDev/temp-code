@@ -9,14 +9,15 @@
  *   phase – gate skipped           it was skipped (GATE_SKIP=1)
  *   phase ✓ total 4m12s 1.0.283    the whole run, and the version published
  *
- * The script's phases are gate, build, sign, zip, pack, upload and feed;
+ * The script's phases are gate, build, sign (one electron-builder call:
+ * pack, codesign and zip), pack, upload and feed;
  * the app that ran it adds `update` (its own download of what it just
  * published, update.ts). A box deploy's lines (box-update.sh) name their
  * stage with an upper-case word and a colon: SOURCE, MODULES, BUILD, TRIAL,
  * SNAPSHOT, COMMIT, PRUNE; `deployStageOf` maps them onto the same shape.
  */
 
-export const PUBLISH_PHASES = ['gate', 'build', 'sign', 'zip', 'pack', 'upload', 'feed', 'update'] as const
+export const PUBLISH_PHASES = ['gate', 'build', 'sign', 'pack', 'upload', 'feed', 'update'] as const
 export type PublishPhase = (typeof PUBLISH_PHASES)[number]
 
 /** The script's own phases: what a run without the app's update counts. */

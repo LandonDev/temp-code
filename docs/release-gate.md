@@ -121,8 +121,7 @@ app that ran the script fetches the release the second it lands.
 | --- | --- | --- | --- |
 | publish gate (fence, hub, ios, ios-client) | 1 to 3 min, before electron-builder | 48 s, beside the build (22 to 37 s alone) | `--dry-run` on the Mac, 2026-10-21 |
 | electron-vite build + bundle-size | inside electron-builder's 4 to 6 min | 55 s beside the gate (26 s alone) | same |
-| sign (electron-builder `--dir`: pack + codesign, 37,000 files) | inside the 4 to 6 min, with `ios/` in the bundle | 2m2s | same |
-| zip (`--prepackaged`, no re-sign) | with the dmg, inside the 4 to 6 min | 38 s, 311 MB | same |
+| sign (one electron-builder `--mac zip` call: pack + codesign, 37,000 files, then the zip, latest-mac.yml and the blockmap) | inside the 4 to 6 min, with `ios/` in the bundle | 2m2s to sign plus 38 s to zip (311 MB) as two calls on 2026-10-21; one call since 2026-10-22 | same |
 | pack the box tarball | after the build, in line | 2 s, beside the sign (10.9 MB) | same |
 | notarization | 3 min on a good day, 35 on a bad one | none (`--notarize` brings it back) | |
 | ShipIt-style check | 1 to 2 min with the dmg mount | seconds, against /Applications/TempCode.app | same |
@@ -131,10 +130,18 @@ app that ran the script fetches the release the second it lands.
 | the installed app noticing | up to 30 min, then a click to download | at once: the script's own app fetches it (`phase ✓ update`), a box deploy pushes `release-available`; the poll is 5 min | GitHub served the 1.0.277 zip at 70 MB/s here: 311 MB in about 5 s |
 | total, trigger to "Restart to update" | about 45 to 70 min | 3m51s to the end of the ShipIt check, plus the upload and the app's own download | the dry run's `phase ✓ total 3m51s`, 2026-10-21 |
 
-Two things the dry runs found on the way. electron-builder takes
-`--prepackaged` as the path to the `.app` itself: given its folder, the
-zip carried a `mac-arm64/` level and ShipIt would have found no app (the
-script's own check refused it). And the bundle used to carry the whole
+Three things the dry runs found on the way. The script once signed with
+`--dir` and zipped with `--prepackaged`: electron-builder writes
+`Contents/Resources/app-update.yml`, the feed config electron-updater
+reads at every check, in an afterPack hook that runs only when the pack's
+targets include zip or dmg, so 1.0.278 shipped without it and the
+installed app failed every check with ENOENT. The two calls are one
+`--mac zip` call now, the ShipIt-style check refuses a zip without the
+file, and a bundle that still lacks it sets the github feed itself
+(update.ts). Before that, electron-builder took `--prepackaged` as the
+path to the `.app` itself: given its folder, the zip carried a
+`mac-arm64/` level and ShipIt would have found no app (the script's own
+check refused it). And the bundle used to carry the whole
 `ios/` tree: the gate's SwiftPM `.build` output is thousands of files
 that electron-builder copied in and signed one by one, so a signing of
 2m7s on a clean clone became 11m35s with the gate's output beside it, and

@@ -162,20 +162,28 @@ Two separate steps, on purpose, over one gate.
    release opened first; then `gate --tier publish` runs BESIDE the
    electron-vite build (they share nothing; a red gate still stops the
    upload and deletes the draft; `GATE_SKIP=1` only to retry a failed
-   upload); electron-builder packs and signs with the Developer ID
-   Application identity in the login Keychain (`--dir`), the zip is made
-   from that app (`--prepackaged`), and the box's
+   upload); ONE electron-builder call (`--mac zip`, the `sign` phase)
+   packs, signs with the Developer ID Application identity in the login
+   Keychain and zips, writing `Contents/Resources/app-update.yml` (the
+   feed config electron-updater reads; electron-builder writes it only in
+   a pack whose targets include zip or dmg, so a `--dir` pack plus a
+   `--prepackaged` zip ships an app that fails every update check with
+   ENOENT, as 1.0.278 did), latest-mac.yml and the blockmap; and the box's
    `temp-code-out-1.0.N.tar.gz` + `.sha256` (scripts/release-pack-out.sh:
    the same `out/`, package.json with `tempcodeBuild.sha`, release.json,
    bun.lock, scripts/box, a build-manifest.json) is packed from `out/` the
    moment the build is done and uploaded to the draft while the app is
    still being signed. The zip is checked the way Squirrel's ShipIt will
-   (against /Applications/TempCode.app when it is there), then the zip (and
+   (against /Applications/TempCode.app when it is there) and refused
+   without an app-update.yml naming github LandonDev/temp-code; a bundle
+   that still lacks the file sets that feed itself (update.ts
+   `applyFeedFallback`, `feedFallback` in updateInstall.ts). Then the zip (and
    its blockmap), latest-mac.yml and the tarball are the whole upload, the
    draft goes live, the feed is verified. One line per phase with its
    duration (`phase › gate`, `phase ✓ gate 1m11s`, `phase ✗ build 12s`,
    `phase – gate skipped`, `phase ✓ total 4m12s 1.0.N`; the parser is
-   src/shared/releasePhases.ts). Not notarized by default: Squirrel
+   src/shared/releasePhases.ts; the phases are gate, build, sign, pack,
+   upload and feed). Not notarized by default: Squirrel
    validates an update against the installed app's designated requirement,
    so the signature is what makes updates install, and Gatekeeper reads a
    notarization ticket only on a quarantined (browser-downloaded) bundle.

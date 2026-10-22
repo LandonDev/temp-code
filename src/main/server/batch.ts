@@ -57,7 +57,7 @@ import type { SessionRegistry } from './sessions'
  * gate, release.
  *
  * Each step's telemetry on the wire (contract-batch.ts): the publish step
- * counts the script's phases (releasePhases.ts: gate, build, sign, zip,
+ * counts the script's phases (releasePhases.ts: gate, build, sign,
  * pack, upload, feed, and the app's own update) with the running one as
  * the label and every line in its log; the deploy step counts box-update's
  * stages; the gate and release steps the gate's lines. A green publish or

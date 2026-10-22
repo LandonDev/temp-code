@@ -28,7 +28,7 @@
 #   --pack-only [dist-dir]               the box packing step alone, from
 #               the out/ already built: nothing signed or uploaded
 #   --dry-run                            every local phase (gate, build, sign,
-#               zip, pack, the zip's validation) with its timing, on any
+#               pack, the zip's validation) with its timing, on any
 #               commit; nothing pushed, no release, no upload, no feed
 #   GATE_SKIP=1                          skip the gate, to retry an upload
 #
@@ -204,36 +204,30 @@ pack_and_upload &
 PACK_PID=$!
 
 # ── sign ────────────────────────────────────────────────────────────────
-# electron-builder packs out/ into dist/mac-arm64/TempCode.app and signs it.
-# It picks the certificate itself and rejects the full "Developer ID
-# Application: ..." string, so hand it just the name and team. The commit
-# this build came from rides in the bundled package.json (tempcodeBuild.sha;
+# One electron-builder call packs out/ into dist/mac-arm64/TempCode.app,
+# signs it and zips it (the dmg too on --dmg), writing latest-mac.yml and
+# the blockmap beside the zip. One call on purpose: electron-builder writes
+# Contents/Resources/app-update.yml, the feed config electron-updater reads,
+# in an afterPack hook that runs only when the targets include zip or dmg
+# (app-builder-lib PublishManager). A `--dir` pack followed by a
+# `--prepackaged` zip signs an app without that file; 1.0.278 shipped so and
+# every update check of the installed app failed with ENOENT. The zip of a
+# single call holds TempCode.app at its root, as ShipIt needs. It picks the
+# certificate itself and rejects the full "Developer ID Application: ..."
+# string, so hand it just the name and team. The commit this build came
+# from rides in the bundled package.json (tempcodeBuild.sha;
 # src/main/buildInfo.ts reads it for the hello).
 begin sign
-bunx electron-builder --mac --dir --arm64 \
+TARGETS=zip
+[ "$DMG" = 1 ] && TARGETS="zip dmg"
+# shellcheck disable=SC2086
+bunx electron-builder --mac $TARGETS --arm64 --publish never \
   -c.extraMetadata.tempcodeBuild.sha="$SHA" \
   -c.mac.identity="${IDENTITY#Developer ID Application: }" \
   -c.mac.notarize="$([ "$NOTARIZE" = 1 ] && echo true || echo false)" \
   >"$STAGE/sign.log" 2>&1 || { tail -40 "$STAGE/sign.log" >&2; exit 1; }
 APP=dist/mac-arm64/TempCode.app
 [ -d "$APP" ] || { echo "electron-builder left no $APP" >&2; exit 1; }
-end
-
-# ── zip ─────────────────────────────────────────────────────────────────
-# The zip (and the dmg on --dmg) from the signed app, nothing re-signed.
-# --prepackaged names the .app itself (electron-builder's packMacTargets
-# takes it as the app path; the folder would put a mac-arm64/ level in the
-# zip and ShipIt would find no app). electron-builder writes latest-mac.yml
-# and the blockmap beside the zip; should it leave none, the feed file is
-# written here from the zip's own digest.
-begin zip
-TARGETS=zip
-[ "$DMG" = 1 ] && TARGETS="zip dmg"
-# shellcheck disable=SC2086
-bunx electron-builder --mac $TARGETS --arm64 --publish never --prepackaged "$APP" \
-  -c.mac.identity="${IDENTITY#Developer ID Application: }" \
-  -c.mac.notarize=false \
-  >"$STAGE/zip.log" 2>&1 || { tail -40 "$STAGE/zip.log" >&2; exit 1; }
 ZIP="dist/TempCode-$VERSION-arm64.zip"
 [ -f "$ZIP" ] || { echo "electron-builder left no $ZIP" >&2; exit 1; }
 if [ ! -f dist/latest-mac.yml ]; then
@@ -262,6 +256,15 @@ refuse() {
 echo "validating the zip the way ShipIt will"
 ditto -x -k "$ZIP" "$STAGE/unzipped" || refuse "the zip does not extract"
 [ -d "$STAGE/unzipped/TempCode.app" ] || refuse "the zip holds no TempCode.app"
+# The feed config electron-updater reads at every check. Without it the
+# installed app can never see another release (1.0.278); with another repo
+# in it, it would update from somewhere else.
+FEED_FILE="$STAGE/unzipped/TempCode.app/Contents/Resources/app-update.yml"
+[ -f "$FEED_FILE" ] || refuse "the app in the zip has no Contents/Resources/app-update.yml (electron-updater's feed config)"
+for want in "provider: github" "owner: LandonDev" "repo: temp-code"; do
+  grep -qx "$want" "$FEED_FILE" || refuse "Contents/Resources/app-update.yml does not say '$want'"
+done
+echo "app-update.yml names github LandonDev/temp-code"
 REFERENCE=$APP
 [ -d /Applications/TempCode.app ] && REFERENCE=/Applications/TempCode.app
 if swiftc -O -o "$STAGE/sqrlcheck" scripts/sqrlcheck.swift 2>"$STAGE/swiftc.log"; then

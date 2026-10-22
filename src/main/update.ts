@@ -9,6 +9,7 @@ import {
   bundleIdentifier,
   bundleShortVersion,
   compareVersions,
+  feedFallback,
   judgeAttempt,
   parseAttempt,
   serializeAttempt,
@@ -379,8 +380,7 @@ export function harnessFeedConfig(feed: string): string {
 }
 
 function applyFeedOverride(): void {
-  const feed = process.env.TEMP_CODE_UPDATE_FEED
-  if (!feed || !process.env.TEMP_CODE_USER_DATA) return
+  const feed = process.env.TEMP_CODE_UPDATE_FEED!
   const dir = app.getPath('userData')
   mkdirSync(dir, { recursive: true })
   const file = join(dir, 'app-update.yml')
@@ -388,9 +388,23 @@ function applyFeedOverride(): void {
   autoUpdater.updateConfigPath = file
 }
 
+/**
+ * A packed bundle without Contents/Resources/app-update.yml (the feed config
+ * electron-updater reads at every check) gets the public repo's feed set by
+ * hand, so no build is ever stranded whatever the packer did. The release
+ * script refuses such a zip; this is the second line.
+ */
+function applyFeedFallback(): void {
+  const feed = feedFallback(existsSync(join(process.resourcesPath, 'app-update.yml')))
+  if (!feed) return
+  console.log('[update] the bundle shipped without app-update.yml; using the github feed')
+  autoUpdater.setFeedURL(feed)
+}
+
 export function registerUpdates(): void {
   if (app.isPackaged) {
-    applyFeedOverride()
+    if (process.env.TEMP_CODE_UPDATE_FEED && process.env.TEMP_CODE_USER_DATA) applyFeedOverride()
+    else applyFeedFallback()
     const failure = detectFailedInstall()
     if (failure) status = { ...status, installFailure: failure, latest: failure.version }
     autoUpdater.autoDownload = false
