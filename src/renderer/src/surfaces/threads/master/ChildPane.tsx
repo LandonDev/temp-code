@@ -14,12 +14,16 @@ import { typeWord } from "./useMasterModel";
  * the whole master view becomes the thread's own view, the one its type
  * would get as a tab (the implementation board, the plan document, the
  * fleet), over its transcript and a composer line that sends when it is
- * idle and steers while it runs. The header is one Back control to the
- * board; Escape and ⌘↩ anywhere in the view go back too.
+ * idle and steers while it runs. The thread lives on `environmentId`,
+ * the master's host or another: the store holds every host's rows by id,
+ * so the view, the transcript and the composer's sends reach that host
+ * the way a rail row of another host opens. The header is one Back
+ * control to the board; Escape and ⌘↩ anywhere in the view go back too.
  */
 
 export function ChildPane({
   sessionId,
+  environmentId,
   focusComposer,
   onBack,
   onOpenFile,
@@ -27,6 +31,8 @@ export function ChildPane({
   onOpenSession,
 }: {
   sessionId: string;
+  /** The host the thread runs on. */
+  environmentId: string;
   /** Land in the composer on open (the row's Message action). */
   focusComposer: boolean;
   onBack: () => void;
@@ -53,7 +59,7 @@ export function ChildPane({
     }
   };
 
-  if (!meta || !session) return null;
+  if (!meta || !session || meta.environmentId !== environmentId) return null;
   const harness = asHarness(meta.provider);
 
   const chat: ReactNode = (
@@ -77,7 +83,7 @@ export function ChildPane({
   );
 
   return (
-    <div ref={paneRef} tabIndex={-1} onKeyDown={onKey} className="flex min-h-0 min-w-0 flex-1 flex-col outline-none" data-child-pane={sessionId}>
+    <div ref={paneRef} tabIndex={-1} onKeyDown={onKey} className="flex min-h-0 min-w-0 flex-1 flex-col outline-none" data-child-pane={sessionId} data-child-host={environmentId}>
       <div className="flex h-10 shrink-0 items-center gap-1 border-b border-content/10 pr-3 pl-1.5">
         <button
           type="button"

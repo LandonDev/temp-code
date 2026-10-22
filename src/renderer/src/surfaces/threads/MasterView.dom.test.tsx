@@ -13,14 +13,18 @@ import type { SessionMeta, ServerPush } from "../../lib/tcserver/types";
  * view with Back, the title bar's menus (archive through `batch.archive`,
  * adopt through `batch.adopt`), the rules foot from `batch.get` and
  * `batch.setRules` with the master's step list, and the add sheet's
- * `session.create`. The session store is real, fed through
- * one fake link that answers each thread's rows; the chat, the child's
- * transcript and the heavy pickers are stand-ins.
+ * `session.create`. Then the batch across hosts: a second fake link, "The
+ * box", offline then linked, whose rows carry the host's dot and name,
+ * open on their host, count in the menus, and are archived through that
+ * host's own `session.batch`; the add sheet's host row and the adopt
+ * sheet's host names. The session store is real, fed through the fake
+ * links that answer each thread's rows; the chat, the child's transcript
+ * and the heavy pickers are stand-ins.
  */
 
-const { startThread, batch, link } = vi.hoisted(() => {
+const { startThread, batch, link, boxLink, hosts, catalog } = vi.hoisted(() => {
   class FakeLink implements Link {
-    environmentId = "local";
+    constructor(public environmentId: string) {}
     profile = "local" as const;
     connected = true;
     metas: Omit<SessionMeta, "environmentId">[] = [];
@@ -36,8 +40,11 @@ const { startThread, batch, link } = vi.hoisted(() => {
       if (method === "session.notes.get") return Promise.resolve({ text: this.notes.get(p.sessionId ?? "") ?? "", updatedAt: null, path: null } as T);
       if (method === "batch.get") return Promise.resolve(batch as T);
       if (method === "batch.setRules") return Promise.resolve({ ...batch, rules: (params as { rules: unknown }).rules } as T);
-      if (method === "batch.archive") return Promise.resolve({ archived: [] } as T);
-      if (method === "batch.adopt") return Promise.resolve(batch as T);
+      if (method === "batch.archive") return Promise.resolve({ attempted: [], succeeded: [], failed: [] } as T);
+      if (method === "batch.adopt") {
+        const ids = (params as { sessionIds: string[] }).sessionIds;
+        return Promise.resolve({ adopted: ids.filter((id) => !id.includes(":")), refused: ids.filter((id) => id.includes(":")).map((id) => ({ sessionId: id, why: "unknown thread" })), state: batch } as T);
+      }
       if (method === "resources.listAll") return Promise.resolve({ resources: [] } as T);
       return Promise.resolve(null as T);
     }
@@ -57,7 +64,10 @@ const { startThread, batch, link } = vi.hoisted(() => {
   }
   return {
   startThread: vi.fn(async () => ({ id: "new" })),
-  link: new FakeLink(),
+  link: new FakeLink("local"),
+  boxLink: new FakeLink("box"),
+  hosts: { environments: [{ id: "local", name: "This Mac" }], statuses: new Map<string, { transport: string; fresh: boolean }>() },
+  catalog: { workspaces: [] as unknown[], projects: [] as unknown[] },
   batch: {
     masterId: "m",
     rules: {
@@ -88,8 +98,8 @@ const { startThread, batch, link } = vi.hoisted(() => {
 vi.mock("../../lib/connection", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../lib/connection")>()),
   registry: {
-    link: () => link,
-    linkOf: () => link,
+    link: (id: string) => (id === "box" ? boxLink : link),
+    linkOf: (id: string) => (id === "box" ? boxLink : link),
     primaryEnvironmentId: "local",
     onLink: (listener: (link: unknown, event: string) => void) => {
       listener(link, "added");
@@ -98,7 +108,13 @@ vi.mock("../../lib/connection", async (importOriginal) => ({
   },
 }));
 vi.mock("../../lib/connection/status", () => ({
-  useEnvironments: () => [{ id: "local", name: "This Mac" }],
+  useEnvironments: () => hosts.environments,
+  useEnvironmentStatuses: () => hosts.statuses,
+}));
+vi.mock("../../lib/tcserver/workspaces", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/tcserver/workspaces")>()),
+  useWorkspaces: () => catalog.workspaces,
+  useProjects: () => catalog.projects,
 }));
 vi.mock("../../lib/tcserver/commands", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../lib/tcserver/commands")>()),
@@ -186,9 +202,16 @@ const rows = (sessionId: string, events: AgentEvent[]): EventRow[] =>
 beforeEach(() => {
   sessionStore.reset();
   resetNotesStore();
-  link.calls = [];
-  link.rows.clear();
-  link.notes.clear();
+  for (const l of [link, boxLink]) {
+    l.calls = [];
+    l.metas = [];
+    l.rows.clear();
+    l.notes.clear();
+  }
+  hosts.environments = [{ id: "local", name: "This Mac" }];
+  hosts.statuses = new Map([["local", { transport: "open", fresh: true }]]);
+  catalog.workspaces = [];
+  catalog.projects = [];
   startThread.mockClear();
 });
 afterEach(() => {
@@ -203,6 +226,31 @@ function seed(children: SessionMeta[]): void {
   link.metas = all.map(({ environmentId: _e, ...wire }) => wire);
   sessionStore.attach(link);
 }
+
+/** A second host, "The box": saved, with the project's paired copy, its
+ *  rows listed through its own link, offline unless `linked`. */
+function seedBox(children: SessionMeta[], linked = false): void {
+  hosts.environments = [
+    { id: "local", name: "This Mac" },
+    { id: "box", name: "The box" },
+  ];
+  hosts.statuses = new Map([
+    ["local", { transport: "open", fresh: true }],
+    ["box", linked ? { transport: "open", fresh: true } : { transport: "offline", fresh: false }],
+  ]);
+  catalog.workspaces = [
+    { id: "w1", environmentId: "local", path: "/repo", githubRepo: "me/app", name: "repo" },
+    { id: "w2", environmentId: "box", path: "/srv/repo", githubRepo: "me/app", name: "repo" },
+  ];
+  catalog.projects = [
+    { id: "p1", environmentId: "local", cwd: "/repo" },
+    { id: "p1-box", environmentId: "box", cwd: "/srv/repo" },
+  ];
+  boxLink.metas = children.map(({ environmentId: _e, ...wire }) => wire);
+  sessionStore.attach(boxLink);
+}
+
+const boxMeta = (over: Partial<SessionMeta>): SessionMeta => meta({ environmentId: "box", projectId: "p1-box", cwd: "/srv/repo/.claude/worktrees/x", ...over });
 
 describe("the master view", () => {
   it("paints the chat alone until the first child", async () => {
@@ -751,5 +799,149 @@ describe("the master view", () => {
     await flush();
     const stop = link.calls.find((c) => c.method === "session.batch");
     expect(stop?.params).toMatchObject({ action: "stop", ids: ["c-q"] });
+  });
+});
+
+describe("the batch across hosts", () => {
+  it("a child on another host carries that host's dot and name, under the offline tint while the host is out of reach", async () => {
+    seed([meta({ id: "c-home", title: "Home", status: "running" })]);
+    seedBox([boxMeta({ id: "c-box", title: "Inbox", status: "running", model: "gpt-6.1-sol", provider: "codex" })]);
+    const { rerender } = render(<MasterView {...props} />);
+    await flush();
+    const running = screen.getByRole("region", { name: "Running" });
+    expect(within(running).getAllByRole("button", { name: /Home|Inbox/ })).toHaveLength(2);
+    const home = screen.getByRole("button", { name: /Home/ }).closest("[data-status]")!;
+    const box = screen.getByRole("button", { name: /Inbox/ }).closest("[data-status]")!;
+    expect(home.getAttribute("data-host")).toBeNull();
+    expect(home.textContent).not.toContain("The box");
+    expect(box.getAttribute("data-host")).toBe("box");
+    expect(box.getAttribute("data-host-offline")).toBe("true");
+    expect(box.className).toContain("opacity-50");
+    const mark = box.querySelector("[data-model]")!;
+    expect(mark.textContent).toContain("The box");
+    expect(mark.querySelector(".rounded-full")?.className).toContain("bg-content/25");
+    // The host comes back: the tint lifts and the dot turns.
+    hosts.statuses = new Map([
+      ["local", { transport: "open", fresh: true }],
+      ["box", { transport: "open", fresh: true }],
+    ]);
+    rerender(<MasterView {...props} />);
+    const again = screen.getByRole("button", { name: /Inbox/ }).closest("[data-status]")!;
+    expect(again.getAttribute("data-host-offline")).toBeNull();
+    expect(again.className).not.toContain("opacity-50");
+    expect(again.querySelector("[data-model] .rounded-full")?.className).toContain("bg-success");
+  });
+
+  it("a row of another host opens its view on that host", async () => {
+    seed([meta({ id: "c-home", title: "Home", status: "running" })]);
+    seedBox([boxMeta({ id: "c-box", title: "Inbox", status: "running" })], true);
+    render(<MasterView {...props} />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: /Inbox/ }));
+    await flush();
+    const pane = document.querySelector("[data-child-pane='c-box']")!;
+    expect(pane.getAttribute("data-child-host")).toBe("box");
+    expect(document.querySelector("[data-transcript='c-box']")).toBeTruthy();
+    // Its transcript was asked of the box, not the master's host.
+    expect(boxLink.calls.some((c) => c.method === "session.events" && (c.params as { sessionId: string }).sessionId === "c-box")).toBe(true);
+    expect(link.calls.some((c) => c.method === "session.events" && (c.params as { sessionId: string }).sessionId === "c-box")).toBe(false);
+  });
+
+  it("the add sheet offers the linked hosts, the master's first, and starts the thread on the chosen one with the master as its starter", async () => {
+    seed([meta({ id: "c-home", title: "Home", status: "running" })]);
+    seedBox([], true);
+    render(<MasterView {...props} />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: /Thread/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "New thread…" }));
+    const dialog = screen.getByRole("dialog");
+    const hostRow = within(dialog).getByRole("radiogroup", { name: "Host" });
+    expect(within(hostRow).getAllByRole("radio").map((r) => r.textContent)).toEqual(["This Mac", "The box"]);
+    expect(within(hostRow).getByRole("radio", { name: "This Mac" }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(within(hostRow).getByRole("radio", { name: "The box" }));
+    fireEvent.change(within(dialog).getByLabelText("Brief"), { target: { value: "Search: the results screen." } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add" }));
+    await flush();
+    expect(startThread).toHaveBeenCalledTimes(1);
+    const [params] = startThread.mock.calls[0] as unknown as [Record<string, unknown>];
+    expect(params).toMatchObject({ environmentId: "box", projectId: "p1-box", masterId: "m", startedBy: "m", queue: true });
+  });
+
+  it("the add sheet hides the host row while the other host is offline", async () => {
+    seed([meta({ id: "c-home", title: "Home", status: "running" })]);
+    seedBox([]);
+    render(<MasterView {...props} />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: /Thread/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "New thread…" }));
+    expect(within(screen.getByRole("dialog")).queryByRole("radiogroup", { name: "Host" })).toBeNull();
+  });
+
+  it("Add existing thread… names each candidate's host across hosts, adopts a remote one in the cross-host id form, and reads the refusal", async () => {
+    seed([meta({ id: "c-home", title: "Home", status: "running" })]);
+    link.metas.push(...[meta({ id: "free", title: "A stray chat", threadType: "chat", masterId: null as unknown as string, createdAt: 9 })].map(({ environmentId: _e, ...wire }) => wire));
+    sessionStore.attach(link);
+    seedBox([boxMeta({ id: "free-box", title: "Box stray", masterId: null as unknown as string, createdAt: 10 })], true);
+    render(<MasterView {...props} />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: /Thread/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add existing thread…" }));
+    const dialog = screen.getByRole("dialog");
+    const labels = within(dialog).getAllByRole("checkbox").map((c) => c.closest("label")!);
+    expect(labels.map((l) => l.textContent)).toEqual(["A stray chatChatThis Mac", "Box strayImplementationThe box"]);
+    expect(labels[1].querySelector("[data-host]")?.getAttribute("data-host")).toBe("box");
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /Box stray/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add" }));
+    await flush();
+    expect(link.calls.find((c) => c.method === "batch.adopt")?.params).toEqual({ masterId: "m", sessionIds: ["box:free-box"] });
+    expect(boxLink.calls.some((c) => c.method === "batch.adopt")).toBe(false);
+    // The host's refusal, by the thread's title, keeps the sheet open.
+    expect(within(screen.getByRole("dialog")).getByText(/Box stray: unknown thread/)).toBeTruthy();
+  });
+
+  it("the menu counts rows of every host: Pause all pauses on each host, Archive done and all reach the box through its own session.batch for what batch.archive left", async () => {
+    seed([
+      meta({ id: "c-run", title: "Home", status: "running" }),
+      meta({ id: "c-done", title: "Done one", status: "idle" }),
+    ]);
+    seedBox(
+      [
+        boxMeta({ id: "b-run", title: "Box running", status: "running" }),
+        boxMeta({ id: "b-done", title: "Box done", status: "done" }),
+      ],
+      true,
+    );
+    render(<MasterView {...props} />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Batch actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Pause all" }));
+    let dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Pause 2 running threads?")).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Pause all" }));
+    await flush();
+    expect(link.calls.find((c) => c.method === "session.batch")?.params).toEqual({ action: "pause", ids: ["c-run"] });
+    expect(boxLink.calls.find((c) => c.method === "session.batch")?.params).toEqual({ action: "pause", ids: ["b-run"] });
+
+    fireEvent.click(screen.getByRole("button", { name: "Batch actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Archive done…" }));
+    dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Archive 2 done threads?")).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Archive 2" }));
+    await flush();
+    expect(link.calls.find((c) => c.method === "batch.archive")?.params).toEqual({ masterId: "m", which: "done", removeResources: false });
+    expect(boxLink.calls.filter((c) => c.method === "session.batch").at(-1)?.params).toEqual({ action: "archive", ids: ["b-done"] });
+    expect(boxLink.calls.some((c) => c.method === "batch.archive")).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Batch actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Archive all…" }));
+    dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Archive all 4 threads?")).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Archive 4" }));
+    await flush();
+    const boxCalls = boxLink.calls.filter((c) => c.method === "session.batch").slice(-2).map((c) => c.params);
+    expect(boxCalls).toEqual([
+      { action: "stop", ids: ["b-run"] },
+      { action: "archive", ids: ["b-run", "b-done"] },
+    ]);
   });
 });

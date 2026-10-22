@@ -2,11 +2,12 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ConfirmDialog } from "../../chrome/ConfirmDialog";
 import { ExplorerMenu } from "../../chrome/ExplorerMenu";
 import { ChevronDown, ChevronRight, MoreHorizontal, Plus } from "../../chrome/icons";
-import { useEnvironments } from "../../lib/connection/status";
+import { useEnvironments, useEnvironmentStatuses } from "../../lib/connection/status";
 import * as commands from "../../lib/tcserver/commands";
 import { useSessionMetasWhen } from "../../lib/tcserver/store";
 import type { SessionMeta } from "../../lib/tcserver/types";
 import { resourcesHeldBy } from "../../lib/threadBatch";
+import { useProjects, useWorkspaces } from "../../lib/tcserver/workspaces";
 import { useMetaById } from "../../lib/threads/agents";
 import { PaneHeader } from "./bits";
 import { chatOf } from "./chatSlots";
@@ -14,21 +15,24 @@ import { AddThreadDialog } from "./master/AddThreadDialog";
 import { AdoptThreadDialog } from "./master/AdoptThreadDialog";
 import { ArchiveBatchDialog } from "./master/ArchiveBatchDialog";
 import { BatchFoot } from "./master/BatchFoot";
-import { addMenuItems, adoptCandidates, boardMenuItems, doneRows, pausableRows, pausedRows, type ArchiveWhich } from "./master/boardActions";
+import { addMenuItems, adoptCandidates, boardMenuItems, doneRows, pairedProjectIds, pausableRows, pausedRows, type ArchiveWhich } from "./master/boardActions";
 import { ChildPane } from "./master/ChildPane";
 import { MasterRow } from "./master/MasterRow";
-import { adoptThreads, archiveBatch, setBatchRules, stopBatchStep, useMasterModel } from "./master/useMasterModel";
+import { adoptThreads, archiveBatch, rowHost, setBatchRules, stopBatchStep, useMasterModel } from "./master/useMasterModel";
 import { SplitShell } from "./SplitShell";
 import type { ThreadViewProps } from "./ThreadView";
 
 /**
  * A master thread (CLAUDE.md "Master threads", docs/LAYOUT.md "Master"):
  * the batch board on the left, the master's own chat on the right on the
- * SplitShell recipe, the chat folding to the edge tab as elsewhere. A row
- * opens its thread's full view in the whole pane with one Back control
- * (Escape and ⌘↩ too); the board comes back at the scroll it was left at.
- * Until the master has a first child the chat is the whole view, the way
- * an orchestration thread opens.
+ * SplitShell recipe, the chat folding to the edge tab as elsewhere. The
+ * rows are the batch's children on every host the renderer knows, each
+ * with its host's dot and name when it is not the master's, under the
+ * offline tint while that host is out of reach; every action reaches the
+ * row's own host. A row opens its thread's full view in the whole pane
+ * with one Back control (Escape and ⌘↩ too); the board comes back at the
+ * scroll it was left at. Until the master has a first child the chat is
+ * the whole view, the way an orchestration thread opens.
  */
 
 const QUIET_ICON =
@@ -55,6 +59,7 @@ export function MasterView(props: ThreadViewProps) {
   const model = useMasterModel(session);
   const { rows, groups, batch, landed, openId, setOpenId, now } = model;
   const environments = useEnvironments();
+  const statuses = useEnvironmentStatuses();
   const hostNames = useMemo(() => new Map(environments.map((e) => [e.id, e.name])), [environments]);
   const [chatOpen, setChatOpen] = useState(true);
   const [menu, setMenu] = useState<Menu | null>(null);
@@ -70,7 +75,10 @@ export function MasterView(props: ThreadViewProps) {
   const done = doneRows(rows);
   // The adopt candidates are read only while the add menu or its sheet is up.
   const metas = useSessionMetasWhen(menu?.kind === "add" || adopting);
-  const candidates = useMemo(() => (meta ? adoptCandidates(metas, meta) : []), [metas, meta]);
+  const workspaces = useWorkspaces();
+  const projects = useProjects();
+  const paired = useMemo(() => (meta ? pairedProjectIds(meta, workspaces, projects) : new Set<string>()), [meta, workspaces, projects]);
+  const candidates = useMemo(() => (meta ? adoptCandidates(metas, meta, paired) : []), [metas, meta, paired]);
 
   // The board's scroll offset survives a trip into a child's full view.
   const scroller = useRef<HTMLDivElement>(null);
@@ -105,12 +113,14 @@ export function MasterView(props: ThreadViewProps) {
     else if (id === "adopt") setAdopting(true);
   };
 
-  if (openId) {
+  const openRow = openId ? rows.find((r) => r.meta.id === openId) : undefined;
+  if (openId && openRow) {
     return (
       <div className="relative flex min-h-0 min-w-0 flex-1">
         <ChildPane
           key={openId}
           sessionId={openId}
+          environmentId={openRow.meta.environmentId}
           focusComposer={focusComposer}
           onBack={() => setOpenId(null)}
           onOpenFile={props.onOpenFile}
@@ -165,11 +175,7 @@ export function MasterView(props: ThreadViewProps) {
                   now={now}
                   fleetSize={rows.length}
                   landed={landed.has(row.meta.id)}
-                  hostName={
-                    row.meta.environmentId !== session.environmentId
-                      ? (hostNames.get(row.meta.environmentId) ?? row.meta.environmentId)
-                      : null
-                  }
+                  host={rowHost(row.meta, session, environments, (id) => statuses.get(id))}
                   onOpen={open}
                 />
               ))}
@@ -232,8 +238,9 @@ export function MasterView(props: ThreadViewProps) {
       {adopting ? (
         <AdoptThreadDialog
           candidates={candidates}
+          hostName={(id) => hostNames.get(id) ?? id}
           onClose={() => setAdopting(false)}
-          onAdopt={(ids) => adoptThreads(session.environmentId, session.id, ids)}
+          onAdopt={(threads) => adoptThreads(session, threads)}
         />
       ) : null}
       {archiving ? (
@@ -242,7 +249,7 @@ export function MasterView(props: ThreadViewProps) {
           count={archiving === "done" ? done.length : rows.length}
           resources={resourcesHeldBy((archiving === "done" ? done : rows).map((r) => r.meta.id))}
           onCancel={() => setArchiving(null)}
-          onConfirm={(removeResources) => archiveBatch(session.environmentId, session.id, archiving, removeResources)}
+          onConfirm={(removeResources) => archiveBatch(session, rows, archiving, removeResources)}
         />
       ) : null}
       {pausing ? (

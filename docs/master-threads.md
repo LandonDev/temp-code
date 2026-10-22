@@ -105,7 +105,8 @@ caller gave no `masterId`, which is what `session.create` from a thread
 and the plan flow's auto-started build go through (planFlow.ts also
 passes the plan's `masterId`, `after` and `startedBy` explicitly). From
 the board, "+ Thread" opens the add sheet (type, model, effort, context,
-host, after, brief) and passes `masterId` itself. Why the starter and not
+host, after, brief) and passes `masterId` and `startedBy` = the master
+itself, on whichever linked host was picked. Why the starter and not
 the project: the case that broke was a planner the master had started
 calling `app_start_thread` for its build (hand-off `how: manual`); the
 build had `startedBy` = the plan and no `masterId`, left the board, and
@@ -481,9 +482,15 @@ rows, the foot and the add sheet are the UI thread's
 - **One sheet for a child's identity.** Type, model, effort, context, host
   and an optional sibling to wait for. The same shape serves the button
   and the master's own tool call.
+- **Every host on one board.** The rows are the batch's children on every
+  host the renderer knows, a child on the box beside one at home; a row
+  away from the master's host carries that host's dot and name where the
+  thread header's host chip would, and sits under the offline tint while
+  that host is out of reach. Every action, the menus and the archive go to
+  the row's own host; the add sheet starts a child on any linked host.
 - **Left out on purpose.** No cost column, no provider logos, no per-row
-  progress bars, no badges on the title. The type and host read as two
-  muted words after the title.
+  progress bars, no badges on the title. The type reads as one muted word
+  after the title.
 
 Files: surfaces/threads/MasterView.tsx (routed when the session is a
 master, whatever its type), master/useMasterModel.ts (the

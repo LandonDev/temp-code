@@ -1,13 +1,17 @@
 import type { ExplorerMenuItem } from "../../../chrome/ExplorerMenu";
-import type { SessionMeta } from "../../../lib/tcserver/types";
+import type { EnvironmentStatus } from "../../../lib/connection/types";
+import { pairWorkspaces, partnersOf } from "../../../lib/projectPairs";
+import type { ProjectMeta, SessionMeta } from "../../../lib/tcserver/types";
 import { hasRunningTurn } from "../../../lib/threadBatch";
 
 /**
  * The board's title-bar actions (docs/LAYOUT.md "Master"), pure: which
- * rows each switch reaches, the menu's rows, the archive confirm's copy
- * and which of the project's threads the batch may adopt. The server
- * decides the actual set (`batch.archive`, `batch.adopt`); the counts here
- * are what the person reads before confirming.
+ * rows each switch reaches on every host, the menu's rows, the archive
+ * confirm's copy, how an archive is split between the master's host and
+ * the others, which hosts the add sheet offers and which of the project's
+ * threads, on any host, the batch may adopt. The server decides the actual
+ * set (`batch.archive`, `batch.adopt`); the counts here are what the
+ * person reads before confirming.
  */
 
 export type ArchiveWhich = "done" | "all";
@@ -63,23 +67,96 @@ export function archiveCopy(which: ArchiveWhich, count: number, resources: numbe
   return { title, body, cleanup, confirmLabel: `Archive ${count}` };
 }
 
-/** The project's unarchived root threads on the master's host that are in
- *  no batch and are no master themselves, oldest first. */
+/**
+ * The project's unarchived root threads, on any host, that are in no batch
+ * and are no master themselves, oldest first. On another host the project
+ * is its paired copy (`pairedProjectIds`: the same repo, else the same
+ * folder name, lib/projectPairs.ts), so a thread there has that copy's id.
+ */
 export function adoptCandidates(
   metas: readonly SessionMeta[],
   master: Pick<SessionMeta, "id" | "environmentId" | "projectId">,
+  pairedProjectIds: ReadonlySet<string> = new Set(),
 ): SessionMeta[] {
   if (!master.projectId) return [];
+  const projectIds = new Set([master.projectId, ...pairedProjectIds]);
   return metas
     .filter(
       (m) =>
         m.id !== master.id &&
-        m.environmentId === master.environmentId &&
-        m.projectId === master.projectId &&
+        !!m.projectId &&
+        projectIds.has(m.projectId) &&
         !m.parentId &&
         !m.archived &&
         !m.masterId &&
         !m.isMaster,
     )
     .sort((a, b) => a.createdAt - b.createdAt);
+}
+
+/** The ids of the project's copies on the other hosts: the same GitHub
+ *  repo, else the same folder name (lib/projectPairs.ts), the seam the add
+ *  sheet's host choices use too. */
+export function pairedProjectIds(
+  master: Pick<SessionMeta, "environmentId" | "cwd">,
+  workspaces: Parameters<typeof pairWorkspaces>[0],
+  projects: readonly Pick<ProjectMeta, "id" | "environmentId" | "cwd">[],
+): Set<string> {
+  const strip = (path: string) => path.replace(/\/+$/, "");
+  const partners = partnersOf(pairWorkspaces(workspaces), master.environmentId, master.cwd);
+  const ids = new Set<string>();
+  for (const partner of partners) {
+    const project = projects.find((p) => p.environmentId === partner.environmentId && strip(p.cwd) === strip(partner.cwd));
+    if (project) ids.add(project.id);
+  }
+  return ids;
+}
+
+/** The id a thread of another host goes by on the master's host: the
+ *  `<envId>:<sessionId>` form every cross-host supervision tool routes by
+ *  (CLAUDE.md "Threads on the Mac from the box"); a thread at home keeps
+ *  its own id. */
+export function batchThreadId(meta: Pick<SessionMeta, "id" | "environmentId">, master: Pick<SessionMeta, "environmentId">): string {
+  return meta.environmentId === master.environmentId ? meta.id : `${meta.environmentId}:${meta.id}`;
+}
+
+/** The hosts the add sheet may start a child on: the master's own, and
+ *  every other saved host whose link is open, the master's first; `web`
+ *  (the browser's own slot) never. */
+export function linkedHosts<T extends { id: string; name: string }>(
+  environments: readonly T[],
+  statusOf: (id: string) => Pick<EnvironmentStatus, "transport"> | undefined,
+  master: Pick<SessionMeta, "environmentId">,
+): T[] {
+  return environments
+    .filter((e) => e.id !== "web" && (e.id === master.environmentId || statusOf(e.id)?.transport === "open"))
+    .sort((a, b) => (a.id === master.environmentId ? -1 : b.id === master.environmentId ? 1 : 0));
+}
+
+/**
+ * How an archive reaches every host. The master's host runs `batch.archive`
+ * (the batch's own rule: done = done or idle after a turn, all = every
+ * one, live ones stopped first), and answers which ids it archived. Each
+ * other host then takes, through its own `session.batch`, the rows of
+ * that host the answer did not cover: the live ones stopped first under
+ * `all`, then the archive. Once the master's host archives across hosts
+ * itself, its answer covers them and the fallback has nothing to do.
+ */
+export function remoteArchivePlan<T extends { meta: Pick<SessionMeta, "id" | "environmentId" | "status"> & SessionMeta }>(
+  rows: readonly T[],
+  master: Pick<SessionMeta, "environmentId">,
+  which: ArchiveWhich,
+  archivedByMaster: readonly string[],
+): { environmentId: string; stop: string[]; archive: string[] }[] {
+  const covered = new Set(archivedByMaster);
+  const wanted = which === "done" ? doneRows(rows) : rows;
+  const byHost = new Map<string, { environmentId: string; stop: string[]; archive: string[] }>();
+  for (const { meta } of wanted) {
+    if (meta.environmentId === master.environmentId || covered.has(meta.id)) continue;
+    const plan = byHost.get(meta.environmentId) ?? { environmentId: meta.environmentId, stop: [], archive: [] };
+    if (which === "all" && hasRunningTurn(meta)) plan.stop.push(meta.id);
+    plan.archive.push(meta.id);
+    byHost.set(meta.environmentId, plan);
+  }
+  return [...byHost.values()];
 }

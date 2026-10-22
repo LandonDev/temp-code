@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_BATCH_RULES, DEFAULT_BATCH_STEPS } from "@server/shared/contract-batch";
 import type { SessionMeta, SessionStatus } from "../../../lib/tcserver/types";
 import {
+  batchChildrenOf,
   batchFromPush,
   blockedLine,
   foldRows,
@@ -9,7 +10,9 @@ import {
   groupRows,
   masterChildrenOf,
   masterCounts,
+  mergeBatchChildren,
   mergedLine,
+  rowHost,
   rulesSentence,
   typeWord,
 } from "./useMasterModel";
@@ -18,6 +21,7 @@ let n = 0;
 const meta = (status: SessionStatus, extra: Partial<SessionMeta> = {}): SessionMeta =>
   ({
     id: `c${++n}`,
+    environmentId: "local",
     parentId: null,
     masterId: "m",
     archived: false,
@@ -63,6 +67,88 @@ describe("grouping by status", () => {
       meta("idle", { masterId: null as unknown as string }),
     ];
     expect(masterChildrenOf(all, "m")).toEqual([mine]);
+  });
+
+  it("takes the children of every host as one list, oldest first", () => {
+    const home = meta("running");
+    const away = meta("idle", { environmentId: "box" });
+    const other = meta("queued", { environmentId: "studio" });
+    expect(masterChildrenOf([other, away, home], "m")).toEqual([home, away, other]);
+    expect(masterCounts([home, away, other].map(rowOf))).toEqual({ needsYou: 0, running: 1, queued: 1, done: 1 });
+  });
+});
+
+describe("a row's host", () => {
+  const envs = [
+    { id: "local", name: "This Mac" },
+    { id: "box", name: "The box" },
+  ];
+  const master = { environmentId: "local" };
+  it("is nothing for a thread on the master's host", () => {
+    expect(rowHost(meta("idle"), master, envs, () => ({ transport: "open", fresh: true }))).toBeNull();
+  });
+  it("names another host with the chip's dot tone, and offline while its link is not open", () => {
+    const away = meta("idle", { environmentId: "box" });
+    expect(rowHost(away, master, envs, () => ({ transport: "open", fresh: true }))).toEqual({ id: "box", name: "The box", tone: "bg-success", offline: false });
+    expect(rowHost(away, master, envs, () => ({ transport: "offline", fresh: false }))).toEqual({ id: "box", name: "The box", tone: "bg-content/25", offline: true });
+    expect(rowHost(away, master, envs, () => ({ transport: "reconnecting", fresh: false }))).toMatchObject({ tone: "bg-warning", offline: true });
+    expect(rowHost(away, master, envs, () => undefined)).toMatchObject({ offline: true });
+    expect(rowHost(meta("idle", { environmentId: "studio" }), master, envs, () => undefined)?.name).toBe("studio");
+  });
+});
+
+describe("the batch's own child list", () => {
+  it("reads children by shape and nothing else", () => {
+    expect(batchChildrenOf(null)).toEqual([]);
+    expect(batchChildrenOf({ children: "no" })).toEqual([]);
+    expect(
+      batchChildrenOf({
+        children: [
+          { sessionId: "a", environmentId: "box", title: "Home", status: "running", type: "implementation", extra: 1 },
+          { sessionId: "b", environmentId: "local" },
+          { sessionId: 3, environmentId: "box" },
+          null,
+        ],
+      }),
+    ).toEqual([
+      { sessionId: "a", environmentId: "box", title: "Home", status: "running", threadType: "implementation" },
+      { sessionId: "b", environmentId: "local" },
+    ]);
+  });
+
+  it("lays the list over the rows: its host and status win, the bodies stay, an unknown child becomes a plain row, no list changes nothing", () => {
+    const home = meta("running", { title: "Home" });
+    const moved = meta("idle", { title: "Search", environmentId: "local" });
+    const rows = [home, moved].map(rowOf);
+    expect(mergeBatchChildren(rows, [], "m")).toBe(rows);
+    const same = mergeBatchChildren(rows, [{ sessionId: home.id, environmentId: "local", status: "running" }], "m");
+    expect(same).toBe(rows);
+    const merged = mergeBatchChildren(
+      rows,
+      [
+        { sessionId: moved.id, environmentId: "box", status: "waiting" },
+        { sessionId: "ghost", environmentId: "studio", title: "Inbox", status: "queued", threadType: "research" },
+      ],
+      "m",
+    );
+    expect(merged[0]).toBe(rows[0]);
+    expect(merged[1].meta).toMatchObject({ id: moved.id, environmentId: "box", status: "waiting", title: "Search" });
+    expect(merged[1].title).toBe("Search");
+    expect(merged[2]).toMatchObject({ key: "ghost", title: "Inbox", plan: null });
+    expect(merged[2].meta).toMatchObject({ id: "ghost", environmentId: "studio", status: "queued", threadType: "research", masterId: "m", parentId: null });
+    expect(groupRows(merged).map((g) => [g.id, g.rows.length])).toEqual([
+      ["needsYou", 1],
+      ["running", 1],
+      ["queued", 1],
+    ]);
+  });
+
+  it("never doubles a plan the build's row already stands for", () => {
+    const plan = meta("idle", { threadType: "planning", title: "Search screen" });
+    const build = meta("running", { planThreadId: plan.id });
+    const rows = foldRows([plan, build], [plan, build], "m");
+    const merged = mergeBatchChildren(rows, [{ sessionId: plan.id, environmentId: "local" }], "m");
+    expect(merged).toHaveLength(1);
   });
 });
 
@@ -150,6 +236,8 @@ describe("the batch", () => {
     const rules = { ...DEFAULT_BATCH_RULES, deploy: "box", summary: "Land all seven" };
     expect(batchFromPush({ push: "batch", state: { masterId: "m", steps, rules } }, "m")?.rules).toEqual(rules);
     expect(batchFromPush({ push: "batch", state: { masterId: "m", steps } }, "m")?.landed).toEqual([]);
+    const children = [{ sessionId: "a", environmentId: "box", status: "running" }];
+    expect(batchChildrenOf(batchFromPush({ push: "batch", state: { masterId: "m", steps, children } }, "m"))).toEqual(children);
     expect(batchFromPush({ push: "batch", masterId: "m", steps }, "m")).toBeNull();
     expect(batchFromPush({ push: "batch", state: { masterId: "x", steps } }, "m")).toBeNull();
     expect(batchFromPush({ push: "session" }, "m")).toBeNull();

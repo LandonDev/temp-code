@@ -1356,14 +1356,27 @@ this is the short one.
   the tab's and the rail row's "Make master thread" / "Not a master" over
   `session.setMaster`) on the SplitShell recipe, the board left of the
   master's chat; the board, its rows, the foot, the dialogs and the add
-  sheet are surfaces/threads/master/**. A row's click puts the child's
-  full view in the whole pane with one Back control (`master/ChildPane.tsx`;
-  Escape and ⌘↩ go back; the board keeps its scroll). The title bar's ⋯
-  menu is the batch's fleet switches (Pause all, Resume all, Archive
-  done…, Archive all… over `batch.archive`, with the live count and the
-  resources checkbox; `master/boardActions.ts`), + Thread a menu with New
-  thread… and Add existing thread… (`batch.adopt`, the project's roots in
-  no batch). The foot and the rules dialog read the steps as the master's
+  sheet are surfaces/threads/master/**. The rows are the children on
+  every host the renderer knows (the session store holds each connected
+  or mirrored host's rows; `batch.get`'s `children` list, when the host
+  sends one, overrides a row's host and status, `mergeBatchChildren`); a
+  row on another host than the master's carries that host's dot and name
+  in its model mark (`rowHost`, the chip's `hostTone`) and sits under the
+  offline tint while that host's link is not open. A row's click puts the
+  child's full view in the whole pane with one Back control
+  (`master/ChildPane.tsx`, given the row's host; Escape and ⌘↩ go back;
+  the board keeps its scroll). The title bar's ⋯ menu is the batch's
+  fleet switches over every host (Pause all and Resume all through each
+  row's host's `session.batch`; Archive done… and Archive all… with the
+  live count and the resources checkbox: `batch.archive` on the master's
+  host, then each other host's `session.batch` for the rows its answer
+  left, `remoteArchivePlan` in `master/boardActions.ts`), + Thread a menu
+  with New thread… (the add sheet: Host over the master's host and every
+  linked one, `linkedHosts`; `session.create` on that host with
+  `masterId` and `startedBy` = the master) and Add existing thread…
+  (the project's roots in no batch on this host and its paired copies,
+  `pairedProjectIds`; one `batch.adopt` on the master's host, a remote
+  thread as `<envId>:<id>`, refusals read back in the sheet). The foot and the rules dialog read the steps as the master's
   list: `master/steps.ts` joins `rules.steps` with `state.steps` by id (a
   step the rules name that the host has not seen is pending at the end),
   the console is the same for a shell step (its command in mono) as for a

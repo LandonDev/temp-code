@@ -226,22 +226,37 @@ in the whole pane, with Back.
 
 - **Title bar**: the batch name (the master's title), a quiet ⋯ and
   + Thread ▾. The ⋯ menu is the batch's fleet switches
-  (`master/boardActions.ts`): Pause all (the running-turn rule, confirmed
-  with the live count), Resume all, then Archive done… and Archive all…
-  (`master/ArchiveBatchDialog.tsx`: "Archive 3 done threads?" / "Archive
-  all 7 threads?" with the live count, the resources checkbox the fleet's
-  Archive done offers, `batch.archive`; a running thread is stopped first,
-  the master stays; the rows leave from the push). A row with nothing to
-  act on is disabled. + Thread is a menu: New thread… (the add sheet) and
-  Add existing thread… (`master/AdoptThreadDialog.tsx`: the project's
-  unarchived root threads on this host in no batch and no master
-  themselves, one checkbox row each; Add is `batch.adopt`). No counts
-  sentence: the sections carry their counts.
+  (`master/boardActions.ts`), counting the rows of every host: Pause all
+  (the running-turn rule, confirmed with the live count) and Resume all go
+  to each row's own host through its `session.batch`; Archive done… and
+  Archive all… (`master/ArchiveBatchDialog.tsx`: "Archive 3 done threads?"
+  / "Archive all 7 threads?" with the live count, the resources checkbox
+  the fleet's Archive done offers) run `batch.archive` on the master's host
+  (a running thread is stopped first, the master stays) and then, for the
+  rows of another host its answer did not cover, that host's own
+  `session.batch` (`remoteArchivePlan`: under all the live ones stopped
+  first); the rows leave from the push. A row with nothing to act on is
+  disabled. + Thread is a menu: New thread… (the add sheet) and Add
+  existing thread… (`master/AdoptThreadDialog.tsx`: the project's
+  unarchived root threads in no batch and no master themselves, on this
+  host and on the project's paired copies elsewhere (`pairedProjectIds`,
+  lib/projectPairs.ts), one checkbox row each with the host's name at the
+  right when they span hosts; Add is one `batch.adopt` on the master's
+  host, a thread of another host named `<envId>:<id>`, the host's
+  refusals read back by title in the sheet). No counts sentence: the
+  sections carry their counts.
 - **Sections**, each a muted 12px label with its count, in this order: Needs
   you (waiting, error), Running (starting, running, watching, paused), Queued
   (waiting for a sibling: there is no running cap), Done (idle, stopped). An
   empty section is not drawn. Rows oldest first within a section; nothing
-  animates a reorder.
+  animates a reorder. The rows are the batch's children on every host the
+  renderer knows (`masterChildrenOf` over the whole session store, which
+  holds each connected or mirrored host's rows): a child the master started
+  on the box sits beside one at home. When `batch.get` lists `children`
+  with their hosts (the server's cross-host batch), the list is the
+  authority on a row's host and status and the session rows keep the
+  bodies (`mergeBatchChildren`; a child the store has no row for becomes
+  a plain row with the list's title and type).
 - **A row** (`master/MasterRow.tsx`, the rules in `master/rowBody.ts`) is two
   lines on a 16px glyph column, and nothing on it is separated by a dot.
   Line one: the type's glyph in its tint (`THREAD_GLYPHS`), the 13px medium
@@ -254,7 +269,12 @@ in the whole pane, with Back.
   working, the question or failure in amber or red while it needs you,
   "Landed 12:08" once the batch lists it, "Done" otherwise), and at the
   right the provider's mark, the model's name, then its effort and context
-  in a quieter gray (the host's name first when the thread runs elsewhere).
+  in a quieter gray; first, when the thread runs on another host than the
+  master, that host's dot and name as the thread header's host chip draws
+  them (`rowHost`: the dot's tone from `hostTone`, muted, once per row,
+  nothing on a row at home). A row of a host whose link is not open sits
+  under the offline tint (`opacity-50`, `data-host-offline`): its row is
+  the launch mirror's and lifts when the host is back.
   Under the lines, by type: an implementation its task list from the fold's
   board state (`session.thread.todos`), a check once done, the spinner on
   the one in hand, a hollow ring ahead. The list is open while the thread
@@ -277,13 +297,18 @@ in the whole pane, with Back.
   composer focused), Pause or Resume, Stop, Remove (archive with the
   resources offer, ArchiveThreadDialog). A queued row offers Start now
   (`session.start`, past `after`) and "Remove from queue" (the fleet
-  switches' Stop on a queued root, which archives it).
+  switches' Stop on a queued root, which archives it). Every action goes
+  to the row's own host: the commands route by the thread's id through
+  the store's link for it.
 - **Click** opens the thread's full view in the board's place
-  (`master/ChildPane.tsx`): the whole pane, board and master chat gone,
-  becomes the thread's own view, the one its type gets as a tab (the
-  implementation board, the plan document, the fleet), over its transcript
-  and a one-line composer that sends while it is idle and steers while it
-  runs, with Stop beside Send. The header is one Back control on the same
+  (`master/ChildPane.tsx`, given the row's `environmentId`): the whole
+  pane, board and master chat gone, becomes the thread's own view, the one
+  its type gets as a tab (the implementation board, the plan document, the
+  fleet), over its transcript and a one-line composer that sends while it
+  is idle and steers while it runs, with Stop beside Send; a child on
+  another host opens against that host the way a rail row of that host
+  does (the store holds every host's rows by id, `data-child-host` names
+  it). The header is one Back control on the same
   40px bar as the board's title; Escape or ⌘↩ anywhere in the view goes
   back, and the board returns at the scroll it was left at. Nothing opens a
   tab; the strip never lists a child (`isBatchChild` in
@@ -334,11 +359,14 @@ in the whole pane, with Back.
   row per choice, label left and control right: Type (segmented), Model
   (the app's picker, every catalog model), Effort (segmented from the
   model's own ladder, whole), Context (200k / 1M, Claude only), Host
-  (segmented over the registry's hosts, this one first; another host offers
-  its paired copy of the project and is disabled without one), After
-  ("Nothing, start now", else a sibling). Cancel, Add. One column, nothing
-  scrolls. Add is `session.create` with `masterId` and `after` plus the
-  brief as the first message; the row arrives from the push. Its model
+  (segmented over the master's own host and every saved host whose link is
+  open, `linkedHosts`, the master's first, the row hidden with one host;
+  another host offers its paired copy of the project and is disabled
+  without one), After ("Nothing, start now", else a sibling). Cancel, Add.
+  One column, nothing scrolls. Add is `session.create` on the chosen
+  host's link with `masterId`, `startedBy` (the master, so the thread's
+  settles report to it) and `after` plus the brief as the first message;
+  the row arrives from the push. Its model
   menu, like every Popover opened inside a Modal, reads the dialog's layer
   (`LayerContext` in lib/layers.ts) and sits above the sheet.
 - **Everywhere else** a child is an ordinary root thread in the rail with

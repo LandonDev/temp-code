@@ -3,7 +3,7 @@ import type { Reasoning } from "@server/shared/catalog";
 import { DialogFooter, ErrorLine, errorText } from "../../../chrome/ConfirmDialog";
 import { Modal } from "../../../chrome/Modal";
 import { ModelPicker } from "../../../chrome/ModelPicker";
-import { useEnvironments } from "../../../lib/connection/status";
+import { useEnvironments, useEnvironmentStatuses } from "../../../lib/connection/status";
 import { mergeModelSettings, nativeModelId, resolveModel } from "../../../lib/models";
 import { pairOf, pairWorkspaces, partnersOf } from "../../../lib/projectPairs";
 import type { HarnessId } from "../../../lib/session";
@@ -12,6 +12,7 @@ import type { ProjectMeta, SessionMeta, ThreadType } from "../../../lib/tcserver
 import { useProjects, useWorkspaces } from "../../../lib/tcserver/workspaces";
 import { Segmented, Select } from "../../settingsBits";
 import { THREAD_LABELS } from "../bits";
+import { linkedHosts } from "./boardActions";
 
 /**
  * "Add a thread to <batch>" (docs/LAYOUT.md "Master"): the brief first,
@@ -40,9 +41,10 @@ export type HostChoice = {
   target: { projectId: string } | { cwd: string } | null;
 };
 
-/** The hosts the add sheet offers, this host first: the master's own
- *  project at home, and on every other host the paired copy (the same
- *  GitHub repo, else the same folder name; lib/projectPairs.ts). */
+/** The hosts the add sheet offers (`environments` is the linked set,
+ *  `linkedHosts`), this host first: the master's own project at home, and
+ *  on every other host the paired copy (the same GitHub repo, else the
+ *  same folder name; lib/projectPairs.ts). */
 export function hostChoices(
   master: Pick<AddThreadMaster, "environmentId" | "cwd" | "projectId">,
   environments: readonly { id: string; name: string }[],
@@ -108,9 +110,13 @@ export function AddThreadDialog({
   const briefRef = useRef<HTMLTextAreaElement>(null);
 
   const environments = useEnvironments();
+  const statuses = useEnvironmentStatuses();
   const workspaces = useWorkspaces();
   const projects = useProjects();
-  const hosts = useMemo(() => hostChoices(master, environments, workspaces, projects), [master, environments, workspaces, projects]);
+  const hosts = useMemo(
+    () => hostChoices(master, linkedHosts(environments, (id) => statuses.get(id), master), workspaces, projects),
+    [master, environments, statuses, workspaces, projects],
+  );
   const efforts = effortChoices(choice.harness, choice.model, host);
   const contexts = (resolveModel(choice.harness, choice.model, host).settings ?? []).find((s) => s.id === "context")?.options;
   const effort = efforts.some((e) => e.value === settings.effort) ? (settings.effort as Reasoning) : efforts[0]?.value;
@@ -137,6 +143,7 @@ export function AddThreadDialog({
           context1m: contexts ? settings.context === "1m" : undefined,
           ...target,
           masterId: master.id,
+          startedBy: master.id,
           ...(after ? { after } : {}),
           queue: true,
         },

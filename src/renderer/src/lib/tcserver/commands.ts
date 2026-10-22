@@ -462,6 +462,8 @@ export type StartThreadParams = {
   threadRules?: CreateSessionInput["threadRules"];
   /** Master threads (CLAUDE.md "Master threads"): the master this root thread joins. */
   masterId?: string;
+  /** The thread that asked for this one (the master, from the board's add sheet): its settle reports there. */
+  startedBy?: string;
   /** Master threads: the sibling to wait for before booting. */
   after?: string;
   /** Queue behind the host's cap and `after` instead of booting at once (scheduler.ts). */

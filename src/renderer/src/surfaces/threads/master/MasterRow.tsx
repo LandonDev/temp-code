@@ -16,18 +16,21 @@ import { MatrixSpinner, THREAD_GLYPHS, THREAD_TINTS } from "../bits";
 import { StatusGlyph } from "../fleet/rowBits";
 import { useAgentModel } from "../fleet/useFleetModel";
 import { rowBody, taskList, taskProgress, tasksOpenByDefault, whatLine } from "./rowBody";
-import { typeWord, type MasterRowModel } from "./useMasterModel";
+import { typeWord, type MasterRowModel, type RowHost } from "./useMasterModel";
 
 /**
  * One row of the batch (docs/LAYOUT.md "Master"). Two lines: the type's
  * glyph, the title and the task tally; then the status glyph beside what
- * the thread is doing, and at the right the provider's mark, the model,
- * its effort and context. Under an implementation its task list, open
- * while it works and folded once it is done, the tally its disclosure;
- * under a research or orchestration thread one summary line. A click
- * opens the thread's full view in the board's place; hover shows Message,
- * Pause or Resume, Stop and Remove. Nothing on the row is separated by a
- * dot.
+ * the thread is doing, and at the right the host's dot and name when the
+ * thread runs on another host than the master, the provider's mark, the
+ * model, its effort and context. Under an implementation its task list,
+ * open while it works and folded once it is done, the tally its
+ * disclosure; under a research or orchestration thread one summary line.
+ * A row of a host out of reach is under the offline tint. A click opens
+ * the thread's full view in the board's place; hover shows Message, Pause
+ * or Resume, Stop and Remove. Every action goes to the row's own host (the
+ * commands route by the thread's id). Nothing on the row is separated by
+ * a dot.
  */
 
 export function MasterRow({
@@ -35,7 +38,7 @@ export function MasterRow({
   now,
   fleetSize,
   landed,
-  hostName,
+  host,
   onOpen,
 }: {
   row: MasterRowModel;
@@ -44,7 +47,7 @@ export function MasterRow({
   /** The batch marked this row's branch landed. */
   landed: boolean;
   /** The thread's host when it is not the master's; null otherwise. */
-  hostName: string | null;
+  host: RowHost | null;
   /** Open the thread's full view; `focus` lands in its composer. */
   onOpen: (id: string, focus?: boolean) => void;
 }) {
@@ -103,10 +106,12 @@ export function MasterRow({
 
   return (
     <div
-      className="group relative rounded-lg transition-colors duration-100 hover:bg-content/5"
+      className={`group relative rounded-lg transition-colors duration-100 hover:bg-content/5 ${host?.offline ? "opacity-50" : ""}`}
       data-status={meta.status}
       data-type={meta.threadType ?? undefined}
       data-plan={plan?.id}
+      data-host={host?.id}
+      data-host-offline={host?.offline || undefined}
     >
       <div
         role="button"
@@ -139,7 +144,7 @@ export function MasterRow({
           <span className={`min-w-0 flex-1 truncate text-xs ${what ? TONE_CLASS[what.tone] : "text-content/40"}`}>
             {what?.text ?? (settled ? "Done" : "")}
           </span>
-          <ModelMark meta={meta} hostName={hostName} />
+          <ModelMark meta={meta} host={host} />
         </span>
 
         {body?.kind === "tasks" ? (
@@ -232,15 +237,21 @@ function Tally({ progress, fold }: { progress: { done: number; total: number }; 
 }
 
 /** The provider's mark, the model, then its effort and context in a
- *  quieter gray; the host's name first when the thread runs elsewhere. */
-function ModelMark({ meta, hostName }: { meta: SessionMeta; hostName: string | null }) {
+ *  quieter gray; first the host's dot and name, as the thread header's
+ *  host chip draws them, when the thread runs elsewhere. */
+function ModelMark({ meta, host }: { meta: SessionMeta; host: RowHost | null }) {
   const rest = [meta.reasoning, meta.context1m ? "1M" : null].filter(Boolean).join(" ");
   return (
     <span
       className="flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap transition-opacity duration-100 group-hover:opacity-0 group-focus-within:opacity-0"
       data-model
     >
-      {hostName ? <span className="text-content/40">{hostName}</span> : null}
+      {host ? (
+        <span className="mr-1 flex items-center gap-1.5 text-content/40" title={host.offline ? `${host.name} is offline` : `On ${host.name}`}>
+          <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${host.tone}`} />
+          {host.name}
+        </span>
+      ) : null}
       <HarnessIcon harness={asHarness(meta.provider)} className="size-3 text-content/60" />
       <span className="text-content/60">{modelLabel(meta.provider, meta.model)}</span>
       {rest ? <span className="text-content/35">{rest}</span> : null}

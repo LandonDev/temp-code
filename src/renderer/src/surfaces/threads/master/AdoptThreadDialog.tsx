@@ -6,18 +6,22 @@ import { THREAD_GLYPHS, THREAD_TINTS } from "../bits";
 import { typeWord } from "./useMasterModel";
 
 /**
- * "Add existing threads": the project's root threads that are in no batch,
- * one checkbox row each with the type's glyph, the title and the type
- * word. Add is `batch.adopt`; the rows arrive on the board from the push.
+ * "Add existing threads": the project's root threads, on any host, that
+ * are in no batch, one checkbox row each with the type's glyph, the title,
+ * the type word and, when the candidates span hosts, the host's name. Add
+ * is `batch.adopt`; the rows arrive on the board from the push.
  */
 export function AdoptThreadDialog({
   candidates,
+  hostName,
   onClose,
   onAdopt,
 }: {
   candidates: readonly SessionMeta[];
+  /** A host's name by id; the name shows only when the candidates span more than one host. */
+  hostName?: (environmentId: string) => string;
   onClose: () => void;
-  onAdopt: (sessionIds: string[]) => Promise<void>;
+  onAdopt: (threads: SessionMeta[]) => Promise<void>;
 }) {
   const [picked, setPicked] = useState<ReadonlySet<string>>(() => new Set());
   const [pending, setPending] = useState(false);
@@ -33,13 +37,14 @@ export function AdoptThreadDialog({
     setPending(true);
     setError(null);
     try {
-      await onAdopt(candidates.filter((c) => picked.has(c.id)).map((c) => c.id));
+      await onAdopt(candidates.filter((c) => picked.has(c.id)));
       onClose();
     } catch (err) {
       setError(errorText(err));
       setPending(false);
     }
   };
+  const hosts = new Set(candidates.map((c) => c.environmentId));
   return (
     <Modal onClose={onClose} busy={pending} title="Add existing threads" size="sm">
       <form
@@ -61,6 +66,11 @@ export function AdoptThreadDialog({
                   </span>
                   <span className="min-w-0 truncate text-content">{c.title || "Untitled"}</span>
                   <span className="shrink-0 text-content/40">{typeWord(c)}</span>
+                  {hosts.size > 1 ? (
+                    <span className="ml-auto shrink-0 pl-2 text-content/40" data-host={c.environmentId}>
+                      {hostName?.(c.environmentId) ?? c.environmentId}
+                    </span>
+                  ) : null}
                 </label>
               </li>
             );
