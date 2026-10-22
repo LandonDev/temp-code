@@ -14,6 +14,7 @@ struct RootView: View {
     @State private var inboxPath: NavigationPath
     @State private var searchPath: NavigationPath
     @State private var routed = false
+    @State private var restoredSheet: SheetMemory?
 
     init() {
         let memory = NavigationMemory.restore()
@@ -21,6 +22,7 @@ struct RootView: View {
         _homePath = State(initialValue: NavigationMemory.path(memory?.home))
         _inboxPath = State(initialValue: NavigationMemory.path(memory?.inbox))
         _searchPath = State(initialValue: NavigationMemory.path(memory?.search))
+        _restoredSheet = State(initialValue: memory?.sheet)
     }
 
     var body: some View {
@@ -46,6 +48,13 @@ struct RootView: View {
         }
         .preferredColorScheme(appearance.scheme)
         .task(id: model.ready) { await followLaunchRoute() }
+        // The sheet the last run had up, handed to the view that owns it once
+        // the restored stacks are on screen.
+        .task {
+            guard let sheet = restoredSheet else { return }
+            restoredSheet = nil
+            router.restoredSheet = sheet
+        }
         .onChange(of: tab) { remember() }
         .onChange(of: homePath) { remember() }
         .onChange(of: inboxPath) { remember() }

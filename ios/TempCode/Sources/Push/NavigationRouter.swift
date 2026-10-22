@@ -16,6 +16,9 @@ struct ThreadKey: Hashable {
 final class NavigationRouter {
     var pending: Route?
     var visible: ThreadKey?
+    /// A sheet the last run had up, published once after the first frame of
+    /// a cold launch; the view that owns it opens it and clears this.
+    var restoredSheet: SheetMemory?
 
     /// Open the thread and land on the card the push named.
     func open(_ target: PushTarget) {

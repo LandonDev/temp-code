@@ -113,6 +113,13 @@ struct ThreadScreen: View {
             }
         }
         .navigationDestination(item: $pushed) { route in ThreadScreen(client: client, sessionId: route.sessionId, performsLaunchAction: false) }
+        // Return flow (thread 14): the Start sheet survives a kill.
+        .onChange(of: starting) { NavigationMemory.rememberSheet(starting ? .startBuild(environmentId: client.environment.id, sessionId: sessionId) : nil) }
+        .onChange(of: router.restoredSheet, initial: true) {
+            guard case .startBuild(let environmentId, let id)? = router.restoredSheet, environmentId == client.environment.id, id == sessionId else { return }
+            router.restoredSheet = nil
+            starting = true
+        }
         // The composer docks where the tab bar would float: the tabs wait behind the back button.
         .environment(\.markdownScope, MarkdownScope(environmentId: client.environment.id, sessionId: sessionId))
         .toolbar(.hidden, for: .tabBar)

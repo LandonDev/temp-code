@@ -46,6 +46,8 @@ struct TranscriptView: View {
                     }
                     .id(entry.id)
                     .accessibilityIdentifier("transcript-item")
+                    // Return flow (thread 14): the row at the top while scrolled up is the anchor a relaunch lands on.
+                    .onScrollVisibilityChange(threshold: 0.5) { visible in if visible, !scrollState.atBottom { ScrollMemory.set(entry.id, for: sessionId) } }
                 }
                 .listRowInsets(rowInsets)
                 .listRowSeparator(.hidden)
@@ -77,6 +79,7 @@ struct TranscriptView: View {
                 geometry.contentSize.height <= geometry.containerSize.height || geometry.visibleRect.maxY >= geometry.contentSize.height - 64
             } action: { _, now in
                 scrollState.atBottom = now
+                if now { ScrollMemory.set(nil, for: sessionId) }
             }
             .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in
                 recorder?.noteOffset(y)
@@ -102,7 +105,14 @@ struct TranscriptView: View {
                     initializedScroll = true
                     Task { @MainActor in
                         await Task.yield()
-                        proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom)
+                        // Return flow (thread 14): a relaunch lands on the remembered row, with no motion.
+                        if let anchor = ScrollMemory.anchor(for: sessionId), entries.contains(where: { $0.id == anchor }) {
+                            var transaction = Transaction()
+                            transaction.disablesAnimations = true
+                            withTransaction(transaction) { proxy.scrollTo(anchor, anchor: .top) }
+                        } else {
+                            proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom)
+                        }
                     }
                 } else { pinTail(proxy: proxy) }
             }

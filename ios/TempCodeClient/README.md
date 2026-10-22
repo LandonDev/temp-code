@@ -128,13 +128,36 @@ app sees it: `status`, `workspaces`, `projects`, `sessions` (newest first),
 `moreBefore`, `isLoading`, `isLoadingOlder`, `isLive`, `goneReason`).
 `start()` paints from the cache, then connects; on each new session the open
 threads resume first (`visibleThread`, the one on screen, at the head of the
-first batch) while the shell lists alongside in one round trip (workspaces,
-projects, the first `session.list` page, then the cursor), and `fresh` is
-marked once both are done. `visibleThread` and `listVisible` say what the
-person is looking at; a change anywhere else is published through `quietly`
-(the app sets a transaction with animations off), and a list that comes back
-as it was is not republished at all, so a catch-up moves nothing that was
-already true. `isLoading` is true only while nothing has painted. Pushes:
+first batch) while the shell catches up alongside in one round trip
+(workspaces, projects, and `session.changes` from the cursor the cache
+kept), and `fresh` is marked once both are done. `visibleThread` and
+`listVisible` say what the person is looking at; a change anywhere else is
+published through `quietly` (the app sets a transaction with animations
+off), and a list that comes back as it was is not republished at all, so a
+catch-up moves nothing that was already true; a page with `reset` is a
+fresh paint and lands quietly even on screen. `isLoading` is true only while
+nothing has painted.
+
+The session list reconciles the way the desktop's launch mirror does.
+`listCursor` is the head of the host's change log (`ListCursor`: `seq` and
+`generation`, in the cache's `cursors` table, loaded at `start()`); the new
+session asks `session.changes { afterSeq, generation }` and gets the metas
+that changed and the ids that left since, merged in place (archived metas
+ride the log too, so there is no archived walk), and the new head is saved.
+On `reset` (another run of the server, or a cursor older than the 5,000
+entries the log keeps), with no cursor (`afterSeq: 0` goes out beside the
+first `session.list` page, no extra round trip) or when the host refuses
+the method (an older build; the cursor is dropped), the whole `session.list`
+walk runs as before, with the archived walk off the open handler, and the
+head taken BEFORE the walk is the cursor, so changes that land during the
+walk are replayed next time rather than lost. `shellSource` says where the
+list came from last (`none`, `cache`, `changes`, `list`). `bootResume` is
+the host's restart notice (`BootResumeNotice`: count and the boot's time),
+set once per boot from the `boot-resume` push the host repeats on every
+socket, deduped through the cache's `notices` table; `dismissBootResume()`
+clears it. The thread on screen is re-marked seen when its meta lands after
+its rows (`merge`) and when its first page lands (`fold`), so the catch-up
+never leaves it unseen. Pushes:
 `events` append to an open thread (ephemeral rows stay out of the cache),
 `sessions` merge newest-first, `session-removed` drops the thread,
 `projects`/`workspaces` replace. `openThread` paints the cached tail at once

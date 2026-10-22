@@ -9,6 +9,7 @@ import TempCodeContract
 struct HomeView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(NavigationRouter.self) private var router
     @Binding var path: NavigationPath
     var slots = HomeSlots()
     /// Folded workspace keys, one per line, remembered across launches.
@@ -91,6 +92,18 @@ struct HomeView: View {
                 path.append(Route.thread(environmentId: target.client.environment.id, sessionId: created.id, seq: nil))
             }
         }
+        // Return flow (thread 14): the sheet survives a kill.
+        .onChange(of: composing?.id) { NavigationMemory.rememberSheet(composing.map { .newThread(environmentId: $0.client.environment.id, workspaceId: $0.workspace.id, projectId: $0.project?.id) }) }
+        .onChange(of: router.restoredSheet, initial: true) { restoreSheet() }
+        .onChange(of: model.ready) { restoreSheet() }   // the cached shell is painted by then
+    }
+
+    /// The new-thread sheet the last run had up (return flow, thread 14).
+    private func restoreSheet() {
+        guard case .newThread(let environmentId, let workspaceId, let projectId)? = router.restoredSheet,
+              let client = model.registry.client(environmentId), let workspace = client.workspaces.first(where: { $0.id == workspaceId }) else { return }
+        router.restoredSheet = nil
+        composing = NewThreadTarget(client: client, workspace: workspace, project: projectId.flatMap { id in client.projects.first { $0.id == id } })
     }
 
     private func compose(_ client: EnvironmentClient, _ workspace: WorkspaceMeta, _ project: ProjectMeta?) {

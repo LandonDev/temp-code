@@ -22,7 +22,8 @@ final class ActivityCoordinator {
     /// What a thread's meta says the strip is in: the host's own mapping (remote/push.ts).
     static func state(_ meta: SessionMeta, now: Date = .now) -> ThreadActivityAttributes.ContentState {
         let phase: ThreadActivityAttributes.Phase = switch meta.status {
-        case .starting, .running, .watching, .queued: .working
+        // A queued thread runs nothing yet (return flow, thread 14): it ends an activity like a finished one.
+        case .starting, .running, .watching: .working
         case .paused: .paused
         case .waiting: .waiting
         case .error: .failed

@@ -942,23 +942,34 @@ keyboard action. Every animated change has a static cue as well.
   grace the live socket is probed and kept; past it the stale socket is
   replaced at once, never probed for five seconds. On the new session the
   thread on screen catches up first (`afterSeq` from its cursor), the other
-  open threads next, while the shell lists alongside; every catch-up lands
-  as a diff with no reload, no empty flash and no duplicate rows. A change
-  that lands where nobody is looking (another thread, Home while a thread is
-  up, the shell while the app re-lists) is published with animations off,
-  so nothing that was already true moves; rows that arrived while away get
-  the enter motion only on the list the person is looking at. A list that
-  comes back as it was is not republished. The status line (`StatusLine`)
-  is one line of footnote text over the content, never in it: it exists
-  only after the transport has been away 1.5 s, fades in and out over
-  150 ms, and is gone the frame the socket opens; the background's own
-  `suspended` state never shows. Elapsed timers run from the host's
-  `busySince`, so they are right on the first frame back and after a kill.
-  The tab, each tab's stack and the thread's segment survive a cold launch
-  (`NavigationMemory`; the clients exist before the first frame, so the
-  restored thread paints from the cache at once). Once every host has
-  caught up, the Live Activities and the badge (Home's Needs you count) are
-  brought in line with what the app shows.
+  open threads next, while the shell catches up alongside: workspaces and
+  projects in one round trip, and the session list reconciled with
+  `session.changes` from the cursor the cache kept (the metas that changed
+  and the ids that left, merged in place; the whole `session.list` walk
+  only on `reset`, with no cursor, or on a host that predates the method).
+  Every catch-up lands as a diff with no reload, no empty flash and no
+  duplicate rows; a tail the host replaced whole (`reset`) is a fresh paint
+  with no motion even on screen. A change that lands where nobody is
+  looking (another thread, Home while a thread is up, the shell while the
+  app re-lists) is published with animations off, so nothing that was
+  already true moves; rows that arrived while away get the enter motion
+  only on the list the person is looking at. A list that comes back as it
+  was is not republished. The thread on screen stays seen through the
+  catch-up: its seen mark follows its rows and again its fresh meta. The
+  status line (`StatusLine`) is one line of footnote text over the content,
+  never in it: it exists only after the transport has been away 1.5 s,
+  fades in and out over 150 ms, and is gone the frame the socket opens; the
+  background's own `suspended` state never shows. Elapsed timers run from
+  the host's `busySince`, so they are right on the first frame back and
+  after a kill. The tab, each tab's stack, the thread's segment, the
+  new-thread and Start sheets (`SheetMemory`) and the row the person was
+  scrolled to (`ScrollMemory`, the item at the top while scrolled up) survive
+  a cold launch (`NavigationMemory`; the clients exist before the first
+  frame, so the restored thread paints from the cache at once). Once every
+  host has caught up, the Live Activities and the badge (Home's Needs you
+  count) are brought in line with what the app shows; a queued thread ends
+  its activity like a finished one. A host that restarted mid-turn says so
+  once per boot (`bootResume`, deduped by the boot's time in the cache).
 - **Measure.** Scroll a 2,000-row thread at 120 Hz with the Instruments
   animation hitch template; a hitch over 8 ms in the transcript is a bug.
 
