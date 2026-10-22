@@ -9,9 +9,11 @@
  *   3. Main respawns it on the same port (doctor.get: a new pid, restarts 1,
  *      the port unchanged), with no new marker and no new thread URL.
  *   4. The thread's next turn streams through the new process and finishes.
- *   5. TEMP_CODE_GATEWAY_TRACE lines come from the child: `[gateway:<pid>]`
+ *   5. A codex request rides the child's Chromium stack (`net.fetch`, off the
+ *      pools: `reused=n/a`) under the codex account the vault pins.
+ *   6. TEMP_CODE_GATEWAY_TRACE lines come from the child: `[gateway:<pid>]`
  *      with the first process's pid before the kill and the second's after.
- *   6. Stopping the instance takes the gateway process with it.
+ *   7. Stopping the instance takes the gateway process with it.
  *
  * Run: bun run script:e2e-gateway-process   (build first: electron-vite build)
  * Nothing here touches /Applications/TempCode.app, its userData, the real
@@ -30,6 +32,7 @@ import { REPO, prepareEnv, sh, sleep } from './lib/packagedApp'
 prepareEnv()
 const OUT = '/tmp/tc-gateway-process'
 const ACCOUNT = 'fake@example.com'
+const CODEX_ACCOUNT = 'codex@example.com'
 /** Words per answer and the gap between them: an answer takes about three seconds to stream. */
 const WORDS = 12
 const GAP_MS = 250
@@ -59,7 +62,7 @@ const alive = (pid: number): boolean => {
 
 // ── the fake provider: every answer streams a word every 250 ms ───────────────
 /** Every POST with when it started and when its stream ended (Bun's server never says a client went away, so a cut shows as an end after the kill). */
-const fake = { posts: [] as { at: number; done: boolean; endedAt?: number }[] }
+const fake = { posts: [] as { at: number; done: boolean; endedAt?: number }[], codex: [] as { authorization: string; accountId: string }[] }
 const readBody = (req: IncomingMessage): Promise<string> =>
   new Promise((ok) => {
     let text = ''
@@ -92,6 +95,11 @@ const provider = createServer(async (req, res) => {
     res.end()
     return
   }
+  if (url.pathname === '/backend-api/codex/v1/responses' && req.method === 'POST') {
+    fake.codex.push({ authorization: String(req.headers.authorization ?? ''), accountId: String(req.headers['chatgpt-account-id'] ?? '') })
+    await readBody(req)
+    return json(200, { ok: true })
+  }
   if (url.pathname === '/v1/messages/count_tokens') return json(200, { input_tokens: 12 })
   if (url.pathname === '/api/oauth/profile') return json(200, { account: { uuid: 'u-fake', email: ACCOUNT }, organization: { uuid: 'org-fake', name: 'Fake' } })
   if (url.pathname === '/api/oauth/usage') return json(200, { limits: [] })
@@ -106,12 +114,21 @@ const vaultDir = join(data, 'aliax')
 mkdirSync(join(vaultDir, 'secrets'), { recursive: true, mode: 0o700 })
 const password = randomBytes(32).toString('hex')
 writeFileSync(join(vaultDir, 'vault.key'), `${password}\n`, { mode: 0o600 })
-writeFileSync(join(vaultDir, 'profiles.json'), JSON.stringify({ 'claude-code': [{ name: ACCOUNT, accountId: 'u-fake', email: ACCOUNT, color: '#5b8def', createdAt: Date.now() }] }, null, 2))
+writeFileSync(
+  join(vaultDir, 'profiles.json'),
+  JSON.stringify({ 'claude-code': [{ name: ACCOUNT, accountId: 'u-fake', email: ACCOUNT, color: '#5b8def', createdAt: Date.now() }], codex: [{ name: CODEX_ACCOUNT, accountId: 'acct-codex', email: CODEX_ACCOUNT, color: '#10a37f', createdAt: Date.now() }] }, null, 2)
+)
+// Unscoped codex traffic spends the pin.
+writeFileSync(join(vaultDir, 'settings.json'), JSON.stringify({ proxyAccounts: { codex: CODEX_ACCOUNT } }))
 const blob = JSON.stringify({
   keychain: JSON.stringify({ claudeAiOauth: { accessToken: 'FAKE-ACCESS', expiresAt: Date.now() + 365 * 86_400_000, scopes: ['user:inference', 'user:profile'] } }),
   oauthAccount: { accountUuid: 'u-fake', emailAddress: ACCOUNT }
 })
 writeFileSync(join(vaultDir, 'secrets', `claude-code__${encodeURIComponent(ACCOUNT)}.bin`), chromiumEncrypt(deriveChromiumKey(password), blob))
+writeFileSync(
+  join(vaultDir, 'secrets', `codex__${encodeURIComponent(CODEX_ACCOUNT)}.bin`),
+  chromiumEncrypt(deriveChromiumKey(password), JSON.stringify({ tokens: { access_token: 'FAKE-CODEX', account_id: 'acct-codex' } }))
+)
 
 const logPath = join(OUT, 'instance.log')
 const env: Record<string, string> = {
@@ -281,7 +298,12 @@ try {
   check('the next turn streams and finishes', second.firstTextMs !== null && second.status === 'idle', `${second.status}${second.error ? `: ${second.error.slice(0, 200)}` : ''}`)
   check('the next turn went upstream', fake.posts.length > postsBefore && fake.posts.slice(postsBefore).some((p) => p.done))
 
-  // 5. The trace lines come from the child processes.
+  // 5. Codex rides the child's Chromium stack.
+  const codex = await fetch(`http://127.0.0.1:${after.port}/codex/v1/responses`, { method: 'POST', headers: { authorization: 'Bearer CLI', 'content-type': 'application/json' }, body: '{"model":"gpt-6-sol"}' })
+  check('a codex request answers through the child', codex.status === 200 && fake.codex.length === 1, `status ${codex.status}`)
+  check("it carried the pinned codex account's token, not the caller's", fake.codex[0]?.authorization === 'Bearer FAKE-CODEX' && fake.codex[0]?.accountId === 'acct-codex', JSON.stringify(fake.codex[0] ?? null))
+
+  // 6. The trace lines come from the child processes.
   await sleep(1_000)
   const text = logText()
   const traced = (pid: number): number => text.split('\n').filter((l) => new RegExp(`\\[gateway:${pid}\\] [A-Z]+ /claude/`).test(l)).length
@@ -293,6 +315,7 @@ try {
   const sample = text.split('\n').find((l) => l.includes(`[gateway:${after.pid}] POST /claude/`))
   if (sample) log(`trace: ${sample.trim().slice(0, 200)}`)
   check('main logged the respawn on the same port', text.includes(`respawning on :${before.port}`))
+  check("the codex request rode Chromium's stack in the child", new RegExp(`\\[gateway:${after.pid}\\] POST /codex/v1/responses → 200 reused=n/a`).test(text))
   await request('session.archive', { sessionId: session.id }).catch(() => undefined)
 } catch (e) {
   check('run completed', false, (e as Error).message)
@@ -304,7 +327,7 @@ try {
   await until('the instance to exit', 15_000, () => !mainPid || !alive(mainPid)).catch(() => {
     if (mainPid && alive(mainPid)) process.kill(mainPid, 'SIGKILL')
   })
-  // 6. The gateway process goes with it.
+  // 7. The gateway process goes with it.
   const left = await until('the gateway processes to exit', 15_000, () => gatewayPids.every((p) => !alive(p))).then(
     () => [],
     () => gatewayPids.filter(alive)

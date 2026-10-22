@@ -455,11 +455,17 @@ export class GatewayHost {
       link.kill()
       this.childGone(child, `did not start in ${this.options.readyTimeoutMs ?? 15_000} ms`)
     }, this.options.readyTimeoutMs ?? 15_000)
-    void this.startState().then((state) => {
-      if (this.child !== child) return
-      child.sent = true
-      link.wire.post({ t: 'start', state })
-    })
+    this.startState().then(
+      (state) => {
+        if (this.child !== child) return
+        child.sent = true
+        link.wire.post({ t: 'start', state })
+      },
+      (e) => {
+        link.kill()
+        this.childGone(child, `could not be told what to serve (${(e as Error).message})`)
+      }
+    )
   }
 
   private async startState(): Promise<StartState> {
