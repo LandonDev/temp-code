@@ -43,10 +43,31 @@ export class ConnectionLostError extends Error {
   }
 }
 
-const READ_TIMEOUT_MS = 30_000;
+/** The deadline of a read or a send; only these requests' answers can mark a host slow. */
+export const READ_TIMEOUT_MS = 30_000;
 const LONG_TIMEOUT_MS = 120_000;
 /** Searches, git and the doctor walk disks or networks; everything else is a read or a send. */
 const LONG_METHOD = /^(search|git|github|doctor)\.|\.search$/;
+/** Writes that do real work on the host before they answer: a worktree, a
+ *  merge and push, an account round trip, a package install, a thread move. */
+const LONG_WRITES: Readonly<Record<string, number>> = {
+  "providers.update": 660_000,
+  "session.move": 600_000,
+  "session.move.preview": LONG_TIMEOUT_MS,
+  "session.create": LONG_TIMEOUT_MS,
+  "workspace.create": LONG_TIMEOUT_MS,
+  "project.create": LONG_TIMEOUT_MS,
+  "project.mergeFrom": LONG_TIMEOUT_MS,
+  "project.mergeInto": LONG_TIMEOUT_MS,
+  "review.override": LONG_TIMEOUT_MS,
+  "lsp.ensure": LONG_TIMEOUT_MS,
+  "accounts.refresh": LONG_TIMEOUT_MS,
+  "accounts.sync": LONG_TIMEOUT_MS,
+  "accounts.setHome": LONG_TIMEOUT_MS,
+  "resources.remove": LONG_TIMEOUT_MS,
+  "batch.archive": LONG_TIMEOUT_MS,
+  "remote.environments.add": LONG_TIMEOUT_MS,
+};
 
 /** The deadline a method gets by default: by its name, so an unknown method gets the read's 30 s. */
 export function requestTimeoutMs(method: string, params?: unknown): number {
@@ -54,7 +75,7 @@ export function requestTimeoutMs(method: string, params?: unknown): number {
     const seconds = (params as { seconds?: unknown } | undefined)?.seconds;
     if (typeof seconds === "number" && seconds > 0) return (seconds + 5) * 1000;
   }
-  return LONG_METHOD.test(method) ? LONG_TIMEOUT_MS : READ_TIMEOUT_MS;
+  return LONG_WRITES[method] ?? (LONG_METHOD.test(method) ? LONG_TIMEOUT_MS : READ_TIMEOUT_MS);
 }
 
 export type TransportOptions = {
@@ -82,12 +103,13 @@ export class Transport {
     {
       method: string;
       sentAt: number;
+      timeoutMs: number;
       timer: ReturnType<typeof setTimeout>;
       resolve: (v: unknown) => void;
       reject: (e: Error) => void;
     }
   >();
-  private answerListeners = new Set<(ms: number, timedOut: boolean) => void>();
+  private answerListeners = new Set<(ms: number, timedOut: boolean, timeoutMs: number) => void>();
   private pushListeners = new Set<(push: ServerPush) => void>();
   private closeListeners = new Set<(reason: CloseReason) => void>();
   private helloWaiters: { resolve: (h: Hello) => void; reject: (e: Error) => void }[] = [];
@@ -128,22 +150,23 @@ export class Transport {
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         if (!this.pending.delete(id)) return;
-        this.noteAnswer(timeoutMs, true);
+        this.noteAnswer(timeoutMs, true, timeoutMs);
         reject(new TimeoutError(method, timeoutMs));
       }, timeoutMs);
-      this.pending.set(id, { method, sentAt: Date.now(), timer, resolve: resolve as (v: unknown) => void, reject });
+      this.pending.set(id, { method, sentAt: Date.now(), timeoutMs, timer, resolve: resolve as (v: unknown) => void, reject });
       this.ws!.send(JSON.stringify({ id, method, params }));
     });
   }
 
-  /** Every answer's time (ms) as it lands, and every timeout; the link's health reads these. */
-  onAnswer(listener: (ms: number, timedOut: boolean) => void): () => void {
+  /** Every answer's time (ms) as it lands, and every timeout, with the
+   *  request's deadline; the link's health reads these. */
+  onAnswer(listener: (ms: number, timedOut: boolean, timeoutMs: number) => void): () => void {
     this.answerListeners.add(listener);
     return () => this.answerListeners.delete(listener);
   }
 
-  private noteAnswer(ms: number, timedOut: boolean): void {
-    for (const l of this.answerListeners) l(ms, timedOut);
+  private noteAnswer(ms: number, timedOut: boolean, timeoutMs: number): void {
+    for (const l of this.answerListeners) l(ms, timedOut, timeoutMs);
   }
 
   /** Methods still waiting on a reply, oldest first. */
@@ -207,7 +230,7 @@ export class Transport {
     if (!p) return;
     this.pending.delete(frame.id);
     clearTimeout(p.timer);
-    this.noteAnswer(Date.now() - p.sentAt, false);
+    this.noteAnswer(Date.now() - p.sentAt, false, p.timeoutMs);
     if (frame.ok) p.resolve(frame.result);
     else p.reject(new Error(frame.error));
   }

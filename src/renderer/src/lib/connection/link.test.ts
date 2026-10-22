@@ -7,7 +7,7 @@ class Scripted {
   state: "open" | "closed" = "open";
   profile = "local" as const;
   calls: { method: string; options: unknown; resolve: (v: unknown) => void; reject: (e: Error) => void }[] = [];
-  private answers = new Set<(ms: number, timedOut: boolean) => void>();
+  private answers = new Set<(ms: number, timedOut: boolean, timeoutMs: number) => void>();
   private closes = new Set<() => void>();
   request(method: string, _params?: unknown, options?: unknown): Promise<unknown> {
     if (this.state !== "open") return Promise.reject(new ConnectionLostError("not connected"));
@@ -16,7 +16,7 @@ class Scripted {
   onPush(): () => void {
     return () => undefined;
   }
-  onAnswer(l: (ms: number, timedOut: boolean) => void): () => void {
+  onAnswer(l: (ms: number, timedOut: boolean, timeoutMs: number) => void): () => void {
     this.answers.add(l);
     return () => this.answers.delete(l);
   }
@@ -24,8 +24,8 @@ class Scripted {
     this.closes.add(l);
     return () => this.closes.delete(l);
   }
-  answer(ms: number, timedOut = false): void {
-    for (const l of this.answers) l(ms, timedOut);
+  answer(ms: number, timedOut = false, timeoutMs = 30_000): void {
+    for (const l of this.answers) l(ms, timedOut, timeoutMs);
   }
   drop(): void {
     this.state = "closed";
@@ -125,6 +125,11 @@ describe("EnvLink", () => {
     t.answer(30_000, true);
     expect(link.health.slowSince).toBe(50_000);
     t.answer(150);
+    expect(link.health).toEqual({ slowSince: null, lastAnswerMs: 150 });
+    expect(heard).toBe(2);
+    // A push or a search may take long on a healthy host: its late answer counts for nothing.
+    t.answer(60_000, false, 120_000);
+    t.answer(120_000, true, 120_000);
     expect(link.health).toEqual({ slowSince: null, lastAnswerMs: 150 });
     expect(heard).toBe(2);
   });

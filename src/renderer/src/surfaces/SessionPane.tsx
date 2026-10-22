@@ -549,9 +549,12 @@ export const SessionPane = memo(function SessionPane({
 export function loadLineText(name: string, load: LoadState, now: number): string | null {
   if (load.phase === "slow") return `Waiting for ${name} · ${Math.max(0, Math.floor((now - load.since) / 1000))} s`;
   if (load.phase !== "failed") return null;
-  const lead = `${name.charAt(0).toUpperCase()}${name.slice(1)} did not answer${load.error ? ` (${load.error})` : ""}`;
-  const wait = load.retryAt ? Math.ceil((load.retryAt - now) / 1000) : 0;
-  return wait > 0 ? `${lead} · retrying in ${wait} s` : `${lead} · retrying…`;
+  const host = `${name.charAt(0).toUpperCase()}${name.slice(1)}`;
+  const why = load.error ? ` (${load.error})` : "";
+  // No retry scheduled: the host answered with a refusal, not silence.
+  if (load.retryAt === undefined) return `${host} could not open this thread${why}`;
+  const wait = Math.ceil((load.retryAt - now) / 1000);
+  return wait > 0 ? `${host} did not answer${why} · retrying in ${wait} s` : `${host} did not answer${why} · retrying…`;
 }
 
 function LoadLine({ name, load, onRetry }: { name: string; load: LoadState; onRetry: () => void }) {

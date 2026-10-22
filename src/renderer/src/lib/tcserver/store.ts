@@ -3,7 +3,16 @@ import { noteBootResume } from "../bootResume";
 import type { Attachment, Block, HarnessId, LoadState, Session } from "../session";
 import { HARNESSES } from "../session";
 import { resolveModel } from "../models";
-import { SLOW_MS, Subscriptions, TimeoutError, asPage, retryDelay, type Link } from "../connection";
+import {
+  ConnectionLostError,
+  SLOW_MS,
+  Subscriptions,
+  TimeoutError,
+  asPage,
+  isConnectionFailure,
+  retryDelay,
+  type Link,
+} from "../connection";
 import { modeForPolicy } from "./access";
 import { applyRowBody, emptyFold, foldEvent, foldOptimisticUser, type FoldState } from "./fold";
 import type { EventsPage, SessionChanges, SessionPage } from "@server/shared/wire";
@@ -459,10 +468,7 @@ class SessionStore {
       // Transcripts asked for while the host was away load now, beside the list.
       this.kickWanted(link.environmentId);
       entry.listed = this.resync(link)
-        .then(() => {
-          this.registryRef?.markFresh?.(link.environmentId, true);
-          this.settleDrafts(link.environmentId);
-        })
+        .then(() => this.registryRef?.markFresh?.(link.environmentId, true))
         .catch(() => undefined)
         .then(() => {
           this.readyDone = true;
@@ -934,6 +940,7 @@ class SessionStore {
     const environmentId = link.environmentId;
     if (!this.attached.has(environmentId)) return;
     if (await this.resumeList(link)) {
+      this.settleDrafts(environmentId);
       await this.replayMounted(environmentId);
       return;
     }
@@ -956,6 +963,7 @@ class SessionStore {
     }
     this.mirrored.delete(environmentId);
     this.bumpMeta();
+    this.settleDrafts(environmentId);
     await this.replayMounted(environmentId);
   }
 
@@ -1136,7 +1144,7 @@ class SessionStore {
     entry.wanted = true;
     const link = this.linkOf(entry);
     if (!link?.connected) {
-      const down = new Error("not connected");
+      const down = new ConnectionLostError("not connected");
       if (entry.load.phase === "failed") this.failLoad(entry, down);
       else this.markLoading(entry, fresh);
       return Promise.reject(down);
@@ -1149,7 +1157,15 @@ class SessionStore {
           if (this.entries.get(id) === entry) this.finishLoad(entry);
         },
         (e: unknown) => {
-          if (this.entries.get(id) === entry && entry.wanted) this.failLoad(entry, e);
+          if (this.entries.get(id) === entry) {
+            // A failed first load starts over as one: a subscription left
+            // live would fold pushes into the empty transcript, and the
+            // retry would then ask only for what follows them.
+            this.subsOf(entry)?.remove(id);
+            entry.held = null;
+            this.resetFold(entry);
+            if (entry.wanted) this.failLoad(entry, e);
+          }
           throw e;
         },
       )
@@ -1167,6 +1183,12 @@ class SessionStore {
     const attempt = fresh ? 0 : entry.load.attempt;
     this.stopTimers(entry);
     if (fresh || entry.load.phase !== "slow") this.setLoad(entry, { phase: "loading", since, attempt });
+    this.armSlow(entry);
+  }
+
+  /** A load still loading SLOW_MS from now reads slow. */
+  private armSlow(entry: Entry): void {
+    if (entry.slowTimer) clearTimeout(entry.slowTimer);
     entry.slowTimer = setTimeout(() => {
       entry.slowTimer = null;
       if (entry.load.phase === "loading" && this.entries.get(entry.session.id) === entry) {
@@ -1184,16 +1206,34 @@ class SessionStore {
     this.bump();
   }
 
+  /** Failed: a lost socket or a late answer tries again by itself; the
+   *  host's own refusal waits for Retry now. */
   private failLoad(entry: Entry, e: unknown): void {
     this.stopTimers(entry);
     const attempt = entry.load.attempt + 1;
+    const failed: LoadState = { phase: "failed", since: entry.load.since, attempt, error: shortError(e) };
+    if (!isConnectionFailure(e)) {
+      this.setLoad(entry, failed);
+      return;
+    }
     const wait = retryDelay(attempt - 1);
-    this.setLoad(entry, { phase: "failed", since: entry.load.since, attempt, error: shortError(e), retryAt: Date.now() + wait });
+    this.setLoad(entry, { ...failed, retryAt: Date.now() + wait });
     entry.retryTimer = setTimeout(() => {
       entry.retryTimer = null;
       if (this.entries.get(entry.session.id) !== entry || !entry.wanted) return;
+      // Nobody shows it any more (its pane closed while it was in flight).
+      if (!this.isShown(entry)) {
+        if (this.forgetLoad(entry)) this.bump();
+        return;
+      }
       void this.startLoad(entry, "retry").catch(() => undefined);
     }, wait);
+  }
+
+  /** In the mounted set (or the shell has not said yet). */
+  private isShown(entry: Entry): boolean {
+    const keep = this.mountedClosure();
+    return !keep || keep.has(entry.session.id);
   }
 
   private setLoad(entry: Entry, load: LoadState): void {
@@ -1839,7 +1879,7 @@ class SessionStore {
         const load: LoadState = this.listedOk.has(session.environmentId)
           ? { phase: "loaded", since: Date.now(), attempt: 0 }
           : loadingState();
-        this.entries.set(session.id, {
+        const draft: Entry = {
           session: { ...session, load },
           meta: null,
           lastSeq: 0,
@@ -1854,7 +1894,9 @@ class SessionStore {
           held: null,
           head: null,
           rows: null,
-        });
+        };
+        this.entries.set(session.id, draft);
+        if (load.phase === "loading") this.armSlow(draft);
       } else if (entry.session !== session) {
         // The load phase is the store's: an updater never sets it.
         entry.session = session.load === entry.load ? session : { ...session, load: entry.load };

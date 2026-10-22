@@ -1,6 +1,6 @@
 import type { ServerPush } from "@server/shared/contract";
 import type { WireProfile } from "@server/shared/wire";
-import { ConnectionLostError, SLOW_MS, TimeoutError, type RequestOptions, type Transport } from "./transport";
+import { ConnectionLostError, READ_TIMEOUT_MS, SLOW_MS, TimeoutError, type RequestOptions, type Transport } from "./transport";
 
 /** Waits between retries of a failed load or read: 1, 2, 4, 8, then 15 s. */
 export const RETRY_BACKOFF_MS = [1_000, 2_000, 4_000, 8_000, 15_000] as const;
@@ -35,7 +35,9 @@ export type LinkRequestOptions = RequestOptions & {
 };
 
 /** How the host has been answering: `slowSince` is set by an answer later
- *  than SLOW_MS or a timeout and cleared by the next answer inside it. */
+ *  than SLOW_MS or a timeout of an ordinary request (a read or a send; a
+ *  push or a search may take long on a healthy host) and cleared by the
+ *  next answer inside SLOW_MS. */
 export type LinkHealth = { slowSince: number | null; lastAnswerMs: number | null };
 
 /**
@@ -163,7 +165,7 @@ export class EnvLink implements Link {
       session.onPush((push) => {
         for (const l of this.pushListeners) l(push);
       }),
-      session.onAnswer((ms, timedOut) => this.noteAnswer(ms, timedOut)),
+      session.onAnswer((ms, timedOut, timeoutMs) => this.noteAnswer(ms, timedOut, timeoutMs)),
       session.onClose(() => {
         if (this.session !== session) return;
         this.session = null;
@@ -174,13 +176,15 @@ export class EnvLink implements Link {
     for (const l of [...this.openListeners]) l();
   }
 
-  private noteAnswer(ms: number, timedOut: boolean): void {
-    const slow = timedOut || ms > SLOW_MS;
+  private noteAnswer(ms: number, timedOut: boolean, timeoutMs: number): void {
+    const late = timedOut || ms > SLOW_MS;
+    // A long method's late answer says nothing about the host; its quick one does.
+    if (late && timeoutMs > READ_TIMEOUT_MS) return;
     const wasSlow = this.healthState.slowSince !== null;
     this.healthState = {
-      slowSince: slow ? (this.healthState.slowSince ?? Date.now()) : null,
+      slowSince: late ? (this.healthState.slowSince ?? Date.now()) : null,
       lastAnswerMs: ms,
     };
-    if (slow !== wasSlow) for (const l of this.healthListeners) l();
+    if (late !== wasSlow) for (const l of this.healthListeners) l();
   }
 }

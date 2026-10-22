@@ -1,4 +1,4 @@
-import type { Transport } from "./transport";
+import { ConnectionLostError, type Transport } from "./transport";
 import type { Clock } from "./supervisor";
 import type { CloseReason, Hello } from "./types";
 
@@ -80,7 +80,7 @@ export class FakeTransport {
     for (const l of this.closeListeners) l(reason);
   }
   request(method: string, params?: unknown): Promise<unknown> {
-    if (this.state !== "open") return Promise.reject(new Error("not connected"));
+    if (this.state !== "open") return Promise.reject(new ConnectionLostError("not connected"));
     return new Promise((resolve, reject) => this.requests.push({ method, params, resolve, reject }));
   }
   pendingMethods(): string[] {
@@ -89,14 +89,14 @@ export class FakeTransport {
   onPush(): () => void {
     return () => undefined;
   }
-  private answerListeners = new Set<(ms: number, timedOut: boolean) => void>();
-  onAnswer(l: (ms: number, timedOut: boolean) => void): () => void {
+  private answerListeners = new Set<(ms: number, timedOut: boolean, timeoutMs: number) => void>();
+  onAnswer(l: (ms: number, timedOut: boolean, timeoutMs: number) => void): () => void {
     this.answerListeners.add(l);
     return () => this.answerListeners.delete(l);
   }
   /** An answer took `ms` (or timed out): what the link's health reads. */
-  answer(ms: number, timedOut = false): void {
-    for (const l of this.answerListeners) l(ms, timedOut);
+  answer(ms: number, timedOut = false, timeoutMs = 30_000): void {
+    for (const l of this.answerListeners) l(ms, timedOut, timeoutMs);
   }
   onClose(l: (r: CloseReason) => void): () => void {
     if (this.state === "closed" && this.closeReason) l(this.closeReason);
@@ -107,7 +107,7 @@ export class FakeTransport {
     if (this.state === "closed") return;
     this.state = "closed";
     this.closeReason = reason;
-    for (const r of this.requests) r.reject(new Error("connection closed"));
+    for (const r of this.requests) r.reject(new ConnectionLostError("connection closed"));
     this.requests = [];
     for (const l of this.closeListeners) l(reason);
   }

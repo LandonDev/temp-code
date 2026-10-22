@@ -205,6 +205,9 @@ describe("Transport", () => {
     expect(requestTimeoutMs("doctor.get")).toBe(120_000);
     expect(requestTimeoutMs("doctor.profile", { seconds: 20 })).toBe(25_000);
     expect(requestTimeoutMs("doctor.profile")).toBe(120_000);
+    expect(requestTimeoutMs("providers.update")).toBe(660_000);
+    expect(requestTimeoutMs("session.move")).toBe(600_000);
+    expect(requestTimeoutMs("project.mergeInto")).toBe(120_000);
     const { t } = await opened();
     const p = t.request("git.log").catch((e: unknown) => e);
     vi.advanceTimersByTime(119_999);

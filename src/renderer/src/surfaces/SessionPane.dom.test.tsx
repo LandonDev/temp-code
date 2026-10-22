@@ -155,5 +155,8 @@ describe("loadLineText", () => {
       "The box did not answer (connection closed) · retrying in 1 s",
     );
     expect(loadLineText("box", { phase: "failed", since: NOW, attempt: 1, retryAt: NOW - 1 }, NOW)).toBe("Box did not answer · retrying…");
+    expect(loadLineText("box", { phase: "failed", since: NOW, attempt: 1, error: "unknown session" }, NOW)).toBe(
+      "Box could not open this thread (unknown session)",
+    );
   });
 });

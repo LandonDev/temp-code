@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sessionStore, type Link } from "./store";
+import { ConnectionLostError } from "../connection";
 import { newSession } from "../session";
 import type { EventRow, ServerPush, SessionMeta } from "./types";
 import type { EventsPage, OmittedBody, SessionPage } from "@server/shared/wire";
@@ -441,7 +442,7 @@ describe("remote profile: the load phase", () => {
     const request = link.request.bind(link);
     let failures = 3;
     link.request = <T,>(method: string, params?: unknown): Promise<T> =>
-      method === "session.events" && failures-- > 0 ? Promise.reject(new Error("connection closed")) : request<T>(method, params);
+      method === "session.events" && failures-- > 0 ? Promise.reject(new ConnectionLostError("connection closed")) : request<T>(method, params);
     await sessionStore.ensureLoaded("s1").catch(() => undefined);
     await vi.advanceTimersByTimeAsync(1_000);
     expect(sessionStore.get("s1")?.load).toMatchObject({ phase: "failed", attempt: 2, retryAt: Date.now() + 2_000 });
