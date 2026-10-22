@@ -1396,14 +1396,21 @@ proof and the sizing rules; the pieces, by name:
   (`adminPairing`), beside thread 26's fake devices;
   `TC_PROOF_SET=host-extras` shoots it (`TC_TEST_SHEET=deploy-log` opens
   the log).
-- Steering (L5): `ios/TempCode/Sources/Thread/Composer.swift` (the bar on
-  every segment, Send ↔ Stop, the model and reasoning chips on focus; a
-  watching master's button is Send and a master mid-turn with text steers)
+- Steering (L5): `ios/TempCode/Sources/Thread/Composer.swift` (the chat bar
+  on every segment, Messages' on iOS 26: one glass capsule floating over the
+  transcript with the send button inside it only while there is text, Stop
+  while a turn runs, and a glass circle whose menu holds Photos, the model
+  and the reasoning; 52 pt at rest where the docked bar was 74; a watching
+  master's button is Send and a master mid-turn with text steers; glass goes
+  through `Design/Glass.swift` alone, the radius ladder through
+  `Design/Tokens.swift`, and no view joins facts with " · ":
+  docs/IOS-DESIGN.md "Liquid Glass" and "Text hierarchy")
   with `ComposerStyles.swift` (the catalog choice, the menus, the chip, the
   card button) and `ComposerAttachments.swift` (photos from the system
   picker, four per turn, uploaded through `attachment.begin/chunk/commit`
   as they are picked, a chip with a bar each); `WorkingStrip.swift` (the
-  row at one height per text size, six phases on the client package's
+  status line above the capsule only while there is something to say, its
+  words the client package's `StripWords`, five phases on
   `WorkingPhase`: Sending…, spinner + flavour word + elapsed, the paused
   row with Stop and Continue and a master's batch line, the stopped row
   with Resume, the queued line with Start now); `CardActions.swift` (Allow,
