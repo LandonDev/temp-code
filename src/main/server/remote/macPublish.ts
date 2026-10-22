@@ -7,8 +7,10 @@ import {
   isPublishPeerMethod,
   type PublishCallParams,
   type PublishPeerMethod,
-  type PublishRun
+  type PublishRun,
+  type PublishStartArgs
 } from '@shared/contract-publish'
+import { PhaseTracker, formatDuration } from '@shared/releasePhases'
 import type { Publisher } from '../hostJobs'
 import { servePeerCall, type LinkRequest } from './peerCalls'
 
@@ -60,6 +62,17 @@ export class MacPublish {
       return { stopped: true }
     }
     const { args } = PublishStartParamsSchema.parse(params)
+    return this.run(args, ctx)
+  }
+
+  /** The job itself, for a peer's call or this Mac's own batch (LocalPublish): pull the
+   *  branch in the release checkout, check the commit and the version, run release:publish
+   *  with every line to `progress`, and answer when the Publisher's log says done. */
+  async run(
+    args: PublishStartArgs,
+    ctx: { deadlineAt: number; progress?: (chunk: string) => void }
+  ): Promise<PublishRun> {
+    const publisher = this.deps.publisher
     // Hold this slot through the pull, so a second peer cannot move the checkout beneath a job.
     if (this.active || publisher.log.status.phase === 'running')
       throw new Error('a publish is already running')
@@ -90,20 +103,22 @@ export class MacPublish {
           const finish = (): void => {
             const { status, text } = publisher.log.snapshot()
             if (status.phase !== 'done') return
-            const last = text
-              .split(/\r?\n/)
-              .map((line) => line.trim())
+            const lines = text.split(/\r?\n/).map((line) => line.trim())
+            const last = lines
               .filter(
                 (line) => line && !/^== (?:release |exited |stopped \(|stop requested$)/.test(line)
               )
               .at(-1)
+            const phases = new PhaseTracker()
+            for (const line of lines) phases.feed(line)
+            const took = phases.totalMs !== null ? ` in ${formatDuration(phases.totalMs)}` : ''
             resolve({
               ok: status.exit === 0,
               exit: status.exit,
-              version: args.version,
+              version: phases.version ?? args.version,
               text:
                 status.exit === 0
-                  ? `Published ${args.version}`
+                  ? `Published ${phases.version ?? args.version}${took}`
                   : last || `Publish exited ${status.exit ?? 'without a status'}`
             })
           }
@@ -131,3 +146,40 @@ export class MacPublish {
 }
 
 export const macPublishOffers = (): string[] => [PUBLISH_OFFER]
+
+/**
+ * The Mac's own batch publishing on the Mac (batch.ts `publish` dep when
+ * the master thread lives here): the same job as a peer's call, no link.
+ * The box's half, PeerPublish, has the same shape.
+ */
+export class LocalPublish {
+  constructor(private readonly mac: Pick<MacPublish, 'run'>, private readonly deps: { stop: () => void; deadlineMs?: number }) {}
+
+  resolveMac(): string {
+    return 'this Mac'
+  }
+
+  start(
+    _sessionId: string,
+    args: PublishStartArgs,
+    onLine: (line: string) => void
+  ): { done: Promise<PublishRun>; stop: () => Promise<void> } {
+    let partial = ''
+    const done = this.mac
+      .run(args, {
+        deadlineAt: Date.now() + (this.deps.deadlineMs ?? 90 * 60_000),
+        progress: (chunk) => {
+          const lines = (partial + chunk).split('\n')
+          partial = lines.pop() ?? ''
+          for (const line of lines) onLine(line.replace(/\r$/, ''))
+        }
+      })
+      .finally(() => {
+        if (partial) onLine(partial.replace(/\r$/, ''))
+      })
+    return {
+      done,
+      stop: async () => this.deps.stop()
+    }
+  }
+}

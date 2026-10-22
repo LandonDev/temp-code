@@ -16,6 +16,7 @@ import type { DeployStatus, HostLogPush } from '@shared/contract-host'
 import type { SessionMeta } from '@shared/events'
 import { gateLine, type GateNotice } from '@shared/gate'
 import { BATCH_GATE_TOOL_NAME, BATCH_RULES_TOOL_NAME, GATE_TEXT_TAIL, logTail } from '@shared/gate'
+import { PUBLISH_PHASES, PhaseTracker, deployProgress, formatDuration } from '@shared/releasePhases'
 import { gateQueue, type GateQueue, type GateWait } from './gateQueue'
 import { runGateStep } from './gateRun'
 import { branchOf, fastForwardMerge, revParse, type MergeResult } from './mergeBranch'
@@ -33,11 +34,22 @@ import type { SessionRegistry } from './sessions'
  * commit tier once on the project checkout at the project branch's head);
  * `release` (`bun scripts/release.ts "<notes>" --push` after a green gate:
  * the tag, and master with it pushed to origin); `publish` (the Mac's
- * publish job for that commit over the peer link, remote/peerPublish.ts);
- * `deploy` none or box (the box's deploy trigger, docs/box.md "Deploy from
- * the app": v1.0.N when published, master otherwise); `then` notify (a
- * notice row on the master and a wake) or archive-children (the same, and
- * every done child archived).
+ * publish job for that commit: over the peer link from the box,
+ * remote/peerPublish.ts, or the Mac's own Publisher when the master lives
+ * on the Mac, remote/macPublish.ts LocalPublish); `deploy` none or box (the
+ * box's deploy trigger, docs/box.md "Deploy from the app": v1.0.N when
+ * published, master otherwise; from the Mac over its link to the box,
+ * remote/peerDeploy.ts); `then` notify (a notice row on the master and a
+ * wake) or archive-children (the same, and every done child archived).
+ *
+ * Each step's telemetry on the wire (contract-batch.ts): the publish step
+ * counts the script's phases (releasePhases.ts: gate, build, sign, zip,
+ * pack, upload, feed, and the app's own update) with the running one as
+ * the label and every line in its log; the deploy step counts box-update's
+ * stages; the release step the gate's lines. A green publish or a green
+ * deploy of a v1.0.N tells the installed Mac app to fetch it that second
+ * (`announce`: releaseAnnounce.ts), and the final <batch-report> names the
+ * version published and deployed with each step's time.
  *
  * The engine runs when the last child is done: every unarchived root
  * carrying the masterId is `done`, or `idle` with a turn completed. A
@@ -118,7 +130,7 @@ export interface PublishRun {
   text: string
 }
 
-/** What the engine needs of remote/peerPublish.ts: the box's side of the Mac's publish job. */
+/** What the engine needs of the publish job: remote/peerPublish.ts on the box, remote/macPublish.ts's LocalPublish on the Mac. */
 export interface PublishLike {
   resolveMac(sessionId: string): string
   start(
@@ -128,10 +140,10 @@ export interface PublishLike {
   ): { done: Promise<PublishRun>; stop: () => Promise<void> }
 }
 
-/** What the engine needs of hostJobs.ts's DeployTrigger. */
+/** What the engine needs of the deploy: hostJobs.ts's DeployTrigger on the box, remote/peerDeploy.ts on the Mac. */
 export interface DeployLike {
   deploy(ref: string): Promise<unknown>
-  status(): DeployStatus
+  status(): DeployStatus | Promise<DeployStatus>
   subscribe(connection: number, send: (push: HostLogPush) => void): () => void
 }
 
@@ -163,6 +175,10 @@ export interface BatchesDeps {
   publish?: PublishLike
   /** the box's deploy trigger (hostJobs.ts `host.deploy`); absent where there is none */
   deploy?: DeployLike
+  /** a release landed (a green publish, a green deploy of a v1.0.N): the installed app fetches it now (releaseAnnounce.ts) */
+  announce?: (version: string) => void
+  /** this host's running version ("1.0.N"): a publish step found running at boot passed when the host restarted into its version */
+  version?: string
   now?: () => number
   /** how often at most the `batch` push goes out while a log streams (ms) */
   pushEveryMs?: number
@@ -246,6 +262,14 @@ export class Batches {
     for (const row of this.rows.values()) {
       const publish = this.step(row, 'publish')
       if (publish.status === 'running') {
+        if (row.version && this.deps.version === row.version) {
+          // The Mac restarted into the release its own publish step made: the step is done, the rest waits for a message.
+          this.end(row, 'publish', 'passed', `v${row.version} published; this host restarted into it`)
+          this.save(row)
+          const master = this.deps.registry.get(row.masterId)
+          if (master) this.tell(master, 'done', `The batch's publish of v${row.version} landed and this host restarted into it; the steps after it did not run. Send a message to run the end of the batch again if the rules name a deploy.`)
+          continue
+        }
         this.end(row, 'publish', 'failed', 'the host restarted during the publish; its outcome is on the Mac')
         this.save(row)
         const master = this.deps.registry.get(row.masterId)
@@ -615,13 +639,13 @@ export class Batches {
           return fail('publish', `The batch's publish cannot run: ${err instanceof Error ? err.message : String(err)}`)
         }
         const sha = await this.revParse(project.cwd, target!)
-        this.begin(row, 'publish', `v${row.version} on the Mac`)
-        this.progress(row, 'publish', { done: 0, total: 1, label: 'pulling' })
+        this.begin(row, 'publish', `v${row.version} on ${mac === 'this Mac' ? 'this Mac' : 'the Mac'}`)
+        const phases = new PhaseTracker(PUBLISH_PHASES)
+        this.progress(row, 'publish', { done: 0, total: PUBLISH_PHASES.length, label: 'pulling' })
         this.save(row)
         const run = this.deps.publish.start(master.id, { sha, branch: target!, version: row.version, notes: this.notes(master, row) }, (line) => {
           this.logLine(row, 'publish', line)
-          const stage = publishStage(line)
-          if (stage) this.progress(row, 'publish', { done: 0, total: 1, label: stage })
+          if (phases.feed(line)) this.progress(row, 'publish', phases.progress())
         })
         this.publishing.set(master.id, run)
         let outcome: PublishRun
@@ -633,9 +657,13 @@ export class Batches {
         }
         this.publishing.delete(master.id)
         if (!outcome.ok) return fail('publish', `The Mac's publish of v${row.version} FAILED (exit ${outcome.exit ?? '?'}): ${outcome.text}`)
-        this.progress(row, 'publish', { done: 1, total: 1 })
-        this.end(row, 'publish', 'passed', `v${row.version} published`)
+        const version = outcome.version ?? row.version
+        const took = formatDuration(this.now() - (this.step(row, 'publish').startedAt ?? this.now()))
+        this.logLine(row, 'publish', `== v${version} published in ${took}${phases.summary() ? ` (${phases.summary()})` : ''}`)
+        this.progress(row, 'publish', { done: PUBLISH_PHASES.length, total: PUBLISH_PHASES.length })
+        this.end(row, 'publish', 'passed', `v${version} published in ${took}`)
         this.save(row)
+        this.deps.announce?.(version)
       }
       // deploy: the box's trigger; the process may not survive it.
       if (row.rules.deploy !== 'box') {
@@ -686,18 +714,22 @@ export class Batches {
       for (const line of parts) {
         if (!line.trim()) continue
         this.logLine(row, 'deploy', line)
-        const stage = deployStage(line)
-        if (stage) this.progress(row, 'deploy', { done: 0, total: 1, label: stage })
+        this.progress(row, 'deploy', deployProgress(this.step(row, 'deploy').log))
       }
     }
     const close = (status: DeployStatus): void => {
       this.following.get(row.masterId)?.()
       this.following.delete(row.masterId)
+      const ref = status.target ?? row.deployRef ?? ''
       row.deployRef = null
       if (status.exit === 0) {
-        this.progress(row, 'deploy', { done: 1, total: 1 })
-        this.end(row, 'deploy', 'passed', `${status.target ?? ''} deployed`.trim())
+        const step = this.step(row, 'deploy')
+        const took = formatDuration(this.now() - (step.startedAt ?? this.now()))
+        this.logLine(row, 'deploy', `== ${ref} deployed in ${took}`)
+        this.progress(row, 'deploy', { done: deployProgress(step.log).total, total: deployProgress(step.log).total })
+        this.end(row, 'deploy', 'passed', `${ref} deployed in ${took}`.trim())
         this.save(row)
+        if (/^v\d+\.\d+\.\d+$/.test(ref)) this.deps.announce?.(ref.slice(1))
         void this.thenPhase(master, row).finally(() => this.gating.delete(row.masterId))
       } else {
         this.end(row, 'deploy', 'failed', status.exit === null ? 'the deploy did not run' : `exit ${status.exit}`)
@@ -711,7 +743,14 @@ export class Batches {
       if (push.status.phase === 'done') close(push.status as DeployStatus)
     })
     this.following.set(row.masterId, off)
-    const now = deploy.status()
+    let now: DeployStatus
+    try {
+      now = await deploy.status()
+    } catch (err) {
+      // The box is out of reach right now (its deploy restarts it): the pushes close the step when it is back.
+      this.logLine(row, 'deploy', `== waiting for the box: ${err instanceof Error ? err.message : String(err)}`)
+      return
+    }
     if (now.phase === 'done') close(now)
     else if (now.phase === 'idle') close({ ...now, exit: null })
   }
@@ -723,7 +762,10 @@ export class Batches {
     this.save(row)
     const outcome = (id: BatchStepId): string | null => {
       const s = this.step(row, id)
-      return s.status === 'passed' ? s.detail : null
+      if (s.status !== 'passed') return null
+      // Each step with its time: the detail already says it for publish and deploy.
+      const took = s.startedAt !== undefined && s.endedAt !== undefined && !/ in \d/.test(s.detail) ? ` in ${formatDuration(s.endedAt - s.startedAt)}` : ''
+      return `${s.detail}${took}`
     }
     const line = [this.landDetail(row, row.leftOut), outcome('gate') && `gate ${outcome('gate')}`, outcome('release'), outcome('publish'), outcome('deploy')]
       .filter(Boolean)
@@ -942,18 +984,6 @@ function failedAt(log: string): string {
 /** release.ts's last line names the tag: "released v277 (tag release-277, …)". */
 export function releaseTag(log: string): string | null {
   return /tag (release-\d+)/.exec(log)?.[1] ?? null
-}
-
-/** The stage a box-update or deploy-runner line names ("== stage 40: build", "[deploy] trial"), for the progress label. */
-export function deployStage(line: string): string | null {
-  const m = /^(?:==|\[deploy\]|\[box-update\])\s*(.+)$/.exec(line.trim())
-  return m ? m[1].trim().slice(0, 80) : null
-}
-
-/** The stage a release-publish.sh line names ("== notarizing", "== uploading"). */
-export function publishStage(line: string): string | null {
-  const m = /^(?:==|›)\s*(.+)$/.exec(line.trim())
-  return m ? m[1].trim().slice(0, 80) : null
 }
 
 function fmtMs(ms: number): string {

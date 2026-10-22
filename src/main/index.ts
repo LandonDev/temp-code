@@ -4,7 +4,7 @@ import { join } from 'path'
 import { copyFileSync, existsSync, mkdirSync } from 'fs'
 import { flushCompileCache, getCompileCacheDir } from 'node:module'
 import { bootMark } from './server/boot'
-import { noteInstallOnQuit, registerUpdates } from './update'
+import { noteInstallOnQuit, registerUpdates, selfUpdate } from './update'
 import { applyHarness, bakedHarness } from './harness'
 import { configureAliax, upstream } from './aliax'
 import { loadEnvironmentId } from './server/remote/environment'
@@ -138,7 +138,9 @@ app.whenReady().then(async () => {
     claimShim: mayClaimShim({ isPackaged: app.isPackaged }),
     assets: handleAssetRequest,
     watchMaster: !headless,
-    preconnect: (provider, account) => void preconnectAccount(provider, account, { upstream: upstream() })
+    preconnect: (provider, account) => void preconnectAccount(provider, account, { upstream: upstream() }),
+    // A release this app published, or the box's word that one landed, is fetched at once (update.ts).
+    selfUpdate: headless ? undefined : (version) => selfUpdate(version)
   })
   if (!headless) {
     registerUpdates()

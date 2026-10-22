@@ -407,3 +407,76 @@ describe('handleHost', () => {
     deploy.dispose()
   })
 })
+
+describe('Publisher: the update phase', () => {
+  it('a green script is followed by the app fetching the version its total line names, as a phase of the same log; a red one is not', async () => {
+    const home = join(root, 'home')
+    checkoutAt(join(home, 'IdeaProjects', 'temp-code'), 272)
+    const children: FakeChild[] = []
+    let settle!: (outcome: 'ready' | 'error') => void
+    const asked: string[] = []
+    let now = 1000
+    const publisher = new Publisher({
+      store: store(),
+      home,
+      git: fakeGit({ tag: 'v1.0.270', subjects: ['one'] }).git,
+      feedVersion: async () => '1.0.270',
+      spawnScripts: () => {
+        const child = fakeChild()
+        children.push(child)
+        return child as never
+      },
+      selfUpdate: (version) => {
+        asked.push(version)
+        return new Promise((resolve) => (settle = resolve))
+      },
+      now: () => now
+    })
+    await publisher.publish('notes')
+    children[0].stdout.emit('data', 'phase › gate\nphase ✓ gate 71s\nphase ✓ total 4m12s 1.0.273\n')
+    children[0].emit('exit', 0, null)
+    expect(asked).toEqual(['1.0.273'])
+    // Still running: the job ends with the update phase.
+    expect((await publisher.status()).phase).toBe('running')
+    expect(publisher.log.snapshot().text).toContain('== exited 0\nphase › update\n')
+    now += 31_000
+    settle('ready')
+    await new Promise((r) => setTimeout(r, 0))
+    expect((await publisher.status()).phase).toBe('done')
+    expect((await publisher.status()).exit).toBe(0)
+    expect(publisher.log.snapshot().text).toContain('phase ✓ update 31s\n')
+    // A red script asks nothing.
+    await publisher.publish('again')
+    children[1].emit('exit', 1, null)
+    expect(asked).toEqual(['1.0.273'])
+    expect((await publisher.status()).phase).toBe('done')
+  })
+
+  it('without a total line the target version is fetched; a skipped update is said so', async () => {
+    const home = join(root, 'home')
+    checkoutAt(join(home, 'IdeaProjects', 'temp-code'), 272)
+    const children: FakeChild[] = []
+    const asked: string[] = []
+    const publisher = new Publisher({
+      store: store(),
+      home,
+      git: fakeGit({ tag: 'v1.0.270', subjects: ['one'] }).git,
+      feedVersion: async () => '1.0.270',
+      spawnScripts: () => {
+        const child = fakeChild()
+        children.push(child)
+        return child as never
+      },
+      selfUpdate: async (version) => {
+        asked.push(version)
+        return 'current'
+      }
+    })
+    await publisher.publish('notes')
+    children[0].emit('exit', 0, null)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(asked).toEqual(['1.0.273'])
+    expect(publisher.log.snapshot().text).toContain('phase – update skipped (current)\n')
+    expect((await publisher.status()).phase).toBe('done')
+  })
+})

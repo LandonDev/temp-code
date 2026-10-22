@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { PublishStartArgs } from '@shared/contract-publish'
 import type { Publisher } from '../hostJobs'
 import { HostLog } from '../hostJobs'
-import { MacPublish, macPublishOffers } from './macPublish'
+import { LocalPublish, MacPublish, macPublishOffers } from './macPublish'
 
 const BOX = 'box'
 const SHA = 'a'.repeat(40)
@@ -231,5 +231,23 @@ describe('MacPublish', () => {
       mac.handle('publish.start', params, { ...context(), deadlineAt: Date.now() + 20 })
     ).rejects.toThrow('the publish deadline passed')
     expect(log.subscriberCount).toBe(0)
+  })
+})
+
+describe('LocalPublish', () => {
+  it("runs the Mac's own job for the Mac's batch, lines joined across chunks, stop through the Publisher", async () => {
+    const { mac, publisher, log, finish } = setup()
+    const local = new LocalPublish(mac, { stop: () => publisher.stop() })
+    expect(local.resolveMac()).toBe('this Mac')
+    const lines: string[] = []
+    const run = local.start('m', args, (line) => lines.push(line))
+    await vi.waitFor(() => expect(publisher.publish).toHaveBeenCalledWith(args.notes, { train: false }))
+    log.append('phase › gate\nphase ✓ ga')
+    log.append('te 71s\nphase ✓ total 4m12s 1.0.277\n')
+    expect(lines).toEqual(['phase › gate', 'phase ✓ gate 71s', 'phase ✓ total 4m12s 1.0.277'])
+    finish(0)
+    await expect(run.done).resolves.toEqual({ ok: true, exit: 0, version: '1.0.277', text: 'Published 1.0.277 in 4m12s' })
+    await run.stop()
+    expect(publisher.stop).toHaveBeenCalled()
   })
 })

@@ -46,11 +46,14 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
-  # Notarized when APPLE_KEYCHAIN_PROFILE (or APPLE_ID + password + team)
-  # is in the environment; skipped with a warning otherwise. The updater
-  # verifies each download's Developer ID signature, so a published build
-  # MUST be signed and notarized — release:publish refuses to run without.
-  notarize: true
+  # Not notarized by default: Squirrel validates an update against the
+  # installed app's designated requirement, so the Developer ID signature is
+  # what makes updates install, and Gatekeeper reads a notarization ticket
+  # only on a quarantined bundle (a browser download). `bun run
+  # release:publish --notarize` turns it on (-c.mac.notarize=true with
+  # APPLE_KEYCHAIN_PROFILE in the environment) for a release someone else
+  # will download. A published build MUST be signed either way.
+  notarize: false
   # Mach-O files outside the Electron frameworks are not signed by default;
   # the Appshots Swift helper has to carry the same identity or
   # notarization rejects the bundle.

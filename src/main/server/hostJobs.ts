@@ -24,6 +24,8 @@ import {
   type HostLogPush,
   type PublishStatus
 } from '@shared/contract-host'
+import { PhaseTracker, formatDuration } from '@shared/releasePhases'
+import { updatePhaseLine, type SelfUpdateOutcome } from '../updateTrigger'
 import { loginShell } from './loginShell'
 import { trackChild } from './spawnBudget'
 
@@ -52,6 +54,11 @@ import { trackChild } from './spawnBudget'
  *    a branch other than master, a version the feed already serves) before
  *    starting, and their own refusals come through as the log's last lines.
  *    The publish peer uses train: false to publish HEAD without cutting another release.
+ *    The script prints one `phase ✓ name 12s` line per phase (releasePhases.ts);
+ *    when it exits green the Publisher adds the `update` phase itself: the
+ *    installed app this runs in fetches what it just published (update.ts
+ *    selfUpdate) and the log says `phase ✓ update 31s` once the zip is ready
+ *    for the restart click, then the job is done.
  *
  * HostLog is the one shape both feed: the text so far (capped), the status,
  * and the sockets that asked for it with `host.log`.
@@ -326,6 +333,8 @@ export interface PublisherDeps {
   feedVersion?: () => Promise<string | null>
   /** The scripts as a child in a process group of its own; stdout and stderr piped. */
   spawnScripts?: (opts: { cwd: string; notes: string; shell: string; env: NodeJS.ProcessEnv; train: boolean }) => ChildProcess
+  /** This app's own updater (update.ts selfUpdate): fetch the version just published; absent on a headless host. */
+  selfUpdate?: (version: string) => Promise<SelfUpdateOutcome>
   now?: () => number
 }
 
@@ -514,9 +523,33 @@ export class Publisher {
       this.child = null
       const exit = code ?? (signal ? 128 + 15 : 1)
       this.log.append(signal ? `== stopped (${signal})\n` : `== exited ${exit}\n`)
-      this.log.setStatus({ ...this.log.status, phase: 'done', finishedAt: this.deps.now(), exit })
+      const finish = (): void => this.log.setStatus({ ...this.log.status, phase: 'done', finishedAt: this.deps.now(), exit })
+      const version = exit === 0 ? this.publishedVersion() : null
+      if (version && this.deps.selfUpdate) void this.update(version).finally(finish)
+      else finish()
     })
     return this.status()
+  }
+
+  /** The version the script's total line names, else the job's target. */
+  private publishedVersion(): string | null {
+    const tracker = new PhaseTracker()
+    for (const line of this.log.snapshot().text.split(/\r?\n/)) tracker.feed(line)
+    return tracker.version ?? this.log.status.target?.replace(/^v/, '') ?? null
+  }
+
+  /** The `update` phase: this app fetches what it just published, and the log says how it went. */
+  private async update(version: string): Promise<void> {
+    const started = this.deps.now()
+    this.log.append('phase › update\n')
+    let outcome: SelfUpdateOutcome
+    try {
+      outcome = await this.deps.selfUpdate!(version)
+    } catch (err) {
+      this.log.append(`ERROR: ${err instanceof Error ? err.message : String(err)}\n`)
+      outcome = 'error'
+    }
+    this.log.append(`${updatePhaseLine(outcome, this.deps.now() - started, formatDuration)}\n`)
   }
 
   subscribe(connection: number, send: (push: HostLogPush) => void): () => void {

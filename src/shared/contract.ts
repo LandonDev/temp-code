@@ -1204,6 +1204,8 @@ export type ServerPush =
   | import('./contract-hostdevices').HostDevicesPush
   // Memory sync (contract-memory.ts): a receiver's nudge down a driver's link.
   | import('./contract-memory').MemoryNudgePush
+  // A release landed (releaseAnnounce.ts): the box, down every Mac's link, after its deploy or a batch's publish; the Mac checks the feed at once.
+  | { push: 'release-available'; from: string; version: string }
   // Thread resources (contract-resources.ts): a thread's ledger rows after any change.
   | import('./contract-resources').ResourcesPush
   // Watcher spine (M11): project-relative path, debounced ~100 ms.

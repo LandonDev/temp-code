@@ -22,7 +22,8 @@ projects, threads, a code editor, terminals, git, and an inbox.
 ## Install
 
 Apple silicon Mac on macOS 12 or newer. Download the dmg above, open it,
-and drag TempCode to Applications. The app is signed and notarized.
+and drag TempCode to Applications. The app is signed with a Developer ID;
+the dmg is published on request (`bun run release:publish --dmg --notarize`).
 
 It needs on the machine:
 
@@ -63,6 +64,7 @@ bun run typecheck
 bun run build        # typecheck + electron-vite build
 ```
 
-Releases are arm64 only. `bun run release:publish` signs, notarizes and
-publishes the current version to GitHub releases; see CLAUDE.md for the
-release train.
+Releases are arm64 only. `bun run release:publish` signs and publishes the
+current version to GitHub releases as a zip the installed app updates from
+(`--notarize` and `--dmg` for a release someone else will download); see
+CLAUDE.md for the release train.

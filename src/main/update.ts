@@ -17,6 +17,14 @@ import {
   updaterCacheDirName,
   type InstallFailure
 } from './updateInstall'
+import {
+  CHECK_EVERY_MS,
+  FEED_RETRIES,
+  FEED_RETRY_MS,
+  SELF_UPDATE_TIMEOUT_MS,
+  decideFetch,
+  type SelfUpdateOutcome
+} from './updateTrigger'
 import { armQuit, cancelQuit, confirmQuit, hasQuitSubscriber, requestQuit, targetWindow } from './windows'
 
 const { autoUpdater } = electronUpdater
@@ -24,14 +32,18 @@ const { autoUpdater } = electronUpdater
 /**
  * Self-update through electron-updater's GitHub provider, the way Aliax
  * does it: the installed app polls the public temp-code repo's releases
- * (latest-mac.yml beside the signed, notarized zip), downloads only when the
- * user asks, and restarts into the new build on request. Every green commit
+ * (latest-mac.yml beside the signed zip) every five minutes, downloads only
+ * when the user asks, and restarts into the new build on request. A release
+ * the app is TOLD about (`selfUpdate`: the Publish button's script exiting
+ * green in this process, or the box's `release-available` after its deploy)
+ * is checked for at once and downloaded without asking, so the restart
+ * offer is there the moment the publish lands; nothing installs without
+ * the restart click (updateTrigger.ts has the rules). Every green commit
  * still tags `release-N` locally and bumps package.json to 1.0.N; only
  * `bun run release:publish` turns one of those into a GitHub release the
  * installed app can see. Dev instances report but never apply.
  */
 
-const CHECK_EVERY_MS = 30 * 60 * 1000
 const FOCUS_RECHECK_MS = 15 * 60 * 1000
 
 export interface UpdateStatus {
@@ -89,10 +101,15 @@ export function notesToText(notes: unknown): string {
 function setStatus(patch: Partial<UpdateStatus>): void {
   status = { ...status, ...patch }
   targetWindow()?.webContents.send('update-status', status)
+  if (status.phase === 'ready' || status.phase === 'error') {
+    for (const w of [...settled]) w(status.phase)
+  }
 }
 
 let lastCheck = 0
 let checking: Promise<UpdateStatus> | null = null
+/** Waiters of `selfUpdate`, settled when the phase reaches ready or error. */
+const settled = new Set<(phase: 'ready' | 'error') => void>()
 
 async function check(): Promise<UpdateStatus> {
   if (!app.isPackaged) return status
@@ -171,6 +188,53 @@ async function apply(): Promise<UpdateStatus> {
   }
   if (status.phase === 'idle' && status.latest) return startDownload()
   return status
+}
+
+/**
+ * A release this app was told about: fetch it now and offer the restart.
+ * The feed is read at once (again up to FEED_RETRIES times when it lags the
+ * version named), the download starts without a click, and the answer
+ * comes back once the zip is ready (the sidebar reads "Restart to update"),
+ * on an error, or after SELF_UPDATE_TIMEOUT_MS with the download still
+ * going. A version no newer than the running one, or one already
+ * downloaded, changes nothing; a dev instance answers `unavailable`.
+ */
+export async function selfUpdate(version: string, opts: { timeoutMs?: number } = {}): Promise<SelfUpdateOutcome> {
+  if (!app.isPackaged) return 'unavailable'
+  const decision = decideFetch(version, status.current, status)
+  if (decision === 'current') return 'current'
+  if (decision === 'already' && status.phase === 'ready') return 'ready'
+  const started = Date.now()
+  if (decision === 'fetch') {
+    let found = false
+    for (let attempt = 0; attempt <= FEED_RETRIES; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, FEED_RETRY_MS))
+      if (status.phase === 'downloading' || status.phase === 'ready') break
+      await check()
+      if (status.latest && decideFetch(status.latest, status.current, { phase: 'idle', latest: null }) === 'fetch') {
+        found = true
+        break
+      }
+    }
+    if (!found && status.phase !== 'downloading' && status.phase !== 'ready') return 'unavailable'
+    if (status.phase === 'idle' && status.latest) startDownload()
+  }
+  if (status.phase === 'ready') return 'ready'
+  if (status.phase === 'error') return 'error'
+  const timeoutMs = opts.timeoutMs ?? SELF_UPDATE_TIMEOUT_MS
+  return new Promise<SelfUpdateOutcome>((resolve) => {
+    const timer = setTimeout(() => {
+      settled.delete(onSettle)
+      resolve('timeout')
+    }, Math.max(0, timeoutMs - (Date.now() - started)))
+    timer.unref?.()
+    const onSettle = (phase: 'ready' | 'error'): void => {
+      settled.delete(onSettle)
+      clearTimeout(timer)
+      resolve(phase)
+    }
+    settled.add(onSettle)
+  })
 }
 
 // ── Installs that did not land ───────────────────────────────────────────────
@@ -347,9 +411,10 @@ export function registerUpdates(): void {
         setStatus({ phase: 'error', error: err.message })
       }
     })
-    // Also look whenever a window comes forward: on the interval alone a
-    // release published minutes after startup stayed invisible for half an
-    // hour, exactly when someone went looking for it.
+    // Also look whenever a window comes forward: on the five-minute poll
+    // alone a release published right after a check waits for the next one,
+    // exactly when someone went looking for it. A publish this app ran, or
+    // the box's word after its deploy, skips the wait (selfUpdate).
     app.on('browser-window-focus', () => {
       if (Date.now() - lastCheck > FOCUS_RECHECK_MS) void check()
     })

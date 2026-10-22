@@ -58,6 +58,7 @@ import { macBridgeLandingRoot } from './macBridgeLanding'
 import { listEnvironments } from './remote/environments'
 import { LIVE_STATUSES } from '@shared/session-lifecycle'
 import { isHeadless } from '../headless'
+import type { SelfUpdateOutcome } from '../updateTrigger'
 import { RemoteAuth } from './remote/auth'
 import { startRemoteListener, type RemoteListener } from './remote/listener'
 import { fenceRequest } from './remote/fence'
@@ -130,8 +131,10 @@ import {
 } from './apptools'
 import { ProjectPlans, handleProjectPlan } from './projectPlan'
 import { Batches, handleBatch, setBatches } from './batch'
-import { MacPublish, macPublishOffers } from './remote/macPublish'
+import { LocalPublish, MacPublish, macPublishOffers } from './remote/macPublish'
+import { PeerDeploy } from './remote/peerDeploy'
 import { PeerPublish } from './remote/peerPublish'
+import { ReleaseAnnouncer } from './releaseAnnounce'
 import { DEFAULT_RULES } from '@shared/rules'
 import { DEFAULT_THREAD_DEFAULTS } from '@shared/defaults'
 import { DEFAULT_PLAN_SETTINGS } from '@shared/plans'
@@ -302,6 +305,8 @@ export async function startServer(
     watchMaster?: boolean
     /** Open the upstream socket an account's next request will ride (preconnect.ts); the registry asks at turn start and composer focus. */
     preconnect?: (provider: string, account: string | null) => void
+    /** This app's updater (update.ts selfUpdate): fetch a version just published, by this host's Publisher or on a peer's word. The installed Mac app only. */
+    selfUpdate?: (version: string) => Promise<SelfUpdateOutcome>
   } = {}
 ): Promise<RunningServer> {
   bootMark('server-start')
@@ -433,6 +438,7 @@ export async function startServer(
         void memorySync.syncWith(id, 'link-up')
         void sessionMover.settleWith(id)
         void macBridge.linkUp(id)
+        peerDeploy.linkUp(id)
         accounts.nudge()
       },
       onClose: (id) => {
@@ -444,6 +450,8 @@ export async function startServer(
         if (crossHostThreads.onPeerPush(from, push)) return
         if (macPublish.onPeerPush(from, push)) return
         if (memorySync.onPeerPush(from, push)) return
+        if (releaseAnnouncer.onPeerPush(from, push)) return
+        if (peerDeploy.onPeerPush(from, push)) return
         if (!macBridge.onPeerPush(from, push)) accountSync.onPeerPush(from, push)
       }
     }
@@ -463,7 +471,7 @@ export async function startServer(
   harnessSync.start()
   // Deploy and publish from the app (hostJobs.ts): the box's trigger
   // directory and the Mac's release scripts, each a log sockets may tail.
-  const hostJobs: HostJobs = { deploy: new DeployTrigger({ version: appVersion }), publish: new Publisher({ store }) }
+  const hostJobs: HostJobs = { deploy: new DeployTrigger({ version: appVersion }), publish: new Publisher({ store, selfUpdate: options.selfUpdate }) }
   // The harnesses' own notes (Claude Code's per-project memory and plans,
   // Codex's memories; remote/memorySync.ts) cross both ways: this host
   // drives over the links it holds, and nudges the hosts linked to it.
@@ -638,8 +646,35 @@ export async function startServer(
   // A master's batch (batch.ts): the steps its children never run; merge_branch
   // tells it what landed. Review before merge (mergeReview.ts): merge_branch's
   // engine, one per host, the gate out of the children inside it.
+  // The publish step's job and the deploy step's trigger by host: on the box the
+  // Mac's Publisher over the peer link and the local trigger; on the Mac its own
+  // Publisher and the box's trigger over the Mac's link (remote/peerDeploy.ts).
+  // A release landing is told to the installed app (releaseAnnounce.ts).
   const peerPublish = new PeerPublish({ environmentId, calls: peerCalls, macPeerOf: (id) => macTools.macPeerOf(id).macPeer })
-  const batchRuns = new Batches({ registry, store, deploy: hostJobs.deploy, publish: peerPublish })
+  const localPublish = new LocalPublish(macPublish, { stop: () => hostJobs.publish.stop() })
+  const peerDeploy = new PeerDeploy({
+    links: () => listEnvironments(store).filter((e) => peers.get(e.id)?.connected).map((e) => ({ id: e.id, name: e.name })),
+    link: (id) => {
+      const link = peers.get(id)
+      return link?.connected ? (method, params, opts) => link.request(method, params, opts) : null
+    },
+    log: (line) => console.log(line)
+  })
+  const releaseAnnouncer = new ReleaseAnnouncer({
+    environmentId,
+    notify: (frame) => peerCalls.notify(frame),
+    selfUpdate: options.selfUpdate,
+    log: (line) => console.log(line)
+  })
+  const onMac = isMacHost() && !isHeadless()
+  const batchRuns = new Batches({
+    registry,
+    store,
+    deploy: onMac && !hostJobs.deploy.installed() ? peerDeploy : hostJobs.deploy,
+    publish: onMac ? localPublish : peerPublish,
+    announce: (version) => releaseAnnouncer.announce(version),
+    version: appVersion
+  })
 
   batchRuns.attach()
   setBatches(batchRuns)

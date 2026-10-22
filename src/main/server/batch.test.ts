@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { BatchState } from '@shared/contract-batch'
 import type { DeployStatus, HostLogPush } from '@shared/contract-host'
 import type { AgentEvent, SessionMeta } from '@shared/events'
-import { Batches, deployStage, handleBatch, publishStage, releaseTag, type BatchesDeps, type PublishRun } from './batch'
+import { Batches, handleBatch, releaseTag, type BatchesDeps, type PublishRun } from './batch'
 import { GateQueue } from './gateQueue'
 import type { GateRunOptions, GateRunResult } from './gateRun'
 import type { Landed } from './mergeReview'
@@ -140,6 +140,7 @@ function world(opts: { master?: string | null; branch?: string | null; children?
   const pushes: BatchState[] = []
   const deploy = fakeDeploy()
   const publish = fakePublish()
+  const announced: string[] = []
   let now = 1000
   const make = (extra: Partial<BatchesDeps> = {}) => {
     const b = new Batches({
@@ -152,6 +153,7 @@ function world(opts: { master?: string | null; branch?: string | null; children?
       merge,
       deploy,
       publish,
+      announce: (v) => announced.push(v),
       now: () => now,
       pushEveryMs: 250,
       ...extra
@@ -182,6 +184,7 @@ function world(opts: { master?: string | null; branch?: string | null; children?
     pushes,
     deploy,
     publish,
+    announced,
     make,
     landed,
     set,
@@ -319,10 +322,10 @@ describe('Batches: the end of the batch', () => {
     expect(w.rows.m.filter((e) => e.type === 'notice').map((e) => (e as { kind: string }).kind + ': ' + (e as { message: string }).message)).toEqual([
       'gate: Gate passed on master',
       'gate: Release passed on master',
-      'batch: Batch done: 2 of 2 landed · gate passed in 1m 12s · release-277 tagged'
+      'batch: Batch done: 2 of 2 landed · gate passed in 1m 12s · release-277 tagged in 0s'
     ])
     expect(w.reports).toEqual([
-      { to: 'm', status: 'done', text: expect.stringContaining('<batch-report>\nThe batch is done: 2 of 2 landed · gate passed in 1m 12s · release-277 tagged.') }
+      { to: 'm', status: 'done', text: expect.stringContaining('<batch-report>\nThe batch is done: 2 of 2 landed · gate passed in 1m 12s · release-277 tagged in 0s.') }
     ])
     expect(b.open('m')).toBe(false)
     // A second review runs nothing again.
@@ -489,28 +492,49 @@ describe('Batches: publish and deploy', () => {
     await flush()
     expect(w.publish.calls).toEqual([{ sessionId: 'm', args: { sha: 'c0ffee0000000000000000000000000000000000', branch: 'master', version: '1.0.277', notes: 'T m; a: one' } }])
     expect(steps(b.get('m')).publish).toEqual(['running', 'v1.0.277 on the Mac'])
+    expect(b.get('m').steps[3].progress).toEqual({ done: 0, total: 8, label: 'pulling' })
     w.publish.line('== release v1.0.277 from /Users/x/temp-code')
-    w.publish.line('== notarizing')
-    expect(b.get('m').steps[3].log).toEqual(['== release v1.0.277 from /Users/x/temp-code', '== notarizing'])
-    expect(b.get('m').steps[3].progress).toEqual({ done: 0, total: 1, label: 'notarizing' })
+    w.publish.line('phase › gate')
+    w.publish.line('phase › build')
+    expect(b.get('m').steps[3].log).toEqual(['== release v1.0.277 from /Users/x/temp-code', 'phase › gate', 'phase › build'])
+    expect(b.get('m').steps[3].progress).toEqual({ done: 0, total: 8, label: 'build' })
+    w.publish.line('phase ✓ build 1m24s')
+    w.publish.line('phase ✓ gate 1m11s')
+    w.publish.line('phase › sign')
+    expect(b.get('m').steps[3].progress).toEqual({ done: 2, total: 8, label: 'sign' })
     expect(await b.stopStep('m')).toEqual({ stopped: true })
     expect(w.publish.stops).toEqual(['m'])
-    w.publish.finish({ ok: true, exit: 0, version: '1.0.277', text: 'published' })
+    for (const l of ['phase ✓ sign 40s', 'phase › zip', 'phase › pack', 'phase ✓ pack 15s', 'phase ✓ zip 22s', 'phase › upload', 'phase ✓ upload 48s', 'phase › feed', 'phase ✓ feed 6s', 'phase ✓ total 4m12s 1.0.277', 'phase › update', 'phase ✓ update 31s']) w.publish.line(l)
+    expect(b.get('m').steps[3].progress).toEqual({ done: 8, total: 8 })
+    w.tick(283_000)
+    w.publish.finish({ ok: true, exit: 0, version: '1.0.277', text: 'Published 1.0.277 in 4m12s' })
     await flush()
-    expect(steps(b.get('m')).publish).toEqual(['passed', 'v1.0.277 published'])
+    expect(steps(b.get('m')).publish).toEqual(['passed', 'v1.0.277 published in 4m43s'])
+    expect(b.get('m').steps[3].log.at(-1)).toBe('== v1.0.277 published in 4m43s (gate 1m11s · build 1m24s · sign 40s · zip 22s · pack 15s · upload 48s · feed 6s · update 31s)')
+    // The installed app is told at once.
+    expect(w.announced).toEqual(['1.0.277'])
     expect(w.deploy.requested).toEqual(['v1.0.277'])
     expect(steps(b.get('m')).deploy).toEqual(['running', 'v1.0.277 requested'])
     // The store already carries the deploy in flight (the trigger restarts this process).
     expect(JSON.parse(w.store.getSetting('batch:m')!).deployRef).toBe('v1.0.277')
-    w.deploy.line('== stage 40: fetch')
-    w.deploy.line('== stage 60: install')
-    expect(b.get('m').steps[4].progress).toEqual({ done: 0, total: 1, label: 'stage 60: install' })
+    w.deploy.line('== box-update v1.0.277 (2026-10-21T10:00:00Z)')
+    w.deploy.line('SOURCE: release asset temp-code-out-1.0.277.tar.gz (sha256 verified) abc')
+    w.deploy.line('MODULES: reused from build-1 (bun.lock unchanged, abc)')
+    expect(b.get('m').steps[4].progress).toEqual({ done: 2, total: 7, label: 'modules' })
+    w.deploy.line('BUILD: skipped; v1.0.277 abc is prebuilt and its modules are reused')
+    w.deploy.line('TRIAL PASS: build-2 port=7690 sha=abc')
+    w.deploy.line('COMMIT PASS: build-2 sha=abc')
+    expect(b.get('m').steps[4].progress).toEqual({ done: 5, total: 7, label: 'commit' })
+    w.tick(190_000)
     w.deploy.exit(0)
     await review
     await flush()
-    expect(steps(b.get('m')).deploy).toEqual(['passed', 'v1.0.277 deployed'])
-    expect(b.get('m').finishedAt).toBe(1000)
-    expect(w.reports.at(-1)?.text).toContain('release-277 tagged · v1.0.277 published · v1.0.277 deployed')
+    expect(steps(b.get('m')).deploy).toEqual(['passed', 'v1.0.277 deployed in 3m10s'])
+    expect(b.get('m').steps[4].progress).toEqual({ done: 7, total: 7 })
+    expect(b.get('m').finishedAt).toBe(474_000)
+    expect(w.reports.at(-1)?.text).toContain('gate passed in 1m 12s · release-277 tagged in 0s · v1.0.277 published in 4m43s · v1.0.277 deployed in 3m10s')
+    // The deploy of a v1.0.N says so again (the publish may have run elsewhere).
+    expect(w.announced).toEqual(['1.0.277', '1.0.277'])
     expect(await b.stopStep('m')).toEqual({ stopped: false })
   })
 
@@ -548,6 +572,7 @@ describe('Batches: publish and deploy', () => {
     await r3
     await flush()
     expect(steps(b3.get('m')).deploy).toEqual(['failed', 'exit 1'])
+    expect(w3.announced).toEqual([])
     expect(w3.reports.at(-1)).toMatchObject({ status: 'failed', text: expect.stringContaining('The box deploy of master FAILED (exit 1)') })
     expect(b3.get('m').finishedAt).toBeNull()
   })
@@ -589,7 +614,9 @@ describe('Batches: publish and deploy', () => {
     expect(b2.open('m')).toBe(true)
     await b2.resumeAfterBoot()
     await flush()
-    expect(steps(b2.get('m')).deploy).toEqual(['passed', 'master deployed'])
+    expect(steps(b2.get('m')).deploy).toEqual(['passed', 'master deployed in 0s'])
+    // A deploy of master is no release: nothing told to the installed app.
+    expect(w.announced).toEqual([])
     expect(b2.get('m').finishedAt).toBe(1000)
     expect(w.sessions.get('a')?.archived).toBe(true)
     expect(w.reports.at(-1)?.status).toBe('done')
@@ -607,6 +634,45 @@ describe('Batches: publish and deploy', () => {
     await b.resumeAfterBoot()
     expect(steps(b.get('m')).publish).toEqual(['failed', 'the host restarted during the publish; its outcome is on the Mac'])
     expect(w.reports[0]).toMatchObject({ status: 'failed', text: expect.stringContaining("check the Mac's publish log") })
+  })
+
+  it('a publish running at the restart whose version this host now runs passed: the Mac restarted into its own release', async () => {
+    const w = world()
+    w.store.setSetting(
+      'batch:m',
+      JSON.stringify({ masterId: 'm', rules: { publish: true }, version: '1.0.9', steps: [{ id: 'publish', status: 'running', detail: 'v1.0.9 on this Mac', at: 1, log: [] }], landed: ['a'] })
+    )
+    const b = w.make({ version: '1.0.9' })
+    await b.resumeAfterBoot()
+    expect(steps(b.get('m')).publish).toEqual(['passed', 'v1.0.9 published; this host restarted into it'])
+    expect(w.reports[0]).toMatchObject({ status: 'done', text: expect.stringContaining('restarted into it') })
+  })
+
+  it('the deploy follower waits for a box it cannot reach and closes on the push that follows', async () => {
+    const w = world()
+    const reachable = { value: true }
+    const b = w.make({
+      deploy: {
+        deploy: w.deploy.deploy,
+        subscribe: w.deploy.subscribe,
+        status: async () => {
+          if (!reachable.value) throw new Error('the box is not connected')
+          return w.deploy.status()
+        }
+      }
+    })
+    b.setRules('m', { deploy: 'box' })
+    w.set('b', { status: 'idle' })
+    b.landed(w.landed('a'))
+    reachable.value = false
+    const review = b.review('m')
+    await flush()
+    expect(b.get('m').steps[4].log).toContain('== waiting for the box: the box is not connected')
+    expect(steps(b.get('m')).deploy[0]).toBe('running')
+    w.deploy.exit(0)
+    await review
+    await flush()
+    expect(steps(b.get('m')).deploy[0]).toBe('passed')
   })
 })
 
@@ -690,13 +756,8 @@ describe('Batches: batch_gate', () => {
     await first
   })
 
-  it('helpers: releaseTag, deployStage, publishStage', () => {
+  it('helpers: releaseTag', () => {
     expect(releaseTag('released v277 (tag release-277, package.json 1.0.277) — publish it with: bun run release:publish')).toBe('release-277')
     expect(releaseTag('nothing')).toBeNull()
-    expect(deployStage('== stage 40: build')).toBe('stage 40: build')
-    expect(deployStage('[deploy] trial')).toBe('trial')
-    expect(deployStage('plain output')).toBeNull()
-    expect(publishStage('== uploading')).toBe('uploading')
-    expect(publishStage('x')).toBeNull()
   })
 })
