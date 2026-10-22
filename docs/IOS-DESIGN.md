@@ -452,48 +452,79 @@ research thread's own screen replaces it.
 
 Segments: **Fleet** (default once the first agent spawns) and **Log**.
 Fleet (`Thread/FleetView.swift`): the goal in `body` text, then one status
-line with its mark (the orchestrator's own state while it runs, waits or
-fails; else what it waits on: "Waiting on its subagents", "A subagent
-needs you", "Done"; the headers carry the counts, the line never repeats
-them), then the fleet in three groups under the design's section headers
-with a count: **Running**, **Waiting**, **Done** (failed
-agents sit first in Done with their red mark). Empty groups are left out.
-Log is the orchestrator's own transcript.
+line with its mark (the orchestrator's own state while it runs, waits,
+fails, is paused, stopped or queued; else what it waits on: "Waiting on
+its subagents", also while a child is only queued, "A subagent needs you",
+"Done", "Done, one agent stopped"; the headers carry the counts, the line
+never repeats them), then the fleet in four groups under the design's
+section headers with a count: **Running**, **Waiting**, **Queued**,
+**Done** (failed and stopped agents sit first in Done with their marks).
+Empty groups are left out. Log is the orchestrator's own transcript.
 
 The agent row (`Thread/FleetStyles.swift`, `AgentRow`), shared by the
-Fleet segment, the subagent list and the implementation board's Agents
-section: a 16 pt status mark (spinner running, warning dot waiting,
-destructive dot failed, info dot watching, pause mark paused, a green check
-settled; marks cross-fade 150 ms in a frame that never changes size), the
-title in `subheadline` medium (regular and `secondary` once settled) with
-the elapsed time on its line, a meta line in `footnote secondary` of the
-provider's own mark drawn as a path in the text color (`ProviderGlyph`),
-the role glyph, model and effort, and the worktree name when the agent
-works in one; the activity line in a fixed 18 pt frame (scaled with
-Dynamic Type) that swaps in place with the 150 ms cross-fade and 2 pt
-blur; the stats line when there is anything to say. Elapsed over cost on
-the right, `caption` tabular with `numericText`. One clock drives every
-live row. A waiting row sits on the needs-you tint in an 8 pt rounded field
-inset 8 pt from the edge; the text stays at the 16 pt edge. Hairlines
-between rows, inset to the text edge, none after the last of a group. A
-row that changes group moves with the needs-you row motion.
+Fleet segment, the subagent list, the implementation board's Agents
+section and the master board: the kit's 14 pt mark column (spinner
+running, warning dot waiting, destructive dot failed, info dot watching,
+pause mark paused, a dashed ring queued, a still square once the harness is
+gone, a green check settled; marks cross-fade 150 ms in a column that never
+changes size), the title in `subheadline` medium (regular and `secondary`
+once settled) with the figures on its line, a meta line in `footnote
+secondary` of the provider's own mark drawn as a path in the text color
+(`ProviderGlyph`), the role glyph, model and effort, the worktree name when
+the agent works in one and the host's name when the agent lives on another
+host than its root; the activity line on the kit's sizer (a hidden one-line
+text fixes the height) swapping in place with the 150 ms cross-fade and
+2 pt blur (a queued agent's line is the host's "Queued · waiting for …", a
+stopped one's "stopped · the harness is gone"); the stats line when there
+is anything to say. Elapsed over cost on the right, `caption` tabular with
+`numericText`: one step above the stamp on purpose, because `caption2
+tertiary` fails the contrast floor on the needs-you tint. One clock drives
+every live row. A waiting row sits on the needs-you tint in an 8 pt rounded
+field inset 8 pt from the edge; the text stays at the 16 pt edge. Hairlines
+between rows at 40 pt (`FleetLayout.textInset`), none after the last of a
+group. A row that changes group moves with the kit's row motion; nothing
+moves on the first non-empty paint, so a fleet arriving from the socket
+after an empty cache lands still.
+
+Subagents on another host: a box thread that spawned a child on the Mac
+has that child in the Mac client's list under the box root's id, so the
+fleet is gathered from every paired host (`Fleet.gather`, the root's host
+first). The remote row ends its meta line with the host mark and name;
+while that host is not open its activity line reads the host's transport
+line ("Reconnecting in 12 s", "Offline") and its figures stand still; its
+detail reads from that host. Agents spawned on a host this phone is not
+paired with are counted once at the foot ("2 agents run on hosts this
+phone is not paired with"), not tappable: pairing is in Settings.
 
 **Subagent list** (`Thread/SubagentListScreen.swift`,
 `SubagentListScreen(client:rootSessionId:)`): the desktop's right-side
 subagent panel as a screen, pushed from a thread's toolbar button. Title
-"Subagents" over the thread's name, then the same grouped rows, live,
-nothing to pull. Fleets of twelve read as three short lists.
+"Subagents" over the thread's name, then the same grouped rows across
+hosts, live, nothing to pull. Fleets of twelve read as four short lists.
 
 **Agent detail** (`Thread/AgentDetailScreen.swift`), pushed from any
-row: the title over the role in the bar; an identity strip under it with
-the mark, the meta line (with the worktree), the activity line, stats,
-elapsed and cost, closed by a hairline; then the agent's own transcript
-(`TranscriptView`, so a waiting agent's approval or question card sits at
-the end, where the screen opens, and decides from there); then one line at
-the bottom, "Steer this agent…" while it runs and "Send to this agent…"
-once idle, one filled send button, through `client.send`. A key that
-cannot act sees the reason in the field. DEBUG hooks on the Fleet segment:
-`TC_TEST_OPEN=agents` pushes the list, `agent-detail` the first agent.
+row through `AgentDetailRoute` (host, agent, the root's directory, the
+host's name): the title over the role in the bar; an identity strip under
+it with the mark, the meta line (with the worktree and the host), the
+activity line, stats, elapsed and cost, closed by a hairline; then the
+agent's own transcript (`TranscriptView`, so a waiting agent's approval or
+question card sits at the end, where the screen opens, and decides from
+there); then one line at the bottom, "Steer this agent…" while it runs and
+"Send to this agent…" once idle, "Resume to send" off when stopped and
+"Starts when its turn comes" off when queued, one filled send button,
+through `client.send` on the agent's own host. A key that cannot act sees
+the reason in the field. DEBUG hooks on the Fleet segment:
+`TC_TEST_OPEN=agents` pushes the list, `agent-detail` the first agent; on
+the detail `TC_TEST_ACTION=send:<text>|approve|deny|answer:<label>` runs
+once on the agent. The test server's `TC_TEST_FLEET=large` seeds twelve
+agents in all four groups.
+
+The pieces the master board and any other fleet surface build from, all in
+`FleetStyles.swift`: `FleetLayout.textInset`, `AgentStatusMark`,
+`ProviderGlyph`, `AgentMetaLine`, `ActivityLine`, `AgentStatsLine`,
+`AgentFigures`, `AgentRow`, `FleetSections`, `FleetRows`, `FleetEmpty`,
+`FleetUnpairedNote`, `FleetGather`, `AgentDetailRoute` and
+`.fleetDestinations(registry:)`.
 
 ### Research: the sources are the hero
 

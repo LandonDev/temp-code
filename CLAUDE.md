@@ -1033,14 +1033,20 @@ routed to (aliax-core's `forward`). Two listeners:
   `file.read` (in the subset since L4), polled 1.5 s running / 8 s idle
   while the screen shows; the plan page parses it with the client package's
   `PlanDocument` (nested and task lists, tables, frontmatter, sections) and
-  paints from `PlanPages`' disk cache before the first read answers. DEBUG
-  launch hooks (`TC_TEST_SEGMENT`,
-  `TC_TEST_OPEN=chip|diff|agent|report|source|item|item-diff`, `TC_TEST_SCROLL=1`, the Search tab's
-  `TC_TEST_SEARCH=<query>` and `TC_TEST_SEARCH_SCOPE=files`, and L5's
+  paints from `PlanPages`' disk cache before the first read answers. The
+  fleet surfaces are `Thread/FleetStyles.swift` (the agent row and its
+  pieces, `FleetSections`, `FleetGather` over every paired host,
+  `AgentDetailRoute`), `SubagentListScreen(client:rootSessionId:)` and
+  `AgentDetailScreen(client:agentId:parentCwd:hostName:)`
+  (docs/IOS-DESIGN.md "Orchestration"). DEBUG launch hooks (`TC_TEST_SEGMENT`,
+  `TC_TEST_OPEN=chip|diff|agent|agents|agent-detail|report|source|item|item-diff`,
+  `TC_TEST_SCROLL=1`, the Search tab's `TC_TEST_SEARCH=<query>` and
+  `TC_TEST_SEARCH_SCOPE=files`, and L5's
   `TC_TEST_ACTION=send:<text>|stop|approve|deny|answer:<label>|start-build|
   rename:<title>|pin|archive|new-chat` and `TC_TEST_SHEET=start|new`) exist
   for the proof only; an action runs once, on the screen the launch route
-  opened, through the same calls the buttons make.
+  opened, through the same calls the buttons make. The test server's
+  `TC_TEST_FLEET=large` seeds a twelve-agent fleet in all four groups.
 - Settings (thread 5): `ios/TempCode/Sources/Shell/{SettingsView,HostsView,
   AddEnvironmentSheet,SettingsStyles}.swift` are the SwiftUI alone; every
   word they say (`ConnectionWord`, `HostFix`, `HostBuildLine`,

@@ -397,6 +397,30 @@ await agent('ios-orch-a3', 'explorer', 'Find the row sizes', [
   { type: 'turn-complete', costUsd: 0.03 },
   status('idle')
 ])
+// TC_TEST_FLEET=large: nine more children, so the phone's list reads as four groups
+// (Running, Waiting, Queued, Done) with twelve agents. Off by default.
+if (process.env.TC_TEST_FLEET === 'large') {
+  for (let n = 4; n <= 12; n++) {
+    const id = `ios-orch-a${n}`
+    const title = `Port module ${n}`
+    if (n === 11) {
+      await agent(id, 'implementer', title, [{ type: 'user-text', text: `${title}.` }, { type: 'status', status: 'queued' }])
+    } else if (n === 12) {
+      await agent(id, 'implementer', title, [
+        { type: 'user-text', text: `${title}.` },
+        answer(`${id}s`, 'Halfway through the port.'),
+        { type: 'status', status: 'stopped', detail: 'The harness behind this turn is gone' }
+      ])
+    } else {
+      await agent(id, 'implementer', title, [
+        { type: 'user-text', text: `${title}.` },
+        answer(`${id}s`, `Module ${n} ported.`),
+        { type: 'turn-complete', costUsd: Math.round((n - 3) * 5) / 100 },
+        status('idle')
+      ])
+    }
+  }
+}
 at(THREAD_ORCH, [
   { type: 'tool-result', callId: 'sp1', output: 'Spawned 3 agents', isError: false },
   { type: 'tool-call', callId: 'w1', name: 'mcp__orchestrator__wait_for_agent', input: { agentIds: ['ios-orch-a1', 'ios-orch-a2', 'ios-orch-a3'], mode: 'all' } },
