@@ -12,12 +12,11 @@ struct WorkspaceIconView: View {
     let client: EnvironmentClient
     let workspace: WorkspaceMeta
     var size: CGFloat = 20
-    @Environment(\.displayScale) private var scale
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let icon = client.icons[workspace.id]
-        let shape = RoundedRectangle(cornerRadius: size / 4, style: .continuous)
+        let shape = RoundedRectangle.corner(size / 4)
         Group {
             if let image = icon?.dataUrl.flatMap(IconImages.shared.image(for:)) {
                 Image(uiImage: image)
@@ -25,7 +24,7 @@ struct WorkspaceIconView: View {
                     .scaledToFill()
                     .frame(width: size, height: size)
                     .clipShape(shape)
-                    .overlay(shape.strokeBorder(outline, lineWidth: 1 / scale))
+                    .hairlineBorder(shape, color: outline)
             } else if let host = icon?.host.flatMap(GitHost.init(rawValue:)) {
                 HostMark(host: host)
                     .frame(width: size * 0.9, height: size * 0.9)
@@ -33,7 +32,7 @@ struct WorkspaceIconView: View {
                     .foregroundStyle(.secondary)
             } else {
                 Image(systemName: "folder")
-                    .font(.subheadline.weight(.medium))
+                    .font(TextStep.title.font.weight(.medium))
                     .foregroundStyle(.secondary)
                     .frame(width: size, height: size)
             }

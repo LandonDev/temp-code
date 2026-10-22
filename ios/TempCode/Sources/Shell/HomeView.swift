@@ -5,11 +5,12 @@ import TempCodeContract
 /// Home: what needs you, what runs, then every host's workspaces, as native
 /// sections under a large title. Paints from the cache before any socket;
 /// the socket's catch-up lands as a diff, and nothing animates on that
-/// first paint.
+/// first paint. `slots` is what sibling threads plug in (HomeSlots.swift).
 struct HomeView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var path: NavigationPath
+    var slots = HomeSlots()
     /// Folded workspace keys, one per line, remembered across launches.
     @AppStorage("home.folded") private var foldedRaw = ""
     /// The needs-you cue per thread (its line and the row to land on), from its newest rows.
@@ -28,7 +29,7 @@ struct HomeView: View {
 
     var body: some View {
         let clients = model.registry.ordered
-        let sections = HomeRows.build(clients: clients, folded: folded)
+        let sections = HomeRows.build(clients: clients, folded: folded, slots: slots)
         Group {
             if !model.ready {
                 Color.clear
@@ -40,12 +41,16 @@ struct HomeView: View {
                         ForEach(sections) { section in
                             Section {
                                 ForEach(section.rows) { row in
-                                    HomeRowView(row: row, cue: cue(for: row), path: $path, pairAgain: { pairingAgain = $0 }, newThread: compose)
-                                        .transition(row.isEvent && painted ? HomeStyles.eventRow(reduced: reduceMotion) : .identity)
+                                    if let client = model.registry.client(row.environmentId) {
+                                        HomeRowView(row: row, client: client, cue: cue(for: row), path: $path, slots: slots, pairAgain: { pairingAgain = $0 }, newThread: compose)
+                                            // The same transition either way, so flipping `painted` never re-creates the row.
+                                            .transition(row.isEvent && painted ? Motion.appear(reduced: reduceMotion) : .identity)
+                                    }
                                 }
                             } header: {
-                                HomeHeaderView(header: section.header, fold: toggleFold, newThread: compose)
+                                HomeHeaderView(header: section.header, slots: slots, fold: toggleFold, newThread: compose)
                             }
+                            .headerProminence(section.header.isTitle ? .increased : .standard)
                             .id(section.id)
                         }
                     }
@@ -65,7 +70,16 @@ struct HomeView: View {
         .navigationTitle("Home")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItemGroup(placement: .primaryAction) {
+                // With one host its menu has no header to sit on, so it sits here.
+                if clients.count == 1, let client = clients.first, let hostMenu = slots.hostMenu {
+                    Menu {
+                        hostMenu(client)
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .accessibilityLabel(client.environment.name)
+                }
                 Button("Settings", systemImage: "gearshape") { path.append(Route.settings) }
             }
         }
@@ -86,11 +100,15 @@ struct HomeView: View {
     /// first workspace and opens it, folds a workspace, or scrolls one to the top.
     private func performLaunch(_ clients: [EnvironmentClient], sections: [HomeSection], proxy: ScrollViewProxy) async {
         guard let client = clients.first, client.hasShell, let workspace = client.workspaces.first else { return }
-        if let part = HomeTestHooks.fold, let target = client.workspaces.first(where: { $0.name.localizedCaseInsensitiveContains(part) }), !folded.contains(HomeRows.foldKey(client, target)) {
-            foldedRaw = (folded.union([HomeRows.foldKey(client, target)])).sorted().joined(separator: "\n")
+        let listed = sections.compactMap { section -> HomeWorkspace? in
+            if case .workspace(let workspace, _, _) = section.header { return workspace }
+            return nil
         }
-        if let part = HomeTestHooks.scroll, let target = client.workspaces.first(where: { $0.name.localizedCaseInsensitiveContains(part) }),
-           let section = sections.first(where: { $0.id == "workspace:\(client.environment.id):\(target.id)" }), let first = section.rows.first {
+        if let part = HomeTestHooks.fold, let target = listed.first(where: { $0.name.localizedCaseInsensitiveContains(part) }), !folded.contains(HomeSections.foldKey(target)) {
+            foldedRaw = folded.union([HomeSections.foldKey(target)]).sorted().joined(separator: "\n")
+        }
+        if let part = HomeTestHooks.scroll, let target = listed.first(where: { $0.name.localizedCaseInsensitiveContains(part) }),
+           let section = sections.first(where: { $0.id == "workspace:\(target.id)" }), let first = section.rows.first {
             // A List scrolls to a row, not to a Section: the workspace's first row, with its header pinned above it.
             try? await Task.sleep(for: .milliseconds(600))
             proxy.scrollTo(first.id, anchor: .top)
@@ -108,10 +126,11 @@ struct HomeView: View {
     }
 
     /// Fold or unfold a workspace: its rows leave with the collapse curve and
-    /// come back with the expand spring; reduced motion cross-fades.
-    private func toggleFold(_ client: EnvironmentClient, _ workspace: WorkspaceMeta) {
+    /// come back with the expand spring; reduced motion cross-fades. A paired
+    /// workspace folds by its pairing key, so both copies fold at once.
+    private func toggleFold(_ workspace: HomeWorkspace) {
         var keys = folded
-        let key = HomeRows.foldKey(client, workspace)
+        let key = HomeSections.foldKey(workspace)
         let opening = keys.contains(key)
         if !keys.insert(key).inserted { keys.remove(key) }
         let animation: Animation = reduceMotion ? Motion.crossFade : (opening ? Motion.expand : Motion.collapse)
@@ -133,24 +152,29 @@ struct HomeView: View {
         }.joined(separator: ",")
     }
 
-    /// Changes when an event row (a host's status, a needs-you thread) or a
-    /// running thread comes or goes: the one key Home animates on.
+    /// Changes when an event row comes or goes (a host's status, a thread
+    /// needing you, a host's note): the one key Home animates on. A thread
+    /// starting is routine and changes nothing here.
     private func eventKey(_ sections: [HomeSection]) -> String {
-        sections.flatMap(\.rows).compactMap { row -> String? in
-            switch row {
-            case .status, .needsYou, .running: row.id
-            default: nil
-            }
-        }.joined(separator: ",")
+        sections.flatMap(\.rows).filter(\.isEvent).map(\.id).joined(separator: ",")
     }
 
     private func loadLines(_ sections: [HomeSection]) async {
         for row in sections.flatMap(\.rows) {
-            guard case .needsYou(let client, let item) = row else { continue }
+            guard case .needsYou(let environmentId, let item) = row, let client = model.registry.client(environmentId) else { continue }
             let tail = item.kind == .paused ? [] : await client.peekTail(item.id)
             let cue = HomeModel.cue(for: item.kind, rows: tail)
             if cues[item.id] != cue { cues[item.id] = cue }
         }
+    }
+}
+
+extension HomeSection.Header {
+    /// "Needs you" and "Running": the system's prominent header. Every other
+    /// header draws its own row.
+    var isTitle: Bool {
+        if case .title = self { return true }
+        return false
     }
 }
 
@@ -167,10 +191,13 @@ private enum HomeTestHooks {
     #endif
 }
 
-/// A section's header: nothing, a title, a host, or a workspace's fold row.
+/// A section's header: nothing, a prominent title, a host, the chats group,
+/// or a workspace's fold row.
 private struct HomeHeaderView: View {
+    @Environment(AppModel.self) private var model
     let header: HomeSection.Header
-    let fold: (EnvironmentClient, WorkspaceMeta) -> Void
+    let slots: HomeSlots
+    let fold: (HomeWorkspace) -> Void
     let newThread: (EnvironmentClient, WorkspaceMeta, ProjectMeta?) -> Void
 
     var body: some View {
@@ -178,105 +205,153 @@ private struct HomeHeaderView: View {
         case .none:
             EmptyView()
         case .title(let title):
-            HomeSectionTitle(title)
-                .listRowInsets(EdgeInsets())
-        case .host(let client):
-            HostHeader(client: client)
-                .listRowInsets(EdgeInsets())
-        case .workspace(let client, let workspace, let collapsed, let threads):
-            HStack(spacing: 0) {
-                Button { fold(client, workspace) } label: {
-                    WorkspaceHeaderRow(client: client, workspace: workspace, collapsed: collapsed, threads: threads)
-                }
-                .buttonStyle(.pressable)
-                NewThreadButton { newThread(client, workspace, nil) }
+            Text(title)
+                .textCase(nil)
+        case .host(let environmentId, _):
+            if let client = model.registry.client(environmentId) {
+                HostHeader(client: client, slots: slots)
+                    .listRowInsets(EdgeInsets())
             }
-            .padding(.leading, 16)
-            .padding(.trailing, 4)
+        case .chats:
+            // The host's loose chats: a workspace-level group, drawn as one, with no fold and no plus (a new thread needs a workspace).
+            GroupHeaderRow(name: "Chats", repo: nil, collapsed: false, threads: 0, members: []) {
+                Image(systemName: "bubble.left")
+                    .font(TextStep.title.font.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
+            }
+            .padding(.horizontal, Layout.textEdge)
             .textCase(nil)
             .listRowInsets(EdgeInsets())
+        case .workspace(let workspace, let collapsed, let threads):
+            if let first = workspace.members.first, let client = model.registry.client(first.environmentId) {
+                HStack(spacing: 0) {
+                    Button { fold(workspace) } label: {
+                        GroupHeaderRow(name: workspace.name, repo: workspace.repo, collapsed: collapsed, threads: threads, members: workspace.isPaired ? workspace.members : []) {
+                            WorkspaceIconView(client: client, workspace: first.workspace, size: 22)
+                        }
+                    }
+                    .buttonStyle(.pressable)
+                    NewThreadButton { newThread(client, first.workspace, nil) }
+                }
+                .padding(.leading, Layout.textEdge)
+                .padding(.trailing, 4)
+                .textCase(nil)
+                .listRowInsets(EdgeInsets())
+            }
         }
     }
 }
 
-/// One row of Home. Content rows share the 16 pt text edge.
+/// One row of Home. Content rows share the text edge.
 private struct HomeRowView: View {
+    @Environment(AppModel.self) private var model
     let row: HomeRow
+    let client: EnvironmentClient
     let cue: HomeModel.Cue?
     @Binding var path: NavigationPath
+    let slots: HomeSlots
     let pairAgain: (PairedEnvironment) -> Void
     let newThread: (EnvironmentClient, WorkspaceMeta, ProjectMeta?) -> Void
 
     var body: some View {
         switch row {
-        case .status(let client):
-            HostStatusRow(client: client) { pairAgain(client.environment) }
-                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+        case .status:
+            HostStatusRow(client: client, trailing: slots.hostTrailing?(client)) { pairAgain(client.environment) }
+                .listRowInsets(EdgeInsets(top: 4, leading: Layout.textEdge, bottom: 4, trailing: Layout.textEdge))
                 .listRowSeparator(.hidden)
-        case .needsYou(let client, let item):
-            Button { open(client, item.meta.id, seq: cue?.seq) } label: {
-                NeedsYouRow(item: item, line: cue?.text)
+        case .hostNote(_, let note):
+            QuietNote(text: note.text)
+                .listRowInsets(Layout.rowInsets)
+                .listRowSeparator(.hidden)
+        case .needsYou(_, let item):
+            Button { open(item.meta.id, seq: cue?.seq) } label: {
+                ThreadRow(row: .needsYou(item: item, cue: cue))
             }
             .buttonStyle(.pressable)
-            .listRowInsets(rowInsets)
+            .listRowInsets(Layout.rowInsets)
             .listRowBackground(Surface.needsYou)
             .threadRowActions(client: client, meta: item.meta)
-        case .running(let client, let meta):
-            threadButton(client, meta, ThreadRowModel(session: meta))
-        case .calm(let client, let workspace):
+        case .running(_, let meta):
+            threadButton(meta, ThreadRowModel(session: meta))
+        case .calm(_, let workspace):
             QuietNote(text: "Nothing needs you right now.", action: ("New thread", { newThread(client, workspace, nil) }))
-                .listRowInsets(rowInsets)
+                .listRowInsets(Layout.rowInsets)
                 .listRowSeparator(.hidden)
-        case .project(let client, let group):
-            ProjectHeaderRow(project: group.project) {
-                if let workspace = client.workspaces.first(where: { $0.id == group.project.workspaceId }) {
+        case .project(_, let group, let paired):
+            let workspace = client.workspaces.first { $0.id == group.project.workspaceId }
+            ProjectHeaderRow(project: group.project, host: paired ? client.environment.name : nil) {
+                if let workspace {
                     NewThreadButton { newThread(client, workspace, group.project) }
                 }
+                if slots.hasProjectMenu {
+                    HeaderMenu(systemImage: "ellipsis", label: "\(group.project.name) menu") {
+                        if let workspace {
+                            Button("New thread") { newThread(client, workspace, group.project) }
+                        }
+                        if let settings = slots.projectSettings {
+                            Divider()
+                            settings(client, group.project)
+                        }
+                        if let batch = slots.projectBatch {
+                            Divider()
+                            batch(client, group.project)
+                        }
+                    }
+                }
             }
-            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 4))
+            .listRowInsets(EdgeInsets(top: 0, leading: Layout.textEdge, bottom: 0, trailing: 4))
             .listRowSeparator(.hidden)
-        case .thread(let client, let item):
-            threadButton(client, item.meta, ThreadRowModel(session: item.meta, unseen: item.unseen))
-        case .moreAgents(let client, let root, let hidden):
-            Button { open(client, root.id) } label: {
+        case .thread(_, let item):
+            threadButton(item.meta, ThreadRowModel(session: item.meta, unseen: item.unseen))
+        case .moreAgents(_, let root, let hidden):
+            Button { open(root.id) } label: {
                 DimRow(hidden == 1 ? "1 more subagent" : "\(hidden) more subagents")
-                    .padding(.leading, HomeStyles.agentIndent)
+                    .padding(.leading, Layout.rowTextEdge + Layout.indent)
             }
             .buttonStyle(.pressable)
-            .listRowInsets(rowInsets)
-        case .archivedThreads(let client, let group):
+            .listRowInsets(Layout.rowInsets)
+        case .archivedThreads(_, let group):
             Button { path.append(Route.archivedThreads(environmentId: client.environment.id, projectId: group.id)) } label: {
                 DimRow(group.archivedCount == 1 ? "1 archived" : "\(group.archivedCount) archived")
             }
             .buttonStyle(.pressable)
-            .listRowInsets(rowInsets)
-        case .archivedProjects(let client, let workspace, let count):
+            .listRowInsets(Layout.rowInsets)
+        case .archivedProjects(_, let workspace, let count):
             Button { path.append(Route.archivedProjects(environmentId: client.environment.id, workspaceId: workspace.id)) } label: {
                 DimRow(count == 1 ? "1 archived project" : "\(count) archived projects")
             }
             .buttonStyle(.pressable)
-            .listRowInsets(rowInsets)
-        case .emptyWorkspace(let client, let workspace):
+            .listRowInsets(Layout.rowInsets)
+        case .emptyWorkspace(_, let workspace):
             QuietNote(text: "No threads here yet.", action: ("New thread", { newThread(client, workspace, nil) }))
-                .listRowInsets(rowInsets)
+                .listRowInsets(Layout.rowInsets)
                 .listRowSeparator(.hidden)
-        case .nothing(let client):
-            NothingRow(client: client) { path.append(Route.hosts) }
-                .listRowInsets(rowInsets)
-                .listRowSeparator(.hidden)
+        case .nothing(_, let name, let listed):
+            Group {
+                if listed {
+                    QuietNote(text: "No workspaces on \(name) yet. Open a folder there and it appears here.", action: ("Hosts", { path.append(Route.hosts) }))
+                } else {
+                    // Not listed yet: the system's spinner in an ordinary row, nothing bespoke.
+                    ProgressView()
+                        .frame(maxWidth: .infinity, minHeight: Layout.rowHeight)
+                }
+            }
+            .listRowInsets(Layout.rowInsets)
+            .listRowSeparator(.hidden)
         }
     }
 
-    private func open(_ client: EnvironmentClient, _ sessionId: String, seq: Int? = nil) {
+    private func open(_ sessionId: String, seq: Int? = nil) {
         path.append(Route.thread(environmentId: client.environment.id, sessionId: sessionId, seq: seq))
     }
 
-    private func threadButton(_ client: EnvironmentClient, _ meta: SessionMeta, _ model: ThreadRowModel) -> some View {
-        Button { open(client, meta.id) } label: {
-            ThreadRow(row: model)
+    private func threadButton(_ meta: SessionMeta, _ row: ThreadRowModel) -> some View {
+        Button { open(meta.id) } label: {
+            ThreadRow(row: row)
         }
         .buttonStyle(.pressable)
-        .listRowInsets(rowInsets)
+        .listRowInsets(Layout.rowInsets)
         .threadRowActions(client: client, meta: meta)
     }
 }
@@ -290,142 +365,85 @@ struct NewThreadTarget: Identifiable {
     var id: String { "\(client.environment.id):\(workspace.id):\(project?.id ?? "")" }
 }
 
-/// A thread that needs the user, on the warning tint: the dot, the type,
-/// the title, what it needs in one line, and how long it has waited. At
-/// accessibility sizes the wait moves under the cue so neither truncates.
-private struct NeedsYouRow: View {
-    let item: NeedsYouItem
-    let line: String?
-    @Environment(\.dynamicTypeSize) private var typeSize
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private var cue: String { line ?? HomeModel.line(for: item.kind, rows: []) }
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            StatusDot(status: item.meta.status)
-                .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
-            TypeGlyph(type: item.meta.threadType)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.meta.title.isEmpty ? "Untitled" : item.meta.title)
-                    .font(.subheadline)
-                    .lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
-                ZStack(alignment: .leading) {
-                    Text(cue)
-                        .id(cue)
-                        .transition(Motion.swap(reduced: reduceMotion))
-                }
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
-                .animation(Motion.crossFade, value: cue)
-                if typeSize.isAccessibilitySize { waited }
-            }
-            if !typeSize.isAccessibilitySize {
-                Spacer(minLength: 8)
-                waited
-            }
-        }
-        .padding(.vertical, 8)
-        .frame(minHeight: 44)
-        .accessibilityElement(children: .combine)
-    }
-
-    private var waited: some View {
-        TimelineView(.periodic(from: .now, by: 30)) { context in
-            Text(TimeFormat.ago(item.since, now: context.date))
-                .contentTransition(.numericText())
-        }
-        .font(.caption2)
-        .monospacedDigit()
-        .foregroundStyle(.tertiary)
-    }
-}
-
-/// With several hosts, each one's workspaces sit under its name and connection dot.
+/// With several hosts, each one's workspaces sit under its name and
+/// connection dot, with a sibling's trailing mark and its menu when set.
 private struct HostHeader: View {
     let client: EnvironmentClient
+    let slots: HomeSlots
 
     var body: some View {
         HStack(spacing: 8) {
             ConnectionDot(status: client.status)
             Text(client.environment.name)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(.primary)
+                .textStep(.title, weight: .semibold)
                 .lineLimit(1)
             Spacer(minLength: 8)
+            slots.hostTrailing?(client)
+            if let hostMenu = slots.hostMenu {
+                HeaderMenu(systemImage: "ellipsis.circle", label: "\(client.environment.name) menu") {
+                    hostMenu(client)
+                }
+            }
         }
         .textCase(nil)
-        .padding(.leading, 16)
+        .padding(.leading, Layout.textEdge)
+        .padding(.trailing, slots.hostMenu == nil ? Layout.textEdge : 4)
         .padding(.top, 18)
         .padding(.bottom, 2)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isHeader)
     }
 }
 
-/// A workspace: its mark, its name, the repo dim, and while folded the
-/// number of threads inside. The whole row is the fold; no chevron.
-private struct WorkspaceHeaderRow: View {
-    let client: EnvironmentClient
-    let workspace: WorkspaceMeta
+/// A workspace-level group's header row: its mark, its name, the repo dim
+/// under it, one connection dot per member host when paired, and while
+/// folded the number of threads inside. The whole row is the fold; no
+/// chevron. The chats group draws the same row with a glyph and no fold.
+private struct GroupHeaderRow<Icon: View>: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dynamicTypeSize) private var typeSize
+    let name: String
+    let repo: String?
     let collapsed: Bool
     let threads: Int
-    @Environment(\.dynamicTypeSize) private var typeSize
+    /// The member hosts when the workspace is paired; empty otherwise.
+    let members: [HomeWorkspace.Member]
+    @ViewBuilder let icon: () -> Icon
 
     var body: some View {
-        HStack(spacing: 10) {
-            WorkspaceIconView(client: client, workspace: workspace, size: 22)
+        HStack(spacing: Layout.rowGap) {
+            HStack(spacing: 4) {
+                icon()
+                ForEach(members, id: \.environmentId) { member in
+                    if let client = model.registry.client(member.environmentId) {
+                        ConnectionDot(status: client.status)
+                    }
+                }
+            }
             VStack(alignment: .leading, spacing: 1) {
-                Text(workspace.name)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
+                Text(name)
+                    .textStep(.title, weight: .semibold)
                     .lineLimit(1)
-                if let repo = workspace.githubRepo, !repo.isEmpty, !typeSize.isAccessibilitySize {
+                if let repo, !repo.isEmpty, !typeSize.isAccessibilitySize {
                     Text(repo)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .textStep(.stamp)
                         .lineLimit(1)
                 }
             }
             Spacer(minLength: 8)
             if collapsed, threads > 0 {
-                Text("\(threads)")
-                    .font(.footnote)
-                    .monospacedDigit()
-                    .foregroundStyle(.tertiary)
-                    .contentTransition(.numericText())
+                CountText(threads)
                     .transition(.opacity)
             }
         }
         .padding(.top, 10)
         .padding(.bottom, 4)
-        .frame(minHeight: 44)
+        .frame(minHeight: Layout.rowHeight)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(workspace.name)
+        .accessibilityLabel(name)
         .accessibilityValue(collapsed ? (threads == 1 ? "Collapsed, 1 thread" : "Collapsed, \(threads) threads") : "Expanded")
         .accessibilityAddTraits(.isHeader)
-    }
-}
-
-/// A host with nothing to list yet: a spinner until its shell is listed,
-/// then the fact and where to look.
-private struct NothingRow: View {
-    let client: EnvironmentClient
-    let hosts: () -> Void
-
-    var body: some View {
-        if client.hasShell {
-            QuietNote(text: "No workspaces on \(client.environment.name) yet. Open a folder there and it appears here.", action: ("Hosts", hosts))
-        } else {
-            HStack {
-                Spacer()
-                ProgressView()
-                Spacer()
-            }
-            .padding(.vertical, 40)
-        }
     }
 }
 

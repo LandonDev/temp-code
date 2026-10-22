@@ -2,77 +2,45 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// The shell's section furniture: native headers over a plain list, the
-/// project sub-header, dim push rows, quiet notes with one action, and the
-/// motion of rows that arrive because of an event. Shared by Home and the
-/// archived lists; nothing here paints a band of chrome.
-enum HomeStyles {
-    /// A needs-you or status row: in with 200 ms ease-out, opacity and 8 pt
-    /// of travel; out with 150 ms of opacity. Reduced motion fades both ways.
-    static func eventRow(reduced: Bool) -> AnyTransition {
-        reduced
-            ? .opacity.animation(Motion.crossFade)
-            : .asymmetric(
-                insertion: .opacity.combined(with: .offset(y: Motion.travel)).animation(Motion.rowAppear),
-                removal: .opacity.animation(Motion.rowLeave)
-            )
-    }
-
-    /// The text edge of a thread row's title: the status mark, the glyph and two gaps.
-    static let titleIndent: CGFloat = 14 + 10 + 20 + 10
-    /// A subagent row's title: one step further in.
-    static let agentIndent: CGFloat = 16 + titleIndent
-}
-
-/// A top-level section heading ("Needs you", "Running", "Chats"): the title
-/// alone, in the weight iOS gives a prominent list header, sitting on the
-/// list background so the sections read as one page.
-struct HomeSectionTitle: View {
-    let title: String
-
-    init(_ title: String) { self.title = title }
-
-    var body: some View {
-        Text(title)
-            .font(.title3.weight(.semibold))
-            .foregroundStyle(.primary)
-            .textCase(nil)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.leading, 16)
-            .padding(.top, 14)
-            .padding(.bottom, 6)
-            .accessibilityAddTraits(.isHeader)
-    }
-}
+/// The shell's section furniture: the project sub-header, dim push rows,
+/// quiet notes with one action, the plus, the connection dot. Shared by Home
+/// and the archived lists; every length and step is a kit name, and nothing
+/// here paints a band of chrome.
 
 /// A project under its workspace: the name, the worktree mark when it runs
-/// in one, the branch dim, and the plus for a thread there. A sub-header,
-/// not a band: it sits in the list's own flow.
+/// in one, the branch dim, the host when the workspace is paired across
+/// hosts, and whatever trails (the plus, a menu). A sub-header, not a band:
+/// it sits in the list's own flow.
 struct ProjectHeaderRow<Trailing: View>: View {
     let project: ProjectMeta
+    /// The host's name, when the workspace lists projects from more than one.
+    var host: String?
     let trailing: Trailing
 
-    init(project: ProjectMeta, @ViewBuilder trailing: () -> Trailing) {
+    init(project: ProjectMeta, host: String? = nil, @ViewBuilder trailing: () -> Trailing) {
         self.project = project
+        self.host = host
         self.trailing = trailing()
     }
 
     var body: some View {
         HStack(spacing: 6) {
             Text(project.name)
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .textStep(.meta, weight: .semibold)
                 .lineLimit(1)
             if project.mode == .worktree {
-                Image(systemName: "arrow.triangle.pull")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-                    .accessibilityLabel("Worktree")
+                MetaGlyph("arrow.triangle.pull", weight: .semibold, label: "Worktree")
             }
             if let branch = project.branch, !branch.isEmpty {
                 Text(branch)
-                    .font(.footnote)
+                    .font(TextStep.meta.font)
                     .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            if let host {
+                Text(host)
+                    .textStep(.stamp)
                     .lineLimit(1)
             }
             Spacer(minLength: 8)
@@ -86,7 +54,7 @@ struct ProjectHeaderRow<Trailing: View>: View {
 }
 
 extension ProjectHeaderRow where Trailing == EmptyView {
-    init(project: ProjectMeta) { self.init(project: project) { EmptyView() } }
+    init(project: ProjectMeta, host: String? = nil) { self.init(project: project, host: host) { EmptyView() } }
 }
 
 /// A quiet row that pushes a list: "3 archived", "2 more subagents".
@@ -97,14 +65,15 @@ struct DimRow: View {
 
     var body: some View {
         Text(text)
-            .font(.footnote)
+            .font(TextStep.meta.font)
             .foregroundStyle(.tertiary)
             .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
     }
 }
 
-/// One calm sentence and the one action that helps: an empty workspace, a
-/// host with nothing, a Home with nothing to do. Never a blank.
+/// One calm sentence and, when one helps, the one action: an empty workspace,
+/// a host with nothing, a Home with nothing to do, a note after a restart.
+/// Never a blank.
 struct QuietNote: View {
     let text: String
     var action: (title: String, run: () -> Void)?
@@ -112,40 +81,62 @@ struct QuietNote: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text(text)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+                .textStep(.meta)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
             if let action {
                 // The pressable style keeps the label's own color, so the action names its tint itself.
                 Button(action: action.run) {
                     Text(action.title)
-                        .font(.footnote.weight(.medium))
+                        .font(TextStep.meta.font.weight(.medium))
                         .foregroundStyle(.tint)
-                        .frame(minHeight: 44)
+                        .frame(minHeight: Layout.rowHeight)
                 }
                 .buttonStyle(.pressable)
             }
         }
-        .frame(minHeight: 44)
+        .frame(minHeight: Layout.rowHeight)
     }
 }
 
 /// The plus at the end of a workspace or project header: a new thread there.
-/// 44 pt to the touch, 30 pt to the eye.
+/// 44 pt to the touch, 30 pt to the eye; the stroke follows the semibold
+/// name beside it.
 struct NewThreadButton: View {
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Image(systemName: "plus")
-                .font(.subheadline.weight(.semibold))
+                .font(TextStep.title.font.weight(.semibold))
                 .foregroundStyle(.secondary)
-                .frame(width: 44, height: 44)
+                .frame(width: 30, height: 30)
+                .frame(width: Layout.rowHeight, height: Layout.rowHeight)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.pressable)
         .accessibilityLabel("New thread")
+    }
+}
+
+/// A header's trailing menu (a host's or a project's): the ellipsis in the
+/// same 44 pt target as the plus beside it.
+struct HeaderMenu<Content: View>: View {
+    let systemImage: String
+    let label: String
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        Menu(content: content) {
+            Image(systemName: systemImage)
+                .font(TextStep.title.font.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 30, height: 30)
+                .frame(width: Layout.rowHeight, height: Layout.rowHeight)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.pressable)
+        .accessibilityLabel(label)
     }
 }
 
@@ -156,7 +147,7 @@ struct ConnectionDot: View {
     var body: some View {
         Circle()
             .fill(color)
-            .frame(width: 7, height: 7)
+            .frame(width: Layout.dotSize, height: Layout.dotSize)
             .accessibilityLabel(StatusText.text(for: status, now: .now))
     }
 

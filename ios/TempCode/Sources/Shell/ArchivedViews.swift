@@ -3,7 +3,7 @@ import TempCodeClient
 import TempCodeContract
 
 /// A project's archived roots, newest first, under the project's own
-/// header; the same plain list and rows as Home.
+/// header; the same plain list and rows as Home, with no plus and no menu.
 struct ArchivedThreadsView: View {
     let client: EnvironmentClient
     let projectId: String
@@ -20,8 +20,7 @@ struct ArchivedThreadsView: View {
             } header: {
                 if let project {
                     ProjectHeaderRow(project: project)
-                        .padding(.leading, 16)
-                        .padding(.trailing, 16)
+                        .padding(.horizontal, Layout.textEdge)
                         .textCase(nil)
                         .listRowInsets(EdgeInsets())
                 }
@@ -61,17 +60,16 @@ struct ArchivedProjectsView: View {
                             DimRow(group.archivedCount == 1 ? "1 archived" : "\(group.archivedCount) archived")
                         }
                         .buttonStyle(.pressable)
-                        .listRowInsets(rowInsets)
+                        .listRowInsets(Layout.rowInsets)
                     }
                     if group.threads.isEmpty, group.archivedCount == 0 {
                         DimRow("No threads")
-                            .listRowInsets(rowInsets)
+                            .listRowInsets(Layout.rowInsets)
                             .listRowSeparator(.hidden)
                     }
                 } header: {
                     ProjectHeaderRow(project: group.project)
-                        .padding(.leading, 16)
-                        .padding(.trailing, 16)
+                        .padding(.horizontal, Layout.textEdge)
                         .textCase(nil)
                         .listRowInsets(EdgeInsets())
                 }
@@ -105,7 +103,7 @@ struct ThreadButton: View {
             ThreadRow(row: model)
         }
         .buttonStyle(.pressable)
-        .listRowInsets(rowInsets)
+        .listRowInsets(Layout.rowInsets)
         .modifier(RowActionsIfKnown(client: client, sessionId: sessionId))
     }
 }
