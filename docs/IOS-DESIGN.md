@@ -74,33 +74,68 @@ row "3 archived" that pushes the archived list. Chats without a project sit
 first under the workspace. Archived projects collapse into one dim row at
 the end of the workspace. Pinned threads sort first within their project.
 
-**Home's furniture** (Shell/HomeView.swift, HomeRows.swift, HomeStyles.swift).
-Home is one plain `List` of native `Section`s under a large title that
-collapses; no painted header bands. "Needs you", "Running" and "Chats" are
-section titles in `title3` semibold on the list background, 14 pt above and
-6 pt below, 10 pt between sections. Each workspace is a section whose
-sticky header is the fold row: the mark at 22 pt (the repo icon in a
-continuous `size / 4` corner with a 1 px outline, pure black or pure white
-at 10 %, else the host mark, else a folder), the name semibold, the GitHub
-repo dim under it, and while folded the thread count in tertiary tabular
-digits; the plus trails in a 44 pt target. Tapping the row folds it (no
+**Home's furniture** (Shell/HomeView.swift, HomeRows.swift, HomeStyles.swift,
+HomeSlots.swift, HomeRowModels.swift; the rules in the client package's
+Shell/HomeSections.swift, under Swift Testing). Home is one plain `List` of
+native `Section`s under a large title that collapses; no painted header
+bands. "Needs you" and "Running" are the system's prominent section headers
+(`headerProminence(.increased)`, no hand-set font), 10 pt between sections.
+Every row is on the kit's names: `Layout.textEdge` on both sides, `Layout.
+rowHeight`, the three text steps, the motion table. A needs-you row is the
+one `ThreadRow`, built by `ThreadRowModel.needsYou(item:cue:)`: the status
+dot (warning, destructive or the pause mark), the type glyph, the title, the
+cue as the second line ("Approve: run bun test", "Question: which email?",
+"Paused", cross-fading in place), and how long it has waited as the trailing
+time; the row sits on the warning tint at 8 %. Each workspace is a section
+whose sticky header is the fold row: the mark at 22 pt (the repo icon in a
+continuous `size / 4` corner with a hairline outline, pure black or pure
+white at 10 %, else the host mark, else a folder), the name semibold, the
+GitHub repo as a stamp under it, and while folded the thread count rolling
+its digits; the plus trails in a 44 pt target. Tapping the row folds it (no
 chevron); the rows leave on the collapse curve and return on the expand
-spring, cross-fades under reduced motion. Projects are sub-header rows in
-the flow (`footnote` semibold secondary, the worktree mark, the branch
-tertiary, the plus), never bands. Needs-you cells carry the warning tint at
-8 % as the row background under the section title; the wait is `caption2`
-tertiary with a numeric text transition and moves under the cue at
-accessibility sizes. A troubled host is one 12 pt field on the chrome step
-at the top (dot, name, what is happening, the Retry or Pair again capsule),
-stacked at accessibility sizes. Empty states are one calm sentence with one
-tinted action in a 44 pt row: "Nothing needs you right now." with New
-thread when neither Needs you nor Running has a row; "No threads here yet."
-with New thread in an expanded empty workspace; "No workspaces on <host>
-yet…" with Hosts for a host that lists nothing; "Nothing paired yet" with
-Pair a host as the first run. Status and needs-you rows are the only rows
-with an entrance (the motion table's values); nothing animates in the first
-300 ms after the cached paint. The archived lists share the same project
-sub-headers and rows.
+spring, cross-fades under reduced motion. A host's loose chats are the same
+header row with a `bubble.left` glyph, no fold and no plus. Projects are
+sub-header rows in the flow (`meta` semibold, the worktree mark at the same
+stroke, the branch tertiary truncated in the middle, the plus, and a menu
+only when a slot fills it), never bands. A troubled host is one field on the
+chrome step at the top (dot, name, what is happening, the Retry or Pair again
+capsule), stacked at accessibility sizes. Empty states are one calm sentence
+with one tinted action in a 44 pt row: "Nothing needs you right now." with
+New thread when neither Needs you nor Running has a row; "No threads here
+yet." with New thread in an expanded empty workspace; "No workspaces on
+<host> yet…" with Hosts for a host that lists nothing (the system spinner in
+a plain row until it has listed); "Nothing paired yet" with Pair a host as the
+first run. Status, needs-you and host-note rows are the only rows with an
+entrance (`Motion.appear`: 200 ms ease-out with 8 pt of travel in, 150 ms
+out); a thread starting is routine and slides nothing; nothing animates in
+the first 300 ms after the cached paint. The archived lists share the same
+project sub-headers and rows, without the plus or the menu.
+
+**Paired workspaces.** Two hosts' copies of one project (the pairing key from
+`HomeSlots.pairing`: same GitHub repo, else the same folder name) are one
+workspace row, listed before any host's section so it is never under one
+host's name: one connection dot per member host beside the logo, the threads
+of every member under it with the host's name on each project header, the
+count summed, and one fold for both copies (the fold key is the pairing
+key). The default pairing pairs nothing.
+
+**Hosts on Home.** With one host there is no host header; its menu (the fleet
+switches), when a slot fills it, is an `ellipsis.circle` in the navigation
+bar before Settings. With several, each host's workspaces sit under a header
+with the connection dot, the name, a sibling's trailing mark (the deploy
+drift) and the menu. A host's one-off lines (the boot-resume note) are quiet
+rows under its header with the event motion and no action.
+
+**Home's extension points** (`HomeSlots`, one value passed from `RootView`'s
+`HomeView(path: $homePath, slots: …)`; every slot optional, a nil slot draws
+nothing, so no menu is ever empty): `pairing` (paired projects), `hostNotes`
+and `hostMenu` and `projectBatch` (the fleet switches and the boot-resume
+note), `projectSettings` (the project settings entry in the project header's
+menu, after New thread and before the batch entries), `hostTrailing` (the
+deploy-drift mark on the status row and the host header). Masters need no
+slot: a master's row carries its word from `ThreadRow`, its batch children are
+roots that Home lists through `HomeModel`, and whatever fills
+`ThreadItem.children` nests under its root as subagents do.
 
 **Thread rows** everywhere share one shape: 44 pt minimum, status dot or
 spinner leading (desktop `StatusDot` colors: waiting warning, error
