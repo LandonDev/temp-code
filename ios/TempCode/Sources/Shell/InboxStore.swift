@@ -2,21 +2,11 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// One inbox item and the host it came from.
-struct InboxEntry: Identifiable, Hashable {
-    let environmentId: String
-    let hostName: String
-    let item: GithubInboxItem
-    /// `updatedAt` in clock milliseconds, the unit `TimeFormat` reads.
-    let updatedMs: Int
-
-    var id: String { "\(environmentId):\(item.repo)#\(item.number)" }
-}
-
 /// What the inbox holds across the app: every host's last snapshot, kept on
 /// disk so the tab paints at once on the next launch and never flashes; the
 /// seen marks that decide a row's weight; and what the detail screens have
-/// already loaded, so going back and in again paints from memory.
+/// already loaded, so going back and in again paints from memory. The rules
+/// are `InboxModel` in the client package; this is the storage.
 @MainActor @Observable
 final class InboxStore {
     static let shared = InboxStore()
@@ -37,8 +27,6 @@ final class InboxStore {
     private let directory: URL
     private static let seenKey = "inbox.seen"
     private static let seededKey = "inbox.seen.seeded"
-    /// On the first snapshot ever, rows older than this are seen; the newer ones are what is new.
-    private static let seedWindowMs = 24 * 60 * 60 * 1000
 
     init(defaults: UserDefaults = .standard, directory: URL? = nil) {
         self.defaults = defaults
@@ -55,7 +43,12 @@ final class InboxStore {
     func put(_ snapshot: GithubInboxSnapshot, for environmentId: String) {
         markAsked(environmentId)
         snapshots[environmentId] = snapshot
-        seedSeen(from: snapshot, environmentId: environmentId)
+        if !defaults.bool(forKey: Self.seededKey) {
+            let now = Int(Date.now.timeIntervalSince1970 * 1000)
+            seen.merge(InboxModel.seedSeen(snapshot, environmentId: environmentId, now: now)) { _, seeded in seeded }
+            defaults.set(true, forKey: Self.seededKey)
+            saveSeen()
+        }
         let url = directory.appending(path: "\(environmentId).json")
         if let data = try? JSONEncoder().encode(snapshot) {
             try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -74,52 +67,27 @@ final class InboxStore {
         return now.timeIntervalSince(at) >= Self.reaskInterval
     }
 
+    /// The clients as the model reads them: id, name, and the snapshot held for each.
+    func hosts(_ clients: [EnvironmentClient]) -> [InboxModel.Host] {
+        clients.map { InboxModel.Host(environmentId: $0.environment.id, name: $0.environment.name, snapshot: snapshots[$0.environment.id]) }
+    }
+
     /// Every item of every client, newest first, as the desktop sorts.
     func entries(clients: [EnvironmentClient]) -> [InboxEntry] {
-        var out: [InboxEntry] = []
-        for client in clients {
-            guard let snapshot = snapshots[client.environment.id] else { continue }
-            for repo in snapshot.repos {
-                for item in repo.items {
-                    out.append(InboxEntry(environmentId: client.environment.id, hostName: client.environment.name, item: item, updatedMs: Self.ms(item.updatedAt)))
-                }
-            }
-        }
-        return out.sorted {
-            if $0.updatedMs != $1.updatedMs { return $0.updatedMs > $1.updatedMs }
-            if $0.item.repo != $1.item.repo { return $0.item.repo < $1.item.repo }
-            if $0.item.kind.rawValue != $1.item.kind.rawValue { return $0.item.kind.rawValue < $1.item.kind.rawValue }
-            return $0.item.number > $1.item.number
-        }
+        InboxModel.entries(hosts(clients))
     }
 
     // MARK: seen
 
-    func isUnread(_ entry: InboxEntry) -> Bool {
-        guard let mark = seen[entry.id] else { return true }
-        return mark < entry.updatedMs
-    }
+    func isUnread(_ entry: InboxEntry) -> Bool { InboxModel.isUnread(entry, seen: seen) }
 
     func markRead(_ entry: InboxEntry) {
-        seen[entry.id] = max(entry.updatedMs, seen[entry.id] ?? 0)
+        InboxModel.markRead(entry, in: &seen)
         saveSeen()
     }
 
     func markUnread(_ entry: InboxEntry) {
-        seen[entry.id] = nil
-        saveSeen()
-    }
-
-    private func seedSeen(from snapshot: GithubInboxSnapshot, environmentId: String) {
-        guard !defaults.bool(forKey: Self.seededKey) else { return }
-        let cutoff = Int(Date.now.timeIntervalSince1970 * 1000) - Self.seedWindowMs
-        for repo in snapshot.repos {
-            for item in repo.items {
-                let ms = Self.ms(item.updatedAt)
-                if ms < cutoff { seen["\(environmentId):\(item.repo)#\(item.number)"] = ms }
-            }
-        }
-        defaults.set(true, forKey: Self.seededKey)
+        InboxModel.markUnread(entry, in: &seen)
         saveSeen()
     }
 
@@ -151,65 +119,37 @@ final class InboxStore {
         }
         return out
     }
-
-    nonisolated static func ms(_ iso: String) -> Int {
-        let date = (try? Date(iso, strategy: .iso8601.year().month().day().time(includingFractionalSeconds: true)))
-            ?? (try? Date(iso, strategy: .iso8601))
-        guard let date else { return 0 }
-        return Int(date.timeIntervalSince1970 * 1000)
-    }
 }
 
-/// The one word a row carries beyond its title, in the color that means it.
-/// Nothing for an open pull request that waits on nothing in particular.
-struct InboxStatus: Hashable {
-    let text: String
-    let tint: Color?
-
-    static func of(_ item: GithubInboxItem, viewer: String?) -> InboxStatus? {
-        let isPr = item.kind.rawValue == "pr"
-        switch item.state.rawValue {
-        case "merged": return InboxStatus(text: "Merged", tint: Tint.violet)
-        case "closed": return InboxStatus(text: "Closed", tint: isPr ? Tint.destructive : nil)
-        default: break
-        }
-        guard isPr else { return nil }
-        if item.draft { return InboxStatus(text: "Draft", tint: nil) }
-        if item.reviewDecision.rawValue == "CHANGES_REQUESTED" { return InboxStatus(text: "Changes requested", tint: Tint.warning) }
-        if let checks = item.checks?.rawValue, checks == "FAILURE" || checks == "ERROR" { return InboxStatus(text: "Checks failing", tint: Tint.destructive) }
-        if item.reviewDecision.rawValue == "APPROVED" { return InboxStatus(text: "Approved", tint: Tint.success) }
-        if let viewer, !viewer.isEmpty, item.reviewRequested.contains(where: { $0.caseInsensitiveCompare(viewer) == .orderedSame }) {
-            return InboxStatus(text: "Your review", tint: Tint.info)
-        }
-        return nil
-    }
-}
-
-/// The review a comment carries, as the desktop's `githubReviewStateLabel` says it.
-enum InboxReviewState {
-    static func label(_ state: String) -> (text: String, tint: Color?)? {
-        switch state.uppercased() {
-        case "APPROVED": ("Approved", Tint.success)
-        case "CHANGES_REQUESTED": ("Requested changes", Tint.warning)
-        case "DISMISSED": ("Dismissed", nil)
-        default: nil
+/// Each tone's one color; `plain` is the tertiary label, so the word sits
+/// with the rest of the dim line.
+extension InboxTone {
+    var color: Color {
+        switch self {
+        case .info: Tint.info
+        case .success: Tint.success
+        case .warning: Tint.warning
+        case .destructive: Tint.destructive
+        case .violet: Tint.violet
+        case .plain: Color(.tertiaryLabel)
         }
     }
 }
 
 /// A person's picture: the GitHub avatar once it lands, a letter until then,
-/// both behind the same hairline outline so the edge reads the same on every
-/// surface. Loaded once per process and kept.
+/// both behind the same one-pixel outline (black or white at 10 %) so the
+/// edge reads the same on every surface. Loaded once per process and kept.
+/// The caller scales `size` with Dynamic Type.
 struct InboxAvatar: View {
     let url: String
     let login: String
-    var size: CGFloat = 36
+    let size: CGFloat
     @State private var image: UIImage?
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         ZStack {
-            Circle().fill(Color(.tertiarySystemFill))
+            Circle().fill(Surface.fill)
             Text(String(login.prefix(1)).uppercased())
                 .font(.system(size: size * 0.42, weight: .medium, design: .rounded))
                 .foregroundStyle(.secondary)
@@ -222,14 +162,10 @@ struct InboxAvatar: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
-        .overlay(Circle().strokeBorder(outline, lineWidth: 1))
+        .hairlineBorder(Circle(), color: scheme == .dark ? .white.opacity(0.1) : .black.opacity(0.1))
         .animation(Motion.crossFade, value: image == nil)
         .accessibilityHidden(true)
         .task(id: url) { await load() }
-    }
-
-    private var outline: Color {
-        (scheme == .dark ? Color.white : Color.black).opacity(0.1)
     }
 
     private func load() async {
