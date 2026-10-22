@@ -397,7 +397,9 @@ describe("the host's verdict, a gone harness, a queued thread", () => {
   it('every notice names the host and the plan body carries its kind', () => {
     notifier.stop()
     notifier = new Notifier({ registry: reg, stuckMinutes: () => 10, hostName: () => 'box', now: () => Date.now(), log: () => {} })
-    notifier.onNotice((n) => notices.push(n))
+    notifier.onNotice((n) => {
+      notices.push(n)
+    })
     reg.add('p', { threadType: 'planning', planPath: '/p.md', status: 'running' })
     notifier.start()
     reg.row('p', { type: 'user-text', text: 'plan it' })

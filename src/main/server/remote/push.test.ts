@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { HubActivityState } from '../hub'
 import type { SessionMeta } from '@shared/events'
 import type { HubAck } from '../hub'
-import { ActivityFeed, activityPhase, PushRegistry, type PushHub } from './push'
+import { ActivityFeed, activityPhase, activityState, PushRegistry, type PushHub } from './push'
 
 function db(): DatabaseSync {
   const d = new DatabaseSync(':memory:')
@@ -135,13 +135,81 @@ describe('ActivityFeed', () => {
     updatedAt: 900,
     ...patch
   })
-  it('maps statuses to the strip phases', () => {
+  it('maps statuses to the strip phases: stopped is its own end, queued is nothing', () => {
     expect(['starting', 'running', 'watching'].map((s) => activityPhase(s as SessionMeta['status']))).toEqual(['working', 'working', 'working'])
     expect(activityPhase('paused')).toBe('paused')
     expect(activityPhase('waiting')).toBe('waiting')
     expect(activityPhase('error')).toBe('failed')
+    expect(activityPhase('stopped')).toBe('stopped')
+    expect(activityPhase('queued')).toBeNull()
     expect(activityPhase('idle')).toBe('finished')
     expect(activityPhase('running', true)).toBe('finished')
+    expect(activityState(meta({ status: 'queued' }), 1)).toBeNull()
+  })
+  it('a queued thread is skipped whole, a stopped one ends with its phase', async () => {
+    const listeners = new Set<(m: SessionMeta) => void>()
+    const { hub, calls } = fakeHub()
+    const push = new PushRegistry(db(), { hub: () => hub, log: () => {} })
+    await push.setActivity('k1', { sessionId: 't1', token: TOKEN, bundleId: 'b', environment: 'sandbox' })
+    let latest: SessionMeta | null = null
+    const feed = new ActivityFeed({ registry: { onMeta: (l) => (listeners.add(l), () => listeners.delete(l)), get: () => latest }, push, hub: () => hub, now: () => 2000, log: () => {} })
+    feed.start()
+    const emit = (m: SessionMeta) => listeners.forEach((l) => l((latest = m)))
+    emit(meta({ status: 'queued', activity: 'Queued · waiting for t0' }))
+    emit(meta({ status: 'queued', title: 'Renamed' }))
+    await new Promise((r) => setTimeout(r, 5))
+    expect(calls.filter((c) => c.method === 'pushActivity')).toEqual([])
+    expect(push.hasActivities('t1')).toBe(true)
+    emit(meta({ status: 'running', tasks: { done: 1, total: 3, current: 'Write the endpoint' } }))
+    emit(meta({ status: 'stopped', tasks: { done: 1, total: 3, current: 'Write the endpoint' } }))
+    await new Promise((r) => setTimeout(r, 5))
+    const pushes = calls.filter((c) => c.method === 'pushActivity').map((c) => c.args as { event: string; state: HubActivityState })
+    expect(pushes.map((p) => [p.event, p.state.phase])).toEqual([['update', 'working'], ['end', 'stopped']])
+    expect(pushes[1].state).toMatchObject({ task: 'Write the endpoint', done: 1, total: 3 })
+    expect(pushes[1].state).not.toHaveProperty('unit')
+    expect(push.hasActivities('t1')).toBe(false)
+    feed.stop()
+  })
+  it("a watching master's card counts its batch's threads and names the running step; a poke re-reads the tally", async () => {
+    const listeners = new Set<(m: SessionMeta) => void>()
+    const { hub, calls } = fakeHub()
+    const push = new PushRegistry(db(), { hub: () => hub, log: () => {} })
+    await push.setActivity('k1', { sessionId: 'm', token: TOKEN, bundleId: 'b', environment: 'sandbox' })
+    let latest: SessionMeta | null = null
+    let tally = { done: 1, total: 4, step: null as string | null }
+    const feed = new ActivityFeed({
+      registry: { onMeta: (l) => (listeners.add(l), () => listeners.delete(l)), get: () => latest },
+      push,
+      hub: () => hub,
+      now: () => 2000,
+      batch: (id) => (id === 'm' ? tally : null),
+      log: () => {}
+    })
+    feed.start()
+    const emit = (m: SessionMeta) => listeners.forEach((l) => l((latest = m)))
+    emit(meta({ id: 'm', title: 'Master', status: 'watching', isMaster: true, tasks: { done: 9, total: 9, current: 'ignored: the batch is the line' } }))
+    await new Promise((r) => setTimeout(r, 5))
+    const pushes = () => calls.filter((c) => c.method === 'pushActivity').map((c) => c.args as { event: string; state: HubActivityState; priority?: number })
+    expect(pushes()).toHaveLength(1)
+    expect(pushes()[0].state).toMatchObject({ phase: 'working', title: 'Master', task: 'Waiting on 3 threads', done: 1, total: 4, unit: 'threads' })
+    // A child landed and the gate started: no meta moved, the engine pokes.
+    tally = { done: 4, total: 4, step: 'gate' }
+    feed.poke('m')
+    feed.poke('nobody')
+    await new Promise((r) => setTimeout(r, 5))
+    expect(pushes()).toHaveLength(2)
+    expect(pushes()[1]).toMatchObject({ priority: 10, state: { task: 'gate', done: 4, total: 4, unit: 'threads' } })
+    // The same tally again is no push.
+    feed.poke('m')
+    await new Promise((r) => setTimeout(r, 5))
+    expect(pushes()).toHaveLength(2)
+    // A thread that is not a master keeps its own list, unit absent.
+    await push.setActivity('k1', { sessionId: 't1', token: TOKEN, bundleId: 'b', environment: 'sandbox' })
+    emit(meta({ tasks: { done: 2, total: 5, current: 'Write the endpoint' } }))
+    await new Promise((r) => setTimeout(r, 5))
+    expect(pushes()[2].state).toMatchObject({ task: 'Write the endpoint', done: 2, total: 5 })
+    expect(pushes()[2].state).not.toHaveProperty('unit')
+    feed.stop()
   })
   it('pushes one update per change of what the card shows, ends on a settled phase with the notifier\'s reason, and drops the rows', async () => {
     const listeners = new Set<(m: SessionMeta) => void>()

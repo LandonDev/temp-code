@@ -319,12 +319,22 @@ export interface ActivityFeedOptions {
   hub: () => Pick<PushHub, 'pushActivity'> | null
   /** The host sends the activity states itself when this answers true. */
   local?: () => boolean
+  /** A master's batch: children done of total and the running step's name (null when the thread has no batch). */
+  batch?: (masterId: string) => BatchTally | null
+  isMaster?: (meta: SessionMeta) => boolean
   /** Task-line-only changes go out at most once per window per thread. */
   coalesceMs?: number
   /** A waiting thread's end waits this long for the notifier's reason before going without one. */
   reasonWaitMs?: number
   now?: () => number
   log?: (line: string) => void
+}
+
+/** What a watching master's card counts: its batch's children, and the step the engine is on. */
+export interface BatchTally {
+  done: number
+  total: number
+  step: string | null
 }
 
 /** A chatty thread's task line changes every few seconds; one push per window keeps inside the Live Activity budget. */
@@ -336,15 +346,17 @@ const REASON_CHARS = 160
 const oneLine = (text: string): string => text.replace(/\s+/g, ' ').trim()
 const cut = (text: string, max: number): string => (text.length <= max ? text : `${text.slice(0, max - 1)}…`)
 
-/** The activity's phase for a status: the strip's word, or how it ended. */
-export function activityPhase(status: SessionMeta['status'], archived = false): HubActivityState['phase'] {
+/**
+ * The activity's phase for a status: the strip's word, or how it ended.
+ * Null for a queued thread: created and not yet booted, it is not live and
+ * never starts or keeps an activity.
+ */
+export function activityPhase(status: SessionMeta['status'], archived = false): HubActivityState['phase'] | null {
   if (archived) return 'finished'
   switch (status) {
     case 'starting':
     case 'running':
     case 'watching':
-    // queued: created, not yet booted; the strip reads it as starting.
-    case 'queued':
       return 'working'
     case 'paused':
       return 'paused'
@@ -352,6 +364,10 @@ export function activityPhase(status: SessionMeta['status'], archived = false): 
       return 'waiting'
     case 'error':
       return 'failed'
+    case 'stopped':
+      return 'stopped'
+    case 'queued':
+      return null
     default:
       return 'finished'
   }
@@ -361,17 +377,28 @@ export function activityPhase(status: SessionMeta['status'], archived = false): 
  * The content state for a meta: what the desktop's running row shows. The
  * task is the list's in-progress item, else the activity line ("Editing
  * PromptBar.tsx"); the tally only when the thread has a list; the reason
- * only while it waits.
+ * only while it waits. A master with a batch counts its children done of
+ * total (`unit: 'threads'`) and names the engine's running step, else how
+ * many threads it waits on. Null for a queued thread.
  */
-export function activityState(meta: SessionMeta, now: number, reason: string | null = null): HubActivityState {
+export function activityState(meta: SessionMeta, now: number, reason: string | null = null, batch: BatchTally | null = null): HubActivityState | null {
   const phase = activityPhase(meta.status, meta.archived)
-  const tasks = meta.tasks ?? null
-  const task = tasks?.current || (phase === 'working' ? meta.activity : null) || null
+  if (phase === null) return null
   const state: HubActivityState = { phase, since: meta.busySince ?? meta.updatedAt, ts: now, title: cut(oneLine(meta.title), TASK_CHARS) }
-  if (task) state.task = cut(oneLine(task), TASK_CHARS)
-  if (tasks && tasks.total > 0) {
-    state.done = tasks.done
-    state.total = tasks.total
+  if (batch) {
+    const open = batch.total - batch.done
+    state.task = cut(oneLine(batch.step ?? `Waiting on ${open} ${open === 1 ? 'thread' : 'threads'}`), TASK_CHARS)
+    state.done = batch.done
+    state.total = batch.total
+    state.unit = 'threads'
+  } else {
+    const tasks = meta.tasks ?? null
+    const task = tasks?.current || (phase === 'working' ? meta.activity : null) || null
+    if (task) state.task = cut(oneLine(task), TASK_CHARS)
+    if (tasks && tasks.total > 0) {
+      state.done = tasks.done
+      state.total = tasks.total
+    }
   }
   if (phase === 'waiting' && reason) state.reason = cut(oneLine(reason), REASON_CHARS)
   return state
@@ -396,6 +423,7 @@ interface Tracked {
  * A settled phase is the `end` that shows the final state briefly, after
  * which the activity rows are gone; a waiting end holds briefly for the
  * notifier's needs-you line so the card can say what the thread wants.
+ * A queued thread is skipped whole: no push, no tracking.
  */
 export class ActivityFeed {
   private readonly threads = new Map<string, Tracked>()
@@ -439,6 +467,19 @@ export class ActivityFeed {
     if (meta) this.enqueue(meta, { urgent: true })
   }
 
+  /** A master's batch moved (a step started, a child landed): its card re-reads the tally without waiting for a meta. */
+  poke(masterId: string): void {
+    const meta = this.options.registry.get?.(masterId) ?? null
+    if (!meta || meta.parentId) return
+    if (!this.options.push.hasActivities(meta.id)) return
+    this.enqueue(meta, {})
+  }
+
+  private batchOf(meta: SessionMeta): BatchTally | null {
+    if (!this.options.batch || !(this.options.isMaster?.(meta) ?? meta.isMaster === true)) return null
+    return this.options.batch(meta.id)
+  }
+
   private track(id: string): Tracked {
     let t = this.threads.get(id)
     if (!t) {
@@ -454,8 +495,9 @@ export class ActivityFeed {
       this.forget(meta.id)
       return
     }
-    const t = this.track(meta.id)
     const phase = activityPhase(meta.status, meta.archived)
+    if (phase === null) return
+    const t = this.track(meta.id)
     if (phase !== 'waiting') {
       t.reason = null
       if (t.hold) {
@@ -487,12 +529,13 @@ export class ActivityFeed {
 
   /** Decides now or later; pushes settle in order per thread, so an `end` never lands before the update it follows. */
   private enqueue(meta: SessionMeta, opts: { urgent?: boolean }): void {
+    const next = activityState(meta, this.now(), this.threads.get(meta.id)?.reason ?? null, this.batchOf(meta))
+    if (!next) return
     const t = this.track(meta.id)
-    const next = activityState(meta, this.now(), t.reason)
     const { ts: _ts, ...bare } = next
     const live = next.phase === 'working' || next.phase === 'paused'
     const sent = t.sent
-    const softOnly = sent !== null && live && sent.phase === next.phase && sent.title === next.title && sent.done === next.done && sent.total === next.total && sent.reason === next.reason && sent.task !== next.task
+    const softOnly = sent !== null && live && sent.phase === next.phase && sent.title === next.title && sent.done === next.done && sent.total === next.total && sent.unit === next.unit && sent.reason === next.reason && sent.task !== next.task
     const same = sent !== null && JSON.stringify(sent) === JSON.stringify(bare)
     if (same && live) return
     if (same && !live && !opts.urgent) return
