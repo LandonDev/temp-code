@@ -11,6 +11,7 @@ import { resolve } from 'node:path'
 //          component can mount without pulling xterm or CodeMirror.
 const renderer = resolve(__dirname, 'src/renderer/src')
 const stub = (name: string): string => resolve(renderer, 'test/stubs', name)
+const storageSetup = resolve(renderer, 'test/storageSetup.ts')
 
 export default defineConfig({
   esbuild: { jsx: 'automatic' },
@@ -38,7 +39,8 @@ export default defineConfig({
           name: 'node',
           environment: 'node',
           include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'scripts/*.test.ts'],
-          exclude: [...configDefaults.exclude, '**/*.dom.test.tsx']
+          exclude: [...configDefaults.exclude, '**/*.dom.test.tsx'],
+          setupFiles: [storageSetup]
         }
       },
       {
@@ -56,7 +58,7 @@ export default defineConfig({
           name: 'dom',
           environment: 'jsdom',
           include: ['src/**/*.dom.test.tsx'],
-          setupFiles: [resolve(renderer, 'test/domSetup.ts')]
+          setupFiles: [storageSetup, resolve(renderer, 'test/domSetup.ts')]
         }
       }
     ]
