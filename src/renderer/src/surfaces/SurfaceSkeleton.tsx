@@ -14,7 +14,9 @@ export type SkeletonKind =
   /** A terminal: the dark host with a prompt bar. */
   | "terminal"
   /** A framed document (an HTML render, an image). */
-  | "frame";
+  | "frame"
+  /** A thread's rows while its transcript loads: prompts on the right, answers under them. */
+  | "transcript";
 
 const bar = "rounded bg-content/8";
 
@@ -75,6 +77,17 @@ export function SurfaceSkeleton({ kind, label }: { kind: SkeletonKind; label?: s
           <div className="min-h-0 flex-1 p-2">
             <div className={`h-3 w-16 ${bar}`} />
           </div>
+        </div>
+      );
+    case "transcript":
+      return (
+        <div {...aria} className={`mx-auto flex h-full min-h-0 w-full max-w-4xl flex-col gap-8 overflow-hidden px-4 pt-6 ${base}`}>
+          {[4, 3, 5].map((count, i) => (
+            <div key={i} className="flex flex-col gap-4">
+              <div className={`h-7 w-2/5 self-end ${bar}`} />
+              <Lines count={count} className="max-w-2xl" />
+            </div>
+          ))}
         </div>
       );
     case "frame":

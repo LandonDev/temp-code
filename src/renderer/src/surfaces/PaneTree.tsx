@@ -137,7 +137,8 @@ function SessionLeaf({ id, visible, ...props }: SessionLeafProps) {
   // sat parked comes back as soon as the pane is on the page again.
   const loaded = session?.loaded === true;
   useEffect(() => {
-    if (!loaded) void sessionStore.ensureLoaded(id, "pane");
+    // A failed load retries by itself (store.ts); the pane reads its phase.
+    if (!loaded) void sessionStore.ensureLoaded(id, "pane").catch(() => undefined);
   }, [id, loaded]);
   if (!session) return null;
   return <SessionPane session={session} visible={visible} {...props} />;

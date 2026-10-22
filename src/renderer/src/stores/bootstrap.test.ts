@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { historyStore } from "../lib/historyStore";
 import { newTab } from "../lib/layout";
-import { newDefaultSession } from "../lib/session";
+import { newDefaultSession, type Session } from "../lib/session";
 import type { SessionSummary } from "../lib/sessionStore";
 import { sessionStore } from "../lib/tcserver/store";
 import { bootstrapWorkspace, newBootSeed, planBoot } from "./bootstrap";
@@ -31,6 +31,9 @@ function resumedOf(cwd: string) {
 
 const row = (id: string): SessionSummary =>
   ({ id, title: id, cwd: "/a", updatedAt: 1 }) as unknown as SessionSummary;
+
+/** The store stamps each session's load phase; these tests compare what the shell handed it. */
+const withoutLoad = (sessions: Session[]): Session[] => sessions.map(({ load: _load, ...rest }) => rest);
 
 describe("planBoot", () => {
   it("a window transfer outranks a resume", () => {
@@ -103,7 +106,7 @@ describe("bootstrapWorkspace", () => {
       installedUpdate: update,
     });
     expect(boot.tabs).toBe(transfer.tabs);
-    expect(sessionStore.getSnapshot()).toEqual(transfer.sessions);
+    expect(withoutLoad(sessionStore.getSnapshot())).toEqual(transfer.sessions);
     expect(historyStore.get()).toEqual([row("h1")]);
     expect(shellStore.getState().updateNotice).toBe(update);
     expect(projectStore.getState().projectCwd).toBe("/moved");
@@ -124,7 +127,7 @@ describe("bootstrapWorkspace", () => {
       historyCwd: null,
       installedUpdate: null,
     });
-    expect(sessionStore.getSnapshot()).toEqual(held);
+    expect(withoutLoad(sessionStore.getSnapshot())).toEqual(held);
     expect(historyStore.get()).toEqual([row("kept")]);
   });
 

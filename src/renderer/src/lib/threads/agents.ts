@@ -209,7 +209,7 @@ export function useSessionById(id: string | null): Session | undefined {
   );
   const loaded = session?.loaded === true;
   useEffect(() => {
-    if (id && !loaded) void sessionStore.ensureLoaded(id, "byId");
+    if (id && !loaded) void sessionStore.ensureLoaded(id, "byId").catch(() => undefined);
   }, [id, loaded]);
   return session;
 }

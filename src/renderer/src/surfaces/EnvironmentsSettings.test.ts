@@ -15,6 +15,13 @@ describe("environments pane helpers", () => {
     expect(statusText(at("offline"), now)).toBe("offline");
     expect(statusText(at("unauthorized"), now)).toBe("key refused");
   });
+  it("says a connected host is slow to answer, and leaves the other states as they were", () => {
+    const now = 1_000_000;
+    expect(statusText(at("open", { fresh: true }), now, true)).toBe("connected, slow to answer");
+    expect(statusText(at("open"), now, true)).toBe("connected, slow to answer");
+    expect(statusText(at("reconnecting", { nextRetryAt: now + 4200 }), now, true)).toBe("reconnecting, next try in 5 s");
+    expect(statusText(at("offline"), now, true)).toBe("offline");
+  });
   it("names what a key may do beyond reading", () => {
     expect(capsText(["read"])).toBe("read only");
     expect(capsText(["read", "operate", "approve"])).toBe("operate, approve");

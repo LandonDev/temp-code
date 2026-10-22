@@ -1,4 +1,4 @@
-import { registry, useEnvironmentDegraded, useEnvironmentStatus, useEnvironments, type Environment } from "../lib/connection";
+import { registry, useEnvironmentDegraded, useEnvironmentStatus, useEnvironments, useSlowEnvironments, type Environment } from "../lib/connection";
 import { EnvironmentSwitcher, toneOf } from "./EnvironmentSwitcher";
 import { statusText } from "../surfaces/EnvironmentsSettings";
 
@@ -23,7 +23,8 @@ export function ConnectionIndicator() {
 function Dot({ environment }: { environment: Environment }) {
   const status = useEnvironmentStatus(environment.id);
   const degraded = useEnvironmentDegraded(environment.id);
-  const text = `${environment.name}: ${statusText(status, Date.now())}${status.lastError ? ` (${status.lastError})` : ""}. Click to retry.`;
+  const slow = useSlowEnvironments().has(environment.id);
+  const text = `${environment.name}: ${statusText(status, Date.now(), slow)}${status.lastError ? ` (${status.lastError})` : ""}. Click to retry.`;
   return (
     <button
       type="button"
@@ -32,7 +33,7 @@ function Dot({ environment }: { environment: Environment }) {
       onClick={() => registry.retry(environment.id)}
       className="grid size-4 place-items-center rounded-sm hover:bg-content/5"
     >
-      <span className={`size-1.5 rounded-full ${toneOf(status, degraded !== null)}`} />
+      <span className={`size-1.5 rounded-full ${toneOf(status, degraded !== null, slow)}`} />
     </button>
   );
 }

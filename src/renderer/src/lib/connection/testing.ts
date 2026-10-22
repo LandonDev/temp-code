@@ -89,8 +89,14 @@ export class FakeTransport {
   onPush(): () => void {
     return () => undefined;
   }
-  onAnswer(): () => void {
-    return () => undefined;
+  private answerListeners = new Set<(ms: number, timedOut: boolean) => void>();
+  onAnswer(l: (ms: number, timedOut: boolean) => void): () => void {
+    this.answerListeners.add(l);
+    return () => this.answerListeners.delete(l);
+  }
+  /** An answer took `ms` (or timed out): what the link's health reads. */
+  answer(ms: number, timedOut = false): void {
+    for (const l of this.answerListeners) l(ms, timedOut);
   }
   onClose(l: (r: CloseReason) => void): () => void {
     if (this.state === "closed" && this.closeReason) l(this.closeReason);

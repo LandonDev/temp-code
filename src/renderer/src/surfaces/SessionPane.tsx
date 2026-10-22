@@ -22,7 +22,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ENTER, EASE_OUT, SPRING_PRESS } from "../lib/ease";
 import { MessageQueue } from "../chrome/MessageQueue";
 import type { ComposerIntent } from "../lib/composerAction";
-import { useQueue } from "../lib/tcserver/store";
+import { sessionStore, useQueue } from "../lib/tcserver/store";
 import { SessionReview } from "../chrome/SessionReview";
 import type { ApprovalDecision } from "../lib/harness";
 import { looksLikeProject, type RecentProject } from "../lib/recents";
@@ -32,6 +32,7 @@ import {
   type Attachment,
   type Block,
   type HarnessId,
+  type LoadState,
   type RuntimeMode,
   type Session,
 } from "../lib/session";
@@ -41,6 +42,7 @@ import { DeferredMount } from "./DeferredMount";
 import { diffChunk, threadViewsChunk } from "./chunks";
 import { preloadWhenIdle } from "../lib/lazyChunk";
 import { EmptySession } from "./EmptySession";
+import { SurfaceSkeleton } from "./SurfaceSkeleton";
 import { ThreadView, type ChatOpts } from "./threads/ThreadView";
 import { ChatColumn, type ChatSlots } from "./threads/chatSlots";
 import { WorkingStrip } from "./threads/WorkingStrip";
@@ -222,7 +224,12 @@ export const SessionPane = memo(function SessionPane({
         : undefined,
     [onHandoff, sessionId],
   );
-  const isEmpty = session.blocks.length === 0;
+  // A thread with no rows is empty only once its transcript has answered;
+  // until then the rows area is a skeleton (and a line when it is slow or failed).
+  const loadPhase = session.load?.phase ?? "loaded";
+  const isEmpty = session.blocks.length === 0 && loadPhase === "loaded";
+  const waiting = session.blocks.length === 0 && loadPhase !== "loaded";
+  const retryLoad = useCallback(() => sessionStore.retryLoad(session.id), [session.id]);
   const showDeckProjectPicker = isEmpty && !looksLikeProject(session.cwd);
   const dockComposer = !isEmpty || inSplit;
   const rootRef = useRef<HTMLDivElement>(null);
@@ -508,6 +515,19 @@ export const SessionPane = memo(function SessionPane({
             <div className="mx-auto w-full max-w-4xl shrink-0">{composerOf()}</div>
           ) : null}
         </>
+      ) : waiting ? (
+        <>
+          <div className="relative flex min-h-0 flex-1 flex-col" data-transcript-loading={loadPhase}>
+            {/* A host that is down already says so above the composer. */}
+            {session.load && !block.degraded ? (
+              <LoadLine name={block.name} load={session.load} onRetry={retryLoad} />
+            ) : null}
+            <div className="min-h-0 flex-1">
+              <SurfaceSkeleton kind="transcript" label="Loading thread" />
+            </div>
+          </div>
+          <div className="mx-auto w-full max-w-4xl shrink-0">{composerOf()}</div>
+        </>
       ) : (
         <ThreadView
           session={session}
@@ -524,3 +544,37 @@ export const SessionPane = memo(function SessionPane({
     </motion.div>
   );
 });
+
+/** The pane's one line while a transcript is slow or failed; null otherwise. */
+export function loadLineText(name: string, load: LoadState, now: number): string | null {
+  if (load.phase === "slow") return `Waiting for ${name} · ${Math.max(0, Math.floor((now - load.since) / 1000))} s`;
+  if (load.phase !== "failed") return null;
+  const lead = `${name.charAt(0).toUpperCase()}${name.slice(1)} did not answer${load.error ? ` (${load.error})` : ""}`;
+  const wait = load.retryAt ? Math.ceil((load.retryAt - now) / 1000) : 0;
+  return wait > 0 ? `${lead} · retrying in ${wait} s` : `${lead} · retrying…`;
+}
+
+function LoadLine({ name, load, onRetry }: { name: string; load: LoadState; onRetry: () => void }) {
+  const ticking = load.phase === "slow" || load.phase === "failed";
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (!ticking) return;
+    setNow(Date.now());
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, [ticking, load]);
+  const text = loadLineText(name, load, now);
+  if (!text) return null;
+  return (
+    <div
+      role="status"
+      data-load-line={load.phase}
+      className="mx-auto mt-2 flex h-6 w-full max-w-4xl shrink-0 items-center gap-2 px-4 text-[11px] text-content/50"
+    >
+      <span className="min-w-0 flex-1 truncate">{text}</span>
+      <button type="button" onClick={onRetry} className="pressable shrink-0 rounded px-1.5 py-0.5 hover:bg-content/10 hover:text-content">
+        {load.phase === "failed" ? "Retry now" : "Retry"}
+      </button>
+    </div>
+  );
+}

@@ -33,6 +33,7 @@ type Entry = { environment: Environment; supervisor: Supervisor; link: EnvLink; 
 export class ConnectionRegistry {
   private entries = new Map<string, Entry>();
   private statusSnapshot: ReadonlyMap<string, EnvironmentStatus> = new Map();
+  private slowSnapshot: ReadonlySet<string> = new Set();
   private environmentList: Environment[] = [];
   /** The environment machine-level work defaults to: `local` in the desktop window, `web` at /ui. */
   private primaryId = LOCAL_ENVIRONMENT_ID;
@@ -113,7 +114,7 @@ export class ConnectionRegistry {
         : new EnvLink(environment.id, this.defaultProfile(environment));
     if (link === this.pendingPrimary) this.pendingPrimary = null;
     const supervisor = this.createSupervisor(environment, link);
-    const entry: Entry = { environment, supervisor, link, offHealth: link.onHealth(() => this.emit()) };
+    const entry: Entry = { environment, supervisor, link, offHealth: link.onHealth(() => this.noteHealth()) };
     this.entries.set(environment.id, entry);
     this.environmentList = this.environments();
     this.setStatus(environment.id, supervisor.status);
@@ -159,6 +160,7 @@ export class ConnectionRegistry {
     entry.supervisor.stop();
     entry.offHealth();
     this.entries.delete(id);
+    if (this.slowSnapshot.has(id)) this.noteHealth();
     this.environmentList = this.environments();
     const next = new Map(this.statusSnapshot);
     next.delete(id);
@@ -197,6 +199,18 @@ export class ConnectionRegistry {
   /** Since when the environment's host has been slow to answer; null when it is not. */
   slowSince(id: string): number | null {
     return this.entries.get(id)?.link.health.slowSince ?? null;
+  }
+
+  /** The environments whose host is slow to answer (link health); one set per change. */
+  slowEnvironments(): ReadonlySet<string> {
+    return this.slowSnapshot;
+  }
+
+  private noteHealth(): void {
+    const slow = new Set<string>();
+    for (const [id, e] of this.entries) if (e.link.health.slowSince !== null) slow.add(id);
+    this.slowSnapshot = slow;
+    this.emit();
   }
 
   /** One stable map per change, for useSyncExternalStore. */

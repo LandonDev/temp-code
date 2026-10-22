@@ -235,4 +235,30 @@ describe("ConnectionRegistry", () => {
     expect(h.transports[0].profile).toBe("remote");
     expect(h.registry.primary()).toBe(link);
   });
+
+  it("names the environments whose host is slow to answer, one set per change", async () => {
+    const h = harness();
+    h.registry.add(localEnvironment(4000));
+    await flush();
+    h.transports[0].answerHello();
+    await flush();
+    let heard = 0;
+    h.registry.subscribe(() => heard++);
+    expect([...h.registry.slowEnvironments()]).toEqual([]);
+    h.transports[0].answer(12_000);
+    const slow = h.registry.slowEnvironments();
+    expect([...slow]).toEqual(["local"]);
+    expect(h.registry.slowSince("local")).not.toBeNull();
+    expect(heard).toBe(1);
+    h.transports[0].answer(30_000, true);
+    expect(h.registry.slowEnvironments()).toBe(slow);
+    expect(heard).toBe(1);
+    h.transports[0].answer(120);
+    expect([...h.registry.slowEnvironments()]).toEqual([]);
+    expect(h.registry.slowSince("local")).toBeNull();
+    expect(heard).toBe(2);
+    h.transports[0].answer(9_000);
+    h.registry.remove("local");
+    expect([...h.registry.slowEnvironments()]).toEqual([]);
+  });
 });

@@ -56,9 +56,11 @@ export function hostErrorText(err: unknown): string {
   return m[1] === "self" ? "That is this machine." : m[2];
 }
 
-export function statusText(status: EnvironmentStatus, now: number): string {
+/** `slow`: the host's answers are late (lib/connection/link.ts health). */
+export function statusText(status: EnvironmentStatus, now: number, slow = false): string {
   switch (status.transport) {
     case "open":
+      if (slow) return "connected, slow to answer";
       return status.fresh ? "connected" : "connected, catching up";
     case "connecting":
       return "connecting…";

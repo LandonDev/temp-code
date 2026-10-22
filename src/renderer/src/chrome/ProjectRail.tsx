@@ -1,4 +1,5 @@
-import { registry, useEnvironments, useEnvironmentStatuses } from "../lib/connection";
+import { registry, useEnvironments, useEnvironmentStatuses, useSlowEnvironments } from "../lib/connection";
+import { statusText } from "../surfaces/EnvironmentsSettings";
 import { environmentOfCwd } from "../lib/tcserver/projects";
 import { groupByEnvironment } from "../lib/environmentGroups";
 import { EnvironmentSwitcher, toneOf } from "./EnvironmentSwitcher";
@@ -234,6 +235,7 @@ export function ProjectRail({
   // row always says where its threads run; one machine keeps one list.
   const environments = useEnvironments();
   const environmentStatuses = useEnvironmentStatuses();
+  const slowEnvironments = useSlowEnvironments();
   const groups = useMemo(
     () => (environments.length > 1 ? groupByEnvironment(sections.projects, environments, environmentOfCwd) : null),
     [environments, sections.projects, workspaces],
@@ -558,13 +560,19 @@ export function ProjectRail({
 
             {(groups ?? [null]).map((group) => {
               const status = group ? environmentStatuses.get(group.environment.id) : undefined;
+              const slow = !!group && slowEnvironments.has(group.environment.id);
               return (
                 <ProjectSection
                   key={group?.environment.id ?? "all"}
                   label={group ? group.environment.name : "Workspaces"}
                   leading={
                     status ? (
-                      <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${toneOf(status, status.transport !== "open")}`} />
+                      <span
+                        aria-hidden
+                        data-host-dot={group?.environment.id}
+                        title={`${group?.environment.name}: ${statusText(status, Date.now(), slow)}`}
+                        className={`size-1.5 shrink-0 rounded-full ${toneOf(status, status.transport !== "open", slow)}`}
+                      />
                     ) : undefined
                   }
                   items={group ? group.items : sections.projects}
