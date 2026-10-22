@@ -308,7 +308,7 @@ const think = (msgId: string, text: string): AgentEvent[] => [
 ]
 const status = (s: 'idle' | 'running' | 'waiting'): AgentEvent => ({ type: 'status', status: s })
 
-const makeTyped = async (id: string, threadType: 'chat' | 'planning' | 'implementation' | 'orchestration' | 'research', title: string, extra: Record<string, unknown> = {}) =>
+const makeTyped = async (id: string, threadType: 'chat' | 'planning' | 'project-plan' | 'implementation' | 'orchestration' | 'research', title: string, extra: Record<string, unknown> = {}) =>
   server.registry.create({ id, provider: 'claude', model: 'claude-sonnet-5-5', reasoning: 'medium', agentType: 'implementer', permission: 'edits', projectId: project.id, threadType, title, ...extra })
 
 // Implementation: two passes, todos in every status, edits with stats, an undecided approval, a closing report.
@@ -492,6 +492,81 @@ if (plan.planPath) {
     ].join('\n')
   )
 }
+
+// Project plan: a complete plan with seven milestones, three landed, kept as
+// the project's plan; and the build that landed milestone 3, linked to it.
+// The real projectPlan.* handlers serve the phone from this seed.
+export const THREAD_PROJECT_PLAN = 'ios-project-plan'
+const projectPlan = await makeTyped(THREAD_PROJECT_PLAN, 'project-plan', 'Project plan: the billing service')
+at(THREAD_PROJECT_PLAN, [
+  { type: 'user-text', text: 'Plan the billing service end to end.', newPass: true },
+  ...think('pp1', 'Seven milestones: the data model first, the ledger on it, then the money paths, the admin screens and the cutover last.'),
+  answer('pp2', 'The project plan is written: seven milestones, three already landed.'),
+  { type: 'turn-complete', costUsd: 0.18 },
+  status('idle')
+])
+if (projectPlan.planPath) {
+  mkdirSync(dirname(projectPlan.planPath), { recursive: true })
+  const milestone = (done: boolean, n: number, title: string, scope: string, deps: string, doneWhen: string): string[] => [
+    `### [${done ? 'x' : ' '}] ${n}. ${title}`,
+    `- Scope: ${scope}`,
+    `- Dependencies: ${deps}`,
+    `- Done when: ${doneWhen}`,
+    ''
+  ]
+  writeFileSync(
+    projectPlan.planPath,
+    [
+      '---',
+      'status: complete',
+      'completed: 2026-10-21T12:00:00.000Z',
+      '---',
+      '# The billing service — project plan',
+      '',
+      '## Goals',
+      '',
+      'Bill every account once a month from the ledger, with no hand-made invoice. Every charge and refund traces back to one ledger entry.',
+      '',
+      '## Current state',
+      '',
+      'The ledger schema and its API are in and the invoice totals land on the ledger. Nothing reaches a card yet.',
+      '',
+      '- Stripe is the only processor in scope.',
+      '',
+      '## Milestones',
+      '',
+      ...milestone(true, 1, 'Data model', 'accounts, ledger entries, invoices and their migrations', 'none', 'the schema tests pass on an empty database'),
+      ...milestone(true, 2, 'Ledger API', 'post, reverse and list entries over the control API', '1', 'the ledger e2e passes'),
+      ...milestone(true, 3, 'Invoice totals', 'the monthly roll-up of entries into an invoice per account', '1, 2', 'a generated invoice matches the fixture to the cent'),
+      ...milestone(false, 4, 'Payments webhook', 'Stripe events into ledger entries, idempotent per event id', '3', 'a replayed event books nothing twice'),
+      ...milestone(false, 5, 'Statements export', 'monthly statements as PDF and CSV from the invoice', '4', 'a statement renders for every seeded account'),
+      ...milestone(false, 6, 'Admin screens', 'the invoice list, the ledger view and a refund button', '2, 5', 'an admin refunds a test charge from the screen'),
+      ...milestone(false, 7, 'Cutover', 'the first real billing run with the old invoices frozen', '4, 5, 6', 'one month billed with no hand-made invoice'),
+      '## Risks',
+      '',
+      '- A webhook delivered twice books a charge twice: the event id is the idempotency key.',
+      '- The roll-up crosses a month boundary in the wrong zone: every date is UTC.',
+      '',
+      '## Open questions',
+      '',
+      '- Do refunds reopen a closed invoice or book a credit on the next one?',
+      ''
+    ].join('\n')
+  )
+}
+export const THREAD_M3_BUILD = 'ios-m3-build'
+await makeTyped(THREAD_M3_BUILD, 'implementation', 'M3 · Invoice totals')
+at(THREAD_M3_BUILD, [
+  { type: 'user-text', text: 'Implement the plan "M3 · Invoice totals".', newPass: true },
+  todos('m3t', [['Roll entries up per account and month', 'completed'], ['Match the fixture to the cent', 'completed']]),
+  answer('m3a', 'The roll-up is in and the fixture matches to the cent.'),
+  { type: 'turn-complete', costUsd: 0.31 },
+  status('idle')
+])
+// The link a landed build carries: milestone 3's tick in the file is the one that landing wrote.
+server.store.setSetting(`projectPlan.milestone:${THREAD_M3_BUILD}`, JSON.stringify({ projectId: project.id, milestone: 3 }))
+// Kept as the project's plan, so the chip on Home reads "Plan · 3/7".
+server.store.setSetting(`projectPlan.pinned:${project.id}`, '1')
 
 // Orchestration: three agents in different states.
 export const THREAD_ORCH = 'ios-orch'
@@ -1180,7 +1255,7 @@ process.stdout.write(
     second,
     localPort: server.port,
     shot,
-    threads: { implementation: THREAD_IMPL, planning: THREAD_PLAN, orchestration: THREAD_ORCH, research: THREAD_RESEARCH, chat: THREAD_CHAT, long: THREAD_LONG, held: THREAD_HELD, queued: THREAD_QUEUED, stopped: 'ios-stopped', notices: THREAD_NOTICES, failures: THREAD_FAILURES, preamble: THREAD_PREAMBLE, handoff: THREAD_HANDOFF },
+    threads: { implementation: THREAD_IMPL, planning: THREAD_PLAN, projectPlan: THREAD_PROJECT_PLAN, m3Build: THREAD_M3_BUILD, orchestration: THREAD_ORCH, research: THREAD_RESEARCH, chat: THREAD_CHAT, long: THREAD_LONG, held: THREAD_HELD, queued: THREAD_QUEUED, stopped: 'ios-stopped', notices: THREAD_NOTICES, failures: THREAD_FAILURES, preamble: THREAD_PREAMBLE, handoff: THREAD_HANDOFF },
     projectId: project.id,
     workspaceId: workspace.id
   }) + '\n'

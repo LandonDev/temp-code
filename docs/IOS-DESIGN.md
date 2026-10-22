@@ -660,8 +660,8 @@ Chat body as above.
 
 Segments: **Plan** and **Chat**; Chat is default until the plan file has
 content, then Plan. A project-plan thread (docs/PROJECT-PLAN.md) has the
-same two segments and renders its file the same way; it has no Start (its
-milestones are planned one at a time from the desktop's options card). Plan
+same two segments; it has no Start (its milestones are planned one at a
+time from the options card, see Project plan below). Plan
 renders the markdown file (`file.read` of `planPath`, polled 1.5 s running
 and 8 s idle while the screen shows) document-first, `body` size, generous
 measure, streaming in as it is written. Header action **Start** (L5) opens a
@@ -729,6 +729,68 @@ Writer set one:
 
 The research report opens on the same page (`ReportScreen`), until the
 research thread's own screen replaces it.
+
+
+### Project plan: the milestones are the hero
+
+The same Plan and Chat segments as a planning thread, and the same page
+(`ProjectPlanView.swift` composed on `PlanPage`, values in
+`ProjectPlanStyles.swift`, the parse in the client package's `ProjectPlan`):
+the fixed sections (the title, Goals, Current state, Risks, Open questions)
+render as the document through `PlanDocumentView(range:)`, and `## Milestones`
+keeps its heading and trades its body for native rows. Nothing animates while
+the file streams in: a milestone appearing adds a row below the reader, a
+field landing changes that row's own lines.
+
+- **The progress line** under the heading: a 3 pt `Surface.fill` capsule
+  filled `Tint.success` to done of total, "3 of 7 done" beside it in the
+  stamp step with rolling digits; no percentage. The fill's width animates
+  with `Motion.expand` (none under reduced motion).
+- **A milestone row** (44 pt min, 8 pt vertical, a `Hairline` below at the
+  text edge): the checkbox in the 26 pt marker column (`circle` tertiary /
+  `checkmark.circle.fill` `Tint.success` at `body`, a 44 × 44 hit area,
+  `.pressable`, a light impact on the tick), the ordinal in a second 26 pt
+  column in the meta step, then the title at `body` (secondary once done, no
+  strikethrough; the color crosses over `Motion.crossFade`) with the scope as
+  one dim `footnote` line. Tapping the text expands the row with
+  `Motion.expand` (`Motion.collapse` back, `Motion.crossFade` under reduced
+  motion): the scope wraps, "Done when" semibold with its text, and the
+  dependency chips ("Depends on" and a 20 pt `Surface.fill` capsule per
+  number at `caption2`, scrolling sideways past the row). One row open at a
+  time; a milestone with no fields has no expand. A tick is optimistic over
+  `projectPlan.tick` (the glyph swaps with `Motion.iconSwap`, the row's
+  glyph a small spinner meanwhile) and reconciles when the next poll shows
+  the file; a build landing on the host ticks the file and the row follows
+  on the 8 s idle poll.
+- **The options card** after `status: complete` in the frontmatter (and only
+  that): a `groupCard` with "The plan is complete" and the count in its
+  header, then four `.pressable` rows (glyph in a 20 pt column, title in the
+  title step, a one-line detail in the meta step, hairlines at the text edge):
+  Plan the next milestone (`map` violet, the next milestone's number and
+  title; "Every milestone is done" disables it), Start an orchestration
+  thread for milestone N (`arrow.triangle.branch` warning), Revise the plan
+  (`pencil`, a native alert with a text field; empty sends the desktop's
+  default re-survey turn), Keep / Stop keeping as the project's plan (`pin`
+  info / `pin.slash`). The two starts open a sheet in the Start-a-build
+  shape (the milestone with its scope and done-when, the model and reasoning
+  prefilled from the plan thread), create the thread with its brief, link it
+  to the milestone over `projectPlan.link` and push it. The card appears with
+  `.rowAppearTransition()`; a busy row's glyph is a small spinner; the footer
+  reads a read key's reason or the last refusal.
+- **A read key** disables the checkbox and the four rows and says why: one
+  meta line under the progress line and in the card's footer, the same
+  `ActionBlock.text`. Nothing is hidden.
+- **The Home chip** sits in the project header before the plus
+  (`ProjectPlanChip.swift`, the `projectTrailing` slot): `flag.checkered`
+  violet at `caption2.semibold` and "Plan", or "Plan · 3/7" once kept, in a
+  28 pt `Surface.fill` capsule inside a 44 pt hit area, the count rolling.
+  It opens the plan thread; its context menu holds the four options (a read
+  key's reason as the first, disabled line). The state (`projectPlan.get`)
+  is cached per host and project, loaded on appear, refreshed after every
+  action from the chip and when a project-plan, implementation or
+  orchestration thread of the project goes idle, and asked again after a
+  reconnect. Nothing shows for a project with no plan file and no plan
+  thread.
 
 ### Orchestration: the fleet is the hero
 

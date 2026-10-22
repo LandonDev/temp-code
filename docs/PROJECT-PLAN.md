@@ -99,8 +99,21 @@ the ticks live only in the file.
   project-plan thread of the project settles; the document itself is polled
   like every plan (usePlanFile).
 - **Phone**: a project-plan thread has the Plan and Chat segments of a
-  planning thread; the existing `PlanDoc` renders the file. No Start on
-  the phone for a project plan.
+  planning thread and renders through `ProjectPlanView`
+  (ios/TempCode/Sources/Thread/ProjectPlanView.swift, on the plan page):
+  the fixed sections as the document, `## Milestones` as native rows with a
+  checkbox that ticks over `projectPlan.tick` (optimistic, reconciled on the
+  next poll), the scope line, done-when and the dependency chips on expand,
+  a progress line with the count, and the options card after `status:
+  complete` (plan the next milestone, orchestrate it, revise, keep as the
+  project's plan; the starts link the thread over `projectPlan.link`). The
+  Home project header carries the chip ("Plan", or "Plan · 3/7" once kept;
+  ProjectPlanChip.swift) with the same options in its context menu, on
+  `projectPlan.get` cached per host and project. The parser is the client
+  package's `ProjectPlan` (the Swift port of src/shared/projectPlan.ts);
+  `projectPlan.get/pin/tick/link` are in the phone's subset. No Start on
+  the phone for a project plan. docs/IOS-DESIGN.md "Project plan: the
+  milestones are the hero".
 
 ## RPCs and tests
 

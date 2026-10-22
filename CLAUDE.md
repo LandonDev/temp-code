@@ -1067,7 +1067,11 @@ routed to (aliax-core's `forward`). Two listeners:
   `file.read` (in the subset since L4), polled 1.5 s running / 8 s idle
   while the screen shows; the plan page parses it with the client package's
   `PlanDocument` (nested and task lists, tables, frontmatter, sections) and
-  paints from `PlanPages`' disk cache before the first read answers. The
+  paints from `PlanPages`' disk cache before the first read answers. A
+  project-plan thread renders through `ProjectPlanView` (the client
+  package's `ProjectPlan` parser, milestone rows that tick over
+  `projectPlan.tick`, the options card after `status: complete`, the Home
+  chip in `ProjectPlanChip.swift` through the `projectTrailing` Home slot). The
   fleet surfaces are `Thread/FleetStyles.swift` (the agent row and its
   pieces, `FleetSections`, `FleetGather` over every paired host,
   `AgentDetailRoute`), `SubagentListScreen(client:rootSessionId:)` and

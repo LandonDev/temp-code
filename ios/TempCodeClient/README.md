@@ -23,7 +23,7 @@ Sources/TempCodeClient
   Rendering/    ThreadFold (rows → stamped items + BoardState), Transcript (item types), Board,
                 ResearchBoard, Fleet, PlanDoc, Inbox, DiffDocument (the diff screen's lines,
                 hunks and column geometry), MarkdownBlocks, MarkdownCache, PlanDocument,
-                PlanPages, ProjectPairs, CrossHost, PathHost (two hosts: pairs, cross-host
+                PlanPages, ProjectPlan, ProjectPairs, CrossHost, PathHost (two hosts: pairs, cross-host
                 children, the host of a path), TranscriptRows (entries → the list's rows:
                 items, activity groups, turn ends), ToolPhrase (the desktop's toolPhrase.ts)
   Design/       TimeFormat, ModelName, CompactNumber, ThreadRowModel: the design kit's pure
@@ -241,7 +241,14 @@ plan on disk under `Caches/plans/` so the next open paints before the
 socket answers, the document per page kept through a re-parse (a short
 text parses on the first paint, a longer one off the actor, a newer text
 superseding a parse in flight), and the reading position per page in
-`UserDefaults`; both the directory and the defaults are injectable.
+`UserDefaults`; both the directory and the defaults are injectable. **ProjectPlan** (projectPlan.ts, line for line:
+the frontmatter status, the title, the sections in order and the missing
+fixed ones, the milestones under `## Milestones` with index, title, done,
+scope, dependencies, done-when, body and line, fences skipped; progress,
+next, the summary and chip text, dependency chips, the two milestone
+briefs, the thread title, the revise text and the optimistic-tick
+reconcile) and `ThreadDraft.milestone(from:milestone:kind:…)`, the planning
+or orchestration draft for one milestone; the phone never writes the file.
 
 **SearchRows** (`Client/SearchRows.swift`) is the Search tab's pure side:
 the flat row model (`SearchRow`: thread head, hit, project head, file,
