@@ -72,6 +72,12 @@ export const MEMORY_ENABLED_KEY = 'memory.sync.enabled'
 export const MEMORY_STATUS_KEY = 'memory.sync.status'
 export const MEMORY_PERIOD_MS = 5 * 60_000
 const IDLE_DEBOUNCE_MS = 3_000
+/** A settle (here, or a nudge from there) syncs a host at most this often:
+ *  a fleet settles threads every few seconds, and each sync walks and
+ *  hashes the whole set. The first goes after IDLE_DEBOUNCE_MS. */
+export const SETTLE_GAP_MS = 30_000
+/** The key the nudge to the hosts linked here coalesces under. */
+const NUDGE_KEY = '\0nudge'
 const REQUEST_TIMEOUT_MS = 120_000
 const STATE_VERSION = 1
 /** Rounds per trigger: the first, plus one for what the receiver made (a union, a conflict copy). */
@@ -143,8 +149,9 @@ export class MemorySync {
   private readonly statuses = new Map<string, SessionMeta['status']>()
   private skipped = 0
   private periodTimer: NodeJS.Timeout | null = null
-  private idleTimer: NodeJS.Timeout | null = null
-  private nudgeTimer: NodeJS.Timeout | null = null
+  /** Per host (and NUDGE_KEY): the settle-triggered sync waiting, and when the last one ran. */
+  private settleTimers = new Map<string, NodeJS.Timeout>()
+  private lastSettle = new Map<string, number>()
   private generation: Generation | null = null
   private queue: Promise<unknown> = Promise.resolve()
   private closed = false
@@ -199,8 +206,9 @@ export class MemorySync {
     this.deps.store.setSetting(MEMORY_STATUS_KEY, JSON.stringify(all))
   }
 
-  status(): MemorySyncStatus {
+  async status(): Promise<MemorySyncStatus> {
     const records = this.records()
+    const conflicts = await this.conflicts()
     return {
       enabled: this.enabled(),
       skipped: this.skipped,
@@ -218,15 +226,15 @@ export class MemorySync {
           conflicts: r?.conflicts ?? 0
         }
       }),
-      conflicts: this.conflicts()
+      conflicts
     }
   }
 
   /** Every conflict copy in the set here, newest first. */
-  conflicts(): MemoryConflict[] {
+  async conflicts(): Promise<MemoryConflict[]> {
     const home = this.home()
     const out: MemoryConflict[] = []
-    for (const entry of listMemory(home, { cache: this.cache as HashCache }).entries) {
+    for (const entry of (await listMemory(home, { cache: this.cache as HashCache })).entries) {
       const parsed = parseConflictName(entry.relPath)
       if (!parsed) continue
       const of = join(dirname(entry.relPath), stripConflict(basename(entry.relPath)))
@@ -247,14 +255,30 @@ export class MemorySync {
   private stop(): void {
     if (this.periodTimer) clearInterval(this.periodTimer)
     this.periodTimer = null
-    if (this.idleTimer) clearTimeout(this.idleTimer)
-    this.idleTimer = null
+    for (const t of this.settleTimers.values()) clearTimeout(t)
+    this.settleTimers.clear()
+  }
+
+  /** Run `run` for `key` after the short quiet, or SETTLE_GAP_MS after its
+   *  last run, whichever is later; asks meanwhile ride the one waiting. */
+  private settleSoon(key: string, run: () => void): void {
+    if (this.settleTimers.has(key)) return
+    const wait = Math.max(IDLE_DEBOUNCE_MS, (this.lastSettle.get(key) ?? -Infinity) + SETTLE_GAP_MS - this.now())
+    const timer = setTimeout(() => {
+      this.settleTimers.delete(key)
+      if (this.closed) return
+      this.lastSettle.set(key, this.now())
+      run()
+    }, wait)
+    timer.unref()
+    this.settleTimers.set(key, timer)
   }
 
   /**
    * A thread's meta changed: when it settles from live to idle, memory was
    * probably just written. A driver syncs after a short quiet; a host with
-   * no link of its own nudges the hosts linked to it.
+   * no link of its own nudges the hosts linked to it. Each host at most
+   * once per SETTLE_GAP_MS.
    */
   onSessionMeta(meta: Pick<SessionMeta, 'id' | 'status'>): void {
     const before = this.statuses.get(meta.id)
@@ -262,24 +286,14 @@ export class MemorySync {
     if (meta.status !== 'idle' || before === undefined || !LIVE_STATUSES.has(before)) return
     this.statuses.delete(meta.id)
     if (!this.enabled()) return
-    if (this.idleTimer) clearTimeout(this.idleTimer)
-    this.idleTimer = setTimeout(() => {
-      this.idleTimer = null
-      void this.syncAll('idle')
-      this.deps.nudgePeers?.({ push: 'memory.nudge', from: this.deps.environmentId })
-    }, IDLE_DEBOUNCE_MS)
-    this.idleTimer.unref()
+    for (const link of this.deps.peers.all()) this.settleSoon(link.id, () => void this.syncWith(link.id, 'idle'))
+    this.settleSoon(NUDGE_KEY, () => this.deps.nudgePeers?.({ push: 'memory.nudge', from: this.deps.environmentId }))
   }
 
   /** A push on a link this host holds: a nudge from the other side means a thread went idle there. */
   onPeerPush(from: string, push: ServerPush): boolean {
     if (push.push !== 'memory.nudge') return false
-    if (this.nudgeTimer) clearTimeout(this.nudgeTimer)
-    this.nudgeTimer = setTimeout(() => {
-      this.nudgeTimer = null
-      void this.syncWith(from, 'nudge')
-    }, IDLE_DEBOUNCE_MS)
-    this.nudgeTimer.unref()
+    this.settleSoon(from, () => void this.syncWith(from, 'nudge'))
     return true
   }
 
@@ -454,8 +468,9 @@ export class MemorySync {
     const link = this.deps.peers.get(environmentId)
     if (!link?.connected) return null
     const home = this.home()
+    // The walk first: the state is read and written with no wait between.
+    const manifest = await listMemory(home, { cache: this.cache as HashCache })
     const state = this.loadState()
-    const manifest = listMemory(home, { cache: this.cache as HashCache })
     this.skipped = manifest.skipped.length
     const byPath = new Map(manifest.entries.map((e) => [e.relPath, e]))
     this.noticeDeletions(state, environmentId, new Set(byPath.keys()))
@@ -568,13 +583,13 @@ export class MemorySync {
     return this.serial(() => this.exchange(params))
   }
 
-  private exchange(params: MemoryExchangeParams): MemoryExchangeAnswer {
+  private async exchange(params: MemoryExchangeParams): Promise<MemoryExchangeAnswer> {
     if (!params.home.startsWith('/')) throw new Error('memory.exchange: home must be absolute')
     this.generation = null
     const home = this.home()
+    const mine = new Map((await listMemory(home, { cache: this.cache as HashCache })).entries.map((e) => [e.relPath, e]))
     const state = this.loadState()
     const mapping = this.translationFor(params.home, params.workRoot)
-    const mine = new Map(listMemory(home, { cache: this.cache as HashCache }).entries.map((e) => [e.relPath, e]))
     this.noticeDeletions(state, params.from, new Set(mine.keys()))
     const ledger = this.ledgerOf(state, params.from)
     const fromName = params.name ?? this.deps.peers.get(params.from)?.env.name ?? params.from
@@ -678,7 +693,7 @@ export class MemorySync {
     return this.serial(() => this.files(params))
   }
 
-  private files(params: MemoryFilesParams): MemoryFilesAnswer {
+  private async files(params: MemoryFilesParams): Promise<MemoryFilesAnswer> {
     const g = this.generation
     if (!g || g.id !== params.generation) throw new Error('memory.files: not the current generation')
     for (const file of params.files) {
@@ -689,13 +704,13 @@ export class MemorySync {
     }
     if (!params.done) return { files: 0, written: 0, deleted: 0, conflicts: 0, merged: 0, again: false }
     try {
-      return this.commit(g, params)
+      return await this.commit(g, params)
     } finally {
       this.generation = null
     }
   }
 
-  private commit(g: Generation, params: MemoryFilesParams): MemoryFilesAnswer {
+  private async commit(g: Generation, params: MemoryFilesParams): Promise<MemoryFilesAnswer> {
     const home = this.home()
     const state = this.loadState()
     const ledger = this.ledgerOf(state, g.from)
@@ -778,7 +793,7 @@ export class MemorySync {
       if (landed) ledger[localRel] = { remote: landed, local: sha }
     }
     this.saveState(state)
-    const files = listMemory(home, { cache: this.cache as HashCache }).entries.length
+    const files = (await listMemory(home, { cache: this.cache as HashCache })).entries.length
     if (written || g.deleted || g.conflicts || merged) this.log(`from ${g.fromName}: ${written} written, ${g.deleted} deleted${merged ? `, ${merged} merged` : ''}${g.conflicts ? `, ${g.conflicts} conflict copies` : ''}`)
     return { files, written, deleted: g.deleted, conflicts: g.conflicts, merged, again: g.again }
   }
@@ -786,8 +801,6 @@ export class MemorySync {
   close(): void {
     this.closed = true
     this.stop()
-    if (this.nudgeTimer) clearTimeout(this.nudgeTimer)
-    this.nudgeTimer = null
   }
 }
 
@@ -799,14 +812,14 @@ export async function handleMemory(req: ClientRequest, sync: MemorySync): Promis
     case 'memory.files':
       return { handled: true, result: await sync.handleFiles(req.params) }
     case 'memory.status':
-      return { handled: true, result: sync.status() }
+      return { handled: true, result: await sync.status() }
     case 'memory.sync':
       if (req.params?.environmentId) await sync.syncWith(req.params.environmentId, 'manual')
       else await sync.syncAll('manual')
-      return { handled: true, result: sync.status() }
+      return { handled: true, result: await sync.status() }
     case 'memory.settings.set':
       sync.setSettings(req.params)
-      return { handled: true, result: sync.status() }
+      return { handled: true, result: await sync.status() }
     default:
       return { handled: false }
   }

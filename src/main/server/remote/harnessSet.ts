@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto'
-import { accessSync, constants, existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync, type Stats } from 'node:fs'
+import { accessSync, constants, readdirSync, statSync, type Stats } from 'node:fs'
+import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises'
+import { untilLoopIdle } from '../stalls'
 import { delimiter, dirname, join, posix, sep } from 'node:path'
 import type { HarnessClaudeJson, HarnessEntry } from '@shared/contract-harness'
 
@@ -175,22 +177,28 @@ const within = (path: string, root: string): boolean => path === root || path.st
  * a checkout is the usual case) only when its real target is inside HOME
  * and outside the credential dirs; a dir reached twice is a loop and is
  * walked once. Hashes are cached by real path, size, mtime and inode.
+ * Every read goes through fs.promises and a quiet loop is awaited before
+ * each directory (`between`), so a sync never holds the loop for a tree.
  */
-export function buildManifest(home: string, opts: { rules?: readonly SetRule[]; cache?: HashCache; maxBytes?: number } = {}): Manifest {
+export async function buildManifest(
+  home: string,
+  opts: { rules?: readonly SetRule[]; cache?: HashCache; maxBytes?: number; between?: () => Promise<void> } = {}
+): Promise<Manifest> {
   const rules = opts.rules ?? HARNESS_SET
   const maxBytes = opts.maxBytes ?? MAX_FILE_BYTES
+  const between = opts.between ?? (() => untilLoopIdle())
   const entries: HarnessEntry[] = []
   const skipped: Skipped[] = []
   let realHome: string
   try {
-    realHome = realpathSync(home)
+    realHome = await realpath(home)
   } catch {
     return { entries, skipped }
   }
   const sensitive = SENSITIVE_UNDER_HOME.map((d) => join(realHome, d))
   const reachable = (real: string): boolean => within(real, realHome) && !sensitive.some((s) => within(real, s))
 
-  const addFile = (relPath: string, abs: string, st: Stats): void => {
+  const addFile = async (relPath: string, abs: string, st: Stats): Promise<void> => {
     if (!inSet(relPath, rules)) return
     if (st.size > maxBytes) {
       skipped.push({ relPath, reason: 'too-large' })
@@ -198,7 +206,7 @@ export function buildManifest(home: string, opts: { rules?: readonly SetRule[]; 
     }
     let real: string
     try {
-      real = realpathSync(abs)
+      real = await realpath(abs)
     } catch {
       skipped.push({ relPath, reason: 'unreadable' })
       return
@@ -207,7 +215,7 @@ export function buildManifest(home: string, opts: { rules?: readonly SetRule[]; 
     if (!(hit && hit.size === st.size && hit.mtimeMs === st.mtimeMs && hit.ino === st.ino)) {
       let data: Buffer
       try {
-        data = readFileSync(abs)
+        data = await readFile(abs)
       } catch {
         skipped.push({ relPath, reason: 'unreadable' })
         return
@@ -229,31 +237,32 @@ export function buildManifest(home: string, opts: { rules?: readonly SetRule[]; 
    * checkout or a package cache under HOME) is walked as a dir: the receiver
    * gets its files, never the link.
    */
-  const follow = (relPath: string, abs: string): Stats | null => {
+  const follow = async (relPath: string, abs: string): Promise<Stats | null> => {
     let lst: Stats
     try {
-      lst = lstatSync(abs)
+      lst = await lstat(abs)
     } catch {
       return null
     }
     if (!lst.isSymbolicLink()) return lst
     try {
-      const real = realpathSync(abs)
+      const real = await realpath(abs)
       if (!reachable(real)) {
         skipped.push({ relPath, reason: 'symlink-out-of-reach' })
         return null
       }
-      return statSync(abs)
+      return await stat(abs)
     } catch {
       skipped.push({ relPath, reason: 'unreadable' })
       return null
     }
   }
 
-  const walk = (relDir: string, absDir: string, seen: Set<string>): void => {
+  const walk = async (relDir: string, absDir: string, seen: Set<string>): Promise<void> => {
+    await between()
     let real: string
     try {
-      real = realpathSync(absDir)
+      real = await realpath(absDir)
     } catch {
       return
     }
@@ -264,7 +273,7 @@ export function buildManifest(home: string, opts: { rules?: readonly SetRule[]; 
     seen.add(real)
     let names: string[]
     try {
-      names = readdirSync(absDir).sort()
+      names = (await readdir(absDir)).sort()
     } catch {
       skipped.push({ relPath: relDir, reason: 'unreadable' })
       return
@@ -272,31 +281,31 @@ export function buildManifest(home: string, opts: { rules?: readonly SetRule[]; 
     for (const name of names) {
       const relPath = `${relDir}/${name}`
       const abs = join(absDir, name)
-      const st = follow(relPath, abs)
+      const st = await follow(relPath, abs)
       if (!st) continue
       if (st.isDirectory()) {
         if (SKIP_DIRS.has(name)) continue
         // An excluded dir (skills/synced, plugins/synced, .codex/skills/.system) is never entered.
         if (!rules.some((r) => r.kind === 'tree' && (relPath === r.root || relPath.startsWith(r.root + '/')) && !r.exclude?.some((ex) => relPath === `${r.root}/${ex}`))) continue
-        walk(relPath, abs, new Set(seen))
-      } else if (st.isFile()) addFile(relPath, abs, st)
+        await walk(relPath, abs, new Set(seen))
+      } else if (st.isFile()) await addFile(relPath, abs, st)
     }
   }
 
   for (const rule of rules) {
     if (rule.kind === 'file') {
       const abs = join(home, rule.path)
-      const st = follow(rule.path, abs)
-      if (st?.isFile()) addFile(rule.path, abs, st)
+      const st = await follow(rule.path, abs)
+      if (st?.isFile()) await addFile(rule.path, abs, st)
       continue
     }
     const abs = join(home, rule.root)
-    const st = follow(rule.root, abs)
-    if (st?.isDirectory()) walk(rule.root, abs, new Set())
+    const st = await follow(rule.root, abs)
+    if (st?.isDirectory()) await walk(rule.root, abs, new Set())
   }
   // A tree nested in another (never in HARNESS_SET, possible in a widened set) lists a file once.
   const unique = new Map(entries.map((e) => [e.relPath, e]))
-  const claudeJson = readClaudeJsonKeys(join(home, CLAUDE_JSON))
+  const claudeJson = await readClaudeJsonKeys(join(home, CLAUDE_JSON))
   return { entries: [...unique.values()].sort((a, b) => (a.relPath < b.relPath ? -1 : a.relPath > b.relPath ? 1 : 0)), skipped, ...(claudeJson ? { claudeJson } : {}) }
 }
 
@@ -305,10 +314,15 @@ export function buildManifest(home: string, opts: { rules?: readonly SetRule[]; 
  * (nothing to carry), undefined when it cannot be read or parsed (the CLI
  * mid-write: leave the receiver's alone this round).
  */
-export function readClaudeJsonKeys(path: string): HarnessClaudeJson | undefined {
-  if (!existsSync(path)) return {}
+export async function readClaudeJsonKeys(path: string): Promise<HarnessClaudeJson | undefined> {
+  let raw: string
   try {
-    const parsed = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
+    raw = await readFile(path, 'utf8')
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'ENOENT' ? {} : undefined
+  }
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined
     const out: HarnessClaudeJson = {}
     for (const key of HARNESS_CLAUDE_KEYS) if (key in parsed) out[key] = parsed[key]

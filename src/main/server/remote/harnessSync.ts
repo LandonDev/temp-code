@@ -15,6 +15,7 @@ import {
   writeFileSync,
   type FSWatcher
 } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, join, sep } from 'node:path'
 import type { ClientRequest } from '@shared/contract'
@@ -396,7 +397,7 @@ export class HarnessSync {
     const link = this.deps.peers.get(environmentId)
     if (!link?.connected) return
     const home = this.home()
-    const manifest = buildManifest(home, { rules: this.rules, cache: this.cache as HashCache })
+    const manifest = await buildManifest(home, { rules: this.rules, cache: this.cache as HashCache })
     this.skipped = manifest.skipped.length
     const digest = sha256(JSON.stringify([manifest.entries, manifest.claudeJson ?? null]))
     // A watch event that changed nothing in the set (a write the set filters out) sends nothing.
@@ -413,7 +414,7 @@ export class HarnessSync {
       for (const relPath of answer.need) {
         const entry = byPath.get(relPath)
         if (!entry) throw new Error(`${link.env.name} asked for ${relPath}, which is not in the manifest`)
-        const data = readFileSync(join(home, relPath))
+        const data = await readFile(join(home, relPath))
         // Changed since the manifest: the watch sends a fresh one shortly.
         if (sha256(data) !== entry.sha256) throw new Error(`${relPath} changed during the sync`)
         const chunks = Math.max(1, Math.ceil(data.length / HARNESS_CHUNK_BYTES))

@@ -66,7 +66,7 @@ describe('the encoded project dir', () => {
 })
 
 describe('the set', () => {
-  it('admits project memory, plans, CLAUDE.md, codex memories and AGENTS.md; refuses transcripts, secrets, .git and bad paths', () => {
+  it('admits project memory, plans, CLAUDE.md, codex memories and AGENTS.md; refuses transcripts, secrets, .git and bad paths', async () => {
     expect(memoryRoot('.claude/projects/-srv-agents-work-temp-code/memory/MEMORY.md')).toBe('.claude/projects/-srv-agents-work-temp-code/memory')
     expect(memoryRoot('.claude/projects/-srv-agents-work-temp-code/memory/deep/note.md')).toBe('.claude/projects/-srv-agents-work-temp-code/memory')
     expect(memoryRoot('.claude/plans/sunny-otter.md')).toBe('.claude/plans')
@@ -89,7 +89,7 @@ describe('the set', () => {
       expect(memoryRoot(bad), bad).toBeNull()
     expect(inMemorySet('.claude/plans/a.md')).toBe(true)
   })
-  it('lists the memory of every project dir that has one, the plans and the fixed files; never a transcript', () => {
+  it('lists the memory of every project dir that has one, the plans and the fixed files; never a transcript', async () => {
     put('.claude/projects/-a/memory/MEMORY.md', '# index')
     put('.claude/projects/-a/memory/one.md')
     put('.claude/projects/-a/session.jsonl', '{}')
@@ -102,8 +102,8 @@ describe('the set', () => {
     put('.codex/memories/.git/HEAD', 'ref')
     put('.codex/AGENTS.md')
     put('.codex/config.toml')
-    expect(memoryRules(home).map((r) => (r.kind === 'tree' ? r.root : r.path))).toEqual(['.claude/projects/-a/memory', '.claude/plans', '.claude/CLAUDE.md', '.codex/memories', '.codex/AGENTS.md'])
-    expect(listMemory(home).entries.map((e) => e.relPath)).toEqual([
+    expect((await memoryRules(home)).map((r) => (r.kind === 'tree' ? r.root : r.path))).toEqual(['.claude/projects/-a/memory', '.claude/plans', '.claude/CLAUDE.md', '.codex/memories', '.codex/AGENTS.md'])
+    expect((await listMemory(home)).entries.map((e) => e.relPath)).toEqual([
       '.claude/CLAUDE.md',
       '.claude/plans/p.md',
       '.claude/projects/-a/memory/MEMORY.md',
@@ -126,11 +126,11 @@ describe('conflict copies', () => {
 })
 
 describe('a conflict copy beside a single file', () => {
-  it('is in the set, listed and admitted', () => {
+  it('is in the set, listed and admitted', async () => {
     put('.claude/CLAUDE.md', 'rules')
     put('.claude/CLAUDE.conflict-box-20261021T120000.md', 'the box copy')
     put('.claude/CLAUDE.other.md', 'not a copy')
-    expect(listMemory(home).entries.map((e) => e.relPath)).toEqual(['.claude/CLAUDE.conflict-box-20261021T120000.md', '.claude/CLAUDE.md'])
+    expect((await listMemory(home)).entries.map((e) => e.relPath)).toEqual(['.claude/CLAUDE.conflict-box-20261021T120000.md', '.claude/CLAUDE.md'])
     expect(memoryRoot('.claude/CLAUDE.conflict-box-20261021T120000.md')).toBe('.claude')
     expect(memoryRoot('.claude/CLAUDE.other.md')).toBeNull()
     expect(stripConflict('note.conflict-mac-20261021T120000.md')).toBe('note.md')

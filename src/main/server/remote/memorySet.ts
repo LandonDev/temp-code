@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from 'node:fs'
+import { readdir, stat } from 'node:fs/promises'
 import { join, posix } from 'node:path'
 import type { HistoryMapping } from '../pathMap'
 import { stripSlash } from '../pathMap'
@@ -45,7 +45,7 @@ export const MEMORY_INDEX = /^\.claude\/projects\/[A-Za-z0-9-]+\/memory\/MEMORY\
 export const CONFLICT_RE = /\.conflict-([^./]+)-(\d{8}T\d{6})(\.[^./]*)?$/
 
 /** The rules of the set as it is on this host now: the fixed ones plus every `.claude/projects/<enc>/memory` that exists. */
-export function memoryRules(home: string): SetRule[] {
+export async function memoryRules(home: string): Promise<SetRule[]> {
   const rules: SetRule[] = []
   // A conflict copy beside a single-file rule's file (`.claude/CLAUDE.conflict-box-….md`) is in the set too.
   const copies: SetRule[] = []
@@ -55,28 +55,25 @@ export function memoryRules(home: string): SetRule[] {
     const base = posix.basename(rule.path)
     let names: string[] = []
     try {
-      names = readdirSync(dir)
+      names = await readdir(dir)
     } catch {
       continue
     }
     for (const name of names.sort()) if (name !== base && stripConflict(name) === base) copies.push({ kind: 'file', path: `${posix.dirname(rule.path)}/${name}`, label: rule.label })
   }
-  const projects = join(home, PROJECTS_DIR)
-  if (existsSync(projects)) {
-    let names: string[] = []
+  let names: string[] = []
+  try {
+    names = (await readdir(join(home, PROJECTS_DIR))).sort()
+  } catch {
+    names = []
+  }
+  for (const name of names) {
+    if (!ENCODED_DIR.test(name)) continue
+    const memory = join(home, PROJECTS_DIR, name, 'memory')
     try {
-      names = readdirSync(projects).sort()
+      if ((await stat(memory)).isDirectory()) rules.push({ kind: 'tree', root: `${PROJECTS_DIR}/${name}/memory`, label: 'Claude memory' })
     } catch {
-      names = []
-    }
-    for (const name of names) {
-      if (!ENCODED_DIR.test(name)) continue
-      const memory = join(projects, name, 'memory')
-      try {
-        if (statSync(memory).isDirectory()) rules.push({ kind: 'tree', root: `${PROJECTS_DIR}/${name}/memory`, label: 'Claude memory' })
-      } catch {
-        /* no memory dir for this project */
-      }
+      /* no memory dir for this project */
     }
   }
   return [...rules, ...MEMORY_FIXED_RULES, ...copies]
@@ -85,9 +82,9 @@ export function memoryRules(home: string): SetRule[] {
 /** A file name without its `.conflict-<host>-<time>` part (the name as it was, for a copy; unchanged otherwise). */
 export const stripConflict = (name: string): string => name.replace(/\.conflict-[^./]+-\d{8}T\d{6}(?=(\.[^./]*)?$)/, '')
 
-/** The memory files on this host: harnessSet's walk over memoryRules (symlink policy, secrets and the budget included). */
-export function listMemory(home: string, opts: { cache?: HashCache } = {}): Manifest {
-  const m = buildManifest(home, { rules: memoryRules(home), cache: opts.cache, maxBytes: MEMORY_MAX_BYTES })
+/** The memory files on this host: harnessSet's walk over memoryRules (symlink policy, secrets and the budget included), off the loop. */
+export async function listMemory(home: string, opts: { cache?: HashCache } = {}): Promise<Manifest> {
+  const m = await buildManifest(home, { rules: await memoryRules(home), cache: opts.cache, maxBytes: MEMORY_MAX_BYTES })
   return { entries: m.entries.filter((e) => inMemorySet(e.relPath)), skipped: m.skipped }
 }
 

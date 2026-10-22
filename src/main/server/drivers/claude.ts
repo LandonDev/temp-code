@@ -9,20 +9,14 @@ import {
   type SDKUserMessage,
   type SpawnedProcess
 } from '@anthropic-ai/claude-agent-sdk'
-import {
-  closeSync,
-  existsSync,
-  openSync,
-  readFileSync,
-  readSync,
-  readdirSync,
-  statSync
-} from 'node:fs'
+import { readFileSync } from 'node:fs'
+import { access, open, readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { nativeImage } from 'electron'
 import type { Attachment, PermissionPolicy } from '@shared/events'
 import { limitField } from '../limitText'
+import { currentLag } from '../stalls'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
 import { parsePartialJson } from './partial-json'
 import { toolDisplay } from './display'
@@ -757,9 +751,11 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
  *   cleared  {met:true,  sentinel:true, condition}
  *   failed   {met:false, failed:true, condition, reason, ...} — judged
  *            impossible; the CLI removes the goal
- * Polled at 1s with a byte offset so each entry is read once.
+ * Polled every 2 s (GOAL_POLL_MS) with a byte offset so each entry is read
+ * once, through fs.promises, one look at a time, and skipped while the
+ * loop is busy: the next look reads what this one would have.
  */
-interface GoalWatch {
+export interface GoalWatch {
   /** (Re)attach to the transcript once the native session id is known. */
   arm: (sessionId: string) => void
   close: () => void
@@ -774,8 +770,17 @@ export const LOST_NATIVE_SESSION = /No conversation found with session ID/i
 
 /** How much transcript tail to scan when attaching to a resumed session. */
 const GOAL_TAIL_BYTES = 256 * 1024
+/** How often a live thread's transcript is looked at. */
+export const GOAL_POLL_MS = 2_000
+/** A loop this busy (the last second's mean delay) skips a look. */
+export const GOAL_SKIP_LAG_MS = 50
 
-function goalWatcher(ctx: DriverCtx): GoalWatch {
+const exists = (path: string): Promise<boolean> => access(path).then(() => true, () => false)
+
+export function goalWatcher(
+  ctx: Pick<DriverCtx, 'emit' | 'session'>,
+  opts: { root?: string; everyMs?: number } = {}
+): GoalWatch {
   const { emit } = ctx
   // A resumed session's history is already folded into SessionMeta — seed
   // from it and only surface entries written after this driver started
@@ -789,6 +794,10 @@ function goalWatcher(ctx: DriverCtx): GoalWatch {
   let offset = 0
   let partial = ''
   let timer: NodeJS.Timeout | null = null
+  /** The session id `file` belongs to, and whether a look is in flight. */
+  let attachedTo: string | null = null
+  let looking = false
+  let closed = false
 
   const translate = (a: {
     met?: boolean
@@ -837,28 +846,27 @@ function goalWatcher(ctx: DriverCtx): GoalWatch {
     }
   }
 
-  const drain = (): void => {
+  const drain = async (): Promise<void> => {
     if (!file) return
+    let chunk: string
     let size: number
     try {
-      size = statSync(file).size
-    } catch {
-      return
-    }
-    if (size <= offset) return
-    let chunk: string
-    try {
-      const fd = openSync(file, 'r')
+      size = (await stat(file)).size
+      if (size <= offset) return
+      const handle = await open(file, 'r')
       try {
         const buf = Buffer.alloc(size - offset)
-        readSync(fd, buf, 0, buf.length, offset)
-        chunk = buf.toString('utf8')
+        const { bytesRead } = await handle.read(buf, 0, buf.length, offset)
+        chunk = buf.toString('utf8', 0, bytesRead)
+        size = offset + bytesRead
       } finally {
-        closeSync(fd)
+        await handle.close()
       }
     } catch {
       return
     }
+    // Closed while the read was out: the thread's harness is gone.
+    if (closed) return
     offset = size
     partial += chunk
     const lines = partial.split('\n')
@@ -890,17 +898,17 @@ function goalWatcher(ctx: DriverCtx): GoalWatch {
     }
   }
 
-  const locate = (sessionId: string): string | null => {
-    const root = join(homedir(), '.claude', 'projects')
+  const locate = async (sessionId: string): Promise<string | null> => {
+    const root = opts.root ?? join(homedir(), '.claude', 'projects')
     // The CLI's project-dir slug rule, read out of the 2.1.233 binary.
     const slug = ctx.session.cwd.replace(/[^a-zA-Z0-9-_]/g, '-')
     const direct = join(root, slug, `${sessionId}.jsonl`)
-    if (existsSync(direct)) return direct
+    if (await exists(direct)) return direct
     // Survive slug-rule drift: the session id is globally unique.
     try {
-      for (const name of readdirSync(root)) {
+      for (const name of await readdir(root)) {
         const p = join(root, name, `${sessionId}.jsonl`)
-        if (existsSync(p)) return p
+        if (await exists(p)) return p
       }
     } catch {
       // projects dir missing — nothing to tail yet
@@ -908,35 +916,53 @@ function goalWatcher(ctx: DriverCtx): GoalWatch {
     return null
   }
 
-  const attach = (): void => {
-    if (!watching) return
-    file = locate(watching)
-    if (!file) return
-    partial = ''
-    offset = 0
-    if (watching === resumedId) {
+  const attach = async (): Promise<void> => {
+    const id = watching
+    if (!id) return
+    const found = await locate(id)
+    if (!found || watching !== id) return
+    let start = 0
+    if (id === resumedId) {
       // Skip deep history but keep the recent tail in view — a goal set in
       // the moments between resume and attach still lands (the timestamp
       // filter in drain() drops anything older than this driver).
       try {
-        offset = Math.max(0, statSync(file).size - GOAL_TAIL_BYTES)
+        start = Math.max(0, (await stat(found)).size - GOAL_TAIL_BYTES)
       } catch {
-        offset = 0
+        start = 0
       }
     }
+    if (watching !== id) return
+    file = found
+    attachedTo = id
+    partial = ''
+    offset = start
+  }
+
+  const look = async (): Promise<void> => {
+    if (!watching) return
+    if (attachedTo !== watching) await attach()
+    if (attachedTo === watching) await drain()
+  }
+
+  /** One look at a time, none while the loop is busy. */
+  const tick = (): void => {
+    if (looking || currentLag().meanMs >= GOAL_SKIP_LAG_MS) return
+    looking = true
+    void look().finally(() => {
+      looking = false
+    })
   }
 
   return {
     arm(sessionId: string): void {
       if (watching === sessionId) return
       watching = sessionId
-      attach()
-      timer ??= setInterval(() => {
-        if (!file) attach()
-        drain()
-      }, 1000)
+      tick()
+      timer ??= setInterval(tick, opts.everyMs ?? GOAL_POLL_MS)
     },
     close(): void {
+      closed = true
       if (timer) clearInterval(timer)
       timer = null
     }

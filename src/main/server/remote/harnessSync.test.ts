@@ -7,6 +7,7 @@ import { ClientRequestSchema } from '@shared/contract'
 import { HARNESS_CHUNK_BYTES } from '@shared/contract-harness'
 import { requiredCapability } from '@shared/capabilities'
 import { HarnessSync, handleHarness, PATH_MAP_KEY, stripHostBoundEnv } from './harnessSync'
+import { setLagForTests } from '../stalls'
 import { HARNESS_SET, SKILL_BINARY_CACHE, buildManifest, commandExecutable, inSet, isMachO, isSecretPath, missingHookExecutables, ruleFor, setCounts, validRelPath, type SetRule } from './harnessSet'
 
 /** A Mach-O header: the 64-bit little-endian magic the Mac's arm64 binaries carry, then anything. */
@@ -156,7 +157,7 @@ describe('the sync set', () => {
     expect(Object.keys(counts)).toEqual(HARNESS_SET.map((r) => r.label))
   })
 
-  it('tells a Mach-O header from everything else, a universal binary from a Java class file', () => {
+  it('tells a Mach-O header from everything else, a universal binary from a Java class file', async () => {
     expect(isMachO(machO())).toBe(true)
     expect(isMachO(Buffer.from([0xfe, 0xed, 0xfa, 0xce, 0, 0, 0, 12]))).toBe(true)
     expect(isMachO(Buffer.from([0xfe, 0xed, 0xfa, 0xcf, 0, 0, 0, 12]))).toBe(true)
@@ -170,7 +171,7 @@ describe('the sync set', () => {
     expect(SKILL_BINARY_CACHE.test('impeccable/scripts/impeccable')).toBe(false)
   })
 
-  it('never lets a secret in, even when the globs are widened to whole dirs', () => {
+  it('never lets a secret in, even when the globs are widened to whole dirs', async () => {
     const wide: SetRule[] = [{ kind: 'tree', root: '.claude', label: 'c' }, { kind: 'tree', root: '.codex', label: 'x' }, { kind: 'tree', root: '.ssh', label: 's' }]
     for (const rel of ['.claude/.credentials.json', '.claude/settings.local.json', '.codex/auth.json', '.ssh/id.key', '.ssh/server.pem', '.claude/x/apns.p8']) {
       expect(isSecretPath(rel), rel).toBe(true)
@@ -183,7 +184,7 @@ describe('the sync set', () => {
     put(mac, '.ssh/deploy.key', 'k')
     put(mac, '.ssh/cert.pem', 'p')
     put(mac, '.ssh/known_hosts', 'h')
-    const rels = buildManifest(mac, { rules: wide }).entries.map((e) => e.relPath)
+    const rels = (await buildManifest(mac, { rules: wide })).entries.map((e) => e.relPath)
     expect(rels).toContain('.claude/settings.json')
     expect(rels).toContain('.ssh/known_hosts')
     for (const secret of ['.claude/.credentials.json', '.claude/settings.local.json', '.codex/auth.json', '.ssh/deploy.key', '.ssh/cert.pem']) expect(rels).not.toContain(secret)
@@ -191,7 +192,7 @@ describe('the sync set', () => {
 })
 
 describe('the manifest', () => {
-  it('lists the set with size, hash, mode and mtime; follows a symlink inside HOME, skips one out of reach, a .git dir and an oversize file', () => {
+  it('lists the set with size, hash, mode and mtime; follows a symlink inside HOME, skips one out of reach, a .git dir and an oversize file', async () => {
     put(mac, '.claude/skills/a/SKILL.md', '# a')
     put(mac, '.claude/skills/a/run.sh', '#!/bin/sh\n', 0o755)
     put(mac, '.claude/skills/synced/b/SKILL.md', 'theirs')
@@ -209,7 +210,7 @@ describe('the manifest', () => {
     put(mac, '.claude/skills/a/scripts/bin/darwin-arm64/tool', machO(), 0o755)
     put(mac, '.claude/skills/a/scripts/bin/darwin-arm64/notes.txt', 'cache notes')
     const cache = new Map()
-    const m = buildManifest(mac, { maxBytes: 1024, cache })
+    const m = await buildManifest(mac, { maxBytes: 1024, cache })
     const rels = m.entries.map((e) => e.relPath)
     expect(rels).toEqual(['.claude/plugins/marketplaces/m/README.md', '.claude/skills/a/SKILL.md', '.claude/skills/a/run.sh', '.claude/skills/linked/SKILL.md'])
     expect(m.entries.find((e) => e.relPath.endsWith('run.sh'))?.mode).toBe(0o755)
@@ -223,11 +224,11 @@ describe('the manifest', () => {
     expect(cache.get(realpathSync(join(mac, '.claude/skills/a/engine')))?.native).toBe(true)
     unlinkSync(join(mac, '.claude/skills/a/engine'))
     put(mac, '.claude/skills/a/engine', 'now a script')
-    const again = buildManifest(mac, { maxBytes: 1024, cache })
+    const again = await buildManifest(mac, { maxBytes: 1024, cache })
     expect(again.entries.map((e) => e.relPath)).toContain('.claude/skills/a/engine')
   })
 
-  it('walks a skill dir that is a symlink as a dir: into another skills root, or a package cache under HOME', () => {
+  it('walks a skill dir that is a symlink as a dir: into another skills root, or a package cache under HOME', async () => {
     put(mac, '.agents/skills/impeccable/SKILL.md', '# impeccable')
     put(mac, '.agents/skills/impeccable/scripts/impeccable', '#!/bin/sh\nexec engine "$@"\n', 0o755)
     put(mac, '.agents/skills/impeccable/scripts/VERSION', '0.1.16\n')
@@ -239,7 +240,7 @@ describe('the manifest', () => {
     symlinkSync(join(mac, 'Library/Caches/pkg/skills/cached'), join(mac, '.codex/skills/cached'))
     put(mac, '.npm/_npx/abc/node_modules/pkg/skills/npx/SKILL.md', '# npx')
     symlinkSync(join(mac, '.npm/_npx/abc/node_modules/pkg/skills/npx'), join(mac, '.agents/skills/npx'))
-    const m = buildManifest(mac)
+    const m = await buildManifest(mac)
     expect(m.entries.map((e) => e.relPath)).toEqual([
       '.agents/skills/impeccable/SKILL.md',
       '.agents/skills/impeccable/scripts/VERSION',
@@ -257,11 +258,32 @@ describe('the manifest', () => {
     expect(launchers[0].sha256).toBe(launchers[1].sha256)
   })
 
-  it('carries only enabledPlugins and mcpServers of ~/.claude.json', () => {
+  it('waits for a quiet loop before each directory it walks, and a busy loop only delays it', async () => {
+    put(mac, '.claude/skills/a/SKILL.md', 'a')
+    put(mac, '.claude/skills/a/scripts/run.sh', 'r')
+    put(mac, '.claude/skills/b/SKILL.md', 'b')
+    put(mac, '.claude/commands/c.md', 'c')
+    const dirs: number[] = []
+    const between = async (): Promise<void> => void dirs.push(dirs.length)
+    const m = await buildManifest(mac, { between })
+    expect(m.entries.map((e) => e.relPath)).toEqual(['.claude/commands/c.md', '.claude/skills/a/SKILL.md', '.claude/skills/a/scripts/run.sh', '.claude/skills/b/SKILL.md'])
+    // skills, a, a/scripts, b, commands
+    expect(dirs).toHaveLength(5)
+    // The default wait is the loop's own: a busy loop holds the walk until it is quiet or the bound passes.
+    setLagForTests({ meanMs: 120, maxMs: 300, ewmaMs: 120 })
+    let done = false
+    const walk = buildManifest(mac).then((r) => ((done = true), r))
+    await new Promise((r) => setTimeout(r, 150))
+    expect(done).toBe(false)
+    setLagForTests(null)
+    expect((await walk).entries).toHaveLength(4)
+  })
+
+  it('carries only enabledPlugins and mcpServers of ~/.claude.json', async () => {
     put(mac, '.claude.json', JSON.stringify({ oauthAccount: { email: 'x' }, projects: {}, enabledPlugins: { 'a@m': true }, mcpServers: { s: { command: 'x' } } }))
-    expect(buildManifest(mac).claudeJson).toEqual({ enabledPlugins: { 'a@m': true }, mcpServers: { s: { command: 'x' } } })
+    expect((await buildManifest(mac)).claudeJson).toEqual({ enabledPlugins: { 'a@m': true }, mcpServers: { s: { command: 'x' } } })
     put(mac, '.claude.json', '{"half')
-    expect(buildManifest(mac).claudeJson).toBeUndefined()
+    expect((await buildManifest(mac)).claudeJson).toBeUndefined()
   })
 })
 

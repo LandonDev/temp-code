@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ClientRequestSchema } from '@shared/contract'
 import { requiredCapability } from '@shared/capabilities'
 import { parseMapping } from '../pathMap'
-import { MemorySync, handleMemory } from './memorySync'
+import { MemorySync, SETTLE_GAP_MS, handleMemory } from './memorySync'
 import { encodeProjectDir } from './memorySet'
 import { TOMBSTONE_MS } from './memoryMerge'
 
@@ -148,10 +148,10 @@ describe('the first sync', () => {
     expect(has(mac, '.codex/memories/.git/HEAD')).toBe(false)
     const exchange = sent.find((s) => s.method === 'memory.exchange')!.params as { entries: { relPath: string }[] }
     expect(exchange.entries.some((e) => e.relPath.endsWith('.pem') || e.relPath.endsWith('.jsonl'))).toBe(false)
-    const status = sender.status()
+    const status = (await sender.status())
     expect(status.environments[0]).toMatchObject({ name: 'box', files: 7, error: null, conflicts: 0 })
     expect(status.conflicts).toEqual([])
-    expect(receiver.status().conflicts).toEqual([])
+    expect((await receiver.status()).conflicts).toEqual([])
   })
 
   it('a second sync with nothing changed sends and writes nothing', async () => {
@@ -183,7 +183,7 @@ describe('changes after the first sync', () => {
     expect(read(box, boxMem('mac-build.md'))).toBe('edited on the mac\n')
     expect(read(mac, macMem('new-on-box.md'))).toBe('new on the box')
     expect(read(box, '.claude/plans/new-plan.md')).toBe('new on the mac')
-    expect(sender.status().conflicts).toEqual([])
+    expect((await sender.status()).conflicts).toEqual([])
   })
 
   it('both edited since the last sync: the newer wins everywhere, the other is kept beside it on both hosts, and the status says so', async () => {
@@ -201,9 +201,9 @@ describe('changes after the first sync', () => {
     expect(read(box, copies[0])).toBe('the mac edit\n')
     // The copy reached the Mac in the second round.
     expect(read(mac, macMem('mac-build.conflict-mac-20261021T120100.md'))).toBe('the mac edit\n')
-    expect(sender.status().environments[0].conflicts).toBe(1)
-    expect(sender.status().conflicts).toEqual([{ path: join(mac, macMem('mac-build.conflict-mac-20261021T120100.md')), of: macMem('mac-build.md'), host: 'mac', at: T0 + 60_000 }])
-    expect(receiver.status().conflicts.map((c) => c.host)).toEqual(['mac'])
+    expect((await sender.status()).environments[0].conflicts).toBe(1)
+    expect((await sender.status()).conflicts).toEqual([{ path: join(mac, macMem('mac-build.conflict-mac-20261021T120100.md')), of: macMem('mac-build.md'), host: 'mac', at: T0 + 60_000 }])
+    expect((await receiver.status()).conflicts.map((c) => c.host)).toEqual(['mac'])
     // Settled: a third sync changes nothing.
     const before = walk(mac).map((r) => [r, mtimeOf(mac, r)])
     await sender.syncWith('env_box')
@@ -288,22 +288,54 @@ describe('triggers', () => {
   it('a thread settling idle syncs after a short quiet and nudges the hosts linked here; a nudge from the other side syncs', async () => {
     vi.useFakeTimers()
     try {
-      const { sender, receiver, nudged, sent } = pair()
-      const spy = vi.spyOn(sender, 'syncAll').mockResolvedValue()
+      const { sender, receiver, nudged, sent } = pair({ now: () => Date.now() })
+      const spy = vi.spyOn(sender, 'syncWith').mockResolvedValue()
       sender.onSessionMeta({ id: 's1', status: 'running' })
       sender.onSessionMeta({ id: 's1', status: 'idle' })
       sender.onSessionMeta({ id: 's2', status: 'idle' }) // never live: not a settle
       expect(spy).not.toHaveBeenCalled()
       await vi.advanceTimersByTimeAsync(3_100)
-      expect(spy).toHaveBeenCalledTimes(1)
-      expect(spy).toHaveBeenCalledWith('idle')
+      expect(spy.mock.calls).toEqual([['env_box', 'idle']])
       expect(nudged).toEqual([{ push: 'memory.nudge', from: 'env_mac' }])
-      spy.mockRestore()
       expect(sender.onPeerPush('env_box', { push: 'memory.nudge', from: 'env_box' })).toBe(true)
       expect(sender.onPeerPush('env_box', { push: 'session-removed', sessionIds: [] })).toBe(false)
+      // The box synced on the settle a moment ago: its nudge waits out the gap.
       await vi.advanceTimersByTimeAsync(3_100)
+      expect(spy).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(SETTLE_GAP_MS)
+      expect(spy.mock.calls).toEqual([['env_box', 'idle'], ['env_box', 'nudge']])
+      // The nudge's sync is a real exchange with the box.
+      spy.mockRestore()
+      vi.useRealTimers()
+      await sender.syncWith('env_box', 'nudge')
       expect(sent.some((s) => s.method === 'memory.exchange')).toBe(true)
-      expect(receiver.status().environments).toEqual([])
+      expect((await receiver.status()).environments).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a fleet settling every few seconds syncs each host at most once per 30 s, and nudges as often', async () => {
+    vi.useFakeTimers()
+    try {
+      const { sender, nudged } = pair({ now: () => Date.now() })
+      const spy = vi.spyOn(sender, 'syncWith').mockResolvedValue()
+      // A settle every 2 s for 90 s.
+      for (let i = 0; i < 45; i++) {
+        sender.onSessionMeta({ id: `t${i}`, status: 'running' })
+        sender.onSessionMeta({ id: `t${i}`, status: 'idle' })
+        await vi.advanceTimersByTimeAsync(2_000)
+      }
+      await vi.advanceTimersByTimeAsync(SETTLE_GAP_MS)
+      // 3 s, then every 30 s: four in the 120 s, never two inside a gap.
+      expect(spy.mock.calls.length).toBe(4)
+      expect(nudged.length).toBe(4)
+      // Quiet past the gap: the next settle goes after the short quiet again.
+      await vi.advanceTimersByTimeAsync(SETTLE_GAP_MS)
+      sender.onSessionMeta({ id: 'late', status: 'running' })
+      sender.onSessionMeta({ id: 'late', status: 'idle' })
+      await vi.advanceTimersByTimeAsync(3_100)
+      expect(spy.mock.calls.length).toBe(5)
     } finally {
       vi.useRealTimers()
     }
@@ -315,7 +347,7 @@ describe('triggers', () => {
     macStore.setSetting('memory.sync.enabled', 'false')
     await sender.syncWith('env_box')
     expect(sent).toEqual([])
-    expect(sender.status().enabled).toBe(false)
+    expect((await sender.status()).enabled).toBe(false)
   })
 })
 
@@ -335,6 +367,6 @@ describe('the receiver', () => {
     await expect(link.request('memory.files', { generation: 'g1', files: [{ relPath: '.claude/plans/other.md', mtime: T0, sha256: 'a'.repeat(64), mode: 0o644, dataBase64: 'eA==' }], done: true })).rejects.toThrow(/not a file this generation asked for/)
     await expect(link.request('memory.files', { generation: 'g1', files: [{ relPath: '.claude/plans/ok.md', mtime: T0, sha256: 'b'.repeat(64), mode: 0o644, dataBase64: 'eA==' }], done: true })).rejects.toThrow(/does not match its hash/)
     expect(walk(box)).toEqual([])
-    expect(receiver.status().environments).toEqual([])
+    expect((await receiver.status()).environments).toEqual([])
   })
 })
