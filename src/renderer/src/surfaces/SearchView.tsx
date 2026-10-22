@@ -10,7 +10,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
-import { toneOf } from "../chrome/EnvironmentSwitcher";
+import { HostGlyph } from "../chrome/HostGlyph";
 import { FileTypeIcon } from "../chrome/FileTypeIcon";
 import { HarnessIcon } from "../chrome/HarnessIcon";
 import { MatchText } from "../chrome/MatchText";
@@ -450,7 +450,6 @@ export function SearchView({
             query={text}
             showHost={multiHost}
             environments={environments}
-            statuses={statuses}
             onActive={setActive}
             onOpen={openHit}
           />
@@ -531,7 +530,6 @@ function ResultList({
   query,
   showHost,
   environments,
-  statuses,
   onActive,
   onOpen,
 }: {
@@ -540,7 +538,6 @@ function ResultList({
   query: string;
   showHost: boolean;
   environments: Environment[];
-  statuses: ReadonlyMap<string, EnvironmentStatus>;
   onActive: (index: number) => void;
   onOpen: (hit: AppSearchHit, beside?: boolean) => void;
 }) {
@@ -616,9 +613,8 @@ function ResultList({
             ) : null}
             {showHost && hit.host ? (
               <HostMark
+                environmentId={hit.host}
                 name={nameOf(hit.host)}
-                status={statuses.get(hit.host)}
-                primary={hit.host === registry.primaryEnvironmentId}
                 newer={hit.kind === "file" || hit.kind === "content" ? hit.newer : undefined}
                 alsoOn={hit.kind === "file" || hit.kind === "content" ? hit.alsoOn?.map(nameOf) : undefined}
               />
@@ -630,33 +626,24 @@ function ResultList({
   );
 }
 
-/** The rail's host mark: the connection dot and the host's name, muted. A
- *  file that two hosts hold says it is the newer copy and names the other. */
+/** The host's glyph (chrome/HostGlyph.tsx), its name on hover. A file that
+ *  two hosts hold says it is the newer copy and names the other on hover. */
 export function HostMark({
+  environmentId,
   name,
-  status,
-  primary,
   newer,
   alsoOn,
 }: {
+  environmentId: string;
   name: string;
-  status: EnvironmentStatus | undefined;
-  primary: boolean;
   newer?: boolean;
   alsoOn?: string[];
 }) {
-  const tone = primary ? "bg-success" : status ? toneOf(status, status.transport !== "open") : "bg-content/25";
-  const also = alsoOn && alsoOn.length > 0 ? `Also on ${alsoOn.join(", ")}` : undefined;
+  const also = alsoOn && alsoOn.length > 0 ? `also on ${alsoOn.join(", ")}` : undefined;
   return (
-    <span
-      data-host-mark
-      title={also}
-      className="flex shrink-0 items-center gap-1.5 pl-1 text-[11px] text-content/40"
-    >
-      <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${tone}`} />
-      <span>{name}</span>
-      {newer ? <span className="text-content/50">· newer</span> : null}
-      {!newer && also ? <span className="sr-only">{also}</span> : null}
+    <span data-host-mark className="flex shrink-0 items-center gap-1.5 pl-1 text-[11px] text-content/40">
+      <HostGlyph environmentId={environmentId} title={also ? `${name} · ${also}` : undefined} />
+      {newer ? <span className="text-content/50">newer</span> : null}
     </span>
   );
 }

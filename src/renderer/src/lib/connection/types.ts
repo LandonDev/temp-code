@@ -34,6 +34,9 @@ export type Environment = {
   credentialRef: string | null;
   /** Public id of the saved key; no bearer material crosses here. */
   keyId?: string;
+  /** The host's platform as its last hello said (`build.platform`), saved
+   *  with the host so the glyph paints before this launch's hello. */
+  platform?: string;
 };
 
 /** The first frame on every socket. */

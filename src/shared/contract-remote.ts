@@ -201,6 +201,9 @@ export interface SavedEnvironment {
   keyName: string
   /** Public key id; lets clients notice a saved credential replacement. */
   keyId?: string
+  /** The host's `process.platform` from its last hello (`build.platform`), so
+   *  a client paints the host's glyph before the socket is up. */
+  platform?: string
 }
 
 export const EnvironmentRequestSchemas = [

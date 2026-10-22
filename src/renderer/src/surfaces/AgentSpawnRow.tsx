@@ -1,15 +1,23 @@
 import { useContext } from "react";
 import { HarnessIcon } from "../chrome/HarnessIcon";
+import { HostGlyph } from "../chrome/HostGlyph";
 import type { Block } from "../lib/session";
 import { useMetaById } from "../lib/threads/agents";
-import { asHarness } from "../lib/tcserver/store";
+import { asHarness, sessionStore } from "../lib/tcserver/store";
 import { SelectSessionContext } from "./AgentMarkdown";
 import { useOpenAgentDetail } from "./agentDetailContext";
 import { StatusDot, THREAD_GLYPHS, THREAD_TINTS } from "./threads/bits";
 
+/** The window's environment for a cross-host child id (`<hostId>:<sessionId>`),
+ *  before its row is in the store: `local` when the host is this machine. */
+export function hostOfAgentId(id: string): string | undefined {
+  const host = /^(env_[A-Za-z0-9_-]+):./.exec(id)?.[1];
+  return host ? (sessionStore.attachedEnvironmentFor(host) ?? host) : undefined;
+}
+
 /**
  * A spawned agent's row, nested under the orchestrator's flow: provider,
- * what it is called, where it stands. Clicking opens its transcript in
+ * what it is called, its host's glyph, where it stands. Clicking opens its transcript in
  * this pane's detail panel; a report row reads its status.
  */
 export function AgentSpawnRow({ block }: { block: Block }) {
@@ -41,6 +49,7 @@ export function AgentSpawnRow({ block }: { block: Block }) {
         >
           {title}
         </button>
+        <HostGlyph environmentId={meta?.environmentId ?? hostOfAgentId(agent.id)} />
         {status ? (
           <span className="flex shrink-0 items-center gap-1 text-[12px] text-content/40">
             {!report ? <StatusDot status={meta?.status} /> : null}

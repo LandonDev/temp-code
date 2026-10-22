@@ -25,6 +25,7 @@ import {
   InboxFiltersMenu,
   INBOX_FILTER_MENU_WIDTH,
 } from "../chrome/InboxFiltersMenu";
+import { HostGlyph } from "../chrome/HostGlyph";
 import { InboxProviderMark } from "../chrome/InboxProviderMark";
 import { Popover } from "../chrome/Popover";
 import { ProjectLogoIcon } from "../chrome/ProjectLogoIcon";
@@ -297,7 +298,6 @@ export function InboxView({
   // Every paired host's inbox, merged; rows name the host when there is more than one.
   const environments = useEnvironments();
   const environmentIds = useMemo(() => environments.map((e) => e.id), [environments]);
-  const environmentNames = useMemo(() => new Map(environments.map((e) => [e.id, e.name] as const)), [environments]);
   const inboxStates = useInboxAll();
   const { githubLoaded, refreshing, githubAuthMessage, linear } = useMemo(
     () => mergeInboxStates(inboxStates, environmentIds),
@@ -641,7 +641,7 @@ export function InboxView({
                     item={item}
                     active={selected != null && key === inboxItemKey(selected)}
                     workspaceId={workspace?.id ?? null}
-                    environmentName={environments.length > 1 && item.environmentId ? (environmentNames.get(item.environmentId) ?? null) : null}
+                    environmentId={item.environmentId ?? null}
                     projectKey={projectKey}
                     logoPath={resolveTabGroupLogo(projectKey, logos)}
                     mascotName={resolveTabGroupMascot(projectKey, groupMascots)}
@@ -841,11 +841,11 @@ function InboxDetailBody({
   );
 }
 
-function InboxCard({
+export function InboxCard({
   item,
   active,
   workspaceId,
-  environmentName,
+  environmentId,
   projectKey,
   logoPath,
   mascotName,
@@ -855,8 +855,8 @@ function InboxCard({
   item: InboxItem;
   active: boolean;
   workspaceId: string | null;
-  /** The host the row came from, when more than one is paired. */
-  environmentName?: string | null;
+  /** The host the row came from; its glyph shows when more than one is paired. */
+  environmentId?: string | null;
   projectKey: string;
   logoPath: string | null;
   mascotName: string | null;
@@ -927,12 +927,7 @@ function InboxCard({
             />
           )}
           <span className="min-w-0 truncate">{source}</span>
-          {environmentName ? (
-            <>
-              <span aria-hidden>·</span>
-              <span className="shrink-0" data-inbox-environment>{environmentName}</span>
-            </>
-          ) : null}
+          <HostGlyph environmentId={environmentId} />
           {author ? (
             <>
               <span aria-hidden>·</span>

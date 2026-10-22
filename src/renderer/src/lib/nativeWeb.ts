@@ -37,6 +37,8 @@ export function assetHref(url: string): string {
 let version: Promise<string> | null = null;
 
 export const webApi: Api = {
+  // The page's one host says its platform in its hello; nothing is known before it.
+  platform: "",
   getServerPort: () => Promise.resolve(null),
   // The page at /ui has one host and no main process: nothing to paint from before its socket.
   launchMirror: { read: () => null, write: noop },

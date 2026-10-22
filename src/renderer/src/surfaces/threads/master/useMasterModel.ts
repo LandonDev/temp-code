@@ -15,7 +15,6 @@ import { useEnvironmentStatuses } from "../../../lib/connection/status";
 import * as commands from "../../../lib/tcserver/commands";
 import type { EnvironmentStatus } from "../../../lib/connection/types";
 import { isLiveStatus, type AgentTone } from "../../../lib/threads/agents";
-import { hostTone } from "../../../lib/threadMove";
 import { sessionStore, useSessionMeta } from "../../../lib/tcserver/store";
 import type { SessionMeta, SessionStatus, ThreadType } from "../../../lib/tcserver/types";
 import { usePaneVisible } from "../../../hooks/paneVisibility";
@@ -93,10 +92,10 @@ function lookupOf(metas: readonly SessionMeta[]): (id: string) => SessionMeta | 
 
 // ── the row's host ──────────────────────────────────────────────────────
 
-/** A row's host when it is not the master's: the name and the dot's tone
- *  the thread header's host chip would show, and whether the host is out
- *  of reach (its rows are the launch mirror's, under the offline tint). */
-export type RowHost = { id: string; name: string; tone: string; offline: boolean };
+/** A row's host when it is not the master's: its name and whether it is
+ *  out of reach (its rows are the launch mirror's, under the offline tint).
+ *  The row draws the host's glyph either way (chrome/HostGlyph.tsx). */
+export type RowHost = { id: string; name: string; offline: boolean };
 
 export function rowHost(
   meta: Pick<SessionMeta, "environmentId">,
@@ -109,7 +108,6 @@ export function rowHost(
   return {
     id: meta.environmentId,
     name: environments.find((e) => e.id === meta.environmentId)?.name ?? meta.environmentId,
-    tone: hostTone(status),
     offline: status?.transport !== "open",
   };
 }

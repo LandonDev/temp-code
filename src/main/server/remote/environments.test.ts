@@ -10,6 +10,7 @@ import {
   originOf,
   pairEnvironment,
   parsePairingLink,
+  rememberPlatform,
   removeEnvironment,
   updateEnvironment,
   type EnvironmentsStore
@@ -117,6 +118,24 @@ describe('addEnvironment', () => {
     const newer = ctxWith(store, () => json(200, hello({ contract: CONTRACT_VERSION + 1, key: { id: 'k', name: 'n' } }))).ctx
     await expect(addEnvironment(newer, { url: 'https://h', key: 'tc_x.y' })).rejects.toThrow(/^contract:.*update the app/)
     expect(listEnvironments(store)).toEqual([])
+  })
+})
+
+describe('the host platform', () => {
+  it('saves the hello build platform with the host, keeps it on a re-add without one, and remembers a later hello', async () => {
+    const store = fakeStore()
+    const caps = { key: { id: 'k1', name: 'mac', caps: ['admin'], audience: 'client' } }
+    const first = ctxWith(store, () => json(200, hello({ ...caps, build: { release: 3, version: '1.0.3', sha: null, platform: 'linux' } })))
+    expect((await addEnvironment(first.ctx, { url: 'https://box.example.com', key: 'tc_k1.s' })).platform).toBe('linux')
+    const again = ctxWith(store, () => json(200, hello(caps)))
+    await addEnvironment(again.ctx, { url: 'https://box2.example.com', key: 'tc_k1.s' })
+    expect(listEnvironments(store)[0].platform).toBe('linux')
+    // A later hello names another platform: written once, and a repeat writes nothing.
+    expect(rememberPlatform(store, HOST_ID, 'darwin')).toBe(true)
+    expect(rememberPlatform(store, HOST_ID, 'darwin')).toBe(false)
+    expect(rememberPlatform(store, HOST_ID, undefined)).toBe(false)
+    expect(rememberPlatform(store, SELF_ID, 'linux')).toBe(false)
+    expect(listEnvironments(store)[0].platform).toBe('darwin')
   })
 })
 

@@ -40,6 +40,8 @@ export type MirrorEnvironment = {
   name: string
   routes: { url: string; kind: 'loopback' | 'lan' | 'tunnel' }[]
   keyId?: string
+  /** The host's platform from its last hello, for the host glyph. */
+  platform?: string
 }
 
 /** The boot answer: the hosts to register and what each one last showed. */

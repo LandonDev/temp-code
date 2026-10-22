@@ -51,7 +51,8 @@ vi.mock("../lib/tcserver/projects", () => ({
   hostOfCwd: (cwd: string) => (cwd.startsWith("/work") ? "env_box" : "local"),
   environmentOfCwd: (cwd: string) => (cwd.startsWith("/work") ? "env_box" : "local"),
 }));
-vi.mock("../lib/native", () => ({ invokeOn: (...args: unknown[]) => h.invokeOn(...args) }));
+vi.mock("../lib/connection/status", () => ({ useEnvironments: () => h.environments }));
+vi.mock("../lib/native", () => ({ invokeOn: (...args: unknown[]) => h.invokeOn(...args), nativePlatform: () => "darwin" }));
 vi.mock("../lib/search", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/search")>()),
   searchProject: (...args: unknown[]) => h.searchProject(...args),
@@ -129,7 +130,13 @@ async function search(view: RenderResult, text: string): Promise<void> {
 
 const rows = (view: RenderResult) => [...view.container.querySelectorAll('[role="option"]')] as HTMLButtonElement[];
 const kinds = (view: RenderResult) => rows(view).map((row) => row.dataset.kind);
-const hostOf = (row: HTMLElement) => row.querySelector("[data-host-mark]")?.textContent ?? null;
+/** The row's host glyph: its host's name on hover, and "newer" beside it on a folded file. */
+const hostOf = (row: HTMLElement) => {
+  const mark = row.querySelector("[data-host-mark]");
+  if (!mark) return null;
+  const name = mark.querySelector("[data-host-glyph]")?.getAttribute("title") ?? "";
+  return mark.textContent ? `${name} · ${mark.textContent}` : name;
+};
 
 describe("SearchView across hosts", () => {
   beforeEach(() => {
@@ -145,7 +152,7 @@ describe("SearchView across hosts", () => {
     h.listProjectFiles.mockReset();
   });
 
-  it("renders one row per kind with the host mark, folds the paired file into the newer copy, and times each host", async () => {
+  it("renders one row per kind with the host glyph, folds the paired file into the newer copy, and times each host", async () => {
     const p = props();
     const view = render(<SearchView open cwd="/Users/me/app" recents={recents} {...p} />);
     await search(view, "gateway");
@@ -160,8 +167,9 @@ describe("SearchView across hosts", () => {
     expect(hostOf(file)).toBe("This Mac");
     // Both hosts hold src/gw.ts:3; the box's copy is newer, so one row, on the box.
     expect(content.textContent).toContain("src/gw.ts:3");
-    expect(hostOf(content)).toBe("box· newer");
-    expect(content.querySelector("[data-host-mark]")?.getAttribute("title")).toBe("Also on This Mac");
+    expect(hostOf(content)).toBe("box · also on This Mac · newer");
+    expect(content.querySelector("[data-host-glyph]")?.getAttribute("data-host-kind")).toBe("server");
+    expect(thread.querySelector("[data-host-glyph]")?.getAttribute("data-host-kind")).toBe("mac");
     expect(note.textContent).toContain("about the gateway");
     expect(hostOf(note)).toBe("box");
     expect(project.textContent).toContain("gateway-kit");

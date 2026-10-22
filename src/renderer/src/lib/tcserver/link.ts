@@ -19,7 +19,7 @@ import { dropHarnessModels, setDefaultCatalogEnvironment } from "../models";
 import { dropHarnessAvailability, probeHarnessAvailability } from "../harness/availability";
 
 type Doctor = Record<string, { found: boolean; version?: string; error?: string }>;
-type SavedEnvironmentRow = { id: string; name: string; routes: { url: string; kind: "loopback" | "lan" | "tunnel" }[] };
+type SavedEnvironmentRow = { id: string; name: string; routes: { url: string; kind: "loopback" | "lan" | "tunnel" }[]; keyId?: string; platform?: string };
 
 declare global {
   interface Window {

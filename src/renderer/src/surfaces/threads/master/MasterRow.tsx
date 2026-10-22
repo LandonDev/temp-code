@@ -2,6 +2,7 @@ import { useReducedMotion } from "motion/react";
 import { memo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Check, ChevronRight, Circle, MessageSquare, Pause, Play, Square, X } from "../../../chrome/icons";
 import { HarnessIcon } from "../../../chrome/HarnessIcon";
+import { HostGlyph } from "../../../chrome/HostGlyph";
 import { ArchiveThreadDialog } from "../../../chrome/ThreadResourcesDialog";
 import * as commands from "../../../lib/tcserver/commands";
 import { asHarness, useSessionMeta } from "../../../lib/tcserver/store";
@@ -253,8 +254,8 @@ function Tally({ progress, fold }: { progress: { done: number; total: number }; 
 }
 
 /** The provider's mark, the model, then its effort and context in a
- *  quieter gray; first the host's dot and name, as the thread header's
- *  host chip draws them, when the thread runs elsewhere. */
+ *  quieter gray; first the host's glyph (chrome/HostGlyph.tsx), its name on
+ *  hover, or that it is offline. */
 function ModelMark({ meta, host }: { meta: SessionMeta; host: RowHost | null }) {
   const rest = [meta.reasoning, meta.context1m ? "1M" : null].filter(Boolean).join(" ");
   return (
@@ -262,12 +263,7 @@ function ModelMark({ meta, host }: { meta: SessionMeta; host: RowHost | null }) 
       className="flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap transition-opacity duration-100 group-hover:opacity-0 group-focus-within:opacity-0"
       data-model
     >
-      {host ? (
-        <span className="mr-1 flex items-center gap-1.5 text-content/40" title={host.offline ? `${host.name} is offline` : `On ${host.name}`}>
-          <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${host.tone}`} />
-          {host.name}
-        </span>
-      ) : null}
+      <HostGlyph environmentId={meta.environmentId} title={host?.offline ? `${host.name} is offline` : undefined} className="mr-0.5" />
       <HarnessIcon harness={asHarness(meta.provider)} className="size-3 text-content/60" />
       <span className="text-content/60">{modelLabel(meta.provider, meta.model)}</span>
       {rest ? <span className="text-content/35">{rest}</span> : null}

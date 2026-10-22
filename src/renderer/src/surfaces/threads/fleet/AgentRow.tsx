@@ -1,6 +1,7 @@
 import { motion, useReducedMotion } from "motion/react";
 import { ENTER, SPRING_PANEL } from "../../../lib/ease";
 import { HarnessIcon } from "../../../chrome/HarnessIcon";
+import { HostGlyph } from "../../../chrome/HostGlyph";
 import { TONE_CLASS, modelLabel } from "../../../lib/threads/agents";
 import { asHarness } from "../../../lib/tcserver/store";
 import type { SessionMeta } from "../../../lib/tcserver/types";
@@ -10,7 +11,8 @@ import { useAgentModel } from "./useFleetModel";
 
 /**
  * One subagent as a row: status glyph, title, what it is doing, its edit
- * and task tallies, and on the right its model, elapsed time and cost.
+ * and task tallies, and on the right its host's glyph (with two or more
+ * hosts) and model, elapsed time and cost.
  * The pieces are rowBits.tsx, shared with the master board's rows.
  */
 
@@ -62,6 +64,7 @@ export function AgentRow({
       </span>
       <span className="flex shrink-0 flex-col items-end gap-0.5 text-xs tabular-nums text-content/40">
         <span className="inline-flex items-center gap-1">
+          <HostGlyph environmentId={agent.environmentId} className="mr-0.5" />
           <HarnessIcon harness={asHarness(agent.provider)} className="size-3.5" />
           {modelLabel(agent.provider, agent.model)}
         </span>

@@ -86,6 +86,8 @@ describe('PeerLink', () => {
     await vi.waitFor(() => expect(events.onPush).toHaveBeenCalledWith('env_a', expect.objectContaining({ push: 'account' })))
     // The hello's build facts ride on the state (the deploy-drift mark reads them).
     expect(link.state()).toEqual({ name: 'A', connected: true, lastSyncAt: null, error: null, build: { release: 270, version: '1.0.270', sha: 'f'.repeat(40), platform: 'linux' } })
+    // …and the platform is remembered on the saved row, for the next launch's host glyph.
+    expect(JSON.parse(store.getSetting(`${ENVIRONMENTS_PREFIX}env_a`)!).platform).toBe('linux')
     hostA.dropAll()
     await vi.waitFor(() => expect(events.onClose).toHaveBeenCalledWith('env_a'))
     expect(link.connected).toBe(false)

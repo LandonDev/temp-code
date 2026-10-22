@@ -71,6 +71,8 @@ interface AppshotPermissions {
 }
 
 const api = {
+  /** This machine's `process.platform`, for its host glyph before the local hello. */
+  platform: process.platform as string,
   getServerPort: (): Promise<number | null> => ipcRenderer.invoke('server-port'),
   /** The launch mirror (src/shared/launchMirror.ts): what every host last
    *  showed, read synchronously so the rail paints before any socket is up;

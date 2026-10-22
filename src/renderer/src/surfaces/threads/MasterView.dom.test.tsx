@@ -942,7 +942,7 @@ describe("a fleet of 300", () => {
 });
 
 describe("the batch across hosts", () => {
-  it("a child on another host carries that host's dot and name, under the offline tint while the host is out of reach", async () => {
+  it("a child on another host carries that host's glyph, under the offline tint while the host is out of reach", async () => {
     seed([meta({ id: "c-home", title: "Home", status: "running" })]);
     seedBox([boxMeta({ id: "c-box", title: "Inbox", status: "running", model: "gpt-6.1-sol", provider: "codex" })]);
     const { rerender } = render(<MasterView {...props} />);
@@ -955,10 +955,13 @@ describe("the batch across hosts", () => {
     expect(box.getAttribute("data-host")).toBe("box");
     expect(box.getAttribute("data-host-offline")).toBe("true");
     expect(box.className).toContain("opacity-50");
-    const mark = box.querySelector("[data-model]")!;
-    expect(mark.textContent).toContain("The box");
-    expect(mark.querySelector(".rounded-full")?.className).toContain("bg-content/25");
-    // The host comes back: the tint lifts and the dot turns.
+    // Every row draws its host's glyph, the name on hover; the offline row says so instead.
+    expect(home.querySelector("[data-model] [data-host-glyph]")?.getAttribute("title")).toBe("This Mac");
+    const glyph = box.querySelector("[data-model] [data-host-glyph]")!;
+    expect(glyph.getAttribute("data-host-glyph")).toBe("box");
+    expect(glyph.getAttribute("title")).toBe("The box is offline");
+    expect(box.querySelector("[data-model]")!.textContent).not.toContain("The box");
+    // The host comes back: the tint lifts and the glyph names it.
     hosts.statuses = new Map([
       ["local", { transport: "open", fresh: true }],
       ["box", { transport: "open", fresh: true }],
@@ -967,7 +970,7 @@ describe("the batch across hosts", () => {
     const again = screen.getByRole("button", { name: /Inbox/ }).closest("[data-status]")!;
     expect(again.getAttribute("data-host-offline")).toBeNull();
     expect(again.className).not.toContain("opacity-50");
-    expect(again.querySelector("[data-model] .rounded-full")?.className).toContain("bg-success");
+    expect(again.querySelector("[data-model] [data-host-glyph]")?.getAttribute("title")).toBe("The box");
   });
 
   it("a row of another host reads its digest from that host's batch.board, and an offline host is not asked", async () => {

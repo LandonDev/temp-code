@@ -11,6 +11,13 @@ import { nextPage } from '../lib/sidebarRows'
 import { Fold, LiveLines, ThreadList, masterMenuItem } from './WorkspaceSessions'
 import { subagentRowsStore } from '../stores/subagentRows'
 
+/** The hosts the window knows; none by default, two for the host glyph. */
+const hosts = vi.hoisted(() => ({ environments: [] as { id: string; name: string; platform?: string }[] }))
+vi.mock('../lib/connection/status', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/connection/status')>()),
+  useEnvironments: () => hosts.environments
+}))
+
 /** The root owns each list's page count; this stands in for it. */
 function Paged({
   children
@@ -256,6 +263,39 @@ describe('ThreadRows fold', () => {
     )
     expect(rowCount(probe.container)).toBe(3)
     expect(probe.container.querySelector('[aria-current="true"]')?.textContent).toContain('kid2')
+    probe.unmount()
+  })
+})
+
+describe('the host glyph on rail rows', () => {
+  afterEach(() => {
+    hosts.environments = []
+  })
+  const tree = (): ThreadRow => ({
+    ...threadRow(meta('root', { status: 'running', busySince: 5 }), {}),
+    children: [threadRow(meta('kid', { parentId: 'root', environmentId: 'env_box', status: 'running', busySince: 5 }), {})]
+  })
+
+  it('with one host no row draws it', () => {
+    hosts.environments = [{ id: 'local', name: 'This Mac' }]
+    const probe = mountProbe(<ThreadList threads={[tree()]} actions={actions} className="" />)
+    expect(probe.container.querySelector('[data-host-glyph]')).toBeNull()
+    probe.unmount()
+  })
+
+  it("with two, the root and its subagent each draw their own host's glyph, the name on hover", () => {
+    hosts.environments = [
+      { id: 'local', name: 'This Mac' },
+      { id: 'env_box', name: 'The box', platform: 'linux' }
+    ]
+    const probe = mountProbe(<ThreadList threads={[tree()]} actions={actions} className="" />)
+    const [root, kid] = Array.from(probe.container.querySelectorAll('[role="button"]'))
+    expect(root.querySelector('[data-host-glyph]')?.getAttribute('title')).toBe('This Mac')
+    expect(kid.querySelector('[data-host-glyph]')?.getAttribute('title')).toBe('The box')
+    expect(kid.querySelector('[data-host-glyph]')?.getAttribute('data-host-kind')).toBe('server')
+    // The old name chip is gone: the glyph carries no text.
+    expect(root.querySelector('[data-host-badge]')).toBeNull()
+    expect(root.textContent).not.toContain('This Mac')
     probe.unmount()
   })
 })

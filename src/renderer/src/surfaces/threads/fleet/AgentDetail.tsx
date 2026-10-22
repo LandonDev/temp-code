@@ -3,6 +3,7 @@ import type { OpenFileFn } from "../../../lib/search";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { EASE_OUT, SPRING_PANEL } from "../../../lib/ease";
 import { HarnessIcon } from "../../../chrome/HarnessIcon";
+import { HostGlyph } from "../../../chrome/HostGlyph";
 import { ArrowUp, GitBranch, X } from "../../../chrome/icons";
 import { respondHarnessApproval } from "../../../lib/harness";
 import { isLiveStatus, modelLabel, useMetaById, useSessionById } from "../../../lib/threads/agents";
@@ -137,6 +138,7 @@ export function AgentDetail({
             </div>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-content/40">
               <span className="inline-flex items-center gap-1">
+                <HostGlyph environmentId={meta.environmentId} className="mr-0.5" />
                 <HarnessIcon harness={harness} className="size-3.5" />
                 {meta.agentType} · {modelLabel(meta.provider, meta.model)} · {meta.reasoning}
               </span>

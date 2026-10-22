@@ -5,7 +5,7 @@ import { allows } from '@shared/capabilities'
 import type { ServerFrame, ServerPush } from '@shared/contract'
 import type { SavedEnvironment } from '@shared/contract-remote'
 import type { BuildFacts } from '@shared/deployDrift'
-import { ENVIRONMENTS_PREFIX, listEnvironments, mintTicket, type HostContext } from './environments'
+import { ENVIRONMENTS_PREFIX, listEnvironments, mintTicket, rememberPlatform, type HostContext } from './environments'
 
 /**
  * The main process's own sockets to the hosts it shares accounts with
@@ -120,7 +120,10 @@ export class PeerLink {
             }
             this.ws = ws
             this.connected = true
-            if (frame.build) this.build = frame.build
+            if (frame.build) {
+              this.build = frame.build
+              rememberPlatform(this.ctx.store, this.env.id, frame.build.platform)
+            }
             resolve()
             return
           }

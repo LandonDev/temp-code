@@ -91,11 +91,11 @@ describe("a row's host", () => {
   it("is nothing for a thread on the master's host", () => {
     expect(rowHost(meta("idle"), master, envs, () => ({ transport: "open", fresh: true }))).toBeNull();
   });
-  it("names another host with the chip's dot tone, and offline while its link is not open", () => {
+  it("names another host, and offline while its link is not open", () => {
     const away = meta("idle", { environmentId: "box" });
-    expect(rowHost(away, master, envs, () => ({ transport: "open", fresh: true }))).toEqual({ id: "box", name: "The box", tone: "bg-success", offline: false });
-    expect(rowHost(away, master, envs, () => ({ transport: "offline", fresh: false }))).toEqual({ id: "box", name: "The box", tone: "bg-content/25", offline: true });
-    expect(rowHost(away, master, envs, () => ({ transport: "reconnecting", fresh: false }))).toMatchObject({ tone: "bg-warning", offline: true });
+    expect(rowHost(away, master, envs, () => ({ transport: "open", fresh: true }))).toEqual({ id: "box", name: "The box", offline: false });
+    expect(rowHost(away, master, envs, () => ({ transport: "offline", fresh: false }))).toEqual({ id: "box", name: "The box", offline: true });
+    expect(rowHost(away, master, envs, () => ({ transport: "reconnecting", fresh: false }))).toMatchObject({ offline: true });
     expect(rowHost(away, master, envs, () => undefined)).toMatchObject({ offline: true });
     expect(rowHost(meta("idle", { environmentId: "studio" }), master, envs, () => undefined)?.name).toBe("studio");
   });

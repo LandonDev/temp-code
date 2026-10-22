@@ -1,4 +1,3 @@
-import { useEnvironments } from "../lib/connection";
 import {
   memo,
   useCallback,
@@ -12,6 +11,7 @@ import {
 } from "react";
 import { measureElement, useVirtualizer, type VirtualizerOptions } from "@tanstack/react-virtual";
 import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
+import { HostGlyph } from "./HostGlyph";
 import { PreambleDialog } from "./PreambleDialog";
 import {
   ArchiveRestore,
@@ -341,18 +341,6 @@ function useRevealActive(activeSessionId: string | undefined) {
 /** The subagent fold in a root row's tail: how many, whether they show, the flip. */
 type Fold = { count: number; open: boolean; noun: "subagent" | "thread"; onToggle: () => void };
 
-/** Which host a row's thread lives on; shown only when the window talks to two or more. */
-function HostBadge({ environmentId }: { environmentId?: string }) {
-  const environments = useEnvironments();
-  if (!environmentId || environments.length < 2) return null;
-  const name = environments.find((e) => e.id === environmentId)?.name ?? environmentId;
-  return (
-    <span data-host-badge={environmentId} title={`On ${name}`} className="max-w-16 shrink-0 truncate rounded bg-content/5 px-1 text-[10px] leading-4 text-content/45">
-      {name}
-    </span>
-  );
-}
-
 const ChatRow = memo(function ChatRow({
   thread,
   actions,
@@ -450,7 +438,7 @@ const ChatRow = memo(function ChatRow({
       )}
       {!renaming ? (
         <>
-          <HostBadge environmentId={thread.environmentId} />
+          <HostGlyph environmentId={thread.environmentId} />
           <StatusDot status={thread.status} />
           {fold ? (
             <button
@@ -516,6 +504,7 @@ const ChildRow = memo(function ChildRow({
       {thread.running ? <Spinner /> : <StatusDot status={thread.status} />}
       {Glyph ? <Glyph className="size-3 shrink-0 text-content/40" strokeWidth={1.75} /> : null}
       <span className="min-w-0 flex-1 truncate">{thread.title || (thread.masterId ? "Untitled" : "Subagent")}</span>
+      <HostGlyph environmentId={thread.environmentId} />
       {live ? (
         <span className="max-w-[45%] shrink-0 truncate text-[11px] text-content/40" data-activity>
           {live}

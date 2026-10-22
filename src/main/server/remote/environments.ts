@@ -63,6 +63,7 @@ function parseRow(id: string, raw: string | null): Row | null {
       addedAt: typeof value.addedAt === 'number' ? value.addedAt : 0,
       caps: Array.isArray(value.caps) ? (value.caps as Capability[]) : [],
       keyName: typeof value.keyName === 'string' ? value.keyName : '',
+      ...(typeof value.platform === 'string' && value.platform ? { platform: value.platform } : {}),
       key: value.key
     }
   } catch {
@@ -90,6 +91,19 @@ export function listEnvironments(store: EnvironmentsStore): SavedEnvironment[] {
     if (row) out.push(withoutKey(row))
   }
   return out.sort((a, b) => a.addedAt - b.addedAt)
+}
+
+/**
+ * Remember the platform a host's hello named (`build.platform`) on its saved
+ * row, so the next launch draws the host's glyph from the mirror before any
+ * socket is up. Writes only when it changed; false for an unknown host.
+ */
+export function rememberPlatform(store: EnvironmentsStore, id: string, platform: string | undefined): boolean {
+  if (!platform) return false
+  const row = readRow(store, id)
+  if (!row || row.platform === platform) return false
+  writeRow(store, { ...row, platform })
+  return true
 }
 
 export function removeEnvironment(store: EnvironmentsStore, id: string): boolean {
@@ -202,7 +216,8 @@ export async function fetchHello(ctx: HostContext, route: SavedRoute, key: strin
     environmentId: hello.environmentId,
     name: typeof hello.name === 'string' && hello.name ? hello.name : hello.environmentId,
     contract,
-    key: { id: hello.key.id, name: hello.key.name, caps: Array.isArray(hello.key.caps) ? hello.key.caps : [] }
+    key: { id: hello.key.id, name: hello.key.name, caps: Array.isArray(hello.key.caps) ? hello.key.caps : [] },
+    ...(hello.build && typeof hello.build === 'object' ? { build: hello.build } : {})
   }
 }
 
@@ -225,6 +240,7 @@ export async function addEnvironment(
     addedAt: existing?.addedAt ?? Date.now(),
     caps: hello.key?.caps ?? [],
     keyName: hello.key?.name ?? '',
+    ...(hello.build?.platform ? { platform: hello.build.platform } : existing?.platform ? { platform: existing.platform } : {}),
     key
   }
   writeRow(ctx.store, row)

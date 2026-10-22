@@ -185,7 +185,8 @@ app.whenReady().then(async () => {
       id: row.id,
       name: row.name,
       routes: row.routes.map((r) => ({ url: r.url, kind: r.kind })),
-      ...(row.keyId !== undefined ? { keyId: row.keyId } : {})
+      ...(row.keyId !== undefined ? { keyId: row.keyId } : {}),
+      ...(row.platform ? { platform: row.platform } : {})
     }))
     const hosts = server!.launchMirror.read(['local', ...environments.map((row) => row.id)])
     e.returnValue = { environments, hosts } satisfies LaunchMirrorSnapshot

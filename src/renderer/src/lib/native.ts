@@ -383,6 +383,11 @@ export function openWithEditor(target: EditorTarget): Promise<{ editor: EditorId
   return api().editor.open(target);
 }
 
+/** This machine's `process.platform` from preload; "" at /ui or in a test without one. */
+export function nativePlatform(): string {
+  return api()?.platform ?? "";
+}
+
 /** The in-process server's port, straight from preload; never opens a socket. */
 export async function getServerPort(): Promise<number> {
   const port = await api().getServerPort();

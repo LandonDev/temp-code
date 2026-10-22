@@ -374,6 +374,7 @@ export function savedEnvironment(saved: {
   id: string;
   name: string;
   routes: { url: string; kind: Route["kind"] }[];
+  platform?: string;
 }): Environment {
   return {
     id: saved.id,
@@ -381,6 +382,7 @@ export function savedEnvironment(saved: {
     routes: saved.routes.map((r) => ({ url: r.url, kind: r.kind, credential: "key" })),
     credentialRef: saved.id,
     ...(saved.keyId !== undefined ? { keyId: saved.keyId } : {}),
+    ...(saved.platform ? { platform: saved.platform } : {}),
   };
 }
 
