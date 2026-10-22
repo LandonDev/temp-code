@@ -26,6 +26,7 @@ import { isWebMode } from "../lib/nativeWeb";
 import { revealPath } from "../lib/fs";
 import { MacBridgeSettings } from "./MacBridgeSettings";
 import { DeploySettings } from "./DeploySettings";
+import { AdmissionSettings } from "./AdmissionSettings";
 
 /**
  * Settings → Remote access (plan 5jtfkIC45Cbr): the environment id, the
@@ -306,6 +307,8 @@ export function RemoteSettings({ onOpenSession }: { onOpenSession?: (sessionId: 
           ) : null}
         </>
       ) : null}
+
+      <AdmissionSettings />
 
       <DeploySettings />
 
