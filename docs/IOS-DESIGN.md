@@ -52,7 +52,10 @@ only in Settings and in a reconnecting status line. With several, Home groups
 workspaces under a host header with its connection dot, and Needs-you and
 Running merge every host. Pairing lives in Settings → Hosts, by link or key,
 as a sheet. An unauthorized or offline host shows one status row at the top
-of Home with the action (Retry, Pair again), never a blank screen.
+of Home with the action (Retry, Pair again), never a blank screen. A host
+reached through the box folds under the box's row while the box itself is
+in trouble: one card says the box is down, not one per host behind it
+(`HomeHostInput.via`).
 
 **Needs you** is the first section and the reason the app exists. One row per
 thread that has an undecided approval, an unanswered question, an error, or
@@ -252,8 +255,8 @@ Archive done, in the host's menu (the More glyph in Home's bar with
 one host, on each host header with several) and in the project header's
 menu, and again in a thread's menu for its project. A row with nothing to
 act on is disabled, never hidden; a key that cannot act reads the reason as
-the menu's first line. Pause, Stop and Archive done confirm in a medium
-sheet whose title is the live count ("Pause 15 running threads on the
+the menu's first line. Pause, Stop and Archive done confirm in a sheet
+as tall as what it says (a height detent measured from its content) whose title is the live count ("Pause 15 running threads on the
 box?", the digits rolling as threads settle while it shows), with the
 resources clause and its switch when Archive done would release worktrees
 or simulators, and one full-width confirm at the foot (destructive tint for
@@ -677,7 +680,8 @@ the package's `ToolPhrase` (tested). Row kinds and their mobile form:
 - **Failure**: the host's verdict on a failed turn as a card: the summary,
   the cause, a note naming what only the desktop can do (sign in, pick an
   account or a model), and the actions this key can take as full-width
-  buttons, Retry last; needs-you tint while live, chrome once the thread
+  buttons side by side while every label fits on one line, stacked when one
+  would wrap, Retry last; needs-you tint while live, chrome once the thread
   moves on. An error without a verdict, and a Stop, stay one quiet line.
 - **Review**: the merge review's outcome: lead and detail, held in
   destructive, merged in success, the rest secondary; blocking findings as
@@ -1208,7 +1212,9 @@ package's `Shell/HostPresentation.swift`, where they have tests.
   A theme flip snaps; nothing animates it.
 
 **Hosts.** One row per paired host: the connection dot leading in the mark
-column (`Layout.markWidth`), the name, a second line in the meta step (the
+column (`Layout.markWidth`; a host the box relays follows its relay state
+over an open lane: locked in the warning tint, asleep in the quiet gray,
+unreachable in destructive), the name, a second line in the meta step (the
 address while connected, else what is wrong in two words: "Connecting…",
 "Unreachable", "Reconnecting…", "Offline", "Different host", "Needs an
 update", "Key refused", "Paused"), and the environment id abbreviated
