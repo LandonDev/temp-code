@@ -77,7 +77,7 @@ struct NotesSheet: View {
                 if editor.editing {
                     editorPage(doc: doc)
                 } else if let doc {
-                    NotesDocument(display: Notes.display(doc.text), sessionId: sessionId, painted: painted)
+                    NotesDocument(display: Notes.display(doc.text), environmentId: client.environment.id, sessionId: sessionId, painted: painted)
                 } else if state?.isLoading != false {
                     ProgressView()
                         .controlSize(.small)
@@ -129,7 +129,6 @@ struct NotesSheet: View {
         }
         .presentationDetents([.large])
         .presentationCornerRadius(Radius.sheet)
-        .environment(\.markdownScope, MarkdownScope(environmentId: client.environment.id, sessionId: sessionId))
         .sensoryFeedback(.impact(weight: .light), trigger: copied)
         .task { _ = await client.loadNotes(sessionId, refresh: true) }
         // Read as it lands, the sheet being open.
@@ -204,11 +203,12 @@ struct NotesSheet: View {
 }
 
 /// The five sections as a page: headings in `.headline`, bodies through the
-/// app's one markdown renderer, an empty section folded to its heading in
-/// tertiary, extras after. Keyed by heading so a push replaces a body in
-/// place and the reader's section stays anchored.
+/// plan page's block stack (PlanBlockView, PlanType's spacing), an empty
+/// section folded to its heading in tertiary, extras after. Keyed by heading
+/// so a push replaces a body in place and the reader's section stays anchored.
 private struct NotesDocument: View {
     let display: ParsedNotes
+    let environmentId: String
     let sessionId: String
     let painted: Bool
     @State private var position = ScrollPosition(idType: String.self)
@@ -217,11 +217,11 @@ private struct NotesDocument: View {
         ScrollView {
             VStack(alignment: .leading, spacing: NotesStyles.sectionGap) {
                 if !display.preamble.isEmpty {
-                    MarkdownView(seq: NotesStyles.seq(sessionId, 0), text: display.preamble)
+                    NotesBody(text: display.preamble, key: NotesStyles.key(environmentId, sessionId, "\u{0}preamble"))
                         .id("\u{0}preamble")
                 }
-                ForEach(Array(display.sections.enumerated()), id: \.element.heading) { index, section in
-                    NotesSectionView(section: section, seq: NotesStyles.seq(sessionId, index + 1), painted: painted)
+                ForEach(display.sections, id: \.heading) { section in
+                    NotesSectionView(section: section, key: NotesStyles.key(environmentId, sessionId, section.heading), painted: painted)
                         .id(section.heading)
                 }
             }
@@ -242,7 +242,7 @@ private struct NotesDocument: View {
 /// in when it changes. Nothing else moves.
 private struct NotesSectionView: View {
     let section: NoteSection
-    let seq: Int
+    let key: String
     let painted: Bool
 
     var body: some View {
@@ -253,15 +253,39 @@ private struct NotesSectionView: View {
                 .foregroundStyle(empty ? Color(.tertiaryLabel) : Color(.label))
                 .animation(painted ? Motion.crossFade : nil, value: empty)
             if !empty {
-                // The old and new bodies overlap while they cross-fade, so the page never jumps twice.
-                ZStack(alignment: .topLeading) {
-                    MarkdownView(seq: seq, text: section.body)
-                        .id(section.body)
-                        .transition(.opacity.animation(Motion.crossFade))
-                }
+                NotesBody(text: section.body, key: key)
             }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(empty ? "\(section.heading), empty" : section.heading)
+    }
+}
+
+/// A section's markdown as plan blocks, parsed through the plan pages' cache
+/// (short text on first paint, off the main actor after, the old document
+/// kept until the new one lands). The old and new bodies overlap while they
+/// cross-fade, so the page never jumps twice.
+private struct NotesBody: View {
+    let text: String
+    let key: String
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            if let document = ThreadCaches.plans.document(key, text: text) {
+                VStack(alignment: .leading, spacing: PlanType.gap) {
+                    ForEach(Array(document.blocks.enumerated()), id: \.offset) { index, block in
+                        PlanBlockView(block: block, first: index == 0)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .id(document.textHash)
+                .transition(.opacity.animation(Motion.crossFade))
+            } else {
+                Text(text)
+                    .font(.body)
+                    .lineSpacing(PlanType.lineSpacing)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
     }
 }

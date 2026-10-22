@@ -1,12 +1,12 @@
 import SwiftUI
 
-/// The notes page's measure and spacing, beside the plan page's; the sheet
-/// reads nothing else by number.
+/// The notes page's measure and spacing: the plan page's own (PlanType), plus
+/// what the sections add. The sheet reads nothing else by number.
 enum NotesStyles {
-    static let measure: CGFloat = 640
-    static let inset: CGFloat = 20
-    static let pageTop: CGFloat = 12
-    static let pageBottom: CGFloat = 32
+    static let measure = PlanType.measure
+    static let inset = PlanType.inset
+    static let pageTop = PlanType.pageTop
+    static let pageBottom = PlanType.pageBottom
     /// Between two sections.
     static let sectionGap: CGFloat = 20
     /// Between a heading and its body.
@@ -14,9 +14,8 @@ enum NotesStyles {
     /// The glyph's "changed" dot.
     static let dot: CGFloat = 6
 
-    /// Each section's slot in the markdown cache: even, below the plan
-    /// document's and the report's, inside the thread's scope, never a row's seq.
-    static func seq(_ sessionId: String, _ index: Int) -> Int {
-        ThreadCaches.documentSeq(sessionId) - 2 * (index + 1)
+    /// A section body's slot in the plan pages' cache: the host, the thread and the heading.
+    static func key(_ environmentId: String, _ sessionId: String, _ heading: String) -> String {
+        "notes/\(environmentId)/\(sessionId)/\(heading)"
     }
 }

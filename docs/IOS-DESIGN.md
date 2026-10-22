@@ -427,7 +427,8 @@ at the large detent with the 16 pt sheet radius: the menu (Copy as brief,
 light haptic) leading, Edit ↔ Done trailing, no close button; swiping down
 dismisses and saves. The document is the five sections (Goal, Decisions,
 State, Pointers, Open questions) in order, each heading in `.headline` and
-its body through the app's one markdown renderer; an empty section is folded
+its body through the plan page's block stack (PlanType's type and spacing,
+parsed through the plan pages' cache); an empty section is folded
 to its heading in tertiary with the same spacing, so a thread that wrote only
 Goal and State still shows the five-part outline; headings the thread
 invented come after. Edit swaps the page for a plain `.body` text editor of
