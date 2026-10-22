@@ -185,7 +185,8 @@ struct InboxAvatar: View {
     }
 }
 
-final class AvatarCache: Sendable {
+/// Main-actor isolated, as the app's default makes it; the cache is only ever read from views.
+final class AvatarCache {
     static let shared = AvatarCache()
     private let cache = NSCache<NSString, UIImage>()
 

@@ -210,6 +210,12 @@ private func entry(_ item: GithubInboxItem, host: String = "h1") -> InboxEntry {
         #expect(out[0].previousPath == nil)
     }
 
+    @Test func `a real top-level b folder keeps its name`() {
+        let out = InboxPatch.split("diff --git a/b/x.swift b/b/x.swift\n--- a/b/x.swift\n+++ b/b/x.swift\n@@ -1 +1 @@\n-a\n+b\n")
+        #expect(out.map(\.path) == ["b/x.swift"])
+        #expect(out[0].previousPath == nil)
+    }
+
     @Test func `CRLF input is normalised and an empty patch gives nothing`() {
         let out = InboxPatch.split("diff --git a/x b/x\r\n--- a/x\r\n+++ b/x\r\n@@ -1 +1 @@\r\n-a\r\n+b\r\n")
         #expect(out.map(\.path) == ["x"])

@@ -44,7 +44,7 @@ public enum InboxModel {
 
     /// An ISO 8601 stamp in clock milliseconds; 0 when it does not parse.
     public static func ms(_ iso: String) -> Int {
-        let date = (try? Date(iso, strategy: .iso8601.year().month().day().time(includingFractionalSeconds: true)))
+        let date = (try? Date(iso, strategy: Date.ISO8601FormatStyle(includingFractionalSeconds: true)))
             ?? (try? Date(iso, strategy: .iso8601))
         guard let date else { return 0 }
         return Int(date.timeIntervalSince1970 * 1000)
@@ -93,9 +93,9 @@ public enum InboxModel {
         }
         guard isPr else { return nil }
         if item.draft { return InboxStatus(text: "Draft", tone: .plain) }
-        if item.reviewDecision.rawValue == "CHANGES_REQUESTED" { return InboxStatus(text: "Changes requested", tone: .warning) }
-        if let checks = item.checks?.rawValue, checks == "FAILURE" || checks == "ERROR" { return InboxStatus(text: "Checks failing", tone: .destructive) }
-        if item.reviewDecision.rawValue == "APPROVED" { return InboxStatus(text: "Approved", tone: .success) }
+        if item.reviewDecision == .changesRequested { return InboxStatus(text: "Changes requested", tone: .warning) }
+        if item.checks == .failure || item.checks == .error { return InboxStatus(text: "Checks failing", tone: .destructive) }
+        if item.reviewDecision == .approved { return InboxStatus(text: "Approved", tone: .success) }
         if let viewer, !viewer.isEmpty, item.reviewRequested.contains(where: { $0.caseInsensitiveCompare(viewer) == .orderedSame }) {
             return InboxStatus(text: "Your review", tone: .info)
         }
@@ -283,13 +283,11 @@ public enum InboxPatch {
     }
 
     /// "a/x b/y" → ("x", "y"); the split is at " b/" (or ` "b/` for a quoted
-    /// name), so the first path's own spaces survive.
+    /// name), so the first path's own spaces survive; each side then loses
+    /// its one prefix in `stripPath`.
     private static func gitPaths(_ rest: Substring) -> (String, String)? {
-        if let range = rest.range(of: " \"b/") {
-            return (stripPath(rest[rest.startIndex..<range.lowerBound]), stripPath(rest[rest.index(after: range.lowerBound)...]))
-        }
-        guard let range = rest.range(of: " b/") else { return nil }
-        return (stripPath(rest[rest.startIndex..<range.lowerBound]), stripPath(rest[range.upperBound...]))
+        guard let range = rest.range(of: " \"b/") ?? rest.range(of: " b/") else { return nil }
+        return (stripPath(rest[rest.startIndex..<range.lowerBound]), stripPath(rest[rest.index(after: range.lowerBound)...]))
     }
 
     /// Drops the `a/` or `b/` prefix, the trailing tab stamp, and the quotes git puts around odd names.
