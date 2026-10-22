@@ -167,4 +167,24 @@ import TempCodeContract
         }
         #expect(thought.durationMs == 100)
     }
+
+    @Test func `a notice row keeps its payload and a plain one carries none`() {
+        let gate = NoticeEvent.Gate(step: .typecheck, branch: "feature", ok: true, log: "", at: 1_200)
+        let fold = ThreadFold.fold(rows([
+            user("go"),
+            .notice(NoticeEvent(kind: "gate", message: "Typecheck passed on feature", gate: gate)),
+            .notice(NoticeEvent(kind: "account-gone", message: "Account a is gone from this host"))
+        ]))
+        guard case .system(let landed) = fold.items[1].item, case .system(let plain) = fold.items[2].item else {
+            Issue.record("shape \(fold.items)")
+            return
+        }
+        #expect(landed.kind == .status)
+        #expect(landed.detail == "gate")
+        #expect(landed.notice?.gate?.ok == true)
+        #expect(landed.notice?.gate?.branch == "feature")
+        #expect(plain.notice?.gate == nil)
+        #expect(plain.notice?.review == nil)
+        #expect(plain.text == "Account a is gone from this host")
+    }
 }

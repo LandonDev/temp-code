@@ -77,4 +77,105 @@ import TempCodeContract
         #expect(groups[1].cards[0].adds == 5)
         #expect(groups[1].cards[0].editCount == 2)
     }
+
+    // MARK: landing outcomes
+
+    @Test func `outcomes land on their round and never in work`() {
+        let gate = NoticeEvent.Gate(step: .typecheck, branch: "feature", ok: true, log: "", at: 1_500)
+        let review = NoticeEvent.Review(runId: "r1", provider: "codex", model: "gpt-6.1-sol", outcome: .pass, branch: "feature", target: "master", blocking: [], minor: [], merged: true, pushed: true)
+        let fold = ThreadFold.fold(rows([
+            user("go", newPass: true),
+            todoWrite("t1", [("a", "completed")]),
+            .notice(NoticeEvent(kind: "gate", message: "Typecheck passed on feature", gate: gate)),
+            .notice(NoticeEvent(kind: "account-gone", message: "Account a is gone")),
+            answer("done", msgId: "m1"),
+            .turnComplete(TurnCompleteEvent()),
+            user("more", newPass: true),
+            todoWrite("t2", [("b", "completed")]),
+            .notice(NoticeEvent(kind: "review", message: "Reviewed", review: review))
+        ]))
+        let board = ImplementationBoard.build(fold, running: false)
+        #expect(board.rounds.count == 2)
+        #expect(board.rounds[0].outcomes.map(\.seq) == [3])
+        #expect(board.rounds[1].outcomes.map(\.seq) == [9])
+        #expect(board.rounds.allSatisfy { $0.work.isEmpty })
+        #expect(!Board.isOutcome(fold.items[3].item))
+        #expect(Board.isOutcome(fold.items[2].item))
+    }
+
+    static let gateSteps: [(NoticeEvent.Gate.Step, String)] = [(.typecheck, "Typecheck"), (.gate, "Gate"), (.release, "Release"), (.unknown("smoke"), "Smoke")]
+
+    @Test(arguments: gateSteps) func `a passed gate names its step and branch`(step: NoticeEvent.Gate.Step, label: String) {
+        let gate = NoticeEvent.Gate(step: step, branch: "ios/board", ok: true, log: "anything", at: 0)
+        #expect(GateLine.text(gate) == "\(label) passed on ios/board")
+    }
+
+    @Test func `a failed gate names what failed`() {
+        let typecheck = NoticeEvent.Gate(step: .typecheck, branch: "f", ok: false, log: "src/a.ts(1,2): error TS2322: x\nFound 3 errors in 2 files.", at: 0)
+        #expect(GateLine.text(typecheck) == "Typecheck failed on f · 3 errors")
+        let one = NoticeEvent.Gate(step: .typecheck, branch: "f", ok: false, log: "Found 1 error.", at: 0)
+        #expect(GateLine.text(one) == "Typecheck failed on f · 1 error")
+        let silent = NoticeEvent.Gate(step: .typecheck, branch: "f", ok: false, log: "tsc crashed", at: 0)
+        #expect(GateLine.text(silent) == "Typecheck failed on f")
+        let gate = NoticeEvent.Gate(step: .gate, branch: "master", ok: false, log: "✓ typecheck 12s\n✗ vitest 40s failed", at: 0)
+        #expect(GateLine.text(gate) == "Gate failed on master · at vitest")
+        let gateNoStep = NoticeEvent.Gate(step: .gate, branch: "master", ok: false, log: "boom", at: 0)
+        #expect(GateLine.text(gateNoStep) == "Gate failed on master")
+        let release = NoticeEvent.Gate(step: .release, branch: "master", ok: false, log: "✗ vitest", at: 0)
+        #expect(GateLine.text(release) == "Release failed on master")
+    }
+
+    @Test func `the error count reads Found N first, else the error TS lines`() {
+        #expect(GateLine.errorCount("Found 3 errors") == 3)
+        #expect(GateLine.errorCount("Found 1 error in a.ts") == 1)
+        #expect(GateLine.errorCount("a.ts: error TS2322: x\nb.ts: error TS7006: y\n") == 2)
+        #expect(GateLine.errorCount("all good") == 0)
+    }
+
+    @Test func `the failed step is the last marked line, and the tail drops blank lines`() {
+        #expect(GateLine.failedStep("✓ typecheck 12s\n✗ vitest 40s failed") == "vitest")
+        #expect(GateLine.failedStep("✗ typecheck 1s\n✗ build 2s\n✓ done") == "build")
+        #expect(GateLine.failedStep("✓ typecheck") == nil)
+        #expect(GateLine.tail("a\n\n  \nb\nc\n", lines: 2) == "b\nc")
+        #expect(GateLine.tail("a\nb", lines: 20) == "a\nb")
+        #expect(GateLine.tail("", lines: 20) == "")
+    }
+
+    static func review(_ outcome: NoticeEvent.Review.Outcome, blocking: Int = 0, minor: Int = 0, merged: Bool = false, reason: String? = nil, minutes: Double? = nil) -> NoticeEvent.Review {
+        let finding = { (i: Int) in NoticeEvent.Review.Blocking(file: "src/a\(i).ts", line: i, summary: "s", failure_scenario: "f") }
+        let note = { (i: Int) in NoticeEvent.Review.Minor(file: "src/m\(i).ts", line: i, summary: "s", failure_scenario: "f") }
+        return NoticeEvent.Review(runId: "r", reviewerId: "rev", provider: "codex", model: "gpt-6.1-sol", outcome: outcome, branch: "f", target: "master", blocking: (0..<blocking).map(finding), minor: (0..<minor).map(note), merged: merged, pushed: merged, reason: reason, minutes: minutes)
+    }
+
+    static let leads: [(NoticeEvent.Review.Outcome, String)] = [
+        (.pass, "Reviewed by GPT-6.1 Sol"), (.held, "Reviewed by GPT-6.1 Sol"), (.timeout, "Review by GPT-6.1 Sol timed out"),
+        (.failed, "Review by GPT-6.1 Sol did not run"), (.mergedAnyway, "Merged anyway"), (.skipped, "Merged"), (.unknown("odd"), "Review")
+    ]
+
+    @Test(arguments: leads) func `the review lead follows the outcome`(outcome: NoticeEvent.Review.Outcome, expected: String) {
+        #expect(ReviewLine.lead(Self.review(outcome), label: "GPT-6.1 Sol") == expected)
+    }
+
+    @Test func `the review summary counts findings and says what happened to the merge`() {
+        #expect(ReviewLine.summary(Self.review(.pass)) == "no blocking findings")
+        #expect(ReviewLine.summary(Self.review(.pass, minor: 2)) == "no blocking findings, 2 minor")
+        #expect(ReviewLine.summary(Self.review(.held, blocking: 2, minor: 1)) == "2 blocking findings, 1 minor, merge held")
+        #expect(ReviewLine.summary(Self.review(.held, blocking: 1, merged: true)) == "1 blocking finding, merged anyway")
+        #expect(ReviewLine.summary(Self.review(.timeout, minutes: 2.4)) == "after 2.4 min, merged without it")
+        #expect(ReviewLine.summary(Self.review(.timeout, minutes: 15)) == "after 15 min, merged without it")
+        #expect(ReviewLine.summary(Self.review(.timeout)) == "after ? min, merged without it")
+        #expect(ReviewLine.summary(Self.review(.failed, reason: "the reviewer never reported")) == "the reviewer never reported, merged without it")
+        #expect(ReviewLine.summary(Self.review(.failed)) == "merged without it")
+        #expect(ReviewLine.summary(Self.review(.mergedAnyway, blocking: 1)) == "1 blocking finding overridden")
+        #expect(ReviewLine.summary(Self.review(.skipped, reason: "review off")) == "review off")
+        #expect(ReviewLine.summary(Self.review(.skipped)) == "")
+        #expect(ReviewLine.summary(Self.review(.unknown("odd"))) == "odd")
+    }
+
+    @Test func `a review holds the merge only while blocking findings stand`() {
+        #expect(ReviewLine.isHeld(Self.review(.held, blocking: 1)))
+        #expect(!ReviewLine.isHeld(Self.review(.held, blocking: 1, merged: true)))
+        #expect(!ReviewLine.isHeld(Self.review(.pass)))
+        #expect(!ReviewLine.isHeld(Self.review(.mergedAnyway, blocking: 1, merged: true)))
+    }
 }

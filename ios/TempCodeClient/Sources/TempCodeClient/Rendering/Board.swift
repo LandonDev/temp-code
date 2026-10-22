@@ -51,6 +51,9 @@ public struct RoundData: Sendable, Hashable {
     /// Display number; a pure Q&A round earns no row and consumes none (0).
     public var passNumber: Int
     public var isCurrent: Bool
+    /// The host's landing lines in this round (gate runs, review verdicts),
+    /// in order; drawn after Changes. Never part of `work`.
+    public var outcomes: [ThreadEntry] = []
 
     public var headerText: String {
         guard case .user(let turn)? = header?.item else { return "" }
@@ -99,6 +102,7 @@ public struct ImplementationBoard: Sendable, Hashable {
             rounds[r].items.append(entry)
             if rounds[r].header == nil, case .user = entry.item { rounds[r].header = entry }
             if Board.isWork(entry.item) { rounds[r].work.append(entry) }
+            if Board.isOutcome(entry.item) { rounds[r].outcomes.append(entry) }
         }
         // Passes number by what the board shows: a pure Q&A round has no
         // row and consumes no number.
@@ -166,6 +170,13 @@ public enum Board {
 
     public static func isWork(_ item: TranscriptItem) -> Bool {
         isWorkEdit(item) || item.needsUser || item.isError
+    }
+
+    /// A host's landing line: a gate run or a review verdict, carried whole
+    /// on the notice. A plain notice (an account that left) is not one.
+    public static func isOutcome(_ item: TranscriptItem) -> Bool {
+        guard case .system(let line) = item, let notice = line.notice else { return false }
+        return notice.gate != nil || notice.review != nil
     }
 
     /// Additions and deletions an edit reports: the host's preview, else a

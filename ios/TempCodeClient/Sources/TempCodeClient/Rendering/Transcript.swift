@@ -120,6 +120,10 @@ public struct SystemLine: Sendable, Hashable {
     public var detail: String?
     /// `error` rows: the turn stopped here.
     public var stopped: Bool
+    /// A host notice's whole payload (a gate run, a review verdict), so the
+    /// board can draw it as more than a line. Last and defaulted: every
+    /// `SystemLine(seq:ts:kind:text:detail:stopped:)` call stays as it is.
+    public var notice: NoticeEvent? = nil
 }
 
 /// One thing the transcript shows, in order. Rows that are bookkeeping
