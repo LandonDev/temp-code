@@ -372,6 +372,12 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'macBridge.loadLimit.set': 'local',
   'macBridge.load.get': 'local',
   'macBridge.admitThread': 'local',
+  // A key reads what the Mac runs for the hosts it serves (the same commands
+  // those threads' transcripts show) and may stop a command, as
+  // `session.interrupt` may; the prompts (`macBridge.pending`,
+  // `macBridge.decide`) and every setting stay the Mac's own.
+  'macBridge.activity': 'read',
+  'macBridge.stop': 'operate',
   // The Mac's remembered approvals (contract-macbridge-rules.ts): only its own renderer.
   'macBridge.rules.list': 'local',
   'macBridge.rules.forget': 'local',

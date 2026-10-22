@@ -848,3 +848,32 @@ public enum GateStep: RawRepresentable, Codable, Hashable, Sendable {
         }
     }
 }
+
+public enum MacBridgePolicy: RawRepresentable, Codable, Hashable, Sendable {
+    case off
+    case read
+    case readRun
+    case full
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "off": self = .off
+        case "read": self = .read
+        case "read+run": self = .readRun
+        case "full": self = .full
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .off: "off"
+        case .read: "read"
+        case .readRun: "read+run"
+        case .full: "full"
+        case .unknown(let value): value
+        }
+    }
+}

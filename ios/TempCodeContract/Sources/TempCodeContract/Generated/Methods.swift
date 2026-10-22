@@ -2151,4 +2151,76 @@ public enum Methods {
             }
         }
     }
+
+    public enum HarnessStatus: ContractMethod {
+        public static let name = "harness.status"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public init() {}
+        }
+
+        public typealias Output = HarnessSyncStatus
+    }
+
+    public enum HarnessSync: ContractMethod {
+        public static let name = "harness.sync"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let environmentId: String?
+
+            public init(environmentId: String? = nil) {
+                self.environmentId = environmentId
+            }
+        }
+
+        public typealias Output = HarnessSyncStatus
+    }
+
+    public enum MemoryStatus: ContractMethod {
+        public static let name = "memory.status"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public init() {}
+        }
+
+        public typealias Output = MemorySyncStatus
+    }
+
+    public enum MemorySync: ContractMethod {
+        public static let name = "memory.sync"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let environmentId: String?
+
+            public init(environmentId: String? = nil) {
+                self.environmentId = environmentId
+            }
+        }
+
+        public typealias Output = MemorySyncStatus
+    }
+
+    public enum MacBridgeActivity: ContractMethod {
+        public static let name = "macBridge.activity"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public init() {}
+        }
+
+        public typealias Output = TempCodeContract.MacBridgeActivity
+    }
+
+    public enum MacBridgeStop: ContractMethod {
+        public static let name = "macBridge.stop"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let id: String
+
+            public init(id: String) {
+                self.id = id
+            }
+        }
+
+        public typealias Output = Ok
+    }
 }

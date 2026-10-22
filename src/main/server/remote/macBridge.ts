@@ -45,7 +45,7 @@ import { servePeerCall, type LinkRequest } from './peerCalls'
 import { serveMacWrite, writeFoldersOf } from './macBridgeWrite'
 import type { MacWriteFileResult } from '@shared/contract-macbridge'
 import { threadRunsUnattended, type MacCallThread } from '@shared/contract-macbridge'
-import type { MacCancelArgs, MacCancelResult, MacHeldArgs } from '@shared/contract-macbridge'
+import type { MacBridgeActivity, MacBridgeCall, MacCancelArgs, MacCancelResult, MacHeldArgs } from '@shared/contract-macbridge'
 import { isMacJobPeerMethod, isMacPausePeerMethod, type MacPeerMethod } from '@shared/contract-macjobs'
 import { isCrossHostPeerMethod } from '@shared/contract-crosshost'
 import { isHostDevicesPeerMethod } from '@shared/contract-hostdevices'
@@ -610,6 +610,75 @@ export class MacBridge {
   }
 
   /**
+   * What a key may read (`macBridge.activity`, read): every saved host's caps
+   * and counts (with how many requests wait for a decision here, never the
+   * requests themselves), the load, and every call past the prompt: held,
+   * running, or paused on its box. The policy's folders, the remember offers
+   * and the deadlines stay off the wire.
+   */
+  activity(): MacBridgeActivity {
+    const pendingCount = new Map<string, number>()
+    for (const p of this.pendingById.values())
+      if (p.request.status === 'pending')
+        pendingCount.set(p.request.environmentId, (pendingCount.get(p.request.environmentId) ?? 0) + 1)
+    const hosts = this.hosts().map(({ shared: _shared, showRunning: _show, ...host }) => ({
+      ...host,
+      pending: pendingCount.get(host.environmentId) ?? 0
+    }))
+    const calls: MacBridgeCall[] = []
+    for (const r of this.pending()) {
+      if (r.status === 'pending') continue
+      calls.push({
+        id: r.id,
+        environmentId: r.environmentId,
+        hostName: r.hostName,
+        sessionId: r.sessionId,
+        threadTitle: r.threadTitle,
+        kind: r.kind,
+        method: r.method,
+        ...(r.command !== undefined ? { command: r.command } : {}),
+        ...(r.argv ? { argv: r.argv } : {}),
+        ...(r.cwd !== undefined ? { cwd: r.cwd } : {}),
+        ...(r.path !== undefined ? { path: r.path } : {}),
+        status: r.status,
+        ...(r.held ? { held: r.held } : {}),
+        ...(r.interactive ? { interactive: true as const } : {}),
+        createdAt: r.createdAt
+      })
+    }
+    return { hosts, load: this.loadStatus(), calls, at: Date.now() }
+  }
+
+  /**
+   * `macBridge.stop` (operate): what the Stop button sends for a running
+   * command (killed) or a held one (out of the line). A request that waits
+   * for a decision is refused: deciding is the Mac's own.
+   */
+  stop(id: string): { ok: true } {
+    const p = this.pendingById.get(id)
+    if (p?.request.status === 'pending') throw new Error('that request waits for a decision on the Mac')
+    return this.decide(id, false)
+  }
+
+  /**
+   * A proof's seam (TEMP_CODE_E2E_SEED=1 only): rows that look like calls
+   * in flight, for a test server with no box. Stop and decide on them do
+   * nothing; nothing is emitted; a no-op without the variable.
+   */
+  seed(calls: MacBridgeRequest[]): number {
+    if (process.env.TEMP_CODE_E2E_SEED !== '1') return 0
+    for (const request of calls) {
+      this.pendingById.set(request.id, {
+        request,
+        decide: () => {},
+        stop: () => {},
+        timer: setTimeout(() => {}, 0)
+      })
+    }
+    return calls.length
+  }
+
+  /**
    * Hold an allowed command or job on the load guard until its turn (or the
    * call's deadline, `until`): the request turns `held` with its standing
    * for the renderer, and comes back as `admitted`, else the request is
@@ -1147,7 +1216,7 @@ async function fetchMacFile(real: string): Promise<MacFetchFileWire> {
   }
 }
 
-/** The Mac's own renderer's macBridge.* methods (all local). */
+/** The Mac's own renderer's macBridge.* methods (local), and the two a key may call (`macBridge.activity`, `macBridge.stop`). */
 export function handleMacBridge(
   req: ClientRequest,
   bridge: MacBridge
@@ -1191,6 +1260,10 @@ export function handleMacBridge(
       return { handled: true, result: bridge.loadStatus() }
     case 'macBridge.admitThread':
       return { handled: true, result: bridge.admitThread(req.params.environmentId) }
+    case 'macBridge.activity':
+      return { handled: true, result: bridge.activity() }
+    case 'macBridge.stop':
+      return { handled: true, result: bridge.stop(req.params.id) }
     case 'macBridge.rules.list':
       return { handled: true, result: bridge.rules.list(req.params?.sessionId) }
     case 'macBridge.rules.forget':

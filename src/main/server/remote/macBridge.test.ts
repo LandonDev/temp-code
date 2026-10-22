@@ -16,6 +16,7 @@ import {
   FULL_DENY_FILES,
   MacBridge,
   asText,
+  handleMacBridge,
   commandKey,
   macDenied,
   macPath,
@@ -1114,5 +1115,82 @@ describe('MacBridge: pause and Stop from the box (mac.cancel, mac.held, a paused
     await expect(b.mb.handle('mac.run', { thread: paused, args: { argv: ['/bin/echo'], cwd: shared } }, ctx('c3'))).rejects.toThrow(
       'refused: the thread is paused'
     )
+  })
+})
+
+describe("MacBridge: what a key may read and stop (macBridge.activity, macBridge.stop)", () => {
+  const ctx = (callId: string) => ({ from: 'env_box', deadlineAt: Date.now() + 15 * 60_000, callId })
+
+  it('activity lists every host with its pending count and never a pending call; a held call carries its standing', async () => {
+    const b = bridge()
+    b.mb.setPolicy('env_box', 'read+run')
+    b.mb.setLimits('env_box', { maxRunning: 1 })
+    // One waiting for a decision, one allowed and running, one allowed and held behind it.
+    const waiting = b.mb.handle('mac.run', { thread: { id: 's0', title: 'waits' }, args: { argv: ['/bin/echo', 'never'], cwd: shared } }, ctx('c0'))
+    const first = b.mb.handle('mac.run', { thread: { id: 's1', title: 'first' }, args: { command: 'sleep 30', cwd: shared }, }, ctx('c1'))
+    const second = b.mb.handle('mac.run', { thread: { id: 's2', title: 'second' }, args: { command: 'echo second', cwd: shared } }, ctx('c2'))
+    const r1 = await b.nextRequest(1)
+    const r2 = await b.nextRequest(2)
+    b.mb.decide(r1.id, true)
+    b.mb.decide(r2.id, true)
+    await b.nextRequest(4)
+    const a = b.mb.activity()
+    expect(a.hosts).toEqual([
+      { environmentId: 'env_box', name: 'box', policy: 'read+run', registered: false, maxRunning: 1, maxThreads: 2, running: 1, held: 1, threads: 0, pending: 1 }
+    ])
+    expect(a.load).toMatchObject({ cores: 8, limit: 16, busy: false })
+    expect(typeof a.at).toBe('number')
+    expect(a.calls.map((c) => [c.sessionId, c.status, c.kind, c.command])).toEqual([
+      ['s1', 'running', 'run', 'sleep 30'],
+      ['s2', 'held', 'run', 'echo second']
+    ])
+    expect(a.calls[1]!.held).toMatchObject({ reason: 'cap', position: 1, maxRunning: 1, running: 1 })
+    // Nothing of the prompt's own leaves: no folder, no remember offer, no deadline.
+    for (const c of a.calls) expect(Object.keys(c).sort()).toEqual(['command', 'createdAt', 'cwd', 'environmentId', 'hostName', 'id', 'kind', 'method', 'sessionId', 'status', 'threadTitle', ...(c.status === 'held' ? ['held'] : [])].sort())
+    // Stop on the pending one is refused; the card keeps waiting.
+    const r0 = await b.nextRequest(0)
+    expect(() => b.mb.stop(r0.id)).toThrow('that request waits for a decision on the Mac')
+    // Stop on the held one takes it out of the line; its call fails as stopped.
+    expect(b.mb.stop(r2.id)).toEqual({ ok: true })
+    await expect(second).rejects.toThrow(/stopped at the Mac/)
+    // Stop on the running one kills it.
+    expect(b.mb.stop(r1.id)).toEqual({ ok: true })
+    const out = (await first) as { exitCode: number }
+    expect(out.exitCode === 0).toBe(false)
+    expect(b.mb.activity().calls).toEqual([])
+    expect(b.mb.activity().hosts[0]).toMatchObject({ running: 0, held: 0, pending: 1 })
+    expect(() => b.mb.stop('nothing')).toThrow(/no longer waiting/)
+    b.mb.decide(r0.id, false)
+    await expect(waiting).rejects.toThrow(/denied/)
+  })
+
+  it('the handler answers both methods', async () => {
+    const b = bridge()
+    const listed = handleMacBridge({ id: 'a', method: 'macBridge.activity', params: {} } as never, b.mb)
+    expect(listed).toMatchObject({ handled: true, result: { hosts: [{ environmentId: 'env_box', pending: 0 }], calls: [] } })
+    expect(() => handleMacBridge({ id: 'b', method: 'macBridge.stop', params: { id: 'x' } } as never, b.mb)).toThrow(/no longer waiting/)
+  })
+
+  it('seed is a no-op without TEMP_CODE_E2E_SEED, and lists rows as calls with it', () => {
+    const b = bridge()
+    const row: MacBridgeRequest = {
+      id: 'seeded', environmentId: 'env_box', hostName: 'box', sessionId: 's9', threadTitle: 'seeded', kind: 'run', method: 'mac.run',
+      command: 'xcodebuild test', cwd: '/tmp', createdAt: 1_000, expiresAt: Number.MAX_SAFE_INTEGER, status: 'held',
+      held: { reason: 'load', position: 3, load: 12.3, limit: 8, cores: 4, maxRunning: 4, running: 4 }
+    }
+    const before = process.env.TEMP_CODE_E2E_SEED
+    delete process.env.TEMP_CODE_E2E_SEED
+    expect(b.mb.seed([row])).toBe(0)
+    expect(b.mb.activity().calls).toEqual([])
+    process.env.TEMP_CODE_E2E_SEED = '1'
+    try {
+      expect(b.mb.seed([row])).toBe(1)
+      expect(b.mb.activity().calls).toMatchObject([{ id: 'seeded', status: 'held', held: { position: 3 } }])
+      expect(b.pushes.filter((p) => p.push === 'macBridge.request' && (p as { request: { id: string } }).request.id === 'seeded')).toEqual([])
+      expect(b.mb.stop('seeded')).toEqual({ ok: true })
+    } finally {
+      if (before === undefined) delete process.env.TEMP_CODE_E2E_SEED
+      else process.env.TEMP_CODE_E2E_SEED = before
+    }
   })
 })

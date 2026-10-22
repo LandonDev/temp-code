@@ -82,6 +82,7 @@ import { GateNoticeSchema, GateStepSchema } from '../src/shared/gate'
 import { ReviewFindingSchema, ReviewNoticeSchema, ReviewScopeSchema, ReviewSettingsSchema } from '../src/shared/review'
 import { PlanScopeSchema, PlanSettingsSchema } from '../src/shared/plans'
 import { ModelPolicySchema, OrchestrationRulesSchema } from '../src/shared/rules'
+import { MacBridgePolicySchema } from '../src/shared/contract-macbridge'
 import * as W from '../src/shared/wireSchemas'
 
 // ── the subset ──────────────────────────────────────────────────────────
@@ -258,6 +259,19 @@ export const SUBSET: SubsetEntry[] = [
   type('ReviewScope', ReviewScopeSchema),
   type('ModelPolicy', ModelPolicySchema),
   type('OrchestrationRules', OrchestrationRulesSchema),
+  // a host's activity (iOS thread 21): the sync lines and the Mac bridge's calls
+  type('HarnessEnvironmentStatus', W.HarnessEnvironmentStatusSchema),
+  type('HarnessSyncStatus', W.HarnessSyncStatusSchema),
+  type('MemoryEnvironmentStatus', W.MemoryEnvironmentStatusSchema),
+  type('MemoryConflict', W.MemoryConflictSchema),
+  type('MemorySyncStatus', W.MemorySyncStatusSchema),
+  type('MacBridgePolicy', MacBridgePolicySchema),
+  type('MacBridgeHeld', W.MacBridgeHeldSchema),
+  type('MacBridgeLoad', W.MacBridgeLoadSchema),
+  type('MacBridgeCall', W.MacBridgeCallSchema),
+  type('MacBridgeActivityHost', W.MacBridgeActivityHostSchema),
+  type('MacBridgeActivity', W.MacBridgeActivitySchema),
+  type('Ok', W.OkSchema),
   union('ServerPush', W.RemotePushSchema, 'push', 'Push'),
   // methods: params from contract.ts, outputs from the handlers in server/index.ts
   method('catalog.get', W.CatalogSchema),
@@ -373,7 +387,14 @@ export const SUBSET: SubsetEntry[] = [
   method('review.set', z.null()),
   method('project.setPreamble', z.null()),
   method('workspace.setPreamble', z.null()),
-  method('rules.get', z.object({ rules: OrchestrationRulesSchema, overridden: z.boolean() }))
+  method('rules.get', z.object({ rules: OrchestrationRulesSchema, overridden: z.boolean() })),
+  // a host's activity (iOS thread 21): the sync lines and the Mac bridge's calls
+  method('harness.status', W.HarnessSyncStatusSchema),
+  method('harness.sync', W.HarnessSyncStatusSchema),
+  method('memory.status', W.MemorySyncStatusSchema),
+  method('memory.sync', W.MemorySyncStatusSchema),
+  method('macBridge.activity', W.MacBridgeActivitySchema),
+  method('macBridge.stop', W.OkSchema)
 ]
 
 /** Enum values that need an explicit Swift case name. */

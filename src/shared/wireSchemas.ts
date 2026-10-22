@@ -92,6 +92,17 @@ import {
   type ToolPreview
 } from './events'
 import type { EventsPage, OmittedBody, SessionChanges, SessionPage } from './wire'
+import type { HarnessEnvironmentStatus, HarnessSyncStatus } from './contract-harness'
+import type { MemoryConflict, MemoryEnvironmentStatus, MemorySyncStatus } from './contract-memory'
+import {
+  MAC_METHODS,
+  MacBridgePolicySchema,
+  type MacBridgeActivity,
+  type MacBridgeActivityHost,
+  type MacBridgeCall,
+  type MacBridgeHeld,
+  type MacBridgeLoad
+} from './contract-macbridge'
 
 /**
  * The server → client shapes as zod, for clients that are not this
@@ -832,6 +843,110 @@ export type HelloResponse = z.infer<typeof HelloResponseSchema>
 export type PairKeyResponse = z.infer<typeof PairKeyResponseSchema>
 export type TicketResponse = z.infer<typeof TicketResponseSchema>
 
+// ── a host's activity, as the phone reads it (iOS thread 21) ─────────────
+// The sync lines (contract-harness.ts, contract-memory.ts) and the Mac
+// bridge's calls past the prompt (contract-macbridge.ts); the devices and
+// the deploy job above are the subset's own.
+
+/** `{ ok: true }`: the answer of every method that only acts. */
+export const OkSchema = z.object({ ok: z.literal(true) })
+
+
+export const HarnessEnvironmentStatusSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  connected: z.boolean(),
+  running: z.boolean(),
+  files: z.number().int().nullable(),
+  sets: z.record(z.string(), z.number().int()).nullable(),
+  syncedAt: z.number().int().nullable(),
+  lastAttemptAt: z.number().int().nullable(),
+  error: z.string().nullable()
+})
+export const HarnessSyncStatusSchema = z.object({
+  enabled: z.boolean(),
+  skipped: z.number().int(),
+  environments: z.array(HarnessEnvironmentStatusSchema),
+  pathMap: z.object({ roots: z.record(z.string(), z.string()), prefixes: z.record(z.string(), z.string()) })
+})
+export const MemoryEnvironmentStatusSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  connected: z.boolean(),
+  running: z.boolean(),
+  files: z.number().int().nullable(),
+  syncedAt: z.number().int().nullable(),
+  lastAttemptAt: z.number().int().nullable(),
+  error: z.string().nullable(),
+  conflicts: z.number().int()
+})
+export const MemoryConflictSchema = z.object({
+  path: z.string(),
+  of: z.string(),
+  host: z.string(),
+  at: z.number().int()
+})
+export const MemorySyncStatusSchema = z.object({
+  enabled: z.boolean(),
+  skipped: z.number().int(),
+  environments: z.array(MemoryEnvironmentStatusSchema),
+  conflicts: z.array(MemoryConflictSchema)
+})
+
+export const MacBridgeHeldSchema = z.object({
+  reason: z.enum(['cap', 'load']),
+  position: z.number().int(),
+  load: z.number(),
+  limit: z.number(),
+  cores: z.number().int(),
+  maxRunning: z.number().int(),
+  running: z.number().int()
+})
+export const MacBridgeLoadSchema = z.object({
+  load: z.number(),
+  cores: z.number().int(),
+  limit: z.number(),
+  pinned: z.boolean(),
+  resumeBelow: z.number(),
+  busy: z.boolean(),
+  sampledAt: z.number().int()
+})
+export const MacBridgeCallSchema = z.object({
+  id: z.string(),
+  environmentId: z.string(),
+  hostName: z.string(),
+  sessionId: z.string(),
+  threadTitle: z.string(),
+  kind: z.enum(['read', 'run', 'write']),
+  method: z.enum(MAC_METHODS),
+  command: z.string().optional(),
+  argv: z.array(z.string()).optional(),
+  cwd: z.string().optional(),
+  path: z.string().optional(),
+  status: z.enum(['held', 'running', 'paused']),
+  held: MacBridgeHeldSchema.optional(),
+  interactive: z.literal(true).optional(),
+  createdAt: z.number().int()
+})
+export const MacBridgeActivityHostSchema = z.object({
+  environmentId: z.string(),
+  name: z.string(),
+  policy: MacBridgePolicySchema,
+  registered: z.boolean(),
+  maxRunning: z.number().int(),
+  maxThreads: z.number().int(),
+  running: z.number().int(),
+  held: z.number().int(),
+  threads: z.number().int(),
+  pending: z.number().int()
+})
+export const MacBridgeActivitySchema = z.object({
+  hosts: z.array(MacBridgeActivityHostSchema),
+  load: MacBridgeLoadSchema,
+  calls: z.array(MacBridgeCallSchema),
+  at: z.number().int()
+})
+
 // ── pushes a remote socket receives ─────────────────────────────────────
 
 const push = <P extends string, S extends z.ZodRawShape>(
@@ -1062,5 +1177,15 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof BootResumePushSchema, PushOf<'boot-resume'>>>,
   Expect<Mirror<typeof HostDevicesPushSchema, PushOf<'host.devices'>>>,
   Expect<Mirror<typeof HostLogPushSchema, PushOf<'host-log'>>>,
-  Expect<Mirror<typeof MacBridgeHeldPushSchema, PushOf<'macBridge.held'>>>
+  Expect<Mirror<typeof MacBridgeHeldPushSchema, PushOf<'macBridge.held'>>>,
+  Expect<Mirror<typeof HarnessEnvironmentStatusSchema, HarnessEnvironmentStatus>>,
+  Expect<Mirror<typeof HarnessSyncStatusSchema, HarnessSyncStatus>>,
+  Expect<Mirror<typeof MemoryEnvironmentStatusSchema, MemoryEnvironmentStatus>>,
+  Expect<Mirror<typeof MemoryConflictSchema, MemoryConflict>>,
+  Expect<Mirror<typeof MemorySyncStatusSchema, MemorySyncStatus>>,
+  Expect<Mirror<typeof MacBridgeHeldSchema, MacBridgeHeld>>,
+  Expect<Mirror<typeof MacBridgeLoadSchema, MacBridgeLoad>>,
+  Expect<Mirror<typeof MacBridgeCallSchema, MacBridgeCall>>,
+  Expect<Mirror<typeof MacBridgeActivityHostSchema, MacBridgeActivityHost>>,
+  Expect<Mirror<typeof MacBridgeActivitySchema, MacBridgeActivity>>
 ]

@@ -423,6 +423,54 @@ export interface MacBridgeHostPolicy {
   threads: number
 }
 
+/**
+ * One call on the Mac that is past the prompt, as a key may read it
+ * (`macBridge.activity`): admitted and held on the load guard, running, or
+ * held on its box while the thread is paused. Never a request that waits for
+ * a decision: those stay the Mac's own (`macBridge.pending`, local).
+ */
+export interface MacBridgeCall {
+  id: string
+  /** The box's environment id and saved name. */
+  environmentId: string
+  hostName: string
+  sessionId: string
+  threadTitle: string
+  kind: 'read' | 'run' | 'write'
+  method: MacMethod
+  command?: string
+  argv?: string[]
+  cwd?: string
+  path?: string
+  status: 'held' | 'running' | 'paused'
+  held?: MacBridgeHeld
+  interactive?: true
+  createdAt: number
+}
+
+/** A saved host's standing on this Mac, as a key may read it: the caps and the counts, not the policy's folders. */
+export interface MacBridgeActivityHost {
+  environmentId: string
+  name: string
+  policy: MacBridgePolicy
+  registered: boolean
+  maxRunning: number
+  maxThreads: number
+  running: number
+  held: number
+  threads: number
+  /** Requests waiting for a decision on the Mac right now; the phone says so and never decides them. */
+  pending: number
+}
+
+/** → `macBridge.activity`: what this Mac runs for the hosts it serves, at `at`. */
+export interface MacBridgeActivity {
+  hosts: MacBridgeActivityHost[]
+  load: MacBridgeLoad
+  calls: MacBridgeCall[]
+  at: number
+}
+
 /** A box thread's bridge state, as its header shows it. */
 export interface MacBridgeThreadState {
   sessionId: string
@@ -634,5 +682,10 @@ export const MacBridgeRequestSchemas = [
   /** → MacBridgeLoad, as last sampled. */
   request('macBridge.load.get', z.object({}).optional()),
   /** → MacBridgeThreadAdmission: whether a host may start another Mac-local thread here now. */
-  request('macBridge.admitThread', z.object({ environmentId: envId }))
+  request('macBridge.admitThread', z.object({ environmentId: envId })),
+  // ── a key (the phone, a box's /ui) ───────────────────────────────────
+  /** → MacBridgeActivity: the hosts' caps and counts, the load, and every call past the prompt. Read. */
+  request('macBridge.activity', z.object({}).optional()),
+  /** → { ok: true }: stops a running command or takes a held one out of the line; refuses a request that waits for a decision. Operate. */
+  request('macBridge.stop', z.object({ id: z.string().min(1).max(100) }))
 ] as const
