@@ -1,4 +1,5 @@
 import SwiftUI
+import TempCodeClient
 
 /// Text that changes while the user looks at it, done the one way the doc
 /// allows: digits roll with `numericText` on `Motion.numeric` in tabular

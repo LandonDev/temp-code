@@ -17,7 +17,7 @@ import TempCodeContract
 struct ThreadRowActions<Rows: View>: ViewModifier {
     let client: EnvironmentClient
     let meta: SessionMeta
-    let menu: () -> Rows
+    let menu: Rows
     @State private var renaming = false
     @State private var title = ""
     @State private var failure: String?
@@ -61,7 +61,7 @@ struct ThreadRowActions<Rows: View>: ViewModifier {
                     Label(meta.pinned ? "Unpin" : "Pin", systemImage: meta.pinned ? "pin.slash" : "pin")
                 }
                 .disabled(block != nil)
-                menu()
+                menu
                 Divider()
                 Button(role: meta.archived ? nil : .destructive) {
                     act { try await client.setArchived(meta.id, !meta.archived) }
@@ -98,11 +98,11 @@ struct ThreadRowActions<Rows: View>: ViewModifier {
 extension View {
     /// Swipe, context menu and the rename and failure alerts for one thread row.
     func threadRowActions(client: EnvironmentClient, meta: SessionMeta) -> some View {
-        modifier(ThreadRowActions(client: client, meta: meta) { EmptyView() })
+        modifier(ThreadRowActions(client: client, meta: meta, menu: EmptyView()))
     }
 
     /// The same, with the caller's rows after Pin and before Archive.
-    func threadRowActions<Rows: View>(client: EnvironmentClient, meta: SessionMeta, @ViewBuilder menu: @escaping () -> Rows) -> some View {
-        modifier(ThreadRowActions(client: client, meta: meta, menu: menu))
+    func threadRowActions<Rows: View>(client: EnvironmentClient, meta: SessionMeta, @ViewBuilder menu: () -> Rows) -> some View {
+        modifier(ThreadRowActions(client: client, meta: meta, menu: menu()))
     }
 }

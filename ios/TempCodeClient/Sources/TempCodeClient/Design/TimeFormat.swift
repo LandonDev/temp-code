@@ -45,6 +45,7 @@ public enum TimeFormat {
             var style = style
             style.locale = locale
             style.timeZone = zone
+            style.calendar = calendar
             return date.formatted(style)
         }
         let time = format(.dateTime.hour().minute())

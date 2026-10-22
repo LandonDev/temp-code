@@ -41,13 +41,13 @@ struct StatusDot: View {
                     .fill(Tint.quiet)
                     .frame(width: dot - 1, height: dot - 1)
                     .transition(.opacity)
-            case .none:
+            case .empty:
                 EmptyView()
             }
         }
         .frame(width: column, height: column)
         .animation(Motion.crossFade, value: mark)
-        .accessibilityHidden(mark == .none)
+        .accessibilityHidden(mark == .empty)
         .accessibilityLabel(accessibilityLabel)
     }
 
@@ -70,7 +70,7 @@ struct StatusDot: View {
         case .stopped: .stopped
         // Created, not booted (the host's `queued`): a dot with no urgency.
         case .queued: .dot(Tint.quiet)
-        case .idle, .done, .unknown: .none
+        case .idle, .done, .unknown: .empty
         }
     }
 
@@ -79,7 +79,7 @@ struct StatusDot: View {
         case .spinner: "Running"
         case .paused: "Paused"
         case .stopped: "Stopped"
-        case .none: ""
+        case .empty: ""
         case .dot:
             switch status {
             case .waiting: "Needs you"
