@@ -224,17 +224,25 @@ test receiver), `apns-push-type: alert`, priority 10, an hour's expiration,
 ```json
 { "aps": { "alert": { "title": "<thread title>", "subtitle": "<project or workspace>", "body": "Needs approval: Bash — bun test" },
            "sound": "default", "thread-id": "<threadId>", "summary-arg": "<project or workspace>",
-           "interruption-level": "time-sensitive", "relevance-score": 1, "category": "tc.approval" },
-  "tc": { "event": "needs_you", "kind": "approval", "requestId": "…", "hostId": "box", "environmentId": "env_…", "threadId": "…", "seq": 42, "ts": 1792386000000 } }
+           "interruption-level": "time-sensitive", "relevance-score": 1, "category": "tc.approval", "mutable-content": 1 },
+  "tc": { "event": "needs_you", "kind": "approval", "requestId": "…", "host": "box", "hostId": "box", "environmentId": "env_…", "threadId": "…", "seq": 42, "ts": 1792386000000 } }
 ```
 
 The notice's optional `subtitle`, `kind` (approval, question, plan,
-waiting, finished, failed, stuck) and `requestId` come from the host's
-notifier. Only `needs_you` is time-sensitive; `needs_you`, `failed` and
-`host_down` carry a sound; the relevance score is 1 for needs_you, 0.8 for
-failed and host_down, 0.6 stuck, 0.4 finished, 0.2 host_up; a thread notice
-carries the category `tc.approval` (kind approval: the phone's Approve and
-Deny) or `tc.thread`. A
+waiting, finished, failed, stuck, batch, stopped), `requestId` and
+`hostName` (a string of at most 80, delivered as `tc.host`) come from the
+host's notifier. Every alert is `mutable-content: 1`: the phone's
+notification service extension adds the host to the subtitle when the phone
+pairs with several hosts. Only `needs_you` is time-sensitive; `needs_you`,
+`failed` and `host_down` carry a sound; the relevance score is 1 for
+needs_you, 0.8 for failed and host_down, 0.6 stuck, 0.4 finished, 0.2
+host_up; a thread notice carries the category `tc.approval` (kind approval:
+the phone's Approve and Deny) or `tc.thread`. Parity with the host's
+builder (temp-code's `src/main/server/remote/apnsPayload.ts`) is proved by
+the shared fixtures under `test/fixtures/apns/`: one `{ input, payload }`
+file per notification kind and activity phase, read by `test/hub.test.ts`
+here and by the host's `apnsPayload.test.ts`; each `payload` is also what
+`xcrun simctl push` takes for the simulator pass. A
 410, `BadDeviceToken`, `Unregistered` or `DeviceTokenNotForTopic` answer
 drops the subscription (the phone re-registers at its next open); a 5xx,
 timeout or network error is tried three times and then counted like a
@@ -245,12 +253,15 @@ Live Activities: a host stores the token a phone holds for a thread with
 environment }`) in the directory object (never KV) and posts the thread's
 state with `POST /v1/activity`: `{ hostId, threadId, event: "update" |
 "end", state: { phase, since, ts, seq?, title?, task?, done?, total?,
-reason? }, title?, threadType?, priority?, ts }` (the state is the phone's
-ContentState: the desktop's running row, with the clock ticking on the
-device from `since`; `priority` 5 marks a coalesced task-line change, 10 is
-the default). Every device on the thread gets one `liveactivity` push to
-the topic `<bundleId>.push-type.liveactivity` with `aps.content-state` =
-`state`, a `dismissal-date` two minutes out on an `end`, and
+unit?, reason? }, title?, threadType?, priority?, ts }` (the state is the
+phone's ContentState: the desktop's running row, with the clock ticking on
+the device from `since`; `phase` is working, paused, waiting, finished,
+failed or stopped; `unit` is `tasks` or `threads`, the latter a watching
+master's batch; `priority` 5 marks a coalesced task-line change, 10 is the
+default). Every device on the thread gets one `liveactivity` push to the
+topic `<bundleId>.push-type.liveactivity` with `aps.content-state` =
+`state`, a `relevance-score` of 100 for waiting, failed and stopped (50
+otherwise), a `dismissal-date` two minutes out on an `end`, and
 `apns-collapse-id` the thread id; an `end` then drops the thread's tokens,
 and a token Apple calls gone drops that device alone. Nothing per push
 touches KV.

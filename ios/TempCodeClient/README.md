@@ -436,7 +436,15 @@ proof's `actions` set.
   push token goes to the host over `remote.push.activity` (`setActivityToken`;
   `nil` ends it), and the host relays `liveactivity` pushes through the hub
   while the phone is away (the socket closes after
-  `SocketConfiguration.backgroundGraceMs`).
+  `SocketConfiguration.backgroundGraceMs`). The app's
+  `TempCodeNotificationService` extension reads the paired hosts' names from
+  the App Group's `HostDirectory` (published by the app from
+  `store.environments`) and adds the host to an alert's subtitle only when
+  two or more hosts are paired. The activity's content state
+  (`ThreadActivityContent`, ios/TempCode/Activity/Shared/ThreadActivityText.swift)
+  is compiled into this package's test target through a symlink under
+  `Tests/TempCodeClientTests/Shared/`, so `ThreadActivityStateTests` proves
+  its words and numbers without ActivityKit.
 - Tests: `PushRegistrarTests` (the payload and URL parsing, the row's word,
   a register at open, a status read for the same token, a second register
   for a rotated one, the unregister on the switch, the activity token).

@@ -1164,17 +1164,26 @@ else; the host sends what that row needs and the clock ticks on the device.
 
 | Surface | Shows |
 | --- | --- |
-| Content state | `phase`, `since`, `ts`, `seq`, `title`, `task` (the in-progress task, else the activity line), `done`/`total` when the thread has a list, `reason` (the needs-you line) while it waits. Pushed on every change of what the card shows; task-line-only changes coalesced to one push per 20 s |
-| Lock screen card | glyph tinted by type, title `subheadline` semibold, the timer `footnote` tertiary in tabular digits on the title's baseline; under it (indented to the title) the status mark (spinner, pause, or a 7 pt dot), the status word `footnote` medium colored only where it means something (Paused and Waiting warning, Done success, Failed destructive, Working secondary), the task or the reason in one line; a 3 pt tally capsule in the type's tint with `3/7` `caption2` when there is a list. The final state is frozen at its time and stays two minutes |
-| Island compact | leading the type glyph; trailing `3/7` when there is a list, else the timer, colored by the phase once the thread stops working |
-| Island minimal | the status dot: the type's tint while working, warning waiting, destructive failed, success done |
-| Island expanded | glyph, title, timer on the top row; the status line and the tally below; keyline in the type's tint; every region deep-links to the thread and the row |
-| Notification | title the thread's title, subtitle the project (else the workspace), body one line: "Needs approval: Bash — bun test", "Asked: which database?", "Plan ready to approve", "Done in 12m · 7 tasks", "Failed: <first line>", "Quiet for 12 min while working". Grouped per thread; relevance needs-you 1, failed 0.8, stuck 0.6, finished 0.4; sound only for needs-you and failed; time-sensitive only for needs-you; Approve and Deny on an approval (Approve asks for the unlock); a refusal answers one notice saying why. No emoji, no exclamation marks |
+| Content state | `phase` (working, paused, waiting, finished, failed, stopped), `since`, `ts`, `seq`, `title`, `task` (the in-progress task, else the activity line; a master's running batch step), `done`/`total` when the thread has a list, `unit` (tasks, or threads for a watching master's batch), `reason` (the needs-you line) while it waits. Pushed on every change of what the card shows; task-line-only changes coalesced to one push per 20 s. A queued thread has no activity: it is not live |
+| Lock screen card, row 1 | glyph tinted by type (20 pt frame, semibold), title `subheadline` semibold one line, the timer `footnote` tertiary in tabular digits on the title's baseline |
+| Lock screen card, row 2 | indented 28 pt to the title's edge, 18 pt tall whatever it says: the status mark (14 pt frame: the spinner while working, the pause mark, a 7 pt dot for waiting, done and failed, a 6 pt still square for stopped, the StatusDot's marks) and one line. Working: the task alone in `footnote` secondary (the spinner already says working; the desktop row never spells it). Paused and waiting: the word `footnote` medium in warning, then the task or the reason in secondary. Finished, failed and stopped: the word alone, Done success, Failed destructive, Stopped secondary |
+| Lock screen card, row 3 | only with a list: a 3 pt tally capsule (quaternary track, filled in the type's tint while working or waiting, warning paused, success finished, destructive failed, secondary stopped) and `3/7` `caption2` tabular, secondary while live, success once finished with all done; the same for a master's threads. VoiceOver: "3 of 7 tasks done" / "3 of 7 threads done" |
+| Island compact | leading the type glyph while working, paused or waiting, the final state's mark once settled; trailing `3/7` when there is a list, else the timer in a 60 pt slot that shrinks to 0.8 before `1:02:33` would clip, colored by the phase once the thread stops working |
+| Island minimal | the status dot (8 pt): the type's tint while working, warning paused and waiting, success done, destructive failed; a 6 pt still square for stopped |
+| Island expanded | glyph, title, timer on the top row; the status line and the tally below; keyline in the type's tint; every presentation deep-links to the thread and the row |
+| Notification | title the thread's title, subtitle the project (else the workspace), body one line: "Needs approval: Bash — bun test", "Asked: which database?", "Plan ready to approve", "Waiting for you", "Done in 12m · 7 tasks", "Plan complete — implementation started: …", "Batch done · 3 landed · gate passed in 4m 12s", "Batch stopped: gate failed · at vitest", "Failed: <the host's summary, else the first line>", "Stopped: the harness is gone", "Quiet for 12 min while working". Grouped per thread; relevance needs-you 1, failed 0.8, stuck 0.6, finished 0.4; sound only for needs-you and failed; time-sensitive only for needs-you; Approve and Deny on an approval (Approve asks for the unlock); a refusal answers one notice saying why. No emoji, no exclamation marks |
+| The host in the subtitle | the host does not know how many hosts a phone pairs with, so the phone decides: the alert is `mutable-content` with the host's name under `tc.host`, and the notification service extension appends it ("temp-code · box") only when two or more hosts are paired, from the App Group directory the app publishes |
 | In the foreground | nothing for the thread on screen; a thread whose Live Activity is live gets the list only, unless it needs you |
+| In the background | an alert and the activity's end for the same settle both show: the alert is the persistent record, the activity leaves after two minutes, and the shared collapse id folds repeats |
+| The clock | runs on the device from `since` while working; paused and every end freeze it at the state's time, so the final card reads the work time as it was. A waiting end shows the work time, not the time spent waiting: that count belongs to the app's Needs-you row |
 
-Motion: the task line and the status word cross-fade 150 ms, the tally
-rolls with `numericText`, the bar's width eases out 250 ms; nothing else
-moves. Flavour words stay inside the app's working strip.
+Motion: WidgetKit animates a Live Activity's content changes itself and
+ignores view-level `.animation`, so the widget carries none; the line
+cross-fades with `contentTransition(.opacity)`, the tally rolls with
+`numericText`, the bar's width rides the system's update transition.
+Every change has a static cue (word, color, mark); nothing depends on
+motion, and the first state is a plain render. Flavour words stay inside
+the app's working strip.
 
 ## Threads from here
 
