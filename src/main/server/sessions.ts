@@ -1158,14 +1158,6 @@ export class SessionRegistry {
       .map((s) => this.decorate(s, index))
   }
 
-  /** The master of an unarchived root batch thread, from the index (no
-   *  decorate, no read); null for anything else. Asked per appended row by
-   *  the board digests (boardDigest.ts). */
-  batchMasterOf(sessionId: string): string | null {
-    const s = this.indexOf().byId.get(sessionId)
-    return s && !s.parentId && !s.archived ? (s.masterId ?? null) : null
-  }
-
   /** Was this session running a disk-writing tool at ts (with grace for
    *  writes that flush just after the result)? Livediff's ownership probe. */
   diskActiveAt(sessionId: string, ts: number): boolean {

@@ -208,7 +208,9 @@ export type BoardDigest = z.infer<typeof BoardDigestSchema>
  * metas (the registry's index by master, decorated), a digest per child,
  * and the batch's whole state (its `children` names the ones on other
  * hosts). The asking socket hears the `board` and `batch` pushes for this
- * master for the next minute (BOARD_WATCH_MS); the board asks again inside it.
+ * master for the next minute (BOARD_WATCH_MS), and for as long as its
+ * `session.focus` is the master; a board shown beside the focused pane
+ * asks again inside the minute.
  */
 export interface BatchBoard {
   children: import('./events').SessionMeta[]

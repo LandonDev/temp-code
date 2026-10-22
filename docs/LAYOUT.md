@@ -290,8 +290,10 @@ in the whole pane, with Back.
   answers its children there, a digest per child (`BoardDigest`: todos,
   last words, State line, the question it waits on, the failure) and the
   batch's state; the `board` push (one child's digest, at most every 250 ms)
-  and the `batch` push reach only sockets watching that master, so the
-  board asks again every 45 s while it shows. No row loads a transcript,
+  and the `batch` push reach only sockets watching that master: one whose
+  `session.focus` is the master, or one that asked in the last minute (the
+  board asks again every 45 s while it shows). Threads of the batch on
+  other hosts read their digests from those hosts the same way. No row loads a transcript,
   polls a context or reads notes. The list is virtualized (`useVirtualizer`,
   the sections as their own header rows); a row is memoized on its ref,
   host and landed mark and reads its own meta and digest, so one child's

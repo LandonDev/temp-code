@@ -1,19 +1,28 @@
 import { BOARD_WATCH_MS } from '@shared/contract-batch'
 
+/** What the watch reads of the sockets' focus (focus.ts FocusSet, `session.focus`). */
+export interface BoardFocus {
+  /** The thread the socket has on screen, or null. */
+  focusOf(connection: number): string | null
+  /** The threads sockets have on screen, before any widening. */
+  focused(): Iterable<string>
+}
+
+const NO_FOCUS: BoardFocus = { focusOf: () => null, focused: () => [] }
+
 /**
  * Which sockets watch which master's board: the `board` and `batch` pushes
- * go only to them (server/index.ts). A socket watches a master for
- * BOARD_WATCH_MS after it asked `batch.board` for it (the board asks again
- * inside the minute while it is on screen), and for as long as the thread
- * it has on screen is the master (`focus`).
+ * go only to them (server/index.ts). A socket watches a master while the
+ * thread it has on screen is the master (`session.focus`), and for
+ * BOARD_WATCH_MS after it asked `batch.board` for it (a board shown beside
+ * the focused pane asks again inside the minute).
  */
 export class BoardWatch {
   /** connection → master → when it last asked `batch.board` */
   private readonly asked = new Map<number, Map<string, number>>()
-  /** connection → the thread it has on screen */
-  private readonly focused = new Map<number, string>()
 
   constructor(
+    private readonly focus: BoardFocus = NO_FOCUS,
     private readonly now: () => number = Date.now,
     private readonly ms: number = BOARD_WATCH_MS
   ) {}
@@ -25,34 +34,22 @@ export class BoardWatch {
     masters.set(masterId, this.now())
   }
 
-  /**
-   * The hook for `session.focus` (added on another branch): the handler
-   * calls this with the thread the socket now has on screen, or null. A
-   * socket focused on a master watches its board without asking again.
-   */
-  focus(connection: number, sessionId: string | null): void {
-    if (sessionId) this.focused.set(connection, sessionId)
-    else this.focused.delete(connection)
-  }
-
   /** Does this socket hear the master's pushes now. */
   isWatching(connection: number, masterId: string): boolean {
-    if (this.focused.get(connection) === masterId) return true
+    if (this.focus.focusOf(connection) === masterId) return true
     const at = this.asked.get(connection)?.get(masterId)
     return at !== undefined && this.now() - at < this.ms
   }
 
   /** Does any socket hear the master's pushes now (nothing is computed for a master nobody watches). */
   watched(masterId: string): boolean {
-    for (const connection of new Set([...this.asked.keys(), ...this.focused.keys()])) {
-      if (this.isWatching(connection, masterId)) return true
-    }
+    for (const id of this.focus.focused()) if (id === masterId) return true
+    for (const connection of this.asked.keys()) if (this.isWatching(connection, masterId)) return true
     return false
   }
 
-  /** The socket closed. */
+  /** The socket closed (its focus goes with focus.ts's own drop). */
   drop(connection: number): void {
     this.asked.delete(connection)
-    this.focused.delete(connection)
   }
 }

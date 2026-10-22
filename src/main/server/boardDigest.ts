@@ -39,7 +39,7 @@ export interface BoardDigestsDeps {
   children(masterId: string): SessionMeta[]
   /** One thread's decorated meta (registry.get): the flush reads only the children that moved. */
   meta(sessionId: string): SessionMeta | null
-  /** The master of a root batch thread here; null for anything else (the registry's index, no read). */
+  /** The master of a root thread here; null for a subagent or a thread in no batch (the registry's index, no read). */
   masterOf(sessionId: string): string | null
   /** The thread's current task list from the registry's fold; null before one. */
   todos(sessionId: string): readonly { status: string; name: string }[] | null
@@ -271,14 +271,14 @@ export class BoardDigests {
 /** The digests over this host's registry and store, as server/index.ts
  *  wires them (the proof scripts use the same). Call `attach()` to follow. */
 export function hostBoardDigests(
-  registry: Pick<SessionRegistry, 'batchChildren' | 'get' | 'batchMasterOf' | 'todoListOf' | 'onEvent' | 'onMeta' | 'notes'>,
+  registry: Pick<SessionRegistry, 'batchChildren' | 'get' | 'masterOf' | 'todoListOf' | 'onEvent' | 'onMeta' | 'notes'>,
   store: Pick<Store, 'getSessionNotes' | 'readRows' | 'lastSeq'>,
   watched: (masterId: string) => boolean
 ): BoardDigests {
   return new BoardDigests({
     children: (masterId) => registry.batchChildren(masterId),
     meta: (sessionId) => registry.get(sessionId),
-    masterOf: (sessionId) => registry.batchMasterOf(sessionId),
+    masterOf: (sessionId) => registry.masterOf(sessionId),
     todos: (sessionId) => registry.todoListOf(sessionId),
     notesText: (sessionId) => store.getSessionNotes(sessionId)?.text ?? null,
     readTail: (sessionId) =>

@@ -7,6 +7,7 @@ import type { AgentEvent, EventRow, SessionMeta } from '@shared/events'
 import { Batches, handleBatch, releaseTag, spawnShellStep, type BatchesDeps, type PublishRun } from './batch'
 import { BoardDigests, type BoardPush } from './boardDigest'
 import { BoardWatch } from './boardWatch'
+import { FocusSet } from './focus'
 import { GateQueue } from './gateQueue'
 import type { GateRunOptions, GateRunResult } from './gateRun'
 import type { Landed } from './mergeReview'
@@ -1558,7 +1559,8 @@ describe('the board: batch.board, digests and their watchers', () => {
 
   it("a socket watches a master for a minute after its batch.board, or while it has the master on screen; never another master's", () => {
     let now = 0
-    const watch = new BoardWatch(() => now)
+    const focus = new FocusSet({ parentOf: () => null, masterOf: () => null })
+    const watch = new BoardWatch(focus, () => now)
     watch.ask(1, 'm')
     expect(watch.isWatching(1, 'm')).toBe(true)
     expect(watch.isWatching(1, 'n')).toBe(false)
@@ -1573,11 +1575,15 @@ describe('the board: batch.board, digests and their watchers', () => {
     // Asking again renews it.
     watch.ask(1, 'm')
     expect(watch.isWatching(1, 'm')).toBe(true)
-    // session.focus's hook: a socket with the master on screen watches it with no ask.
-    watch.focus(2, 'n')
+    // session.focus: a socket with the master on screen watches it with no ask, and only that socket.
+    focus.set(2, 'n')
     expect(watch.isWatching(2, 'n')).toBe(true)
+    expect(watch.isWatching(1, 'n')).toBe(false)
     expect(watch.watched('n')).toBe(true)
-    watch.focus(2, null)
+    // Focus on one of the master's children is not the board.
+    focus.set(2, 'a')
+    expect(watch.isWatching(2, 'n')).toBe(false)
+    focus.set(2, null)
     expect(watch.watched('n')).toBe(false)
     watch.drop(1)
     expect(watch.watched('m')).toBe(false)
