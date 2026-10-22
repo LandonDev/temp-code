@@ -1047,6 +1047,30 @@ routed to (aliax-core's `forward`). Two listeners:
   scratch repo beside a focused socket reading a 2,000-row thread; on the
   Mac: focused p95 3 ms, 15 git children where 200 runs would spawn 600).
 
+## The shape that scales: many threads exist, a bounded number run
+docs/box.md "The shape that scales" has the before numbers, each step's
+proof and the sizing rules; the pieces, by name:
+- `doctor.profile` (admin): an in-process CPU profile of the main process
+  into `<userData>/logs/profiles/`; Help → "Profile the host (10 s)" on
+  the Mac, `tc-local doctor.profile` on the box; read it with
+  scripts/profile-summary.ts, the stall log with scripts/stalls-summary.ts.
+  `currentLag()` and `untilLoopIdle()` in stalls.ts are what the lane and
+  the host's own jobs read.
+- `session.focus` and the lanes: "The interactive lane" above.
+- Checkpoints are the host's (src/main/server/checkpointTurns.ts): a
+  settled live edit costs a set lookup, a turn's settle writes the manifest
+  and syncs once and pushes `checkpoint-changed`; status, undo and keep
+  take a sessionId only.
+- A thread's pane tells `loading`, `slow` and `failed` from empty (the
+  store's `load` phase, request deadlines and retries in
+  lib/connection/transport.ts and link.ts).
+- `batch.board { masterId }` (read): the master board's one answer;
+  "Master threads" above.
+- The gateway's byte path runs in a utility process ("Provider traffic"
+  above); the route scope carries the model, so no body is parsed.
+- `admission.get` / `admission.set`: the running cap; "Master threads"
+  above.
+
 ## The iOS contract package is generated
 - `ios/TempCodeContract` holds the Swift `Codable` types of the remote wire,
   generated from zod by `scripts/gen-swift-contract.ts` (`bun run gen:swift`).

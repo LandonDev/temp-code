@@ -2008,6 +2008,59 @@ after the second start resumed from the saved cursor over
 one left, the archived one archived, the new one appeared, and the mirror
 was rewritten with the new cursor.
 
+## The shape that scales
+
+Hundreds of threads may exist on a host; a bounded number run, and the
+thread on screen is answered before background work. Ten steps took the
+host there (the plan: `.temp-code/plan-lFxuRUHIDd_1.md`).
+
+**Before**, measured on the box on 2026-10-22 at 07:30Z with 33 to 38
+threads running:
+
+| Measure | Value |
+|---|---|
+| Loop lag (`loop` lines) | 466 lines; mean of means 75 ms; max 1,074 ms |
+| `slow-request checkpoint.capture` | 7,854 in two log files; p50 889 ms, p90 5.3 s, max 16.8 s |
+| Meta pushes per second | mean 175; 113 seconds over 1,000; max 13,122 |
+| Claude CLI memory | 47 processes, 331 MB on average, 15.5 GB |
+| Slice | MemoryHigh 80 GiB, MemoryMax 88 GiB |
+
+**After** has no box column yet: the box was not re-measured when these
+steps landed. Re-measure with the profiler and `stalls-summary.ts`
+("Profiling the host" below) on a working day with 30 or more threads, and
+add the column here. What the proofs measured on the Mac:
+
+| Step | What changed | Proof |
+|---|---|---|
+| Profiler | `doctor.profile`, `currentLag()`, `untilLoopIdle()` | doctorProfile and stalls tests |
+| Gateway parse | the scope carries the model (`;m=`); the gateway reads `model` off the body's first 1,024 bytes; no JSON.parse | `script:e2e-quota-routing`: a 429 is charged to the body's model |
+| Checkpoints | the host captures from its own live edits; one manifest write and one sync per turn; capture, ensure and sync left the wire | `script:e2e-checkpoint-turn`: 9 to 11 git children per turn, none per path |
+| Loop costs | an incremental session index; one serialization per frame; a coalescer on every socket; folds and the mirror read on the reader worker | a test: 13,000 meta changes in half a second reach a local socket as at most ten frames |
+| Lane | `session.focus`, request lanes, duplicate reads joined | `script:e2e-interactive-lane`: focused reads p95 3.4 ms during 200 bulk requests; 15 git children instead of 600 |
+| Honest loading | `loading`, `slow` and `failed` instead of an empty thread; request deadlines and retries | `script:e2e-loading-states`: about 1,000 samples, never the empty state |
+| Board | `batch.board` answers children, a digest per child and the batch state in one reply; `board` and `batch` pushes (log deltas) go only to sockets watching the master; virtualized, memoized rows | MasterView test: 300 rows mount only the visible window, one child's change re-renders one row; `script:e2e-master-batch` asserts the answer; the renderer logs `board-paint master= n= ms=` |
+| Gateway process | the byte path in an Electron utility process, respawned on its ports | `script:e2e-gateway-process`: killed mid-stream, back on the same port, the turn finished; warm start cold 338 ms, warm 67 ms first token |
+| Admission | a running cap sized from memory | `script:e2e-queue`: a cap of two over six threads, oldest first, Start now past it |
+
+**The lane.** A socket names the thread its focused pane shows
+(`session.focus`). Requests about an interactive thread, and direct clicks
+marked `lane: 'ui'`, run at once. Bulk reads (git status and diffs,
+searches, `doctor.get`, the sync methods) run two at a time while the
+loop's mean lag is under 50 ms, and a duplicate joins the one already
+waiting or running. The host's own jobs wait for a quiet loop. CLAUDE.md
+"The interactive lane" has the rules.
+
+**The cap.** `admission.maxRunning` when pinned, else
+floor((budget − reserve) / per-process RSS). The budget is the smaller of
+the cgroup's `memory.high` or `memory.max` and the machine's RAM. The
+reserve is the larger of 25% and 8 GiB on Linux, of 50% and 16 GiB on
+macOS. The per-process figure is the median RSS of the live harnesses,
+450 MB until five samples exist. Admission pauses while free memory is
+under 10% of the budget. On the box that is near 120 threads; on a 48 GiB
+Mac, near 54. Every harness process counts, roots and subagents; Start
+now and the focused thread's sends go past it. Settings → Remote access
+shows each host's line: "Running 118 of 120 · 7 queued".
+
 ## Profiling the host
 
 On the box, run `tc-local doctor.profile '{"seconds":15}'` (the local
