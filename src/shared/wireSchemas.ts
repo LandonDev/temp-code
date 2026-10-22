@@ -10,7 +10,13 @@ import {
   type Reasoning
 } from './catalog'
 import type { Capability } from './capabilities'
-import type { QueuedMessage, ServerPush, ThreadNotesDoc } from './contract'
+import type { QueuedMessage, ServerPush, SessionBatchResult, ThreadNotesDoc } from './contract'
+import {
+  THREAD_RESOURCE_KINDS,
+  type ThreadResource,
+  type ThreadResourceKind,
+  type ThreadResourceRemoval
+} from './contract-resources'
 import type {
   FsMedia,
   GitHubPrDiff,
@@ -744,6 +750,35 @@ export const SessionRemovedPushSchema = push('session-removed', { sessionIds: z.
 export const SessionMovedPushSchema = push('session-moved', { id: z.string(), sessionIds: z.array(z.string()), to: z.string() })
 export const BootResumePushSchema = push('boot-resume', { count: z.number().int(), at: z.number().int() })
 
+// Thread resources (contract-resources.ts): the ledger rows the phone's
+// Resources sheet and its archive prompt read, and the fleet's batch answer.
+export const ThreadResourceKindSchema = z.enum(THREAD_RESOURCE_KINDS)
+export const ThreadResourceSchema = z.object({
+  id: z.string(),
+  sessionId: z.string(),
+  environmentId: z.string(),
+  kind: ThreadResourceKindSchema,
+  identifier: z.string(),
+  label: z.string(),
+  branch: z.string().nullable(),
+  createdAt: z.number().int(),
+  removeRequestedAt: z.number().int().nullable(),
+  removedAt: z.number().int().nullable(),
+  note: z.string().nullable()
+})
+export const ThreadResourceRemovalSchema = z.object({
+  id: z.string(),
+  outcome: z.enum(['removed', 'waiting', 'failed']),
+  note: z.string().nullable()
+})
+export const SessionBatchResultSchema = z.object({
+  attempted: z.array(z.string()),
+  succeeded: z.array(z.string()),
+  failed: z.array(z.object({ sessionId: z.string(), error: z.string() }))
+})
+/** A thread's ledger changed: every row of that thread, removed ones included. */
+export const ResourcesPushSchema = push('resources', { sessionId: z.string(), resources: z.array(ThreadResourceSchema) })
+
 /** Every push a remote connection can receive; the singular `event`,
  *  `session`, `live-edit` and `build` frames stay local. */
 export const RemotePushSchema = z.discriminatedUnion('push', [
@@ -758,7 +793,8 @@ export const RemotePushSchema = z.discriminatedUnion('push', [
   NotesPushSchema,
   SessionRemovedPushSchema,
   SessionMovedPushSchema,
-  BootResumePushSchema
+  BootResumePushSchema,
+  ResourcesPushSchema
 ])
 
 // ── the pins ────────────────────────────────────────────────────────────
@@ -836,5 +872,10 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof SessionMovedPushSchema, PushOf<'session-moved'>>>,
   Expect<Mirror<typeof BootResumePushSchema, PushOf<'boot-resume'>>>,
   Expect<Mirror<typeof ThreadNotesDocSchema, ThreadNotesDoc>>,
-  Expect<Mirror<typeof NotesPushSchema, PushOf<'notes'>>>
+  Expect<Mirror<typeof NotesPushSchema, PushOf<'notes'>>>,
+  Expect<Equal<z.infer<typeof ThreadResourceKindSchema>, ThreadResourceKind>>,
+  Expect<Mirror<typeof ThreadResourceSchema, ThreadResource>>,
+  Expect<Mirror<typeof ThreadResourceRemovalSchema, ThreadResourceRemoval>>,
+  Expect<Mirror<typeof SessionBatchResultSchema, SessionBatchResult>>,
+  Expect<Mirror<typeof ResourcesPushSchema, PushOf<'resources'>>>
 ]

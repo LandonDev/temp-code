@@ -202,6 +202,83 @@ server.registry.append('ios-paused', { type: 'user-text', text: 'Migrate every s
 server.registry.append('ios-paused', { type: 'status', status: 'running' })
 server.registry.append('ios-paused', { type: 'status', status: 'paused' })
 
+// The fleet switches, the queued and stopped roots, the paused master's
+// batch and a thread with resources (thread iOS 20). Each seed is skipped
+// when a sibling already made the id; the shapes are theirs then.
+const has = (id: string): boolean => server.registry.get(id) !== null
+if (!has('ios-master')) {
+  await make('ios-master', { projectId: project.id, threadType: 'chat', title: 'Ship the stats pipeline' })
+  say('ios-master', 'Run the stats batch to the end.', 'Four threads, landing as they finish.')
+  server.registry.setMaster('ios-master', true)
+}
+if (!has('ios-queued')) {
+  // A master's child waits for its `after` sibling: created, never booted. The status is appended the way
+  // the paused seed appends paused; the scheduler's own line is set beside it so the row reads as the host's.
+  await make('ios-queued', { projectId: project.id, threadType: 'implementation', title: 'Backfill the rollups', masterId: 'ios-master', after: 'ios-running' })
+  server.registry.append('ios-queued', { type: 'user-text', text: 'Backfill the rollups once the export lands' })
+  server.registry.append('ios-queued', { type: 'status', status: 'queued' })
+  const lines = (server.registry as unknown as { queuedLines?: Map<string, string> }).queuedLines
+  const queued = server.registry.get('ios-queued')
+  if (lines && queued) {
+    lines.set('ios-queued', 'Queued · waiting for Add the billing export')
+    ;(server.registry as unknown as { notifyMeta: (meta: unknown) => void }).notifyMeta(queued)
+  }
+}
+if (!has('ios-stopped')) {
+  await make('ios-stopped', { projectId: project.id, threadType: 'chat', title: 'Rename the config keys again' })
+  server.registry.append('ios-stopped', { type: 'user-text', text: 'Rename the config keys to the new scheme' })
+  server.registry.append('ios-stopped', { type: 'status', status: 'running' })
+  server.registry.append('ios-stopped', { type: 'status', status: 'stopped' })
+}
+if (!has('ios-master-paused')) {
+  await make('ios-master-paused', { projectId: project.id, threadType: 'orchestration', agentType: 'orchestrator', title: 'Port the admin pages' })
+  server.registry.setMaster('ios-master-paused', true)
+  server.registry.append('ios-master-paused', { type: 'user-text', text: 'Port every admin page to the new shell' })
+  server.registry.append('ios-master-paused', { type: 'status', status: 'running' })
+  server.registry.append('ios-master-paused', { type: 'status', status: 'paused' })
+  for (const [id, title] of [['ios-batch-a', 'Admin: users page'], ['ios-batch-b', 'Admin: billing page']] as const) {
+    await make(id, { projectId: project.id, threadType: 'implementation', title, masterId: 'ios-master-paused' })
+    server.registry.append(id, { type: 'user-text', text: title })
+    server.registry.append(id, { type: 'status', status: 'running' })
+    server.registry.append(id, { type: 'status', status: 'paused' })
+  }
+}
+if (!has('ios-batch-a-run')) {
+  // The live fleet test's own project: two running roots and one running subagent, so Pause all and
+  // Resume all over it never touch the seeds the other live tests read.
+  const fleetProject = await server.registry.createProject(workspace.id, 'ios-fleet-project', 'local')
+  for (const [id, title] of [['ios-batch-a-run', 'Index the archive'], ['ios-batch-b-run', 'Rebuild the search']] as const) {
+    await make(id, { projectId: fleetProject.id, threadType: 'implementation', title })
+    server.registry.append(id, { type: 'user-text', text: title })
+    server.registry.append(id, { type: 'status', status: 'running' })
+  }
+  await make('ios-batch-a-run-child', { parentId: 'ios-batch-a-run', projectId: fleetProject.id, agentType: 'explorer', title: 'Read the archive layout' })
+  server.registry.append('ios-batch-a-run-child', { type: 'user-text', text: 'Read the archive layout' })
+  server.registry.append('ios-batch-a-run-child', { type: 'status', status: 'running' })
+}
+if (!has('ios-resources')) {
+  // Two worktrees and a simulator through the real detection path (threadResourcesParse.ts): a Bash call
+  // paired with git's "Preparing worktree" line, and a simctl create paired with the UDID it printed.
+  await make('ios-resources', { projectId: project.id, threadType: 'implementation', title: 'Build the share sheet' })
+  server.registry.append('ios-resources', { type: 'user-text', text: 'Build the share sheet in its own worktree', newPass: true })
+  server.registry.append('ios-resources', { type: 'status', status: 'running' })
+  for (const [callId, branch] of [['r1', 'ios/share-a'], ['r2', 'ios/share-b']] as const) {
+    server.registry.append('ios-resources', { type: 'tool-call', callId, name: 'Bash', input: { command: `git worktree add ../wt-${branch.split('/')[1]} -b ${branch}` } })
+    server.registry.append('ios-resources', { type: 'tool-result', callId, output: `Preparing worktree (new branch '${branch}')\nHEAD is now at 1234abc init\n`, isError: false })
+  }
+  server.registry.append('ios-resources', { type: 'tool-call', callId: 'r3', name: 'Bash', input: { command: 'xcrun simctl create "TC iPhone" "iPhone 17"' } })
+  server.registry.append('ios-resources', { type: 'tool-result', callId: 'r3', output: '9F1D2C3B-4A5E-4F60-8B7C-1D2E3F4A5B6C\n', isError: false })
+  server.registry.append('ios-resources', { type: 'status', status: 'idle' })
+  // A row on another host whose removal waits for its link: straight into the ledger, since no bridge runs here.
+  const db = (server.store as unknown as { db?: { prepare: (sql: string) => { run: (...args: unknown[]) => unknown } } }).db
+  if (db) {
+    db.prepare(
+      `INSERT OR IGNORE INTO thread_resources (id, session_id, environment_id, kind, identifier, label, branch, created_at, remove_requested_at, note)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run('r-mac', 'ios-resources', 'env_mac_test', 'simulator', 'A0B1C2D3-E4F5-4607-8899-AABBCCDDEEFF', 'TC iPhone (Mac)', null, Date.now(), Date.now(), 'host offline, waiting for its link')
+  }
+}
+
 // A chat waiting on an approval, and in the other project one waiting on a question.
 await make('ios-waiting', { projectId: project.id, threadType: 'chat', title: 'Run the test suite' })
 server.registry.append('ios-waiting', { type: 'user-text', text: 'Run the tests and fix what fails' })
@@ -879,6 +956,8 @@ stub('resumePausedRun', async (sessionId) => {
   record('resume', sessionId)
   registry.append(sessionId, { type: 'status', status: 'running' })
 })
+// The seeds have no harness, so the liveness sweep would mark every running one stopped after 20 s.
+stub('sweepLiveness', () => [])
 stub('resumeStopped', async (sessionId) => {
   // The harness is gone: a fresh one on the same transcript, running.
   record('resume', sessionId, { stopped: true })

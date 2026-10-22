@@ -466,6 +466,32 @@ public enum GithubInboxReviewDecision: RawRepresentable, Codable, Hashable, Send
     }
 }
 
+public enum ThreadResourceKind: RawRepresentable, Codable, Hashable, Sendable {
+    case worktree
+    case simulator
+    case devInstance
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "worktree": self = .worktree
+        case "simulator": self = .simulator
+        case "devInstance": self = .devInstance
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .worktree: "worktree"
+        case .simulator: "simulator"
+        case .devInstance: "devInstance"
+        case .unknown(let value): value
+        }
+    }
+}
+
 public enum FailureKind: RawRepresentable, Codable, Hashable, Sendable {
     case oauthExpired
     case accountUnknown

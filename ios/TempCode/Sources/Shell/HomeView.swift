@@ -129,6 +129,13 @@ struct HomeView: View {
         }
         if TestHooks.sheet == "new", composing == nil {
             composing = NewThreadTarget(client: client, workspace: workspace, project: nil)
+        } else if let sheet = TestHooks.sheet, sheet.hasPrefix("fleet:"), let action = TestHooks.batchAction(String(sheet.dropFirst(6))), !launched {
+            // The fleet confirm for the shot, host scope (thread iOS 20).
+            launched = true
+            FleetSwitches.shared.request(action, client: client, scope: .host(name: client.environment.name))
+        } else if let hook = TestHooks.action, hook.hasPrefix("batch:"), let action = TestHooks.batchAction(String(hook.dropFirst(6))), !launched {
+            launched = true
+            await FleetSwitches.shared.run(action, client: client, scope: .host(name: client.environment.name))
         } else if TestHooks.action == "new-chat", !launched {
             launched = true
             guard let catalog = await client.loadCatalog(), let provider = CatalogChoice.providerOrder.compactMap({ catalog[$0.rawValue] }).first else { return }
@@ -375,7 +382,8 @@ private struct HomeRowView: View {
         }
         .buttonStyle(.pressable)
         .listRowInsets(Layout.rowInsets)
-        .threadRowActions(client: client, meta: meta)
+        // Start now on a queued root, Resume on a stopped one (thread iOS 20).
+        .threadRowActions(client: client, meta: meta) { RowStateActions(client: client, meta: meta) }
     }
 }
 

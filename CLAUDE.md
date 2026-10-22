@@ -1124,6 +1124,11 @@ routed to (aliax-core's `forward`). Two listeners:
   `failureActions` as `FailureActions` (`Rendering/Notices.swift`, with
   `GateText` and `ReviewText`) and speaks `session.continue`,
   `session.reroute` and `review.override` (`Client/NoticeActions.swift`).
+  The fleet switches, the Resources sheet and the archive prompt (thread
+  iOS 20) sit on the client package's `Client/ThreadBatch.swift`,
+  `StatusWords.swift` and `Resources.swift` (`ResourceLedger` on the
+  `resources` push, loaded whole at every open) through
+  `Shell/FleetSwitches.swift` and `Thread/ResourcesSheet.swift`.
 - Push (L6): the phone registers its APNs token with every paired host
   (`remote.push.register`/`unregister`/`status`/`activity`, capability read:
   the key's own row); the host keeps one row per key (`remote_push`,
@@ -1270,7 +1275,11 @@ mapped to roots once, the existing per-session calls four at a time, every
 id answered. `registry.resourceCleanup` (null today) is where the
 thread-resources build hangs its clean-up; `setResourceCleanup` in the
 renderer turns the Archive done checkbox on. Proof:
-`bun run script:e2e-thread-batch`. docs/box.md "The fleet switches".
+`bun run script:e2e-thread-batch`. docs/box.md "The fleet switches". The
+phone has the same rows in its host and project menus
+(ios/TempCode/Sources/Shell/FleetSwitches.swift over the client package's
+ThreadBatch.swift, the rules and copy ported with tests mirroring
+threadBatch.test.ts), one `session.batch` per host.
 
 ## Plans: `plan_complete` and the auto-start
 - A plan is finished when the planner calls the `plan_complete` app tool
@@ -1568,8 +1577,11 @@ this is the short one.
   (`LayerContext`, lib/layers.ts) and sits above it. `lib/threadBatch.ts`
   exports `hasRunningTurn` so the rows and Pause all use the fleet
   switches' rule. The phone draws a queued root with the label "Queued"
-  (StatusDot.swift), never under Home's Running (`HomeModel.isLive`); no
-  phone surface.
+  (StatusDot.swift), never under Home's Running (`HomeModel.isLive`); the
+  strip offers Start now (`session.start`) and a stopped root Resume; the
+  fleet switches sit in the host's and the project's menus
+  (ios/TempCode/Sources/Shell/FleetSwitches.swift over the client package's
+  ThreadBatch.swift).
 - **The rail houses the batch under the master's row** the way subagents
   sit under a root (`batchHome`, `railMasters` in lib/workspaceSessions.ts):
   each unarchived root carrying the master's id is a child row one step in

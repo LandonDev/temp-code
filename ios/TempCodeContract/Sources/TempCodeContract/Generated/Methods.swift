@@ -560,6 +560,119 @@ public enum Methods {
         public typealias Output = ReviewOverrideAnswer
     }
 
+    public enum SessionBatch: ContractMethod {
+        public static let name = "session.batch"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum Action: RawRepresentable, Codable, Hashable, Sendable {
+                case pause
+                case resume
+                case stop
+                case archive
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "pause": self = .pause
+                    case "resume": self = .resume
+                    case "stop": self = .stop
+                    case "archive": self = .archive
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .pause: "pause"
+                    case .resume: "resume"
+                    case .stop: "stop"
+                    case .archive: "archive"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let action: Action
+            public let ids: [String]
+            public let cleanup: Bool?
+
+            public init(action: Action, ids: [String], cleanup: Bool? = nil) {
+                self.action = action
+                self.ids = ids
+                self.cleanup = cleanup
+            }
+        }
+
+        public typealias Output = SessionBatchResult
+    }
+
+    public enum ResourcesList: ContractMethod {
+        public static let name = "resources.list"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sessionId: String
+            public let includeRemoved: Bool?
+
+            public init(sessionId: String, includeRemoved: Bool? = nil) {
+                self.sessionId = sessionId
+                self.includeRemoved = includeRemoved
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let resources: [ThreadResource]
+
+            public init(resources: [ThreadResource]) {
+                self.resources = resources
+            }
+        }
+    }
+
+    public enum ResourcesListAll: ContractMethod {
+        public static let name = "resources.listAll"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let kind: ThreadResourceKind?
+            public let environmentId: String?
+
+            public init(kind: ThreadResourceKind? = nil, environmentId: String? = nil) {
+                self.kind = kind
+                self.environmentId = environmentId
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let resources: [ThreadResource]
+
+            public init(resources: [ThreadResource]) {
+                self.resources = resources
+            }
+        }
+    }
+
+    public enum ResourcesRemove: ContractMethod {
+        public static let name = "resources.remove"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sessionId: String
+            public let ids: [String]?
+
+            public init(sessionId: String, ids: [String]? = nil) {
+                self.sessionId = sessionId
+                self.ids = ids
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let results: [ThreadResourceRemoval]
+
+            public init(results: [ThreadResourceRemoval]) {
+                self.results = results
+            }
+        }
+    }
+
     public enum QueueList: ContractMethod {
         public static let name = "queue.list"
 

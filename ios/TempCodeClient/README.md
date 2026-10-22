@@ -441,6 +441,36 @@ It mints three keys: read-only, read+operate+approve, and operate-only
 (the approval card's forbidden path), and two pairings for the simulator
 proof's `actions` set.
 
+## Fleet switches, statuses, resources (thread iOS 20)
+
+- `Client/ThreadBatch.swift` is the desktop's `threadBatch.ts` as values:
+  `BatchAction`, `BatchScope` (a host or a project; the phone has no
+  "everywhere"), `BatchSelection` (the seen marks and the floor the Archive
+  done rule reads), `ThreadBatch` (`hasRunningTurn`, `qualifies`, `inScope`,
+  `targets`, `counts`, the labels and symbols, `confirm` and `toast` with the
+  desktop's strings), and `EnvironmentClient.batch(_:selection:cleanup:)`:
+  one `session.batch` over what qualifies now, the answer's `failed` folded
+  into a `BatchToast` naming each thread's title, a whole-call refusal
+  naming every target, a read key refused before the wire.
+  `batchSelection(_:now:)` builds the selection from `seen` and the pairing.
+- `Client/StatusWords.swift`: `queuedLine` (the host's "Queued · waiting for
+  X" through `activity`, else "Queued"), `stopped`, `batchPaused` and
+  `batchPausedClause` (", and 2 batch threads with it" for a paused
+  master) and `bootResume` ("7 threads resumed after restart"; the
+  client's `bootResume` notice is already once per boot).
+- `Client/Resources.swift`: `ResourceLedger` (`bySession` from the
+  `resources` push and `resources.list`, `loadAll` over `resources.listAll`
+  at every socket open, `live(for:)`, `countHeld(by:)`, `removing` marked
+  from `removeResources` until the push answers), the client's
+  `removeResources(_:ids:)` and `archive(_:removeResources:)` (Start now
+  and Resume are the existing `start` and `resume`), and `ResourceWords`
+  (kind labels and symbols, `removalClause`, `rowState`, `isWaiting`,
+  `hostName`). `EnvironmentClient.resources` is the new observable.
+- Tests: `ThreadBatchTests` (mirrors threadBatch.test.ts), `StatusWordsTests`,
+  `ResourcesTests`, the batch, start, archive and resources cases in
+  `ActionsTests`, and one live case in `LiveActionTests` (Pause all over the
+  test server's running roots, Start now on `ios-queued`).
+
 ## Push (L6): the token to every host, taps to the card, the Live Activity
 
 - `Push/PushRegistrar.swift` holds the APNs token (`Device`: token, bundle

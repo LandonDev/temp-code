@@ -1455,7 +1455,11 @@ header), a host's menu (the `…` on the host row in the rail when more than one
 host is paired, and the host's menu in Settings → Remote access), and the
 View menu for every host at once (Pause All Threads, Resume All Threads, Stop
 All Threads, Archive Finished Threads). No shortcuts: menu rows only. A row
-with nothing to act on is disabled, not hidden.
+with nothing to act on is disabled, not hidden. The phone has the same four
+rows in its host and project menus (ios/TempCode/Sources/Shell/FleetSwitches.swift
+over the client package's ThreadBatch.swift, the rules and copy ported
+verbatim), with a medium sheet for the confirm and a status line for the
+outcome; its scope is a host or a project, never everywhere.
 
 What qualifies (`src/renderer/src/lib/threadBatch.ts`, roots only; a
 subagent follows its parent):
@@ -1500,7 +1504,10 @@ src/shared/contract-resources.ts): one row per worktree, simulator or dev
 instance, with the environment id of the host the resource lives on, filed
 under the top-level thread (a subagent's rows carry its parent's id). Rows are
 stamped, never deleted; one live row per resource per host, so a re-creation
-after a removal is a new row.
+after a removal is a new row. The phone reads the same ledger (`resources.list`,
+`resources.listAll` and the `resources` push) into its Resources sheet
+(ios/TempCode/Sources/Thread/ResourcesSheet.swift) and asks before archiving
+a thread that holds something.
 
 - **Detection** (threadResourcesParse.ts, pure) reads the command and what it
   printed, and records nothing the command did not demonstrably create: a

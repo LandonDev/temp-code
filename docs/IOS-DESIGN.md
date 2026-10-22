@@ -179,6 +179,41 @@ one meta line at the top. Empty: one calm meta line, shown once every host has
 answered or cannot; the system `ProgressView` until then, never on a paint
 from disk.
 
+**The fleet switches** (ios/TempCode/Sources/Shell/FleetSwitches.swift over
+the client package's ThreadBatch.swift, the desktop's threadBatch.ts ported
+whole) are four rows beside Mark all read: Pause all, Resume all, Stop all,
+Archive done, in the host's menu (the `ellipsis.circle` in Home's bar with
+one host, on each host header with several) and in the project header's
+menu, and again in a thread's menu for its project. A row with nothing to
+act on is disabled, never hidden; a key that cannot act reads the reason as
+the menu's first line. Pause, Stop and Archive done confirm in a medium
+sheet whose title is the live count ("Pause 15 running threads on the
+box?", the digits rolling as threads settle while it shows), with the
+resources clause and its switch when Archive done would release worktrees
+or simulators, and one full-width confirm at the foot (destructive tint for
+Stop and Archive done). Resume all runs at once. The outcome is one status
+line on the bar material above the tab bar, "Paused 14 · 1 failed: Search
+(harness not responding)": a clean result leaves after four seconds, a
+failure waits for a tap.
+
+**Queued, stopped, resources.** A queued root (created, waiting for its
+`after` sibling) reads the host's "Queued · waiting for X" line through its
+`activity`, never sits under Running, and offers Start now in its context
+menu and in the working strip (`session.start`, past the `after`); a
+stopped root (its harness gone after a restart) reads "Stopped · the
+harness is gone" in the strip with Resume (`session.resume`, a fresh
+harness on the transcript). A paused master's strip says ", and 2 batch
+threads with it". A host that resumed threads after a restart shows "7
+threads resumed after restart" once per boot as one quiet line at the top
+of Home for fifteen seconds. Resources… in a thread's menu opens the
+Resources sheet (ios/TempCode/Sources/Thread/ResourcesSheet.swift): one
+group per host the rows live on, each row the label, its path or UDID in
+mono, the state word, and Remove (a spinner while the removal is out,
+"Waiting for the Mac" when that host is offline); the row leaves when the
+host's push says it is gone. Archiving a thread that holds resources, from
+a swipe, a context menu or the thread menu, asks first: "Archive <title>?"
+with "and remove 2 resources on the Mac" switched on by default.
+
 The detail paints its header from the row (picture, author, `repo #n` dim,
 the title in `title3` semibold, the state word in its color or Open in
 success, `head → base` in mono one step down, labels as plain capsules on the
@@ -1273,6 +1308,9 @@ used.
 | Jump-to-latest pill | 150 ms opacity and 8 pt translateY, both directions | `.jumpTransition()` (`Motion.jump(reduced:)`) |
 | Diff hunk sideways | follows the finger through an interactive spring, momentum from the release velocity, rubber band at both ends, settles with spring `duration min(0.6, 0.35 + travel × 0.0004), bounce 0`; next and previous hunk scroll 250 ms on `timingCurve(0.23, 1, 0.32, 1)` to the header's exact offset | `DiffMotion.track`, `DiffMotion.settle(travel:)`, `DiffMotion.jump` (Thread/DiffStyles.swift); `DiffLayout.hunkStarts` for the offsets |
 | Diff lines landing | 150 ms cross-fade over the shimmer; nothing when the lines were in hand | `Motion.crossFade`; the counter rolls with `.numeric(current)` |
+| Fleet toast | 150 ms opacity, both directions; a clean result leaves after 4 s | `FleetToastLine` (`Motion.crossFade`) |
+| Fleet confirm's count | `contentTransition(.numericText())` on the title, 150 ms | `FleetConfirmSheet` (`Motion.numeric`) |
+| Resource row removed | 150 ms opacity, once the host's push says so | `ResourcesSheet` (`Motion.rowLeave`) |
 | Reduced motion | cross-fades replace every translate and spring | every `Motion.*(reduced:)` and the four transition modifiers read it themselves |
 
 Every transition carries its own timing, so an enclosing `withAnimation`

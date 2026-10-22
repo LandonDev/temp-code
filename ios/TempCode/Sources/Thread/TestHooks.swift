@@ -30,7 +30,11 @@ enum TestHooks {
     /// `answer:<label>`, `start-build`, `rename:<title>`, `pin`, `archive`,
     /// `start-now` (a queued thread), `resume` (a stopped or paused one).
     static let action = env["TC_TEST_ACTION"].flatMap { $0.isEmpty ? nil : $0 }
-    /// A sheet to open for the shot: `start` on a planning thread, `new` on Home.
+    /// A sheet to open for the shot: `start` on a planning thread, `new` on Home,
+    /// `fleet:pause|fleet:stop|fleet:archive` (the fleet confirm on Home),
+    /// `resources` (the Resources sheet on a thread), `archive` (the archive prompt on a thread with resources).
+    /// Actions, in the list above: `batch:pause|batch:resume|batch:stop|batch:archive` on Home run the host-scope
+    /// batch without the sheet; `archive-remove` and `remove-resources` on a thread.
     static let sheet = env["TC_TEST_SHEET"].flatMap { $0.isEmpty ? nil : $0 }
     /// With `TC_TEST_ROUTE=notification`: "title part|seq", a payload the delegate routes like a tap.
     static let notification = env["TC_TEST_NOTIFICATION"].flatMap { $0.isEmpty ? nil : $0 }
@@ -44,6 +48,17 @@ enum TestHooks {
     static let sheet: String? = nil
     static let notification: String? = nil
     #endif
+    /// `pause`, `resume`, `stop` or `archive` as the fleet's action.
+    static func batchAction(_ name: String) -> BatchAction? {
+        switch name {
+        case "pause": .pause
+        case "resume": .resume
+        case "stop": .stop
+        case "archive": .archiveDone
+        default: nil
+        }
+    }
+
     static func recordNavigation(target: Int, item: Int?, oldest: Int?) {
         #if DEBUG
         guard targetSeq != nil || notification != nil else { return }

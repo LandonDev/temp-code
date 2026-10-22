@@ -154,6 +154,16 @@ public struct BootResumePush: Codable, Hashable, Sendable {
     }
 }
 
+public struct ResourcesPush: Codable, Hashable, Sendable {
+    public let sessionId: String
+    public let resources: [ThreadResource]
+
+    public init(sessionId: String, resources: [ThreadResource]) {
+        self.sessionId = sessionId
+        self.resources = resources
+    }
+}
+
 public enum ServerPush: Codable, Hashable, Sendable {
     case hello(HelloPush)
     case workspaces(WorkspacesPush)
@@ -167,6 +177,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
     case sessionRemoved(SessionRemovedPush)
     case sessionMoved(SessionMovedPush)
     case bootResume(BootResumePush)
+    case resources(ResourcesPush)
     /// A `push` this build does not know: the whole object, untouched.
     case unknown(JSONValue)
 
@@ -189,6 +200,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case "session-removed": self = .sessionRemoved(try SessionRemovedPush(from: decoder))
         case "session-moved": self = .sessionMoved(try SessionMovedPush(from: decoder))
         case "boot-resume": self = .bootResume(try BootResumePush(from: decoder))
+        case "resources": self = .resources(try ResourcesPush(from: decoder))
         default: self = .unknown(try JSONValue(from: decoder))
         }
     }
@@ -207,6 +219,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case .sessionRemoved(let value): try Self.encode(tag: "session-removed", value, to: encoder)
         case .sessionMoved(let value): try Self.encode(tag: "session-moved", value, to: encoder)
         case .bootResume(let value): try Self.encode(tag: "boot-resume", value, to: encoder)
+        case .resources(let value): try Self.encode(tag: "resources", value, to: encoder)
         case .unknown(let value): try value.encode(to: encoder)
         }
     }

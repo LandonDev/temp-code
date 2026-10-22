@@ -46,6 +46,9 @@ struct ThreadMenu: View {
     let session: SessionMeta
     let onRename: () -> Void
     let onFailure: (String) -> Void
+    /// Slot (d), thread 20: the Resources sheet and the archive prompt the menu opens.
+    @State private var showResources = false
+    @State private var archiving: ArchiveWithResourcesSheet.Target?
 
     private var block: ActionBlock? { client.operateBlock }
     private var root: Bool { session.parentId == nil }
@@ -56,7 +59,8 @@ struct ThreadMenu: View {
             renameItem
             if root {
                 pinItem
-                // Slot (d), thread 20: `fleetSection` (Pause all, Resume all, Stop all) and `resourcesItem` ("Resources…") go here.
+                fleetSection
+                resourcesItem
                 Divider()
                 archiveItem
             }
@@ -67,6 +71,32 @@ struct ThreadMenu: View {
         .buttonStyle(.pressableStatic)
         .accessibilityLabel("More")
         .accessibilityIdentifier("thread-menu")
+        .sheet(isPresented: $showResources) { ResourcesSheet(client: client, sessionId: session.id) }
+        .sheet(item: $archiving) { ArchiveWithResourcesSheet(target: $0) }
+        .task {
+            // DEBUG proof: `TC_TEST_SHEET=resources` opens the sheet; `archive` opens the prompt once the ledger says the thread holds something.
+            guard root, let sheet = TestHooks.sheet else { return }
+            if sheet == "resources" { showResources = true }
+            if sheet == "archive" {
+                await client.resources.load(client, sessionId: session.id)
+                if !client.resources.live(for: session.id).isEmpty { archiving = ArchiveWithResourcesSheet.Target(client: client, meta: session) }
+            }
+        }
+    }
+
+    /// Slot (d), thread 20: Start now or Resume for this root's state, then the
+    /// fleet switches of its project (else its host).
+    @ViewBuilder private var fleetSection: some View {
+        RowStateActions(client: client, meta: session, onFailure: onFailure)
+        FleetSwitchRows(client: client, scope: FleetSwitches.scope(of: session, client: client), showsBlock: false)
+    }
+
+    @ViewBuilder private var resourcesItem: some View {
+        Button {
+            showResources = true
+        } label: {
+            Label("Resources…", systemImage: "shippingbox")
+        }
     }
 
     /// Why the actions below are disabled, when they are.
@@ -92,9 +122,16 @@ struct ThreadMenu: View {
         .disabled(block != nil)
     }
 
+    /// Unarchive at once; archive through the prompt when the thread holds resources (thread 20).
     @ViewBuilder private var archiveItem: some View {
         Button(role: session.archived ? nil : .destructive) {
-            act { try await client.setArchived(session.id, !session.archived) }
+            act {
+                if session.archived {
+                    try await client.setArchived(session.id, false)
+                } else {
+                    try await ArchivePrompt.archive(client, session) { archiving = $0 }
+                }
+            }
         } label: {
             Label(session.archived ? "Unarchive" : "Archive", systemImage: session.archived ? "tray.and.arrow.up" : "archivebox")
         }

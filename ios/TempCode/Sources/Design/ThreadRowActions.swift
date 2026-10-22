@@ -20,6 +20,8 @@ struct ThreadRowActions<Rows: View>: ViewModifier {
     let menu: Rows
     @State private var renaming = false
     @State private var failure: String?
+    /// A thread that holds worktrees or simulators asks before archiving (thread iOS 20).
+    @State private var archiving: ArchiveWithResourcesSheet.Target?
 
     private var block: ActionBlock? { client.operateBlock }
 
@@ -36,7 +38,7 @@ struct ThreadRowActions<Rows: View>: ViewModifier {
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                 Button {
-                    act { try await client.setArchived(meta.id, !meta.archived) }
+                    act { try await archive() }
                 } label: {
                     Label(meta.archived ? "Unarchive" : "Archive", systemImage: meta.archived ? "tray.and.arrow.up.fill" : "archivebox.fill")
                 }
@@ -62,13 +64,14 @@ struct ThreadRowActions<Rows: View>: ViewModifier {
                 menu
                 Divider()
                 Button(role: meta.archived ? nil : .destructive) {
-                    act { try await client.setArchived(meta.id, !meta.archived) }
+                    act { try await archive() }
                 } label: {
                     Label(meta.archived ? "Unarchive" : "Archive", systemImage: meta.archived ? "tray.and.arrow.up" : "archivebox")
                 }
                 .disabled(block != nil)
             }
             .sheet(isPresented: $renaming) { RenameSheet(client: client, session: meta) }
+            .sheet(item: $archiving) { ArchiveWithResourcesSheet(target: $0) }
             .alert("Couldn't do that", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: {
@@ -83,6 +86,15 @@ struct ThreadRowActions<Rows: View>: ViewModifier {
             } catch {
                 failure = (error as? ActionError)?.message ?? String(describing: error)
             }
+        }
+    }
+
+    /// Archive through the prompt when the thread holds resources; unarchive at once.
+    private func archive() async throws {
+        if meta.archived {
+            try await client.setArchived(meta.id, false)
+        } else {
+            try await ArchivePrompt.archive(client, meta) { archiving = $0 }
         }
     }
 }

@@ -708,6 +708,124 @@ public struct SessionChanges: Codable, Hashable, Sendable {
     }
 }
 
+public struct ThreadResource: Codable, Hashable, Sendable {
+    public let id: String
+    public let sessionId: String
+    public let environmentId: String
+    public let kind: ThreadResourceKind
+    public let identifier: String
+    public let label: String
+    public let branch: String?
+    public let createdAt: Int
+    public let removeRequestedAt: Int?
+    public let removedAt: Int?
+    public let note: String?
+
+    public init(id: String, sessionId: String, environmentId: String, kind: ThreadResourceKind, identifier: String, label: String, branch: String?, createdAt: Int, removeRequestedAt: Int?, removedAt: Int?, note: String?) {
+        self.id = id
+        self.sessionId = sessionId
+        self.environmentId = environmentId
+        self.kind = kind
+        self.identifier = identifier
+        self.label = label
+        self.branch = branch
+        self.createdAt = createdAt
+        self.removeRequestedAt = removeRequestedAt
+        self.removedAt = removedAt
+        self.note = note
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, sessionId, environmentId, kind, identifier, label, branch, createdAt, removeRequestedAt, removedAt, note
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(sessionId, forKey: .sessionId)
+        try container.encode(environmentId, forKey: .environmentId)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(identifier, forKey: .identifier)
+        try container.encode(label, forKey: .label)
+        try container.encode(branch, forKey: .branch)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(removeRequestedAt, forKey: .removeRequestedAt)
+        try container.encode(removedAt, forKey: .removedAt)
+        try container.encode(note, forKey: .note)
+    }
+}
+
+public struct ThreadResourceRemoval: Codable, Hashable, Sendable {
+    public enum Outcome: RawRepresentable, Codable, Hashable, Sendable {
+        case removed
+        case waiting
+        case failed
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "removed": self = .removed
+            case "waiting": self = .waiting
+            case "failed": self = .failed
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .removed: "removed"
+            case .waiting: "waiting"
+            case .failed: "failed"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let id: String
+    public let outcome: Outcome
+    public let note: String?
+
+    public init(id: String, outcome: Outcome, note: String?) {
+        self.id = id
+        self.outcome = outcome
+        self.note = note
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, outcome, note
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(outcome, forKey: .outcome)
+        try container.encode(note, forKey: .note)
+    }
+}
+
+public struct SessionBatchResult: Codable, Hashable, Sendable {
+    public struct Failed: Codable, Hashable, Sendable {
+        public let sessionId: String
+        public let error: String
+
+        public init(sessionId: String, error: String) {
+            self.sessionId = sessionId
+            self.error = error
+        }
+    }
+
+    public let attempted: [String]
+    public let succeeded: [String]
+    public let failed: [Failed]
+
+    public init(attempted: [String], succeeded: [String], failed: [Failed]) {
+        self.attempted = attempted
+        self.succeeded = succeeded
+        self.failed = failed
+    }
+}
+
 public struct WorkspaceMeta: Codable, Hashable, Sendable {
     public let id: String
     public let name: String

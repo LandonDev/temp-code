@@ -316,6 +316,10 @@ struct ThreadScreen: View {
             try? await client.setPinned(sessionId, true)
         case "archive":
             try? await client.setArchived(sessionId, true)
+        case "archive-remove":
+            try? await client.archive(sessionId, removeResources: true)
+        case "remove-resources":
+            _ = try? await client.removeResources(sessionId)
         default:
             break
         }

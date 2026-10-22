@@ -89,6 +89,8 @@ public final class EnvironmentClient {
     public internal(set) var threads: [String: ThreadState] = [:]
     /// The host's catalog once `loadCatalog` fetched it.
     public internal(set) var catalog: Catalog?
+    /// What each thread created (worktrees, simulators, dev instances), from the `resources` push (thread iOS 20).
+    public let resources = ResourceLedger()
     /// The shell has been listed at least once in this process.
     public private(set) var hasShell = false
     /// Where the session list last came from.
@@ -456,6 +458,11 @@ public final class EnvironmentClient {
             async let shell: Void = refreshShell()
             await subscriptions.resumeAll(tail: coldOpenTail, first: visibleThread)
             await shell
+            // Off the open handler, as the desktop's: a count of worktrees never delays the subscriptions.
+            Task { [weak self] in
+                guard let self else { return }
+                await self.resources.loadAll(self)
+            }
             for id in threads.keys where subscriptions.has(id) {
                 threads[id]?.isLoading = false
                 threads[id]?.isLive = subscriptions.isLive(id)
@@ -596,6 +603,8 @@ public final class EnvironmentClient {
             append(value.sessionId, rows: value.rows)
             threads[value.sessionId]?.isLive = true
             try? await cache.store(environment.id, sessionId: value.sessionId, rows: value.rows)
+        case .resources(let value):
+            resources.apply(value)
         case .bootResume(let value):
             // The host sends it after hello on every socket; the screen shows
             // it once per boot, the stamp kept in the cache across launches.
