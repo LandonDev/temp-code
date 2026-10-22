@@ -194,6 +194,23 @@ describe('checkpoint turns', () => {
     expect(t.manifest().tracked).toEqual(['a.txt', 'late.txt'])
   })
 
+  it('a settle queued behind a write never takes the next send\'s ensure for its own', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const t = setup()
+    await t.turns.ensure('s1', t.dir)
+    await t.edit('a.txt')
+    vi.advanceTimersByTime(FLUSH_MS) // the write is in flight
+    const settled = t.end() // queued behind it
+    const armed = t.turns.ensure('s1', t.dir) // the next send, before the settle runs
+    await Promise.all([settled, armed, t.turns.written('s1')])
+    // The next turn writes only through the shell: its settle must still sync.
+    git.dirty = ['shell.txt']
+    const diffs = git.diffs
+    await t.end()
+    expect(git.diffs - diffs).toBe(1)
+    expect(t.manifest().touched).toEqual(['a.txt', 'shell.txt'])
+  })
+
   it('an edit reaches every owner with a checkpoint: the subagent and its root', async () => {
     const t = setup()
     await t.turns.ensure('root', t.dir)

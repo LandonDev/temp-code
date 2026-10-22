@@ -142,14 +142,17 @@ export class CheckpointTurns {
   }
 
   /** The turn ended: one write, one sync, one push. A second settle with
-   *  nothing since (turn-complete, then idle) does nothing. */
+   *  nothing since (turn-complete, then idle) does nothing. The flag is read
+   *  here, not in the queued work, so the next send's ensure can never be
+   *  taken for this turn's. */
   private settle(sessionId: string): Promise<void> {
+    const turn = this.turns.get(sessionId)
+    if (!turn) return Promise.resolve()
+    const open = turn.open
+    turn.open = false
     return this.queue(sessionId, async () => {
-      const turn = this.turns.get(sessionId)
-      if (!turn) return
-      const known = turn.open ? await turn.known : null
-      turn.open = false
-      this.stopTimer(turn)
+      const known = open ? await turn.known : null
+      if (open) this.stopTimer(turn)
       if (known) {
         const pending = [...turn.unasked, ...turn.unsaved]
         turn.unasked.clear()
@@ -233,7 +236,8 @@ export class CheckpointTurns {
   /** A settled turn with nothing pending is forgotten (its listing too when
    *  no other turn there is open); a later edit reads the manifest again. */
   private release(sessionId: string, turn: Turn): void {
-    if (turn.open || turn.unsaved.size > 0 || this.turns.get(sessionId) !== turn) return
+    if (turn.open || turn.unsaved.size > 0 || turn.unasked.size > 0 || turn.timer) return
+    if (this.turns.get(sessionId) !== turn) return
     this.turns.delete(sessionId)
     if (![...this.turns.values()].some((other) => other.open && other.root === turn.root)) this.listings.delete(turn.root)
   }
