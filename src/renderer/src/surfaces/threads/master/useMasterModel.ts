@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { DEFAULT_BATCH_RULES, emptyBatch, type BatchRules, type BatchState } from "@server/shared/contract-batch";
+import { stepsOf } from "./steps";
 import { registry } from "../../../lib/connection";
 import { isLiveStatus } from "../../../lib/threads/agents";
 import { sessionStore } from "../../../lib/tcserver/store";
@@ -135,16 +136,20 @@ export function mergedLine(batch: Pick<BatchState, "landed" | "pending">): strin
 
 export type { BatchRules };
 
-/** The rules with the publish choice (a Mac release between the release
- *  and the deploy) a host may carry. */
-export type Rules = BatchRules & { publish?: boolean };
+export type Rules = BatchRules;
 
-/** The rules as one plain sentence: "Branches land as they finish, then
- *  one gate on the merged tree, a release and a deploy to the box. Then
- *  you are notified." */
+/** The rules as one plain sentence from the master's step list: "Branches
+ *  land as they finish, then Gate, Release and Deploy to the box. Then
+ *  you are notified." A list with no merge step says so. */
 export function rulesSentence(rules: Rules): string {
-  const landing = rules.land === "all-at-once" ? "Branches land together once every thread is done" : "Branches land as they finish";
-  const after = rules.steps.filter((s) => s.kind !== "land").map((s) => s.name.toLowerCase());
+  const steps = stepsOf(rules);
+  const merges = steps.some((s) => s.kind === "land");
+  const landing = !merges
+    ? "The branches are left unmerged"
+    : rules.land === "all-at-once"
+      ? "Branches land together once every thread is done"
+      : "Branches land as they finish";
+  const after = steps.filter((s) => s.kind !== "land").map((s) => s.name.trim() || s.id);
   const first = after.length === 0 ? `${landing}, nothing runs after.` : `${landing}, then ${listWords(after)}.`;
   const then = rules.then === "archive-children" ? "Then the threads are archived." : "Then you are notified.";
   return `${first} ${then}`;
@@ -168,10 +173,24 @@ export async function setBatchRules(environmentId: string, masterId: string, rul
 }
 
 /** Stop the step the batch is running now (the console's Stop). */
-export async function stopBatchStep(environmentId: string, masterId: string): Promise<void> {
+export async function stopBatchStep(environmentId: string, masterId: string, stepId: string): Promise<void> {
   const link = registry.link(environmentId);
   if (!link) throw new Error("The master's host is not connected");
-  await link.request("batch.stop", { masterId });
+  await link.request("batch.stopStep", { masterId, stepId });
+}
+
+/** Archive the batch's done children, or every one (the title bar's menu). */
+export async function archiveBatch(environmentId: string, masterId: string, which: "done" | "all", removeResources: boolean): Promise<void> {
+  const link = registry.link(environmentId);
+  if (!link) throw new Error("The master's host is not connected");
+  await link.request("batch.archive", { masterId, which, removeResources });
+}
+
+/** Existing root threads of the project join the batch ("Add existing thread…"). */
+export async function adoptThreads(environmentId: string, masterId: string, sessionIds: string[]): Promise<void> {
+  const link = registry.link(environmentId);
+  if (!link) throw new Error("The master's host is not connected");
+  await link.request("batch.adopt", { masterId, sessionIds });
 }
 
 // ── children ────────────────────────────────────────────────────────────
@@ -276,7 +295,7 @@ export type MasterModel = {
   counts: MasterCounts;
   batch: BatchState;
   landed: ReadonlySet<string>;
-  /** The child open in the right pane, if any. */
+  /** The child open in the board's place, if any. */
   openId: string | null;
   setOpenId: (id: string | null) => void;
   now: number;
@@ -290,7 +309,7 @@ export function useMasterModel(master: Pick<SessionMeta, "id" | "environmentId">
   const landed = useMemo(() => new Set(batch.landed), [batch.landed]);
   const [openId, setOpenId] = useState<string | null>(null);
   const now = useNow(counts.running > 0);
-  // A child that left the batch (archived, removed) closes its pane.
+  // A child that left the batch (archived, removed) closes its view.
   useEffect(() => {
     if (openId && !rows.some((r) => r.meta.id === openId)) setOpenId(null);
   }, [rows, openId]);

@@ -10,12 +10,12 @@ import { ThreadView } from "../ThreadView";
 import { typeWord } from "./useMasterModel";
 
 /**
- * A child of the batch opened inside the master view (docs/LAYOUT.md
- * "Master"): the right pane becomes the thread's own view, the one its
- * type would get as a tab (the implementation board, the plan document,
- * the fleet), over its transcript and a composer line that sends when it
- * is idle and steers while it runs. The header is one Back control to the
- * master's chat; Escape and ⌘↩ anywhere in the pane go back too.
+ * A child of the batch opened from the board (docs/LAYOUT.md "Master"):
+ * the whole master view becomes the thread's own view, the one its type
+ * would get as a tab (the implementation board, the plan document, the
+ * fleet), over its transcript and a composer line that sends when it is
+ * idle and steers while it runs. The header is one Back control to the
+ * board; Escape and ⌘↩ anywhere in the view go back too.
  */
 
 export function ChildPane({
@@ -82,7 +82,7 @@ export function ChildPane({
         <button
           type="button"
           onClick={onBack}
-          title="Back to the conversation (Esc)"
+          title="Back to the board (Esc)"
           className="pressable inline-flex h-6 items-center gap-0.5 rounded-md pr-2 pl-1 text-xs text-content/60 hover:bg-content/5 hover:text-content"
         >
           <ChevronLeft className="size-3.5" strokeWidth={1.75} />

@@ -1,12 +1,23 @@
-import type { BatchRules, BatchState, BatchStep } from "@server/shared/contract-batch";
+import {
+  BatchStepKindSchema,
+  DEFAULT_BATCH_STEPS,
+  type BatchRules,
+  type BatchState,
+  type BatchStep,
+  type BatchStepKind,
+  type BatchStepSpec,
+} from "@server/shared/contract-batch";
 import { duration } from "../bits";
 
 /**
- * The batch's steps as the foot reads them (docs/LAYOUT.md "Master"). The
- * host's step telemetry: a status that ends in passed, failed or skipped,
- * when the step started and ended, its progress while it runs, and its
- * console lines. An older host's `done` step with only `at` reads the
- * same way. Pure, so the foot's rules are unit-tested without a DOM.
+ * The batch's steps as the foot reads them (docs/LAYOUT.md "Master"): the
+ * list the master wrote (`rules.steps`: id, name, kind, a shell step's
+ * command) joined with the host's telemetry per step (`state.steps`: a
+ * status that ends in passed, failed or skipped, when it started and
+ * ended, its progress while it runs, its console lines). The state's
+ * order is the order; a step the rules name that the state has not seen
+ * yet is pending at the end. Nothing here knows a step by name. Pure, so
+ * the foot's rules are unit-tested without a DOM.
  */
 
 export type StepStatus = "pending" | "running" | "passed" | "failed" | "skipped";
@@ -15,6 +26,11 @@ export type StepProgress = { done: number; total: number; label?: string };
 
 export type LiveStep = {
   id: string;
+  /** The master's name for the step. */
+  name: string;
+  kind: BatchStepKind;
+  /** A shell step's command. */
+  run?: string;
   status: StepStatus;
   detail: string;
   startedAt?: number;
@@ -25,7 +41,8 @@ export type LiveStep = {
 };
 
 /** The wire step with the telemetry fields a host may add. */
-type WireStep = Omit<BatchStep, "status"> & {
+type WireStep = Omit<BatchStep, "status" | "id"> & {
+  id: string;
   status: BatchStep["status"] | StepStatus;
   startedAt?: number | null;
   endedAt?: number | null;
@@ -33,35 +50,38 @@ type WireStep = Omit<BatchStep, "status"> & {
   log?: string[] | null;
 };
 
-/** The rules with the publish choice between release and deploy. */
-export type RulesWithPublish = BatchRules & { publish?: boolean };
-
-export const STEP_LABEL: Record<string, string> = {
-  land: "Merging",
-  gate: "Gate",
-  release: "Release",
-  publish: "Publish",
-  deploy: "Deploy",
-};
-
-export function stepLabel(id: string): string {
-  return (STEP_LABEL as Record<string, string>)[id] ?? id;
+/** The rules' step list; the contract's default list for a host that sent none. */
+export function stepsOf(rules: Pick<BatchRules, "steps">): BatchStepSpec[] {
+  return rules.steps ?? DEFAULT_BATCH_STEPS;
 }
 
-/** One step as the foot reads it; `batch` lends the land step its
+/** The spec of a step the state names: the rules' row, else one made from
+ *  the id (its kind when the id is one, else a shell step). */
+export function specOf(id: string, specs: readonly BatchStepSpec[]): BatchStepSpec {
+  const spec = specs.find((s) => s.id === id);
+  if (spec) return spec;
+  const kind = BatchStepKindSchema.safeParse(id);
+  return { id, name: id, kind: kind.success ? kind.data : "shell" };
+}
+
+/** One step as the foot reads it; `batch` lends a land step its
  *  progress (landed of all) when the host sent none. */
-export function liveStep(step: BatchStep, batch: Pick<BatchState, "landed" | "pending">): LiveStep {
+export function liveStep(step: BatchStep, batch: Pick<BatchState, "landed" | "pending">, specs: readonly BatchStepSpec[] = []): LiveStep {
   const wire = step as WireStep;
+  const spec = specOf(wire.id, specs);
   const status: StepStatus = (wire.status as string) === "done" ? "passed" : wire.status;
   const ended = wire.endedAt ?? (status === "passed" || status === "failed" || status === "skipped" ? (wire.at ?? undefined) : undefined);
   const started = wire.startedAt ?? (status === "running" ? (wire.at ?? undefined) : undefined);
   let progress = wire.progress ?? undefined;
-  if (!progress && step.id === "land") {
+  if (!progress && spec.kind === "land") {
     const total = batch.landed.length + batch.pending.length;
     if (total > 0) progress = { done: batch.landed.length, total };
   }
   return {
-    id: step.id,
+    id: wire.id,
+    name: spec.name,
+    kind: spec.kind,
+    ...(spec.run ? { run: spec.run } : {}),
     status,
     detail: step.detail,
     startedAt: started ?? undefined,
@@ -71,8 +91,21 @@ export function liveStep(step: BatchStep, batch: Pick<BatchState, "landed" | "pe
   };
 }
 
+/** A step the rules name that the host has not started: pending, no log. */
+export function pendingStep(spec: BatchStepSpec): LiveStep {
+  return { id: spec.id, name: spec.name, kind: spec.kind, ...(spec.run ? { run: spec.run } : {}), status: "pending", detail: "", log: [] };
+}
+
 export function liveSteps(batch: BatchState): LiveStep[] {
-  return batch.steps.map((s) => liveStep(s, batch));
+  const specs = stepsOf(batch.rules);
+  const seen = new Set<string>();
+  const steps: LiveStep[] = [];
+  for (const step of batch.steps) {
+    seen.add(step.id);
+    steps.push(liveStep(step, batch, specs));
+  }
+  for (const spec of specs) if (!seen.has(spec.id)) steps.push(pendingStep(spec));
+  return steps;
 }
 
 /** "4m 12s" for a finished step, the elapsed for a running one at `now`,

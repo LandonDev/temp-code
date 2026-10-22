@@ -2,7 +2,7 @@ import { X } from "./icons";
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
-import { LAYER } from "../lib/layers";
+import { LAYER, LayerContext } from "../lib/layers";
 
 export type ModalSize = "sm" | "md";
 
@@ -182,14 +182,17 @@ export function Modal(props: Props) {
     };
   }, []);
 
+  // A menu opened inside the panel reads the dialog's layer and sits above it.
   return createPortal(
-    <div ref={layerRef} className="fixed inset-0" style={{ zIndex: LAYER.dialog }}>
-      <div
-        className="modal-backdrop absolute inset-0 bg-black/40"
-        onMouseDown={busy ? undefined : onClose}
-      />
-      <ModalPanel {...props} />
-    </div>,
+    <LayerContext.Provider value={LAYER.dialog}>
+      <div ref={layerRef} className="fixed inset-0" style={{ zIndex: LAYER.dialog }}>
+        <div
+          className="modal-backdrop absolute inset-0 bg-black/40"
+          onMouseDown={busy ? undefined : onClose}
+        />
+        <ModalPanel {...props} />
+      </div>
+    </LayerContext.Provider>,
     document.body,
   );
 }

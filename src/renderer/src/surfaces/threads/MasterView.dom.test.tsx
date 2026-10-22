@@ -9,9 +9,11 @@ import type { SessionMeta, ServerPush } from "../../lib/tcserver/types";
 
 /**
  * The master view on a fixture batch: the sections, the rows' two lines
- * and per-type bodies, a plan and its build as one row, the child pane
- * with Back, the rules foot from `batch.get` and `batch.setRules`, and the
- * add sheet's `session.create`. The session store is real, fed through
+ * and per-type bodies, a plan and its build as one row, a child's full
+ * view with Back, the title bar's menus (archive through `batch.archive`,
+ * adopt through `batch.adopt`), the rules foot from `batch.get` and
+ * `batch.setRules` with the master's step list, and the add sheet's
+ * `session.create`. The session store is real, fed through
  * one fake link that answers each thread's rows; the chat, the child's
  * transcript and the heavy pickers are stand-ins.
  */
@@ -34,6 +36,8 @@ const { startThread, batch, link } = vi.hoisted(() => {
       if (method === "session.notes.get") return Promise.resolve({ text: this.notes.get(p.sessionId ?? "") ?? "", updatedAt: null, path: null } as T);
       if (method === "batch.get") return Promise.resolve(batch as T);
       if (method === "batch.setRules") return Promise.resolve({ ...batch, rules: (params as { rules: unknown }).rules } as T);
+      if (method === "batch.archive") return Promise.resolve({ archived: [] } as T);
+      if (method === "batch.adopt") return Promise.resolve(batch as T);
       if (method === "resources.listAll") return Promise.resolve({ resources: [] } as T);
       return Promise.resolve(null as T);
     }
@@ -56,7 +60,15 @@ const { startThread, batch, link } = vi.hoisted(() => {
   link: new FakeLink(),
   batch: {
     masterId: "m",
-    rules: { land: "as-they-finish", steps: [{ id: "land", name: "Land", kind: "land" }, { id: "gate", name: "Gate", kind: "gate" }, { id: "release", name: "Release", kind: "release" }], then: "notify" },
+    rules: {
+      land: "as-they-finish",
+      steps: [
+        { id: "land", name: "Merging", kind: "land" },
+        { id: "gate", name: "Gate", kind: "gate" },
+        { id: "release", name: "Release", kind: "release" },
+      ],
+      then: "notify",
+    },
     steps: [
       { id: "land", status: "passed", detail: "ios/foundations, ios/contract", at: 1, startedAt: 1_000_000, endedAt: 1_120_000 },
       { id: "gate", status: "running", detail: "", at: 2, startedAt: 1_120_000, progress: { done: 3, total: 7, label: "vitest" }, log: ["✓ typecheck 12s", "vitest: 3 of 7 files"] },
@@ -187,7 +199,7 @@ afterEach(() => {
 /** The store lists the fixture through the link; every row's transcript
  *  is fetched from `link.rows`, so the bodies fold from events. */
 function seed(children: SessionMeta[]): void {
-  const all = [meta({ id: "m", title: "iOS batch 2", cwd: "/repo", masterId: null as unknown as string, status: "idle" }), ...children];
+  const all = [meta({ id: "m", title: "iOS batch 2", cwd: "/repo", masterId: null as unknown as string, isMaster: true, status: "idle" }), ...children];
   link.metas = all.map(({ environmentId: _e, ...wire }) => wire);
   sessionStore.attach(link);
 }
@@ -308,27 +320,88 @@ describe("the master view", () => {
     expect(row?.getAttribute("data-type")).toBe("implementation");
   });
 
-  it("a row opens its thread in the right pane, and Back or Escape returns to the chat", async () => {
-    seed([meta({ id: "c-run", title: "Home", status: "running" })]);
+  it("a row opens its thread's full view in the board's place, and Back or Escape returns to the board where it was", async () => {
+    seed([meta({ id: "c-run", title: "Home", status: "running" }), meta({ id: "c-two", title: "Inbox", status: "running" })]);
     render(<MasterView {...props} />);
     await flush();
     expect(screen.getByTestId("chat")).toBeTruthy();
+    const scroller = document.querySelector("[data-board-scroller]") as HTMLElement;
+    scroller.scrollTop = 140;
     fireEvent.click(screen.getByRole("button", { name: /Home/ }));
     await flush();
     const pane = document.querySelector("[data-child-pane='c-run']");
     expect(pane).toBeTruthy();
+    // The whole view: no board, no master chat beside it.
     expect(screen.queryByTestId("chat")).toBeNull();
+    expect(document.querySelector("[data-board]")).toBeNull();
     expect(document.querySelector("[data-child-view='c-run']")).toBeTruthy();
     expect(document.querySelector("[data-transcript='c-run']")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Home/ }).getAttribute("aria-current")).toBe("true");
+    expect(screen.getByRole("button", { name: /Back/ }).getAttribute("title")).toBe("Back to the board (Esc)");
     // Nothing opened a tab.
     expect(props.onOpenSession).not.toHaveBeenCalled();
     fireEvent.keyDown(pane!, { key: "Escape" });
+    expect(screen.getByTestId("chat")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Inbox/ })).toBeTruthy();
+    expect((document.querySelector("[data-board-scroller]") as HTMLElement).scrollTop).toBe(140);
+    fireEvent.click(screen.getByRole("button", { name: /Home/ }));
+    await flush();
+    fireEvent.keyDown(document.querySelector("[data-child-pane='c-run']")!, { key: "Enter", metaKey: true });
     expect(screen.getByTestId("chat")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Home/ }));
     await flush();
     fireEvent.click(screen.getByRole("button", { name: /Back/ }));
     expect(screen.getByTestId("chat")).toBeTruthy();
+  });
+
+  it("the title bar's menu archives the done threads or every one through batch.archive, with the live count", async () => {
+    seed([
+      meta({ id: "c-run", title: "Home", status: "running" }),
+      meta({ id: "c-done", title: "Done one", status: "idle" }),
+      meta({ id: "c-done2", title: "Done two", status: "done" }),
+      meta({ id: "c-stop", title: "Stopped", status: "stopped" }),
+    ]);
+    render(<MasterView {...props} />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Batch actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Archive done…" }));
+    let dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Archive 2 done threads?")).toBeTruthy();
+    expect(within(dialog).queryByRole("checkbox")).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Archive 2" }));
+    await flush();
+    expect(link.calls.find((c) => c.method === "batch.archive")?.params).toEqual({ masterId: "m", which: "done", removeResources: false });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Batch actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Archive all…" }));
+    dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Archive all 4 threads?")).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Archive 4" }));
+    await flush();
+    expect(link.calls.filter((c) => c.method === "batch.archive").at(-1)?.params).toEqual({ masterId: "m", which: "all", removeResources: false });
+  });
+
+  it("Add existing thread… lists the project's roots in no batch and adopts the picked ones through batch.adopt", async () => {
+    seed([meta({ id: "c-run", title: "Home", status: "running" })]);
+    link.metas.push(
+      ...[
+        meta({ id: "free", title: "A stray chat", threadType: "chat", masterId: null as unknown as string, createdAt: 9 }),
+        meta({ id: "free2", title: "Another", masterId: null as unknown as string, createdAt: 10 }),
+        meta({ id: "taken", title: "In another batch", masterId: "m2", createdAt: 11 }),
+      ].map(({ environmentId: _e, ...wire }) => wire),
+    );
+    sessionStore.attach(link);
+    render(<MasterView {...props} />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: /Thread/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add existing thread…" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getAllByRole("checkbox").map((c) => c.closest("label")?.textContent)).toEqual(["A stray chatChat", "AnotherImplementation"]);
+    expect(within(dialog).queryByText("In another batch")).toBeNull();
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /A stray chat/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add" }));
+    await flush();
+    expect(link.calls.find((c) => c.method === "batch.adopt")?.params).toEqual({ masterId: "m", sessionIds: ["free"] });
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("the child pane's line sends into the thread, and Message lands in it", async () => {
@@ -352,9 +425,7 @@ describe("the master view", () => {
     expect(link.calls.some((c) => c.method === "batch.get" && (c.params as { masterId: string }).masterId === "m")).toBe(true);
     const foot = document.querySelector("[data-batch-foot]")!;
     expect(within(foot as HTMLElement).getByText("When the threads are done")).toBeTruthy();
-    expect(foot.querySelector("[data-rules]")?.textContent).toBe(
-      "Branches land as they finish, then gate and release. Then you are notified.",
-    );
+    expect(foot.querySelector("[data-rules]")?.textContent).toBe("Branches land as they finish, then Gate and Release. Then you are notified.");
     // The gate runs, so the foot is a console: the landed step above it with its time, the release still ahead.
     expect(foot.getAttribute("data-foot-mode")).toBe("console");
     const console_ = foot.querySelector("[data-console='gate']")!;
@@ -391,7 +462,7 @@ describe("the master view", () => {
     }
   });
 
-  it("the console follows new lines until the person scrolls up, and Stop writes batch.stop", async () => {
+  it("the console follows new lines until the person scrolls up, and Stop writes batch.stopStep with the step's id", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
     render(<MasterView {...props} />);
     await flush();
@@ -418,7 +489,7 @@ describe("the master view", () => {
     const foot = document.querySelector("[data-batch-foot]") as HTMLElement;
     fireEvent.click(within(foot).getByRole("button", { name: "Stop" }));
     await flush();
-    expect(link.calls.find((c) => c.method === "batch.stop")?.params).toEqual({ masterId: "m" });
+    expect(link.calls.find((c) => c.method === "batch.stopStep")?.params).toEqual({ masterId: "m", stepId: "gate" });
   });
 
   it("the foot grows to the console when a step starts and shrinks back to the row when every step is done", async () => {
@@ -458,6 +529,56 @@ describe("the master view", () => {
     expect([...foot().querySelectorAll("[data-steps-row] [data-step-time]")].map((e) => e.textContent)).toEqual(["2m", "4m 12s", "8s"]);
   });
 
+  it("the steps are the master's list in order: a shell step reads by its name idle, and runs in the same console with its command", async () => {
+    seed([meta({ id: "c-run", title: "Home", status: "running" })]);
+    render(<MasterView {...props} />);
+    await flush();
+    const rules = {
+      land: "as-they-finish",
+      then: "notify",
+      summary: "Build, deploy to dev, smoke",
+      steps: [
+        { id: "land", name: "Merging", kind: "land" },
+        { id: "build", name: "Build the plugin", kind: "shell", run: "gradle build" },
+        { id: "deploy-dev", name: "Deploy to dev", kind: "shell", run: "./deploy dev" },
+      ],
+    };
+    const t = batch.steps[1].startedAt!;
+    const push = (steps: unknown[]) =>
+      act(() => {
+        link.push({ push: "batch", state: { ...batch, rules, steps } } as unknown as ServerPush);
+      });
+    push([
+      { id: "land", status: "passed", detail: "", at: 1, startedAt: t - 120_000, endedAt: t },
+      { id: "build", status: "pending", detail: "", at: null, log: [] },
+    ]);
+    const foot = document.querySelector("[data-batch-foot]")!;
+    expect(foot.getAttribute("data-foot-mode")).toBe("idle");
+    expect(foot.querySelector("[data-rules]")?.textContent).toBe("Branches land as they finish, then Build the plugin and Deploy to dev. Then you are notified.");
+    expect(within(foot as HTMLElement).getByText("Build, deploy to dev, smoke")).toBeTruthy();
+    // The row names every step of the list in order, the one the host has not seen yet pending at the end.
+    expect([...foot.querySelectorAll("[data-steps-row] li")].map((li) => `${li.getAttribute("data-step")}:${li.getAttribute("data-step-status")}:${li.textContent}`)).toEqual([
+      "land:passed:Merging2m",
+      "build:pending:Build the plugin",
+      "deploy-dev:pending:Deploy to dev",
+    ]);
+    push([
+      { id: "land", status: "passed", detail: "", at: 1, startedAt: t - 120_000, endedAt: t },
+      { id: "build", status: "running", detail: "", at: 2, startedAt: t, log: ["> gradle build", "BUILD SUCCESSFUL"] },
+      { id: "deploy-dev", status: "pending", detail: "", at: null, log: [] },
+    ]);
+    expect(foot.getAttribute("data-foot-mode")).toBe("console");
+    const console_ = foot.querySelector("[data-console='build']")!;
+    const head = console_.querySelector("[data-console-head]")!;
+    expect(within(head as HTMLElement).getByText("Build the plugin")).toBeTruthy();
+    expect(head.querySelector("[data-step-run]")?.textContent).toBe("gradle build");
+    expect(console_.querySelector("[data-log]")?.textContent).toBe("> gradle build\nBUILD SUCCESSFUL");
+    expect(within(console_ as HTMLElement).getByText("Deploy to dev").closest("li")?.getAttribute("data-step-status")).toBe("pending");
+    fireEvent.click(within(foot as HTMLElement).getByRole("button", { name: "Stop" }));
+    await flush();
+    expect(link.calls.find((c) => c.method === "batch.stopStep")?.params).toEqual({ masterId: "m", stepId: "build" });
+  });
+
   it("a failed step stays open with its last lines and the failure in red until Hide", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
     render(<MasterView {...props} />);
@@ -489,23 +610,66 @@ describe("the master view", () => {
     expect(foot.querySelector("[data-steps-row] [data-step='gate']")?.getAttribute("data-step-status")).toBe("failed");
   });
 
-  it("Edit opens the rules and Save writes batch.setRules", async () => {
+  it("Edit opens the rules: the steps reorder, a built-in and a shell step are added, one is removed, and Save writes the list", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
     render(<MasterView {...props} />);
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     const dialog = screen.getByRole("dialog");
+    const ids = () => [...dialog.querySelectorAll("[data-rule-step]")].map((li) => li.getAttribute("data-rule-step"));
+    expect(ids()).toEqual(["land", "gate", "release"]);
+    expect(within(dialog).getByRole("button", { name: "Move Merging up" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move Release up" }));
+    expect(ids()).toEqual(["land", "release", "gate"]);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove Gate" }));
+    expect(ids()).toEqual(["land", "release"]);
+    // A built-in kind lands at once with its name.
+    fireEvent.change(within(dialog).getByLabelText("Add a step"), { target: { value: "deploy" } });
+    expect(ids()).toEqual(["land", "release", "deploy"]);
+    // A shell step asks for a name and a command first; Add stays off until both are there.
+    fireEvent.change(within(dialog).getByLabelText("Add a step"), { target: { value: "shell" } });
+    const addStep = within(dialog).getByRole("button", { name: "Add step" });
+    expect(addStep.hasAttribute("disabled")).toBe(true);
+    fireEvent.change(within(dialog).getByLabelText("Step name"), { target: { value: "Smoke test" } });
+    fireEvent.change(within(dialog).getByLabelText("Command"), { target: { value: "bun run smoke" } });
+    fireEvent.change(within(dialog).getByLabelText("Working directory"), { target: { value: "/srv/plugin" } });
+    fireEvent.click(addStep);
+    expect(ids()).toEqual(["land", "release", "deploy", "shell"]);
+    expect(dialog.querySelector("[data-rule-step='shell'] [data-rule-line]")?.textContent).toBe("bun run smoke");
+    fireEvent.change(within(dialog).getByLabelText("Step 3 name"), { target: { value: "Deploy to the box" } });
     fireEvent.click(within(dialog).getByRole("radio", { name: "All at once" }));
     fireEvent.change(within(dialog).getByPlaceholderText(/One line/), { target: { value: "Land all seven" } });
-    expect(within(dialog).getByText(/Branches land together once every thread is done, then gate and release/)).toBeTruthy();
+    expect(dialog.querySelector("[data-rules-preview]")?.textContent).toBe(
+      "Branches land together once every thread is done, then Release, Deploy to the box and Smoke test. Then you are notified.",
+    );
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await flush();
     const call = link.calls.find((c) => c.method === "batch.setRules");
     expect(call?.params).toEqual({
       masterId: "m",
-      rules: { land: "all-at-once", steps: [{ id: "land", name: "Land", kind: "land" }, { id: "gate", name: "Gate", kind: "gate" }, { id: "release", name: "Release", kind: "release" }], then: "notify", summary: "Land all seven" },
+      rules: {
+        land: "all-at-once",
+        then: "notify",
+        summary: "Land all seven",
+        steps: [
+          { id: "land", name: "Merging", kind: "land" },
+          { id: "release", name: "Release", kind: "release" },
+          { id: "deploy", name: "Deploy to the box", kind: "deploy" },
+          { id: "shell", name: "Smoke test", kind: "shell", run: "bun run smoke", cwd: "/srv/plugin" },
+        ],
+      },
     });
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("Save stays off while a step has no name", async () => {
+    seed([meta({ id: "c-run", title: "Home", status: "running" })]);
+    render(<MasterView {...props} />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Step 2 name"), { target: { value: " " } });
+    expect(within(dialog).getByRole("button", { name: "Save" }).hasAttribute("disabled")).toBe(true);
   });
 
   it("the add sheet creates the thread under the master with the brief as its first message", async () => {
@@ -513,6 +677,7 @@ describe("the master view", () => {
     render(<MasterView {...props} />);
     await flush();
     fireEvent.click(screen.getByRole("button", { name: /Thread/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "New thread…" }));
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText("Add a thread to iOS batch 2")).toBeTruthy();
     // The brief has focus; every effort of the model's own ladder is offered.

@@ -22,7 +22,7 @@ import { typeWord, type MasterRowModel } from "./useMasterModel";
  * the thread is doing, and at the right the provider's mark, the model,
  * its effort and context. Under an implementation its task list; under a
  * research or orchestration thread one summary line. A click opens the
- * thread in the master view's right pane; hover shows Message, Pause or
+ * thread's full view in the board's place; hover shows Message, Pause or
  * Resume, Stop and Remove. Nothing on the row is separated by a dot.
  */
 
@@ -32,7 +32,6 @@ export function MasterRow({
   fleetSize,
   landed,
   hostName,
-  open,
   onOpen,
 }: {
   row: MasterRowModel;
@@ -42,9 +41,7 @@ export function MasterRow({
   landed: boolean;
   /** The thread's host when it is not the master's; null otherwise. */
   hostName: string | null;
-  /** This row's thread is the one open in the right pane. */
-  open: boolean;
-  /** Open the thread in the pane; `focus` lands in its composer. */
+  /** Open the thread's full view; `focus` lands in its composer. */
   onOpen: (id: string, focus?: boolean) => void;
 }) {
   const { meta, plan, title } = row;
@@ -96,8 +93,7 @@ export function MasterRow({
 
   return (
     <div
-      className={`group relative rounded-lg transition-colors duration-100 hover:bg-content/5 ${open ? "bg-content/5" : ""}`}
-      data-open={open || undefined}
+      className="group relative rounded-lg transition-colors duration-100 hover:bg-content/5"
       data-status={meta.status}
       data-type={meta.threadType ?? undefined}
       data-plan={plan?.id}
@@ -106,7 +102,6 @@ export function MasterRow({
         type="button"
         onClick={() => onOpen(meta.id)}
         onKeyDown={onKey}
-        aria-current={open || undefined}
         className="grid w-full grid-cols-[16px_1fr] gap-x-2 rounded-lg px-3 py-2 text-left"
       >
         {/* Line one: the type's glyph, the title, the tally. */}

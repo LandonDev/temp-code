@@ -5,34 +5,25 @@ import { Check, ChevronDown, CircleDashed, Square } from "../../../chrome/icons"
 import { TweenHeight } from "../../../motion";
 import { MatrixSpinner, StatusDot, useNow } from "../bits";
 import { RulesDialog } from "./RulesDialog";
-import {
-  consoleStep,
-  liveSteps,
-  nearBottom,
-  progressText,
-  stepLabel,
-  stepTime,
-  statusWord,
-  tailLines,
-  type LiveStep,
-  type StepStatus,
-} from "./steps";
+import { consoleStep, liveSteps, nearBottom, progressText, stepTime, statusWord, tailLines, type LiveStep, type StepStatus } from "./steps";
 import { blockedLine, rulesSentence, type Rules } from "./useMasterModel";
 
 /**
  * Under the list, what happens when the threads are done (docs/LAYOUT.md
  * "Master"): the master's summary line when it wrote one and the rules as
- * one sentence with Edit beside it, then the steps. Idle, the steps are
- * one quiet row: state, name and, once finished, how long it took. The
- * moment a step runs the foot grows to its console: the step's name with
- * its elapsed ticking, its progress and a bar when the total is known,
- * its console lines newest at the bottom (following until the person
- * scrolls up), Stop at the right; the steps before it keep their state
- * and time in a line above. A failed step stays open with its last lines
- * until folded. Every step done, the foot shrinks back to the row. The
- * grow and shrink are the app's height tween (200 ms, the ease-out
+ * one sentence with Edit beside it, then the steps the master wrote, in
+ * order. Idle, the steps are one quiet row: state, name and, once
+ * finished, how long it took. The moment a step runs the foot grows to
+ * its console, the same for a shell step as for a publish: the step's
+ * name with its elapsed ticking, its progress and a bar when the total is
+ * known, its console lines newest at the bottom (following until the
+ * person scrolls up), Stop at the right; the steps before it keep their
+ * state and time in a line above. A failed step stays open with its last
+ * lines until folded. Every step done, the foot shrinks back to the row.
+ * The grow and shrink are the app's height tween (200 ms, the ease-out
  * curve), a snap under reduced motion. Read from `batch.get` and the
- * `batch` push; Edit writes `batch.setRules`, Stop `batch.stop`.
+ * `batch` push; Edit writes `batch.setRules`, Stop `batch.stopStep` with
+ * the step's id.
  */
 
 const LOG_LINES = 200;
@@ -54,9 +45,9 @@ export function BatchFoot({
   /** A child's title by id, for the blocked line. */
   titleOf: (id: string) => string | undefined;
   onSave: (rules: Rules) => Promise<void>;
-  onStop: () => Promise<void>;
+  onStop: (stepId: string) => Promise<void>;
 }) {
-  const rules = batch.rules as Rules;
+  const rules = batch.rules;
   const [editing, setEditing] = useState(false);
   const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set());
   const steps = liveSteps(batch);
@@ -107,7 +98,7 @@ export function BatchFoot({
             steps={steps}
             active={active}
             now={now}
-            onStop={onStop}
+            onStop={() => onStop(active.id)}
             onFold={() => setFolded(new Set([...folded, active.id]))}
           />
         ) : null}
@@ -127,7 +118,7 @@ function StepLine({ step, now }: { step: LiveStep; now: number }) {
   return (
     <li className="flex items-center gap-1.5 whitespace-nowrap" data-step={step.id} data-step-status={step.status}>
       <StepGlyph status={step.status} dim />
-      <span className={pending ? "text-content/40" : step.status === "failed" ? "text-danger" : "text-content/70"}>{stepLabel(step.id)}</span>
+      <span className={pending ? "text-content/40" : step.status === "failed" ? "text-danger" : "text-content/70"}>{step.name}</span>
       {word && step.status !== "failed" ? <span className="text-content/40">{word}</span> : null}
       {time ? (
         <span className="tabular-nums text-content/40" data-step-time>
@@ -195,7 +186,12 @@ function Console({
         <span className="flex w-3 justify-center">
           <StepGlyph status={active.status} />
         </span>
-        <span className={`font-medium ${failed ? "text-danger" : "text-content"}`}>{stepLabel(active.id)}</span>
+        <span className={`font-medium ${failed ? "text-danger" : "text-content"}`}>{active.name}</span>
+        {active.kind === "shell" && active.run ? (
+          <span className="min-w-0 truncate font-mono text-[11px] text-content/40" data-step-run>
+            {active.run}
+          </span>
+        ) : null}
         {failed ? <span className="text-danger">failed</span> : null}
         <span className="tabular-nums text-content/50" data-step-time>
           {stepTime(active, now)}

@@ -9,7 +9,7 @@ import {
   type Ref,
 } from "react";
 import { createPortal } from "react-dom";
-import { LAYER } from "../lib/layers";
+import { LAYER, useLiftedLayer } from "../lib/layers";
 import { ghostOut } from "./Modal";
 import {
   placePopover,
@@ -148,6 +148,8 @@ export function Popover({
   children,
   ...rest
 }: Props) {
+  // Opened from inside a dialog, the surface sits above the dialog's layer.
+  const zIndex = useLiftedLayer(layer);
   const surface = useRef<HTMLDivElement | null>(null);
   const [position, setPosition] = useState<PopoverPosition | null>(null);
   const anchorRef = useRef(anchor);
@@ -259,7 +261,7 @@ export function Popover({
         else if (ref) ref.current = el;
       }}
       data-popover-side={position?.side ?? side}
-      style={{ ...placed, zIndex: layer, ...style }}
+      style={{ ...placed, zIndex, ...style }}
       className={`${position ? "popover-open " : ""}${bare ? "" : `${SURFACE} `}${className ?? ""}`}
     >
       {children}

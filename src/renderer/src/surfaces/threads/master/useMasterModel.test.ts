@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_BATCH_RULES } from "@server/shared/contract-batch";
+import { DEFAULT_BATCH_RULES, DEFAULT_BATCH_STEPS } from "@server/shared/contract-batch";
 import type { SessionMeta, SessionStatus } from "../../../lib/tcserver/types";
 import {
   batchFromPush,
@@ -99,15 +99,28 @@ describe("a plan and its build are one row", () => {
 
 describe("the rules sentence", () => {
   it("reads the defaults as one sentence", () => {
-    expect(rulesSentence(DEFAULT_BATCH_RULES)).toBe("Branches land as they finish, then gate and release. Then you are notified.");
-  });
-  it("names every step the rules ask for, and none when they ask for nothing", () => {
-    const steps = [...DEFAULT_BATCH_RULES.steps, { id: "deploy", name: "Deploy to the box", kind: "deploy" as const }];
-    expect(rulesSentence({ land: "all-at-once", steps, then: "archive-children" })).toBe(
-      "Branches land together once every thread is done, then gate, release and deploy to the box. Then the threads are archived.",
+    expect(rulesSentence({ ...DEFAULT_BATCH_RULES, steps: DEFAULT_BATCH_STEPS })).toBe(
+      "Branches land as they finish, then Gate and Release. Then you are notified.",
     );
-    expect(rulesSentence({ land: "as-they-finish", steps: [DEFAULT_BATCH_RULES.steps[0]], then: "notify" })).toBe(
+  });
+  it("names every step the master wrote in its words, and none when the list is the merge alone", () => {
+    expect(
+      rulesSentence({
+        land: "all-at-once",
+        then: "archive-children",
+        steps: [
+          { id: "land", name: "Merging", kind: "land" },
+          { id: "build", name: "Build the plugin", kind: "shell", run: "gradle build" },
+          { id: "deploy", name: "Deploy to dev", kind: "shell", run: "./deploy" },
+          { id: "smoke", name: "Smoke test", kind: "shell", run: "./smoke" },
+        ],
+      }),
+    ).toBe("Branches land together once every thread is done, then Build the plugin, Deploy to dev and Smoke test. Then the threads are archived.");
+    expect(rulesSentence({ land: "as-they-finish", then: "notify", steps: [{ id: "land", name: "Merging", kind: "land" }] })).toBe(
       "Branches land as they finish, nothing runs after. Then you are notified.",
+    );
+    expect(rulesSentence({ land: "as-they-finish", then: "notify", steps: [{ id: "gate", name: "Gate", kind: "gate" }] })).toBe(
+      "The branches are left unmerged, then Gate. Then you are notified.",
     );
   });
   it("names the blocking child", () => {

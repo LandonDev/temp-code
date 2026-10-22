@@ -112,7 +112,9 @@ export function duration(ms: number): string {
 
 /** Epoch ms on the shared second hand while `active` and the pane is on screen; a still 0 otherwise. */
 export function useNow(active: boolean): number {
-  return useClock(active && usePaneVisible());
+  // Both hooks run every render: `active &&` would skip the second one.
+  const visible = usePaneVisible();
+  return useClock(active && visible);
 }
 
 /** 750ms diagonal wave over a 3×3 matrix of cells. `tint` recolours the
