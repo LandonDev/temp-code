@@ -2059,3 +2059,26 @@ public struct BuildUpdate: Codable, Hashable, Sendable {
         self.lines = lines
     }
 }
+
+public struct ThreadNotesDoc: Codable, Hashable, Sendable {
+    public let text: String
+    public let updatedAt: Double?
+    public let path: String?
+
+    public init(text: String, updatedAt: Double?, path: String?) {
+        self.text = text
+        self.updatedAt = updatedAt
+        self.path = path
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case text, updatedAt, path
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(text, forKey: .text)
+        try container.encode(updatedAt, forKey: .updatedAt)
+        try container.encode(path, forKey: .path)
+    }
+}

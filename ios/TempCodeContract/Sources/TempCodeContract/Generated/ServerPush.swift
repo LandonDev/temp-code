@@ -114,6 +114,16 @@ public struct QueuePush: Codable, Hashable, Sendable {
     }
 }
 
+public struct NotesPush: Codable, Hashable, Sendable {
+    public let sessionId: String
+    public let doc: ThreadNotesDoc
+
+    public init(sessionId: String, doc: ThreadNotesDoc) {
+        self.sessionId = sessionId
+        self.doc = doc
+    }
+}
+
 public struct SessionRemovedPush: Codable, Hashable, Sendable {
     public let sessionIds: [String]
 
@@ -153,6 +163,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
     case liveEdits(LiveEditsPush)
     case builds(BuildsPush)
     case queue(QueuePush)
+    case notes(NotesPush)
     case sessionRemoved(SessionRemovedPush)
     case sessionMoved(SessionMovedPush)
     case bootResume(BootResumePush)
@@ -174,6 +185,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case "live-edits": self = .liveEdits(try LiveEditsPush(from: decoder))
         case "builds": self = .builds(try BuildsPush(from: decoder))
         case "queue": self = .queue(try QueuePush(from: decoder))
+        case "notes": self = .notes(try NotesPush(from: decoder))
         case "session-removed": self = .sessionRemoved(try SessionRemovedPush(from: decoder))
         case "session-moved": self = .sessionMoved(try SessionMovedPush(from: decoder))
         case "boot-resume": self = .bootResume(try BootResumePush(from: decoder))
@@ -191,6 +203,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case .liveEdits(let value): try Self.encode(tag: "live-edits", value, to: encoder)
         case .builds(let value): try Self.encode(tag: "builds", value, to: encoder)
         case .queue(let value): try Self.encode(tag: "queue", value, to: encoder)
+        case .notes(let value): try Self.encode(tag: "notes", value, to: encoder)
         case .sessionRemoved(let value): try Self.encode(tag: "session-removed", value, to: encoder)
         case .sessionMoved(let value): try Self.encode(tag: "session-moved", value, to: encoder)
         case .bootResume(let value): try Self.encode(tag: "boot-resume", value, to: encoder)

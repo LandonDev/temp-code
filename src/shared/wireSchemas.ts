@@ -10,7 +10,7 @@ import {
   type Reasoning
 } from './catalog'
 import type { Capability } from './capabilities'
-import type { QueuedMessage, ServerPush } from './contract'
+import type { QueuedMessage, ServerPush, ThreadNotesDoc } from './contract'
 import type {
   FsMedia,
   GitHubPrDiff,
@@ -733,6 +733,13 @@ export const QueuePushSchema = push('queue', {
   sessionId: z.string(),
   items: z.array(QueuedMessageSchema)
 })
+/** A thread's notes as `session.notes.get` answers and the `notes` push carries (contract.ts ThreadNotesDoc). */
+export const ThreadNotesDocSchema = z.object({
+  text: z.string(),
+  updatedAt: z.number().nullable(),
+  path: z.string().nullable()
+})
+export const NotesPushSchema = push('notes', { sessionId: z.string(), doc: ThreadNotesDocSchema })
 export const SessionRemovedPushSchema = push('session-removed', { sessionIds: z.array(z.string()) })
 export const SessionMovedPushSchema = push('session-moved', { id: z.string(), sessionIds: z.array(z.string()), to: z.string() })
 export const BootResumePushSchema = push('boot-resume', { count: z.number().int(), at: z.number().int() })
@@ -748,6 +755,7 @@ export const RemotePushSchema = z.discriminatedUnion('push', [
   LiveEditsPushSchema,
   BuildsPushSchema,
   QueuePushSchema,
+  NotesPushSchema,
   SessionRemovedPushSchema,
   SessionMovedPushSchema,
   BootResumePushSchema
@@ -826,5 +834,7 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof QueuePushSchema, PushOf<'queue'>>>,
   Expect<Mirror<typeof SessionRemovedPushSchema, PushOf<'session-removed'>>>,
   Expect<Mirror<typeof SessionMovedPushSchema, PushOf<'session-moved'>>>,
-  Expect<Mirror<typeof BootResumePushSchema, PushOf<'boot-resume'>>>
+  Expect<Mirror<typeof BootResumePushSchema, PushOf<'boot-resume'>>>,
+  Expect<Mirror<typeof ThreadNotesDocSchema, ThreadNotesDoc>>,
+  Expect<Mirror<typeof NotesPushSchema, PushOf<'notes'>>>
 ]

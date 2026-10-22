@@ -176,6 +176,7 @@ export const SUBSET: SubsetEntry[] = [
   type('BuildOutput', W.BuildOutputSchema),
   type('BuildRun', W.BuildRunSchema),
   type('BuildUpdate', W.BuildUpdateSchema),
+  type('ThreadNotesDoc', W.ThreadNotesDocSchema),
   union('ServerPush', W.RemotePushSchema, 'push', 'Push'),
   // methods: params from contract.ts, outputs from the handlers in server/index.ts
   method('catalog.get', W.CatalogSchema),
@@ -214,6 +215,8 @@ export const SUBSET: SubsetEntry[] = [
   method('queue.update', z.null()),
   method('queue.reorder', z.null()),
   method('queue.steer', z.null()),
+  method('session.notes.get', W.ThreadNotesDocSchema),
+  method('session.notes.set', W.ThreadNotesDocSchema),
   // a photo or file from the phone lands in the thread's attachment dir
   method('attachment.begin', AttachmentBeginAnswerSchema),
   method('attachment.chunk', AttachmentChunkAnswerSchema),

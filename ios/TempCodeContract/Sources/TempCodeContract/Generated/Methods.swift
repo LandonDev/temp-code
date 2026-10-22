@@ -670,6 +670,36 @@ public enum Methods {
         public typealias Output = NoOutput
     }
 
+    public enum SessionNotesGet: ContractMethod {
+        public static let name = "session.notes.get"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sessionId: String
+
+            public init(sessionId: String) {
+                self.sessionId = sessionId
+            }
+        }
+
+        public typealias Output = ThreadNotesDoc
+    }
+
+    public enum SessionNotesSet: ContractMethod {
+        public static let name = "session.notes.set"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sessionId: String
+            public let text: String
+
+            public init(sessionId: String, text: String) {
+                self.sessionId = sessionId
+                self.text = text
+            }
+        }
+
+        public typealias Output = ThreadNotesDoc
+    }
+
     public enum AttachmentBegin: ContractMethod {
         public static let name = "attachment.begin"
 
