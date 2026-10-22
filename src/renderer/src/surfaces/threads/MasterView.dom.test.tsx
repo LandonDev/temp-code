@@ -34,6 +34,7 @@ const { startThread, batch, link, boxLink, hosts, catalog, rowReads } = vi.hoist
     rows = new Map<string, EventRow[]>();
     notes = new Map<string, string>();
     digests = new Map<string, unknown>();
+    boardChildren: unknown[] = [];
     calls: { method: string; params: unknown }[] = [];
     private pushListeners = new Set<(push: ServerPush) => void>();
     request<T>(method: string, params?: unknown): Promise<T> {
@@ -43,7 +44,7 @@ const { startThread, batch, link, boxLink, hosts, catalog, rowReads } = vi.hoist
       if (method === "session.events") return Promise.resolve((this.rows.get(p.sessionId ?? "") ?? []) as T);
       if (method === "session.notes.get") return Promise.resolve({ text: this.notes.get(p.sessionId ?? "") ?? "", updatedAt: null, path: null } as T);
       if (method === "batch.get") return Promise.resolve(batch as T);
-      if (method === "batch.board") return Promise.resolve({ children: [], digests: Object.fromEntries(this.digests), state: batch } as T);
+      if (method === "batch.board") return Promise.resolve({ children: this.boardChildren, digests: Object.fromEntries(this.digests), state: batch } as T);
       if (method === "batch.setRules") return Promise.resolve({ ...batch, rules: (params as { rules: unknown }).rules } as T);
       if (method === "batch.archive") return Promise.resolve({ attempted: [], succeeded: [], failed: [] } as T);
       if (method === "batch.adopt") {
@@ -249,6 +250,7 @@ beforeEach(() => {
     l.rows.clear();
     l.notes.clear();
     l.digests.clear();
+    l.boardChildren = [];
   }
   rowReads.length = 0;
   hosts.environments = [{ id: "local", name: "This Mac" }];
@@ -427,6 +429,19 @@ describe("the master view", () => {
     await flush();
     expect(within(screen.getByRole("button", { name: /Live Activity/ })).getByText("has a question — Ad Hoc or Debug?")).toBeTruthy();
     expect(within(screen.getByRole("button", { name: /Inbox/ })).getByText("Rate limited until 14:00")).toBeTruthy();
+  });
+
+  it("a child the answer names before the store has it is a row, and leaves when its host removes it", async () => {
+    seed([meta({ id: "c-run", title: "Home", status: "running", createdAt: 1 })]);
+    const { environmentId: _e, ...wire } = meta({ id: "c-new", title: "Just started", status: "starting", createdAt: 2 });
+    link.boardChildren = [wire];
+    render(<MasterView {...props} />);
+    await flush();
+    expect(screen.getByRole("button", { name: /Just started/ })).toBeTruthy();
+    act(() => link.push({ push: "session-removed", sessionIds: ["c-new"] } as ServerPush));
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(screen.queryByRole("button", { name: /Just started/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /Home/ })).toBeTruthy();
   });
 
   it("a board push changes that one row's digest", async () => {

@@ -546,6 +546,12 @@ export function useBoard(masterId: string, environmentId: string): Board {
         if (push.masterId === masterId) digests.set(push.sessionId, push.digest);
         return;
       }
+      // A child gone from its host leaves the answer's rows with it.
+      if (push.push === "session-removed") {
+        const gone = new Set(push.sessionIds);
+        setData((d) => (d.children.some((c) => gone.has(c.id)) ? { ...d, children: d.children.filter((c) => !gone.has(c.id)) } : d));
+        return;
+      }
       const next = batchFromPush(push, masterId);
       if (!next) return;
       const folded = foldBatchPush(held.current, next);
