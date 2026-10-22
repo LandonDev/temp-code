@@ -131,8 +131,6 @@ public struct SystemLine: Sendable, Hashable {
     /// line. Last and defaulted: every `SystemLine(seq:ts:kind:text:detail:stopped:)`
     /// call stays as it is.
     public var notice: NoticeEvent? = nil
-    /// `error` rows: the host's verdict (failureKind.ts), when it had one.
-    public var failure: Failure? = nil
     /// A held review whose merge was later forced through (a merged-anyway notice with the same runId).
     public var reviewResolved: Bool = false
 }
