@@ -51,6 +51,7 @@
     "script:e2e-remote-media": "bun scripts/e2e-remote-media.ts",
     "script:e2e-merge-review": "bun scripts/e2e-merge-review.ts",
     "script:e2e-launch-mirror": "bun scripts/e2e-launch-mirror.ts",
+    "script:e2e-loading-states": "bun scripts/e2e-loading-states.ts",
     "script:e2e-session-move": "bun scripts/e2e-session-move.ts",
     "script:e2e-mac-bridge": "bun scripts/e2e-mac-bridge.ts",
     "script:e2e-cross-host-threads": "bun scripts/e2e-cross-host-threads.ts",
