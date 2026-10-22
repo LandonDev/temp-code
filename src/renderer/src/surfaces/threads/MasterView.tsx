@@ -124,15 +124,15 @@ export function MasterView(props: ThreadViewProps) {
   const [pausing, setPausing] = useState(false);
   const [focusComposer, setFocusComposer] = useState(false);
   const hasBoard = layout.rows.length > 0;
-  // The rows' metas are read when a menu or a dialog needs them, never per frame.
+  // The rows' metas (and the adopt candidates) are read, and followed, only
+  // while a menu or a dialog needs them; never per frame of the board.
   const reading = menu !== null || adding || archiving !== null || pausing;
-  const rows = useMemo(() => (reading ? rowModels(layout) : []), [reading, layout]);
+  const metas = useSessionMetasWhen(reading || adopting);
+  const rows = useMemo(() => (reading ? rowModels(layout) : []), [reading, layout, metas]);
   const children = useMemo(() => rows.map((r) => r.meta), [rows]);
   const toPause = pausableRows(rows);
   const paused = pausedRows(rows);
   const done = doneRows(rows);
-  // The adopt candidates are read only while the add menu or its sheet is up.
-  const metas = useSessionMetasWhen(menu?.kind === "add" || adopting);
   const workspaces = useWorkspaces();
   const projects = useProjects();
   const paired = useMemo(() => (meta ? pairedProjectIds(meta, workspaces, projects) : new Set<string>()), [meta, workspaces, projects]);

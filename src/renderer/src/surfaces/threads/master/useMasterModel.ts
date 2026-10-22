@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   BATCH_STEP_LOG_LINES,
   DEFAULT_BATCH_RULES,
@@ -11,6 +11,7 @@ import {
 import { batchThreadId, remoteArchivePlan, type ArchiveWhich } from "./boardActions";
 import { stepsOf } from "./steps";
 import { registry } from "../../../lib/connection";
+import { useEnvironmentStatuses } from "../../../lib/connection/status";
 import * as commands from "../../../lib/tcserver/commands";
 import type { EnvironmentStatus } from "../../../lib/connection/types";
 import { isLiveStatus, type AgentTone } from "../../../lib/threads/agents";
@@ -588,10 +589,13 @@ const refSig = (r: BoardRowRef): string =>
 
 /**
  * The board's rows from the store's metas, the answer's children it does
- * not hold and the batch's own list, as refs. `previous` lends every ref
- * whose signature is unchanged, and the whole layout when nothing moved,
- * so the list re-renders only when a row joins, leaves, changes section,
- * plan or host.
+ * not hold and the batch's own list, as refs. The list speaks for a child
+ * the store does not hold, or holds from a host out of reach (`live`); a
+ * child the store follows live keeps its own host and status, which are
+ * newer than the list's last answer. `previous` lends every ref whose
+ * signature is unchanged, and the whole layout when nothing moved, so the
+ * list re-renders only when a row joins, leaves, changes section, plan or
+ * host.
  */
 export function boardLayout(
   masterId: string,
@@ -600,7 +604,12 @@ export function boardLayout(
   answer: readonly SessionMeta[],
   listed: readonly BatchChild[],
   previous: BoardLayout = EMPTY_LAYOUT,
+  live: (environmentId: string) => boolean = () => false,
 ): BoardLayout {
+  listed = listed.filter((c) => {
+    const held = metaOf(c.sessionId);
+    return !held || !live(held.environmentId);
+  });
   const extra = answer.filter((m) => !metaOf(m.id) && m.masterId === masterId && !m.parentId && !m.archived);
   const children = extra.length ? [...masterChildrenOf(metas, masterId), ...extra].sort((a, b) => a.createdAt - b.createdAt) : masterChildrenOf(metas, masterId);
   const answered = extra.length ? lookupOf(extra) : () => undefined;
@@ -639,10 +648,15 @@ const subscribeMetas = (listener: () => void): (() => void) => sessionStore.onMe
 const storeMetaOf = (id: string): SessionMeta | null => sessionStore.metaOf(id);
 
 /** The board's layout, the same object until a row joins, leaves, or changes section, plan or host. */
-export function useBoardLayout(masterId: string, answer: readonly SessionMeta[], listed: readonly BatchChild[]): BoardLayout {
+export function useBoardLayout(
+  masterId: string,
+  answer: readonly SessionMeta[],
+  listed: readonly BatchChild[],
+  live: (environmentId: string) => boolean,
+): BoardLayout {
   const cache = useRef<BoardLayout>(EMPTY_LAYOUT);
   return useSyncExternalStore(subscribeMetas, () => {
-    cache.current = boardLayout(masterId, sessionStore.metas(), storeMetaOf, answer, listed, cache.current);
+    cache.current = boardLayout(masterId, sessionStore.metas(), storeMetaOf, answer, listed, cache.current, live);
     return cache.current;
   });
 }
@@ -687,7 +701,9 @@ export type MasterModel = {
 export function useMasterModel(master: Pick<SessionMeta, "id" | "environmentId">): MasterModel {
   const board = useBoard(master.id, master.environmentId);
   const listed = useMemo(() => batchChildrenOf(board.state), [board.state]);
-  const layout = useBoardLayout(master.id, board.children, listed);
+  const statuses = useEnvironmentStatuses();
+  const live = useCallback((environmentId: string) => statuses.get(environmentId)?.transport === "open", [statuses]);
+  const layout = useBoardLayout(master.id, board.children, listed, live);
   const landed = useMemo(() => new Set(board.state.landed), [board.state.landed]);
   const [openId, setOpenId] = useState<string | null>(null);
   // A child that left the batch (archived, removed) closes its view.

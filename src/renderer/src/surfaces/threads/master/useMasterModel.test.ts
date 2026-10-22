@@ -337,6 +337,15 @@ describe("the board's layout", () => {
     expect(moved.counts).toEqual({ needsYou: 1, running: 1, queued: 0, done: 0 });
   });
 
+  it("lets the store's live meta speak for a child it follows from a host in reach, and the list for one out of reach", () => {
+    const a = child("le", "waiting", { createdAt: 1 });
+    const listed = [{ sessionId: "le", environmentId: "local", status: "running" as SessionStatus }];
+    const inReach = boardLayout("m", [a], of([a]), [], listed, undefined, () => true);
+    expect(inReach.rows[0]).toMatchObject({ group: "needsYou", override: null });
+    const outOfReach = boardLayout("m", [a], of([a]), [], listed, undefined, () => false);
+    expect(outOfReach.rows[0]).toMatchObject({ group: "running", override: { environmentId: "local", status: "running" } });
+  });
+
   it("takes a child the answer names and the store does not hold as a row of its own, and the batch's word on a host", () => {
     const a = child("lc", "running", { createdAt: 1 });
     const answered = child("ld", "queued", { createdAt: 2 });
