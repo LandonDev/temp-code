@@ -1470,6 +1470,7 @@ public struct BatchState: Codable, Hashable, Sendable {
         public enum Why: RawRepresentable, Codable, Hashable, Sendable {
             case errored
             case stopped
+            case failed
             case unreachable
             /// A value this build does not know; `rawValue` keeps it.
             case unknown(String)
@@ -1478,6 +1479,7 @@ public struct BatchState: Codable, Hashable, Sendable {
                 switch rawValue {
                 case "errored": self = .errored
                 case "stopped": self = .stopped
+                case "failed": self = .failed
                 case "unreachable": self = .unreachable
                 default: self = .unknown(rawValue)
                 }
@@ -1487,6 +1489,7 @@ public struct BatchState: Codable, Hashable, Sendable {
                 switch self {
                 case .errored: "errored"
                 case .stopped: "stopped"
+                case .failed: "failed"
                 case .unreachable: "unreachable"
                 case .unknown(let value): value
                 }
