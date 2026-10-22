@@ -59,6 +59,24 @@ extension DynamicTypeSize {
     }
 }
 
+/// The diff's own motion, named as the kit names its rows: nothing in the
+/// screen inlines a curve or a duration.
+enum DiffMotion {
+    /// Previous and next hunk: 250 ms on the strong ease-out `(0.23, 1, 0.32, 1)`
+    /// to the header's exact offset.
+    static let jump: Animation = .timingCurve(0.23, 1, 0.32, 1, duration: 0.25)
+
+    /// The finger on a hunk: an interactive spring, so a hunk caught
+    /// mid-settle blends to the finger instead of jumping.
+    static let track: Animation = .interactiveSpring(response: 0.15, dampingFraction: 0.86, blendDuration: 0.25)
+
+    /// The settle after a release: no bounce, 0.35 s plus 0.4 ms per point
+    /// of travel, never past 0.6 s, so a long flick glides and a nudge stops.
+    static func settle(travel: CGFloat) -> Animation {
+        .spring(duration: min(0.6, 0.35 + travel * 0.0004), bounce: 0)
+    }
+}
+
 /// The desktop's line tints: success and destructive at 10 % behind the
 /// line, a 2 pt bar of the full color on the leading edge, the sign bold in
 /// the color, context text at 70 %.

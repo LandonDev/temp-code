@@ -141,10 +141,8 @@ struct DiffScreen: View {
                     Spacer()
                     Text("\(current + 1) of \(hunkCount)")
                         .font(.footnote)
-                        .monospacedDigit()
                         .foregroundStyle(.secondary)
-                        .contentTransition(.numericText())
-                        .animation(reduceMotion ? nil : Motion.crossFade, value: current)
+                        .numeric(current)
                         .accessibilityLabel("Hunk \(current + 1) of \(hunkCount)")
                     Spacer()
                     Button {
@@ -221,7 +219,7 @@ struct DiffScreen: View {
         if reduceMotion {
             position.scrollTo(y: starts[target])
         } else {
-            withAnimation(.timingCurve(0.23, 1, 0.32, 1, duration: 0.25)) { position.scrollTo(y: starts[target]) }
+            withAnimation(DiffMotion.jump) { position.scrollTo(y: starts[target]) }
         }
     }
 
@@ -475,7 +473,7 @@ private struct DiffBody: View {
         if reduceMotion {
             offsets[state.hunk] = target
         } else {
-            withAnimation(Self.settle(travel: 0)) { offsets[state.hunk] = target }
+            withAnimation(DiffMotion.settle(travel: 0)) { offsets[state.hunk] = target }
         }
     }
 
@@ -511,7 +509,7 @@ private struct DiffBody: View {
                 if reduceMotion {
                     offsets[hunk.id] = x
                 } else {
-                    withAnimation(.interactiveSpring(response: 0.15, dampingFraction: 0.86, blendDuration: 0.25)) { offsets[hunk.id] = x }
+                    withAnimation(DiffMotion.track) { offsets[hunk.id] = x }
                 }
             }
             .onEnded { value in
@@ -524,15 +522,9 @@ private struct DiffBody: View {
                     offsets[hunk.id] = target
                 } else {
                     let travel = abs(target - (offsets[hunk.id] ?? 0))
-                    withAnimation(Self.settle(travel: travel)) { offsets[hunk.id] = target }
+                    withAnimation(DiffMotion.settle(travel: travel)) { offsets[hunk.id] = target }
                 }
             }
-    }
-
-    /// The settle after a release: no bounce, 0.35 s plus 0.4 ms per point
-    /// of travel, never past 0.6 s, so a long flick glides and a nudge stops.
-    static func settle(travel: CGFloat) -> Animation {
-        .spring(duration: min(0.6, 0.35 + travel * 0.0004), bounce: 0)
     }
 
     /// Past either end the text follows the finger less and less: Apple's
