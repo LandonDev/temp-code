@@ -253,6 +253,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'batch.get': 'read',
   'batch.children': 'read',
   'batch.setRules': 'operate',
+  'batch.stopStep': 'operate',
   'linear.setToken': 'admin',
   // A paired phone registers its own push token (thread L6): the key's own row, read suffices.
   'remote.push.register': 'read',

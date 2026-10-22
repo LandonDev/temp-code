@@ -1,5 +1,5 @@
 /**
- * Cut a local release: `bun scripts/release.ts "one-line notes" [--full]`.
+ * Cut a local release: `bun scripts/release.ts "one-line notes" [--full] [--push]`.
  *
  * Gates on a clean tree and the gate's `commit` tier (scripts/gate.ts:
  * typecheck, vitest and a real build, run at once), plus the `publish` tier
@@ -10,7 +10,12 @@
  * train: nothing here reaches users. The installed app updates from GitHub
  * releases only, which `bun run release:publish` (scripts/release-publish.sh)
  * cuts from a tagged commit after the `publish` tier — never install or swap
- * /Applications/TempCode.app from here.
+ * /Applications/TempCode.app from here. `--push` (a batch's release step on
+ * the box, batch.ts) pushes the branch and the new tag to origin after
+ * tagging, so the Mac can publish the commit; the post-commit train never
+ * passes it. Off macOS the gate skips its Mac-only publish steps (hub, ios,
+ * ios-client) with a note; the Mac's publish gate runs them before anything
+ * ships.
  */
 import { execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -27,9 +32,10 @@ const run = (cmd: string, args: string[]): string =>
 
 const args = process.argv.slice(2)
 const full = args.includes('--full')
+const push = args.includes('--push')
 const notes = args.find((a) => !a.startsWith('--'))?.trim()
 if (!notes) {
-  console.error('usage: bun scripts/release.ts "one-line release notes" [--full]')
+  console.error('usage: bun scripts/release.ts "one-line release notes" [--full] [--push]')
   process.exit(1)
 }
 
@@ -71,4 +77,9 @@ writeFileSync('package.json', pkg.replace(/^  "version": "1\.0\.\d+",$/m, `  "ve
 run('git', ['add', 'release.json', 'package.json'])
 run('git', ['commit', '-m', `release: v${n} — ${notes}`])
 run('git', ['tag', `release-${n}`])
+if (push) {
+  const branch = run('git', ['rev-parse', '--abbrev-ref', 'HEAD']).trim()
+  execFileSync('git', ['push', 'origin', branch, `release-${n}`], { stdio: 'inherit', env })
+  console.log(`pushed ${branch} and release-${n} to origin`)
+}
 console.log(`released v${n} (tag release-${n}, package.json 1.0.${n}) — publish it with: bun run release:publish`)

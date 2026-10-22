@@ -15,34 +15,48 @@ import { z } from 'zod'
 const request = <M extends string, P extends z.ZodType>(method: M, params: P) =>
   z.object({ id: z.string(), method: z.literal(method), params })
 
-export const BatchStepIdSchema = z.enum(['land', 'gate', 'release', 'deploy'])
+export const BatchStepIdSchema = z.enum(['land', 'gate', 'release', 'publish', 'deploy'])
 export type BatchStepId = z.infer<typeof BatchStepIdSchema>
 
-export const BatchStepStatusSchema = z.enum(['pending', 'running', 'done', 'failed'])
+export const BatchStepStatusSchema = z.enum(['pending', 'running', 'passed', 'failed', 'skipped'])
 export type BatchStepStatus = z.infer<typeof BatchStepStatusSchema>
+
+/** How many log lines a step keeps (the newest). */
+export const BATCH_STEP_LOG_LINES = 200
 
 export const BatchStepSchema = z.object({
   id: BatchStepIdSchema,
   status: BatchStepStatusSchema,
-  /** one line for the board's foot: "3 of 5 branches landed", the failed step's last log line */
+  /** one line for the board's foot: "3 of 5 branches landed", the failed step's last log line, why it was skipped */
   detail: z.string(),
   /** when the step last changed, or null while pending */
-  at: z.number().int().nullable()
+  at: z.number().int().nullable(),
+  /** epoch ms the step started running */
+  startedAt: z.number().int().optional(),
+  /** epoch ms the step passed, failed or was skipped */
+  endedAt: z.number().int().optional(),
+  /** land: branches merged of total; gate: the tier's steps done of total with the running one as label; deploy: its stage */
+  progress: z.object({ done: z.number().int(), total: z.number().int(), label: z.string().optional() }).optional(),
+  /** the step's console lines as they arrive, the newest BATCH_STEP_LOG_LINES kept */
+  log: z.array(z.string())
 })
 export type BatchStep = z.infer<typeof BatchStepSchema>
 
 /**
  * What happens when the batch is done, decided by the master (the
- * `batch_rules` tool) or the person (`batch.setRules`), run by the app.
+ * `batch_rules` tool) or the person (`batch.setRules`), run by the app in
+ * this order: land → gate → release → publish → deploy → then.
  */
 export const BatchRulesSchema = z.object({
   /** merge each branch when its thread lands, or hold every merge until all are done */
   land: z.enum(['as-they-finish', 'all-at-once']),
   /** run the commit tier once on the project head after the last landing */
   gate: z.boolean(),
-  /** tag with scripts/release.ts after a green gate */
+  /** tag with scripts/release.ts after a green gate, and push master and the tag */
   release: z.boolean(),
-  /** after a release: fire the box deploy trigger (docs/box.md "Deploy from the app", host.deploy) */
+  /** run the Mac's publish job for the released commit over the peer link (a person's decision: off unless asked) */
+  publish: z.boolean(),
+  /** after a release: fire the box deploy trigger (docs/box.md "Deploy from the app", host.deploy): v1.0.N when published, master otherwise */
   deploy: z.enum(['none', 'box']),
   /** when everything above is done: notify the person, or also archive the done children */
   then: z.enum(['notify', 'archive-children']),
@@ -55,6 +69,7 @@ export const DEFAULT_BATCH_RULES: BatchRules = {
   land: 'as-they-finish',
   gate: true,
   release: true,
+  publish: false,
   deploy: 'none',
   then: 'notify'
 }
@@ -63,7 +78,7 @@ export const DEFAULT_BATCH_RULES: BatchRules = {
 export const BatchStateSchema = z.object({
   masterId: z.string(),
   rules: BatchRulesSchema,
-  /** the steps in order: land, gate, release, and deploy when the rules ask for it */
+  /** the five steps in order: land, gate, release, publish, deploy (one the rules turn off ends `skipped`) */
   steps: z.array(BatchStepSchema),
   /** children whose branch has landed on the project branch */
   landed: z.array(z.string()),
@@ -78,17 +93,15 @@ export const BatchStateSchema = z.object({
 })
 export type BatchState = z.infer<typeof BatchStateSchema>
 
-/** The steps the rules name, in order. */
-export function stepsFor(rules: Pick<BatchRules, 'deploy'>): BatchStepId[] {
-  return rules.deploy === 'box' ? ['land', 'gate', 'release', 'deploy'] : ['land', 'gate', 'release']
-}
+/** A step nobody has run: pending, no log. */
+export const emptyStep = (id: BatchStepId): BatchStep => ({ id, status: 'pending', detail: '', at: null, log: [] })
 
 /** The batch nobody has run yet: every step pending, nothing landed. */
 export function emptyBatch(masterId: string, children: readonly string[] = [], rules: BatchRules = DEFAULT_BATCH_RULES): BatchState {
   return {
     masterId,
     rules: { ...rules },
-    steps: stepsFor(rules).map((id) => ({ id, status: 'pending', detail: '', at: null })),
+    steps: BatchStepIdSchema.options.map(emptyStep),
     landed: [],
     pending: [...children],
     held: [],
@@ -102,6 +115,7 @@ export function rulesLine(rules: BatchRules): string {
   const parts = [rules.land === 'all-at-once' ? 'land all at once' : 'land as they finish']
   parts.push(rules.gate ? 'gate' : 'no gate')
   parts.push(rules.release ? 'release' : 'no release')
+  if (rules.publish) parts.push('publish from the Mac')
   if (rules.deploy === 'box') parts.push('deploy to the box')
   parts.push(rules.then === 'archive-children' ? 'then archive the children' : 'then notify')
   return parts.join(' · ')
@@ -113,5 +127,7 @@ export const BatchRequestSchemas = [
   // → { children: SessionMeta[] }: the root threads carrying this masterId, unarchived.
   request('batch.children', z.object({ masterId: z.string() })),
   // → BatchState: set some or all of the rules; every change is the `batch` push.
-  request('batch.setRules', z.object({ masterId: z.string(), rules: BatchRulesSchema.partial() }))
+  request('batch.setRules', z.object({ masterId: z.string(), rules: BatchRulesSchema.partial() })),
+  // → { stopped: boolean }: stop the running step that can be stopped (the Mac's publish job).
+  request('batch.stopStep', z.object({ masterId: z.string() }))
 ] as const

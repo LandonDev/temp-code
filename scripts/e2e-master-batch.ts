@@ -321,8 +321,8 @@ await turn(master.id, 'This is a test. Call the batch_gate tool ONCE with no arg
 const answer = toolResults(master.id).find((t) => /^passed in/.test(t))
 check('batch_gate answered passed and the tag', !!answer && answer.includes('release-1 tagged'), toolResults(master.id).at(-1)?.slice(0, 160))
 state = batches.get(master.id)
-check('land done with the unlanded children left out', steps(state).land === 'done: 1 of 4 landed · 3 left out', steps(state).land)
-check('gate and release done with the release detail', steps(state).gate.startsWith('done: passed in') && steps(state).release === 'done: release-1 tagged', JSON.stringify(steps(state)))
+check('land done with the unlanded children left out', steps(state).land === 'passed: 1 of 4 landed · 3 left out', steps(state).land)
+check('gate and release done with the release detail', steps(state).gate.startsWith('passed: passed in') && steps(state).release === 'passed: release-1 tagged', JSON.stringify(steps(state)))
 const masterGates = notices(master.id, 'gate').map((n) => [n.gate?.step, n.gate?.ok])
 check('gate and release rows on the master', JSON.stringify(masterGates) === JSON.stringify([['gate', true], ['release', true]]), JSON.stringify(masterGates))
 

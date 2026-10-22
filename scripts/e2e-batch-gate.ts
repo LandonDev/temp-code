@@ -188,7 +188,7 @@ await turn(b.id, 'The typecheck is fixed now. Call the merge_branch tool ONCE mo
 check('b.txt on origin/master', originHas('b.txt'))
 check('a green typecheck row followed the red one', notices(b.id, 'gate').map((n) => n.gate?.ok).join(',') === 'false,true')
 state = batches.get(master.id)
-check('land done, 2 of 2 landed', steps(state).land === 'done: 2 of 2 landed' && state.pending.length === 0, JSON.stringify(steps(state)))
+check('land done, 2 of 2 landed', steps(state).land === 'passed: 2 of 2 landed' && state.pending.length === 0, JSON.stringify(steps(state)))
 
 // ── 4. the master gates and releases ─────────────────────────────────────
 console.log('\n[4] batch_gate on the master')
@@ -197,7 +197,7 @@ await turn(master.id, 'This is a test. Call the batch_gate tool ONCE with no arg
 const answer = toolResults(master.id).find((t) => /^passed in/.test(t))
 check('batch_gate answered passed and the tag', !!answer && answer.includes('release-1 tagged'), toolResults(master.id).at(-1)?.slice(0, 160))
 state = batches.get(master.id)
-check('every step done', steps(state).gate.startsWith('done: passed in') && steps(state).release === 'done: release-1 tagged', JSON.stringify(steps(state)))
+check('every step done', steps(state).gate.startsWith('passed: passed in') && steps(state).release === 'passed: release-1 tagged', JSON.stringify(steps(state)))
 const details = pushes.slice(before).map((p) => p.steps.find((s) => s.id === 'gate')!.detail)
 check('the gate streamed its ✓ lines into the step detail (batch push)', details.includes('✓ typecheck 1s') && details.includes('✓ build 3s'), JSON.stringify(details))
 const masterGates = notices(master.id, 'gate').map((n) => [n.gate?.step, n.gate?.ok])

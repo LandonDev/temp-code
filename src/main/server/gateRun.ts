@@ -27,6 +27,8 @@ export interface GateRunOptions {
   branch: string
   /** `gate`: `--since <ref>`, the commit tier's path map decides the tiers */
   since?: string
+  /** `release`: push the branch and the release tag to origin after tagging (`--push`) */
+  push?: boolean
   /** `release`: the notes */
   notes?: string
   onLine?: (line: string) => void
@@ -79,14 +81,14 @@ export function gateEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv
   return out
 }
 
-export function gateCommand(opts: Pick<GateRunOptions, 'step' | 'since' | 'notes'>): string[] {
+export function gateCommand(opts: Pick<GateRunOptions, 'step' | 'since' | 'notes' | 'push'>): string[] {
   switch (opts.step) {
     case 'typecheck':
       return ['run', 'typecheck']
     case 'gate':
       return ['scripts/gate.ts', '--tier', 'commit', ...(opts.since ? ['--since', opts.since] : [])]
     case 'release':
-      return ['scripts/release.ts', opts.notes?.trim() || 'batch release']
+      return ['scripts/release.ts', opts.notes?.trim() || 'batch release', ...(opts.push ? ['--push'] : [])]
   }
 }
 

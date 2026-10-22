@@ -624,7 +624,7 @@ export async function startServer(
   // A master's batch (batch.ts): the steps its children never run; merge_branch
   // tells it what landed. Review before merge (mergeReview.ts): merge_branch's
   // engine, one per host, the gate out of the children inside it.
-  const batchRuns = new Batches({ registry, store, deploy: (ref) => hostJobs.deploy.deploy(ref) })
+  const batchRuns = new Batches({ registry, store, deploy: hostJobs.deploy })
   batchRuns.attach()
   setBatches(batchRuns)
   setMergeReviews(new MergeReviews({ registry, store, onLanded: (l) => batchRuns.landed(l), hold: (s, l) => batchRuns.hold(s, l) }))
@@ -1028,7 +1028,7 @@ export async function startServer(
         if (req.method === 'deploy.master') return sendFrame({ id: req.id, ok: true, result: masterRelease.current() })
         const planned = handleProjectPlan(req, projectPlans)
         if (planned.handled) return sendFrame({ id: req.id, ok: true, result: planned.result })
-        const batched = handleBatch(req, batchRuns, registry)
+        const batched = await handleBatch(req, batchRuns, registry)
         if (batched.handled) return sendFrame({ id: req.id, ok: true, result: batched.result })
         const macBridged = handleMacBridge(req, macBridge)
         if (macBridged.handled) return sendFrame({ id: req.id, ok: true, result: macBridged.result })
@@ -2103,6 +2103,8 @@ export async function startServer(
   // restart never starts a queued batch on top of the resumed turns.
   const bootResume = bootResumer.run().catch((error) => console.error('[resume] boot resume failed:', error))
   registry.scheduler.holdUntil(bootResume)
+  // A batch's deploy that restarted this process: closed from the trigger's files, then `then` (batch.ts).
+  void bootResume.then(() => batchRuns.resumeAfterBoot()).catch((err) => console.log(`[batch] resume: ${err instanceof Error ? err.message : String(err)}`))
 
   // Codex reaches the app tools through the stdio bridge (M10). The app's
   // own location covers dev (repo root) and packaged
