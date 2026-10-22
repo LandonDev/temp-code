@@ -81,6 +81,53 @@ export const RESET_GRACE_MS = 15_000
 export const OUT_RETRY_MS = 10 * 60_000
 /** A reset further away than this re-arms on the next build instead. */
 const RESET_HORIZON_MS = 24 * 3_600_000
+/** The most often one socket hears the `accounts` push (index.ts): every
+ *  routed answer moves a usage window, and the rows need no more than this. */
+export const ACCOUNTS_PUSH_MS = 5_000
+
+/** What a snapshot shows, less the build's own clock: equal digests are the same picture. */
+export function snapshotDigest(snap: AccountsSnapshot): string {
+  return JSON.stringify({ ...snap, updatedAt: 0 })
+}
+
+/**
+ * The `accounts` push one socket hears: the newest snapshot, at most once per
+ * `everyMs`, and never the one it already has. The first goes out at once; a
+ * change inside the window waits for its end and goes out as the newest.
+ */
+export function accountsPusher(
+  send: (snapshot: AccountsSnapshot) => void,
+  everyMs = ACCOUNTS_PUSH_MS,
+  now: () => number = Date.now
+): { offer(snapshot: AccountsSnapshot): void; dispose(): void } {
+  let sent: AccountsSnapshot | null = null
+  let sentAt = -Infinity
+  let pending: AccountsSnapshot | null = null
+  let timer: NodeJS.Timeout | null = null
+  const flush = (): void => {
+    timer = null
+    if (!pending || pending === sent) return
+    sent = pending
+    pending = null
+    sentAt = now()
+    send(sent)
+  }
+  return {
+    offer(snapshot) {
+      if (snapshot === sent) return
+      pending = snapshot
+      if (timer) return
+      const wait = sentAt + everyMs - now()
+      if (wait <= 0) flush()
+      else timer = setTimeout(flush, wait)
+    },
+    dispose() {
+      if (timer) clearTimeout(timer)
+      timer = null
+      pending = null
+    }
+  }
+}
 
 const LIVE_TTL: Partial<Record<ServiceId, number>> = { 'claude-code': 10 * 60_000 }
 const liveCache = new Map<ServiceId, { at: number; value: { profile: ProfileView; report: UsageReport } | null }>()
@@ -155,6 +202,10 @@ export class AccountsService {
   private snap: AccountsSnapshot = emptyAccounts()
   private built = false
   private listeners = new Set<(snapshot: AccountsSnapshot) => void>()
+  private pickableListeners = new Set<(snapshot: AccountsSnapshot) => void>()
+  /** The last picture the listeners heard, and the last pickable set. */
+  private digest: string | null = null
+  private pickable: string | null = null
   private watcher: FSWatcher | null = null
   private debounce: NodeJS.Timeout | null = null
   private poll: NodeJS.Timeout | null = null
@@ -173,9 +224,52 @@ export class AccountsService {
     return this.snap
   }
 
+  /** Every rebuild whose picture changed (a usage window moved, a profile
+   *  came or went); a rebuild that read the same picture tells nobody. */
   onChange(listener: (snapshot: AccountsSnapshot) => void): () => void {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
+  }
+
+  /** A rebuild that changed what a thread could be routed to (pickableDigest):
+   *  the open threads re-pick then, never on a usage or headroom number. */
+  onPickable(listener: (snapshot: AccountsSnapshot) => void): () => void {
+    this.pickableListeners.add(listener)
+    return () => this.pickableListeners.delete(listener)
+  }
+
+  /**
+   * What a pick can choose between, per provider: the profiles, the pin, and
+   * which accounts are out (a 401 mark, an expired sign-in, a 429 cooldown)
+   * or have a window full and not yet reset. Usage percentages and headroom
+   * numbers are left out: they move with every answer and only reorder the
+   * accounts a pick already had.
+   */
+  pickableDigest(snap: AccountsSnapshot = this.snap): string {
+    const now = this.deps.now()
+    const out: Record<string, unknown> = {}
+    for (const p of ACCOUNT_PROVIDERS) {
+      const v = snap.providers[p]
+      out[p] = {
+        pinned: v.pinned,
+        out: [...this.outFor(p)].sort(),
+        throttled: Object.entries(v.headroom ?? {})
+          .filter(([, h]) => (h.throttledUntil ?? 0) > now)
+          .map(([name]) => name)
+          .sort(),
+        profiles: v.profiles
+          .map((profile) => {
+            const report = v.reports.find((r) => r.profileName === profile.name)
+            const full = (report?.windows ?? [])
+              .filter((w) => w.usedPercent >= 100 && !(w.resetsAt !== undefined && w.resetsAt <= now))
+              .map((w) => w.label)
+              .sort()
+            return [profile.name, !!report?.expired, full]
+          })
+          .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+      }
+    }
+    return JSON.stringify(out)
   }
 
   /** Watch Aliax's files (one fd) and poll while nobody else will. */
@@ -436,7 +530,17 @@ export class AccountsService {
       this.snap = snap
       this.built = true
       this.armReset()
-      for (const l of this.listeners) l(snap)
+      // Every routed answer nudges a rebuild; only a changed picture is news.
+      const digest = snapshotDigest(snap)
+      if (digest !== this.digest) {
+        this.digest = digest
+        for (const l of this.listeners) l(snap)
+      }
+      const pickable = this.pickableDigest(snap)
+      if (pickable !== this.pickable) {
+        this.pickable = pickable
+        for (const l of this.pickableListeners) l(snap)
+      }
     })
     this.chain = run.catch(() => {})
     return run

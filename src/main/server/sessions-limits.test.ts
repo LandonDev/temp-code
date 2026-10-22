@@ -396,7 +396,7 @@ it('archiving a running thread persists status idle, since the dropped handle ne
   expect(statuses.at(-1)).toEqual({ type: 'status', status: 'idle' })
 })
 
-it('refreshAccounts reads the sessions table and the live load once per pass, however many threads it re-picks', async () => {
+it('refreshAccounts reads the live load once per pass and the sessions table never, however many threads it re-picks', async () => {
   // Like AccountsService: the live load comes in the options, else it is read.
   // Read per thread (a table scan, then a walk of every handle), a snapshot
   // cost threads × rows: 16 s of blocked loop on 1.8k threads × 3.2k rows.
@@ -411,11 +411,12 @@ it('refreshAccounts reads the sessions table and the live load once per pass, ho
   const list = vi.spyOn(store, 'listSessions')
   const load = vi.spyOn(registry, 'liveLoad')
   registry.refreshAccounts()
-  expect(list).toHaveBeenCalledTimes(1)
+  // The pass walks the registry's index (sessionIndex.ts), never the table.
+  expect(list).not.toHaveBeenCalled()
   expect(load).toHaveBeenCalledTimes(1)
 })
 
-it('a refresh pass that moves every thread rebuilds the session index once and pushes each moved thread once', async () => {
+it('a refresh pass that moves every thread reads no table and pushes each moved thread once', async () => {
   let account = 'a@x.com'
   registry.limits = {
     routeFor: () => ({ route: { account, pin: false }, current: account }),
@@ -429,8 +430,8 @@ it('a refresh pass that moves every thread rebuilds the session index once and p
   registry.onMeta((meta) => pushed.push(`${meta.id}:${meta.account}`))
   const list = vi.spyOn(store, 'listSessions')
   registry.refreshAccounts()
-  // One read for the pass, one index rebuild for all twenty pushes.
-  expect(list).toHaveBeenCalledTimes(2)
+  // Each moved row patches the index in place: no read for the pass or its pushes.
+  expect(list).not.toHaveBeenCalled()
   // Threads still starting keep their pick; every moved one is pushed once.
   const moved = ids.filter((id) => registry.get(id)?.account === 'b@x.com')
   expect(moved.length).toBeGreaterThan(10)

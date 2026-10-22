@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { configure, pinProfile, pinnedProfile, vault, type ServiceView, type UsageReport } from 'aliax-core'
-import { AccountsService, OUT_RETRY_MS, RESET_GRACE_MS, type AccountsDeps } from './accounts'
+import { AccountsService, accountsPusher, ACCOUNTS_PUSH_MS, OUT_RETRY_MS, RESET_GRACE_MS, type AccountsDeps } from './accounts'
+import type { AccountHeadroom, AccountsSnapshot } from '@shared/accounts'
 
 /**
  * A throwaway Aliax data dir with two Claude accounts and one Codex account,
@@ -349,5 +350,80 @@ describe('AccountsService', () => {
     await svc.list()
     expect(svc.outFor('claude')).toEqual(['a@x.com'])
     expect(svc.substitute('claude-code', 'a@x.com', null)).toBe('b@x.com')
+  })
+
+  it('a rebuild that reads the same picture tells nobody; usage and headroom numbers move the rows, never the threads', async () => {
+    ;({ cleanup } = fixture())
+    let used = 40
+    let room = 0.9
+    let throttledUntil: number | undefined
+    const now = 1_800_000_000_000
+    const usage = vi.fn<AccountsDeps['usage']>(async (id) =>
+      id !== 'claude-code' ? [] : vault.profiles('claude-code').map((p) => ({ profileName: p.name, windows: [{ label: '5h', usedPercent: p.name === 'a@x.com' ? used : 10 }] }))
+    )
+    const summary = (_id: string, names: string[]): Record<string, AccountHeadroom> =>
+      Object.fromEntries(names.map((n) => [n, { room, ratePerMin: 3, ...(n === 'b@x.com' && throttledUntil ? { throttledUntil } : {}) } as AccountHeadroom]))
+    const { svc } = service({ usage, now: () => now, headroom: () => ({ summary }) as never })
+    const changes: AccountsSnapshot[] = []
+    const picks: AccountsSnapshot[] = []
+    svc.onChange((s) => changes.push(s))
+    svc.onPickable((s) => picks.push(s))
+    await svc.rebuildNow()
+    expect([changes.length, picks.length]).toEqual([1, 1])
+    // The same picture twice: nothing fires.
+    await svc.rebuildNow()
+    await svc.rebuildNow()
+    expect([changes.length, picks.length]).toEqual([1, 1])
+    // A usage window and the headroom numbers move: the rows hear it, the threads do not re-pick.
+    used = 60
+    room = 0.4
+    await svc.rebuildNow()
+    expect([changes.length, picks.length]).toEqual([2, 1])
+    // The window fills: what a pick can choose changed.
+    used = 100
+    await svc.rebuildNow()
+    expect([changes.length, picks.length]).toEqual([3, 2])
+    // A 429 cooldown and a 401 mark take an account out of the picks.
+    throttledUntil = now + 60_000
+    await svc.rebuildNow()
+    expect(picks.length).toBe(3)
+    svc.markOut('codex', 'c@x.com')
+    await svc.rebuildNow()
+    expect(picks.length).toBe(4)
+    expect(usage).toHaveBeenCalled()
+  })
+})
+
+describe('accountsPusher', () => {
+  const snap = (n: number): AccountsSnapshot => ({ updatedAt: n }) as AccountsSnapshot
+
+  it('one socket hears the newest snapshot at most every 5 s, never one it already has', async () => {
+    vi.useFakeTimers()
+    try {
+      const sent: number[] = []
+      const push = accountsPusher((s) => sent.push(s.updatedAt), ACCOUNTS_PUSH_MS, () => Date.now())
+      const first = snap(1)
+      push.offer(first)
+      expect(sent).toEqual([1])
+      push.offer(first)
+      // A burst inside the window: only its newest goes out, at the window's end.
+      for (let i = 2; i <= 50; i++) push.offer(snap(i))
+      expect(sent).toEqual([1])
+      await vi.advanceTimersByTimeAsync(ACCOUNTS_PUSH_MS - 1)
+      expect(sent).toEqual([1])
+      await vi.advanceTimersByTimeAsync(1)
+      expect(sent).toEqual([1, 50])
+      // Quiet past the window: the next one goes out at once.
+      await vi.advanceTimersByTimeAsync(ACCOUNTS_PUSH_MS)
+      push.offer(snap(51))
+      expect(sent).toEqual([1, 50, 51])
+      // A closed socket hears nothing more.
+      push.offer(snap(52))
+      push.dispose()
+      await vi.advanceTimersByTimeAsync(ACCOUNTS_PUSH_MS * 2)
+      expect(sent).toEqual([1, 50, 51])
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

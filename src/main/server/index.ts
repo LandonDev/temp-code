@@ -7,7 +7,7 @@ import { handleM3a } from './m3a'
 import { withinRoots } from './fspaths'
 import { Notes } from './notes'
 import { ProjectLogos } from './projectLogos'
-import { AccountsService } from './accounts'
+import { AccountsService, accountsPusher } from './accounts'
 import { isRoutedProvider, PROVIDER_OF, SERVICE_OF } from '@shared/accounts'
 import { startGateway, type Gateway } from './gateway'
 import { BootResumer } from './resumeAfterBoot'
@@ -755,9 +755,10 @@ export async function startServer(
   const syncTimer = setInterval(() => void accountSync.syncAll(), 15 * 60_000)
   syncTimer.unref()
   const m3a = { store, registry, notes: new Notes(db), logos: new ProjectLogos(options.dataDir ?? dirname(dbPath)), accounts, accountSync }
-  // Every snapshot that knows any account re-picks the open threads'
-  // accounts (an empty one would pick nothing): the first covers boot.
-  accounts.onChange((snapshot) => {
+  // Every snapshot that changes what a thread could be routed to re-picks the
+  // open threads' accounts (an empty one would pick nothing): the first
+  // covers boot. A usage or headroom number moving is not such a change.
+  accounts.onPickable((snapshot) => {
     if (Object.values(snapshot.providers).some((p) => p.profiles.length > 0)) registry.refreshAccounts()
   })
   accounts.start()
@@ -1062,7 +1063,14 @@ export async function startServer(
     }
     checkpointSinks.add(onCheckpoint)
     const offBuild = builder.onPush((p) => emitPush(p))
-    const offAccounts = m3a.accounts.onChange((snapshot) => emitPush({ push: 'accounts', snapshot }))
+    // The picture moves with every answer's usage headers: this socket hears
+    // the newest one at most every 5 s (accounts.ts accountsPusher).
+    const accountsPush = accountsPusher((snapshot) => emitPush({ push: 'accounts', snapshot }))
+    const offAccountsChange = m3a.accounts.onChange((snapshot) => accountsPush.offer(snapshot))
+    const offAccounts = (): void => {
+      offAccountsChange()
+      accountsPush.dispose()
+    }
     const offQueue = registry.onQueue((sessionId, items) =>
       emitPush({ push: 'queue', sessionId, items })
     )

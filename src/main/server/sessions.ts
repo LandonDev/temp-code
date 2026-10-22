@@ -1260,13 +1260,13 @@ export class SessionRegistry {
       if (!l) loads.set(provider, (l = this.liveLoad(provider)))
       return l
     }
-    // Each moved row bumps the sessions version, so notifying as it lands
-    // rebuilt the whole index per row: 224 idle threads re-picked on every
-    // snapshot held the loop 2.2 s. Notify once the pass is written.
+    // 224 idle threads re-picked on every snapshot once held the loop 2.2 s:
+    // the pass walks the index (copied: it writes rows as it goes), runs only
+    // when the pickable set moved (index.ts), and notifies once it is written.
     const outer = this.deferredMeta
     const deferred = (this.deferredMeta ??= new Map())
     try {
-      for (const s of this.store.listSessions()) if (!s.archived && match(s)) this.refreshAccount(s.id, load)
+      for (const s of [...this.indexOf().byId.values()]) if (!s.archived && match(s)) this.refreshAccount(s.id, load)
     } finally {
       if (!outer) {
         this.deferredMeta = null
