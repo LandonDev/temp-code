@@ -84,25 +84,15 @@ enum SheetMemory: Codable, Hashable, Sendable {
     case startBuild(environmentId: String, sessionId: String)
 }
 
-/// Where the person was in a thread: the id of the transcript item at the
-/// top of the screen while they were scrolled up, nothing while they were at
-/// the bottom. Written as the transcript scrolls, read on its first paint so
-/// a relaunch opens the thread on the same row (within the process the rows
-/// above are the same objects, and SwiftUI keeps the offset itself).
-enum ScrollMemory {
-    static func key(_ sessionId: String) -> String { "thread.anchor.\(sessionId)" }
+/// The cold launch's restore: true from the process's start until the root
+/// view's first task, while the saved stacks are rebuilt. A thread screen
+/// built then is a restored one and opens at the bottom whatever row its
+/// route named (`TranscriptLanding.onOpen`); a launch route (a notification,
+/// the proof's) is followed after it ends, so it keeps its row. The
+/// transcript keeps no scroll memory: it always opens at its newest row.
+@MainActor
+enum LaunchRestore {
+    private(set) static var active = true
 
-    static func anchor(for sessionId: String, defaults: UserDefaults = .standard) -> Int? {
-        defaults.object(forKey: key(sessionId)) as? Int
-    }
-
-    static func set(_ anchor: Int?, for sessionId: String, defaults: UserDefaults = .standard) {
-        if let anchor {
-            guard defaults.object(forKey: key(sessionId)) as? Int != anchor else { return }
-            defaults.set(anchor, forKey: key(sessionId))
-        } else {
-            guard defaults.object(forKey: key(sessionId)) != nil else { return }
-            defaults.removeObject(forKey: key(sessionId))
-        }
-    }
+    static func end() { active = false }
 }

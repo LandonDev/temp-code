@@ -73,6 +73,20 @@ enum TestHooks {
         #endif
     }
 
+    /// Whether the transcript is at its bottom one second after it landed or
+    /// the app came back to the foreground (transcript-report.json: atBottom
+    /// 1 or 0). Written under a launch route, or with
+    /// `TC_TEST_TRANSCRIPT_REPORT=1` for a plain launch that restores a thread.
+    @MainActor static func recordTranscript(sessionId: String, state: TranscriptScrollState) {
+        #if DEBUG
+        guard env["TC_TEST_ROUTE"] == "thread" || env["TC_TEST_TRANSCRIPT_REPORT"] == "1" else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1))
+            writeReport("transcript-report", ["atBottom": state.atBottom ? 1 : 0])
+        }
+        #endif
+    }
+
     static func recordNavigation(target: Int, item: Int?, oldest: Int?) {
         #if DEBUG
         guard targetSeq != nil || notification != nil else { return }

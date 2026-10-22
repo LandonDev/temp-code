@@ -61,6 +61,12 @@
 #           the subagent list and the New thread sheet, light and dark, then
 #           the chat and Home at the accessibility size. The bottom dock's
 #           height lands in dock-*.json (tenths of a point).
+#   return  A thread's transcript always comes back at its bottom: the
+#           2,000-row thread opened on a middle row (TC_TEST_TARGET_SEQ), the
+#           app sent to the background (Settings comes forward) for 5 s and
+#           for 60 s and brought back, then killed and cold-launched plainly
+#           so it restores that thread from its saved stack. Each step's
+#           transcript-report.json (atBottom) lands in return-*.json.
 #   all     shell, threads, scroll, actions and push (the default).
 # TC_SIM="TempCode L3" picks a device by name (default iPhone 17 Pro); TC_SIM_UDID one by id.
 #
@@ -613,6 +619,39 @@ glass_set() {
   fi
 }
 
+# The return rule (see the header): middle row, background, foreground, cold launch.
+transcript_report() {
+  local container
+  container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data 2>/dev/null || true)
+  if [ -n "$container" ] && [ -f "$container/Documents/transcript-report.json" ]; then
+    cp "$container/Documents/transcript-report.json" "$OUT/$1.json"
+    echo "ios-sim-proof: $1 $(cat "$container/Documents/transcript-report.json")"
+    rm -f "$container/Documents/transcript-report.json"
+  else
+    echo "ios-sim-proof: $1 no transcript report"
+  fi
+}
+return_set() {
+  appearance light
+  TC_TARGET_SEQ=${TC_RETURN_SEQ:-1000} shot "return-0-middle" thread "2,000 rows" chat "" 14
+  transcript_report return-0-middle
+  for away in 5 60; do
+    xcrun simctl launch "$TC_SIM_UDID" com.apple.Preferences >/dev/null
+    sleep "$away"
+    # Brings the running app forward again; no relaunch, so it is the warm return.
+    xcrun simctl launch "$TC_SIM_UDID" "$BUNDLE" >/dev/null
+    sleep 3
+    xcrun simctl io "$TC_SIM_UDID" screenshot --type png "$OUT/shots/return-$away-s.png" >/dev/null 2>&1
+    transcript_report "return-$away-s"
+  done
+  # Cold: a plain launch restores the Home stack with the thread (and the row its route named).
+  xcrun simctl terminate "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
+  SIMCTL_CHILD_TC_TEST_TRANSCRIPT_REPORT=1 xcrun simctl launch "$TC_SIM_UDID" "$BUNDLE" >/dev/null
+  sleep 12
+  xcrun simctl io "$TC_SIM_UDID" screenshot --type png "$OUT/shots/return-cold.png" >/dev/null 2>&1
+  transcript_report return-cold
+}
+
 case "$SET" in
   f4) f4_set ;;
   settings) settings_set ;;
@@ -628,6 +667,7 @@ case "$SET" in
   push) push_set ;;
   features) features_set ;;
   glass) glass_set ;;
+  return) return_set ;;
   all) shell_set; threads_set; scroll_set; actions_set; push_set; host_gone_set ;;
   *) echo "ios-sim-proof: unknown TC_PROOF_SET $SET" >&2; exit 2 ;;
 esac

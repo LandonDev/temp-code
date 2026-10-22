@@ -66,7 +66,11 @@ struct RootView: View {
                 Color.clear.onAppear { projectSettings.target = nil }
             }
         }
-        .task(id: model.ready) { await followLaunchRoute() }
+        .task(id: model.ready) {
+            // The restored stacks are built by now; anything pushed from here keeps the row it names.
+            LaunchRestore.end()
+            await followLaunchRoute()
+        }
         .task { await MasterReleaseWatcher.shared.run() } // master's release for the drift marks (Shell/Hosts, iOS 21)
         // The sheet the last run had up, handed to the view that owns it once
         // the restored stacks are on screen.
@@ -84,6 +88,8 @@ struct RootView: View {
         // A notification or Live Activity tap: the Home stack becomes the thread, on its card.
         .onChange(of: router.pending) { _, route in
             guard let route else { return }
+            // A tap names its card: it lands there even this early in a cold launch.
+            LaunchRestore.end()
             tab = .home
             homePath = NavigationPath()
             homePath.append(route)

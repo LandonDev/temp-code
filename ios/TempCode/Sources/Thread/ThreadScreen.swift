@@ -18,6 +18,8 @@ struct ThreadScreen: View {
     @Environment(AppModel.self) private var app
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var model: ThreadScreenModel
+    /// The row this screen opens on (`TranscriptLanding`), else nil for the bottom.
+    @State private var landingSeq: Int?
     @State private var page: ThreadSegment?
     @State private var launchPush: LaunchPush?
     /// A thread this screen created (a build from the plan), pushed over it.
@@ -39,6 +41,9 @@ struct ThreadScreen: View {
     init(client: EnvironmentClient, sessionId: String, targetSeq: Int? = nil, performsLaunchAction: Bool = true) {
         self.client = client
         self.sessionId = sessionId
+        // Decided once: a screen the launch restored from the saved stacks opens at the bottom
+        // even when its route named a row; a later re-init never brings the row back.
+        _landingSeq = State(initialValue: TranscriptLanding.onOpen(targetSeq: targetSeq, restoredAtLaunch: LaunchRestore.active).seq)
         self.targetSeq = targetSeq
         self.performsLaunchAction = performsLaunchAction
         _model = State(initialValue: ThreadScreenModel(sessionId: sessionId))
@@ -195,7 +200,7 @@ struct ThreadScreen: View {
             }
         }
         .onChange(of: segments, initial: true) {
-            if targetSeq != nil { model.choose(segments.contains(.log) ? .log : .chat) }
+            if landingSeq != nil { model.choose(segments.contains(.log) ? .log : .chat) }
         }
         .onChange(of: page) { _, now in
             if let now, now != segment { model.choose(now) }
@@ -376,7 +381,7 @@ struct ThreadScreen: View {
     }
 
     private func transcript(session: SessionMeta?, thread: ThreadState) -> some View {
-        TranscriptView(client: client, sessionId: sessionId, thread: thread, targetSeq: targetSeq)
+        TranscriptView(client: client, sessionId: sessionId, thread: thread, targetSeq: landingSeq)
     }
 }
 

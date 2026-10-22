@@ -1713,8 +1713,15 @@ keyboard action. Every animated change has a static cue as well.
   call off a detached task; the UI reads the observable models only.
 - **Background.** Leaving: the socket closes after a 10 s grace (iOS usually
   freezes the process first, so the grace rarely runs). Coming back: the
-  screen the person left is still there, exactly as they left it, scrolled
-  to the same row, painted from what the app already held. Within the
+  screen the person left is still there, painted from what the app already
+  held, and a thread's transcript is at its bottom, pinned there as if the
+  person had never scrolled up (the user's rule: leaving a thread and coming
+  back shows the newest rows). The transcript snaps there with no motion when
+  the app goes to the background (`TranscriptLanding.snapsToBottom`, on the
+  scene phase), before the system takes its snapshot, so neither the app
+  switcher nor the return shows the old position or a scroll; the cached
+  tail paints and the catch-up below fills it. Home, Search, the board, the
+  plan page and the other lists keep their positions. Within the
   grace the live socket is probed and kept; past it the stale socket is
   replaced at once, never probed for five seconds. On the new session the
   thread on screen catches up first (`afterSeq` from its cursor), the other
@@ -1738,10 +1745,15 @@ keyboard action. Every animated change has a static cue as well.
   background's own `suspended` state never shows. Elapsed timers run from
   the host's `busySince`, so they are right on the first frame back and
   after a kill. The tab, each tab's stack, the thread's segment, the
-  new-thread and Start sheets (`SheetMemory`) and the row the person was
-  scrolled to (`ScrollMemory`, the item at the top while scrolled up) survive
-  a cold launch (`NavigationMemory`; the clients exist before the first
-  frame, so the restored thread paints from the cache at once). Once every
+  new-thread and Start sheets (`SheetMemory`) survive a cold launch
+  (`NavigationMemory`; the clients exist before the first frame, so the
+  restored thread paints from the cache at once). The transcript keeps no
+  scroll memory: a thread opens at its newest row, from Home, from a list or
+  restored by a cold launch (a restored route that once named a row opens
+  at the bottom: `LaunchRestore` marks the screens the launch rebuilt). Only
+  a launch or a tap that names a row (a search hit, a notification, any
+  `targetSeq`) lands on that row, and within a session the Jump to latest
+  pill still shows once the person scrolls up. Once every
   host has caught up, the Live Activities and the badge (Home's Needs you
   count) are brought in line with what the app shows; a queued thread ends
   its activity like a finished one. A host that restarted mid-turn says so
