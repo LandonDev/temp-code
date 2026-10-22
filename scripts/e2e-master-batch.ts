@@ -22,8 +22,13 @@
  *   4. A chat thread that is not the master starts a Fable THREAD with
  *      app_start_thread (threads follow no model policy) and is refused a
  *      Fable SUBAGENT by spawn_agent; the master spawns one.
- *   5. The master calls batch_gate (stubbed green): batch.get shows land,
- *      gate and release done with the release tag in the detail.
+ *   5. The master set its rules with batch_rules at the start; with every
+ *      child done the engine runs them on its own (gate and release
+ *      stubbed green, nothing to publish or deploy), rows "Batch done" on
+ *      the master, wakes it with a <batch-report>, and the master idles
+ *      once that turn ends (it was watching while the batch was open).
+ *      Then the master calls batch_gate: batch.get shows land, gate and
+ *      release passed with the release tag in the detail.
  * Run: bun run script:e2e-master-batch
  */
 import { execFileSync } from 'node:child_process'
@@ -208,6 +213,7 @@ const briefR = `This is a test; spawn nothing and write no files. Call the AskUs
 const briefP = `This is a test; ask no questions and spawn nothing. Write the plan document to your plan file NOW with exactly these sections: "# Greeting file", "## Overview" (one line), "## Approach" (one line), "## Tasks" with one checklist item "- [ ] Create greeting.txt in the project root containing hello", and "## Risks" (one line). Then call the plan_complete tool once, say the plan is ready in one sentence, and stop.`
 const briefB = `This is a test. Reply with exactly: b done. Use no tools and nothing else.`
 const masterBrief = `This is a test of your batch tools; the user has asked for all of it. Do exactly this, in order, with no other tools:
+0. Call batch_rules ONCE with summary "Proof batch: land as they finish, gate, release, then tell me" and no other field.
 1. Call app_start_thread with threadType "implementation", provider "claude", model "${MODEL}", reasoning "low", title "child a", firstMessage exactly: <<<${briefA}>>>
 2. Call app_start_thread with threadType "research", provider "claude", model "${MODEL}", reasoning "low", title "child r", firstMessage exactly: <<<${briefR}>>>
 3. Call app_start_thread with threadType "planning", provider "claude", model "${MODEL}", reasoning "low", title "child p", firstMessage exactly: <<<${briefP}>>>
@@ -233,6 +239,8 @@ if (!a || !r || !p || !b) {
   process.exit(1)
 }
 check('three types', a.threadType === 'implementation' && r.threadType === 'research' && p.threadType === 'planning' && b.threadType === 'implementation')
+check('the master set the batch rules with batch_rules', batches.get(master.id).rules.summary === 'Proof batch: land as they finish, gate, release, then tell me' && batches.get(master.id).rules.land === 'as-they-finish', JSON.stringify(batches.get(master.id).rules))
+check('the master is watching, not idle, while its batch is open', ['watching', 'running', 'starting'].includes(store.getSession(master.id)?.status ?? ''), store.getSession(master.id)?.status)
 check('child b waits after child a', store.getSession(b.id)?.after === a.id, `after=${store.getSession(b.id)?.after}`)
 check('the children run in the project checkout', kids.every((k) => k.cwd === repo))
 const listed = toolResults(master.id).find((t) => t.includes('"kind":"thread"'))
@@ -314,9 +322,18 @@ check('spawn_agent on the master accepted Fable', /agentId/.test(fableSpawn) && 
 const fableChild = registry.childrenOf(master.id).find((s) => s.model === 'claude-fable-5-1')
 check('the Fable subagent is a subagent of the master, not a batch thread', !!fableChild && fableChild.parentId === master.id && !fableChild.masterId)
 
-// ── 5. the master gates and releases ─────────────────────────────────────
-console.log('\n[5] batch_gate on the master')
+// ── 5. the engine ends the batch on its own, then batch_gate re-runs the gate ──
+console.log('\n[5] the batch ends by its rules; batch_gate on the master')
 if (fableChild) await reportSettled(master.id, fableChild.id, 0, 300_000)
+// Every child is done (a landed, r, p and b idle after a turn): the engine
+// ran the rules (gate, release, nothing to publish or deploy) and told the master.
+await rowsUntil(master.id, (rs) => rs.some((x) => x.event.type === 'notice' && x.event.kind === 'batch' && /^Batch done:/.test(x.event.message)), 300_000)
+const doneRow = notices(master.id, 'batch').find((n) => /^Batch done:/.test(n.message))
+check('the engine finished the batch by its rules and rowed the master', !!doneRow && /1 of 4 landed · 3 left out · gate passed in .* · release-1 tagged/.test(doneRow.message), doneRow?.message)
+check('the batch-done report reached the master as a <batch-report>', reports(master.id).some((x) => x.agentId === master.id && x.status === 'done'), reports(master.id).map((x) => `${x.agentId}:${x.status}`).join(', '))
+await reportSettled(master.id, master.id, 0, 120_000)
+await sleep(500)
+check('the master idles once the batch is done', store.getSession(master.id)?.status === 'idle', store.getSession(master.id)?.status)
 await turn(master.id, 'This is a test. Call the batch_gate tool ONCE with no arguments and report its whole answer verbatim in one sentence. Do nothing else.')
 const answer = toolResults(master.id).find((t) => /^passed in/.test(t))
 check('batch_gate answered passed and the tag', !!answer && answer.includes('release-1 tagged'), toolResults(master.id).at(-1)?.slice(0, 160))

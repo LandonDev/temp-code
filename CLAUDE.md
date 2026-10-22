@@ -1125,146 +1125,165 @@ this is the short one.
   tab; RPC `project.setMaster { projectId, threadId | null }`, admin,
   answered as the `projects` push). Its tab reads one muted "Master" after
   the title; nothing else marks it. `isMasterSession(session)`
-  (orchestration.ts) reads the pin on the server, `isMasterThread`
-  (lib/masterThread.ts) in the renderer. The master's prompt carries
-  `MASTER_MECHANICS` through `mechanicsFor`, and the claude driver denies it
-  Edit, MultiEdit, Write and NotebookEdit: it steers, the batch edits.
+  (orchestration.ts) reads the pin on the server, `registry.isMaster(id)`
+  in the registry, `isMasterThread` (lib/masterThread.ts) in the renderer.
+  The master's prompt carries `MASTER_MECHANICS` through `mechanicsFor`, and
+  the claude driver denies it Edit, MultiEdit, Write and NotebookEdit: it
+  steers, the batch edits.
 - **The children are root threads, not subagents.** Each carries the
   master's id (`sessions.master_id`, `SessionMeta.masterId`,
   `session.create { masterId }`) and, when it waits for a sibling, that
   sibling's id (`after_id`, `after`); any type, model, effort, context
   window or host. `app_start_thread` from the master stamps both; the
-  board's add sheet does the same through `session.create`.
-  `supervisedBy(caller, session)` is the one check every supervision tool
-  runs: the caller's subagents, and for a master every root thread on this
-  host carrying its id (the refusal: "is not a subagent or batch thread of
-  this session"). `list_agents` marks rows `subagent` or `thread`. A batch
-  thread settling (idle, error, waiting; never a pause) reports to the
-  master through `settleTarget` → `notifyParentOfSettle` as a subagent does
-  to its parent, a waiting one with its question for `answer_agent`; a
-  `wait_for_agent` in flight takes the settle instead; a plan child's
-  plan-complete report is its one report; two threads naming each other as
-  master wake neither. Cross-host batch threads are not supervised yet.
-- **The queue and the cap** (src/main/server/scheduler.ts
-  `ThreadScheduler`): a thread the host cannot run yet is created `queued`
-  (SessionStatusSchema: not live, never counted, never resumed by the boot
-  resumer or the liveness sweep) and started later, never refused. Two
-  reasons: the host's running cap (`threads.maxRunning` in the settings
-  table, default 4, 0 = unlimited; src/shared/threadCap.ts; roots in
-  `starting`, `running` or `waiting` count, subagents never; Settings →
-  General's "Run at most this many threads at once", RPCs
-  `threads.get`/`threads.set`) and an unmet `after` (met when the sibling
-  is `done`, or `idle` after a turn, or archived or deleted; one that
-  errored, stopped or paused keeps the waiter queued). Only a request that
-  opted in queues: `session.create { queue: true }`, or any thread with a
-  `masterId`; a person's own thread starts at once. `admit` decides on the
-  FIRST message in `SessionRegistry.send`: the user row and its preamble
-  stamp land as a held-back boot stores them, the status goes `queued`, the
-  message waits at the front of the thread's queue; `startQueued` (the
-  scheduler when a slot frees; `session.start { sessionId }`, operate, the
-  strip's Start now, past the cap and `after`) sends it through the same
-  path. `tick` runs oldest-first on every meta change and removal, when the
-  cap changes, and after boot once the BootResumer is done (`holdUntil`).
-  A queued root's `activity` reads "Queued · 3rd in line" or "Queued ·
-  waiting for <sibling>" ("(errored)" / "(stopped)" / "(paused)" appended),
-  pushed only when it changes: the rail's still gray dot, the tab edge's
-  "Queued" (the line as its tooltip), the working strip with Start now.
-  The fleet's Stop and Archive done take a queued root as "remove from the
-  queue" and archive it (lib/threadBatch.ts).
-- **The policy by role.** The model policy's `approved` is `true` |
-  `'orchestrators'` | `false` (shared/rules.ts; `modelApproved(rules,
-  provider, model, role)`, `policyRoleOf(session, master)`: an orchestration
-  thread, an orchestrator agent or the project's master is
-  `'orchestrator'`; orchestration.ts `policyRole(session)` adds the pin).
-  Settings → Orchestration's model row is Everyone / Orchestrators only /
-  Off; Fable (`claude-fable-5-1`, `claude-fable-5`) defaults to
-  orchestrators only in `DEFAULT_RULES.models` (a saved rules object
-  replaces the whole map and keeps its own entries). `spawn_agent` and
-  `app_start_thread` both check it with the caller's role (a start on
-  another host too), take the provider's default under the policy when no
-  model is named (`approvedDefault`), clamp the effort with `fitReasoning`,
-  and refuse in the same words, naming the model, the role and the approved
-  table. `spawnableModels(rules, role)` marks orchestrators-only rows for a
-  `thread` caller. A plan → build hand-off and the phone's New thread are a
-  person's choice, never checked.
-- **The gate out of the children** (src/main/server/{gateQueue,gateRun,
-  batch}.ts, src/shared/gate.ts, docs/review-before-merge.md): one
-  `GateQueue` per host runs every gate step in turn, a waiter told its
-  position. `merge_branch` gates the branch after the optional review and
-  before the fast-forward: a batch child runs `bun run typecheck` alone in
-  its worktree (a break is named to its thread); a thread outside any batch
-  runs `bun scripts/gate.ts --tier commit --since <merge-base>` there. A red
-  run answers "HELD: typecheck failed on <branch> · 3 errors", the last 20
+  board's add sheet does the same through `session.create`. A plan child's
+  auto-started build (planFlow.ts) inherits the plan's `masterId`, `after`
+  and `startedBy`, so it stays in the batch and the master hears its
+  settles; `planThreadId` links the two. `supervisedBy(caller, session)` is
+  the one check every supervision tool runs: the caller's subagents, and
+  for a master every root thread on this host carrying its id (the
+  refusal: "is not a subagent or batch thread of this session").
+  `list_agents` marks rows `subagent` or `thread`. A batch thread settling
+  (idle, error, waiting; never a pause) reports to the master through
+  `settleTarget` → `notifyParentOfSettle` as a subagent does to its parent,
+  a waiting one with its question for `answer_agent`; a `wait_for_agent` in
+  flight takes the settle instead; a plan child's plan-complete report is
+  its one report; two threads naming each other as master wake neither.
+  Cross-host batch threads are not supervised yet.
+- **A thread is the person's choice; the model policy is for subagents.**
+  The orchestration rules (src/shared/rules.ts `modelApproved`,
+  `approvedDefault`, `fitReasoning`; Settings → Orchestration's Everyone /
+  Orchestrators only / Off, Fable orchestrators-only by default) govern
+  `spawn_agent` alone. `app_start_thread`, the cross-host `thread.start`
+  and `session.create` check the catalog only: the model exists for some
+  provider, the effort is on its ladder (else refused, never clamped),
+  `context1m` where offered. `spawn_agent`'s refusal of an
+  orchestrators-only model and the approved table point a thread at
+  `app_start_thread` for the same model as a thread.
+- **The queue is `after` alone; there is no running cap.**
+  `ThreadScheduler` (src/main/server/scheduler.ts) creates a thread
+  `queued` (SessionStatusSchema: not live, never counted, never resumed by
+  the boot resumer or the liveness sweep) for one reason: its `after`
+  sibling has not finished (met when the sibling is `done`, or `idle` after
+  a turn, or archived or deleted; one that errored, stopped or paused keeps
+  the waiter queued). Only a request that opted in queues: `session.create
+  { queue: true }`, or any thread with a `masterId`. `admit` decides on the
+  FIRST message in `SessionRegistry.send` (the user row and its preamble
+  stamp land as a held-back boot stores them, the message waits at the
+  front of the thread's queue); `startQueued` (the scheduler when the
+  sibling settles; `session.start { sessionId }`, operate, the strip's
+  Start now, past `after`) sends it through the same path; `tick` runs
+  oldest-first on every meta change and removal and after boot once the
+  BootResumer is done (`holdUntil`). A queued root's `activity` reads
+  "Queued · waiting for <sibling>" ("(errored)" / "(stopped)" / "(paused)"
+  appended), pushed only when it changes. The fleet's Stop and Archive done
+  take a queued root as "remove from the queue" and archive it.
+- **The batch's rules, and the engine that runs them** (src/main/server/
+  batch.ts, src/shared/contract-batch.ts `BatchRulesSchema`): `land`
+  as-they-finish (merge_branch fast-forwards each child's branch as it
+  lands) or all-at-once (merge_branch answers "HELD: the batch lands all at
+  once; the master will merge <branch> when every thread is done", records
+  the branch, and the engine merges the held branches in landing order at
+  the end); `gate` (the commit tier once on the project checkout at the
+  project branch's head); `release` (`bun scripts/release.ts "<master
+  title; landed subjects>" --push`: the tag, and master with it, pushed to
+  origin); `publish` (off by default, a person's decision: the Mac's
+  publish job for that commit over the peer link, "Releases" above);
+  `deploy` none | box (the box's deploy trigger of docs/box.md "Deploy from
+  the app": `v1.0.N` when the publish ran, `master` otherwise); `then`
+  notify (a `batch` notice row on the master and a wake) or
+  archive-children (the same, and every done child archived); and one
+  `summary` line in the master's words. Defaults: as-they-finish, gate,
+  release, no publish, no deploy, notify. The master sets them with the
+  `batch_rules` app tool (master only; codex over the bridge as
+  `app.batchRules`; MASTER_MECHANICS says to set them when it opens a batch
+  and state them to the person), a person over `batch.setRules { masterId,
+  rules }` (operate, a partial). The engine runs when the last child is
+  done (every unarchived root carrying the masterId is `done`, or `idle`
+  with a turn completed, `Store.hasCompletedTurn`); an errored or stopped
+  child blocks the end, `blocked` names it and the master is told once as
+  a `<batch-report>`. Steps run in order on the host's `GateQueue`, each
+  outcome a `gate` notice row on the master; a red step stops the rest and
+  tells the master; a child moving again or a new one arms the engine for
+  the next all-done, and a landing after the end starts a new cycle.
+  `batch_gate` stays the master's way to run the gate and the release
+  early, with children still out left out of the land step. The deploy
+  restarts the box's own process: the row is persisted before the trigger
+  fires and `Batches.resumeAfterBoot` (after the BootResumer) closes the
+  step from the trigger's exit file and runs `then`; a publish in flight
+  at a restart is failed with a pointer to the Mac. `batch.stopStep`
+  (operate) stops the Mac's publish job. Seam: `TEMP_CODE_GATE_STUB=<json>`
+  (rules `{ step, branch?, ok, log? }`) decides a gate or release step
+  without spawning.
+- **Step telemetry on the wire.** `BatchState` (`batch.get`, and the
+  `batch` push to every client, coalesced to four a second while a log
+  streams; not in the phone's subset) carries `rules`, the five steps land,
+  gate, release, publish, deploy each with `status` pending | running |
+  passed | failed | skipped, `detail`, `startedAt`, `endedAt`, `progress
+  { done, total, label? }` (land: branches merged of total; gate: the
+  tier's steps done with the running one as label; publish and deploy:
+  their stage) and `log` (the newest 200 console lines), plus `landed`,
+  `pending`, `held` (all-at-once), `blocked` and `finishedAt`. The board's
+  foot draws a live console per running step from exactly these.
+- **The master stays live until the batch is done.** A master whose batch
+  is open (`Batches.open`: children exist and not all are done, or the
+  engine is at work) takes `watching` in place of `idle` when its turn
+  ends: the harness stays up, the queue and the completed-turn pass drain
+  on that watching as on idle, the boot ledger keeps it so a restart brings
+  it back (into a turn, then watching again), and the batch closing idles
+  it (`registry.masterIdle` when nothing is coming). The liveness sweep
+  never touches a watching row.
+- **A message to a live master goes straight in.** To a watching master it
+  starts a turn at once (the idle path). To a master mid-turn, `queueAdd`
+  whispers it into the live turn as a `<user-steer>` with its user row
+  kept (`steerMaster`; attachments still queue), and a master's
+  `wait_for_agent` in flight returns `{ status: 'steered', message }` in
+  every mode (`registry.nextSteer`), never swallowing the person.
+  MASTER_MECHANICS prefers ending the turn and being woken to blocking
+  waits.
+- **Pause cascades.** `session.pause` on a master pauses every root of its
+  batch on this host (four at a time through sessionBatch.ts
+  `batchChildIds`), `session.resume` resumes them, Stop stays per thread;
+  the paused banner folds those children under the master as "and N batch
+  threads with it".
+- **The gate out of the children** (src/main/server/{gateQueue,gateRun}.ts,
+  src/shared/gate.ts, docs/review-before-merge.md): `merge_branch` gates
+  the branch after the optional review and before the fast-forward: a
+  batch child runs `bun run typecheck` alone in its worktree (a break is
+  named to its thread); a thread outside any batch runs `bun
+  scripts/gate.ts --tier commit --since <merge-base>` there. A red run
+  answers "HELD: typecheck failed on <branch> · 3 errors", the last 20
   lines, "call merge_branch again", and lands a `notice` row of kind `gate`
-  (`GateNotice { step, branch, ok, log, at }`) drawn by surfaces/GateCard.tsx
-  with the tail folded and no actions; a green run lands the same row,
-  quiet. The review decides whether the branch may merge, the gate whether
-  the tree is green; Merge anyway past a held review skips the gate.
-  `Batches` keeps three steps per master in the settings row
-  `batch:<masterId>`: `land` follows the landings ("3 of 7 landed"); `gate`
-  is the master's `batch_gate` app tool (the master only, by the pin at
-  harness boot; codex over the bridge as `app.batchGate`): the commit tier
-  once on the project checkout at the project branch's head, on the same
-  queue, its `✓ step 12s` lines streamed into the step's `detail`, answering
-  "passed in 4m 12s · release-N tagged" or "FAILED at vitest" with the
-  tail, the land step closed with "· 3 left out"; `release` follows a green
-  gate with `bun scripts/release.ts "<master title; landed subjects>"`
-  (`release: false` leaves it). A red gate or a landing after it reopens
-  the gate; a landing after a release starts a new cycle. `batch.get` and
-  `batch.children` (read, src/shared/contract-batch.ts) answer the state;
-  every step change is the `batch` push (every client; not in the phone's
-  subset, whose decoder folds it into `unknown`). Seam:
-  `TEMP_CODE_GATE_STUB=<json>` (rules `{ step, branch?, ok, log? }`) decides
-  a step without spawning. The house preamble (`HOUSE_PREAMBLE`) tells a
+  (`GateNotice`, surfaces/GateCard.tsx). The gate's hub, ios and ios-client
+  steps are `mac: true`: a host off macOS (the box's merge gate, the box's
+  release step) skips them with a note, and the Mac's publish gate runs
+  them before anything ships. The house preamble (`HOUSE_PREAMBLE`) tells a
   thread to run typecheck and the tests it wrote or touched, never the full
-  suite or the build, and to land with `merge_branch`; a saved workspace
-  default still equal to the old text is rewritten once
-  (`migrateHousePreamble`, marker `preamble-migrated:batch-gate`). The
-  post-commit hook's train is unchanged.
+  suite or the build, and to land with `merge_branch`.
 - **The view** (docs/LAYOUT.md "Master"): `MasterView` (surfaces/threads,
   routed when the session is its project's master, whatever its type) on
-  the SplitShell recipe, the board left of the master's chat, the chat
-  alone until the first child. A child is never a tab: `isBatchChild`
-  (lib/threadStripModel.ts) keeps a root with a `masterId` off the strip
-  and its shelf, and a row's click opens the child in the right pane
-  (`master/ChildPane.tsx`: the thread's own ThreadView over its transcript
-  and a send-or-steer line, one Back control, Escape or ⌘↩ back).
-  `master/useMasterModel.ts` holds the rules: `foldRows` makes a plan and
-  the build whose `planThreadId` names it one row (the plan's key and
-  title, the build's status and body); sections Needs you / Running /
-  Queued / Done by status, an empty one not drawn; `useBatchState`
-  (`batch.get` on mount, every 5 s while the pane shows, and the `batch`
-  push through `batchFromPush`, rules included); `rulesSentence`;
-  `setBatchRules` / `stopBatchStep` (`batch.setRules`, `batch.stop`).
-  `master/MasterRow.tsx` is two dotless lines (the type glyph, title and
-  task tally; the status glyph, the activity, and the provider mark with
-  model, effort and context at the right) plus the body `master/rowBody.ts`
-  picks by type: an implementation's task list from `session.thread.todos`,
-  a research or orchestration thread's summary (the notes' State line, else
-  its latest words); hover actions Message / Pause or Resume / Stop /
-  Remove, Start now and Remove from queue on a queued row.
-  `master/BatchFoot.tsx` on `master/steps.ts` is the foot: the summary and
-  the rules sentence with Edit (`master/RulesDialog.tsx`, with the publish
-  choice), then the steps idle as one row with their durations, or grown
-  (`TweenHeight`) to the running or failed step's console: elapsed from
-  `startedAt`, `progress` as count, label and bar, the `log` lines
-  following until scrolled up, Stop. `liveStep` reads the host's step
-  telemetry (`status` passed/failed/skipped, `startedAt`/`endedAt`,
-  `progress`, `log`) and an older `done` step alike.
-  `master/AddThreadDialog.tsx` is the add sheet: the brief, then one row per
-  choice with every catalog model and its whole effort ladder. The phone
-  draws a queued root with the label "Queued" (StatusDot.swift), never under
-  Home's Running (`HomeModel.isLive`); no phone surface.
+  the SplitShell recipe, the board left of the master's chat; the board,
+  its rows, the foot and the add sheet are the UI thread's
+  (surfaces/threads/master/**). `lib/threadBatch.ts` exports
+  `hasRunningTurn` so the rows and Pause all use the fleet switches' rule.
+  The phone draws a queued root with the label "Queued" (StatusDot.swift),
+  never under Home's Running (`HomeModel.isLive`); no phone surface.
 - **Proofs and tests.** `bun run script:e2e-master-batch`
   (scripts/e2e-master-batch.ts: the whole flow in one process, a pinned
-  haiku master starting four children of three types with one `after`
-  under cap 2, settles, `answer_agent`, a land held then merged, Fable
-  refused off the master, `batch_gate`), `bun run script:e2e-queue` and
-  `bun run script:e2e-batch-gate`; none in the gate (they boot harnesses).
-  Unit tests: rules, orchestration (master section, the refusal wording),
-  apptools, scheduler, threadBatch, gateQueue, gateRun, mergeReview, batch,
-  projectPreamble, planFlow; the renderer's useMasterModel, MasterView.dom,
-  GateCard.dom, TabIndicator.dom, ThreadHeader, WorkspaceSessions.dom.
+  haiku master setting its rules with `batch_rules` and starting four
+  children of three types with one `after`, settles, `answer_agent`, a
+  land held then merged, a Fable THREAD started from a plain chat and a
+  Fable SUBAGENT refused it, the engine ending the batch by its rules and
+  idling the master, `batch_gate`), `bun run script:e2e-queue` and `bun run
+  script:e2e-batch-gate`; none in the gate (they boot harnesses). Unit
+  tests: rules, orchestration (master section, the refusal wording, the
+  steer), apptools (no policy for threads), scheduler, threadBatch,
+  gateQueue, gateRun, mergeReview, batch (every rule, the blocked case,
+  the telemetry, the push throttle, the deploy's restart), sessions-master
+  (the watching master, the steer, the cascade), sessionBatch, planFlow,
+  projectPreamble, the peer publish on both sides (remote/macPublish,
+  remote/peerPublish, contract-publish); the renderer's useMasterModel,
+  MasterView.dom, GateCard.dom, TabIndicator.dom, ThreadBanners,
+  ThreadHeader, WorkspaceSessions.dom.
 
 ## The prod worktree is retired
 ~/IdeaProjects/temp-code-prod was the old local updater's build checkout.
