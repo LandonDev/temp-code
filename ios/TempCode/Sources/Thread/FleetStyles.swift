@@ -362,15 +362,16 @@ struct AgentFigures: View {
 /// One subagent: mark, title with the figures on its line, the meta, the
 /// activity line, the stats. A waiting row sits on the needs-you tint in a
 /// rounded field inset from the edge; every row keeps its text at the text
-/// edge. A remote agent's row names its host and, while that host is not
-/// open, shows the host's transport line in place of its activity with its
-/// figures still. Tap pushes the agent's detail. `client` is the agent's
-/// own host's client.
+/// edge. A live row's figures tick on their own one-second clock; nothing
+/// else in the row re-renders on the tick. A remote agent's row names its
+/// host and, while that host is not open (`hostLine`), shows the host's
+/// transport line in place of its activity; any row whose host is away
+/// keeps its figures still. Tap pushes the agent's detail. `client` is the
+/// agent's own host's client.
 struct AgentRow: View {
     let agent: Fleet.Agent
     let client: EnvironmentClient
     let fleetSize: Int
-    let now: Date
     var parentCwd: String?
     var hostName: String?
     var hostLine: String?
@@ -384,9 +385,8 @@ struct AgentRow: View {
         let line = Fleet.line(status: meta.status, items: items, compacting: child?.fold.board.compacting ?? false, activity: meta.activity)
         let stats = Fleet.stats(items: items, tasks: meta.tasks, board: child?.fold.board, context: meta.context)
         let waiting = meta.status == .waiting
-        let away = agent.remote ? hostLine : nil
-        // A host that is away freezes the clock at what it last said.
-        let clock = away == nil ? Int(now.timeIntervalSince1970 * 1000) : meta.updatedAt
+        let away = hostLine != nil
+        let cost = child?.fold.board.cost
         NavigationLink(value: AgentDetailRoute(environmentId: agent.environmentId, agentId: meta.id, parentCwd: parentCwd, hostName: agent.remote ? hostName : nil)) {
             HStack(alignment: .top, spacing: Layout.rowGap) {
                 AgentStatusMark(status: meta.status, weight: emphasized ? .medium : .regular)
@@ -398,10 +398,17 @@ struct AgentRow: View {
                             .foregroundStyle(emphasized ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
                             .lineLimit(1)
                         Spacer(minLength: 8)
-                        AgentFigures(elapsedMs: Fleet.elapsedMs(meta, now: clock), cost: child?.fold.board.cost)
+                        if live, !away {
+                            TimelineView(.periodic(from: .now, by: 1)) { context in
+                                AgentFigures(elapsedMs: Fleet.elapsedMs(meta, now: Int(context.date.timeIntervalSince1970 * 1000)), cost: cost)
+                            }
+                        } else {
+                            // Settled, or a host that is away: the clock stands at what the host last said.
+                            AgentFigures(elapsedMs: Fleet.elapsedMs(meta, now: away ? meta.updatedAt : Int(Date.now.timeIntervalSince1970 * 1000)), cost: cost)
+                        }
                     }
                     AgentMetaLine(agent: meta, branch: Fleet.branch(cwd: meta.cwd, parentCwd: parentCwd), host: agent.remote ? hostName : nil)
-                    ActivityLine(line: line, live: live, override: away)
+                    ActivityLine(line: line, live: live, override: agent.remote ? hostLine : nil)
                     if !stats.isEmpty {
                         AgentStatsLine(stats: stats)
                     }
@@ -432,11 +439,10 @@ struct AgentRow: View {
 
 /// The fleet in its groups, Running, Waiting, Queued, Done, each under the
 /// kit's section header with its count; hairlines between rows, inset to
-/// the text edge. One clock ticks for every live row on a host that is
-/// open. Rows that change group move with the kit's row motion, and nothing
-/// moves on the first non-empty paint. `clients` is keyed by host id, as
-/// are the host names (shown on remote rows) and the transport lines of
-/// hosts that are not open. Meant for a LazyVStack.
+/// the text edge. Rows that change group move with the kit's row motion,
+/// and nothing moves on the first non-empty paint. `clients` is keyed by
+/// host id, as are the host names (shown on remote rows) and the transport
+/// lines of hosts that are not open. Meant for a LazyVStack.
 struct FleetSections: View {
     let agents: [Fleet.Agent]
     let clients: [String: EnvironmentClient]
@@ -448,25 +454,16 @@ struct FleetSections: View {
 
     var body: some View {
         let sections = Fleet.sections(agents)
-        let anyLive = agents.contains { Fleet.isLive($0.meta.status) && !($0.remote && hostLines[$0.environmentId] != nil) }
         let signature = sections.map { "\($0.group.rawValue):\($0.agents.map(\.id).joined(separator: ","))" }.joined(separator: "|")
-        Group {
-            if anyLive {
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    rows(sections, now: context.date)
-                }
-            } else {
-                rows(sections, now: .now)
-            }
-        }
-        .animation(Motion.rowAppear, value: painted ? signature : "")
+        rows(sections)
+            .animation(Motion.rowAppear, value: painted ? signature : "")
         .onChange(of: agents.isEmpty, initial: true) { _, empty in
             if !empty, !painted { painted = true }
         }
     }
 
     @ViewBuilder
-    private func rows(_ sections: [Fleet.AgentSection], now: Date) -> some View {
+    private func rows(_ sections: [Fleet.AgentSection]) -> some View {
         ForEach(sections) { section in
             SectionHeader(section.group.title) {
                 CountText(section.agents.count)
@@ -478,7 +475,7 @@ struct FleetSections: View {
                         .transition(.opacity)
                 }
                 if let client = clients[agent.environmentId] {
-                    AgentRow(agent: agent, client: client, fleetSize: agents.count, now: now, parentCwd: parentCwd, hostName: hostNames[agent.environmentId], hostLine: hostLines[agent.environmentId])
+                    AgentRow(agent: agent, client: client, fleetSize: agents.count, parentCwd: parentCwd, hostName: hostNames[agent.environmentId], hostLine: hostLines[agent.environmentId])
                         .rowAppearTransition()
                 }
             }
@@ -496,24 +493,23 @@ struct FleetRows: View {
 
     var body: some View {
         let ranked = Fleet.sort(agents).map { Fleet.Agent(meta: $0, environmentId: client.environment.id, remote: false) }
-        let anyLive = ranked.contains { Fleet.isLive($0.meta.status) }
-        if anyLive {
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                rows(ranked, now: context.date)
-            }
-        } else {
-            rows(ranked, now: .now)
-        }
-    }
-
-    @ViewBuilder
-    private func rows(_ ranked: [Fleet.Agent], now: Date) -> some View {
         ForEach(Array(ranked.enumerated()), id: \.element.id) { index, agent in
             if index > 0 {
                 Hairline(inset: FleetLayout.textInset)
             }
-            AgentRow(agent: agent, client: client, fleetSize: ranked.count, now: now, parentCwd: parentCwd)
+            AgentRow(agent: agent, client: client, fleetSize: ranked.count, parentCwd: parentCwd)
         }
+    }
+}
+
+/// What a fleet shows while its first rows are on the way.
+struct FleetLoading: View {
+    var body: some View {
+        ProgressView()
+            .controlSize(.small)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 48)
+            .accessibilityLabel("Loading the fleet")
     }
 }
 
@@ -573,7 +569,7 @@ struct FleetGather {
     init(registry: ClientRegistry, root client: EnvironmentClient, rootId: String) {
         var ordered = registry.ordered
         if !ordered.contains(where: { $0 === client }) { ordered.insert(client, at: 0) }
-        let hosts = ordered.map { Fleet.Host(id: $0.environment.id, name: $0.environment.name, sessions: $0.sessions, reachable: $0.status.transport == .open) }
+        let hosts = ordered.map { Fleet.Host(id: $0.environment.id, name: $0.environment.name, sessions: $0.sessions) }
         agents = Fleet.gather(rootId: rootId, rootHost: client.environment.id, hosts: hosts)
         clients = Dictionary(ordered.map { ($0.environment.id, $0) }, uniquingKeysWith: { first, _ in first })
         hostNames = Dictionary(ordered.map { ($0.environment.id, $0.environment.name) }, uniquingKeysWith: { first, _ in first })

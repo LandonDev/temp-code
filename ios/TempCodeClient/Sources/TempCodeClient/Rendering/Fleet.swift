@@ -127,19 +127,17 @@ public enum Fleet {
 
     // MARK: - agents across hosts
 
-    /// One paired host as the fleet reads it: its id, its name, every session
-    /// it lists, and whether its socket is open right now.
+    /// One paired host as the fleet reads it: its id, its name and every
+    /// session it lists.
     public struct Host: Sendable, Hashable {
         public let id: String
         public let name: String
         public let sessions: [SessionMeta]
-        public let reachable: Bool
 
-        public init(id: String, name: String, sessions: [SessionMeta], reachable: Bool) {
+        public init(id: String, name: String, sessions: [SessionMeta]) {
             self.id = id
             self.name = name
             self.sessions = sessions
-            self.reachable = reachable
         }
     }
 

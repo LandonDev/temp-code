@@ -156,7 +156,10 @@ private struct AgentIdentity: View {
 /// one filled button that sends. A stopped agent reads "Resume to send"
 /// and a queued one "Starts when its turn comes", both off. While the key
 /// cannot act or the host is away, the field carries the reason in place
-/// of its placeholder. A failed send puts the text back with its reason.
+/// of its placeholder: a read-only key or a halt at once, a dropped link
+/// once it has stayed down past the composer's grace, so a blink of the
+/// socket never flips the field. A failed send puts the text back with its
+/// reason.
 private struct AgentSendBar: View {
     let client: EnvironmentClient
     let agentId: String
@@ -165,14 +168,12 @@ private struct AgentSendBar: View {
     @State private var busy = false
     @State private var failure: String?
     @State private var sentCount = 0
+    /// The block as the field shows it (see `settleBlock`).
+    @State private var block: ActionBlock?
     @FocusState private var focused: Bool
 
     private var live: Bool { Fleet.isLive(session?.status) }
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var block: ActionBlock? {
-        guard let block = client.operateBlock, !block.isTransient else { return nil }
-        return block
-    }
 
     /// Why the field is off, in the field's own words, or nil when it may send.
     private var held: String? {
@@ -202,7 +203,7 @@ private struct AgentSendBar: View {
                     .background(Surface.chrome, in: RoundedRectangle.fieldCorner)
                     .hairlineBorder(RoundedRectangle.fieldCorner)
                     .onChange(of: text) { failure = nil }
-                    .onSubmit(send)
+                    .onSubmit { send() }
                     .accessibilityLabel(held ?? (live ? "Steer this agent" : "Send to this agent"))
                 Button(action: send) {
                     ZStack {
@@ -236,6 +237,24 @@ private struct AgentSendBar: View {
         .background(.bar)
         .animation(Motion.crossFade, value: failure)
         .sensoryFeedback(.impact(weight: .light), trigger: sentCount)
+        .task(id: client.operateBlock) { await settleBlock() }
+    }
+
+    /// The composer's rule: a read-only key or a halt shows at once; a
+    /// dropped link only once it has stayed down past the grace.
+    private func settleBlock() async {
+        let now = client.operateBlock
+        if now == nil || now?.isTransient == false {
+            block = now
+            return
+        }
+        if block != nil {
+            block = now
+            return
+        }
+        try? await Task.sleep(for: .milliseconds(ComposerBar.blockGraceMs))
+        guard !Task.isCancelled else { return }
+        block = client.operateBlock
     }
 
     private func send() {

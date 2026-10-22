@@ -153,7 +153,7 @@ import TempCodeContract
         #expect(Fleet.orchestratorLine(status: .idle, counts: Fleet.Counts(failed: 1, stopped: 2)) == "Done, one agent failed")
         #expect(Fleet.orchestratorLine(status: .idle, counts: Fleet.Counts(queued: 1)) == "Waiting on its subagents")
         #expect(Fleet.orchestratorLine(status: .idle, counts: Fleet.Counts(waiting: 1, queued: 1)) == "A subagent needs you")
-        #expect(Fleet.orchestratorLine(status: .idle, counts: Fleet.Counts(done: 1, queued: 1, failed: 1)) == "Waiting on its subagents")
+        #expect(Fleet.orchestratorLine(status: .idle, counts: Fleet.Counts(failed: 1, done: 1, queued: 1)) == "Waiting on its subagents")
         #expect(Fleet.orchestratorLine(status: .stopped, counts: Fleet.Counts(working: 2)) == "Stopped")
         #expect(Fleet.orchestratorLine(status: .queued, counts: Fleet.Counts()) == "Queued")
     }
@@ -188,11 +188,11 @@ import TempCodeContract
             meta("b2", parentId: "root", status: .running, createdAt: 6),
             meta("gone", parentId: "root", archived: true, createdAt: 1),
             meta("other", parentId: "elsewhere", status: .waiting)
-        ], reachable: true)
+        ])
         let mac = Fleet.Host(id: "mac", name: "Mac", sessions: [
             meta("m1", parentId: "root", status: .waiting, createdAt: 7),
             meta("b1", parentId: "root", status: .idle, createdAt: 5)
-        ], reachable: false)
+        ])
         let agents = Fleet.gather(rootId: "root", rootHost: "box", hosts: [mac, box])
         #expect(agents.map(\.id) == ["mac:m1", "box:b2", "box:b1", "mac:b1"])
         #expect(agents.map(\.remote) == [true, false, false, true])

@@ -478,8 +478,9 @@ text fixes the height) swapping in place with the 150 ms cross-fade and
 stopped one's "stopped · the harness is gone"); the stats line when there
 is anything to say. Elapsed over cost on the right, `caption` tabular with
 `numericText`: one step above the stamp on purpose, because `caption2
-tertiary` fails the contrast floor on the needs-you tint. One clock drives
-every live row. A waiting row sits on the needs-you tint in an 8 pt rounded
+tertiary` fails the contrast floor on the needs-you tint. A live row's
+figures tick on their own one-second clock and nothing else in the row
+re-renders on the tick; a row whose host is away stands still. A waiting row sits on the needs-you tint in an 8 pt rounded
 field inset 8 pt from the edge; the text stays at the 16 pt edge. Hairlines
 between rows at 40 pt (`FleetLayout.textInset`), none after the last of a
 group. A row that changes group moves with the kit's row motion; nothing
@@ -522,8 +523,8 @@ agents in all four groups.
 The pieces the master board and any other fleet surface build from, all in
 `FleetStyles.swift`: `FleetLayout.textInset`, `AgentStatusMark`,
 `ProviderGlyph`, `AgentMetaLine`, `ActivityLine`, `AgentStatsLine`,
-`AgentFigures`, `AgentRow`, `FleetSections`, `FleetRows`, `FleetEmpty`,
-`FleetUnpairedNote`, `FleetGather`, `AgentDetailRoute` and
+`AgentFigures`, `AgentRow`, `FleetSections`, `FleetRows`, `FleetLoading`,
+`FleetEmpty`, `FleetUnpairedNote`, `FleetGather`, `AgentDetailRoute` and
 `.fleetDestinations(registry:)`.
 
 ### Research: the sources are the hero

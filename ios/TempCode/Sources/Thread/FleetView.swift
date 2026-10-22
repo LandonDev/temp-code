@@ -22,8 +22,10 @@ struct FleetView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 FleetGoal(goal: goal, status: effectiveStatus(counts: counts), line: Fleet.orchestratorLine(status: session?.status, counts: counts))
-                if fleet.agents.isEmpty {
-                    FleetEmpty(text: thread.isLoading ? "Loading the fleet…" : "No agents yet. The orchestrator's first spawn lands here.")
+                if fleet.agents.isEmpty, thread.isLoading {
+                    FleetLoading()
+                } else if fleet.agents.isEmpty {
+                    FleetEmpty(text: "No agents yet. The orchestrator's first spawn lands here.")
                 } else {
                     FleetSections(agents: fleet.agents, clients: fleet.clients, parentCwd: session?.cwd, hostNames: fleet.hostNames, hostLines: fleet.hostLines)
                 }
