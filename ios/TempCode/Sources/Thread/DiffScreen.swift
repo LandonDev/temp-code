@@ -54,9 +54,16 @@ struct DiffScreen: View {
         case failed
     }
 
+    /// What one `load()` answers to: the route, and the Retry count.
+    private struct LoadKey: Equatable {
+        let source: Source
+        let attempt: Int
+    }
+
     private let client: EnvironmentClient?
     private let source: Source
     @State private var phase: Phase
+    @State private var attempt = 0
     @State private var current = 0
     @State private var position = ScrollPosition(edge: .top)
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -64,8 +71,9 @@ struct DiffScreen: View {
 
     init(client: EnvironmentClient, route: DiffRoute) {
         self.client = client
-        source = .card(sessionId: route.sessionId, card: route.card)
-        _phase = State(initialValue: .loading)
+        let source = Source.card(sessionId: route.sessionId, card: route.card)
+        self.source = source
+        _phase = State(initialValue: Self.parsed(source) ?? .loading)
     }
 
     init(route: LinesDiffRoute) {
@@ -85,7 +93,7 @@ struct DiffScreen: View {
         ZStack(alignment: .top) {
             switch phase {
             case .loading:
-                DiffShimmer(rows: estimatedRows, metrics: metrics)
+                DiffShimmer(rows: estimate.rows, headers: estimate.headers, metrics: metrics)
                     .transition(.opacity)
             case .ready(let document, let partial):
                 VStack(spacing: 0) {
@@ -106,6 +114,9 @@ struct DiffScreen: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Surface.background)
+        // The bar draws the principal item; the title is for the back
+        // button's history and the screen's accessibility name.
+        .navigationTitle(Board.fileName(titlePath))
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Surface.background, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
@@ -146,7 +157,7 @@ struct DiffScreen: View {
                 }
             }
         }
-        .task(id: source) { await load() }
+        .task(id: LoadKey(source: source, attempt: attempt)) { await load() }
     }
 
     // MARK: - what the chrome shows
@@ -182,19 +193,22 @@ struct DiffScreen: View {
 
     private var hunkCount: Int { document?.hunks.count ?? 0 }
 
-    /// Rows the diff will take, from the lines each edit carries or the
-    /// count the host left behind with an omitted body.
-    private var estimatedRows: Int {
-        guard case .card(_, let card) = source else { return 8 }
+    /// What the diff will take while its lines load: the rows each edit
+    /// carries or the count the host left with an omitted body, and one
+    /// header per edit that has lines (each starts a hunk).
+    private var estimate: (rows: Int, headers: Int) {
+        guard case .card(_, let card) = source else { return (8, 1) }
         var rows = 0
+        var headers = 0
         for edit in card.edits {
             switch edit.preview?.lines {
             case .array(let lines)?: rows += lines.count
             case .omittedBody(let omitted)?: rows += omitted.lines
-            default: rows += 8
+            default: continue
             }
+            headers += 1
         }
-        return max(rows, 4)
+        return (max(rows, 4), max(headers, 1))
     }
 
     /// Previous or next hunk: the header's exact `y` from the fixed heights,
@@ -213,21 +227,40 @@ struct DiffScreen: View {
 
     // MARK: - loading
 
-    /// A route whose lines are already in hand parses before the first
-    /// frame: no shimmer, no fetch.
+    /// The last route parsed and its phase. A pushed screen is built again
+    /// on every render of the screen beneath it, and `init` runs each time;
+    /// one entry keeps a 3,600-line patch from parsing on every token the
+    /// transcript streams. Main-actor state, as the view is.
+    private static var lastParsed: (source: Source, phase: Phase)?
+
+    /// A route whose lines are already in hand (a patch, lines, or a card
+    /// every edit of which carries its lines) parses before the first
+    /// frame: no shimmer, no fetch. nil when something must be fetched.
     private static func parsed(_ source: Source) -> Phase? {
+        if let lastParsed, lastParsed.source == source { return lastParsed.phase }
         let document: DiffDocument
         switch source {
-        case .card: return nil
+        case .card(_, let card):
+            guard card.lines != nil else { return nil }
+            document = DiffDocument.from(edits: card.edits.compactMap { edit -> [ToolPreview.Line]? in
+                guard case .array(let lines)? = edit.preview?.lines else { return nil }
+                return lines
+            })
         case .lines(let route): document = DiffDocument.from(edits: [route.lines])
         case .patch(let route): document = DiffDocument.from(patch: route.patch, file: route.file)
         }
-        return document.isEmpty ? .empty : .ready(document, partial: false)
+        let phase: Phase = document.isEmpty ? .empty : .ready(document, partial: false)
+        lastParsed = (source, phase)
+        return phase
     }
 
+    /// Retry: back to the shimmer and the top, and a new load through the
+    /// same task, so leaving the screen cancels it and two taps run once.
     private func reload() {
         phase = .loading
-        Task { await load() }
+        current = 0
+        position = ScrollPosition(edge: .top)
+        attempt += 1
     }
 
     private func load() async {
@@ -283,7 +316,7 @@ private struct DiffTitle: View {
     var body: some View {
         let name = Board.fileName(path)
         let directory = String(path.dropLast(name.count))
-        (Text(directory).foregroundStyle(.tertiary) + Text(name))
+        Text("\(Text(directory).foregroundStyle(.tertiary))\(name)")
             .font(.subheadline.weight(.semibold))
             .lineLimit(1)
             .truncationMode(.head)
@@ -323,15 +356,17 @@ private struct DiffNotice: View {
 }
 
 /// The shimmer of the rows about to land: a header's slot, then one block
-/// of the estimated height, capped at a screen and a half.
+/// of the estimated height (the rows, and a header for every hunk after
+/// the first), capped at a screen and a half.
 private struct DiffShimmer: View {
     let rows: Int
+    let headers: Int
     let metrics: DiffMetrics
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Color.clear.frame(height: metrics.headerHeight)
-            Shimmer(height: min(CGFloat(rows) * metrics.rowHeight, 1_200))
+            Shimmer(height: min(CGFloat(rows) * metrics.rowHeight + CGFloat(headers - 1) * metrics.headerHeight, 1_200))
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
         }
@@ -352,6 +387,12 @@ private struct DiffBody: View {
     @Binding var position: ScrollPosition
     @State private var offsets: [Int: CGFloat] = [:]
     @State private var drag: DragState?
+    /// True while a finger is on a row's sideways gesture; SwiftUI resets
+    /// it when the gesture ends or is cancelled, which `onEnded` never sees.
+    @GestureState private var touching = false
+    /// True while previous or next hunk animates the scroll: the geometry
+    /// passes every hunk between, and the counter already says the target.
+    @State private var jumping = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// One sideways gesture from its first change to its release. The scroll
@@ -361,6 +402,7 @@ private struct DiffBody: View {
         let hunk: Int
         let startLocation: CGPoint
         let from: CGFloat
+        let reach: CGFloat
         let horizontal: Bool
     }
 
@@ -369,7 +411,6 @@ private struct DiffBody: View {
         let numberWidth = metrics.numberWidth(digits: document.digits)
         let layout = metrics.layout
         let starts = layout.hunkStarts(document)
-        let currentBinding = $current
         GeometryReader { geometry in
             let textWidth = max(80, geometry.size.width - gutter)
             ScrollView(.vertical) {
@@ -404,9 +445,37 @@ private struct DiffBody: View {
             .scrollPosition($position, anchor: .top)
             .scrollBounceBehavior(.basedOnSize)
             .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, y in
+                guard !jumping else { return }
                 let index = layout.hunkIndex(at: y, starts: starts)
-                if index != currentBinding.wrappedValue { currentBinding.wrappedValue = index }
+                if index != current { current = index }
             }
+            .onScrollPhaseChange { _, phase, context in
+                jumping = phase == .animating
+                guard phase == .idle else { return }
+                let geometry = context.geometry
+                let index = layout.hunkIndex(at: geometry.contentOffset.y + geometry.contentInsets.top, starts: starts)
+                if index != current { current = index }
+            }
+            .onChange(of: touching) { _, now in
+                guard !now else { return }
+                // After `onEnded` has had its turn: a gesture the system
+                // cancelled never gets one, and its hunk would stay stretched.
+                Task { @MainActor in settleCancelled() }
+            }
+        }
+    }
+
+    /// A drag that ended without `onEnded`: back inside the hunk's reach,
+    /// from wherever the finger left it, with the shortest settle.
+    private func settleCancelled() {
+        guard let state = drag else { return }
+        drag = nil
+        guard state.horizontal else { return }
+        let target = min(max(0, offsets[state.hunk] ?? 0), max(state.reach, 0))
+        if reduceMotion {
+            offsets[state.hunk] = target
+        } else {
+            withAnimation(Self.settle(travel: 0)) { offsets[state.hunk] = target }
         }
     }
 
@@ -424,18 +493,26 @@ private struct DiffBody: View {
     }
 
     /// The first change decides: the larger component is the gesture's axis
-    /// for its life, and a vertical start is left to the scroll view. The
-    /// release projects the throw, clamps it to the hunk's reach and settles
-    /// with no bounce in a time that follows the travel.
+    /// for its life, and a vertical start is left to the scroll view. While
+    /// the finger moves the offset follows it through an interactive spring,
+    /// so a hunk caught mid-settle blends to the finger instead of jumping.
+    /// The release projects the throw, clamps it to the hunk's reach and
+    /// settles with no bounce in a time that follows the travel.
     private func sideways(hunk: DiffHunk, reach: CGFloat, width: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 12, coordinateSpace: .local)
+            .updating($touching) { _, touching, _ in touching = true }
             .onChanged { value in
                 if drag == nil || drag?.startLocation != value.startLocation {
                     let t = value.translation
-                    drag = DragState(hunk: hunk.id, startLocation: value.startLocation, from: offsets[hunk.id] ?? 0, horizontal: abs(t.width) > abs(t.height))
+                    drag = DragState(hunk: hunk.id, startLocation: value.startLocation, from: offsets[hunk.id] ?? 0, reach: reach, horizontal: abs(t.width) > abs(t.height))
                 }
                 guard let drag, drag.horizontal, drag.hunk == hunk.id else { return }
-                offsets[hunk.id] = Self.rubber(drag.from - value.translation.width, reach: reach, width: width)
+                let x = Self.rubber(drag.from - value.translation.width, reach: reach, width: width)
+                if reduceMotion {
+                    offsets[hunk.id] = x
+                } else {
+                    withAnimation(.interactiveSpring(response: 0.15, dampingFraction: 0.86, blendDuration: 0.25)) { offsets[hunk.id] = x }
+                }
             }
             .onEnded { value in
                 guard let state = drag else { return }

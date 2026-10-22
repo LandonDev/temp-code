@@ -720,8 +720,11 @@ measurements (`DiffMetrics`) and the palette.
 - **Context menu** on any line: Copy line, Copy hunk (unified, with signs).
 - **Loading**: the shimmer of the height the lines will take, from the line
   count the host left with the omitted body; rows cross-fade in over it in
-  150 ms; a patch or lines route parses before the first frame and never
-  shows it. **Gone**: one line in destructive with Retry; part of an edit
+  150 ms; a route whose lines are in hand (a patch, lines, or an edit whose
+  every preview carries its lines) parses before the first frame and never
+  shows it. Previous and next hunk hold the counter on the target while the
+  scroll animates; the finger catching a hunk mid-settle blends to it
+  through an interactive spring. **Gone**: one line in destructive with Retry; part of an edit
   gone shows the rest under the same line. **Nothing to show**: one quiet
   line ("This edit left no lines to show."; for a patch, "No changes to
   show.", which covers a binary or truncated file).
