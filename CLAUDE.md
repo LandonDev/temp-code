@@ -1017,7 +1017,13 @@ routed to (aliax-core's `forward`). Two listeners:
   menus, project settings, the host's trailing mark).
 - The thread screens (L4) live in `ios/TempCode/Sources/Thread/`; the entry
   the shell routes to is `ThreadScreen(client:sessionId:targetSeq:)`, one
-  screen for every type and for a subagent's detail. The models they read
+  screen for every type and for a subagent's detail. Its frame (the header
+  with the status subtitle and the inline rename, the segmented control
+  whose pill is bound to the pager, the agents button and the menu, the
+  gone line) is `Sources/Thread/Frame/`, drawing the client package's
+  `Rendering/ThreadFrame.swift` (`ThreadKind`, `ThreadSegment`,
+  `ThreadPhase`, `SegmentRules`, `ThreadHeaderLine`: pure, tested in
+  ThreadFrameTests). The models they read
   are the client package's `Rendering/`: `ThreadFold` (the desktop's fold
   with round, todo and pass stamps and the `BoardState` of todos.ts; a
   `notice` row keeps its whole payload on `SystemLine.notice`), the
@@ -1043,7 +1049,7 @@ routed to (aliax-core's `forward`). Two listeners:
   `AgentDetailRoute`), `SubagentListScreen(client:rootSessionId:)` and
   `AgentDetailScreen(client:agentId:parentCwd:hostName:)`
   (docs/IOS-DESIGN.md "Orchestration"). DEBUG launch hooks (`TC_TEST_SEGMENT`,
-  `TC_TEST_OPEN=chip|diff|agent|agents|agent-detail|report|source|item|item-diff`,
+  `TC_TEST_OPEN=chip|diff|agent|agents|rename|agent-detail|report|source|item|item-diff`,
   `TC_TEST_SCROLL=1`, the Search tab's `TC_TEST_SEARCH=<query>` and
   `TC_TEST_SEARCH_SCOPE=files`, and L5's
   `TC_TEST_ACTION=send:<text>|stop|approve|deny|answer:<label>|start-build|

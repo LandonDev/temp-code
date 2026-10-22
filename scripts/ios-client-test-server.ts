@@ -178,6 +178,17 @@ server.registry.append('ios-fleet-explorer', { type: 'tool-call', callId: 'e1', 
 await make('ios-fleet-reviewer', { parentId: 'ios-fleet', projectId: project.id, agentType: 'reviewer', model: 'claude-opus-5-5', title: 'Review the first port' })
 say('ios-fleet-reviewer', 'Review the first port', 'Two findings, both minor.')
 
+// The thread screen's frame: a chat root with subagents, for the toolbar's agents button.
+await make('ios-chat-agents', { projectId: project.id, threadType: 'chat', title: 'Find the slow query' })
+server.registry.append('ios-chat-agents', { type: 'user-text', text: 'Find the query that slows the dashboard down' })
+server.registry.append('ios-chat-agents', { type: 'status', status: 'running' })
+await make('ios-chat-agents-explorer', { parentId: 'ios-chat-agents', projectId: project.id, agentType: 'explorer', title: 'Profile the dashboard queries' })
+server.registry.append('ios-chat-agents-explorer', { type: 'user-text', text: 'Profile the dashboard queries' })
+server.registry.append('ios-chat-agents-explorer', { type: 'status', status: 'running' })
+server.registry.append('ios-chat-agents-explorer', { type: 'tool-call', callId: 'q1', name: 'Read', input: { file_path: 'src/dashboard/queries.ts' } })
+await make('ios-chat-agents-reviewer', { parentId: 'ios-chat-agents', projectId: project.id, agentType: 'reviewer', model: 'claude-opus-5-5', title: 'Check the index plan' })
+say('ios-chat-agents-reviewer', 'Check the index plan', 'The composite index covers it.')
+
 // Chats: one in the workspace with no project, one outside every workspace; a thread in the archived project.
 await make('ios-chat-workspace', { workspaceId: workspace.id, threadType: 'chat', title: 'Why is the build slow?' })
 say('ios-chat-workspace', 'Why is the build slow today?', 'The cache was cold.')

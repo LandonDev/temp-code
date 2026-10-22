@@ -240,18 +240,90 @@ the Files scope.
 
 ## The thread screen
 
-One header for every type: back, title (inline rename later), a subtitle line
-with the type label tinted, the model, and the elapsed running time while
-live. Below the header, the type decides the body. The composer (L5) docks at
-the bottom, compact, growing on focus, with the desktop's reserved 28 pt
-working strip above it: spinner, flavour word, elapsed; paused shows the
-warning row with Stop and Continue. The strip never changes height.
+One header for every type, the way Messages and Notes title a screen: back,
+the title inline, and under it one quiet line read off `ThreadHeaderLine`
+(client package, `Rendering/ThreadFrame.swift`): the status mark, the type
+label tinted (a subagent's role instead; "Master" first on a master), the
+model, and the elapsed ticking once a second in tabular digits while the
+thread is live. The host's name leads that line, in the tertiary step, only
+when more than one host is paired; the line drops the host, then compacts
+to type · model (or the one word "Queued" / "Stopped"), before the title
+truncates. The mark and the words by status:
+
+| status | mark | after the host |
+| --- | --- | --- |
+| running, starting | spinner | type · model · elapsed |
+| watching | info dot, still live | type · model · elapsed |
+| waiting | warning dot | type · model |
+| error | destructive dot | type · model |
+| paused | pause mark | type · model · the frozen elapsed |
+| queued | quiet dot | the host's "Queued · waiting for X" line, else "Queued" |
+| stopped | the still square | "Stopped · the harness is gone" |
+| idle, done | none (the line stays centered) | type · model |
+
+An idle root whose subagents still work shows the spinner with no elapsed:
+the time is the child's. Long-press on the header, or Rename… in the menu,
+swaps the title for a field in place; Done or losing focus commits a
+changed, non-empty title and anything else reverts; the trailing toolbar
+group hides while the field is up so it gets the width. A key that cannot
+operate never opens the field: it sees the reason in the "Couldn't do that"
+alert. The title and the mark cross-fade when they change; nothing animates
+on the first paint.
+
+The toolbar's trailing group, left to right: **Start** or **Build** on a
+planning root (Build once the host linked a build to the plan), the agent
+glyph `person.2` with the running count beside it (shown when the thread
+has unarchived children and no Fleet segment lists them already; it pushes
+the subagent list), and the ellipsis menu last. The menu, in order: the
+reason a lesser key cannot act (first, when there is one), Rename…, Pin
+(roots), a divider, Archive (roots, destructive). A subagent's menu has the
+reason and Rename only.
+
+Below the header, the type decides the body. The composer (L5) docks at the
+bottom, compact, growing on focus, with the desktop's reserved 28 pt working
+strip above it: spinner, flavour word, elapsed; paused shows the warning row
+with Stop and Continue. The strip never changes height. The header's elapsed
+and the strip's answer different questions (the thread, still live; this
+turn's phase) and the header never carries the flavour word.
 
 Where the desktop splits board and chat side by side, the phone uses a
 segmented control under the header with two segments and a swipe between
-them. The segment chosen is remembered per thread. A dot on the inactive
-segment marks a new needs-you card there. The default segment is the one the
-desktop makes the hero.
+them. The control is bound to the pager: its raised pill sits at the pager's
+offset in pages (`SegmentRules.pillRect`), so it follows the finger during a
+swipe and settles with the drawer curve on a tap; each label's primary copy
+fades over its secondary one by the same offset (`SegmentRules.weight`),
+never a swap of two states. The track is the fill step at 9 pt radius, the
+pill 7 pt inside a 2 pt inset (concentric: `Radius.around(7, padding: 2)`),
+the raised step with a soft offset shadow in light and the step alone in
+dark. The segment chosen is remembered per thread. A warning dot beside the
+inactive segment's label marks a new needs-you card there: 6 pt, 4 pt off
+the label's trailing edge, both scaling with the label; it grows from a
+quarter of its size, fading and unblurring, on the expand spring, and leaves
+by opacity; the label never moves. Under reduced motion a tap jumps and the
+dot fades. The default segment is the one the desktop makes the hero
+(`ThreadPhase.defaultSegment`); a planning thread stopped on a question
+forces Chat.
+
+A thread moved or deleted while open shows one quiet line where the body
+was, keeps its last title in the header, and loses its composer, segments,
+agents button and menu.
+
+Slots, for the threads that fill them (each a named line in this thread's
+files, never an empty view):
+
+- (a) host chip: `ThreadHeaderLine.Part.host` rendered in
+  `Frame/ThreadHeader.swift` `HeaderPartView` (thread 22).
+- (b) account chip: a `Part.account` case after `.model` in
+  `Rendering/ThreadFrame.swift`, rendered in `HeaderPartView` (thread 24).
+- (c) Notes: the trailing group in `ThreadScreen.swift` `trailing(…)`,
+  before the agents button (thread 18).
+- (d) fleet switches and Resources…: `ThreadMenu` in
+  `Frame/ThreadToolbar.swift`, between `pinItem` and the divider (thread 20).
+- (e) master view: `ThreadSegment.segments(for: .master)` and the `.board`
+  case of `ThreadScreen.body(for:)` (thread 16).
+- (f) project plan view: the `.plan` case of `ThreadScreen.body(for:)`
+  (thread 17).
+- (g) the subtitle by status: the table above, in `ThreadHeaderLine.init`.
 
 ### Chat
 

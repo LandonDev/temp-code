@@ -2,10 +2,12 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// Where every thread opens. One header for every type; below it the type
-/// decides the body: a transcript for chats and subagents, two swipeable
-/// segments for the four board types. At the bottom the 28 pt working strip
-/// over the composer bar (Composer.swift, WorkingStrip.swift).
+/// Where every thread opens. One header for every type (Frame/); below it
+/// the kind decides the body: a transcript for chats and subagents, two
+/// swipeable segments for the board types. At the bottom the 28 pt working
+/// strip over the composer bar (Composer.swift, WorkingStrip.swift). The
+/// rules (which segments, which shows, the dot, the pill, the subtitle) are
+/// the client package's `ThreadFrame`; this file routes and wires.
 struct ThreadScreen: View {
     let client: EnvironmentClient
     let sessionId: String
@@ -14,13 +16,25 @@ struct ThreadScreen: View {
     var performsLaunchAction = true
     @Environment(NavigationRouter.self) private var router
     @Environment(AppModel.self) private var app
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var model: ThreadScreenModel
-    @State private var page: Segment?
+    @State private var page: ThreadSegment?
     @State private var launchPush: LaunchPush?
     /// A thread this screen created (a build from the plan), pushed over it.
     @State private var pushed: ThreadScreenRoute?
     @State private var starting = false
     @State private var acted = false
+    /// The pager's offset in pages, for the segment bar's pill; nil before the first layout.
+    @State private var pageProgress: CGFloat?
+    /// The segments the pager was last laid out for: a new list lands on its segment with nothing moving.
+    @State private var pagedSegments: [ThreadSegment] = []
+    @State private var showAgents = false
+    /// The title is a field in the header while this is on.
+    @State private var renaming = false
+    @State private var draftTitle = ""
+    @State private var failure: String?
+    /// The last title the session had, kept for the header once the thread is gone.
+    @State private var lastTitle: String?
 
     init(client: EnvironmentClient, sessionId: String, targetSeq: Int? = nil, performsLaunchAction: Bool = true) {
         self.client = client
@@ -33,44 +47,63 @@ struct ThreadScreen: View {
     var body: some View {
         let session = client.session(sessionId)
         let thread = client.threads[sessionId] ?? ThreadState()
-        let segments = Segment.segments(for: session)
+        let kind = ThreadKind(session)
+        let segments = ThreadSegment.segments(for: kind)
         let phase = ThreadPhase(session: session, thread: thread, document: model.document)
         let segment = model.segment(in: segments, phase: phase)
+        let gone = goneReason(session: session, thread: client.threads[sessionId])
+        let children = Fleet.children(of: sessionId, in: client.sessions)
+        let hostName = app.registry.ordered.count > 1 ? client.environment.name : nil
         VStack(spacing: 0) {
             StatusLine(client: client)
-            if thread.isLoadingHistory || thread.historyError != nil {
-                Text(thread.historyError ?? "Loading earlier board history…")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .padding(8)
-                    .accessibilityIdentifier("board-history-status")
-            }
-            if segments.count > 1 {
-                SegmentControl(segments: segments, selected: segment, dot: model.dot(in: segments, phase: phase, thread: thread)) { model.choose($0) }
-                pager(segments: segments, session: session, thread: thread, phase: phase)
+            if let gone {
+                GoneLine(reason: gone)
             } else {
-                transcript(session: session, thread: thread)
+                if thread.isLoadingHistory || thread.historyError != nil {
+                    Text(thread.historyError ?? "Loading earlier board history…")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, Layout.textEdge)
+                        .padding(.vertical, 8)
+                        .accessibilityIdentifier("board-history-status")
+                }
+                if segments.count > 1 {
+                    SegmentBar(segments: segments, selected: segment, dot: model.dot(in: segments, phase: phase, shown: segment), progress: pageProgress ?? CGFloat(segments.firstIndex(of: segment) ?? 0)) { select($0) }
+                    pager(segments: segments, kind: kind, session: session, thread: thread, phase: phase)
+                } else {
+                    transcript(session: session, thread: thread)
+                }
             }
         }
         .background(Surface.background)
-        .safeAreaInset(edge: .bottom, spacing: 0) { BottomDock(client: client, sessionId: sessionId, session: session, thread: thread) }
-        .toolbar {
-            ToolbarItem(placement: .principal) { ThreadHeader(session: session) }
-            if let session, session.threadType == .planning, session.parentId == nil, let buildId = session.implementationId, client.sessions[buildId] != nil {
-                // The host linked a build to this plan (auto-started, or begun elsewhere): the toolbar points at it.
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Build") { pushed = ThreadScreenRoute(sessionId: buildId) }
-                        .font(.subheadline.weight(.semibold))
-                        .accessibilityHint("Open the implementation thread started from this plan")
-                }
-            } else if let session, session.threadType == .planning, session.parentId == nil, phase.planHasContent, !phase.running, session.status != .waiting {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Start") { starting = true }
-                        .font(.subheadline.weight(.semibold))
-                        .disabled(client.operateBlock != nil)
-                        .accessibilityHint(client.operateBlock.map { $0.text(now: Date().timeIntervalSince1970 * 1000) } ?? "Start building this plan")
-                }
+        .animation(Motion.rowAppear, value: gone)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if gone == nil {
+                BottomDock(client: client, sessionId: sessionId, session: session, thread: thread)
             }
+        }
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                ThreadHeader(session: session, fallbackTitle: lastTitle, hostName: hostName, renaming: $renaming, draft: $draftTitle, onCommit: commitRename, onBeginRename: { beginRename(session) })
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                // The field takes the whole bar while renaming; nothing acts on a thread that is gone.
+                HStack(spacing: 0) {
+                    if let session, !renaming, gone == nil {
+                        trailing(session: session, phase: phase, children: children, segments: segments)
+                            .transition(.opacity)
+                    }
+                }
+                .animation(Motion.crossFade, value: renaming)
+            }
+        }
+        .alert("Couldn't do that", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(failure ?? "")
+        }
+        .navigationDestination(isPresented: $showAgents) {
+            SubagentListScreen(client: client, rootSessionId: sessionId)
         }
         .sheet(isPresented: $starting) {
             if let session {
@@ -98,16 +131,23 @@ struct ThreadScreen: View {
             case .agent(let route): ThreadScreen(client: client, sessionId: route.sessionId, targetSeq: route.targetSeq)
             }
         }
-        .onChange(of: TestHooks.open == nil ? "" : "\(thread.fold.lastSeq)|\(thread.rows.count)", initial: true) {
+        .onChange(of: TestHooks.open == nil ? "" : "\(thread.fold.lastSeq)|\(thread.rows.count)|\(thread.isLoading)", initial: true) {
             guard launchPush == nil, let open = TestHooks.open, targetSeq == nil else { return }
             if open == "diff", let edit = thread.fold.items.lazy.compactMap({ entry -> ChangeCard? in
                 guard case .tool(let tool) = entry.item, let path = Board.editPath(tool) else { return nil }
                 return Board.wholeChange(path: path, edits: [tool])
             }).first {
                 launchPush = .diff(DiffRoute(sessionId: sessionId, card: edit))
-            } else if open == "agent", let child = Fleet.children(of: sessionId, in: client.sessions).first {
+            } else if open == "agent", let child = children.first {
                 launchPush = .agent(ThreadScreenRoute(sessionId: child.id))
+            } else if open == "agents", !children.isEmpty, !showAgents {
+                showAgents = true
+            } else if open == "rename", session != nil, !thread.isLoading, !renaming {
+                beginRename(session)
             }
+        }
+        .onChange(of: session?.title, initial: true) {
+            if let title = session?.title, !title.isEmpty { lastTitle = title }
         }
         .onAppear {
             model.visible = true
@@ -121,7 +161,11 @@ struct ThreadScreen: View {
             client.markSeen(sessionId)
             client.closeThread(sessionId)
         }
-        .onChange(of: thread.fold.lastSeq) { client.markSeen(sessionId) }
+        .onChange(of: thread.fold.lastSeq) {
+            client.markSeen(sessionId)
+            // A card that lands on the segment in view is seen as it lands; the dot is for the other one.
+            model.saw(segment, thread: thread)
+        }
         // A running thread the person is watching gets the Live Activity.
         .onChange(of: session?.status, initial: true) {
             if let session, session.parentId == nil { app.activities.watch(client, session, registry: app.registry) }
@@ -131,7 +175,15 @@ struct ThreadScreen: View {
         }
         .onChange(of: segment, initial: true) { _, now in
             model.saw(now, thread: thread)
-            if page != now { withAnimation(Motion.drawer) { page = now } }
+            let fresh = pagedSegments != segments
+            pagedSegments = segments
+            guard page != now else { return }
+            if fresh {
+                // The first paint of a pager (or of a new segment list once the meta lands) moves nothing.
+                Motion.withoutAnimation { page = now }
+            } else {
+                withAnimation(reduceMotion ? nil : Motion.drawer) { page = now }
+            }
         }
         .onChange(of: segments, initial: true) {
             if targetSeq != nil { model.choose(segments.contains(.log) ? .log : .chat) }
@@ -152,6 +204,72 @@ struct ThreadScreen: View {
         }
         .onChange(of: thread.isLoading, initial: true) {
             if TestHooks.sheet == "start", session?.threadType == .planning, !thread.isLoading, !starting { starting = true }
+        }
+    }
+
+    /// The trailing group, left to right: Start or Build (planning roots),
+    /// slot (c) Notes (thread 18), the agents button, the menu last.
+    @ViewBuilder
+    private func trailing(session: SessionMeta, phase: ThreadPhase, children: [SessionMeta], segments: [ThreadSegment]) -> some View {
+        if session.threadType == .planning, session.parentId == nil, let buildId = session.implementationId, client.session(buildId) != nil {
+            // The host linked a build to this plan (auto-started, or begun elsewhere): the toolbar points at it.
+            Button("Build") { pushed = ThreadScreenRoute(sessionId: buildId) }
+                .font(.subheadline.weight(.semibold))
+                .buttonStyle(.pressableStatic)
+                .accessibilityHint("Open the implementation thread started from this plan")
+        } else if session.threadType == .planning, session.parentId == nil, phase.planHasContent, !phase.running, session.status != .waiting {
+            Button("Start") { starting = true }
+                .font(.subheadline.weight(.semibold))
+                .buttonStyle(.pressableStatic)
+                .disabled(client.operateBlock != nil)
+                .accessibilityHint(client.operateBlock.map { $0.text(now: Date().timeIntervalSince1970 * 1000) } ?? "Start building this plan")
+        }
+        // Slot (c), thread 18: the Notes button goes here, before the agents button.
+        if SegmentRules.showsAgents(children: children.count, segments: segments) {
+            AgentsButton(running: Fleet.counts(children.map(\.status)).working, total: children.count) { showAgents = true }
+        }
+        ThreadMenu(client: client, session: session, onRename: { beginRename(session) }, onFailure: { failure = $0 })
+    }
+
+    /// The thread is no longer on this host: the subscription was refused,
+    /// or a full listing came back without it. Nothing is shown until the
+    /// first listing and the thread's first page, so a cold open never
+    /// flashes the line.
+    private func goneReason(session: SessionMeta?, thread: ThreadState?) -> String? {
+        if thread?.goneReason != nil { return "This thread was moved or deleted" }
+        if session == nil, client.hasShell, let thread, !thread.isLoading { return "This thread was moved or deleted" }
+        return nil
+    }
+
+    /// A tap on the segment bar: the page moves with the drawer curve (a jump under reduced motion) and the pill rides with it.
+    private func select(_ segment: ThreadSegment) {
+        model.choose(segment)
+        withAnimation(reduceMotion ? nil : Motion.drawer) { page = segment }
+    }
+
+    /// Rename from the title's long-press or the menu: the title becomes a
+    /// field in place. A key that cannot act sees the reason instead.
+    private func beginRename(_ session: SessionMeta?) {
+        guard let session else { return }
+        if let block = client.operateBlock {
+            failure = block.text(now: Date().timeIntervalSince1970 * 1000)
+            return
+        }
+        draftTitle = session.title
+        renaming = true
+    }
+
+    /// Done on the keyboard or the field losing focus with a changed, non-empty draft.
+    private func commitRename() {
+        let title = draftTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        renaming = false
+        guard !title.isEmpty else { return }
+        Task {
+            do {
+                try await client.rename(sessionId, title: title)
+            } catch {
+                failure = (error as? ActionError)?.message ?? String(describing: error)
+            }
         }
     }
 
@@ -191,11 +309,11 @@ struct ThreadScreen: View {
         }
     }
 
-    private func pager(segments: [Segment], session: SessionMeta?, thread: ThreadState, phase: ThreadPhase) -> some View {
+    private func pager(segments: [ThreadSegment], kind: ThreadKind, session: SessionMeta?, thread: ThreadState, phase: ThreadPhase) -> some View {
         ScrollView(.horizontal) {
             LazyHStack(spacing: 0) {
                 ForEach(segments) { segment in
-                    body(for: segment, session: session, thread: thread, phase: phase)
+                    body(for: segment, kind: kind, session: session, thread: thread, phase: phase)
                         .containerRelativeFrame(.horizontal)
                         .id(segment)
                 }
@@ -205,16 +323,24 @@ struct ThreadScreen: View {
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $page)
         .scrollIndicators(.hidden)
+        // The segment bar's pill rides on this: the offset in pages, every frame of a swipe.
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.containerSize.width > 0 ? geometry.contentOffset.x / geometry.containerSize.width : 0
+        } action: { _, progress in
+            pageProgress = progress
+        }
     }
 
     @ViewBuilder
-    private func body(for segment: Segment, session: SessionMeta?, thread: ThreadState, phase: ThreadPhase) -> some View {
+    private func body(for segment: ThreadSegment, kind: ThreadKind, session: SessionMeta?, thread: ThreadState, phase: ThreadPhase) -> some View {
         switch segment {
         case .chat, .log:
             transcript(session: session, thread: thread)
         case .board:
+            // Slot (e), thread 16: `if kind == .master { MasterView(client:sessionId:session:thread:) } else { … }`.
             ImplementationBoardView(client: client, sessionId: sessionId, session: session, thread: thread, document: model.document)
         case .plan:
+            // Slot (f), thread 17: `if kind == .projectPlan { ProjectPlanView(…) } else { … }`.
             PlanView(sessionId: sessionId, document: model.document, running: phase.running)
         case .fleet:
             FleetView(client: client, sessionId: sessionId, session: session, thread: thread)
@@ -243,122 +369,42 @@ struct ThreadScreenRoute: Hashable {
     var targetSeq: Int? = nil
 }
 
-// MARK: - segments
-
-enum Segment: String, CaseIterable, Identifiable {
-    case board, chat, plan, fleet, log, sources
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .board: "Board"
-        case .chat: "Chat"
-        case .plan: "Plan"
-        case .fleet: "Fleet"
-        case .log: "Log"
-        case .sources: "Sources"
-        }
-    }
-
-    /// The two segments a type has; a chat or a subagent has the transcript alone.
-    static func segments(for session: SessionMeta?) -> [Segment] {
-        guard let session, session.parentId == nil else { return [.chat] }
-        switch session.threadType {
-        case .implementation?: return [.board, .chat]
-        case .planning?, .projectPlan?: return [.plan, .chat]
-        case .orchestration?: return [.fleet, .log]
-        case .research?: return [.sources, .chat]
-        default: return [.chat]
-        }
-    }
-}
-
-/// What the thread is up to, as the segment rules read it.
-struct ThreadPhase: Equatable {
-    var type: ThreadType?
-    var status: SessionStatus?
-    var running: Bool
-    var hasBoard: Bool
-    var hasAgents: Bool
-    var planHasContent: Bool
-    var reportComplete: Bool
-    /// Research activity has landed: a boarded source, a spawned angle or report text.
-    var hasSources: Bool
-    /// The newest undecided approval or question.
-    var undecidedSeq: Int?
-
-    init(session: SessionMeta?, thread: ThreadState, document: String?) {
-        type = session?.threadType
-        status = session?.status
-        running = status == .running || status == .starting
-        let board = thread.fold.board
-        hasAgents = !board.agents.isEmpty
-        hasBoard = !board.todos.isEmpty || board.rounds.contains { !$0.isEmpty } || hasAgents
-        let text = document?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        planHasContent = !text.isEmpty
-        reportComplete = !text.isEmpty && PlanDoc.report(document ?? "").isComplete
-        hasSources = !board.sources.isEmpty || hasAgents || planHasContent
-        undecidedSeq = thread.fold.items.last { $0.item.needsUser }?.seq
-    }
-
-    /// A planning thread stopped on a question shows the question.
-    var questionForcesChat: Bool { type == .planning && status == .waiting && undecidedSeq != nil }
-
-    /// The segment the desktop makes the hero, by type and phase.
-    func defaultSegment(in segments: [Segment]) -> Segment {
-        switch type {
-        case .implementation?: hasBoard ? .board : .chat
-        case .planning?, .projectPlan?: planHasContent ? .plan : .chat
-        case .orchestration?: hasAgents ? .fleet : .log
-        case .research?: hasSources ? .sources : .chat
-        default: segments.first ?? .chat
-        }
-    }
-}
-
 /// Per-screen state: the segment chosen (remembered per thread), the plan or
 /// report file polled while the screen shows, and what the user has seen on
-/// each segment for the dot.
+/// each segment for the dot. Every rule is `SegmentRules`; this holds state.
 @Observable
 final class ThreadScreenModel {
     let sessionId: String
-    private(set) var chosen: Segment?
+    private(set) var chosen: ThreadSegment?
     var visible = false
     private(set) var document: String?
-    private var seenCard: [Segment: Int] = [:]
+    private var seenCard: [ThreadSegment: Int] = [:]
 
     init(sessionId: String) {
         self.sessionId = sessionId
-        chosen = TestHooks.segment ?? UserDefaults.standard.string(forKey: Self.key(sessionId)).flatMap(Segment.init(rawValue:))
+        chosen = TestHooks.segment ?? UserDefaults.standard.string(forKey: Self.key(sessionId)).flatMap(ThreadSegment.init(rawValue:))
     }
 
     private static func key(_ id: String) -> String { "thread.segment.\(id)" }
 
-    func segment(in segments: [Segment], phase: ThreadPhase) -> Segment {
-        if phase.questionForcesChat, segments.contains(.chat) { return .chat }
-        if let chosen, segments.contains(chosen) { return chosen }
-        return phase.defaultSegment(in: segments)
+    func segment(in segments: [ThreadSegment], phase: ThreadPhase) -> ThreadSegment {
+        SegmentRules.segment(chosen: chosen, in: segments, phase: phase)
     }
 
-    func choose(_ segment: Segment) {
+    func choose(_ segment: ThreadSegment) {
         guard chosen != segment else { return }
         chosen = segment
         UserDefaults.standard.set(segment.rawValue, forKey: Self.key(sessionId))
     }
 
     /// Everything on this segment so far is seen.
-    func saw(_ segment: Segment, thread: ThreadState) {
+    func saw(_ segment: ThreadSegment, thread: ThreadState) {
         seenCard[segment] = thread.fold.lastSeq
     }
 
-    /// The inactive transcript segment holding an undecided card the user
-    /// has not looked at. A board shows its cards inline, so it needs none.
-    func dot(in segments: [Segment], phase: ThreadPhase, thread: ThreadState) -> Segment? {
-        guard let card = phase.undecidedSeq, !segments.contains(.board) else { return nil }
-        let home: Segment = segments.contains(.log) ? .log : .chat
-        guard segments.contains(home), segment(in: segments, phase: phase) != home else { return nil }
-        return card > (seenCard[home] ?? 0) ? home : nil
+    /// The inactive transcript segment holding an undecided card the user has not looked at.
+    func dot(in segments: [ThreadSegment], phase: ThreadPhase, shown: ThreadSegment) -> ThreadSegment? {
+        SegmentRules.dot(in: segments, phase: phase, shown: shown, seen: seenCard)
     }
 
     /// The plan or report file through `file.read`, polled like the desktop:
@@ -378,95 +424,5 @@ final class ThreadScreenModel {
             }
             try? await Task.sleep(for: .milliseconds(running ? 1_500 : 8_000))
         }
-    }
-}
-
-/// The two segments, with a dot on the inactive one that holds a new needs-you card.
-private struct SegmentControl: View {
-    let segments: [Segment]
-    let selected: Segment
-    let dot: Segment?
-    let onSelect: (Segment) -> Void
-
-    var body: some View {
-        Picker("Segment", selection: Binding(get: { selected }, set: { onSelect($0) })) {
-            ForEach(segments) { segment in
-                Text(segment.title).tag(segment)
-            }
-        }
-        .pickerStyle(.segmented)
-        .overlay {
-            HStack(spacing: 0) {
-                ForEach(segments) { segment in
-                    ZStack(alignment: .topTrailing) {
-                        Color.clear
-                        if segment == dot {
-                            Circle()
-                                .fill(Tint.warning)
-                                .frame(width: 6, height: 6)
-                                .padding(.top, 5)
-                                .padding(.trailing, 8)
-                                .transition(.opacity)
-                                .accessibilityLabel("Needs you")
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-            }
-            .allowsHitTesting(false)
-            .animation(Motion.crossFade, value: dot)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-    }
-}
-
-// MARK: - header
-
-/// Title over a line with the type label tinted, the model, and the elapsed
-/// running time while live. A subagent shows its role instead of a type.
-private struct ThreadHeader: View {
-    let session: SessionMeta?
-
-    var body: some View {
-        VStack(spacing: 1) {
-            Text(title)
-                .font(.headline)
-                .lineLimit(1)
-            HStack(spacing: 4) {
-                if let session {
-                    if session.parentId != nil {
-                        Text(session.agentType.label)
-                    } else if let type = session.threadType {
-                        Text(type.label)
-                            .foregroundStyle(type.tint)
-                    }
-                    Text("·")
-                    Text(ModelName.short(session.model))
-                    if session.status == .running || session.status == .starting {
-                        Text("·")
-                        TimelineView(.periodic(from: .now, by: 1)) { context in
-                            Text(TimeFormat.elapsed(since: session.busySince ?? session.updatedAt, now: context.date))
-                                .monospacedDigit()
-                                .contentTransition(.numericText())
-                        }
-                    } else if session.status == .paused, let frozen = session.frozenActiveElapsed {
-                        Text("·")
-                        Text(TimeFormat.duration(ms: frozen))
-                            .monospacedDigit()
-                    }
-                }
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    private var title: String {
-        guard let session else { return "Thread" }
-        if session.title.isEmpty { return session.parentId == nil ? "Untitled" : "Subagent" }
-        return session.title
     }
 }

@@ -11,10 +11,13 @@ enum TestHooks {
     #if DEBUG
     private static let env = ProcessInfo.processInfo.environment
     /// `board`, `chat`, `plan`, `fleet`, `log` or `sources`.
-    static let segment = env["TC_TEST_SEGMENT"].flatMap(Segment.init(rawValue:))
+    static let segment = env["TC_TEST_SEGMENT"].flatMap(ThreadSegment.init(rawValue:))
     /// `chip` opens the first tool chip with a held-back body, `diff` pushes
-    /// the first edit's diff, `agent` pushes the first subagent, `report`
-    /// opens the research report, `source` the first source's page.
+    /// the first edit's diff, `agent` pushes the first subagent, `agents`
+    /// pushes the subagent list from the toolbar button once the thread has
+    /// children, `rename` opens the inline title field once the thread is
+    /// loaded (the proof types nothing), `report` opens the research report,
+    /// `source` the first source's page.
     static let open = env["TC_TEST_OPEN"].flatMap { $0.isEmpty ? nil : $0 }
     /// Scrolls the whole transcript top and back while a display link
     /// records every frame; the report lands in Documents/scroll-report.json.
@@ -30,7 +33,7 @@ enum TestHooks {
     /// With `TC_TEST_ROUTE=notification`: "title part|seq", a payload the delegate routes like a tap.
     static let notification = env["TC_TEST_NOTIFICATION"].flatMap { $0.isEmpty ? nil : $0 }
     #else
-    static let segment: Segment? = nil
+    static let segment: ThreadSegment? = nil
     static let open: String? = nil
     static let scroll = false
     static let targetSeq: Int? = nil
