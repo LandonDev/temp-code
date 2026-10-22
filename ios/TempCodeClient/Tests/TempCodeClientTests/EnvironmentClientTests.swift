@@ -28,22 +28,28 @@ private final class ClientRig {
         client = EnvironmentClient(environment: environment, keys: keys, cache: self.cache, api: api, connect: sockets.factory, clock: clock)
     }
 
-    /// Answers the shell listing a fresh session asks for, as the three
-    /// requests appear: workspaces, projects, one session page.
-    func answerShell(_ fake: FakeWebSocket, sessions: [SessionMeta]) async {
+    /// Answers the shell listing a fresh session asks for, as the requests
+    /// appear: workspaces, projects, `session.changes` (the head, `reset` by
+    /// default, so the client lists whole; nil when the test answers it by
+    /// hand) and one session page.
+    func answerShell(_ fake: FakeWebSocket, sessions: [SessionMeta], changes: SessionChanges? = SessionChanges(reset: true, seq: 1, generation: "g0")) async {
         var answered: Set<String> = []
+        let wanted = changes == nil ? 3 : 4
         let deadline = ContinuousClock.now.advanced(by: .seconds(3))
         while ContinuousClock.now < deadline {
             for sent in fake.sentRequests where !answered.contains(sent.id) {
                 switch sent.method {
                 case "workspace.list": fake.answer(id: sent.id, result: json([sampleWorkspace("w1")]))
                 case "project.list": fake.answer(id: sent.id, result: json([sampleProject("p1")]))
+                case "session.changes":
+                    guard let changes else { continue }
+                    fake.answer(id: sent.id, result: json(changes))
                 case "session.list": fake.answer(id: sent.id, result: json(SessionPage(sessions: sessions, cursor: nil)))
                 default: continue
                 }
                 answered.insert(sent.id)
             }
-            if answered.count >= 3 { return }
+            if answered.count >= wanted { return }
             try? await Task.sleep(for: .milliseconds(1))
         }
         Issue.record("the shell was never listed")
@@ -549,5 +555,204 @@ private func seqs(_ rows: [EventRow]) -> [Int] { rows.map(\.seq) }
         fake.deliver(#"{"push":"sessions","sessions":\#(json([clientSession("s3", updatedAt: 12)]))}"#)
         #expect(await rig.wait { rig.client.sessions.first?.id == "s3" })
         #expect(quiet == 1, "Home on screen animates its own rows")
+    }
+
+    // MARK: - the list reconciles from its cursor
+
+    @Test func `a saved cursor reconciles the list with one session.changes and no session.list`() async throws {
+        let cache = try SessionCache.inMemory()
+        try await cache.upsertSessions("env_test", [clientSession("s1", updatedAt: 5), clientSession("s2", updatedAt: 2)])
+        try await cache.store("env_test", sessionId: "s2", rows: (1...5).map { textRow("s2", seq: $0) }, moreBefore: false)
+        try await cache.setCursor("env_test", ListCursor(seq: 10, generation: "g1"))
+        let rig = try ClientRig(cache: cache)
+        await rig.client.start()
+        #expect(rig.client.shellSource == .cache)
+        #expect(rig.client.listCursor == ListCursor(seq: 10, generation: "g1"))
+        await rig.client.openThread("s2")
+        let fake = await rig.sockets.socket(0)
+        fake.hello()
+        let changes = try #require(await rig.waitForRequest(fake, "session.changes"))
+        #expect(changes.params == .object(["afterSeq": .number(10), "generation": .string("g1")]))
+        let subscribe = try #require(await rig.waitForRequest(fake, "session.subscribe"))
+        fake.answer(id: subscribe.id, result: "null")
+        let events = try #require(await rig.waitForRequest(fake, "session.events"))
+        fake.answer(id: events.id, result: json(EventsPage(rows: [], moreBefore: false, moreAfter: false, reset: false)))
+        await rig.answerShell(fake, sessions: [], changes: SessionChanges(reset: false, seq: 12, generation: "g1", sessions: [clientSession("s1", title: "Renamed", updatedAt: 5)], removed: ["s2"]))
+        #expect(await rig.wait { rig.client.status.fresh })
+        #expect(rig.sent(fake, "session.list").isEmpty, "a cursor never lists whole")
+        #expect(rig.client.shellSource == .changes)
+        #expect(rig.client.hasShell)
+        // The changed meta updated in place; the removed one took its thread and subscription with it.
+        #expect(rig.client.sessions.map(\.id) == ["s1"])
+        #expect(rig.client.session("s1")?.title == "Renamed")
+        #expect(rig.client.threads["s2"] == nil)
+        #expect(!rig.client.subscriptions.has("s2"))
+        #expect(rig.client.listCursor == ListCursor(seq: 12, generation: "g1"))
+        #expect(await rig.waitAsync { (try? await cache.cursor("env_test")) == ListCursor(seq: 12, generation: "g1") })
+        #expect(await rig.waitAsync { (try? await cache.shell("env_test"))?.sessions.map(\.id) == ["s1"] })
+    }
+
+    @Test func `a reconcile that confirms the list republishes nothing`() async throws {
+        let cache = try SessionCache.inMemory()
+        try await cache.upsertSessions("env_test", [clientSession("s1", updatedAt: 5), clientSession("s2", updatedAt: 2)])
+        try await cache.setCursor("env_test", ListCursor(seq: 10, generation: "g1"))
+        let rig = try ClientRig(cache: cache)
+        var quiet = 0
+        rig.client.quietly = { body in
+            quiet += 1
+            body()
+        }
+        await rig.client.start()
+        let fake = await rig.sockets.socket(0)
+        fake.hello()
+        await rig.answerShell(fake, sessions: [], changes: SessionChanges(reset: false, seq: 10, generation: "g1", sessions: [], removed: []))
+        #expect(await rig.wait { rig.client.status.fresh })
+        #expect(rig.client.shellSource == .changes)
+        #expect(rig.client.sessions.map(\.id) == ["s1", "s2"])
+        #expect(quiet == 0, "nothing changed, nothing moved")
+    }
+
+    @Test func `a reset answer lists whole and keeps the head as the cursor`() async throws {
+        let cache = try SessionCache.inMemory()
+        try await cache.upsertSessions("env_test", [clientSession("s1", updatedAt: 5), clientSession("s9", updatedAt: 1)])
+        try await cache.setCursor("env_test", ListCursor(seq: 10, generation: "g1"))
+        let rig = try ClientRig(cache: cache)
+        await rig.client.start()
+        let fake = await rig.sockets.socket(0)
+        fake.hello()
+        let changes = try #require(await rig.waitForRequest(fake, "session.changes"))
+        #expect(changes.params["generation"] == .string("g1"))
+        #expect(rig.sent(fake, "session.list").isEmpty, "with a cursor the whole list is asked only after a reset")
+        await rig.answerShell(fake, sessions: [clientSession("s1", updatedAt: 5), clientSession("s2", updatedAt: 7)], changes: SessionChanges(reset: true, seq: 30, generation: "g2"))
+        #expect(await rig.wait { rig.client.status.fresh })
+        #expect(rig.client.shellSource == .list)
+        #expect(rig.client.sessions.map(\.id) == ["s2", "s1"], "the whole walk replaced the list; s9 was not listed and is gone")
+        #expect(rig.client.listCursor == ListCursor(seq: 30, generation: "g2"))
+        #expect(await rig.waitAsync { (try? await cache.cursor("env_test")) == ListCursor(seq: 30, generation: "g2") })
+    }
+
+    @Test func `no cursor asks for the head beside the whole list and stores it`() async throws {
+        let rig = try ClientRig()
+        await rig.client.start()
+        #expect(rig.client.shellSource == .none)
+        #expect(rig.client.listCursor == nil)
+        let fake = await rig.sockets.socket(0)
+        fake.hello()
+        let changes = try #require(await rig.waitForRequest(fake, "session.changes"))
+        #expect(changes.params == .object(["afterSeq": .number(0)]))
+        #expect(await rig.waitForRequest(fake, "session.list") != nil, "the first page goes out alongside: no extra round trip")
+        await rig.answerShell(fake, sessions: [clientSession("s1")], changes: SessionChanges(reset: true, seq: 5, generation: "g1"))
+        #expect(await rig.wait { rig.client.status.fresh })
+        #expect(rig.client.shellSource == .list)
+        #expect(rig.client.sessions.map(\.id) == ["s1"])
+        #expect(rig.client.listCursor == ListCursor(seq: 5, generation: "g1"))
+        #expect(await rig.waitAsync { (try? await rig.cache.cursor("env_test")) == ListCursor(seq: 5, generation: "g1") })
+    }
+
+    @Test func `a host without session.changes lists whole and leaves no cursor`() async throws {
+        let cache = try SessionCache.inMemory()
+        try await cache.setCursor("env_test", ListCursor(seq: 10, generation: "g1"))
+        let rig = try ClientRig(cache: cache)
+        await rig.client.start()
+        let fake = await rig.sockets.socket(0)
+        fake.hello()
+        let changes = try #require(await rig.waitForRequest(fake, "session.changes"))
+        fake.refuse(id: changes.id, error: "unknown method session.changes")
+        await rig.answerShell(fake, sessions: [clientSession("s1")], changes: nil)
+        #expect(await rig.wait { rig.client.status.fresh })
+        #expect(rig.client.shellSource == .list)
+        #expect(rig.client.sessions.map(\.id) == ["s1"])
+        #expect(rig.client.listCursor == nil)
+        #expect(await rig.waitAsync { (try? await cache.cursor("env_test")) == nil })
+    }
+
+    @Test func `the thread on screen stays seen when its rows land before its meta`() async throws {
+        let cache = try SessionCache.inMemory()
+        try await cache.upsertSessions("env_test", [clientSession("s1", updatedAt: 5)])
+        try await cache.store("env_test", sessionId: "s1", rows: (1...5).map { textRow("s1", seq: $0) }, moreBefore: false)
+        try await cache.markSeen("env_test", sessionId: "s1", at: 5, seq: 5)
+        let rig = try ClientRig(cache: cache)
+        await rig.client.start()
+        rig.client.visibleThread = "s1"
+        await rig.client.openThread("s1")
+        let fake = await rig.sockets.socket(0)
+        fake.hello()
+        let subscribe = try #require(await rig.waitForRequest(fake, "session.subscribe"))
+        fake.answer(id: subscribe.id, result: "null")
+        let events = try #require(await rig.waitForRequest(fake, "session.events"))
+        fake.answer(id: events.id, result: json(EventsPage(rows: (6...8).map { textRow("s1", seq: $0) }, moreBefore: false, moreAfter: false, reset: false)))
+        #expect(await rig.wait { rig.client.threads["s1"]?.rows.count == 8 })
+        // The rows are on screen; the mark follows them, still against the old meta.
+        #expect(rig.client.seen["s1"] == SeenMark(at: 5, seq: 8))
+        await rig.answerShell(fake, sessions: [clientSession("s1", updatedAt: 9)])
+        #expect(await rig.wait { rig.client.status.fresh })
+        // The fresh meta re-marks the thread the person is looking at.
+        #expect(rig.client.seen["s1"] == SeenMark(at: 9, seq: 8))
+        #expect(await rig.waitAsync { (try? await cache.seen("env_test"))?["s1"] == SeenMark(at: 9, seq: 8) })
+        // A thread nobody is looking at is left as it was.
+        fake.deliver(#"{"push":"sessions","sessions":\#(json([clientSession("s2", updatedAt: 11)]))}"#)
+        #expect(await rig.wait { rig.client.session("s2") != nil })
+        #expect(rig.client.seen["s2"] == nil)
+    }
+
+    @Test func `a reset page lands quietly even on the thread on screen`() async throws {
+        let cache = try SessionCache.inMemory()
+        try await cache.store("env_test", sessionId: "s1", rows: (1...20).map { textRow("s1", seq: $0) }, moreBefore: false)
+        let rig = try ClientRig(cache: cache)
+        var quiet = 0
+        rig.client.quietly = { body in
+            quiet += 1
+            body()
+        }
+        await rig.client.start()
+        rig.client.visibleThread = "s1"
+        await rig.client.openThread("s1")
+        #expect(quiet == 1, "the first paint from the cache")
+        let fake = await rig.sockets.socket(0)
+        fake.hello()
+        await rig.answerShell(fake, sessions: [clientSession("s1")])
+        #expect(await rig.wait { rig.client.hasShell })
+        let listed = quiet   // the list, which nobody is looking at, landed quietly
+        let subscribe = try #require(await rig.waitForRequest(fake, "session.subscribe"))
+        fake.answer(id: subscribe.id, result: "null")
+        let events = try #require(await rig.waitForRequest(fake, "session.events"))
+        fake.answer(id: events.id, result: json(EventsPage(rows: (900...905).map { textRow("s1", seq: $0) }, moreBefore: true, moreAfter: false, reset: true)))
+        #expect(await rig.wait { rig.client.threads["s1"]?.rows.first?.seq == 900 })
+        #expect(quiet == listed + 1, "a replaced tail is a fresh paint, not rows arriving")
+        fake.deliver(#"{"push":"events","sessionId":"s1","rows":\#(json([textRow("s1", seq: 906)]))}"#)
+        #expect(await rig.wait { rig.client.threads["s1"]?.rows.count == 7 })
+        #expect(quiet == listed + 1, "rows arriving on the thread on screen keep the view's motion")
+    }
+
+    @Test func `the boot-resume push surfaces once per boot, across launches`() async throws {
+        let cache = try SessionCache.inMemory()
+        let rig = try ClientRig(cache: cache)
+        await rig.client.start()
+        let fake = await rig.sockets.socket(0)
+        fake.hello()
+        #expect(rig.client.bootResume == nil)
+        fake.deliver(#"{"push":"boot-resume","count":3,"at":1700}"#)
+        #expect(await rig.wait { rig.client.bootResume == BootResumeNotice(count: 3, at: 1700) })
+        rig.client.dismissBootResume()
+        #expect(rig.client.bootResume == nil)
+        // The host repeats it after every hello; the same boot shows nothing.
+        fake.deliver(#"{"push":"boot-resume","count":3,"at":1700}"#)
+        fake.deliver(#"{"push":"sessions","sessions":\#(json([clientSession("s1", title: "after the repeat")]))}"#)
+        #expect(await rig.wait { rig.client.session("s1")?.title == "after the repeat" })
+        #expect(rig.client.bootResume == nil)
+        // Another boot surfaces again.
+        fake.deliver(#"{"push":"boot-resume","count":1,"at":1800}"#)
+        #expect(await rig.wait { rig.client.bootResume == BootResumeNotice(count: 1, at: 1800) })
+        await rig.client.stop()
+        // The next launch on the same cache still knows that boot.
+        let next = try ClientRig(cache: cache)
+        await next.client.start()
+        let socket = await next.sockets.socket(0)
+        socket.hello()
+        socket.deliver(#"{"push":"boot-resume","count":1,"at":1800}"#)
+        socket.deliver(#"{"push":"sessions","sessions":\#(json([clientSession("s1", title: "next launch")]))}"#)
+        #expect(await next.wait { next.client.session("s1")?.title == "next launch" })
+        #expect(next.client.bootResume == nil)
+        await next.client.stop()
     }
 }

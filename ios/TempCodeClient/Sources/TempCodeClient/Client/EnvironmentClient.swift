@@ -51,6 +51,28 @@ public let coldOpenTail = 300
 /// Rows one older page asks for.
 public let olderPage = 200
 
+/// Where the shell's session list came from, newest source last: nothing
+/// yet, the cache's paint, a `session.changes` reconcile from the saved
+/// cursor, or a whole `session.list` walk.
+public enum ShellSource: Sendable, Hashable {
+    case none
+    case cache
+    case changes
+    case list
+}
+
+/// The host restarted and brought threads cut mid-turn back (the
+/// `boot-resume` push): how many, and the boot's time it is deduped by.
+public struct BootResumeNotice: Sendable, Hashable {
+    public var count: Int
+    public var at: Int
+
+    public init(count: Int, at: Int) {
+        self.count = count
+        self.at = at
+    }
+}
+
 /// One environment as the app sees it: the socket's status, the shell
 /// (workspaces, projects, sessions newest first) and every opened thread,
 /// painted from the cache before the socket is up and kept current from
@@ -69,6 +91,13 @@ public final class EnvironmentClient {
     public internal(set) var catalog: Catalog?
     /// The shell has been listed at least once in this process.
     public private(set) var hasShell = false
+    /// Where the session list last came from.
+    public private(set) var shellSource: ShellSource = .none
+    /// The `session.changes` head the list was last reconciled to, from the
+    /// cache at `start()` and saved with every answer; nil lists whole.
+    public private(set) var listCursor: ListCursor?
+    /// The host's restart notice, once per boot; `dismissBootResume()` clears it.
+    public private(set) var bootResume: BootResumeNotice?
     /// When the user last looked at each thread, from the cache; `markSeen` writes it.
     public private(set) var seen: [String: SeenMark] = [:]
     /// Workspace icons as the cache holds them; `icon(_:)` asks the host once per launch.
@@ -119,7 +148,9 @@ public final class EnvironmentClient {
             workspaces = shell.workspaces
             projects = shell.projects
             sessions = shell.sessions
+            if !shell.sessions.isEmpty { shellSource = .cache }
         }
+        listCursor = try? await cache.cursor(environment.id)
         seen = (try? await cache.seen(environment.id)) ?? [:]
         icons = (try? await cache.icons(environment.id)) ?? [:]
         let socket = self.socket
@@ -156,6 +187,13 @@ public final class EnvironmentClient {
         projects = []
         sessions = []
         threads = [:]
+        listCursor = nil
+        shellSource = .none
+    }
+
+    /// The restart notice was shown.
+    public func dismissBootResume() {
+        bootResume = nil
     }
 
     public func retry() async { await socket.retry() }
@@ -416,13 +454,23 @@ public final class EnvironmentClient {
         }
     }
 
-    /// Lists the shell on a new session and merges it in; sessions the full
-    /// walk did not name are gone from the host.
+    /// Lists the shell on a new session. The session list reconciles with
+    /// `session.changes` from the saved cursor (the metas that changed and
+    /// the ids that left since, merged in place; the desktop's launch mirror
+    /// does the same): one request, nothing republished that did not change.
+    /// With no cursor, or when the host answers `reset` (another run of the
+    /// server, a cursor older than its log keeps) or refuses the method (an
+    /// older host), the whole `session.list` walk runs as before, and the
+    /// head taken BEFORE the walk is the next cursor, so changes that land
+    /// during the walk are replayed next time rather than lost.
     private func refreshShell() async {
-        // The three lists are independent: one round trip for the shell.
+        let cursor = listCursor
+        // The lists are independent: one round trip for the shell. With no
+        // cursor the whole list goes out alongside, since it will be needed.
         async let workspacesList = try? socket.request(Methods.WorkspaceList.self, NoParams())
         async let projectsList = try? socket.request(Methods.ProjectList.self, NoParams())
-        async let firstPage = try? socket.request(Methods.SessionList.self, .init(archived: nil, projectId: nil, cursor: nil))
+        async let changes = try? socket.request(Methods.SessionChanges.self, .init(afterSeq: cursor?.seq ?? 0, generation: cursor?.generation))
+        async let coldPage = firstPage(unlessResumingFrom: cursor)
         // A list that comes back as it was is not republished: a catch-up
         // that confirms what the cache painted moves nothing on screen.
         if let list = await workspacesList {
@@ -433,15 +481,45 @@ public final class EnvironmentClient {
             if list != projects { publishList { projects = list } }
             try? await cache.replaceProjects(environment.id, list)
         }
-        let (listed, complete) = await walk(pages: await firstPage, archived: false)
+        let answer = await changes
+        setListCursor(answer.map { ListCursor(seq: $0.seq, generation: $0.generation) })
+        if let answer, !answer.reset, cursor != nil {
+            // The change log carries archived metas too, and an archived
+            // thread that left is in `removed`: no archived walk.
+            merge(answer.sessions ?? [])
+            if let removed = answer.removed, !removed.isEmpty { removeSessions(removed) }
+            hasShell = true
+            shellSource = .changes
+            _ = await coldPage
+            return
+        }
+        let firstPage: SessionPage? = cursor == nil
+            ? await coldPage
+            : try? await socket.request(Methods.SessionList.self, .init(archived: nil, projectId: nil, cursor: nil))
+        let (listed, complete) = await walk(pages: firstPage, archived: false)
         if complete {
             let gone = sessions.filter { !$0.archived && !listed.contains($0.id) }.map(\.id)
             if !gone.isEmpty { removeSessions(gone) }
         }
         hasShell = true
+        shellSource = .list
         // The archived threads come after the live shell is up, off the open
         // handler, so a long archive never delays the subscriptions.
         Task { [weak self] in await self?.refreshArchived() }
+    }
+
+    /// The first `session.list` page, asked only when there is no cursor to
+    /// resume from (it goes out beside `session.changes` then).
+    private func firstPage(unlessResumingFrom cursor: ListCursor?) async -> SessionPage? {
+        guard cursor == nil else { return nil }
+        return try? await socket.request(Methods.SessionList.self, .init(archived: nil, projectId: nil, cursor: nil))
+    }
+
+    private func setListCursor(_ cursor: ListCursor?) {
+        listCursor = cursor
+        let env = environment.id
+        let cache = self.cache
+        Task { try? await cache.setCursor(env, cursor) }
     }
 
     /// `session.list` answers live or archived threads, never both; the shell
@@ -494,10 +572,19 @@ public final class EnvironmentClient {
             append(value.sessionId, rows: value.rows)
             threads[value.sessionId]?.isLive = true
             try? await cache.store(environment.id, sessionId: value.sessionId, rows: value.rows)
+        case .bootResume(let value):
+            // The host sends it after hello on every socket; the screen shows
+            // it once per boot, the stamp kept in the cache across launches.
+            let shown = try? await cache.noticeSeen(environment.id, kind: Self.bootResumeKind)
+            guard shown != value.at else { return }
+            try? await cache.markNotice(environment.id, kind: Self.bootResumeKind, at: value.at)
+            bootResume = BootResumeNotice(count: value.count, at: value.at)
         case .queue, .liveEdits, .builds, .unknown:
             break
         }
     }
+
+    static let bootResumeKind = "boot-resume"
 
     // MARK: - folding
 
@@ -518,6 +605,10 @@ public final class EnvironmentClient {
         // A list that did not change in order or membership is not republished:
         // a catch-up that confirms what was already true moves nothing.
         if sorted != sessions { publishList { sessions = sorted } }
+        // The thread on screen is seen as of this meta: on return its rows
+        // land before the list reconciles, so the earlier mark would read
+        // the stale `updatedAt` and the fresh meta would make it unseen.
+        if let visible = visibleThread, metas.contains(where: { $0.id == visible }) { markSeen(visible) }
         sessionObserver?(self, metas)
         let env = environment.id
         let cache = self.cache
@@ -562,12 +653,19 @@ public final class EnvironmentClient {
             Self.settle(&state, rows: page.rows)
             state.isLoading = false
             state.isLive = true
-            publish(thread: id) { threads[id] = state }
+            if page.reset {
+                // A replaced tail is a fresh paint, not rows arriving: no
+                // motion even on the thread on screen.
+                quietly { threads[id] = state }
+            } else {
+                publish(thread: id) { threads[id] = state }
+            }
         } else {
             append(id, rows: page.rows)
             threads[id]?.isLoading = false
             threads[id]?.isLive = true
         }
+        if visibleThread == id { markSeen(id) }
         let env = environment.id
         let cache = self.cache
         Task { try? await cache.store(env, sessionId: id, rows: page.rows, moreBefore: page.reset || tailFirst ? page.moreBefore : nil, reset: page.reset) }
