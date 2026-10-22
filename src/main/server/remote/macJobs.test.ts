@@ -272,7 +272,9 @@ describe.runIf(ptyLoads)('a job in a terminal (node-pty)', () => {
     await readUntil(m.call, jobId, (_r, t) => (t.match(/second line/g) ?? []).length >= 2)
     await m.call('mac.jobClose', { jobId })
     const end = await readUntil(m.call, jobId, (r) => !r.running)
-    expect(end.last).toMatchObject({ running: false, exitCode: 0 })
+    // running, exitCode and signal are stamped together (exited); a failure
+    // here with exitCode null names the signal node-pty reported for cat.
+    expect(end.last).toMatchObject({ running: false, exitCode: 0, signal: null })
   })
 })
 
