@@ -218,7 +218,7 @@ struct LiveServerTests {
         #expect(Set(seqs).count == seqs.count)
         #expect(seqs.last! - seqs.first! + 1 == seqs.count, "no gap in \(seqs)")
         #expect(Array(rows.prefix(before.count)) == before, "the rows that were there are the same rows")
-        #expect(quiet == quietBefore, "the thread on screen caught up with its own motion, nothing else republished")
+        #expect(quiet == quietBefore + 1, "the thread on screen caught up with its own motion; only the list, which nobody is looking at, republished quietly (the thread's meta moved)")
         await client.stop()
     }
 

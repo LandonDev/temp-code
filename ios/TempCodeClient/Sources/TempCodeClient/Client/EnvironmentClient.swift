@@ -223,17 +223,28 @@ public final class EnvironmentClient {
     }
 
     /// The newest rows of a thread the screen has not opened (a needs-you line
-    /// wants the request behind a waiting status): the cache, else one page
-    /// from the host, kept in the cache.
+    /// wants the request behind a waiting status). A live thread's rows are
+    /// current; otherwise the cached tail is current only until the thread's
+    /// meta moves on (`peeked` is the `updatedAt` the tail was fetched for),
+    /// and then one page comes from the host and goes into the cache: a
+    /// second approval on a thread never opened replaces the first's cue
+    /// instead of hiding behind it. With no socket the cache is the answer.
     public func peekTail(_ id: String, limit: Int = 24) async -> [EventRow] {
-        if let state = threads[id], !state.rows.isEmpty { return state.rows.suffix(limit).map { $0 } }
-        if let tail = try? await cache.tail(environment.id, sessionId: id, limit: limit), !tail.rows.isEmpty { return tail.rows }
+        let updatedAt = session(id)?.updatedAt ?? 0
+        if let state = threads[id], !state.rows.isEmpty, state.isLive || peeked[id] == updatedAt {
+            return state.rows.suffix(limit).map { $0 }
+        }
+        let cached = (try? await cache.tail(environment.id, sessionId: id, limit: limit))?.rows ?? []
+        if !cached.isEmpty, peeked[id] == updatedAt { return cached }
         guard await socket.isOpen,
               let page = try? await socket.request(Methods.SessionEvents.self, .init(sessionId: id, afterSeq: nil, beforeSeq: nil, tail: limit, limit: nil))
-        else { return [] }
+        else { return cached }
+        peeked[id] = updatedAt
         try? await cache.store(environment.id, sessionId: id, rows: page.rows, moreBefore: page.moreBefore)
         return page.rows
     }
+    /// The meta's `updatedAt` each peeked tail was fetched for.
+    private var peeked: [String: Int] = [:]
 
     /// Shows the thread: its cached tail at once, then a subscribe and a
     /// resume from the cache's cursor when the socket is up.
@@ -493,13 +504,17 @@ public final class EnvironmentClient {
             _ = await coldPage
             return
         }
-        let firstPage: SessionPage? = cursor == nil
+        let page: SessionPage? = cursor == nil
             ? await coldPage
             : try? await socket.request(Methods.SessionList.self, .init(archived: nil, projectId: nil, cursor: nil))
-        let (listed, complete) = await walk(pages: firstPage, archived: false)
+        let (listed, complete) = await walk(pages: page, archived: false)
         if complete {
             let gone = sessions.filter { !$0.archived && !listed.contains($0.id) }.map(\.id)
             if !gone.isEmpty { removeSessions(gone) }
+        } else {
+            // A walk cut short (a page lost as the socket dropped) listed less
+            // than the head covers: the next session lists whole again.
+            setListCursor(nil)
         }
         hasShell = true
         shellSource = .list
@@ -623,6 +638,7 @@ public final class EnvironmentClient {
             subscriptions.remove(id)
             cancelHistory(id)
             seen[id] = nil
+            peeked[id] = nil
         }
         let env = environment.id
         let cache = self.cache

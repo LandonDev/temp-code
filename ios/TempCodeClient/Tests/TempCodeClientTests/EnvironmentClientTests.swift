@@ -34,7 +34,8 @@ private final class ClientRig {
     /// hand) and one session page.
     func answerShell(_ fake: FakeWebSocket, sessions: [SessionMeta], changes: SessionChanges? = SessionChanges(reset: true, seq: 1, generation: "g0")) async {
         var answered: Set<String> = []
-        let wanted = changes == nil ? 3 : 4
+        // A non-reset reconcile never asks for a session page.
+        let wanted = changes?.reset == false ? 3 : 4
         let deadline = ContinuousClock.now.advanced(by: .seconds(3))
         while ContinuousClock.now < deadline {
             for sent in fake.sentRequests where !answered.contains(sent.id) {
@@ -754,5 +755,36 @@ private func seqs(_ rows: [EventRow]) -> [Int] { rows.map(\.seq) }
         #expect(await next.wait { next.client.session("s1")?.title == "next launch" })
         #expect(next.client.bootResume == nil)
         await next.client.stop()
+    }
+
+    @Test func `a peeked tail refreshes once the thread's meta moves past it`() async throws {
+        let cache = try SessionCache.inMemory()
+        try await cache.upsertSessions("env_test", [clientSession("s1", updatedAt: 5)])
+        try await cache.store("env_test", sessionId: "s1", rows: (1...3).map { textRow("s1", seq: $0) }, moreBefore: false)
+        let rig = try ClientRig(cache: cache)
+        await rig.client.start()
+        // No socket yet: the cache is the answer.
+        #expect(seqs(await rig.client.peekTail("s1")) == [1, 2, 3])
+        let fake = await rig.sockets.socket(0)
+        fake.hello()
+        await rig.answerShell(fake, sessions: [clientSession("s1", updatedAt: 5)])
+        #expect(await rig.wait { rig.client.status.fresh })
+        // The socket is up and the tail was never fetched for this meta: one page from the host.
+        let peeking = Task { await rig.client.peekTail("s1") }
+        let first = try #require(await rig.waitForRequest(fake, "session.events"))
+        #expect(first.params == .object(["sessionId": .string("s1"), "tail": .number(24)]))
+        fake.answer(id: first.id, result: json(EventsPage(rows: (1...4).map { textRow("s1", seq: $0) }, moreBefore: false, moreAfter: false, reset: false)))
+        #expect(seqs(await peeking.value) == [1, 2, 3, 4])
+        // The same meta again: the cache, no request.
+        #expect(seqs(await rig.client.peekTail("s1")) == [1, 2, 3, 4])
+        #expect(rig.sent(fake, "session.events").count == 1)
+        // The thread moved on (a second approval): the tail is fetched again.
+        fake.deliver(#"{"push":"sessions","sessions":\#(json([clientSession("s1", updatedAt: 9)]))}"#)
+        #expect(await rig.wait { rig.client.session("s1")?.updatedAt == 9 })
+        let again = Task { await rig.client.peekTail("s1") }
+        let second = try #require(await rig.waitForRequest(fake, "session.events", count: 2))
+        fake.answer(id: second.id, result: json(EventsPage(rows: (1...5).map { textRow("s1", seq: $0) }, moreBefore: false, moreAfter: false, reset: false)))
+        #expect(seqs(await again.value) == [1, 2, 3, 4, 5])
+        #expect(await rig.waitAsync { (try? await cache.cursor("env_test", sessionId: "s1")) == 5 })
     }
 }

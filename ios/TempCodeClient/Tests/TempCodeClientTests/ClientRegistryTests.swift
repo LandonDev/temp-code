@@ -86,7 +86,7 @@ private final class RegistryRig {
         await rig.registry.sync()
         #expect(rig.registry.client("env_a") === prepared, "sync starts the prepared client rather than making another")
         #expect(await rig.wait { rig.registry.clients.values.allSatisfy { $0.status.transport == .connecting } })
-        #expect(rig.sockets.values.allSatisfy { $0.sockets.count == 1 })
+        #expect(await rig.wait { rig.sockets.values.allSatisfy { $0.sockets.count == 1 } })
     }
 
     @Test func `allFresh waits for every host with a session and ignores one without`() async throws {

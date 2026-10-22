@@ -150,14 +150,18 @@ first `session.list` page, no extra round trip) or when the host refuses
 the method (an older build; the cursor is dropped), the whole `session.list`
 walk runs as before, with the archived walk off the open handler, and the
 head taken BEFORE the walk is the cursor, so changes that land during the
-walk are replayed next time rather than lost. `shellSource` says where the
+walk are replayed next time rather than lost; a walk cut short drops the
+cursor, so the next session lists whole again. `shellSource` says where the
 list came from last (`none`, `cache`, `changes`, `list`). `bootResume` is
 the host's restart notice (`BootResumeNotice`: count and the boot's time),
 set once per boot from the `boot-resume` push the host repeats on every
 socket, deduped through the cache's `notices` table; `dismissBootResume()`
 clears it. The thread on screen is re-marked seen when its meta lands after
 its rows (`merge`) and when its first page lands (`fold`), so the catch-up
-never leaves it unseen. Pushes:
+never leaves it unseen. `peekTail` (Home's needs-you cue) answers a live
+thread's rows, else the cached tail only while the thread's meta has not
+moved since the tail was fetched (`peeked`), else one page from the host
+into the cache, and the cache alone with no socket. Pushes:
 `events` append to an open thread (ephemeral rows stay out of the cache),
 `sessions` merge newest-first, `session-removed` drops the thread,
 `projects`/`workspaces` replace. `openThread` paints the cached tail at once

@@ -46,8 +46,8 @@ struct TranscriptView: View {
                     }
                     .id(entry.id)
                     .accessibilityIdentifier("transcript-item")
-                    // Return flow (thread 14): the row at the top while scrolled up is the anchor a relaunch lands on.
-                    .onScrollVisibilityChange(threshold: 0.5) { visible in if visible, !scrollState.atBottom { ScrollMemory.set(entry.id, for: sessionId) } }
+                    // Return flow (thread 14): the topmost row on screen while scrolled up is the anchor a relaunch lands on.
+                    .onScrollVisibilityChange(threshold: 0.5) { visible in scrollState.sawRow(entry.id, visible: visible, sessionId: sessionId) }
                 }
                 .listRowInsets(rowInsets)
                 .listRowSeparator(.hidden)
@@ -228,6 +228,15 @@ struct TranscriptView: View {
 @MainActor @Observable
 private final class TranscriptScrollState {
     var atBottom = true
+    /// The rows on screen, by item id; the smallest is the topmost. Not
+    /// observed by any body: the closure that writes it is the only reader.
+    @ObservationIgnored private var visible: Set<Int> = []
+
+    /// A row crossed the visibility threshold (return flow, thread 14).
+    func sawRow(_ id: Int, visible isVisible: Bool, sessionId: String) {
+        if isVisible { visible.insert(id) } else { visible.remove(id) }
+        if !atBottom { ScrollMemory.set(visible.min(), for: sessionId) }
+    }
 }
 
 /// Only this control reads the position flag. Reaching an edge must not
