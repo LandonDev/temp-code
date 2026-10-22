@@ -624,9 +624,10 @@ export async function startServer(
   // A master's batch (batch.ts): the steps its children never run; merge_branch
   // tells it what landed. Review before merge (mergeReview.ts): merge_branch's
   // engine, one per host, the gate out of the children inside it.
-  const batchRuns = new Batches({ registry, store })
+  const batchRuns = new Batches({ registry, store, deploy: (ref) => hostJobs.deploy.deploy(ref) })
+  batchRuns.attach()
   setBatches(batchRuns)
-  setMergeReviews(new MergeReviews({ registry, store, onLanded: (l) => batchRuns.landed(l) }))
+  setMergeReviews(new MergeReviews({ registry, store, onLanded: (l) => batchRuns.landed(l), hold: (s, l) => batchRuns.hold(s, l) }))
   // A thread that ends here (archived, deleted, moved away) takes its interactive jobs on the Mac with it.
   registry.onRemoved((ids) => macTools.threadsEnded(ids))
   registry.onMeta((m) => {
@@ -2014,6 +2015,10 @@ export async function startServer(
           case 'app.batchGate': {
             const { sessionId, ...args } = req.params
             sendFrame({ id: req.id, ok: true, result: await batchRuns.gate(callerOf(registry, sessionId), args) })
+            break
+          }
+          case 'app.batchRules': {
+            sendFrame({ id: req.id, ok: true, result: batchRuns.rulesTool(callerOf(registry, req.params.sessionId), req.params.rules ?? {}) })
             break
           }
           case 'review.override': {

@@ -46,7 +46,14 @@ import {
   REVIEW_FINDINGS_MAX,
   REVIEW_FINDING_PARAMS
 } from '@shared/review'
-import { BATCH_GATE_PARAMS, BATCH_GATE_TOOL_DESCRIPTION, BATCH_GATE_TOOL_NAME } from '@shared/gate'
+import {
+  BATCH_GATE_PARAMS,
+  BATCH_GATE_TOOL_DESCRIPTION,
+  BATCH_GATE_TOOL_NAME,
+  BATCH_RULES_PARAMS,
+  BATCH_RULES_TOOL_DESCRIPTION,
+  BATCH_RULES_TOOL_NAME
+} from '@shared/gate'
 import { batches } from './batch'
 import { mergeReviews } from './mergeReview'
 import { preview as previewHtml, publish as publishHtml, type HtmlPreview } from './htmlRender'
@@ -466,6 +473,15 @@ export const BATCH_GATE_SHAPE = {
   release: z.boolean().optional().describe(BATCH_GATE_PARAMS.release)
 }
 
+export const BATCH_RULES_SHAPE = {
+  land: z.enum(['as-they-finish', 'all-at-once']).optional().describe(BATCH_RULES_PARAMS.land),
+  gate: z.boolean().optional().describe(BATCH_RULES_PARAMS.gate),
+  release: z.boolean().optional().describe(BATCH_RULES_PARAMS.release),
+  deploy: z.enum(['none', 'box']).optional().describe(BATCH_RULES_PARAMS.deploy),
+  then: z.enum(['notify', 'archive-children']).optional().describe(BATCH_RULES_PARAMS.then),
+  summary: z.string().optional().describe(BATCH_RULES_PARAMS.summary)
+}
+
 /** The project's master thread (projects.master_thread_id), which alone gets batch_gate. */
 export function isMaster(reg: Pick<SessionRegistry, 'getProject'> | null, session: SessionMeta): boolean {
   return !!session.projectId && reg?.getProject(session.projectId)?.masterThreadId === session.id
@@ -615,10 +631,16 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
         const live = registry?.get(session.id) ?? session
         return text(reviews ? await reviews.mergeBranch(live, args) : 'refused: merge reviews are not available here')
       }),
-      // batch_gate only on the project's master thread (batch.ts): the
-      // gate once on the merged tree, then the release.
+      // batch_rules and batch_gate only on the project's master thread
+      // (batch.ts): what the app does when the batch is done, and the gate
+      // and release run early.
       ...(isMaster(registry, session)
         ? [
+            tool(BATCH_RULES_TOOL_NAME, BATCH_RULES_TOOL_DESCRIPTION, BATCH_RULES_SHAPE, async (args) => {
+              const b = batches()
+              const live = registry?.get(session.id) ?? session
+              return text(b ? b.rulesTool(live, args) : 'refused: batches are not available here')
+            }),
             tool(BATCH_GATE_TOOL_NAME, BATCH_GATE_TOOL_DESCRIPTION, BATCH_GATE_SHAPE, async (args) => {
               const b = batches()
               const live = registry?.get(session.id) ?? session
@@ -657,5 +679,6 @@ export const APP_TOOLS = [
   `mcp__app__${PLAN_COMPLETE_TOOL_NAME}`,
   `mcp__app__${MERGE_BRANCH_TOOL_NAME}`,
   `mcp__app__${REPORT_FINDINGS_TOOL_NAME}`,
-  `mcp__app__${BATCH_GATE_TOOL_NAME}`
+  `mcp__app__${BATCH_GATE_TOOL_NAME}`,
+  `mcp__app__${BATCH_RULES_TOOL_NAME}`
 ]

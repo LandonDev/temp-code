@@ -81,3 +81,15 @@ export const BATCH_GATE_PARAMS = {
   notes: "The release's one-line notes. Defaults to this thread's title followed by the landed children's commit subjects.",
   release: 'Tag the release after a green gate. Default true; false runs the gate alone.'
 }
+
+export const BATCH_RULES_TOOL_NAME = 'batch_rules'
+export const BATCH_RULES_TOOL_DESCRIPTION =
+  "Read or set what the app does when every thread of your batch is done. Only the project's master thread may call it. With no field it answers the rules as they stand; with fields it sets those and keeps the rest. Set them when you open a batch and state them to the person. Defaults: land as-they-finish, gate, release, no deploy, then notify. The app runs the steps in order on the host's gate queue when the last thread is done (idle after a turn, done, archived or deleted; one that errored or stopped blocks the end and you are told); a red step stops the rest and you are told; the steps run again once a thread changes."
+export const BATCH_RULES_PARAMS = {
+  land: "as-they-finish: merge_branch fast-forwards each thread's branch as it lands. all-at-once: merge_branch answers HELD and records the branch; the app merges them in landing order at the end.",
+  gate: 'Run the commit tier once on the project head after the last landing (bun run gate --tier commit).',
+  release: 'Tag with scripts/release.ts after a green gate, and push.',
+  deploy: "none, or box: after the release, fire the box's deploy trigger (host.deploy) for the project branch.",
+  then: 'notify: a notice row on this thread and a wake. archive-children: the same, and every done thread of the batch archived.',
+  summary: 'One line in your words, e.g. "Land all seven, gate once, release, then tell me".'
+}

@@ -124,6 +124,11 @@ export async function buildMergeBundle(cwd: string, branch: string, target: stri
   return { cwd, branch, target, base, head, diff, diffTruncated, commits, files, empty }
 }
 
+/** Does the checkout have an `origin` remote (so a merge pushes)? */
+export async function hasOrigin(cwd: string): Promise<boolean> {
+  return gitOk(cwd, ['remote', 'get-url', 'origin'])
+}
+
 export interface MergeResult {
   /** the target's commit after the merge */
   sha: string

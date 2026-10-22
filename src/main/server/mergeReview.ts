@@ -20,6 +20,7 @@ import {
   buildMergeBundle,
   defaultBranchOf,
   fastForwardMerge,
+  hasOrigin,
   worktreeOf,
   type MergeBundle,
   type MergeResult
@@ -87,6 +88,8 @@ export interface MergeReviewDeps {
   queue?: GateQueue
   /** a merge landed: the batch records it (batch.ts) */
   onLanded?: (landed: Landed) => void
+  /** before a batch child's fast-forward: the batch may hold it (all-at-once) and answer the text instead (batch.ts) */
+  hold?: (session: SessionMeta, landing: { cwd: string; branch: string; target: string; push: boolean; subjects: string[] }) => string | null
 }
 
 /** What a landed merge tells the batch. */
@@ -143,15 +146,7 @@ const defaultGit: MergeReviewGit = {
   buildMergeBundle,
   fastForwardMerge,
   worktreeOf,
-  hasOrigin: async (cwd) => {
-    try {
-      const { execFileBudgeted } = await import('./spawnBudget')
-      await execFileBudgeted('git', ['-C', cwd, 'remote', 'get-url', 'origin'])
-      return true
-    } catch {
-      return false
-    }
-  }
+  hasOrigin
 }
 
 const label = (provider: string, model: string): string => {
@@ -510,6 +505,13 @@ ${bundle.diff}
       // The review stands (a passed head stays passed); the gate did not.
       if (run.state === 'done') this.forget(run)
       return gate.text
+    }
+    // A batch that lands all at once: the branch is recorded, the merge waits for the end.
+    const held = this.deps.hold?.(session, { cwd: run.cwd, branch: run.branch, target: run.target, push: run.push, subjects: run.subjects ?? [] })
+    if (held) {
+      this.forget(run)
+      this.row(session.id, run, outcome, false, false, reason)
+      return `${held} ${gate.text}`
     }
     let result: MergeResult
     try {

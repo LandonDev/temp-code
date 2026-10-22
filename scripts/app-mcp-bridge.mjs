@@ -420,6 +420,23 @@ export const TOOLS = [
     }
   },
   {
+    // A copy of src/shared/gate.ts's BATCH_RULES_TOOL_DESCRIPTION and BATCH_RULES_PARAMS; app-bridge.test.ts keeps them equal.
+    name: 'batch_rules',
+    description:
+      "Read or set what the app does when every thread of your batch is done. Only the project's master thread may call it. With no field it answers the rules as they stand; with fields it sets those and keeps the rest. Set them when you open a batch and state them to the person. Defaults: land as-they-finish, gate, release, no deploy, then notify. The app runs the steps in order on the host's gate queue when the last thread is done (idle after a turn, done, archived or deleted; one that errored or stopped blocks the end and you are told); a red step stops the rest and you are told; the steps run again once a thread changes.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        land: { type: 'string', enum: ['as-they-finish', 'all-at-once'], description: "as-they-finish: merge_branch fast-forwards each thread's branch as it lands. all-at-once: merge_branch answers HELD and records the branch; the app merges them in landing order at the end." },
+        gate: { type: 'boolean', description: 'Run the commit tier once on the project head after the last landing (bun run gate --tier commit).' },
+        release: { type: 'boolean', description: 'Tag with scripts/release.ts after a green gate, and push.' },
+        deploy: { type: 'string', enum: ['none', 'box'], description: "none, or box: after the release, fire the box's deploy trigger (host.deploy) for the project branch." },
+        then: { type: 'string', enum: ['notify', 'archive-children'], description: 'notify: a notice row on this thread and a wake. archive-children: the same, and every done thread of the batch archived.' },
+        summary: { type: 'string', description: 'One line in your words, e.g. "Land all seven, gate once, release, then tell me".' }
+      }
+    }
+  },
+  {
     name: 'report_findings',
     description:
       'Report the findings of a merge review as a typed list, once, when the review is done: every defect with its file, 1-indexed line, one-sentence summary, the concrete failure scenario and a verdict (CONFIRMED when you verified it against the code, PLAUSIBLE when you could not). An empty list means the change is sound. Only this call counts; prose in your reply is not read. Available only to the reviewer thread of a merge review.',
@@ -681,7 +698,8 @@ const METHOD_FOR = {
   update_notes: 'app.updateNotes',
   merge_branch: 'app.mergeBranch',
   report_findings: 'app.reportFindings',
-  batch_gate: 'app.batchGate'
+  batch_gate: 'app.batchGate',
+  batch_rules: 'app.batchRules'
 }
 
 /** The MCP content parts a tool result turns into (the preview's PNG rides as an image). */
