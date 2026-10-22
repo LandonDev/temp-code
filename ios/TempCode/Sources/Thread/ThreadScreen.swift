@@ -84,7 +84,7 @@ struct ThreadScreen: View {
         }
         .toolbar {
             ToolbarItem(placement: .principal) {
-                ThreadHeader(session: session, fallbackTitle: lastTitle, hostName: hostName, renaming: $renaming, draft: $draftTitle, onCommit: commitRename, onBeginRename: { beginRename(session) })
+                ThreadHeader(client: client, session: session, fallbackTitle: lastTitle, hostName: hostName, renaming: $renaming, draft: $draftTitle, onCommit: commitRename, onBeginRename: { beginRename(session) })
             }
             ToolbarItem(placement: .topBarTrailing) {
                 // The field takes the whole bar while renaming; nothing acts on a thread that is gone.

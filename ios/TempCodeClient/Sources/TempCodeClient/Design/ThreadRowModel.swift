@@ -67,7 +67,7 @@ public struct ThreadRowModel: Hashable, Sendable {
         self.unseen = unseen
         model = ModelName.short(session.model)
         detail = Self.detail(of: session)
-        failure = session.failure?.summary
+        failure = session.failureSummary
         tag = session.isMaster == true ? "Master" : nil
         updatedAt = session.updatedAt
         busySince = session.busySince

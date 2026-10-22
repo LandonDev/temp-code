@@ -17,7 +17,7 @@ extension ThreadRowModel {
             status: meta.status,
             unseen: false,
             model: ModelName.short(meta.model),
-            detail: cue?.text ?? HomeModel.line(for: item.kind, rows: []),
+            detail: cue?.text ?? HomeModel.cue(for: item, rows: []).text,
             updatedAt: item.since,
             busySince: nil,
             running: false,

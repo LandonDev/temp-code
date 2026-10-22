@@ -11,6 +11,7 @@ import TempCodeContract
 /// Long-press (or Rename… in the menu) swaps the title for a field in
 /// place; Done or losing focus commits.
 struct ThreadHeader: View {
+    let client: EnvironmentClient
     let session: SessionMeta?
     /// The title to keep showing once the session is gone.
     let fallbackTitle: String?
@@ -43,7 +44,7 @@ struct ThreadHeader: View {
                 .onLongPressGesture(minimumDuration: 0.4) { if session != nil { onBeginRename() } }
             }
             if let session {
-                Subtitle(line: ThreadHeaderLine(session: session, hostName: hostName), session: session)
+                Subtitle(client: client, line: ThreadHeaderLine(session: session, hostName: hostName), session: session)
             }
         }
         .frame(maxWidth: .infinity)
@@ -63,6 +64,7 @@ struct ThreadHeader: View {
     /// The one line under the title. A live line ticks once a second; the
     /// whole row sits inside the timeline so one clock drives it.
     private struct Subtitle: View {
+        let client: EnvironmentClient
         let line: ThreadHeaderLine
         let session: SessionMeta
 
@@ -83,9 +85,9 @@ struct ThreadHeader: View {
                         .transition(.opacity)
                 }
                 ViewThatFits(in: .horizontal) {
-                    HeaderParts(parts: line.parts, now: now)
-                    HeaderParts(parts: line.withoutHost, now: now)
-                    HeaderParts(parts: line.compact, now: now)
+                    HeaderParts(client: client, session: session, parts: line.parts, now: now)
+                    HeaderParts(client: client, session: session, parts: line.withoutHost, now: now)
+                    HeaderParts(client: client, session: session, parts: line.compact, now: now)
                 }
             }
             .font(.caption)
@@ -112,6 +114,8 @@ struct HeaderMark: View {
 /// The subtitle's parts joined by a middle dot; `.words` is never preceded
 /// by one when it leads the line.
 private struct HeaderParts: View {
+    let client: EnvironmentClient
+    let session: SessionMeta
     let parts: [ThreadHeaderLine.Part]
     let now: Date
 
@@ -119,7 +123,7 @@ private struct HeaderParts: View {
         HStack(spacing: 5) {
             ForEach(Array(parts.enumerated()), id: \.offset) { index, part in
                 if index > 0 { Separator() }
-                HeaderPartView(part: part, now: now)
+                HeaderPartView(client: client, session: session, part: part, now: now)
             }
         }
     }
@@ -135,8 +139,10 @@ private struct HeaderParts: View {
 }
 
 /// One part of the subtitle. Slot (a): thread 22 replaces the `.host` body
-/// with its chip and dot. Slot (b): thread 24 adds `.account` after `.model`.
+/// with its chip and dot. `.account` is thread 24's chip (AccountChip.swift).
 struct HeaderPartView: View {
+    let client: EnvironmentClient
+    let session: SessionMeta
     let part: ThreadHeaderLine.Part
     let now: Date
 
@@ -152,6 +158,8 @@ struct HeaderPartView: View {
             Text(agent.label)
         case .model(let id):
             Text(ModelName.short(id))
+        case .account:
+            AccountChip(client: client, session: session)
         case .elapsed(let since):
             let text = TimeFormat.elapsed(since: since, now: now)
             Text(text)

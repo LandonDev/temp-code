@@ -189,7 +189,7 @@ struct HomeView: View {
             guard case .needsYou(let environmentId, let item) = row, let client = model.registry.client(environmentId) else { continue }
             let tail = item.kind == .paused ? [] : await client.peekTail(item.id)
             // iOS 18: a waiting thread's row reads its notes' State line (NeedsYouNotes.swift).
-            let cue = await NeedsYouNotes.cue(HomeModel.cue(for: item.kind, rows: tail), for: item, client: client)
+            let cue = await NeedsYouNotes.cue(HomeModel.cue(for: item, rows: tail), for: item, client: client)
             // The key changed under this task: a newer run owns the cues now.
             guard !Task.isCancelled else { return }
             let key = Self.cueKey(environmentId, item.id)

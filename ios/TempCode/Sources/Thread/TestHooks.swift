@@ -18,7 +18,8 @@ enum TestHooks {
     /// pushes the subagent list from the toolbar button once the thread has
     /// children, `rename` opens the inline title field once the thread is
     /// loaded (the proof types nothing), `report` opens the research report,
-    /// `source` the first source's page.
+    /// `source` the first source's page, `account` opens the header's
+    /// account menu sheet.
     static let open = env["TC_TEST_OPEN"].flatMap { $0.isEmpty ? nil : $0 }
     /// Scrolls the whole transcript top and back while a display link
     /// records every frame; the report lands in Documents/scroll-report.json.
