@@ -23,7 +23,7 @@ vi.mock("../lib/lazyChunk", () => ({ preloadWhenIdle: () => {} }));
 vi.mock("./EmptySession", () => ({ EmptySession: () => <div data-testid="empty-session" /> }));
 vi.mock("./threads/ThreadView", () => ({ ThreadView: () => <div data-testid="thread-view" /> }));
 vi.mock("./threads/WorkingStrip", () => ({ WorkingStrip: () => null }));
-vi.mock("../lib/tcserver/commands", () => ({}));
+vi.mock("../lib/tcserver/commands", () => ({ focusSignal: { pane: () => {}, left: () => {} } }));
 vi.mock("../lib/preconnect", () => ({ askPreconnect: () => {}, idleForPreconnect: () => false }));
 vi.mock("../lib/notes", () => ({ createNote: () => {}, noteTitle: () => "" }));
 vi.mock("../lib/settings", () => ({ loadNotesEnabled: () => true, subscribeNotesEnabled: () => () => {} }));

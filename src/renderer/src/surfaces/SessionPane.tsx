@@ -244,12 +244,17 @@ export const SessionPane = memo(function SessionPane({
       });
     }
   }, []);
-  // The focused, visible pane is where an "automatic" appshot lands.
+  // The focused, visible pane is where an "automatic" appshot lands, and
+  // the thread its host serves first (session.focus).
   useEffect(() => {
     if (!focused || !visible) return;
     noteActiveSession(session.id);
-    return () => noteActiveSession(null);
-  }, [focused, session.id, visible]);
+    serverCommands.focusSignal.pane(session.environmentId, session.id);
+    return () => {
+      noteActiveSession(null);
+      serverCommands.focusSignal.left(session.id);
+    };
+  }, [focused, session.environmentId, session.id, visible]);
 
   const submit = useCallback(
     (text: string, attachments: Attachment[], intent: ComposerIntent) => {

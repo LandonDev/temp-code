@@ -11,6 +11,7 @@ import {
   type EnvLink,
 } from "../connection";
 import { smoke } from "./smoke";
+import { focusSignal } from "./commands";
 import { sessionStore } from "./store";
 import { environmentStore } from "../../stores/environment";
 import { refreshCatalog } from "./catalog";
@@ -48,6 +49,7 @@ export function initServerLink(): void {
   if (typeof window !== "undefined") {
     window.__monocode = { registry, sessionStore, environment: environmentStore, loadSavedEnvironments, smoke };
     registry.installWindowHooks();
+    installFocusHooks();
     trackLastSeen();
   }
   // The bridge dispatches server commands over the environment's link.
@@ -59,6 +61,8 @@ export function initServerLink(): void {
       return;
     }
     link.onOpen(() => void report(link));
+    // A new socket holds no focus: tell it which thread this window shows.
+    link.onOpen(() => focusSignal.reopened(link.environmentId));
     // Each host's model catalog and installed CLIs, so a picker on its thread shows its rows.
     link.onOpen(() => {
       void refreshCatalog(link.environmentId).catch(() => undefined);
@@ -76,6 +80,17 @@ export function initServerLink(): void {
     (port) => registry.add(localEnvironment(port)),
     (e) => console.error(`${TAG} no server port:`, e),
   );
+}
+
+/** The window losing focus clears this window's focus on every host; coming
+ *  back restores it. Focus moving into a frame inside the window (an html
+ *  render, a webview) blurs the window but leaves the document focused. */
+function installFocusHooks(): void {
+  focusSignal.window(document.hasFocus());
+  window.addEventListener("focus", () => focusSignal.window(true));
+  window.addEventListener("blur", () => {
+    setTimeout(() => focusSignal.window(document.hasFocus()), 0);
+  });
 }
 
 /** The hosts the main process keeps keys for join the registry (or update their routes). */

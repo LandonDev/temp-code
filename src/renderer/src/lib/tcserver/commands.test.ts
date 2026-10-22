@@ -6,6 +6,7 @@ import {
   context,
   continueAllErrors,
   continueSession,
+  FocusSignal,
   pauseAllRunning,
   sessionBatch,
   runSettingsFor,
@@ -327,5 +328,79 @@ describe("session wrappers", () => {
     expect(result).toEqual({ attempted: ["s1", "s2"], succeeded: ["s2"], failed: [{ sessionId: "s1", error: "harness not responding" }] });
     await sessionBatch("local", "archive", ["s3"], { cleanup: true });
     expect(link.of("session.batch")[1]).toEqual({ action: "archive", ids: ["s3"], cleanup: true });
+  });
+});
+
+describe("FocusSignal", () => {
+  class FocusLink {
+    connected = true;
+    sent: (string | null)[] = [];
+    request<T>(method: string, params?: unknown): Promise<T> {
+      expect(method).toBe("session.focus");
+      this.sent.push((params as { sessionId: string | null }).sessionId);
+      return Promise.resolve(null as T);
+    }
+  }
+  const setup = () => {
+    const links: Record<string, FocusLink> = { mac: new FocusLink(), box: new FocusLink() };
+    const queue: (() => void)[] = [];
+    const signal = new FocusSignal((env) => links[env], (fn) => queue.push(fn));
+    const settle = () => {
+      while (queue.length) queue.shift()!();
+    };
+    return { links, signal, settle };
+  };
+
+  it("sends one focus per change, folding a pane's cleanup and the next pane's effect into one", () => {
+    const { links, signal, settle } = setup();
+    signal.pane("mac", "a");
+    settle();
+    signal.left("a");
+    signal.pane("mac", "b");
+    settle();
+    signal.pane("mac", "b");
+    settle();
+    expect(links.mac.sent).toEqual(["a", "b"]);
+    expect(links.box.sent).toEqual([]);
+  });
+
+  it("moving to a thread on another host clears the first host's focus", () => {
+    const { links, signal, settle } = setup();
+    signal.pane("mac", "a");
+    settle();
+    signal.left("a");
+    signal.pane("box", "x");
+    settle();
+    expect(links.mac.sent).toEqual(["a", null]);
+    expect(links.box.sent).toEqual(["x"]);
+  });
+
+  it("a blurred window clears every host; focus back restores the pane's thread", () => {
+    const { links, signal, settle } = setup();
+    signal.pane("box", "x");
+    settle();
+    signal.window(false);
+    settle();
+    signal.window(true);
+    settle();
+    expect(links.box.sent).toEqual(["x", null, "x"]);
+    // A stale cleanup for a thread no longer shown changes nothing.
+    signal.left("gone");
+    settle();
+    expect(links.box.sent).toEqual(["x", null, "x"]);
+  });
+
+  it("a reconnect sends the focus again; a closed link is told once it opens", () => {
+    const { links, signal, settle } = setup();
+    links.mac.connected = false;
+    signal.pane("mac", "a");
+    settle();
+    expect(links.mac.sent).toEqual([]);
+    links.mac.connected = true;
+    signal.reopened("mac");
+    settle();
+    signal.reopened("mac");
+    settle();
+    expect(links.mac.sent).toEqual(["a", "a"]);
   });
 });

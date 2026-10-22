@@ -289,6 +289,87 @@ export async function queueSteer(sessionId: string, messageId: string): Promise<
   await link.request("queue.steer", { sessionId, messageId });
 }
 
+// ── focus ────────────────────────────────────────────────────────────
+
+type FocusLink = Pick<Link, "connected" | "request">;
+
+/**
+ * `session.focus`: the thread this window's focused pane shows goes to its
+ * host, null to every other host and to all of them while the window is
+ * not focused; the host runs that thread's requests and pushes first
+ * (src/main/server/focus.ts). Sent once per change per link, the changes
+ * of one commit folded into one (a pane's cleanup and the next pane's
+ * effect), and again when a link opens a new socket.
+ */
+export class FocusSignal {
+  private active: { environmentId: string; sessionId: string } | null = null;
+  private windowFocused = true;
+  /** What each link's socket was last told; absent: nothing since it opened. */
+  private sent = new Map<string, string | null>();
+  private queued = false;
+
+  constructor(
+    private readonly linkOf: (environmentId: string) => FocusLink | undefined,
+    private readonly defer: (fn: () => void) => void = queueMicrotask,
+  ) {}
+
+  /** The focused, visible pane shows this thread. */
+  pane(environmentId: string, sessionId: string): void {
+    this.active = { environmentId, sessionId };
+    this.schedule();
+  }
+
+  /** The pane that showed this thread lost focus or closed. */
+  left(sessionId: string): void {
+    if (this.active?.sessionId !== sessionId) return;
+    this.active = null;
+    this.schedule();
+  }
+
+  window(focused: boolean): void {
+    if (this.windowFocused === focused) return;
+    this.windowFocused = focused;
+    this.schedule();
+  }
+
+  /** The link opened a new socket, which holds no focus yet. */
+  reopened(environmentId: string): void {
+    this.sent.delete(environmentId);
+    this.schedule();
+  }
+
+  private schedule(): void {
+    if (this.queued) return;
+    this.queued = true;
+    this.defer(() => {
+      this.queued = false;
+      this.flush();
+    });
+  }
+
+  private flush(): void {
+    const want = this.windowFocused ? this.active : null;
+    const hosts = new Set(this.sent.keys());
+    if (want) hosts.add(want.environmentId);
+    for (const environmentId of hosts) {
+      const next = want?.environmentId === environmentId ? want.sessionId : null;
+      if (this.sent.has(environmentId) ? this.sent.get(environmentId) === next : next === null) continue;
+      const link = this.linkOf(environmentId);
+      if (!link?.connected) {
+        // Told again when it opens.
+        this.sent.delete(environmentId);
+        continue;
+      }
+      this.sent.set(environmentId, next);
+      void link.request("session.focus", { sessionId: next }, { retry: false }).catch(() => {
+        if (this.sent.get(environmentId) === next) this.sent.delete(environmentId);
+      });
+    }
+  }
+}
+
+export const focusSignal = new FocusSignal((environmentId) => registry.link(environmentId));
+
 // ── batch recovery ───────────────────────────────────────────────────
 
 /** The composer of an idle thread gained focus: the host opens the socket its next turn will ride (one per account per minute). */
