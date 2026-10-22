@@ -247,13 +247,16 @@ async function runThread(local: Local, cwd: string, model: string, label: string
   let done: number | null = null
   const seen = new Promise<void>((ok) => {
     local.pushes.push((frame) => {
-      if (frame.push !== 'event') return
-      const row = frame.row as { sessionId: string; event: { type: string; status?: string; text?: string } }
-      if (row.sessionId !== session.id) return
-      if (row.event.type === 'assistant-text' && firstToken === null) firstToken = Date.now()
-      if (firstToken !== null && row.event.type === 'status' && row.event.status !== 'running' && row.event.status !== 'starting' && done === null) {
-        done = Date.now()
-        ok()
+      // Rows arrive coalesced on every socket (`events`); a lone `event` still reads.
+      type Row = { sessionId: string; event: { type: string; status?: string; text?: string } }
+      const rows = (frame.push === 'events' ? frame.rows : frame.push === 'event' ? [frame.row] : []) as Row[]
+      for (const row of rows) {
+        if (row.sessionId !== session.id) continue
+        if (row.event.type === 'assistant-text' && firstToken === null) firstToken = Date.now()
+        if (firstToken !== null && row.event.type === 'status' && row.event.status !== 'running' && row.event.status !== 'starting' && done === null) {
+          done = Date.now()
+          ok()
+        }
       }
     })
   })

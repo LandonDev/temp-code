@@ -654,6 +654,49 @@ describe('/asset', () => {
   })
 })
 
+describe('local sockets', () => {
+  it('a burst of 13,000 meta changes in a second reaches each local socket as at most ten frames, the newest per thread', async () => {
+    const ids: string[] = []
+    for (let i = 0; i < 30; i++) {
+      const id = `burst-${i}`
+      ids.push(id)
+      // Straight into the table: a create would boot a real harness.
+      server.store.insertSession({
+        id, parentId: null, projectId: null, workspaceId: null, threadType: 'chat', planPath: null, provider: 'claude',
+        model: 'm', reasoning: 'medium', agentType: 'implementer', title: id, cwd: root, status: 'idle', pinned: false,
+        archived: false, fast: false, ultrafast: false, context1m: false, busySince: null, pausedAt: null,
+        frozenActiveElapsed: null, threadRules: null, permission: 'edits', nativeId: null, createdAt: 1, updatedAt: 1
+      })
+    }
+    const sockets = [await open(`ws://127.0.0.1:${server.port}/`), await open(`ws://127.0.0.1:${server.port}/`)]
+    await sleep(300)
+    const marks = sockets.map((s) => s.frames.length)
+    // 13,000 context readings over ~0.5 s, each a meta push to every socket.
+    let tokens = 0
+    for (let chunk = 0; chunk < 5; chunk++) {
+      for (let k = 0; k < 2_600; k++) {
+        tokens++
+        server.registry.append(ids[tokens % ids.length], { type: 'context', tokens, window: 1_000_000 })
+      }
+      await sleep(100)
+    }
+    await sleep(400)
+    for (const [i, sock] of sockets.entries()) {
+      const metaFrames = sock.frames.slice(marks[i]).filter((f) => f.push === 'session' || f.push === 'sessions')
+      expect(metaFrames.length).toBeGreaterThan(0)
+      expect(metaFrames.length).toBeLessThanOrEqual(10)
+      const last = new Map<string, number>()
+      for (const f of metaFrames) for (const m of f.push === 'sessions' ? f.sessions : [f.session]) {
+        if (!ids.includes(m.id)) continue
+        expect(m.context.tokens).toBeGreaterThan(last.get(m.id) ?? 0)
+        last.set(m.id, m.context.tokens)
+      }
+      for (const [n, id] of ids.entries()) expect(last.get(id)).toBe(13_000 - ((13_000 - n) % ids.length))
+    }
+    for (const sock of sockets) sock.ws.close()
+  })
+})
+
 // Last: it stops the listener every other test talks to.
 describe('remote.settings.set', () => {
   it('enabled off closes the port; on brings it back', async () => {

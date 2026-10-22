@@ -172,18 +172,18 @@ const largePage = large.result as { rows: { seq: number }[]; reset: boolean; mor
 row('resume (gap to seq 10)', '-', `${kb(large.raw)} raw / ${kb(large.wire)} wire, ${largePage.rows.length} rows`, `reset=${largePage.reset}`)
 check('a gap past the budget resets to a tail', largePage.reset && largePage.moreBefore && largePage.rows[largePage.rows.length - 1].seq === lastSeq, `${largePage.rows.length} rows, ${kb(large.raw)}`)
 
-// 6. pushes: a rename moves the meta; the remote socket gets one coalesced sessions frame
+// 6. pushes: a rename moves the meta; both sockets get coalesced sessions frames
 local.frames.length = 0
 remote.frames.length = 0
 const title = 'Wire budgets: the busy thread'
 await remote.request('session.rename', { sessionId: 'wire-busy', title: `${title} (probe)` })
 await remote.request('session.rename', { sessionId: 'wire-busy', title })
 await sleep(400)
-const localMeta = local.frames.filter((f) => f.push === 'session').length
+const localMeta = local.frames.filter((f) => f.push === 'session' || f.push === 'sessions').length
 const remoteMeta = remote.frames.filter((f) => f.push === 'sessions')
 const singular = remote.frames.filter((f) => f.push === 'session').length
-row('meta pushes (2 renames)', `${localMeta} session frames`, `${remoteMeta.length} sessions frame(s), ${singular} singular`, remoteMeta.map((f) => (f.sessions as unknown[]).length).join('+') + ' metas')
-check('remote metas arrive coalesced', remoteMeta.length >= 1 && singular === 0 && remoteMeta.length < Math.max(localMeta, 2), `${localMeta} singular locally vs ${remoteMeta.length} frame(s) remotely`)
+row('meta pushes (2 renames)', `${localMeta} meta frame(s)`, `${remoteMeta.length} sessions frame(s), ${singular} singular`, remoteMeta.map((f) => (f.sessions as unknown[]).length).join('+') + ' metas')
+check('remote metas arrive coalesced', remoteMeta.length >= 1 && singular === 0 && remoteMeta.length <= 2, `${localMeta} frame(s) locally vs ${remoteMeta.length} frame(s) remotely`)
 
 // 7. deflate's effect on the cold open
 check('deflate shrinks the remote cold open', remoteTail.wire < remoteTail.raw * 0.5, `${kb(remoteTail.raw)} raw → ${kb(remoteTail.wire)} on the wire (${Math.round((100 * remoteTail.wire) / remoteTail.raw)}%)`)

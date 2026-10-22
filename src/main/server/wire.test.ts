@@ -4,6 +4,7 @@ import {
   boundRows,
   encodedBytes,
   eventsPage,
+  frameJson,
   profileFor,
   projectLiveEdit,
   projectRow,
@@ -667,5 +668,121 @@ describe('PushCoalescer', () => {
     c.push(evt('a', 3))
     vi.advanceTimersByTime(200)
     expect(out.flatMap(seqs)).toEqual([1])
+  })
+})
+
+describe('PushCoalescer on a local socket', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+  const local = (out: ServerPush[], immediate?: (id: string) => boolean): PushCoalescer =>
+    new PushCoalescer((f) => out.push(f), undefined, undefined, { project: false, immediate })
+  const metasOf = (out: ServerPush[]): SessionMeta[] =>
+    out.flatMap((f) => (f.push === 'sessions' ? f.sessions : f.push === 'session' ? [f.session] : []))
+
+  it('13,000 meta changes in a second leave as at most ten frames in that second, the newest per thread', () => {
+    const out: { at: number; frame: ServerPush }[] = []
+    const c = new PushCoalescer((frame) => out.push({ at: Date.now(), frame }), undefined, undefined, { project: false })
+    const start = Date.now()
+    // 13 changes a millisecond over 40 threads, each carrying its own version.
+    let version = 0
+    for (let ms = 0; ms < 1000; ms++) {
+      for (let k = 0; k < 13; k++) {
+        version++
+        c.push({ push: 'session', session: meta(`t${version % 40}`, { updatedAt: version }) })
+      }
+      vi.advanceTimersByTime(1)
+    }
+    const inSecond = out.filter((o) => o.at - start < 1000)
+    expect(inSecond.length).toBeLessThanOrEqual(10)
+    vi.advanceTimersByTime(PUSH_COALESCE_MS)
+    expect(out.length).toBeLessThanOrEqual(11)
+    // A meta never goes older than one already sent for its thread, and the last of each is the newest.
+    const seen = new Map<string, number>()
+    for (const m of metasOf(out.map((o) => o.frame))) {
+      expect(m.updatedAt).toBeGreaterThan(seen.get(m.id) ?? -1)
+      seen.set(m.id, m.updatedAt)
+    }
+    expect(seen.size).toBe(40)
+    for (let t = 0; t < 40; t++) expect(seen.get(`t${t}`)).toBe(13_000 - ((13_000 - t) % 40))
+  })
+
+  it('rows go as they are (no body projection) and each session\'s rows stay in seq order across windows', () => {
+    const out: ServerPush[] = []
+    const c = local(out)
+    const big = 'x'.repeat(4 * BODY_OMIT_BYTES)
+    const row = (sessionId: string, seq: number): ServerPush => ({
+      push: 'event',
+      row: { sessionId, seq, ts: seq, event: { type: 'tool-result', callId: `c${seq}`, output: big, isError: false } }
+    })
+    for (let seq = 1; seq <= 30; seq++) {
+      c.push(row('a', seq))
+      c.push(row('b', seq))
+      vi.advanceTimersByTime(7)
+    }
+    vi.advanceTimersByTime(PUSH_EVENTS_COALESCE_MS)
+    const frames = out.filter((f): f is Extract<ServerPush, { push: 'events' }> => f.push === 'events')
+    for (const id of ['a', 'b']) {
+      const rows = frames.filter((f) => f.sessionId === id).flatMap((f) => f.rows)
+      expect(rows.map((r) => r.seq)).toEqual(Array.from({ length: 30 }, (_, i) => i + 1))
+      expect(rows.every((r) => r.event.type === 'tool-result' && r.event.output === big)).toBe(true)
+    }
+    expect(frames.length).toBeLessThan(60)
+  })
+
+  it('the immediate seam sends a focused thread\'s rows at once, behind its own waiting ones and its status meta', () => {
+    const out: ServerPush[] = []
+    let focused: string | null = null
+    const c = local(out, (id) => id === focused)
+    const row = (sessionId: string, seq: number, type: 'text' | 'status' = 'text'): ServerPush => ({
+      push: 'event',
+      row: { sessionId, seq, ts: seq, event: type === 'status' ? { type: 'status', status: 'running' } : { type: 'assistant-text', text: `t${seq}`, delta: true } }
+    })
+    c.push(row('a', 1))
+    c.push(row('a', 2))
+    c.push(row('b', 1))
+    expect(out.flatMap((f) => (f.push === 'events' ? f.rows.map((r) => `${r.sessionId}${r.seq}`) : []))).toEqual(['a1'])
+    focused = 'a'
+    c.push({ push: 'session', session: meta('a', { status: 'running' }) })
+    c.push(row('a', 3, 'status'))
+    // a's waiting row 2 and the new row 3 leave now, its meta ahead; b still waits for the window.
+    expect(out.map((f) => f.push)).toEqual(['events', 'sessions', 'events'])
+    expect((out[2] as Extract<ServerPush, { push: 'events' }>).rows.map((r) => r.seq)).toEqual([2, 3])
+    vi.advanceTimersByTime(PUSH_EVENTS_COALESCE_MS)
+    expect(out.at(-1)).toMatchObject({ push: 'events', sessionId: 'b' })
+  })
+})
+
+describe('frameJson', () => {
+  it('writes the bytes JSON.stringify would, stringifying each shared meta and row once across sockets', () => {
+    const m = meta('a', { title: 'Quote " and \\ slash' })
+    const row: EventRow = { sessionId: 'a', seq: 3, ts: 1, event: { type: 'assistant-text', text: 'hi', delta: false } }
+    const frames: ServerPush[] = [
+      { push: 'session', session: m },
+      { push: 'sessions', sessions: [m, meta('b')] },
+      { push: 'event', row },
+      { push: 'events', sessionId: 'a', rows: [row, row] }
+    ]
+    for (const f of frames) expect(frameJson(f)).toBe(JSON.stringify(f))
+    expect(frameJson({ id: '1', ok: true, result: { x: 1 } })).toBe(JSON.stringify({ id: '1', ok: true, result: { x: 1 } }))
+    // A second socket's frames carrying the same meta and row reuse their strings.
+    const shared = meta('c')
+    const sharedRow: EventRow = { sessionId: 'c', seq: 1, ts: 1, event: { type: 'assistant-text', text: 'x', delta: false } }
+    frameJson({ push: 'sessions', sessions: [shared] })
+    frameJson({ push: 'events', sessionId: 'c', rows: [sharedRow] })
+    const stringify = vi.spyOn(JSON, 'stringify')
+    for (let socket = 0; socket < 5; socket++) {
+      frameJson({ push: 'sessions', sessions: [shared] })
+      frameJson({ push: 'events', sessionId: 'c', rows: [sharedRow] })
+    }
+    // Only the session id of each events frame is stringified again.
+    expect(stringify.mock.calls.filter(([v]) => typeof v !== 'string')).toEqual([])
+    stringify.mockRestore()
+  })
+
+  it('a large row is projected once for every remote socket', () => {
+    const row: EventRow = { sessionId: 'a', seq: 1, ts: 1, event: { type: 'tool-result', callId: 'c', output: 'x'.repeat(2 * BODY_OMIT_BYTES), isError: false } }
+    const first = projectRow(row)
+    expect(first).not.toBe(row)
+    expect(projectRow(row)).toBe(first)
   })
 })

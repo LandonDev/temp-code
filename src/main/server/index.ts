@@ -199,7 +199,7 @@ import {
   resolveBuildDir
 } from './build'
 import { closeAllLiveWatchers, onLiveEdit } from './livediff'
-import { eventsPage, profileFor, PushCoalescer, remoteDeflateOptions, sessionPage } from './wire'
+import { eventsPage, frameJson, profileFor, PushCoalescer, remoteDeflateOptions, sessionPage } from './wire'
 import { ListChangeLog } from './listChanges'
 import { LaunchMirror } from './launchMirror'
 import { peerDelay, peerDelayMs } from './peerDelay'
@@ -1021,22 +1021,21 @@ export async function startServer(
         console.log(`[server] dropped the answer to ${frame.id} (TEMP_CODE_DROP_ANSWERS)`)
         return
       }
-      ws.send(JSON.stringify(frame))
+      ws.send(frameJson(frame))
       if (!backpressureLogged && ws.bufferedAmount > BACKPRESSURE_BYTES) {
         backpressureLogged = true
         recordBackpressure(connection, ws.bufferedAmount)
       }
     }
-    // A remote connection's pushes go through the coalescer, large bodies
-    // off: stored event rows on a 33 ms window and metas and builds on
-    // 100 ms, each sending the first of a quiet period at once; partial
-    // tool calls (newest per call) and live edits on 100 ms with no leading
-    // edge. A local connection's go out one by one, as before.
-    const coalescer = profile === 'remote' ? new PushCoalescer(sendFrame) : null
-    const emitPush = (frame: ServerPush): void => {
-      if (coalescer) coalescer.push(frame)
-      else sendFrame(frame)
-    }
+    // Every connection's pushes go through a coalescer (wire.ts): stored
+    // event rows on a 33 ms window and metas (the newest per thread) and
+    // builds on 100 ms, each sending the first of a quiet period at once;
+    // partial tool calls (newest per call) and live edits on 100 ms with no
+    // leading edge. A fleet once pushed 13k metas in a second, each its own
+    // frame to every socket. Only the remote profile takes large bodies off;
+    // the pieces' JSON is shared across sockets (frameJson).
+    const coalescer = new PushCoalescer(sendFrame, undefined, undefined, { project: profile === 'remote' })
+    const emitPush = (frame: ServerPush): void => coalescer.push(frame)
     /** Project lookup that throws — fs/git methods are meaningless without one. */
     const mustProject = (projectId: string): { id: string; cwd: string } => {
       const project = registry.getProject(projectId)
@@ -2198,7 +2197,7 @@ export async function startServer(
     })
 
     ws.on('close', () => {
-      coalescer?.dispose()
+      coalescer.dispose()
       offBootResume()
       offMeta()
       offNotes()

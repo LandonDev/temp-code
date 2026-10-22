@@ -1,7 +1,7 @@
 import { Buffer } from 'node:buffer'
 import type { IncomingHttpHeaders } from 'node:http'
 import type { AgentEvent, EventRow, SessionMeta, ToolPreview } from '@shared/events'
-import type { ServerPush } from '@shared/contract'
+import type { ServerFrame, ServerPush } from '@shared/contract'
 import { isOmittedBody, type EventsPage, type OmittedBody, type SessionPage, type WireProfile } from '@shared/wire'
 import {
   BODY_HEAD_CHARS,
@@ -210,10 +210,18 @@ export function projectEvent(event: AgentEvent): AgentEvent {
   }
 }
 
+/** Rows already projected, so every remote socket shares one projection
+ *  (and so one serialization, frameJson) of the same row. */
+const projectedRows = new WeakMap<EventRow, EventRow>()
+
 /** The row as a remote connection sees it: the same object when nothing is large. */
 export function projectRow(row: EventRow): EventRow {
+  const known = projectedRows.get(row)
+  if (known) return known
   const event = projectEvent(row.event)
-  return event === row.event ? row : { ...row, event }
+  const out = event === row.event ? row : { ...row, event }
+  projectedRows.set(row, out)
+  return out
 }
 
 type LiveEdit = Extract<ServerPush, { push: 'live-edit' }>
@@ -361,7 +369,52 @@ export function sessionPage(
   return { sessions: page, cursor: next }
 }
 
+// ── one serialization per piece ──────────────────────────────────────
+
+/** The JSON of a meta or a row, made once: the registry hands the same
+ *  decorated meta to every socket's listener and the same row to every
+ *  subscriber, so the second socket reuses the first one's string. Metas and
+ *  rows are never changed once pushed (a change is a new object). */
+const pieceJson = new WeakMap<object, string>()
+function jsonOf(piece: object): string {
+  let json = pieceJson.get(piece)
+  if (json === undefined) {
+    json = JSON.stringify(piece)
+    pieceJson.set(piece, json)
+  }
+  return json
+}
+
+/** A frame as the socket sends it. The pushes that carry metas and rows are
+ *  assembled from each piece's shared JSON (the same bytes JSON.stringify
+ *  would give); everything else is stringified as it is. */
+export function frameJson(frame: ServerFrame): string {
+  if (!('push' in frame)) return JSON.stringify(frame)
+  switch (frame.push) {
+    case 'session':
+      return `{"push":"session","session":${jsonOf(frame.session)}}`
+    case 'sessions':
+      return `{"push":"sessions","sessions":[${frame.sessions.map(jsonOf).join(',')}]}`
+    case 'event':
+      return `{"push":"event","row":${jsonOf(frame.row)}}`
+    case 'events':
+      return `{"push":"events","sessionId":${JSON.stringify(frame.sessionId)},"rows":[${frame.rows.map(jsonOf).join(',')}]}`
+    default:
+      return JSON.stringify(frame)
+  }
+}
+
 // ── push coalescing ──────────────────────────────────────────────────
+
+export interface CoalescerOptions {
+  /** Project large bodies off the wire (projectRow, projectLiveEdit): the
+   *  remote profile. A local socket sends rows as they are. Default true. */
+  project?: boolean
+  /** The seam for a focused thread: a session this answers true for sends
+   *  its stored rows at once, after any of its rows still waiting, instead
+   *  of on the events window. Default: none. */
+  immediate?: (sessionId: string) => boolean
+}
 
 type BuildPush = Extract<ServerPush, { push: 'build' }>
 
@@ -377,7 +430,7 @@ function isPartialCall(row: EventRow): row is EventRow & { event: Extract<AgentE
   return row.event.type === 'tool-call' && row.event.partial === true
 }
 
-/** Per remote connection, three lanes:
+/** Per connection (remote and local alike; index.ts), three lanes:
  *  - events: stored rows (text deltas, tool calls, results, status), a
  *    PUSH_EVENTS_COALESCE_MS window with a leading edge: the first row of
  *    a quiet lane goes out at once, the rest as one frame per session when
@@ -405,17 +458,24 @@ export class PushCoalescer {
   private timers: Record<Lane, ReturnType<typeof setTimeout> | null> = { events: null, rest: null, previews: null }
   private disposed = false
 
+  private readonly project: boolean
+  private readonly immediate: (sessionId: string) => boolean
+
   constructor(
     private readonly emit: (frame: ServerPush) => void,
     private readonly delayMs = PUSH_COALESCE_MS,
-    private readonly eventsDelayMs = PUSH_EVENTS_COALESCE_MS
-  ) {}
+    private readonly eventsDelayMs = PUSH_EVENTS_COALESCE_MS,
+    options: CoalescerOptions = {}
+  ) {
+    this.project = options.project ?? true
+    this.immediate = options.immediate ?? (() => false)
+  }
 
   push(frame: ServerPush): void {
     if (this.disposed) return
     switch (frame.push) {
       case 'event': {
-        const row = projectRow(frame.row)
+        const row = this.project ? projectRow(frame.row) : frame.row
         if (row.event.type === 'tool-call') this.partials.delete(`${row.sessionId}\0${row.event.callId}`)
         // A result settles the call: a live preview still waiting (a mac_run's output) must not land after it.
         if (row.event.type === 'tool-result') this.partials.delete(`${row.sessionId}\0${row.event.callId}`)
@@ -427,11 +487,15 @@ export class PushCoalescer {
         const rows = this.events.get(row.sessionId)
         if (rows) rows.push(row)
         else this.events.set(row.sessionId, [row])
+        if (this.immediate(row.sessionId)) {
+          this.flushSession(row.sessionId)
+          return
+        }
         this.arm('events')
         return
       }
       case 'live-edit': {
-        const { push: _push, ...rest } = projectLiveEdit(frame)
+        const { push: _push, ...rest } = this.project ? projectLiveEdit(frame) : frame
         this.liveEdits.push(rest)
         this.arm('previews')
         return
@@ -542,6 +606,20 @@ export class PushCoalescer {
         this.flushEvents()
       }
     }
+  }
+
+  /** One session's waiting rows now (the immediate seam), its waiting meta
+   *  ahead of them when they carry a status, as the events lane does. */
+  private flushSession(sessionId: string): void {
+    const rows = this.events.get(sessionId)
+    if (!rows) return
+    this.events.delete(sessionId)
+    const meta = this.sessions.get(sessionId)
+    if (meta && rows.some((r) => r.event.type === 'status')) {
+      this.sessions.delete(sessionId)
+      this.emit({ push: 'sessions', sessions: [meta] })
+    }
+    this.emit({ push: 'events', sessionId, rows })
   }
 
   private flushSessions(): void {

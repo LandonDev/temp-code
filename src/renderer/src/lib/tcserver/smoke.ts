@@ -1,6 +1,6 @@
 import { invoke } from "../native";
 import { registry } from "../connection";
-import type { CreateSessionInput, SessionMeta } from "./types";
+import type { AgentEvent, CreateSessionInput, SessionMeta } from "./types";
 
 const SMOKE_TIMEOUT_MS = 90_000;
 
@@ -37,8 +37,11 @@ export async function smoke(environmentId: string, cwd?: string): Promise<SmokeR
       reject(new Error(`smoke: no turn-complete after ${SMOKE_TIMEOUT_MS} ms`));
     }, SMOKE_TIMEOUT_MS);
     const off = client.onPush((push) => {
-      if (push.push !== "event" || push.row.sessionId !== sessionId) return;
-      const ev = push.row.event;
+      // Every socket's rows arrive coalesced (`events`); a single `event` still reads.
+      const rows = push.push === "events" ? push.rows : push.push === "event" ? [push.row] : [];
+      for (const row of rows) if (row.sessionId === sessionId) onEvent(row.event);
+    });
+    const onEvent = (ev: AgentEvent): void => {
       if (ev.type === "assistant-text") {
         text = ev.delta ? text + ev.text : ev.text;
         console.debug("[smoke] Δ", JSON.stringify(ev.text));
@@ -54,7 +57,7 @@ export async function smoke(environmentId: string, cwd?: string): Promise<SmokeR
         done();
         reject(new Error(`smoke: ${ev.message}`));
       }
-    });
+    };
     const done = () => {
       clearTimeout(timer);
       off();

@@ -49,7 +49,7 @@ for (const id of FIVE) {
   const found = doctor[id]?.found === true
   const s = await rpc('session.create', { provider: id, cwd: CWD, title: `m10 ${id}` })
   const before = Date.now()
-  const done = new Promise((res) => { const t = setInterval(() => { const evs = pushes.filter((m) => m.push === 'event' && m.row?.sessionId === s.id).map((m) => m.row.event).filter(Boolean); const end = evs.find((e) => e.type === 'error' || e.type === 'turn-complete'); if (end) { clearInterval(t); res({ evs, end }) } if (Date.now() - before > 30000) { clearInterval(t); res({ evs, end: null }) } }, 200) })
+  const done = new Promise((res) => { const t = setInterval(() => { const evs = pushes.flatMap((m) => (m.push === 'events' ? m.rows : m.push === 'event' ? [m.row] : [])).filter((r) => r?.sessionId === s.id).map((r) => r.event).filter(Boolean); const end = evs.find((e) => e.type === 'error' || e.type === 'turn-complete'); if (end) { clearInterval(t); res({ evs, end }) } if (Date.now() - before > 30000) { clearInterval(t); res({ evs, end: null }) } }, 200) })
   await rpc('session.send', { sessionId: s.id, text: 'hello' }).catch((e) => ({ err: e.message }))
   const { end, evs } = await done
   const rows = end ? null : await rpc('session.events', { sessionId: s.id, afterSeq: 0 })
