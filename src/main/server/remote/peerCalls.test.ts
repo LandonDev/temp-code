@@ -90,6 +90,40 @@ describe('PeerCalls', () => {
     expect(got.b).toEqual([])
   })
 
+  it('keeps what a peer said of itself, hears every frame as life, and tells a drop', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(1_000)
+    const calls = new PeerCalls('env_box', () => {})
+    const dropped: string[] = []
+    calls.onDrop((id, offers) => dropped.push(`${id}:${[...offers].join(',')}`))
+    const socket = { connection: 7, keyId: 'k', remote: true, send: () => {} }
+    expect(calls.info('env_mac')).toBeNull()
+    const presence = { screen: 'unlocked', power: 'awake', at: 900 } as const
+    const build = { release: 300, version: '1.0.300', sha: 'abc', platform: 'darwin' }
+    handlePeerRequest(calls, socket, { method: 'peer.register', params: { from: 'env_mac', offers: ['relay'], name: 'Studio', build, presence } })
+    expect(calls.info('env_mac')).toEqual({ name: 'Studio', build, presence, at: 1_000, lastSeenAt: 1_000 })
+    vi.setSystemTime(2_000)
+    calls.touch(7)
+    expect(calls.info('env_mac')?.lastSeenAt).toBe(2_000)
+    calls.touch(8)
+    expect(calls.info('env_mac')?.lastSeenAt).toBe(2_000)
+    vi.setSystemTime(3_000)
+    calls.touch(7, { screen: 'locked', power: 'awake', at: 2_900 })
+    expect(calls.info('env_mac')).toMatchObject({ lastSeenAt: 3_000, presence: { screen: 'locked' } })
+    // a reply, chunk or progress frame on the socket is life too
+    vi.setSystemTime(4_000)
+    handlePeerRequest(calls, socket, { method: 'peer.progress', params: { callId: 'none', seq: 0, chunk: '' } })
+    expect(calls.info('env_mac')?.lastSeenAt).toBe(4_000)
+    // an older host says nothing of itself
+    handlePeerRequest(calls, { ...socket, connection: 9 }, { method: 'peer.register', params: { from: 'env_old', offers: [] } })
+    expect(calls.info('env_old')).toEqual({ name: null, build: null, presence: null, at: 4_000, lastSeenAt: 4_000 })
+    calls.drop(7)
+    expect(dropped).toEqual(['env_mac:relay'])
+    expect(calls.info('env_mac')).toBeNull()
+    calls.drop(7)
+    expect(dropped).toEqual(['env_mac:relay'])
+  })
+
   it("refuses peer.* from the box's own loopback socket", () => {
     const calls = new PeerCalls('env_box', () => {})
     expect(() =>
