@@ -365,6 +365,30 @@ routed to (aliax-core's `forward`). Two listeners:
   `<userData>/tls` (src/main/server/tls.ts); children trust it through
   `CODEX_CA_CERTIFICATE` (harnessEnv), so no Keychain step is needed.
   `TEMP_CODE_GATEWAY_TRACE=1` logs one line per forwarded request.
+- **The byte path runs in its own process.** On the Mac and the box the
+  listeners, the forward, the SSE relay and the upstream pools run in an
+  Electron utility process (`out/main/gateway.js`: src/main/gatewayProcess.ts
+  → server/gatewayChild.ts, forked by src/main/gatewaySpawn.ts), not on the
+  main process's one JavaScript thread. `GatewayCore` (server/gatewayCore.ts)
+  is the byte path wherever it runs and asks a `ControlPlane` for accounts:
+  `InProcessControl` (gatewayControl.ts: aliax-core's own reads and the
+  server's hooks) in main, `PortControl` over a MessagePortMain in the child
+  (protocol in gatewayWire.ts). Main (`GatewayHost`, gatewayHost.ts) keeps
+  the marker (main's pid, the child's port), the TLS pair, the vault, the
+  Keychain, every refresh and `askOwner`, the routing hooks, and mirrors of
+  `url()`, `status()`, the codex ports and the warm map; it pushes the
+  accounts the forward reads (names, pins, usage reports, the out marks) on
+  change, answers credential misses (the child keeps a credential until a
+  minute before its token ends; a vault save or a 401 drops it), and gets
+  one `response` message per answer with the limit headers. aliax-core's
+  `ForwardHooks.accounts` is what keeps the child's copy of core off the
+  vault. `adoptWarm` resolves on the child's word and the adopted CLI's
+  stdin waits for it (`holdStdin`). A child that exits is respawned on the
+  same ports (streams in flight are cut; the SDKs retry); three exits in a
+  minute and the gateway runs in main (GatewayCore + InProcessControl), as
+  it always does in tests and the in-process proofs. Child log lines read
+  `[gateway:<pid>]`; `doctor.get` names the mode, pid and restarts.
+  Proof: `bun run script:e2e-gateway-process`.
 - The installed codex version is read once at boot (drivers/codexVersion.ts)
   and catalog rows with `minCodexVersion` above it are hidden everywhere
   (picker, spawn table, app tools). GPT-6.1 Sol and GPT-6 Sol need 0.162.1.

@@ -91,6 +91,15 @@ export interface PoolStatus {
 
 const DEFAULT_POOLED = (origin: string): boolean => origin === 'https://api.anthropic.com'
 
+/** Every provider origin a fake provider (TEMP_CODE_FAKE_PROVIDERS) stands in for. */
+const PROVIDER_ORIGIN = /^https:\/\/(api\.anthropic\.com|platform\.claude\.com|claude\.ai|chatgpt\.com|auth\.openai\.com|cursor\.com)/
+
+/** A provider URL as an instance reaches it: itself, or the fake provider's origin in its place. */
+export const fakeProviderRewrite =
+  (fake: string | null | undefined) =>
+  (url: string): string =>
+    fake ? url.replace(PROVIDER_ORIGIN, fake) : url
+
 interface Entry {
   key: string
   origin: string
@@ -243,6 +252,15 @@ export class Upstream {
     const entries = [...this.pools.values()]
     this.pools.clear()
     await Promise.all(entries.map((e) => e.pool.close().catch(() => {})))
+  }
+
+  /** Cut every pool at once, requests in flight included: what a process on its way out does to its sockets. */
+  async destroy(): Promise<void> {
+    if (this.sweeper) clearInterval(this.sweeper)
+    this.sweeper = null
+    const entries = [...this.pools.values()]
+    this.pools.clear()
+    await Promise.all(entries.map((e) => e.pool.destroy().catch(() => {})))
   }
 
   private entryFor(origin: string, account: string): Entry {

@@ -89,12 +89,19 @@ export default defineConfig({
         '@shared': resolve('src/shared')
       }
     },
-    // Two entries: boot.js (package.json `main`) enables Node's compile cache
-    // and requires index.js, the real bundle, through it. boot.ts shares no
-    // module with index.ts, so Rollup emits no chunks/ between them.
+    // Three entries: boot.js (package.json `main`) enables Node's compile
+    // cache and requires index.js, the real bundle, through it; boot.ts
+    // shares no module with index.ts. gateway.js is the gateway's utility
+    // process (gatewaySpawn.ts forks it); the modules it shares with
+    // index.js (the gateway core, aliax-core) land in chunks/, which both
+    // require, so neither copy of them can drift from the other.
     build: {
       rollupOptions: {
-        input: { index: resolve('src/main/index.ts'), boot: resolve('src/main/boot.ts') }
+        input: {
+          index: resolve('src/main/index.ts'),
+          boot: resolve('src/main/boot.ts'),
+          gateway: resolve('src/main/gatewayProcess.ts')
+        }
       }
     }
   },

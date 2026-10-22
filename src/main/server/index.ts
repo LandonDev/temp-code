@@ -9,7 +9,7 @@ import { Notes } from './notes'
 import { ProjectLogos } from './projectLogos'
 import { AccountsService, accountsPusher } from './accounts'
 import { isRoutedProvider, PROVIDER_OF, SERVICE_OF } from '@shared/accounts'
-import { startGateway, type Gateway } from './gateway'
+import { gateway as runningGateway, startGateway, type Gateway, type SpawnGatewayChild } from './gateway'
 import { BootResumer } from './resumeAfterBoot'
 import { Admission } from './admission'
 import { closeWarmPools, retireWarmPools, warmStatuses } from './drivers/warm'
@@ -311,8 +311,10 @@ export async function startServer(
     assets?: (request: Request) => Promise<Response>
     /** Read master's release.json from GitHub on the updater's cadence (deployDrift.ts): the Mac, never a headless host or a test. */
     watchMaster?: boolean
-    /** Open the upstream socket an account's next request will ride (preconnect.ts); the registry asks at turn start and composer focus. */
+    /** Open the upstream socket an account's next request will ride (preconnect.ts) while the gateway runs in this process; its own process pre-connects its own pools. */
     preconnect?: (provider: string, account: string | null) => void
+    /** Run the gateway's byte path in a utility process of its own (gatewayHost.ts); in this process when absent (tests, the in-process proofs). */
+    spawnGatewayChild?: SpawnGatewayChild
     /** This app's updater (update.ts selfUpdate): fetch a version just published, by this host's Publisher or on a peer's word. The installed Mac app only. */
     selfUpdate?: (version: string) => Promise<SelfUpdateOutcome>
   } = {}
@@ -449,7 +451,8 @@ export async function startServer(
     const profiles = accounts.snapshot().providers[provider]?.profiles ?? []
     return profiles.length === 0 ? null : profiles.some((p) => p.name === name)
   }
-  registry.preconnect = options.preconnect ?? null
+  // The registry asks at turn start and composer focus; the gateway sends it where its pools live.
+  registry.preconnect = (provider, account) => void runningGateway()?.preconnect(provider, account)
   // The main process's own links to the hosts this machine shares accounts
   // with, and the sync over them (thread V). The core's vault hooks reach the
   // sync through accountSyncHooks (aliax.ts configured the core before this).
@@ -778,6 +781,9 @@ export async function startServer(
   const gateway = await startGateway({
     claimShim: options.claimShim ?? false,
     dataDir: options.dataDir ?? dirname(dbPath),
+    spawnChild: options.spawnGatewayChild,
+    preconnect: options.preconnect,
+    outMarks: () => accounts.outMarks(),
     hooks: {
       ...observed,
       onResponse: (info) => {
@@ -815,6 +821,8 @@ export async function startServer(
       }
     }
   })
+  // The gateway's own process reads the accounts from a copy main pushes: every snapshot moves it.
+  accounts.onChange(() => gateway.accountsChanged())
   const linear = new Linear(options.dataDir ?? dirname(dbPath))
   // Reads SQLite until the open inbox view asks it to refresh; no timer here.
   const githubInbox = new GithubInbox(store, registry)
@@ -1235,7 +1243,8 @@ export async function startServer(
                 ...(await runDoctor()),
                 java: await javaDoctor(),
                 loop: currentLag(),
-                inFlight: inFlightRequests()
+                inFlight: inFlightRequests(),
+                gateway: { ...gateway.status().process, port: gateway.status().port }
               } satisfies DoctorGetResult
             })
             break

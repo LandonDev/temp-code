@@ -4,8 +4,9 @@ import { join } from 'node:path'
 import { configure, isLive, readMarker, type Role } from 'aliax-core'
 import { notifyAccountsChanged } from './aliaxPages'
 import { recordAppEvent, recordUsage } from './aliax/stats/store'
+import { gateway } from './server/gateway'
 import { accountSyncHooks } from './server/remote/accountSync'
-import { Upstream } from './server/upstream'
+import { fakeProviderRewrite, Upstream } from './server/upstream'
 
 /** An isolated instance (TEMP_CODE_USER_DATA) may keep its own vault, so a test never reads the real one. */
 const ISOLATED_VAULT = process.env.TEMP_CODE_USER_DATA ? process.env.TEMP_CODE_ALIAX_DATA_DIR : undefined
@@ -31,11 +32,10 @@ export function gatewayRole(): Role {
  * core makes to a provider goes to that origin instead, so an e2e can rotate
  * tokens and answer usage without a real account.
  */
-const FAKE_PROVIDERS = process.env.TEMP_CODE_USER_DATA ? process.env.TEMP_CODE_FAKE_PROVIDERS : undefined
-const PROVIDER_ORIGIN = /^https:\/\/(api\.anthropic\.com|platform\.claude\.com|claude\.ai|chatgpt\.com|auth\.openai\.com|cursor\.com)/
+export const FAKE_PROVIDERS = (process.env.TEMP_CODE_USER_DATA ? process.env.TEMP_CODE_FAKE_PROVIDERS : undefined) || null
 
 /** A provider URL as this instance reaches it: itself, or the fake provider's when one stands in. */
-export const providerUrl = (url: string): string => (FAKE_PROVIDERS ? url.replace(PROVIDER_ORIGIN, FAKE_PROVIDERS) : url)
+export const providerUrl = fakeProviderRewrite(FAKE_PROVIDERS)
 
 /**
  * The connections every provider call rides (src/main/server/upstream.ts):
@@ -85,7 +85,11 @@ export function configureAliax(environmentId?: string): void {
         recordUsage(s.service, s.account, s.label, s.usedPercent, s.resetsAt, s.periodMs),
       onAppEvent: recordAppEvent,
       onAccountsChanged: notifyAccountsChanged,
-      onSecretSaved: (service, name, origin) => accountSyncHooks.current?.onSecretSaved(service, name, origin),
+      onSecretSaved: (service, name, origin) => {
+        // The gateway's own process asks again for that service's credentials.
+        gateway()?.credentialsChanged(service)
+        accountSyncHooks.current?.onSecretSaved(service, name, origin)
+      },
       askOwner: (service, name, owner) => accountSyncHooks.current?.askOwner(service, name, owner) ?? Promise.resolve(null)
     },
     role: gatewayRole

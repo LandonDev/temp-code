@@ -16,6 +16,7 @@ import { startServer, type RunningServer } from './server'
 import { listEnvironments } from './server/remote/environments'
 import type { LaunchMirrorSnapshot, MirrorWrite } from '@shared/launchMirror'
 import { preconnectAccount } from './server/preconnect'
+import { spawnGatewayChild } from './gatewaySpawn'
 import { mayClaimShim, releaseGateway } from './server/gateway'
 import { killTrackedChildren } from './server/spawnBudget'
 import { handleAssetRequest, pagesRoot, registerAssetProtocol, registerSchemes, setRemoteMedia, setRemotePages } from './assets'
@@ -138,6 +139,9 @@ app.whenReady().then(async () => {
     claimShim: mayClaimShim({ isPackaged: app.isPackaged }),
     assets: handleAssetRequest,
     watchMaster: !headless,
+    // The gateway's byte path runs in a utility process of its own, on the Mac and on the headless box alike.
+    spawnGatewayChild,
+    // Its pre-connect when it falls back into this process (three exits in a minute).
     preconnect: (provider, account) => void preconnectAccount(provider, account, { upstream: upstream() }),
     // A release this app published, or the box's word that one landed, is fetched at once (update.ts).
     selfUpdate: headless ? undefined : (version) => selfUpdate(version)

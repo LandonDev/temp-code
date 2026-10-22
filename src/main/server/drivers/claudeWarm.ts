@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { createInterface } from 'node:readline'
+import { PassThrough } from 'node:stream'
 import type { RouteScope } from 'aliax-core'
 import { gateway } from '../gateway'
 import { WarmPool, type WarmSpec } from './warm'
@@ -80,6 +81,28 @@ export const claudeWarm = new WarmPool<ChildProcess>({
   kill: killClaude
 })
 
+/**
+ * The adopted process as the SDK gets it, its stdin held until the gateway
+ * has rebound the warm id (the gateway may run in another process): the
+ * CLI's first request follows its first message, so nothing it sends goes
+ * out under the wrong scope.
+ */
+export function holdStdin(proc: ChildProcess, until: Promise<void>): ChildProcess {
+  const stdin = proc.stdin
+  if (!stdin) return proc
+  const held = new PassThrough()
+  void until.then(() => held.pipe(stdin))
+  // The SDK watches its stdin for EPIPE when the CLI dies; the real pipe's errors reach it here.
+  stdin.on('error', (e) => held.destroy(e))
+  return new Proxy(proc, {
+    get(target, prop) {
+      if (prop === 'stdin') return held
+      const value = Reflect.get(target, prop, target)
+      return typeof value === 'function' ? value.bind(target) : value
+    }
+  })
+}
+
 export interface ClaudeSpawnChoice {
   /** The thread this spawn is for. */
   thread: string
@@ -98,11 +121,11 @@ export function spawnOrAdoptClaude(spec: WarmSpec, signal: AbortSignal | undefin
   if (choice.warmable) {
     const warm = claudeWarm.adopt(spec)
     if (warm) {
-      gateway()?.adoptWarm(warm.id, choice.scope)
+      const rebound = gateway()?.adoptWarm(warm.id, choice.scope) ?? Promise.resolve()
       // A local spawn dies with the SDK's abort signal; the adopted one does the same.
       if (signal) signal.addEventListener('abort', () => killClaude(warm.proc), { once: true })
       console.log(`[claude] ${choice.thread}: adopted the warm process ${warm.id}`)
-      return { proc: warm.proc, warmId: warm.id }
+      return { proc: holdStdin(warm.proc, rebound), warmId: warm.id }
     }
     claudeWarm.noteStart(spec)
   }

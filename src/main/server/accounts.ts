@@ -407,6 +407,25 @@ export class AccountsService {
     return at !== undefined && this.deps.now() - at < OUT_RETRY_MS
   }
 
+  /**
+   * Every routed account out of routing right now, with when its mark lapses
+   * (null for a dead sign-in the snapshot reports, which lasts until a report
+   * says otherwise): the gateway's own process reads these so `substitute`
+   * asks main only about an account that is out.
+   */
+  outMarks(): { serviceId: ServiceId; name: string; until: number | null }[] {
+    const marks: { serviceId: ServiceId; name: string; until: number | null }[] = []
+    for (const provider of ACCOUNT_PROVIDERS) {
+      if (!isRoutedProvider(provider)) continue
+      const expired = new Set(this.snap.providers[provider].reports.filter((r) => r.expired).map((r) => r.profileName))
+      for (const name of expired) marks.push({ serviceId: SERVICE_OF[provider], name, until: null })
+      for (const [name, at] of this.out.get(provider) ?? []) {
+        if (!expired.has(name) && this.isOut(provider, name)) marks.push({ serviceId: SERVICE_OF[provider], name, until: at + OUT_RETRY_MS })
+      }
+    }
+    return marks
+  }
+
   /** Accounts out of routing for a provider right now, marks and dead sign-ins the snapshot reports alike. */
   outFor(provider: AccountProvider): string[] {
     const names = new Set<string>()

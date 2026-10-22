@@ -19,11 +19,12 @@ export interface PreconnectDeps {
   upstream: Upstream
   /** The credential a request under `account` would carry (the pinned one for null). aliax-core's by default. */
   credential?: (service: string, account: string | null) => Promise<{ authorization: string } | null>
+  /** One line per pre-connect (TEMP_CODE_GATEWAY_TRACE=1), under `label`. */
+  trace?: boolean
+  label?: string
 }
 
 export type AccountPreconnect = PreconnectOutcome | 'no-provider' | 'no-credential'
-
-const TRACE = process.env.TEMP_CODE_GATEWAY_TRACE === '1'
 
 /** Never throws: a pre-connect is a hint, and the turn goes out regardless. */
 export async function preconnectAccount(
@@ -40,6 +41,7 @@ export async function preconnectAccount(
   } catch {
     outcome = 'failed'
   }
-  if (TRACE && outcome !== 'throttled') console.log(`[gateway] preconnect ${provider} ${account ?? '(pinned)'}: ${outcome}`)
+  const trace = deps.trace ?? process.env.TEMP_CODE_GATEWAY_TRACE === '1'
+  if (trace && outcome !== 'throttled') console.log(`${deps.label ?? '[gateway]'} preconnect ${provider} ${account ?? '(pinned)'}: ${outcome}`)
   return outcome
 }
