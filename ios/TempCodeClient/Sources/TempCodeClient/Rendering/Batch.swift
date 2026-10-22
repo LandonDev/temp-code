@@ -327,13 +327,14 @@ public enum MasterBoard {
         return "\(parts.dropLast().joined(separator: ", ")) and \(parts[parts.count - 1])"
     }
 
-    /// "Blocked: <title> errored" / "Blocked: a thread stopped" / "Blocked: <title> is out of reach on <host>"; nil when nothing blocks.
+    /// "Blocked: <title> errored" / "Blocked: a thread stopped" / "Blocked: <title> failed" / "Blocked: <title> is out of reach on <host>"; nil when nothing blocks.
     public static func blockedLine(_ state: BatchState, titleOf: (String) -> String?, hostName: (String) -> String?) -> String? {
         guard let blocked = state.blocked else { return nil }
         let who = titleOf(blocked.sessionId).flatMap { $0.isEmpty ? nil : $0 } ?? "a thread"
         switch blocked.why {
         case .errored: return "Blocked: \(who) errored"
         case .stopped: return "Blocked: \(who) stopped"
+        case .failed: return "Blocked: \(who) failed"
         case .unreachable:
             let host = blocked.environmentId.flatMap(hostName) ?? "another host"
             return "Blocked: \(who) is out of reach on \(host)"

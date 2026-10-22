@@ -21,6 +21,7 @@ public struct RemoteAgentId: Sendable, Hashable {
 /// is not.
 public enum CrossHost {
     /// `env_<22 chars>` (src/main/server/remote/environment.ts).
+    // Compiled once and only read.
     nonisolated(unsafe) static let environmentIdPattern = /^env_[A-Za-z0-9_-]{22}$/
     nonisolated(unsafe) static let sessionIdPattern = /^[A-Za-z0-9_-]{1,200}$/
 

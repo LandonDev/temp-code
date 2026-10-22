@@ -172,6 +172,7 @@ private var utc: Calendar {
         #expect(MasterBoard.blockedLine(state(nil), titleOf: { titles[$0] }, hostName: { _ in nil }) == nil)
         #expect(MasterBoard.blockedLine(state(.init(sessionId: "a", why: .errored)), titleOf: { titles[$0] }, hostName: { _ in nil }) == "Blocked: Live strip errored")
         #expect(MasterBoard.blockedLine(state(.init(sessionId: "zz", why: .stopped)), titleOf: { titles[$0] }, hostName: { _ in nil }) == "Blocked: a thread stopped")
+        #expect(MasterBoard.blockedLine(state(.init(sessionId: "a", why: .failed)), titleOf: { titles[$0] }, hostName: { _ in nil }) == "Blocked: Live strip failed")
         #expect(MasterBoard.blockedLine(state(.init(sessionId: "env_mac:f", why: .unreachable, environmentId: "env_mac")), titleOf: { titles[$0] }, hostName: { $0 == "env_mac" ? "Mac" : nil }) == "Blocked: Far build is out of reach on Mac")
     }
 
