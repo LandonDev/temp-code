@@ -633,6 +633,23 @@ at(THREAD_CHAT, [
   ...shell('c3', 'TEMP_CODE_GATEWAY_TRACE=1 bun run dev 2>&1 | head -100', bigOutput),
   { type: 'tool-call', callId: 'c4', name: 'Read', input: { file_path: 'src/main/server/gateway.md' }, preview: { kind: 'read', path: 'src/main/server/gateway.md', fileName: 'gateway.md' } },
   { type: 'tool-result', callId: 'c4', output: 'ENOENT: no such file or directory', isError: true },
+  answer('c9', 'The port is minted in `scopedCodexUrl`; `endpoint.ts` only reads it.'),
+  // Three settled reads in a row after the prose: the phone folds them
+  // behind "+2 previous tool calls" (the shell and the failed read above
+  // make a pair of their own); the last one's output is long enough to be
+  // omitted on the wire, so the chip opens on a shimmer.
+  ...read('c6', 'src/main/server/gateway.ts'),
+  ...read('c7', 'src/main/server/endpoint.ts'),
+  ...read('c8', 'src/main/server/upstream.ts', Array.from({ length: 1_400 }, (_, i) => `${String(i + 1).padStart(4)}  ${line(i % 100)}`).join('\n')),
+  // An edit with a write preview: the card reads +2 −1 and opens the diff.
+  ...edit('c10', 'src/main/server/endpoint.ts', 2, 1, [
+    { kind: 'context', text: "export function routedEndpointFor(provider: Provider): Endpoint {", number: 40 },
+    { kind: 'del', text: '  if (provider === "codex") return gateway.url', number: 41 },
+    { kind: 'add', text: '  if (provider === "codex") return gateway.scopedCodexUrl(threadId)', number: 41 },
+    { kind: 'add', text: '  // One https port per codex thread: the port is the scope.', number: 42 }
+  ]),
+  // A spawn row naming a thread the fleet seeds, so the row links to it.
+  { type: 'agent-spawned', childSessionId: 'ios-fleet-explorer' },
   { type: 'compaction', phase: 'start', trigger: 'auto', preTokens: 142_000 },
   { type: 'compaction', phase: 'done', trigger: 'auto', preTokens: 142_000, postTokens: 38_000, durationMs: 2_400 },
   { type: 'error', message: 'The provider answered 429: rate limited for 20 s' },

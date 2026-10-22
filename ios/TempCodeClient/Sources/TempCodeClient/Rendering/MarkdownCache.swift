@@ -9,6 +9,8 @@ public enum RenderedBlock: Sendable, Hashable {
     case code(String, language: String?)
     case quote(AttributedString)
     case rule
+    /// A pipe table: the header row first, then the body rows.
+    case table([[AttributedString]])
 }
 
 /// One row's markdown, parsed once per text version.
@@ -24,17 +26,20 @@ public struct MarkdownDocument: Sendable, Hashable {
 
     /// The whole parse, synchronous: block splitting and inline markdown.
     public static func parse(_ text: String) -> MarkdownDocument {
-        let blocks: [RenderedBlock] = MarkdownBlocks.split(text).map { block in
-            switch block {
-            case .paragraph(let p): .paragraph(MarkdownBlocks.inline(p))
-            case .heading(let level, let h): .heading(level, MarkdownBlocks.inline(h))
-            case .list(let items, let ordered): .list(items.map(MarkdownBlocks.inline), ordered: ordered)
-            case .code(let code, let language): .code(code, language: language)
-            case .quote(let q): .quote(MarkdownBlocks.inline(q))
-            case .rule: .rule
-            }
+        MarkdownDocument(blocks: MarkdownBlocks.split(text).map(renderBlock), textHash: text.hashValue)
+    }
+
+    /// One block's inline markdown resolved.
+    public static func renderBlock(_ block: MarkdownBlock) -> RenderedBlock {
+        switch block {
+        case .paragraph(let p): .paragraph(MarkdownBlocks.inline(p))
+        case .heading(let level, let h): .heading(level, MarkdownBlocks.inline(h))
+        case .list(let items, let ordered): .list(items.map(MarkdownBlocks.inline), ordered: ordered)
+        case .code(let code, let language): .code(code, language: language)
+        case .quote(let q): .quote(MarkdownBlocks.inline(q))
+        case .rule: .rule
+        case .table(let rows): .table(rows.map { $0.map(MarkdownBlocks.inline) })
         }
-        return MarkdownDocument(blocks: blocks, textHash: text.hashValue)
     }
 
     /// The same parse, off the caller's actor.
@@ -71,13 +76,27 @@ public final class MarkdownCache {
         var seq: Int
         var textHash: Int
     }
+    private struct StreamKey: Hashable {
+        var scope: MarkdownScope
+        var seq: Int
+    }
+    /// A streaming row's last parse: the source blocks and what they rendered to.
+    private struct Streaming {
+        var source: [MarkdownBlock]
+        var rendered: [RenderedBlock]
+    }
     @ObservationIgnored private var rows: [Key: MarkdownRow] = [:]
     @ObservationIgnored private var short: [Key: MarkdownDocument] = [:]
     @ObservationIgnored private var inflight: Set<Key> = []
+    @ObservationIgnored private var streaming: [StreamKey: Streaming] = [:]
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private let limit: Int
     @ObservationIgnored public let syncLimit: Int
     @ObservationIgnored public private(set) var parses = 0
+    /// Blocks inline-parsed by `streamingDocument` so far (the test's count).
+    @ObservationIgnored public private(set) var streamingParses = 0
+    /// A streaming block past this many bytes stays plain text until the next block boundary.
+    public static let streamingBlockLimit = 8 * 1024
 
     public init(limit: Int = 400, syncLimit: Int = 256) {
         self.limit = max(4, limit)
@@ -86,16 +105,24 @@ public final class MarkdownCache {
 
     public func document(scope: MarkdownScope = MarkdownScope(), seq: Int, text: String) -> MarkdownDocument? {
         let key = Key(scope: scope, seq: seq, textHash: text.hashValue)
-        if let ready = short[key] { return ready }
+        let streamKey = StreamKey(scope: scope, seq: seq)
+        if let ready = short[key] {
+            streaming[streamKey] = nil
+            return ready
+        }
         if text.utf8.count <= syncLimit {
             let document = MarkdownDocument.parse(text)
             parses += 1
             trim(&short)
             short[key] = document
+            streaming[streamKey] = nil
             return document
         }
         let row = slot(key)
-        if let document = row.document { return document }
+        if let document = row.document {
+            streaming[streamKey] = nil
+            return document
+        }
         if inflight.insert(key).inserted {
             let generation = self.generation
             Task {
@@ -104,8 +131,13 @@ public final class MarkdownCache {
                 guard self.generation == generation else { return }
                 row.document = document
                 self.inflight.remove(key)
+                // The settled parse supersedes the row's streaming slot.
+                self.streaming[streamKey] = nil
             }
         }
+        // A row that was streaming keeps its incremental render until the
+        // settled parse lands, so it never drops to plain text in between.
+        if streaming[streamKey] != nil { return streamingDocument(scope: scope, seq: seq, text: text) }
         return nil
     }
 
@@ -118,12 +150,52 @@ public final class MarkdownCache {
         return row.document ?? MarkdownDocument.parse(text)
     }
 
+    /// A streaming row's document, synchronous and incremental, the
+    /// desktop's streaming path: the text is split into blocks (linear and
+    /// cheap), every leading block whose source is unchanged since the last
+    /// call for this row keeps its render, and only the changed tail (normally
+    /// the last block) is inline-parsed again. One slot per row, dropped when
+    /// the settled `document(...)` for that seq lands. A block over
+    /// `streamingBlockLimit` stays a plain paragraph until the next boundary,
+    /// so one huge paragraph never re-parses whole on every delta.
+    public func streamingDocument(scope: MarkdownScope = MarkdownScope(), seq: Int, text: String) -> MarkdownDocument {
+        let key = StreamKey(scope: scope, seq: seq)
+        let source = MarkdownBlocks.split(text)
+        let last = streaming[key]
+        var rendered: [RenderedBlock] = []
+        rendered.reserveCapacity(source.count)
+        var reused = 0
+        if let last {
+            while reused < source.count, reused < last.source.count, source[reused] == last.source[reused] {
+                rendered.append(last.rendered[reused])
+                reused += 1
+            }
+        }
+        for block in source[reused...] {
+            if case .paragraph(let p) = block, p.utf8.count > Self.streamingBlockLimit {
+                rendered.append(.paragraph(AttributedString(p)))
+            } else {
+                rendered.append(MarkdownDocument.renderBlock(block))
+            }
+            streamingParses += 1
+        }
+        if streaming.count >= limit, streaming[key] == nil { streaming = [:] }
+        streaming[key] = Streaming(source: source, rendered: rendered)
+        return MarkdownDocument(blocks: rendered, textHash: text.hashValue)
+    }
+
+    /// True while a streaming slot is held for the row (the test's probe).
+    public func hasStreamingSlot(scope: MarkdownScope = MarkdownScope(), seq: Int) -> Bool {
+        streaming[StreamKey(scope: scope, seq: seq)] != nil
+    }
+
     public func clear() {
         generation += 1
         for row in rows.values { row.document = nil }
         rows = [:]
         short = [:]
         inflight = []
+        streaming = [:]
     }
 
     private func slot(_ key: Key) -> MarkdownRow {

@@ -42,4 +42,31 @@ import Testing
         #expect(String(MarkdownBlocks.inline("a **b** c").characters) == "a b c")
         #expect(String(MarkdownBlocks.inline("not *closed").characters).contains("closed"))
     }
+
+    @Test func `a pipe table is one block with every row padded to the header`() {
+        let text = """
+        Before
+
+        | Name | Count |
+        | --- | ---: |
+        | a | 1 |
+        | b \\| c |
+        after
+        """
+        #expect(MarkdownBlocks.split(text) == [
+            .paragraph("Before"),
+            .table([["Name", "Count"], ["a", "1"], ["b | c", ""]]),
+            .paragraph("after")
+        ])
+        // A lone pipe row with no separator under it stays a paragraph.
+        #expect(MarkdownBlocks.split("| just | text |") == [.paragraph("| just | text |")])
+    }
+
+    @Test func `inline code keeps its intent for the view's wash`() {
+        let styled = MarkdownBlocks.inline("call `rows(_:turnOpen:)` here")
+        #expect(String(styled.characters) == "call rows(_:turnOpen:) here")
+        let code = styled.runs.filter { $0.inlinePresentationIntent?.contains(.code) == true }
+        #expect(code.count == 1)
+        #expect(code.first.map { String(styled[$0.range].characters) } == "rows(_:turnOpen:)")
+    }
 }

@@ -288,4 +288,30 @@ import TempCodeContract
         #expect(line.text == "Plan the passkey rollout")
         #expect(line.detail == "build-1")
     }
+
+    @Test func `host rows carry their event whole: the failure, the notice, the preamble, the handoff's child`() {
+        let failure = Failure(kind: .rateLimited, account: "work", summary: "Rate limited", cause: "429 from the API")
+        let notice = NoticeEvent(kind: "account-gone", message: "Account work is gone from this host")
+        let preamble = PreambleStamp(text: "## Rules\nBe brief.", words: 3)
+        let fold = ThreadFold.fold(rows([
+            .userText(UserTextEvent(text: "go", preamble: preamble)),
+            .error(ErrorEvent(message: "boom", stopped: false, failure: failure)),
+            .notice(notice),
+            .planHandoff(PlanHandoffEvent(sessionId: "child-1", title: "Build it", how: .auto)),
+            .error(ErrorEvent(message: "plain", stopped: true))
+        ]))
+        guard case .user(let turn) = fold.items[0].item,
+              case .system(let failed) = fold.items[1].item,
+              case .system(let status) = fold.items[2].item,
+              case .system(let handoff) = fold.items[3].item,
+              case .system(let plain) = fold.items[4].item else {
+            Issue.record("shape \(fold.items)")
+            return
+        }
+        #expect(turn.preamble == preamble)
+        #expect(failed.kind == .error && failed.failure == failure && !failed.stopped)
+        #expect(status.kind == .status && status.text == notice.message && status.detail == "account-gone" && status.notice == notice)
+        #expect(handoff.kind == .planHandoff && handoff.agentId == "child-1" && handoff.text == "Build it")
+        #expect(plain.failure == nil && plain.notice == nil && plain.stopped)
+    }
 }

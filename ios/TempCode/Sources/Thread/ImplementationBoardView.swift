@@ -426,7 +426,7 @@ private struct WorkCards: View {
         let cards = items.filter { $0.item.needsUser || $0.item.isError }
         VStack(alignment: .leading, spacing: 0) {
             ForEach(cards) { entry in
-                TranscriptRow(entry: entry, client: client, sessionId: sessionId)
+                TranscriptRow(row: .item(entry), client: client, sessionId: sessionId)
                     .padding(.horizontal, Layout.textEdge)
                     .padding(.vertical, 6)
                     .rowAppearTransition()

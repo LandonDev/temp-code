@@ -122,9 +122,14 @@ public struct SystemLine: Sendable, Hashable {
     public var detail: String?
     /// `error` rows: the turn stopped here.
     public var stopped: Bool
-    /// A host notice's whole payload (a gate run, a review verdict), so the
-    /// board can draw it as more than a line. Last and defaulted: every
-    /// `SystemLine(seq:ts:kind:text:detail:stopped:)` call stays as it is.
+    /// `agentSpawned`, `agentReport` and `planHandoff` rows: the child session the row is about.
+    public var agentId: String? = nil
+    /// `error` rows: the host's verdict on what went wrong, when it gave one.
+    public var failure: Failure? = nil
+    /// A host notice's whole payload (a gate run, a review verdict, an account
+    /// that left), so the board and the host rows can draw it as more than a
+    /// line. Last and defaulted: every `SystemLine(seq:ts:kind:text:detail:stopped:)`
+    /// call stays as it is.
     public var notice: NoticeEvent? = nil
     /// `error` rows: the host's verdict (failureKind.ts), when it had one.
     public var failure: Failure? = nil

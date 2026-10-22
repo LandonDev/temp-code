@@ -1037,11 +1037,20 @@ routed to (aliax-core's `forward`). Two listeners:
   ThreadFrameTests). The models they read
   are the client package's `Rendering/`: `ThreadFold` (the desktop's fold
   with round, todo and pass stamps and the `BoardState` of todos.ts; a
-  `notice` row keeps its whole payload on `SystemLine.notice`), the
+  `notice` row keeps its whole payload on `SystemLine.notice`, an error
+  row the host's verdict on `SystemLine.failure`, a user row its
+  `preamble`), the
   `Board`, `ResearchBoard`, `Fleet`, `PlanDoc` and `Inbox` selectors (the
-  Inbox's sort, status words, seen marks and the patch split by file), and
-  the `MarkdownCache` that parses rows off the main actor; `threads[id].fold`
-  stays current incrementally. The implementation board is
+  Inbox's sort, status words, seen marks and the patch split by file), the
+  `MarkdownCache` that parses rows off the main actor (and a streaming
+  row's changed block only, on it: `streamingDocument`), `TranscriptRows`
+  (entries → the list's rows: an item, an activity group of two or more
+  chips with the live rule, a settled turn's closing line; stable ids) and
+  `ToolPhrase` (the desktop's toolPhrase.ts, tested); `threads[id].fold`
+  stays current incrementally. The transcript's two seams for sibling
+  threads: `StreamingAssistantRow` (`Thread/StreamingRow.swift`, the
+  streaming reveal) and `MediaImage.hostOf(_:)` (the host of an `fs.media`
+  URL). The implementation board is
   `Thread/ImplementationBoardView.swift` with `BoardStyles.swift` and
   `BoardOutcomes.swift` (gate and review rows from `RoundData.outcomes`,
   the words from `BoardSections.swift`'s `GateLine` and `ReviewLine`);
@@ -1060,7 +1069,7 @@ routed to (aliax-core's `forward`). Two listeners:
   `AgentDetailRoute`), `SubagentListScreen(client:rootSessionId:)` and
   `AgentDetailScreen(client:agentId:parentCwd:hostName:)`
   (docs/IOS-DESIGN.md "Orchestration"). DEBUG launch hooks (`TC_TEST_SEGMENT`,
-  `TC_TEST_OPEN=chip|diff|agent|agents|rename|agent-detail|report|source|item|item-diff`,
+  `TC_TEST_OPEN=chip|group|diff|agent|agents|rename|agent-detail|report|source|item|item-diff`,
   `TC_TEST_SCROLL=1`, the Search tab's `TC_TEST_SEARCH=<query>` and
   `TC_TEST_SEARCH_SCOPE=files`, and L5's
   `TC_TEST_ACTION=send:<text>|stop|approve|deny|answer:<label>|start-build|

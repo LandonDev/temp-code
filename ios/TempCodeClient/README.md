@@ -24,7 +24,8 @@ Sources/TempCodeClient
                 ResearchBoard, Fleet, PlanDoc, Inbox, DiffDocument (the diff screen's lines,
                 hunks and column geometry), MarkdownBlocks, MarkdownCache, PlanDocument,
                 PlanPages, ProjectPairs, CrossHost, PathHost (two hosts: pairs, cross-host
-                children, the host of a path)
+                children, the host of a path), TranscriptRows (entries → the list's rows:
+                items, activity groups, turn ends), ToolPhrase (the desktop's toolPhrase.ts)
   Design/       TimeFormat, ModelName, CompactNumber, ThreadRowModel: the design kit's pure
                 logic, tested here; the app's Design/ holds the views
   Support/      SocketClock (SystemClock, ManualClock)

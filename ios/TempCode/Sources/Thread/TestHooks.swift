@@ -12,7 +12,8 @@ enum TestHooks {
     private static let env = ProcessInfo.processInfo.environment
     /// `board`, `chat`, `plan`, `fleet`, `log` or `sources`.
     static let segment = env["TC_TEST_SEGMENT"].flatMap(ThreadSegment.init(rawValue:))
-    /// `chip` opens the first tool chip with a held-back body, `diff` pushes
+    /// `chip` opens the first tool chip with a held-back body, `group` opens
+    /// the first activity group and lands on it, `diff` pushes
     /// the first edit's diff, `agent` pushes the first subagent, `agents`
     /// pushes the subagent list from the toolbar button once the thread has
     /// children, `rename` opens the inline title field once the thread is
