@@ -45,12 +45,16 @@ targets:
       - package: TempCodeClient
         product: TempCodeClient
       - target: TempCodeActivity
+      - target: TempCodeNotificationService
     entitlements:
       path: TempCode.entitlements
       properties:
         # APNs. A development-signed build registers with the sandbox gateway;
         # the app reads the value off its provisioning profile and tells the host.
         aps-environment: development
+        # The host directory the notification service extension reads (HostDirectory.swift).
+        com.apple.security.application-groups:
+          - group.dev.landon.tempcode
     info:
       path: Info.plist
       properties:
@@ -95,6 +99,35 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.landon.tempcode.ios.activity
         INFOPLIST_KEY_CFBundleDisplayName: TempCode
+  # The notification service extension: adds the host's name to an alert's
+  # subtitle when the phone pairs with several hosts (the host cannot know).
+  TempCodeNotificationService:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: NotificationService
+      # The App Group's host directory, published by the app.
+      - path: Sources/Push/HostDirectory.swift
+    entitlements:
+      path: NotificationService/NotificationService.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.dev.landon.tempcode
+    info:
+      path: NotificationService/Info.plist
+      properties:
+        CFBundleDisplayName: TempCode
+        CFBundleShortVersionString: "0.1"
+        CFBundleVersion: "1"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.landon.tempcode.ios.notificationservice
+        INFOPLIST_KEY_CFBundleDisplayName: TempCode
+        # UNNotificationServiceExtension's overrides are nonisolated and run off the main thread.
+        SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
   TempCodeUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -114,6 +147,7 @@ schemes:
       targets:
         TempCode: all
         TempCodeActivity: all
+        TempCodeNotificationService: all
         TempCodeUITests: [test]
     run:
       config: Debug

@@ -8,45 +8,70 @@ import os
 /// The Live Activity for a running thread the person started or is watching:
 /// started here, its push token handed to the host (which updates it by push
 /// while the phone is away), updated from the host's session metas while the
-/// socket is up, ended when the thread goes idle, waiting or errored with
-/// the final state showing briefly. One activity per thread. The state is
-/// the host's (`activityState` in remote/push.ts): the title, the task in
-/// progress, the tally, and why the thread waits.
+/// socket is up, ended when the thread goes idle, waiting, errored or stopped
+/// with the final state showing briefly. One activity per thread. The state
+/// is the host's (`activityState` in remote/push.ts): the title, the task in
+/// progress, the tally, and why the thread waits. A queued thread (created,
+/// not yet booted) never starts or keeps one: a turn sent into it is
+/// remembered and the activity starts when the host says it runs.
 @MainActor @Observable
 final class ActivityCoordinator {
     /// The running activity's id per thread; the object itself is looked up when it is updated or ended.
     private var activities: [ThreadKey: String] = [:]
     /// The last shape applied per thread, so a meta that changes nothing the card shows costs nothing.
     private var shapes: [ThreadKey: ThreadActivityAttributes.ContentState.Shape] = [:]
+    /// Threads the person sent into while they were queued: the activity starts when their meta turns live.
+    private var sentInto: Set<ThreadKey> = []
     private var tokenTasks: [ThreadKey: Task<Void, Never>] = [:]
     private let log = Logger(subsystem: "dev.landon.tempcode", category: "activity")
     /// How long the final state stays on the lock screen.
     static let lingerSeconds: TimeInterval = 120
 
+    /// A master's batch as the host counts it: children done of total and the engine's running step.
+    /// The client package does not decode the `batch` push on this master, so callers pass nil today and
+    /// a master's card keeps the tally the host last pushed (`apply`).
+    struct BatchTally: Sendable, Hashable {
+        var done: Int
+        var total: Int
+        var step: String?
+    }
+
     /// What a thread's meta says the card shows: the host's own mapping (remote/push.ts `activityState`).
     /// `reason` is the needs-you line when the caller knows it (the fold of a loaded thread, or the state a push left).
-    static func state(_ meta: SessionMeta, reason: String? = nil, now: Date = .now) -> ThreadActivityAttributes.ContentState {
-        let phase: ThreadActivityAttributes.Phase = switch meta.status {
-        // A queued thread runs nothing yet (return flow, thread 14): it ends an activity like a finished one.
+    /// Nil for a queued thread: it is not live and has no card.
+    static func state(_ meta: SessionMeta, reason: String? = nil, batch: BatchTally? = nil, now: Date = .now) -> ThreadActivityAttributes.ContentState? {
+        let phase: ThreadActivityAttributes.Phase? = switch meta.status {
         case .starting, .running, .watching: .working
         case .paused: .paused
         case .waiting: .waiting
         case .error: .failed
+        case .stopped: .stopped
+        case .queued: nil
         default: .finished
         }
+        guard let phase else { return nil }
         let final = meta.archived ? ThreadActivityAttributes.Phase.finished : phase
-        let tasks = meta.tasks
-        let task = tasks?.current.flatMap { $0.isEmpty ? nil : $0 } ?? (final == .working ? meta.activity : nil)
-        return .init(
+        var state = ThreadActivityAttributes.ContentState(
             phase: final,
             since: meta.busySince ?? meta.updatedAt,
             ts: Int(now.timeIntervalSince1970 * 1000),
             title: meta.title,
-            task: task.map { Self.oneLine($0, max: 120) },
-            done: (tasks?.total ?? 0) > 0 ? tasks?.done : nil,
-            total: (tasks?.total ?? 0) > 0 ? tasks?.total : nil,
             reason: final == .waiting ? reason.map { Self.oneLine($0, max: 160) } : nil
         )
+        if let batch {
+            let open = batch.total - batch.done
+            state.task = Self.oneLine(batch.step ?? "Waiting on \(open) \(open == 1 ? "thread" : "threads")", max: 120)
+            state.done = batch.done
+            state.total = batch.total
+            state.unit = .threads
+        } else {
+            let tasks = meta.tasks
+            let task = tasks?.current.flatMap { $0.isEmpty ? nil : $0 } ?? (final == .working ? meta.activity : nil)
+            state.task = task.map { Self.oneLine($0, max: 120) }
+            state.done = (tasks?.total ?? 0) > 0 ? tasks?.done : nil
+            state.total = (tasks?.total ?? 0) > 0 ? tasks?.total : nil
+        }
+        return state
     }
 
     /// The needs-you line of a waiting thread, from its fold when the thread is loaded: the latest undecided approval or unanswered question.
@@ -83,7 +108,7 @@ final class ActivityCoordinator {
         #endif
         for activity in Activity<ThreadActivityAttributes>.activities {
             let key = ThreadKey(environmentId: activity.attributes.environmentId, sessionId: activity.attributes.sessionId)
-            if let client = registry.client(key.environmentId), let session = client.session(key.sessionId), Self.state(session).phase.isLive, activities[key] == nil {
+            if let client = registry.client(key.environmentId), let session = client.session(key.sessionId), Self.state(session)?.phase.isLive == true, activities[key] == nil {
                 adopt(activity, key: key, client: client, registry: registry)
             } else if activities[key] == nil {
                 let id = activity.id
@@ -92,14 +117,20 @@ final class ActivityCoordinator {
         }
     }
 
-    /// The thread on screen runs: show it on the lock screen.
+    /// The thread on screen runs: show it on the lock screen. A queued thread has no card yet.
     func watch(_ client: EnvironmentClient, _ session: SessionMeta, registry: ClientRegistry) {
-        guard Self.state(session).phase.isLive else { return }
-        start(client, session, state: Self.state(session, reason: Self.reason(client, session)), registry: registry)
+        guard let state = Self.state(session, reason: Self.reason(client, session)), state.phase.isLive else { return }
+        start(client, session, state: state, registry: registry)
     }
 
     /// A turn just left the phone: the activity starts now, before the host says running.
+    /// Into a queued thread it starts later, when the host boots it (`apply`).
     func sent(_ client: EnvironmentClient, _ session: SessionMeta, registry: ClientRegistry) {
+        let key = ThreadKey(environmentId: client.environment.id, sessionId: session.id)
+        if session.status == .queued {
+            sentInto.insert(key)
+            return
+        }
         let now = Int(Date.now.timeIntervalSince1970 * 1000)
         let tasks = session.tasks
         start(client, session, state: .init(phase: .working, since: now, ts: now, title: session.title, done: (tasks?.total ?? 0) > 0 ? tasks?.done : nil, total: (tasks?.total ?? 0) > 0 ? tasks?.total : nil), registry: registry)
@@ -133,14 +164,38 @@ final class ActivityCoordinator {
         }
     }
 
-    /// Session metas from a host: the thread's activity follows, and ends when the thread settles.
+    /// Session metas from a host: the thread's activity follows, and ends when the thread settles
+    /// (finished, failed or stopped). A thread the person sent into while queued starts its activity
+    /// the moment its meta turns live.
     func apply(_ client: EnvironmentClient, _ metas: [SessionMeta], registry: ClientRegistry) {
         for meta in metas {
             let key = ThreadKey(environmentId: client.environment.id, sessionId: meta.id)
-            guard let id = activities[key] else { continue }
+            guard let id = activities[key] else {
+                if sentInto.contains(key), let state = Self.state(meta), state.phase.isLive {
+                    sentInto.remove(key)
+                    start(client, meta, state: state, registry: registry)
+                }
+                continue
+            }
+            let current = Self.currentState(id: id)
+            // A queued thread runs nothing (return flow, thread 14): an activity it still holds ends like a finished one.
+            guard var state = Self.state(meta, reason: Self.reason(client, meta)) else {
+                var final = current ?? .init(phase: .finished, since: meta.busySince ?? meta.updatedAt, ts: 0, title: meta.title)
+                final.phase = .finished
+                final.ts = Int(Date.now.timeIntervalSince1970 * 1000)
+                end(key, id: id, final: final, client: client, registry: registry)
+                continue
+            }
             // A waiting thread that is not loaded has no fold to read: a reason a push left stays.
-            let reason = Self.reason(client, meta) ?? (meta.status == .waiting ? Self.currentState(id: id)?.reason : nil)
-            let state = Self.state(meta, reason: reason)
+            if state.phase == .waiting, state.reason == nil { state.reason = current?.reason }
+            // A master's tally is its batch, which the host pushes and this client does not decode:
+            // the card keeps the host's count and step rather than the master's own list.
+            if meta.isMaster == true, let current, current.unit == .threads {
+                state.task = current.task
+                state.done = current.done
+                state.total = current.total
+                state.unit = current.unit
+            }
             if state.phase.isLive {
                 guard shapes[key] != state.shape else { continue }
                 shapes[key] = state.shape
@@ -156,6 +211,7 @@ final class ActivityCoordinator {
         tokenTasks[key] = nil
         activities[key] = nil
         shapes[key] = nil
+        sentInto.remove(key)
         ended += 1
         log.notice("activity \(id, privacy: .public) ended as \(final.phase.rawValue, privacy: .public)")
         report()
@@ -195,10 +251,11 @@ final class ActivityCoordinator {
     // MARK: - DEBUG hooks for the simulator proof
 
     #if DEBUG
-    /// `TC_TEST_ACTIVITY=<phase>[,notasks]` starts one activity with a host-shaped
-    /// state and no host, so the lock screen and the island can be screenshotted in
-    /// every phase; `TC_TEST_ACTIVITY_GALLERY=1` opens the gallery of every state
-    /// over the app. Answers true when a hook ran, so the real reconcile is skipped.
+    /// `TC_TEST_ACTIVITY=<phase>[,notasks][,threads]` starts one activity with a
+    /// host-shaped state and no host, so the lock screen and the island can be
+    /// screenshotted in every phase (`threads`: a master's batch tally);
+    /// `TC_TEST_ACTIVITY_GALLERY=1` opens the gallery of every state over the app.
+    /// Answers true when a hook ran, so the real reconcile is skipped.
     private func applyTestHooks() -> Bool {
         let env = ProcessInfo.processInfo.environment
         if env["TC_TEST_ACTIVITY_GALLERY"] == "1" {
@@ -208,7 +265,7 @@ final class ActivityCoordinator {
         guard let spec = env["TC_TEST_ACTIVITY"], !spec.isEmpty else { return false }
         let parts = spec.split(separator: ",").map(String.init)
         guard let phase = ThreadActivityAttributes.Phase(rawValue: parts[0]) else { return false }
-        let state = ActivityGallery.sample(phase: phase, tasks: !parts.contains("notasks"))
+        let state = ActivityGallery.sample(phase: phase, tasks: !parts.contains("notasks"), threads: parts.contains("threads"))
         for activity in Activity<ThreadActivityAttributes>.activities {
             let id = activity.id
             Task { await Self.end(id: id, final: nil, linger: 0) }

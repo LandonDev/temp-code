@@ -64,6 +64,7 @@ final class AppModel: PushHandler {
         await registry.sync()
         ready = true
         activities.reconcile(registry)
+        followHosts()
         await refreshPushPermission()
         if registry.push.enabled, registry.push.permission == .granted { UIApplication.shared.registerForRemoteNotifications() }
         let registry = self.registry
@@ -72,6 +73,15 @@ final class AppModel: PushHandler {
             Task { @MainActor in await registry.setOnline(online) }
         }
         monitor.start(queue: DispatchQueue(label: "dev.landon.tempcode.network"))
+    }
+
+    /// The paired hosts' names go to the App Group for the notification service extension, now and after every pairing added or removed.
+    private func followHosts() {
+        withObservationTracking {
+            HostDirectory.publish(registry.store.environments.map { ($0.id, $0.name) })
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.followHosts() }
+        }
     }
 
     func scenePhaseChanged(_ phase: ScenePhase) async {

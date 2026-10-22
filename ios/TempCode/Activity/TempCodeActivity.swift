@@ -12,9 +12,12 @@ struct TempCodeActivityBundle: WidgetBundle {
 
 /// The running row as a Live Activity. Lock screen: the card
 /// (Shared/ThreadActivityViews.swift). Dynamic Island: compact leading is
-/// the type glyph, compact trailing the tally or the clock, minimal the
-/// status dot, expanded the card's rows across the island's regions. Every
-/// presentation deep-links to the thread and the row the state names.
+/// the type glyph while the thread is at work or held and the mark of its
+/// final state once it settled, compact trailing the tally or the clock,
+/// minimal the status dot, expanded the card's rows across the island's
+/// regions. Every presentation deep-links to the thread and the row the
+/// state names: the card's `widgetURL` covers the lock screen, the
+/// island's covers all four of its presentations.
 struct ThreadActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: ThreadActivityAttributes.self) { context in
@@ -44,7 +47,7 @@ struct ThreadActivityWidget: Widget {
                     ActivityExpandedBottom(type: context.attributes.threadType, state: context.state)
                 }
             } compactLeading: {
-                TypeGlyph(type: context.attributes.threadType, weight: .semibold)
+                ActivityCompactLeading(type: context.attributes.threadType, state: context.state)
             } compactTrailing: {
                 ActivityCompactTrailing(type: context.attributes.threadType, state: context.state)
             } minimal: {
