@@ -155,7 +155,10 @@ else
   # the moment the release leaves draft, so master must already be there or the
   # tag lands on the previous commit and the final tag push is rejected.
   git tag -f "v$VERSION"
-  git push -q origin master && git push -q -f origin "v$VERSION"
+  # Two lines: under set -e a failure left of && does not stop the script, and
+  # a rejected master push (the box pushed meanwhile) once went on to publish.
+  git push -q origin master
+  git push -q -f origin "v$VERSION"
 
   # The draft release now, so the tarball can go up while the app is signed.
   # Title and notes from the commits since the last published release; the
