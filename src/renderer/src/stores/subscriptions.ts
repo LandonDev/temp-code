@@ -13,7 +13,7 @@ import { historyStore } from "../lib/historyStore";
 import { liveAgentTracker } from "../lib/liveAgentTracker";
 import { mergeModelSettings, nativeModelId, resolveModel } from "../lib/models";
 import { invoke } from "../lib/native";
-import { saveLastSession, workspacePathOfSession } from "../lib/projectContext";
+import { landingPathOfSession, saveLastSession } from "../lib/projectContext";
 import { lastProjectPath, looksLikeProject } from "../lib/recents";
 import { replaceProjectHistory } from "../lib/sessionHistory";
 import { markSessionSeen, pruneLastSeen } from "../lib/sessionSeen";
@@ -233,7 +233,7 @@ export function installActiveSessionSync(): Teardown {
     landingKey = key;
     if (!meta || meta.archived || meta.parentId || !catalog.loaded) return;
     if (meta.projectId) saveLastSession({ projectId: meta.projectId }, meta.id);
-    saveLastSession({ workspacePath: workspacePathOfSession(meta, catalog) }, meta.id);
+    saveLastSession({ workspacePath: landingPathOfSession(meta, catalog) }, meta.id);
   };
 
   // A project that was archived or deleted drops out of the selection.

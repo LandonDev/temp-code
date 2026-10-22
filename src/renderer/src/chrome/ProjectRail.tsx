@@ -1,8 +1,9 @@
-import { registry, useEnvironments, useEnvironmentStatuses, useSlowEnvironments } from "../lib/connection";
-import { statusText } from "../surfaces/EnvironmentsSettings";
+import { registry, useEnvironments } from "../lib/connection";
 import { environmentOfCwd } from "../lib/tcserver/projects";
-import { groupByEnvironment } from "../lib/environmentGroups";
-import { EnvironmentSwitcher, toneOf } from "./EnvironmentSwitcher";
+import { aliasKeys, mergeRailSections, type RailItem } from "../lib/linkedRail";
+import { EnvironmentSwitcher } from "./EnvironmentSwitcher";
+import { HostRows } from "./HostRows";
+import { useHostsOffline } from "./hostOffline";
 import {
   Archive,
   Check,
@@ -74,6 +75,10 @@ import { useClock } from "../lib/turnClock";
 import type { CardThread } from "../lib/projectCardModel";
 import { useWorkspaceRailStatuses, type WorkspaceRailStatus } from "../hooks/useProjectSignals";
 import { threadsToMarkRead } from "../lib/markRead";
+import { batchActionOfMenuId, batchCounts, batchMenuExtraItems, type BatchCounts } from "../lib/threadBatchMenu";
+import { requestThreadBatch, type BatchScope } from "../lib/threadBatch";
+import { selectionFor } from "../lib/threadBatchSelection";
+import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
 import { markAllSeen, markSessionsSeen } from "../lib/sessionSeen";
 import { useSessionMetas } from "../lib/tcserver/store";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
@@ -106,9 +111,12 @@ const REVEAL_LABEL = IS_MAC
     ? "Reveal in File Explorer"
     : "Open Containing Folder";
 
-function projectMenuExtraItems(
+/** The project menu's rows after the label, colour and mascot: pin, reveal,
+ *  Mark all read, the fleet switches, then archive and delete. */
+export function projectMenuExtraItems(
   pinned: boolean,
   canRemove: boolean,
+  counts: BatchCounts | null,
 ): TabGroupMenuExtraItem[] {
   const items: TabGroupMenuExtraItem[] = [
     pinned
@@ -116,6 +124,7 @@ function projectMenuExtraItems(
       : { id: "pin", label: "Pin workspace", icon: Pin },
     { id: "reveal", label: REVEAL_LABEL, icon: FolderOpen },
     { id: "read", label: "Mark all read", icon: ListChecks, sepBefore: true },
+    ...batchMenuExtraItems(counts),
   ];
   if (canRemove) {
     items.push(
@@ -231,15 +240,16 @@ export function ProjectRail({
     () => projectRailSections(recents, null, railOrder, pinnedPaths),
     [pinnedPaths, railOrder, recents],
   );
-  // With another machine paired, the workspace rows split by machine so a
-  // row always says where its threads run; one machine keeps one list.
+  // One list for every host: a workspace linked across hosts is one row
+  // with every copy's threads (lib/linkedRail.ts); each host's status sits
+  // in its own row at the foot (HostRows).
   const environments = useEnvironments();
-  const environmentStatuses = useEnvironmentStatuses();
-  const slowEnvironments = useSlowEnvironments();
-  const groups = useMemo(
-    () => (environments.length > 1 ? groupByEnvironment(sections.projects, environments, environmentOfCwd) : null),
-    [environments, sections.projects, workspaces],
-  );
+  const rows = useMemo(() => mergeRailSections(sections, workspaces), [sections, workspaces]);
+  /** The rail row a workspace folder sits in (its own, or its link's). */
+  const rowOf = (path: string): RailItem | undefined =>
+    [...rows.pinned, ...rows.projects].find((row) => row.paths.some((p) => sameProjectPath(p, path)));
+  /** The status map's key for a row: its link's leader path. */
+  const statusKey = useMemo(() => aliasKeys(workspaces).path, [workspaces]);
   const busy = useMemo(() => {
     const set = new Set<string>();
     for (const path of busyPaths ?? []) set.add(path);
@@ -253,13 +263,23 @@ export function ProjectRail({
   const railStatuses = useWorkspaceRailStatuses();
   const metas = useSessionMetas();
   const catalog = useWorkspaceCatalog();
-  // "Mark all read": every thread on one workspace, or on every host (the
-  // latter raises the seen floor too, as the View menu's item does).
+  const lastSeen = useLastSeen();
+  const seenFloor = useSeenFloor();
+  // "Mark all read": every thread on one workspace and its copies, or on
+  // every host (the latter raises the seen floor too, as the View menu's
+  // item does).
   const markRead = (path: string | null): void => {
-    const { ids, at } = threadsToMarkRead(metas, catalog, path);
+    const { ids, at } = threadsToMarkRead(metas, catalog, path === null ? null : (rowOf(path)?.paths ?? path));
     if (path === null) markAllSeen(ids, at);
     else markSessionsSeen(ids, at);
   };
+  /** The fleet switches' scope for a row: every copy's folder. */
+  const projectScope = (path: string, projectKey: string): BatchScope => ({
+    kind: "project",
+    path,
+    paths: rowOf(path)?.paths ?? [path],
+    name: resolveTabGroupLabel(projectKey, groupLabels, basename(path)),
+  });
 
   useEffect(() => {
     setRailOrder((prev) => {
@@ -350,25 +370,25 @@ export function ProjectRail({
   };
 
   const onReorderPinned = (ids: string[]) => {
-    const subset = new Set(sections.pinned.map((item) => item.path));
+    const subset = new Set(pinnedIds);
     const next = reorderSubset(railOrder, ids, subset);
     setRailOrder(next);
     saveProjectRailOrder(next);
   };
 
   const onReorderProjects = (ids: string[]) => {
-    const subset = new Set(sections.projects.map((item) => item.path));
+    const subset = new Set(projectIds);
     const next = reorderSubset(railOrder, ids, subset);
     setRailOrder(next);
     saveProjectRailOrder(next);
   };
 
   const onTogglePin = (path: string) => {
-    const isPinned = pinnedPaths.some((pinned) =>
-      sameProjectPath(pinned, path),
-    );
+    // A linked row pins and unpins as one: every copy's folder.
+    const paths = rowOf(path)?.paths ?? [path];
+    const isPinned = pinnedPaths.some((pinned) => paths.some((p) => sameProjectPath(pinned, p)));
     const next = isPinned
-      ? pinnedPaths.filter((pinned) => !sameProjectPath(pinned, path))
+      ? pinnedPaths.filter((pinned) => !paths.some((p) => sameProjectPath(pinned, p)))
       : [...pinnedPaths, path];
     setPinnedPaths(next);
     savePinnedProjects(next);
@@ -380,7 +400,10 @@ export function ProjectRail({
     if (action === "pin" || action === "unpin") onTogglePin(path);
     else if (action === "reveal") void revealPath(path);
     else if (action === "read") markRead(path);
-    else if (action === "archive") {
+    else if (batchActionOfMenuId(action)) {
+      const scope = projectScope(path, projectKey);
+      void requestThreadBatch(batchActionOfMenuId(action)!, scope, () => selectionFor(scope));
+    } else if (action === "archive") {
       onRemoveProject?.(path, { purgeData: false });
     } else if (action === "delete") {
       setRemoving({
@@ -413,8 +436,9 @@ export function ProjectRail({
     setRemoving(null);
   };
 
-  const pinnedIds = sections.pinned.map((item) => item.path);
-  const projectIds = sections.projects.map((item) => item.path);
+  // The draggable rows: a linked row moves as one, by its lead folder.
+  const pinnedIds = rows.pinned.map((item) => item.path);
+  const projectIds = rows.projects.map((item) => item.path);
   const pinnedSortable = useSortable(pinnedIds, onReorderPinned, {
     axis: "y",
     onActivate: onSelectProject,
@@ -533,10 +557,11 @@ export function ProjectRail({
             }}
             className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-none pt-2 pb-2"
           >
-            {sections.pinned.length > 0 ? (
+            {rows.pinned.length > 0 ? (
               <ProjectSection
                 label="Pinned"
-                items={sections.pinned}
+                items={rows.pinned}
+                statusKey={statusKey}
                 cwd={cwd}
                 busy={busy}
                 needsYou={needsYou}
@@ -558,49 +583,32 @@ export function ProjectRail({
               />
             ) : null}
 
-            {(groups ?? [null]).map((group) => {
-              const status = group ? environmentStatuses.get(group.environment.id) : undefined;
-              const slow = !!group && slowEnvironments.has(group.environment.id);
-              return (
-                <ProjectSection
-                  key={group?.environment.id ?? "all"}
-                  label={group ? group.environment.name : "Workspaces"}
-                  leading={
-                    status ? (
-                      <span
-                        aria-hidden
-                        data-host-dot={group?.environment.id}
-                        title={`${group?.environment.name}: ${statusText(status, Date.now(), slow)}`}
-                        className={`size-1.5 shrink-0 rounded-full ${toneOf(status, status.transport !== "open", slow)}`}
-                      />
-                    ) : undefined
-                  }
-                  items={group ? group.items : sections.projects}
-                  indexOf={(item) => sections.projects.indexOf(item)}
-                  emptyLabel={group ? "No workspaces here yet" : "No workspaces yet"}
-                  note={<BootResumeNote environmentId={group?.environment.id ?? registry.primary().environmentId} />}
-                  onAdd={() => onOpenProject(group?.environment.id)}
-                  cwd={cwd}
-                  busy={busy}
-                  needsYou={needsYou}
-                  railStatuses={railStatuses}
-                  activeSessionId={activeSessionId ?? null}
-                  onSelectAgent={onSelectAgent}
-                  sortable={projectSortable}
-                  pinned={false}
-                  searchActive={searchActive || inboxActive || notesActive || !!accountsPage}
-                  onSelect={onSelectProject}
-                  onTogglePin={onTogglePin}
-                  onContextMenu={onProjectContextMenu}
-                  onOpenMenu={openProjectMenu}
-                  groupLabels={groupLabels}
-                  groupColors={groupColors}
-                  groupCustomColors={groupCustomColors}
-                  groupLogos={groupLogos}
-                  groupMascots={groupMascots}
-                />
-              );
-            })}
+            <ProjectSection
+              label="Workspaces"
+              items={rows.projects}
+              statusKey={statusKey}
+              emptyLabel="No workspaces yet"
+              note={environments.length < 2 ? <BootResumeNote environmentId={registry.primary().environmentId} /> : null}
+              onAdd={() => onOpenProject()}
+              cwd={cwd}
+              busy={busy}
+              needsYou={needsYou}
+              railStatuses={railStatuses}
+              activeSessionId={activeSessionId ?? null}
+              onSelectAgent={onSelectAgent}
+              sortable={projectSortable}
+              pinned={false}
+              searchActive={searchActive || inboxActive || notesActive || !!accountsPage}
+              onSelect={onSelectProject}
+              onTogglePin={onTogglePin}
+              onContextMenu={onProjectContextMenu}
+              onOpenMenu={openProjectMenu}
+              groupLabels={groupLabels}
+              groupColors={groupColors}
+              groupCustomColors={groupCustomColors}
+              groupLogos={groupLogos}
+              groupMascots={groupMascots}
+            />
           </div>
           <LiveAgentsPreview
             agents={liveAgents}
@@ -616,6 +624,7 @@ export function ProjectRail({
             onOpenWhatsNew={onOpenWhatsNew}
             onDismissUpdate={shell.dismissUpdate}
           />
+          <HostRows onAddWorkspace={(environmentId) => onOpenProject(environmentId)} />
           <div className="flex shrink-0 flex-col gap-px p-2 pt-px">
             <RailAction
               label="Settings"
@@ -671,9 +680,15 @@ export function ProjectRail({
           showActions={false}
           extraItems={projectMenuExtraItems(
             pinnedPaths.some((pinned) =>
-              sameProjectPath(pinned, projectMenu.path),
+              (rowOf(projectMenu.path)?.paths ?? [projectMenu.path]).some((p) => sameProjectPath(pinned, p)),
             ),
             Boolean(onRemoveProject),
+            batchCounts(metas, {
+              catalog,
+              lastSeen,
+              floor: seenFloor,
+              scope: projectScope(projectMenu.path, projectMenu.projectKey),
+            }),
           )}
           onExtraPick={onProjectMenuPick}
         />
@@ -891,9 +906,9 @@ function LiveAgentCard({
 
 function ProjectSection({
   label,
-  leading,
   note,
   items,
+  statusKey,
   indexOf,
   emptyLabel,
   onAdd,
@@ -917,13 +932,13 @@ function ProjectSection({
   groupMascots,
 }: {
   label: string;
-  /** A mark before the label: the environment's connection dot. */
-  leading?: ReactNode;
   /** One line under the header, when the host has something to say once (BootResumeNote). */
   note?: ReactNode;
-  items: RecentProject[];
+  items: RailItem[];
+  /** The status map's key for a row's folder (its link's leader path). */
+  statusKey: (path: string) => string;
   /** The row's place in the sortable's whole list; defaults to its place in `items`. */
-  indexOf?: (item: RecentProject) => number;
+  indexOf?: (item: RailItem) => number;
   emptyLabel?: string;
   onAdd?: () => void;
   cwd: string;
@@ -948,9 +963,8 @@ function ProjectSection({
   return (
     <div className="shrink-0">
       <div className="flex h-9 items-center gap-1 px-2 pr-1.5">
-        <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate px-2 text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">
-          {leading}
-          <span className="min-w-0 truncate">{label}</span>
+        <span className="min-w-0 flex-1 truncate px-2 text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">
+          {label}
         </span>
         {onAdd ? (
           <button
@@ -973,10 +987,10 @@ function ProjectSection({
           <ProjectCard
             key={item.path}
             item={item}
-            selected={!searchActive && sameProjectPath(item.path, cwd)}
-            busy={pathIn(item.path, busy)}
-            needsYou={pathIn(item.path, needsYou)}
-            railStatus={railStatuses.get(item.path)}
+            selected={!searchActive && item.paths.some((p) => sameProjectPath(p, cwd))}
+            busy={item.paths.some((p) => pathIn(p, busy))}
+            needsYou={item.paths.some((p) => pathIn(p, needsYou))}
+            railStatus={railStatuses.get(statusKey(item.path))}
             activeSessionId={activeSessionId}
             onSelectAgent={onSelectAgent}
             pinned={pinned}
@@ -1113,7 +1127,7 @@ function ProjectCard({
   groupLogos,
   groupMascots,
 }: {
-  item: RecentProject;
+  item: RailItem;
   selected: boolean;
   busy: boolean;
   needsYou: boolean;
@@ -1134,8 +1148,11 @@ function ProjectCard({
   groupMascots: Record<string, string>;
 }) {
   const fallbackName = basename(item.path);
-  const workspaceId = workspaceByPath(useWorkspaces(), item.path)?.id ?? null;
-  const projectKey = workspaceId ?? projectName(item.path);
+  const workspaces = useWorkspaces();
+  const workspaceId = workspaceByPath(workspaces, item.path)?.id ?? null;
+  const offline = useHostsOffline(item.hosts);
+  // Labels, colours and mascots key by the link's leader (lib/linkedRail.ts).
+  const projectKey = workspaceLabelKey(workspaces, item.path, projectName(item.path));
   const name = resolveTabGroupLabel(projectKey, groupLabels, fallbackName);
   const logoPath = resolveTabGroupLogo(projectKey, groupLogos);
   // No logo set: the server's repo icon or host mark stands in, unless the
@@ -1177,11 +1194,12 @@ function ProjectCard({
     <>
     <div
       ref={(el) => sortable.setItemRef(item.path, el)}
+      data-host-offline={offline || undefined}
       className={`group relative flex h-7 touch-none items-stretch rounded-md px-2 ${
         selected
           ? "bg-content/10 text-content"
           : "text-content/50 hover:bg-content/5 hover:text-content"
-      } ${dragging ? "opacity-40" : ""} cursor-default`}
+      } ${dragging ? "opacity-40" : offline ? "opacity-50" : ""} cursor-default`}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         if ((event.target as HTMLElement | null)?.closest("[data-no-drag]")) {
@@ -1290,7 +1308,7 @@ function ProjectCard({
     {threadsOpen && workspaceId ? (
       <WorkspaceThreadsPopover
         anchor={chipRef}
-        workspaceId={workspaceId}
+        workspaceIds={item.workspaceIds.length > 0 ? item.workspaceIds : [workspaceId]}
         activeSessionId={activeSessionId}
         onDismiss={() => setThreadsOpen(false)}
         onSelectThread={(sessionId) => {

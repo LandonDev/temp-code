@@ -7,6 +7,7 @@ import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
 import { sessionStore, useSessionMetas } from "../lib/tcserver/store";
 import type { SessionMeta } from "../lib/tcserver/types";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
+import { aliasKeys } from "../lib/linkedRail";
 
 export interface ProjectSignals {
   /** Folders with a turn in flight. */
@@ -100,13 +101,16 @@ const RAIL_STATUS_NONE: WorkspaceRailStatus = { kind: null, count: 0 };
  * anywhere in the tree), unread (settled and unseen), else none. Built on
  * `projectCardStatus()` — the same fold the Sessions tab's project card and
  * the rail's own thread popover use — so the chip and what it opens never
- * disagree about a workspace's state.
+ * disagree about a workspace's state. `keyOf` folds a workspace's copies on
+ * other hosts into its leader's path (lib/linkedRail.ts `aliasKeys`), so a
+ * linked row counts every copy's threads as one workspace.
  */
 export function workspaceRailStatuses(
   metas: readonly SessionMeta[],
   catalog: Catalog,
   lastSeen: Record<string, number>,
   floor = 0,
+  keyOf: (path: string) => string = (path) => path,
 ): Map<string, WorkspaceRailStatus> {
   const archivedProjects = new Set(
     catalog.projects.filter((p) => p.archived).map((p) => p.id),
@@ -118,8 +122,9 @@ export function workspaceRailStatuses(
     // list (`groupWorkspaceSessions`); a stuck thread inside one is not
     // something the chip should surface, or the popover would disagree.
     if (meta.projectId && archivedProjects.has(meta.projectId)) continue;
-    const path = workspacePathOfSession(meta, catalog);
-    if (!path) continue;
+    const at = workspacePathOfSession(meta, catalog);
+    if (!at) continue;
+    const path = keyOf(at);
     const list = byPath.get(path);
     if (list) list.push(meta);
     else byPath.set(path, [meta]);
@@ -143,15 +148,16 @@ export function workspaceRailStatuses(
   return out;
 }
 
-/** The rail's per-workspace status map, recomputed only when the metas,
- *  catalog, or seen state actually change. */
+/** The rail's per-workspace status map, keyed by the rail row's lead path
+ *  (a linked workspace's copies count as one), recomputed only when the
+ *  metas, catalog, or seen state actually change. */
 export function useWorkspaceRailStatuses(): Map<string, WorkspaceRailStatus> {
   const catalog = useWorkspaceCatalog();
   const metas = useSessionMetas();
   const lastSeen = useLastSeen();
   const floor = useSeenFloor();
   return useMemo(
-    () => workspaceRailStatuses(metas, catalog, lastSeen, floor),
+    () => workspaceRailStatuses(metas, catalog, lastSeen, floor, aliasKeys(catalog.workspaces).path),
     [metas, catalog, lastSeen, floor],
   );
 }

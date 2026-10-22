@@ -63,6 +63,9 @@ ambient chrome; it earns its place because agents run in background threads
 | Project row | custom row; BUI *Sidebar Nav* is the composition reference | name 13px; below/right: `git-branch` glyph + branch or `tc/<tag>` worktree tag, 11px muted; relative time right-aligned; status dot when a thread runs (emerald pulse / amber waiting / red error) |
 | Selection | shared-layout pill behind active row (BeUI *Shared Layout Background* recipe, `SPRING_LAYOUT`) | `bg-accent`, `rounded-md`; glides between rows |
 | Row menu | BeUI *Animated Context Menu* (pointer-origin morph) | rename, change branch, archive, delete (delete → ReUI dialog confirm) |
+| Workspace list | `chrome/ProjectRail.tsx` on `lib/linkedRail.ts` | one "Workspaces" section for every host, no host headers; a workspace linked across hosts (one `linkId`) is one row led by this machine's copy, its threads, status chip, Mark all read, pin and drag spanning every copy; order, pins, recents, labels, colours and mascots keep their keys, the other copies alias to the leader's (`aliasKeys`) |
+| Offline tint | `chrome/hostOffline.ts` | with two or more hosts, a row whose host's link is not open (a rail row: every host of it) sits at `opacity-50` with `data-host-offline`, as the master board's rows do; its rows are the launch mirror's and lift when the host is back |
+| Host rows | `chrome/HostRows.tsx`, above Settings | only with two or more hosts: one 28px row per host, no borders, the rail rows' 12px type: the host's `HostGlyph` (12px, `text-content/45`, laptop for a Mac, server otherwise) in the rail icons' 14px box so the names share Settings' text column, the name, the connection dot (`toneOf`, its state in the tooltip), then at the right the boot-resume line while fresh and the `+N` deploy drift, which yield to `⋯` on hover; a click opens the host's menu: Add workspace here…, Mark all read, Pause all, Resume all, Stop all, Archive done, Remote access settings |
 | Bottom | connection strip (exists) + settings gear | unchanged |
 
 ### Project dialogs on a linked project
@@ -419,6 +422,8 @@ in the whole pane, with Back.
 - **Everywhere else** a child is an ordinary root thread in the rail with
   its activity line ("Queued · waiting for <sibling>") and its own working
   strip with one quiet Start now; only the strip and its shelf leave it out.
+  Under the master's rail row a child on a host whose link is not open
+  sits under the same offline tint as on the board (`data-host-offline`).
 
 ## ADE ambitions (later — but the frame reserves room now)
 

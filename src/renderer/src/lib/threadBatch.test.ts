@@ -110,6 +110,13 @@ describe("batchTargets", () => {
     expect(ids(batchTargets("pause", list, { ...all, scope: { kind: "host", environmentId: "env_box", name: "box" } }))).toEqual(["box"]);
     expect(ids(batchTargets("pause", list, { ...all, scope: { kind: "host", environmentId: "local", name: "Mac" } }))).toEqual(["here"]);
   });
+  it("scopes a workspace linked across hosts to every copy's folder", () => {
+    const onBox = meta({ id: "box", status: "running", projectId: "p1", cwd: "/srv/work/app", environmentId: "env_box" });
+    const here = meta({ id: "here", status: "running", cwd: "/tmp/here" });
+    const elsewhere = meta({ id: "elsewhere", status: "running", cwd: "/tmp/other" });
+    const scope = { kind: "project" as const, path: "/tmp/here", paths: ["/tmp/here", "/srv/work"], name: "app" };
+    expect(ids(batchTargets("pause", [onBox, here, elsewhere], { ...all, scope }))).toEqual(["box", "here"]);
+  });
 });
 
 describe("batchConfirm", () => {

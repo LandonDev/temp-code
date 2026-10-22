@@ -316,8 +316,10 @@ try {
   check('A: slow after 8 s, one line naming the host with the seconds', numbers.aSlow !== null && numbers.aSlow >= 7_500 && !!aSlowLine, `slow at ${numbers.aSlow} ms, "${aSlowLine}"`)
   check('A: the rows landed', aLoaded, `rows at ${numbers.aRows} ms`)
   for (const line of transitions(aSamples)) log(`A ${line}`)
-  const dotTitle = await cdp.eval<string | null>(`document.querySelector('[data-host-dot=${JSON.stringify(boxEnv)}]')?.getAttribute('title') ?? null`)
-  check("the rail's box dot reads slow from the link's health", !!dotTitle?.includes('slow to answer'), `title "${dotTitle}"`)
+  const dotTitle = await cdp.eval<string | null>(
+    `document.querySelector('[data-host-row=${JSON.stringify(boxEnv)}] [data-host-status]')?.getAttribute('title') ?? null`
+  )
+  check("the box's host row dot reads slow from the link's health", !!dotTitle?.includes('slow to answer'), `title "${dotTitle}"`)
 
   // ── 3. open B, drop the link mid-wait: retrying, then the rows ─────────
   const b = threads[1]

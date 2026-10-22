@@ -1,3 +1,4 @@
+import { useHostsOffline } from "./hostOffline";
 import {
   memo,
   useCallback,
@@ -84,6 +85,9 @@ type Props = {
   accountsPage?: AliaxPageId | null;
   /** Null: the home, the chats outside every workspace. */
   workspaceId: string | null;
+  /** The workspace's copies on other hosts with it, the leader's first
+   *  (lib/linkedRail.ts): their threads interleave as one list. */
+  workspaceIds?: readonly string[] | null;
   selectedProjectId: string | null;
   activeSessionId?: string;
   onSelectProject: (projectId: string | null) => void;
@@ -353,6 +357,7 @@ const ChatRow = memo(function ChatRow({
   const [renaming, setRenaming] = useState(false);
   const selected = thread.id === actions.activeSessionId;
   const title = thread.title || "Untitled";
+  const offline = useHostsOffline([thread.environmentId]);
 
   const menu = (at: { x: number; y: number }) => {
     const master = masterMenuItem(thread, actions.masterIds);
@@ -402,13 +407,14 @@ const ChatRow = memo(function ChatRow({
         e.preventDefault();
         menu({ x: e.clientX, y: e.clientY });
       }}
+      data-host-offline={offline || undefined}
       className={`group/row relative flex h-7 w-full cursor-default items-center gap-1.5 rounded-md px-2 text-left text-[13px] transition-colors ${
         selected
           ? "bg-content/10 text-content"
           : thread.paused
             ? "bg-warning/8 text-content/70 hover:bg-warning/12 active:bg-warning/12"
             : "text-content/70 hover:bg-content/5 hover:text-content active:bg-content/10"
-      }`}
+      } ${offline ? "opacity-50" : ""}`}
     >
       {thread.running ? (
         <Spinner />
@@ -486,11 +492,13 @@ const ChildRow = memo(function ChildRow({
   const selected = thread.id === actions.activeSessionId;
   const Glyph = thread.agentType ? AGENT_GLYPHS[thread.agentType] : thread.threadType ? THREAD_GLYPHS[thread.threadType] : null;
   const live = thread.running ? thread.activity?.trim() : "";
+  const offline = useHostsOffline([thread.environmentId]);
   return (
     <div
       role="button"
       tabIndex={0}
       aria-current={selected || undefined}
+      data-host-offline={offline || undefined}
       onClick={() => actions.onOpen(thread.id)}
       onPointerEnter={() => sessionPrefetch.enter(thread.id)}
       onPointerLeave={() => sessionPrefetch.leave(thread.id)}
@@ -499,7 +507,7 @@ const ChildRow = memo(function ChildRow({
         selected
           ? "bg-content/10 text-content"
           : "text-content/70 hover:bg-content/5 hover:text-content active:bg-content/10"
-      }`}
+      } ${offline ? "opacity-50" : ""}`}
     >
       {thread.running ? <Spinner /> : <StatusDot status={thread.status} />}
       {Glyph ? <Glyph className="size-3 shrink-0 text-content/40" strokeWidth={1.75} /> : null}
@@ -1217,8 +1225,13 @@ const estimateItem = (item: SidebarItem): number => {
 
 // --- root ------------------------------------------------------------------
 
+/** A project group is selected when the selection names any of its copies. */
+const groupHolds = (group: ProjectGroup, projectId: string | null): boolean =>
+  !!projectId && (group.project.id === projectId || !!group.projectIds?.includes(projectId));
+
 export default function WorkspaceSessions({
   workspaceId,
+  workspaceIds,
   selectedProjectId,
   activeSessionId,
   onSelectProject,
@@ -1241,15 +1254,12 @@ export default function WorkspaceSessions({
         metas,
         projects,
         workspaces,
-        workspaceId,
+        workspaceIds && workspaceIds.length > 1 ? workspaceIds : workspaceId,
         lastSeen,
         seenFloor,
         cache,
       ),
-    [cache, lastSeen, metas, projects, seenFloor, workspaceId, workspaces],
-  );
-  const workspace: WorkspaceMeta | undefined = workspaces.find(
-    (w) => w.id === workspaceId,
+    [cache, lastSeen, metas, projects, seenFloor, workspaceId, workspaceIds, workspaces],
   );
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
@@ -1257,6 +1267,12 @@ export default function WorkspaceSessions({
   const [archived, setArchived] = useState<ArchivedState>({ open: false, shown: null });
   const [pages, setPages] = useState<Pages>({});
   const close = () => setDialog(null);
+  // A dialog edits a project in its own workspace (a linked group's leader
+  // may sit in another copy than the one selected).
+  const dialogProject = dialog && "project" in dialog ? dialog.project : null;
+  const workspace: WorkspaceMeta | undefined = workspaces.find(
+    (w) => w.id === (dialogProject?.workspaceId ?? workspaceId),
+  );
 
   // The parent hands down fresh closures each render; the memoized cards and
   // rows see one stable callback that reads the newest.
@@ -1361,7 +1377,7 @@ export default function WorkspaceSessions({
   useEffect(() => {
     if (!selectedProjectId || revealed.current === selectedProjectId) return;
     const index = items.findIndex(
-      (item) => item.kind === "project" && item.group.project.id === selectedProjectId,
+      (item) => item.kind === "project" && groupHolds(item.group, selectedProjectId),
     );
     if (index < 0) return;
     revealed.current = selectedProjectId;
@@ -1382,7 +1398,7 @@ export default function WorkspaceSessions({
         return (
           <ProjectCard
             group={item.group}
-            selected={item.group.project.id === selectedProjectId}
+            selected={groupHolds(item.group, selectedProjectId)}
             lastSeen={lastSeen}
             seenFloor={seenFloor}
             rows={rows}

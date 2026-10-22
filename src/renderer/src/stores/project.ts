@@ -13,6 +13,7 @@ import {
   sameProjectPath,
   type RecentProject,
 } from "../lib/recents";
+import { linkedWorkspaceIds } from "../lib/linkedRail";
 import { sessionWorkCwd } from "../lib/session";
 import { sessionStore, useSessionShells, type SessionShell } from "../lib/tcserver/store";
 import {
@@ -153,6 +154,15 @@ export function useSelectedWorkspaceId(): string | null {
   const projectCwd = useProject((s) => s.projectCwd);
   const { workspaces } = useWorkspaceCatalog();
   return workspaceByPath(workspaces, projectCwd)?.id ?? null;
+}
+
+/** The selected workspace with its copies on other hosts, the link's leader
+ *  first (lib/linkedRail.ts); null before the catalog names it. The same
+ *  array until the selection or the catalog changes. */
+export function useSelectedWorkspaceIds(): string[] | null {
+  const id = useSelectedWorkspaceId();
+  const { workspaces } = useWorkspaceCatalog();
+  return useMemo(() => linkedWorkspaceIds(workspaces, id), [id, workspaces]);
 }
 
 export function useRailRecents(): RecentProject[] {

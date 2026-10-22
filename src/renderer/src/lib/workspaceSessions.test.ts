@@ -352,3 +352,35 @@ describe("groupWorkspaceSessions with a row cache", () => {
     expect(p1(second).threads[0]).toBe(p1(first).threads[0]);
   });
 });
+
+describe("groupWorkspaceSessions over a workspace's copies", () => {
+  const mac = { ...ws("w-mac", "/Users/me/app"), linkId: "wl_a" };
+  const box = { ...ws("w-box", "/srv/work/app"), environmentId: "env_box", linkId: "wl_a" };
+  const projects = [
+    project("p-mac", "w-mac", { linkId: "pl_x", name: "Alpha" }),
+    project("p-box", "w-box", { linkId: "pl_x", name: "Alpha", environmentId: "env_box" }),
+    project("p-solo", "w-box", { environmentId: "env_box" }),
+  ];
+  const metas = [
+    meta("m1", { projectId: "p-mac", updatedAt: 100 }),
+    meta("b1", { projectId: "p-box", environmentId: "env_box", updatedAt: 300 }),
+    meta("b2", { projectId: "p-box", environmentId: "env_box", updatedAt: 50, archived: true }),
+    meta("c1", { workspaceId: "w-box", environmentId: "env_box", updatedAt: 20 }),
+    meta("c2", { workspaceId: "w-mac", updatedAt: 40 }),
+  ];
+
+  it("folds a linked project into one group under the leader's copy, every copy's threads by recency", () => {
+    const groups = groupWorkspaceSessions(metas, projects, [mac, box], ["w-mac", "w-box"], {});
+    expect(groups.projects.map((g) => [g.project.id, g.projectIds, g.threads.map((t) => t.id), g.archivedCount])).toEqual([
+      ["p-mac", ["p-mac", "p-box"], ["b1", "m1"], 1],
+      ["p-solo", ["p-solo"], [], 0],
+    ]);
+    expect(groups.chats.map((t) => t.id)).toEqual(["c2", "c1"]);
+  });
+
+  it("keeps one workspace to itself", () => {
+    const groups = groupWorkspaceSessions(metas, projects, [mac, box], "w-box", {});
+    expect(groups.projects.map((g) => g.project.id).sort()).toEqual(["p-box", "p-solo"]);
+    expect(groups.chats.map((t) => t.id)).toEqual(["c1"]);
+  });
+});

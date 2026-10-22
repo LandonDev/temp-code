@@ -39,3 +39,9 @@ describe("threadsToMarkRead", () => {
     expect(threadsToMarkRead(metas, catalog, null, 100)).toEqual({ ids: ["a", "a-child", "b"], at: 500 });
   });
 });
+
+describe("threadsToMarkRead across a workspace's copies", () => {
+  it("picks every live thread on any of several folders", () => {
+    expect(threadsToMarkRead(metas, catalog, ["/tmp/a", "/srv/work"], 100)).toEqual({ ids: ["a", "a-child", "b"], at: 500 });
+  });
+});

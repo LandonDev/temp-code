@@ -4,6 +4,7 @@ import {
   contextOfSession,
   forgetLastSession,
   homeOrWorkspacePath,
+  landingPathOfSession,
   loadLastSession,
   loadSelectedProject,
   rebaseToWorkspace,
@@ -157,6 +158,22 @@ describe("last thread per project / workspace", () => {
     forgetLastSession("s2");
     expect(loadLastSession({ projectId: "p1" })).toBeNull();
     expect(loadLastSession({ projectId: "p2" })).toBe("s1");
+  });
+
+  it("lands a linked workspace on any copy's last thread, whichever copy's path asks", () => {
+    const linked = {
+      projects,
+      workspaces: [
+        { ...workspaces[0], linkId: "wl_r" },
+        { environmentId: "env_box", id: "w-box", name: "repo", path: "/srv/work/repo", git: true, createdAt: 1, linkId: "wl_r" },
+      ],
+    };
+    const boxThread = meta("b1", { environmentId: "env_box", projectId: null, workspaceId: "w-box", cwd: "/srv/work/repo" });
+    // The subscription remembers a box thread under the leader's path.
+    expect(landingPathOfSession(boxThread, linked)).toBe("/home/me/repo");
+    saveLastSession({ workspacePath: landingPathOfSession(boxThread, linked) }, "b1");
+    expect(resolveLanding({ workspacePath: "/home/me/repo" }, [boxThread], linked)).toBe("b1");
+    expect(resolveLanding({ workspacePath: "/srv/work/repo" }, [boxThread], linked)).toBe("b1");
   });
 
   it("forgets a workspace landing once the workspace moved", () => {

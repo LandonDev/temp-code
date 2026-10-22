@@ -10,6 +10,7 @@ import { threadRow, type ThreadRow } from '../lib/workspaceSessions'
 import { nextPage } from '../lib/sidebarRows'
 import { Fold, LiveLines, ThreadList, masterMenuItem } from './WorkspaceSessions'
 import { subagentRowsStore } from '../stores/subagentRows'
+import { registry } from '../lib/connection'
 
 /** The hosts the window knows; none by default, two for the host glyph. */
 const hosts = vi.hoisted(() => ({ environments: [] as { id: string; name: string; platform?: string }[] }))
@@ -255,6 +256,33 @@ describe('ThreadRows fold', () => {
     expect(kids[1].textContent).toContain('Claude Opus 5.5')
     expect(kids[1].querySelector('svg')).not.toBeNull()
     probe.unmount()
+  })
+
+  it("a batch thread on a host whose link is down sits under the offline tint, its master's row does not", () => {
+    const envs = [
+      { id: 'local', name: 'This Mac', routes: [], credentialRef: null },
+      { id: 'env_box', name: 'box', routes: [], credentialRef: null }
+    ]
+    vi.spyOn(registry, 'environmentsSnapshot').mockReturnValue(envs)
+    vi.spyOn(registry, 'statusOf').mockImplementation((id) => ({
+      transport: id === 'env_box' ? 'offline' : 'open',
+      fresh: true,
+      lastHello: null,
+      lastError: null,
+      nextRetryAt: null,
+      route: null,
+      attempts: 0
+    }))
+    const master: ThreadRow = {
+      ...threadRow(meta('master', { isMaster: true }), {}),
+      children: [threadRow(meta('far', { masterId: 'master', environmentId: 'env_box', status: 'running', busySince: 5 }), {})]
+    }
+    const probe = mountProbe(<ThreadList threads={[master]} actions={actions} className="" />)
+    const dim = Array.from(probe.container.querySelectorAll('[data-host-offline]'))
+    expect(dim.map((row) => row.textContent?.includes('far'))).toEqual([true])
+    expect(dim[0].className).toContain('opacity-50')
+    probe.unmount()
+    vi.restoreAllMocks()
   })
 
   it('the open subagent keeps its row on screen', () => {

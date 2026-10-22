@@ -261,3 +261,18 @@ describe("workspaceRailStatuses", () => {
     expect(statuses.has("/a")).toBe(false);
   });
 });
+
+describe("workspaceRailStatuses over a workspace's copies", () => {
+  it("folds every copy's threads under the key keyOf names, counts summed", () => {
+    const keyOf = (path: string) => (path === "/srv/b" ? "/a" : path);
+    const statuses = workspaceRailStatuses(
+      [meta("t1", { status: "done" }), meta("t2", { status: "done", cwd: "/srv/b", environmentId: "env_box" })],
+      catalog,
+      {},
+      0,
+      keyOf,
+    );
+    expect([...statuses.keys()]).toEqual(["/a"]);
+    expect(statuses.get("/a")).toMatchObject({ kind: "unread", count: 2 });
+  });
+});

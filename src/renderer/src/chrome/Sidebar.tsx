@@ -40,6 +40,7 @@ import { useSessionMetas } from "../lib/tcserver/store";
 import { archive } from "../lib/tcserver/commands";
 import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
 import { dormantByType, dormantThreads, focusedTree } from "../lib/threadStripModel";
+import { scopeTest } from "../lib/workspaceSessions";
 import { loadNotesEnabled, openWorkspaceSettings, subscribeNotesEnabled } from "../lib/settings";
 import { pickTextHarness } from "../lib/harness/textHarness";
 import { canTabVisitBack, canTabVisitForward } from "../lib/tabVisitHistory";
@@ -87,6 +88,7 @@ import {
   useProjectCwds,
   useRailRecents,
   useSelectedWorkspaceId,
+  useSelectedWorkspaceIds,
 } from "../stores/project";
 import { shell, useShell, type AliaxPageId } from "../stores/shell";
 import { RailAction } from "./RailAction";
@@ -205,6 +207,8 @@ function SidebarComponent({
   const workspaceCwd = useProject((s) => s.projectCwd);
   /** Server workspace shown in the Sessions tab (null before the catalog loads). */
   const workspaceId = useSelectedWorkspaceId();
+  /** With the workspace linked across hosts, every copy (the leader first). */
+  const workspaceIds = useSelectedWorkspaceIds();
   const { busy: busyProjectPaths, needsYou: needsYouProjectPaths } =
     useProjectSignals();
   const liveAgents = useLiveAgents();
@@ -286,19 +290,21 @@ function SidebarComponent({
   const seenFloor = useSeenFloor();
   const dormant = useMemo(() => {
     if (sessionsScope === undefined) return [];
+    const inScope = scopeTest(workspaceIds && workspaceIds.length > 1 ? workspaceIds : sessionsScope);
     const roots = metas.filter(
       (m) =>
         !m.parentId &&
         !m.archived &&
-        workspaceIdOf(m, catalogProjects, catalogWorkspaces) === sessionsScope,
+        inScope(workspaceIdOf(m, catalogProjects, catalogWorkspaces)),
     );
     return dormantThreads(roots, lastSeen, seenFloor, focusedTree(metas, activeSessionId));
-  }, [activeSessionId, catalogProjects, catalogWorkspaces, lastSeen, metas, seenFloor, sessionsScope]);
+  }, [activeSessionId, catalogProjects, catalogWorkspaces, lastSeen, metas, seenFloor, sessionsScope, workspaceIds]);
   const dormantGroups = useMemo(() => dormantByType(dormant), [dormant]);
   const workspaceSessions =
     sessionsScope !== undefined && onSelectProjectCard && onNewChat ? (
       <WorkspaceSessions
         workspaceId={sessionsScope}
+        workspaceIds={workspaceIds}
         selectedProjectId={selectedProjectId}
         activeSessionId={activeSessionId}
         onSelectProject={onSelectProjectCard}

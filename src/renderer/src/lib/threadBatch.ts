@@ -22,7 +22,8 @@ export const BATCH_ACTIONS: readonly BatchAction[] = ["pause", "resume", "stop",
 
 export type BatchScope =
   | { kind: "all" }
-  | { kind: "project"; path: string; name: string }
+  /** `paths`: a workspace linked across hosts names every copy's folder. */
+  | { kind: "project"; path: string; paths?: readonly string[]; name: string }
   | { kind: "host"; environmentId: string; name: string };
 
 /** Idle for at least this long before Archive done takes a thread. */
@@ -64,8 +65,10 @@ function inScope(t: SessionMeta, scope: BatchScope, catalog: Catalog): boolean {
       return true;
     case "host":
       return t.environmentId === scope.environmentId;
-    case "project":
-      return sameProjectPath(workspacePathOfSession(t, catalog), scope.path);
+    case "project": {
+      const home = workspacePathOfSession(t, catalog);
+      return (scope.paths ?? [scope.path]).some((p) => sameProjectPath(home, p));
+    }
   }
 }
 

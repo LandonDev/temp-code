@@ -1,3 +1,4 @@
+import { aliasKeys } from "./linkedRail";
 import { looksLikeProject, normalizeProjectPath } from "./recents";
 import type { Session } from "./session";
 import type { ProjectMeta, SessionMeta, WorkspaceMeta } from "./tcserver/types";
@@ -178,6 +179,16 @@ export function forgetLastSession(sessionId: string): void {
   writeMap(LAST_SESSION_KEY, map);
 }
 
+/** The rail key a session's landing is remembered under: its workspace's
+ *  path, or the link's leader's for a copy on another host
+ *  (lib/linkedRail.ts), so a linked row lands on any copy's last thread. */
+export function landingPathOfSession(
+  session: Pick<Session, "cwd" | "projectId" | "workspaceId">,
+  catalog: Catalog,
+): string {
+  return aliasKeys(catalog.workspaces).path(workspacePathOfSession(session, catalog));
+}
+
 /** The thread a scope lands on: the remembered one while it still exists,
  *  is not archived and still belongs to the scope (a moved workspace or a
  *  thread moved out of its project forgets). Null means seed a blank one. */
@@ -186,12 +197,15 @@ export function resolveLanding(
   metas: readonly SessionMeta[],
   catalog: Catalog,
 ): string | null {
-  const id = loadLastSession(scope);
+  // A copy's path reads the link's leader's memory.
+  const keyed: LandingScope =
+    "projectId" in scope ? scope : { workspacePath: aliasKeys(catalog.workspaces).path(scope.workspacePath) };
+  const id = loadLastSession(keyed);
   if (!id) return null;
   const meta = metas.find((m) => m.id === id);
   // A subagent renders on its parent's board and is never a landing.
   if (!meta || meta.archived || meta.parentId) return null;
-  if ("projectId" in scope) return meta.projectId === scope.projectId ? id : null;
-  const here = homeOrWorkspacePath(scope.workspacePath);
-  return homeOrWorkspacePath(workspacePathOfSession(meta, catalog)) === here ? id : null;
+  if ("projectId" in keyed) return meta.projectId === keyed.projectId ? id : null;
+  const here = homeOrWorkspacePath(keyed.workspacePath);
+  return homeOrWorkspacePath(landingPathOfSession(meta, catalog)) === here ? id : null;
 }

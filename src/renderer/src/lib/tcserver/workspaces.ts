@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { normalizeProjectPath } from "../recents";
+import { aliasKeys } from "../linkedRail";
 import type { Link } from "../connection";
 import type { ProjectMeta, ServerPush, ThreadDefaults, WireProjectMeta, WireWorkspaceMeta, WorkspaceIcon, WorkspaceMeta } from "./types";
 import { BUILT_IN_SCOPE, parseDefaultsScope, type DefaultsScope } from "./defaults";
@@ -95,14 +96,17 @@ export function workspaceByPath(
  * The key a workspace's label, colour and mascot are stored under. Workspace
  * ids keep two folders with the same basename apart; a path the catalog does
  * not know yet (a fresh pick, an archived project) falls back to the basename
- * so nothing is lost before the catalog catches up.
+ * so nothing is lost before the catalog catches up. A copy linked across
+ * hosts answers to its leader's id (lib/linkedRail.ts), so the copies share
+ * one label, colour and mascot.
  */
 export function workspaceLabelKey(
   workspaces: readonly WorkspaceMeta[],
   path: string,
   fallback: string,
 ): string {
-  return workspaceByPath(workspaces, path)?.id ?? fallback;
+  const id = workspaceByPath(workspaces, path)?.id;
+  return id ? aliasKeys(workspaces).workspaceId(id) : fallback;
 }
 
 export function projectOf(

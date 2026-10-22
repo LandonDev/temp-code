@@ -1,6 +1,7 @@
 import type { AgentType, ProjectMeta, SessionMeta, WorkspaceMeta } from "./tcserver/types";
 import { workspaceIdOf } from "./tcserver/workspaces";
 import { sortAgents } from "./threads/agents";
+import { projectLeaders } from "./linkedRail";
 
 /**
  * What the Sessions tab shows for one workspace: its project cards, its
@@ -54,7 +55,11 @@ export type ThreadRow = {
 };
 
 export type ProjectGroup = {
+  /** The leader of a project linked across hosts, else the project. */
   project: ProjectMeta;
+  /** Every copy's id in the list's scope, the leader's first; absent means
+   *  the project alone. */
+  projectIds?: string[];
   /** Live roots, newest first. */
   threads: ThreadRow[];
   /** Newest thread activity, or the project's creation when it has none. */
@@ -252,17 +257,43 @@ export function childRows(
 const newestFirst = (a: ThreadRow, b: ThreadRow) => b.updatedAt - a.updatedAt;
 const latestFirst = (a: ProjectGroup, b: ProjectGroup) => b.latest - a.latest;
 
+/** Whether a workspace id is in a list's scope: one id, the home (null),
+ *  or a workspace's copies on several hosts. */
+export function scopeTest(scope: string | null | readonly string[]): (workspaceId: string | null | undefined) => boolean {
+  if (typeof scope === "string") return (id) => id === scope;
+  if (scope === null) return (id) => id === null || id === undefined;
+  const set = new Set(scope);
+  return (id) => id != null && set.has(id);
+}
+
+/**
+ * `scope`: one workspace, the home (null), or a workspace's copies on
+ * several hosts (the leader's first, lib/linkedRail.ts). Copies interleave
+ * as one list: a project linked across them is one group (its leader's
+ * meta, every copy's threads), the loose chats one list, newest first.
+ */
 export function groupWorkspaceSessions(
   metas: readonly SessionMeta[],
   projects: readonly ProjectMeta[],
   workspaces: readonly WorkspaceMeta[],
-  workspaceId: string | null,
+  scope: string | null | readonly string[],
   lastSeen: Record<string, number>,
   floor = 0,
   cache?: RowCache,
 ): WorkspaceSessionGroups {
-  const here = projects.filter((p) => p.workspaceId === workspaceId);
-  const ids = new Set(here.map((p) => p.id));
+  const inScope = scopeTest(scope);
+  const copies = Array.isArray(scope) && scope.length > 1 ? projectLeaders(projects, scope) : null;
+  const leaderOf = (id: string): string => copies?.get(id)?.id ?? id;
+  const all = projects.filter((p) => inScope(p.workspaceId));
+  const here = all.filter((p) => leaderOf(p.id) === p.id);
+  const ids = new Set(all.map((p) => p.id));
+  const memberIds = new Map<string, string[]>();
+  for (const p of all) {
+    const lead = leaderOf(p.id);
+    const list = memberIds.get(lead);
+    if (!list) memberIds.set(lead, [lead]);
+    if (lead !== p.id) memberIds.get(lead)!.push(p.id);
+  }
   const byProject = new Map<string, ThreadRow[]>();
   const archivedCount = new Map<string, number>();
   const chats: ThreadRow[] = [];
@@ -272,9 +303,9 @@ export function groupWorkspaceSessions(
 
   for (const meta of metas) {
     if (meta.parentId || batchHome(meta, masters)) continue;
-    if (workspaceIdOf(meta, projects, workspaces) !== workspaceId) continue;
+    if (!inScope(workspaceIdOf(meta, projects, workspaces))) continue;
     const projectId =
-      meta.projectId && ids.has(meta.projectId) ? meta.projectId : null;
+      meta.projectId && ids.has(meta.projectId) ? leaderOf(meta.projectId) : null;
     if (meta.archived) {
       if (projectId)
         archivedCount.set(projectId, (archivedCount.get(projectId) ?? 0) + 1);
@@ -296,15 +327,17 @@ export function groupWorkspaceSessions(
     const threads = (byProject.get(project.id) ?? []).sort(newestFirst);
     const latest = threads[0]?.updatedAt ?? project.createdAt;
     const count = archivedCount.get(project.id) ?? 0;
+    const projectIds = memberIds.get(project.id) ?? [project.id];
     const prev = cache?.groups.get(project.id);
     const group =
       prev &&
       prev.project === project &&
       prev.latest === latest &&
       prev.archivedCount === count &&
+      sameList(prev.projectIds, projectIds) &&
       sameList(prev.threads, threads)
         ? prev
-        : { project, threads, latest, archivedCount: count };
+        : { project, projectIds, threads, latest, archivedCount: count };
     nextGroups?.set(project.id, group);
     return group;
   });

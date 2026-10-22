@@ -422,9 +422,10 @@ each one by hand. Now:
   longer flips running rows to idle; only waiting and watching rows are
   idled at boot.
 - **The toast.** When a boot resumed anything, every socket gets one
-  `boot-resume` push (count, the boot's time) and the rail's section for the
-  host shows "7 threads resumed after restart" for a while, once per boot
-  (the renderer keeps the boot time per host in localStorage).
+  `boot-resume` push (count, the boot's time) and the host's row at the
+  rail's foot (`chrome/HostRows.tsx`; with one host, a line under the
+  Workspaces header) shows "7 threads resumed after restart" for a while,
+  once per boot (the renderer keeps the boot time per host in localStorage).
 
 Proof: `bun scripts/e2e-survive-restart.ts` on a host with a Claude account:
 an isolated headless instance, two claude-haiku-5-5 threads sent a long turn
@@ -1471,8 +1472,10 @@ under "On <Mac>" (docs/IOS-DESIGN.md "Host activity").
 
 Fifteen threads need one click, not fifteen. Every scope has the same five
 rows, Mark all read first: a project's menu (the rail's row and the project
-header), a host's menu (the `…` on the host row in the rail when more than one
-host is paired, and the host's menu in Settings → Remote access), and the
+header; for a workspace linked across hosts the row's menu acts on every
+copy, one `session.batch` per host), a host's menu (the host's row at the
+rail's foot when more than one host is paired, `chrome/HostRows.tsx`, and
+the host's menu in Settings → Remote access), and the
 View menu for every host at once (Pause All Threads, Resume All Threads, Stop
 All Threads, Archive Finished Threads). No shortcuts: menu rows only. A row
 with nothing to act on is disabled, not hidden. The phone has the same four
@@ -2365,7 +2368,8 @@ main process's peer links keep each host's `build` on their state. The
 renderer's `useDeployDrift(environmentId)` (`lib/deployDrift.ts`) yields
 `{ behind, deployedVersion, masterVersion }` and `chrome/DeployDrift.tsx`
 draws a muted tabular `+3` at the trailing edge of the host's row in the
-environment switcher and in Settings → Remote access, with the tooltip
+environment switcher, the rail's host rows and Settings → Remote access,
+with the tooltip
 "3 releases behind master (runs v1.0.270, master is v1.0.273). Deploy
 with: ssh box 'box-update master'" (a Mac host says "Publish with: bun run
 release:publish"). Current, ahead, or unknown on either side draws nothing.
