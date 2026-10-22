@@ -798,6 +798,34 @@ routed to (aliax-core's `forward`). Two listeners:
   waiting until it re-registers. RPCs `resources.list/listAll/remove` take
   ids only. docs/box.md "Thread resources"; the e2e-mac-bridge proof covers
   a bridged worktree's record and removal.
+- Dev servers on the box reach the Mac's browser over the Mac's peer link.
+  A dev server a thread opens is a `port` row on the ledger (pid, the call
+  that opened it; src/main/server/threadPorts.ts): the server's own
+  "Local: http://localhost:5173" line with a listener behind it, or a
+  listener new under the harness tree (`ss`/`lsof` + `ps`) while a shell call
+  runs; it leaves the ledger when nothing listens, and removal SIGTERMs then
+  SIGKILLs the pid. The box sends its live ports (the ledger's and the Dev
+  Server button's runs) to every registered Mac (`push: 'ports'`,
+  remote/portForward.ts); the Mac binds 127.0.0.1 on the same number, else
+  the next free one above (its own dev instance keeps 5173), answers
+  `ports.bound`, and carries each connection as `ports.open/data/close`
+  frames (remote/macPorts.ts, portStreams.ts: in order, paused while the
+  link holds 1 MiB or 32 frames are unanswered); the box dials its loopback
+  only. "Forward dev servers" per host under the Mac bridge rows
+  (`ports.forward.<envId>`, on by default). The thread hears "Forwarded to
+  http://localhost:5174 on the Mac (5173 is taken there)" in the shell
+  call's result (claude's PostToolUse hook; a whispered `<dev-server>` line
+  otherwise, portTail.ts); the call's transcript row ends with "Open on the
+  Mac :5174", the Resources panel has Open and Stop. The Dev Server button
+  (thread header → the rail's Dev tab, chrome/rail/DevServerPanel.tsx): the
+  host detects targets (devTargets.ts: package.json dev scripts at the root
+  and in workspaces with the lockfile's runner, Expo apps, Xcode/XcodeGen
+  apps as Mac-only), runs one in its own process group (devRuns.ts,
+  `devServer.*`, `dev-run` pushes) on this Mac or the box's copy of the
+  project, console streamed, Stop/Restart. docs/box.md "Dev servers on the
+  box"; proof `bun run script:e2e-port-forward` (seam
+  `session.proofShellCall`, `TEMP_CODE_E2E_STATUS=1`). The subdomain proxy
+  for the phone is not built yet.
 - Pause and Stop reach the Mac
   (`src/main/server/macPause.ts`, every mac.* call passes its gate): a
   thread pausing (subagents with it, by the parentId chain) has its calls

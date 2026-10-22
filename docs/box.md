@@ -1579,6 +1579,94 @@ a thread that holds something.
   the bridge, finds it on the box's ledger with the Mac's id, removes it, and
   checks the branch with an unpushed commit stayed with its note.
 
+### Dev servers on the box
+
+A box thread runs `bun run dev`, Vite binds `localhost:5173` on the box, and
+the browser on the Mac has to reach it. The road is the Mac's own peer link:
+no SSH key, no DNS, nothing public, and the box dials only its own loopback.
+
+- **The ledger kind.** A dev server a thread opens is a `port` row in the
+  thread resources ledger ("Thread resources" above): the port, the
+  listening pid, the label (the URL the server announced, else the command)
+  and the tool call that opened it (`pid`, `call_id`). Two detectors fill it
+  (src/main/server/threadPorts.ts, the parsers in threadPortsParse.ts), both
+  in the ledger's spirit: the server's own announcement in a shell call's
+  output ("Local: http://localhost:5173", "ready on http://localhost:3000",
+  "listening on :8080" and the usual Vite, Next, bun and express shapes,
+  loopback or wildcard hosts only), recorded only when something listens on
+  that port at the call's end; and a listener new under the thread's harness
+  process tree (`ss -ltnpH` on Linux, `lsof -nP -iTCP -sTCP:LISTEN` on
+  macOS, the tree from `ps`), polled every 2 s while a shell call runs and
+  for 10 s after the last one. Listeners under the harness when its first
+  call starts (an MCP server) are the baseline and never recorded. A port
+  nothing listens on in two sweeps running (10 s apart) is stamped removed
+  ("stopped listening"); a listener that changed pid (a watcher's restart)
+  moves the row to the new pid. Removal (Stop in the panel, or archiving
+  the thread with its resources) sends SIGTERM to the pid only while it
+  still holds the port, waits 3 s and sends SIGKILL.
+- **The forward** (src/shared/contract-ports.ts). The box sends its live
+  ports, the ledger's and the Dev Server button's, as one list down every
+  registered Mac's link (`{ push: 'ports' }`, again on every change and
+  whenever a Mac registers, so a link that came back forwards everything
+  again). The Mac (remote/macPorts.ts) binds `127.0.0.1:<port>` itself: the
+  same number when nothing on the Mac answers there over v4 or v6, else the
+  next free one above it (up to 100 above), the number it had before a
+  reconnect first; it answers `ports.bound` with what it took. Each
+  connection it accepts is a stream on the link (remote/portStreams.ts):
+  `ports.open` (the box dials 127.0.0.1, then ::1), `ports.data` frames of
+  at most 64 KiB in base64 numbered per stream and written in order, and a
+  close each way that counts the frames before it. A websocket is just TCP
+  here, so HMR works. Backpressure: a side pauses its socket while the link
+  holds more than 1 MiB unsent, or the Mac has 32 frames unanswered, and
+  resumes below 256 KiB and half that. The box side is
+  remote/portForward.ts.
+- **The switch.** "Forward dev servers" under each Mac bridge host row in
+  Settings → Remote access (`ports.forward.<envId>`, on by default; RPCs
+  `ports.forwards` and `ports.setForwarding`, local). Off closes every
+  forward of that host. The row lists what is forwarded, with the number
+  here and, when it moved, which one was taken.
+- **Where it shows.** A shell call's transcript row ends with "Open on the
+  Mac :5174" for the port its command opened (src/renderer/src/surfaces/
+  CallPortLink.tsx; "Open in browser" for a Mac thread's own server); the
+  Resources panel lists the port with where it opens here, Open and Stop;
+  and the thread hears the Mac's URL: claude in the shell call's own result
+  through a PostToolUse hook ("Forwarded to http://localhost:5174 on the
+  Mac (5173 is taken there)"), other harnesses as a `<dev-server>` line
+  whispered into the turn once the Mac bound it (src/main/server/
+  portTail.ts). A thread can hand that URL to a Mac child or a computer-use
+  run.
+- **The Dev Server button.** The thread header shows "Dev server" when a
+  host can serve the thread's project, with a dot while one runs; it opens
+  the rail's Dev tab (chrome/rail/DevServerPanel.tsx): the target (a menu
+  when there are several), the host (this Mac or the box's copy of the
+  project, paired by repo or folder name), Run, Stop and Restart, where the
+  server opens, and the live console. The host detects the targets itself
+  (src/main/server/devTargets.ts): the `dev`, `start`, `serve`, `preview`,
+  `web` and `storybook` scripts of the root package.json and of its
+  workspaces (package.json `workspaces`, pnpm-workspace.yaml, else apps/*
+  and packages/*), run with the lockfile's package manager; an Expo app; an
+  Xcode app (an .xcworkspace, an .xcodeproj or an XcodeGen project.yml, two
+  folders down at most, outside an Expo app) as a Mac-only target that
+  builds for the simulator, installs on the booted one and streams its
+  console. An Electron app's script is left out. A client names a target id,
+  never a command (`devServer.targets`, `.log` read; `.start`, `.stop`,
+  `.restart` operate). A run (src/main/server/devRuns.ts) is the login shell
+  in its own process group, the log batched to every client as `dev-run`
+  pushes with a 3,000-line replay; its ports are the listeners under its
+  tree, and they go to the Macs with the ledger's.
+- **Proof.** `bun run script:e2e-port-forward` (build first): two isolated
+  instances on one machine, so every forward is the collision case. The Dev
+  Server road (detect, run, forward, a GET and a websocket echo through the
+  Mac's number, Stop), a thread's road through the seam
+  `session.proofShellCall` (`TEMP_CODE_E2E_STATUS=1`: a shell call's rows
+  with no harness; the ledger row, the forward, archive kills the server),
+  the switch, and the link dropping. Unit tests: threadPortsParse, threadPorts,
+  portTail, devTargets, devRuns, remote/portForward (the stream framing,
+  backpressure, allocation, the switch, a link drop, a 3 MiB body), and the
+  renderer's devPorts, devServers, DevServerPanel and ThreadResourcesDialog.
+- Not built yet: the host-based subdomain proxy behind the cookie, the
+  phone's road to a box dev server.
+
 ### Threads across hosts
 
 iOS builds, the simulator, screenshots, computer use and every Mac app
