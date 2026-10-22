@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { ClientRequest } from '@shared/contract'
-import type { MilestoneLink, ProjectPlanState } from '@shared/contract-projectplan'
+import type { MilestoneLink, ProjectPlanState, ProjectPlanTickAnswer } from '@shared/contract-projectplan'
 import type { SessionMeta } from '@shared/events'
 import {
   isProjectPlanPath,
@@ -206,19 +206,22 @@ export function handleProjectPlan(
   req: ClientRequest,
   plans: ProjectPlans
 ): { handled: true; result: unknown } | { handled: false } {
+  // The answers are typed against the contract's schemas: the phone decodes
+  // these shapes from the generated Swift, so a drift here fails typecheck.
   switch (req.method) {
-    case 'projectPlan.get':
-      return { handled: true, result: plans.state(req.params.projectId) }
-    case 'projectPlan.pin':
-      return { handled: true, result: plans.pin(req.params.projectId, req.params.pinned) }
-    case 'projectPlan.tick':
-      return {
-        handled: true,
-        result: {
-          ticked: plans.tick(req.params.projectId, req.params.milestone, req.params.done),
-          state: plans.state(req.params.projectId)
-        }
-      }
+    case 'projectPlan.get': {
+      const answer: ProjectPlanState | null = plans.state(req.params.projectId)
+      return { handled: true, result: answer }
+    }
+    case 'projectPlan.pin': {
+      const answer: ProjectPlanState | null = plans.pin(req.params.projectId, req.params.pinned)
+      return { handled: true, result: answer }
+    }
+    case 'projectPlan.tick': {
+      const ticked = plans.tick(req.params.projectId, req.params.milestone, req.params.done)
+      const answer: ProjectPlanTickAnswer = { ticked, state: plans.state(req.params.projectId) }
+      return { handled: true, result: answer }
+    }
     case 'projectPlan.link':
       plans.link(req.params.sessionId, { projectId: req.params.projectId, milestone: req.params.milestone })
       return { handled: true, result: null }

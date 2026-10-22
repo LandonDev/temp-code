@@ -1221,4 +1221,70 @@ public enum Methods {
 
         public typealias Output = ProjectSearchResult
     }
+
+    public enum ProjectPlanGet: ContractMethod {
+        public static let name = "projectPlan.get"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let projectId: String
+
+            public init(projectId: String) {
+                self.projectId = projectId
+            }
+        }
+
+        public typealias Output = ProjectPlanState?
+    }
+
+    public enum ProjectPlanPin: ContractMethod {
+        public static let name = "projectPlan.pin"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let projectId: String
+            public let pinned: Bool
+
+            public init(projectId: String, pinned: Bool) {
+                self.projectId = projectId
+                self.pinned = pinned
+            }
+        }
+
+        public typealias Output = ProjectPlanState?
+    }
+
+    public enum ProjectPlanTick: ContractMethod {
+        public static let name = "projectPlan.tick"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let projectId: String
+            public let milestone: Int
+            public let done: Bool
+
+            public init(projectId: String, milestone: Int, done: Bool) {
+                self.projectId = projectId
+                self.milestone = milestone
+                self.done = done
+            }
+        }
+
+        public typealias Output = ProjectPlanTickAnswer
+    }
+
+    public enum ProjectPlanLink: ContractMethod {
+        public static let name = "projectPlan.link"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sessionId: String
+            public let projectId: String
+            public let milestone: Int
+
+            public init(sessionId: String, projectId: String, milestone: Int) {
+                self.sessionId = sessionId
+                self.projectId = projectId
+                self.milestone = milestone
+            }
+        }
+
+        public typealias Output = NoOutput
+    }
 }

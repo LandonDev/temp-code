@@ -57,7 +57,12 @@ pairing, and these methods: `catalog.get`, `workspace.list`, `project.list`,
 (the ten key, pairing, session and settings RPCs). The review and gate
 payloads a `notice` row carries are named types (`ReviewNotice`,
 `ReviewFinding`, `GateNotice`, `GateStep`), as are the preamble stamp and
-the two answers (`RerouteAnswer`, `ReviewOverrideAnswer`).
+the two answers (`RerouteAnswer`, `ReviewOverrideAnswer`). The project
+plan's `projectPlan.get`, `projectPlan.pin`, `projectPlan.tick` and
+`projectPlan.link` are in too (with `ProjectPlanState`,
+`ProjectPlanMilestone`, `MilestoneLink` and `ProjectPlanTickAnswer` from
+src/shared/contract-projectplan.ts; `linkOf` stays off the phone, nothing
+there reads it).
 
 To cover another method: add a `method('x.y', OutputSchema)` line (params
 come from `src/shared/contract.ts` by name; the output schema lives in

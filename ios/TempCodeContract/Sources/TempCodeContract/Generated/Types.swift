@@ -2082,3 +2082,83 @@ public struct ThreadNotesDoc: Codable, Hashable, Sendable {
         try container.encode(path, forKey: .path)
     }
 }
+
+public struct ProjectPlanMilestone: Codable, Hashable, Sendable {
+    public let index: Int
+    public let title: String
+    public let done: Bool
+
+    public init(index: Int, title: String, done: Bool) {
+        self.index = index
+        self.title = title
+        self.done = done
+    }
+}
+
+public struct ProjectPlanState: Codable, Hashable, Sendable {
+    public let projectId: String
+    public let path: String
+    public let exists: Bool
+    public let pinned: Bool
+    public let sessionId: String?
+    public let complete: Bool
+    public let milestones: [ProjectPlanMilestone]
+    public let missing: [String]
+
+    public init(projectId: String, path: String, exists: Bool, pinned: Bool, sessionId: String?, complete: Bool, milestones: [ProjectPlanMilestone], missing: [String]) {
+        self.projectId = projectId
+        self.path = path
+        self.exists = exists
+        self.pinned = pinned
+        self.sessionId = sessionId
+        self.complete = complete
+        self.milestones = milestones
+        self.missing = missing
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case projectId, path, exists, pinned, sessionId, complete, milestones, missing
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(projectId, forKey: .projectId)
+        try container.encode(path, forKey: .path)
+        try container.encode(exists, forKey: .exists)
+        try container.encode(pinned, forKey: .pinned)
+        try container.encode(sessionId, forKey: .sessionId)
+        try container.encode(complete, forKey: .complete)
+        try container.encode(milestones, forKey: .milestones)
+        try container.encode(missing, forKey: .missing)
+    }
+}
+
+public struct MilestoneLink: Codable, Hashable, Sendable {
+    public let projectId: String
+    public let milestone: Int
+
+    public init(projectId: String, milestone: Int) {
+        self.projectId = projectId
+        self.milestone = milestone
+    }
+}
+
+public struct ProjectPlanTickAnswer: Codable, Hashable, Sendable {
+    public let ticked: Bool
+    public let state: ProjectPlanState?
+
+    public init(ticked: Bool, state: ProjectPlanState?) {
+        self.ticked = ticked
+        self.state = state
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case ticked, state
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(ticked, forKey: .ticked)
+        try container.encode(state, forKey: .state)
+    }
+}

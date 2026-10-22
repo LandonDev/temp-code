@@ -37,6 +37,12 @@ import {
 } from '../src/shared/contract-remote'
 import { ProjectModeSchema, ThreadTypeSchema } from '../src/shared/domain'
 import {
+  MilestoneLinkSchema,
+  ProjectPlanMilestoneSchema,
+  ProjectPlanStateSchema,
+  ProjectPlanTickAnswerSchema
+} from '../src/shared/contract-projectplan'
+import {
   AttachmentBeginAnswerSchema,
   AttachmentChunkAnswerSchema,
   AttachmentSettingsSchema,
@@ -245,7 +251,16 @@ export const SUBSET: SubsetEntry[] = [
   method('github.thread', W.GitHubWorkItemThreadSchema),
   method('github.prDiff', W.GitHubPrDiffSchema),
   method('session.search', W.SessionSearchResultSchema),
-  method('search.project', W.ProjectSearchResultSchema)
+  method('search.project', W.ProjectSearchResultSchema),
+  // the project plan (contract-projectplan.ts): the phone's milestone rows, the options card and the chip
+  type('ProjectPlanMilestone', ProjectPlanMilestoneSchema),
+  type('ProjectPlanState', ProjectPlanStateSchema),
+  type('MilestoneLink', MilestoneLinkSchema),
+  type('ProjectPlanTickAnswer', ProjectPlanTickAnswerSchema),
+  method('projectPlan.get', ProjectPlanStateSchema.nullable()),
+  method('projectPlan.pin', ProjectPlanStateSchema.nullable()),
+  method('projectPlan.tick', ProjectPlanTickAnswerSchema),
+  method('projectPlan.link', z.null())
 ]
 
 /** Enum values that need an explicit Swift case name. */
