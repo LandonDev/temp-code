@@ -67,6 +67,8 @@ targets:
         UIBackgroundModes:
           - remote-notification
         NSSupportsLiveActivities: true
+        # ProMotion: without it a display link (the streaming reveal) and SwiftUI animations stop at 60 Hz.
+        CADisableMinimumFrameDurationOnPhone: true
         ITSAppUsesNonExemptEncryption: false
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
