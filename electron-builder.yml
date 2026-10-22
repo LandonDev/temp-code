@@ -11,6 +11,11 @@ files:
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json,vitest.config.ts}'
   - '!{artifacts,build,dist,release,.githooks,.temp-code,.claude}/**'
+  # The iOS packages, the hub Worker and the docs are not app code. The
+  # gate's SwiftPM `.build` output alone is thousands of files that
+  # electron-builder would otherwise copy in and codesign one by one (a
+  # signing of 2 minutes became 11 with them in; the zip 312 MB to 381 MB).
+  - '!{ios,infra,docs}/**'
   # scripts/app-mcp-bridge.mjs ships (the Codex stdio bridge spawns it);
   # the TypeScript e2e drivers, their bundles and the release shell do not.
   - '!scripts/**/*.{ts,sh,swift}'
