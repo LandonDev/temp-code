@@ -212,17 +212,20 @@ async function turn(sessionId: string, text: string, onFirstText?: () => void | 
   let error: string | null = null
   let settled: (status: string) => void = () => {}
   const done = new Promise<string>((ok) => (settled = ok))
+  type Row = { sessionId: string; event: { type: string; status?: string; text?: string; message?: string } }
   const fn = (frame: Frame): void => {
-    if (frame.push !== 'event') return
-    const row = frame.row as { sessionId: string; event: { type: string; status?: string; text?: string; message?: string } }
-    if (row.sessionId !== sessionId) return
-    if (row.event.type === 'assistant-text' && first === null) {
-      first = Date.now()
-      void onFirstText?.()
+    // A socket's coalesced pushes carry a thread's rows together (`events`); a lone row is `event`.
+    const rows = (frame.push === 'events' ? frame.rows : frame.push === 'event' ? [frame.row] : []) as Row[]
+    for (const row of rows) {
+      if (row.sessionId !== sessionId) continue
+      if (row.event.type === 'assistant-text' && first === null) {
+        first = Date.now()
+        void onFirstText?.()
+      }
+      if (row.event.type === 'error') error = row.event.message ?? row.event.text ?? 'error'
+      if (row.event.type === 'status' && first !== null && !['running', 'starting'].includes(row.event.status ?? '')) settled(row.event.status ?? '')
+      if (row.event.type === 'status' && row.event.status === 'error') settled('error')
     }
-    if (row.event.type === 'error') error = row.event.message ?? row.event.text ?? 'error'
-    if (row.event.type === 'status' && first !== null && !['running', 'starting'].includes(row.event.status ?? '')) settled(row.event.status ?? '')
-    if (row.event.type === 'status' && row.event.status === 'error') settled('error')
   }
   listeners.push(fn)
   const t0 = Date.now()
