@@ -22,8 +22,7 @@ private final class RelayRig {
     let relayed: RelayedHosts
     let registry: ClientRegistry
     /// The Authorization header of every ticket mint, in order.
-    let mints = Mutex<[String]>([])
-    var now: Double = 1_000
+    let mints = MintLog()
 
     init(directory: URL? = nil, cache: SessionCache? = nil) throws {
         self.directory = directory ?? FileManager.default.temporaryDirectory.appending(path: "tc-relay-\(UUID().uuidString)")
@@ -35,7 +34,7 @@ private final class RelayRig {
         try keys.set("tc_K1.secret", for: environment.id)
         let mints = self.mints
         let api = RemoteAPI { request in
-            mints.withLock { $0.append(request.value(forHTTPHeaderField: "Authorization") ?? "") }
+            mints.items.withLock { $0.append(request.value(forHTTPHeaderField: "Authorization") ?? "") }
             return (Data(#"{"ticket":"t","expiresIn":30}"#.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
         }
         store = EnvironmentStore(directory: self.directory, keys: keys, api: api)
@@ -111,14 +110,26 @@ private final class RelayRig {
     }
 }
 
+private final class MintLog: Sendable {
+    let items = Mutex<[String]>([])
+}
+
+/// What the store reported, and a clock the test moves; a class, so the
+/// store's `@MainActor` closures mutate it without capturing a local `var`.
+@MainActor
+private final class StoreWatch {
+    var clock = 100.0
+    var changes: [RelayedChange] = []
+}
+
 @Suite("RelayedHosts store")
 struct RelayedHostsStoreTests {
     @Test @MainActor func `apply adds, keeps, moves, renames and drops by carrier, and says what changed`() throws {
         let directory = FileManager.default.temporaryDirectory.appending(path: "tc-relay-store-\(UUID().uuidString)")
-        var clock = 100.0
-        let store = RelayedHosts(directory: directory, now: { clock })
-        var changes: [RelayedChange] = []
-        store.onChange = { changes.append($0) }
+        let watch = StoreWatch()
+        let store = RelayedHosts(directory: directory, now: { watch.clock })
+        store.onChange = { watch.changes.append($0) }
+        var changes: [RelayedChange] { watch.changes }
 
         store.apply([presence(id: "env_mac"), presence(id: "env_mini", name: "Mini")], via: "env_box")
         #expect(store.hosts.map(\.id) == ["env_mac", "env_mini"])
@@ -133,7 +144,7 @@ struct RelayedHostsStoreTests {
         #expect(changes.count == count)
 
         // A move stamps the phone's clock; the row keeps its learnedAt.
-        clock = 200
+        watch.clock = 200
         store.apply([presence(id: "env_mac", screen: "locked"), presence(id: "env_mini", name: "Mini")], via: "env_box")
         #expect(changes.last?.moved == [RelayedMove(id: "env_mac", state: .locked)])
         #expect(store.host("env_mac")?.stateSince == 200)
@@ -160,8 +171,9 @@ struct RelayedHostsStoreTests {
     @Test @MainActor func `update never adds and forget drops a carrier's hosts`() {
         let directory = FileManager.default.temporaryDirectory.appending(path: "tc-relay-store-\(UUID().uuidString)")
         let store = RelayedHosts(directory: directory, now: { 1 })
-        var changes: [RelayedChange] = []
-        store.onChange = { changes.append($0) }
+        let watch = StoreWatch()
+        store.onChange = { watch.changes.append($0) }
+        var changes: [RelayedChange] { watch.changes }
         store.update(presence(id: "env_mac"), via: "env_box")
         #expect(store.hosts.isEmpty)
         store.apply([presence(id: "env_mac")], via: "env_box")
@@ -197,8 +209,8 @@ struct RelayedHostsTests {
         // The lane: the carrier's origin with the host query, minted with the carrier's key.
         let lane = await rig.sockets.socket(1)
         #expect(rig.sockets.urls[1].absoluteString == "wss://box.example/ws?host=env_mac&ticket=t")
-        #expect(rig.mints.withLock { $0 }.allSatisfy { $0 == "Bearer tc_K1.secret" })
-        #expect(rig.mints.withLock { $0.count } == 2)
+        #expect(rig.mints.items.withLock { $0 }.allSatisfy { $0 == "Bearer tc_K1.secret" })
+        #expect(rig.mints.items.withLock { $0.count } == 2)
         #expect(rig.mac?.presence?.environmentId == RelayRig.macId)
         #expect(rig.mac?.relayState == .available)
         _ = lane
@@ -219,7 +231,7 @@ struct RelayedHostsTests {
         let held = try #require(rig.mac?.presence)
         #expect(rig.mac?.status.lastError == RelayWords.heldLine(held, now: .now))
         #expect(rig.mac?.operateBlock == .offline(reason: RelayWords.heldLine(held, now: .now)))
-        #expect(lane.cancelledWith != nil)
+        #expect(await eventually { lane.cancelledWith != nil })
         // Nothing is tried while the carrier says down, however long.
         await rig.clock.advance(ms: 600_000)
         await rig.clock.settle()
@@ -313,6 +325,7 @@ struct RelayedHostsTests {
         #expect(rig.mac?.relayState == .locked)
         #expect(rig.mac?.stateSince == 9)
         #expect(rig.mac?.environment.addedAt == 7)
+        _ = await rig.sockets.socket(1)
         #expect(rig.sockets.urls.count == 2)
     }
 
@@ -323,9 +336,10 @@ struct RelayedHostsTests {
         try JSONEncoder().encode([row]).write(to: directory.appending(path: "relayed.json"))
         let rig = try RelayRig(directory: directory)
         await rig.registry.sync()
-        #expect(rig.mac?.status.transport == .offline)
         let held = try #require(rig.mac?.presence)
+        #expect(await rig.wait { rig.mac?.status.transport == .offline && rig.mac?.status.lastError != nil })
         #expect(rig.mac?.status.lastError == RelayWords.heldLine(held, now: .now))
+        _ = await rig.sockets.socket(0)
         await rig.clock.advance(ms: 60_000)
         await rig.clock.settle()
         // Only the carrier's socket was opened.
@@ -352,6 +366,25 @@ struct RelayedHostsTests {
         #expect(rebuilt != before.environment)
         let shell = try await rig.cache.shell(RelayRig.macId)
         #expect(shell.sessions.map(\.id) == ["s1"])
+    }
+
+    @Test @MainActor func `a host paired directly is never also a lane`() async throws {
+        let rig = try RelayRig()
+        // The Mac is paired on its own too (on the LAN): its row stays in the store, no lane is made.
+        let direct = PairedEnvironment(id: RelayRig.macId, name: "Studio Mac", origin: URL(string: "https://mac.example")!, caps: [.read], keyId: "K9", keyName: "iphone", addedAt: 1)
+        try rig.keys.set("tc_K9.secret", for: RelayRig.macId)
+        try JSONEncoder().encode([rig.store.environment(RelayRig.carrierId)!, direct]).write(to: rig.directory.appending(path: "environments.json"))
+        let store = EnvironmentStore(directory: rig.directory, keys: rig.keys)
+        let registry = ClientRegistry(store: store, cache: rig.cache, push: rig.registrar, relayed: rig.relayed) { environment in
+            EnvironmentClient(environment: environment, keys: rig.keys, cache: rig.cache, connect: rig.sockets.factory, clock: rig.clock)
+        }
+        await registry.sync()
+        rig.relayed.apply([presence()], via: RelayRig.carrierId)
+        await registry.sync()
+        #expect(registry.ordered.map(\.environment.id) == [RelayRig.carrierId, RelayRig.macId])
+        #expect(registry.client(RelayRig.macId)?.environment.isRelayed == false)
+        #expect(registry.client(RelayRig.macId)?.environment.origin.absoluteString == "https://mac.example")
+        #expect(registry.relayed(via: RelayRig.carrierId).isEmpty)
     }
 
     @Test @MainActor func `the registrar skips a relayed client`() async throws {

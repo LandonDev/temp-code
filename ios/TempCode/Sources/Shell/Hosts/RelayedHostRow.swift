@@ -13,6 +13,9 @@ struct RelayedHostRow: View {
 
     var body: some View {
         let status = client.status
+        // Read here, in the body, so a presence change re-renders the line at once.
+        let presence = client.presence
+        let lockedSince = client.stateSince
         HStack(spacing: Layout.rowGap) {
             ConnectionDot(status: status)
                 .frame(width: Layout.markWidth)
@@ -22,8 +25,8 @@ struct RelayedHostRow: View {
                 Text(client.environment.name)
                     .lineLimit(1)
                 PresenceLine { now in
-                    guard let presence = client.presence else { return "through \(carrierName)" }
-                    return RelayWords.subline(presence, carrierName: carrierName, lockedSince: client.stateSince, now: now)
+                    guard let presence else { return "through \(carrierName)" }
+                    return RelayWords.subline(presence, carrierName: carrierName, lockedSince: lockedSince, now: now)
                 }
             }
             .layoutPriority(1)
@@ -51,6 +54,10 @@ struct RelayedHostDetailView: View {
     var body: some View {
         let environment = client.environment
         let status = client.status
+        let presence = client.presence
+        let lockedSince = client.stateSince
+        // A held lane's status text already says "unreachable since …"; the line under it says nothing twice.
+        let held = client.relayState == .unreachable
         List {
             // 1. Status: the lane, and the host's presence under it.
             Section {
@@ -63,7 +70,8 @@ struct RelayedHostDetailView: View {
                         StatusText(status: status)
                             .lineLimit(2)
                         PresenceLine { now in
-                            client.presence.flatMap { RelayWords.rowLine($0, lockedSince: client.stateSince, now: now) }
+                            guard !held, let presence else { return nil }
+                            return RelayWords.rowLine(presence, lockedSince: lockedSince, now: now)
                         }
                     }
                     Spacer(minLength: Layout.rowGap)

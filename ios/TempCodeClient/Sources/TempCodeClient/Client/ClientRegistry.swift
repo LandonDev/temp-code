@@ -102,8 +102,15 @@ public final class ClientRegistry {
     /// The union, in rail order: each stored environment, then the hosts relayed through it.
     private func wantedEnvironments() -> [PairedEnvironment] {
         store.environments.flatMap { carrier in
-            [carrier] + relayed.hosts(via: carrier.id).map { PairedEnvironment.relayed($0, through: carrier) }
+            [carrier] + relayedHosts(via: carrier.id).map { PairedEnvironment.relayed($0, through: carrier) }
         }
+    }
+
+    /// The hosts relayed through `carrier` that are not paired directly: a
+    /// host the phone reaches itself keeps its own pairing, never a lane.
+    private func relayedHosts(via carrier: String) -> [RelayedHost] {
+        let paired = Set(store.environments.map(\.id))
+        return relayed.hosts(via: carrier).filter { !paired.contains($0.id) }
     }
 
     public func client(_ id: String) -> EnvironmentClient? { clients[id] }
@@ -136,7 +143,7 @@ public final class ClientRegistry {
 
     /// The clients relayed through `carrier`, in the order they were learned.
     public func relayed(via carrier: String) -> [EnvironmentClient] {
-        relayed.hosts(via: carrier).compactMap { clients[$0.id] }
+        relayedHosts(via: carrier).compactMap { clients[$0.id] }
     }
 
     /// The client that carries the relayed host `id`; nil for a paired host.

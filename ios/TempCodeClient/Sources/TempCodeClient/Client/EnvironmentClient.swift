@@ -554,7 +554,11 @@ public final class EnvironmentClient {
 
     private func handle(_ event: SessionEvent) async {
         switch event {
-        case .opened:
+        case .opened(let hello):
+            // The transport keeps the hello off the push stream: a carrier's hello lists the
+            // hosts it relays, a relayed lane's carries its own row; the registry hears both here.
+            if let hosts = hello.hosts { relayObserver?(self, hosts, true) }
+            if let presence = hello.presence { relayObserver?(self, [presence], false) }
             subscriptions.sessionChanged()
             // The thread on screen catches up first, the rest of the open set
             // after it, while the shell lists alongside: the person came back
@@ -679,10 +683,9 @@ public final class EnvironmentClient {
 
     private func apply(_ push: ServerPush) async {
         switch push {
-        case .hello(let hello):
-            // A carrier's hello lists the hosts it relays; a relayed lane's carries its own row.
-            if let hosts = hello.hosts { relayObserver?(self, hosts, true) }
-            if let presence = hello.presence { relayObserver?(self, [presence], false) }
+        case .hello:
+            // The transport answers `open()` with the hello; it arrives as `SessionEvent.opened`.
+            break
         case .presence(let value):
             relayObserver?(self, value.hosts, true)
         case .workspaces(let value):

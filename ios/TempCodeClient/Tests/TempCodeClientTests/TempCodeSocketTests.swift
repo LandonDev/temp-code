@@ -398,7 +398,7 @@ func eventually(_ condition: @Sendable () -> Bool) async -> Bool {
         let held = await rig.status()
         #expect(held.lastError == "The Mac is unreachable since 9:14")
         #expect(held.nextRetryAt == nil)
-        #expect(first.cancelledWith != nil)
+        #expect(await eventually { first.cancelledWith != nil })
         #expect(await rig.socket.isOpen == false)
         // Past every backoff, still nothing: the box retries the link, not the phone.
         await rig.clock.advance(ms: 600_000)

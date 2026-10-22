@@ -403,6 +403,7 @@ struct LiveServerTests {
 
     /// Mac-hosted threads through the box (thread 29): the relayed lanes against thread 28's seed.
     @Suite(.enabled(if: LiveServer.relayHosts.count == 4, "needs thread 28's relayed seed"), .serialized)
+    @MainActor
     struct LiveRelayTests {
         @Test func `hello over http lists the relayed hosts with their state`() async throws {
             let hello = try await RemoteAPI().hello(origin: LiveServer.baseURL, key: LiveServer.key)
@@ -475,7 +476,7 @@ struct LiveServerTests {
             await client.stop()
         }
 
-        @Test @MainActor func `a presence flip reaches the carrier's socket and moves the state`() async throws {
+        @Test func `a presence flip reaches the carrier's socket and moves the state`() async throws {
             let locked = try #require(LiveServer.relayHost("locked"))
             let directory = FileManager.default.temporaryDirectory.appending(path: "tc-live-relay-\(UUID().uuidString)")
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

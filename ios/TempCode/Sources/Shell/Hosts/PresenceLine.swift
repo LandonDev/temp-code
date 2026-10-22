@@ -43,9 +43,12 @@ struct HostSubline: View {
 
     var body: some View {
         if client.environment.isRelayed {
+            // Read in the body, so a presence change re-renders the line at once.
+            let presence = client.presence
+            let lockedSince = client.stateSince
             PresenceLine(step: .stamp) { now in
-                guard let presence = client.presence else { return carrierName.map { "through \($0)" } }
-                return RelayWords.subline(presence, carrierName: carrierName ?? "", lockedSince: client.stateSince, now: now)
+                guard let presence else { return carrierName.map { "through \($0)" } }
+                return RelayWords.subline(presence, carrierName: carrierName ?? "", lockedSince: lockedSince, now: now)
             }
         }
     }
@@ -61,8 +64,9 @@ struct RelayStripLine: View {
 
     var body: some View {
         if client.environment.isRelayed, let presence = client.presence {
+            let lockedSince = client.stateSince
             TimelineView(.everyMinute) { context in
-                if let line = RelayWords.stripLine(presence, lockedSince: client.stateSince, now: context.date) {
+                if let line = RelayWords.stripLine(presence, lockedSince: lockedSince, now: context.date) {
                     HStack(spacing: 8) {
                         Text(line)
                             .foregroundStyle(.secondary)

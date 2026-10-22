@@ -79,6 +79,8 @@ public actor TempCodeSocket {
     /// is tried (the box retries the link; its `presence` push lifts this).
     /// Independent of `online`: both must hold to try.
     private var hostReachable = true
+    /// The carrier's words for the held lane, kept so a lane held before `start()` says them.
+    private var heldReason: String?
     /// Bumps on stop/retry so a walk still in flight drops its result.
     private var generation = 0
 
@@ -237,6 +239,7 @@ public actor TempCodeSocket {
             return
         }
         hostReachable = reachable
+        heldReason = reachable ? nil : (reason ?? "host unreachable")
         guard !stopped else { return }
         if reachable {
             var next = status
@@ -312,9 +315,10 @@ public actor TempCodeSocket {
         guard attempting == nil else { return }
         guard hostReachable else {
             // The carrier holds the lane: say so and wait for its `presence` push.
-            if status.transport != .offline {
+            if status.transport != .offline || status.lastError != heldReason {
                 var next = status
                 next.transport = .offline
+                next.lastError = heldReason
                 next.nextRetryAt = nil
                 set(next)
             }
@@ -329,8 +333,9 @@ public actor TempCodeSocket {
 
     private func walk(_ generation: Int) async {
         // Cleared on the actor as the walk's last act, so no call can land
-        // between "the walk is over" and "another may start".
-        defer { attempting = nil }
+        // between "the walk is over" and "another may start"; a walk a newer
+        // generation superseded leaves the newer walk's handle alone.
+        defer { if generation == self.generation { attempting = nil } }
         clearRetry()
         var pending = status
         pending.transport = pendingState()
