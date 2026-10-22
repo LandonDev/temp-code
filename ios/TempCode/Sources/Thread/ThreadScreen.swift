@@ -283,6 +283,8 @@ struct ThreadPhase: Equatable {
     var hasAgents: Bool
     var planHasContent: Bool
     var reportComplete: Bool
+    /// Research activity has landed: a boarded source, a spawned angle or report text.
+    var hasSources: Bool
     /// The newest undecided approval or question.
     var undecidedSeq: Int?
 
@@ -296,6 +298,7 @@ struct ThreadPhase: Equatable {
         let text = document?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         planHasContent = !text.isEmpty
         reportComplete = !text.isEmpty && PlanDoc.report(document ?? "").isComplete
+        hasSources = !board.sources.isEmpty || hasAgents || planHasContent
         undecidedSeq = thread.fold.items.last { $0.item.needsUser }?.seq
     }
 
@@ -308,7 +311,7 @@ struct ThreadPhase: Equatable {
         case .implementation?: hasBoard ? .board : .chat
         case .planning?, .projectPlan?: planHasContent ? .plan : .chat
         case .orchestration?: hasAgents ? .fleet : .log
-        case .research?: reportComplete ? .sources : .chat
+        case .research?: hasSources || reportComplete ? .sources : .chat
         default: segments.first ?? .chat
         }
     }

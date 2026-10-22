@@ -372,7 +372,7 @@ if (research.planPath) {
   mkdirSync(dirname(research.planPath), { recursive: true })
   writeFileSync(
     research.planPath,
-    ['---', 'title: SQLite on the phone', 'status: complete', 'summary: GRDB on the phone, bun:sqlite on the host', '---', '# SQLite on the phone', '', 'Both wrap the same engine. The phone wants value types and a migration story; the host wants a synchronous binding with no build step.', '', '## Findings', '', '- GRDB maps rows to Codable value types [1].', '- bun:sqlite binds synchronously and ships with Bun [2].', '- WAL lets one writer and many readers share the file [3].', ''].join('\n')
+    ['---', 'title: SQLite on the phone', 'status: complete', 'summary: GRDB on the phone, bun:sqlite on the host', '---', '# SQLite on the phone', '', 'Both wrap the same engine. The phone wants value types and a migration story; the host wants a synchronous binding with no build step.', '', '## Findings', '', '- GRDB maps rows to Codable value types [1].', '- bun:sqlite binds synchronously and ships with Bun [2].', '- WAL lets one writer and many readers share the file [3].', '', '## Sources', '', '1. [GRDB.swift](https://github.com/groue/GRDB.swift)', '2. [SQLite – Bun Docs](https://bun.sh/docs/api/sqlite)', '3. [Write-Ahead Logging](https://www.sqlite.org/wal.html)', ''].join('\n')
   )
 }
 
