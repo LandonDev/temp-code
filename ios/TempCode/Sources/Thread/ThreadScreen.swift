@@ -80,6 +80,9 @@ struct ThreadScreen: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if gone == nil {
                 BottomDock(client: client, sessionId: sessionId, session: session, thread: thread)
+                    #if DEBUG
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { TestHooks.recordDock(height: $0, focused: TestHooks.open == "composer") }
+                    #endif
             }
         }
         .toolbar {

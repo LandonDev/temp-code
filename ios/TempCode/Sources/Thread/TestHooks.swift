@@ -19,7 +19,8 @@ enum TestHooks {
     /// children, `rename` opens the inline title field once the thread is
     /// loaded (the proof types nothing), `report` opens the research report,
     /// `source` the first source's page, `account` opens the header's
-    /// account menu sheet. On a master's board, `rules`, `add-thread`,
+    /// account menu sheet, `composer` focuses the chat field (the keyboard
+    /// up; an operate key). On a master's board, `rules`, `add-thread`,
     /// `adopt` and `archive-done` open that sheet once the batch has landed.
     static let open = env["TC_TEST_OPEN"].flatMap { $0.isEmpty ? nil : $0 }
     /// Scrolls the whole transcript top and back while a display link
@@ -60,6 +61,16 @@ enum TestHooks {
         case "archive": .archiveDone
         default: nil
         }
+    }
+
+    /// The bottom dock's height in points (the chat bar's resting height
+    /// when nothing is typed), written once it settles: dock-report.json
+    /// holds it in tenths of a point beside the composer's focus state.
+    static func recordDock(height: CGFloat, focused: Bool) {
+        #if DEBUG
+        guard env["TC_TEST_ROUTE"] == "thread" else { return }
+        writeReport(focused ? "dock-report-focused" : "dock-report", ["height10": Int((height * 10).rounded())])
+        #endif
     }
 
     static func recordNavigation(target: Int, item: Int?, oldest: Int?) {

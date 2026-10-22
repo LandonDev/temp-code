@@ -123,6 +123,13 @@ struct ComposerBar: View {
         }
         .task(id: client.operateBlock) { await settleBlock() }
         .task(id: focused) { if focused { await choice.load(client) } }
+        #if DEBUG
+        .task {
+            guard TestHooks.open == "composer", block == nil else { return }
+            try? await Task.sleep(for: .seconds(2))
+            focused = true
+        }
+        #endif
         .task(id: session.map { "\($0.provider.rawValue)/\($0.model)/\($0.reasoning.rawValue)" }) {
             // The thread's own model lands (or changes under us): the chips follow it unless the person has a pick in hand.
             guard let session, !choice.picked else { return }

@@ -54,6 +54,13 @@
 #           then, with TC_TEST_PAIR_LINK_SECOND (the test server's second host),
 #           both hosts paired: Home's one row for the linked project with both
 #           hosts' threads and their glyphs, and Thread A with its host chip.
+#   glass   The chrome the Liquid Glass pass touched: a chat thread with the
+#           keyboard down (read key) and up (re-paired with the acting key,
+#           TC_TEST_OPEN=composer), a running, a queued and a stopped thread,
+#           Home, Search, Hosts, an implementation board, a master's board,
+#           the subagent list and the New thread sheet, light and dark, then
+#           the chat and Home at the accessibility size. The bottom dock's
+#           height lands in dock-*.json (tenths of a point).
 #   all     shell, threads, scroll, actions and push (the default).
 # TC_SIM="TempCode L3" picks a device by name (default iPhone 17 Pro); TC_SIM_UDID one by id.
 #
@@ -556,6 +563,55 @@ linked_set() {
   xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
 }
 
+# The glass pass's screens (see the header). dock <name> copies the dock
+# report the last thread shot wrote.
+dock() {
+  local container
+  container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data 2>/dev/null || true)
+  for f in dock-report dock-report-focused; do
+    if [ -n "$container" ] && [ -f "$container/Documents/$f.json" ]; then
+      cp "$container/Documents/$f.json" "$OUT/$1-$f.json"
+      echo "ios-sim-proof: $1 $f $(cat "$container/Documents/$f.json")"
+      rm -f "$container/Documents/$f.json"
+    fi
+  done
+}
+glass_set() {
+  for mode in light dark; do
+    appearance "$mode"
+    shot "glass-chat-$mode" thread "gateway refuse"; dock "glass-chat-$mode"
+    shot "glass-running-$mode" thread "Streaming on the phone"; dock "glass-running-$mode"
+    shot "glass-queued-$mode" thread "Backfill the rollups"
+    shot "glass-stopped-$mode" thread "Rename the config keys again"
+    shot "glass-home-$mode" home
+    shot "glass-search-$mode" search
+    shot "glass-hosts-$mode" hosts
+    shot "glass-board-$mode" thread "dark mode" board
+    shot "glass-master-$mode" thread "Ship the stats pipeline" board
+    shot "glass-agents-$mode" thread "thread screens" fleet agents
+    TC_SHEET=new shot "glass-new-sheet-$mode" home
+  done
+  appearance light
+  xcrun simctl ui "$TC_SIM_UDID" content_size "$A11Y_SIZE" >/dev/null
+  shot glass-chat-a11y thread "gateway refuse"; dock glass-chat-a11y
+  shot glass-running-a11y thread "Streaming on the phone"
+  shot glass-home-a11y home
+  xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
+  if [ -n "${TC_TEST_PAIR_LINK_OPERATE:-}" ]; then
+    xcrun simctl terminate "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
+    xcrun simctl uninstall "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
+    xcrun simctl install "$TC_SIM_UDID" "$APP"
+    TC_TEST_PAIR_LINK="$TC_TEST_PAIR_LINK_OPERATE" TC_TEST_PAIR_NAME="${TC_TEST_PAIR_NAME:-} (acting)" pair || { echo "ios-sim-proof: the app did not pair with the acting key" >&2; return 3; }
+    rm -f "$OUT/shots/00-pairing.png"
+    for mode in light dark; do
+      appearance "$mode"
+      shot "glass-chat-operate-$mode" thread "gateway refuse"; dock "glass-chat-operate-$mode"
+      shot "glass-keyboard-$mode" thread "gateway refuse" "" composer 14; dock "glass-keyboard-$mode"
+    done
+    appearance light
+  fi
+}
+
 case "$SET" in
   f4) f4_set ;;
   settings) settings_set ;;
@@ -570,6 +626,7 @@ case "$SET" in
   box-actions) box_actions_set ;;
   push) push_set ;;
   features) features_set ;;
+  glass) glass_set ;;
   all) shell_set; threads_set; scroll_set; actions_set; push_set; host_gone_set ;;
   *) echo "ios-sim-proof: unknown TC_PROOF_SET $SET" >&2; exit 2 ;;
 esac
