@@ -267,6 +267,8 @@ export interface RunningServer {
   build: BuildFacts
   /** Master's release number from GitHub (deployDrift.ts); `focus()` when a window comes forward. */
   masterRelease: MasterReleaseWatcher
+  /** The Mac bridge (remote/macBridge.ts); a proof seeds calls through it (TEMP_CODE_E2E_SEED). */
+  macBridge: MacBridge
   /** What the desktop paints at boot before any socket is up (launchMirror.ts). */
   launchMirror: LaunchMirror
   /** The box side of the relay (remote/relay.ts): the relayed hosts' presence and the phones' lanes. */
@@ -2447,6 +2449,7 @@ export async function startServer(
     resources,
     hostDevices,
     projectPlans,
+    macBridge,
     close: async () => {
       masterRelease.stop()
       notifier.stop()

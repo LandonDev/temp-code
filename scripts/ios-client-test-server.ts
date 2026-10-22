@@ -69,6 +69,9 @@ import {
   notesTwo,
   withShellLog
 } from './lib/ios-seeds'
+import { openDb, Store } from '../src/main/server/db'
+import { ENVIRONMENTS_PREFIX } from '../src/main/server/remote/environments'
+import type { MacBridgeRequest } from '../src/shared/contract-macbridge'
 import type { AgentEvent, FailureKind } from '../src/shared/events'
 import type { GithubInboxItem } from '../src/shared/contract-github'
 import type { ReviewNotice } from '../src/shared/review'
@@ -89,9 +92,56 @@ configure({
 // server alone (the Electron asset handler has no place under plain node).
 const assets = async (request: Request): Promise<Response> =>
   new URL(request.url).host === 'file' ? serveMedia(request) : new Response('not found', { status: 404 })
+// ── a host's activity (iOS thread 21): what the host detail reads ───────
+// A saved host "box" (admin caps, a route nobody answers: "not connected"
+// on the sync lines, and the host the seeded Mac bridge calls belong to),
+// written before boot so the peers read it with the rest. The deploy
+// trigger directory holds a finished run (ref, 12 log lines, exit 0), so
+// `host.deployStatus` is done and `host.log` has text.
+export const SEED_BOX_ID = 'env_box_seed'
+const dbPath = join(root, 'app.db')
+{
+  const db = openDb(dbPath)
+  new Store(db).setSetting(
+    `${ENVIRONMENTS_PREFIX}${SEED_BOX_ID}`,
+    JSON.stringify({
+      name: 'box',
+      routes: [{ url: 'ws://127.0.0.1:9/ws', kind: 'lan' }],
+      addedAt: Date.now() - 86_400_000,
+      caps: ['read', 'operate', 'approve', 'admin'],
+      keyName: 'the Mac',
+      key: 'tc_seedbox.not-a-real-key'
+    })
+  )
+  db.close()
+}
+const deployDir = join(root, 'deploy')
+mkdirSync(deployDir, { recursive: true })
+export const DEPLOY_LOG_LINES = 12
+writeFileSync(join(deployDir, 'ref'), 'master\n')
+writeFileSync(
+  join(deployDir, 'log'),
+  [
+    'box-update: master requested',
+    'stage 10: clone → /srv/agents/temp-code-builds/next',
+    'stage 20: bun install --frozen-lockfile (node_modules hardlinked, bun.lock unchanged)',
+    'stage 30: electron-vite build',
+    'stage 40: trial boot on :7690',
+    'stage 40: tc:ready in 2.1 s',
+    'stage 50: snapshot /srv/agents/temp-code-data/app.db → VACUUM INTO',
+    'stage 60: current → next',
+    'stage 70: systemctl restart temp-code.service',
+    'stage 80: service answered /api/hello in 4.3 s',
+    'stage 85: launcher and library installed',
+    'box-update: done (v1.0.312)'
+  ].join('\n') + '\n'
+)
+writeFileSync(join(deployDir, 'exit'), '0\n')
+process.env.TEMP_CODE_DEPLOY_DIR = deployDir
+process.env.TEMP_CODE_E2E_SEED = '1'
 // The host's id is made in its data dir before the boot, so the fake devices gatherer can carry it.
 const environmentId = loadEnvironmentId(root)
-const server = await startServer(join(root, 'app.db'), {
+const server = await startServer(dbPath, {
   claimShim: false,
   remotePort: 0,
   assets,
@@ -1084,6 +1134,39 @@ const operate = await server.remoteAuth.createKey({ name: 'ios-test-operate', au
 const operatePairing = server.remoteAuth.createPairing({ name: 'ios-sim-operate', audience: 'client', caps: ['operate', 'approve'], createdBy: 'local' })
 // A key that operates but never approves: the forbidden path of the approval card.
 const operateOnly = await server.remoteAuth.createKey({ name: 'ios-test-operate-only', audience: 'client', caps: ['operate'], createdBy: 'local' })
+// An admin key and pairing: the host detail's deploy row, log sheet and sync lines (iOS thread 21).
+const admin = await server.remoteAuth.createKey({ name: 'ios-test-admin', audience: 'client', caps: ['operate', 'approve', 'admin'], createdBy: 'local' })
+const adminPairing = server.remoteAuth.createPairing({ name: 'ios-sim-admin', audience: 'client', caps: ['operate', 'approve', 'admin'], createdBy: 'local' })
+
+// ── the Mac bridge's calls for the host detail (iOS thread 21) ──────────
+// Two of the saved host's calls past the prompt, as a Mac lists them in
+// `macBridge.activity`: one running, one held on the load guard with its
+// standing. Seeded rows only (TEMP_CODE_E2E_SEED); Stop on them does nothing.
+const seededCall = (over: Partial<MacBridgeRequest> & Pick<MacBridgeRequest, 'id' | 'status' | 'command' | 'createdAt'>): MacBridgeRequest => ({
+  environmentId: SEED_BOX_ID,
+  hostName: 'box',
+  sessionId: THREAD_IMPL,
+  threadTitle: 'Composer, working strip, approval actions',
+  kind: 'run',
+  method: 'mac.run',
+  cwd: '/Users/landon/IdeaProjects/temp-code',
+  expiresAt: Number.MAX_SAFE_INTEGER,
+  ...over
+})
+export const MAC_CALL_RUNNING = 'mb_seed_running'
+export const MAC_CALL_HELD = 'mb_seed_held'
+server.macBridge.seed([
+  seededCall({ id: MAC_CALL_RUNNING, status: 'running', command: 'bun run ios:test:client', createdAt: Date.now() - 95_000 }),
+  seededCall({
+    id: MAC_CALL_HELD,
+    status: 'held',
+    command: 'xcodebuild test -scheme TempCode',
+    createdAt: Date.now() - 20_000,
+    sessionId: THREAD_PLAN,
+    threadTitle: 'Planning thread: the plan document',
+    held: { reason: 'load', position: 3, load: 12.3, limit: 8, cores: 4, maxRunning: 4, running: 4 }
+  })
+])
 
 // ── the relay seed: four fake hosts, one per state ──────────────────────
 const relayId = (word: string): string => `env_relay${word}`.padEnd(26, '0')
@@ -1680,6 +1763,11 @@ process.stdout.write(
     operateKey: operate.token,
     operateOnlyKeyId: operateOnly.key.id,
     operateOnlyKey: operateOnly.token,
+    adminKeyId: admin.key.id,
+    adminKey: admin.token,
+    adminPairing: `http://127.0.0.1:${server.remote.port}/pair#${adminPairing.code}`,
+    seedBoxId: SEED_BOX_ID,
+    deployLogLines: DEPLOY_LOG_LINES,
     pairingLinkOperate: `http://127.0.0.1:${server.remote.port}/pair#${operatePairing.code}`,
     planPath: plan.planPath ?? null,
     pairingLink: `http://127.0.0.1:${server.remote.port}/pair#${pairing.code}`,
