@@ -201,6 +201,7 @@ import {
 } from './build'
 import { closeAllLiveWatchers, onLiveEdit } from './livediff'
 import { eventsPage, frameJson, profileFor, PushCoalescer, remoteDeflateOptions, sessionPage } from './wire'
+import { FocusSet } from './focus'
 import { ListChangeLog } from './listChanges'
 import { LaunchMirror } from './launchMirror'
 import { peerDelay, peerDelayMs } from './peerDelay'
@@ -245,6 +246,9 @@ export interface RunningServer {
   environmentId: string
   /** Serve the contract on a socket that already authenticated as `principal`. */
   attach: (ws: WebSocket, principal: Principal) => void
+  /** A thread someone is looking at (session.focus on any socket), its subagents
+   *  or a focused master's batch (focus.ts): the scheduler's `focused` hook. */
+  isInteractive: (sessionId: string) => boolean
   /** Keys, pairings, sessions and tickets for the fixed port (remote/auth.ts). */
   remoteAuth: RemoteAuth
   /** The fixed port's listener, or null while remote access is off. */
@@ -357,6 +361,9 @@ export async function startServer(
     }
   })
   const registry = new SessionRegistry(store)
+  // The threads people are looking at (session.focus), widened to their
+  // subagents and a focused master's batch: their requests and pushes go first.
+  const focus = new FocusSet({ parentOf: (id) => registry.parentOf(id), masterOf: (id) => registry.masterOf(id) })
   // The temp-code workspace's default preamble, seeded once (projectPreamble.ts).
   seedHousePreamble(store)
   migrateHousePreamble(store)
@@ -1836,6 +1843,10 @@ export async function startServer(
           case 'session.preconnect':
             sendFrame({ id: req.id, ok: true, result: registry.preconnectIdle(req.params.sessionId) })
             break
+          case 'session.focus':
+            focus.set(connection, req.params.sessionId)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
           case 'session.interrupt':
             // Its Mac work first: the calls out on the Mac and its jobs end, what a pause held is refused.
             macTools.pause.stop(req.params.sessionId)
@@ -2232,6 +2243,7 @@ export async function startServer(
 
     ws.on('close', () => {
       coalescer.dispose()
+      focus.drop(connection)
       offBootResume()
       offMeta()
       offNotes()
@@ -2385,6 +2397,7 @@ export async function startServer(
       return link.request<MediaRange | null>('media.read', { token, offset, length }, { timeoutMs: 60_000 })
     },
     attach,
+    isInteractive: (sessionId) => focus.isInteractive(sessionId),
     remoteAuth,
     get remote() {
       return remote

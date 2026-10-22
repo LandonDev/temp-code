@@ -187,6 +187,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'session.send': 'operate',
   'session.interrupt': 'operate',
   'session.preconnect': 'operate',
+  'session.focus': 'operate',
   'harness.warm': 'admin',
   'session.pause': 'operate',
   'session.resume': 'operate',

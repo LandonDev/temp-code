@@ -1191,6 +1191,17 @@ export class SessionRegistry {
     return cur.id
   }
 
+  /** A thread's parent off the index, never the table (focus.ts). */
+  parentOf(sessionId: string): string | null {
+    return this.row(sessionId)?.parentId ?? null
+  }
+
+  /** A root thread's master off the index; null for a subagent or a thread in no batch. */
+  masterOf(sessionId: string): string | null {
+    const row = this.row(sessionId)
+    return row && !row.parentId ? (row.masterId ?? null) : null
+  }
+
   /** The stored row, from the index: no SELECT (the append path, get()). */
   private row(sessionId: string): SessionMeta | null {
     return this.indexOf().byId.get(sessionId) ?? null

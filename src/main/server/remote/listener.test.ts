@@ -697,6 +697,44 @@ describe('local sockets', () => {
   })
 })
 
+describe('session.focus', () => {
+  it('each socket names one thread; the host keeps the union, widened to subagents and a master\'s batch, and a closed socket drops its own', async () => {
+    const row = (id: string, extra: { parentId?: string; masterId?: string } = {}) =>
+      server.store.insertSession({
+        id, parentId: extra.parentId ?? null, projectId: null, workspaceId: null, threadType: 'chat', planPath: null, provider: 'claude',
+        model: 'm', reasoning: 'medium', agentType: 'implementer', title: id, cwd: root, status: 'idle', pinned: false,
+        archived: false, fast: false, ultrafast: false, context1m: false, busySince: null, pausedAt: null,
+        frozenActiveElapsed: null, threadRules: null, permission: 'edits', nativeId: null, createdAt: 1, updatedAt: 1,
+        ...(extra.masterId ? { masterId: extra.masterId } : {})
+      })
+    row('focus-root')
+    row('focus-sub', { parentId: 'focus-root' })
+    row('focus-master')
+    row('focus-child', { masterId: 'focus-master' })
+    row('focus-other')
+    const a = await open(`ws://127.0.0.1:${server.port}/`)
+    const b = await open(`ws://127.0.0.1:${server.port}/`)
+    expect((await a.request('session.focus', { sessionId: 'focus-root' })).ok).toBe(true)
+    expect((await b.request('session.focus', { sessionId: 'focus-master' })).ok).toBe(true)
+    const live = (): string[] =>
+      ['focus-root', 'focus-sub', 'focus-master', 'focus-child', 'focus-other'].filter((id) => server.isInteractive(id))
+    expect(live()).toEqual(['focus-root', 'focus-sub', 'focus-master', 'focus-child'])
+    // A window losing focus clears its socket's thread only.
+    await a.request('session.focus', { sessionId: null })
+    expect(live()).toEqual(['focus-master', 'focus-child'])
+    await a.request('session.focus', { sessionId: 'focus-other' })
+    expect(live()).toEqual(['focus-master', 'focus-child', 'focus-other'])
+    b.ws.close()
+    await b.closed
+    for (let i = 0; i < 40 && server.isInteractive('focus-master'); i++) await sleep(25)
+    expect(live()).toEqual(['focus-other'])
+    a.ws.close()
+    await a.closed
+    for (let i = 0; i < 40 && server.isInteractive('focus-other'); i++) await sleep(25)
+    expect(live()).toEqual([])
+  })
+})
+
 describe('live edits', () => {
   it('a live edit reaches only the sockets subscribed to a thread that owns it', async () => {
     const { emitLiveEdit } = await import('../livediff')

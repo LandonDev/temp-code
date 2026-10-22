@@ -736,6 +736,14 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('session.preconnect'),
     params: z.object({ sessionId: z.string() })
   }),
+  // The thread this socket's window shows in its focused pane, or null when
+  // the window loses focus (src/main/server/focus.ts): its requests and
+  // pushes go first on this host. One per connection; a closed socket drops it.
+  z.object({
+    id: z.string(),
+    method: z.literal('session.focus'),
+    params: z.object({ sessionId: z.string().nullable() })
+  }),
   z.object({
     id: z.string(),
     method: z.literal('session.pause'),
