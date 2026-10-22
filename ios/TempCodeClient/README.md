@@ -281,6 +281,18 @@ phone has no disk); `environment(ofMediaURL:)` reads `&host=` off an
 on <host>."; `uploadHost(threadHost:)` is the one rule for a photo the phone
 sends: always the thread's host.
 
+**Notes** (iOS 18) is a thread's working notes on the phone.
+`Rendering/Notes.swift` is the port of src/shared/notes.ts: parse, the fixed
+order, replace and append, the State line, compact, demote, the brief, the
+display model, `unread(updatedAt:readAt:)` for the glyph's dot and
+`needsYouLine` for Home. `Client/Notes.swift` holds one `NotesState` per
+thread on the client (`loadNotes`: memory, else one `session.notes.get`;
+`saveNotes`: `session.notes.set` behind the operate gate; the `notes` push
+replaces the doc in place; a removed thread drops it). `Client/NotesEditor.swift`
+is the edit session: the draft, the quiet period (800 ms in the app), save on
+finish and on flush, a failed save that keeps the draft dirty, a remote change
+measured against the text the edit began from, Load theirs.
+
 ## Tests
 
 ```sh
@@ -304,8 +316,10 @@ child unpaired, `fs.media` stamped with its host) runs only with them.
 
 Both `ios:test` and `ios:test:client` run in the release gate
 (scripts/release.ts). Without the live environment the `LiveServerTests`
-suite is skipped and `swift test` in this directory still runs the 56 unit
-tests: backoff bounds, the manual clock, pairing links, the store on a fake
+suite is skipped and `swift test` in this directory still runs the unit
+tests: NotesTests, NotesClientTests and NotesEditorTests (the notes port,
+the client's notes state on the fake socket, the edit session with a 20 ms
+quiet period), backoff bounds, the manual clock, pairing links, the store on a fake
 host, the transport on a scripted socket (hello first, timeout, correlation,
 pushes, close mapping), the supervisor on a manual clock (identity and
 contract halts, backoff and reset after 30 s up, the 5 min cap, unauthorized

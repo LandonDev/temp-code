@@ -420,6 +420,27 @@ files, never an empty view):
   (thread 17).
 - (g) the subtitle by status: the table above, in `ThreadHeaderLine.init`.
 
+**Notes.** Every root thread's bar carries a `note.text` glyph with a 6 pt
+neutral dot when the notes changed since this device last read them (a
+per-thread mark in UserDefaults, never synced). It presents the Notes sheet
+at the large detent with the 16 pt sheet radius: the menu (Copy as brief,
+light haptic) leading, Edit ↔ Done trailing, no close button; swiping down
+dismisses and saves. The document is the five sections (Goal, Decisions,
+State, Pointers, Open questions) in order, each heading in `.headline` and
+its body through the app's one markdown renderer; an empty section is folded
+to its heading in tertiary with the same spacing, so a thread that wrote only
+Goal and State still shows the five-part outline; headings the thread
+invented come after. Edit swaps the page for a plain `.body` text editor of
+the whole file (autocorrection on, no mono), saved 800 ms after the last
+keystroke, on Done and on dismiss; the one quiet line under it reads "Not
+saved" after a failure, or "The thread updated the notes meanwhile · Load
+theirs" when a push passed the text the edit began from. A push while the
+sheet is open replaces sections in place by heading: the reader's section
+stays anchored, a changed body cross-fades 150 ms, and nothing animates on
+first paint. A read key shows its reason where Edit would be. On Home, a
+waiting thread's needs-you row carries the first line of its State as its
+second line; the cue's seq still routes the tap to the card.
+
 ### Chat
 
 The transcript is the whole body, the desktop's `AgentTranscript` row by
