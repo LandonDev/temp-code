@@ -413,6 +413,19 @@ export function frameJson(frame: ServerFrame): string {
 
 // ── push coalescing ──────────────────────────────────────────────────
 
+/** The loop's mean lag (stalls.ts) at which unfocused rows wait longer. */
+export const LAGGING_MS = 50
+/** The events window for unfocused rows while the loop lags: one frame a tenth
+ *  of a second to the desktop, four a second over a remote link. */
+export const LAGGING_EVENTS_MS = { local: 100, remote: 250 } as const
+
+/** The events window for rows of threads a socket is not looking at:
+ *  PUSH_EVENTS_COALESCE_MS while the loop keeps up, LAGGING_EVENTS_MS while it
+ *  lags, so a busy host spends its loop on the thread on screen. */
+export function eventsWindowMs(profile: WireProfile, lagMs: number): number {
+  return lagMs >= LAGGING_MS ? LAGGING_EVENTS_MS[profile] : PUSH_EVENTS_COALESCE_MS
+}
+
 export interface CoalescerOptions {
   /** Project large bodies off the wire (projectRow, projectLiveEdit): the
    *  remote profile. A local socket sends rows as they are. Default true. */
@@ -421,6 +434,9 @@ export interface CoalescerOptions {
    *  its stored rows at once, after any of its rows still waiting, instead
    *  of on the events window. Default: none. */
   immediate?: (sessionId: string) => boolean
+  /** The events window, asked each time one opens (eventsWindowMs); default
+   *  the constructor's fixed `eventsDelayMs`. */
+  eventsDelay?: () => number
 }
 
 type BuildPush = Extract<ServerPush, { push: 'build' }>
@@ -467,6 +483,7 @@ export class PushCoalescer {
 
   private readonly project: boolean
   private readonly immediate: (sessionId: string) => boolean
+  private readonly eventsDelay: () => number
 
   constructor(
     private readonly emit: (frame: ServerPush) => void,
@@ -476,6 +493,7 @@ export class PushCoalescer {
   ) {
     this.project = options.project ?? true
     this.immediate = options.immediate ?? (() => false)
+    this.eventsDelay = options.eventsDelay ?? (() => this.eventsDelayMs)
   }
 
   push(frame: ServerPush): void {
@@ -573,7 +591,7 @@ export class PushCoalescer {
         this.flushLane(lane)
         if (lane !== 'previews') this.openWindow(lane)
       },
-      lane === 'events' ? this.eventsDelayMs : this.delayMs
+      lane === 'events' ? this.eventsDelay() : this.delayMs
     )
   }
 

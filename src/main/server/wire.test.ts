@@ -9,7 +9,9 @@ import {
   projectLiveEdit,
   projectRow,
   PushCoalescer,
-  sessionPage
+  sessionPage,
+  eventsWindowMs,
+  LAGGING_EVENTS_MS
 } from './wire'
 import { isOmittedBody } from '@shared/wire'
 import {
@@ -749,6 +751,55 @@ describe('PushCoalescer on a local socket', () => {
     expect((out[2] as Extract<ServerPush, { push: 'events' }>).rows.map((r) => r.seq)).toEqual([2, 3])
     vi.advanceTimersByTime(PUSH_EVENTS_COALESCE_MS)
     expect(out.at(-1)).toMatchObject({ push: 'events', sessionId: 'b' })
+  })
+})
+
+describe('the events window follows the loop', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  it('33 ms while the loop keeps up; 100 ms locally and 250 ms remotely while it lags', () => {
+    expect(eventsWindowMs('local', 10)).toBe(PUSH_EVENTS_COALESCE_MS)
+    expect(eventsWindowMs('remote', 49)).toBe(PUSH_EVENTS_COALESCE_MS)
+    expect(eventsWindowMs('local', 50)).toBe(LAGGING_EVENTS_MS.local)
+    expect(eventsWindowMs('remote', 120)).toBe(LAGGING_EVENTS_MS.remote)
+    expect(LAGGING_EVENTS_MS).toEqual({ local: 100, remote: 250 })
+  })
+
+  it('under lag an unfocused thread\'s rows wait the wide window, the focused thread\'s go at once', () => {
+    const out: { at: number; frame: ServerPush }[] = []
+    let lag = 0
+    const start = Date.now()
+    const c = new PushCoalescer((frame) => out.push({ at: Date.now() - start, frame }), undefined, undefined, {
+      project: false,
+      immediate: (id) => id === 'focused',
+      eventsDelay: () => eventsWindowMs('remote', lag)
+    })
+    const row = (sessionId: string, seq: number): ServerPush => ({
+      push: 'event',
+      row: { sessionId, seq, ts: seq, event: { type: 'assistant-text', text: `t${seq}`, delta: true } }
+    })
+    lag = 80
+    c.push(row('other', 1)) // leading edge: at once, and the window opens wide
+    c.push(row('other', 2))
+    c.push(row('focused', 1))
+    c.push(row('focused', 2))
+    const rows = (sessionId: string) =>
+      out.flatMap((o) => (o.frame.push === 'events' && o.frame.sessionId === sessionId ? o.frame.rows.map((r) => [o.at, r.seq]) : []))
+    expect(rows('focused')).toEqual([[0, 1], [0, 2]])
+    expect(rows('other')).toEqual([[0, 1]])
+    vi.advanceTimersByTime(PUSH_EVENTS_COALESCE_MS)
+    expect(rows('other')).toEqual([[0, 1]])
+    vi.advanceTimersByTime(LAGGING_EVENTS_MS.remote - PUSH_EVENTS_COALESCE_MS)
+    expect(rows('other')).toEqual([[0, 1], [LAGGING_EVENTS_MS.remote, 2]])
+    // The loop caught up: the next window is the ordinary one.
+    lag = 0
+    vi.advanceTimersByTime(LAGGING_EVENTS_MS.remote)
+    c.push(row('other', 3))
+    c.push(row('other', 4))
+    vi.advanceTimersByTime(PUSH_EVENTS_COALESCE_MS)
+    expect(rows('other').map(([, seq]) => seq)).toEqual([1, 2, 3, 4])
+    c.dispose()
   })
 })
 

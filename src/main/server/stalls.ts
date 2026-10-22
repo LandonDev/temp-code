@@ -12,8 +12,9 @@
  *   - `[renderer] …`: a line the renderer sent through `stall.report`
  *
  * Every server line carries the requests in flight (method + age), the
- * pushes sent in the last second, the running thread count, loadavg and
- * RSS. Cost: two integer counters, one Map entry per in-flight request,
+ * pushes sent in the last second, the running thread count, loadavg, RSS,
+ * the most unsent bytes on a socket and the bulk lane (lane.ts) as
+ * `lane=bulk:<running>/<held>`. Cost: two integer counters, one Map entry per in-flight request,
  * one histogram read a second. Nothing allocates per event.
  */
 import { appendFileSync, mkdirSync, renameSync, statSync } from 'node:fs'
@@ -53,6 +54,7 @@ export async function untilLoopIdle(opts: { thresholdMs?: number; maxWaitMs?: nu
 let file: string | null = null
 let runningCount: () => number = () => 0
 let bufferedBytes: () => number = () => 0
+let laneStats: () => { running: number; held: number } = () => ({ running: 0, held: 0 })
 const inFlight = new Map<string, { method: string; startedAt: number }>()
 const pushes = { meta: 0, event: 0 }
 
@@ -72,6 +74,11 @@ export function setRunningCount(fn: () => number): void {
  *  send queue behind an idle server). */
 export function setBufferedBytes(fn: () => number): void {
   bufferedBytes = fn
+}
+
+/** The bulk lane's requests running and waiting (lane.ts); the `lane=` field. */
+export function setLaneStats(fn: () => { running: number; held: number }): void {
+  laneStats = fn
 }
 
 /** Unsent bytes past which a socket's connection logs one `backpressure` line. */
@@ -182,7 +189,14 @@ export function context(): string {
   } catch {
     // context is best effort
   }
-  return `inflight=${requests || '-'} pushes=meta:${pushes.meta},event:${pushes.event} running=${running} load=${loadavg()[0].toFixed(1)} rss=${rss}MB wsbuf=${wsbuf}KB`
+  let lane = '0/0'
+  try {
+    const { running: bulkRunning, held } = laneStats()
+    lane = `${bulkRunning}/${held}`
+  } catch {
+    // context is best effort
+  }
+  return `inflight=${requests || '-'} pushes=meta:${pushes.meta},event:${pushes.event} running=${running} load=${loadavg()[0].toFixed(1)} rss=${rss}MB wsbuf=${wsbuf}KB lane=bulk:${lane}`
 }
 
 function write(body: string, withContext = true): void {

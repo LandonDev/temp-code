@@ -103,6 +103,7 @@ import {
   recordSlowRequest,
   reportRendererStall,
   setBufferedBytes,
+  setLaneStats,
   setRunningCount,
   setStallLog,
   startStallMonitor,
@@ -200,7 +201,7 @@ import {
   resolveBuildDir
 } from './build'
 import { closeAllLiveWatchers, onLiveEdit } from './livediff'
-import { eventsPage, frameJson, profileFor, PushCoalescer, remoteDeflateOptions, sessionPage } from './wire'
+import { eventsPage, eventsWindowMs, frameJson, profileFor, PushCoalescer, remoteDeflateOptions, sessionPage } from './wire'
 import { FocusSet } from './focus'
 import { bulkKey, LaneGate, laneOf } from './lane'
 import { ListChangeLog } from './listChanges'
@@ -369,6 +370,7 @@ export async function startServer(
   registry.scheduler.focused = (id) => focus.isInteractive(id)
   // The bulk lane, one per host: polls and walks wait while the loop lags (lane.ts).
   const laneGate = new LaneGate()
+  setLaneStats(() => laneGate.stats())
   // The temp-code workspace's default preamble, seeded once (projectPreamble.ts).
   seedHousePreamble(store)
   migrateHousePreamble(store)
@@ -1067,8 +1069,14 @@ export async function startServer(
     // partial tool calls (newest per call) and live edits on 100 ms with no
     // leading edge. A fleet once pushed 13k metas in a second, each its own
     // frame to every socket. Only the remote profile takes large bodies off;
-    // the pieces' JSON is shared across sockets (frameJson).
-    const coalescer = new PushCoalescer(sendFrame, undefined, undefined, { project: profile === 'remote' })
+    // the pieces' JSON is shared across sockets (frameJson). The thread this
+    // socket looks at (session.focus) sends its rows at once; every other
+    // thread's rows wait 100 ms (250 ms remote) while the loop lags.
+    const coalescer = new PushCoalescer(sendFrame, undefined, undefined, {
+      project: profile === 'remote',
+      immediate: (sessionId) => focus.isFocusedBy(connection, sessionId),
+      eventsDelay: () => eventsWindowMs(profile, currentLag().meanMs)
+    })
     const emitPush = (frame: ServerPush): void => coalescer.push(frame)
     /** Project lookup that throws — fs/git methods are meaningless without one. */
     const mustProject = (projectId: string): { id: string; cwd: string } => {

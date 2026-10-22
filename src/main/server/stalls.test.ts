@@ -15,6 +15,7 @@ import {
   recordSlowRequest,
   reportRendererStall,
   setBufferedBytes,
+  setLaneStats,
   setRunningCount,
   setStallLog,
   setLagForTests,
@@ -134,7 +135,7 @@ describe('stall recorder', () => {
     recordSlowRequest('queue.list', 812)
     untrackRequest('1:7')
     const line = log().trim()
-    expect(line).toMatch(/^\d{4}-\d\d-\d\dT[^ ]+ slow-request queue\.list 812ms inflight=session\.events:\d+ms pushes=meta:2,event:1 running=3 load=\d+\.\d rss=\d+MB wsbuf=0KB$/)
+    expect(line).toMatch(/^\d{4}-\d\d-\d\dT[^ ]+ slow-request queue\.list 812ms inflight=session\.events:\d+ms pushes=meta:2,event:1 running=3 load=\d+\.\d rss=\d+MB wsbuf=0KB lane=bulk:0\/0$/)
   })
 
   it('the context carries the most unsent bytes on any client socket, and a backpressure line names the connection', () => {
@@ -142,8 +143,15 @@ describe('stall recorder', () => {
     recordBackpressure(2, 9 * 1024 * 1024)
     setBufferedBytes(() => 0)
     const line = log().trim()
-    expect(line).toMatch(/ backpressure connection=2 unsent=9216KB inflight=- pushes=meta:\d+,event:\d+ running=3 load=\d+\.\d rss=\d+MB wsbuf=9216KB$/)
+    expect(line).toMatch(/ backpressure connection=2 unsent=9216KB inflight=- pushes=meta:\d+,event:\d+ running=3 load=\d+\.\d rss=\d+MB wsbuf=9216KB lane=bulk:0\/0$/)
     expect(BACKPRESSURE_BYTES).toBe(8 * 1024 * 1024)
+  })
+
+  it('the context names the bulk lane\'s requests running and waiting', () => {
+    setLaneStats(() => ({ running: 2, held: 7 }))
+    recordSlowRequest('git.diffStats', 900)
+    setLaneStats(() => ({ running: 0, held: 0 }))
+    expect(log().trim()).toMatch(/ slow-request git\.diffStats 900ms .* wsbuf=\d+KB lane=bulk:2\/7$/)
   })
 
   it('a worker checkpoint at or over the threshold writes a checkpoint line with the context', () => {
