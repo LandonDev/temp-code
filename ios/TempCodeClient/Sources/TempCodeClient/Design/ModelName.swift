@@ -7,11 +7,14 @@ public enum ModelName {
     public static func short(_ id: String) -> String {
         var parts = id.split(separator: "-").map(String.init)
         if parts.count > 1, parts[0] == "claude" { parts.removeFirst() }
-        // A trailing "5-5" or "4-8" is a version: join it with a dot.
         var out: [String] = []
         for part in parts {
             if let last = out.last, Int(part) != nil, Int(last) != nil {
+                // A trailing "5-5" or "4-8" is a version: join it with a dot.
                 out[out.count - 1] = "\(last).\(part)"
+            } else if let last = out.last, last.lowercased() == "gpt", part.first?.isNumber == true {
+                // "gpt-6.1" is one name: keep the hyphen.
+                out[out.count - 1] = "GPT-\(part)"
             } else {
                 out.append(part)
             }

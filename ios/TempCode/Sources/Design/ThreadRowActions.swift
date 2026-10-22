@@ -14,10 +14,10 @@ import TempCodeContract
 /// `menu` is the slot for a sibling's rows (Start now on a queued thread,
 /// Resume on a stopped one): they render after Pin and before the Divider
 /// that sets Archive apart.
-struct ThreadRowActions<Menu: View>: ViewModifier {
+struct ThreadRowActions<Rows: View>: ViewModifier {
     let client: EnvironmentClient
     let meta: SessionMeta
-    let menu: () -> Menu
+    let menu: () -> Rows
     @State private var renaming = false
     @State private var title = ""
     @State private var failure: String?
@@ -102,7 +102,7 @@ extension View {
     }
 
     /// The same, with the caller's rows after Pin and before Archive.
-    func threadRowActions<Menu: View>(client: EnvironmentClient, meta: SessionMeta, @ViewBuilder menu: @escaping () -> Menu) -> some View {
+    func threadRowActions<Rows: View>(client: EnvironmentClient, meta: SessionMeta, @ViewBuilder menu: @escaping () -> Rows) -> some View {
         modifier(ThreadRowActions(client: client, meta: meta, menu: menu))
     }
 }
