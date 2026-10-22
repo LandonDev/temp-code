@@ -1024,6 +1024,14 @@ routed to (aliax-core's `forward`). Two listeners:
   rename:<title>|pin|archive|new-chat` and `TC_TEST_SHEET=start|new`) exist
   for the proof only; an action runs once, on the screen the launch route
   opened, through the same calls the buttons make.
+- Settings (thread 5): `ios/TempCode/Sources/Shell/{SettingsView,HostsView,
+  AddEnvironmentSheet,SettingsStyles}.swift` are the SwiftUI alone; every
+  word they say (`ConnectionWord`, `HostFix`, `HostBuildLine`,
+  `HostPushWord`, the `Capability` titles) and `forgetHost` (which sends
+  `remote.push.unregister` on the host before removing the key) live in the
+  client package's `Shell/HostPresentation.swift` with their tests; the
+  `settings` proof set shoots them with `TC_TEST_OPEN=host` (pushed through
+  the stack's path) and `TC_TEST_SHEET=pair|pair-error`.
 - Steering (L5): `ios/TempCode/Sources/Thread/Composer.swift` (the bar on
   every segment, Send ↔ Stop) and `WorkingStrip.swift` (the fixed 28 pt
   row: Sending…, spinner + flavour word + elapsed, the paused row with Stop

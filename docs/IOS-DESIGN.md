@@ -207,10 +207,19 @@ list, as Settings → Wi-Fi is, because the user already knows how to read it
 and nothing here is the product. Rows carry no glyphs (the desktop's
 settings rows carry none). Every row that needs explaining gets one sentence
 of footer, never a paragraph; the app's version and contract close the
-screen, dim and centred, so a screenshot answers "which build".
+screen, dim and centred, so a screenshot answers "which build". Section
+headers are the system inset grouped headers, not `GroupHeader`: that one
+is for a hand-built card on a plain background, and the brief here is
+"indistinguishable from Apple's Settings". Rows keep the system highlight;
+nothing in a grouped list scales on press (Apple's Settings never does, and
+a scale fights the swipe actions). The screens hold only SwiftUI; every
+word they say (the connection word, the fix per state, the build line, the
+push word, the capability titles) and the forget flow are the client
+package's `Shell/HostPresentation.swift`, where they have tests.
 
 - **Hosts** pushes the list; the row's trailing half is one connection dot
-  per host and the single host's name, or the count.
+  per host and the single host's name, or the count (stacked under the
+  label at accessibility sizes).
 - **Notifications** is one row: the switch with the registrar's word beside
   it ("Off", "On", "Registering…", "No relay", "Failed", "Not allowed"). The
   switch moves at once and holds its position while the permission prompt
@@ -218,40 +227,72 @@ screen, dim and centred, so a screenshot answers "which build".
   permission an "Allow in Settings" row opens the system Settings. The footer
   names what stands in the way.
 - **Appearance** is the inline picker with checkmarks: System, Light, Dark.
+  A theme flip snaps; nothing animates it.
 
-**Hosts.** One row per paired host: the connection dot leading in a 14 pt
-box, the name, a second line in `footnote` (the address while connected,
-else what is wrong in two words, destructive only when it waits on the user:
-"Key refused", "Offline", "Different host", "Needs an update"; a socket on
-its way stays `secondary`), and the environment id abbreviated
-(`env_AbCd…StUv`) trailing in mono `caption`, `tertiary`. The second line
-swaps with the 150 ms blur cross-fade. Swipe and long press offer Pair Again
-and Forget; every row pushes the detail.
+**Hosts.** One row per paired host: the connection dot leading in the mark
+column (`Layout.markWidth`), the name, a second line in the meta step (the
+address while connected, else what is wrong in two words: "Connecting…",
+"Unreachable", "Reconnecting…", "Offline", "Different host", "Needs an
+update", "Key refused", "Paused"), and the environment id abbreviated
+(`env_AbCd…StUv`) trailing in mono `caption`, `tertiary` (an id must stay
+legible; the stamp step's `caption2` is under the floor for eight glyphs of
+mono). The second line is destructive only when the state waits on the
+person: Key refused, Different host, Needs an update (`HostFix.waitsOnUser`).
+Offline, Unreachable, Connecting and Reconnecting are the phone's to fix
+and stay `secondary`. The second line swaps in place with
+`.swapTransition()` (150 ms, opacity and 2 pt of blur; opacity alone under
+reduced motion). Swipe and long press offer Pair Again and Forget; every row
+pushes the detail through the stack's `NavigationPath`, and the proof's
+`TC_TEST_OPEN=host` hook appends the same `HostDetailRoute` to that path,
+so the bar's title is the host's name on either path with no principal item.
 
-**Host detail.** Four sections: the status row (dot, the live `StatusText`
-with its countdown, a spinner while connecting) with the one action that
-fixes the state under it (Retry Now when the host is out of reach, Pair
-Again when the key was refused or the address answers as another host,
-nothing when the host needs an update the phone cannot do) and a footer
-saying why; the key's capabilities (Read, Operate, Approve, Admin, each with
-one line of what it allows and a checkmark in the tint when the key has it);
-the host's facts (Name, editable in place; Address; Environment id in mono,
-selectable; Contract from the last hello; Notifications for this host; the
-pairing date); then Pair Again and the red Forget This Host. Forgetting is a
-confirmation dialog naming the host, with what it means in one sentence.
+**Host detail.** Five sections, in this order:
 
-**Pairing** (Add a Host, Pair Again) is a medium sheet, 16 pt radius, with
-the large detent for the keyboard: a segmented Pairing Link / Key, the field
-with a paste button at its trailing edge while empty (a pasted link that
-reads cleanly is redeemed at once; a typed one is recognised, the footer
-naming the host it pairs with, and submitted with Return or Add), an
-optional name, and the refusal under the field inside the same card,
-footnote in destructive with the `exclamationmark.circle` glyph, arriving
-with the needs-you row motion and leaving 150 ms when typing resumes.
-Never an alert. Add swaps for a spinner with a 150 ms cross-fade; a success
-haptic and the sheet dismisses with the host already in the list; an error
-haptic on a refusal. The first field takes the keyboard once the sheet has
-settled (350 ms).
+1. **Status**: the dot, the live `StatusText` with its countdown, a spinner
+   while connecting; under it the one action that fixes the state (Retry Now
+   when the host is out of reach, Pair Again when the key was refused or the
+   address answers as another host, nothing when the host needs an update
+   the phone cannot do); the footer says why.
+2. **Activity**: what the host is doing. Thread 21 fills it with one line,
+   `HostActivitySections(client:)`, a view of its own under `Shell/Hosts/`
+   whose body is one or more `Section`s (deploy drift, the Mac bridge's
+   running and held calls, the devices, the harness and memory sync lines,
+   a running deploy's log). Empty until it lands.
+3. **Key**: Read, Operate, Approve, Admin, each with one line of what it
+   allows and a checkmark in the tint when the key has it; the footer says
+   a new key on the host is how to change it.
+4. **Host**: Name (editable in place), Address, Environment id in mono
+   (selectable), Version as `1.0.N · <sha7>` from the hello's `build`
+   (`HostBuildLine`; the version alone without a commit; no row for a host
+   that sent none), Contract from the last hello, Notifications for this
+   host, the pairing date.
+5. **Pair Again** and the red **Forget This Host**.
+
+Forgetting is a confirmation dialog naming the host. `forgetHost` first
+sends `remote.push.unregister` on the host while the socket is open (best
+effort, so a forgotten host stops sending notices whose tap would land on an
+environment the phone no longer knows), then removes the key, stops the
+socket and clears the cache. The message says what holds: the threads stay
+on the host, it stops sending notifications here, the key stays valid there
+until revoked.
+
+**Pairing** (Add a Host, Pair Again) is a medium sheet, 16 pt radius
+(`Radius.sheet`), with the large detent for the keyboard: a segmented
+Pairing Link / Key, the field with a paste button at its trailing edge while
+empty (a pasted link that reads cleanly is redeemed at once; a typed one is
+recognised, the footer naming the host it pairs with, and submitted with
+Return or Add), an optional name, and the refusal under the field inside the
+same card, footnote in destructive with the `exclamationmark.circle` glyph
+at the same weight, arriving with `.rowAppearTransition()` (200 ms, 8 pt of
+travel) and leaving 150 ms when typing resumes. Never an alert. Add swaps
+for a spinner with a 150 ms cross-fade; a success haptic and the sheet
+dismisses with the host already in the list; an error haptic on a refusal.
+The first field takes the keyboard once the sheet has settled (350 ms), with
+no animation.
+
+Nothing here needs more than a `read` key: `remote.push.*` are `read`,
+pairing is `POST /api/pair`, forgetting is local. The Key section is where
+a person learns why a control elsewhere is disabled.
 
 ## Visual system
 
