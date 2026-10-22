@@ -24,6 +24,13 @@ export default defineConfig({
   },
   test: {
     passWithNoTests: true,
+    // The release train runs all 4,300 tests in parallel lanes beside the
+    // build and the Swift packages on the Mac; tests that take a second alone
+    // run four to six under that load, and the 5 s default failed the train
+    // three times in one night on three different files. 20 s is a hang, not
+    // a slow test.
+    testTimeout: 20_000,
+    hookTimeout: 20_000,
     projects: [
       {
         extends: true,
