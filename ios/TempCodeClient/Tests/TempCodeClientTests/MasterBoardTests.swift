@@ -213,7 +213,7 @@ private var utc: Calendar {
     @Test("a far child counts from its own host's sessions; a row with none is absent") func farHost() {
         let local = meta("c", createdAt: 1, masterId: "m")
         let lonely = meta("d", createdAt: 2, masterId: "m")
-        let far = MasterBoard.RemoteChild(child: BatchState.Children(sessionId: "f1", environmentId: "env_box", title: "Far", status: "running", threadType: "implementation", provider: "codex", model: "gpt-6.1-sol", seenAt: 3, linkDown: nil), meta: nil)
+        let far = MasterBoard.RemoteChild(child: child("f1", environmentId: "env_box", seenAt: 3), meta: nil)
         let rows = MasterBoard.foldRows(children: [local, lonely], all: [local, lonely], masterId: "m", remote: [far])
         let here = [local, lonely, meta("a", parentId: "c", status: .running), meta("f1-clash", parentId: "f1", status: .running)]
         let box = [meta("b1", parentId: "f1", status: .waiting), meta("b11", parentId: "b1", status: .running)]
