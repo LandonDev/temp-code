@@ -1,24 +1,18 @@
 import type { ClientRequest } from '@shared/contract'
-import type { CheckpointStore } from './checkpoint'
+import type { CheckpointTurns } from './checkpointTurns'
 
 type Outcome = { handled: true; result: unknown } | { handled: false }
 const result = (value: unknown): Outcome => ({ handled: true, result: value ?? null })
 
-/** The six `checkpoint.*` WS methods; anything else falls through. */
-export async function handleCheckpoint(req: ClientRequest, store: CheckpointStore): Promise<Outcome> {
+/** The three `checkpoint.*` WS methods; the host finds the thread's cwd. */
+export async function handleCheckpoint(req: ClientRequest, turns: CheckpointTurns): Promise<Outcome> {
   switch (req.method) {
-    case 'checkpoint.ensure':
-      return result(await store.ensure(req.params.sessionId, req.params.cwd))
-    case 'checkpoint.capture':
-      return result(await store.capture(req.params.sessionId, req.params.cwd, req.params.paths))
-    case 'checkpoint.sync':
-      return result(await store.sync(req.params.sessionId, req.params.cwd))
     case 'checkpoint.status':
-      return result(await store.status(req.params.sessionId, req.params.cwd))
+      return result(await turns.status(req.params.sessionId))
     case 'checkpoint.undo':
-      return result(await store.undo(req.params.sessionId, req.params.cwd, req.params.relative))
+      return result(await turns.undo(req.params.sessionId, req.params.relative))
     case 'checkpoint.keep':
-      return result(await store.keep(req.params.sessionId, req.params.cwd, req.params.relative))
+      return result(await turns.keep(req.params.sessionId, req.params.relative))
     default:
       return { handled: false }
   }

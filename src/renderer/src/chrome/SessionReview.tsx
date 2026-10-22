@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   keepSessionChanges,
   sessionCheckpointStatus,
-  subscribeReviewChanged,
+  subscribeCheckpointChanged,
   undoSessionChanges,
   type CheckpointFile,
 } from "../lib/checkpoint";
@@ -42,16 +42,16 @@ export function SessionReview({
       setFiles([]);
       return;
     }
-    void sessionCheckpointStatus(environmentId, sessionId, cwd)
+    void sessionCheckpointStatus(environmentId, sessionId)
       .then((status) => setFiles(status.files))
       .catch(() => setFiles([]));
   }, [environmentId, sessionId, cwd]);
 
   useEffect(() => {
     if (!enabled || busy) return;
-    // One trailing status per burst: a settle, its review nudge and the
-    // git-changed signals it sets off all land within the window, and each
-    // status is a git child on the server's shared budget.
+    // One trailing status per burst: a settle, the host's checkpoint-changed
+    // and the git-changed signals it sets off all land within the window,
+    // and each status is a git child on the host's review lane.
     let timer: number | null = null;
     const schedule = () => {
       if (timer != null) window.clearTimeout(timer);
@@ -61,8 +61,8 @@ export function SessionReview({
       }, STATUS_DEBOUNCE_MS);
     };
     schedule();
-    const unsubReview = subscribeReviewChanged((id) => {
-      if (!id || id === sessionId) schedule();
+    const unsubReview = subscribeCheckpointChanged((id) => {
+      if (id === sessionId) schedule();
     });
     const unsubGit = subscribeGitChanged(() => {
       if (filesRef.current.length > 0) schedule();
@@ -97,8 +97,8 @@ export function SessionReview({
     setActing(action);
     const op =
       action === "keep"
-        ? keepSessionChanges(environmentId, sessionId, cwd)
-        : undoSessionChanges(environmentId, sessionId, cwd);
+        ? keepSessionChanges(environmentId, sessionId)
+        : undoSessionChanges(environmentId, sessionId);
     const previous = filesRef.current.map((file) => file.path);
     void op
       .then((status) => {

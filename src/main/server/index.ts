@@ -78,8 +78,9 @@ import { EventReader, startCheckpointWorker } from './dbWorkers'
 import { handleFsGit } from './fsgit'
 import { workRoot } from './workRoot'
 import { readMediaRange, setMediaHost, setMediaRoots } from './media'
-import { CheckpointStore } from './checkpoint'
+import { CheckpointStore, inHeadMany, listTracked } from './checkpoint'
 import { handleCheckpoint } from './checkpointRpc'
+import { CheckpointTurns } from './checkpointTurns'
 import { Linear, handleLinear } from './linear'
 import { GithubInbox, handleGithubInbox } from './githubInbox'
 import { SessionRegistry } from './sessions'
@@ -335,6 +336,19 @@ export async function startServer(
   })
   if (options.watchMaster) masterRelease.start()
   const checkpoints = new CheckpointStore(join(options.dataDir ?? dirname(dbPath), 'checkpoints'))
+  /** Each socket's `checkpoint-changed` filter: frames for the threads it subscribed to. */
+  const checkpointSinks = new Set<(sessionId: string, push: ServerPush) => void>()
+  // Undo checkpoints from the host's own turns: armed at every send, written
+  // when a turn settles, in the thread's cwd (checkpointTurns.ts).
+  const checkpointTurns = new CheckpointTurns({
+    store: checkpoints,
+    session: (id) => store.getSession(id),
+    listTracked,
+    inHeadMany,
+    push: (sessionId, push) => {
+      for (const sink of checkpointSinks) sink(sessionId, push)
+    }
+  })
   const registry = new SessionRegistry(store)
   // The temp-code workspace's default preamble, seeded once (projectPreamble.ts).
   seedHousePreamble(store)
@@ -400,7 +414,9 @@ export async function startServer(
   setStallLog(join(options.dataDir ?? dirname(dbPath), 'logs'))
   setRunningCount(() => registry.runningCount())
   const stopStallMonitor = startStallMonitor()
-  registry.checkpoints = checkpoints
+  registry.checkpoints = checkpointTurns
+  registry.onEvent((row) => void checkpointTurns.observe(row))
+  const offCheckpointEdits = onLiveEdit((push) => void checkpointTurns.liveEdit(push))
   // What every host's gateway has seen of each account's rate limits: the
   // routing score reads it, the chip's bars show it, and a 429 re-picks at once.
   const headroom = new HeadroomStore({
@@ -1034,6 +1050,11 @@ export async function startServer(
       ? { push: 'workspaces', workspaces: registry.listWorkspaces() }
       : { push: 'projects', projects: registry.listProjects() }))
     const offLive = onLiveEdit((p) => emitPush(p))
+    // A thread's checkpoint moved (a turn settled): only the sockets watching it.
+    const onCheckpoint = (sessionId: string, push: ServerPush): void => {
+      if (unsubs.has(sessionId)) emitPush(push)
+    }
+    checkpointSinks.add(onCheckpoint)
     const offBuild = builder.onPush((p) => emitPush(p))
     const offAccounts = m3a.accounts.onChange((snapshot) => emitPush({ push: 'accounts', snapshot }))
     const offQueue = registry.onQueue((sessionId, items) =>
@@ -1162,7 +1183,7 @@ export async function startServer(
         if (extension.handled) { sendFrame({ id: req.id, ok: true, result: extension.result }); return }
         const fsGit = await handleFsGit(req)
         if (fsGit.handled) return sendFrame({ id: req.id, ok: true, result: fsGit.result })
-        const checkpoint = await handleCheckpoint(req, checkpoints)
+        const checkpoint = await handleCheckpoint(req, checkpointTurns)
         if (checkpoint.handled) return sendFrame({ id: req.id, ok: true, result: checkpoint.result })
         const lin = await handleLinear(req, linear)
         if (lin.handled) return sendFrame({ id: req.id, ok: true, result: lin.result })
@@ -2163,6 +2184,7 @@ export async function startServer(
       offCatalog()
       offQueue()
       offLive()
+      checkpointSinks.delete(onCheckpoint)
       offBuild()
       offAccounts()
       offRemoved()
@@ -2350,6 +2372,7 @@ export async function startServer(
       if (headroomRows) clearTimeout(headroomRows)
       headroom.flush()
       await registry.disposeAll()
+      offCheckpointEdits()
       closeWarmPools()
       await closeAllWatchers()
       await closeAllLiveWatchers()

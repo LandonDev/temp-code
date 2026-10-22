@@ -140,7 +140,7 @@ it('a send returns in under 100 ms while a 30 s ensure and a 30 s status are bot
   // send arms), and a status() queued behind it hangs with it — the review
   // panel's request for this same session.
   let statusCalls = 0
-  registry.checkpoints = {
+  const checkpoints = {
     ensure: () => {
       ensureCalls += 1
       return new Promise<void>((resolve) => {
@@ -152,10 +152,11 @@ it('a send returns in under 100 ms while a 30 s ensure and a 30 s status are bot
       return new Promise<never>(() => {})
     }
   } as unknown as CheckpointStore
+  registry.checkpoints = checkpoints
   const s = await registry.create({ cwd: root, provider: 'claude' })
   await registry.send(s.id, 'first')
   // both in flight now: the armed baseline and a panel's status
-  void registry.checkpoints.status(s.id, root)
+  void checkpoints.status(s.id, root)
   expect(ensureCalls).toBeGreaterThan(0)
   expect(statusCalls).toBe(1)
   const before = performance.now()

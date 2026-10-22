@@ -8,10 +8,14 @@ import { WebSocket } from 'ws'
 import { z } from 'zod'
 import { startServer, type RunningServer } from '../src/main/server'
 import { BUILT_IN_DRIVERS } from '../src/main/server/drivers'
+import { CheckpointStore } from '../src/main/server/checkpoint'
 import type { ClientRequest } from '../src/shared/contract'
 
-// M9 exit test: the six checkpoint.* WS methods against a running server.
-// The claude driver is stubbed; no chat turn runs.
+// M9 exit test: the three checkpoint.* WS methods against a running server,
+// each naming the thread only (the host reads the cwd off its row). The
+// claude driver is stubbed and no chat turn runs, so a store on the same
+// checkpoints dir stands in for the host's turn work (checkpointTurns.ts):
+// the ensure at send and the record at the settle.
 BUILT_IN_DRIVERS.claude = {
   id: 'claude',
   async start() {
@@ -113,12 +117,13 @@ try {
   await client.ready()
   const session = 'm9-session'
   await client.request('session.create', { id: session, cwd: repo, provider: 'claude' })
-  const scope = { sessionId: session, cwd: repo }
+  const scope = { sessionId: session }
+  const turn = new CheckpointStore(join(root, 'checkpoints'))
 
   const stored = join(root, 'checkpoints', session, 'manifest.json')
-  await client.request('checkpoint.ensure', scope)
+  await turn.ensure(session, repo)
   assert.equal(await exists(stored), true, 'manifest lives under <dataDir>/checkpoints')
-  pass('checkpoint.ensure writes the manifest beside the database')
+  pass('the baseline lives beside the database')
 
   // Three edits (one modify, one staged modify, one new) and one delete.
   await writeFile(join(repo, 'a.txt'), 'a\nagent\n')
@@ -126,8 +131,8 @@ try {
   git('add', 'b.txt')
   await writeFile(join(repo, 'new.txt'), 'new\n')
   await unlink(join(repo, 'gone.txt'))
-  await client.request('checkpoint.capture', { ...scope, paths: ['a.txt', join(repo, 'b.txt'), 'new.txt', 'gone.txt'] })
-  await client.request('checkpoint.sync', scope)
+  await turn.capture(session, repo, ['a.txt', join(repo, 'b.txt'), 'new.txt', 'gone.txt'])
+  await turn.sync(session, repo)
   const status = statusSchema.parse(await client.request('checkpoint.status', scope))
   assert.deepEqual(
     status.files.map((f) => f.relative),
@@ -167,9 +172,10 @@ try {
 
   const after = statusSchema.parse(await client.request('checkpoint.status', scope))
   assert.deepEqual(after.files, [])
-  await assert.rejects(client.request('checkpoint.status', { sessionId: '../x', cwd: repo }), /bad request/)
-  await assert.rejects(client.request('checkpoint.ensure', { sessionId: session, cwd: join(root, 'nope') }), /Not a directory/)
-  pass('bad session ids and missing cwds are rejected')
+  await assert.rejects(client.request('checkpoint.status', { sessionId: '../x' }), /bad request/)
+  await assert.rejects(client.request('checkpoint.capture' as ClientRequest['method'], { sessionId: session, cwd: repo, paths: [] }), /bad request/)
+  assert.deepEqual(await client.request('checkpoint.status', { sessionId: 'no-such-thread' }), { files: [] })
+  pass('bad session ids and the removed methods are refused; an unknown thread has nothing')
   console.log('M9 e2e: all checks passed')
 } finally {
   await client?.close()

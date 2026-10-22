@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-/** Every git child the checkpoint store itself starts (gitops has its own). */
-const spawned = vi.hoisted(() => ({ args: [] as string[][] }))
+/** Every git child the checkpoint store itself starts (`args`), and the
+ *  ones gitops starts for it (`gitops`: the diffs ensure and sync read). */
+const spawned = vi.hoisted(() => ({ args: [] as string[][], gitops: [] as string[][] }))
 vi.mock('./spawnBudget', async (importOriginal) => {
   const real = await importOriginal<typeof import('./spawnBudget')>()
   return {
@@ -13,16 +14,22 @@ vi.mock('./spawnBudget', async (importOriginal) => {
     execFileBudgeted: (...args: Parameters<typeof real.execFileBudgeted>) => {
       spawned.args.push(args[1] as string[])
       return (real.execFileBudgeted as (...a: unknown[]) => unknown)(...args) as ReturnType<typeof real.execFileBudgeted>
+    },
+    execFileChildBudgeted: (...args: Parameters<typeof real.execFileChildBudgeted>) => {
+      spawned.gitops.push(args[1] as string[])
+      return real.execFileChildBudgeted(...args)
     }
   }
 })
 
-import { CheckpointStore } from './checkpoint'
+import { CheckpointStore, inHeadMany, listTracked } from './checkpoint'
+import { CheckpointTurns } from './checkpointTurns'
 
 const roots: string[] = []
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
   spawned.args.length = 0
+  spawned.gitops.length = 0
 })
 
 const git = (dir: string, ...args: string[]): string =>
@@ -125,5 +132,35 @@ describe('checkpoint store spawns', () => {
     await store.keep('s1', repo)
     await store.sync('s2', repo)
     expect((await store.status('s2', repo)).files.map((f) => f.relative)).toEqual(['a.txt'])
+  })
+
+  it('a turn costs the ensure, one ls-files, one HEAD lookup and one settle diff, not a child per path', async () => {
+    const { repo, store } = setup({ 'a.txt': 'a\n', 'b.txt': 'b\n' })
+    const turns = new CheckpointTurns({ store, session: () => ({ cwd: repo }), listTracked, inHeadMany, push: () => {} })
+    await turns.ensure('s1', repo)
+    const ensured = { own: spawned.args.length, gitops: spawned.gitops.length }
+    spawned.args.length = 0
+    spawned.gitops.length = 0
+
+    // The turn: two tracked files edited and thirty made, most edits settling twice.
+    const made = Array.from({ length: 30 }, (_, i) => `src/f${i}.txt`)
+    for (const p of ['a.txt', 'b.txt', ...made]) {
+      mkdirSync(join(repo, p, '..'), { recursive: true })
+      writeFileSync(join(repo, p), 'agent\n')
+    }
+    const edit = (path: string) =>
+      turns.liveEdit({ cwd: repo, sessionIds: ['s1'], edit: { path, kind: 'created', diff: null, settled: true, ts: 0 } })
+    for (const p of ['a.txt', 'b.txt', ...made, 'a.txt', ...made]) await edit(p)
+    expect([spawned.args, spawned.gitops]).toEqual([[], []])
+    await turns.observe({ sessionId: 's1', seq: 1, ts: 0, event: { type: 'turn-complete' } })
+
+    // The listing answers a.txt and b.txt; the thirty it does not know share one ls-tree.
+    expect(spawned.args.map((args) => args.find((a) => a === 'ls-files' || a === 'ls-tree'))).toEqual(['ls-files', 'ls-tree'])
+    expect(spawned.args[1].filter((a) => a.startsWith('src/f'))).toHaveLength(30)
+    // The settle's one diff reads the index the way ensure's did: the same children.
+    expect(spawned.gitops.filter((args) => args.includes('--numstat'))).toHaveLength(1)
+    expect(spawned.gitops.length).toBe(ensured.gitops)
+    expect(ensured.own).toBe(0)
+    expect((await store.status('s1', repo)).files).toHaveLength(32)
   })
 })

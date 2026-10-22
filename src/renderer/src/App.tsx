@@ -150,10 +150,6 @@ import {
 import { isEditTool } from "./lib/harness/preview";
 import type { ComposerIntent } from "./lib/composerAction";
 import { ThreadBanners } from "./chrome/ThreadBanners";
-import {
-  keepSessionChanges,
-  notifyReviewChanged,
-} from "./lib/checkpoint";
 import { notifyDirsChanged } from "./lib/fileTree";
 import { nudgeWatchedFiles } from "./lib/fileWatch";
 import type { EditorNavigation, OpenFileFn, OpenFileOptions } from "./lib/search";
@@ -2267,14 +2263,6 @@ export default function App() {
         setComposerFocused(true);
         return;
       }
-      if (
-        current &&
-        previous &&
-        !sameProjectPath(previous, normalized) &&
-        previous !== "~"
-      ) {
-        void keepSessionChanges(current.environmentId, sessionId, previous).catch(() => undefined);
-      }
       project.enterWorkspace(normalized);
       const moved = cwdContext(normalized);
       // A blank draft moving between workspaces takes the new one's defaults.
@@ -2305,7 +2293,6 @@ export default function App() {
       // The session's project just moved in place; a group only holds tabs that
       // share one project, so drop this tab out if it no longer matches.
       workspaceActions.leaveGroupIfMoved(sessionId, projectName(normalized), projectOfTab);
-      notifyReviewChanged(sessionId);
     },
     [appendTab, cwdContext, projectOfTab, seededSession],
   );
@@ -2327,7 +2314,6 @@ export default function App() {
       setSessions((prev) =>
         prev.map((s) => (s.id === sessionId ? next : s)),
       );
-      notifyReviewChanged(sessionId);
     },
     [],
   );

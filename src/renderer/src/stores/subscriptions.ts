@@ -1,7 +1,6 @@
 import { registry } from "../lib/connection";
 import { LAYOUT_CHANGE_EVENT, loadSidebarLayout, type SidebarLayout } from "../lib/appearance";
 import { isAppQuitting } from "../lib/appLifecycle";
-import { installCheckpointBridge } from "../lib/checkpointBridge";
 import { syncDockBadge } from "../lib/dockBadge";
 import { sessionChildHarnesses } from "../lib/handoff";
 import {
@@ -478,7 +477,6 @@ export function installBootTasks(): Teardown {
   const offs = [
     // The badge counts waiting metas: a meta change is the only thing that moves it.
     sessionStore.onMetaChange(syncDockBadge),
-    installCheckpointBridge(),
     installStallRecorder(),
     () => {
       live = false;

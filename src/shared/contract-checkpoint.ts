@@ -1,17 +1,16 @@
 import { z } from 'zod'
 
 const SessionIdSchema = z.string().regex(/^[A-Za-z0-9_-]+$/, 'Invalid session id')
-const scope = z.object({ sessionId: SessionIdSchema, cwd: z.string() })
-const oneOrAll = scope.extend({ relative: z.string().nullish() })
+const session = z.object({ sessionId: SessionIdSchema })
+const oneOrAll = session.extend({ relative: z.string().nullish() })
 const request = <M extends string, P extends z.ZodType>(method: M, params: P) =>
   z.object({ id: z.string(), method: z.literal(method), params })
 
-/** Per-session undo checkpoints (donor `session_checkpoint_*`). */
+/** Per-session undo checkpoints (donor `session_checkpoint_*`). The host
+ *  keeps them from its own turns (checkpointTurns.ts) in the thread's cwd;
+ *  a caller names the thread only. */
 export const CheckpointRequestSchemas = [
-  request('checkpoint.ensure', scope),
-  request('checkpoint.capture', scope.extend({ paths: z.array(z.string()).max(500, 'Too many paths') })),
-  request('checkpoint.sync', scope),
-  request('checkpoint.status', scope),
+  request('checkpoint.status', session),
   request('checkpoint.undo', oneOrAll),
   request('checkpoint.keep', oneOrAll)
 ] as const

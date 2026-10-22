@@ -78,6 +78,13 @@ describe('FENCED_PARAMS', () => {
     }
     expect(missing).toEqual([])
   })
+  it('checkpoint methods name a thread only: the host reads the cwd off its row', () => {
+    const methods = (ClientRequestSchema.options as z.ZodTypeAny[])
+      .map((option) => ({ method: (option as z.ZodObject<{ method: z.ZodLiteral<string> }>).shape.method.value, params: paramsOf(option) }))
+      .filter(({ method }) => method.startsWith('checkpoint.'))
+    expect(methods.map(({ method }) => method).sort()).toEqual(['checkpoint.keep', 'checkpoint.status', 'checkpoint.undo'])
+    for (const { params } of methods) expect(Object.keys(params?.shape ?? {}).filter((k) => PATH_KEYS.has(k))).toEqual([])
+  })
   it('covers every method whose params carry attachments', () => {
     const missing: string[] = []
     for (const option of ClientRequestSchema.options as z.ZodTypeAny[]) {

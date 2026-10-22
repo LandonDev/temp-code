@@ -58,7 +58,8 @@ import { BUILT_IN_DRIVERS } from './drivers'
 import { generateTitle } from './drivers/title'
 import type { ApprovalRequest, DriverHandle } from './drivers/types'
 import type { Store } from './db'
-import type { CheckpointStore } from './checkpoint'
+import { checkpointCwd } from './checkpoint'
+import type { CheckpointTurns } from './checkpointTurns'
 import {
   addProjectWorktree,
   currentBranch,
@@ -491,7 +492,7 @@ export class SessionRegistry {
 
   /** Undo checkpoints; armed at every harness send so the baseline is
    *  snapshotted before the provider can write. Set by the server. */
-  checkpoints: CheckpointStore | null = null
+  checkpoints: Pick<CheckpointTurns, 'ensure'> | null = null
   /** The baseline snapshot in flight per session (armBaseline). A send
    *  never waits on it; the harness's first write does (awaitBaseline). */
   private baselines = new Map<string, Promise<void>>()
@@ -680,13 +681,13 @@ export class SessionRegistry {
 
   /** Snapshot the session's already-dirty files once per session and cwd,
    *  off the send path: a message reaches the harness while this runs. The
-   *  store's per-session chain orders every later capture behind this
+   *  store's per-session chain orders every later record behind this
    *  ensure, and the claude driver's write tools wait on it (awaitBaseline),
    *  so the snapshot still precedes the agent's first write. Never throws:
    *  a failure here only costs undo for that turn. */
   private armBaseline(sessionId: string): Promise<void> {
-    const cwd = this.store.getSession(sessionId)?.cwd?.trim()
-    if (!this.checkpoints || !cwd || cwd === '~') return Promise.resolve()
+    const cwd = checkpointCwd(this.store.getSession(sessionId))
+    if (!this.checkpoints || !cwd) return Promise.resolve()
     const armed = this.checkpoints.ensure(sessionId, cwd).catch(() => {})
     this.baselines.set(sessionId, armed)
     void armed.then(() => {

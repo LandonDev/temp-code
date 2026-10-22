@@ -81,11 +81,8 @@ export type ServerCommand =
   | "save_project_logo"
   | "search_project"
   | "search_sessions"
-  | "session_checkpoint_capture"
-  | "session_checkpoint_ensure"
   | "session_checkpoint_keep"
   | "session_checkpoint_status"
-  | "session_checkpoint_sync"
   | "session_checkpoint_undo"
   | "stat_files"
   | "workspace_get_snapshot"
@@ -133,7 +130,7 @@ type Args = Record<string, unknown> | undefined;
 type Backed = (args: Args) => Promise<unknown>;
 
 const arg = <T>(args: Args, key: string): T => (args ?? {})[key] as T;
-const scope = (args: Args) => ({ sessionId: arg<string>(args, "sessionId"), cwd: arg<string>(args, "cwd") });
+const thread = (args: Args) => ({ sessionId: arg<string>(args, "sessionId") });
 
 // ── Server dispatch ────────────────────────────────────────────────────────
 
@@ -181,11 +178,8 @@ type PassthroughCommand = Exclude<
   | "write_attachment"
   | "save_project_logo"
   | "remove_project_logo"
-  | "session_checkpoint_capture"
-  | "session_checkpoint_ensure"
   | "session_checkpoint_keep"
   | "session_checkpoint_status"
-  | "session_checkpoint_sync"
   | "session_checkpoint_undo"
   | "linear_issue_comment"
   | "linear_issue_details"
@@ -281,15 +275,11 @@ const serverBacked: Record<ServerCommand, ServerBacked> = {
     rpc(env, "projectLogo.remove", { projectPath: arg<string>(args, "project") }),
 
   // Checkpoints (M9) and Linear (M11): params shaped here, not passed through.
-  session_checkpoint_ensure: (env, args) => rpc(env, "checkpoint.ensure", scope(args)),
-  session_checkpoint_capture: (env, args) =>
-    rpc(env, "checkpoint.capture", { ...scope(args), paths: arg<string[]>(args, "paths") ?? [] }),
-  session_checkpoint_sync: (env, args) => rpc(env, "checkpoint.sync", scope(args)),
-  session_checkpoint_status: (env, args) => rpc(env, "checkpoint.status", scope(args)),
+  session_checkpoint_status: (env, args) => rpc(env, "checkpoint.status", thread(args)),
   session_checkpoint_undo: (env, args) =>
-    rpc(env, "checkpoint.undo", { ...scope(args), relative: arg<string | null>(args, "relative") ?? null }),
+    rpc(env, "checkpoint.undo", { ...thread(args), relative: arg<string | null>(args, "relative") ?? null }),
   session_checkpoint_keep: (env, args) =>
-    rpc(env, "checkpoint.keep", { ...scope(args), relative: arg<string | null>(args, "relative") ?? null }),
+    rpc(env, "checkpoint.keep", { ...thread(args), relative: arg<string | null>(args, "relative") ?? null }),
   // Linear (M11): server-owned token, GraphQL in the server.
   linear_status: (env) => rpc(env, "linear.status"),
   linear_set_token: (env, args) => rpc(env, "linear.setToken", { token: arg<string>(args, "token") }),

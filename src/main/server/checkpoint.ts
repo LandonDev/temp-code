@@ -11,10 +11,11 @@ import { gitDiffIndex } from './gitops'
  *
  * `ensure` runs once per session and cwd before a turn: every path that is
  * already dirty against HEAD gets its bytes (or its absence) snapshotted so
- * the user's own edits survive an undo. `capture` marks the paths a turn
- * touches (snapshotting only files that do not exist yet, so a late capture
- * can never freeze the agent's write as the baseline); `sync` claims newly
- * dirty paths that no other live session in the same project has claimed.
+ * the user's own edits survive an undo. `record` marks the paths a turn
+ * touches (snapshotting only files that do not exist yet, so a late record
+ * can never freeze the agent's write as the baseline) and, with `sync`,
+ * claims newly dirty paths that no other session in the same project has
+ * claimed; checkpointTurns.ts drives it from the host's own turn events.
  * `status` lists touched paths that still differ from their baseline;
  * `undo` restores bytes, missing state or HEAD and resets the index entry;
  * `keep` advances the baseline (one path) or drops the checkpoint (all).
@@ -39,6 +40,12 @@ interface ManifestJson {
   files: Record<string, SnapshotKind>
   touched?: string[]
   tracked?: string[]
+}
+
+/** A repo-relative path a turn touched, and whether HEAD has it (null: not asked yet). */
+export interface TouchedPath {
+  relative: string
+  inHead: boolean | null
 }
 
 const empty = (): CheckpointStatus => ({ files: [] })
@@ -88,78 +95,73 @@ export class CheckpointStore {
     })
   }
 
-  capture(sessionId: string, cwd: string, paths: string[]): Promise<void> {
-    if (paths.length === 0) return Promise.resolve()
+  /**
+   * The paths a turn touched, merged into the manifest with at most one
+   * write; with `sync`, also the newly dirty paths no other session in the
+   * project has claimed. Answers every path the manifest knows (snapshots
+   * and touched), or null when the session has no checkpoint for this cwd.
+   */
+  record(
+    sessionId: string,
+    cwd: string,
+    touched: readonly TouchedPath[],
+    options: { sync?: boolean } = {}
+  ): Promise<Set<string> | null> {
     return this.serialized(sessionId, async () => {
-      const root = await projectRoot(cwd)
-      const dir = this.sessionDir(sessionId)
       const manifest = await this.loadMatching(sessionId, cwd)
-      if (!manifest) return
-      const relatives: string[] = []
-      for (const path of paths) {
-        const relative = relativeToRoot(root, path)
-        if (relative !== null && !relatives.includes(relative)) relatives.push(relative)
-      }
-      const head = await inHeadMany(root, relatives)
-      let dirty = false
-      for (const relative of relatives) {
-        if (manifest.touched.size >= MAX_SNAPSHOT_FILES) break
-        if (!manifest.touched.has(relative)) {
-          manifest.touched.add(relative)
-          dirty = true
-        }
-        const trackedInHead = head.has(relative)
-        if (trackedInHead && !manifest.tracked.has(relative)) {
-          manifest.tracked.add(relative)
-          dirty = true
-        }
-        if (manifest.files.has(relative)) continue
-        // Only snapshot files that do not exist yet so a late capture cannot
-        // freeze the agent's write as the baseline. A missing tracked file
-        // must keep HEAD as its baseline.
-        if (trackedInHead || (await exists(join(root, relative)))) continue
-        manifest.files.set(relative, await snapshotFile(dir, root, relative))
-        dirty = true
-      }
+      if (!manifest) return null
+      const root = await projectRoot(cwd)
+      let dirty = await markTouched(root, manifest, touched)
+      if (options.sync && (await this.claimDirty(sessionId, cwd, root, manifest))) dirty = true
       if (dirty) await this.save(sessionId, manifest)
+      return new Set([...manifest.files.keys(), ...manifest.touched])
     })
   }
 
-  sync(sessionId: string, cwd: string): Promise<void> {
+  /** Mark paths touched, asking HEAD about all of them in one git child. */
+  capture(sessionId: string, cwd: string, paths: string[]): Promise<void> {
+    if (paths.length === 0) return Promise.resolve()
     return this.serialized(sessionId, async () => {
       const manifest = await this.loadMatching(sessionId, cwd)
       if (!manifest) return
       const root = await projectRoot(cwd)
-      const dir = this.sessionDir(sessionId)
-      const index = (await gitDiffIndex(root)).files
-      const foreign = await this.foreignTouchedPaths(cwd, sessionId)
-      const gitDirty = new Set(index.map((file) => file.relative))
-      const candidates: string[] = []
-      for (const file of index) {
-        const relative = tryRepoPath(file.relative)
-        // Already dirty at ensure(): only capture() may mark these.
-        if (relative === null || foreign.has(relative) || manifest.files.has(relative)) continue
-        candidates.push(relative)
-      }
-      const head = await inHeadMany(
-        root,
-        candidates.filter((relative) => !manifest.tracked.has(relative))
-      )
-      let dirty = false
-      for (const relative of candidates) {
-        if (manifest.touched.size >= MAX_SNAPSHOT_FILES) break
-        if (!(await fileDiffers(dir, root, manifest, relative, gitDirty, head))) continue
-        if (head.has(relative) && !manifest.tracked.has(relative)) {
-          manifest.tracked.add(relative)
-          dirty = true
-        }
-        if (!manifest.touched.has(relative)) {
-          manifest.touched.add(relative)
-          dirty = true
-        }
-      }
-      if (dirty) await this.save(sessionId, manifest)
+      const relatives = [...new Set(paths.map((path) => relativeToRoot(root, path)))].filter((r): r is string => r !== null)
+      const head = await inHeadMany(root, relatives)
+      const touched = relatives.map((relative) => ({ relative, inHead: head.has(relative) }))
+      if (await markTouched(root, manifest, touched)) await this.save(sessionId, manifest)
     })
+  }
+
+  async sync(sessionId: string, cwd: string): Promise<void> {
+    await this.record(sessionId, cwd, [], { sync: true })
+  }
+
+  /** Claim the paths dirty now that were clean at ensure, untouched so far
+   *  and unclaimed by any other session in the project. */
+  private async claimDirty(sessionId: string, cwd: string, root: string, manifest: Manifest): Promise<boolean> {
+    const index = (await gitDiffIndex(root)).files
+    const foreign = await this.foreignTouchedPaths(cwd, sessionId)
+    const gitDirty = new Set(index.map((file) => file.relative))
+    const candidates: string[] = []
+    for (const file of index) {
+      const relative = tryRepoPath(file.relative)
+      // Dirty at ensure (snapshotted): only a record may mark these.
+      if (relative === null || foreign.has(relative) || manifest.files.has(relative)) continue
+      if (!manifest.touched.has(relative)) candidates.push(relative)
+    }
+    const head = await inHeadMany(
+      root,
+      candidates.filter((relative) => !manifest.tracked.has(relative))
+    )
+    let dirty = false
+    for (const relative of candidates) {
+      if (manifest.touched.size >= MAX_SNAPSHOT_FILES) break
+      if (!(await fileDiffers(this.sessionDir(sessionId), root, manifest, relative, gitDirty, head))) continue
+      if (head.has(relative)) manifest.tracked.add(relative)
+      manifest.touched.add(relative)
+      dirty = true
+    }
+    return dirty
   }
 
   /** A status already on its way for this session answers every caller
@@ -277,7 +279,7 @@ export class CheckpointStore {
   /** Forget a session's snapshot dir: what archiving a thread does, since
    *  undo means nothing for a thread nobody will send to without reviving
    *  it first (and the dirs were most of 17 GB on one machine). Runs on
-   *  the session's chain so an in-flight capture cannot recreate it. */
+   *  the session's chain so an in-flight record cannot recreate it. */
   discard(sessionId: string): Promise<void> {
     return this.serialized(sessionId, () => this.drop(sessionId))
   }
@@ -292,7 +294,7 @@ export class CheckpointStore {
 
 /** One `git diff` per checkout per moment, shared by every status that
  *  asks while it runs: ten panels on the same repo cost one child. Only
- *  statuses share — ensure, capture and sync read the index fresh, since
+ *  statuses share — ensure and record read the index fresh, since
  *  they run right after a write and must see it. */
 const indexInFlight = new Map<string, Promise<GitChangedFile[]>>()
 function sharedDiffIndex(root: string): Promise<GitChangedFile[]> {
@@ -394,6 +396,29 @@ async function revertNewChange(root: string, relative: string): Promise<void> {
 
 // ── snapshots ────────────────────────────────────────────────────────
 
+/** Add `touched` to the manifest; true when anything changed. The only
+ *  snapshot taken here is `missing`, for a path neither HEAD nor the disk
+ *  has: a late mark must never freeze the agent's write as the baseline,
+ *  and a missing tracked file keeps HEAD as its baseline. */
+async function markTouched(root: string, manifest: Manifest, touched: readonly TouchedPath[]): Promise<boolean> {
+  let dirty = false
+  for (const { relative, inHead } of touched) {
+    if (manifest.touched.size >= MAX_SNAPSHOT_FILES) break
+    if (!manifest.touched.has(relative)) {
+      manifest.touched.add(relative)
+      dirty = true
+    }
+    if (inHead && !manifest.tracked.has(relative)) {
+      manifest.tracked.add(relative)
+      dirty = true
+    }
+    if (inHead !== false || manifest.files.has(relative) || (await exists(join(root, relative)))) continue
+    manifest.files.set(relative, 'missing')
+    dirty = true
+  }
+  return dirty
+}
+
 async function snapshotFile(dir: string, root: string, relative: string): Promise<SnapshotKind> {
   const abs = join(root, relative)
   const meta = await stat(abs).catch(() => null)
@@ -490,6 +515,16 @@ function expandHome(path: string): string {
   return resolve(path)
 }
 
+/** The cwd a session's checkpoint lives under: the row's (the work cwd the
+ *  thread was created in), or null when it has none to snapshot. */
+export function checkpointCwd(session: { cwd?: string } | null | undefined): string | null {
+  const cwd = session?.cwd?.trim()
+  return cwd && cwd !== '~' ? cwd : null
+}
+
+/** The directory a checkpoint cwd names, the key its manifest is saved under. */
+export const checkpointRoot = (cwd: string): string => expandHome(cwd.trim())
+
 async function projectRoot(cwd: string): Promise<string> {
   const trimmed = cwd.trim()
   if (!trimmed || trimmed === '~') throw new Error('cwd is required')
@@ -520,7 +555,7 @@ function tryRepoPath(relative: string): string | null {
 }
 
 /** Absolute or `~` paths become repo-relative; paths outside the project are skipped. */
-function relativeToRoot(root: string, path: string): string | null {
+export function relativeToRoot(root: string, path: string): string | null {
   const trimmed = path.trim()
   if (!trimmed) return null
   const expanded = trimmed === '~' || trimmed.startsWith('~/') ? expandHome(trimmed) : trimmed
@@ -542,10 +577,10 @@ const exists = async (path: string): Promise<boolean> => (await stat(path).catch
 const isFile = async (path: string): Promise<boolean> => (await stat(path).catch(() => null))?.isFile() ?? false
 const isDir = async (path: string): Promise<boolean> => (await stat(path).catch(() => null))?.isDirectory() ?? false
 
-async function git(root: string, args: string[]): Promise<string> {
+async function git(root: string, args: string[], maxBuffer = 8 * 1024 * 1024): Promise<string> {
   try {
     const { stdout } = await execFileBudgeted('git', ['--no-pager', '-C', root, ...args], {
-      maxBuffer: 8 * 1024 * 1024,
+      maxBuffer,
       timeout: 120_000,
       env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', GIT_LITERAL_PATHSPECS: '1' }
     })
@@ -557,9 +592,15 @@ async function git(root: string, args: string[]): Promise<string> {
 }
 
 /** Which of `relatives` exist in HEAD, from one git child; none without a HEAD. */
-async function inHeadMany(root: string, relatives: string[]): Promise<Set<string>> {
+export async function inHeadMany(root: string, relatives: string[]): Promise<Set<string>> {
   if (relatives.length === 0) return new Set()
   const out = await git(root, ['ls-tree', '-r', '--name-only', '-z', 'HEAD', '--', ...relatives]).catch(() => '')
+  return new Set(out.split('\0').filter(Boolean))
+}
+
+/** Every path the index tracks under `root`, from one git child; none outside a repo. */
+export async function listTracked(root: string): Promise<Set<string>> {
+  const out = await git(root, ['ls-files', '-z'], 64 * 1024 * 1024).catch(() => '')
   return new Set(out.split('\0').filter(Boolean))
 }
 

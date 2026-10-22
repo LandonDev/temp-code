@@ -884,7 +884,7 @@ function ChangesLine({ session, onShow }: { session: Session; onShow?: () => voi
   useEffect(() => {
     let alive = true;
     const fetch = (): void => {
-      sessionCheckpointStatus(session.environmentId, session.id, session.cwd)
+      sessionCheckpointStatus(session.environmentId, session.id)
         .then((s) => alive && setFiles(s.files))
         .catch(() => {});
     };

@@ -1182,6 +1182,11 @@ export type ServerPush =
   // edit, or the file edited behind the mirror). Every client gets it;
   // the phone's decoder folds it into its unknown case.
   | { push: 'notes'; sessionId: string; doc: ThreadNotesDoc }
+  // A thread's undo checkpoint changed (checkpointTurns.ts: a turn settled,
+  // or edits after it were written). To the sockets subscribed to that
+  // thread; the review strip reads `checkpoint.status` again. Not in the
+  // phone's subset.
+  | { push: 'checkpoint-changed'; sessionId: string }
   // A master's batch changed a step (batch.ts: a child landed, the gate or
   // the release moved). Every client gets it; not in the phone's subset.
   | { push: 'batch'; state: import('./contract-batch').BatchState }

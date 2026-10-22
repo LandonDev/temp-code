@@ -78,10 +78,11 @@ export const childBudget = new ChildBudget()
 export const oneShotBudget = new ChildBudget(2)
 
 /**
- * The review panels' `checkpoint.status` diffs. Twenty open panels in a
- * 49k-file checkout once held all four shared slots for twenty minutes
- * while the sends' `ensure` and the turns' `capture` queued behind them;
- * on their own lane a panel can only ever slow another panel.
+ * The review panels' `checkpoint.status` diffs and each turn's settle diff
+ * (checkpointTurns.ts). Twenty open panels in a 49k-file checkout once held
+ * all four shared slots for twenty minutes while the sends' `ensure` and
+ * the turns' captures queued behind them; on their own lane a review diff
+ * can only ever slow another review diff.
  */
 export const statusBudget = new ChildBudget(2)
 

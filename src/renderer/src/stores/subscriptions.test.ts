@@ -69,7 +69,6 @@ vi.mock("../lib/models", async (importOriginal) => {
     mergeModelSettings: (_resolved: unknown, settings?: Record<string, string>) => settings ?? {},
   };
 });
-vi.mock("../lib/checkpointBridge", () => ({ installCheckpointBridge: () => () => {} }));
 vi.mock("../lib/native", () => ({ invoke: vi.fn(() => Promise.resolve()) }));
 vi.mock("../lib/appLifecycle", () => ({ isAppQuitting: () => false }));
 vi.mock("../lib/sessionStore", async (importOriginal) => ({
