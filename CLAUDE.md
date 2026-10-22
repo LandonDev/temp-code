@@ -804,6 +804,28 @@ routed to (aliax-core's `forward`). Two listeners:
   (default 4). A dropped link answers `linkDown` with the last state, never
   a hang. docs/box.md "Threads across hosts"; proof
   `bun run script:e2e-cross-host-threads`.
+- The relay: a phone or bot paired with the box reaches the Mac's threads
+  through the box. `/ws?ticket=…&host=<envId>` is a second socket under the
+  Mac's id: the box answers the hello (the Mac's `environmentId`, `via` the
+  box, `presence` the Mac's row), runs its own gate, refuses a method outside
+  `RELAY_METHODS` and answers the key's `remote.push.*` itself, and forwards
+  the rest over the Mac's link as `relay.frame`; the Mac serves the lane with
+  its own `attach()` on a `RelaySocket` and sends its frames back as
+  `relay.frames` (src/shared/contract-relay.ts; box side remote/relay.ts,
+  Mac side remote/relayServe.ts). The Mac reports its screen and power
+  (src/main/presence.ts: powerMonitor, `ioreg` at boot) in `peer.register`,
+  on every change and every minute (`peer.presence`); the box keeps the rows
+  (`relay.hosts`), lists them in the hello (`hosts`) and `/api/hello`, and
+  pushes `presence` on a change. A state that forbids a call answers one line
+  (`relayRefusal`): `unavailable: the Mac is locked` (the screen method
+  only), `… asleep`, `… unreachable since HH:MM`; a drop mid-request is
+  `linkDown: …` and closes the lane 4010; an unregistered host is 503 at the
+  upgrade. `/mcp` takes `host` and `env_…:id` sessions (docs/remote-mcp.md
+  "Hosts"). A Mac with no delivery of its own sends its notices as
+  `relay.notice`. Seams: `TEMP_CODE_PRESENCE`, `presence.set` under
+  `TEMP_CODE_E2E_PRESENCE=1`, the iOS test server's four relayed hosts
+  (remote/relayLoopback.ts, `POST /presence`). docs/box.md "The relay";
+  proof `bun run script:e2e-mac-relay`.
 - Devices on the Mac: Settings → Remote access, under the Mac bridge's
   host rows, lists this Mac's simulators and iPhones with a state dot, the
   booted ones' CPU, the thread that holds each (the `thread_resources`

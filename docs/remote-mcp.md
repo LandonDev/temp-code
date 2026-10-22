@@ -26,6 +26,30 @@ temp-code threads.
   request), `failed` (the turn died or an account needs sign-in), `done` (idle,
   ready for the next message). `state` carries temp-code's own finer word.
 
+## Hosts
+
+The host a bot is paired with may carry it to others: the box reaches the
+Mac over the Mac's own link (docs/box.md "The relay").
+
+- `list_projects` answers `hosts` (this host first with `self: true`, then
+  every host reachable from here with `state`: `available`, `locked`,
+  `asleep` or `unreachable`, `since`, `screen`, `power`) beside `repos`, and
+  every repo names its `host`. Repos of a host that cannot answer are left
+  out; its row says why.
+- Every tool takes `host`: an environment id or a name from `hosts`. A
+  session id of the form `env_…:id` lives on that host and routes there, and
+  every relayed row comes back with its id in that form and `host` set.
+- `list_sessions` and `list_pending` without `host` merge this host's page
+  with the first page of every relayed host, working first; `cursor` pages
+  this host only. Hosts that did not answer are listed in `unavailable` with
+  the reason. With `host`, the page is that host's alone.
+- A relayed call that a state forbids is the tool result
+  `error: unavailable: the Mac is asleep` (or `… unreachable since 09:14`);
+  a link that drops mid-call is `error: linkDown: the Mac is unreachable
+  since 09:14`. A locked Mac answers every tool.
+- An app client reaches a relayed host as a second socket on the same host,
+  `/ws?ticket=…&host=<envId>`.
+
 ## Tools
 
 | Tool | What it does |

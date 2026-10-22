@@ -170,6 +170,13 @@ build's sandbox token would be refused by this key. Rotating the key: put the
 new .p8 beside the old one, change the three lines, restart the service, and
 revoke the old key in the developer account. Never copy the key anywhere else.
 
+A Mac holds no APNs key, so its own threads' notices travel through the box:
+a Mac with neither a key nor a hub sends each one down its link as
+`relay.notice`, and the box delivers it through its sender, its hub client
+and the key webhooks with `environmentId` set to the Mac's id, so a tap opens
+the thread on the Mac's client ("The relay" below). Live Activities for a Mac
+thread are not carried yet.
+
 ## Backups (live since 2026-10-19)
 
 Restic, to the Cloudflare R2 bucket `tempcode-backups` (account
@@ -1769,6 +1776,71 @@ watcher and stops with the last, the peer serving), `devices/ledger.test.ts`,
 `surfaces/MacDevices.dom.test.tsx` (the table, the empty state "No
 simulators", the confirm) and `lib/hostDevices.dom.test.tsx` (watch on
 mount, unwatch on unmount).
+### The relay: the phone and the API reach the Mac through the box
+
+A phone or a bot pairs with the box, the one host behind the tunnel. The
+Mac's main process already holds an admin link to the box, so the box carries
+the phone to the Mac over that link: the phone keeps one client per host, and
+the Mac's client is a second socket on the box,
+`/ws?ticket=<t>&host=<the Mac's environment id>` (the cookie upgrade takes
+the same query). Nothing on the phone has to know the hop.
+
+- **The lane.** The box answers the hello itself, under the Mac's id:
+  `environmentId` is the Mac's, `caps` and `key` are the box key's, `build`
+  is the Mac's, `via` is the box's id and `presence` the Mac's row. It then
+  asks the Mac `relay.open` (a `peer.call` of the `relay` offer); the Mac
+  serves the lane with its own `attach()` on a virtual socket
+  (`remote/relayServe.ts` `RelaySocket`) under a remote principal with the
+  box key's caps, named `<key> via <box>`, so the Mac's fence, gate and
+  coalescer run as for any remote caller. Each request crosses as
+  `relay.frame`; the Mac's frames come back in order as `relay.frames`
+  (batched, one request in flight, 2 MiB a batch), its own hello swallowed.
+- **What crosses.** `RELAY_METHODS` in `src/shared/contract-relay.ts`: every
+  read and steering method the phone speaks (threads, projects, files, notes,
+  queues, attachments, batches, resources, GitHub, devices). The box runs its
+  own gate first: a `local` method or a cap the key lacks never crosses, and
+  a method outside the table is `forbidden: <method> does not relay to another
+  host`. The key's own push rows (`remote.push.*`) are answered by the box;
+  `remote.push.activity` answers null.
+- **Presence.** The Mac reports its screen and power (`src/main/presence.ts`:
+  Electron's `powerMonitor` for lock, unlock, suspend and resume, the lock
+  read once at boot from `ioreg`), in `peer.register`, on every change and
+  every minute as `peer.presence`. The box adds the link (up or down, and
+  since when) and the last time it heard the Mac, keeps every row in the
+  `relay.hosts` setting so a down Mac is still listed after a restart, and
+  pushes `presence` (the whole list) to every remote socket when a row's
+  link, screen, power or name changes. `/api/hello` lists the rows for a key
+  the box knows; a direct lane's hello carries them as `hosts`.
+
+| Mac | Reads and steering | Opening Xcode | Refusal |
+|---|---|---|---|
+| available | run | run | — |
+| locked | run | refused | `unavailable: the Mac is locked` |
+| asleep | refused | refused | `unavailable: the Mac is asleep` |
+| unreachable | refused | refused | `unavailable: the Mac is unreachable since 09:14` |
+
+- **Refusals.** A locked Mac keeps running: only what needs its screen or
+  its person is refused. A request in flight when the link drops answers
+  `linkDown: the Mac is unreachable since 09:14` and the lane closes with
+  4010; the Mac closing its end is 4011, another contract 4012, a revoked
+  key 4001 as for every socket. A lane to a host that is not registered now
+  is refused at the upgrade with 503. The time is the box's, with the date
+  before it when it is not today.
+- **/mcp.** Every tool takes `host`; a session id of the form
+  `<envId>:<id>` routes to that host; `list_projects` names every host with
+  its state, and `list_sessions` and `list_pending` merge every host that
+  answers (docs/remote-mcp.md "Hosts"). A relayed call runs the Mac's own
+  facade (`relay.facade`).
+- **Seams.** `TEMP_CODE_PRESENCE=locked|unlocked|asleep|awake` sets an
+  isolated instance's start state; `presence.set` (local) flips it under
+  `TEMP_CODE_E2E_PRESENCE=1`. The iOS test server seeds four relayed hosts in
+  one process (`remote/relayLoopback.ts`): Studio Mac available, locked,
+  asleep and unreachable, with `POST /presence` to flip one.
+- **Code.** The box: `remote/relay.ts` (`HostRelay`, `PeerRelayTransport`).
+  The Mac: `remote/relayServe.ts` (`RelayServer`, `RelaySocket`). The wire:
+  `src/shared/contract-relay.ts`. Proof: `bun run script:e2e-mac-relay`
+  (two headless instances of the built tree; build first).
+
 ### Search across hosts
 
 The search surface (⌘⇧F opens it; src/renderer/src/surfaces/SearchView.tsx)
