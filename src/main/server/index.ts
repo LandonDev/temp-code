@@ -132,7 +132,7 @@ import {
   setProjectPlans
 } from './apptools'
 import { ProjectPlans, handleProjectPlan } from './projectPlan'
-import { Batches, handleBatch, setBatches } from './batch'
+import { Batches, batchChildren, handleBatch, setBatches } from './batch'
 import { LocalPublish, MacPublish, macPublishOffers } from './remote/macPublish'
 import { PeerDeploy } from './remote/peerDeploy'
 import { PeerPublish } from './remote/peerPublish'
@@ -2243,25 +2243,43 @@ export async function startServer(
     place: (meta) =>
       (meta.projectId ? registry.getProject(meta.projectId)?.name : null) ??
       (meta.workspaceId ? registry.listWorkspaces().find((w) => w.id === meta.workspaceId)?.name : null) ??
-      null
+      null,
+    // The payload's tc.host: the phone adds it to the subtitle when several hosts are paired.
+    hostName: () => hostname()
   })
   if (hub) {
     notifier.onNotice(
       (n) =>
-        void hub.notify({ event: n.event, threadId: n.threadId, title: n.title, subtitle: n.subtitle, body: n.body, url: n.url, ts: n.ts, seq: n.seq, kind: n.kind, requestId: n.requestId })
+        void hub.notify({ event: n.event, threadId: n.threadId, title: n.title, subtitle: n.subtitle, body: n.body, url: n.url, ts: n.ts, seq: n.seq, kind: n.kind, requestId: n.requestId, hostName: n.hostName })
     )
   }
   // A host with the key posts every notice to its phones itself.
   if (apns)
     notifier.onNotice((n) =>
-      pushRegistry.deliver({ event: n.event, threadId: n.threadId, seq: n.seq, title: n.title, subtitle: n.subtitle, body: n.body, kind: n.kind, requestId: n.requestId, ts: n.ts }).then(() => undefined)
+      pushRegistry.deliver({ event: n.event, threadId: n.threadId, seq: n.seq, title: n.title, subtitle: n.subtitle, body: n.body, kind: n.kind, requestId: n.requestId, hostName: n.hostName, ts: n.ts }).then(() => undefined)
     )
   // Threads with a Live Activity on a phone: every change of what the card
   // shows goes out as a liveactivity push (coalesced for the task line), and
-  // a needs-you notice gives the waiting state its reason; registrations the
-  // hub never took are offered again.
-  const activityFeed = new ActivityFeed({ registry, push: pushRegistry, hub: () => hub, local: () => apns !== null })
+  // a needs-you notice gives the waiting state its reason; a watching
+  // master's card counts its batch's children and names the engine's step,
+  // re-read whenever the batch moves; registrations the hub never took are
+  // offered again.
+  const activityFeed = new ActivityFeed({
+    registry,
+    push: pushRegistry,
+    hub: () => hub,
+    local: () => apns !== null,
+    isMaster: (m) => m.isMaster === true,
+    batch: (id) => {
+      const kids = batchChildren(registry, id)
+      if (!kids.length) return null
+      const running = batchRuns.get(id).steps.find((s) => s.status === 'running')
+      const done = kids.filter((k) => k.status === 'done' || (k.status === 'idle' && registry.hasCompletedTurn(k.id))).length
+      return { done, total: kids.length, step: running?.name ?? null }
+    }
+  })
   activityFeed.start()
+  batchRuns.onChange((state) => activityFeed.poke(state.masterId))
   notifier.onNotice((n) => {
     if (n.event === 'needs_you') activityFeed.needsYou(n.threadId, n.body)
   })
