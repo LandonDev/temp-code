@@ -234,11 +234,27 @@ export const RELAY_METHODS: Partial<Record<ClientRequest['method'], 'link' | 'sc
   'project.setPreamble': 'link',
   'workspace.setPreamble': 'link',
   'plans.set': 'link',
-  'review.set': 'link'
+  'review.set': 'link',
+  // the host's own harness and memory sync with its links: the Mac answers for itself (admin on both hosts)
+  'harness.status': 'link',
+  'harness.sync': 'link',
+  'memory.status': 'link',
+  'memory.sync': 'link'
 }
 
-/** Methods the phone speaks that never cross, by design: the box's own deploy trigger means nothing under another host's id. */
-export const RELAY_NOT_CARRIED: readonly ClientRequest['method'][] = ['host.deployStatus', 'host.deploy', 'host.log']
+/**
+ * Methods the phone speaks that never cross, by design; the phone reads them on the box's own lane.
+ *  - host.deployStatus, host.deploy, host.log: the box's own deploy trigger means nothing under another host's id.
+ *  - macBridge.activity, macBridge.stop: the box's view of the calls its threads make into the Mac; under the
+ *    Mac's id they would answer what the Mac serves instead, and Stop would act on the wrong side of the bridge.
+ */
+export const RELAY_NOT_CARRIED: readonly ClientRequest['method'][] = [
+  'host.deployStatus',
+  'host.deploy',
+  'host.log',
+  'macBridge.activity',
+  'macBridge.stop'
+]
 
 /** Methods a relayed lane answers on the box itself (the key's own rows). */
 export const RELAY_BOX_LOCAL: readonly ClientRequest['method'][] = [
