@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { AccountPins, AccountProvider } from './accounts'
+import type { AccountPins, AccountProvider, AccountsSnapshot } from './accounts'
 import type { BuildOutput, BuildRun, BuildStatus } from './build'
 import {
   AGENT_TYPES,
@@ -160,6 +160,58 @@ export const ReasoningSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 
 export const AgentTypeSchema = z.enum(AGENT_TYPES)
 export const AccountProviderSchema = z.enum(['claude', 'codex', 'cursor'])
 export const AccountPinsSchema = z.partialRecord(AccountProviderSchema, z.string())
+
+// ── accounts on the wire (the phone's subset of accounts.ts) ────────────
+// The desktop's ProfileView and UsageReport carry more; the phone reads the
+// fields the chip, the menu's rows and the headroom bar need and ignores
+// the rest (createdAt, syncedAt, plan, …).
+
+/** The account fields the phone reads; the desktop's ProfileView carries more. */
+export const AccountProfileSchema = z.object({
+  name: z.string(),
+  email: z.string().optional(),
+  nickname: z.string().optional(),
+  color: z.string().optional(),
+  active: z.boolean(),
+  duplicate: z.boolean().optional(),
+  static: z.boolean().optional()
+})
+export const UsageWindowSchema = z.object({
+  label: z.string(),
+  usedPercent: z.number(),
+  resetsAt: z.number().int().optional(),
+  periodMs: z.number().int().optional()
+})
+export const UsageReportSchema = z.object({
+  profileName: z.string(),
+  windows: z.array(UsageWindowSchema),
+  note: z.string().optional(),
+  expired: z.boolean().optional(),
+  rateLimit: z.object({ provider: z.string(), until: z.number().int().optional() }).optional()
+})
+export const AccountHeadroomSchema = z.object({
+  room: z.number().nullable(),
+  resetsAt: z.number().int().optional(),
+  throttledUntil: z.number().int().optional(),
+  ratePerMin: z.number(),
+  tier: z.string().optional(),
+  seenAt: z.number().int().nullable()
+})
+export const ProviderAccountsSchema = z.object({
+  pinned: z.string().nullable(),
+  profiles: z.array(AccountProfileSchema),
+  reports: z.array(UsageReportSchema),
+  note: z.string().optional(),
+  headroom: z.record(z.string(), AccountHeadroomSchema).optional()
+})
+export const AccountsSnapshotSchema = z.object({
+  updatedAt: z.number().int(),
+  providers: z.object({
+    claude: ProviderAccountsSchema,
+    codex: ProviderAccountsSchema,
+    cursor: ProviderAccountsSchema
+  })
+})
 
 export const ModelInfoSchema = z.object({
   id: z.string(),
@@ -749,6 +801,8 @@ export const NotesPushSchema = push('notes', { sessionId: z.string(), doc: Threa
 export const SessionRemovedPushSchema = push('session-removed', { sessionIds: z.array(z.string()) })
 export const SessionMovedPushSchema = push('session-moved', { id: z.string(), sessionIds: z.array(z.string()), to: z.string() })
 export const BootResumePushSchema = push('boot-resume', { count: z.number().int(), at: z.number().int() })
+/** The whole accounts snapshot, to every socket, whenever it rebuilds (index.ts); headroom changes at most every 5 s. */
+export const AccountsPushSchema = push('accounts', { snapshot: AccountsSnapshotSchema })
 
 // Thread resources (contract-resources.ts): the ledger rows the phone's
 // Resources sheet and its archive prompt read, and the fleet's batch answer.
@@ -794,7 +848,8 @@ export const RemotePushSchema = z.discriminatedUnion('push', [
   SessionRemovedPushSchema,
   SessionMovedPushSchema,
   BootResumePushSchema,
-  ResourcesPushSchema
+  ResourcesPushSchema,
+  AccountsPushSchema
 ])
 
 // ── the pins ────────────────────────────────────────────────────────────
@@ -877,5 +932,9 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof ThreadResourceSchema, ThreadResource>>,
   Expect<Mirror<typeof ThreadResourceRemovalSchema, ThreadResourceRemoval>>,
   Expect<Mirror<typeof SessionBatchResultSchema, SessionBatchResult>>,
-  Expect<Mirror<typeof ResourcesPushSchema, PushOf<'resources'>>>
+  Expect<Mirror<typeof ResourcesPushSchema, PushOf<'resources'>>>,
+  // The account shapes are subsets of the desktop's (ProfileView carries
+  // more), so the check is `extends`, as AgentEvent's is.
+  Expect<AccountsSnapshot extends z.infer<typeof AccountsSnapshotSchema> ? true : false>,
+  Expect<PushOf<'accounts'>['snapshot'] extends z.infer<typeof AccountsSnapshotSchema> ? true : false>
 ]
