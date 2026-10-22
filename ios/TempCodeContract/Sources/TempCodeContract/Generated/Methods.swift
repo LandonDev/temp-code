@@ -490,26 +490,6 @@ public enum Methods {
         public typealias Output = NoOutput
     }
 
-    public enum SessionStart: ContractMethod {
-        public static let name = "session.start"
-
-        public struct Params: Codable, Hashable, Sendable {
-            public let sessionId: String
-
-            public init(sessionId: String) {
-                self.sessionId = sessionId
-            }
-        }
-
-        public struct Output: Codable, Hashable, Sendable {
-            public let started: Bool
-
-            public init(started: Bool) {
-                self.started = started
-            }
-        }
-    }
-
     public enum SessionContinue: ContractMethod {
         public static let name = "session.continue"
 
@@ -558,6 +538,42 @@ public enum Methods {
         }
 
         public typealias Output = ReviewOverrideAnswer
+    }
+
+    public enum SessionSetMaster: ContractMethod {
+        public static let name = "session.setMaster"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sessionId: String
+            public let master: Bool
+
+            public init(sessionId: String, master: Bool) {
+                self.sessionId = sessionId
+                self.master = master
+            }
+        }
+
+        public typealias Output = NoOutput
+    }
+
+    public enum SessionStart: ContractMethod {
+        public static let name = "session.start"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sessionId: String
+
+            public init(sessionId: String) {
+                self.sessionId = sessionId
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let started: Bool
+
+            public init(started: Bool) {
+                self.started = started
+            }
+        }
     }
 
     public enum SessionBatch: ContractMethod {
@@ -731,6 +747,395 @@ public enum Methods {
         }
 
         public typealias Output = NoOutput
+    }
+
+    public enum BatchGet: ContractMethod {
+        public static let name = "batch.get"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let masterId: String
+
+            public init(masterId: String) {
+                self.masterId = masterId
+            }
+        }
+
+        public typealias Output = BatchState
+    }
+
+    public enum BatchChildren: ContractMethod {
+        public static let name = "batch.children"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let masterId: String
+
+            public init(masterId: String) {
+                self.masterId = masterId
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let children: [SessionMeta]
+
+            public init(children: [SessionMeta]) {
+                self.children = children
+            }
+        }
+    }
+
+    public enum BatchSetRules: ContractMethod {
+        public static let name = "batch.setRules"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public struct Rules: Codable, Hashable, Sendable {
+                public enum Land: RawRepresentable, Codable, Hashable, Sendable {
+                    case asTheyFinish
+                    case allAtOnce
+                    /// A value this build does not know; `rawValue` keeps it.
+                    case unknown(String)
+
+                    public init(rawValue: String) {
+                        switch rawValue {
+                        case "as-they-finish": self = .asTheyFinish
+                        case "all-at-once": self = .allAtOnce
+                        default: self = .unknown(rawValue)
+                        }
+                    }
+
+                    public var rawValue: String {
+                        switch self {
+                        case .asTheyFinish: "as-they-finish"
+                        case .allAtOnce: "all-at-once"
+                        case .unknown(let value): value
+                        }
+                    }
+                }
+                public enum Then: RawRepresentable, Codable, Hashable, Sendable {
+                    case notify
+                    case archiveChildren
+                    /// A value this build does not know; `rawValue` keeps it.
+                    case unknown(String)
+
+                    public init(rawValue: String) {
+                        switch rawValue {
+                        case "notify": self = .notify
+                        case "archive-children": self = .archiveChildren
+                        default: self = .unknown(rawValue)
+                        }
+                    }
+
+                    public var rawValue: String {
+                        switch self {
+                        case .notify: "notify"
+                        case .archiveChildren: "archive-children"
+                        case .unknown(let value): value
+                        }
+                    }
+                }
+
+                public let land: Land?
+                public let steps: [BatchStepSpec]?
+                public let then: Then?
+                public let summary: String?
+
+                public init(land: Land? = nil, steps: [BatchStepSpec]? = nil, then: Then? = nil, summary: String? = nil) {
+                    self.land = land
+                    self.steps = steps
+                    self.then = then
+                    self.summary = summary
+                }
+            }
+
+            public let masterId: String
+            public let rules: Rules
+
+            public init(masterId: String, rules: Rules) {
+                self.masterId = masterId
+                self.rules = rules
+            }
+        }
+
+        public typealias Output = BatchState
+    }
+
+    public enum BatchStopStep: ContractMethod {
+        public static let name = "batch.stopStep"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let masterId: String
+            public let stepId: String
+
+            public init(masterId: String, stepId: String) {
+                self.masterId = masterId
+                self.stepId = stepId
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let stopped: Bool
+
+            public init(stopped: Bool) {
+                self.stopped = stopped
+            }
+        }
+    }
+
+    public enum BatchAdopt: ContractMethod {
+        public static let name = "batch.adopt"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let masterId: String
+            public let sessionIds: [String]
+
+            public init(masterId: String, sessionIds: [String]) {
+                self.masterId = masterId
+                self.sessionIds = sessionIds
+            }
+        }
+
+        public typealias Output = BatchAdoptResult
+    }
+
+    public enum BatchArchive: ContractMethod {
+        public static let name = "batch.archive"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum Which: RawRepresentable, Codable, Hashable, Sendable {
+                case done
+                case all
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "done": self = .done
+                    case "all": self = .all
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .done: "done"
+                    case .all: "all"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let masterId: String
+            public let which: Which
+            public let removeResources: Bool?
+
+            public init(masterId: String, which: Which, removeResources: Bool? = nil) {
+                self.masterId = masterId
+                self.which = which
+                self.removeResources = removeResources
+            }
+        }
+
+        public typealias Output = SessionBatchResult
+    }
+
+    public enum ProjectPlanLinkOf: ContractMethod {
+        public static let name = "projectPlan.linkOf"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sessionId: String
+
+            public init(sessionId: String) {
+                self.sessionId = sessionId
+            }
+        }
+
+        public typealias Output = MilestoneLink?
+    }
+
+    public enum HostDevicesHosts: ContractMethod {
+        public static let name = "host.devices.hosts"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public init() {}
+        }
+
+        public typealias Output = [HostDevicesHost]
+    }
+
+    public enum HostDevices: ContractMethod {
+        public static let name = "host.devices"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let environmentId: String?
+
+            public init(environmentId: String? = nil) {
+                self.environmentId = environmentId
+            }
+        }
+
+        public typealias Output = HostDevicesReport
+    }
+
+    public enum HostDevicesWatch: ContractMethod {
+        public static let name = "host.devices.watch"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let environmentId: String?
+
+            public init(environmentId: String? = nil) {
+                self.environmentId = environmentId
+            }
+        }
+
+        public typealias Output = HostDevicesReport
+    }
+
+    public enum HostDevicesUnwatch: ContractMethod {
+        public static let name = "host.devices.unwatch"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let environmentId: String?
+
+            public init(environmentId: String? = nil) {
+                self.environmentId = environmentId
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let ok: Bool
+
+            public init(ok: Bool) {
+                self.ok = ok
+            }
+        }
+    }
+
+    public enum HostSimulatorShutdown: ContractMethod {
+        public static let name = "host.simulator.shutdown"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let environmentId: String?
+            public let udid: String
+
+            public init(environmentId: String? = nil, udid: String) {
+                self.environmentId = environmentId
+                self.udid = udid
+            }
+        }
+
+        public typealias Output = HostDevicesReport
+    }
+
+    public enum HostSimulatorDelete: ContractMethod {
+        public static let name = "host.simulator.delete"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let environmentId: String?
+            public let udid: String
+
+            public init(environmentId: String? = nil, udid: String) {
+                self.environmentId = environmentId
+                self.udid = udid
+            }
+        }
+
+        public typealias Output = HostDevicesReport
+    }
+
+    public enum HostDeviceOpenXcode: ContractMethod {
+        public static let name = "host.device.openXcode"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let environmentId: String?
+
+            public init(environmentId: String? = nil) {
+                self.environmentId = environmentId
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public enum Opened: RawRepresentable, Codable, Hashable, Sendable {
+                case devices
+                case xcode
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "devices": self = .devices
+                    case "xcode": self = .xcode
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .devices: "devices"
+                    case .xcode: "xcode"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let ok: Bool
+            public let opened: Opened
+
+            public init(ok: Bool, opened: Opened) {
+                self.ok = ok
+                self.opened = opened
+            }
+        }
+    }
+
+    public enum HostDeployStatus: ContractMethod {
+        public static let name = "host.deployStatus"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public init() {}
+        }
+
+        public typealias Output = DeployStatus
+    }
+
+    public enum HostDeploy: ContractMethod {
+        public static let name = "host.deploy"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let ref: String
+
+            public init(ref: String) {
+                self.ref = ref
+            }
+        }
+
+        public typealias Output = DeployStatus
+    }
+
+    public enum HostLog: ContractMethod {
+        public static let name = "host.log"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let job: HostJob
+
+            public init(job: HostJob) {
+                self.job = job
+            }
+        }
+
+        public typealias Output = HostLogSnapshot
+    }
+
+    public enum MacBridgeThreadGet: ContractMethod {
+        public static let name = "macBridge.thread.get"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sessionId: String
+
+            public init(sessionId: String) {
+                self.sessionId = sessionId
+            }
+        }
+
+        public typealias Output = MacBridgeThreadState
     }
 
     public enum QueueList: ContractMethod {

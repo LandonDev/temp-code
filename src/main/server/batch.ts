@@ -141,7 +141,7 @@ export interface RemoteBatchLike {
 }
 
 /** What the row keeps beyond the wire shape: each landed child's branch and subjects (the notes), the held landings, the deploy in flight. */
-interface StoredBatch {
+export interface StoredBatch {
   masterId: string
   rules: BatchRules
   /** the telemetry of `withLandStep(rules.steps)`, in that order */
@@ -163,7 +163,8 @@ interface StoredBatch {
   leftOut: number
 }
 
-const freshRow = (masterId: string, rules: BatchRules = DEFAULT_BATCH_RULES): StoredBatch => ({
+/** The row nobody has run: every step pending, nothing landed (a proof's seed starts from this). */
+export const freshRow = (masterId: string, rules: BatchRules = DEFAULT_BATCH_RULES): StoredBatch => ({
   ...emptyBatch(masterId, [], rules),
   armed: true,
   branches: {},
@@ -606,6 +607,16 @@ export class Batches {
     }
     this.schedule(masterId)
     return result
+  }
+
+  /**
+   * Proof seam: set a row as the engine would have written it (persisted
+   * and pushed). The iOS test server and the fixture capture seed a batch
+   * mid-run with it; nothing in the app calls it.
+   */
+  seedRow(row: StoredBatch): BatchState {
+    this.save(row)
+    return this.get(row.masterId)
   }
 
   private row(masterId: string): StoredBatch {

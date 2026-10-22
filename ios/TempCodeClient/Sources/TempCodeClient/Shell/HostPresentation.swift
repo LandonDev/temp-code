@@ -114,7 +114,7 @@ public enum HostFix: Sendable, Hashable {
 /// version alone when the hello carried no commit. `release` repeats the
 /// version and `platform` is the deploy line's, so neither is shown.
 public enum HostBuildLine {
-    public static func text(_ build: HelloPush.Build) -> String {
+    public static func text(_ build: BuildFacts) -> String {
         text(version: build.version, sha: build.sha)
     }
 

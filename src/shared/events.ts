@@ -152,6 +152,14 @@ export const FailureSchema = z.object({
 })
 export type Failure = z.infer<typeof FailureSchema>
 
+/**
+ * What a `notice` row is about. The payload fields stay optional on the row
+ * (`review`, `gate`, `account`), so a reader switches on `kind` and `message`
+ * always reads; the phone's decoder keeps an unknown kind as `unknown(String)`.
+ */
+export const NoticeKindSchema = z.enum(['review', 'gate', 'batch', 'account-gone'])
+export type NoticeKind = z.infer<typeof NoticeKindSchema>
+
 export const AgentEventSchema = z.discriminatedUnion('type', [
   // A message the user (or the orchestrator, for subagents) sent in.
   z.object({
@@ -415,7 +423,7 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   // the thread routes automatically from here; `account` names it).
   z.object({
     type: z.literal('notice'),
-    kind: z.string(),
+    kind: NoticeKindSchema,
     message: z.string(),
     account: z.string().optional(),
     /** kind `review`: a merge review's outcome, for the card (shared/review.ts) */

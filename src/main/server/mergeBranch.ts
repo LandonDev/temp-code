@@ -134,12 +134,8 @@ export async function hasOrigin(cwd: string): Promise<boolean> {
   return gitOk(cwd, ['remote', 'get-url', 'origin'])
 }
 
-export interface MergeResult {
-  /** the target's commit after the merge */
-  sha: string
-  merged: boolean
-  pushed: boolean
-}
+import type { MergeResult } from '@shared/review'
+export type { MergeResult }
 
 /**
  * Fast-forward `target` to `branch` in the checkout at cwd, then push when

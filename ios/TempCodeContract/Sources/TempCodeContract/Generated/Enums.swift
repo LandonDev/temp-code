@@ -466,6 +466,35 @@ public enum GithubInboxReviewDecision: RawRepresentable, Codable, Hashable, Send
     }
 }
 
+public enum NoticeKind: RawRepresentable, Codable, Hashable, Sendable {
+    case review
+    case gate
+    case batch
+    case accountGone
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "review": self = .review
+        case "gate": self = .gate
+        case "batch": self = .batch
+        case "account-gone": self = .accountGone
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .review: "review"
+        case .gate: "gate"
+        case .batch: "batch"
+        case .accountGone: "account-gone"
+        case .unknown(let value): value
+        }
+    }
+}
+
 public enum ThreadResourceKind: RawRepresentable, Codable, Hashable, Sendable {
     case worktree
     case simulator
@@ -487,6 +516,212 @@ public enum ThreadResourceKind: RawRepresentable, Codable, Hashable, Sendable {
         case .worktree: "worktree"
         case .simulator: "simulator"
         case .devInstance: "devInstance"
+        case .unknown(let value): value
+        }
+    }
+}
+
+public enum HostJob: RawRepresentable, Codable, Hashable, Sendable {
+    case deploy
+    case publish
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "deploy": self = .deploy
+        case "publish": self = .publish
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .deploy: "deploy"
+        case .publish: "publish"
+        case .unknown(let value): value
+        }
+    }
+}
+
+public enum HostJobPhase: RawRepresentable, Codable, Hashable, Sendable {
+    case idle
+    case pending
+    case running
+    case done
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "idle": self = .idle
+        case "pending": self = .pending
+        case "running": self = .running
+        case "done": self = .done
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .idle: "idle"
+        case .pending: "pending"
+        case .running: "running"
+        case .done: "done"
+        case .unknown(let value): value
+        }
+    }
+}
+
+public enum BatchStepKind: RawRepresentable, Codable, Hashable, Sendable {
+    case land
+    case gate
+    case release
+    case publish
+    case deploy
+    case shell
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "land": self = .land
+        case "gate": self = .gate
+        case "release": self = .release
+        case "publish": self = .publish
+        case "deploy": self = .deploy
+        case "shell": self = .shell
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .land: "land"
+        case .gate: "gate"
+        case .release: "release"
+        case .publish: "publish"
+        case .deploy: "deploy"
+        case .shell: "shell"
+        case .unknown(let value): value
+        }
+    }
+}
+
+public enum BatchStepStatus: RawRepresentable, Codable, Hashable, Sendable {
+    case pending
+    case running
+    case passed
+    case failed
+    case skipped
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "pending": self = .pending
+        case "running": self = .running
+        case "passed": self = .passed
+        case "failed": self = .failed
+        case "skipped": self = .skipped
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .pending: "pending"
+        case .running: "running"
+        case .passed: "passed"
+        case .failed: "failed"
+        case .skipped: "skipped"
+        case .unknown(let value): value
+        }
+    }
+}
+
+public enum SimulatorState: RawRepresentable, Codable, Hashable, Sendable {
+    case booted
+    case shutdown
+    case other
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "booted": self = .booted
+        case "shutdown": self = .shutdown
+        case "other": self = .other
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .booted: "booted"
+        case .shutdown: "shutdown"
+        case .other: "other"
+        case .unknown(let value): value
+        }
+    }
+}
+
+public enum PhoneConnection: RawRepresentable, Codable, Hashable, Sendable {
+    case connected
+    case paired
+    case unavailable
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "connected": self = .connected
+        case "paired": self = .paired
+        case "unavailable": self = .unavailable
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .connected: "connected"
+        case .paired: "paired"
+        case .unavailable: "unavailable"
+        case .unknown(let value): value
+        }
+    }
+}
+
+public enum ReviewOutcome: RawRepresentable, Codable, Hashable, Sendable {
+    case pass
+    case held
+    case timeout
+    case failed
+    case mergedAnyway
+    case skipped
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "pass": self = .pass
+        case "held": self = .held
+        case "timeout": self = .timeout
+        case "failed": self = .failed
+        case "merged-anyway": self = .mergedAnyway
+        case "skipped": self = .skipped
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .pass: "pass"
+        case .held: "held"
+        case .timeout: "timeout"
+        case .failed: "failed"
+        case .mergedAnyway: "merged-anyway"
+        case .skipped: "skipped"
         case .unknown(let value): value
         }
     }

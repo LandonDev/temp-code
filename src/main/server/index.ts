@@ -19,6 +19,7 @@ import { createServer } from 'node:http'
 import { visibleCatalog } from '@shared/catalog'
 import { refusalCodeOf } from './failureKind'
 import { ClientRequestSchema, type ServerFrame, type ServerPush } from '@shared/contract'
+import type { SessionChanges } from '@shared/wire'
 import {
   CONTRACT_VERSION,
   LOCAL_PRINCIPAL,
@@ -267,6 +268,14 @@ export interface RunningServer {
   remotePage: (host: string, sessionId: string, pageId: string) => Promise<string | null>
   /** A slice of a media file on `host` by its token, over the peer link; null when the host has no such token. */
   remoteMedia: (host: string, token: string, offset: number, length: number) => Promise<MediaRange | null>
+  /** The master threads' batch engine (batch.ts); proofs seed a row through `seedRow`. */
+  batches: Batches
+  /** The thread resources ledger (threadResources.ts); proofs record rows through `record`. */
+  resources: ThreadResources
+  /** The devices hub (devices/hostDevices.ts), over the `devices` option's gatherer. */
+  hostDevices: HostDevicesHub
+  /** The project plans (projectPlan.ts); proofs pin and link through it. */
+  projectPlans: ProjectPlans
   close: () => Promise<void>
 }
 
@@ -312,6 +321,8 @@ export async function startServer(
     preconnect?: (provider: string, account: string | null) => void
     /** This app's updater (update.ts selfUpdate): fetch a version just published, by this host's Publisher or on a peer's word. The installed Mac app only. */
     selfUpdate?: (version: string) => Promise<SelfUpdateOutcome>
+    /** The local devices gatherer, in place of the `isMacHost()` pick: a proof injects a fake on Linux (scripts/ios-client-test-server.ts); null for none. */
+    devices?: MacDevices | null
   } = {}
 ): Promise<RunningServer> {
   bootMark('server-start')
@@ -580,9 +591,12 @@ export async function startServer(
     const meta = store.getSession(id)
     return meta ? { title: meta.title, status: meta.status } : null
   }
-  const macDevices = isMacHost()
-    ? new MacDevices({ environmentId, ledger: () => readSimulatorHolders(db, environmentId), session: sessionLookup })
-    : null
+  const macDevices =
+    options.devices !== undefined
+      ? options.devices
+      : isMacHost()
+        ? new MacDevices({ environmentId, ledger: () => readSimulatorHolders(db, environmentId), session: sessionLookup })
+        : null
   const hostDevices = new HostDevicesHub({
     environmentId,
     local: macDevices,
@@ -1718,7 +1732,8 @@ export async function startServer(
           case 'session.changes': {
             const changes = listChanges.since(req.params.afterSeq, req.params.generation)
             if (changes.reset) {
-              sendFrame({ id: req.id, ok: true, result: { reset: true, seq: changes.seq, generation: changes.generation } })
+              const result: SessionChanges = { reset: true, seq: changes.seq, generation: changes.generation }
+              sendFrame({ id: req.id, ok: true, result })
               break
             }
             const sessions: SessionMeta[] = []
@@ -1728,11 +1743,8 @@ export async function startServer(
               if (meta) sessions.push(meta)
               else removed.push(id)
             }
-            sendFrame({
-              id: req.id,
-              ok: true,
-              result: { reset: false, seq: changes.seq, generation: changes.generation, sessions, removed }
-            })
+            const result: SessionChanges = { reset: false, seq: changes.seq, generation: changes.generation, sessions, removed }
+            sendFrame({ id: req.id, ok: true, result })
             break
           }
           case 'session.events':
@@ -2324,6 +2336,10 @@ export async function startServer(
     notes: m3a.notes,
     build,
     masterRelease,
+    batches: batchRuns,
+    resources,
+    hostDevices,
+    projectPlans,
     close: async () => {
       masterRelease.stop()
       notifier.stop()

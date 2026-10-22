@@ -1129,6 +1129,20 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
 ])
 export type ClientRequest = z.infer<typeof ClientRequestSchema>
 
+/** What `review.get` answers: the scope's override, the global set, and the effective one with where it came from. */
+export interface ReviewState {
+  override: import('./review').ReviewSettings | null
+  global: import('./review').ReviewSettings | null
+  settings: import('./review').ReviewSettings
+  source: 'project' | 'global' | 'default'
+}
+
+/** What `plans.get` answers: the effective plan settings and whether the project overrides them. */
+export interface PlanState {
+  settings: import('./plans').PlanSettings
+  overridden: boolean
+}
+
 /** A thread's notes as `session.notes.get` answers and the `notes` push carries. */
 export interface ThreadNotesDoc {
   text: string
@@ -1179,11 +1193,11 @@ export type ServerPush =
   | { push: 'builds'; items: Omit<Extract<ServerPush, { push: 'build' }>, 'push'>[] }
   | { push: 'queue'; sessionId: string; items: QueuedMessage[] }
   // A thread's notes changed (the harness's update_notes, the person's
-  // edit, or the file edited behind the mirror). Every client gets it;
-  // the phone's decoder folds it into its unknown case.
+  // edit, or the file edited behind the mirror). Every client gets it,
+  // the phone included (NotesPush in the Swift contract).
   | { push: 'notes'; sessionId: string; doc: ThreadNotesDoc }
   // A master's batch changed a step (batch.ts: a child landed, the gate or
-  // the release moved). Every client gets it; not in the phone's subset.
+  // the release moved). Every client gets it, the phone included (BatchPush).
   | { push: 'batch'; state: import('./contract-batch').BatchState }
   | { push: 'session-removed'; sessionIds: string[] }
   // A thread (`id`, with its subagents `sessionIds`) moved to environment `to`

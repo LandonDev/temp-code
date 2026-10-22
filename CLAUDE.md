@@ -1009,7 +1009,15 @@ routed to (aliax-core's `forward`). Two listeners:
   Fixtures under `Tests/Fixtures` come from a real server through
   `bun run script:capture-swift-fixtures`; re-record them when a captured
   shape changes. The package README has the subset policy and what L2
-  (the socket actor) builds on it.
+  (the socket actor) builds on it. The subset covers the master, notes,
+  project-plan, review, plans, resources, devices, deploy, Mac bridge and
+  accounts methods and their pushes (`notes`, `batch`, `resources`,
+  `boot-resume`, `accounts`, `host.devices`, `host-log`, `macBridge.held`);
+  the README's table is the list, with the capability each needs. The
+  generator refuses a `local` method (`jsonSchemas` throws), names
+  `BuildFacts` and `NoticeKind` once, and `scripts/gen-swift-contract.test.ts`
+  pins its rules; `DecoderRulesTests.swift` proves the decoder on
+  hand-written JSON, so it passes before the fixtures are re-recorded.
 
 ## The iOS client: ios/TempCodeClient and ios/TempCode
 - docs/IOS-DESIGN.md fixes the phone's design: information architecture
@@ -1554,7 +1562,7 @@ this is the short one.
   without spawning.
 - **Step telemetry on the wire.** `BatchState` (`batch.get`, and the
   `batch` push to every client, coalesced to four a second while a log
-  streams; not in the phone's subset) carries `rules`, `steps`: the list
+  streams; the phone's `BatchPush`) carries `rules`, `steps`: the list
   in order, each `{ id, name, kind }` with `status` pending | running |
   passed | failed | skipped, `detail`, `startedAt`, `endedAt`, `progress
   { done, total, label? }` (land: branches merged of total; gate: the

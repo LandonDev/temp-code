@@ -522,13 +522,13 @@ public struct ErrorsClearedEvent: Codable, Hashable, Sendable {
 }
 
 public struct NoticeEvent: Codable, Hashable, Sendable {
-    public let kind: String
+    public let kind: NoticeKind
     public let message: String
     public let account: String?
     public let review: ReviewNotice?
     public let gate: GateNotice?
 
-    public init(kind: String, message: String, account: String? = nil, review: ReviewNotice? = nil, gate: GateNotice? = nil) {
+    public init(kind: NoticeKind, message: String, account: String? = nil, review: ReviewNotice? = nil, gate: GateNotice? = nil) {
         self.kind = kind
         self.message = message
         self.account = account

@@ -21,7 +21,23 @@
  *   POST /stream { sessionId?, cps?, seconds?, seed? }  → plays a bursty streaming turn with a growing Edit and
  *                                 live edits into ios-streaming; 409 while one runs
  *   POST /ask { sessionId, kind: 'approval' | 'question' }  → a fresh card on a thread, which waits
+ *   POST /push { frame }        → writes any push frame to every remote socket (a push with no
+ *                                 machinery behind it here: macBridge.held, boot-resume, accounts)
+ *   POST /batch-log { masterId, lines }  → appends lines to the master's running shell step (a streaming console)
+ *   POST /notes { sessionId, text }      → writes a thread's notes.md (the `notes` push follows)
+ *   POST /resources/remove { sessionId } → removes the thread's live resources; answers { results }
  *   POST /quit                  → closes everything
+ *
+ * The seeds of the 2026-10-21/22 features (a master's batch mid-run, the
+ * queued and stopped rows, a paused master, the project plan, notes, the
+ * host's own rows, resources, a pinned account, a cross-host child, media,
+ * a note for notes.search) come from scripts/lib/ios-seeds.ts; every id is
+ * a key of the JSON line's `threads` map, which the runner exports as
+ * TC_TEST_THREAD_<KEY>. The main host gets a fake MacDevices (two
+ * simulators, one paired iPhone, Xcode-26, load 3.2 of 8) through
+ * startServer's `devices` option, so host.devices answers on Linux.
+ * scripts/ios-client-test-server.test.ts
+ * checks every seeded id is used once.
  */
 import { createServer } from 'node:http'
 import { execFileSync, spawn } from 'node:child_process'
@@ -32,8 +48,18 @@ import { deflateSync } from 'node:zlib'
 import { configure } from 'aliax-core'
 import { startServer } from '../src/main/server/index'
 import { emitLiveEdit } from '../src/main/server/livediff'
-import { serveMedia } from '../src/main/server/media'
+import { MacDevices } from '../src/main/server/devices/hostDevices'
+import { loadEnvironmentId } from '../src/main/server/remote/environment'
+import { mediaUrl, serveMedia } from '../src/main/server/media'
+import { projectPlanPathFor } from '../src/shared/projectPlan'
 import type { AccountsSnapshot } from '../src/shared/accounts'
+import {
+  batchRowMidRun,
+  fakeMacDevicesDeps,
+  notesFive,
+  notesTwo,
+  withShellLog
+} from './lib/ios-seeds'
 import type { AgentEvent, FailureKind } from '../src/shared/events'
 import type { GithubInboxItem } from '../src/shared/contract-github'
 import type { ReviewNotice } from '../src/shared/review'
@@ -53,7 +79,14 @@ configure({
 // server alone (the Electron asset handler has no place under plain node).
 const assets = async (request: Request): Promise<Response> =>
   new URL(request.url).host === 'file' ? serveMedia(request) : new Response('not found', { status: 404 })
-const server = await startServer(join(root, 'app.db'), { claimShim: false, remotePort: 0, assets })
+// The host's id is made in its data dir before the boot, so the fake devices gatherer can carry it.
+const environmentId = loadEnvironmentId(root)
+const server = await startServer(join(root, 'app.db'), {
+  claimShim: false,
+  remotePort: 0,
+  assets,
+  devices: new MacDevices(fakeMacDevicesDeps(environmentId, { session: (id) => (id === 'ios-resources' ? { title: 'Clean up after the simulator run', status: 'idle' } : null) }))
+})
 if (!server.remote || server.remote.port === 0) throw new Error('the remote listener did not bind')
 
 // ── the second host: the same project on another machine ───────────────
@@ -79,6 +112,8 @@ export const THREAD_CROSS_HOST_CHILD = 'ios-xhost-child'
 if (process.env.TC_IOS_SECOND_HOST === '1') {
   const secondRepo = workspaceDir('tc-ios-client-second-')
   gitInit(secondRepo)
+  // The same file as the main host's, so a cross-host file search folds the two hits (search.project matches carry mtime).
+  writeFileSync(join(secondRepo, 'fixture-search.txt'), '// Search fixture\nconst fixtureNeedle = true\n')
   const secondWorkspace = await server.registry.createWorkspace(secondRepo, 'ios-workspace')
   const secondProject = await server.registry.createProject(secondWorkspace.id, 'ios-project', 'local')
   const talk = (id: string, user: string, assistant: string): void => {
@@ -131,6 +166,7 @@ execFileSync('git', ['-C', repo, 'init', '-q'])
 execFileSync('git', ['-C', repo, '-c', 'user.name=fixture', '-c', 'user.email=fixture@example.com', 'commit', '-q', '--allow-empty', '-m', 'init'])
 // One file for the phone's Files scope: the proof's `hello` query matches it through search.project.
 writeFileSync(join(repo, 'README.md'), 'hello from the ios project\nsay hello to search\n')
+writeFileSync(join(repo, 'fixture-search.txt'), '// Search fixture\nconst fixtureNeedle = true\n')
 const workspace = await server.registry.createWorkspace(repo, 'ios-workspace')
 const project = await server.registry.createProject(workspace.id, 'ios-project', 'local')
 export const THREAD_A = 'ios-thread-a'
@@ -309,18 +345,11 @@ server.registry.append('ios-running', { type: 'tool-call', callId: 't1', name: '
 server.registry.append('ios-running', { type: 'tool-result', callId: 't1', output: 'ok', isError: false })
 server.registry.append('ios-running', { type: 'tool-call', callId: 't2', name: 'Edit', input: { file_path: 'src/billing/export.ts' } })
 
-// A master with its batch: a queued child waiting on the running thread
-// below, and a thread whose harness went away (the host's `stopped`). The
-// seed appends `queued` the way the scheduler does on a held first message.
-await make('ios-master', { projectId: project.id, threadType: 'chat', title: 'Ship the stats pipeline' })
-say('ios-master', 'Run the stats pipeline rebuild as a batch', 'Four threads, landing as they finish.')
-server.registry.setMaster('ios-master', true)
-await make('ios-queued', { projectId: project.id, threadType: 'implementation', title: 'Backfill the rollups', masterId: 'ios-master', after: 'ios-running' })
-server.registry.append('ios-queued', { type: 'status', status: 'queued' })
-await make('ios-stopped', { projectId: project.id, threadType: 'chat', title: 'Rename the config keys again' })
-server.registry.append('ios-stopped', { type: 'user-text', text: 'Rename every config key to kebab-case' })
-server.registry.append('ios-stopped', { type: 'status', status: 'running' })
-server.registry.append('ios-stopped', { type: 'status', status: 'stopped' })
+// The master, the one queued seed and the stopped root are thread 20's
+// guarded seeds above (ios-master, ios-queued behind ios-running,
+// ios-stopped); THREAD_QUEUED names the queued one for the board and the
+// fleet hooks alike.
+export const THREAD_QUEUED = 'ios-queued'
 await make('ios-fleet', { projectId: project.id, threadType: 'orchestration', agentType: 'orchestrator', title: 'Port the sky plugins' })
 server.registry.append('ios-fleet', { type: 'user-text', text: 'Port every sky plugin to the new core' })
 server.registry.append('ios-fleet', { type: 'status', status: 'running' })
@@ -474,17 +503,6 @@ at(THREAD_HELD, [
 ])
 await make('ios-held-review', { parentId: THREAD_HELD, projectId: project.id, agentType: 'reviewer', provider: 'codex', model: 'gpt-6.1-sol', title: 'Review: ios/export-flag → master' })
 say('ios-held-review', 'Review the diff of ios/export-flag against master.', 'One blocking finding: report.ts still reads flags.csv.')
-
-// A build queued behind the running one (`after`): created, never booted,
-// so the board draws the goal and the host's line alone. The status row is
-// what the scheduler appends when it holds a first message (sessions.ts);
-// the scheduler's tick writes its "Queued · waiting for …" activity line.
-export const THREAD_QUEUED = 'ios-queued'
-await makeTyped(THREAD_QUEUED, 'implementation', 'Add the CSV import', { after: 'ios-running' })
-at(THREAD_QUEUED, [
-  { type: 'user-text', text: 'Add a CSV import beside the export on the billing page.', newPass: true },
-  { type: 'status', status: 'queued' }
-])
 
 // Implementation whose first edit is one big diff: 3,600 preview lines over
 // 60 hunks with a long line in each, for the diff screen's virtualization,
@@ -989,6 +1007,64 @@ if (!server.registry.get('ios-plan-built')) {
   server.registry.setReviewSettings(project.id, { ...DEFAULT_REVIEW_SETTINGS, beforeMerge: true, provider: 'claude', model: 'claude-sonnet-5-5', reasoning: 'medium', maxMinutes: 10 })
 }
 
+// ── the 2026-10-21/22 features (scripts/lib/ios-seeds.ts) ───────────────
+// The master's batch: the master watching, four children of three types
+// (one done, one running behind it, a complete plan whose build is the
+// running one, an idle research), the batch row mid-run with a streaming
+// shell step, and the queued child above.
+export const THREAD_MASTER = 'ios-master'
+server.registry.append(THREAD_MASTER, { type: 'status', status: 'watching' })
+await make('ios-master-impl-a', { projectId: project.id, threadType: 'implementation', title: 'Rebuild the rollup writer', masterId: THREAD_MASTER, startedBy: THREAD_MASTER })
+say('ios-master-impl-a', 'Rebuild the rollup writer.', 'Landed on master.')
+server.registry.append('ios-master-impl-a', { type: 'status', status: 'done' })
+await make('ios-master-impl-b', { projectId: project.id, threadType: 'implementation', title: 'Backfill the rollups', masterId: THREAD_MASTER, after: 'ios-master-impl-a', startedBy: THREAD_MASTER })
+server.registry.append('ios-master-impl-b', { type: 'user-text', text: 'Backfill every rollup since March.', newPass: true })
+server.registry.append('ios-master-impl-b', { type: 'status', status: 'running' })
+await make('ios-master-plan', { projectId: project.id, threadType: 'planning', title: 'Plan the backfill', masterId: THREAD_MASTER, startedBy: THREAD_MASTER })
+say('ios-master-plan', 'Plan the backfill.', 'The plan is complete; the build has started.')
+server.store.updateSession('ios-master-plan', { planCompletedAt: Date.now() - 600_000, implementationId: 'ios-master-impl-b' })
+await make('ios-master-research', { projectId: project.id, threadType: 'research', agentType: 'explorer', title: 'Which rollups are read?', masterId: THREAD_MASTER, startedBy: THREAD_MASTER })
+say('ios-master-research', 'Which rollups does the dashboard read?', 'Seven of the twelve.')
+server.batches.seedRow(batchRowMidRun(THREAD_MASTER, { landed: ['ios-master-impl-a', 'ios-master-research'], pending: ['ios-master-impl-b', 'ios-master-plan', THREAD_QUEUED] }, Date.now()))
+
+// The paused master is thread 20's guarded seed (ios-master-paused with ios-batch-a and ios-batch-b).
+export const THREAD_MASTER_PAUSED = 'ios-master-paused'
+
+// The project plan is thread 17's seed above (seven milestones, three
+// landed, pinned, milestone 3's build linked); this adds the "Plan the next
+// milestone" thread, linked to milestone 4.
+export const PROJECT_PLAN_PATH = projectPlan.planPath ?? projectPlanPathFor(project.cwd)
+await make('ios-project-plan-m4', { projectId: project.id, threadType: 'planning', title: 'M4 · Payments webhook', startedBy: THREAD_PROJECT_PLAN })
+say('ios-project-plan-m4', 'Plan milestone 4: the payments webhook.', 'Four tasks.')
+server.projectPlans.link('ios-project-plan-m4', { projectId: project.id, milestone: 4 })
+
+// Notes: every section filled, and only two.
+export const THREAD_NOTES_FIVE = 'ios-notes-five'
+export const THREAD_NOTES_TWO = 'ios-notes-two'
+await make(THREAD_NOTES_FIVE, { projectId: project.id, threadType: 'chat', title: 'Thread notes on the phone' })
+say(THREAD_NOTES_FIVE, 'Keep notes as you go.', 'Notes kept.')
+server.registry.notes.write(THREAD_NOTES_FIVE, notesFive())
+await make(THREAD_NOTES_TWO, { projectId: project.id, threadType: 'chat', title: 'A thread that just started' })
+say(THREAD_NOTES_TWO, 'Start the notes.', 'Started.')
+server.registry.notes.write(THREAD_NOTES_TWO, notesTwo())
+
+// Resources are thread 20's guarded seed (two worktrees through the real
+// detection path, a simulator, a row on another host waiting for its link).
+export const THREAD_RESOURCES = 'ios-resources'
+
+// A thread on a pinned account, in a project pinned to it.
+export const THREAD_PINNED_ACCOUNT = 'ios-pinned-account'
+await make(THREAD_PINNED_ACCOUNT, { projectId: project.id, threadType: 'chat', title: 'On the work account' })
+say(THREAD_PINNED_ACCOUNT, 'Which account is this?', 'The pinned one.')
+server.registry.setAccount(THREAD_PINNED_ACCOUNT, 'work@example.com')
+server.store.setProjectAccounts(project.id, { claude: 'work@example.com' })
+
+// A note for notes.search ("fixtureNeedle"), beside the file of the same word on both hosts.
+export const SEARCH_NOTE = 'ios-search-note'
+server.notes.upsert({ id: SEARCH_NOTE, title: 'Cutover checklist', body: 'Before the cutover: run the proofs, then grep for fixtureNeedle on both hosts.' })
+
+// Accounts are thread 24's seed above (two Claude accounts with different headroom, held in place of the poll).
+
 // ── the key, and a pairing link for the simulator rehearsal ─────────────
 const created = await server.remoteAuth.createKey({ name: 'ios-test', audience: 'client', caps: [], createdBy: 'local' })
 const pairing = server.remoteAuth.createPairing({ name: 'ios-sim', audience: 'client', caps: [], createdBy: 'local' })
@@ -1404,6 +1480,7 @@ const readJson = (req: import('node:http').IncomingMessage): Promise<Record<stri
     })
   })
 let appended = 0
+const batchLogLines: string[] = []
 const control = createServer((req, res) => {
   void (async () => {
     const url = new URL(req.url ?? '/', 'http://x')
@@ -1476,6 +1553,32 @@ const control = createServer((req, res) => {
         seededAccounts.updatedAt = Date.now()
         for (const l of accountsService.listeners) l(seededAccounts)
         return answer(200, { name, usedPercent: window.usedPercent })
+      }
+      case '/push': {
+        // Any push to every remote socket: for a push with no machinery behind it here.
+        const frame = JSON.stringify(body.frame ?? {})
+        let count = 0
+        for (const set of server.remote?.sockets.values() ?? []) for (const ws of set) {
+          ws.send(frame)
+          count++
+        }
+        return answer(200, { sent: count })
+      }
+      case '/batch-log': {
+        const masterId = String(body.masterId ?? THREAD_MASTER)
+        const lines = Array.isArray(body.lines) ? body.lines.map(String) : [String(body.lines ?? 'smoke: still checking')]
+        const row = batchRowMidRun(masterId, { landed: ['ios-master-impl-a', 'ios-master-research'], pending: ['ios-master-impl-b', 'ios-master-plan', THREAD_QUEUED] }, Date.now())
+        batchLogLines.push(...lines)
+        server.batches.seedRow(withShellLog(row, batchLogLines))
+        return answer(200, { lines: batchLogLines.length })
+      }
+      case '/notes': {
+        const doc = server.registry.notes.write(String(body.sessionId ?? THREAD_NOTES_FIVE), String(body.text ?? ''))
+        return answer(200, { updatedAt: doc.updatedAt })
+      }
+      case '/resources/remove': {
+        const results = await server.resources.remove(String(body.sessionId ?? THREAD_RESOURCES))
+        return answer(200, { results })
       }
       case '/clock':
         clockOffsetMs = Number(body.offsetMs ?? 0)
@@ -1550,7 +1653,36 @@ process.stdout.write(
     second,
     localPort: server.port,
     shot,
-    threads: { implementation: THREAD_IMPL, planning: THREAD_PLAN, projectPlan: THREAD_PROJECT_PLAN, m3Build: THREAD_M3_BUILD, orchestration: THREAD_ORCH, research: THREAD_RESEARCH, chat: THREAD_CHAT, long: THREAD_LONG, held: THREAD_HELD, queued: THREAD_QUEUED, stopped: 'ios-stopped', notices: THREAD_NOTICES, failures: THREAD_FAILURES, preamble: THREAD_PREAMBLE, handoff: THREAD_HANDOFF, streaming: THREAD_STREAM },
+    threads: {
+      implementation: THREAD_IMPL,
+      planning: THREAD_PLAN,
+      orchestration: THREAD_ORCH,
+      research: THREAD_RESEARCH,
+      chat: THREAD_CHAT,
+      long: THREAD_LONG,
+      held: THREAD_HELD,
+      queued: THREAD_QUEUED,
+      stopped: 'ios-stopped',
+      notices: THREAD_NOTICES,
+      failures: THREAD_FAILURES,
+      preamble: THREAD_PREAMBLE,
+      handoff: THREAD_HANDOFF,
+      streaming: THREAD_STREAM,
+      master: THREAD_MASTER,
+      pausedMaster: THREAD_MASTER_PAUSED,
+      projectPlan: THREAD_PROJECT_PLAN,
+      m3Build: THREAD_M3_BUILD,
+      notesFive: THREAD_NOTES_FIVE,
+      notesTwo: THREAD_NOTES_TWO,
+      resources: THREAD_RESOURCES,
+      pinned: THREAD_PINNED_ACCOUNT,
+      crossHost: THREAD_CROSS_HOST,
+      media: THREAD_CHAT,
+      searchNotes: SEARCH_NOTE
+    },
+    masterId: THREAD_MASTER,
+    projectPlanPath: PROJECT_PLAN_PATH,
+    mediaUrl: mediaUrl(shot, { kind: 'image', mime: 'image/png' }, Date.now()),
     projectId: project.id,
     workspaceId: workspace.id
   }) + '\n'

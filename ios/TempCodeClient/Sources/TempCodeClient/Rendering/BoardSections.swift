@@ -102,7 +102,7 @@ extension Board {
 /// "Typecheck passed on feature", "Typecheck failed on feature · 3 errors",
 /// "Gate failed on master · at vitest", "Release failed on master".
 public enum GateLine {
-    public static func text(_ gate: NoticeEvent.Gate) -> String {
+    public static func text(_ gate: GateNotice) -> String {
         let label = Self.label(gate.step)
         if gate.ok { return "\(label) passed on \(gate.branch)" }
         switch gate.step {
@@ -139,7 +139,7 @@ public enum GateLine {
             .joined(separator: "\n")
     }
 
-    static func label(_ step: NoticeEvent.Gate.Step) -> String {
+    static func label(_ step: GateStep) -> String {
         switch step {
         case .typecheck: "Typecheck"
         case .gate: "Gate"
@@ -154,7 +154,7 @@ public enum GateLine {
 public enum ReviewLine {
     /// "Reviewed by GPT-6.1 Sol", "Review by GPT-6.1 Sol timed out", "Review
     /// by … did not run", "Merged anyway", "Merged"; an unknown outcome reads "Review".
-    public static func lead(_ review: NoticeEvent.Review) -> String {
+    public static func lead(_ review: ReviewNotice) -> String {
         let label = ModelName.short(review.model)
         return switch review.outcome {
         case .pass, .held: "Reviewed by \(label)"
@@ -170,7 +170,7 @@ public enum ReviewLine {
     /// held" (or "merged anyway" once overridden); "after 2.4 min, merged
     /// without it"; "<reason>, merged without it"; "1 blocking finding
     /// overridden"; a skipped review's reason; an unknown outcome's raw value.
-    public static func summary(_ review: NoticeEvent.Review) -> String {
+    public static func summary(_ review: ReviewNotice) -> String {
         let blocking = review.blocking.count
         let minor = review.minor.count
         let minorText = minor > 0 ? "\(minor) minor" : nil
@@ -195,7 +195,7 @@ public enum ReviewLine {
     }
 
     /// The merge is held on this verdict: blocking findings, not yet overridden.
-    public static func isHeld(_ review: NoticeEvent.Review) -> Bool {
+    public static func isHeld(_ review: ReviewNotice) -> Bool {
         review.outcome == .held && !review.merged
     }
 }

@@ -117,13 +117,13 @@ struct HostFixTests {
 @Suite("HostBuildLine")
 struct HostBuildLineTests {
     @Test func `the version and seven characters of the commit`() {
-        let build = HelloPush.Build(release: 273, version: "1.0.273", sha: "5edeb5d1c2b3a4f5e6d7c8b9a0f1e2d3c4b5a6f7", platform: "darwin")
+        let build = BuildFacts(release: 273, version: "1.0.273", sha: "5edeb5d1c2b3a4f5e6d7c8b9a0f1e2d3c4b5a6f7", platform: "darwin")
         #expect(HostBuildLine.text(build) == "1.0.273 · 5edeb5d")
     }
 
     @Test func `the version alone without a commit`() {
-        #expect(HostBuildLine.text(HelloPush.Build(release: 273, version: "1.0.273", sha: nil, platform: "linux")) == "1.0.273")
-        #expect(HostBuildLine.text(HelloPush.Build(release: 273, version: "1.0.273", sha: "", platform: "linux")) == "1.0.273")
+        #expect(HostBuildLine.text(BuildFacts(release: 273, version: "1.0.273", sha: nil, platform: "linux")) == "1.0.273")
+        #expect(HostBuildLine.text(BuildFacts(release: 273, version: "1.0.273", sha: "", platform: "linux")) == "1.0.273")
     }
 }
 

@@ -116,6 +116,14 @@ export function splitFindings(
   return { blocking, minor }
 }
 
+/** What `merge_branch` and `review.override` answer (mergeBranch.ts does the git). */
+export interface MergeResult {
+  /** the target's commit after the merge */
+  sha: string
+  merged: boolean
+  pushed: boolean
+}
+
 // ── what the transcript shows (the `notice` event's `review` payload) ───
 
 export const REVIEW_OUTCOMES = ['pass', 'held', 'timeout', 'failed', 'merged-anyway', 'skipped'] as const

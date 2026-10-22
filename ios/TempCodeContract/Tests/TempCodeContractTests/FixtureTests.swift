@@ -55,7 +55,13 @@ struct FixtureTests {
     @Test("every socket frame survives decode and encode", arguments: [
         "hello", "workspace-list", "project-list", "catalog", "session-list", "session-events",
         "session-row-body", "push-events", "push-sessions", "push-queue", "queue-list", "response-error",
-        "workspace-icon", "session-search", "session-search-empty", "search-project", "github-inbox"
+        "workspace-icon", "session-search", "session-search-empty", "search-project", "github-inbox",
+        // the 2026-10-21/22 features (scripts/capture-swift-fixtures.ts records them from scripts/lib/ios-seeds.ts)
+        "batch-get", "batch-children", "push-batch", "session-notes-get", "push-notes", "project-plan-get",
+        "project-plan-get-null", "project-plan-link-of", "review-get", "plans-get", "resources-list", "push-resources",
+        "session-changes", "session-changes-reset", "session-events-notices", "notes-search", "session-start",
+        "session-batch", "host-devices-hosts", "host-deploy-status", "host-log", "mac-bridge-thread-get",
+        "accounts-list", "push-boot-resume", "push-accounts"
     ])
     func frameRoundTrip(name: String) throws {
         try Fixtures.roundTrip(ServerFrame.self, name)
@@ -205,6 +211,48 @@ struct FixtureTests {
         #expect(throws: ContractError.server(message)) {
             try response.output(Methods.SessionApprove.self)
         }
+    }
+
+    @Test func noticesThreadHasEveryKind() throws {
+        let page = try Fixtures.output(Methods.SessionEvents.self, "session-events-notices")
+        let kinds = page.rows.compactMap { row -> NoticeKind? in
+            guard case .notice(let notice) = row.event else { return nil }
+            return notice.kind
+        }
+        for kind in [NoticeKind.review, .gate, .batch, .accountGone] { #expect(kinds.contains(kind), "\(kind) missing") }
+        #expect(!kinds.contains { if case .unknown = $0 { true } else { false } })
+        let failures = page.rows.compactMap { row -> FailureKind? in
+            guard case .error(let error) = row.event else { return nil }
+            return error.failure?.kind
+        }
+        for kind in [FailureKind.oauthExpired, .accountUnknown, .tokenExpired, .rateLimited, .quota, .modelUnavailable, .network, .harnessCrashed, .unknown] {
+            #expect(failures.contains(kind), "\(kind) missing")
+        }
+        #expect(!failures.contains { if case .unrecognized = $0 { true } else { false } })
+        let preambles = page.rows.compactMap { row -> PreambleStamp? in
+            guard case .userText(let text) = row.event else { return nil }
+            return text.preamble
+        }
+        #expect(preambles.first?.words == 212)
+        #expect(page.rows.contains { if case .planHandoff = $0.event { true } else { false } })
+    }
+
+    @Test func projectPlanFixture() throws {
+        let state = try #require(try Fixtures.output(Methods.ProjectPlanGet.self, "project-plan-get"))
+        #expect(state.milestones.count == 7)
+        #expect(state.milestones.filter(\.done).count == 3)
+        #expect(state.complete)
+        #expect(state.missing.isEmpty)
+        #expect(try Fixtures.output(Methods.ProjectPlanGet.self, "project-plan-get-null") == nil)
+    }
+
+    @Test func batchFixtureStreamsAShellStep() throws {
+        let state = try Fixtures.output(Methods.BatchGet.self, "batch-get")
+        let running = try #require(state.steps.first { $0.status == .running && $0.kind == .shell })
+        #expect(running.kind == .shell)
+        #expect(!running.log.isEmpty)
+        guard case .batch(let push) = try Fixtures.push("push-batch") else { throw Fixtures.FixtureError.notAPush("push-batch") }
+        #expect(push.state.masterId == state.masterId)
     }
 
     @Test func catalogRecord() throws {
