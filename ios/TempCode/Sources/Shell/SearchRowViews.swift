@@ -19,9 +19,10 @@ enum MatchEmphasis {
         var out = AttributedString(text)
         out.font = font
         let strong = font.weight(weight)
-        let characters = out.characters
-        let count = characters.count
+        let count = text.count
         for range in matches where range.lowerBound >= 0 && range.upperBound <= count && !range.isEmpty {
+            // Indices come from the string as it is now: a mutation may retire the last ones.
+            let characters = out.characters
             let from = characters.index(characters.startIndex, offsetBy: range.lowerBound)
             let to = characters.index(from, offsetBy: range.count)
             out[from..<to].font = strong
