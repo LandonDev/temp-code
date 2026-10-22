@@ -121,6 +121,18 @@ private func fields(_ value: some Encodable) throws -> [String: JSONValue] {
         #expect(b["permission"] == nil)
     }
 
+    @Test func `a prefilled thread carries its title and sends the brief as its first message; blanks send nothing`() throws {
+        let issue = ThreadDraft.thread(type: .implementation, workspaceId: "w1", projectId: "p1", provider: .claude, model: "m", reasoning: nil, permission: nil, title: "  Fix the invoice totals  ", brief: "From github.com/acme/billing/issues/42: Invoices round the wrong way.")
+        #expect(issue.title == "Fix the invoice totals")
+        #expect(issue.brief == "From github.com/acme/billing/issues/42: Invoices round the wrong way.")
+        let params = try fields(issue.params)
+        #expect(params["title"] == .string("Fix the invoice totals"))
+        #expect(params["brief"] == nil, "the brief is a send, not a create param")
+        let blank = ThreadDraft.thread(type: .chat, workspaceId: "w1", projectId: nil, provider: .claude, model: "m", reasoning: nil, permission: nil, title: "   ", brief: "")
+        #expect(blank.title == nil)
+        #expect(blank.brief == nil)
+    }
+
     @Test func `pending turns sit after the fold's rows, in the order they were sent`() {
         var state = ThreadState()
         state.pending = [PendingTurn(text: "first", sentAt: 10), PendingTurn(text: "second", sentAt: 11)]
@@ -132,9 +144,9 @@ private func fields(_ value: some Encodable) throws -> [String: JSONValue] {
     }
 }
 
-/// A client on a fake socket whose key may act.
+/// A client on a fake socket whose key may act (AttachmentsTests rides on it too).
 @MainActor
-private final class ActingRig {
+final class ActingRig {
     let clock = ManualClock(random: [0])
     let sockets = FakeSocketFactory()
     let keys = InMemoryKeyStore()
@@ -199,6 +211,32 @@ private final class ActingRig {
 }
 
 @MainActor
+@Suite struct TurnModelTests {
+    @Test func `chips on the thread's own model send no settings`() {
+        let plan = planSession()
+        #expect(TurnModel.override(for: plan, provider: .claude, model: "claude-opus-5-5", reasoning: .high) == nil)
+        #expect(TurnModel.override(for: plan, provider: .claude, model: "claude-opus-5-5", reasoning: nil) == nil, "no level chosen keeps the thread's")
+    }
+
+    @Test func `a model change names its provider and carries the level chosen with it`() {
+        let plan = planSession()
+        let codex = TurnModel.override(for: plan, provider: .codex, model: "gpt-6.1-sol", reasoning: .xhigh)
+        #expect(codex == TurnModel(provider: .codex, model: "gpt-6.1-sol", reasoning: .xhigh))
+        let same = TurnModel.override(for: plan, provider: .claude, model: "claude-sonnet-5-5", reasoning: .high)
+        #expect(same == TurnModel(provider: .claude, model: "claude-sonnet-5-5", reasoning: .high), "the same level is sent with a new model, so the host does not fall back to its default")
+        let bare = TurnModel.override(for: plan, provider: .codex, model: "gpt-6-astra", reasoning: nil)
+        #expect(bare == TurnModel(provider: .codex, model: "gpt-6-astra", reasoning: nil))
+    }
+
+    @Test func `a level change alone names only the level`() {
+        let plan = planSession()
+        #expect(TurnModel.override(for: plan, provider: .claude, model: "claude-opus-5-5", reasoning: .medium) == TurnModel(reasoning: .medium))
+        #expect(TurnModel(reasoning: .medium).isEmpty == false)
+        #expect(TurnModel().isEmpty)
+    }
+}
+
+@MainActor
 @Suite struct ClientActionTests {
     @Test func `a send shows at once as a pending turn and the host's echo retires it`() async throws {
         let rig = try ActingRig()
@@ -217,6 +255,67 @@ private final class ActingRig {
         #expect(rig.client.threads["s1"]?.sending == false)
         #expect(rig.client.threads["s1"]?.entries.count == 2, "the echo row stands in for the pending turn")
         await rig.client.stop()
+    }
+
+    @Test func `a send with the chips changed carries the settings; one on the thread's model carries none`() async throws {
+        let rig = try ActingRig()
+        let fake = try await rig.open()
+        let sending = Task { try await rig.client.send("s1", text: "faster", model: TurnModel(provider: .codex, model: "gpt-6-astra", reasoning: .low)) }
+        let request = try #require(await rig.request(fake, "session.send"))
+        #expect(request.params == .object(["sessionId": .string("s1"), "text": .string("faster"), "provider": .string("codex"), "model": .string("gpt-6-astra"), "reasoning": .string("low")]))
+        fake.answer(id: request.id, result: "null")
+        try await sending.value
+        let plain = Task { try await rig.client.send("s1", text: "same", model: nil) }
+        let second = try #require(await rig.request(fake, "session.send", count: 2))
+        #expect(second.params == .object(["sessionId": .string("s1"), "text": .string("same")]))
+        fake.answer(id: second.id, result: "null")
+        try await plain.value
+        await rig.client.stop()
+    }
+
+    @Test func `a send names the photos already on the host; an empty list names none`() async throws {
+        let rig = try ActingRig()
+        let fake = try await rig.open()
+        let photo = Attachment(path: "/tmp/repo/.temp-code/attachments/s1/photo-1.jpeg", name: "photo-1.jpeg", mime: "image/jpeg", kind: .image)
+        let sending = Task { try await rig.client.send("s1", text: "see this", attachments: [photo]) }
+        let request = try #require(await rig.request(fake, "session.send"))
+        guard case .object(let params) = request.params, case .array(let attachments)? = params["attachments"] else { throw TransportError.notConnected }
+        #expect(attachments.count == 1)
+        if case .object(let fields) = attachments[0] {
+            #expect(fields["path"] == .string("/tmp/repo/.temp-code/attachments/s1/photo-1.jpeg"))
+            #expect(fields["name"] == .string("photo-1.jpeg"))
+            #expect(fields["mime"] == .string("image/jpeg"))
+            #expect(fields["kind"] == .string("image"))
+        } else {
+            Issue.record("not an attachment object")
+        }
+        fake.answer(id: request.id, result: "null")
+        try await sending.value
+        let bare = Task { try await rig.client.send("s1", text: "none", attachments: []) }
+        let second = try #require(await rig.request(fake, "session.send", count: 2))
+        #expect(second.params == .object(["sessionId": .string("s1"), "text": .string("none")]))
+        fake.answer(id: second.id, result: "null")
+        try await bare.value
+        await rig.client.stop()
+    }
+
+    @Test func `a queued thread's Start now is session.start, gated like every operate action`() async throws {
+        let rig = try ActingRig()
+        let fake = try await rig.open()
+        let starting = Task { try await rig.client.start("s1") }
+        let start = try #require(await rig.request(fake, "session.start"))
+        #expect(start.params == .object(["sessionId": .string("s1")]))
+        fake.answer(id: start.id, result: #"{"started":true}"#)
+        try await starting.value
+        let refused = Task { try await rig.client.start("s1") }
+        let second = try #require(await rig.request(fake, "session.start", count: 2))
+        fake.refuse(id: second.id, error: "s1 is not queued")
+        await #expect(throws: ActionError.refused(message: "s1 is not queued", forbidden: false)) { try await refused.value }
+        await rig.client.stop()
+        let readOnly = try ActingRig(caps: [.read])
+        _ = try await readOnly.open()
+        await #expect(throws: ActionError.blocked(.readOnly)) { try await readOnly.client.start("s1") }
+        await readOnly.client.stop()
     }
 
     @Test func `a send the host refuses drops its pending turn and throws what the host said`() async throws {

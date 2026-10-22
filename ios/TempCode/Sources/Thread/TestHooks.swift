@@ -26,7 +26,8 @@ enum TestHooks {
     static let history = env["TC_TEST_HISTORY"] == "1"
     /// An action the thread screen performs once its rows are in, through the
     /// same calls the buttons make: `send:<text>`, `stop`, `approve`, `deny`,
-    /// `answer:<label>`, `start-build`, `rename:<title>`, `pin`, `archive`.
+    /// `answer:<label>`, `start-build`, `rename:<title>`, `pin`, `archive`,
+    /// `start-now` (a queued thread), `resume` (a stopped or paused one).
     static let action = env["TC_TEST_ACTION"].flatMap { $0.isEmpty ? nil : $0 }
     /// A sheet to open for the shot: `start` on a planning thread, `new` on Home.
     static let sheet = env["TC_TEST_SHEET"].flatMap { $0.isEmpty ? nil : $0 }

@@ -490,6 +490,26 @@ public enum Methods {
         public typealias Output = NoOutput
     }
 
+    public enum SessionStart: ContractMethod {
+        public static let name = "session.start"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sessionId: String
+
+            public init(sessionId: String) {
+                self.sessionId = sessionId
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let started: Bool
+
+            public init(started: Bool) {
+                self.started = started
+            }
+        }
+    }
+
     public enum QueueList: ContractMethod {
         public static let name = "queue.list"
 

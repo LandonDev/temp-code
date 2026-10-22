@@ -726,6 +726,18 @@ stub('resumePausedRun', async (sessionId) => {
   record('resume', sessionId)
   registry.append(sessionId, { type: 'status', status: 'running' })
 })
+stub('resumeStopped', async (sessionId) => {
+  // The harness is gone: a fresh one on the same transcript, running.
+  record('resume', sessionId, { stopped: true })
+  registry.append(sessionId, { type: 'status', status: 'running' })
+  return true
+})
+stub('startQueued', async (sessionId) => {
+  // Start now: the queued thread's held first message goes, the user row stays, the turn runs.
+  record('start', sessionId)
+  registry.append(sessionId, { type: 'status', status: 'running' })
+  return true
+})
 stub('create', async (raw) => {
   const meta = await realCreate(raw)
   record('create', meta.id, {
@@ -1075,7 +1087,7 @@ process.stdout.write(
     second,
     localPort: server.port,
     shot,
-    threads: { implementation: THREAD_IMPL, planning: THREAD_PLAN, orchestration: THREAD_ORCH, research: THREAD_RESEARCH, chat: THREAD_CHAT, long: THREAD_LONG, held: THREAD_HELD, queued: THREAD_QUEUED },
+    threads: { implementation: THREAD_IMPL, planning: THREAD_PLAN, orchestration: THREAD_ORCH, research: THREAD_RESEARCH, chat: THREAD_CHAT, long: THREAD_LONG, held: THREAD_HELD, queued: THREAD_QUEUED, stopped: 'ios-stopped' },
     projectId: project.id,
     workspaceId: workspace.id
   }) + '\n'

@@ -289,6 +289,10 @@ struct ThreadScreen: View {
             try? await client.send(sessionId, text: argument)
         case "stop":
             try? await client.stop(sessionId)
+        case "start-now":
+            try? await client.start(sessionId)
+        case "resume":
+            try? await client.resume(sessionId)
         case "approve", "deny":
             if let approval = thread.fold.items.lazy.compactMap({ entry -> ApprovalItem? in
                 if case .approval(let a) = entry.item, a.allowed == nil { return a } else { return nil }

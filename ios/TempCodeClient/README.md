@@ -353,14 +353,38 @@ would have shown as "Key refused".
   the one line the composer field or a card carries, with the retry
   countdown. A host refusal comes back as `ActionError.refused(message:
   forbidden:)`, a `forbidden:` answer rewritten into what the key lacks.
-- **Send.** `send(_:text:newPass:)` appends a `PendingTurn` to
-  `ThreadState.pending` and sets `sending`; `ThreadState.entries` is the
-  fold's items with the pending turns at the end (negative seqs), which is
-  what the transcript shows. The host's `user-text` echo with the same text
-  retires the pending turn (`settle`), and a `sessions` push with
-  `starting`/`running` clears `sending`; a refusal drops the turn and throws.
-- **Stop and Continue.** `stop(_:)` is `session.interrupt`; `resume(_:)` is
-  `session.resume`.
+- **Send.** `send(_:text:model:attachments:newPass:)` appends a
+  `PendingTurn` to `ThreadState.pending` and sets `sending`;
+  `ThreadState.entries` is the fold's items with the pending turns at the
+  end (negative seqs), which is what the transcript shows. The host's
+  `user-text` echo with the same text retires the pending turn (`settle`),
+  and a `sessions` push with `starting`/`running` clears `sending`; a
+  refusal drops the turn and throws. `model` is a `TurnModel`, the
+  composer's chips as `session.send`'s `provider`, `model` and `reasoning`;
+  `TurnModel.override(for:provider:model:reasoning:)` answers nil when the
+  chips match the thread, so such a turn carries no settings. `attachments`
+  are files already on the host, named by the turn.
+- **Upload.** `upload(_:name:mime:data:progress:)` (`Client/Attachments.swift`)
+  streams bytes to the thread's host: `attachment.begin` with the size and
+  SHA-256, one `attachment.chunk` per range awaited in order (the host's
+  `chunkBytes`, capped at 2 MiB), then `attachment.commit`, whose answer is
+  the `Attachment` the next `send` names; `progress` is told the bytes sent
+  after every chunk. A refusal after `begin`, or a cancelled task, sends
+  `attachment.abort` and throws. The chunking and the digest are
+  `AttachmentUpload`, pure.
+- **Stop, Continue, Resume, Start now.** `stop(_:)` is `session.interrupt`;
+  `resume(_:)` is `session.resume` (the host continues a paused thread or
+  brings back one whose harness is gone); `start(_:)` is `session.start`,
+  a queued batch thread run ahead of the sibling it waits for.
+- **The strip and the button.** `WorkingPhase(status:sending:)`
+  (`Client/Steering.swift`) is the working strip's state: paused, stopped
+  and queued from the status; running is working; starting is sending while
+  this device's send is out; everything else is idle, or sending.
+  `WorkingPhase.batchPaused(of:in:)` counts a paused master's paused batch
+  roots. `ComposerRules` holds the button's rules: `running` (the host's
+  running or starting, or a send out; `watching` is not running), `stops`
+  (only with no text), `placeholder` (Steer for a steerable root or a
+  master).
 - **Approve and answer.** `approve(_:requestId:allow:)` and
   `answer(_:requestId:answers:)` write `ThreadState.decisions` /
   `ThreadState.answers` first (the card reads them over the fold), send,
@@ -372,7 +396,8 @@ would have shown as "Key refused".
   plan …)` is the desktop's PlanView Start (the plan's project, cwd and
   file, the default goal by the checklist, the implement/orchestrate brief,
   `agentType` by thread type); `ThreadDraft.thread(…)` is a fresh thread in
-  a project, or a chat hung off the workspace. `needs` is `approve` for a
+  a project, or a chat hung off the workspace, with an optional `title`
+  and `brief` for a sheet opened prefilled (the Inbox's issue). `needs` is `approve` for a
   full-access draft, as the host's gate has it.
 - **Rows.** `rename`, `setArchived`, `setPinned` go out as their RPCs; the
   `sessions` push brings the row's new state. `loadCatalog()` keeps the

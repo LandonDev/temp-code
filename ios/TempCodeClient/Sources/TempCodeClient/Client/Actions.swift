@@ -111,6 +111,43 @@ public struct PendingTurn: Sendable, Hashable, Identifiable {
 /// The catalog a host serves: providers with the models the installed CLIs can run.
 public typealias Catalog = [String: ProviderInfo]
 
+/// What the composer's chips ask of the next turn: the desktop's
+/// `RunSettings`, where an absent field keeps the thread's own. Built with
+/// `override(for:provider:model:reasoning:)`, which sends nothing when the
+/// choice is the thread's current model, so a turn that changed nothing
+/// carries no settings at all.
+public struct TurnModel: Sendable, Hashable {
+    public var provider: ProviderId?
+    public var model: String?
+    public var reasoning: Reasoning?
+
+    public init(provider: ProviderId? = nil, model: String? = nil, reasoning: Reasoning? = nil) {
+        self.provider = provider
+        self.model = model
+        self.reasoning = reasoning
+    }
+
+    /// Nothing differs from the thread: the send carries no settings.
+    public var isEmpty: Bool { provider == nil && model == nil && reasoning == nil }
+
+    /// The settings for a turn on `session` with the chips at `provider`,
+    /// `model` and `reasoning`: nil when every chip matches the thread. A
+    /// model change always names its provider (the host switches harness by
+    /// the provider a model came with); a reasoning change alone names only
+    /// the level, and a reasoning the model does not offer is left to the
+    /// host's default.
+    public static func override(for session: SessionMeta, provider: ProviderId, model: String, reasoning: Reasoning?) -> TurnModel? {
+        let modelChanged = provider != session.provider || model != session.model
+        let reasoningChanged = reasoning != nil && reasoning != session.reasoning
+        guard modelChanged || reasoningChanged else { return nil }
+        return TurnModel(
+            provider: modelChanged ? provider : nil,
+            model: modelChanged ? model : nil,
+            reasoning: reasoningChanged || modelChanged ? reasoning : nil
+        )
+    }
+}
+
 /// Everything a `session.create` takes from the phone, with the desktop's
 /// two recipes: a build seeded from a plan (PlanView's Start) and a fresh
 /// thread from the chooser. Pure, so the payloads are tested without a host.
@@ -198,16 +235,23 @@ public struct ThreadDraft: Sendable, Hashable {
     }
 
     /// A fresh thread from the chooser: in a project, or a chat hung off the
-    /// workspace when there is none. The first message is the user's.
-    public static func thread(type: ThreadType, workspaceId: String, projectId: String?, provider: ProviderId, model: String, reasoning: Reasoning?, permission: PermissionPolicy?) -> ThreadDraft {
-        ThreadDraft(
+    /// workspace when there is none. The first message is the user's, unless
+    /// the sheet was opened prefilled (the Inbox's "Start a thread from an
+    /// issue"): then `title` names the thread and `brief` is sent as its
+    /// first message right after the create.
+    public static func thread(type: ThreadType, workspaceId: String, projectId: String?, provider: ProviderId, model: String, reasoning: Reasoning?, permission: PermissionPolicy?, title: String? = nil, brief: String? = nil) -> ThreadDraft {
+        let title = title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let brief = brief?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return ThreadDraft(
             threadType: type,
             provider: provider,
             model: model,
             reasoning: reasoning,
             projectId: projectId,
             workspaceId: projectId == nil ? workspaceId : nil,
-            permission: permission
+            permission: permission,
+            title: title.flatMap { $0.isEmpty ? nil : $0 },
+            brief: brief.flatMap { $0.isEmpty ? nil : $0 }
         )
     }
 }
@@ -240,14 +284,17 @@ extension EnvironmentClient {
     /// A user message into a thread. The turn shows at once as pending and
     /// the strip says Sending… until the host echoes it or starts the turn;
     /// a refusal (not connected, a read-only key, the host saying no) drops
-    /// the pending turn and throws the reason.
-    public func send(_ sessionId: String, text: String, newPass: Bool? = nil) async throws {
+    /// the pending turn and throws the reason. `attachments` are files
+    /// already on the host (`upload`), named by the turn; an empty list
+    /// sends none.
+    public func send(_ sessionId: String, text: String, model: TurnModel? = nil, attachments: [Attachment]? = nil, newPass: Bool? = nil) async throws {
         if let block = operateBlock { throw ActionError.blocked(block) }
         let turn = PendingTurn(text: text, sentAt: Int(Date().timeIntervalSince1970 * 1000))
         threads[sessionId]?.pending.append(turn)
         threads[sessionId]?.sending = true
+        let named = attachments.flatMap { $0.isEmpty ? nil : $0 }
         do {
-            try await request(Methods.SessionSend.self, .init(sessionId: sessionId, text: text, newPass: newPass))
+            try await request(Methods.SessionSend.self, .init(sessionId: sessionId, text: text, provider: model?.provider, model: model?.model, reasoning: model?.reasoning, attachments: named, newPass: newPass))
         } catch {
             threads[sessionId]?.pending.removeAll { $0.id == turn.id }
             if threads[sessionId]?.pending.isEmpty == true { threads[sessionId]?.sending = false }
@@ -260,9 +307,15 @@ extension EnvironmentClient {
         try await act(.operate) { try await self.request(Methods.SessionInterrupt.self, .init(sessionId: sessionId)) }
     }
 
-    /// Continue a paused thread.
+    /// Continue a paused thread, or bring back one whose harness is gone.
     public func resume(_ sessionId: String) async throws {
         try await act(.operate) { try await self.request(Methods.SessionResume.self, .init(sessionId: sessionId)) }
+    }
+
+    /// Start a queued batch thread now, ahead of the sibling it waits for.
+    /// The host answers whether it started one; the `sessions` push says the rest.
+    public func start(_ sessionId: String) async throws {
+        try await act(.operate) { _ = try await self.request(Methods.SessionStart.self, .init(sessionId: sessionId)) }
     }
 
     /// Decide an approval. The card shows the decision at once and reverts if the host refuses.

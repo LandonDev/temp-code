@@ -218,8 +218,6 @@ struct ApprovalCard: View {
     let approval: ApprovalItem
     let client: EnvironmentClient
     let sessionId: String
-    @State private var busy = false
-    @State private var failure: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// The host's decision, else this device's until the host confirms.
@@ -229,7 +227,6 @@ struct ApprovalCard: View {
 
     var body: some View {
         let decided = decided
-        let block = client.approveBlock
         ThreadCard(tinted: decided == nil) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
@@ -251,54 +248,14 @@ struct ApprovalCard: View {
                         .lineLimit(4)
                 }
                 if decided == nil {
-                    if let block, !block.isTransient {
-                        Text(block.text(now: Date().timeIntervalSince1970 * 1000))
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        HStack(spacing: 8) {
-                            Button { decide(false) } label: {
-                                Text("Deny").frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.bordered)
-                            Button { decide(true) } label: {
-                                Text("Allow").frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.borderedProminent)
-                        }
-                        .controlSize(.regular)
-                        .disabled(busy || block != nil)
-                        if let block {
-                            Text(block.text(now: Date().timeIntervalSince1970 * 1000))
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                if let failure {
-                    Text(failure)
-                        .font(.footnote)
-                        .foregroundStyle(Tint.destructive)
+                    ApprovalActions(approval: approval, client: client, sessionId: sessionId)
+                        .padding(.top, 2)
+                        .transition(.opacity)
                 }
             }
         }
         .animation(reduceMotion ? nil : Motion.collapse, value: decided == nil)
-        .animation(Motion.crossFade, value: failure)
         .accessibilityElement(children: .contain)
-    }
-
-    private func decide(_ allow: Bool) {
-        guard !busy else { return }
-        busy = true
-        failure = nil
-        Task {
-            defer { busy = false }
-            do {
-                try await client.approve(sessionId, requestId: approval.request.requestId, allow: allow)
-            } catch {
-                failure = (error as? ActionError)?.message ?? String(describing: error)
-            }
-        }
     }
 
     private func heading(_ decided: Bool?) -> String {
@@ -345,8 +302,6 @@ struct QuestionCard: View {
     let sessionId: String
     @State private var picks: [Int: [String]] = [:]
     @State private var typed: [Int: String] = [:]
-    @State private var busy = false
-    @State private var failure: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// The host's answers, else this device's until the host confirms.
@@ -421,33 +376,21 @@ struct QuestionCard: View {
                     }
                 }
                 if !resolved {
-                    if let block, !block.isTransient {
-                        Text(block.text(now: Date().timeIntervalSince1970 * 1000))
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Button { submit() } label: {
-                            Text("Answer").frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.regular)
-                        .disabled(busy || block != nil || !complete)
-                        if let block {
-                            Text(block.text(now: Date().timeIntervalSince1970 * 1000))
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                if let failure {
-                    Text(failure)
-                        .font(.footnote)
-                        .foregroundStyle(Tint.destructive)
+                    QuestionActions(question: question, client: client, sessionId: sessionId, answers: set, complete: complete)
+                        .transition(.opacity)
                 }
             }
         }
         .animation(reduceMotion ? nil : Motion.collapse, value: resolved)
-        .animation(Motion.crossFade, value: failure)
+    }
+
+    /// Every question's answer as the card has it: the chosen labels, else the typed text.
+    private var set: [[String]] {
+        question.request.questions.indices.map { index -> [String] in
+            let chosen = picks[index] ?? []
+            let text = (typed[index] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            return chosen.isEmpty ? [text] : chosen
+        }
     }
 
     /// Every question has a choice or typed text.
@@ -469,24 +412,6 @@ struct QuestionCard: View {
         picks[index] = current
     }
 
-    private func submit() {
-        guard !busy else { return }
-        let set = question.request.questions.indices.map { index -> [String] in
-            let chosen = picks[index] ?? []
-            let text = (typed[index] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            return chosen.isEmpty ? [text] : chosen
-        }
-        busy = true
-        failure = nil
-        Task {
-            defer { busy = false }
-            do {
-                try await client.answer(sessionId, requestId: question.request.requestId, answers: set)
-            } catch {
-                failure = (error as? ActionError)?.message ?? String(describing: error)
-            }
-        }
-    }
 }
 
 // MARK: - quiet lines

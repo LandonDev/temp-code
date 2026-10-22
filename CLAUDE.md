@@ -1077,16 +1077,28 @@ routed to (aliax-core's `forward`). Two listeners:
   `settings` proof set shoots them with `TC_TEST_OPEN=host` (pushed through
   the stack's path) and `TC_TEST_SHEET=pair|pair-error`.
 - Steering (L5): `ios/TempCode/Sources/Thread/Composer.swift` (the bar on
-  every segment, Send ↔ Stop) and `WorkingStrip.swift` (the fixed 28 pt
-  row: Sending…, spinner + flavour word + elapsed, the paused row with Stop
-  and Continue); live approval and question cards in `TranscriptRows.swift`;
+  every segment, Send ↔ Stop, the model and reasoning chips on focus; a
+  watching master's button is Send and a master mid-turn with text steers)
+  with `ComposerStyles.swift` (the catalog choice, the menus, the chip, the
+  card button) and `ComposerAttachments.swift` (photos from the system
+  picker, four per turn, uploaded through `attachment.begin/chunk/commit`
+  as they are picked, a chip with a bar each); `WorkingStrip.swift` (the
+  row at one height per text size, six phases on the client package's
+  `WorkingPhase`: Sending…, spinner + flavour word + elapsed, the paused
+  row with Stop and Continue and a master's batch line, the stopped row
+  with Resume, the queued line with Start now); `CardActions.swift` (Allow,
+  Deny and Answer under the live cards in `TranscriptRows.swift`, the
+  optimistic decision and the one quiet rollback line);
   `Shell/ThreadSheets.swift` (Start a build from a plan, New thread from a
-  workspace or project header's `+`, both over the host's `catalog.get`);
-  `Design/ThreadRowActions.swift` (swipe to pin and archive, context menu
-  with rename). All of it sits on the client package's `Client/Actions.swift`
-  (the gate on the key and the socket, pending turns, optimistic decisions,
-  `ThreadDraft`); the README there has the rules. A read key hides nothing:
-  the field and the cards carry the reason instead.
+  workspace or project header's `+`, both over the host's `catalog.get`;
+  Rename); `Design/ThreadRowActions.swift` (swipe to pin and archive,
+  context menu with rename). All of it sits on the client package's
+  `Client/Actions.swift` (the gate on the key and the socket, pending
+  turns, optimistic decisions, `ThreadDraft`, `TurnModel`, `start` as
+  `session.start`), `Client/Attachments.swift` (`upload`) and
+  `Client/Steering.swift`; the README there has the rules. A read key
+  hides nothing: the field and the cards carry the reason instead. DEBUG
+  hooks: `TC_TEST_ACTION=start-now|resume` beside the L4 ones.
 - Push (L6): the phone registers its APNs token with every paired host
   (`remote.push.register`/`unregister`/`status`/`activity`, capability read:
   the key's own row); the host keeps one row per key (`remote_push`,

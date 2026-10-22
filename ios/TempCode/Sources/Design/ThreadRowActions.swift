@@ -19,7 +19,6 @@ struct ThreadRowActions<Rows: View>: ViewModifier {
     let meta: SessionMeta
     let menu: Rows
     @State private var renaming = false
-    @State private var title = ""
     @State private var failure: String?
 
     private var block: ActionBlock? { client.operateBlock }
@@ -49,7 +48,6 @@ struct ThreadRowActions<Rows: View>: ViewModifier {
                     Text(block.text(now: Date().timeIntervalSince1970 * 1000))
                 }
                 Button {
-                    title = meta.title
                     renaming = true
                 } label: {
                     Label("Rename…", systemImage: "pencil")
@@ -70,13 +68,7 @@ struct ThreadRowActions<Rows: View>: ViewModifier {
                 }
                 .disabled(block != nil)
             }
-            .alert("Rename thread", isPresented: $renaming) {
-                TextField("Title", text: $title)
-                    .textInputAutocapitalization(.sentences)
-                Button("Rename") { act { try await client.rename(meta.id, title: title.trimmingCharacters(in: .whitespaces)) } }
-                    .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
-                Button("Cancel", role: .cancel) {}
-            }
+            .sheet(isPresented: $renaming) { RenameSheet(client: client, session: meta) }
             .alert("Couldn't do that", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: {

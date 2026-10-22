@@ -286,6 +286,101 @@ with Stop and Continue. The strip never changes height. The header's elapsed
 and the strip's answer different questions (the thread, still live; this
 turn's phase) and the header never carries the flavour word.
 
+### The composer, the strip, the cards' actions, the sheets
+
+The composer is Messages' at its best (`Thread/Composer.swift`,
+`Thread/ComposerStyles.swift`): one 12 pt continuous field on the chrome
+step with a 1 px hairline, 36 pt for one line of `body`, growing with the
+text to five lines and scrolling past that, and never changing height on
+focus. The send button sits inside the field at the trailing edge, a 28 pt
+circle 4 pt from the field's edge, on the last line while the text grows.
+It fills in the accent only once there is text (the fill and glyph color
+cross-fade in 150 ms; empty it is the fill step with the arrow in the
+tertiary label) and becomes Stop, filled in the label color, while a turn
+runs and the box is empty: the glyphs trade places with the kit's icon
+swap (scale, opacity and blur on a 300 ms spring, a 150 ms fade under
+reduced motion) and the circle never moves. A watching master is not running
+(its button is Send), and a master mid-turn with text sends: the host
+whispers the text into the live turn as a steer, so the button is never
+Stop while there is text. The desktop's composer has no confirm on Stop,
+so neither does the phone. The field's placeholder is "Steer" for a root
+implementation or orchestration thread or a master of any type, "Message
+the agent" for a subagent, "Message" otherwise. On focus a chip row appears
+above the field (200 ms ease-out, the row's 8 pt of travel and fade; it
+leaves in 150 ms by fade alone): the model and, for a model with levels,
+the reasoning, each a 26 pt chip at the row radius on the fill step opening
+a menu over the host's catalog (`catalog.get`, the same list the desktop's
+picker shows, one section per provider with a check on the current model).
+A pick rides on the next send as `session.send`'s `provider`, `model` and
+`reasoning` (`TurnModel.override` sends nothing when the chips match the
+thread) and the chips follow the thread's model again once it lands. A read
+key, a halted host or a dropped link (after the desktop's 1.5 s grace) puts
+the reason in the field in place of the placeholder; the field is off and
+the button sits empty. A light impact on send and on a decision, never on
+typing; the field clears without animation. The list behind it dismisses
+the keyboard interactively.
+
+Photos (`Thread/ComposerAttachments.swift`): a 28 pt plus circle on the
+fill step beside the field, for a key that operates, opens the system
+photo picker, up to four per turn. Each photo goes up to the thread's host
+the moment it is picked (`attachment.begin`, one chunk at a time, `commit`;
+the client package's `upload`) and shows in a strip above the field: a
+56 pt thumbnail at the row radius with a 10 % outline, a 2 pt bar in the
+accent along its foot while it travels (its width rolls on the 150 ms
+numeric curve), gone once the host has it, and a remove control at the top
+trailing corner. A failed upload keeps its chip with the bar in the
+destructive tint and Retry in its menu; Send waits until every photo is on
+the host or removed (Stop never waits). The turn names the committed
+photos, and a refused send gives the text and the photos back.
+
+The working strip (`Thread/WorkingStrip.swift`) keeps one height whatever
+it shows, 28 pt at the default text size and scaled once with it, never
+animated, and sits 24 pt in from the screen edge (12 of bar, 12 of line;
+the field's own text inset). Six phases, from the status and whether a
+send of this device's is out (`WorkingPhase` in the client package):
+nothing while idle, waiting, watching or done (the card, the segment dot
+and Home's needs-you row already say so); Sending… between a send and the
+turn's start; the mini spinner, the flavour word (turning every seven
+seconds in the 150 ms cross-fade) and the elapsed in tabular digits; the
+paused row in the warning tint at 10 % with the pause glyph, Paused, the
+frozen elapsed, on a master "· and N batch threads with it", then Stop (a
+quiet capsule on the fill step) and Continue (a warning capsule with a
+white label); the stopped row on the quaternary fill with the stop glyph,
+Stopped, "· the harness is gone", the frozen elapsed and Resume (a capsule
+in the label color); the queued line, the host's "Queued · waiting for
+<sibling>" in secondary with Start now (quiet). A refused strip action
+re-enables its control and says nothing more: the block is already in the
+composer field. Only opacity animates, in 120 ms.
+
+The live cards' actions (`Thread/CardActions.swift`; the cards' rendering
+stays in `Thread/TranscriptRows.swift`) are full-width 40 pt buttons at the
+card's bottom, at the row radius (the recorded exception to outer = inner +
+padding: the card's 12 less its 12 of padding leaves no room, so the next
+step down is the row): Allow prominent in the accent with a white semibold
+label, Deny quiet on the fill step; Answer prominent, at half opacity until
+every question has a choice. A decision shows the moment it is tapped (the
+client records it before the wire), the buttons fade as the card settles
+in 200 ms ease-out, and a refusal rolls the decision back with one quiet
+secondary line ("Not allowed: …") that the next decision clears. A key
+that cannot approve sees the reason in the buttons' place; a link down for
+a moment sees them at half opacity with the reason under them.
+
+The sheets (`Shell/ThreadSheets.swift`) are the system sheet at medium and
+large, 16 pt corners, the drag indicator shown, Cancel on the left and the
+one confirming verb (Start, Create, Save) semibold on the right, off until
+the form is valid. The type is a grouped inline list: the type's glyph
+tinted at the label's weight, the label, the desktop's one-line hint, the
+system check on the chosen one. Start a build offers Implementation and
+Orchestration, one thread either way; New thread the six root types, and
+opened prefilled from the Inbox (the item's repository, title and a
+one-line reference as the first message) it adds a title row and a message
+row and sends the message right after the create. The
+model and reasoning rows read as menu pickers (value in secondary, the
+up-down chevron in tertiary) and open the same catalog menus as the
+composer's chips. Rename is one field with the title at medium, Save off
+until it reads differently; the row menu opens it (the thread screen
+renames inline in its header).
+
 Where the desktop splits board and chat side by side, the phone uses a
 segmented control under the header with two segments and a swipe between
 them. The control is bound to the pager: its raised pill sits at the pager's
@@ -989,6 +1084,13 @@ used.
 | Streaming text | none; append only | |
 | Status dot to spinner | cross-fade 150 ms | `StatusDot` (`Motion.crossFade`) |
 | A glyph trading state (Send ↔ Stop, outline ↔ fill, pin ↔ unpin) | scale 0.25 → 1, opacity 0 → 1, blur 4 → 0, spring `duration 0.3, bounce 0`; reduced motion: opacity on `cubic-bezier(0.2, 0, 0, 1)` 150 ms | `.iconSwapTransition()` with `.id(symbol)` in a `ZStack` (`Motion.iconSwap(reduced:)`, `Motion.iconSwap`, `Motion.iconSwapScale`, `Motion.iconSwapBlur`, `Motion.iconFade`); `TypeGlyph(active:)` uses the symbol replace effect instead, since Glyphs builds without Motion |
+| Send button filling | fill and glyph color 150 ms ease-out when text arrives or leaves; the arrow ↔ stop square is the glyph-trading row above, the circle never moves | `Motion.crossFade` on the fill; `.id(stops)` with `Motion.iconSwap(reduced:)` on the glyph |
+| Composer chip row | appears on focus: 200 ms ease-out, opacity and 8 pt translateY; leaves 150 ms opacity only; the dock's height follows on the collapse curve | `Motion.appear(reduced:)`, `Motion.collapse` |
+| Working strip state | 120 ms ease-out, opacity only; the row never changes height | `WorkingStripView.fade` (the one 120 ms curve; the kit has none) |
+| Attachment chip | appears 200 ms ease-out, opacity and 8 pt translateY; removal 150 ms opacity only | `Motion.appear(reduced:)` |
+| Upload bar | width on the 150 ms numeric curve; hidden once the host has the file | `Motion.numeric` |
+| Card decided | buttons fade, card settles 200 ms ease-out; a refusal's quiet line cross-fades in 150 ms | `Motion.collapse`, `Motion.crossFade` |
+| Haptics | light impact on send and on a decision; nothing on keyboard input | `.sensoryFeedback(.impact(weight: .light), trigger:)` |
 | Jump-to-latest pill | 150 ms opacity and 8 pt translateY, both directions | `.jumpTransition()` (`Motion.jump(reduced:)`) |
 | Diff hunk sideways | follows the finger through an interactive spring, momentum from the release velocity, rubber band at both ends, settles with spring `duration min(0.6, 0.35 + travel × 0.0004), bounce 0`; next and previous hunk scroll 250 ms on `timingCurve(0.23, 1, 0.32, 1)` to the header's exact offset | `DiffMotion.track`, `DiffMotion.settle(travel:)`, `DiffMotion.jump` (Thread/DiffStyles.swift); `DiffLayout.hunkStarts` for the offsets |
 | Diff lines landing | 150 ms cross-fade over the shimmer; nothing when the lines were in hand | `Motion.crossFade`; the counter rolls with `.numeric(current)` |

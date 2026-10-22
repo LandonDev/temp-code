@@ -191,6 +191,8 @@ export const SUBSET: SubsetEntry[] = [
   method('session.pin', z.null()),
   method('session.pause', z.null()),
   method('session.resume', z.null()),
+  // a queued batch thread started ahead of its sibling (the strip's Start now)
+  method('session.start', z.object({ started: z.boolean() })),
   method('queue.list', z.array(W.QueuedMessageSchema)),
   method('queue.add', z.null()),
   method('queue.remove', z.null()),
