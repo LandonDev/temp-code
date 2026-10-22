@@ -14,7 +14,7 @@
  * Every server line carries the requests in flight (method + age), the
  * pushes sent in the last second, the running thread count, loadavg and
  * RSS. Cost: two integer counters, one Map entry per in-flight request,
- * two histogram reads a second. Nothing allocates per event.
+ * one histogram read a second. Nothing allocates per event.
  */
 import { appendFileSync, mkdirSync, renameSync, statSync } from 'node:fs'
 import { join } from 'node:path'
@@ -138,17 +138,16 @@ export function loopLine(sample: { max: number; mean: number }): string | null {
  */
 export function startStallMonitor(): () => void {
   const histogram = monitorEventLoopDelay({ resolution: 20 })
-  const history = monitorEventLoopDelay({ resolution: 20 })
   lag = { meanMs: 0, maxMs: 0, ewmaMs: 0 }
   histogram.enable()
-  history.enable()
   const timer = setInterval(() => {
+    // The last second's mean and max, read before the reset; the EWMA folds
+    // each second in with weight 1/10, so it follows the last ~10 s.
     const meanMs = Number.isFinite(histogram.mean) ? histogram.mean / 1e6 : 0
-    const historyMeanMs = Number.isFinite(history.mean) ? history.mean / 1e6 : 0
     lag = {
       meanMs,
       maxMs: histogram.max / 1e6,
-      ewmaMs: lag.ewmaMs + EWMA_ALPHA * (historyMeanMs - lag.ewmaMs)
+      ewmaMs: lag.ewmaMs + EWMA_ALPHA * (meanMs - lag.ewmaMs)
     }
     const line = loopLine({ max: histogram.max, mean: histogram.mean })
     histogram.reset()
@@ -160,7 +159,6 @@ export function startStallMonitor(): () => void {
   return () => {
     clearInterval(timer)
     histogram.disable()
-    history.disable()
     lag = { meanMs: 0, maxMs: 0, ewmaMs: 0 }
   }
 }
