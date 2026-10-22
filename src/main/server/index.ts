@@ -140,6 +140,8 @@ import {
 } from './apptools'
 import { ProjectPlans, handleProjectPlan } from './projectPlan'
 import { Batches, batchChildren, handleBatch, setBatches } from './batch'
+import { BOARD_TAIL_ROWS, BOARD_TAIL_TYPES, BoardDigests } from './boardDigest'
+import { BoardWatch } from './boardWatch'
 import { LocalPublish, MacPublish, macPublishOffers } from './remote/macPublish'
 import { PeerDeploy } from './remote/peerDeploy'
 import { PeerPublish } from './remote/peerPublish'
@@ -750,6 +752,27 @@ export async function startServer(
 
   batchRuns.attach()
   setBatches(batchRuns)
+  // A master's board in one answer (batch.board) and its pushes, only to
+  // the sockets watching that master (boardDigest.ts, boardWatch.ts).
+  const boardWatch = new BoardWatch()
+  const boardDigests = new BoardDigests({
+    children: (masterId) => registry.batchChildren(masterId),
+    masterOf: (sessionId) => registry.batchMasterOf(sessionId),
+    todos: (sessionId) => registry.todoListOf(sessionId),
+    notesText: (sessionId) => store.getSessionNotes(sessionId)?.text ?? null,
+    readTail: (sessionId) =>
+      store.readRows(sessionId, {
+        afterSeq: Math.max(0, store.lastSeq(sessionId) - BOARD_TAIL_ROWS),
+        limit: BOARD_TAIL_ROWS,
+        whereSql: `json_extract(payload, '$.type') IN (${BOARD_TAIL_TYPES.map((t) => `'${t}'`).join(', ')})`
+      }),
+    watched: (masterId) => boardWatch.watched(masterId),
+    onEvent: (listener) => registry.onEvent(listener),
+    onMeta: (listener) => registry.onMeta(listener),
+    onNotes: (listener) => registry.notes.onChange((sessionId, doc) => listener(sessionId, doc.text))
+  })
+  boardDigests.attach()
+  registry.onRemoved((sessionIds) => boardDigests.forget(sessionIds))
   // A thread of another host's batch lands by asking that host (remote/crossHostThreads.ts); a local one by the engine here.
   setMergeReviews(
     new MergeReviews({
@@ -1094,8 +1117,14 @@ export async function startServer(
     })
     // A thread's notes changed: every client follows (the panel, the rows).
     const offNotes = registry.notes.onChange((sessionId, doc) => emitPush({ push: 'notes', sessionId, doc }))
-    // A master's batch moved a step: the board follows without polling.
-    const offBatch = batchRuns.onChange((state) => emitPush({ push: 'batch', state }))
+    // A master's batch moved a step, or one child's digest moved: only the
+    // sockets watching that master's board hear it (boardWatch.ts).
+    const offBatch = batchRuns.onChange((state, push) => {
+      if (boardWatch.isWatching(connection, state.masterId)) emitPush({ push: 'batch', state: push })
+    })
+    const offBoard = boardDigests.onPush((p) => {
+      if (boardWatch.isWatching(connection, p.masterId)) emitPush({ push: 'board', ...p })
+    })
     const offCatalog = registry.onCatalog((kind) => emitPush(kind === 'workspaces'
       ? { push: 'workspaces', workspaces: registry.listWorkspaces() }
       : { push: 'projects', projects: registry.listProjects() }))
@@ -1251,7 +1280,8 @@ export async function startServer(
         if (req.method === 'deploy.master') return sendFrame({ id: req.id, ok: true, result: masterRelease.current() })
         const planned = handleProjectPlan(req, projectPlans)
         if (planned.handled) return sendFrame({ id: req.id, ok: true, result: planned.result })
-        const batched = await handleBatch(req, batchRuns, registry)
+        if (req.method === 'batch.board') boardWatch.ask(connection, req.params.masterId)
+        const batched = await handleBatch(req, batchRuns, registry, boardDigests)
         if (batched.handled) return sendFrame({ id: req.id, ok: true, result: batched.result })
         const macBridged = handleMacBridge(req, macBridge)
         if (macBridged.handled) return sendFrame({ id: req.id, ok: true, result: macBridged.result })
@@ -2310,6 +2340,8 @@ export async function startServer(
       offMeta()
       offNotes()
       offBatch()
+      offBoard()
+      boardWatch.drop(connection)
       offCatalog()
       offQueue()
       offLive()

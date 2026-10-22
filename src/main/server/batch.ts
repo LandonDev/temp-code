@@ -12,6 +12,8 @@ import {
   stepsProblem,
   withLandStep,
   type BatchAdoptResult,
+  type BatchBoard,
+  type BatchPushState,
   type BatchRules,
   type BatchState,
   type BatchStep,
@@ -83,7 +85,8 @@ import type { SessionRegistry } from './sessions'
  * State lives in one settings row per master (`batch:<masterId>`);
  * `pending` is computed from the sessions table on every read. Every
  * change is pushed as `batch` (contract.ts), coalesced to at most four
- * pushes a second while a step's log streams. `open(masterId)` is what
+ * pushes a second while a step's log streams, each step's log as the lines
+ * since the last push (`{ from, lines }`; `batch.get` is the whole state). `open(masterId)` is what
  * keeps the master `watching` (sessions.ts): children exist and the engine
  * has not finished with them. The batch's membership moves through
  * `adopt` (an existing root joins) and `archive` (the children leave, the
@@ -295,7 +298,9 @@ type StepsOutcome = 'done' | 'failed' | 'handed-off'
 
 export class Batches {
   private readonly rows = new Map<string, StoredBatch>()
-  private readonly listeners = new Set<(state: BatchState) => void>()
+  private readonly listeners = new Set<(state: BatchState, push: BatchPushState) => void>()
+  /** per step (`<master>\0<step>`): the log line count the last push went out at */
+  private readonly logSent = new Map<string, number>()
   private readonly runGate: typeof runGateStep
   private readonly queue: GateQueue
   private readonly branchOf: typeof branchOf
@@ -344,7 +349,8 @@ export class Batches {
     }
   }
 
-  onChange(listener: (state: BatchState) => void): () => void {
+  /** Every change: the whole state, and the push with each step's log as the lines since the last one. */
+  onChange(listener: (state: BatchState, push: BatchPushState) => void): () => void {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
   }
@@ -646,7 +652,25 @@ export class Batches {
       // A streamed log is persisted with its push, not on every line.
       this.deps.store.setSetting(`${ROW_PREFIX}${id}`, JSON.stringify(row))
       const state = this.get(id)
-      for (const l of this.listeners) l(state)
+      const push = this.pushState(state)
+      for (const l of this.listeners) l(state, push)
+    }
+  }
+
+  /** The state with each step's log cut to the lines since the last push
+   *  (the first push of a process sends what the step holds). */
+  private pushState(state: BatchState): BatchPushState {
+    return {
+      ...state,
+      steps: state.steps.map(({ log, ...step }) => {
+        const count = step.logCount ?? log.length
+        const base = count - log.length
+        const key = `${state.masterId}\0${step.id}`
+        const sent = this.logSent.get(key)
+        const from = sent === undefined || sent > count ? base : Math.max(sent, base)
+        this.logSent.set(key, count)
+        return { ...step, log: { from, lines: log.slice(from - base) } }
+      })
     }
   }
 
@@ -689,6 +713,8 @@ export class Batches {
     if (step.kind !== 'land') {
       delete step.progress
       step.log = []
+      step.logCount = 0
+      this.logSent.delete(`${row.masterId}\0${id}`)
     }
   }
 
@@ -709,10 +735,12 @@ export class Batches {
   private reset(row: StoredBatch, id: string): void {
     const i = row.steps.findIndex((s) => s.id === id)
     if (i >= 0) row.steps[i] = emptyStep(row.steps[i])
+    this.logSent.delete(`${row.masterId}\0${id}`)
   }
 
   private logLine(row: StoredBatch, id: string, line: string): void {
     const step = this.step(row, id)
+    step.logCount = (step.logCount ?? step.log.length) + 1
     step.log.push(line)
     if (step.log.length > BATCH_STEP_LOG_LINES) step.log.splice(0, step.log.length - BATCH_STEP_LOG_LINES)
     this.touch(row)
@@ -1559,11 +1587,17 @@ function ordinal(n: number): string {
 export async function handleBatch(
   req: ClientRequest,
   batches: Pick<Batches, 'get' | 'setRules' | 'stopStep' | 'adoptAll' | 'archive'>,
-  registry: Pick<SessionRegistry, 'batchChildren'>
+  registry: Pick<SessionRegistry, 'batchChildren'>,
+  board?: { board(masterId: string, state: BatchState): Promise<BatchBoard> }
 ): Promise<{ handled: true; result: unknown } | { handled: false }> {
   switch (req.method) {
     case 'batch.get':
       return { handled: true, result: batches.get(req.params.masterId) }
+    case 'batch.board': {
+      const state = batches.get(req.params.masterId)
+      if (board) return { handled: true, result: await board.board(req.params.masterId, state) }
+      return { handled: true, result: { children: batchChildren(registry, req.params.masterId), digests: {}, state } satisfies BatchBoard }
+    }
     case 'batch.children':
       return { handled: true, result: { children: batchChildren(registry, req.params.masterId) } }
     case 'batch.setRules':

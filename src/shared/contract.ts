@@ -1247,8 +1247,13 @@ export type ServerPush =
   // phone's subset.
   | { push: 'checkpoint-changed'; sessionId: string }
   // A master's batch changed a step (batch.ts: a child landed, the gate or
-  // the release moved). Every client gets it; not in the phone's subset.
-  | { push: 'batch'; state: import('./contract-batch').BatchState }
+  // the release moved), each step's log as the lines since the last push.
+  // Only to the sockets watching that master (boardWatch.ts); not in the
+  // phone's subset.
+  | { push: 'batch'; state: import('./contract-batch').BatchPushState }
+  // One child's board digest changed (boardDigest.ts), at most every 250 ms
+  // per child; only to the sockets watching its master. Not in the phone's subset.
+  | { push: 'board'; masterId: string; sessionId: string; digest: import('./contract-batch').BoardDigest }
   | { push: 'session-removed'; sessionIds: string[] }
   // A thread (`id`, with its subagents `sessionIds`) moved to environment `to`
   // (contract-session-move.ts); sent ahead of the session-removed for it.

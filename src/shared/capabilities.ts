@@ -254,6 +254,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'session.setMaster': 'admin',
   // A master thread's batch (contract-batch.ts): reads, the rules a person may set, the batch's membership and its end.
   'batch.get': 'read',
+  'batch.board': 'read',
   'batch.children': 'read',
   'batch.setRules': 'operate',
   'batch.stopStep': 'operate',

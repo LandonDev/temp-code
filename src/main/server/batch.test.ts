@@ -1,10 +1,12 @@
 import { realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { describe, expect, it } from 'vitest'
-import type { BatchState } from '@shared/contract-batch'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { BOARD_WATCH_MS, type BatchBoard, type BatchPushState, type BatchState } from '@shared/contract-batch'
 import type { DeployStatus, HostLogPush } from '@shared/contract-host'
-import type { AgentEvent, SessionMeta } from '@shared/events'
+import type { AgentEvent, EventRow, SessionMeta } from '@shared/events'
 import { Batches, handleBatch, releaseTag, spawnShellStep, type BatchesDeps, type PublishRun } from './batch'
+import { BoardDigests, type BoardPush } from './boardDigest'
+import { BoardWatch } from './boardWatch'
 import { GateQueue } from './gateQueue'
 import type { GateRunOptions, GateRunResult } from './gateRun'
 import type { Landed } from './mergeReview'
@@ -168,6 +170,7 @@ function world(opts: { master?: string | null; branch?: string | null; children?
     return { sha: 'abcdef1234567890', merged: branch !== target, pushed: push }
   }
   const pushes: BatchState[] = []
+  const deltas: BatchPushState[] = []
   const deploy = fakeDeploy()
   const publish = fakePublish()
   const announced: string[] = []
@@ -188,7 +191,10 @@ function world(opts: { master?: string | null; branch?: string | null; children?
       pushEveryMs: 250,
       ...extra
     })
-    b.onChange((s) => pushes.push(s))
+    b.onChange((s, p) => {
+      pushes.push(s)
+      deltas.push(p)
+    })
     return b
   }
   const landed = (id: string, branch = `br-${id}`, subjects = [`${id}: did it`]): Landed => ({
@@ -213,6 +219,7 @@ function world(opts: { master?: string | null; branch?: string | null; children?
     runs,
     merges,
     pushes,
+    deltas,
     deploy,
     publish,
     announced,
@@ -851,6 +858,51 @@ describe('Batches: the push and the log', () => {
     expect(JSON.parse(w.store.getSetting('batch:m')!).steps[1].log).toHaveLength(200)
   })
 
+  it("the push carries each step's log as the lines since the last push, numbered from the step's start; batch.get stays whole", async () => {
+    const w = world()
+    const b = w.make()
+    w.setOutcome((o) => (o.step === 'gate' ? { log: Array.from({ length: 12 }, (_, i) => `line ${i}`).join('\n') } : {}))
+    w.set('b', { status: 'idle' })
+    b.landed(w.landed('a'))
+    await b.review('m')
+    b.flush()
+    // A client folding the deltas in order holds exactly the step's log.
+    const gate = w.deltas.map((d) => d.steps.find((s) => s.id === 'gate')!).filter((s) => s.startedAt !== undefined)
+    let held: string[] = []
+    for (const step of gate) {
+      expect(step.log.from).toBe(held.length)
+      held = [...held, ...step.log.lines]
+    }
+    const whole = b.get('m').steps.find((s) => s.id === 'gate')!
+    expect(held).toEqual(whole.log)
+    expect(whole.logCount).toBe(12)
+    expect(gate.at(-1)!.logCount).toBe(12)
+    // Nothing new since: the next push sends no lines, from the count.
+    w.tick(300)
+    b.setRules('m', { summary: 'again' })
+    const quiet = w.deltas.at(-1)!.steps.find((s) => s.id === 'gate')!
+    expect(quiet.log).toEqual({ from: 12, lines: [] })
+    // handleBatch's batch.get answers the whole log, never a delta.
+    const got = (await handleBatch({ id: '1', method: 'batch.get', params: { masterId: 'm' } }, b, w.registry)) as { result: BatchState }
+    expect(got.result.steps.find((s) => s.id === 'gate')!.log).toHaveLength(12)
+  })
+
+  it('past the 200 kept lines a push starts where the kept log starts, so a client behind it asks for the whole state', async () => {
+    const w = world()
+    const b = w.make()
+    w.setOutcome((o) => (o.step === 'gate' ? { log: Array.from({ length: 260 }, (_, i) => `line ${i}`).join('\n') } : {}))
+    w.set('b', { status: 'idle' })
+    b.landed(w.landed('a'))
+    await b.review('m')
+    b.flush()
+    const gate = w.deltas.map((d) => d.steps.find((s) => s.id === 'gate')!).filter((s) => s.log.lines.length)
+    const last = gate.at(-1)!
+    expect(last.logCount).toBe(260)
+    expect(last.log.from).toBe(60)
+    expect(last.log.lines[0]).toBe('line 60')
+    expect(last.log.from + last.log.lines.length).toBe(260)
+  })
+
   it('a push goes out at once when the last one is old enough', () => {
     const w = world()
     const b = w.make()
@@ -1266,5 +1318,199 @@ describe('Batches: children on other hosts', () => {
     const answer = await handleBatch({ id: '1', method: 'batch.adopt', params: { masterId: 'm', sessionIds: [`${MACID}:ok`] } } as never, b, w.registry as never)
     expect(answer.handled).toBe(true)
     expect(((answer as { result: { adopted: string[] } }).result).adopted).toEqual([`${MACID}:ok`])
+  })
+})
+
+describe('the board: batch.board, digests and their watchers', () => {
+  afterEach(() => vi.useRealTimers())
+
+  /** A host with a master m and children a (implementation), r (research, waiting), x (errored); n is another master's. */
+  function board(opts: { watched?: (masterId: string) => boolean } = {}) {
+    const sessions = new Map<string, SessionMeta>(
+      [
+        meta('a', { masterId: 'm', createdAt: 1, status: 'running' }),
+        meta('r', { masterId: 'm', createdAt: 2, status: 'waiting', threadType: 'research' }),
+        meta('x', { masterId: 'm', createdAt: 3, status: 'error', failure: { kind: 'rate_limited', account: null, summary: 'Rate limited until 14:00', cause: '429' } }),
+        meta('y', { masterId: 'n', createdAt: 4 })
+      ].map((s) => [s.id, s])
+    )
+    const todos = new Map<string, { status: string; name: string }[]>([
+      ['a', [{ status: 'completed', name: 'Read the brief' }, { status: 'in_progress', name: 'Write the view' }]]
+    ])
+    const notes = new Map<string, string>([['r', '## Goal\n\nx\n\n## State\n\n- Three sources read, two to go\n']])
+    const row = (sessionId: string, seq: number, event: AgentEvent): EventRow => ({ sessionId, seq, ts: seq, event })
+    const tails = new Map<string, EventRow[]>([
+      ['a', [row('a', 4, { type: 'assistant-text', text: 'Wrote the view.\nMore below.', delta: false, msgId: 'm1', blockIndex: 0 } as AgentEvent)]],
+      [
+        'r',
+        [
+          row('r', 7, { type: 'question-request', requestId: 'q1', questions: [{ question: 'Which market first?', options: [] }] } as unknown as AgentEvent)
+        ]
+      ]
+    ])
+    const tailReads: string[] = []
+    const eventListeners = new Set<(row: EventRow) => void>()
+    const metaListeners = new Set<(m: SessionMeta) => void>()
+    const noteListeners = new Set<(id: string, text: string) => void>()
+    const children = (masterId: string) =>
+      [...sessions.values()].filter((s) => s.masterId === masterId && !s.parentId && !s.archived).sort((p, q) => p.createdAt - q.createdAt)
+    const digests = new BoardDigests({
+      children,
+      masterOf: (id) => sessions.get(id)?.masterId ?? null,
+      todos: (id) => todos.get(id) ?? null,
+      notesText: (id) => notes.get(id) ?? null,
+      readTail: async (id) => {
+        tailReads.push(id)
+        return tails.get(id) ?? []
+      },
+      watched: opts.watched ?? (() => true),
+      onEvent: (l) => {
+        eventListeners.add(l)
+        return () => eventListeners.delete(l)
+      },
+      onMeta: (l) => {
+        metaListeners.add(l)
+        return () => metaListeners.delete(l)
+      },
+      onNotes: (l) => {
+        noteListeners.add(l)
+        return () => noteListeners.delete(l)
+      }
+    })
+    digests.attach()
+    const pushes: BoardPush[] = []
+    digests.onPush((p) => pushes.push(p))
+    return {
+      sessions,
+      todos,
+      digests,
+      pushes,
+      tailReads,
+      append: (r: EventRow) => {
+        for (const l of eventListeners) l(r)
+      },
+      setMeta: (id: string, patch: Partial<SessionMeta>) => {
+        const s = { ...sessions.get(id)!, ...patch }
+        sessions.set(id, s)
+        for (const l of metaListeners) l(s)
+      },
+      writeNotes: (id: string, text: string) => {
+        for (const l of noteListeners) l(id, text)
+      },
+      row
+    }
+  }
+
+  const state = (masterId: string) => ({ masterId, steps: [], landed: [], pending: [], held: [], blocked: null, finishedAt: null }) as unknown as BatchState
+
+  it("answers the master's children here with a digest each from the host's own folds, and the state", async () => {
+    const h = board()
+    const answer = await h.digests.board('m', state('m'))
+    expect(answer.children.map((c) => c.id)).toEqual(['a', 'r', 'x'])
+    expect(answer.state.masterId).toBe('m')
+    expect(answer.digests).toEqual({
+      a: {
+        todos: [
+          { content: 'Read the brief', status: 'completed' },
+          { content: 'Write the view', status: 'in_progress' }
+        ],
+        last: 'Wrote the view.'
+      },
+      r: { state: 'Three sources read, two to go', question: 'Which market first?' },
+      x: { failure: 'Rate limited until 14:00' }
+    })
+    // Each child's tail was read once; a second board reads nothing.
+    expect(h.tailReads.sort()).toEqual(['a', 'r', 'x'])
+    await h.digests.board('m', state('m'))
+    expect(h.tailReads).toHaveLength(3)
+  })
+
+  it('handleBatch answers batch.board through the digests, and without them the children and the state alone', async () => {
+    const h = board()
+    const w = world()
+    const b = w.make()
+    const withDigests = (await handleBatch({ id: '1', method: 'batch.board', params: { masterId: 'm' } }, b, { batchChildren: () => [...h.sessions.values()].filter((s) => s.masterId === 'm') }, h.digests)) as { result: BatchBoard }
+    expect(Object.keys(withDigests.result.digests)).toEqual(['a', 'r', 'x'])
+    expect(withDigests.result.state.masterId).toBe('m')
+    const bare = (await handleBatch({ id: '2', method: 'batch.board', params: { masterId: 'm' } }, b, w.registry)) as { result: BatchBoard }
+    expect(bare.result.children.map((c) => c.id)).toEqual(['a', 'b'])
+    expect(bare.result.digests).toEqual({})
+    expect(bare.result.state.pending).toEqual(['a', 'b'])
+  })
+
+  it("one child's moves inside the window become one push of its new digest; an unchanged digest is never sent", async () => {
+    vi.useFakeTimers()
+    const h = board()
+    await h.digests.board('m', state('m'))
+    // Three rows and a meta push for a, inside 250 ms.
+    h.todos.set('a', [{ status: 'completed', name: 'Read the brief' }, { status: 'completed', name: 'Write the view' }])
+    h.append(h.row('a', 5, { type: 'tool-call', callId: 't2', name: 'TodoWrite', input: {} } as AgentEvent))
+    h.append(h.row('a', 6, { type: 'assistant-text', text: 'All done.', delta: false, msgId: 'm2', blockIndex: 0 } as AgentEvent))
+    h.append(h.row('a', 7, { type: 'assistant-text', text: 'All', delta: true, msgId: 'm3', blockIndex: 0 } as AgentEvent))
+    h.setMeta('a', { activity: 'Running tests' })
+    expect(h.pushes).toHaveLength(0)
+    vi.advanceTimersByTime(250)
+    expect(h.pushes).toEqual([
+      {
+        masterId: 'm',
+        sessionId: 'a',
+        digest: {
+          todos: [
+            { content: 'Read the brief', status: 'completed' },
+            { content: 'Write the view', status: 'completed' }
+          ],
+          last: 'All done.'
+        }
+      }
+    ])
+    // A meta push that moves nothing the digest says: nothing goes out.
+    h.setMeta('a', { activity: 'Running lint' })
+    vi.advanceTimersByTime(250)
+    expect(h.pushes).toHaveLength(1)
+    // The question answered and the notes' State written: r's digest moves.
+    h.append(h.row('r', 8, { type: 'question-resolved', requestId: 'q1' } as unknown as AgentEvent))
+    h.writeNotes('r', '## State\n\nFour read\n')
+    vi.advanceTimersByTime(250)
+    expect(h.pushes.at(-1)).toEqual({ masterId: 'm', sessionId: 'r', digest: { state: 'Four read' } })
+  })
+
+  it('nothing is computed or pushed for a master no socket watches', async () => {
+    vi.useFakeTimers()
+    let watching = false
+    const h = board({ watched: () => watching })
+    await h.digests.board('m', state('m'))
+    h.append(h.row('a', 5, { type: 'assistant-text', text: 'Unseen.', delta: false, msgId: 'm2', blockIndex: 0 } as AgentEvent))
+    vi.advanceTimersByTime(1_000)
+    expect(h.pushes).toHaveLength(0)
+    // The lines still fold, so a watcher that comes back reads them.
+    watching = true
+    expect((await h.digests.board('m', state('m'))).digests.a.last).toBe('Unseen.')
+  })
+
+  it("a socket watches a master for a minute after its batch.board, or while it has the master on screen; never another master's", () => {
+    let now = 0
+    const watch = new BoardWatch(() => now)
+    watch.ask(1, 'm')
+    expect(watch.isWatching(1, 'm')).toBe(true)
+    expect(watch.isWatching(1, 'n')).toBe(false)
+    expect(watch.isWatching(2, 'm')).toBe(false)
+    expect(watch.watched('m')).toBe(true)
+    expect(watch.watched('n')).toBe(false)
+    now = BOARD_WATCH_MS - 1
+    expect(watch.isWatching(1, 'm')).toBe(true)
+    now = BOARD_WATCH_MS
+    expect(watch.isWatching(1, 'm')).toBe(false)
+    expect(watch.watched('m')).toBe(false)
+    // Asking again renews it.
+    watch.ask(1, 'm')
+    expect(watch.isWatching(1, 'm')).toBe(true)
+    // session.focus's hook: a socket with the master on screen watches it with no ask.
+    watch.focus(2, 'n')
+    expect(watch.isWatching(2, 'n')).toBe(true)
+    expect(watch.watched('n')).toBe(true)
+    watch.focus(2, null)
+    expect(watch.watched('n')).toBe(false)
+    watch.drop(1)
+    expect(watch.watched('m')).toBe(false)
   })
 })

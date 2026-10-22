@@ -1158,6 +1158,14 @@ export class SessionRegistry {
       .map((s) => this.decorate(s, index))
   }
 
+  /** The master of an unarchived root batch thread, from the index (no
+   *  decorate, no read); null for anything else. Asked per appended row by
+   *  the board digests (boardDigest.ts). */
+  batchMasterOf(sessionId: string): string | null {
+    const s = this.indexOf().byId.get(sessionId)
+    return s && !s.parentId && !s.archived ? (s.masterId ?? null) : null
+  }
+
   /** Was this session running a disk-writing tool at ts (with grace for
    *  writes that flush just after the result)? Livediff's ownership probe. */
   diskActiveAt(sessionId: string, ts: number): boolean {
@@ -1214,6 +1222,23 @@ export class SessionRegistry {
     const warm = this.todoFolds.get(sessionId)
     return warm ? tallyOf(warm) : (this.folds.get(sessionId)?.tasks ?? null)
   }
+
+  /** The thread's current task list for a master's board (boardDigest.ts):
+   *  the warm fold, else the stored snapshot (revived once per row). Never
+   *  reads the event log. */
+  todoListOf(sessionId: string): readonly { status: string; name: string }[] | null {
+    const warm = this.todoFolds.get(sessionId)
+    if (warm) return warm.list
+    const fold = this.folds.get(sessionId)
+    if (!fold?.todo) return null
+    const cached = this.revivedTodos.get(fold)
+    if (cached !== undefined) return cached
+    const list = reviveTodo(fold.todo)?.todo.list ?? null
+    this.revivedTodos.set(fold, list)
+    return list
+  }
+
+  private revivedTodos = new WeakMap<FoldRow, { status: string; name: string }[] | null>()
 
   /** The thread's active goal, from its persisted fold row. */
   private goalOf(sessionId: string): GoalState {

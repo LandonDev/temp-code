@@ -64,9 +64,20 @@ export const BatchStepSchema = z.object({
   /** land: branches merged of total; gate: the tier's steps done of total with the running one as label; publish and deploy: their stage */
   progress: z.object({ done: z.number().int(), total: z.number().int(), label: z.string().optional() }).optional(),
   /** the step's console lines as they arrive, the newest BATCH_STEP_LOG_LINES kept */
-  log: z.array(z.string())
+  log: z.array(z.string()),
+  /** how many lines the step has logged since it began; `log` holds the last of them, so its first line is number `logCount - log.length` (absent on a row written before the count: read `log.length`) */
+  logCount: z.number().int().optional()
 })
 export type BatchStep = z.infer<typeof BatchStepSchema>
+
+/** A step as the `batch` push carries it: the telemetry with only the log
+ *  lines since the last push, `from` the first one's number since the step
+ *  began. A client that holds fewer lines than `from` asks `batch.get` for
+ *  the whole state; one that holds more drops the overlap. */
+export const BatchStepDeltaSchema = BatchStepSchema.omit({ log: true }).extend({
+  log: z.object({ from: z.number().int(), lines: z.array(z.string()) })
+})
+export type BatchStepDelta = z.infer<typeof BatchStepDeltaSchema>
 
 /** The steps every batch has unless the master writes others: land, the gate, the release. */
 export const DEFAULT_BATCH_STEPS: readonly BatchStepSpec[] = [
@@ -169,6 +180,45 @@ export const BatchStateSchema = z.object({
 })
 export type BatchState = z.infer<typeof BatchStateSchema>
 
+/** What the `batch` push carries: the state with each step's log as a delta (BatchStepDeltaSchema); `batch.get` stays the whole answer. */
+export const BatchPushStateSchema = BatchStateSchema.omit({ steps: true }).extend({ steps: z.array(BatchStepDeltaSchema) })
+export type BatchPushState = z.infer<typeof BatchPushStateSchema>
+
+/** One task of a child's current list, as its host's fold has it. */
+export const BoardTodoSchema = z.object({ content: z.string(), status: z.enum(['pending', 'in_progress', 'completed']) })
+export type BoardTodo = z.infer<typeof BoardTodoSchema>
+
+/**
+ * What a board row shows beyond the child's meta, from its host's own
+ * folds (boardDigest.ts): the current task list, its last words, the first
+ * line under its notes' State, the question it waits on, and the failure's
+ * summary. Every field is absent when there is nothing to say.
+ */
+export const BoardDigestSchema = z.object({
+  todos: z.array(BoardTodoSchema).optional(),
+  last: z.string().optional(),
+  state: z.string().optional(),
+  question: z.string().optional(),
+  failure: z.string().optional()
+})
+export type BoardDigest = z.infer<typeof BoardDigestSchema>
+
+/**
+ * What `batch.board` answers: the master's children on this host as their
+ * metas (the registry's index by master, decorated), a digest per child,
+ * and the batch's whole state (its `children` names the ones on other
+ * hosts). The asking socket hears the `board` and `batch` pushes for this
+ * master for the next minute (BOARD_WATCH_MS); the board asks again inside it.
+ */
+export interface BatchBoard {
+  children: import('./events').SessionMeta[]
+  digests: Record<string, BoardDigest>
+  state: BatchState
+}
+
+/** How long one `batch.board` keeps its socket hearing the master's pushes. */
+export const BOARD_WATCH_MS = 60_000
+
 /** A step nobody has run: pending, no log. */
 export const emptyStep = (spec: BatchStepSpec): BatchStep => ({
   id: spec.id,
@@ -213,6 +263,8 @@ export type BatchAdoptResult = z.infer<typeof BatchAdoptResultSchema>
 export const BatchRequestSchemas = [
   // → BatchState
   request('batch.get', z.object({ masterId: z.string() })),
+  // → BatchBoard: the board in one answer; the socket hears the master's `board` and `batch` pushes for BOARD_WATCH_MS.
+  request('batch.board', z.object({ masterId: z.string() })),
   // → { children: SessionMeta[] }: the root threads carrying this masterId, unarchived.
   request('batch.children', z.object({ masterId: z.string() })),
   // → BatchState: set some or all of the rules; every change is the `batch` push.
