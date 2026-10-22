@@ -67,7 +67,7 @@ import {
   type SessionMeta,
   type ToolPreview
 } from './events'
-import type { EventsPage, OmittedBody, SessionPage } from './wire'
+import type { EventsPage, OmittedBody, SessionChanges, SessionPage } from './wire'
 
 /**
  * The server → client shapes as zod, for clients that are not this
@@ -312,6 +312,34 @@ export const SessionPageSchema = z.object({
   cursor: z.string().nullable()
 })
 export type WireSessionPage = Flat<Omit<SessionPage, 'sessions'> & { sessions: WireSessionMeta[] }>
+/** `session.changes` on the phone: the flat shape of both members of
+ *  `SessionChanges` (the reset answer simply omits the arrays). The generator's
+ *  union support is string-tagged, so the discriminated-on-boolean union
+ *  stays one object here; `WireSessionChangesPins` keeps it honest. */
+export const SessionChangesSchema = z.object({
+  reset: z.boolean(),
+  seq: z.number().int(),
+  generation: z.string(),
+  sessions: z.array(SessionMetaSchema).optional(),
+  removed: z.array(z.string()).optional()
+})
+export type WireSessionChanges = {
+  reset: boolean
+  seq: number
+  generation: string
+  sessions?: WireSessionMeta[]
+  removed?: string[]
+}
+/** Both members of the server's `SessionChanges` are assignable to the flat wire shape. */
+type Assignable<A, B> = [A] extends [B] ? true : false
+type SessionChangesReset = Extract<SessionChanges, { reset: true }>
+type SessionChangesDelta = Flat<
+  Omit<Extract<SessionChanges, { reset: false }>, 'sessions'> & { sessions: WireSessionMeta[] }
+>
+export type WireSessionChangesPins = [
+  Expect<Assignable<SessionChangesReset, WireSessionChanges>>,
+  Expect<Assignable<SessionChangesDelta, WireSessionChanges>>
+]
 
 export const WorkspaceMetaSchema = z.object({
   id: z.string(),
@@ -694,6 +722,7 @@ export const QueuePushSchema = push('queue', {
 })
 export const SessionRemovedPushSchema = push('session-removed', { sessionIds: z.array(z.string()) })
 export const SessionMovedPushSchema = push('session-moved', { id: z.string(), sessionIds: z.array(z.string()), to: z.string() })
+export const BootResumePushSchema = push('boot-resume', { count: z.number().int(), at: z.number().int() })
 
 /** Every push a remote connection can receive; the singular `event`,
  *  `session`, `live-edit` and `build` frames stay local. */
@@ -707,7 +736,8 @@ export const RemotePushSchema = z.discriminatedUnion('push', [
   BuildsPushSchema,
   QueuePushSchema,
   SessionRemovedPushSchema,
-  SessionMovedPushSchema
+  SessionMovedPushSchema,
+  BootResumePushSchema
 ])
 
 // ── the pins ────────────────────────────────────────────────────────────
@@ -731,6 +761,7 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof EventsPageSchema, WireEventsPage>>,
   Expect<Mirror<typeof SessionMetaSchema, WireSessionMeta>>,
   Expect<Mirror<typeof SessionPageSchema, WireSessionPage>>,
+  Expect<Mirror<typeof SessionChangesSchema, WireSessionChanges>>,
   Expect<Mirror<typeof WorkspaceMetaSchema, WorkspaceMeta>>,
   Expect<Mirror<typeof ProjectMetaSchema, ProjectMeta>>,
   Expect<Mirror<typeof WorkspaceIconSchema, WorkspaceIcon>>,
@@ -779,5 +810,6 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof BuildsPushSchema, PushOf<'builds'>>>,
   Expect<Mirror<typeof QueuePushSchema, PushOf<'queue'>>>,
   Expect<Mirror<typeof SessionRemovedPushSchema, PushOf<'session-removed'>>>,
-  Expect<Mirror<typeof SessionMovedPushSchema, PushOf<'session-moved'>>>
+  Expect<Mirror<typeof SessionMovedPushSchema, PushOf<'session-moved'>>>,
+  Expect<Mirror<typeof BootResumePushSchema, PushOf<'boot-resume'>>>
 ]

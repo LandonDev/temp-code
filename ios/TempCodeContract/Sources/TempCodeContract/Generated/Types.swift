@@ -524,6 +524,22 @@ public struct SessionPage: Codable, Hashable, Sendable {
     }
 }
 
+public struct SessionChanges: Codable, Hashable, Sendable {
+    public let reset: Bool
+    public let seq: Int
+    public let generation: String
+    public let sessions: [SessionMeta]?
+    public let removed: [String]?
+
+    public init(reset: Bool, seq: Int, generation: String, sessions: [SessionMeta]? = nil, removed: [String]? = nil) {
+        self.reset = reset
+        self.seq = seq
+        self.generation = generation
+        self.sessions = sessions
+        self.removed = removed
+    }
+}
+
 public struct WorkspaceMeta: Codable, Hashable, Sendable {
     public let id: String
     public let name: String

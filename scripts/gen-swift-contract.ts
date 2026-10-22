@@ -117,6 +117,7 @@ export const SUBSET: SubsetEntry[] = [
   // sessions, projects, workspaces, the catalog
   type('SessionMeta', W.SessionMetaSchema),
   type('SessionPage', W.SessionPageSchema),
+  type('SessionChanges', W.SessionChangesSchema),
   type('WorkspaceMeta', W.WorkspaceMetaSchema),
   type('WorkspaceIcon', W.WorkspaceIconSchema),
   type('ProjectMeta', W.ProjectMetaSchema),
@@ -174,6 +175,7 @@ export const SUBSET: SubsetEntry[] = [
   method('fs.media', W.FsMediaSchema.nullable()),
   method('file.read', z.string().nullable()),
   method('session.list', W.SessionPageSchema),
+  method('session.changes', W.SessionChangesSchema),
   method('session.events', W.EventsPageSchema),
   method('session.rowBody', z.object({ row: W.EventRowSchema })),
   method('session.subscribe', z.null()),

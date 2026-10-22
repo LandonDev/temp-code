@@ -111,6 +111,22 @@ public enum Methods {
         public typealias Output = SessionPage
     }
 
+    public enum SessionChanges: ContractMethod {
+        public static let name = "session.changes"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let afterSeq: Int
+            public let generation: String?
+
+            public init(afterSeq: Int, generation: String? = nil) {
+                self.afterSeq = afterSeq
+                self.generation = generation
+            }
+        }
+
+        public typealias Output = TempCodeContract.SessionChanges
+    }
+
     public enum SessionEvents: ContractMethod {
         public static let name = "session.events"
 
