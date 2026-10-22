@@ -59,6 +59,9 @@ public actor Transport {
     private var reader: Task<Void, Never>?
     private var helloTimer: Task<Void, Never>?
     private var nextId = 1
+    /// The last frame handed to the socket: each send waits for the one
+    /// before it, so frames reach the wire in the order their requests were made.
+    private var sendTail: Task<Void, Never>?
     private var pending: [String: (method: String, continuation: CheckedContinuation<Response, any Error>)] = [:]
     private var helloWaiters: [CheckedContinuation<HelloPush, any Error>] = []
     private var closeWaiters: [CheckedContinuation<CloseReason, Never>] = []
@@ -95,7 +98,9 @@ public actor Transport {
         let response: Response = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 pending[id] = (M.name, continuation)
-                Task { [weak self] in
+                let previous = sendTail
+                sendTail = Task { [weak self] in
+                    await previous?.value
                     do {
                         try await socket.send(String(decoding: data, as: UTF8.self))
                     } catch {
