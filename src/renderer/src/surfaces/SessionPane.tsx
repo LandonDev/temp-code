@@ -18,6 +18,7 @@ import { Composer } from "../chrome/Composer";
 import { ConnectionLine, useEnvironmentBlock } from "../chrome/ConnectionLine";
 import { AppshotFlyIn } from "../chrome/AppshotFlyIn";
 import { noteActiveSession } from "../lib/appshots";
+import { useFirstPaintReport } from "../lib/firstPaint";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ENTER, EASE_OUT, SPRING_PRESS } from "../lib/ease";
 import { MessageQueue } from "../chrome/MessageQueue";
@@ -229,6 +230,8 @@ export const SessionPane = memo(function SessionPane({
   const loadPhase = session.load?.phase ?? "loaded";
   const isEmpty = session.blocks.length === 0 && loadPhase === "loaded";
   const waiting = session.blocks.length === 0 && loadPhase !== "loaded";
+  // First rows later than half a second after the pane opened: one stall line.
+  useFirstPaintReport(session.id, session.environmentId, session.blocks.length > 0);
   const retryLoad = useCallback(() => sessionStore.retryLoad(session.id), [session.id]);
   const showDeckProjectPicker = isEmpty && !looksLikeProject(session.cwd);
   const dockComposer = !isEmpty || inSplit;
