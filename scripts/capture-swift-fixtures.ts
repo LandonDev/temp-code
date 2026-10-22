@@ -118,6 +118,10 @@ execFileSync('git', ['-C', repo, '-c', 'user.name=fixture', '-c', 'user.email=fi
 writeFileSync(join(repo, 'fixture-search.txt'), '// Search fixture\nconst fixtureNeedle = true\n')
 const workspace = await server.registry.createWorkspace(repo, 'fixture-workspace')
 const project = await server.registry.createProject(workspace.id, 'fixture-project', 'local')
+// One project across hosts: the ids the linker stamps on every copy, so the lists carry a linkId.
+const WORKSPACE_LINK_ID = 'wl_fixtureWorkspace0000'
+const PROJECT_LINK_ID = 'pl_fixtureProject000000'
+server.registry.linkCatalog({ workspaces: [{ id: workspace.id, linkId: WORKSPACE_LINK_ID }], projects: [{ id: project.id, linkId: PROJECT_LINK_ID }] })
 await server.registry.create({
   id: SESSION_ID,
   provider: 'claude',

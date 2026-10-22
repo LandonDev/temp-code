@@ -38,7 +38,7 @@ if (bundle.error || bundle.status !== 0) {
 }
 
 const server = spawn('node', [out], { cwd: repo, stdio: ['ignore', 'pipe', 'inherit'], env: process.env })
-type Ready = { ready: true; baseUrl: string; controlUrl: string; environmentId: string; keyId: string; key: string; operateKeyId: string; operateKey: string; operateOnlyKeyId: string; operateOnlyKey: string; threadA: string; threadB: string; projectId: string; workspaceId: string; planPath: string | null; threads: Record<string, string>; threadCrossHost?: string; second?: { baseUrl: string; environmentId: string; key: string }; relayHosts?: { environmentId: string; name: string; state: string }[]; adminKeyId?: string; adminKey?: string; seedBoxId?: string; deployLogLines?: number }
+type Ready = { ready: true; baseUrl: string; controlUrl: string; environmentId: string; keyId: string; key: string; operateKeyId: string; operateKey: string; operateOnlyKeyId: string; operateOnlyKey: string; threadA: string; threadB: string; projectId: string; workspaceId: string; planPath: string | null; threads: Record<string, string>; threadCrossHost?: string; second?: { baseUrl: string; environmentId: string; key: string; projectId?: string; thread?: string }; links?: { workspace: string; project: string }; relayHosts?: { environmentId: string; name: string; state: string }[]; adminKeyId?: string; adminKey?: string; seedBoxId?: string; deployLogLines?: number }
 const ready = await new Promise<Ready>((resolveReady, reject) => {
   let buffer = ''
   const timer = setTimeout(() => reject(new Error('the test server did not come up in 60 s')), 60_000)
@@ -97,6 +97,11 @@ if (ready.second && ready.threadCrossHost) {
   env.TC_TEST_SECOND_ENVIRONMENT_ID = ready.second.environmentId
   env.TC_TEST_SECOND_KEY = ready.second.key
   env.TC_TEST_THREAD_CROSS_HOST = ready.threadCrossHost
+  // One project across the two hosts: the link ids both copies carry, and the second host's copy.
+  env.TC_TEST_SECOND_PROJECT_ID = ready.second.projectId ?? ''
+  env.TC_TEST_SECOND_THREAD = ready.second.thread ?? ''
+  env.TC_TEST_SECOND_WORKSPACE_LINK_ID = ready.links?.workspace ?? ''
+  env.TC_TEST_SECOND_PROJECT_LINK_ID = ready.links?.project ?? ''
 }
 if (!env.DEVELOPER_DIR) {
   const selected = spawnSync('xcode-select', ['-p'], { encoding: 'utf8' }).stdout.trim()

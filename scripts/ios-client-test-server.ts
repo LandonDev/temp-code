@@ -155,10 +155,12 @@ if (!server.remote || server.remote.port === 0) throw new Error('the remote list
 // sinks) means two startServer calls in one process would share it, so the
 // second host is a child process of this script with TC_IOS_SECOND_HOST=1:
 // its own temp root and database, a lighter seed, one read key and pairing.
-// The workspace folder is named `ios-workspace` on both hosts, so the phone
-// pairs the two copies by name (ProjectPairs), and the cross-host child the
-// primary's `ios-xhost` spawned lives here with the primary's thread as its
-// parent (the way the Mac runs a box thread's subagent).
+// Both hosts' `ios-workspace` and its `ios-project` carry one link id each
+// (what the Mac's linker stamps, src/main/server/remote/projectLinks.ts), so
+// the phone folds the two copies into one workspace and one project row
+// (ProjectPairs, HomeSections), and the cross-host child the primary's
+// `ios-xhost` spawned lives here with the primary's thread as its parent
+// (the way the Mac runs a box thread's subagent).
 const gitInit = (dir: string): void => {
   execFileSync('git', ['-C', dir, 'init', '-q'])
   execFileSync('git', ['-C', dir, '-c', 'user.name=fixture', '-c', 'user.email=fixture@example.com', 'commit', '-q', '--allow-empty', '-m', 'init'])
@@ -170,6 +172,8 @@ const workspaceDir = (prefix: string): string => {
 }
 export const THREAD_CROSS_HOST = 'ios-xhost'
 export const THREAD_CROSS_HOST_CHILD = 'ios-xhost-child'
+export const WORKSPACE_LINK_ID = 'wl_iosTestWorkspace0000'
+export const PROJECT_LINK_ID = 'pl_iosTestProject000000'
 if (process.env.TC_IOS_SECOND_HOST === '1') {
   const secondRepo = workspaceDir('tc-ios-client-second-')
   gitInit(secondRepo)
@@ -177,6 +181,7 @@ if (process.env.TC_IOS_SECOND_HOST === '1') {
   writeFileSync(join(secondRepo, 'fixture-search.txt'), '// Search fixture\nconst fixtureNeedle = true\n')
   const secondWorkspace = await server.registry.createWorkspace(secondRepo, 'ios-workspace')
   const secondProject = await server.registry.createProject(secondWorkspace.id, 'ios-project', 'local')
+  server.registry.linkCatalog({ workspaces: [{ id: secondWorkspace.id, linkId: WORKSPACE_LINK_ID }], projects: [{ id: secondProject.id, linkId: PROJECT_LINK_ID }] })
   const talk = (id: string, user: string, assistant: string): void => {
     server.registry.append(id, { type: 'user-text', text: user })
     server.registry.append(id, { type: 'assistant-text', text: assistant, delta: false, msgId: `${id}-m1`, blockIndex: 0 })
@@ -201,12 +206,15 @@ if (process.env.TC_IOS_SECOND_HOST === '1') {
       keyId: secondKey.key.id,
       key: secondKey.token,
       pairingLink: `http://127.0.0.1:${server.remote.port}/pair#${secondPairing.code}`,
-      threadChild: THREAD_CROSS_HOST_CHILD
+      threadChild: THREAD_CROSS_HOST_CHILD,
+      thread: 'ios-second-thread',
+      workspaceId: secondWorkspace.id,
+      projectId: secondProject.id
     }) + '\n'
   )
   await new Promise<never>(() => {})
 }
-type SecondHost = { baseUrl: string; environmentId: string; keyId: string; key: string; pairingLink: string; threadChild: string }
+type SecondHost = { baseUrl: string; environmentId: string; keyId: string; key: string; pairingLink: string; threadChild: string; thread: string; workspaceId: string; projectId: string }
 const secondProcess = spawn(process.execPath, [process.argv[1]], { env: { ...process.env, TC_IOS_SECOND_HOST: '1' }, stdio: ['ignore', 'pipe', 'inherit'] })
 const second = await new Promise<SecondHost>((resolveSecond, reject) => {
   let buffer = ''
@@ -230,6 +238,8 @@ writeFileSync(join(repo, 'README.md'), 'hello from the ios project\nsay hello to
 writeFileSync(join(repo, 'fixture-search.txt'), '// Search fixture\nconst fixtureNeedle = true\n')
 const workspace = await server.registry.createWorkspace(repo, 'ios-workspace')
 const project = await server.registry.createProject(workspace.id, 'ios-project', 'local')
+// The same link ids as the second host's copies: one workspace, one project across the two hosts.
+server.registry.linkCatalog({ workspaces: [{ id: workspace.id, linkId: WORKSPACE_LINK_ID }], projects: [{ id: project.id, linkId: PROJECT_LINK_ID }] })
 export const THREAD_A = 'ios-thread-a'
 export const THREAD_B = 'ios-thread-b'
 for (const [id, title] of [[THREAD_A, 'Thread A, with a long tool output'], [THREAD_B, 'Thread B, short']] as const) {
@@ -1842,6 +1852,7 @@ process.stdout.write(
     mediaUrl: mediaUrl(shot, { kind: 'image', mime: 'image/png' }, Date.now()),
     projectId: project.id,
     workspaceId: workspace.id,
+    links: { workspace: WORKSPACE_LINK_ID, project: PROJECT_LINK_ID },
     relayHosts: relaySeed.map(({ environmentId, name, state }) => ({ environmentId, name, state }))
   }) + '\n'
 )

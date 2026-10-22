@@ -1,11 +1,11 @@
 {
-  "key": "tc_VR655KAS4D.0DU9TtIJ0BwrWLIpnYnAgDOWSwxz1EmcqW0Zu_p6pMo",
-  "keyId": "VR655KAS4D",
+  "key": "tc_5EC4PKAH1G.FGiGZOM9SQimWAORFkIoLLEz-XgzZq3vk8wKAZ1FLsU",
+  "keyId": "5EC4PKAH1G",
   "name": "iphone",
   "caps": [
     "operate",
     "read"
   ],
   "audience": "client",
-  "environmentId": "env_R-SlMrCbMxQUMqYHwKG-Iw"
+  "environmentId": "env_I4lT5U1sD8uq3BskgW_MMw"
 }

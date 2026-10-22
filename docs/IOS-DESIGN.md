@@ -111,13 +111,13 @@ out); a thread starting is routine and slides nothing; nothing animates in
 the first 300 ms after the cached paint. The archived lists share the same
 project sub-headers and rows, without the plus or the menu.
 
-**Paired workspaces.** Two hosts' copies of one project (the pairing key from
-`HomeSlots.pairing`: same GitHub repo, else the same folder name) are one
-workspace row, listed before any host's section so it is never under one
-host's name: one connection dot per member host beside the logo, the threads
-of every member under it with the host's name on each project header, the
-count summed, and one fold for both copies (the fold key is the pairing
-key). The default pairing pairs nothing.
+**Linked workspaces.** Two hosts' copies of one workspace (the same
+`linkId`, "Two hosts" below) are one workspace row, listed before any host's
+section so it is never under one host's name: one connection dot per member
+host beside the logo, the count summed, and one fold for every copy (the
+fold key is `link:<linkId>`). Under it, each linked project is one project
+row with every copy's threads mixed by recency, each thread with its host's
+glyph.
 
 **Project settings.** The project header's menu opens the sheet
 (`Shell/ProjectSettingsSheet.swift`, presented from the root through
@@ -1387,25 +1387,48 @@ measurements (`DiffMetrics`) and the palette.
 ## Two hosts
 
 The phone pairs with more than one host (the Mac and the box) and, since the
-desktop learned to share work between them, four things follow on the phone.
+desktop learned to share work between them, five things follow on the phone.
 The models are pure and live in the client package (`ProjectPairs`,
-`CrossHost`, `PathHost`, `MovedThread`); the views are `Hosts/HostDot.swift`
-and `Thread/HostChip.swift`.
+`ProjectLinks`, `CrossHost`, `PathHost`, `MovedThread`); the views are
+`Hosts/HostDot.swift` (`HostDot`, `HostGlyph`) and `Thread/HostChip.swift`.
 
-**One project on two hosts.** Two workspaces are one project when they name
-the same GitHub repository (`repo:<owner/name>`, lowercased), else when their
-folders share a name (`name:<basename>`). Within one host the first workspace
-with a key keeps it, so a pair has at most one member per host; a second
-same-named folder on one host keys as `<env>:<workspace id>` and never folds.
-The phone reads no path map: the Mac's map (`/srv/agents/work/<X>` ↔
-`~/IdeaProjects/<X>`) gives both sides the basename `<X>`, which the name rule
-already covers, and the map is an admin setting a client key cannot read.
-Home's row for a paired project carries one 7 pt dot per host, 2 pt apart, in
-registry order, in the trailing cluster before the thread count, centered on
-the title line (`PairedHostMarks`; VoiceOver: "On Mac and box", the value the
-hosts' states). A thread row under it names its host as the first word of its
-second line in the stamp step (`HostWord`), only when more than one host is
-paired (`ProjectPairs.showsHost`); with one host nothing names it.
+**One project on two hosts.** The hosts link their copies themselves: the
+Mac's linker stamps every copy of a workspace with one `linkId`, and every
+copy of a project inside it with another (src/main/server/remote/
+projectLinks.ts). The phone reads `linkId` off `workspace.list` and
+`project.list` and folds by it alone: the same repo or folder name without a
+shared link stays two rows, and a row without one is a pair of one. Within
+one host the first row with a link keeps it, so a pair has at most one
+member per host. A linked workspace is one row on Home (above); each linked
+project in it is one project row, led by the first host in registry order
+(its plus and its menu act on that copy; the fleet switches in the menu come
+as one set per host, each acting on that host's copy), with every copy's
+threads under it, pinned first, then newest first, whichever host they run
+on. Each copy's archived threads keep their own "N archived" row, with its
+host's glyph.
+
+**The host glyph.** With two or more hosts paired, every thread row on Home,
+every fleet row (`AgentRow`) and the agent detail's meta line carry one
+small glyph for the host the thread runs on (`HostGlyph`): `laptopcomputer`
+for a Mac, `server.rack` for anything else, at the meta step in secondary,
+monochrome (colour stays for the status dots). The platform is the host's
+hello `build.platform`, remembered on the paired environment so a cold paint
+from the cache draws the right glyph before any socket opens; a relayed
+host's comes from its presence row; a host never heard from draws the rack.
+VoiceOver reads "On box" as part of the row. The thread header's subtitle
+names the host in words (`HostChip`), so a row never carries both. With one
+host nothing names it.
+
+**Project settings live on the box.** The project settings sheet reads and
+saves the settings home's copy (`ProjectLinks.target`, the desktop's
+`settingsHomeOf`: the copy off `darwin`; two of one platform, the
+environment id that sorts first; a host not yet heard from counts as a box),
+whichever copy's menu opened it: the phone pairs with the box directly, and a
+relayed Mac's copy goes through the box anyway. A linked project's last
+footer says "Saved on box". While the home is out of reach the sheet says why
+in one line ("Settings live on box. Offline") and loads when the link comes
+back; once loaded, Save is disabled with the same line at the top. An
+unlinked project saves where it is and says nothing about where.
 
 **A thread's host.** The thread header's subtitle holds a chip
 (`HostChip`): a 6 pt dot in the host's tone and the host's name in the meta
@@ -1448,7 +1471,7 @@ ordinary thread there with the box thread as its parent; the parent's log
 holds an `agent-spawned` row naming the child's host, and the host's tools
 name it `<env>:<session>`. `CrossHost` turns either form into a placement
 (the host, the session, remote or not, paired or not): the fleet reads the
-child from that host's client, its row names the host with `HostWord`, and a
+child from that host's client, its row carries the host's glyph, and a
 child on a host this phone has not paired reads "on a host this phone is not
 paired with" in place of its status and is not tappable. The note never
 names the host: the wire carries the environment id alone, and no client key

@@ -18,7 +18,7 @@ if (bundle.error || bundle.status !== 0) {
 }
 
 const server = spawn('node', [out], { cwd: repo, stdio: ['ignore', 'pipe', 'inherit'] })
-const ready = await new Promise<{ baseUrl: string; controlUrl: string; pairingLink: string; pairingLinkOperate: string; adminPairing?: string }>((ok, bad) => {
+const ready = await new Promise<{ baseUrl: string; controlUrl: string; pairingLink: string; pairingLinkOperate: string; adminPairing?: string; second?: { pairingLink: string } }>((ok, bad) => {
   let buffer = ''
   const timer = setTimeout(() => bad(new Error('the test server did not come up in 60 s')), 60_000)
   server.stdout.on('data', (chunk: Buffer) => {
@@ -45,6 +45,8 @@ const proof = spawnSync('sh', [resolve(repo, 'scripts/ios-sim-proof.sh')], {
     TC_TEST_PAIR_LINK_OPERATE: ready.pairingLinkOperate,
     // The host detail's admin reads (the host-extras set): deploy, its log, the sync lines.
     TC_TEST_PAIR_LINK_ADMIN: ready.adminPairing ?? '',
+    // The features set's linked project: the second host, paired after every other shot.
+    TC_TEST_PAIR_LINK_SECOND: ready.second?.pairingLink ?? '',
     TC_TEST_CONTROL_URL: ready.controlUrl,
     TC_TEST_PAIR_NAME: 'Local test server',
     TC_TEST_THREAD: process.env.TC_TEST_THREAD ?? 'Thread A',

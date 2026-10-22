@@ -179,22 +179,32 @@ final class AppModel: PushHandler {
     }
 
     /// The simulator proof pairs through the process environment: a link in
-    /// `TC_TEST_PAIR_LINK` pairs once at launch. Never a file, never a log.
+    /// `TC_TEST_PAIR_LINK` pairs once at launch, and one in
+    /// `TC_TEST_PAIR_LINK_SECOND` pairs a second host after it (the features
+    /// set's linked project). Never a file, never a log.
     private func applyLaunchPairing() async {
         #if DEBUG
         let env = ProcessInfo.processInfo.environment
         let log = Logger(subsystem: "dev.landon.tempcode", category: "pairing")
         log.notice("launch: link present \((env["TC_TEST_PAIR_LINK"]?.isEmpty == false) ? "yes" : "no", privacy: .public), stored hosts \(self.registry.store.environments.count, privacy: .public)")
-        guard let link = env["TC_TEST_PAIR_LINK"], !link.isEmpty, let parsed = PairingLink(link) else { return }
+        await pairOnce(env["TC_TEST_PAIR_LINK"], name: env["TC_TEST_PAIR_NAME"], label: "launch pairing", log: log)
+        await pairOnce(env["TC_TEST_PAIR_LINK_SECOND"], name: env["TC_TEST_PAIR_NAME_SECOND"], label: "second pairing", log: log)
+        #endif
+    }
+
+    #if DEBUG
+    /// Pairs `link` unless a host at its origin is already paired; logs the outcome under `label`.
+    private func pairOnce(_ link: String?, name: String?, label: String, log: Logger) async {
+        guard let link, !link.isEmpty, let parsed = PairingLink(link) else { return }
         if registry.store.environments.contains(where: { $0.origin == parsed.origin }) { return }
         let began = Date()
         do {
-            _ = try await registry.add(pairingLink: link, name: env["TC_TEST_PAIR_NAME"])
-            log.notice("launch pairing done in \(Int(Date().timeIntervalSince(began) * 1000), privacy: .public) ms")
+            _ = try await registry.add(pairingLink: link, name: name)
+            log.notice("\(label, privacy: .public) done in \(Int(Date().timeIntervalSince(began) * 1000), privacy: .public) ms")
         } catch {
             // The proof reads this from the simulator log; the message never carries the code or a key.
-            log.error("launch pairing failed: \(error.message, privacy: .public)")
+            log.error("\(label, privacy: .public) failed: \(error.message, privacy: .public)")
         }
-        #endif
     }
+    #endif
 }

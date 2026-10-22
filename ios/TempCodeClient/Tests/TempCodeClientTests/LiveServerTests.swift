@@ -21,12 +21,18 @@ enum LiveServer {
     /// The second host (the same project on another machine) and the thread whose subagent runs there;
     /// absent, the two-host test is skipped.
     static var hasSecondHost: Bool {
-        ["TC_TEST_SECOND_BASE_URL", "TC_TEST_SECOND_ENVIRONMENT_ID", "TC_TEST_SECOND_KEY", "TC_TEST_THREAD_CROSS_HOST", "TC_TEST_THREAD_CHAT"].allSatisfy { environment[$0] != nil }
+        ["TC_TEST_SECOND_BASE_URL", "TC_TEST_SECOND_ENVIRONMENT_ID", "TC_TEST_SECOND_KEY", "TC_TEST_THREAD_CROSS_HOST", "TC_TEST_THREAD_CHAT",
+         "TC_TEST_SECOND_PROJECT_ID", "TC_TEST_SECOND_THREAD", "TC_TEST_SECOND_WORKSPACE_LINK_ID", "TC_TEST_SECOND_PROJECT_LINK_ID"].allSatisfy { environment[$0]?.isEmpty == false }
     }
     static var secondBaseURL: URL { URL(string: environment["TC_TEST_SECOND_BASE_URL"]!)! }
     static var secondEnvironmentId: String { environment["TC_TEST_SECOND_ENVIRONMENT_ID"]! }
     static var secondKey: String { environment["TC_TEST_SECOND_KEY"]! }
     static var threadCrossHost: String { environment["TC_TEST_THREAD_CROSS_HOST"]! }
+    /// The second host's copy of the project, its thread there, and the link ids both copies carry.
+    static var secondProjectId: String { environment["TC_TEST_SECOND_PROJECT_ID"]! }
+    static var secondThread: String { environment["TC_TEST_SECOND_THREAD"]! }
+    static var workspaceLinkId: String { environment["TC_TEST_SECOND_WORKSPACE_LINK_ID"]! }
+    static var projectLinkId: String { environment["TC_TEST_SECOND_PROJECT_LINK_ID"]! }
     static var threadChat: String { environment["TC_TEST_THREAD_CHAT"]! }
 
     /// Thread 28's relayed seed, one fake Mac per state (`state` is the wire's
@@ -379,23 +385,40 @@ struct LiveServerTests {
 
     @MainActor
     @Test(.enabled(if: LiveServer.hasSecondHost, "needs the second test host: bun run ios:test:client"))
-    func `two hosts: one project paired by folder name, a cross-host child placed on the second host, media stamped with its host`() async throws {
+    func `two hosts: one project linked across them, a cross-host child placed on the second host, media stamped with its host`() async throws {
         let primary = EnvironmentClient(environment: LiveServer.environment(), keys: try LiveServer.keys(), cache: try SessionCache.inMemory())
         let second = EnvironmentClient(environment: LiveServer.secondEnvironment(), keys: try LiveServer.secondKeys(), cache: try SessionCache.inMemory())
         await primary.start()
         await second.start()
         #expect(await LiveServer.until { primary.status.fresh && second.status.fresh })
 
-        // The same folder name on both hosts: one pair with two members.
+        // One link id on both hosts' copies: one pair with two members.
         let pairs = ProjectPairs.pairs([
             HostWorkspaces(environmentId: primary.environment.id, workspaces: primary.workspaces),
             HostWorkspaces(environmentId: second.environment.id, workspaces: second.workspaces)
         ])
-        let pair = try #require(pairs.first { $0.id == "name:ios-workspace" })
+        let pair = try #require(pairs.first { $0.id == "link:\(LiveServer.workspaceLinkId)" })
         #expect(pair.isPaired)
         #expect(pair.members.map(\.environmentId) == [primary.environment.id, second.environment.id])
         #expect(pair.members.allSatisfy { $0.name == "ios-workspace" })
         let paired: Set<String> = [primary.environment.id, second.environment.id]
+
+        // Home: one workspace, one project row, the second host's thread under it beside the primary's.
+        let inputs = [primary, second].map { HomeHostInput(environmentId: $0.environment.id, name: $0.environment.name, workspaces: $0.workspaces, projects: $0.projects, sessions: $0.sessions) }
+        let section = try #require(HomeSections.build(hosts: inputs, folded: []).first { $0.id == "workspace:link:\(LiveServer.workspaceLinkId)" })
+        let rows = section.rows.map(\.id)
+        let projectRow = try #require(rows.firstIndex(of: "project:link:\(LiveServer.projectLinkId)"))
+        let secondRow = try #require(rows.firstIndex(of: "thread:\(second.environment.id):\(LiveServer.secondThread)"))
+        #expect(secondRow > projectRow)
+        #expect(rows[projectRow...].contains { $0.hasPrefix("thread:\(primary.environment.id):") })
+
+        // The settings home is one of the two copies, read off the hellos' platforms.
+        let project = try #require(primary.projects.first { $0.linkId == LiveServer.projectLinkId })
+        let platforms = [primary.environment.id: primary.status.lastHello?.build?.platform, second.environment.id: second.status.lastHello?.build?.platform]
+        let target = ProjectLinks.target(for: project, on: primary.environment.id, hosts: [(primary.environment.id, primary.projects), (second.environment.id, second.projects)]) { platforms[$0] ?? nil }
+        #expect(target.copies == 2)
+        let expected = ProjectLinks.settingsHome([ProjectCopy(environmentId: primary.environment.id, projectId: project.id), ProjectCopy(environmentId: second.environment.id, projectId: LiveServer.secondProjectId)]) { platforms[$0] ?? nil }
+        #expect(target.home == expected)
 
         // The primary's thread spawned one child on the second host and one on a host nobody pairs.
         await primary.openThread(LiveServer.threadCrossHost)

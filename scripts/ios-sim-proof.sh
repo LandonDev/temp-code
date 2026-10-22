@@ -50,7 +50,10 @@
 #   features The screens the 2026-10-22 batch added (master board and rules,
 #           project plan, notices, failures, preamble, handoff, streaming, notes,
 #           the account menu, resources, queued, stopped, the gate row, the
-#           fleet confirm), light and dark, the busiest at the accessibility size.
+#           fleet confirm), light and dark, the busiest at the accessibility size;
+#           then, with TC_TEST_PAIR_LINK_SECOND (the test server's second host),
+#           both hosts paired: Home's one row for the linked project with both
+#           hosts' threads and their glyphs, and Thread A with its host chip.
 #   all     shell, threads, scroll, actions and push (the default).
 # TC_SIM="TempCode L3" picks a device by name (default iPhone 17 Pro); TC_SIM_UDID one by id.
 #
@@ -126,6 +129,9 @@ shot() {
   local name=$1 route=$2 thread=${3:-${TC_TEST_THREAD:-}} segment=${4:-} open=${5:-} settle=${6:-$SETTLE}
   SIMCTL_CHILD_TC_TEST_PAIR_LINK="${TC_TEST_PAIR_LINK:-}" \
   SIMCTL_CHILD_TC_TEST_PAIR_NAME="${TC_TEST_PAIR_NAME:-}" \
+  SIMCTL_CHILD_TC_TEST_PAIR_LINK_SECOND="${TC_PAIR_SECOND:-}" \
+  SIMCTL_CHILD_TC_TEST_PAIR_NAME_SECOND="${TC_PAIR_SECOND:+Second test host}" \
+  SIMCTL_CHILD_TC_TEST_HOME_SCROLL="${TC_HOME_SCROLL:-}" \
   SIMCTL_CHILD_TC_TEST_ROUTE="$route" \
   SIMCTL_CHILD_TC_TEST_THREAD="$thread" \
   SIMCTL_CHILD_TC_TEST_SEARCH="${TC_TEST_SEARCH:-}" \
@@ -526,6 +532,27 @@ features_set() {
   shot failures-a11y thread "Every way a turn fails"
   shot account-a11y thread "On the work account" "" account
   shot notices-a11y thread "Land the export endpoint" chat
+  xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
+  linked_set
+}
+
+# One project across two hosts: the test server's second host carries the
+# same link ids on its copy of ios-workspace and ios-project. Paired last, so
+# every shot before it shows one host.
+linked_set() {
+  [ -n "${TC_TEST_PAIR_LINK_SECOND:-}" ] || { echo "ios-sim-proof: no second host, the linked shots are skipped"; return 0; }
+  PAIR_SINCE=$(date '+%Y-%m-%d %H:%M:%S')
+  TC_PAIR_SECOND="$TC_TEST_PAIR_LINK_SECOND" shot 00-second-pairing home >/dev/null
+  pairing_log | /usr/bin/grep -q "second pairing done" || { echo "ios-sim-proof: the app did not pair the second host" >&2; return 3; }
+  rm -f "$OUT/shots/00-second-pairing.png"
+  for mode in light dark; do
+    appearance "$mode"
+    TC_HOME_SCROLL=ios-workspace shot "linked-home-$mode" home
+    shot "linked-thread-$mode" thread "Thread A"
+  done
+  appearance light
+  xcrun simctl ui "$TC_SIM_UDID" content_size "$A11Y_SIZE" >/dev/null
+  TC_HOME_SCROLL=ios-workspace shot linked-home-a11y home
   xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
 }
 

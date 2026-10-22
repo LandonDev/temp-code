@@ -1,7 +1,7 @@
 {
   "push": "accounts",
   "snapshot": {
-    "updatedAt": 1792691341981,
+    "updatedAt": 1792706821984,
     "providers": {
       "claude": {
         "pinned": "work@example.com",
@@ -27,13 +27,13 @@
               {
                 "label": "5h",
                 "usedPercent": 40,
-                "resetsAt": 1792693741981,
+                "resetsAt": 1792709221984,
                 "periodMs": 18000000
               },
               {
                 "label": "Weekly",
                 "usedPercent": 22,
-                "resetsAt": 1792950541981,
+                "resetsAt": 1792966021984,
                 "periodMs": 604800000
               }
             ]
@@ -44,37 +44,37 @@
               {
                 "label": "5h",
                 "usedPercent": 100,
-                "resetsAt": 1792691941981,
+                "resetsAt": 1792707421984,
                 "periodMs": 18000000
               },
               {
                 "label": "Weekly",
                 "usedPercent": 95,
-                "resetsAt": 1792777741981,
+                "resetsAt": 1792793221984,
                 "periodMs": 604800000
               }
             ],
             "note": "rate limited",
             "rateLimit": {
               "provider": "anthropic",
-              "until": 1792691941981
+              "until": 1792707421984
             }
           }
         ],
         "headroom": {
           "work@example.com": {
             "room": 0.8,
-            "resetsAt": 1792691401981,
+            "resetsAt": 1792706881984,
             "ratePerMin": 12,
             "tier": "allowed",
-            "seenAt": 1792691336981
+            "seenAt": 1792706816984
           },
           "spare@example.com": {
             "room": 0.1,
-            "throttledUntil": 1792691941981,
+            "throttledUntil": 1792707421984,
             "ratePerMin": 0,
             "tier": "allowed_warning",
-            "seenAt": 1792691221981
+            "seenAt": 1792706701984
           }
         }
       },

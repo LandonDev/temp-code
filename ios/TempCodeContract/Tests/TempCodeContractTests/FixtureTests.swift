@@ -10,6 +10,8 @@ private enum Captured {
     static let renamedTitle = "Fixture thread, renamed"
     static let queuedText = "Queued from the fixture capture"
     static let keyName = "iphone"
+    static let workspaceLinkId = "wl_fixtureWorkspace0000"
+    static let projectLinkId = "pl_fixtureProject000000"
 }
 
 enum Fixtures {
@@ -96,6 +98,13 @@ struct FixtureTests {
         #expect(meta.threadType == .implementation)
         #expect(meta.permission == .edits)
         #expect(meta.busySince != nil)
+    }
+
+    @Test func linkedCatalogRows() throws {
+        let workspaces = try Fixtures.output(Methods.WorkspaceList.self, "workspace-list")
+        #expect(workspaces.first { $0.name == "fixture-workspace" }?.linkId == Captured.workspaceLinkId)
+        let projects = try Fixtures.output(Methods.ProjectList.self, "project-list")
+        #expect(projects.first { $0.name == "fixture-project" }?.linkId == Captured.projectLinkId)
     }
 
     @Test func workspaceIcon() throws {

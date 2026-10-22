@@ -269,16 +269,30 @@ host-neutral scoring and total ordering, the paired-file fold through a
 `PairLookup`, `ParsedQuery` (`host:`, `type:`, `project:`), and the per-host
 feet with the offline skip; `SearchRows` stays the row model it emits.
 
-**ProjectPairs** (src/renderer/src/lib/projectPairs.ts, host-aware: the
-phone's `WorkspaceMeta` has no environment id, the client is the host): two
-hosts' workspaces pair when they name the same GitHub repository, else when
-their folders share a name; one member per host; `pairs(_:)` over
-`HostWorkspaces` in registry order, `pair(of:on:in:)` (the deepest member
-folder wins), `relative`, `partners`, and Home's `homeKey` / `homePairing`
-(the pair id for a host's first workspace with that key, `<env>:<id>` for a
-second same-named folder so it never folds); `showsHost(hostCount:)` is the
-one rule for naming a host on a row. No path map: the default map gives both
-sides one basename, and the map is an admin setting a client key cannot read.
+**ProjectPairs**: two hosts' rows are copies of one workspace or project
+only when they carry the same `linkId` (the hosts stamp it,
+src/main/server/remote/projectLinks.ts); the phone guesses nothing from repos
+or folder names. `key(_:_:)` is `link:<linkId>`, else `<env>:<row id>`, for a
+workspace and for a project; one member per host (a second row of one host
+under one link stays its own); `pairs(_:)` over `HostWorkspaces` in registry
+order, `pair(of:on:in:)` (the deepest member folder wins), `relative`,
+`partners`; `showsHost(hostCount:)` is the one rule for drawing a host on a
+row. Home folds with the same keys (`HomeSections.workspaces(of:)`, a
+`HomeProject` per linked project with every copy's threads mixed by
+recency through `HomeSections.mixed`).
+
+**ProjectLinks** (Shell/ProjectLinks.swift): `settingsHome(_:platformOf:)`
+is src/shared/projectLinks.ts `settingsHomeOf` (the copy off `darwin`; two of
+one platform → the id that sorts first; a host not yet heard from counts as a
+box), `copies(of:on:hosts:)` the copies the phone holds, and
+`target(for:on:hosts:platformOf:)` the `SettingsTarget` the project settings
+sheet reads and saves (its footer "Saved on box" only when linked, and the
+save reason named after the home). `HostKind` turns a platform into the host
+glyph's symbol (`laptopcomputer` for darwin, `server.rack` otherwise). A
+host's platform is its hello's `build.platform`, remembered on
+`PairedEnvironment.platform` (`EnvironmentStore.setPlatform`, fed by
+`EnvironmentClient.platformObserver`; a relayed host's from its presence);
+`ClientRegistry.platform(_:)` reads the live hello first.
 
 **CrossHost** (src/shared/contract-crosshost.ts): `encode`/`decode` of a
 `<env>:<session>` agent id (a local id has no colon; a malformed one stays a
@@ -322,13 +336,19 @@ TC_TEST_PAIR_LINK=… TC_TEST_PAIR_NAME=… scripts/ios-sim-proof.sh   # the pro
 ```
 
 The server also boots a second host (`TC_IOS_SECOND_HOST=1`, a child
-process of the same script on its own temp root: the same `ios-workspace`
-folder name, an implementation thread, and the cross-host child `ios-xhost-
-child` whose parent `ios-xhost` lives on the primary), exported to the test
-process as `TC_TEST_SECOND_BASE_URL`, `TC_TEST_SECOND_ENVIRONMENT_ID`,
-`TC_TEST_SECOND_KEY` and `TC_TEST_THREAD_CROSS_HOST`; the two-host live test
-(one pair with two members, the child placed on the second host, the ghost
-child unpaired, `fs.media` stamped with its host) runs only with them.
+process of the same script on its own temp root: `ios-workspace` and
+`ios-project` with the same link ids as the primary's copies, an
+implementation thread, and the cross-host child `ios-xhost-child` whose
+parent `ios-xhost` lives on the primary), exported to the test process as
+`TC_TEST_SECOND_BASE_URL`, `TC_TEST_SECOND_ENVIRONMENT_ID`,
+`TC_TEST_SECOND_KEY`, `TC_TEST_SECOND_PROJECT_ID`, `TC_TEST_SECOND_THREAD`,
+`TC_TEST_SECOND_WORKSPACE_LINK_ID`, `TC_TEST_SECOND_PROJECT_LINK_ID` and
+`TC_TEST_THREAD_CROSS_HOST`; the two-host live test (one pair with two
+members, Home's one project row with both hosts' threads, the settings home,
+the child placed on the second host, the ghost child unpaired, `fs.media`
+stamped with its host) runs only with them. The simulator proof's
+`features` set pairs the second host last (`TC_TEST_PAIR_LINK_SECOND`) and
+shoots Home's linked project.
 
 Both `ios:test` and `ios:test:client` run in the release gate
 (scripts/release.ts). Without the live environment the `LiveServerTests`

@@ -38,10 +38,10 @@
         "kind": "land",
         "status": "passed",
         "detail": "1 of 3 branches landed",
-        "at": 1792691221913,
+        "at": 1792706701879,
         "log": [],
-        "startedAt": 1792691211913,
-        "endedAt": 1792691221913,
+        "startedAt": 1792706691879,
+        "endedAt": 1792706701879,
         "progress": {
           "done": 1,
           "total": 3
@@ -53,12 +53,12 @@
         "kind": "gate",
         "status": "running",
         "detail": "vitest",
-        "at": 1792691281913,
+        "at": 1792706761879,
         "log": [
           "✓ typecheck 41s",
           "✓ build 58s"
         ],
-        "startedAt": 1792691281913,
+        "startedAt": 1792706761879,
         "progress": {
           "done": 2,
           "total": 3,
@@ -80,7 +80,7 @@
         "kind": "shell",
         "status": "running",
         "detail": "",
-        "at": 1792691336913,
+        "at": 1792706816879,
         "log": [
           "$ bun run smoke",
           "smoke 01: checking the billing page",
@@ -123,7 +123,7 @@
           "smoke 38: checking the billing page",
           "smoke 39: checking the billing page"
         ],
-        "startedAt": 1792691336913
+        "startedAt": 1792706816879
       }
     ],
     "landed": [
@@ -139,7 +139,7 @@
     "children": [
       {
         "sessionId": "fixture-child-a",
-        "environmentId": "env_R-SlMrCbMxQUMqYHwKG-Iw",
+        "environmentId": "env_I4lT5U1sD8uq3BskgW_MMw",
         "title": "Rebuild the writer",
         "status": "done",
         "threadType": "implementation",
@@ -148,7 +148,7 @@
       },
       {
         "sessionId": "fixture-child-b",
-        "environmentId": "env_R-SlMrCbMxQUMqYHwKG-Iw",
+        "environmentId": "env_I4lT5U1sD8uq3BskgW_MMw",
         "title": "Backfill the rollups",
         "status": "idle",
         "threadType": "implementation",
@@ -157,7 +157,7 @@
       },
       {
         "sessionId": "fixture-child-c",
-        "environmentId": "env_R-SlMrCbMxQUMqYHwKG-Iw",
+        "environmentId": "env_I4lT5U1sD8uq3BskgW_MMw",
         "title": "Which rollups are read?",
         "status": "idle",
         "threadType": "research",

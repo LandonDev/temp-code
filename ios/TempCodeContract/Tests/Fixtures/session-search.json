@@ -8,7 +8,7 @@
         "seq": 1,
         "role": "user",
         "snippet": "Turn 1: say hello",
-        "ts": 1792691341464,
+        "ts": 1792706821462,
         "rank": -1.0586241908937064
       },
       {
@@ -16,7 +16,7 @@
         "seq": 4,
         "role": "assistant",
         "snippet": "Hello from the fixture thread.",
-        "ts": 1792691341465,
+        "ts": 1792706821463,
         "rank": -0.9744951161206967
       }
     ],
