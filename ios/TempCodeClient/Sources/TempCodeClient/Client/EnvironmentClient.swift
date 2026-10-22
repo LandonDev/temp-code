@@ -189,6 +189,8 @@ public final class EnvironmentClient {
     public let socket: TempCodeSocket
     public let cache: SessionCache
     public let subscriptions: Subscriptions
+    /// The host detail's Activity sections (Client/HostExtras.swift, iOS 21).
+    public let extras: HostExtras
     /// The phone's push registrar, when the registry gave it one: told at every open (thread L6).
     public internal(set) var push: PushRegistrar?
     /// Called with every session meta the host sent (the Live Activity follows a thread's status through it).
@@ -230,6 +232,7 @@ public final class EnvironmentClient {
         self.presence = presence
         self.socket = TempCodeSocket(environment: environment, keys: keys, api: api, connect: connect, clock: clock, configuration: configuration)
         self.subscriptions = Subscriptions(socket: socket)
+        self.extras = HostExtras(socket: socket, environment: environment, clock: clock)
     }
 
     // MARK: - lifecycle
@@ -735,7 +738,9 @@ public final class EnvironmentClient {
                     threads[sessionId]!.fold.applyLiveEdit(item.edit)
                 }
             }
-        case .queue, .builds, .unknown:
+        case .hostDevices, .hostLog:
+            extras.applyPush(push) // iOS 21: devices and the deploy log (Client/HostExtras.swift)
+        case .queue, .builds, .batch, .macBridgeHeld, .unknown:
             break
         }
     }

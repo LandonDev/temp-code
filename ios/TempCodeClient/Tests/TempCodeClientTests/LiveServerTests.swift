@@ -69,6 +69,22 @@ enum LiveServer {
         return keys
     }
 
+    /// The admin key the host detail's tests read with (iOS 21); absent, those tests are skipped.
+    static var hasAdmin: Bool { environment["TC_TEST_ADMIN_KEY"] != nil && environment["TC_TEST_ADMIN_KEY_ID"] != nil }
+    static var seedBoxId: String { environment["TC_TEST_SEED_BOX_ID"] ?? "" }
+    static var deployLogLines: Int { Int(environment["TC_TEST_DEPLOY_LOG_LINES"] ?? "") ?? 0 }
+
+    /// An open socket on the admin key.
+    static func adminSocket() async throws -> TempCodeSocket {
+        let keys = InMemoryKeyStore()
+        try keys.set(environment["TC_TEST_ADMIN_KEY"]!, for: environmentId)
+        let paired = PairedEnvironment(id: environmentId, name: "test host", origin: baseURL, caps: [.read, .operate, .approve, .admin], keyId: environment["TC_TEST_ADMIN_KEY_ID"]!, keyName: "ios-test-admin", addedAt: 0)
+        let socket = TempCodeSocket(environment: paired, keys: keys)
+        await socket.start()
+        _ = await until { await socket.status.transport == .open }
+        return socket
+    }
+
     static func secondEnvironment() -> PairedEnvironment {
         PairedEnvironment(id: secondEnvironmentId, name: "second host", origin: secondBaseURL, caps: [.read], keyId: "second", keyName: "ios-test-second", addedAt: 0)
     }
@@ -547,4 +563,68 @@ struct AccountsLiveTests {
         await client.stop()
     }
 }
+}
+
+/// The host detail's Activity sections against the seeded server (iOS 21):
+/// the hello's build, the fixture Mac's devices, the two seeded Mac bridge
+/// calls, the finished deploy with its log, and a read key's refusals.
+@Suite(.enabled(if: LiveServer.isConfigured && LiveServer.hasAdmin, "needs the live server's admin key: bun run ios:test:client"), .serialized)
+struct LiveHostExtrasTests {
+    @Test func `the hello carries the host's build`() async throws {
+        let socket = TempCodeSocket(environment: LiveServer.environment(), keys: try LiveServer.keys())
+        await socket.start()
+        #expect(await LiveServer.until { await socket.status.transport == .open })
+        let build = try #require(await socket.status.lastHello?.build)
+        #expect(build.version == "1.0.\(build.release)")
+        await socket.stop()
+    }
+
+    @Test func `an admin key reads the devices, the Mac bridge's calls, the deploy and its log`() async throws {
+        let socket = try await LiveServer.adminSocket()
+        // The test server's fake gatherer (scripts/lib/ios-seeds.ts fakeMacDevicesDeps).
+        let hosts = try await socket.request(Methods.HostDevicesHosts.self, .init())
+        let mac = try #require(hosts.first { $0.local })
+        let report = try await socket.request(Methods.HostDevicesWatch.self, .init(environmentId: mac.environmentId))
+        #expect(report.environmentId == mac.environmentId)
+        #expect(report.simulators.filter { $0.state == .booted }.map(\.name) == ["iPhone 17"])
+        #expect(report.phones.map(\.connection) == [.paired])
+        #expect(report.xcode?.name == "Xcode-26")
+        _ = try await socket.request(Methods.HostDevicesUnwatch.self, .init(environmentId: mac.environmentId))
+
+        let activity = try await socket.request(Methods.MacBridgeActivity.self, .init())
+        #expect(activity.hosts.contains { $0.environmentId == LiveServer.seedBoxId })
+        #expect(MacBridgeWords.sorted(activity.calls).map(\.status) == [.running, .held])
+        let held = try #require(activity.calls.first { $0.status == .held }?.held)
+        #expect(MacBridgeWords.heldLine(held) == "Waiting for the Mac · load 12.3 of 8 · 3rd in line")
+
+        let deploy = try await socket.request(Methods.HostDeployStatus.self, .init())
+        #expect(deploy.phase == .done)
+        #expect(deploy.exit == 0)
+        #expect(deploy.installed)
+        let log = try await socket.request(Methods.HostLog.self, .init(job: .deploy))
+        #expect(LogTail.tail(log.text).count == LiveServer.deployLogLines)
+
+        let harness = try await socket.request(Methods.HarnessStatus.self, .init())
+        #expect(harness.environments.contains { $0.id == LiveServer.seedBoxId })
+        await socket.stop()
+    }
+
+    @Test func `a read key is refused the deploy and the sync state, and may not stop a call`() async throws {
+        let socket = TempCodeSocket(environment: LiveServer.environment(), keys: try LiveServer.keys())
+        await socket.start()
+        #expect(await LiveServer.until { await socket.status.transport == .open })
+        for refusal in [
+            { try await socket.request(Methods.HostDeployStatus.self, .init()) as Any },
+            { try await socket.request(Methods.HarnessStatus.self, .init()) as Any },
+            { try await socket.request(Methods.MacBridgeStop.self, .init(id: "mb_seed_held")) as Any },
+        ] as [@Sendable () async throws -> Any] {
+            do {
+                _ = try await refusal()
+                Issue.record("a read key was answered")
+            } catch let error as TransportError {
+                #expect(error.isForbidden)
+            }
+        }
+        await socket.stop()
+    }
 }

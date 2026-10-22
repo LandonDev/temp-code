@@ -38,7 +38,7 @@ if (bundle.error || bundle.status !== 0) {
 }
 
 const server = spawn('node', [out], { cwd: repo, stdio: ['ignore', 'pipe', 'inherit'], env: process.env })
-type Ready = { ready: true; baseUrl: string; controlUrl: string; environmentId: string; keyId: string; key: string; operateKeyId: string; operateKey: string; operateOnlyKeyId: string; operateOnlyKey: string; threadA: string; threadB: string; projectId: string; workspaceId: string; planPath: string | null; threads: Record<string, string>; threadCrossHost?: string; second?: { baseUrl: string; environmentId: string; key: string }; relayHosts?: { environmentId: string; name: string; state: string }[] }
+type Ready = { ready: true; baseUrl: string; controlUrl: string; environmentId: string; keyId: string; key: string; operateKeyId: string; operateKey: string; operateOnlyKeyId: string; operateOnlyKey: string; threadA: string; threadB: string; projectId: string; workspaceId: string; planPath: string | null; threads: Record<string, string>; threadCrossHost?: string; second?: { baseUrl: string; environmentId: string; key: string }; relayHosts?: { environmentId: string; name: string; state: string }[]; adminKeyId?: string; adminKey?: string; seedBoxId?: string; deployLogLines?: number }
 const ready = await new Promise<Ready>((resolveReady, reject) => {
   let buffer = ''
   const timer = setTimeout(() => reject(new Error('the test server did not come up in 60 s')), 60_000)
@@ -82,6 +82,13 @@ const env: NodeJS.ProcessEnv = {
 // Every seeded thread by its key: `threads.notesFive` is TC_TEST_THREAD_NOTES_FIVE.
 for (const [key, id] of Object.entries(ready.threads)) {
   env[`TC_TEST_THREAD_${key.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase()}`] = id
+}
+// The host detail's admin reads (iOS thread 21): the deploy job and its log, the sync lines.
+if (ready.adminKey && ready.adminKeyId) {
+  env.TC_TEST_ADMIN_KEY_ID = ready.adminKeyId
+  env.TC_TEST_ADMIN_KEY = ready.adminKey
+  env.TC_TEST_SEED_BOX_ID = ready.seedBoxId ?? ''
+  env.TC_TEST_DEPLOY_LOG_LINES = String(ready.deployLogLines ?? 0)
 }
 // The second host (the same project on another machine) and the thread whose
 // subagent runs there; the two-host live test is skipped without them.
