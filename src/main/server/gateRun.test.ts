@@ -38,15 +38,17 @@ describe('gateRun', () => {
     writeFileSync(join(bin, 'bun'), '#!/bin/sh\n')
     chmodSync(join(bin, 'bun'), 0o755)
     const env = gateEnv({ HOME: home, PATH: '/usr/bin', GIT_DIR: '/x/.git', GIT_INDEX_FILE: '/x/index', KEEP: '1' })
-    // bun first, then node's directory when the PATH has none (the installed app's PATH).
+    // bun first, then node's directory when the PATH has none (the installed
+    // app's PATH); a node already under /usr/bin (the box) is left where it is.
     const node = nodeBinary({ PATH: '/usr/bin' })
-    expect(env.PATH).toBe(node ? `${bin}:${dirname(node)}:/usr/bin` : `${bin}:/usr/bin`)
+    const nodeDir = node ? dirname(node) : ''
+    expect(env.PATH).toBe(nodeDir && nodeDir !== '/usr/bin' ? `${bin}:${nodeDir}:/usr/bin` : `${bin}:/usr/bin`)
     expect(env.GIT_DIR).toBeUndefined()
     expect(env.GIT_INDEX_FILE).toBeUndefined()
     expect(env.KEEP).toBe('1')
     // Already on the PATH: left where it is.
-    const nodeDir = node ? dirname(node) : ''
-    expect(gateEnv({ HOME: home, PATH: `/usr/bin:${nodeDir}:${bin}` }).PATH).toBe(`/usr/bin:${nodeDir}:${bin}`)
+    const already = ['/usr/bin', nodeDir, bin].filter(Boolean).join(':')
+    expect(gateEnv({ HOME: home, PATH: already }).PATH).toBe(already)
   })
 
   it('a bad stub is ignored', () => {
