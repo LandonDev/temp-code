@@ -8,17 +8,22 @@ type Listener = () => void;
 
 const listeners = new Map<string, Set<Listener>>();
 const mtimes = new Map<string, number | null | undefined>();
+/** The host a watched path is stat'ed on when the watcher named one. */
+const hosts = new Map<string, string>();
 let inFlight = false;
 let queued: string[] | "all" | null = null;
 
-/** Watch a currently open file. First poll seeds mtime and does not notify. */
-export function watchFile(path: string, onChange: Listener): () => void {
+/** Watch a currently open file. First poll seeds mtime and does not notify.
+ *  `host` is where the file lives (a tab from a box thread names the box);
+ *  without it the catalog decides from the path. */
+export function watchFile(path: string, onChange: Listener, host?: string): () => void {
   let set = listeners.get(path);
   if (!set) {
     set = new Set();
     listeners.set(path, set);
     mtimes.set(path, undefined);
   }
+  if (host) hosts.set(path, host);
   set.add(onChange);
   if (typeof document === "undefined" || !document.hidden) {
     void poll([path]);
@@ -28,8 +33,11 @@ export function watchFile(path: string, onChange: Listener): () => void {
     if (set.size > 0) return;
     listeners.delete(path);
     mtimes.delete(path);
+    hosts.delete(path);
   };
 }
+
+const hostOf = (path: string): string => hosts.get(path) ?? hostOfCwd(path);
 
 /** Re-stat watched paths now (agent edit / shell / window focus). */
 export function nudgeWatchedFiles(paths?: string[]) {
@@ -75,7 +83,7 @@ function watchedPaths(paths?: string[]): string[] {
 export async function syncWatchedMtime(path: string): Promise<void> {
   if (!listeners.has(path)) return;
   try {
-    const [stat] = await statFiles(hostOfCwd(path), [path]);
+    const [stat] = await statFiles(hostOf(path), [path]);
     if (stat && listeners.has(path)) {
       mtimes.set(path, stat.mtimeMs);
     }
@@ -104,7 +112,7 @@ async function poll(paths: string[] | "all") {
     // Each host stats its own files.
     const byHost = new Map<string, string[]>();
     for (const path of list) {
-      const host = hostOfCwd(path);
+      const host = hostOf(path);
       byHost.set(host, [...(byHost.get(host) ?? []), path]);
     }
     const batches: [string, string[]][] = [];

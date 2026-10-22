@@ -1,5 +1,6 @@
 import type { AccountPins } from "@server/shared/accounts";
 import { registry, type Link } from "../connection";
+import { hostForPath } from "../pathHost";
 import type {
   BranchList,
   ProjectCleanup,
@@ -161,6 +162,19 @@ export function environmentOfCwd(cwd: string): string | undefined {
  *  one the user opened here). The policy for path-only call sites. */
 export function hostOfCwd(cwd: string): string {
   return environmentOfCwd(cwd) ?? registry.primary().environmentId;
+}
+
+/** Every host whose catalog root (a project cwd or a workspace path) holds `path`. */
+export function ownersOfPath(path: string): string[] {
+  const owners = [projectForCwd(path)?.environmentId, workspaceByPath(workspaceStore.workspaces, path)?.environmentId];
+  return [...new Set(owners.filter((id): id is string => !!id))];
+}
+
+/** The host a path a THREAD named opens on (lib/pathHost.ts): a catalog
+ *  root wins, else the thread's host, else this machine. The policy for
+ *  every call site that knows which thread named the path. */
+export function hostOfPath(path: string, threadHost: string | undefined): string {
+  return hostForPath({ owners: ownersOfPath(path), threadHost, primary: registry.primaryEnvironmentId });
 }
 
 /** Trailing-slash form of a directory, for prefix tests. */

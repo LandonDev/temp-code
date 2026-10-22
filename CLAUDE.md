@@ -640,6 +640,20 @@ routed to (aliax-core's `forward`). Two listeners:
   (lib/openInEditor.ts, surfaces/FileNoteBar.tsx). Web mode and a headless
   host hide the items (`editor.config()` is null). docs/box.md "Opening a
   box file on the Mac".
+- A path a box thread's transcript names opens FROM THE BOX. The host of a
+  path is never read off the path alone: `hostForPath` (src/renderer/src/
+  lib/pathHost.ts; `hostOfPath(path, threadHost)` in lib/tcserver/projects.ts)
+  takes a catalog root as the answer, else the host of the thread that
+  named the path (`useTranscriptHost` in the transcript's chips, markdown
+  links, edit rows and right-click menu → `OpenFileOptions.environmentId`
+  → `FilePaneTab.environmentId`, read by MediaGate, FileEditor, Monaco and
+  the mtime watcher), else this machine. `fs.media` stamps its host on every
+  URL (`&host=<id>`, media.ts `setMediaHost`) and the Mac's asset handler
+  streams another host's token over the admin peer link with `media.read`
+  (2 MiB ranges, ids only; src/main/assets.ts `serveRemoteMedia`). A file
+  missing on the host reads "No such file on <host>." docs/box.md "A box
+  thread's files and images open from the box"; proof
+  `bun run script:e2e-remote-media`.
 - The Mac bridge: a box thread whose `macBridge.thread.<id>` setting names
   the Mac reads, lists and fetches Mac files and runs Mac commands
   (`mac_*` tools) over a reverse RPC on the Mac's peer link

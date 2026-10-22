@@ -120,7 +120,7 @@ import { AppToolSummary, useAppView } from "./AppToolSummary";
 import { CopyMessageButton } from "./CopyMessageButton";
 import { PreambleRow } from "./PreambleRow";
 import { isEditBlock } from "./editModel";
-import { TranscriptSessionContext, useTranscriptSession } from "./transcriptSession";
+import { TranscriptSessionContext, useTranscriptHost, useTranscriptSession } from "./transcriptSession";
 import { TranscriptSelectionMenu } from "./TranscriptSelectionMenu";
 import {
   activityPhaseTitle,
@@ -1453,13 +1453,15 @@ const TranscriptBlock = memo(function TranscriptBlock({
   onOpenFile?: OpenFileFn;
   onOpenDiff?: (path: string) => void;
 }) {
+  // The thread's own host: its attachments and pages live there, whatever the cwd says.
+  const threadHost = useTranscriptHost() ?? (cwd ? hostOfCwd(cwd) : registry.primary().environmentId);
   if (block.role === "user") {
     return (
       <UserMessageBlock
         block={block}
         layout={layout}
         stickyIndex={stickyIndex}
-        environmentId={cwd ? hostOfCwd(cwd) : registry.primary().environmentId}
+        environmentId={threadHost}
       />
     );
   }
@@ -1473,7 +1475,7 @@ const TranscriptBlock = memo(function TranscriptBlock({
     return (
       <HtmlRenderRow
         reference={page}
-        host={cwd ? hostOfCwd(cwd) : registry.primary().environmentId}
+        host={threadHost}
       />
     );
   }
@@ -2691,6 +2693,8 @@ function ToolCallSummary({
   chip?: boolean;
   failed?: boolean;
 }) {
+  // A path the thread named opens on the thread's host (lib/pathHost.ts).
+  const threadHost = useTranscriptHost();
   const parts = label.match(/^(Read|Find|Skill|List|Edit|Write)\s+(.+)$/);
   // A write preview carries the path itself, so edits get the same verb + file
   // chip as reads rather than falling through to a raw label.
@@ -2772,7 +2776,7 @@ function ToolCallSummary({
             title={preview?.path || target}
             onClick={(event) => {
               event.stopPropagation();
-              onOpenFile?.(filePath);
+              onOpenFile?.(filePath, undefined, threadHost ? { environmentId: threadHost } : undefined);
             }}
           >
             <FileTypeIcon name={fileName} isDir={action === "List"} />

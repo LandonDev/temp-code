@@ -7,7 +7,9 @@ import {
   fsMedia,
   insideRealRoots,
   parseRange,
+  readMediaRange,
   resetMediaTokens,
+  setMediaHost,
   serveMedia,
   setMediaRoots,
   sniffMedia
@@ -161,6 +163,33 @@ describe('the file host', () => {
     const head = serveMedia(new Request(url, { method: 'HEAD' }))
     expect(head.status).toBe(200)
     expect(head.body).toBeNull()
+  })
+
+  it('names this host on the URL once it knows its id, so another host reads from here', async () => {
+    setMediaHost('env_box')
+    try {
+      const { url } = (await fsMedia(join(root, 'img', 'a.png')))!
+      expect(url).toMatch(/^tempcode-asset:\/\/file\/[a-f0-9]{32}\/a\.png\?v=\d+&host=env_box$/)
+      expect(serveMedia(new Request(url)).status).toBe(200)
+    } finally {
+      setMediaHost('')
+    }
+  })
+
+  it('answers media.read in capped ranges by token, with the size, and nothing for a token it never minted', async () => {
+    const { url } = (await fsMedia(join(root, 'img', 'a.png')))!
+    const token = /file\/([a-f0-9]{32})\//.exec(url)![1]
+    const whole = (await readMediaRange(token, 0, 1 << 20))!
+    expect(whole).toMatchObject({ mime: 'image/png', size: 100 })
+    expect(Buffer.from(whole.dataBase64, 'base64')).toEqual(Buffer.concat([PNG, Buffer.alloc(84, 7)]))
+    const part = (await readMediaRange(token, 4, 4))!
+    expect(Buffer.from(part.dataBase64, 'base64')).toEqual(PNG.subarray(4, 8))
+    const tail = (await readMediaRange(token, 98, 10))!
+    expect(Buffer.from(tail.dataBase64, 'base64').length).toBe(2)
+    expect(await readMediaRange('00000000000000000000000000000000', 0, 1)).toBeNull()
+    setMediaRoots(() => [])
+    expect(await readMediaRange(token, 0, 1)).toBeNull()
+    setMediaRoots(() => [root])
   })
 
   it('serves nothing for an unknown token, a path it never minted, or a file that left the fence', async () => {

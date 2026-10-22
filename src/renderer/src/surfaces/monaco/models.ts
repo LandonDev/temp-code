@@ -46,6 +46,8 @@ export function onModelSaved(cb: (model: monaco.editor.ITextModel) => void): () 
 interface Entry {
   path: string;
   cwd: string;
+  /** Where the file is read and written. */
+  host: string;
   model: monaco.editor.ITextModel;
   refs: number;
   /** what we believe the file on disk holds */
@@ -109,7 +111,7 @@ function applyExternal(entry: Entry, next: string): monaco.IRange | null {
 async function reloadFromDisk(entry: Entry): Promise<void> {
   let content: string;
   try {
-    content = await readTextFile(hostOfCwd(entry.path), entry.path);
+    content = await readTextFile(entry.host, entry.path);
   } catch {
     if (entries.get(entry.path) === entry) setState(entry, { conflict: "deleted" });
     return;
@@ -165,7 +167,7 @@ async function flush(entry: Entry): Promise<boolean> {
     const altId = entry.model.getAlternativeVersionId();
     const content = entry.model.getValue();
     try {
-      await writeTextFile(hostOfCwd(entry.path), entry.path, content);
+      await writeTextFile(entry.host, entry.path, content);
       entry.diskText = content;
       entry.savedAltId = altId;
       await syncWatchedMtime(entry.path);
@@ -190,7 +192,7 @@ async function flush(entry: Entry): Promise<boolean> {
     // Re-read; if the disk differs from what we just flushed, a second
     // writer truly raced us: surface the bar instead of silently losing.
     try {
-      const content = await readTextFile(hostOfCwd(entry.path), entry.path);
+      const content = await readTextFile(entry.host, entry.path);
       if (content !== entry.model.getValue()) {
         entry.diskText = content;
         setState(entry, { conflict: "external" });
@@ -303,12 +305,13 @@ export interface OpenedFile {
   release: () => void;
 }
 
-export async function openFile(path: string, cwd: string): Promise<OpenedFile> {
+export async function openFile(path: string, cwd: string, environmentId?: string): Promise<OpenedFile> {
   let entry = entries.get(path);
+  const host = environmentId ?? hostOfCwd(path);
   if (!entry) {
     let content: string;
     try {
-      content = await readTextFile(hostOfCwd(path), path);
+      content = await readTextFile(host, path);
     } catch (error) {
       return {
         model: null,
@@ -333,6 +336,7 @@ export async function openFile(path: string, cwd: string): Promise<OpenedFile> {
       const created: Entry = {
         path,
         cwd,
+        host,
         model,
         refs: 0,
         diskText: content,
@@ -352,7 +356,7 @@ export async function openFile(path: string, cwd: string): Promise<OpenedFile> {
         if (created.applyingExternal) return;
         scheduleFlush(created);
       });
-      created.unwatch = watchFile(path, () => onExternalChange(created));
+      created.unwatch = watchFile(path, () => onExternalChange(created), host);
       created.unwatchProject = watchCwd(cwd);
       created.dispose = () => {
         sub.dispose();

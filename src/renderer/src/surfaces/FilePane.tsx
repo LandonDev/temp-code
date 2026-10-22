@@ -111,6 +111,7 @@ function FilePaneComponent({
                   <MediaGate
                     path={file.path}
                     cwd={file.cwd}
+                    environmentId={file.environmentId}
                     active={focused && file.id === pane.activeFileId}
                     original={
                       file.review
@@ -118,6 +119,7 @@ function FilePaneComponent({
                             <MediaReview
                               path={file.path}
                               cwd={file.cwd}
+                              environmentId={file.environmentId}
                               media={media}
                               active={focused && file.id === pane.activeFileId}
                               base={file.diffBase}
@@ -132,6 +134,7 @@ function FilePaneComponent({
                           <MonacoPane
                             path={file.path}
                             cwd={file.cwd}
+                            environmentId={file.environmentId}
                             showDiff={!!file.review}
                             diffBase={file.diffBase}
                             active={focused && file.id === pane.activeFileId}
@@ -153,6 +156,7 @@ function FilePaneComponent({
                         <FileEditor
                           path={file.path}
                           cwd={file.cwd}
+                          environmentId={file.environmentId}
                           showDiff={!!file.review}
                           active={focused && file.id === pane.activeFileId}
                           navigation={

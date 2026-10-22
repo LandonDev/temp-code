@@ -18,7 +18,11 @@ import { displayPath } from "../lib/paths";
  * here, anything else falls through to the editor the pane chose. The bytes
  * come over `tempcode-asset://file/<token>/…` (streamed, Range-aware), never
  * through the WebSocket, so a large video scrubs and a large image decodes
- * only once it is on screen.
+ * only once it is on screen. `environmentId` is the host the file lives on
+ * (a tab opened from a box thread's transcript names the box); without it
+ * the catalog decides from the path. The URL the host mints names that
+ * host, and the asset handler fetches a foreign host's bytes over the peer
+ * link (src/main/assets.ts).
  */
 
 type MediaState =
@@ -26,13 +30,14 @@ type MediaState =
   | { status: "none" }
   | { status: "media"; media: FileMedia };
 
-export function useFileMedia(path: string): MediaState {
+export function useFileMedia(path: string, environmentId?: string): MediaState {
   const [state, setState] = useState<MediaState>({ status: "pending" });
   useEffect(() => {
     let cancelled = false;
     setState({ status: "pending" });
+    const host = environmentId ?? hostOfCwd(path);
     const load = () =>
-      fileMedia(hostOfCwd(path), path)
+      fileMedia(host, path)
         .then((media) => {
           if (cancelled) return;
           setState(media ? { status: "media", media } : { status: "none" });
@@ -43,30 +48,33 @@ export function useFileMedia(path: string): MediaState {
     void load();
     // A rewritten image (an agent regenerating a screenshot) gets a fresh
     // URL: the mtime rides in the query, so the element fetches again.
-    const unwatch = watchFile(path, () => void load());
+    const unwatch = watchFile(path, () => void load(), host);
     return () => {
       cancelled = true;
       unwatch();
     };
-  }, [path]);
+  }, [path, environmentId]);
   return state;
 }
 
 export function MediaGate({
   path,
   cwd,
+  environmentId,
   active,
   original,
   children,
 }: {
   path: string;
   cwd: string;
+  /** The host the file is read from; absent, the catalog decides from the path. */
+  environmentId?: string;
   active: boolean;
   /** The git side of a review tab, resolved by the caller once this is media. */
   original?: (media: FileMedia) => ReactNode;
   children: () => ReactNode;
 }) {
-  const state = useFileMedia(path);
+  const state = useFileMedia(path, environmentId);
   if (state.status === "pending") return null;
   if (state.status === "none") return <>{children()}</>;
   if (original) return <>{original(state.media)}</>;
@@ -83,12 +91,14 @@ export function MediaGate({
 export function MediaReview({
   path,
   cwd,
+  environmentId,
   media,
   active,
   base,
 }: {
   path: string;
   cwd: string;
+  environmentId?: string;
   media: FileMedia;
   active: boolean;
   base?: string;
@@ -98,7 +108,7 @@ export function MediaReview({
     let cancelled = false;
     const relative = displayPath(path, cwd);
     if (!relative || relative === path) return;
-    gitFileMedia(hostOfCwd(path), cwd, relative, base)
+    gitFileMedia(environmentId ?? hostOfCwd(path), cwd, relative, base)
       .then((sides) => {
         if (!cancelled) setOriginal(sides.original);
       })
@@ -108,7 +118,7 @@ export function MediaReview({
     return () => {
       cancelled = true;
     };
-  }, [path, cwd, base, media.url]);
+  }, [path, cwd, environmentId, base, media.url]);
   return (
     <MediaViewer
       path={path}

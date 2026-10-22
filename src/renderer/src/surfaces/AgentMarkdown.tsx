@@ -36,6 +36,7 @@ import { useColorScheme } from "../hooks/useColorScheme";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { useSmoothText } from "./smoothText";
 import { useStreamVeil } from "./streamVeil";
+import { useTranscriptHost } from "./transcriptSession";
 
 const MERMAID_BASE_CONFIG = {
   startOnLoad: false,
@@ -73,8 +74,16 @@ export const SelectSessionContext = createContext<((sessionId: string) => void) 
   undefined,
 );
 
-function openAt(onOpenFile: OpenFileFn, href: { path: string; line?: number; column?: number }) {
-  onOpenFile(href.path, href.line ? { line: href.line, column: href.column } : undefined);
+function openAt(
+  onOpenFile: OpenFileFn,
+  href: { path: string; line?: number; column?: number },
+  threadHost?: string,
+) {
+  onOpenFile(
+    href.path,
+    href.line ? { line: href.line, column: href.column } : undefined,
+    threadHost ? { environmentId: threadHost } : undefined,
+  );
 }
 
 const LANGUAGE_FROM_EXT: Record<string, string> = {
@@ -140,6 +149,7 @@ function MarkdownLink({
   ...props
 }: MarkdownLinkProps) {
   const { cwd, onOpenFile } = useContext(FileOpenContext);
+  const threadHost = useTranscriptHost();
   const onSelectSession = useContext(SelectSessionContext);
   const threadId = threadIdFromHref(href);
   const file = href && !threadId ? parseFileHref(href, cwd) : undefined;
@@ -159,7 +169,7 @@ function MarkdownLink({
         }
         if (file && onOpenFile) {
           event.preventDefault();
-          openAt(onOpenFile, file);
+          openAt(onOpenFile, file, threadHost);
           return;
         }
         if (!href || !/^https?:\/\//i.test(href)) {
@@ -187,8 +197,9 @@ function MarkdownCode({
     const text = textContent(children);
     const fileName = inlineFileName(text);
     const { cwd, onOpenFile } = useContext(FileOpenContext);
+    const threadHost = useTranscriptHost();
     const file = fileName ? parseFileHref(text, cwd) : undefined;
-    const open = file && onOpenFile ? () => openAt(onOpenFile, file) : undefined;
+    const open = file && onOpenFile ? () => openAt(onOpenFile, file, threadHost) : undefined;
     const code = (
       <code
         {...props}
@@ -527,6 +538,7 @@ function parseCodeFence(
 
 function MarkdownCodePath({ path }: { path: string }) {
   const { cwd, onOpenFile } = useContext(FileOpenContext);
+  const threadHost = useTranscriptHost();
   const file = parseFileHref(path, cwd);
   if (!file || !onOpenFile) {
     return <span className="markdown-code-path">{path}</span>;
@@ -536,7 +548,7 @@ function MarkdownCodePath({ path }: { path: string }) {
       type="button"
       className="markdown-code-path markdown-code-path-link"
       title={file.path}
-      onClick={() => openAt(onOpenFile, file)}
+      onClick={() => openAt(onOpenFile, file, threadHost)}
     >
       {path}
     </button>

@@ -31,6 +31,7 @@ import { loadEnvironmentId } from './remote/environment'
 import { handleRemote, type RemoteContext } from './remote/handlers'
 import { buildFacts } from '../buildInfo'
 import type { BuildFacts } from '@shared/deployDrift'
+import type { MediaRange } from '@shared/contract-fsgit'
 import { MasterReleaseWatcher } from '../deployDrift'
 import { AccountSync, accountSyncHooks } from './remote/accountSync'
 import { Peers } from './remote/peers'
@@ -73,7 +74,7 @@ import { migrateHousePreamble, seedHousePreamble } from './projectPreamble'
 import { EventReader, startCheckpointWorker } from './dbWorkers'
 import { handleFsGit } from './fsgit'
 import { workRoot } from './workRoot'
-import { setMediaRoots } from './media'
+import { readMediaRange, setMediaHost, setMediaRoots } from './media'
 import { CheckpointStore } from './checkpoint'
 import { handleCheckpoint } from './checkpointRpc'
 import { Linear, handleLinear } from './linear'
@@ -254,6 +255,8 @@ export interface RunningServer {
   launchMirror: LaunchMirror
   /** A stored agent page of a thread on `host`, over the peer link; null when the host has no such page. */
   remotePage: (host: string, sessionId: string, pageId: string) => Promise<string | null>
+  /** A slice of a media file on `host` by its token, over the peer link; null when the host has no such token. */
+  remoteMedia: (host: string, token: string, offset: number, length: number) => Promise<MediaRange | null>
   close: () => Promise<void>
 }
 
@@ -339,7 +342,9 @@ export async function startServer(
   const listChanges = new ListChangeLog()
   registry.onMeta((m) => listChanges.changed(m.id))
   registry.onRemoved((ids) => listChanges.removed(ids))
-  // The file viewer's media host serves only files under these roots.
+  // The file viewer's media host serves only files under these roots, and
+  // names this host on every URL so another host's desktop reads from here.
+  setMediaHost(environmentId)
   setMediaRoots(() => [
     ...registry.listProjects().map((p) => p.cwd),
     ...registry.listWorkspaces().map((w) => w.path)
@@ -995,6 +1000,10 @@ export async function startServer(
         if (req.method === 'page.read') {
           const html = await readPage(req.params.sessionId, req.params.pageId)
           return sendFrame({ id: req.id, ok: true, result: { html } })
+        }
+        if (req.method === 'media.read') {
+          const range = await readMediaRange(req.params.token, req.params.offset, req.params.length)
+          return sendFrame({ id: req.id, ok: true, result: range })
         }
         if (req.method === 'accounts.pull') {
           const answer = await accountSync.handlePull(req.params.from, req.params)
@@ -2143,6 +2152,11 @@ export async function startServer(
       if (!link) throw new Error('no link to that host')
       const { html } = await link.request<{ html: string | null }>('page.read', { sessionId, pageId })
       return html
+    },
+    remoteMedia: (host, token, offset, length) => {
+      const link = peers.get(host)
+      if (!link) throw new Error('no link to that host')
+      return link.request<MediaRange | null>('media.read', { token, offset, length }, { timeoutMs: 60_000 })
     },
     attach,
     remoteAuth,

@@ -55,6 +55,8 @@ import { registerEditorFlusher } from "../lib/editorFlush";
 import { loadAutoSave } from "../lib/settings";
 import { syncWatchedMtime, watchFile } from "../lib/fileWatch";
 import { hostOfCwd } from "../lib/tcserver/projects";
+import { openFailureText } from "../lib/pathHost";
+import { registry } from "../lib/connection";
 import { displayPath } from "../lib/paths";
 import type { EditorNavigation } from "../lib/search";
 import { MarkdownPreview } from "./AgentMarkdown";
@@ -81,6 +83,8 @@ const editorScheme = new Compartment();
 type Props = {
   path: string;
   cwd: string;
+  /** The host the file is read from; absent, the catalog decides from the path. */
+  environmentId?: string;
   active: boolean;
   showDiff?: boolean;
   navigation?: EditorNavigationRequest | null;
@@ -103,6 +107,7 @@ type SaveState =
 export function FileEditor({
   path,
   cwd,
+  environmentId,
   active,
   showDiff = false,
   navigation,
@@ -111,6 +116,7 @@ export function FileEditor({
   onOpenFile,
   readOnly = false,
 }: Props) {
+  const host = environmentId ?? hostOfCwd(path);
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
   const [saveState, setSaveState] = useState<SaveState>({ status: "idle" });
   const [reloadKey, setReloadKey] = useState(0);
@@ -143,7 +149,7 @@ export function FileEditor({
     async (force = false) => {
       const generation = ++loadGeneration.current;
       try {
-        const content = await readTextFile(hostOfCwd(path), path);
+        const content = await readTextFile(host, path);
         if (generation !== loadGeneration.current) return;
         if (dirtyRef.current && !force) {
           pendingDiskRef.current = true;
@@ -167,7 +173,7 @@ export function FileEditor({
         });
       }
     },
-    [applyDiskContent, path],
+    [applyDiskContent, path, host],
   );
 
   useEffect(() => {
@@ -177,7 +183,7 @@ export function FileEditor({
     setLoadState({ status: "loading" });
     setSaveState({ status: "idle" });
     const generation = ++loadGeneration.current;
-    void readTextFile(hostOfCwd(path), path)
+    void readTextFile(host, path)
       .then((content) => {
         if (cancelled || generation !== loadGeneration.current) return;
         setLoadState({ status: "ready", content });
@@ -193,7 +199,7 @@ export function FileEditor({
     return () => {
       cancelled = true;
     };
-  }, [path, reloadKey]);
+  }, [path, host, reloadKey]);
 
   useEffect(() => {
     if (!showDiff) {
@@ -209,7 +215,7 @@ export function FileEditor({
     setGitBase({ path, original: null });
 
     const load = () => {
-      void gitFileDiff(hostOfCwd(path), cwd, relative)
+      void gitFileDiff(host, cwd, relative)
         .then((diff) => {
           if (cancelled) return;
           if (diff.binary || diff.tooLarge) {
@@ -241,7 +247,7 @@ export function FileEditor({
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
     const unsubGit = subscribeGitChanged(onGit);
-    const unsubWatch = watchFile(path, onDisk);
+    const unsubWatch = watchFile(path, onDisk, host);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
@@ -266,7 +272,7 @@ export function FileEditor({
       timer = window.setTimeout(() => {
         void reloadFromDisk();
       }, 50);
-    });
+    }, host);
     return () => {
       window.clearTimeout(timer);
       stop();
@@ -278,7 +284,7 @@ export function FileEditor({
       const generation = ++saveGeneration.current;
       setSaveState({ status: "saving" });
       const operation = saveQueue.current.then(() =>
-        writeTextFile(hostOfCwd(path), path, content),
+        writeTextFile(host, path, content),
       );
       saveQueue.current = operation.catch(() => {});
       try {
@@ -306,7 +312,7 @@ export function FileEditor({
         throw new Error("Can't stage this file");
       }
       try {
-        await gitStageContents(hostOfCwd(path), cwd, relative, contents);
+        await gitStageContents(host, cwd, relative, contents);
         notifyGitChanged();
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -361,7 +367,10 @@ export function FileEditor({
             Couldn’t open {basename(path)}
           </p>
           <p className="mt-1 text-[12px] leading-5 text-content/50">
-            {loadState.message}
+            {openFailureText(
+              loadState.message,
+              host === registry.primaryEnvironmentId ? null : (registry.environment(host)?.name ?? "that host"),
+            )}
           </p>
           <button
             type="button"

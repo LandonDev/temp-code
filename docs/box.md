@@ -1870,6 +1870,59 @@ forward.
   mapping, the decisions, the notes), src/renderer/src/lib/openInEditor.test.ts
   (the label per host, the remote plan), FileNoteBar.dom.test.tsx and the
   note case in layout.test.ts.
+
+### A box thread's files and images open from the box
+
+A click on a path in a box thread's transcript (a file the Read tool read,
+an image the thread was given, a link in its markdown) used to pick the
+host from the path alone: the catalog's project or workspace that holds
+it, else this machine. A path outside every root (`/tmp/shot.png`, a file
+under the agents' home, a folder under a workspace but outside a project)
+went to the Mac's disk and said "file not found"; a path the Mac also has
+outside its media roots (one the thread fetched through the bridge) fell
+to the text path and said "Binary files cannot be edited."; an image under
+a box project got a media URL the box minted, which the Mac's asset handler
+could not look up, so it never decoded. Only the attachment chips worked,
+because they always asked the thread's host (`attachment.read`).
+
+- **The rule** (`src/renderer/src/lib/pathHost.ts`, `hostForPath`): a
+  catalog root is a definite answer (a box project's file is on the box, a
+  Mac project's file the box thread named is on the Mac); outside every
+  root the host of the thread that named the path; with no thread (the file
+  tree, search, a drop) this machine. `hostOfPath(path, threadHost)` in
+  lib/tcserver/projects.ts applies it from the catalog. The transcript's
+  chips, its markdown links and code paths, the edit rows and the
+  right-click menu read the thread's host off the transcript
+  (`useTranscriptHost`) and pass it as `OpenFileOptions.environmentId`; a
+  file tab opened that way carries `environmentId` (decided once at open),
+  and the media gate, the CodeMirror and Monaco editors and the mtime
+  watcher read, write and stat on that host. The attachment chips and the
+  html_render rows take the same host.
+- **The bytes.** `fs.media` stamps the host's environment id on every URL
+  it mints (`tempcode-asset://file/<token>/<name>?v=<mtime>&host=<id>`,
+  server/media.ts `setMediaHost`). The Mac's asset handler
+  (src/main/assets.ts) serves its own id from its token table as before
+  and, for another host's id, streams the file over the admin peer link
+  with `media.read { token, offset, length }` (contract.ts; 2 MiB per
+  answer, ids only: the token was minted for a path already inside that
+  host's fence, and the answer never names the path), Range-aware for a
+  video's seeks, nothing cached (an agent rewrites its screenshots). A host
+  out of reach answers 503 with the reason; a token the host no longer has,
+  404. `/asset/file/…` on the fixed port mirrors it for the box's own `/ui`.
+- **A file that is not there** says so with the host's name: the editor's
+  line reads "No such file on The box." (`openFailureText`); any other
+  refusal keeps the host's words.
+- Tests: pathHost.test.ts (the rule, the copy), MediaViewer.dom.test.tsx
+  (the gate asks the host the tab names), openInEditor.test.ts (the label
+  off the thread), media.test.ts (the stamped URL, `media.read`),
+  assets.test.ts (the remote stream, ranges, 404 and 503), capabilities.test.ts.
+  Proof: `bun run script:e2e-remote-media` (scripts/e2e-remote-media.ts;
+  build first): two headless instances, box minting the URL for a 3 MiB
+  PNG in its workspace, mac paired with an admin key serving that URL from
+  its `/asset` mirror under a client key byte for byte, a Range, a suffix
+  range and HEAD; the old host-less URL 404 on mac, a never-minted token
+  404, box's own URL from its own table, and 503 with the reason once box
+  is gone. On the box: ALL PASS.
 ## The launch mirror against a slow box
 
 The desktop paints every host's rows from its launch mirror before any

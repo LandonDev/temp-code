@@ -183,7 +183,7 @@ import {
   type ResolvedContext,
   workspacePathOfSession,
 } from "./lib/projectContext";
-import { deleteWorkspace, projectForCwd } from "./lib/tcserver/projects";
+import { deleteWorkspace, hostOfPath, projectForCwd } from "./lib/tcserver/projects";
 import type { ProjectMeta } from "./lib/tcserver/types";
 import {
   useWorkspaceCatalog,
@@ -389,6 +389,11 @@ function withHarnessChoice(
 
 
 /** The session new chats copy their runtime mode from: the one on screen, else the first open. */
+/** The host a file tab reads from: decided once at open when a thread named the path (lib/pathHost.ts). */
+function fileHost(path: string, options?: OpenFileOptions): string | undefined {
+  return options?.environmentId ? hostOfPath(path, options.environmentId) : undefined;
+}
+
 function currentSessionDefaults(): Session | undefined {
   return currentActivePane().active ?? sessionStore.getSnapshot()[0];
 }
@@ -1688,6 +1693,7 @@ export default function App() {
                     currentSidebarCwd(),
                     true,
                     editorForPath(resolved) === "monaco" ? "monaco" : undefined,
+                    fileHost(resolved, options),
                   ),
                   ...extra,
                 })
@@ -2603,6 +2609,7 @@ export default function App() {
             currentSidebarCwd(),
             false,
             editor === "monaco" ? "monaco" : undefined,
+            fileHost(resolved, options),
           ),
           ...(options?.readOnly ? { readOnly: true as const } : {}),
           ...(options?.note ? { note: options.note } : {}),
@@ -2636,6 +2643,7 @@ export default function App() {
           currentSidebarCwd(),
           false,
           editor === "monaco" ? "monaco" : undefined,
+          fileHost(resolved, options),
         );
         setTabs((prev) =>
           prev.map((entry) =>

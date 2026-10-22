@@ -41,6 +41,8 @@ export type OpenFileOptions = {
   /** Show without edits, with a line above saying why (lib/openInEditor.ts). */
   readOnly?: true;
   note?: FileNote;
+  /** The host of the thread that named the path (lib/pathHost.ts decides the file's host from it). */
+  environmentId?: string;
 };
 
 export type OpenFileFn = (

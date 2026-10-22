@@ -272,6 +272,15 @@ export interface FsMedia {
   mtimeMs: number
 }
 
+/** One `media.read` answer: a slice of a token's file on its host. */
+export interface MediaRange {
+  dataBase64: string
+  mime: string
+  /** The whole file's size, so the reader can plan its ranges. */
+  size: number
+  mtimeMs: number
+}
+
 export interface FsPathInfo {
   path: string
   name: string

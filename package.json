@@ -48,6 +48,7 @@
     "script:e2e-warm-start": "bun scripts/e2e-warm-start.ts",
     "script:e2e-harness-sync": "bun scripts/e2e-harness-sync.ts",
     "script:e2e-attachments": "bun scripts/e2e-attachments.ts",
+    "script:e2e-remote-media": "bun scripts/e2e-remote-media.ts",
     "script:e2e-merge-review": "bun scripts/e2e-merge-review.ts",
     "script:e2e-launch-mirror": "bun scripts/e2e-launch-mirror.ts",
     "script:e2e-session-move": "bun scripts/e2e-session-move.ts",

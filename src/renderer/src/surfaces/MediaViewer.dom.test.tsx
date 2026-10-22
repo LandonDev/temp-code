@@ -38,11 +38,12 @@ const audio: FileMedia = {
   url: "tempcode-asset://file/0123456789abcdef0123456789abcdef/song.mp3?v=1",
 };
 
-const mount = (path: string, review = false) =>
+const mount = (path: string, review = false, environmentId?: string) =>
   render(
     <MediaGate
       path={path}
       cwd="/repo"
+      environmentId={environmentId}
       active
       original={
         review
@@ -66,6 +67,20 @@ afterEach(() => {
 });
 
 describe("MediaGate", () => {
+  it("asks the host the tab names, and the catalog's guess only without one", async () => {
+    const remote = { ...image, url: `${image.url}&host=env_box` };
+    fileMedia.mockImplementation(() => Promise.resolve(remote));
+    const { container, unmount } = mount("/tmp/shot.png", false, "env_box");
+    await act(async () => {});
+    expect(fileMedia).toHaveBeenCalledWith("env_box", "/tmp/shot.png");
+    // The URL the host minted, host and all: the asset handler reads from there.
+    expect(container.querySelector("img")!.getAttribute("src")).toBe(remote.url);
+    unmount();
+    mount("/tmp/shot.png");
+    await act(async () => {});
+    expect(fileMedia).toHaveBeenLastCalledWith("local", "/tmp/shot.png");
+  });
+
   it("shows an image from the asset URL with its facts in the footer, never inline bytes", async () => {
     fileMedia.mockImplementation(() => Promise.resolve(image));
     const { container } = mount("/repo/img/shot.png");

@@ -89,6 +89,8 @@ describe('METHOD_CAPABILITY', () => {
         'attachment.settings.set',
         // A stored agent page, read by another host's main process over the peer link.
         'page.read',
+        // A slice of a media file by its token, the same way.
+        'media.read',
         // A thread crosses between hosts only under an admin key; the desktop's session.move drives these.
         ...methods.filter((m) => m.startsWith('session.import.') || m.startsWith('session.export.')),
         'session.move.status',

@@ -5,7 +5,8 @@ import { pathToFileURL } from 'node:url'
 import { ASSET_SCHEME, HTML_RENDERS_DIR, logoAssetUrl } from '@shared/assets'
 import { APP_SCHEME } from './appScheme'
 import { previewPageHtml } from './htmlPreviewPages'
-import { serveMedia } from './server/media'
+import { MEDIA_READ_CHUNK_BYTES, parseRange, serveMedia } from './server/media'
+import type { MediaRange } from '@shared/contract-fsgit'
 
 export { logoAssetUrl }
 
@@ -68,6 +69,82 @@ function remotePagesRoot(): string {
   return resolve(join(app.getPath('userData'), `${HTML_RENDERS_DIR}-remote`))
 }
 
+/**
+ * Media of threads on other hosts (`&host=<environment id>` on every URL
+ * server/media.ts mints): the token lives in that host's table, so the
+ * bytes are read from there over the peer link in ranges and streamed
+ * through, never kept (a screenshot an agent rewrites must not stick).
+ */
+export interface RemoteMedia {
+  environmentId: string
+  read: (host: string, token: string, offset: number, length: number) => Promise<MediaRange | null>
+}
+let remoteMedia: RemoteMedia | null = null
+export function setRemoteMedia(next: RemoteMedia | null): void {
+  remoteMedia = next
+}
+
+const MEDIA_TOKEN_PATH = /^\/([a-f0-9]{32})\/[^/]*$/
+
+/** `tempcode-asset://file/<token>/<name>?host=<id>`: the host's bytes, in the requested range. */
+export async function serveRemoteMedia(host: string, url: URL, request: Request): Promise<Response> {
+  const token = MEDIA_TOKEN_PATH.exec(url.pathname)?.[1]
+  if (!token || !remoteMedia) return new Response('not found', { status: 404 })
+  const read = (offset: number, length: number) => remoteMedia!.read(host, token, offset, length)
+  // The first read answers the size with its bytes; a suffix range (`bytes=-N`)
+  // needs the size first, so it reads again from where the suffix starts.
+  const asked = /^bytes=(\d+)-/.exec(request.headers.get('range')?.trim() ?? '')
+  let first: MediaRange | null
+  try {
+    first = await read(asked ? Number(asked[1]) : 0, MEDIA_READ_CHUNK_BYTES)
+  } catch (err) {
+    return new Response(`The file is on another host that is not reachable right now (${err instanceof Error ? err.message : err})`, { status: 503 })
+  }
+  if (!first) return new Response('not found', { status: 404 })
+  const { size } = first
+  const headers = new Headers({
+    'Content-Type': first.mime,
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': 'no-cache',
+    'Last-Modified': new Date(first.mtimeMs).toUTCString()
+  })
+  const range = parseRange(request.headers.get('range'), size)
+  if (range === 'unsatisfiable') {
+    headers.set('Content-Range', `bytes */${size}`)
+    return new Response(null, { status: 416, headers })
+  }
+  const start = range?.start ?? 0
+  const end = range?.end ?? size - 1
+  headers.set('Content-Length', String(size === 0 ? 0 : end - start + 1))
+  if (range) headers.set('Content-Range', `bytes ${start}-${end}/${size}`)
+  const status = range ? 206 : 200
+  if (request.method === 'HEAD' || size === 0) return new Response(null, { status, headers })
+  let next = start
+  let buffered: MediaRange | null = asked && Number(asked[1]) === start ? first : !asked && start === 0 ? first : null
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (next > end) {
+        controller.close()
+        return
+      }
+      try {
+        const part = buffered ?? (await read(next, Math.min(MEDIA_READ_CHUNK_BYTES, end - next + 1)))
+        buffered = null
+        const bytes = part ? Buffer.from(part.dataBase64, 'base64').subarray(0, end - next + 1) : Buffer.alloc(0)
+        if (bytes.length === 0) {
+          controller.error(new Error('the host answered no bytes'))
+          return
+        }
+        next += bytes.length
+        controller.enqueue(bytes)
+      } catch (err) {
+        controller.error(err)
+      }
+    }
+  })
+  return new Response(body, { status, headers })
+}
+
 /** A page of another host: its cached copy, else fetched and cached. */
 export async function serveRemotePage(host: string, url: URL): Promise<Response> {
   const [sessionId, file] = url.pathname.replace(/^\/+/, '').split('/')
@@ -127,7 +204,12 @@ export async function handleAssetRequest(request: Request): Promise<Response> {
   const url = new URL(request.url)
   // Media files from the file viewer: token-addressed, fenced to the open
   // roots, streamed with Range support (server/media.ts).
-  if (url.host === 'file') return serveMedia(request)
+  if (url.host === 'file') {
+    // A thread of another host: its token lives there, not in this process's table.
+    const host = url.searchParams.get('host')
+    if (host && remoteMedia && host !== remoteMedia.environmentId) return serveRemoteMedia(host, url, request)
+    return serveMedia(request)
+  }
   if (url.host === 'page') {
     // A page the hidden preview window is looking at, held in memory.
     const token = PREVIEW_PATH.exec(url.pathname)?.[1]

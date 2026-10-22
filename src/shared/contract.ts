@@ -1014,6 +1014,18 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       pageId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/)
     })
   }),
+  // A slice of a media file by its token (server/media.ts), for the desktop
+  // showing a thread of another host: the Mac's asset handler streams the
+  // bytes over the peer link in these ranges.
+  z.object({
+    id: z.string(),
+    method: z.literal('media.read'),
+    params: z.object({
+      token: z.string().regex(/^[a-f0-9]{32}$/),
+      offset: z.number().int().min(0),
+      length: z.number().int().min(1).max(2 * 1024 * 1024)
+    })
+  }),
   z.object({
     id: z.string(),
     method: z.literal('app.citeSource'),

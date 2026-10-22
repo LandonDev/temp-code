@@ -7,7 +7,7 @@ import { digestFiles, gitBranches } from "./fs";
 import type { FileNote } from "./layout";
 import { invokeOn, openWithEditor } from "./native";
 import type { OpenFileFn } from "./search";
-import { hostOfCwd, projectForCwd } from "./tcserver/projects";
+import { hostOfPath, projectForCwd } from "./tcserver/projects";
 
 /**
  * "Open in <editor>" / "Open on the Mac": one file, from the diff panel, a
@@ -25,13 +25,15 @@ export type OpenInEditorTarget = {
   path: string;
   /** The project the path belongs to, when the catalog cannot say. */
   cwd?: string;
+  /** The host of the thread that named the path (lib/pathHost.ts decides the file's host). */
+  threadHost?: string;
   line?: number;
   column?: number;
 };
 
 /** True when the path lives on a host other than this one. */
-export function isRemotePath(path: string): boolean {
-  return hostOfCwd(path) !== registry.primaryEnvironmentId;
+export function isRemotePath(path: string, threadHost?: string): boolean {
+  return hostOfPath(path, threadHost) !== registry.primaryEnvironmentId;
 }
 
 /**
@@ -48,9 +50,9 @@ export function editorActionLabel(args: { remote: boolean; config: EditorConfig 
 }
 
 /** The label for a path as things stand now. */
-export function editorLabelFor(path: string | null, config: EditorConfig | null): string | null {
+export function editorLabelFor(path: string | null, config: EditorConfig | null, threadHost?: string): string | null {
   if (!path) return null;
-  return editorActionLabel({ remote: isRemotePath(path), config, path });
+  return editorActionLabel({ remote: isRemotePath(path, threadHost), config, path });
 }
 
 const navigationOf = (target: OpenInEditorTarget) =>
@@ -62,7 +64,7 @@ const navigationOf = (target: OpenInEditorTarget) =>
  * the click always lands somewhere.
  */
 export async function openInEditor(target: OpenInEditorTarget, openHere: OpenFileFn): Promise<void> {
-  const host = hostOfCwd(target.path);
+  const host = hostOfPath(target.path, target.threadHost);
   const primary = registry.primaryEnvironmentId;
   const launch = async (editorTarget: EditorTarget) => {
     try {

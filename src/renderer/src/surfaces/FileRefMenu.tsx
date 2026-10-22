@@ -6,6 +6,7 @@ import { fileRefTarget } from "../lib/fileRef";
 import { revealPath } from "../lib/fs";
 import { editorLabelFor, openInEditor } from "../lib/openInEditor";
 import type { OpenFileFn } from "../lib/search";
+import { useTranscriptHost } from "./transcriptSession";
 
 /**
  * Right-click on any file link in the transcript: Open in <editor> (Open
@@ -29,9 +30,11 @@ export function FileRefMenu({
 }) {
   const [at, setAt] = useState<{ x: number; y: number } | null>(null);
   const editorConfig = useEditorConfig();
+  // The thread's host: a path outside every catalog root is on it (lib/pathHost.ts).
+  const threadHost = useTranscriptHost();
   if (!target) return <>{children}</>;
   const ref = fileRefTarget(target, cwd);
-  const editorLabel = editorLabelFor(ref.abs, editorConfig);
+  const editorLabel = editorLabelFor(ref.abs, editorConfig, threadHost);
   const items: ExplorerMenuItem[] = [
     ...(editorLabel ? [{ kind: "item", id: "editor", label: editorLabel } as const] : []),
     ...(ref.abs ? [{ kind: "item", id: "reveal", label: "Reveal in Finder" } as const] : []),
@@ -46,6 +49,7 @@ export function FileRefMenu({
         {
           path: ref.abs,
           cwd,
+          threadHost,
           line: tail ? Number(tail[1]) : undefined,
           column: tail?.[2] ? Number(tail[2]) : undefined,
         },

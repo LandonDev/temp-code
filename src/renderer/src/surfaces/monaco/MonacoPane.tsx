@@ -24,6 +24,8 @@ import { monacoReady } from "./theme";
 type Props = {
   path: string;
   cwd: string;
+  /** The host the file is read from; absent, the catalog decides from the path. */
+  environmentId?: string;
   active: boolean;
   showDiff?: boolean;
   /** review base ref; HEAD when unset */
@@ -45,7 +47,7 @@ const viewStates = new Map<string, monaco.editor.ICodeEditorViewState>();
  * bar and a status line while the language server indexes.
  */
 export default function MonacoPane(props: Props) {
-  const { path, cwd, active, showDiff = false, diffBase, navigation, onDirtyChange, onErrorCountChange, onOpenFile, readOnly = false } = props;
+  const { path, cwd, environmentId, active, showDiff = false, diffBase, navigation, onDirtyChange, onErrorCountChange, onOpenFile, readOnly = false } = props;
   const hostRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const [phase, setPhase] = useState<"loading" | "ready" | "unreadable" | "error">("loading");
@@ -107,7 +109,7 @@ export default function MonacoPane(props: Props) {
       try {
         await monacoReady();
         registerProviders();
-        handle = await openFile(path, cwd);
+        handle = await openFile(path, cwd, environmentId);
       } catch {
         if (!disposed) setPhase("error");
         return;

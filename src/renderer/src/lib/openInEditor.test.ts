@@ -9,7 +9,8 @@ vi.mock("./connection", () => ({
 }));
 vi.mock("./fs", () => ({ digestFiles: vi.fn(), gitBranches: vi.fn() }));
 vi.mock("./tcserver/projects", () => ({
-  hostOfCwd: (path: string) => (path.startsWith("/srv/agents/") ? "env_box" : "local"),
+  hostOfPath: (path: string, threadHost?: string) =>
+    path.startsWith("/srv/agents/") ? "env_box" : path.startsWith("/tmp/") ? (threadHost ?? "local") : "local",
   projectForCwd: () => undefined,
 }));
 
@@ -41,9 +42,11 @@ describe("editorActionLabel", () => {
     // A remote file still opens on the Mac when the Mac has an editor at all: the launcher decides.
     expect(editorActionLabel({ remote: true, config: config({ installed: { idea: false, code: false, xed: false } }), path: "/x" })).toBe("Open on the Mac");
   });
-  it("reads the host off the path", () => {
+  it("reads the host off the path, and off the thread for a path outside every root", () => {
     expect(editorLabelFor("/srv/agents/work/temp-code/a.ts", config())).toBe("Open on the Mac");
     expect(editorLabelFor("/Users/me/IdeaProjects/temp-code/a.ts", config())).toBe("Open in IntelliJ IDEA");
+    expect(editorLabelFor("/tmp/shot.png", config(), "env_box")).toBe("Open on the Mac");
+    expect(editorLabelFor("/tmp/shot.png", config())).toBe("Open in IntelliJ IDEA");
     expect(editorLabelFor(null, config())).toBeNull();
   });
 });

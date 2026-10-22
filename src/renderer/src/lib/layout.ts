@@ -35,6 +35,8 @@ export type FilePaneTab = {
   id: string;
   path: string;
   cwd: string;
+  /** The host the file is read from; absent, the catalog decides from the path. */
+  environmentId?: string;
   releaseNotes?: ReleaseNotesTabSource;
   review?: boolean;
   /** review base ref (a merge base from the Branch rail); HEAD when unset */
@@ -101,12 +103,14 @@ export function newFileTab(
   cwd: string,
   review = false,
   editor?: "monaco",
+  environmentId?: string,
 ): FilePaneTab {
   const base = takeReviewRequest(path);
   return {
     id: crypto.randomUUID(),
     path,
     cwd,
+    ...(environmentId ? { environmentId } : {}),
     ...(review || base ? { review: true } : {}),
     ...(base ? { diffBase: base, editor: "monaco" as const } : editor ? { editor } : {}),
   };

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { basename, extname, join, resolve, sep } from 'node:path'
 import { Readable } from 'node:stream'
 import { ASSET_SCHEME } from '@shared/assets'
-import type { FsMedia, FsMediaKind } from '@shared/contract-fsgit'
+import type { FsMedia, FsMediaKind, MediaRange } from '@shared/contract-fsgit'
 
 /**
  * Media files in the file viewer: what counts as an image, video or audio
@@ -160,6 +160,14 @@ const MAX_TOKENS = 1024
 const tokens = new Map<string, Entry>()
 const tokenByPath = new Map<string, string>()
 
+let mediaHost = ''
+
+/** This host's environment id, stamped on every media URL so the desktop
+ *  showing a thread of another host fetches the bytes from there. */
+export function setMediaHost(environmentId: string): void {
+  mediaHost = environmentId
+}
+
 /** The URL the renderer loads `path` from; one token per path per process. */
 export function mediaUrl(path: string, type: MediaType, mtimeMs: number): string {
   let token = tokenByPath.get(path)
@@ -174,7 +182,8 @@ export function mediaUrl(path: string, type: MediaType, mtimeMs: number): string
     }
   }
   // mtime in the query so an edited file is fetched again, not served from cache.
-  return `${ASSET_SCHEME}://file/${token}/${encodeURIComponent(basename(path))}?v=${Math.floor(mtimeMs)}`
+  const host = mediaHost ? `&host=${encodeURIComponent(mediaHost)}` : ''
+  return `${ASSET_SCHEME}://file/${token}/${encodeURIComponent(basename(path))}?v=${Math.floor(mtimeMs)}${host}`
 }
 
 /** Drop every token (tests). */
@@ -227,6 +236,52 @@ export function parseRange(header: string | null, size: number): ByteRange {
 }
 
 const TOKEN_PATH = /^\/([a-f0-9]{32})\/[^/]*$/
+
+/** The most bytes one `media.read` answer carries. */
+export const MEDIA_READ_CHUNK_BYTES = 2 * 1024 * 1024
+
+/** The token's file on disk, re-fenced, or null (unknown token, file gone, out of the roots). */
+function tokenFile(token: string): { entry: Entry; real: string; size: number; mtimeMs: number } | null {
+  const entry = tokens.get(token)
+  if (!entry) return null
+  const real = realOrNull(entry.path)
+  if (!real || !insideRealRoots(real, allRoots())) return null
+  let st
+  try {
+    st = statSync(real)
+  } catch {
+    return null
+  }
+  if (!st.isFile()) return null
+  return { entry, real, size: st.size, mtimeMs: st.mtimeMs }
+}
+
+/**
+ * `media.read`: bytes [offset, offset + length) of a token's file, for the
+ * desktop of another host streaming it over the peer link. Ids only: the
+ * token was minted for a path already inside this host's fence, and the
+ * answer never names the path.
+ */
+export async function readMediaRange(token: string, offset: number, length: number): Promise<MediaRange | null> {
+  const file = tokenFile(token)
+  if (!file) return null
+  const want = Math.max(0, Math.min(length, MEDIA_READ_CHUNK_BYTES, file.size - offset))
+  const buffer = Buffer.alloc(want)
+  let read = 0
+  if (want > 0) {
+    const fd = openSync(file.real, 'r')
+    try {
+      while (read < want) {
+        const n = readSync(fd, buffer, read, want - read, offset + read)
+        if (n === 0) break
+        read += n
+      }
+    } finally {
+      closeSync(fd)
+    }
+  }
+  return { dataBase64: buffer.subarray(0, read).toString('base64'), mime: file.entry.type.mime, size: file.size, mtimeMs: file.mtimeMs }
+}
 
 /** `tempcode-asset://file/<token>/<name>` → the bytes, streamed from disk. */
 export function serveMedia(request: Request): Response {

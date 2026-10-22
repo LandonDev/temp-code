@@ -237,7 +237,7 @@ export function EditRow({
   const startLine = block.tool?.preview?.startLine
   const openFile =
     filePath && onOpenFile
-      ? () => onOpenFile(filePath, startLine ? { line: startLine } : undefined)
+      ? () => onOpenFile(filePath, startLine ? { line: startLine } : undefined, { environmentId })
       : undefined
   const canEdit = !!filePath && !!cwd && !running && !m.remove && !omitted
   const editHere = (line?: number): void => {
