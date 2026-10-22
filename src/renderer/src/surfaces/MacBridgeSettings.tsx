@@ -25,6 +25,9 @@ import {
   useMacBridgeLoad
 } from '../lib/macBridge'
 import { isWebMode } from '../lib/nativeWeb'
+import { openUrl } from '../lib/devPorts'
+import { setForwarding, useHostForwards } from '../lib/portForwards'
+import { macUrl } from '@server/shared/contract-ports'
 import { Heading, Input, Row, SecondaryButton, Segmented, Toggle } from './settingsBits'
 
 /**
@@ -182,6 +185,7 @@ function HostRow({
           <MacBridgeRunningList environmentId={host.environmentId} hostName={host.name} />
         </div>
       ) : null}
+      <ForwardSection environmentId={host.environmentId} hostName={host.name} run={run} />
       <div className="flex items-center gap-3 pb-2 pl-1" data-mac-bridge-caps={host.environmentId}>
         <span className="min-w-0 flex-1 truncate text-[12px] tabular-nums text-content/60">
           {usageNow(host)}
@@ -257,6 +261,59 @@ function HostRow({
           </div>
         </div>
       ) : null}
+    </div>
+  )
+}
+
+/**
+ * "Forward dev servers": the host's dev servers on this Mac's loopback
+ * (docs/box.md "Dev servers on the box"), on by default; under the switch,
+ * what is forwarded now, the number here first, the host's after it when
+ * this Mac had to move past a taken one.
+ */
+function ForwardSection({
+  environmentId,
+  hostName,
+  run
+}: {
+  environmentId: string
+  hostName: string
+  run: (work: () => Promise<void>) => Promise<void>
+}) {
+  const fwd = useHostForwards(environmentId)
+  if (!fwd) return null
+  return (
+    <div className="flex flex-col gap-1.5 pb-2 pl-1" data-port-forwards={environmentId}>
+      <div className="flex items-center gap-3">
+        <span className="min-w-0 flex-1 text-[12px] text-content/60">Forward dev servers</span>
+        <Toggle
+          label={`Forward ${hostName}'s dev servers to this Mac`}
+          on={fwd.enabled}
+          onChange={(on) => void run(() => setForwarding(environmentId, on))}
+        />
+      </div>
+      {fwd.enabled
+        ? fwd.forwards.map((f) => (
+            <div key={f.id} className="flex items-center gap-3" data-port-forward={f.id}>
+              <span className="min-w-0 flex-1 truncate text-[12px] text-content/80" title={f.label}>
+                {f.title}
+              </span>
+              {f.macPort === null ? (
+                <span className="truncate text-[12px] text-danger" title={f.error ?? undefined}>
+                  Not forwarded
+                </span>
+              ) : (
+                <>
+                  <span className="shrink-0 text-[12px] tabular-nums text-content/50">
+                    localhost:{f.macPort}
+                    {f.macPort !== f.port ? <span className="text-content/35"> · {f.port} is taken here</span> : null}
+                  </span>
+                  <SecondaryButton onClick={() => openUrl(macUrl(f.macPort as number))}>Open</SecondaryButton>
+                </>
+              )}
+            </div>
+          ))
+        : null}
     </div>
   )
 }

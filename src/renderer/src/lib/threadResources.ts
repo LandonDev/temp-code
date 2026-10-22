@@ -111,7 +111,8 @@ export function startThreadResources(): void {
 export const KIND_LABEL: Record<ThreadResourceKind, string> = {
   worktree: 'worktree',
   simulator: 'simulator',
-  devInstance: 'dev instance'
+  devInstance: 'dev instance',
+  port: 'dev server'
 }
 
 /** The host a resource lives on, by name: "this Mac" for this machine, the saved host's name otherwise. */

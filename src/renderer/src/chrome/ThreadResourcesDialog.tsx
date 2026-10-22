@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useStore } from 'zustand'
 import type { ThreadResource } from '@server/shared/contract-resources'
 import {
   KIND_LABEL,
@@ -10,6 +11,8 @@ import {
   rowState,
   useThreadResources
 } from '../lib/threadResources'
+import { openUrl, portLine, rowOpen } from '../lib/devPorts'
+import { macBridgeStore } from '../lib/macBridge'
 import { DialogFooter, errorText } from './ConfirmDialog'
 import { Modal } from './Modal'
 import { MatrixSpinner } from '../surfaces/threads/bits'
@@ -24,7 +27,10 @@ import { MatrixSpinner } from '../surfaces/threads/bits'
  */
 
 function ResourceRow({ row, onRemove, pending }: { row: ThreadResource; onRemove: () => void; pending: boolean }) {
-  const state = rowState(row)
+  const localId = useStore(macBridgeStore, (s) => s.localId)
+  // A dev server's line is where it opens here; the ledger's note only when it has one.
+  const state = rowState(row) ?? portLine(row, localId)
+  const open = rowOpen(row, localId)
   const waiting = !!row.removeRequestedAt && !row.removedAt
   return (
     <div className="flex items-center gap-3" data-resource={row.id}>
@@ -43,6 +49,16 @@ function ResourceRow({ row, onRemove, pending }: { row: ThreadResource; onRemove
           </div>
         ) : null}
       </div>
+      {open ? (
+        <button
+          type="button"
+          onClick={() => openUrl(open.url)}
+          title={open.url}
+          className="pressable shrink-0 rounded-md px-2 py-0.5 text-[11px] text-content/70 hover:bg-content/8 hover:text-content"
+        >
+          {open.label}
+        </button>
+      ) : null}
       <button
         type="button"
         disabled={pending || waiting}
@@ -50,7 +66,7 @@ function ResourceRow({ row, onRemove, pending }: { row: ThreadResource; onRemove
         className="pressable flex shrink-0 items-center gap-1.5 rounded-md border border-content/10 px-2 py-0.5 text-[11px] text-danger hover:border-danger/40 hover:bg-danger/10 disabled:cursor-default disabled:opacity-40"
       >
         {pending || waiting ? <MatrixSpinner cell={1.5} /> : null}
-        {waiting ? 'Waiting' : 'Remove'}
+        {waiting ? 'Waiting' : row.kind === 'port' ? 'Stop' : 'Remove'}
       </button>
     </div>
   )
@@ -108,10 +124,10 @@ export function ThreadResourcesDialog({ sessionId, title, onClose }: { sessionId
     <Modal onClose={onClose} title={`Resources · ${title}`} size="md">
       <div className="flex flex-col gap-3 px-4 py-3">
         <p className="text-[12px] leading-snug text-content/50">
-          What this thread created and where: git worktrees, simulators and dev instances, on its host or on the Mac.
+          What this thread created and where: git worktrees, simulators, dev instances and dev servers, on its host or on the Mac.
           Remove runs on that host as the thread; a branch with commits nowhere else stays, and the row says so.
         </p>
-        <ThreadResourceList sessionId={sessionId} empty="Nothing recorded: this thread created no worktrees, simulators or dev instances." />
+        <ThreadResourceList sessionId={sessionId} empty="Nothing recorded: this thread created no worktrees, simulators, dev instances or dev servers." />
       </div>
     </Modal>
   )

@@ -113,6 +113,7 @@ import {
   useThreadTitles,
 } from "../lib/threadMentions";
 import { EditRow } from "./EditRow";
+import { CallPortLink } from "./CallPortLink";
 import { ToolDetails } from "./ToolDetails";
 import { FileRefMenu } from "./FileRefMenu";
 import { splitEditCards } from "./editCards";
@@ -2479,6 +2480,7 @@ function ActivityToolRow({
           />
         )}
         <SubagentSteps count={block.tool?.subCount} />
+        <CallPortLink callId={block.tool?.callId} />
         {block.tool?.reauth ? <ReconnectChip reauth={block.tool.reauth} /> : null}
         {pending || block.question ? null : <ToolCallStatusIcon state={state} />}
         {expandable ? <ToolDisclosure open={open} /> : null}
@@ -2669,6 +2671,10 @@ function ToolCall({
           )}
         </div>
       )}
+      {/* Outside the row's button: a dev server the call opened. */}
+      <div className="flex pl-5">
+        <CallPortLink callId={block.tool?.callId} />
+      </div>
       {open && expandable ? <ToolDetails block={block} /> : null}
       <ApprovalControls block={block} onApproval={onApproval} />
     </div>
