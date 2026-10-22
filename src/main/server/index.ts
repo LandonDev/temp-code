@@ -40,6 +40,7 @@ import { Peers } from './remote/peers'
 import { HarnessSync, handleHarness } from './remote/harnessSync'
 import { DeployTrigger, Publisher, handleHost, type HostJobs } from './hostJobs'
 import { MemorySync, handleMemory } from './remote/memorySync'
+import { ProjectLinker } from './remote/projectLinks'
 import { SessionMover, handleSessionMove } from './remote/sessionMover'
 import { claudeConfigDir, codexHomeDir } from './sessionMove'
 import { PeerCalls, handlePeerRequest, type LinkRequest } from './remote/peerCalls'
@@ -278,6 +279,8 @@ export interface RunningServer {
   notes: Notes
   /** Account ownership and sync with the hosts this machine holds admin keys for (remote/accountSync.ts). */
   accountSync: AccountSync
+  /** The project linker over this host's peer links (remote/projectLinks.ts); `statusAll()` for a surface. */
+  projectLinker: ProjectLinker
   /** What this host runs: the hello's `build` (buildInfo.ts). */
   build: BuildFacts
   /** Master's release number from GitHub (deployDrift.ts); `focus()` when a window comes forward. */
@@ -527,6 +530,7 @@ export async function startServer(
         void accountSync.pushHeadroom(id)
         void harnessSync.syncWith(id, 'link-up')
         void memorySync.syncWith(id, 'link-up')
+        projectLinker.linkUp(id)
         void sessionMover.settleWith(id)
         relayServer.linkUp(id)
         void macBridge.linkUp(id)
@@ -539,6 +543,7 @@ export async function startServer(
         accounts.nudge()
       },
       onPush: (from, push) => {
+        projectLinker.onPeerPush(from, push)
         if (relayServer.onPeerPush(from, push)) return
         if (hostDevices.onPeerPush(from, push)) return
         if (crossHostThreads.onPeerPush(from, push)) return
@@ -580,6 +585,11 @@ export async function startServer(
     nudgePeers: (frame) => peerCalls.notify(frame)
   })
   memorySync.start()
+  // One project across hosts (remote/projectLinks.ts): over the links this
+  // host holds, pair its workspaces and projects with the peer's and stamp
+  // the link ids both copies share.
+  const projectLinker = new ProjectLinker({ environmentId, registry, peers })
+  projectLinker.start()
   // Moving one thread between this host and a peer (remote/sessionMover.ts).
   const sessionMover = new SessionMover({
     host: {
@@ -2601,6 +2611,7 @@ export async function startServer(
     port,
     environmentId,
     accountSync,
+    projectLinker,
     launchMirror,
     relay: hostRelay,
     relayServer,
@@ -2656,6 +2667,7 @@ export async function startServer(
       hostJobs.deploy.dispose()
       hostJobs.publish.dispose()
       memorySync.close()
+      projectLinker.close()
       uploads.close()
       sessionMover.close()
       relayServer.close()

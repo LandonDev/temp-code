@@ -2633,3 +2633,34 @@ cleanup. Local gates passed typecheck, 2,747 Vitest tests, 12 hub tests,
 20 Swift tests, and the production build. The `/ui` renderer remains behind
 Access; this run proved its gate and cookie/socket flow, not a signed-in
 renderer session.
+
+## One project across hosts: the linker
+
+A workspace or project row carries a link id (`wl_…`, `pl_…`) that its
+copies on other hosts share. The linker
+(`src/main/server/remote/projectLinks.ts`) stamps those ids. It runs on the
+host that holds the admin link to the other (the Mac, to the box); the code
+assumes no platform, so whichever host holds a link runs it for that link.
+
+- **When.** On link-up, on a `workspaces` or `projects` push from the peer,
+  on a catalog change here (not the ones its own stamps cause), and every 5
+  minutes. Asks within 2 s fold into one run per host. A link that is down
+  skips the run without a word.
+- **What a run does.** It reads the peer's `workspace.list` and
+  `project.list`, pairs rows with the rules in `src/shared/projectLinks.ts`
+  (workspaces by GitHub repo, else folder name; projects by name inside
+  paired workspaces; the oldest row when a host has two of a key), and
+  decides each pair with `decideLink`: a side with an id gives it to the
+  other, neither mints one, and on a conflict the settings home's id wins.
+  The home is the copy off darwin (`settingsHomeOf`; a peer whose hello did
+  not name its platform counts as the box), so the box's id wins whichever
+  side runs the linker. Then one `registry.linkCatalog` here and one
+  `catalog.link` there, each only when it has rows to stamp. A second run
+  with nothing new reads twice and writes nothing.
+- **What it never does.** It never removes a link: a row whose partner is
+  gone keeps its id. It never gives an id to a second row on the same host
+  (a box Alpha renamed to Beta keeps the link; a new Alpha there stays
+  unlinked).
+- **Status.** `projectLinker.status(hostId)` on the running server answers
+  `{ lastRunAt, pairs: { workspaces, projects }, error? }`; no RPC yet.
+- **Proof.** `src/main/server/remote/projectLinks.test.ts`.
