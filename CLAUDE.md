@@ -1099,6 +1099,14 @@ routed to (aliax-core's `forward`). Two listeners:
   `Client/Steering.swift`; the README there has the rules. A read key
   hides nothing: the field and the cards carry the reason instead. DEBUG
   hooks: `TC_TEST_ACTION=start-now|resume` beside the L4 ones.
+  The host's own rows
+  (`Thread/NoticeRows.swift`: review and gate cards, batch, account-gone and
+  plan-handoff lines; `FailureCard.swift`; `PreambleRow.swift`) draw from the
+  typed payloads the fold keeps on `SystemLine.notice`/`.failure` and
+  `UserTurn.preamble`; the client package ports the desktop's
+  `failureActions` as `FailureActions` (`Rendering/Notices.swift`, with
+  `GateText` and `ReviewText`) and speaks `session.continue`,
+  `session.reroute` and `review.override` (`Client/NoticeActions.swift`).
 - Push (L6): the phone registers its APNs token with every paired host
   (`remote.push.register`/`unregister`/`status`/`activity`, capability read:
   the key's own row); the host keeps one row per key (`remote_push`,

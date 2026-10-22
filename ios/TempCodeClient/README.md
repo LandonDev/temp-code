@@ -402,6 +402,14 @@ would have shown as "Key refused".
 - **Rows.** `rename`, `setArchived`, `setPinned` go out as their RPCs; the
   `sessions` push brings the row's new state. `loadCatalog()` keeps the
   host's `catalog.get` on the client for the sheets.
+- **The host's rows** (`Client/NoticeActions.swift`). `continueThread(_:)`
+  is the failure card's Retry (`session.continue`); `reroute(_:)` is Route
+  automatically (`session.reroute`, answering `RerouteAnswer`: the account
+  the thread is on now and whether that is a move); `mergeAnyway(_:runId:)`
+  merges past a held review (`review.override`, an approve-key action). The
+  words and the action table live in `Rendering/Notices.swift` (`GateText`,
+  `ReviewText`, `FailureActions`: at most three actions, Retry last, a note
+  naming what only the desktop can do).
 
 The test server (scripts/ios-client-test-server.ts) stands in for the
 registry's action methods: each is recorded (`GET /actions`, `POST

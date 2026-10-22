@@ -51,8 +51,12 @@ pairing, and these methods: `catalog.get`, `workspace.list`, `project.list`,
 `project.changes`, `project.diff`, `session.list`, `session.events`,
 `session.rowBody`, `session.subscribe`, `session.unsubscribe`,
 `session.send`, `session.interrupt`, `session.approve`, `session.answer`,
-`session.permission`, `queue.*`, `remote.*` (the ten key, pairing, session
-and settings RPCs).
+`session.permission`, `session.continue`, `session.reroute`,
+`review.override`, `queue.*`, `remote.*` (the ten key, pairing, session
+and settings RPCs). The review and gate payloads a `notice` row carries are
+named types (`ReviewNotice`, `ReviewFinding`, `GateNotice`, `GateStep`), as
+are the preamble stamp and the two answers (`RerouteAnswer`,
+`ReviewOverrideAnswer`).
 
 To cover another method: add a `method('x.y', OutputSchema)` line (params
 come from `src/shared/contract.ts` by name; the output schema lives in

@@ -4,19 +4,9 @@
 import Foundation
 
 public struct UserTextEvent: Codable, Hashable, Sendable {
-    public struct Preamble: Codable, Hashable, Sendable {
-        public let text: String
-        public let words: Int
-
-        public init(text: String, words: Int) {
-            self.text = text
-            self.words = words
-        }
-    }
-
     public let text: String
     public let attachments: [Attachment]?
-    public let preamble: Preamble?
+    public let preamble: PreambleStamp?
     public let model: String?
     public let reasoning: String?
     public let context1m: Bool?
@@ -24,7 +14,7 @@ public struct UserTextEvent: Codable, Hashable, Sendable {
     public let ultrafast: Bool?
     public let newPass: Bool?
 
-    public init(text: String, attachments: [Attachment]? = nil, preamble: Preamble? = nil, model: String? = nil, reasoning: String? = nil, context1m: Bool? = nil, fast: Bool? = nil, ultrafast: Bool? = nil, newPass: Bool? = nil) {
+    public init(text: String, attachments: [Attachment]? = nil, preamble: PreambleStamp? = nil, model: String? = nil, reasoning: String? = nil, context1m: Bool? = nil, fast: Bool? = nil, ultrafast: Bool? = nil, newPass: Bool? = nil) {
         self.text = text
         self.attachments = attachments
         self.preamble = preamble
@@ -532,205 +522,13 @@ public struct ErrorsClearedEvent: Codable, Hashable, Sendable {
 }
 
 public struct NoticeEvent: Codable, Hashable, Sendable {
-    public struct Review: Codable, Hashable, Sendable {
-        public enum Outcome: RawRepresentable, Codable, Hashable, Sendable {
-            case pass
-            case held
-            case timeout
-            case failed
-            case mergedAnyway
-            case skipped
-            /// A value this build does not know; `rawValue` keeps it.
-            case unknown(String)
-
-            public init(rawValue: String) {
-                switch rawValue {
-                case "pass": self = .pass
-                case "held": self = .held
-                case "timeout": self = .timeout
-                case "failed": self = .failed
-                case "merged-anyway": self = .mergedAnyway
-                case "skipped": self = .skipped
-                default: self = .unknown(rawValue)
-                }
-            }
-
-            public var rawValue: String {
-                switch self {
-                case .pass: "pass"
-                case .held: "held"
-                case .timeout: "timeout"
-                case .failed: "failed"
-                case .mergedAnyway: "merged-anyway"
-                case .skipped: "skipped"
-                case .unknown(let value): value
-                }
-            }
-        }
-        public struct Blocking: Codable, Hashable, Sendable {
-            public enum Verdict: RawRepresentable, Codable, Hashable, Sendable {
-                case cONFIRMED
-                case pLAUSIBLE
-                /// A value this build does not know; `rawValue` keeps it.
-                case unknown(String)
-
-                public init(rawValue: String) {
-                    switch rawValue {
-                    case "CONFIRMED": self = .cONFIRMED
-                    case "PLAUSIBLE": self = .pLAUSIBLE
-                    default: self = .unknown(rawValue)
-                    }
-                }
-
-                public var rawValue: String {
-                    switch self {
-                    case .cONFIRMED: "CONFIRMED"
-                    case .pLAUSIBLE: "PLAUSIBLE"
-                    case .unknown(let value): value
-                    }
-                }
-            }
-
-            public let file: String
-            public let line: Int?
-            public let summary: String
-            public let failure_scenario: String
-            public let verdict: Verdict?
-            public let category: String?
-            public let short_summary: String?
-
-            public init(file: String, line: Int? = nil, summary: String, failure_scenario: String, verdict: Verdict? = nil, category: String? = nil, short_summary: String? = nil) {
-                self.file = file
-                self.line = line
-                self.summary = summary
-                self.failure_scenario = failure_scenario
-                self.verdict = verdict
-                self.category = category
-                self.short_summary = short_summary
-            }
-        }
-        public struct Minor: Codable, Hashable, Sendable {
-            public enum Verdict: RawRepresentable, Codable, Hashable, Sendable {
-                case cONFIRMED
-                case pLAUSIBLE
-                /// A value this build does not know; `rawValue` keeps it.
-                case unknown(String)
-
-                public init(rawValue: String) {
-                    switch rawValue {
-                    case "CONFIRMED": self = .cONFIRMED
-                    case "PLAUSIBLE": self = .pLAUSIBLE
-                    default: self = .unknown(rawValue)
-                    }
-                }
-
-                public var rawValue: String {
-                    switch self {
-                    case .cONFIRMED: "CONFIRMED"
-                    case .pLAUSIBLE: "PLAUSIBLE"
-                    case .unknown(let value): value
-                    }
-                }
-            }
-
-            public let file: String
-            public let line: Int?
-            public let summary: String
-            public let failure_scenario: String
-            public let verdict: Verdict?
-            public let category: String?
-            public let short_summary: String?
-
-            public init(file: String, line: Int? = nil, summary: String, failure_scenario: String, verdict: Verdict? = nil, category: String? = nil, short_summary: String? = nil) {
-                self.file = file
-                self.line = line
-                self.summary = summary
-                self.failure_scenario = failure_scenario
-                self.verdict = verdict
-                self.category = category
-                self.short_summary = short_summary
-            }
-        }
-
-        public let runId: String
-        public let reviewerId: String?
-        public let provider: String
-        public let model: String
-        public let outcome: Outcome
-        public let branch: String
-        public let target: String
-        public let blocking: [Blocking]
-        public let minor: [Minor]
-        public let merged: Bool
-        public let pushed: Bool
-        public let reason: String?
-        public let minutes: Double?
-
-        public init(runId: String, reviewerId: String? = nil, provider: String, model: String, outcome: Outcome, branch: String, target: String, blocking: [Blocking], minor: [Minor], merged: Bool, pushed: Bool, reason: String? = nil, minutes: Double? = nil) {
-            self.runId = runId
-            self.reviewerId = reviewerId
-            self.provider = provider
-            self.model = model
-            self.outcome = outcome
-            self.branch = branch
-            self.target = target
-            self.blocking = blocking
-            self.minor = minor
-            self.merged = merged
-            self.pushed = pushed
-            self.reason = reason
-            self.minutes = minutes
-        }
-    }
-    public struct Gate: Codable, Hashable, Sendable {
-        public enum Step: RawRepresentable, Codable, Hashable, Sendable {
-            case typecheck
-            case gate
-            case release
-            /// A value this build does not know; `rawValue` keeps it.
-            case unknown(String)
-
-            public init(rawValue: String) {
-                switch rawValue {
-                case "typecheck": self = .typecheck
-                case "gate": self = .gate
-                case "release": self = .release
-                default: self = .unknown(rawValue)
-                }
-            }
-
-            public var rawValue: String {
-                switch self {
-                case .typecheck: "typecheck"
-                case .gate: "gate"
-                case .release: "release"
-                case .unknown(let value): value
-                }
-            }
-        }
-
-        public let step: Step
-        public let branch: String
-        public let ok: Bool
-        public let log: String
-        public let at: Int
-
-        public init(step: Step, branch: String, ok: Bool, log: String, at: Int) {
-            self.step = step
-            self.branch = branch
-            self.ok = ok
-            self.log = log
-            self.at = at
-        }
-    }
-
     public let kind: String
     public let message: String
     public let account: String?
-    public let review: Review?
-    public let gate: Gate?
+    public let review: ReviewNotice?
+    public let gate: GateNotice?
 
-    public init(kind: String, message: String, account: String? = nil, review: Review? = nil, gate: Gate? = nil) {
+    public init(kind: String, message: String, account: String? = nil, review: ReviewNotice? = nil, gate: GateNotice? = nil) {
         self.kind = kind
         self.message = message
         self.account = account

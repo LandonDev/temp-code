@@ -510,6 +510,56 @@ public enum Methods {
         }
     }
 
+    public enum SessionContinue: ContractMethod {
+        public static let name = "session.continue"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sessionId: String
+            public let provider: ProviderId?
+            public let model: String?
+            public let reasoning: Reasoning?
+
+            public init(sessionId: String, provider: ProviderId? = nil, model: String? = nil, reasoning: Reasoning? = nil) {
+                self.sessionId = sessionId
+                self.provider = provider
+                self.model = model
+                self.reasoning = reasoning
+            }
+        }
+
+        public typealias Output = NoOutput
+    }
+
+    public enum SessionReroute: ContractMethod {
+        public static let name = "session.reroute"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sessionId: String
+
+            public init(sessionId: String) {
+                self.sessionId = sessionId
+            }
+        }
+
+        public typealias Output = RerouteAnswer
+    }
+
+    public enum ReviewOverride: ContractMethod {
+        public static let name = "review.override"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sessionId: String
+            public let runId: String
+
+            public init(sessionId: String, runId: String) {
+                self.sessionId = sessionId
+                self.runId = runId
+            }
+        }
+
+        public typealias Output = ReviewOverrideAnswer
+    }
+
     public enum QueueList: ContractMethod {
         public static let name = "queue.list"
 

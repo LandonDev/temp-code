@@ -38,7 +38,7 @@ struct TranscriptRow: View, Equatable {
         case .compaction(let compaction):
             CompactionLine(compaction: compaction)
         case .system(let line):
-            SystemRow(line: line, client: client)
+            SystemRow(line: line, client: client, sessionId: sessionId)
         }
     }
 }
@@ -54,6 +54,7 @@ struct UserTurnRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if let stamp = turn.preamble { PreambleRow(stamp: stamp) }
             if !turn.text.isEmpty {
                 Text(turn.text)
                     .font(.body)
@@ -458,11 +459,16 @@ struct CompactionLine: View {
 struct SystemRow: View {
     let line: SystemLine
     let client: EnvironmentClient
+    let sessionId: String
 
     var body: some View {
         switch line.kind {
         case .error:
-            QuietLine(symbol: line.stopped ? "stop.circle" : "exclamationmark.triangle", text: line.stopped ? "Stopped" : line.text, tint: line.stopped ? Color(.secondaryLabel) : Tint.destructive)
+            if let failure = line.failure, !line.stopped {
+                FailureCard(line: line, failure: failure, client: client, sessionId: sessionId)
+            } else {
+                QuietLine(symbol: line.stopped ? "stop.circle" : "exclamationmark.triangle", text: line.stopped ? "Stopped" : line.text, tint: line.stopped ? Color(.secondaryLabel) : Tint.destructive)
+            }
         case .plan:
             VStack(alignment: .leading, spacing: 6) {
                 Text("Plan")
@@ -478,13 +484,17 @@ struct SystemRow: View {
         case .agentReport:
             AgentLinkRow(childId: nil, client: client, fallback: line.detail.map { "\(line.text) · \($0)" } ?? line.text, symbol: "person.text.rectangle")
         case .planHandoff:
-            AgentLinkRow(childId: line.detail, client: client, fallback: line.text, symbol: "hammer")
+            PlanHandoffRow(line: line, client: client)
         case .backgroundTask:
             QuietLine(symbol: "clock", text: line.detail.map { "\(line.text) · \($0)" } ?? line.text)
         case .goal:
             QuietLine(symbol: "target", text: line.detail.map { "Goal \($0): \(line.text)" } ?? line.text)
         case .status:
-            QuietLine(symbol: "info.circle", text: line.text)
+            if line.notice != nil {
+                NoticeRow(line: line, client: client, sessionId: sessionId)
+            } else {
+                QuietLine(symbol: "info.circle", text: line.text)
+            }
         case .unknown:
             QuietLine(symbol: "questionmark.circle", text: line.text, tint: Color(.tertiaryLabel))
         }

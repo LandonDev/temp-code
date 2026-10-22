@@ -187,4 +187,105 @@ import TempCodeContract
         #expect(plain.notice?.review == nil)
         #expect(plain.text == "Account a is gone from this host")
     }
+
+    // MARK: - the host's own rows (thread 19)
+
+    @Test func `a notice keeps its payload and stays a status line with the kind as detail`() throws {
+        let gate = GateNotice(step: .typecheck, branch: "ios/export", ok: true, log: "", at: 1)
+        let fold = ThreadFold.fold(rows([
+            user("go"),
+            .notice(NoticeEvent(kind: "gate", message: "Typecheck passed on ios/export", gate: gate)),
+            .notice(NoticeEvent(kind: "batch", message: "Merged by the batch"))
+        ]))
+        guard case .system(let line) = fold.items[1].item, case .system(let batch) = fold.items[2].item else {
+            Issue.record("shape \(fold.items)")
+            return
+        }
+        #expect(line.kind == .status)
+        #expect(line.detail == "gate")
+        #expect(line.text == "Typecheck passed on ios/export")
+        #expect(line.notice?.gate?.step == .typecheck)
+        #expect(line.notice?.noticeKind == .gate)
+        #expect(batch.notice?.noticeKind == .batch)
+        #expect(batch.notice?.review == nil)
+    }
+
+    @Test func `a merged-anyway review resolves the held row with the same run id and leaves the others`() throws {
+        let held = { (runId: String) in
+            ReviewNotice(runId: runId, reviewerId: nil, provider: "codex", model: "gpt-6.1-sol", outcome: .held, branch: "b", target: "master", blocking: [ReviewFinding(file: "a.ts", summary: "x", failure_scenario: "y")], minor: [], merged: false, pushed: false)
+        }
+        let over = ReviewNotice(runId: "r1", reviewerId: nil, provider: "codex", model: "gpt-6.1-sol", outcome: .mergedAnyway, branch: "b", target: "master", blocking: [], minor: [], merged: true, pushed: true)
+        let fold = ThreadFold.fold(rows([
+            user("go"),
+            .notice(NoticeEvent(kind: "review", message: "held one", review: held("r1"))),
+            .notice(NoticeEvent(kind: "review", message: "held two", review: held("r2"))),
+            .notice(NoticeEvent(kind: "review", message: "Merged anyway", review: over))
+        ]))
+        let lines = fold.items.compactMap { entry -> SystemLine? in
+            if case .system(let line) = entry.item { return line }
+            return nil
+        }
+        #expect(lines.count == 3)
+        #expect(lines[0].reviewResolved)
+        #expect(!lines[1].reviewResolved)
+        #expect(lines[2].notice?.review?.outcome == .mergedAnyway)
+        #expect(!lines[2].reviewResolved)
+        let first = try #require(lines[0].notice?.review)
+        let second = try #require(lines[1].notice?.review)
+        #expect(!ReviewText.isHeld(first, resolved: lines[0].reviewResolved))
+        #expect(ReviewText.isHeld(second, resolved: lines[1].reviewResolved))
+    }
+
+    @Test func `an error row keeps the host's verdict and errors-cleared drops it`() {
+        let failure = Failure(kind: .rateLimited, account: "a@b", summary: "a@b hit its 5-hour limit", cause: "The window is spent.")
+        let base = rows([
+            user("go"),
+            .error(ErrorEvent(message: "429", failure: failure)),
+            .error(ErrorEvent(message: "stopped", stopped: true))
+        ])
+        let fold = ThreadFold.fold(base)
+        guard case .system(let line) = fold.items[1].item, case .system(let stopped) = fold.items[2].item else {
+            Issue.record("shape \(fold.items)")
+            return
+        }
+        #expect(line.kind == .error)
+        #expect(line.failure?.kind == .rateLimited)
+        #expect(line.failure?.account == "a@b")
+        #expect(!line.stopped)
+        #expect(stopped.stopped)
+        #expect(stopped.failure == nil)
+        let cleared = ThreadFold.fold(base + [EventRow(sessionId: "s", seq: 9, ts: 9_000, event: .errorsCleared(ErrorsClearedEvent()))])
+        #expect(cleared.items.count == 1)
+        #expect(!cleared.items.contains { $0.item.isError })
+    }
+
+    @Test func `a user row keeps its preamble stamp`() {
+        let stamp = PreambleStamp(text: "- Work in your own worktree.", words: 212)
+        let fold = ThreadFold.fold(rows([
+            .userText(UserTextEvent(text: "Build it.", preamble: stamp, newPass: true)),
+            user("and then")
+        ]))
+        guard case .user(let first) = fold.items[0].item, case .user(let second) = fold.items[1].item else {
+            Issue.record("shape \(fold.items)")
+            return
+        }
+        #expect(first.preamble?.words == 212)
+        #expect(first.preamble?.text == "- Work in your own worktree.")
+        #expect(first.text == "Build it.")
+        #expect(second.preamble == nil)
+    }
+
+    @Test func `a plan handoff row carries the build's title and id`() {
+        let fold = ThreadFold.fold(rows([
+            user("plan it"),
+            .planHandoff(PlanHandoffEvent(sessionId: "build-1", title: "Plan the passkey rollout", environmentId: nil, how: .auto))
+        ]))
+        guard case .system(let line) = fold.items[1].item else {
+            Issue.record("shape \(fold.items)")
+            return
+        }
+        #expect(line.kind == .planHandoff)
+        #expect(line.text == "Plan the passkey rollout")
+        #expect(line.detail == "build-1")
+    }
 }

@@ -402,7 +402,7 @@ private struct TodoTrace: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                 case .system(let line):
-                    SystemRow(line: line, client: client)
+                    SystemRow(line: line, client: client, sessionId: sessionId)
                 default:
                     EmptyView()
                 }

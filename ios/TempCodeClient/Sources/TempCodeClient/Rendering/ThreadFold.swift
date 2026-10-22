@@ -302,7 +302,7 @@ public struct ThreadFold: Sendable, Hashable {
         switch row.event {
         case .userText(let event):
             board.beginTurn(ts: row.ts, lastTs: items.last?.ts, newPass: event.newPass)
-            append(.user(UserTurn(seq: row.seq, ts: row.ts, text: event.text, attachments: event.attachments ?? [], model: event.model, reasoning: event.reasoning, completedTs: nil, costUsd: nil)))
+            append(.user(UserTurn(seq: row.seq, ts: row.ts, text: event.text, attachments: event.attachments ?? [], model: event.model, reasoning: event.reasoning, completedTs: nil, costUsd: nil, preamble: event.preamble)))
         case .assistantText(let event):
             mergeText(row: row, kind: "a", text: event.text, delta: event.delta, msgId: event.msgId, blockIndex: event.blockIndex, parentCallId: event.parentCallId) { .assistant($0) }
         case .thinking(let event):
@@ -391,8 +391,9 @@ public struct ThreadFold: Sendable, Hashable {
         case .agentReport(let event):
             append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .agentReport, text: event.title, detail: event.status, stopped: false)))
         case .planHandoff(let event):
-            // The plan's own record of its build: the row links to that thread.
-            append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .planHandoff, text: event.how == .auto ? "Started the build" : "Build started", detail: event.sessionId, stopped: false)))
+            // The plan's own record of its build: the title is what the person
+            // recognises, the row composes the sentence and links to that thread.
+            append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .planHandoff, text: event.title, detail: event.sessionId, stopped: false)))
         case .backgroundTask(let event):
             append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .backgroundTask, text: event.description, detail: event.status.rawValue, stopped: false)))
         case .backgroundTasks(let event):
@@ -401,7 +402,7 @@ public struct ThreadFold: Sendable, Hashable {
         case .goal(let event):
             append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .goal, text: event.condition, detail: event.phase.rawValue, stopped: false)))
         case .error(let event):
-            append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .error, text: event.message, detail: nil, stopped: event.stopped ?? false)))
+            append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .error, text: event.message, detail: nil, stopped: event.stopped ?? false, failure: event.failure)))
             if event.stopped == true { board.stopped = true }
         case .errorsCleared:
             items.removeAll { $0.item.isError }
@@ -436,6 +437,17 @@ public struct ThreadFold: Sendable, Hashable {
             // A host's own line in the thread (an account that left, a review's
             // verdict, a restart mid-turn): one status row, the kind as detail,
             // the payload kept whole for the board's landing rows.
+            if let review = event.review, review.outcome == .mergedAnyway {
+                // The override settles the held row it answers, by run id.
+                for index in items.indices.reversed() {
+                    guard case .system(var line) = items[index].item,
+                          line.notice?.review?.runId == review.runId,
+                          line.notice?.review?.outcome == .held else { continue }
+                    line.reviewResolved = true
+                    items[index].item = .system(line)
+                    break
+                }
+            }
             append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .status, text: event.message, detail: event.kind, stopped: false, notice: event)))
         case .context:
             break

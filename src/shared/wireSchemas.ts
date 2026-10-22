@@ -341,6 +341,19 @@ export type WireSessionChangesPins = [
   Expect<Assignable<SessionChangesDelta, WireSessionChanges>>
 ]
 
+/** `session.reroute` → where the thread landed (sessions.ts `reroute`): the
+ *  account it is on now, and whether that is a move. */
+export const RerouteAnswerSchema = z.object({ account: z.string().nullable(), moved: z.boolean() })
+export type RerouteAnswer = { account: string | null; moved: boolean }
+
+/** `review.override` → the merge past a held review (mergeBranch.ts `MergeResult`). */
+export const ReviewOverrideAnswerSchema = z.object({
+  sha: z.string(),
+  merged: z.boolean(),
+  pushed: z.boolean()
+})
+export type ReviewOverrideAnswer = { sha: string; merged: boolean; pushed: boolean }
+
 export const WorkspaceMetaSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -762,6 +775,8 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof SessionMetaSchema, WireSessionMeta>>,
   Expect<Mirror<typeof SessionPageSchema, WireSessionPage>>,
   Expect<Mirror<typeof SessionChangesSchema, WireSessionChanges>>,
+  Expect<Mirror<typeof RerouteAnswerSchema, RerouteAnswer>>,
+  Expect<Mirror<typeof ReviewOverrideAnswerSchema, ReviewOverrideAnswer>>,
   Expect<Mirror<typeof WorkspaceMetaSchema, WorkspaceMeta>>,
   Expect<Mirror<typeof ProjectMetaSchema, ProjectMeta>>,
   Expect<Mirror<typeof WorkspaceIconSchema, WorkspaceIcon>>,

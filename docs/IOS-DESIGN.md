@@ -441,10 +441,28 @@ The transcript is the whole body. Row kinds and their mobile form:
   transcript, hairline border and warning tint at 8 %, actions as full-width
   buttons at the bottom (L5 makes them live; L3 and L4 render them with the
   decided state).
-- **Compaction, errors, system**: one quiet line, glyph and text, errors in
-  destructive.
+- **Compaction, system**: one quiet line, glyph and text.
 - **Subagent spawn and report**: a row with the agent glyph, label, model,
   status; tap pushes the subagent thread.
+- **Failure**: the host's verdict on a failed turn as a card: the summary,
+  the cause, a note naming what only the desktop can do (sign in, pick an
+  account or a model), and the actions this key can take as full-width
+  buttons, Retry last; needs-you tint while live, chrome once the thread
+  moves on. An error without a verdict, and a Stop, stay one quiet line.
+- **Review**: the merge review's outcome: lead and detail, held in
+  destructive, merged in success, the rest secondary; blocking findings as
+  rows (file:line in mono, the claim, tap expands the failure scenario on
+  the row spring); minor findings folded; the reviewer thread one chip away;
+  Merge anyway behind a confirm sheet for an approve key, the reason in its
+  place for a lesser one.
+- **Gate**: the run's outcome; failed in destructive with its last lines
+  folded in mono; passed as a quiet line with a green check.
+- **Batch, account-gone, other host rows**: one quiet line each, the host's
+  words.
+- **Plan handoff**: the build's row (status, glyph, title, model) when this
+  host has it; tap pushes it.
+- **Preamble**: "Project rules · 212 words" folded inside the first user
+  field above the brief; tap opens the text on a 150 ms cross-fade.
 
 Streaming: new text appends to the last assistant row without re-laying the
 rows above; the list stays pinned to the bottom while the user is at the
@@ -1078,6 +1096,7 @@ used.
 | Sheets | the system sheet, 16 pt radius, detents medium and large | `Radius.sheet` |
 | Segment swipe | interactive, follows the finger, settles with the drawer curve `cubic-bezier(0.32, 0.72, 0, 1)` | `Motion.drawer` |
 | Row expand (todo trace, tool body) | spring `duration 0.35, bounce 0`; content fades in 150 ms after the height starts; collapse 200 ms ease-out | `Motion.expand`, `Motion.expandContent`, `Motion.collapse` |
+| Preamble fold | 150 ms cross-fade, no height spring | `Motion.crossFade` |
 | Needs-you row appearing | 200 ms ease-out, opacity and 8 pt translateY; removal 150 ms opacity only | `.rowAppearTransition()` (`Motion.appear(reduced:)`, `Motion.rowAppear`, `Motion.rowLeave`, `Motion.travel`) |
 | Last-activity line changing | 150 ms cross-fade with 2 pt blur; the row never changes height | `SwapText`, `.swapTransition()` (`Motion.swap(reduced:)`, `Motion.crossFade`, `Motion.crossFadeBlur`) |
 | Counts and elapsed | `contentTransition(.numericText())` on 150 ms | `.numeric(value)` (`Motion.numeric`), `CountText`, `ElapsedText`, `AgoText` |

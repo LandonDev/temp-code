@@ -30,8 +30,9 @@ import { deflateSync } from 'node:zlib'
 import { configure } from 'aliax-core'
 import { startServer } from '../src/main/server/index'
 import { serveMedia } from '../src/main/server/media'
-import type { AgentEvent } from '../src/shared/events'
+import type { AgentEvent, FailureKind } from '../src/shared/events'
 import type { GithubInboxItem } from '../src/shared/contract-github'
+import type { ReviewNotice } from '../src/shared/review'
 
 const root = mkdtempSync(join(tmpdir(), 'tc-ios-client-'))
 configure({
@@ -653,6 +654,66 @@ for (let i = 0; i < 500; i++) {
 }
 at(THREAD_LONG, [{ type: 'turn-complete' }, status('idle')])
 
+// ── the host's own rows (thread 19): every notice kind, every failure kind, a preamble, a handoff ──
+export const THREAD_NOTICES = 'ios-notices'
+await makeTyped(THREAD_NOTICES, 'implementation', 'Land the export endpoint')
+await make('ios-notices-reviewer', { parentId: THREAD_NOTICES, projectId: project.id, agentType: 'reviewer', model: 'gpt-6.1-sol', provider: 'codex', title: 'Review: ios/export → master' })
+say('ios-notices-reviewer', 'Review the branch', 'Two blocking findings, one minor.')
+const finding = (file: string, line: number, summary: string, failure_scenario: string, verdict?: 'CONFIRMED' | 'PLAUSIBLE'): ReviewNotice['blocking'][number] => ({ file, line, summary, failure_scenario, ...(verdict ? { verdict } : {}) })
+const review = (over: Partial<ReviewNotice>): ReviewNotice => ({ runId: 'r1', provider: 'codex', model: 'gpt-6.1-sol', outcome: 'pass', branch: 'ios/export', target: 'master', blocking: [], minor: [], merged: true, pushed: true, ...over })
+at(THREAD_NOTICES, [
+  { type: 'user-text', text: 'Land the export endpoint on master.', newPass: true },
+  { type: 'notice', kind: 'gate', message: 'Typecheck passed on ios/export', gate: { step: 'typecheck', branch: 'ios/export', ok: true, log: '', at: Date.now() } },
+  { type: 'notice', kind: 'review', message: 'Reviewed by GPT-6.1 Sol: no blocking findings (1 minor)', review: review({ runId: 'r-pass', minor: [finding('src/export.ts', 12, 'The CSV header is built on every row', 'A 10,000-row export rebuilds the header string 10,000 times.')] }) },
+  { type: 'notice', kind: 'batch', message: 'Merged by the batch: ios/export → master at 1a2b3c4d5e, pushed' },
+  { type: 'user-text', text: 'Now the import side.', newPass: true },
+  { type: 'notice', kind: 'gate', message: 'Typecheck failed on ios/import · 3 errors', gate: { step: 'typecheck', branch: 'ios/import', ok: false, log: "src/import.ts(14,7): error TS2322: Type 'string' is not assignable to type 'number'.\nsrc/import.ts(40,3): error TS2554: Expected 2 arguments, but got 1.\nsrc/import.ts(58,11): error TS2339: Property 'rows' does not exist on type 'Import'.\n\nFound 3 errors in 1 file.\n", at: Date.now() } },
+  { type: 'notice', kind: 'review', message: 'Reviewed by GPT-6.1 Sol: 2 blocking findings, merge held', review: review({ runId: 'r-held', outcome: 'held', branch: 'ios/import', reviewerId: 'ios-notices-reviewer', merged: false, pushed: false, blocking: [finding('src/import.ts', 40, 'parseRow drops the last column when the line ends with a comma', 'A row "a,b," imports as two cells; the third, empty, is lost and every later column shifts left.', 'CONFIRMED'), finding('src/import.ts', 58, 'The import runs on the main thread', 'A 50 MB file freezes the window for the length of the parse.', 'PLAUSIBLE')], minor: [finding('src/import.ts', 3, 'Unused import of path', '')] }) },
+  { type: 'notice', kind: 'review', message: 'Merged anyway: 1 blocking finding overridden', review: review({ runId: 'r-over', outcome: 'merged-anyway', branch: 'ios/import-2', blocking: [finding('src/import.ts', 9, 'Dead code after the early return', 'None at runtime; the branch is unreachable.', 'CONFIRMED')] }) },
+  { type: 'notice', kind: 'review', message: 'Review by GPT-6.1 Sol timed out after 15 min, merged without it', review: review({ runId: 'r-time', outcome: 'timeout', minutes: 15 }) },
+  { type: 'notice', kind: 'account-gone', account: 'work@example.com', message: 'Account work@example.com is gone from this host; routing automatically from here (09:14)' },
+  status('idle')
+])
+
+export const THREAD_FAILURES = 'ios-failures'
+await makeTyped(THREAD_FAILURES, 'chat', 'Every way a turn fails')
+const fail = (kind: FailureKind, account: string | null, summary: string, cause: string): AgentEvent => ({ type: 'error', message: summary, failure: { kind, account, summary, cause } })
+at(THREAD_FAILURES, [
+  { type: 'user-text', text: 'Show me every failure kind.', newPass: true },
+  fail('oauth_expired', 'landon@example.com', 'Anthropic session for landon@example.com expired and could not be refreshed', 'The stored sign-in lapsed and its refresh was refused; signing in again mints a new one.'),
+  fail('account_unknown', 'work@example.com', 'Account work@example.com is no longer on file', 'The account was removed or cancelled, so there is no sign-in to route this thread under.'),
+  fail('token_expired', 'landon@example.com', 'The token for landon@example.com expired on this instance', 'This instance does not own the gateway and never refreshes tokens; the owner renews it on its next use.'),
+  fail('rate_limited', 'landon@example.com', 'landon@example.com hit its 5-hour limit', 'The usage window is spent until it resets; another account with room can take the thread.'),
+  fail('quota', 'landon@example.com', 'landon@example.com is out of credits', 'The plan has nothing left to spend; top it up or route the thread to another account.'),
+  fail('model_unavailable', null, 'gpt-6.1-sol is not available on this host', 'The installed Codex CLI is older than the model needs (0.162.1 or newer), or the provider refused the model.'),
+  fail('network', null, 'Could not reach Anthropic', 'The connection dropped or was refused: a network change here, or an outage on their side.'),
+  fail('harness_crashed', null, 'The Claude Code process died mid-turn', 'Its stream ended before the turn finished; the conversation can pick up from its last message.'),
+  fail('unknown', null, 'The turn failed', 'The harness gave no reason.'),
+  { type: 'status', status: 'error' }
+])
+
+export const THREAD_PREAMBLE = 'ios-preamble'
+await makeTyped(THREAD_PREAMBLE, 'implementation', 'Rename the config keys (with rules)')
+const rules = '- Work in your own git worktree: `git worktree add .claude/worktrees/rename-the-config-keys -b rename-the-config-keys master`.\n- Run typecheck and the tests you wrote; land with merge_branch.\n- Never touch /Applications/TempCode.app.'
+at(THREAD_PREAMBLE, [
+  { type: 'user-text', text: 'Rename every config key from camelCase to kebab-case.', preamble: { text: rules, words: rules.split(/\s+/).filter(Boolean).length }, newPass: true },
+  answer('p1', 'Renamed 14 keys; the migration reads both forms for one release.'),
+  { type: 'turn-complete' },
+  status('idle')
+])
+
+export const THREAD_HANDOFF = 'ios-handoff'
+await makeTyped(THREAD_HANDOFF, 'planning', 'Plan the passkey rollout')
+await makeTyped('ios-handoff-build', 'implementation', 'Plan the passkey rollout')
+say('ios-handoff-build', 'Build it from the plan.', 'Started.')
+at(THREAD_HANDOFF, [
+  { type: 'user-text', text: 'Plan the passkey rollout.', newPass: true },
+  answer('h1', 'The plan is written.'),
+  { type: 'plan-handoff', sessionId: 'ios-handoff-build', title: 'Plan the passkey rollout', how: 'auto' },
+  { type: 'turn-complete' },
+  status('idle')
+])
+
 // Keep board tasks, rounds and sources outside a cold tail for the phone's
 // history proof. A single merged block keeps the board itself readable.
 for (const id of [THREAD_IMPL, THREAD_RESEARCH]) {
@@ -1087,7 +1148,7 @@ process.stdout.write(
     second,
     localPort: server.port,
     shot,
-    threads: { implementation: THREAD_IMPL, planning: THREAD_PLAN, orchestration: THREAD_ORCH, research: THREAD_RESEARCH, chat: THREAD_CHAT, long: THREAD_LONG, held: THREAD_HELD, queued: THREAD_QUEUED, stopped: 'ios-stopped' },
+    threads: { implementation: THREAD_IMPL, planning: THREAD_PLAN, orchestration: THREAD_ORCH, research: THREAD_RESEARCH, chat: THREAD_CHAT, long: THREAD_LONG, held: THREAD_HELD, queued: THREAD_QUEUED, stopped: 'ios-stopped', notices: THREAD_NOTICES, failures: THREAD_FAILURES, preamble: THREAD_PREAMBLE, handoff: THREAD_HANDOFF },
     projectId: project.id,
     workspaceId: workspace.id
   }) + '\n'

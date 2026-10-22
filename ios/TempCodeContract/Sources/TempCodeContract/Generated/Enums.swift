@@ -509,3 +509,29 @@ public enum FailureKind: RawRepresentable, Codable, Hashable, Sendable {
         }
     }
 }
+
+public enum GateStep: RawRepresentable, Codable, Hashable, Sendable {
+    case typecheck
+    case gate
+    case release
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "typecheck": self = .typecheck
+        case "gate": self = .gate
+        case "release": self = .release
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .typecheck: "typecheck"
+        case .gate: "gate"
+        case .release: "release"
+        case .unknown(let value): value
+        }
+    }
+}

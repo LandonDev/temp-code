@@ -48,8 +48,11 @@ import {
   FailureSchema,
   LimitWindowSchema,
   PermissionPolicySchema,
+  PreambleStampSchema,
   SessionStatusSchema
 } from '../src/shared/events'
+import { GateNoticeSchema, GateStepSchema } from '../src/shared/gate'
+import { ReviewFindingSchema, ReviewNoticeSchema } from '../src/shared/review'
 import * as W from '../src/shared/wireSchemas'
 
 // ── the subset ──────────────────────────────────────────────────────────
@@ -111,6 +114,14 @@ export const SUBSET: SubsetEntry[] = [
   type('LimitWindow', LimitWindowSchema),
   type('FailureKind', FailureKindSchema),
   type('Failure', FailureSchema),
+  // the host's own rows: the review and gate payloads a notice carries, the preamble stamp
+  type('PreambleStamp', PreambleStampSchema),
+  type('ReviewFinding', ReviewFindingSchema),
+  type('ReviewNotice', ReviewNoticeSchema),
+  type('GateStep', GateStepSchema),
+  type('GateNotice', GateNoticeSchema),
+  type('RerouteAnswer', W.RerouteAnswerSchema),
+  type('ReviewOverrideAnswer', W.ReviewOverrideAnswerSchema),
   union('AgentEvent', W.WireAgentEventSchema, 'type', 'Event'),
   type('EventRow', W.EventRowSchema),
   type('EventsPage', W.EventsPageSchema),
@@ -193,6 +204,10 @@ export const SUBSET: SubsetEntry[] = [
   method('session.resume', z.null()),
   // a queued batch thread started ahead of its sibling (the strip's Start now)
   method('session.start', z.object({ started: z.boolean() })),
+  // the failure card's Retry and Route automatically, the review card's Merge anyway
+  method('session.continue', z.null()),
+  method('session.reroute', W.RerouteAnswerSchema),
+  method('review.override', W.ReviewOverrideAnswerSchema),
   method('queue.list', z.array(W.QueuedMessageSchema)),
   method('queue.add', z.null()),
   method('queue.remove', z.null()),
@@ -241,7 +256,9 @@ const CASE_NAMES: Record<string, string> = {
   EXPECTED: 'expected',
   APPROVED: 'approved',
   CHANGES_REQUESTED: 'changesRequested',
-  REVIEW_REQUIRED: 'reviewRequired'
+  REVIEW_REQUIRED: 'reviewRequired',
+  CONFIRMED: 'confirmed',
+  PLAUSIBLE: 'plausible'
 }
 
 // ── zod → JSON Schema ───────────────────────────────────────────────────

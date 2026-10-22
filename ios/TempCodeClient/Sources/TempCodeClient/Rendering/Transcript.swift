@@ -25,6 +25,8 @@ public struct UserTurn: Sendable, Hashable {
     /// Set by the `turn-complete` (or the idle status) that closed it.
     public var completedTs: Int?
     public var costUsd: Double?
+    /// The project rules this first message opened with (the desktop's PreambleRow).
+    public var preamble: PreambleStamp? = nil
 }
 
 public struct TextBlock: Sendable, Hashable {
@@ -124,6 +126,10 @@ public struct SystemLine: Sendable, Hashable {
     /// board can draw it as more than a line. Last and defaulted: every
     /// `SystemLine(seq:ts:kind:text:detail:stopped:)` call stays as it is.
     public var notice: NoticeEvent? = nil
+    /// `error` rows: the host's verdict (failureKind.ts), when it had one.
+    public var failure: Failure? = nil
+    /// A held review whose merge was later forced through (a merged-anyway notice with the same runId).
+    public var reviewResolved: Bool = false
 }
 
 /// One thing the transcript shows, in order. Rows that are bookkeeping
