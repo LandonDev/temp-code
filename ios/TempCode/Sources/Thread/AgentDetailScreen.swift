@@ -6,12 +6,17 @@ import TempCodeContract
 /// bar, its own transcript, and one line at the bottom that steers it while
 /// it runs or sends when it is idle. A waiting agent's approval or question
 /// card sits at the end of its transcript, where the screen opens. Pushed
-/// from any fleet row.
+/// from any fleet row. `client` is the agent's own host's client, so an
+/// agent on the Mac reads from the Mac and the field carries the Mac key's
+/// standing; `hostName` names that host when it is not the root's.
 struct AgentDetailScreen: View {
     let client: EnvironmentClient
     let agentId: String
     var parentCwd: String?
+    var hostName: String?
     @Environment(NavigationRouter.self) private var router
+    /// DEBUG proof: the launch action ran once on this screen.
+    @State private var acted = false
 
     var body: some View {
         let session = client.session(agentId)
@@ -19,7 +24,7 @@ struct AgentDetailScreen: View {
         VStack(spacing: 0) {
             StatusLine(client: client)
             if let session {
-                AgentIdentity(agent: session, thread: thread, parentCwd: parentCwd)
+                AgentIdentity(agent: session, thread: thread, parentCwd: parentCwd, hostName: hostName)
             }
             TranscriptView(client: client, sessionId: agentId, thread: thread)
         }
@@ -48,6 +53,36 @@ struct AgentDetailScreen: View {
             client.closeThread(agentId)
         }
         .onChange(of: thread.fold.lastSeq) { client.markSeen(agentId) }
+        .task(id: "\(thread.isLoading)|\(thread.isLive)") {
+            // DEBUG only: with the agent's detail pushed, the proof's action is the agent's. Once, through the calls the buttons make.
+            guard let action = TestHooks.action, TestHooks.open == "agent" || TestHooks.open == "agent-detail",
+                  !thread.isLoading, thread.isLive, !acted, session != nil else { return }
+            acted = true
+            await perform(action, thread: thread)
+        }
+    }
+
+    private func perform(_ action: String, thread: ThreadState) async {
+        let parts = action.split(separator: ":", maxSplits: 1).map(String.init)
+        let argument = parts.count > 1 ? parts[1] : ""
+        switch parts[0] {
+        case "send":
+            try? await client.send(agentId, text: argument)
+        case "approve", "deny":
+            if let approval = thread.fold.items.lazy.compactMap({ entry -> ApprovalItem? in
+                if case .approval(let a) = entry.item, a.allowed == nil { return a } else { return nil }
+            }).last {
+                try? await client.approve(agentId, requestId: approval.request.requestId, allow: parts[0] == "approve")
+            }
+        case "answer":
+            if let question = thread.fold.items.lazy.compactMap({ entry -> QuestionItem? in
+                if case .question(let q) = entry.item, !q.resolved { return q } else { return nil }
+            }).last {
+                try? await client.answer(agentId, requestId: question.request.requestId, answers: question.request.questions.map { _ in [argument] })
+            }
+        default:
+            break
+        }
     }
 }
 
@@ -70,25 +105,28 @@ private struct AgentTitle: View {
     }
 }
 
-/// The identity strip (the desktop detail's header): the mark and the
-/// agent's state in words, the meta with its worktree, and the figures;
-/// the stats on their own line when there are any. A hairline closes it.
+/// The identity strip (the desktop detail's header): the mark, the meta
+/// with its worktree and host, the figures (ticking only while live), the
+/// activity line, the stats on their own line when there are any. A
+/// hairline closes it.
 private struct AgentIdentity: View {
     let agent: SessionMeta
     let thread: ThreadState
     var parentCwd: String?
+    var hostName: String?
 
     var body: some View {
         let live = Fleet.isLive(agent.status)
-        let line = Fleet.line(status: agent.status, items: thread.fold.items, compacting: thread.fold.board.compacting)
+        let emphasized = live || agent.status == .waiting || agent.status == .error || agent.status == .stopped
+        let line = Fleet.line(status: agent.status, items: thread.fold.items, compacting: thread.fold.board.compacting, activity: agent.activity)
         let stats = Fleet.stats(items: thread.fold.items, tasks: agent.tasks, board: thread.fold.board, context: agent.context)
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 12) {
-                AgentStatusMark(status: agent.status)
+            HStack(alignment: .top, spacing: Layout.rowGap) {
+                AgentStatusMark(status: agent.status, weight: emphasized ? .medium : .regular)
                     .padding(.top, 1)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        AgentMetaLine(agent: agent, branch: Fleet.branch(cwd: agent.cwd, parentCwd: parentCwd))
+                        AgentMetaLine(agent: agent, branch: Fleet.branch(cwd: agent.cwd, parentCwd: parentCwd), host: hostName)
                         Spacer(minLength: 8)
                         if live {
                             TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -104,11 +142,9 @@ private struct AgentIdentity: View {
                     }
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 10)
-            .padding(.bottom, 10)
-            Hairline()
-                .padding(.leading, 44)
+            .padding(.horizontal, Layout.textEdge)
+            .padding(.vertical, 10)
+            Hairline(inset: FleetLayout.textInset)
         }
         .background(Surface.background)
         .accessibilityElement(children: .combine)
@@ -116,9 +152,11 @@ private struct AgentIdentity: View {
 }
 
 /// The one-line field under the transcript (the desktop detail's footer):
-/// Steer this agent… while it runs, Send to this agent… once it is idle,
-/// one filled button that sends. While the key cannot act or the host is
-/// away, the field carries the reason in place of its placeholder.
+/// "Steer this agent…" while it runs, "Send to this agent…" once it is idle,
+/// one filled button that sends. A stopped agent reads "Resume to send"
+/// and a queued one "Starts when its turn comes", both off. While the key
+/// cannot act or the host is away, the field carries the reason in place
+/// of its placeholder. A failed send puts the text back with its reason.
 private struct AgentSendBar: View {
     let client: EnvironmentClient
     let agentId: String
@@ -128,8 +166,6 @@ private struct AgentSendBar: View {
     @State private var failure: String?
     @State private var sentCount = 0
     @FocusState private var focused: Bool
-    @Environment(\.displayScale) private var scale
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var live: Bool { Fleet.isLive(session?.status) }
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -138,6 +174,20 @@ private struct AgentSendBar: View {
         return block
     }
 
+    /// Why the field is off, in the field's own words, or nil when it may send.
+    private var held: String? {
+        if let block { return block.text(now: Date().timeIntervalSince1970 * 1000) }
+        switch session?.status {
+        case .stopped?: return "Resume to send"
+        case .queued?: return "Starts when its turn comes"
+        case nil: return "Send to this agent…"
+        default: return nil
+        }
+    }
+
+    private var placeholder: String { held ?? (live ? "Steer this agent…" : "Send to this agent…") }
+    private var enabled: Bool { held == nil && !busy && !trimmed.isEmpty }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .bottom, spacing: 8) {
@@ -145,22 +195,22 @@ private struct AgentSendBar: View {
                     .font(.body)
                     .lineLimit(1...4)
                     .focused($focused)
-                    .disabled(block != nil || session == nil)
+                    .disabled(held != nil)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
                     .frame(minHeight: 36)
-                    .background(Surface.chrome, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: Radius.field, style: .continuous).strokeBorder(Surface.hairline, lineWidth: 1 / scale))
+                    .background(Surface.chrome, in: RoundedRectangle.fieldCorner)
+                    .hairlineBorder(RoundedRectangle.fieldCorner)
                     .onChange(of: text) { failure = nil }
                     .onSubmit(send)
-                    .accessibilityLabel(block.map { $0.text(now: Date().timeIntervalSince1970 * 1000) } ?? (live ? "Steer this agent" : "Send to this agent"))
+                    .accessibilityLabel(held ?? (live ? "Steer this agent" : "Send to this agent"))
                 Button(action: send) {
                     ZStack {
                         Circle()
-                            .fill(Color.primary)
+                            .fill(Color(.label))
                             .opacity(enabled ? 1 : 0.3)
                         Image(systemName: "arrow.up")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.subheadline.weight(.bold))
                             .foregroundStyle(Color(.systemBackground))
                     }
                     .frame(width: 28, height: 28)
@@ -174,7 +224,7 @@ private struct AgentSendBar: View {
             }
             if let failure {
                 Text(failure)
-                    .font(.footnote)
+                    .font(TextStep.meta.font)
                     .foregroundStyle(Tint.destructive)
                     .padding(.horizontal, 12)
                     .transition(.opacity)
@@ -188,16 +238,9 @@ private struct AgentSendBar: View {
         .sensoryFeedback(.impact(weight: .light), trigger: sentCount)
     }
 
-    private var enabled: Bool { block == nil && session != nil && !busy && !trimmed.isEmpty }
-
-    private var placeholder: String {
-        if let block { return block.text(now: Date().timeIntervalSince1970 * 1000) }
-        return live ? "Steer this agent…" : "Send to this agent…"
-    }
-
     private func send() {
         let body = trimmed
-        guard !body.isEmpty, !busy, block == nil else { return }
+        guard !body.isEmpty, enabled else { return }
         busy = true
         text = ""
         sentCount += 1

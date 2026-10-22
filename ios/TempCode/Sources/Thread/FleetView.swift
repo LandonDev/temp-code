@@ -3,45 +3,54 @@ import TempCodeClient
 import TempCodeContract
 
 /// The Orchestration thread's hero segment: the goal and what the
-/// orchestrator is up to, then its fleet in groups, Running then Waiting
-/// then Done (FleetStyles.swift). Tap a row for the agent's own detail.
+/// orchestrator is up to, then its fleet in groups, Running, Waiting,
+/// Queued, Done (FleetStyles.swift), gathered from every paired host. Tap a
+/// row for the agent's own detail.
 struct FleetView: View {
     let client: EnvironmentClient
     let sessionId: String
     let session: SessionMeta?
     let thread: ThreadState
+    @Environment(AppModel.self) private var app
     /// DEBUG proof: `TC_TEST_OPEN=agents` pushes the subagent list,
     /// `agent-detail` the first agent's detail, once the fleet is in.
     @State private var launchPush: FleetLaunchPush?
 
     var body: some View {
-        let agents = Fleet.children(of: sessionId, in: client.sessions)
-        let counts = Fleet.counts(agents.map(\.status))
+        let fleet = FleetGather(registry: app.registry, root: client, rootId: sessionId)
+        let counts = Fleet.counts(fleet.agents.map(\.meta.status))
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 FleetGoal(goal: goal, status: effectiveStatus(counts: counts), line: Fleet.orchestratorLine(status: session?.status, counts: counts))
-                if agents.isEmpty {
+                if fleet.agents.isEmpty {
                     FleetEmpty(text: thread.isLoading ? "Loading the fleet…" : "No agents yet. The orchestrator's first spawn lands here.")
                 } else {
-                    FleetSections(agents: agents, client: client, parentCwd: session?.cwd)
+                    FleetSections(agents: fleet.agents, clients: fleet.clients, parentCwd: session?.cwd, hostNames: fleet.hostNames, hostLines: fleet.hostLines)
+                }
+                if fleet.unpaired > 0 {
+                    FleetUnpairedNote(count: fleet.unpaired)
                 }
             }
             .padding(.bottom, 24)
         }
         .scrollBounceBehavior(.basedOnSize)
-        .fleetDestinations(client: client)
+        .fleetDestinations(registry: app.registry)
         .navigationDestination(item: $launchPush) { push in
             switch push {
-            case .list: SubagentListScreen(client: client, rootSessionId: sessionId)
-            case .detail(let id): AgentDetailScreen(client: client, agentId: id, parentCwd: session?.cwd)
+            case .list:
+                SubagentListScreen(client: client, rootSessionId: sessionId)
+            case .detail(let route):
+                if let host = app.registry.client(route.environmentId) {
+                    AgentDetailScreen(client: host, agentId: route.agentId, parentCwd: route.parentCwd, hostName: route.hostName)
+                }
             }
         }
-        .onChange(of: TestHooks.open == nil ? 0 : agents.count, initial: true) {
+        .onChange(of: TestHooks.open == nil ? 0 : fleet.agents.count, initial: true) {
             guard launchPush == nil, let open = TestHooks.open else { return }
             if open == "agents" {
                 launchPush = .list
-            } else if open == "agent-detail", let first = agents.first {
-                launchPush = .detail(first.id)
+            } else if open == "agent-detail", let first = fleet.agents.first {
+                launchPush = .detail(AgentDetailRoute(environmentId: first.environmentId, agentId: first.meta.id, parentCwd: session?.cwd, hostName: first.remote ? fleet.hostNames[first.environmentId] : nil))
             }
         }
     }
@@ -57,20 +66,25 @@ struct FleetView: View {
     }
 
     /// The mark beside the status line: the orchestrator's own state while
-    /// it has one, else its fleet's (working shows the spinner, waiting the
-    /// warning dot), as the desktop's pulse line does.
+    /// it has one (live, waiting, failed, paused, stopped or queued), else
+    /// its fleet's (working shows the spinner, waiting the warning dot), as
+    /// the desktop's pulse line does.
     private func effectiveStatus(counts: Fleet.Counts) -> SessionStatus? {
         guard let status = session?.status else { return nil }
-        if Fleet.isLive(status) || status == .waiting || status == .error || status == .paused { return status }
-        if counts.working > 0 { return .running }
-        if counts.waiting > 0 { return .waiting }
-        return status
+        switch status {
+        case .running, .starting, .waiting, .error, .paused, .stopped, .queued:
+            return status
+        case .idle, .done, .watching, .unknown:
+            if counts.working > 0 { return .running }
+            if counts.waiting > 0 { return .waiting }
+            return status
+        }
     }
 }
 
 enum FleetLaunchPush: Hashable, Identifiable {
     case list
-    case detail(String)
+    case detail(AgentDetailRoute)
 
     var id: Self { self }
 }
@@ -93,9 +107,9 @@ private struct FleetGoal: View {
             }
             if !line.isEmpty, let status {
                 HStack(spacing: 8) {
-                    AgentStatusMark(status: status)
+                    AgentStatusMark(status: status, weight: .medium)
                     Text(line)
-                        .font(.footnote.weight(.medium))
+                        .font(TextStep.meta.font.weight(.medium))
                         .foregroundStyle(tone)
                         .monospacedDigit()
                         .lineLimit(1)
@@ -107,7 +121,7 @@ private struct FleetGoal: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, Layout.textEdge)
         .padding(.top, 10)
         .padding(.bottom, 14)
     }

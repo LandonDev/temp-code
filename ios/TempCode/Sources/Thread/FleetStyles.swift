@@ -6,43 +6,46 @@ import TempCodeContract
 /// (FleetPanel's AgentRow) made for a phone, its status mark, the provider
 /// mark, the one-line meta, the activity line that swaps in place, the
 /// stats, and the sectioned list that FleetView and SubagentListScreen share.
-/// Shared with the Design foundations only through their tokens; nothing
-/// here names a color or a duration of its own.
+/// The master board (thread 16) builds its rows from the same pieces. Every
+/// color, radius, length, font step and duration here is the design kit's
+/// (`Tint`, `Surface`, `Radius`, `Layout`, `TextStep`, `Motion`); nothing is
+/// named twice.
+
+// MARK: - layout
+
+enum FleetLayout {
+    /// Where a row's text and its hairline start: the text edge, the mark's
+    /// column and the gap after it (40 pt).
+    static let textInset: CGFloat = Layout.textEdge + Layout.markWidth + Layout.rowGap
+    /// The needs-you field sits this far in from the screen edge and pads
+    /// its content by the same amount, so the text keeps the text edge.
+    static let fieldInset: CGFloat = Layout.textEdge / 2
+}
 
 // MARK: - routes
 
-/// A subagent's detail, pushed from any fleet row.
+/// A subagent's detail, pushed from any fleet row: the host it lives on,
+/// its id, the root's directory (for the worktree name) and the host's name
+/// when it differs from the root's.
 struct AgentDetailRoute: Hashable {
+    let environmentId: String
     let agentId: String
     var parentCwd: String?
+    var hostName: String?
 }
 
 extension View {
     /// The fleet's push destinations. Declared by every screen that shows
-    /// fleet rows, so a list pushed from a chat still resolves them.
-    func fleetDestinations(client: EnvironmentClient) -> some View {
+    /// fleet rows, so a list pushed from a chat still resolves them. The
+    /// route names a host; a host gone since the tap shows one line.
+    func fleetDestinations(registry: ClientRegistry) -> some View {
         navigationDestination(for: AgentDetailRoute.self) { route in
-            AgentDetailScreen(client: client, agentId: route.agentId, parentCwd: route.parentCwd)
+            if let client = registry.client(route.environmentId) {
+                AgentDetailScreen(client: client, agentId: route.agentId, parentCwd: route.parentCwd, hostName: route.hostName)
+            } else {
+                FleetEmpty(text: "This host is no longer paired")
+            }
         }
-    }
-}
-
-// MARK: - motion
-
-/// Row moves inside a fleet (a row joining Waiting, a row settling into
-/// Done): the design doc's needs-you row motion, with its own exit speed.
-enum FleetMotion {
-    static func rowChange(reduced: Bool) -> AnyTransition {
-        if reduced {
-            return .asymmetric(
-                insertion: .opacity.animation(Motion.rowAppear),
-                removal: .opacity.animation(Motion.rowLeave)
-            )
-        }
-        return .asymmetric(
-            insertion: .opacity.combined(with: .offset(y: Motion.travel)).animation(Motion.rowAppear),
-            removal: .opacity.animation(Motion.rowLeave)
-        )
     }
 }
 
@@ -89,7 +92,8 @@ struct ProviderGlyph: View {
 }
 
 /// SVG path data filled in a 29-unit box, scaled to the frame; even-odd so
-/// the marks' counters stay open whatever their winding.
+/// the marks' counters stay open whatever their winding. The path grammar
+/// is the kit's `SVGPath` (Design/HostMark.swift).
 private struct FilledPaths: View {
     let paths: [String]
 
@@ -112,25 +116,17 @@ private nonisolated struct FilledShape: Shape {
     }
 }
 
-/// A subagent's role in the meta line: the design's agent glyphs at the
-/// meta's size, in the meta's color.
-struct AgentTypeMark: View {
-    let type: AgentType
-
-    var body: some View {
-        Image(systemName: type.symbol)
-            .font(.caption2)
-            .accessibilityLabel(type.label)
-    }
-}
-
-/// What leads an agent row (the desktop's StatusGlyph): the spinner while
-/// live, the warning dot waiting, the destructive dot failed, the info dot
-/// watching, the pause mark paused, and a check once settled. Marks
-/// cross-fade in a frame that never changes size.
+/// What leads an agent row (the desktop's StatusGlyph), in the kit's mark
+/// column scaled with the title: the spinner while live, the info dot
+/// watching, the warning dot waiting, the destructive dot failed, the pause
+/// mark paused, a dashed ring queued, a still square once the harness is
+/// gone, and a check once settled. Marks cross-fade in a frame that never
+/// changes size; `weight` is the weight of the title beside it.
 struct AgentStatusMark: View {
     let status: SessionStatus
-    @ScaledMetric(relativeTo: .subheadline) private var size: CGFloat = 16
+    var weight: Font.Weight = .regular
+    @ScaledMetric(relativeTo: .subheadline) private var column = Layout.markWidth
+    @ScaledMetric(relativeTo: .subheadline) private var dot = Layout.dotSize
 
     var body: some View {
         ZStack {
@@ -142,12 +138,23 @@ struct AgentStatusMark: View {
             case .dot(let color):
                 Circle()
                     .fill(color)
-                    .frame(width: size * 0.44, height: size * 0.44)
+                    .frame(width: dot, height: dot)
                     .transition(.opacity)
             case .paused:
                 Image(systemName: "pause.fill")
-                    .font(.caption2)
+                    .font(.caption2.weight(weight))
                     .foregroundStyle(Tint.warning)
+                    .transition(.opacity)
+            case .queued:
+                Image(systemName: "circle.dashed")
+                    .font(.caption2.weight(weight))
+                    .foregroundStyle(Tint.quiet)
+                    .transition(.opacity)
+            case .stopped:
+                // The harness is gone: a still square, the quiet opposite of the spinner.
+                RoundedRectangle(cornerRadius: 1, style: .continuous)
+                    .fill(Tint.quiet)
+                    .frame(width: dot - 1, height: dot - 1)
                     .transition(.opacity)
             case .check:
                 Image(systemName: "checkmark")
@@ -156,13 +163,13 @@ struct AgentStatusMark: View {
                     .transition(.opacity)
             }
         }
-        .frame(width: size, height: size)
+        .frame(width: column, height: column)
         .animation(Motion.crossFade, value: mark)
         .accessibilityLabel(label)
     }
 
     private enum Mark: Equatable {
-        case spinner, dot(Color), paused, check
+        case spinner, dot(Color), paused, queued, stopped, check
     }
 
     private var mark: Mark {
@@ -172,6 +179,8 @@ struct AgentStatusMark: View {
         case .waiting: .dot(Tint.warning)
         case .error: .dot(Tint.destructive)
         case .paused: .paused
+        case .queued: .queued
+        case .stopped: .stopped
         case .idle, .done, .unknown: .check
         }
     }
@@ -183,6 +192,8 @@ struct AgentStatusMark: View {
         case .waiting: "Needs you"
         case .error: "Failed"
         case .paused: "Paused"
+        case .queued: "Queued"
+        case .stopped: "Stopped"
         case .idle, .done, .unknown: "Done"
         }
     }
@@ -191,99 +202,126 @@ struct AgentStatusMark: View {
 // MARK: - lines
 
 /// Provider mark, role, model and effort, plus the worktree when the agent
-/// has one: one dim line, the desktop's "claude · implementer · Opus 5.5 · high".
+/// has one and the host when it is not the root's: one dim line, the
+/// desktop's "claude · implementer · Opus 5.5 · high".
 struct AgentMetaLine: View {
     let agent: SessionMeta
     var branch: String?
+    var host: String?
 
     var body: some View {
         HStack(spacing: 5) {
             ProviderGlyph(provider: agent.provider)
-            AgentTypeMark(type: agent.agentType)
+            MetaGlyph(agent.agentType.symbol, label: agent.agentType.label)
             Text(ModelName.short(agent.model))
             if !agent.reasoning.rawValue.isEmpty {
-                Text("·")
-                    .foregroundStyle(.tertiary)
+                Separator()
                 Text(agent.reasoning.rawValue)
             }
             if let branch {
-                Text("·")
-                    .foregroundStyle(.tertiary)
-                Image(systemName: "arrow.triangle.branch")
-                    .font(.caption2)
+                Separator()
+                MetaGlyph("arrow.triangle.branch", label: "Worktree")
                 Text(branch)
             }
+            if let host {
+                Separator()
+                MetaGlyph("desktopcomputer", label: "Host")
+                Text(host)
+            }
         }
-        .font(.footnote)
-        .foregroundStyle(.secondary)
+        .textStep(.meta)
         .lineLimit(1)
         .accessibilityElement(children: .combine)
     }
+
+    private struct Separator: View {
+        var body: some View {
+            Text("·").foregroundStyle(.tertiary)
+        }
+    }
 }
 
-/// The agent's latest line, replaced in place: a 150 ms cross-fade with
-/// 2 pt of blur in a frame of fixed height, so the row never moves. Empty
-/// while live reads "starting up"; empty and settled takes the same room.
+/// The agent's latest line, replaced in place: the kit's swap (a 150 ms
+/// cross-fade with 2 pt of blur) over a hidden one-line sizer, so the row
+/// keeps one height whatever the text. Empty while live reads "starting
+/// up"; empty and settled takes the same room. `override` (a remote host's
+/// transport line) wins over the agent's own line.
 struct ActivityLine: View {
     let line: Fleet.Line
     let live: Bool
+    var override: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ScaledMetric(relativeTo: .footnote) private var height: CGFloat = 18
 
-    var body: some View {
-        let text = line.text.isEmpty ? (live ? "starting up" : "") : line.text
-        ZStack(alignment: .leading) {
-            Text(text.isEmpty ? " " : text)
-                .font(.footnote)
-                .italic(line.text.isEmpty && live)
-                .foregroundStyle(tone)
-                .lineLimit(1)
-                .id(text)
-                .transition(Motion.swap(reduced: reduceMotion))
-        }
-        .frame(height: height, alignment: .leading)
-        .clipped()
-        .animation(Motion.crossFade, value: text)
-        .accessibilityHidden(text.isEmpty)
+    private var overridden: String? {
+        guard let override, !override.isEmpty else { return nil }
+        return override
+    }
+
+    private var starting: Bool { overridden == nil && line.text.isEmpty && live }
+
+    private var text: String {
+        if let overridden { return overridden }
+        return starting ? "starting up" : line.text
     }
 
     private var tone: Color {
-        if line.text.isEmpty { return Color(.tertiaryLabel) }
-        switch line.tone {
-        case .warning: return Tint.warning
-        case .danger: return Tint.destructive
-        case .muted: return Color(.secondaryLabel)
+        if overridden != nil || line.text.isEmpty { return Color(.tertiaryLabel) }
+        return switch line.tone {
+        case .warning: Tint.warning
+        case .danger: Tint.destructive
+        case .muted: Color(.secondaryLabel)
         }
+    }
+
+    var body: some View {
+        let shown = text
+        ZStack(alignment: .leading) {
+            // The sizer: one line of the step, never shown, so the height is fixed.
+            Text(" ")
+                .font(TextStep.meta.font)
+                .hidden()
+            if !shown.isEmpty {
+                Text(shown)
+                    .italic(starting)
+                    .font(TextStep.meta.font)
+                    .foregroundStyle(tone)
+                    .id(shown)
+                    .transition(Motion.swap(reduced: reduceMotion))
+            }
+        }
+        .lineLimit(1)
+        .animation(Motion.crossFade, value: shown)
+        .accessibilityHidden(shown.isEmpty)
     }
 }
 
-/// "+12 −3 · 3/7 tasks · 42%", quiet and tabular (the desktop's AgentStatsLine).
+/// "+12 −3 · 3/7 tasks · 42%", quiet and tabular (the desktop's
+/// AgentStatsLine); the context reading turns warning at 85 %.
 struct AgentStatsLine: View {
     let stats: Fleet.Stats
 
+    private var hasDiff: Bool { stats.adds > 0 || stats.dels > 0 }
+
     var body: some View {
         HStack(spacing: 6) {
-            if stats.adds > 0 || stats.dels > 0 {
+            if hasDiff {
                 ChangeStat(adds: stats.adds, dels: stats.dels)
-                    .font(.caption)
             }
             if stats.tasksTotal > 0 {
-                if stats.adds > 0 || stats.dels > 0 { Dot() }
+                if hasDiff { Dot() }
                 Text("\(stats.tasksDone)/\(stats.tasksTotal) tasks")
-                    .contentTransition(.numericText())
             }
             if let pct = stats.contextPercent {
-                if stats.tasksTotal > 0 || stats.adds > 0 || stats.dels > 0 { Dot() }
+                if hasDiff || stats.tasksTotal > 0 { Dot() }
                 Text("\(pct)%")
                     .foregroundStyle(pct >= 85 ? Tint.warning : Color(.tertiaryLabel))
-                    .contentTransition(.numericText())
             }
         }
         .font(.caption)
-        .monospacedDigit()
         .foregroundStyle(.tertiary)
         .lineLimit(1)
-        .animation(Motion.crossFade, value: stats)
+        .numeric(stats)
+        .accessibilityElement(children: .combine)
     }
 
     private struct Dot: View {
@@ -293,8 +331,9 @@ struct AgentStatsLine: View {
     }
 }
 
-/// Elapsed over cost, right-aligned, every digit tabular, every change
-/// rolling as numeric text.
+/// Elapsed over cost, trailing-aligned, every digit tabular and rolling as
+/// it changes. Deliberately `caption`, one step above the kit's stamp:
+/// `caption2 tertiary` fails the contrast floor on the needs-you tint.
 struct AgentFigures: View {
     let elapsedMs: Int?
     let cost: Double?
@@ -304,18 +343,15 @@ struct AgentFigures: View {
             if let elapsedMs {
                 Text(TimeFormat.duration(ms: elapsedMs))
                     .foregroundStyle(.secondary)
-                    .contentTransition(.numericText())
-                    .animation(Motion.crossFade, value: elapsedMs / 1000)
+                    .numeric(elapsedMs / 1000)
             }
             if let cost {
                 Text(cost, format: .currency(code: "USD").precision(.fractionLength(2)))
                     .foregroundStyle(.tertiary)
-                    .contentTransition(.numericText())
-                    .animation(Motion.crossFade, value: cost)
+                    .numeric(cost)
             }
         }
         .font(.caption)
-        .monospacedDigit()
         .lineLimit(1)
         .accessibilityElement(children: .combine)
     }
@@ -323,60 +359,69 @@ struct AgentFigures: View {
 
 // MARK: - the row
 
-/// One subagent: mark, title with the elapsed time on its line, the meta,
-/// the activity line, the stats. A waiting row sits on the needs-you tint
-/// in a rounded field inset from the edge; every row keeps its text at the
-/// 16 pt edge. Tap pushes the agent's detail.
+/// One subagent: mark, title with the figures on its line, the meta, the
+/// activity line, the stats. A waiting row sits on the needs-you tint in a
+/// rounded field inset from the edge; every row keeps its text at the text
+/// edge. A remote agent's row names its host and, while that host is not
+/// open, shows the host's transport line in place of its activity with its
+/// figures still. Tap pushes the agent's detail. `client` is the agent's
+/// own host's client.
 struct AgentRow: View {
-    let agent: SessionMeta
+    let agent: Fleet.Agent
     let client: EnvironmentClient
     let fleetSize: Int
     let now: Date
     var parentCwd: String?
+    var hostName: String?
+    var hostLine: String?
 
     var body: some View {
-        let child = client.threads[agent.id]
+        let meta = agent.meta
+        let child = client.threads[meta.id]
         let items = child?.fold.items ?? []
-        let live = Fleet.isLive(agent.status)
-        let settled = Fleet.group(agent.status) == .done && agent.status != .error
-        let line = Fleet.line(status: agent.status, items: items, compacting: child?.fold.board.compacting ?? false)
-        let stats = Fleet.stats(items: items, tasks: agent.tasks, board: child?.fold.board, context: agent.context)
-        let waiting = agent.status == .waiting
-        NavigationLink(value: AgentDetailRoute(agentId: agent.id, parentCwd: parentCwd)) {
-            HStack(alignment: .top, spacing: 12) {
-                AgentStatusMark(status: agent.status)
+        let live = Fleet.isLive(meta.status)
+        let emphasized = live || meta.status == .waiting || meta.status == .error || meta.status == .stopped
+        let line = Fleet.line(status: meta.status, items: items, compacting: child?.fold.board.compacting ?? false, activity: meta.activity)
+        let stats = Fleet.stats(items: items, tasks: meta.tasks, board: child?.fold.board, context: meta.context)
+        let waiting = meta.status == .waiting
+        let away = agent.remote ? hostLine : nil
+        // A host that is away freezes the clock at what it last said.
+        let clock = away == nil ? Int(now.timeIntervalSince1970 * 1000) : meta.updatedAt
+        NavigationLink(value: AgentDetailRoute(environmentId: agent.environmentId, agentId: meta.id, parentCwd: parentCwd, hostName: agent.remote ? hostName : nil)) {
+            HStack(alignment: .top, spacing: Layout.rowGap) {
+                AgentStatusMark(status: meta.status, weight: emphasized ? .medium : .regular)
                     .padding(.top, 2)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(agent.title.isEmpty ? "Subagent" : agent.title)
-                            .font(.subheadline.weight(settled ? .regular : .medium))
-                            .foregroundStyle(settled ? .secondary : .primary)
+                        Text(meta.title.isEmpty ? "Subagent" : meta.title)
+                            .font(TextStep.title.font.weight(emphasized ? .medium : .regular))
+                            .foregroundStyle(emphasized ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
                             .lineLimit(1)
                         Spacer(minLength: 8)
-                        AgentFigures(elapsedMs: Fleet.elapsedMs(agent, now: Int(now.timeIntervalSince1970 * 1000)), cost: child?.fold.board.cost)
+                        AgentFigures(elapsedMs: Fleet.elapsedMs(meta, now: clock), cost: child?.fold.board.cost)
                     }
-                    AgentMetaLine(agent: agent, branch: Fleet.branch(cwd: agent.cwd, parentCwd: parentCwd))
-                    ActivityLine(line: line, live: live)
+                    AgentMetaLine(agent: meta, branch: Fleet.branch(cwd: meta.cwd, parentCwd: parentCwd), host: agent.remote ? hostName : nil)
+                    ActivityLine(line: line, live: live, override: away)
                     if !stats.isEmpty {
                         AgentStatsLine(stats: stats)
                     }
                 }
             }
-            .padding(.horizontal, 8)
             .padding(.vertical, 10)
-            .background(waiting ? Surface.needsYou : .clear, in: RoundedRectangle(cornerRadius: Radius.row, style: .continuous))
-            .padding(.horizontal, 8)
+            .padding(.horizontal, FleetLayout.fieldInset)
+            .background(waiting ? Surface.needsYou : .clear, in: RoundedRectangle.rowCorner)
+            .padding(.horizontal, FleetLayout.fieldInset)
             .contentShape(Rectangle())
         }
         .buttonStyle(.pressable)
         .animation(Motion.crossFade, value: waiting)
         .onAppear {
-            guard Fleet.loadsTranscript(status: agent.status, fleetSize: fleetSize) else { return }
-            Task { await client.openThread(agent.id) }
+            guard Fleet.loadsTranscript(status: meta.status, fleetSize: fleetSize) else { return }
+            Task { await client.openThread(meta.id) }
         }
         .onDisappear {
-            guard Fleet.loadsTranscript(status: agent.status, fleetSize: fleetSize) else { return }
-            client.closeThread(agent.id)
+            guard Fleet.loadsTranscript(status: meta.status, fleetSize: fleetSize) else { return }
+            client.closeThread(meta.id)
         }
         .accessibilityElement(children: .combine)
         .accessibilityHint("Opens the agent")
@@ -385,19 +430,25 @@ struct AgentRow: View {
 
 // MARK: - the sections
 
-/// The fleet in its groups, Running then Waiting then Done, each under the
-/// design's section header with its count; hairlines between rows, inset
-/// to the text edge. One clock ticks for every live row. Rows that change
-/// group move with the needs-you motion. Meant for a LazyVStack.
+/// The fleet in its groups, Running, Waiting, Queued, Done, each under the
+/// kit's section header with its count; hairlines between rows, inset to
+/// the text edge. One clock ticks for every live row on a host that is
+/// open. Rows that change group move with the kit's row motion, and nothing
+/// moves on the first non-empty paint. `clients` is keyed by host id, as
+/// are the host names (shown on remote rows) and the transport lines of
+/// hosts that are not open. Meant for a LazyVStack.
 struct FleetSections: View {
-    let agents: [SessionMeta]
-    let client: EnvironmentClient
+    let agents: [Fleet.Agent]
+    let clients: [String: EnvironmentClient]
     var parentCwd: String?
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var hostNames: [String: String] = [:]
+    var hostLines: [String: String] = [:]
+    /// The first non-empty list has rendered: moves animate from here on.
+    @State private var painted = false
 
     var body: some View {
         let sections = Fleet.sections(agents)
-        let anyLive = agents.contains { Fleet.isLive($0.status) }
+        let anyLive = agents.contains { Fleet.isLive($0.meta.status) && !($0.remote && hostLines[$0.environmentId] != nil) }
         let signature = sections.map { "\($0.group.rawValue):\($0.agents.map(\.id).joined(separator: ","))" }.joined(separator: "|")
         Group {
             if anyLive {
@@ -408,44 +459,44 @@ struct FleetSections: View {
                 rows(sections, now: .now)
             }
         }
-        .animation(reduceMotion ? Motion.rowLeave : Motion.rowAppear, value: signature)
+        .animation(Motion.rowAppear, value: painted ? signature : "")
+        .onChange(of: agents.isEmpty, initial: true) { _, empty in
+            if !empty, !painted { painted = true }
+        }
     }
 
-    private func rows(_ sections: [Fleet.Section], now: Date) -> some View {
+    @ViewBuilder
+    private func rows(_ sections: [Fleet.AgentSection], now: Date) -> some View {
         ForEach(sections) { section in
             SectionHeader(section.group.title) {
-                Text("\(section.agents.count)")
-                    .font(.footnote)
-                    .foregroundStyle(.tertiary)
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
+                CountText(section.agents.count)
             }
-            .accessibilityAddTraits(.isHeader)
-            .transition(FleetMotion.rowChange(reduced: reduceMotion))
+            .rowAppearTransition()
             ForEach(Array(section.agents.enumerated()), id: \.element.id) { index, agent in
                 if index > 0 {
-                    Hairline()
-                        .padding(.leading, 44)
+                    Hairline(inset: FleetLayout.textInset)
                         .transition(.opacity)
                 }
-                AgentRow(agent: agent, client: client, fleetSize: agents.count, now: now, parentCwd: parentCwd)
-                    .transition(FleetMotion.rowChange(reduced: reduceMotion))
+                if let client = clients[agent.environmentId] {
+                    AgentRow(agent: agent, client: client, fleetSize: agents.count, now: now, parentCwd: parentCwd, hostName: hostNames[agent.environmentId], hostLine: hostLines[agent.environmentId])
+                        .rowAppearTransition()
+                }
             }
         }
     }
 }
 
-/// The rows alone, in rank order with hairlines between them, for a
-/// board that has its own header over them (the implementation board's
-/// Agents section).
+/// The rows alone, in rank order with hairlines between them, for a board
+/// that has its own header over them (the implementation board's Agents
+/// section). Every agent is local to `client`.
 struct FleetRows: View {
     let agents: [SessionMeta]
     let client: EnvironmentClient
     var parentCwd: String?
 
     var body: some View {
-        let ranked = Fleet.sort(agents)
-        let anyLive = ranked.contains { Fleet.isLive($0.status) }
+        let ranked = Fleet.sort(agents).map { Fleet.Agent(meta: $0, environmentId: client.environment.id, remote: false) }
+        let anyLive = ranked.contains { Fleet.isLive($0.meta.status) }
         if anyLive {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 rows(ranked, now: context.date)
@@ -455,11 +506,11 @@ struct FleetRows: View {
         }
     }
 
-    private func rows(_ ranked: [SessionMeta], now: Date) -> some View {
+    @ViewBuilder
+    private func rows(_ ranked: [Fleet.Agent], now: Date) -> some View {
         ForEach(Array(ranked.enumerated()), id: \.element.id) { index, agent in
             if index > 0 {
-                Hairline()
-                    .padding(.leading, 44)
+                Hairline(inset: FleetLayout.textInset)
             }
             AgentRow(agent: agent, client: client, fleetSize: ranked.count, now: now, parentCwd: parentCwd)
         }
@@ -482,6 +533,57 @@ struct FleetEmpty: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 48)
-        .padding(.horizontal, 32)
+        .padding(.horizontal, Layout.textEdge * 2)
+    }
+}
+
+/// One line at the foot of a fleet: agents the root spawned on a host this
+/// phone is not paired with, counted once. Not tappable: pairing is in Settings.
+struct FleetUnpairedNote: View {
+    let count: Int
+
+    var body: some View {
+        HStack(spacing: 5) {
+            MetaGlyph("desktopcomputer", label: "Host")
+            Text(count == 1 ? "1 agent runs on a host this phone is not paired with" : "\(count) agents run on hosts this phone is not paired with")
+        }
+        .textStep(.meta)
+        .lineLimit(2)
+        .padding(.horizontal, Layout.textEdge)
+        .padding(.vertical, 12)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+// MARK: - the hosts
+
+/// What a fleet surface reads off the registry in one pass: the root's
+/// children on every paired host (the root's host first), the client of
+/// each host by id, the hosts' names, the transport line of every host
+/// that is not open ("Reconnecting in 12 s", "Offline"), and how many
+/// agents the root spawned on hosts this phone is not paired with.
+struct FleetGather {
+    let agents: [Fleet.Agent]
+    let clients: [String: EnvironmentClient]
+    let hostNames: [String: String]
+    let hostLines: [String: String]
+    let unpaired: Int
+
+    init(registry: ClientRegistry, root client: EnvironmentClient, rootId: String) {
+        var ordered = registry.ordered
+        if !ordered.contains(where: { $0 === client }) { ordered.insert(client, at: 0) }
+        let hosts = ordered.map { Fleet.Host(id: $0.environment.id, name: $0.environment.name, sessions: $0.sessions, reachable: $0.status.transport == .open) }
+        agents = Fleet.gather(rootId: rootId, rootHost: client.environment.id, hosts: hosts)
+        clients = Dictionary(ordered.map { ($0.environment.id, $0) }, uniquingKeysWith: { first, _ in first })
+        hostNames = Dictionary(ordered.map { ($0.environment.id, $0.environment.name) }, uniquingKeysWith: { first, _ in first })
+        let now = Date().timeIntervalSince1970 * 1000
+        var lines: [String: String] = [:]
+        for host in ordered {
+            if let block = Actions.block(status: host.status, environment: host.environment, needs: .read) {
+                lines[host.environment.id] = block.text(now: now)
+            }
+        }
+        hostLines = lines
+        unpaired = Fleet.unpaired(rows: client.threads[rootId]?.rows ?? [], paired: Set(hosts.map(\.id)))
     }
 }
