@@ -337,6 +337,7 @@ struct LiveServerTests {
         await socket.stop()
     }
 
+    @MainActor
     @Test(.enabled(if: LiveServer.hasSecondHost, "needs the second test host: bun run ios:test:client"))
     func `two hosts: one project paired by folder name, a cross-host child placed on the second host, media stamped with its host`() async throws {
         let primary = EnvironmentClient(environment: LiveServer.environment(), keys: try LiveServer.keys(), cache: try SessionCache.inMemory())

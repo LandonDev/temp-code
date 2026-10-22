@@ -825,8 +825,8 @@ second line in the stamp step (`HostWord`), only when more than one host is
 paired (`ProjectPairs.showsHost`); with one host nothing names it.
 
 **A thread's host.** The thread header's subtitle holds a chip
-(`HostChip`): a 6 pt dot in the host's tone and the host's name in `caption`
-on the fill step with row corners (8 pt continuous), 7 pt horizontal and
+(`HostChip`): a 6 pt dot in the host's tone and the host's name in the meta
+step on the fill step with row corners (8 pt continuous), 7 pt horizontal and
 2 pt vertical padding, a 44 × 28 pt hit area, the press scale; shown only
 with more than one host paired (the header's rule). The dot sits on the
 text's cap-height centre, not the line box's. A tap opens a compact popover

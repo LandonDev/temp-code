@@ -85,12 +85,12 @@ public enum ProjectPairs {
         var byKey: [String: ProjectPair] = [:]
         for host in hosts {
             for workspace in host.workspaces {
-                let key = key(workspace)
-                var pair = byKey[key] ?? ProjectPair(id: key, name: workspace.name, members: [])
+                let pairKey = key(workspace)
+                var pair = byKey[pairKey] ?? ProjectPair(id: pairKey, name: workspace.name, members: [])
                 if pair.members.contains(where: { $0.environmentId == host.environmentId }) { continue }
                 pair.members.append(PairMember(environmentId: host.environmentId, workspaceId: workspace.id, cwd: normalize(workspace.path), name: workspace.name))
-                if byKey[key] == nil { order.append(key) }
-                byKey[key] = pair
+                if byKey[pairKey] == nil { order.append(pairKey) }
+                byKey[pairKey] = pair
             }
         }
         return order.compactMap { byKey[$0] }
@@ -128,10 +128,10 @@ public enum ProjectPairs {
     /// Home's slot (`HomePairing.key`): the pair id for a workspace that is its host's first with
     /// that key, else "<env>:<workspace id>", so a second same-named folder on one host never folds.
     public static func homeKey(_ environmentId: String, _ workspace: WorkspaceMeta, hosts: [HostWorkspaces]) -> String {
-        let key = key(workspace)
+        let pairKey = key(workspace)
         let own = hosts.first { $0.environmentId == environmentId }?.workspaces ?? []
-        let first = own.first { Self.key($0) == key }
-        return first == nil || first?.id == workspace.id ? key : "\(environmentId):\(workspace.id)"
+        let first = own.first { key($0) == pairKey }
+        return first == nil || first?.id == workspace.id ? pairKey : "\(environmentId):\(workspace.id)"
     }
 
     /// The closure Home's slot takes, over a snapshot of every host's workspaces.

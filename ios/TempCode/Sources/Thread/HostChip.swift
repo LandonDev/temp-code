@@ -19,8 +19,7 @@ struct HostChip: View {
                 HStack(alignment: .center, spacing: 5) {
                     HostDot(status: client.status, size: 6)
                     Text(client.environment.name)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .textStep(.meta)
                         .lineLimit(1)
                         .alignmentGuide(VerticalAlignment.center) { $0[.firstTextBaseline] - 4 }
                 }

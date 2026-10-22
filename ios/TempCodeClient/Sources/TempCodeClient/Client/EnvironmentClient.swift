@@ -575,6 +575,8 @@ public final class EnvironmentClient {
             if value.projects != projects { publishList { projects = value.projects } }
             try? await cache.replaceProjects(environment.id, value.projects)
         case .sessions(let value):
+            // A thread listed here again (moved back) is no longer away.
+            for meta in value.sessions { moved[meta.id] = nil }
             merge(value.sessions)
         case .sessionRemoved(let value):
             removeSessions(value.sessionIds)

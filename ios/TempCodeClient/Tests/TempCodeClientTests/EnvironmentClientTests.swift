@@ -444,6 +444,11 @@ private func seqs(_ rows: [EventRow]) -> [Int] { rows.map(\.seq) }
         #expect(record.at >= before)
         #expect(rig.client.moved["child"] == record)
         #expect(rig.client.moved["other"] == nil)
+        // Moved back: listed here again, the record goes.
+        fake.deliver(#"{"push":"sessions","sessions":\#(json([clientSession("root", updatedAt: 9)]))}"#)
+        #expect(await rig.wait { rig.client.sessions.count == 2 })
+        #expect(rig.client.moved["root"] == nil)
+        #expect(rig.client.moved["child"] == record)
     }
 
     @Test func `a body comes from the host once and from the cache after`() async throws {

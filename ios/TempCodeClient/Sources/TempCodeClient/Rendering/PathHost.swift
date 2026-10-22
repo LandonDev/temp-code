@@ -30,8 +30,8 @@ public enum PathHost {
         let target = ProjectPairs.normalize(path)
         return catalogs.compactMap { catalog in
             catalog.roots.contains { root in
-                let root = ProjectPairs.normalize(root)
-                return target == root || target.hasPrefix(root + "/")
+                let normalized = ProjectPairs.normalize(root)
+                return target == normalized || target.hasPrefix(normalized + "/")
             } ? catalog.environmentId : nil
         }
     }
