@@ -38,6 +38,8 @@ export interface WorkspaceMeta {
   preamble?: string | null
   /** Whether the workspace default applies (the text is kept while off). */
   preambleEnabled?: boolean
+  /** The id this workspace shares with its copies on other hosts (`wl_…`); null until the linker pairs it. */
+  linkId?: string | null
   createdAt: number
 }
 
@@ -58,6 +60,10 @@ export interface ProjectMeta {
   preamble?: string | null
   /** Whether a preamble applies to this project's threads (the text is kept while off). */
   preambleEnabled?: boolean
+  /** The id this project shares with its copies on other hosts (`pl_…`); null until the linker pairs it. */
+  linkId?: string | null
+  /** When a setting of the project last changed here (ms); the follower compares it with the home's. */
+  settingsUpdatedAt?: number | null
   createdAt: number
 }
 

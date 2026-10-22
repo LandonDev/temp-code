@@ -156,6 +156,7 @@ import { DEFAULT_RULES } from '@shared/rules'
 import { DEFAULT_THREAD_DEFAULTS } from '@shared/defaults'
 import { DEFAULT_PLAN_SETTINGS, type PlanScope } from '@shared/plans'
 import type { ReviewScope } from '@shared/review'
+import { ensureLinked } from './projectLinks'
 import {
   blameRange,
   aheadCount,
@@ -1515,6 +1516,20 @@ export async function startServer(
             break
           case 'workspace.setPreamble':
             registry.setWorkspacePreamble(req.params.workspaceId, req.params.preamble, req.params.enabled)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'catalog.link':
+            registry.linkCatalog(req.params)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'project.ensureLinked':
+            sendFrame({ id: req.id, ok: true, result: await ensureLinked(registry, req.params) })
+            break
+          case 'project.settings.get':
+            sendFrame({ id: req.id, ok: true, result: registry.getProjectSettings(req.params.projectId) })
+            break
+          case 'project.settings.set':
+            registry.setProjectSettings(req.params.projectId, req.params.bundle)
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'session.setMaster':

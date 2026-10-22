@@ -75,14 +75,16 @@ public struct Attachment: Codable, Hashable, Sendable {
     public let mime: String?
     public let kind: Kind
     public let sessionId: String?
+    public let environmentId: String?
     public let textPath: String?
 
-    public init(path: String, name: String, mime: String? = nil, kind: Kind, sessionId: String? = nil, textPath: String? = nil) {
+    public init(path: String, name: String, mime: String? = nil, kind: Kind, sessionId: String? = nil, environmentId: String? = nil, textPath: String? = nil) {
         self.path = path
         self.name = name
         self.mime = mime
         self.kind = kind
         self.sessionId = sessionId
+        self.environmentId = environmentId
         self.textPath = textPath
     }
 }
@@ -827,9 +829,10 @@ public struct WorkspaceMeta: Codable, Hashable, Sendable {
     public let githubRepoCheckedAt: Int?
     public let preamble: String?
     public let preambleEnabled: Bool?
+    public let linkId: String?
     public let createdAt: Int
 
-    public init(id: String, name: String, path: String, git: Bool, accountPins: AccountPins? = nil, githubRepo: String? = nil, githubRepoCheckedAt: Int? = nil, preamble: String? = nil, preambleEnabled: Bool? = nil, createdAt: Int) {
+    public init(id: String, name: String, path: String, git: Bool, accountPins: AccountPins? = nil, githubRepo: String? = nil, githubRepoCheckedAt: Int? = nil, preamble: String? = nil, preambleEnabled: Bool? = nil, linkId: String? = nil, createdAt: Int) {
         self.id = id
         self.name = name
         self.path = path
@@ -839,6 +842,7 @@ public struct WorkspaceMeta: Codable, Hashable, Sendable {
         self.githubRepoCheckedAt = githubRepoCheckedAt
         self.preamble = preamble
         self.preambleEnabled = preambleEnabled
+        self.linkId = linkId
         self.createdAt = createdAt
     }
 }
@@ -900,9 +904,11 @@ public struct ProjectMeta: Codable, Hashable, Sendable {
     public let accountPins: AccountPins?
     public let preamble: String?
     public let preambleEnabled: Bool?
+    public let linkId: String?
+    public let settingsUpdatedAt: Int?
     public let createdAt: Int
 
-    public init(id: String, workspaceId: String, name: String, mode: ProjectMode, branch: String?, cwd: String, archived: Bool, accountPins: AccountPins? = nil, preamble: String? = nil, preambleEnabled: Bool? = nil, createdAt: Int) {
+    public init(id: String, workspaceId: String, name: String, mode: ProjectMode, branch: String?, cwd: String, archived: Bool, accountPins: AccountPins? = nil, preamble: String? = nil, preambleEnabled: Bool? = nil, linkId: String? = nil, settingsUpdatedAt: Int? = nil, createdAt: Int) {
         self.id = id
         self.workspaceId = workspaceId
         self.name = name
@@ -913,11 +919,13 @@ public struct ProjectMeta: Codable, Hashable, Sendable {
         self.accountPins = accountPins
         self.preamble = preamble
         self.preambleEnabled = preambleEnabled
+        self.linkId = linkId
+        self.settingsUpdatedAt = settingsUpdatedAt
         self.createdAt = createdAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, workspaceId, name, mode, branch, cwd, archived, accountPins, preamble, preambleEnabled, createdAt
+        case id, workspaceId, name, mode, branch, cwd, archived, accountPins, preamble, preambleEnabled, linkId, settingsUpdatedAt, createdAt
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -932,6 +940,8 @@ public struct ProjectMeta: Codable, Hashable, Sendable {
         try container.encodeIfPresent(accountPins, forKey: .accountPins)
         try container.encodeIfPresent(preamble, forKey: .preamble)
         try container.encodeIfPresent(preambleEnabled, forKey: .preambleEnabled)
+        try container.encodeIfPresent(linkId, forKey: .linkId)
+        try container.encodeIfPresent(settingsUpdatedAt, forKey: .settingsUpdatedAt)
         try container.encode(createdAt, forKey: .createdAt)
     }
 }
@@ -3696,5 +3706,133 @@ public struct ProjectPlanTickAnswer: Codable, Hashable, Sendable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(ticked, forKey: .ticked)
         try container.encode(state, forKey: .state)
+    }
+}
+
+public struct BuildConfig: Codable, Hashable, Sendable {
+    public let command: String
+    public let outputs: String
+
+    public init(command: String, outputs: String) {
+        self.command = command
+        self.outputs = outputs
+    }
+}
+
+public struct TurnPass: Codable, Hashable, Sendable {
+    public enum Commit: RawRepresentable, Codable, Hashable, Sendable {
+        case off
+        case commit
+        case push
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "off": self = .off
+            case "commit": self = .commit
+            case "push": self = .push
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .off: "off"
+            case .commit: "commit"
+            case .push: "push"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let verify: Bool
+    public let build: Bool
+    public let commit: Commit
+
+    public init(verify: Bool, build: Bool, commit: Commit) {
+        self.verify = verify
+        self.build = build
+        self.commit = commit
+    }
+}
+
+public struct ProjectSettingsBundle: Codable, Hashable, Sendable {
+    public struct AccountPins: Codable, Hashable, Sendable {
+        public let claude: String?
+        public let codex: String?
+
+        public init(claude: String? = nil, codex: String? = nil) {
+            self.claude = claude
+            self.codex = codex
+        }
+    }
+
+    public let name: String
+    public let archived: Bool
+    public let preamble: String?
+    public let preambleEnabled: Bool
+    public let accountPins: AccountPins
+    public let review: ReviewSettings?
+    public let plans: PlanSettings?
+    public let build: BuildConfig?
+    public let turnPass: TurnPass?
+    public let updatedAt: Int?
+
+    public init(name: String, archived: Bool, preamble: String?, preambleEnabled: Bool, accountPins: AccountPins, review: ReviewSettings?, plans: PlanSettings?, build: BuildConfig?, turnPass: TurnPass?, updatedAt: Int?) {
+        self.name = name
+        self.archived = archived
+        self.preamble = preamble
+        self.preambleEnabled = preambleEnabled
+        self.accountPins = accountPins
+        self.review = review
+        self.plans = plans
+        self.build = build
+        self.turnPass = turnPass
+        self.updatedAt = updatedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, archived, preamble, preambleEnabled, accountPins, review, plans, build, turnPass, updatedAt
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+        try container.encode(archived, forKey: .archived)
+        try container.encode(preamble, forKey: .preamble)
+        try container.encode(preambleEnabled, forKey: .preambleEnabled)
+        try container.encode(accountPins, forKey: .accountPins)
+        try container.encode(review, forKey: .review)
+        try container.encode(plans, forKey: .plans)
+        try container.encode(build, forKey: .build)
+        try container.encode(turnPass, forKey: .turnPass)
+        try container.encode(updatedAt, forKey: .updatedAt)
+    }
+}
+
+public struct EnsureLinkedResult: Codable, Hashable, Sendable {
+    public let cwd: String?
+    public let exists: Bool
+    public let project: ProjectMeta?
+    public let note: String?
+
+    public init(cwd: String?, exists: Bool, project: ProjectMeta?, note: String?) {
+        self.cwd = cwd
+        self.exists = exists
+        self.project = project
+        self.note = note
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case cwd, exists, project, note
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(cwd, forKey: .cwd)
+        try container.encode(exists, forKey: .exists)
+        try container.encode(project, forKey: .project)
+        try container.encode(note, forKey: .note)
     }
 }

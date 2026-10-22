@@ -270,7 +270,13 @@ export function openDb(path: string): DatabaseSync {
     // The project's master thread, one per project: read once below into
     // sessions.is_master and ignored since (the column stays; master only adds).
     `ALTER TABLE projects ADD COLUMN master_thread_id TEXT`,
-    `ALTER TABLE resume_after_boot ADD COLUMN shutdown_at INTEGER`
+    `ALTER TABLE resume_after_boot ADD COLUMN shutdown_at INTEGER`,
+    // One project across hosts (shared/projectLinks.ts): the id a row
+    // shares with its copies on other hosts, and when a project's settings
+    // last changed here (the follower compares it with the home's).
+    `ALTER TABLE workspaces ADD COLUMN link_id TEXT`,
+    `ALTER TABLE projects ADD COLUMN link_id TEXT`,
+    `ALTER TABLE projects ADD COLUMN settings_updated_at INTEGER`
   ]) {
     try {
       db.exec(stmt)
@@ -1164,9 +1170,14 @@ export class Store {
   insertWorkspace(w: WorkspaceMeta): void {
     this
       .stmt(
-        `INSERT INTO workspaces (id, name, path, git, created_at, github_repo, github_repo_checked_at) VALUES (?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO workspaces (id, name, path, git, created_at, github_repo, github_repo_checked_at, link_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(w.id, w.name, w.path, w.git ? 1 : 0, w.createdAt, w.githubRepo ?? null, w.githubRepoCheckedAt ?? null)
+      .run(w.id, w.name, w.path, w.git ? 1 : 0, w.createdAt, w.githubRepo ?? null, w.githubRepoCheckedAt ?? null, w.linkId ?? null)
+  }
+
+  /** The id the workspace shares with its copies on other hosts (projectLinks.ts). */
+  setWorkspaceLink(id: string, linkId: string): void {
+    this.stmt(`UPDATE workspaces SET link_id = ? WHERE id = ?`).run(linkId, id)
   }
 
   listWorkspaces(): WorkspaceMeta[] {
@@ -1182,6 +1193,7 @@ export class Store {
       github_repo_checked_at: number | null
       preamble: string | null
       preamble_enabled: number
+      link_id: string | null
       created_at: number
     }[]
     return rows.map((r) => ({
@@ -1194,6 +1206,7 @@ export class Store {
       githubRepoCheckedAt: r.github_repo_checked_at,
       preamble: r.preamble,
       preambleEnabled: r.preamble_enabled !== 0,
+      linkId: r.link_id,
       createdAt: r.created_at
     }))
   }
@@ -1231,9 +1244,19 @@ export class Store {
   insertProject(p: ProjectMeta): void {
     this
       .stmt(
-        `INSERT INTO projects (id, workspace_id, name, mode, branch, cwd, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO projects (id, workspace_id, name, mode, branch, cwd, created_at, link_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(p.id, p.workspaceId, p.name, p.mode, p.branch, p.cwd, p.createdAt)
+      .run(p.id, p.workspaceId, p.name, p.mode, p.branch, p.cwd, p.createdAt, p.linkId ?? null)
+  }
+
+  /** The id the project shares with its copies on other hosts (projectLinks.ts). */
+  setProjectLink(id: string, linkId: string): void {
+    this.stmt(`UPDATE projects SET link_id = ? WHERE id = ?`).run(linkId, id)
+  }
+
+  /** Stamps when a setting of the project last changed here. */
+  touchProjectSettings(id: string, at: number = Date.now()): void {
+    this.stmt(`UPDATE projects SET settings_updated_at = ? WHERE id = ?`).run(at, id)
   }
 
   listProjects(): ProjectMeta[] {
@@ -1248,6 +1271,8 @@ export class Store {
       account_pins: string | null
       preamble: string | null
       preamble_enabled: number
+      link_id: string | null
+      settings_updated_at: number | null
       created_at: number
     }[]
     return rows.map((r) => ({
@@ -1261,6 +1286,8 @@ export class Store {
       accountPins: parseAccountPins(r.account_pins),
       preamble: r.preamble,
       preambleEnabled: r.preamble_enabled !== 0,
+      linkId: r.link_id,
+      settingsUpdatedAt: r.settings_updated_at,
       createdAt: r.created_at
     }))
   }

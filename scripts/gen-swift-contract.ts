@@ -81,6 +81,9 @@ import {
 import { GateNoticeSchema, GateStepSchema } from '../src/shared/gate'
 import { ReviewFindingSchema, ReviewNoticeSchema, ReviewScopeSchema, ReviewSettingsSchema } from '../src/shared/review'
 import { PlanScopeSchema, PlanSettingsSchema } from '../src/shared/plans'
+import { ProjectSettingsBundleSchema } from '../src/shared/projectLinks'
+import { BuildConfigSchema } from '../src/shared/build'
+import { TurnPassSchema } from '../src/shared/turnpass'
 import { ModelPolicySchema, OrchestrationRulesSchema } from '../src/shared/rules'
 import { MacBridgePolicySchema } from '../src/shared/contract-macbridge'
 import * as W from '../src/shared/wireSchemas'
@@ -390,6 +393,14 @@ export const SUBSET: SubsetEntry[] = [
   method('review.set', z.null()),
   method('project.setPreamble', z.null()),
   method('workspace.setPreamble', z.null()),
+  // one project across hosts: a linked project's settings live on its home (shared/projectLinks.ts)
+  type('BuildConfig', BuildConfigSchema),
+  type('TurnPass', TurnPassSchema),
+  type('ProjectSettingsBundle', ProjectSettingsBundleSchema),
+  type('EnsureLinkedResult', W.EnsureLinkedResultSchema),
+  method('project.settings.get', ProjectSettingsBundleSchema),
+  method('project.settings.set', z.null()),
+  method('project.ensureLinked', W.EnsureLinkedResultSchema),
   method('rules.get', z.object({ rules: OrchestrationRulesSchema, overridden: z.boolean() })),
   // a host's activity (iOS thread 21): the sync lines and the Mac bridge's calls
   method('harness.status', W.HarnessSyncStatusSchema),

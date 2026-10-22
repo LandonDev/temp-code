@@ -451,6 +451,7 @@ export const WorkspaceMetaSchema = z.object({
   githubRepoCheckedAt: z.number().int().nullable().optional(),
   preamble: z.string().nullable().optional(),
   preambleEnabled: z.boolean().optional(),
+  linkId: z.string().nullable().optional(),
   createdAt: z.number().int()
 })
 
@@ -470,8 +471,22 @@ export const ProjectMetaSchema = z.object({
   accountPins: AccountPinsSchema.optional(),
   preamble: z.string().nullable().optional(),
   preambleEnabled: z.boolean().optional(),
+  linkId: z.string().nullable().optional(),
+  settingsUpdatedAt: z.number().int().nullable().optional(),
   createdAt: z.number().int()
 })
+
+/** `project.ensureLinked`'s answer: this host's copy of a linked project, or why there is none. */
+export const EnsureLinkedResultSchema = z.object({
+  /** where the copy's threads run; null when this host has no checkout for it */
+  cwd: z.string().nullable(),
+  /** the copy was already here (false: created by this call, or would be) */
+  exists: z.boolean(),
+  project: ProjectMetaSchema.nullable(),
+  /** what kept the copy from being made, or what was done instead (a local copy for a failed worktree) */
+  note: z.string().nullable()
+})
+export type EnsureLinkedResult = z.infer<typeof EnsureLinkedResultSchema>
 
 export const FileChangeSchema = z.object({
   path: z.string(),

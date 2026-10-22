@@ -2085,6 +2085,83 @@ public enum Methods {
         public typealias Output = NoOutput
     }
 
+    public enum ProjectSettingsGet: ContractMethod {
+        public static let name = "project.settings.get"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let projectId: String
+
+            public init(projectId: String) {
+                self.projectId = projectId
+            }
+        }
+
+        public typealias Output = ProjectSettingsBundle
+    }
+
+    public enum ProjectSettingsSet: ContractMethod {
+        public static let name = "project.settings.set"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let projectId: String
+            public let bundle: ProjectSettingsBundle
+
+            public init(projectId: String, bundle: ProjectSettingsBundle) {
+                self.projectId = projectId
+                self.bundle = bundle
+            }
+        }
+
+        public typealias Output = NoOutput
+    }
+
+    public enum ProjectEnsureLinked: ContractMethod {
+        public static let name = "project.ensureLinked"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let projectLinkId: String
+            public let workspaceLinkId: String
+            public let name: String
+            public let branch: String?
+            public let mode: ProjectMode
+            public let callerWorkspacePath: String
+            public let callerProjectCwd: String
+            public let callerWorkRoot: String?
+            public let dryRun: Bool?
+
+            public init(projectLinkId: String, workspaceLinkId: String, name: String, branch: String?, mode: ProjectMode, callerWorkspacePath: String, callerProjectCwd: String, callerWorkRoot: String? = nil, dryRun: Bool? = nil) {
+                self.projectLinkId = projectLinkId
+                self.workspaceLinkId = workspaceLinkId
+                self.name = name
+                self.branch = branch
+                self.mode = mode
+                self.callerWorkspacePath = callerWorkspacePath
+                self.callerProjectCwd = callerProjectCwd
+                self.callerWorkRoot = callerWorkRoot
+                self.dryRun = dryRun
+            }
+
+            private enum CodingKeys: String, CodingKey {
+                case projectLinkId, workspaceLinkId, name, branch, mode, callerWorkspacePath, callerProjectCwd, callerWorkRoot, dryRun
+            }
+
+            public func encode(to encoder: any Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(projectLinkId, forKey: .projectLinkId)
+                try container.encode(workspaceLinkId, forKey: .workspaceLinkId)
+                try container.encode(name, forKey: .name)
+                try container.encode(branch, forKey: .branch)
+                try container.encode(mode, forKey: .mode)
+                try container.encode(callerWorkspacePath, forKey: .callerWorkspacePath)
+                try container.encode(callerProjectCwd, forKey: .callerProjectCwd)
+                try container.encodeIfPresent(callerWorkRoot, forKey: .callerWorkRoot)
+                try container.encodeIfPresent(dryRun, forKey: .dryRun)
+            }
+        }
+
+        public typealias Output = EnsureLinkedResult
+    }
+
     public enum RulesGet: ContractMethod {
         public static let name = "rules.get"
 

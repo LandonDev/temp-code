@@ -31,6 +31,7 @@ import { AccountPinsSchema } from './contract-m3a'
 import { TurnPassSchema } from './turnpass'
 import { ReportFindingsSchema, ReviewSettingsSchema } from './review'
 import { BuildConfigSchema } from './build'
+import { CatalogLinkArgsSchema, EnsureLinkedArgsSchema, ProjectSettingsBundleSchema } from './projectLinks'
 import type { BuildRun } from './build'
 import type { EventRow, SessionMeta } from './events'
 
@@ -235,6 +236,21 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     id: z.string(),
     method: z.literal('workspace.setPreamble'),
     params: z.object({ workspaceId: z.string(), preamble: z.string().nullable(), enabled: z.boolean() })
+  }),
+  // One project across hosts (shared/projectLinks.ts, CLAUDE.md "One
+  // project across hosts"): the linker on the peer holder stamps this
+  // host's rows with the ids their copies share; a cross-host start (or a
+  // picker) finds or creates this host's copy of a linked project; a
+  // linked project's settings are one bundle on its home (the box).
+  z.object({ id: z.string(), method: z.literal('catalog.link'), params: CatalogLinkArgsSchema }),
+  /** → EnsureLinkedResult (wireSchemas.ts) */
+  z.object({ id: z.string(), method: z.literal('project.ensureLinked'), params: EnsureLinkedArgsSchema }),
+  /** → ProjectSettingsBundle */
+  z.object({ id: z.string(), method: z.literal('project.settings.get'), params: z.object({ projectId: z.string() }) }),
+  z.object({
+    id: z.string(),
+    method: z.literal('project.settings.set'),
+    params: z.object({ projectId: z.string(), bundle: ProjectSettingsBundleSchema })
   }),
   // A master thread (CLAUDE.md "Master threads"): pin a root thread as one, or unpin it. Many per project.
   z.object({

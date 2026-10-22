@@ -251,6 +251,13 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'workspace.setAccounts': 'admin',
   'project.setPreamble': 'admin',
   'workspace.setPreamble': 'admin',
+  // One project across hosts (shared/projectLinks.ts): the linker stamps
+  // a peer's rows, a far start finds or makes this host's copy, and a
+  // linked project's settings are read from and written to its home.
+  'catalog.link': 'admin',
+  'project.ensureLinked': 'operate',
+  'project.settings.get': 'read',
+  'project.settings.set': 'admin',
   'session.setMaster': 'admin',
   // A master thread's batch (contract-batch.ts): reads, the rules a person may set, the batch's membership and its end.
   'batch.get': 'read',

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { ProjectLinkFactsSchema } from './projectLinks'
 import { AGENT_TYPES } from './catalog'
 import { ThreadTypeSchema } from './domain'
 import { PermissionPolicySchema, type SessionStatus } from './events'
@@ -125,7 +126,9 @@ export const ThreadStartArgsSchema = z.object({
   /** The box's work root, so `<root>/<name>` maps onto the Mac's work root when no map names it. */
   workRoot: z.string().max(2_000).optional(),
   /** The master (on the box) whose batch the thread belongs to: the caller when it is a master, the caller's own when it is a batch thread. */
-  masterId: z.string().max(64).optional()
+  masterId: z.string().max(64).optional(),
+  /** The caller's project (shared/projectLinks.ts): the far host finds or creates its linked copy and the thread lands in it. */
+  project: ProjectLinkFactsSchema.optional()
 })
 export type ThreadStartArgs = z.infer<typeof ThreadStartArgsSchema>
 
@@ -142,7 +145,9 @@ export const ThreadSpawnArgsSchema = z.object({
   cwd: z.string().max(2_000),
   workRoot: z.string().max(2_000).optional(),
   /** false: the spawner opted the child out of the project preamble (projectPreamble.ts). */
-  preamble: z.boolean().optional()
+  preamble: z.boolean().optional(),
+  /** The caller's project (shared/projectLinks.ts): the child lands in this host's linked copy. */
+  project: ProjectLinkFactsSchema.optional()
 })
 export type ThreadSpawnArgs = z.infer<typeof ThreadSpawnArgsSchema>
 

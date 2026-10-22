@@ -77,6 +77,8 @@ export const AttachmentSchema = z.object({
   kind: z.enum(['image', 'file', 'thread', 'appshot']),
   /** kind 'thread': the referenced thread's session id */
   sessionId: z.string().optional(),
+  /** kind 'thread': the host the thread lives on when it is not this one (its environment id) */
+  environmentId: z.string().optional(),
   /** kind 'appshot': the captured window's AX text (absent when thin) */
   textPath: z.string().optional()
 })

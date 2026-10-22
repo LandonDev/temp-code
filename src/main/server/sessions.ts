@@ -126,6 +126,7 @@ import {
 } from './mirror'
 import { removePages } from './htmlRender'
 import { composePreambled, decidePreamble, normalizePreamble } from './projectPreamble'
+import type { CatalogLinkArgs, ProjectSettingsBundle } from '@shared/projectLinks'
 
 const THREAD_TITLES = {
   chat: 'New chat',
@@ -1668,13 +1669,13 @@ export class SessionRegistry {
     const t = name.trim()
     if (!t) return
     this.store.renameProject(projectId, t)
-    this.notifyCatalog('projects')
+    this.touchProjectSettings(projectId)
   }
 
   setProjectAccounts(projectId: string, pins: AccountPins): void {
     if (!this.store.getProject(projectId)) throw new Error(`unknown project: ${projectId}`)
     this.store.setProjectAccounts(projectId, pins)
-    this.notifyCatalog('projects')
+    this.touchProjectSettings(projectId)
     this.expectAccountsUnder((s) => s.projectId === projectId)
   }
 
@@ -1683,7 +1684,75 @@ export class SessionRegistry {
   setProjectPreamble(projectId: string, preamble: string | null, enabled: boolean): void {
     if (!this.store.getProject(projectId)) throw new Error(`unknown project: ${projectId}`)
     this.store.setProjectPreamble(projectId, normalizePreamble(preamble), enabled)
+    this.touchProjectSettings(projectId)
+  }
+
+  /** A setting of the project changed here: stamp `settings_updated_at` and
+   *  push the catalog, so a follower on another host (the Mac, for a project
+   *  whose home is the box) hears it (shared/projectLinks.ts). */
+  private touchProjectSettings(projectId: string, at: number = Date.now()): void {
+    this.store.touchProjectSettings(projectId, at)
     this.notifyCatalog('projects')
+  }
+
+  /** One project across hosts (shared/projectLinks.ts): the linker on the
+   *  peer holder stamping this host's rows with the ids their copies share.
+   *  A row that already carries the id is untouched; an unknown id is skipped. */
+  linkCatalog(args: CatalogLinkArgs): void {
+    const workspaces = this.store.listWorkspaces()
+    const projects = this.store.listProjects()
+    let ws = false
+    let pr = false
+    for (const { id, linkId } of args.workspaces) {
+      const row = workspaces.find((w) => w.id === id)
+      if (!row || row.linkId === linkId) continue
+      this.store.setWorkspaceLink(id, linkId)
+      ws = true
+    }
+    for (const { id, linkId } of args.projects) {
+      const row = projects.find((p) => p.id === id)
+      if (!row || row.linkId === linkId) continue
+      this.store.setProjectLink(id, linkId)
+      pr = true
+    }
+    if (ws) this.notifyCatalog('workspaces')
+    if (pr) this.notifyCatalog('projects')
+  }
+
+  /** Everything the project's settings home holds for it, as one bundle. */
+  getProjectSettings(projectId: string): ProjectSettingsBundle {
+    const p = this.store.getProject(projectId)
+    if (!p) throw new Error(`unknown project: ${projectId}`)
+    return {
+      name: p.name,
+      archived: p.archived,
+      preamble: p.preamble ?? null,
+      preambleEnabled: p.preambleEnabled !== false,
+      accountPins: p.accountPins ?? {},
+      review: this.getReviewSettings(projectId),
+      plans: this.getPlanSettings(projectId),
+      build: this.getProjectBuild(projectId),
+      turnPass: this.getProjectTurnPass(projectId),
+      updatedAt: p.settingsUpdatedAt ?? null
+    }
+  }
+
+  /** Writes the bundle whole. The home stamps now; a follower passes the
+   *  home's stamp (`at`) so the copies agree on when it changed. */
+  setProjectSettings(projectId: string, bundle: ProjectSettingsBundle, at: number = Date.now()): void {
+    const p = this.store.getProject(projectId)
+    if (!p) throw new Error(`unknown project: ${projectId}`)
+    const name = bundle.name.trim()
+    if (name && name !== p.name) this.store.renameProject(projectId, name)
+    if (bundle.archived !== p.archived) this.store.setProjectArchived(projectId, bundle.archived)
+    this.store.setProjectPreamble(projectId, normalizePreamble(bundle.preamble), bundle.preambleEnabled)
+    this.store.setProjectAccounts(projectId, bundle.accountPins)
+    this.store.setSetting(`review:project:${projectId}`, bundle.review ? JSON.stringify(bundle.review) : null)
+    setPlanSettings(this.store, projectId, bundle.plans)
+    this.store.setSetting(`build:project:${projectId}`, bundle.build ? JSON.stringify(bundle.build) : null)
+    this.store.setSetting(`turn-pass:project:${projectId}`, bundle.turnPass ? JSON.stringify(bundle.turnPass) : null)
+    this.touchProjectSettings(projectId, at)
+    this.expectAccountsUnder((s) => s.projectId === projectId)
   }
 
   /** Pin a root thread as a master (CLAUDE.md "Master threads"), or unpin
@@ -1758,7 +1827,7 @@ export class SessionRegistry {
   ): Promise<void> {
     if (archived && cleanup) await this.cleanupProjectGit(projectId, cleanup)
     this.store.setProjectArchived(projectId, archived)
-    this.notifyCatalog('projects')
+    this.touchProjectSettings(projectId)
   }
 
   async deleteProject(projectId: string, cleanup?: ProjectCleanup): Promise<void> {
@@ -1842,6 +1911,7 @@ export class SessionRegistry {
 
   setPlanSettings(projectId: string | null, settings: PlanSettings | null): void {
     setPlanSettings(this.store, projectId, settings)
+    if (projectId) this.touchProjectSettings(projectId)
   }
 
   /** What applies to a project: override → global → defaults. */
@@ -1895,6 +1965,7 @@ export class SessionRegistry {
   setReviewSettings(projectId: string | null, settings: ReviewSettings | null): void {
     const key = projectId ? `review:project:${projectId}` : 'review'
     this.store.setSetting(key, settings ? JSON.stringify(settings) : null)
+    if (projectId) this.touchProjectSettings(projectId)
   }
 
   /** The set a project's threads run under: its override → global → defaults. */
@@ -1919,6 +1990,7 @@ export class SessionRegistry {
 
   setProjectTurnPass(projectId: string, pass: TurnPass | null): void {
     this.store.setSetting(`turn-pass:project:${projectId}`, pass ? JSON.stringify(pass) : null)
+    this.touchProjectSettings(projectId)
   }
 
   /** Build command for a workspace (Build rail); null = not configured. */
@@ -1937,6 +2009,7 @@ export class SessionRegistry {
 
   setProjectBuild(projectId: string, config: BuildConfig | null): void {
     this.store.setSetting(`build:project:${projectId}`, config ? JSON.stringify(config) : null)
+    this.touchProjectSettings(projectId)
   }
 
   /** What a project builds with: override → workspace → detected → null.
