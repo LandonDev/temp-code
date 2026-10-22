@@ -25,6 +25,7 @@ extension ThreadType {
         switch self {
         case .chat, .unknown: "bubble.left.fill"
         case .planning: "map.fill"
+        case .projectPlan: "flag.checkered"
         case .implementation: "checklist.checked"
         case .orchestration: "arrow.triangle.branch"
         case .research: "binoculars.fill"
