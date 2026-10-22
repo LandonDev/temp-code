@@ -231,7 +231,8 @@ struct ThreadScreen: View {
                 .disabled(client.operateBlock != nil)
                 .accessibilityHint(client.operateBlock.map { $0.text(now: Date().timeIntervalSince1970 * 1000) } ?? "Start building this plan")
         }
-        // Slot (c), thread 18: the Notes button goes here, before the agents button.
+        // iOS 18: a root thread's notes (NotesSheet.swift), before the agents button.
+        if session.parentId == nil { NotesButton(client: client, sessionId: sessionId) }
         if SegmentRules.showsAgents(children: children.count, segments: segments) {
             AgentsButton(running: Fleet.counts(children.map(\.status)).working, total: children.count) { showAgents = true }
         }

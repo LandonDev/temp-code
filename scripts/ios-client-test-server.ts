@@ -1143,6 +1143,21 @@ async function shutdown(): Promise<void> {
 process.on('SIGTERM', () => void shutdown())
 process.on('SIGINT', () => void shutdown())
 
+// Thread notes (iOS 18): every section filled on the implementation thread; Goal and State alone on the waiting chat, so Home's needs-you row shows its State line.
+server.registry.notes.write(
+  THREAD_IMPL,
+  [
+    '## Goal', '', 'Dark mode on the settings screen, behind one toggle.', '',
+    '## Decisions', '', '- One `theme(mode)` function, no second palette file.', '- The toggle lives under Appearance.', '',
+    '## State', '', '- Done: `Theme.ts`, the toggle, four tests.', '- In flight: nothing.', '',
+    '## Pointers', '', '- src/settings/Theme.ts', '- `bun test src/settings`', '',
+    '## Open questions', '', '- Should the system setting win over the toggle?', ''
+  ].join('\n'),
+  Date.now(),
+  'tool'
+)
+server.registry.notes.write('ios-waiting', '## Goal\n\nRun the suite and fix what fails.\n\n## State\n\n- Blocked: `bun test` needs your approval\n', Date.now(), 'tool')
+
 // The one line the runner reads. The key appears here and nowhere else.
 process.stdout.write(
   JSON.stringify({
