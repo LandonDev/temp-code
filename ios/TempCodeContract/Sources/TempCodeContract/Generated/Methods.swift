@@ -1400,4 +1400,20 @@ public enum Methods {
 
         public typealias Output = NoOutput
     }
+
+    public enum NotesSearch: ContractMethod {
+        public static let name = "notes.search"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let query: String
+            public let limit: Int?
+
+            public init(query: String, limit: Int? = nil) {
+                self.query = query
+                self.limit = limit
+            }
+        }
+
+        public typealias Output = NoteSearchResult
+    }
 }

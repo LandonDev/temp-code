@@ -151,6 +151,8 @@ export const SUBSET: SubsetEntry[] = [
   type('SessionSearchResult', W.SessionSearchResultSchema),
   type('ProjectSearchMatch', W.ProjectSearchMatchSchema),
   type('ProjectSearchResult', W.ProjectSearchResultSchema),
+  type('NoteSearchHit', W.NoteSearchHitSchema),
+  type('NoteSearchResult', W.NoteSearchResultSchema),
   // GitHub inbox and work items
   type('GithubInboxAuth', W.GithubInboxAuthSchema),
   type('GithubInboxPerson', W.GithubInboxPersonSchema),
@@ -269,7 +271,8 @@ export const SUBSET: SubsetEntry[] = [
   method('projectPlan.get', ProjectPlanStateSchema.nullable()),
   method('projectPlan.pin', ProjectPlanStateSchema.nullable()),
   method('projectPlan.tick', ProjectPlanTickAnswerSchema),
-  method('projectPlan.link', z.null())
+  method('projectPlan.link', z.null()),
+  method('notes.search', W.NoteSearchResultSchema)
 ]
 
 /** Enum values that need an explicit Swift case name. */

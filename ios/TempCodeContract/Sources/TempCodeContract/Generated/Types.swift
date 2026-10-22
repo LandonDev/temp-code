@@ -1149,6 +1149,32 @@ public struct ProjectSearchResult: Codable, Hashable, Sendable {
     }
 }
 
+public struct NoteSearchHit: Codable, Hashable, Sendable {
+    public let id: String
+    public let title: String
+    public let snippet: String
+    public let updatedAt: Int
+    public let sourceCwd: String?
+
+    public init(id: String, title: String, snippet: String, updatedAt: Int, sourceCwd: String? = nil) {
+        self.id = id
+        self.title = title
+        self.snippet = snippet
+        self.updatedAt = updatedAt
+        self.sourceCwd = sourceCwd
+    }
+}
+
+public struct NoteSearchResult: Codable, Hashable, Sendable {
+    public let hits: [NoteSearchHit]
+    public let truncated: Bool
+
+    public init(hits: [NoteSearchHit], truncated: Bool) {
+        self.hits = hits
+        self.truncated = truncated
+    }
+}
+
 public struct GithubInboxAuth: Codable, Hashable, Sendable {
     public enum State: RawRepresentable, Codable, Hashable, Sendable {
         case ok
