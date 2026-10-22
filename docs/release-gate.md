@@ -97,3 +97,52 @@ Before this change the hook ran all seven steps one after another on every
 commit; the iOS packages and the fence proof now wait for publish, or for a
 commit that touches what they guard. Re-measure with `bun run gate --tier
 all --full` on the Mac and read `.git/temp-code-gate/last-run.json`.
+
+The publish tier alone on the Mac (2026-10-21, the same M4 Max at a load
+of 15 from other work, a fresh clone with `infra/hub` installed): 22 s,
+with the fence 3.9 s, hub 12 s, ios 4.0 s and ios-client 18 s in their
+lanes; 37 s on a colder run (fence 3.1 s, hub 4.1 s, ios 12 s, ios-client
+25 s). Beside the electron-vite build it took 59 s.
+
+## The publish, phase by phase
+
+`bun run release:publish` (scripts/release-publish.sh) prints one line per
+phase (`phase ✓ gate 59s`; the parser is src/shared/releasePhases.ts) and
+the app's publish job counts them for the master board. Before 2026-10-21
+the script ran the publish gate, then electron-builder's build + sign +
+zip + dmg, then notarization, then the ShipIt-style check, then the
+upload, one after another, and the installed app noticed on a 30-minute
+poll. Now the gate runs beside the build, the box tarball is packed and
+uploaded while the app is signed, there is no dmg and no notarization
+unless asked, the bundle leaves `ios/`, `infra/` and `docs/` out, and the
+app that ran the script fetches the release the second it lands.
+
+| stretch | before (button to a running app) | now | measured how |
+| --- | --- | --- | --- |
+| publish gate (fence, hub, ios, ios-client) | 1 to 3 min, before electron-builder | 48 s, beside the build (22 to 37 s alone) | `--dry-run` on the Mac, 2026-10-21 |
+| electron-vite build + bundle-size | inside electron-builder's 4 to 6 min | 55 s beside the gate (26 s alone) | same |
+| sign (electron-builder `--dir`: pack + codesign, 37,000 files) | inside the 4 to 6 min, with `ios/` in the bundle | 2m2s | same |
+| zip (`--prepackaged`, no re-sign) | with the dmg, inside the 4 to 6 min | 38 s, 311 MB | same |
+| pack the box tarball | after the build, in line | 2 s, beside the sign (10.9 MB) | same |
+| notarization | 3 min on a good day, 35 on a bad one | none (`--notarize` brings it back) | |
+| ShipIt-style check | 1 to 2 min with the dmg mount | seconds, against /Applications/TempCode.app | same |
+| upload | zip + dmg + tarball, 2 to 5 min | zip + blockmap + latest-mac.yml; the tarball went up earlier | not run in a dry run |
+| feed check | 5 s sleep + one fetch | the same | |
+| the installed app noticing | up to 30 min, then a click to download | at once: the script's own app fetches it (`phase ✓ update`), a box deploy pushes `release-available`; the poll is 5 min | GitHub served the 1.0.277 zip at 70 MB/s here: 311 MB in about 5 s |
+| total, trigger to "Restart to update" | about 45 to 70 min | 3m51s to the end of the ShipIt check, plus the upload and the app's own download | the dry run's `phase ✓ total 3m51s`, 2026-10-21 |
+
+Two things the dry runs found on the way. electron-builder takes
+`--prepackaged` as the path to the `.app` itself: given its folder, the
+zip carried a `mac-arm64/` level and ShipIt would have found no app (the
+script's own check refused it). And the bundle used to carry the whole
+`ios/` tree: the gate's SwiftPM `.build` output is thousands of files
+that electron-builder copied in and signed one by one, so a signing of
+2m7s on a clean clone became 11m35s with the gate's output beside it, and
+the zip 312 MB to 381 MB (the published 1.0.277 zip was 425 MB for the
+same reason). electron-builder.yml now leaves `ios/`, `infra/` and
+`docs/` out.
+
+The proofs: `bun run script:e2e-updater` (two signed, un-notarized copies,
+check → download → restart over CDP) passed against this script's output
+on 2026-10-21; `scripts/release-publish.sh --pack-only` and `--dry-run`
+ran green on a fresh clone of master at 1.0.277.
