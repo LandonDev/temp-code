@@ -193,6 +193,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'session.resume': 'operate',
   'session.start': 'operate',
   'session.markStatus': 'local',
+  'session.proofShellCall': 'local',
   'session.continueAllErrors': 'operate',
   'session.pauseAllRunning': 'operate',
   'session.resumeAllPaused': 'operate',

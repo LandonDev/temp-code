@@ -39,6 +39,8 @@ describe('METHOD_CAPABILITY', () => {
         'session.move',
         // A proof's seam (isolated instances only): a status with no harness, for the e2e's pause step.
         'session.markStatus',
+        // The same, for a shell call's rows (the port forward's proof).
+        'session.proofShellCall',
         // A proof's seam (isolated instances only): this host's screen and power state (contract-relay.ts).
         'presence.set',
         // The Mac bridge: a box thread's own tools (token-gated), and the Mac's decisions and policy.

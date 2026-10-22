@@ -2216,6 +2216,17 @@ export async function startServer(
             sendFrame({ id: req.id, ok: true, result: null })
             break
           }
+          case 'session.proofShellCall': {
+            // A proof's seam only (scripts/e2e-port-forward.ts): a shell call's rows on an isolated instance.
+            if (process.env.TEMP_CODE_E2E_STATUS !== '1' || !process.env.TEMP_CODE_USER_DATA)
+              throw new Error('session.proofShellCall is a proof seam (TEMP_CODE_E2E_STATUS=1 on an isolated instance)')
+            const { sessionId, callId, command, output } = req.params
+            if (!registry.get(sessionId)) throw new Error(`unknown session: ${sessionId}`)
+            registry.append(sessionId, { type: 'tool-call', callId, name: 'Bash', input: { command } })
+            registry.append(sessionId, { type: 'tool-result', callId, output, isError: false })
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          }
           case 'session.continueAllErrors':
             sendFrame({ id: req.id, ok: true, result: await registry.continueAllErrors() })
             break

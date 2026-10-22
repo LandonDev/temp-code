@@ -792,6 +792,15 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('session.markStatus'),
     params: z.object({ sessionId: z.string(), status: z.enum(['running', 'idle', 'done']) })
   }),
+  // A proof's seam (local; isolated instances only, TEMP_CODE_E2E_STATUS=1): a
+  // shell call and its output as the thread's own rows, so the host's watchers
+  // (the ledger, a dev server's port) see a command no harness ran
+  // (scripts/e2e-port-forward.ts).
+  z.object({
+    id: z.string(),
+    method: z.literal('session.proofShellCall'),
+    params: z.object({ sessionId: z.string(), callId: z.string(), command: z.string(), output: z.string() })
+  }),
   z.object({ id: z.string(), method: z.literal('session.continueAllErrors') }),
   z.object({ id: z.string(), method: z.literal('session.pauseAllRunning') }),
   z.object({ id: z.string(), method: z.literal('session.resumeAllPaused') }),
