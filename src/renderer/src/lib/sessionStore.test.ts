@@ -1,8 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getSession,
   listSessionsByProject,
   loadSession,
+  openableSession,
   searchSessions,
   shouldPersistSession,
   summaryFromMeta,
@@ -35,6 +36,8 @@ class FakeLink implements Link {
   events = new Map<string, EventRow[]>();
   /** Resolves before a head (beforeSeq) fetch answers, when set. */
   holdHead: Promise<void> | null = null;
+  /** Resolves before a tail fetch answers, when set. */
+  holdTail: Promise<void> | null = null;
   /** What the host's own search answers (session.search). */
   searchHits: unknown[] = [];
   request<T>(method: string, params?: unknown): Promise<T> {
@@ -54,7 +57,7 @@ class FakeLink implements Link {
           rows = rows.filter((r) => r.seq >= from);
         }
       }
-      const hold = beforeSeq !== undefined ? this.holdHead : null;
+      const hold = beforeSeq !== undefined ? this.holdHead : tail !== undefined ? this.holdTail : null;
       return (hold ?? Promise.resolve()).then(() => rows as T);
     }
     return Promise.resolve(null as T);
@@ -169,6 +172,39 @@ describe("loadSession", () => {
     await pending;
     expect(whole?.blocks[0]?.text).toBe("q1");
     expect(sessionStore.isComplete("a")).toBe(true);
+  });
+});
+
+describe("openableSession", () => {
+  const rows = (id: string): EventRow[] => [{ sessionId: id, seq: 1, ts: 1, event: { type: "user-text", text: "hi" } }];
+
+  it("opens on the last turns when they come in time", async () => {
+    link.metas = [wireMeta({ id: "a" })];
+    link.events.set("a", rows("a"));
+    sessionStore.attach(link);
+    const s = await openableSession("a", 300);
+    expect(s?.load?.phase).toBe("loaded");
+    expect(s?.blocks.map((b) => b.text)).toEqual(["hi"]);
+  });
+
+  it("opens on the meta, still loading, when the host is slow, and the rows follow", async () => {
+    link.metas = [wireMeta({ id: "a" })];
+    link.events.set("a", rows("a"));
+    let release!: () => void;
+    link.holdTail = new Promise<void>((r) => (release = r));
+    sessionStore.attach(link);
+    const s = await openableSession("a", 20);
+    expect(s?.id).toBe("a");
+    expect(s?.blocks).toEqual([]);
+    expect(s?.load?.phase).toBe("loading");
+    release();
+    await vi.waitFor(() => expect(sessionStore.get("a")?.load?.phase).toBe("loaded"));
+    expect(sessionStore.get("a")?.blocks.map((b) => b.text)).toEqual(["hi"]);
+  });
+
+  it("is null for a thread no host knows", async () => {
+    sessionStore.attach(link);
+    expect(await openableSession("nope", 20)).toBeNull();
   });
 });
 

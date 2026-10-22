@@ -218,6 +218,27 @@ export async function loadSession(sessionId: string): Promise<Session | null> {
   return sessionStore.get(sessionId) ?? null;
 }
 
+/**
+ * The session to open a tab on: with its last turns when they come within
+ * `waitMs`, else as its meta describes it, its load still going (the pane
+ * draws the skeleton and says when the host is slow or did not answer).
+ * Null when no host knows the thread.
+ */
+export async function openableSession(sessionId: string, waitMs: number): Promise<Session | null> {
+  await sessionStore.ready();
+  if (!sessionStore.get(sessionId)) await sessionStore.ensureMeta(sessionId);
+  if (!sessionStore.get(sessionId)) return null;
+  if (!sessionStore.isDraft(sessionId)) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      sessionStore.ensureLoaded(sessionId, "load").catch(() => undefined),
+      new Promise<void>((resolve) => (timer = setTimeout(resolve, waitMs))),
+    ]);
+    clearTimeout(timer);
+  }
+  return sessionStore.get(sessionId) ?? null;
+}
+
 /** The folded session, whole, fetched from the server on first ask
  *  (mirrors, summaries, search: readers that need every row). */
 export async function getSession(sessionId: string): Promise<Session | null> {

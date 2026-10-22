@@ -256,7 +256,7 @@ import {
 import { dropContextWindow } from "./lib/contextUsage";
 import {
   deleteSession,
-  loadSession,
+  openableSession,
   setSessionArchived,
 } from "./lib/sessionStore";
 import {
@@ -400,6 +400,10 @@ function environmentForContext(ctx: ResolvedContext): string {
   // A loose chat outside the catalog belongs to this window's machine.
   return project?.environmentId ?? workspace?.environmentId ?? environmentOfCwd(ctx.cwd) ?? registry.primary().environmentId;
 }
+
+/** How long a click on a thread waits for its last turns before the tab
+ *  opens on the skeleton: a local thread's tail lands well inside it. */
+const OPEN_WAIT_MS = 300;
 
 export default function App() {
   tallyRender("app");
@@ -1875,8 +1879,10 @@ export default function App() {
       );
       if (open) return open;
 
-      // The last turns are enough to open on; the rest of the log folds behind.
-      const loaded = await loadSession(sessionId).catch(() => null);
+      // The last turns are enough to open on; the rest of the log folds
+      // behind. A host slow to answer opens on the skeleton instead of
+      // holding the click until its rows arrive.
+      const loaded = await openableSession(sessionId, OPEN_WAIT_MS).catch(() => null);
       if (!loaded) {
         void refreshHistory(sidebarCwd);
         return null;
