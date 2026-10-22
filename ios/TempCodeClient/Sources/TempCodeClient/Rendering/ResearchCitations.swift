@@ -176,7 +176,7 @@ extension ReportCitations {
         var styled = text
         let plain = String(styled.characters)
         for match in plain.matches(of: marker).reversed() {
-            let numbers = numbers(in: match.1)
+            let numbers = Self.numbers(in: match.1)
             guard !numbers.isEmpty else { continue }
             let start = styled.characters.index(styled.startIndex, offsetBy: plain.distance(from: plain.startIndex, to: match.range.lowerBound))
             let end = styled.characters.index(start, offsetBy: plain.distance(from: match.range.lowerBound, to: match.range.upperBound))

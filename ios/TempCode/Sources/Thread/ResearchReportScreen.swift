@@ -116,7 +116,7 @@ private struct ReportBody: View {
                     MarkdownBlocksView(document: MarkdownDocument(blocks: blocks, textHash: decorated.textHash))
                 case .sources(let cited):
                     VStack(spacing: 0) {
-                        ForEach(Array(cited.enumerated()), id: \.element.id) { offset, citation in
+                        ForEach(Array(cited.enumerated()), id: \.offset) { offset, citation in
                             CitationRow(citation: citation, divided: offset > 0, open: open)
                         }
                     }
@@ -125,6 +125,8 @@ private struct ReportBody: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        // Links in a Text draw in the tint: the research cyan, for the superscripts and the prose's own links alike.
+        .tint(Tint.cyan)
     }
 }
 
@@ -155,9 +157,10 @@ enum ReportStyle {
             }
         }
         for (range, resolved) in marks {
-            styled[range].font = .caption.weight(.semibold)
-            styled[range].baselineOffset = 4
-            styled[range].foregroundColor = resolved ? Tint.cyan : Color(.tertiaryLabel)
+            // Scoped to SwiftUI's attributes: UIKit's scope names font, baselineOffset and foregroundColor too.
+            styled[range].swiftUI.font = .caption.weight(.semibold)
+            styled[range].swiftUI.baselineOffset = 4
+            styled[range].swiftUI.foregroundColor = resolved ? Tint.cyan : Color(.tertiaryLabel)
             if !resolved { styled[range].link = nil }
         }
         return styled

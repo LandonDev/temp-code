@@ -311,7 +311,7 @@ struct ThreadPhase: Equatable {
         case .implementation?: hasBoard ? .board : .chat
         case .planning?, .projectPlan?: planHasContent ? .plan : .chat
         case .orchestration?: hasAgents ? .fleet : .log
-        case .research?: hasSources || reportComplete ? .sources : .chat
+        case .research?: hasSources ? .sources : .chat
         default: segments.first ?? .chat
         }
     }

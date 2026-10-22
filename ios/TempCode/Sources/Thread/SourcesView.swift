@@ -319,7 +319,7 @@ private struct SourceRowView: View {
     var body: some View {
         let host = ResearchBoard.host(of: source.url)
         let url = URL(string: source.url)
-        let headline = headline(host)
+        let headline = self.headline(host)
         Button {
             if let url { onOpen(WebPage(url: url)) }
         } label: {
@@ -453,7 +453,9 @@ final class FaviconCache {
               let url = URL(string: "https://www.google.com/s2/favicons?domain=\(host)&sz=64") else { return }
         inFlight.insert(host)
         defer { inFlight.remove(host) }
-        guard let fetched = try? await URLSession.shared.data(from: url), let image = UIImage(data: fetched.0) else {
+        // A request that never answered (offline) is tried again next time the row shows; an answer with no icon is a miss for good.
+        guard let fetched = try? await URLSession.shared.data(from: url) else { return }
+        guard let image = UIImage(data: fetched.0) else {
             missing.insert(host)
             return
         }
