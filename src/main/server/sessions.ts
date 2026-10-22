@@ -1634,6 +1634,11 @@ export class SessionRegistry {
     }
   }
 
+  /** Rows read off the loop on the reader worker, cut in SQL (Store.readRows): the mirror's read. */
+  readLogRows(sessionId: string, opts: Parameters<Store['readRows']>[1]): Promise<EventRow[]> {
+    return this.store.readRows(sessionId, opts)
+  }
+
   eventsAfter(sessionId: string, afterSeq: number): EventRow[] {
     return this.store.eventsAfter(sessionId, afterSeq)
   }

@@ -1,8 +1,10 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { writeThreadsIndex } from './mirror'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { openDb, Store } from './db'
+import { mirrorName, mirrorSession, renderMirror, renderMirrorOffLoop, writeThreadsIndex } from './mirror'
+import type { AgentEvent, SessionMeta } from '@shared/events'
 
 let dir: string
 beforeEach(() => {
@@ -45,5 +47,110 @@ describe('writeThreadsIndex', () => {
     expect(index).toContain('"Padded"')
     expect(index).toContain('"Fine"')
     expect(index.split('\n').filter((l) => l.startsWith('- '))).toHaveLength(2)
+  })
+})
+
+const thread: SessionMeta = {
+  id: 'm', parentId: null, projectId: 'p', workspaceId: null, threadType: 'implementation', planPath: '/plan.md',
+  provider: 'claude', model: 'x', reasoning: 'medium', agentType: 'implementer', title: 'Mirror me', cwd: '/repo',
+  status: 'idle', pinned: false, archived: false, fast: false, ultrafast: false, context1m: false, busySince: null,
+  pausedAt: null, frozenActiveElapsed: null, threadRules: null, permission: 'edits', nativeId: null, createdAt: 1, updatedAt: 2
+}
+
+/** A seeded log of everything a transcript holds: deltas, big bodies,
+ *  string and odd inputs, subagent lanes, goals, failures. */
+function seededLog(seed: number, n: number): AgentEvent[] {
+  let x = seed
+  const rnd = (k: number): number => ((x = (x * 1103515245 + 12345) % 2147483648), x % k)
+  const names = ['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Agent', 'apply_patch', 'shell', 'NotebookEdit']
+  const out: AgentEvent[] = []
+  for (let i = 0; i < n; i++) {
+    switch (rnd(11)) {
+      case 0: out.push({ type: 'user-text', text: `ask ${i}`, attachments: [{ path: '/x.png', name: 'x.png', kind: 'image' }] }); break
+      case 1: out.push({ type: 'assistant-text', text: `delta ${i}`, delta: true }); break
+      case 2: out.push({ type: 'assistant-text', text: `final ${i} ${'a'.repeat(rnd(3000))}`, delta: false, ...(rnd(4) === 0 ? { parentCallId: 'p1' } : {}) }); break
+      case 3: {
+        const input = rnd(3) === 0 ? { file_path: rnd(2) ? `/repo/src/f${rnd(20)}.ts` : `src/g${rnd(20)}.ts`, content: 'c'.repeat(rnd(9000)) }
+          : rnd(2) ? { command: `echo ${'  spaced   out '.repeat(rnd(30))} ${i}` } : { prompt: 'p'.repeat(rnd(6000)), path: { nested: true } }
+        out.push({ type: 'tool-call', callId: `c${rnd(40)}`, name: names[rnd(names.length)], input, ...(rnd(5) === 0 ? { parentCallId: 'p1' } : {}) })
+        break
+      }
+      case 4: out.push({ type: 'tool-result', callId: `c${rnd(40)}`, output: 'o'.repeat(rnd(20000)), isError: rnd(3) === 0 }); break
+      case 5: out.push({ type: 'goal', phase: (['set', 'updated', 'met', 'cleared'] as const)[rnd(4)], condition: `g${i}`, iterations: rnd(5), ...(rnd(2) ? { reason: 'why' } : {}) }); break
+      case 6: out.push({ type: 'status', status: 'idle' }); break
+      case 7: out.push({ type: 'tool-call', callId: `c${rnd(40)}`, name: 'Bash', input: 'a string input' }); break
+      case 8: out.push({ type: 'tool-call', callId: `c${rnd(40)}`, name: 'Read', input: { notebook_path: '../outside.ipynb', command: 7 } }); break
+      case 9: out.push({ type: 'thinking', text: 't'.repeat(rnd(500)) } as AgentEvent); break
+      default: out.push({ type: 'turn-complete' } as AgentEvent)
+    }
+  }
+  return out
+}
+
+describe('renderMirrorOffLoop', () => {
+  it('reads the log in chunks with only what the mirror reads, and writes the same mirror as the whole rows', async () => {
+    for (let seed = 1; seed <= 12; seed++) {
+      const db = openDb(':memory:')
+      const store = new Store(db)
+      store.insertSession(thread)
+      for (const e of seededLog(seed, 300)) store.appendEvent('m', e)
+      const reads = vi.spyOn(store, 'readRows')
+      const between = vi.fn(async () => {})
+      const off = await renderMirrorOffLoop({ readLogRows: (id, o) => store.readRows(id, o) }, thread, { chunk: 23, between })
+      expect(off).toBe(renderMirror(thread, store.eventsAfter('m', 0)))
+      // Deltas, statuses and thinking never left the read; a quiet loop between chunks.
+      expect(reads.mock.calls[0][1].whereSql).toContain("'user-text'")
+      expect(reads.mock.calls.length).toBeGreaterThan(1)
+      expect(between).toHaveBeenCalledTimes(reads.mock.calls.length - 1)
+      db.close()
+    }
+  })
+
+  it('renders the dialogue, the tool lines with failures, the files and the outcome', () => {
+    const rows = [
+      { type: 'user-text', text: 'fix it' },
+      { type: 'tool-call', callId: 'a', name: 'Edit', input: { file_path: '/repo/src/a.ts', old_string: 'x', new_string: 'y' } },
+      { type: 'tool-result', callId: 'a', output: 'ok', isError: false },
+      { type: 'tool-call', callId: 'b', name: 'Bash', input: { command: 'bun   test' } },
+      { type: 'tool-result', callId: 'b', output: 'fail', isError: true },
+      { type: 'assistant-text', text: 'Fixed the parser.', delta: false }
+    ].map((event, i) => ({ sessionId: 'm', seq: i + 1, ts: i, event: event as AgentEvent }))
+    const out = renderMirror(thread, rows)
+    expect(out).toContain('files: src/a.ts')
+    expect(out).toContain('## Outcome\n\nFixed the parser.')
+    expect(out).toContain('## User\n\nfix it')
+    expect(out).toContain('- Edit /repo/src/a.ts\n- Bash: bun test (failed)\n\nFixed the parser.')
+  })
+
+  it('mirrorSession writes off the loop, one render per thread at a time; one asked for meanwhile runs once after', async () => {
+    const db = openDb(':memory:')
+    const store = new Store(db)
+    const meta = { ...thread, cwd: dir }
+    store.insertSession(meta)
+    store.appendEvent('m', { type: 'user-text', text: 'first' })
+    let reads = 0
+    let release!: () => void
+    const held = new Promise<void>((r) => (release = r))
+    const reg = {
+      get: () => meta,
+      getProject: () => ({ id: 'p', cwd: dir }),
+      readLogRows: async (id: string, o: Parameters<Store['readRows']>[1]) => {
+        reads++
+        const rows = await store.readRows(id, o)
+        if (reads === 1) await held
+        return rows
+      }
+    }
+    const first = mirrorSession(reg as never, 'm')
+    // Two more asks while the first render waits: one more render, not two.
+    void mirrorSession(reg as never, 'm')
+    void mirrorSession(reg as never, 'm')
+    store.appendEvent('m', { type: 'user-text', text: 'second' })
+    release()
+    await first
+    await vi.waitFor(() => expect(reads).toBe(2))
+    await vi.waitFor(() => expect(readFileSync(join(dir, '.temp-code', 'threads', mirrorName(meta)), 'utf8')).toContain('## User\n\nsecond'))
+    expect(readFileSync(join(dir, '.temp-code', 'threads', 'INDEX.md'), 'utf8')).toContain('"Mirror me"')
+    db.close()
   })
 })

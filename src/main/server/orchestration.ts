@@ -98,14 +98,16 @@ export const turnText = (rows: EventRow[]): string =>
     .map((r) => (r.event as { text: string }).text)
     .join('\n')
 
+/** The input keys a tool line names: a path first, else a value. */
+export const TOOL_PATH_KEYS = ['file_path', 'path', 'notebook_path'] as const
+export const TOOL_VALUE_KEYS = ['command', 'pattern', 'query', 'url', 'description', 'prompt', 'task'] as const
+
 /** One-line human summary of a tool call: "Edit src/foo.ts", "Bash: npm test". */
 export function toolLine(name: string, input: unknown): string {
   const obj = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
-  const pathKey = ['file_path', 'path', 'notebook_path'].find((k) => typeof obj[k] === 'string')
+  const pathKey = TOOL_PATH_KEYS.find((k) => typeof obj[k] === 'string')
   if (pathKey) return `${name} ${obj[pathKey]}`
-  const valKey = ['command', 'pattern', 'query', 'url', 'description', 'prompt', 'task'].find(
-    (k) => typeof obj[k] === 'string'
-  )
+  const valKey = TOOL_VALUE_KEYS.find((k) => typeof obj[k] === 'string')
   if (valKey) return `${name}: ${String(obj[valKey]).replace(/\s+/g, ' ').slice(0, 100)}`
   return name
 }

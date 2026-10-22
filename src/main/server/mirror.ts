@@ -11,14 +11,14 @@ import {
   statSync,
   writeFileSync
 } from 'node:fs'
-import { timed } from './stalls'
+import { timed, untilLoopIdle } from './stalls'
 import { appendFile, readFile } from 'node:fs/promises'
 import { bootMark } from './boot'
 import { basename, join, relative, isAbsolute } from 'node:path'
 import type { EventRow, SessionMeta } from '@shared/events'
 import type { ProjectMeta } from '@shared/domain'
 import { demoteHeadings } from '@shared/notes'
-import { latestTurnRows, toolLinesOf, turnText } from './orchestration'
+import { TOOL_PATH_KEYS, TOOL_VALUE_KEYS, toolLine } from './orchestration'
 import type { SessionRegistry } from './sessions'
 
 /**
@@ -85,99 +85,191 @@ function goalLine(e: Extract<EventRow['event'], { type: 'goal' }>): string {
   }
 }
 
-/** The readable dialogue: ## User / ## Assistant sections, one-line tool
- *  actions as bullets. No thinking, no tool payloads. */
-export function renderDialogue(rows: EventRow[]): string {
-  const sections: string[] = []
-  let turn: EventRow[] = []
-  const flush = (): void => {
-    if (turn.length === 0) return
-    const tools = toolLinesOf(turn, 1000)
-    const text = turnText(turn)
-    const body = [tools.map((l) => `- ${l}`).join('\n'), text].filter(Boolean).join('\n\n')
-    if (body) sections.push(`## Assistant\n\n${body}`)
-    turn = []
-  }
-  for (const row of rows) {
-    if (row.event.type === 'user-text') {
-      flush()
-      sections.push(`## User\n\n${row.event.text}`)
-    } else if (row.event.type === 'goal') {
-      flush()
-      sections.push(`_${goalLine(row.event)}_`)
-    } else {
-      turn.push(row)
-    }
-  }
-  flush()
-  return sections.join('\n\n')
-}
-
 /** Tools that CHANGE a file, across providers — their paths lead the
  *  `files:` line, because the thread that wrote a file is the one you
  *  want when you go looking for who touched it. */
 const WRITES = /edit|write|patch|create|update|notebook/i
 
-/** Project-relative paths this thread's file tools touched, writes first,
- *  reads after, deduped in that order and capped. `.temp-code/` is the
- *  app's own context dir — never what a reader is grepping for. */
-export function filesTouched(rows: EventRow[], cwd: string): string[] {
-  const writes: string[] = []
-  const reads: string[] = []
-  for (const { event } of rows) {
-    if (event.type !== 'tool-call' || event.partial) continue
-    const input = (event.input && typeof event.input === 'object' ? event.input : {}) as Record<
-      string,
-      unknown
-    >
-    const key = ['file_path', 'path', 'notebook_path'].find((k) => typeof input[k] === 'string')
-    if (!key) continue
-    const raw = input[key] as string
-    const rel = isAbsolute(raw) ? relative(cwd, raw) : raw
-    // Outside the checkout (a worktree scratch file, /tmp) tells a reader nothing.
-    if (!rel || rel.startsWith('..') || isAbsolute(rel) || rel.startsWith('.temp-code/')) continue
-    ;(WRITES.test(event.name) ? writes : reads).push(rel)
+/** A turn's final assistant text: no deltas, no subagent lanes (orchestration.ts turnText). */
+const finalText = (event: EventRow['event']): string | null =>
+  event.type === 'assistant-text' && !event.delta && !('parentCallId' in event && event.parentCallId) ? event.text : null
+
+/**
+ * The mirror, a row at a time: the dialogue (## User / ## Assistant
+ * sections, one-line tool actions as bullets, no thinking, no tool
+ * payloads), the files the thread touched and its closing turn are folded
+ * as rows arrive, so a long log renders in chunks between reads.
+ */
+export class MirrorRenderer {
+  private sections: string[] = []
+  /** The open turn: rows seen, tool lines by call (a later row of a call replaces its line in place), failed calls, final texts. */
+  private turnRows = 0
+  private calls = new Map<string, string>()
+  private failed = new Set<string>()
+  private texts: string[] = []
+  /** Final texts since the last user message: the closing turn. */
+  private closing: string[] = []
+  private writes: string[] = []
+  private reads: string[] = []
+
+  constructor(private readonly cwd: string) {}
+
+  push(row: EventRow): void {
+    const { event } = row
+    if (event.type === 'tool-call' && !event.partial) this.touched(event.name, event.input)
+    if (event.type === 'user-text') {
+      this.flush()
+      this.sections.push(`## User\n\n${event.text}`)
+      this.closing = []
+      return
+    }
+    if (event.type === 'goal') {
+      this.flush()
+      this.sections.push(`_${goalLine(event)}_`)
+      return
+    }
+    this.turnRows++
+    if (event.type === 'tool-result' && event.isError) this.failed.add(event.callId)
+    if (event.type === 'tool-call') this.calls.set(event.callId, toolLine(event.name, event.input))
+    const text = finalText(event)
+    if (text !== null) {
+      this.texts.push(text)
+      this.closing.push(text)
+    }
   }
-  return [...new Set([...writes, ...reads])].slice(0, FILES_MAX)
+
+  /** Project-relative paths a file tool named: writes first, reads after.
+   *  `.temp-code/` is the app's own context dir — never what a reader is
+   *  grepping for; outside the checkout (a worktree scratch file, /tmp)
+   *  tells a reader nothing. */
+  private touched(name: string, input: unknown): void {
+    const obj = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
+    const key = TOOL_PATH_KEYS.find((k) => typeof obj[k] === 'string')
+    if (!key) return
+    const raw = obj[key] as string
+    const rel = isAbsolute(raw) ? relative(this.cwd, raw) : raw
+    if (!rel || rel.startsWith('..') || isAbsolute(rel) || rel.startsWith('.temp-code/')) return
+    ;(WRITES.test(name) ? this.writes : this.reads).push(rel)
+  }
+
+  private flush(): void {
+    if (this.turnRows === 0) return
+    const tools = [...this.calls.entries()].map(([id, line]) => (this.failed.has(id) ? `${line} (failed)` : line)).slice(-1000)
+    const text = this.texts.join('\n')
+    const body = [tools.map((l) => `- ${l}`).join('\n'), text].filter(Boolean).join('\n\n')
+    if (body) this.sections.push(`## Assistant\n\n${body}`)
+    this.turnRows = 0
+    this.calls = new Map()
+    this.failed = new Set()
+    this.texts = []
+  }
+
+  /** Full mirror content: frontmatter + dialogue, head-trimmed to the cap. */
+  finish(
+    meta: SessionMeta,
+    projectName?: string | null,
+    /** The thread's working notes (threadNotes.ts), verbatim ahead of the dialogue. */
+    notes?: string | null
+  ): string {
+    this.flush()
+    const files = [...new Set([...this.writes, ...this.reads])].slice(0, FILES_MAX)
+    const front = [
+      '---',
+      `title: ${JSON.stringify(meta.title)}`,
+      `type: ${meta.threadType ?? `subagent (${meta.agentType})`}`,
+      ...(projectName ? [`project: ${JSON.stringify(projectName)}`] : []),
+      `provider: ${meta.provider} · ${meta.model}`,
+      `status: ${meta.status}`,
+      `updated: ${new Date(meta.updatedAt).toISOString()}`,
+      `sessionId: ${meta.id}`,
+      ...(meta.parentId ? [`parentSessionId: ${meta.parentId}`] : []),
+      ...(meta.planPath ? [`plan: ${meta.planPath}`] : []),
+      ...(files.length ? [`files: ${files.join(', ')}`] : []),
+      '---'
+    ].join('\n')
+    // The payload first: a reader gets what this thread concluded inside the
+    // opening lines, and only reads the dialogue if that says it's the one.
+    const closing = this.closing.join('\n').trim()
+    const outcome = closing.length > OUTCOME_MAX_CHARS ? `…${closing.slice(-OUTCOME_MAX_CHARS)}` : closing
+    // The notes come before the outcome: what the thread chose to keep is
+    // the first thing a successor reads, then what it last said.
+    const noted = notes?.trim() ? `${front}\n\n## Notes\n\n${demoteHeadings(notes)}` : front
+    const head = outcome ? `${noted}\n\n## Outcome\n\n${outcome}` : noted
+    let body = this.sections.join('\n\n')
+    if (body.length > MIRROR_MAX_CHARS) {
+      body = `_[earlier turns trimmed]_\n\n…${body.slice(-MIRROR_MAX_CHARS)}`
+    }
+    return `${head}\n\n${body}\n`
+  }
 }
 
-/** Full mirror content: frontmatter + dialogue, head-trimmed to the cap. */
+/** Full mirror content from rows in hand (a digest, a test). */
 export function renderMirror(
   meta: SessionMeta,
   rows: EventRow[],
   projectName?: string | null,
-  /** The thread's working notes (threadNotes.ts), verbatim ahead of the dialogue. */
   notes?: string | null
 ): string {
-  const files = filesTouched(rows, meta.cwd)
-  const front = [
-    '---',
-    `title: ${JSON.stringify(meta.title)}`,
-    `type: ${meta.threadType ?? `subagent (${meta.agentType})`}`,
-    ...(projectName ? [`project: ${JSON.stringify(projectName)}`] : []),
-    `provider: ${meta.provider} · ${meta.model}`,
-    `status: ${meta.status}`,
-    `updated: ${new Date(meta.updatedAt).toISOString()}`,
-    `sessionId: ${meta.id}`,
-    ...(meta.parentId ? [`parentSessionId: ${meta.parentId}`] : []),
-    ...(meta.planPath ? [`plan: ${meta.planPath}`] : []),
-    ...(files.length ? [`files: ${files.join(', ')}`] : []),
-    '---'
-  ].join('\n')
-  // The payload first: a reader gets what this thread concluded inside the
-  // opening lines, and only reads the dialogue if that says it's the one.
-  const closing = turnText(latestTurnRows(rows)).trim()
-  const outcome =
-    closing.length > OUTCOME_MAX_CHARS ? `…${closing.slice(-OUTCOME_MAX_CHARS)}` : closing
-  // The notes come before the outcome: what the thread chose to keep is
-  // the first thing a successor reads, then what it last said.
-  const noted = notes?.trim() ? `${front}\n\n## Notes\n\n${demoteHeadings(notes)}` : front
-  const head = outcome ? `${noted}\n\n## Outcome\n\n${outcome}` : noted
-  let body = renderDialogue(rows)
-  if (body.length > MIRROR_MAX_CHARS) {
-    body = `_[earlier turns trimmed]_\n\n…${body.slice(-MIRROR_MAX_CHARS)}`
+  const r = new MirrorRenderer(meta.cwd)
+  for (const row of rows) r.push(row)
+  return r.finish(meta, projectName, notes)
+}
+
+/** A text value of a tool call's input, or SQL NULL: a value that is not a
+ *  string (an object, a number) must stay one, so toolLine skips it alike. */
+const inputText = (key: string, cap?: number): string => {
+  const value = `json_extract(payload, '$.input.${key}')`
+  return `'${key}', CASE WHEN json_type(payload, '$.input.${key}') = 'text' THEN ${cap ? `substr(${value}, 1, ${cap})` : value} END`
+}
+
+/** The rows a mirror reads (MirrorRenderer.push): user messages, goals,
+ *  final assistant text, tool calls and results. Deltas and the rest never
+ *  leave the worker. */
+const MIRROR_ROWS_SQL = `json_valid(payload)
+  AND json_extract(payload, '$.type') IN ('user-text', 'goal', 'assistant-text', 'tool-call', 'tool-result')
+  AND NOT (json_extract(payload, '$.type') = 'assistant-text' AND COALESCE(json_extract(payload, '$.delta'), 0))`
+
+/** Each row's payload cut to what the mirror reads: a tool call's input to
+ *  the keys a tool line names (a value capped well past the 100 characters
+ *  it shows), a tool result to its error flag. Built on first use: the keys
+ *  come from orchestration.ts, which imports this module back. */
+let mirrorPayloadSql: string | null = null
+const MIRROR_PAYLOAD_SQL = (): string =>
+  (mirrorPayloadSql ??= `CASE json_extract(payload, '$.type')
+  WHEN 'tool-call' THEN json_set(json_remove(payload, '$.input', '$.preview'), '$.input', json_object(${[
+    ...TOOL_PATH_KEYS.map((k) => inputText(k)),
+    ...TOOL_VALUE_KEYS.map((k) => inputText(k, 4_000))
+  ].join(', ')}))
+  WHEN 'tool-result' THEN json_object('type', 'tool-result', 'callId', json_extract(payload, '$.callId'),
+    'isError', json(CASE WHEN json_extract(payload, '$.isError') THEN 'true' ELSE 'false' END))
+  WHEN 'user-text' THEN json_remove(payload, '$.attachments', '$.preamble')
+  ELSE payload
+END`)
+
+/** Rows per read of a mirror render. */
+const MIRROR_CHUNK = 2_000
+
+/** The mirror off the loop: the log read in chunks on the reader worker
+ *  (Store.readRows) with only what the mirror reads, rendered between
+ *  waits for a quiet loop. */
+export async function renderMirrorOffLoop(
+  reg: Pick<SessionRegistry, 'readLogRows'>,
+  meta: SessionMeta,
+  opts: { chunk?: number; between?: () => Promise<void> } = {}
+): Promise<string> {
+  const chunk = opts.chunk ?? MIRROR_CHUNK
+  const between = opts.between ?? (() => untilLoopIdle())
+  const r = new MirrorRenderer(meta.cwd)
+  let after = 0
+  for (;;) {
+    const rows = await reg.readLogRows(meta.id, { afterSeq: after, limit: chunk, payloadSql: MIRROR_PAYLOAD_SQL(), whereSql: MIRROR_ROWS_SQL })
+    for (const row of rows) r.push(row)
+    if (rows.length < chunk) break
+    after = rows[rows.length - 1].seq
+    await between()
+    await new Promise((resolve) => setImmediate(resolve))
   }
-  return `${head}\n\n${body}\n`
+  return r.finish(meta)
 }
 
 /** Frontmatter of a mirror, read from its head — the index never parses
@@ -257,34 +349,53 @@ function contextCwd(reg: SessionRegistry, meta: SessionMeta): string | null {
   return cwd && existsSync(cwd) ? cwd : null
 }
 
+/** The mirror renders in flight, and the ones asked for again meanwhile. */
+const rendering = new Map<string, Promise<void>>()
+const again = new Set<string>()
+
+/** Write a thread's mirror: the log read and rendered off the loop
+ *  (renderMirrorOffLoop), one render per thread at a time; a write asked
+ *  for while one runs runs once more after it. */
 export function mirrorSession(
   reg: SessionRegistry,
   sessionId: string,
   opts: { index?: boolean } = {}
-): void {
-  timed('mirrorSession', () => mirrorSessionNow(reg, sessionId, opts))
+): Promise<void> {
+  const running = rendering.get(sessionId)
+  if (running) {
+    again.add(sessionId)
+    return running
+  }
+  const run = mirrorSessionNow(reg, sessionId, opts).finally(() => {
+    rendering.delete(sessionId)
+    if (again.delete(sessionId)) void mirrorSession(reg, sessionId, opts)
+  })
+  rendering.set(sessionId, run)
+  return run
 }
 
-function mirrorSessionNow(
+async function mirrorSessionNow(
   reg: SessionRegistry,
   sessionId: string,
   opts: { index?: boolean }
-): void {
+): Promise<void> {
   const meta = reg.get(sessionId)
   const cwd = meta && contextCwd(reg, meta)
   if (!meta || !cwd) return
   try {
-    const dir = join(cwd, '.temp-code', 'threads')
-    mkdirSync(dir, { recursive: true })
-    const name = mirrorName(meta)
-    // Sweep copies left by an old title — one file per session, always.
-    for (const f of readdirSync(dir)) {
-      if (f !== name && f.includes(meta.id)) rmSync(join(dir, f), { force: true })
-    }
-    writeAtomic(join(dir, name), renderMirror(meta, reg.eventsAfter(sessionId, 0)))
-    if (opts.index !== false) writeThreadsIndex(dir)
-    rotateJournal(cwd) // a model append lands shortly before this write
-
+    const content = await renderMirrorOffLoop(reg, meta)
+    timed('mirrorSession', () => {
+      const dir = join(cwd, '.temp-code', 'threads')
+      mkdirSync(dir, { recursive: true })
+      const name = mirrorName(meta)
+      // Sweep copies left by an old title — one file per session, always.
+      for (const f of readdirSync(dir)) {
+        if (f !== name && f.includes(meta.id)) rmSync(join(dir, f), { force: true })
+      }
+      writeAtomic(join(dir, name), content)
+      if (opts.index !== false) writeThreadsIndex(dir)
+      rotateJournal(cwd) // a model append lands shortly before this write
+    })
   } catch {
     // Mirrors are best-effort context, never a failure the user sees.
   }
@@ -304,7 +415,7 @@ export function scheduleMirror(reg: SessionRegistry, sessionId: string): void {
     sessionId,
     setTimeout(() => {
       timers.delete(sessionId)
-      mirrorSession(reg, sessionId)
+      void mirrorSession(reg, sessionId)
     }, MIRROR_DEBOUNCE_MS)
   )
 }
@@ -337,9 +448,8 @@ export async function backfillMirrors(reg: SessionRegistry): Promise<void> {
     const dir = join(cwd, '.temp-code', 'threads')
     dirs.add(dir)
     if (mirrorFresh(dir, meta)) continue
-    mirrorSession(reg, meta.id, { index: false })
+    await mirrorSession(reg, meta.id, { index: false })
     written++
-    await new Promise((r) => setImmediate(r))
   }
   for (const dir of dirs) {
     try {
