@@ -1,5 +1,6 @@
 import { registry } from "./lib/connection";
 import { environmentOfCwd } from "./lib/tcserver/projects";
+import { newThreadContext } from "./lib/projectHostChoice";
 import { invoke, listen, getCurrentWindow, isWebMode, message } from "./lib/native";
 import {
   useCallback,
@@ -579,7 +580,9 @@ export default function App() {
         threadRules?: ThreadRules | null;
       } = {},
     ) => {
-      const ctx = sessionContext(opts.projectId);
+      // A linked project starts its thread on the host of the thread on
+      // screen, else the one last used for it, else here (projectHostChoice.ts).
+      const ctx = newThreadContext(sessionContext(opts.projectId), workspaceStore.projects, currentActivePane().active);
       const session = seededSession(ctx, ctx.cwd, undefined, opts.threadType, opts.threadRules);
       return opts.runtimeMode ? { ...session, runtimeMode: opts.runtimeMode } : session;
     },

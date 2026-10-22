@@ -8,7 +8,9 @@ import { mergeModelSettings, nativeModelId, resolveModel } from "../../../lib/mo
 import { pairOf, pairWorkspaces, partnersOf } from "../../../lib/projectPairs";
 import type { HarnessId } from "../../../lib/session";
 import { startThread } from "../../../lib/tcserver/commands";
-import type { ProjectMeta, SessionMeta, ThreadType } from "../../../lib/tcserver/types";
+import type { ProjectMeta, SessionMeta, ThreadType, WorkspaceMeta } from "../../../lib/tcserver/types";
+import type { EnsureLinkedArgs } from "@server/shared/projectLinks";
+import { copiesOf, ensureLinkedArgs, ensureLinkedOn, probeOf, rememberLinkHost, type CopyProbe } from "../../../lib/projectHostChoice";
 import { useProjects, useWorkspaces } from "../../../lib/tcserver/workspaces";
 import { Segmented, Select } from "../../settingsBits";
 import { THREAD_LABELS } from "../bits";
@@ -37,20 +39,27 @@ export type AddThreadMaster = Pick<
 export type HostChoice = {
   id: string;
   name: string;
-  /** The project to create under on that host, or the cwd when only the folder is paired; null when the host has no copy. */
-  target: { projectId: string } | { cwd: string } | null;
+  /** The project to create under on that host, the cwd when only the folder
+   *  is paired, or the link facts `project.ensureLinked` makes the host's
+   *  copy from; null when the host can have no copy. */
+  target: { projectId: string } | { cwd: string } | { ensure: Omit<EnsureLinkedArgs, "dryRun"> } | null;
 };
 
 /** The hosts the add sheet offers (`environments` is the linked set,
  *  `linkedHosts`), this host first: the master's own project at home, and
- *  on every other host the paired copy (the same GitHub repo, else the
- *  same folder name; lib/projectPairs.ts). */
+ *  on every other host its linked copy (CLAUDE.md "One project across
+ *  hosts"), or, when that host has none yet, the facts to make one. A
+ *  project the linker has not stamped yet falls back to the paired folder
+ *  (the same GitHub repo, else the same folder name; lib/projectPairs.ts). */
 export function hostChoices(
   master: Pick<AddThreadMaster, "environmentId" | "cwd" | "projectId">,
   environments: readonly { id: string; name: string }[],
-  workspaces: Parameters<typeof pairWorkspaces>[0],
-  projects: readonly Pick<ProjectMeta, "id" | "environmentId" | "cwd">[],
+  workspaces: readonly WorkspaceMeta[],
+  projects: readonly ProjectMeta[],
 ): HostChoice[] {
+  const own = master.projectId ? projects.find((p) => p.id === master.projectId && p.environmentId === master.environmentId) : undefined;
+  const linkId = own?.linkId;
+  const ensure = own ? ensureLinkedArgs(own, workspaces.find((w) => w.id === own.workspaceId && w.environmentId === own.environmentId)) : null;
   const pairs = pairWorkspaces(workspaces);
   const home = pairOf(pairs, master.environmentId, master.cwd);
   const partners = home ? partnersOf(pairs, master.environmentId, master.cwd) : [];
@@ -62,6 +71,10 @@ export function hostChoices(
     .map((env) => {
       if (env.id === master.environmentId) {
         return { id: env.id, name: env.name, target: master.projectId ? { projectId: master.projectId } : { cwd: master.cwd } };
+      }
+      if (linkId) {
+        const copy = copiesOf(projects, linkId).find((p) => p.environmentId === env.id);
+        return { id: env.id, name: env.name, target: copy ? { projectId: copy.id } : ensure ? { ensure } : null };
       }
       const partner = partners.find((p) => p.environmentId === env.id);
       if (!partner) return { id: env.id, name: env.name, target: null };
@@ -125,7 +138,34 @@ export function AddThreadDialog({
     briefRef.current?.focus();
   }, []);
 
-  const target = hosts.find((h) => h.id === host)?.target ?? null;
+  // A host with no copy yet is asked once whether it can take one (a dry run);
+  // one with no checkout stays disabled with its note.
+  const [probes, setProbes] = useState<ReadonlyMap<string, CopyProbe>>(new Map());
+  const ensureKey = hosts.flatMap((h) => (h.target && "ensure" in h.target ? [h.id] : [])).join(",");
+  useEffect(() => {
+    let live = true;
+    for (const h of hosts) {
+      if (!h.target || !("ensure" in h.target)) continue;
+      ensureLinkedOn(h.id, h.target.ensure, true).then(
+        (result) => live && setProbes((prev) => new Map(prev).set(h.id, probeOf(result))),
+        (err: unknown) => live && setProbes((prev) => new Map(prev).set(h.id, { state: "none", note: errorText(err) })),
+      );
+    }
+    return () => {
+      live = false;
+    };
+    // The hosts list is rebuilt with every catalog push; the set needing a dry run is what matters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ensureKey]);
+  const usable = (h: HostChoice) => !!h.target && (!("ensure" in h.target) || probes.get(h.id)?.state === "ready");
+  const noteOf = (h: HostChoice): string | undefined => {
+    if (!h.target) return `No copy of the project on ${h.name}`;
+    const probe = probes.get(h.id);
+    return "ensure" in h.target && probe?.state === "none" ? probe.note : undefined;
+  };
+
+  const chosen = hosts.find((h) => h.id === host);
+  const target = chosen && usable(chosen) ? chosen.target : null;
   const canAdd = brief.trim().length > 0 && !!target && !pending;
 
   const add = async () => {
@@ -133,6 +173,14 @@ export function AddThreadDialog({
     setPending(true);
     setError(null);
     try {
+      // A host with no copy yet gets one first, then the thread starts in it.
+      let place: { projectId: string } | { cwd: string };
+      if ("ensure" in target) {
+        const made = await ensureLinkedOn(host, target.ensure);
+        if (!made.project) throw new Error(made.note ?? `No copy of the project on ${chosen?.name ?? host}`);
+        place = { projectId: made.project.id };
+        rememberLinkHost(target.ensure.projectLinkId, host);
+      } else place = target;
       const meta = await startThread(
         {
           environmentId: host,
@@ -141,7 +189,7 @@ export function AddThreadDialog({
           model: nativeModelId(choice.model),
           reasoning: effort,
           context1m: contexts ? settings.context === "1m" : undefined,
-          ...target,
+          ...place,
           masterId: master.id,
           startedBy: master.id,
           ...(after ? { after } : {}),
@@ -222,8 +270,8 @@ export function AddThreadDialog({
                       type="button"
                       role="radio"
                       aria-checked={host === h.id}
-                      disabled={!h.target}
-                      title={h.target ? undefined : `No copy of the project on ${h.name}`}
+                      disabled={!usable(h)}
+                      title={noteOf(h)}
                       onClick={() => setHost(h.id)}
                       className={`pressable rounded-[4px] px-3 py-1 disabled:cursor-default disabled:opacity-40 ${
                         host === h.id ? "bg-content/10 text-content" : "text-content/50 hover:text-content"

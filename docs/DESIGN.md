@@ -114,6 +114,16 @@ Where each app surface gets its component when layouts are built:
 | Buttons with async state | BeUI StatefulButton (`components/motion`) |
 | Tabs, drawers, toasts | BeUI |
 
+## The host glyph
+
+With two or more hosts known, every thread and agent row says which host
+it runs on with one glyph (chrome/HostGlyph.tsx): 12px, `text-content/45`,
+a laptop for a Mac and a server for anything else, the host's name on
+hover. It sits on the rail's rows and subagent rows, the fleet panel, the
+spawn row, the Inbox card, search hits and the master board. It is never
+coloured and never carries the name as text: colour on a row belongs to
+status dots, and the name is one hover away. With one host it is not drawn.
+
 ## Restraint (what we do not do)
 
 No cards within cards. No glows. No decorative badges or chips. No repeating

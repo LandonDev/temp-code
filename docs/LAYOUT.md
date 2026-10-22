@@ -108,6 +108,16 @@ cwd, 11px muted (Cursor's `main · This Mac`). On implementation and
 orchestration threads the bar idles smaller (single line) and grows on
 focus — steering, not chatting.
 
+An unsent draft of a project linked across hosts carries the host chip
+beside the project picker (chrome/DraftHostPicker.tsx): the host's glyph,
+its name and a chevron, 12px muted like the branch picker. Its menu lists
+every connected host; picking one moves the draft there. A host with no
+copy of the project reads "New copy" and gets one on pick
+(`project.ensureLinked`); a host with no checkout is disabled and says why.
+The chip leaves once the first message goes out. The default host is the
+one of the thread on screen when it is in the project, else the one last
+used for it, else this machine (lib/projectHostChoice.ts).
+
 ## Thread views
 
 ### Chat
