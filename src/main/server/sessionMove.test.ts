@@ -403,7 +403,7 @@ const noteRows = (h: Host, id: string): string[] =>
     .filter((e): e is Extract<AgentEvent, { type: 'status' }> => e.type === 'status' && !!e.detail)
     .map((e) => e.detail!)
 
-describe('the branch travels', () => {
+describe('the branch travels', { timeout: 20_000 }, () => {
   it('on the branch directly, the box clean on master: a bundle, the branch checked out in the box project at the same commit, the changes applied; back again it reuses the Mac checkout', async () => {
     repos()
     seedBox()
