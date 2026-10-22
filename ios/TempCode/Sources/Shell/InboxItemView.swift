@@ -4,19 +4,27 @@ import TempCodeContract
 
 /// One issue or pull request, read-only: the header from the row's own
 /// data (so it paints at once), the body and the conversation as quiet
-/// markdown, and for a pull request the patch by file and hunk, never side
-/// by side. What loaded once stays in the store, so coming back paints
-/// from memory. Open on GitHub sits in the bar.
+/// markdown, and for a pull request the changed files as a list, each row
+/// opening that file's slice of the patch in the diff screen. What loaded
+/// once stays in the store, so coming back paints from memory. Open on
+/// GitHub sits in the bar.
 struct InboxItemView: View {
     let client: EnvironmentClient
     let item: GithubInboxItem
     private let store = InboxStore.shared
     @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var failed = false
     @State private var diffFailed = false
+    /// Bumped by Retry; the load task keys on it.
+    @State private var attempt = 0
+    /// DEBUG: the diff the proof pushes once the patch is in.
+    @State private var proofRoute: PatchDiffRoute?
+    @State private var proofPushed = false
+    @ScaledMetric(relativeTo: .subheadline) private var avatarSize: CGFloat = 32
 
-    private var isPullRequest: Bool { item.kind.rawValue == "pr" }
-    private var key: String { "\(client.environment.id):\(item.repo)#\(item.number)" }
+    private var isPullRequest: Bool { item.kind == .pr }
+    private var key: String { InboxModel.key(environmentId: client.environment.id, item: item) }
 
     /// The checkout gh runs in: the workspace of the repo, else any git workspace.
     private var cwd: String? {
@@ -31,44 +39,19 @@ struct InboxItemView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 header(details: details, thread: thread)
-                if let details {
-                    if details.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Text("No description.")
-                            .font(.body)
-                            .foregroundStyle(.tertiary)
-                    } else {
-                        MarkdownText(text: details.body)
-                            .textSelection(.enabled)
-                    }
-                } else if failed {
-                    Text("Couldn't load this from \(client.environment.name).")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 24)
-                }
+                description(details)
                 if let thread, !thread.comments.isEmpty {
                     InboxConversation(thread: thread)
                 }
                 if isPullRequest {
-                    if let diff {
-                        InboxChanges(diff: diff)
-                    } else if diffFailed {
-                        Text("The changes could not be loaded.")
-                            .font(.footnote)
-                            .foregroundStyle(.tertiary)
-                    }
+                    changes(diff)
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, Layout.textEdge)
             .padding(.top, 8)
             .padding(.bottom, 32)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        // DEBUG only: `TC_TEST_OPEN=item-changes` opens scrolled to the end, where the patch is, for the proof.
-        .defaultScrollAnchor(TestHooks.open == "item-changes" ? .bottom : .top)
         .background(Surface.background)
         .navigationTitle(isPullRequest ? "Pull Request" : "Issue")
         .navigationBarTitleDisplayMode(.inline)
@@ -81,22 +64,27 @@ struct InboxItemView: View {
                 }
             }
         }
-        .task(id: "\(key)|\(cwd ?? "")") { await load() }
+        // The hand-off to the diff thread's screen: a file row's value, and the proof's push.
+        .navigationDestination(for: PatchDiffRoute.self) { route in DiffScreen(route: route) }
+        .navigationDestination(item: $proofRoute) { route in DiffScreen(route: route) }
+        .task(id: "\(key)|\(cwd ?? "")|\(attempt)") { await load() }
     }
+
+    // MARK: - header
 
     @ViewBuilder
     private func header(details: GitHubWorkItemDetails?, thread: GitHubWorkItemThread?) -> some View {
         let author = item.author?.login ?? details?.author ?? ""
         let avatar = item.author?.avatarUrl ?? details?.authorAvatarUrl ?? ""
-        let status = InboxStatus.of(item, viewer: store.snapshot(for: client.environment.id)?.viewer)
+        let status = InboxModel.status(of: item, viewer: store.snapshot(for: client.environment.id)?.viewer)
         let head = item.headRefName.isEmpty ? (thread?.headRefName ?? details?.headRefName ?? "") : item.headRefName
         let base = item.baseRefName.isEmpty ? (thread?.baseRefName ?? details?.baseRefName ?? "") : item.baseRefName
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
-                InboxAvatar(url: avatar, login: author, size: 32)
+                InboxAvatar(url: avatar, login: author, size: avatarSize)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(author.isEmpty ? "GitHub" : author)
-                        .font(.subheadline.weight(.semibold))
+                        .textStep(.title, weight: .semibold)
                         .lineLimit(1)
                     Text("\(item.repo) #\(item.number)")
                         .font(.caption)
@@ -105,21 +93,20 @@ struct InboxItemView: View {
                         .truncationMode(.middle)
                 }
                 Spacer(minLength: 8)
-                Text(TimeFormat.ago(InboxStore.ms(item.updatedAt)))
-                    .font(.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(.tertiary)
+                AgoText(InboxModel.ms(item.updatedAt))
             }
             Text(item.title)
                 .font(.title3.weight(.semibold))
                 .textSelection(.enabled)
             HStack(spacing: 6) {
-                Text(status?.text ?? (item.state.rawValue == "open" ? "Open" : item.state.rawValue.capitalized))
-                    .foregroundStyle(status?.tint ?? (item.state.rawValue == "open" ? Tint.success : Color(.tertiaryLabel)))
+                Text(status?.text ?? (item.state == .open ? "Open" : item.state.rawValue.capitalized))
+                    .foregroundStyle(status?.tone.color ?? (item.state == .open ? Tint.success : Color(.tertiaryLabel)))
                     .lineLimit(1)
                     .layoutPriority(1)
                 if isPullRequest, !head.isEmpty, !base.isEmpty {
-                    Text("·").foregroundStyle(.tertiary)
+                    Text("·")
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
                     Text("\(head) → \(base)")
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
@@ -127,32 +114,114 @@ struct InboxItemView: View {
                         .truncationMode(.middle)
                 }
             }
-            .font(.footnote)
+            .font(TextStep.meta.font)
             if !item.labels.isEmpty {
                 InboxLabels(labels: item.labels.map(\.name))
             }
         }
     }
 
-    private func load() async {
-        guard let cwd else {
-            failed = store.details[key] == nil
-            return
+    // MARK: - body
+
+    /// The description: a shimmer of the height it will take, then the
+    /// markdown cross-faded over it (a plain swap under reduced motion).
+    @ViewBuilder
+    private func description(_ details: GitHubWorkItemDetails?) -> some View {
+        Group {
+            if let details {
+                if details.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text("No description.")
+                        .font(.body)
+                        .foregroundStyle(.tertiary)
+                } else {
+                    MarkdownText(text: details.body)
+                        .textSelection(.enabled)
+                }
+            } else if cwd == nil {
+                Text("No checkout of \(item.repo) on \(client.environment.name).")
+                    .textStep(.meta)
+            } else if failed {
+                InboxLoadFailed(text: "Couldn't load this from \(client.environment.name).") { retry() }
+            } else {
+                Shimmer(height: 72)
+            }
         }
+        .transition(.opacity)
+        .animation(reduceMotion ? nil : Motion.crossFade, value: details == nil)
+    }
+
+    // MARK: - changes
+
+    @ViewBuilder
+    private func changes(_ diff: GitHubPrDiff?) -> some View {
+        Group {
+            if let diff {
+                InboxChanges(title: "\(item.repo) #\(item.number)", diff: diff)
+            } else if cwd != nil {
+                if diffFailed {
+                    InboxLoadFailed(text: "The changes could not be loaded.") { retry() }
+                } else {
+                    Shimmer(height: 88)
+                }
+            }
+        }
+        .transition(.opacity)
+        .animation(reduceMotion ? nil : Motion.crossFade, value: diff == nil)
+    }
+
+    private func retry() {
+        failed = false
+        diffFailed = false
+        attempt += 1
+    }
+
+    // MARK: - loading
+
+    /// The details and the conversation together, then the diff; each lands
+    /// in the store as it comes, and a cancelled load settles nothing.
+    private func load() async {
+        guard let cwd else { return }
         let kind = item.kind.rawValue
         if store.details[key] == nil || store.threads[key] == nil {
             async let detailsCall = try? client.request(Methods.GithubDetails.self, .init(cwd: cwd, kind: .init(rawValue: kind), number: item.number, repo: item.repo))
             async let threadCall = try? client.request(Methods.GithubThread.self, .init(cwd: cwd, kind: .init(rawValue: kind), number: item.number, repo: item.repo))
-            if let details = await detailsCall { store.putDetails(details, for: key) }
-            if let thread = await threadCall { store.putThread(thread, for: key) }
+            let (details, thread) = await (detailsCall, threadCall)
+            guard !Task.isCancelled else { return }
+            if let details { store.putDetails(details, for: key) }
+            if let thread { store.putThread(thread, for: key) }
             failed = store.details[key] == nil
         }
         if isPullRequest, store.diffs[key] == nil {
-            if let diff = try? await client.request(Methods.GithubPrDiff.self, .init(cwd: cwd, number: item.number)) {
+            let diff = try? await client.request(Methods.GithubPrDiff.self, .init(cwd: cwd, number: item.number))
+            guard !Task.isCancelled else { return }
+            if let diff {
                 store.putDiff(diff, for: key)
             } else {
                 diffFailed = true
             }
+        }
+        openDiffForProof()
+    }
+
+    /// DEBUG only: `TC_TEST_OPEN=item-diff` pushes the first file's diff once the patch is in.
+    private func openDiffForProof() {
+        guard TestHooks.open == "item-diff", !proofPushed, let diff = store.diffs[key] else { return }
+        guard let change = InboxPatch.changes(diff).first(where: { $0.patch != nil }), let patch = change.patch else { return }
+        proofPushed = true
+        proofRoute = PatchDiffRoute(title: change.path, patch: patch)
+    }
+}
+
+/// A load that failed: the line and Retry, in the meta step.
+private struct InboxLoadFailed: View {
+    let text: String
+    let retry: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(text)
+                .textStep(.meta)
+            PillButton("Retry", action: retry)
         }
     }
 }
@@ -170,7 +239,7 @@ private struct InboxLabels: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
-                    .background(Color(.tertiarySystemFill), in: Capsule())
+                    .background(Surface.fill, in: Capsule())
             }
         }
     }
@@ -212,6 +281,8 @@ private nonisolated struct FlowRow: Layout {
     }
 }
 
+// MARK: - conversation
+
 /// The conversation: comments, reviews and review threads in time order,
 /// each with its author's picture, the review it carried in the color that
 /// means it, where in the code it sits, and its replies one step in.
@@ -223,12 +294,9 @@ private struct InboxConversation: View {
             Hairline()
             HStack(spacing: 6) {
                 Text("Conversation")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .textStep(.meta, weight: .semibold)
                 Text("\(count)")
-                    .font(.footnote)
-                    .monospacedDigit()
-                    .foregroundStyle(.tertiary)
+                    .textStep(.stamp)
             }
             ForEach(thread.comments, id: \.id) { comment in
                 InboxCommentView(comment: comment)
@@ -251,20 +319,21 @@ private struct InboxConversation: View {
 
 private struct InboxCommentView: View {
     let comment: GitHubWorkItemComment
+    @ScaledMetric(relativeTo: .footnote) private var avatarSize: CGFloat = 24
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            InboxAvatar(url: comment.authorAvatarUrl, login: comment.author, size: 24)
+            InboxAvatar(url: comment.authorAvatarUrl, login: comment.author, size: avatarSize)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(comment.author.isEmpty ? "GitHub" : comment.author)
                         .font(.footnote.weight(.semibold))
                         .lineLimit(1)
-                    if let review = InboxReviewState.label(comment.state) {
-                        Text(review.text)
+                    if let verdict = InboxModel.reviewVerdict(comment.state) {
+                        Text(verdict.text)
                             .font(.footnote)
-                            .foregroundStyle(review.tint ?? Color(.tertiaryLabel))
+                            .foregroundStyle(verdict.tone.color)
                             .lineLimit(1)
                             .layoutPriority(1)
                     }
@@ -276,10 +345,7 @@ private struct InboxCommentView: View {
                             .layoutPriority(1)
                     }
                     Spacer(minLength: 8)
-                    Text(TimeFormat.ago(InboxStore.ms(comment.createdAt)))
-                        .font(.caption)
-                        .monospacedDigit()
-                        .foregroundStyle(.tertiary)
+                    AgoText(InboxModel.ms(comment.createdAt))
                 }
                 if !comment.path.isEmpty {
                     Text(comment.line.map { "\(comment.path):\($0)" } ?? comment.path)
@@ -305,396 +371,107 @@ private struct InboxCommentView: View {
     }
 }
 
-/// The pull request's patch: a count line, then one fold per file with its
-/// hunks, dim line numbers in mono one step down, adds and deletes tinted.
-/// The first file opens; the rest open on tap. Long patches show their first
-/// 2,000 lines until asked for the rest.
+// MARK: - changes
+
+/// The pull request's changed files: a count line, then a card of rows, one
+/// per file with its `+n −m`, each opening that file's slice of the patch in
+/// the diff screen; "All files" first when there are several. A file whose
+/// block the host did not send (binary, or a patch cut short) cannot open.
 private struct InboxChanges: View {
+    let title: String
     let diff: GitHubPrDiff
-    @State private var open: Set<String> = []
-    @State private var primed = false
-    @State private var showAll = false
-    private let cap = 2_000
 
     var body: some View {
-        let files = PatchFile.parse(diff)
-        let total = files.reduce(0) { $0 + $1.lines.count }
+        let changes = InboxPatch.changes(diff)
         VStack(alignment: .leading, spacing: 12) {
             Hairline()
             HStack(spacing: 6) {
                 Text("Changes")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text(files.count == 1 ? "1 file" : "\(files.count) files")
-                    .font(.footnote)
-                    .monospacedDigit()
-                    .foregroundStyle(.tertiary)
-                Spacer(minLength: 8)
-                ChangeStat(adds: diff.additions, dels: diff.deletions)
-                    .font(.footnote)
-                    .monospacedDigit()
+                    .textStep(.meta, weight: .semibold)
+                Text(changes.count == 1 ? "1 file" : "\(changes.count) files")
+                    .textStep(.stamp)
             }
-            if diff.truncated {
-                Text("The patch is too large to show; the files are listed without it.")
-                    .font(.footnote)
-                    .foregroundStyle(.tertiary)
-            }
-            if files.isEmpty {
+            if changes.isEmpty {
                 Text("No file changes.")
                     .font(.footnote)
                     .foregroundStyle(.tertiary)
-            }
-            let limits = budgets(files)
-            ForEach(Array(files.enumerated()), id: \.element.id) { index, file in
-                PatchFileView(file: file, expanded: open.contains(file.id), budget: limits[index]) {
-                    withAnimation(open.contains(file.id) ? Motion.collapse : Motion.expand) {
-                        if open.contains(file.id) { open.remove(file.id) } else { open.insert(file.id) }
+            } else {
+                VStack(spacing: 0) {
+                    if changes.count > 1 {
+                        InboxChangeRow(route: PatchDiffRoute(title: title, patch: diff.patch), enabled: !diff.patch.isEmpty) {
+                            Text("All files")
+                                .font(.footnote.weight(.medium))
+                                .foregroundStyle(diff.patch.isEmpty ? .tertiary : .primary)
+                        } trailing: {
+                            ChangeStat(adds: diff.additions, dels: diff.deletions)
+                        }
+                        Hairline(inset: 12)
                     }
-                }
-            }
-            if total > cap, !showAll {
-                Button("Show all \(total) lines") { showAll = true }
-                    .font(.footnote.weight(.medium))
-                    .buttonStyle(.pressable)
-                    .foregroundStyle(Color.accentColor)
-            }
-        }
-        .onAppear {
-            guard !primed else { return }
-            primed = true
-            if let first = files.first { open = [first.id] }
-        }
-    }
-
-    /// How many lines each open file may show before the cap: the files above it spend the budget first.
-    private func budgets(_ files: [PatchFile]) -> [Int] {
-        var shown = 0
-        var out: [Int] = []
-        for file in files {
-            out.append(showAll ? Int.max : max(0, cap - shown))
-            if open.contains(file.id) { shown += file.lines.count }
-        }
-        return out
-    }
-}
-
-private struct PatchFileView: View {
-    let file: PatchFile
-    let expanded: Bool
-    let budget: Int
-    let toggle: () -> Void
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button(action: toggle) {
-                HStack(spacing: 8) {
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.tertiary)
-                        .rotationEffect(.degrees(expanded ? 90 : 0))
-                        .frame(width: 12)
-                    Text(file.displayPath)
-                        .font(.system(.footnote, design: .monospaced).weight(.medium))
-                        .lineLimit(1)
-                        .truncationMode(.head)
-                    Spacer(minLength: 8)
-                    if file.binary {
-                        Text("Binary")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    } else {
-                        ChangeStat(adds: file.additions, dels: file.deletions)
-                            .font(.caption)
-                            .monospacedDigit()
-                    }
-                }
-                .padding(.horizontal, 12)
-                .frame(minHeight: 44)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.pressable)
-            .accessibilityLabel("\(file.displayPath), \(expanded ? "expanded" : "collapsed")")
-            if expanded {
-                Hairline()
-                if file.binary || file.lines.isEmpty {
-                    Text(file.binary ? "Binary file." : "No patch for this file.")
-                        .font(.footnote)
-                        .foregroundStyle(.tertiary)
-                        .padding(12)
-                } else {
-                    ScrollView(.horizontal) {
-                        VStack(alignment: .leading, spacing: 0) {
-                            ForEach(Array(file.lines.prefix(budget).enumerated()), id: \.offset) { _, line in
-                                PatchLineRow(line: line)
-                            }
-                            if file.lines.count > budget {
-                                Text("\(file.lines.count - budget) more lines")
-                                    .font(.footnote)
+                    ForEach(Array(changes.enumerated()), id: \.element.id) { index, change in
+                        if index > 0 { Hairline(inset: 12) }
+                        InboxChangeRow(route: change.patch.map { PatchDiffRoute(title: change.path, patch: $0) }, enabled: change.patch != nil) {
+                            InboxChangePath(change: change, enabled: change.patch != nil)
+                        } trailing: {
+                            if change.binary {
+                                Text("Binary")
+                                    .font(.caption)
                                     .foregroundStyle(.tertiary)
-                                    .padding(12)
+                            } else {
+                                ChangeStat(adds: change.additions, dels: change.deletions)
                             }
                         }
-                        .padding(.vertical, 6)
                     }
-                    .scrollIndicators(.hidden)
-                    .transition(reduced ? .opacity : .opacity.combined(with: .move(edge: .top)))
                 }
+                .groupCard()
+            }
+            if diff.truncated {
+                Text("The rest of the patch is on GitHub.")
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
             }
         }
-        .background(Surface.chrome, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
-        .clipShape(RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
     }
-
-    private var reduced: Bool { reduceMotion }
 }
 
-private struct PatchLineRow: View {
-    let line: PatchLine
+/// One row of the Changes card: a push to the diff screen with the kit's
+/// press, or the same row inert when there is nothing to open.
+private struct InboxChangeRow<Label: View, Trailing: View>: View {
+    let route: PatchDiffRoute?
+    let enabled: Bool
+    @ViewBuilder let label: () -> Label
+    @ViewBuilder let trailing: () -> Trailing
 
     var body: some View {
-        if line.kind == .hunk {
-            Text(line.text)
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Rectangle().fill(Color(.quaternarySystemFill)))
+        let content = HStack(spacing: 8) {
+            label()
+            Spacer(minLength: 8)
+            trailing()
+        }
+        .padding(.horizontal, 12)
+        .frame(minHeight: Layout.rowHeight)
+        .contentShape(Rectangle())
+        if let route, enabled {
+            NavigationLink(value: route) { content }
+                .buttonStyle(.pressable)
         } else {
-            HStack(spacing: 0) {
-                Text(line.number.map { String($0) } ?? "")
-                    .foregroundStyle(.tertiary)
-                    .frame(width: 40, alignment: .trailing)
-                Text(marker)
-                    .foregroundStyle(markerColor)
-                    .frame(width: 18)
-                Text(line.text)
-                    .foregroundStyle(line.kind == .context ? .secondary : .primary)
-                Spacer(minLength: 16)
-            }
+            content
+        }
+    }
+}
+
+/// A path in two steps on one line: the directory dim, the file name
+/// primary, in mono one step down, the head truncated so the name survives.
+private struct InboxChangePath: View {
+    let change: InboxChange
+    let enabled: Bool
+
+    var body: some View {
+        let name = Board.fileName(change.displayPath)
+        let directory = String(change.displayPath.dropLast(name.count))
+        (Text(directory).foregroundStyle(.tertiary) + Text(name).foregroundStyle(enabled ? .primary : .tertiary))
             .font(.system(.footnote, design: .monospaced))
-            .monospacedDigit()
-            .padding(.vertical, 1)
-            .padding(.trailing, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            // An explicit rectangle: a plain style here takes a rounded container shape on iOS 26 and the rows scallop.
-            .background(Rectangle().fill(background))
-        }
-    }
-
-    private var marker: String {
-        switch line.kind {
-        case .add: "+"
-        case .del: "−"
-        default: " "
-        }
-    }
-
-    private var markerColor: Color {
-        switch line.kind {
-        case .add: Tint.success
-        case .del: Tint.destructive
-        default: Color(.tertiaryLabel)
-        }
-    }
-
-    private var background: Color {
-        switch line.kind {
-        case .add: Tint.success.opacity(0.12)
-        case .del: Tint.destructive.opacity(0.12)
-        default: .clear
-        }
-    }
-}
-
-// MARK: - the patch
-
-nonisolated struct PatchLine: Hashable {
-    nonisolated enum Kind: Hashable {
-        case add, del, context, hunk
-    }
-
-    let kind: Kind
-    let text: String
-    let oldNumber: Int?
-    let newNumber: Int?
-
-    /// The one number a unified view shows: the new line, or the old one for a deletion.
-    var number: Int? { kind == .del ? oldNumber : newNumber }
-}
-
-/// One file of a unified patch, the desktop's `parsePrPatch` in Swift,
-/// merged with the counts `gh pr view` reports.
-nonisolated struct PatchFile: Identifiable, Hashable {
-    nonisolated enum Status: Hashable {
-        case added, deleted, renamed, modified
-    }
-
-    var path: String
-    var previousPath: String?
-    var status: Status = .modified
-    var binary = false
-    var additions = 0
-    var deletions = 0
-    var lines: [PatchLine] = []
-
-    var id: String { path }
-
-    var displayPath: String {
-        if let previousPath, status == .renamed { return "\(previousPath) → \(path)" }
-        return path
-    }
-
-    nonisolated static func parse(_ diff: GitHubPrDiff) -> [PatchFile] {
-        let parsed = parse(patch: diff.patch)
-        if parsed.isEmpty {
-            return diff.files.map { PatchFile(path: $0.path, additions: $0.additions, deletions: $0.deletions) }
-        }
-        if diff.files.isEmpty { return parsed }
-        var byPath: [String: PatchFile] = [:]
-        for file in parsed where byPath[file.path] == nil { byPath[file.path] = file }
-        var out: [PatchFile] = []
-        for meta in diff.files {
-            if var hit = byPath.removeValue(forKey: meta.path) {
-                hit.additions = meta.additions
-                hit.deletions = meta.deletions
-                out.append(hit)
-            } else {
-                out.append(PatchFile(path: meta.path, additions: meta.additions, deletions: meta.deletions))
-            }
-        }
-        for file in parsed where byPath[file.path] != nil {
-            out.append(file)
-        }
-        return out
-    }
-
-    nonisolated static func parse(patch: String) -> [PatchFile] {
-        let text = patch.replacingOccurrences(of: "\r\n", with: "\n")
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
-        var files: [PatchFile] = []
-        var block: [Substring] = []
-        func flush() {
-            if !block.isEmpty, let file = parseFile(block) { files.append(file) }
-            block = []
-        }
-        var rows = text.split(separator: "\n", omittingEmptySubsequences: false)
-        if rows.last?.isEmpty == true { rows.removeLast() }
-        for line in rows {
-            if line.hasPrefix("diff --git ") { flush() }
-            block.append(line)
-        }
-        flush()
-        return files
-    }
-
-    private nonisolated static func parseFile(_ lines: [Substring]) -> PatchFile? {
-        var file = PatchFile(path: "")
-        var oldNumber = 0
-        var newNumber = 0
-        var inHunk = false
-        for line in lines {
-            if line.hasPrefix("diff --git ") {
-                if let (from, to) = gitPaths(line.dropFirst("diff --git ".count)) {
-                    file.previousPath = from == to ? nil : from
-                    file.path = to
-                }
-                continue
-            }
-            if line.hasPrefix("new file mode") {
-                file.status = .added
-                continue
-            }
-            if line.hasPrefix("deleted file mode") {
-                file.status = .deleted
-                continue
-            }
-            if line.hasPrefix("rename from ") {
-                file.previousPath = String(line.dropFirst("rename from ".count))
-                file.status = .renamed
-                continue
-            }
-            if line.hasPrefix("rename to ") {
-                file.path = String(line.dropFirst("rename to ".count))
-                file.status = .renamed
-                continue
-            }
-            if line.hasPrefix("Binary files ") || line.hasPrefix("GIT binary patch") {
-                file.binary = true
-                continue
-            }
-            if !inHunk, line.hasPrefix("--- ") {
-                let next = stripPath(line.dropFirst(4))
-                if next == "/dev/null" {
-                    if file.status == .modified { file.status = .added }
-                } else if !next.isEmpty, file.previousPath == nil, next != file.path {
-                    file.previousPath = next
-                }
-                continue
-            }
-            if !inHunk, line.hasPrefix("+++ ") {
-                let next = stripPath(line.dropFirst(4))
-                if next == "/dev/null" {
-                    file.status = .deleted
-                } else if !next.isEmpty {
-                    file.path = next
-                }
-                continue
-            }
-            if line.hasPrefix("@@ "), let (old, new) = hunkStart(line) {
-                inHunk = true
-                oldNumber = old
-                newNumber = new
-                file.lines.append(PatchLine(kind: .hunk, text: String(line), oldNumber: nil, newNumber: nil))
-                continue
-            }
-            guard inHunk else { continue }
-            if line.hasPrefix("+") {
-                file.additions += 1
-                file.lines.append(PatchLine(kind: .add, text: String(line.dropFirst()), oldNumber: nil, newNumber: newNumber))
-                newNumber += 1
-            } else if line.hasPrefix("-") {
-                file.deletions += 1
-                file.lines.append(PatchLine(kind: .del, text: String(line.dropFirst()), oldNumber: oldNumber, newNumber: nil))
-                oldNumber += 1
-            } else if line.hasPrefix("\\") {
-                continue
-            } else {
-                file.lines.append(PatchLine(kind: .context, text: String(line.dropFirst(line.hasPrefix(" ") ? 1 : 0)), oldNumber: oldNumber, newNumber: newNumber))
-                oldNumber += 1
-                newNumber += 1
-            }
-        }
-        if file.previousPath == file.path { file.previousPath = nil }
-        return file.path.isEmpty ? nil : file
-    }
-
-    /// "a/x b/y" → ("x", "y"); the split is at " b/", the first path's own spaces kept.
-    private nonisolated static func gitPaths(_ rest: Substring) -> (String, String)? {
-        guard let range = rest.range(of: " b/") else { return nil }
-        let from = rest[rest.startIndex..<range.lowerBound]
-        let to = rest[range.upperBound...]
-        return (stripPath(from), String(to))
-    }
-
-    /// Drops the `a/` or `b/` prefix, the trailing tab stamp, and the quotes git puts around odd names.
-    private nonisolated static func stripPath(_ raw: Substring) -> String {
-        var path = Substring(raw)
-        if let tab = path.firstIndex(of: "\t") { path = path[..<tab] }
-        path = Substring(path.trimmingCharacters(in: .whitespaces))
-        if path.hasPrefix("\""), path.hasSuffix("\""), path.count >= 2 { path = path.dropFirst().dropLast() }
-        if path.hasPrefix("a/") || path.hasPrefix("b/") { path = path.dropFirst(2) }
-        return String(path)
-    }
-
-    private nonisolated static func hunkStart(_ line: Substring) -> (Int, Int)? {
-        // @@ -12,7 +12,9 @@ …
-        let parts = line.split(separator: " ", maxSplits: 3, omittingEmptySubsequences: true)
-        guard parts.count >= 3, parts[1].hasPrefix("-"), parts[2].hasPrefix("+") else { return nil }
-        let old = Int(parts[1].dropFirst().split(separator: ",").first ?? "") ?? 0
-        let new = Int(parts[2].dropFirst().split(separator: ",").first ?? "") ?? 0
-        return (old, new)
+            .lineLimit(1)
+            .truncationMode(.head)
+            .accessibilityLabel(change.displayPath)
     }
 }
