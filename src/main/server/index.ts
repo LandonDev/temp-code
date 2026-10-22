@@ -67,6 +67,8 @@ import { startRemoteListener, type RemoteListener } from './remote/listener'
 import { fenceRequest } from './remote/fence'
 import { createMcpHandler } from './remote/mcp'
 import { Notifier } from './remote/notifier'
+import type { PresenceSource } from '../presence'
+import type { MacPresence } from '@shared/contract-relay'
 import { apnsFromEnv } from './remote/apns'
 import { ActivityFeed, PushRegistry } from './remote/push'
 import { deliverWebhooks, webhookPayload } from './remote/webhooks'
@@ -323,6 +325,8 @@ export async function startServer(
     selfUpdate?: (version: string) => Promise<SelfUpdateOutcome>
     /** The local devices gatherer, in place of the `isMacHost()` pick: a proof injects a fake on Linux (scripts/ios-client-test-server.ts); null for none. */
     devices?: MacDevices | null
+    /** This host's screen and power state for the relay (src/main/presence.ts); default unknown/awake, never changing. */
+    presence?: PresenceSource & { set?: (patch: Partial<Pick<MacPresence, 'screen' | 'power'>>) => MacPresence }
   } = {}
 ): Promise<RunningServer> {
   bootMark('server-start')

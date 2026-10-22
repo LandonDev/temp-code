@@ -1,4 +1,4 @@
-import { app, shell, dialog, net, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, dialog, net, BrowserWindow, ipcMain, powerMonitor } from 'electron'
 import { homedir } from 'os'
 import { join } from 'path'
 import { copyFileSync, existsSync, mkdirSync } from 'fs'
@@ -22,6 +22,7 @@ import { handleAssetRequest, pagesRoot, registerAssetProtocol, registerSchemes, 
 import { registerAppProtocol } from './appScheme'
 import { migrateLocalStorage } from './originMigration'
 import { isHeadless, noDisplay, publishLocalPort, quitsOnAllClosed, unpublishLocalPort } from './headless'
+import { MacPresenceWatcher, presenceFromEnv } from './presence'
 import { htmlPreviewer } from './htmlPreview'
 import { setHtmlPreviewer, setHtmlRenderRoot } from './server/htmlRender'
 import { killAllPtys, listPtys, ptyFlowCounters, registerPty } from './pty'
@@ -133,6 +134,16 @@ app.whenReady().then(async () => {
   setHtmlPreviewer(htmlPreviewer)
   // The core compares every profile's owner to this id (aliax-core sync.ts).
   configureAliax(loadEnvironmentId(app.getPath('userData')))
+  // This host's screen and power state for the relay (presence.ts): a Mac
+  // with a desktop follows powerMonitor and reads the lock once at boot; a
+  // headless host or another platform reports unknown/awake, and either
+  // takes TEMP_CODE_PRESENCE on an isolated instance.
+  const fromEnv = presenceFromEnv(process.env)
+  const presence = new MacPresenceWatcher({ initial: { screen: 'unknown', power: 'awake', ...fromEnv } })
+  if (process.platform === 'darwin' && !headless) {
+    presence.attach(powerMonitor)
+    if (!fromEnv.screen) void presence.readInitialLock()
+  }
   server = await startServer(join(app.getPath('userData'), 'temp-code.db'), {
     appPath: app.getAppPath(),
     claimShim: mayClaimShim({ isPackaged: app.isPackaged }),
@@ -140,7 +151,8 @@ app.whenReady().then(async () => {
     watchMaster: !headless,
     preconnect: (provider, account) => void preconnectAccount(provider, account, { upstream: upstream() }),
     // A release this app published, or the box's word that one landed, is fetched at once (update.ts).
-    selfUpdate: headless ? undefined : (version) => selfUpdate(version)
+    selfUpdate: headless ? undefined : (version) => selfUpdate(version),
+    presence
   })
   if (!headless) {
     registerUpdates()
