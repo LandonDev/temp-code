@@ -153,7 +153,7 @@ import TempCodeContract
     ]
 
     @Test(arguments: leads) func `the review lead follows the outcome`(outcome: NoticeEvent.Review.Outcome, expected: String) {
-        #expect(ReviewLine.lead(Self.review(outcome), label: "GPT-6.1 Sol") == expected)
+        #expect(ReviewLine.lead(Self.review(outcome)) == expected)
     }
 
     @Test func `the review summary counts findings and says what happened to the merge`() {

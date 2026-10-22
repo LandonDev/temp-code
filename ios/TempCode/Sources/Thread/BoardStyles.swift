@@ -26,8 +26,7 @@ enum PassTint {
 
     /// "#10b981" → a colour.
     private static func color(hex: String) -> Color {
-        var value: UInt64 = 0
-        Scanner(string: String(hex.dropFirst())).scanHexInt64(&value)
+        let value = UInt64(hex.dropFirst(), radix: 16) ?? 0
         return Color(red: Double((value >> 16) & 0xff) / 255, green: Double((value >> 8) & 0xff) / 255, blue: Double(value & 0xff) / 255)
     }
 }

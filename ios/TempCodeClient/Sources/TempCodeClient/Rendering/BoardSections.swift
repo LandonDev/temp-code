@@ -103,7 +103,7 @@ extension Board {
 /// "Gate failed on master · at vitest", "Release failed on master".
 public enum GateLine {
     public static func text(_ gate: NoticeEvent.Gate) -> String {
-        let label = label(gate.step)
+        let label = Self.label(gate.step)
         if gate.ok { return "\(label) passed on \(gate.branch)" }
         switch gate.step {
         case .typecheck:
@@ -149,14 +149,14 @@ public enum GateLine {
     }
 }
 
-/// The review row's two lines: the desktop ReviewCard's lead and summary.
-/// The model's label is formatted by the caller (`ModelName.short` lives in
-/// the app target); the package only puts the words around it.
+/// The review row's two lines: the desktop ReviewCard's lead and summary,
+/// the model named the way every row names one (`ModelName.short`).
 public enum ReviewLine {
     /// "Reviewed by GPT-6.1 Sol", "Review by GPT-6.1 Sol timed out", "Review
     /// by … did not run", "Merged anyway", "Merged"; an unknown outcome reads "Review".
-    public static func lead(_ review: NoticeEvent.Review, label: String) -> String {
-        switch review.outcome {
+    public static func lead(_ review: NoticeEvent.Review) -> String {
+        let label = ModelName.short(review.model)
+        return switch review.outcome {
         case .pass, .held: "Reviewed by \(label)"
         case .timeout: "Review by \(label) timed out"
         case .failed: "Review by \(label) did not run"
@@ -181,7 +181,7 @@ public enum ReviewLine {
         case .held:
             return [blockingText, minorText, review.merged ? "merged anyway" : "merge held"].compactMap { $0 }.joined(separator: ", ")
         case .timeout:
-            let minutes = review.minutes.map { $0.formatted(.number.precision(.fractionLength(0...1))) } ?? "?"
+            let minutes = review.minutes.map { $0.formatted(.number.precision(.fractionLength(0...1)).locale(Locale(identifier: "en_US_POSIX"))) } ?? "?"
             return "after \(minutes) min, merged without it"
         case .failed:
             return [review.reason, "merged without it"].compactMap { $0 }.joined(separator: ", ")

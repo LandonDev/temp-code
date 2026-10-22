@@ -123,7 +123,7 @@ struct ReviewRow: View {
                     .foregroundStyle(tint)
                     .frame(width: 16)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(ReviewLine.lead(review, label: ModelName.short(review.model)))
+                    Text(ReviewLine.lead(review))
                         .textStep(.title, weight: held ? .medium : .regular)
                     let summary = ReviewLine.summary(review)
                     if !summary.isEmpty {
@@ -151,10 +151,11 @@ struct ReviewRow: View {
         let blocking = review.blocking.map { ReviewFinding(file: $0.file, line: $0.line, summary: $0.summary, scenario: $0.failure_scenario) }
         let minor = review.minor.map { ReviewFinding(file: $0.file, line: $0.line, summary: $0.summary, scenario: $0.failure_scenario) }
         // Findings are plain rows inside the field: Radius.inside(Radius.field, padding: 12) is 0.
+        // Two findings can share a file and line, so the position is the row's identity.
         VStack(alignment: .leading, spacing: 10) {
-            ForEach(blocking) { FindingRow(finding: $0, strong: true) }
+            ForEach(Array(blocking.enumerated()), id: \.offset) { FindingRow(finding: $0.element, strong: true) }
             if blocking.count + minor.count < 6 {
-                ForEach(minor) { FindingRow(finding: $0, strong: false) }
+                ForEach(Array(minor.enumerated()), id: \.offset) { FindingRow(finding: $0.element, strong: false) }
             } else if !minor.isEmpty {
                 Text("and \(minor.count) minor")
                     .textStep(.meta)
@@ -208,13 +209,12 @@ struct FindingRow: View {
 }
 
 /// One finding of either kind, as the rows read it.
-struct ReviewFinding: Hashable, Identifiable {
+struct ReviewFinding: Hashable {
     let file: String
     let line: Int?
     let summary: String
     let scenario: String
 
-    var id: String { location }
     var location: String { line.map { "\(file):\($0)" } ?? file }
 }
 

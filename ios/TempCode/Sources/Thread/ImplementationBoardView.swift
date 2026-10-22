@@ -31,7 +31,7 @@ struct ImplementationBoardView: View {
         let running = session?.status == .running || session?.status == .starting
         let board = ImplementationBoard.build(thread.fold, running: running)
         let agents = Fleet.children(of: sessionId, in: client.sessions)
-        let empty = board.rounds.allSatisfy { !$0.hasRow } && board.closing == nil && agents.isEmpty
+        let empty = board.rounds.allSatisfy { !$0.hasRow && $0.outcomes.isEmpty } && board.closing == nil && agents.isEmpty
         let plan = session?.planThreadId.flatMap { client.session($0) }
         // The launch hook names a row by what the board holds now.
         let pick = Binding<TodoChoice>(get: { choice == .firstTrace ? Self.firstTrace(in: board) : choice }, set: { choice = $0 })
@@ -44,7 +44,9 @@ struct ImplementationBoardView: View {
                     GoalHeader(goal: goal(board), progress: board.progress, plan: plan)
                     ForEach(board.rounds.indices, id: \.self) { index in
                         let round = board.rounds[index]
-                        if round.hasRow || (round.isCurrent && !board.hasTodos) {
+                        // A landing that arrived in a round of its own (a "land it" follow-up,
+                        // a Merge anyway from the desktop) still earns its rows.
+                        if round.hasRow || !round.outcomes.isEmpty || (round.isCurrent && !board.hasTodos) {
                             RoundSection(round: round, roundIndex: index, showsPass: board.showsPasses, running: running && round.isCurrent, choice: pick, client: client, sessionId: sessionId)
                         }
                     }
@@ -230,9 +232,8 @@ private struct RoundSection: View {
             if todos.isEmpty {
                 WorkCards(items: round.work, client: client, sessionId: sessionId)
             } else {
-                if let setup = workByTodo[-1], setup.contains(where: { $0.item.needsUser || $0.item.isError }) {
-                    WorkCards(items: setup, client: client, sessionId: sessionId)
-                }
+                // Always mounted, so the first card arrives through the container's animation.
+                WorkCards(items: workByTodo[-1] ?? [], client: client, sessionId: sessionId)
                 ForEach(todos.indices, id: \.self) { index in
                     let todo = todos[index]
                     let live = running && todo.status == .inProgress
@@ -255,9 +256,7 @@ private struct RoundSection: View {
                         TodoTrace(items: trace, client: client, sessionId: sessionId)
                             .transition(.asymmetric(insertion: .opacity.animation(Motion.expandContent), removal: .opacity.animation(Motion.collapse)))
                     }
-                    if let cards = workByTodo[index], cards.contains(where: { $0.item.needsUser || $0.item.isError }) {
-                        WorkCards(items: cards, client: client, sessionId: sessionId)
-                    }
+                    WorkCards(items: workByTodo[index] ?? [], client: client, sessionId: sessionId)
                 }
             }
             if !changes.isEmpty {
