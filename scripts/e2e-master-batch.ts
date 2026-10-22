@@ -18,12 +18,14 @@
  *      after a turn.
  *   3. A child lands through merge_branch: typecheck stubbed red (HELD, a
  *      red GateNotice row) then green (merged, a review row, batch.get says
- *      1 landed).
+ *      1 of 2 landed: only the implementations have a branch to land), and
+ *      the plan child's complete plan, with no build, holds the batch open.
  *   4. A chat thread that is not the master starts a Fable THREAD with
  *      app_start_thread (threads follow no model policy) and is refused a
  *      Fable SUBAGENT by spawn_agent; the master spawns one.
- *   5. The master set its rules with batch_rules at the start; with every
- *      child done the engine runs them on its own (gate and release
+ *   5. The master set its rules with batch_rules at the start; once the plan
+ *      child is archived (what a person does with a plan they will not
+ *      build) and every child is done, the engine runs them on its own (gate and release
  *      stubbed green, nothing to publish or deploy), rows "Batch done" on
  *      the master, wakes it with a <batch-report>, and the master idles
  *      once that turn ends (it was watching while the batch was open).
@@ -330,7 +332,10 @@ check('a.txt on origin/master', originHas('a.txt'))
 check('a green typecheck row followed the red one', notices(a.id, 'gate').map((n) => n.gate?.ok).join(',') === 'false,true')
 check('merge row on child a', notices(a.id, 'review').some((n) => n.review?.merged), JSON.stringify(notices(a.id, 'review').map((n) => n.message)))
 let state = batches.get(master.id)
-check('batch.get: 1 of 4 landed (the engine may already have ended the cycle)', /^(running: 1 of 4 landed|passed: 1 of 4 landed · 3 left out)$/.test(steps(state).land) && state.landed[0] === a.id && state.pending.length === 3, JSON.stringify(steps(state)))
+// Only threads with a branch to land count (batch.ts canLand): a and b, never the planner or the research thread.
+check('batch.get: 1 of 2 landed', steps(state).land === 'running: 1 of 2 landed' && state.landed[0] === a.id && state.pending.length === 3, JSON.stringify(steps(state)))
+// Child p's plan is complete and auto-start is off: no build exists, so the batch must not end on the plan alone.
+check('the complete plan holds the batch open', store.getSession(p.id)?.planCompletedAt != null && !store.getSession(p.id)?.implementationId && state.finishedAt === null, JSON.stringify({ finishedAt: state.finishedAt, land: steps(state).land }))
 
 // ── 4. threads follow no model policy; subagents do ─────────────────────
 console.log('\n[4] Fable: a thread from any thread, a subagent only from the master')
@@ -355,15 +360,21 @@ check('the Fable subagent is a subagent of the master, not a batch thread', !!fa
 // ── 5. the engine ends the batch on its own, then batch_gate re-runs the gate ──
 console.log('\n[5] the batch ends by its rules; batch_gate on the master')
 if (fableChild) await reportSettled(master.id, fableChild.id, 0, 300_000)
-// Every child is done (a landed, r, p and b idle after a turn): the engine
+check('still open while the plan has no build', batches.get(master.id).finishedAt === null)
+// What a person does with a plan they will not build: archive it. A batch's
+// members are its unarchived roots, so the plan stops holding the end.
+await registry.setArchived(p.id, true)
+// Every child left is done (a landed, r and b idle after a turn): the engine
 // ran the rules (gate, release, nothing to publish or deploy) and told the
-// master. An earlier cycle ended with nothing landed (a idled on its HELD;
-// an idle child is done), so the row to read is the one after a's landing.
-await rowsUntil(master.id, (rs) => rs.some((x) => x.event.type === 'notice' && x.event.kind === 'batch' && /^Batch done: 1 of 4 landed/.test(x.event.message)), 300_000)
+// master. The row to read is the one after a's landing.
+await rowsUntil(master.id, (rs) => rs.some((x) => x.event.type === 'notice' && x.event.kind === 'batch' && /^Batch done: 1 of 2 landed/.test(x.event.message)), 300_000)
 const doneRow = notices(master.id, 'batch').filter((n) => /^Batch done:/.test(n.message)).at(-1)
-check('the engine finished the batch by its rules and rowed the master, the shell step last', !!doneRow && /1 of 4 landed · 3 left out · gate passed in .* · release-1 tagged in \d+s · Smoke test passed in \d+s/.test(doneRow.message), doneRow?.message)
+check('the engine finished the batch by its rules and rowed the master, the shell step last', !!doneRow && /1 of 2 landed · 1 left out · gate passed in .* · release-1 tagged in \d+s · Smoke test passed in \d+s/.test(doneRow.message), doneRow?.message)
 check('the shell step ran in the project checkout with its lines in the log', batches.get(master.id).steps.find((s) => s.id === 'smoke')?.log.includes('smoke ok') === true, JSON.stringify(batches.get(master.id).steps.find((s) => s.id === 'smoke')?.log))
-check('the batch-done report reached the master as a <batch-report>', reports(master.id).some((x) => x.agentId === master.id && x.status === 'done'), reports(master.id).map((x) => `${x.agentId}:${x.status}`).join(', '))
+// The report's row lands a tick after the notice (drainReports awaits the handle first): wait for it.
+const batchReported = (): boolean => reports(master.id).some((x) => x.agentId === master.id && x.status === 'done')
+await rowsUntil(master.id, batchReported, 30_000).catch(() => {})
+check('the batch-done report reached the master as a <batch-report>', batchReported(), reports(master.id).map((x) => `${x.agentId}:${x.status}`).join(', '))
 await reportSettled(master.id, master.id, 0, 120_000)
 await sleep(500)
 check('the master idles once the batch is done', store.getSession(master.id)?.status === 'idle', store.getSession(master.id)?.status)
@@ -371,7 +382,7 @@ await turn(master.id, 'This is a test. Call the batch_gate tool ONCE with no arg
 const answer = toolResults(master.id).find((t) => /^passed in/.test(t))
 check('batch_gate answered passed and the tag', !!answer && answer.includes('release-1 tagged'), toolResults(master.id).at(-1)?.slice(0, 160))
 state = batches.get(master.id)
-check('land done with the unlanded children left out', steps(state).land === 'passed: 1 of 4 landed · 3 left out', steps(state).land)
+check('land done with the unlanded children left out', steps(state).land === 'passed: 1 of 2 landed · 1 left out', steps(state).land)
 check('gate and release done with the release detail', steps(state).gate.startsWith('passed: passed in') && steps(state).release === 'passed: release-1 tagged', JSON.stringify(steps(state)))
 const masterGates = notices(master.id, 'gate').map((n) => [n.gate?.step, n.gate?.ok])
 check('gate and release rows on the master: the engine\'s pair, then batch_gate\'s', JSON.stringify(masterGates) === JSON.stringify([['gate', true], ['release', true], ['gate', true], ['release', true]]), JSON.stringify(masterGates))
@@ -379,7 +390,7 @@ check('gate and release rows on the master: the engine\'s pair, then batch_gate\
 // ── 6. archive the batch: the done children leave, the master stays ──────
 console.log('\n[6] batch.archive done')
 const archived = await batches.archive(master.id, 'done', false)
-check('batch.archive done archives every done child and leaves the master', [a, r, p, b].every((k) => archived.succeeded.includes(k.id) && store.getSession(k.id)?.archived === true) && store.getSession(master.id)?.archived === false, JSON.stringify(archived))
+check('batch.archive done archives every done child and leaves the master', [a, r, b].every((k) => archived.succeeded.includes(k.id) && store.getSession(k.id)?.archived === true) && store.getSession(p.id)?.archived === true && store.getSession(master.id)?.archived === false, JSON.stringify(archived))
 check('the second master is untouched', store.getSession(second.id)?.archived === false && !registry.list({ archived: false }).some((s) => s.masterId === second.id))
 
 await registry.disposeAll()
