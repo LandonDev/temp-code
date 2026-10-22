@@ -1012,6 +1012,41 @@ routed to (aliax-core's `forward`). Two listeners:
   data). docs/TRANSCRIPT.md has the rules, the budget and the before/after
   table.
 
+## The interactive lane: the thread on screen goes first
+- `session.focus { sessionId | null }` (operate): each socket names the
+  thread its window's focused pane shows (`FocusSignal` in
+  lib/tcserver/commands.ts, sent from SessionPane's focused-pane effect,
+  null while the window is blurred, again after a reconnect). The host's
+  `FocusSet` (src/main/server/focus.ts) keeps the union across sockets,
+  widened to subagents and a focused master's batch; a closed socket drops
+  its own. `RunningServer.isInteractive` and the scheduler's `focused` hook
+  read it.
+- Requests sort into lanes (src/main/server/lane.ts): interactive (names an
+  interactive thread, or the renderer marked it `lane: 'ui'`: send,
+  approve, answer, stop, pause, resume, start now, archive, the fleet
+  switches), bulk (project.changes, git.diffStats, git.diffIndex, an
+  unfocused checkpoint.status, search.project, session.search,
+  commands.list, github.*, resources.*, doctor.get, fs.watch, the deploy,
+  publish and sync methods), normal (the rest). attach() answers through
+  `serve(req, sendFrame)`; the `LaneGate` runs bulk two at a time while the
+  loop's mean lag is under 50 ms, joins a duplicate (method and a digest of
+  params; reads across sockets, writes and fs.watch on their own socket) to
+  the one waiting or running, and runs anything that waited 20 s. The path
+  fence runs before the gate.
+- Pushes: a socket's own focused thread's rows go at once; other threads'
+  rows wait 33 ms, or 100 ms locally and 250 ms remotely while the loop
+  lags (wire.ts `eventsWindowMs`). Stall lines end
+  `lane=bulk:<running>/<held>`; the renderer reports `first-paint
+  session=<id> host=<env> ms=<n>` past 500 ms (lib/firstPaint.ts).
+- The host's own jobs pause on `yieldUntilIdle` (cold mover, turn index
+  backfill, fold sweep, mirror backfill, archive and attachment sweeps) or
+  run through `whenLoopIdle` (liveness sweep, headroom.json save, accounts
+  rebuild); the scheduler pass waits for a quiet loop and comes at most
+  every 250 ms while the loop lags.
+- Proof: `bun run script:e2e-interactive-lane` (200 git.diffStats against a
+  scratch repo beside a focused socket reading a 2,000-row thread; on the
+  Mac: focused p95 3 ms, 15 git children where 200 runs would spawn 600).
+
 ## The iOS contract package is generated
 - `ios/TempCodeContract` holds the Swift `Codable` types of the remote wire,
   generated from zod by `scripts/gen-swift-contract.ts` (`bun run gen:swift`).
