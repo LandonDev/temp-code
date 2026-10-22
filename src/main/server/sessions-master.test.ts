@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openDb, Store } from './db'
 import { SessionRegistry } from './sessions'
 import { Batches, setBatches } from './batch'
+import { cancelMirrors } from './mirror'
 import { orchWaitForAgent, setOrchestrationRegistry } from './orchestration'
 import type { DriverCtx, DriverHandle } from './drivers/types'
 import type { AgentEvent } from '../../shared/events'
@@ -61,6 +62,8 @@ beforeEach(async () => {
   interrupts.length = 0
 })
 afterEach(async () => {
+  // A turn-complete arms the shared-context mirror's timer; it must not fire on a closed database.
+  cancelMirrors()
   setBatches(null)
   batches.dispose()
   await registry.disposeAll()
@@ -88,8 +91,11 @@ async function pinnedMaster(): Promise<{ projectId: string; master: string }> {
   await settle()
   return { projectId: project.id, master: master.id }
 }
-async function child(projectId: string, masterId: string, title: string): Promise<string> {
-  const s = await registry.create({ cwd: root, provider: 'claude', projectId, masterId, title })
+/** A batch child. No projectId: a turn-complete on a project thread arms the
+ *  shared-context mirror's timer, which would fire after this test's database
+ *  closed; the batch reads masterId alone. */
+async function child(_projectId: string, masterId: string, title: string): Promise<string> {
+  const s = await registry.create({ cwd: root, provider: 'claude', masterId, title })
   await registry.send(s.id, `work ${title}`)
   await settle()
   return s.id
@@ -195,7 +201,7 @@ describe('pause and resume cascade', () => {
     const sub = await registry.create({ cwd: root, provider: 'claude', parentId: a })
     await registry.send(sub.id, 'sub work')
     await settle()
-    const plain = await registry.create({ cwd: root, provider: 'claude', projectId, title: 'Plain' })
+    const plain = await registry.create({ cwd: root, provider: 'claude', title: 'Plain' })
     await registry.send(plain.id, 'unrelated')
     await settle()
     await registry.pauseRun(master)
