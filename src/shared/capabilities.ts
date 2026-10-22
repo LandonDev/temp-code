@@ -359,6 +359,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'thread.resume': 'admin',
   'thread.archive': 'admin',
   'thread.adopt': 'admin',
+  'thread.read': 'admin',
   // The relay (contract-relay.ts): a host's presence and its relayed lanes' frames, over its own link.
   'peer.presence': 'admin',
   'relay.frames': 'admin',

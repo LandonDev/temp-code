@@ -17,6 +17,7 @@ import {
   ThreadArchiveArgsSchema,
   ThreadCheckArgsSchema,
   ThreadEventsArgsSchema,
+  ThreadReadArgsSchema,
   ThreadInterruptArgsSchema,
   ThreadListArgsSchema,
   ThreadPauseArgsSchema,
@@ -33,6 +34,7 @@ import {
   type CrossHostThreadState,
   type ThreadCheckResult,
   type ThreadEventsResult,
+  type ThreadReadResult,
   type ThreadPending,
   type ThreadSpawnArgs,
   type ThreadStartArgs,
@@ -147,6 +149,8 @@ export interface CrossHostThreadsDeps {
    * that copy. Absent, or no copy: the path logic decides as before.
    */
   ensureLinked?: (args: EnsureLinkedArgs) => Promise<EnsureLinkedResult>
+  /** A thread's digest and project name for thread.read (mirror.ts cappedThreadDigest); absent: thread.read is refused. */
+  digest?: (meta: SessionMeta) => { digest: string; projectName: string | null }
 }
 
 const isDir = (path: string): boolean => {
@@ -434,6 +438,17 @@ export class CrossHostThreads {
           status: meta.status,
           attachments: listAttachments(dirs)
         }
+        return result
+      }
+      case 'thread.read': {
+        // A reference the person picked: any thread here, owned or not.
+        const a = ThreadReadArgsSchema.parse(args)
+        const meta = this.deps.registry.get(a.sessionId)
+        if (!meta) throw new Error(`unknown thread: ${a.sessionId}`)
+        if (!this.deps.digest) throw new Error('this host cannot read threads over the link')
+        const { digest, projectName } = this.deps.digest(meta)
+        line(`read ${a.sessionId}`)
+        const result: ThreadReadResult = { sessionId: meta.id, title: meta.title, projectName, digest }
         return result
       }
       case 'thread.check': {

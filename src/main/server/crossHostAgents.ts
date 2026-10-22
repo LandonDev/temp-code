@@ -4,6 +4,7 @@ import {
   BOX_HOST_ALIAS,
   CROSS_HOST_CALL_MS,
   CROSS_HOST_CALL_SLACK_MS,
+  CROSS_HOST_READ_MS,
   CROSS_HOST_WAIT_WINDOW_MS,
   CrossHostLandingSchema,
   CrossHostSettledSchema,
@@ -20,6 +21,7 @@ import {
   type ThreadAdoptResult,
   type ThreadCheckResult,
   type ThreadEventsResult,
+  type ThreadReadResult,
   type ThreadSpawnArgs,
   type ThreadStartArgs,
   type ThreadStartResult,
@@ -163,6 +165,11 @@ export interface RemoteWaitReport {
 }
 
 export type RemoteBatchAction = 'pause' | 'resume' | 'archive'
+
+/** An `@thread:<host>:<id>` reference read from its host: the digest, or why it could not be. */
+export type ForeignThreadRead =
+  | ({ ok: true; hostName: string } & ThreadReadResult)
+  | { ok: false; hostName: string; why: string }
 
 export class CrossHostAgents {
   private readonly log: (line: string) => void
@@ -656,6 +663,27 @@ export class CrossHostAgents {
       }
     } finally {
       this.release(agentId)
+    }
+  }
+
+  /**
+   * An `@thread:<host>:<id>` reference in a message to `caller` (sessions.ts
+   * send): the thread's digest from its host over thread.read. Null when
+   * the id names this host (the reference is local); a host out of reach
+   * or a thread it does not know answers `ok: false` with the reason.
+   */
+  async readThread(caller: SessionMeta, environmentId: string, sessionId: string): Promise<ForeignThreadRead | null> {
+    if (environmentId === this.deps.environmentId) return null
+    const hostName = this.deps.hostName?.(environmentId) ?? environmentId
+    const refusal = this.deps.links.refusal(environmentId)
+    if (refusal) return { ok: false, hostName, why: refusal }
+    try {
+      const r = await this.call<ThreadReadResult>(environmentId, this.fresh(caller), 'thread.read', { sessionId }, CROSS_HOST_READ_MS)
+      return { ok: true, hostName, ...r }
+    } catch (err) {
+      const why = err instanceof Error ? err.message : String(err)
+      this.log(`thread=${caller.id} read ${sessionId} on ${environmentId} failed: ${why}`)
+      return { ok: false, hostName, why }
     }
   }
 

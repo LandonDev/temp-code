@@ -145,6 +145,7 @@ function service(
     link?: (m: string, p: unknown) => Promise<unknown>
     admit?: (envId: string) => { ok: boolean; reason?: string }
     ensureLinked?: ConstructorParameters<typeof CrossHostThreads>[0]['ensureLinked']
+    digest?: (m: SessionMeta) => { digest: string; projectName: string | null }
   } = {}
 ) {
   const settings = new Map<string, string>()
@@ -154,6 +155,7 @@ function service(
   const svc = new CrossHostThreads({
     ...(opts.admit ? { admit: opts.admit } : {}),
     ...(opts.ensureLinked ? { ensureLinked: opts.ensureLinked } : {}),
+    ...(opts.digest ? { digest: opts.digest } : {}),
     environmentId: MAC,
     store: { getSetting: (k) => settings.get(k) ?? null, setSetting: (k, v) => (v === null ? settings.delete(k) : settings.set(k, v)) },
     registry: registry as never,
@@ -264,6 +266,24 @@ describe('CrossHostThreads', () => {
     expect(r.lastSeq).toBe(6)
     const list = (await svc.handle('thread.list', { caller, args: {} }, ctx)) as { sessionId: string; parentSessionId: string | null }[]
     expect(list.map((s) => s.sessionId)).toEqual([sessionId])
+  })
+  it('thread.read answers the digest of any thread here, not only one the caller started', async () => {
+    const { svc, registry } = service({ digest: (m) => ({ digest: `# ${m.title}`, projectName: 'temp-code' }) })
+    const own = await registry.create({ provider: 'claude', cwd: '/Users/landon/IdeaProjects/temp-code', title: 'Mac own' })
+    expect(await svc.handle('thread.read', { caller, args: { sessionId: own.id } }, ctx)).toEqual({
+      sessionId: own.id,
+      title: 'Mac own',
+      projectName: 'temp-code',
+      digest: '# Mac own'
+    })
+    await expect(svc.handle('thread.read', { caller, args: { sessionId: 'nope' } }, ctx)).rejects.toThrow('unknown thread')
+    // thread.events still refuses a thread the caller did not start.
+    await expect(svc.handle('thread.events', { caller, args: { sessionId: own.id } }, ctx)).rejects.toThrow()
+  })
+  it('thread.read is refused on a host with no digest reader', async () => {
+    const { svc, registry } = service()
+    const own = await registry.create({ provider: 'claude', cwd: '/x', title: 'T' })
+    await expect(svc.handle('thread.read', { caller, args: { sessionId: own.id } }, ctx)).rejects.toThrow('cannot read threads')
   })
   it('thread.answer decides an approval with allow and a question with answers', async () => {
     const { svc, registry } = service()

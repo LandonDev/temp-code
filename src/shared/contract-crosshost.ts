@@ -39,7 +39,8 @@ export const CROSS_HOST_PEER_METHODS = [
   'thread.pause',
   'thread.resume',
   'thread.archive',
-  'thread.adopt'
+  'thread.adopt',
+  'thread.read'
 ] as const
 export type CrossHostPeerMethod = (typeof CROSS_HOST_PEER_METHODS)[number]
 export const isCrossHostPeerMethod = (m: string): m is CrossHostPeerMethod =>
@@ -181,6 +182,13 @@ export const ThreadAdoptArgsSchema = z.object({
   /** The master on the caller's host. */
   masterId: z.string().min(1).max(200)
 })
+/**
+ * thread.read: an `@thread:<host>:<id>` reference in a message on the
+ * caller's host. Any thread here, not only one the caller started: the
+ * person picked it in the composer. Answers its digest (mirror.ts), the
+ * same text a reference on this host would get.
+ */
+export const ThreadReadArgsSchema = z.object({ sessionId: z.string().min(1).max(200) })
 export const ThreadAnswerArgsSchema = z.object({
   sessionId: z.string().min(1).max(200),
   requestId: z.string().min(1).max(200),
@@ -200,6 +208,7 @@ export type ThreadAnswerArgs = z.infer<typeof ThreadAnswerArgsSchema>
 export type ThreadPauseArgs = z.infer<typeof ThreadPauseArgsSchema>
 export type ThreadArchiveArgs = z.infer<typeof ThreadArchiveArgsSchema>
 export type ThreadAdoptArgs = z.infer<typeof ThreadAdoptArgsSchema>
+export type ThreadReadArgs = z.infer<typeof ThreadReadArgsSchema>
 
 /** The args schema of each thread.* method. */
 export const THREAD_ARGS_SCHEMAS = {
@@ -215,7 +224,8 @@ export const THREAD_ARGS_SCHEMAS = {
   'thread.pause': ThreadPauseArgsSchema,
   'thread.resume': ThreadPauseArgsSchema,
   'thread.archive': ThreadArchiveArgsSchema,
-  'thread.adopt': ThreadAdoptArgsSchema
+  'thread.adopt': ThreadAdoptArgsSchema,
+  'thread.read': ThreadReadArgsSchema
 } as const satisfies Record<CrossHostPeerMethod, z.ZodType>
 
 export type CrossHostArgs =
@@ -231,6 +241,7 @@ export type CrossHostArgs =
   | ThreadPauseArgs
   | ThreadArchiveArgs
   | ThreadAdoptArgs
+  | ThreadReadArgs
 
 /** `peer.call` params for a thread.* method: the args plus the box thread asking. */
 export interface CrossHostCallParams {
@@ -306,6 +317,15 @@ export interface ThreadEventsResult {
   /** Files under the thread's attachments directory on its host (screenshots, notes, what a computer-use run saved), at most CROSS_HOST_ATTACHMENTS_MAX. */
   attachments?: string[]
 }
+/** What thread.read answers: the referenced thread's digest, cut to INLINE_DIGEST_MAX_CHARS on its host. */
+export interface ThreadReadResult {
+  sessionId: string
+  title: string
+  projectName: string | null
+  digest: string
+}
+/** thread.read rides a send: a host that has not answered by then is unreachable. */
+export const CROSS_HOST_READ_MS = 15_000
 /** thread.events names at most this many files of the attachments directory. */
 export const CROSS_HOST_ATTACHMENTS_MAX = 100
 
@@ -396,7 +416,8 @@ export const CrossHostRequestSchemas = [
   req('thread.pause', z.object({ caller: CrossHostCallerSchema, args: ThreadPauseArgsSchema })),
   req('thread.resume', z.object({ caller: CrossHostCallerSchema, args: ThreadPauseArgsSchema })),
   req('thread.archive', z.object({ caller: CrossHostCallerSchema, args: ThreadArchiveArgsSchema })),
-  req('thread.adopt', z.object({ caller: CrossHostCallerSchema, args: ThreadAdoptArgsSchema }))
+  req('thread.adopt', z.object({ caller: CrossHostCallerSchema, args: ThreadAdoptArgsSchema })),
+  req('thread.read', z.object({ caller: CrossHostCallerSchema, args: ThreadReadArgsSchema }))
 ] as const
 
 /** What thread.adopt answers: the thread as it stands there, for the caller's record. */

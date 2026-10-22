@@ -77,6 +77,9 @@ function setup(
         const now = states.get(a.sessionId as string)!
         return { sessionId: a.sessionId, status: now.status, settled: now.status !== 'running', reply: now.status === 'idle' ? 'all done' : '', pending: null, title: now.title }
       }
+      case 'thread.read':
+        if (a.sessionId === 'gone') throw new Error('unknown thread: gone')
+        return { sessionId: a.sessionId, title: 'Mac thread', projectName: 'temp-code', digest: '# Mac thread' }
       default:
         throw new Error(`unexpected ${method}`)
     }
@@ -258,6 +261,30 @@ function linkedBox(opts: { down?: () => boolean; refuseAdopt?: string } = {}) {
   }
   return { request, seen, states }
 }
+
+describe('CrossHostAgents: an @thread reference to another host', () => {
+  it('reads any thread there with thread.read, naming the host; this host answers null', async () => {
+    const { agents, seen } = setup()
+    expect(await agents.readThread(parent, MAC, 'any-thread')).toEqual({
+      ok: true,
+      hostName: 'Landon Mac',
+      sessionId: 'any-thread',
+      title: 'Mac thread',
+      projectName: 'temp-code',
+      digest: '# Mac thread'
+    })
+    expect(seen.at(-1)).toMatchObject({ method: 'thread.read', params: { caller: { environmentId: BOX, sessionId: 'box-thread' }, args: { sessionId: 'any-thread' } } })
+    expect(await agents.readThread(parent, BOX, 'local')).toBeNull()
+  })
+
+  it('a host out of reach, or one that refuses, answers ok: false with why', async () => {
+    const { agents } = setup()
+    const down = await agents.readThread(parent, MAC2, 'x')
+    expect(down).toMatchObject({ ok: false, hostName: MAC2 })
+    expect(down && !down.ok && down.why).toContain('offline')
+    expect(await agents.readThread(parent, MAC, 'gone')).toMatchObject({ ok: false, hostName: 'Landon Mac', why: expect.stringContaining('unknown thread') })
+  })
+})
 
 describe('CrossHostAgents: the Mac asking the box over its own link', () => {
   it('`box` means the one host linked from here; an id linked from here works too; `mac` still means a host registered here', () => {

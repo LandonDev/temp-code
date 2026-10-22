@@ -503,14 +503,25 @@ export function writeThreadDigest(
   refMeta: SessionMeta,
   targetCwd: string
 ): string {
-  mkdirSync(join(targetCwd, '.temp-code', 'refs'), { recursive: true })
-  const rel = join('.temp-code', 'refs', `${refMeta.id}.md`)
   const sameProject = contextCwd(reg, refMeta) === targetCwd
   const pointer = sameProject
     ? `\n_Full transcript: ${mirrorRelPath(refMeta)}_\n`
     : ''
-  writeAtomic(join(targetCwd, rel), capDigest(threadDigest(reg, refMeta), pointer))
+  return writeDigestFile(targetCwd, refMeta.id, capDigest(threadDigest(reg, refMeta), pointer))
+}
+
+/** Write a digest's text as `.temp-code/refs/<id>.md` under the project; returns the project-relative path. */
+export function writeDigestFile(targetCwd: string, sessionId: string, text: string): string {
+  mkdirSync(join(targetCwd, '.temp-code', 'refs'), { recursive: true })
+  const rel = join('.temp-code', 'refs', `${sessionId}.md`)
+  writeAtomic(join(targetCwd, rel), text)
   return rel
+}
+
+/** A thread's digest cut to the reference cap, for a reference from another
+ *  host (thread.read): no pointer, the mirror file is not on that host. */
+export function cappedThreadDigest(reg: SessionRegistry, refMeta: SessionMeta): string {
+  return capDigest(threadDigest(reg, refMeta), '')
 }
 
 /** A seed is the single biggest thing a thread reads on turn one, so it

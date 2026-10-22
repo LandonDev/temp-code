@@ -104,7 +104,7 @@ import { harnessEnv, resolveAppBridgeLaunch, runDoctor, updateProvider } from '.
 import { probeCatalogs } from './drivers/catalogProbe'
 import { codexTiersReady, probeCodexTiers, startCodexTiers } from './drivers/codexTiers'
 import { forgetCodexVersion, installedCodexVersion } from './drivers/codexVersion'
-import { backfillMirrors } from './mirror'
+import { backfillMirrors, cappedThreadDigest } from './mirror'
 import { bootMark } from './boot'
 import { setLimitMissLog } from './limitText'
 import { setCodexBootFailureLog } from './drivers/codex'
@@ -692,7 +692,12 @@ export async function startServer(
     links: hostLinks,
     pathMap: () => harnessSync.pathMap(),
     workRoot: () => workRoot(store).root,
-    ...(isMacHost() ? { admit: (envId: string) => macBridge.admitThread(envId) } : {})
+    ...(isMacHost() ? { admit: (envId: string) => macBridge.admitThread(envId) } : {}),
+    // thread.read: a reference from another host gets the digest a local one would.
+    digest: (meta) => ({
+      digest: cappedThreadDigest(registry, meta),
+      projectName: meta.projectId ? (registry.getProject(meta.projectId)?.name ?? null) : null
+    })
   })
   // A batch's publish step, served on this Mac for the box (remote/macPublish.ts):
   // the box cut and pushed the release; the Mac pulls it and runs release:publish.
@@ -918,6 +923,8 @@ export async function startServer(
   })
   setCrossHostAgents(crossHostAgents)
   setAppCrossHost(crossHostAgents)
+  // `@thread:<host>:<id>` references in a message (sessions.ts send).
+  registry.readForeignThread = (caller, envId, sessionId) => crossHostAgents.readThread(caller, envId, sessionId)
   // A master's batch (batch.ts): the steps its children never run; merge_branch
   // tells it what landed. Review before merge (mergeReview.ts): merge_branch's
   // engine, one per host, the gate out of the children inside it.

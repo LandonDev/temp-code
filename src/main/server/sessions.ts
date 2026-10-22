@@ -122,8 +122,10 @@ import {
   scheduleMirror,
   seedJournal,
   threadDigest,
+  writeDigestFile,
   writeThreadDigest
 } from './mirror'
+import type { ForeignThreadRead } from './crossHostAgents'
 import { removePages } from './htmlRender'
 import { composePreambled, decidePreamble, normalizePreamble } from './projectPreamble'
 import {
@@ -227,6 +229,39 @@ export type RunSettings = {
   provider?: ProviderId
   model?: string
   reasoning?: SessionMeta['reasoning']
+}
+
+// ── thread references (send) ─────────────────────────────────────────
+
+/** Every form of a reference's token becomes the mention; with none in the text, the mention is appended. */
+export function replaceTokens(text: string, tokens: string[], mention: string): string {
+  const present = tokens.filter((t) => text.includes(t))
+  if (!present.length) return `${text}\n\n${mention}`
+  // The longest token first: `@thread:<host>:<id>` before a bare `@thread:<id>`.
+  return present.sort((a, b) => b.length - a.length).reduce((out, t) => out.replaceAll(t, mention), text)
+}
+
+/** A projectless session reads a reference inline, after the message. */
+function inlineReference(text: string, tokens: string[], title: string, digest: string, host?: string): string {
+  const named = tokens.some((t) => text.includes(t))
+  const out = named ? replaceTokens(text, tokens, `thread "${title}" (referenced below)`) : text
+  const hostAttr = host ? ` host=${JSON.stringify(host)}` : ''
+  return `${out}\n\n<thread-reference title=${JSON.stringify(title)}${hostAttr}>\n${digest}\n</thread-reference>`
+}
+
+/**
+ * A reference to a thread on another host: its digest (read there) lands in
+ * the same `.temp-code/refs/<id>.md` a local reference gets, or inline for a
+ * projectless session; a host out of reach leaves one line saying so.
+ */
+export function foreignReference(text: string, tokens: string[], name: string, read: ForeignThreadRead, cwd: string | null): string {
+  if (!read.ok) return replaceTokens(text, tokens, `thread "${name}" on ${read.hostName} is unreachable (${read.why})`)
+  let digest = read.digest
+  if (digest.length > INLINE_DIGEST_MAX_CHARS) digest = `_[earlier turns trimmed]_\n\n…${digest.slice(-INLINE_DIGEST_MAX_CHARS)}`
+  if (!cwd) return inlineReference(text, tokens, read.title, digest, read.hostName)
+  const rel = writeDigestFile(cwd, read.sessionId, digest)
+  const from = read.projectName ? ` from project "${read.projectName}"` : ''
+  return replaceTokens(text, tokens, `@${rel} (thread "${read.title}"${from} on ${read.hostName})`)
 }
 
 /** The header line of a watching thread: what it waits on. */
@@ -1979,6 +2014,11 @@ export class SessionRegistry {
   /** This host's name, as notices name it; set by the server. */
   hostName: () => string = () => 'this host'
 
+  /** Reads an `@thread:<host>:<id>` reference from its host
+   *  (crossHostAgents.readThread); null from it means the id is this host.
+   *  Set by the server; absent, a foreign reference resolves locally or not at all. */
+  readForeignThread: ((caller: SessionMeta, environmentId: string, sessionId: string) => Promise<ForeignThreadRead | null>) | null = null
+
   /** The registry as the plan flow reads it. */
   private planFlow(): PlanFlowRegistry {
     return {
@@ -2533,24 +2573,30 @@ export class SessionRegistry {
     // Thread references (M9): each referenced thread becomes a fresh local
     // digest file; the @thread:<id> token is rewritten to its path (every
     // harness follows @path). Projectless sessions get the digest inline.
+    // A thread on another host (`@thread:<host>:<id>`, the attachment's
+    // environmentId) is read from its host (thread.read) into the same
+    // file, or named as unreachable.
+    const here = meta.projectId ? this.store.getProject(meta.projectId) : null
     for (const ref of attachments?.filter((a) => a.kind === 'thread' && a.sessionId) ?? []) {
+      const tokens = [`@thread:${ref.sessionId}`, ...(ref.environmentId ? [`@thread:${ref.environmentId}:${ref.sessionId}`] : [])]
+      const foreign =
+        ref.environmentId && this.readForeignThread ? await this.readForeignThread(meta, ref.environmentId, ref.sessionId!) : null
+      if (foreign) {
+        out = foreignReference(out, tokens, ref.name, foreign, here?.cwd ?? null)
+        continue
+      }
       const refMeta = this.store.getSession(ref.sessionId!)
       if (!refMeta) continue
       const refProject = refMeta.projectId ? this.store.getProject(refMeta.projectId) : null
-      const token = `@thread:${refMeta.id}`
-      const here = meta.projectId ? this.store.getProject(meta.projectId) : null
       if (here) {
         const rel = writeThreadDigest(this, refMeta, here.cwd)
-        const mention = `@${rel} (thread "${refMeta.title}"${refProject ? ` from project "${refProject.name}"` : ''})`
-        out = out.includes(token) ? out.replaceAll(token, mention) : `${out}\n\n${mention}`
+        out = replaceTokens(out, tokens, `@${rel} (thread "${refMeta.title}"${refProject ? ` from project "${refProject.name}"` : ''})`)
       } else {
         let digest = threadDigest(this, refMeta)
         if (digest.length > INLINE_DIGEST_MAX_CHARS) {
           digest = `_[earlier turns trimmed]_\n\n…${digest.slice(-INLINE_DIGEST_MAX_CHARS)}`
         }
-        const mention = `thread "${refMeta.title}" (referenced below)`
-        if (out.includes(token)) out = out.replaceAll(token, mention)
-        out = `${out}\n\n<thread-reference title=${JSON.stringify(refMeta.title)}>\n${digest}\n</thread-reference>`
+        out = inlineReference(out, tokens, refMeta.title, digest)
       }
     }
     // Thread references are resolved above; appshots expand into the plain
