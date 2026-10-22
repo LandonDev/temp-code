@@ -88,7 +88,7 @@ export class ThreadScheduler {
   /** Threads a focused send started past the cap, while they stay live. */
   private readonly overCap = new Set<string>()
 
-  /** Is the person looking at this thread (a later step wires it to the windows)? */
+  /** Is the person looking at this thread? The server wires it to the windows' focus (focus.ts). */
   focused: (sessionId: string) => boolean = () => false
 
   constructor(private readonly reg: SchedulerRegistry) {}

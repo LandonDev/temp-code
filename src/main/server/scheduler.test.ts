@@ -392,7 +392,7 @@ describe('the scheduler alone', () => {
     expect(scheduler.admit(child)).toBe('queue')
   })
 
-  it('nothing is focused until a later step says so', () => {
+  it('a scheduler the server has not wired focuses nothing', () => {
     const scheduler = new ThreadScheduler(fakeRegistry([]).reg)
     expect(scheduler.focused('anything')).toBe(false)
   })

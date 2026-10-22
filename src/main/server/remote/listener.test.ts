@@ -733,6 +733,29 @@ describe('session.focus', () => {
     for (let i = 0; i < 40 && server.isInteractive('focus-other'); i++) await sleep(25)
     expect(live()).toEqual([])
   })
+
+  it('a focused thread\'s send is admitted over a full running cap; an unfocused one queues', async () => {
+    const row = (id: string, status: 'running' | 'idle') =>
+      server.store.insertSession({
+        id, parentId: null, projectId: null, workspaceId: null, threadType: 'chat', planPath: null, provider: 'claude',
+        model: 'm', reasoning: 'medium', agentType: 'implementer', title: id, cwd: root, status, pinned: false,
+        archived: false, fast: false, ultrafast: false, context1m: false, busySince: null, pausedAt: null,
+        frozenActiveElapsed: null, threadRules: null, permission: 'edits', nativeId: null, createdAt: 1, updatedAt: 1
+      })
+    row('cap-busy', 'running')
+    row('cap-focused', 'idle')
+    row('cap-plain', 'idle')
+    const sock = await open(`ws://127.0.0.1:${server.port}/`)
+    const running = server.registry.scheduler.counts().running
+    expect((await sock.request('admission.set', { cap: Math.max(1, running) })).ok).toBe(true)
+    expect((await sock.request('session.focus', { sessionId: 'cap-focused' })).ok).toBe(true)
+    const send = (id: string) => server.registry.scheduler.admit({ id, after: undefined, parentId: null })
+    expect(send('cap-plain')).toBe('queue')
+    expect(send('cap-focused')).toBe('start')
+    expect((await sock.request('admission.set', { cap: null })).ok).toBe(true)
+    sock.ws.close()
+    await sock.closed
+  })
 })
 
 describe('live edits', () => {

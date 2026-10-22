@@ -364,6 +364,8 @@ export async function startServer(
   // The threads people are looking at (session.focus), widened to their
   // subagents and a focused master's batch: their requests and pushes go first.
   const focus = new FocusSet({ parentOf: (id) => registry.parentOf(id), masterOf: (id) => registry.masterOf(id) })
+  // A send on a thread someone is looking at is admitted over the running cap (scheduler.ts).
+  registry.scheduler.focused = (id) => focus.isInteractive(id)
   // The temp-code workspace's default preamble, seeded once (projectPreamble.ts).
   seedHousePreamble(store)
   migrateHousePreamble(store)
