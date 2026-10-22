@@ -1025,7 +1025,8 @@ routed to (aliax-core's `forward`). Two listeners:
   stays current incrementally. The plan or report file is read with
   `file.read` (in the subset since L4), polled 1.5 s running / 8 s idle
   while the screen shows. DEBUG launch hooks (`TC_TEST_SEGMENT`,
-  `TC_TEST_OPEN=chip|diff|agent`, `TC_TEST_SCROLL=1`, and L5's
+  `TC_TEST_OPEN=chip|diff|agent`, `TC_TEST_SCROLL=1`, the Search tab's
+  `TC_TEST_SEARCH=<query>` and `TC_TEST_SEARCH_SCOPE=files`, and L5's
   `TC_TEST_ACTION=send:<text>|stop|approve|deny|answer:<label>|start-build|
   rename:<title>|pin|archive|new-chat` and `TC_TEST_SHEET=start|new`) exist
   for the proof only; an action runs once, on the screen the launch route

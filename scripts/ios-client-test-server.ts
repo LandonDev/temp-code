@@ -52,6 +52,8 @@ if (!server.remote || server.remote.port === 0) throw new Error('the remote list
 const repo = mkdtempSync(join(tmpdir(), 'tc-ios-client-repo-'))
 execFileSync('git', ['-C', repo, 'init', '-q'])
 execFileSync('git', ['-C', repo, '-c', 'user.name=fixture', '-c', 'user.email=fixture@example.com', 'commit', '-q', '--allow-empty', '-m', 'init'])
+// One file for the phone's Files scope: the proof's `hello` query matches it through search.project.
+writeFileSync(join(repo, 'README.md'), 'hello from the ios project\nsay hello to search\n')
 const workspace = await server.registry.createWorkspace(repo, 'ios-workspace')
 const project = await server.registry.createProject(workspace.id, 'ios-project', 'local')
 export const THREAD_A = 'ios-thread-a'

@@ -151,27 +151,41 @@ host when there are several; refresh by pull with `github.inboxRefresh`
 (this is the one place pull-to-refresh is right, since the inbox is a poll,
 not a live push). Detail: the PR or comment with the diff read-only.
 
-**Search** uses `session.search` and `search.project`: the system search
-field in the navigation bar, always shown, with Threads and Files scope
-buttons only when an open host has a project to grep (a host with none
-offers threads alone, no picker). A query waits 250 ms after the last
-keystroke, then runs on every open host at once off the main actor; the
-previous answer stays on screen until the next one lands, so the list never
-flashes to empty between two queries, and a scope change runs at once.
-Results are plain rows grouped by thread: a head row with the type glyph and
-the title in semibold (the host in `caption2` tertiary after it, only when
-there are several hosts) that opens the thread, then its matching rows
-indented to the title's text edge, the snippet in `footnote` with the query's
-words set in semibold (emphasis by weight, never color) and the relative
-time trailing. Tap a hit to land on its row (the thread screen takes the
-`seq`). File matches sit under a project section header: a file glyph, the
-path with its line number dim, the line itself in mono with the match in
-weight; the phone has no editor, so a file row is a fact, not a push. The
-empty field shows one calm line ("Threads and project files on every
-host."), a finished search with nothing shows "No results for X" in the same
-place, and a search in flight with nothing yet to show has a small spinner;
-Cancel clears the field and returns to the hint. Nothing animates on a
-keystroke or a scope tap; the press scale is the only motion.
+**Search** uses `session.search` and `search.project` over every paired
+host: the system field (on iOS 26 the search tab's own field, `.automatic`;
+on 18 to 25 the navigation drawer, always shown), with Threads and Files
+scope buttons only when an open host has an unarchived project to grep. A
+query waits 250 ms after the last keystroke (a scope change runs at once;
+under two characters nothing is asked), then runs on every open host at
+once off the main actor, one task-group child per host; the answer
+replaces the list whole inside `Motion.withoutAnimation`, so the list never
+flashes to empty and two queries' rows never mix. The rows are one flat
+list the client package builds (`SearchRows.build` in
+`Client/SearchRows.swift`: the row model, the match ranges, the debounce
+rule and the foot line, unit-tested; its body is the slot the cross-host
+merge, rank, fold and typed filters land in): per thread a head row with
+the type glyph at the title's weight and the title in `.title` semibold
+that opens the thread, then its hits indented to the title's edge (the
+glyph column and its gap, 30 pt, scaled with Dynamic Type), each the
+snippet in `footnote` at label strength with the query's words one weight
+up (by weight, never color: `MatchEmphasis`) and `AgoText` trailing; a hit
+opens the thread at its row, a hit in the thread's notes carries a
+`note.text` glyph and opens the thread at its end. In the Files scope each
+project is a `SectionHeader` band, then up to 40 lines, each a file glyph,
+the path with its line number dim and tabular, and the line in mono with
+the match in weight; a file row, or a project row (a project matched by
+name, when the selector supplies one), is a fact, not a push. The host is
+a dim `.stamp` word trailing a head only when several hosts are paired,
+and then a foot line names what each host took ("Mac 320 ms · box 1.2 s",
+"box offline", "box failed"); "More matches than shown" closes a cut
+answer. Over the empty list one calm `.meta` line: "No host is
+connected.", "Every host is offline.", the hint ("Threads and project
+files on every host." or "Every thread on every host."), a small spinner
+while the first answer is out, or "No results for X"; Cancel clears the
+field and returns to the hint. Nothing animates on a keystroke or a scope
+tap; the press scale and the ticking time are the only motion. DEBUG
+hooks: `TC_TEST_SEARCH` is the query, `TC_TEST_SEARCH_SCOPE=files` opens
+the Files scope.
 
 ## The thread screen
 

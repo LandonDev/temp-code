@@ -13,6 +13,7 @@
 #           TC_PROOF_KILL_CMD says how to stop the host.
 #           TC_TEST_THREAD="part of a title" picks the thread shot (else the newest);
 #           TC_TEST_SEARCH="hello" is the query the Search shot runs;
+#           TC_TEST_SEARCH_SCOPE=files opens the Search tab on the Files scope;
 #           TC_PROOF_KILL_CMD="curl -s -X POST http://127.0.0.1:NNNN/quit" stops the host.
 #   threads The threads scripts/ios-client-test-server.ts seeds, one per type:
 #           every segment, a tool chip opened, the diff screen, the agent detail,
@@ -113,6 +114,7 @@ shot() {
   SIMCTL_CHILD_TC_TEST_ROUTE="$route" \
   SIMCTL_CHILD_TC_TEST_THREAD="$thread" \
   SIMCTL_CHILD_TC_TEST_SEARCH="${TC_TEST_SEARCH:-}" \
+  SIMCTL_CHILD_TC_TEST_SEARCH_SCOPE="${TC_TEST_SEARCH_SCOPE:-}" \
   SIMCTL_CHILD_TC_TEST_SEGMENT="$segment" \
   SIMCTL_CHILD_TC_TEST_OPEN="$open" \
   SIMCTL_CHILD_TC_TEST_TARGET_SEQ="${TC_TARGET_SEQ:-}" \

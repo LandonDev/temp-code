@@ -182,6 +182,16 @@ the main actor (`@concurrent`), keyed by environment, session, seq and text hash
 synchronous, a miss parses and lands as an observable change, a changed
 row shows plain text until its own parse lands.
 
+**SearchRows** (`Client/SearchRows.swift`) is the Search tab's pure side:
+the flat row model (`SearchRow`: thread head, hit, project head, file,
+project, more), `SearchRows.build` shaping every host's raw `session.search`
+and `search.project` answer into it in rail order (note hits with `seq`
+nil, 40 file rows per project, the per-host foot), `MatchRanges` (the
+query's words longest first, case and diacritic insensitive, as character
+offsets the views set in weight), `SearchDebounce` and `footLine`.
+`build`'s body is the slot the cross-host selector (merge, rank, fold,
+typed filters) replaces; the screen calls it from one line.
+
 ## Tests
 
 ```sh
