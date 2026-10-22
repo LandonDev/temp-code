@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FOLD_VERSION, openDb, Store } from './db'
 import { SessionRegistry } from './sessions'
-import { sweepFolds } from './folds'
+import { foldEvent, foldLog, newFoldState, reviveTodo, sweepFolds, toFoldRow } from './folds'
+import { EventReader } from './dbWorkers'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { vi } from 'vitest'
 import type { AgentEvent, SessionMeta } from '@shared/events'
 
 let db: ReturnType<typeof openDb>
@@ -176,7 +181,7 @@ describe('fold sweep', () => {
 })
 
 describe('registry fold writes', () => {
-  it('append() on an unfolded session persists a correct row without the sweep', () => {
+  it('append() on an unfolded session persists a correct row without the sweep', async () => {
     legacy('a', [
       { type: 'user-text', text: 'go' },
       { type: 'goal', phase: 'set', condition: 'green' },
@@ -185,6 +190,8 @@ describe('registry fold writes', () => {
     const reg = new SessionRegistry(store)
     expect(listed(reg, 'a')).toMatchObject({ tasks: null, goal: null, canContinue: false })
     reg.append('a', todoWrite('c1', [{ content: 'x', status: 'in_progress', activeForm: 'Doing x' }]))
+    // The log before the append is read off the loop; the append folds in after it.
+    await reg.whenFoldWarm('a')
     const row = store.getFold('a')!
     expect(row).toMatchObject({
       foldedSeq: 4,
@@ -241,5 +248,125 @@ describe('registry fold writes', () => {
     await reg.delete(s.id)
     expect(store.getFold(s.id)).toBeNull()
     expect(store.listFolds()).toEqual([])
+  })
+})
+
+/** A long, varied log: task tools with their results, a TodoWrite, goals,
+ *  errors and their recovery, passes, big bodies, subagent lanes. */
+function variedLog(n: number): AgentEvent[] {
+  const out: AgentEvent[] = []
+  for (let i = 0; i < n; i++) {
+    out.push({ type: 'user-text', text: `turn ${i} ${'u'.repeat(300)}`, ...(i % 3 === 0 ? { newPass: true } : {}) })
+    out.push({ type: 'assistant-text', text: 'thinking aloud', delta: true })
+    out.push({ type: 'tool-call', callId: `tc${i}`, name: 'TaskCreate', input: { subject: `Task ${i}`, activeForm: `Doing ${i}` } })
+    out.push({ type: 'tool-result', callId: `tc${i}`, output: `Task #${i + 1} created successfully: Task ${i}`, isError: false })
+    out.push({ type: 'tool-call', callId: `big${i}`, name: 'Write', input: { file_path: '/a.ts', content: 'x'.repeat(20_000) } })
+    out.push({ type: 'tool-result', callId: `big${i}`, output: 'y'.repeat(30_000), isError: false })
+    out.push({ type: 'tool-call', callId: `tu${i}`, name: 'TaskUpdate', input: { taskId: String(i + 1), status: i % 2 ? 'completed' : 'in_progress' } })
+    if (i % 4 === 1) out.push(todoWrite(`tw${i}`, [{ content: 'a', status: 'completed' }, { content: 'b', status: 'in_progress', activeForm: 'Bee' }]))
+    if (i % 5 === 2) out.push({ type: 'goal', phase: i % 10 === 2 ? 'set' : 'updated', condition: `cond ${i}`, iterations: i })
+    if (i % 6 === 3) out.push({ type: 'error', message: `boom ${i}`, failure: { kind: 'unknown', summary: 'x', detail: 'y' } as never })
+    if (i % 7 === 4) out.push({ type: 'tool-call', callId: `sub${i}`, name: 'TodoWrite', input: { todos: [] }, parentCallId: 'p' })
+    out.push({ type: 'assistant-text', text: `answer ${i}`, delta: false })
+    out.push({ type: 'turn-complete' } as AgentEvent)
+    out.push({ type: 'status', status: 'idle' })
+  }
+  return out
+}
+
+/** The whole log folded the old way, synchronously from seq 0. */
+const reference = (id: string) => {
+  const state = newFoldState()
+  for (const row of store.eventsAfter(id, 0)) foldEvent(state, row)
+  return toFoldRow(id, state)
+}
+const outputs = (row: ReturnType<typeof toFoldRow> | null | undefined) => row && { tasks: row.tasks, goal: row.goal, canContinue: row.canContinue, failure: row.failure, seq: row.foldedSeq }
+
+describe('warm-up off the loop', () => {
+  it('the slim payload the worker reads folds to exactly what the whole rows fold to', async () => {
+    legacy('a', variedLog(40))
+    const state = newFoldState()
+    await foldLog(store, 'a', state, 0, store.lastSeq('a'), { chunk: 37, between: async () => {} })
+    expect(outputs(toFoldRow('a', state))).toEqual(outputs(reference('a')))
+    expect(reviveTodo(toFoldRow('a', state).todo)?.todo).toEqual(reviveTodo(reference('a').todo)?.todo)
+  })
+
+  it('a current fold row and task snapshot warm the fold at once, with no read of the log', async () => {
+    legacy('a', variedLog(5))
+    store.putFold(reference('a'))
+    const reg = new SessionRegistry(store)
+    const reads = vi.spyOn(store, 'readRows')
+    const walks = vi.spyOn(store, 'eventsAfter')
+    reg.append('a', { type: 'user-text', text: 'next' })
+    expect(reg.isFoldWarm('a')).toBe(true)
+    await reg.whenFoldWarm('a')
+    expect(reads).not.toHaveBeenCalled()
+    expect(walks).not.toHaveBeenCalled()
+    expect(outputs(store.getFold('a'))).toEqual(outputs(reference('a')))
+  })
+
+  it('a row behind the log reads only the rows past its snapshot', async () => {
+    legacy('a', variedLog(5))
+    const stored = reference('a')
+    store.putFold(stored)
+    // Rows a crashed process appended without folding.
+    for (const e of variedLog(2)) store.appendEvent('a', e)
+    const reg = new SessionRegistry(store)
+    const reads = vi.spyOn(store, 'readRows')
+    reg.append('a', { type: 'user-text', text: 'next' })
+    await reg.whenFoldWarm('a')
+    expect(reads.mock.calls[0][1]).toMatchObject({ afterSeq: stored.foldedSeq })
+    expect(outputs(store.getFold('a'))).toEqual(outputs(reference('a')))
+  })
+
+  it('rows appended while the warm-up reads fold in after it: none lost, none twice', async () => {
+    legacy('a', variedLog(30))
+    const reg = new SessionRegistry(store)
+    // Hold the read open while the thread keeps streaming.
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    const read = store.readRows.bind(store)
+    vi.spyOn(store, 'readRows').mockImplementation(async (id, opts) => {
+      const rows = await read(id, opts)
+      await gate
+      return rows
+    })
+    const pushes: string[] = []
+    reg.onMeta((m) => pushes.push(m.id))
+    for (const e of variedLog(6)) reg.append('a', e)
+    expect(reg.isFoldWarm('a')).toBe(true)
+    expect(store.getFold('a')).toBeNull()
+    release()
+    await reg.whenFoldWarm('a')
+    expect(outputs(store.getFold('a'))).toEqual(outputs(reference('a')))
+    expect(reg.foldOf('a')?.foldedSeq).toBe(store.lastSeq('a'))
+    // Warm from here: the next append folds at once.
+    reg.append('a', todoWrite('late', [{ content: 'z', status: 'in_progress', activeForm: 'Zed' }]))
+    expect(store.getFold('a')?.tasks).toEqual({ done: 0, total: 1, current: 'Zed' })
+    expect(pushes).toContain('a')
+  })
+
+  it('reads through the reader worker when it is up', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tc-fold-reader-'))
+    const path = join(dir, 'w.db')
+    const fileDb = openDb(path)
+    const reader = new EventReader(path, { log: () => {} })
+    try {
+      const fileStore = new Store(fileDb, { reader })
+      expect(await reader.ready).toBe(true)
+      fileStore.insertSession(meta('w'))
+      for (const e of variedLog(8)) fileStore.appendEvent('w', e)
+      const asked = vi.spyOn(reader, 'query')
+      const state = newFoldState()
+      await foldLog(fileStore, 'w', state, 0, fileStore.lastSeq('w'), { chunk: 25, between: async () => {} })
+      expect(asked).toHaveBeenCalled()
+      const whole = newFoldState()
+      for (const row of fileStore.eventsAfter('w', 0)) foldEvent(whole, row)
+      expect(outputs(toFoldRow('w', state))).toEqual(outputs(toFoldRow('w', whole)))
+    } finally {
+      await reader.stop()
+      fileDb.close()
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

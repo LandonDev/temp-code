@@ -33,7 +33,7 @@ import {
 import { isRoutedProvider, type AccountPins, type AccountProvider, type AccountRoute } from '@shared/accounts'
 import { resolvePin, type ResolvedPin, type RouteOptions } from './accountRouting'
 import type { LimitWindow } from '@shared/events'
-import { foldEvent, newFoldState, toFoldRow } from './folds'
+import { foldEvent, foldLog, newFoldState, reviveTodo, serializeTodo, toFoldRow } from './folds'
 import { FOLD_VERSION, type FoldRow, type ResumeAfterBootRow } from './db'
 
 /** How a harness words a 401 the gateway could not route around (codex: "workspace routing discovery unauthorized (401)"). */
@@ -609,8 +609,16 @@ export class SessionRegistry {
     return this.folds.get(sessionId)
   }
 
+  /** append() owns this session's fold row: its task fold is warm, or being
+   *  read (warmFold), so the sweep leaves it alone. */
   isFoldWarm(sessionId: string): boolean {
-    return this.todoFolds.has(sessionId)
+    return this.todoFolds.has(sessionId) || this.warming.has(sessionId)
+  }
+
+  /** Resolves once a warm-up in flight for the session has landed (tests, and
+   *  anything that must read the fold row a send just started). */
+  whenFoldWarm(sessionId: string): Promise<void> {
+    return this.warming.get(sessionId)?.done ?? Promise.resolve()
   }
 
   private putFold(fold: FoldRow): void {
@@ -640,6 +648,8 @@ export class SessionRegistry {
   /** Land swept rows and push each session's meta so its sidebar row
    *  fills in live — one shared index for the whole batch. */
   commitFolds(rows: FoldRow[]): void {
+    // A session append() took meanwhile has a newer row than the sweep's.
+    rows = rows.filter((fold) => !this.isFoldWarm(fold.sessionId))
     for (const fold of rows) this.putFold(fold)
     const index = this.indexOf()
     for (const fold of rows) {
@@ -650,23 +660,74 @@ export class SessionRegistry {
     }
   }
 
-  /** The in-memory task fold, seeded from the stored log the first time a
-   *  session is appended to in this process (one walk, all three folds
-   *  together). A session with no current fold row gets one from the
-   *  same walk, so a send into a never-swept thread heals it at once. */
-  private warmTodoFold(sessionId: string): TodoFold {
+  /**
+   * The in-memory task fold, or null while it is being read. A session first
+   * appended to in this process starts from its stored fold row: when the row
+   * and its task snapshot stand at the log's last row (the usual case: every
+   * non-delta append writes them) the fold is warm at once, with no read. A
+   * row behind the log, or none, is caught up off the loop (warmFold): the
+   * rows through the log's last seq now are read on the reader worker, and
+   * every row appended from here on waits in `warming` and folds in after
+   * them, so no row is lost or folded twice.
+   */
+  private todoFoldOf(sessionId: string): TodoFold | null {
     const warm = this.todoFolds.get(sessionId)
     if (warm) return warm
-    const state = newFoldState()
-    timed('warmTodoFold', () => {
-      for (const row of this.store.eventsAfter(sessionId, 0)) foldEvent(state, row)
-    })
-    this.todoFolds.set(sessionId, state.todo)
+    if (this.warming.has(sessionId)) return null
+    const last = this.store.lastSeq(sessionId)
     const fold = this.folds.get(sessionId)
-    if (!fold || fold.foldedSeq < state.seq || fold.foldVersion !== FOLD_VERSION) {
-      this.putFold(toFoldRow(sessionId, state))
+    const current = fold && fold.foldVersion === FOLD_VERSION ? fold : null
+    const snap = reviveTodo(current?.todo)
+    if (last === 0 || (current && snap && current.foldedSeq >= last && snap.seq >= last)) {
+      const todo = snap?.todo ?? newTodoFold()
+      this.todoFolds.set(sessionId, todo)
+      return todo
     }
-    return state.todo
+    let finish!: () => void
+    const done = new Promise<void>((resolve) => (finish = resolve))
+    this.warming.set(sessionId, { live: [], done })
+    void this.warmFold(sessionId, current, snap, last).finally(finish)
+    return null
+  }
+
+  /** Rows appended while a warm-up reads, folded in after it (todoFoldOf). */
+  private warming = new Map<string, { live: EventRow[]; done: Promise<void> }>()
+
+  /** Catch a session's folds up to `through` off the loop, fold the rows
+   *  appended meanwhile, land the row and push the meta when the sidebar's
+   *  view of it moved. */
+  private async warmFold(
+    sessionId: string,
+    current: FoldRow | null,
+    snap: { todo: TodoFold; seq: number } | null,
+    through: number
+  ): Promise<void> {
+    const state = current
+      ? { todo: snap?.todo ?? newTodoFold(), goal: current.goal, canContinue: current.canContinue, failure: current.failure ?? null, seq: current.foldedSeq }
+      : newFoldState()
+    const todoSeq = current && snap ? snap.seq : 0
+    try {
+      await foldLog(this.store, sessionId, state, todoSeq, through)
+    } catch (error) {
+      // The store closed under the read (shutdown, a test): nothing to land.
+      console.warn(`[folds] ${sessionId}: warm-up read failed:`, error instanceof Error ? error.message : error)
+      this.warming.delete(sessionId)
+      return
+    }
+    const waiting = this.warming.get(sessionId)
+    // Deleted or moved away meanwhile: nothing to keep.
+    if (!waiting) return
+    this.warming.delete(sessionId)
+    for (const row of waiting.live) foldEvent(state, row)
+    this.todoFolds.set(sessionId, state.todo)
+    const before = this.folds.get(sessionId)
+    const next = toFoldRow(sessionId, state)
+    this.putFold(next)
+    const moved =
+      JSON.stringify([before?.tasks ?? null, before?.goal ?? null, before?.canContinue ?? false, before?.failure ?? null]) !==
+      JSON.stringify([next.tasks, next.goal, next.canContinue, next.failure])
+    const meta = moved ? this.row(sessionId) : null
+    if (meta) this.notifyMeta(meta)
   }
 
   /** A status event appended outside append() (boot reset, pause, resume):
@@ -675,11 +736,16 @@ export class SessionRegistry {
   private appendStatus(sessionId: string, status: SessionStatus): EventRow {
     const event: AgentEvent = { type: 'status', status }
     const row = this.store.appendEvent(sessionId, event)
+    const waiting = this.warming.get(sessionId)
+    if (waiting) {
+      waiting.live.push(row)
+      return row
+    }
     const warm = this.todoFolds.get(sessionId)
     if (warm) foldTodo(warm, event, row.ts)
     const fold = this.folds.get(sessionId)
     if (fold && fold.foldedSeq === row.seq - 1 && fold.foldVersion === FOLD_VERSION) {
-      this.putFold({ ...fold, foldedSeq: row.seq })
+      this.putFold({ ...fold, foldedSeq: row.seq, todo: warm ? serializeTodo(warm, row.seq) : fold.todo })
     }
     return row
   }
@@ -2819,6 +2885,7 @@ export class SessionRegistry {
       this.lastActivity.delete(id)
       this.activities.delete(id)
       this.todoFolds.delete(id)
+      this.warming.delete(id)
       this.folds.delete(id)
       this.foldDirty.delete(id)
       this.pendingGoals.delete(id)
@@ -2836,6 +2903,7 @@ export class SessionRegistry {
       if (fold) this.folds.set(id, fold)
       else this.folds.delete(id)
       this.todoFolds.delete(id)
+      this.warming.delete(id)
       const meta = this.store.getSession(id)
       if (meta?.context) this.liveContexts.set(id, meta.context)
     }
@@ -2879,6 +2947,7 @@ export class SessionRegistry {
       this.lastActivity.delete(id)
       this.activities.delete(id)
       this.todoFolds.delete(id)
+      this.warming.delete(id)
       this.folds.delete(id)
       this.foldDirty.delete(id)
       this.pendingGoals.delete(id)
@@ -3331,41 +3400,49 @@ export class SessionRegistry {
         void this.dropHandle(sessionId)
       }
     }
-    // Seed the task fold before the insert so its walk excludes this
-    // event; the walk also lands a fold row for a never-swept session.
-    const warm = this.warmTodoFold(sessionId)
+    // The task fold is taken before the insert, so a warm-up it starts
+    // reads only the rows before this one (todoFoldOf); null while one
+    // reads, and this row waits for it.
+    const warm = this.todoFoldOf(sessionId)
     const prev = this.folds.get(sessionId) ?? toFoldRow(sessionId, newFoldState())
     const row = this.store.appendEvent(sessionId, event)
     this.lastActivity.set(sessionId, row.ts)
     if (event.type === 'user-text') this.lastUserSeq.set(sessionId, row.seq)
-    const before = tallyOf(warm)
-    foldTodo(warm, event, row.ts)
-    const after = tallyOf(warm)
-    const tasksMoved =
-      before?.done !== after?.done ||
-      before?.total !== after?.total ||
-      before?.current !== after?.current
-    const afterRecovery = foldContinuableError(prev.canContinue, event)
-    const recoveryMoved = prev.canContinue !== afterRecovery
-    const afterFailure = foldFailure(prev.failure ?? null, event)
-    const failureMoved = (prev.failure ?? null) !== afterFailure
+    let tasksMoved = false
+    let recoveryMoved = false
+    let failureMoved = false
     // A goal event pushes meta so the prompt-bar indicator flips without
     // a status change.
-    const goalMoved = event.type === 'goal'
-    const next: FoldRow = {
-      sessionId,
-      foldedSeq: row.seq,
-      foldVersion: FOLD_VERSION,
-      tasks: after,
-      goal: foldGoal(prev.goal, event, row.ts),
-      canContinue: afterRecovery,
-      failure: afterFailure
-    }
-    // A streamed delta changes no fold output, only the watermark: it
-    // waits for the next non-delta event (a tool call, a status) or the
-    // timer, so a token stream costs no fold writes.
-    if (tasksMoved || goalMoved || recoveryMoved || failureMoved || !isDelta(event)) this.putFold(next)
-    else this.deferFold(next)
+    let goalMoved = false
+    if (warm) {
+      const before = tallyOf(warm)
+      foldTodo(warm, event, row.ts)
+      const after = tallyOf(warm)
+      tasksMoved = before?.done !== after?.done || before?.total !== after?.total || before?.current !== after?.current
+      const afterRecovery = foldContinuableError(prev.canContinue, event)
+      recoveryMoved = prev.canContinue !== afterRecovery
+      const afterFailure = foldFailure(prev.failure ?? null, event)
+      failureMoved = (prev.failure ?? null) !== afterFailure
+      goalMoved = event.type === 'goal'
+      // The task snapshot rides along at turn edges and when the list moved;
+      // between them the row keeps an older one, which says where it stands.
+      const snapshot = tasksMoved || event.type === 'status' || event.type === 'turn-complete' || event.type === 'user-text'
+      const next: FoldRow = {
+        sessionId,
+        foldedSeq: row.seq,
+        foldVersion: FOLD_VERSION,
+        tasks: after,
+        goal: foldGoal(prev.goal, event, row.ts),
+        canContinue: afterRecovery,
+        failure: afterFailure,
+        todo: snapshot ? serializeTodo(warm, row.seq) : (prev.todo ?? null)
+      }
+      // A streamed delta changes no fold output, only the watermark: it
+      // waits for the next non-delta event (a tool call, a status) or the
+      // timer, so a token stream costs no fold writes.
+      if (tasksMoved || goalMoved || recoveryMoved || failureMoved || !isDelta(event)) this.putFold(next)
+      else this.deferFold(next)
+    } else this.warming.get(sessionId)?.live.push(row)
     // A finished first turn upgrades the sliced-first-message title to a
     // generated one (fire-and-forget; the slice stays if the call fails).
     if (event.type === 'turn-complete') this.maybeRetitle(sessionId)

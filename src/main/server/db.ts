@@ -246,6 +246,9 @@ export function openDb(path: string): DatabaseSync {
     `ALTER TABLE sessions ADD COLUMN move_id TEXT`,
     // The trailing failure's verdict (failureKind.ts), folded beside can_continue.
     `ALTER TABLE session_folds ADD COLUMN failure TEXT`,
+    // The task fold itself, as of its own seq (folds.ts serializeTodo): where
+    // a warm-up after a launch starts reading the log instead of seq 0.
+    `ALTER TABLE session_folds ADD COLUMN todo TEXT`,
     // A plan's completion and the handoff links (plans.ts): when the
     // planner called plan_complete, the build started from the plan, the
     // plan a build came from, and the thread that started this one.
@@ -338,6 +341,10 @@ export interface FoldRow {
   canContinue: boolean
   /** The trailing failure's verdict while its error still shows (foldFailure). */
   failure: Failure | null
+  /** The task fold itself as of its own seq, opaque JSON (folds.ts
+   *  serializeTodo): a warm-up revives it and reads only the rows after.
+   *  Absent or null: the warm-up reads the log from the start. */
+  todo?: string | null
 }
 
 interface FoldRowRaw {
@@ -350,6 +357,7 @@ interface FoldRowRaw {
   goal: string | null
   can_continue: number
   failure: string | null
+  todo: string | null
 }
 
 function toFold(r: FoldRowRaw): FoldRow {
@@ -363,7 +371,8 @@ function toFold(r: FoldRowRaw): FoldRow {
         : { done: r.tasks_done, total: r.tasks_total, current: r.tasks_current },
     goal: r.goal ? (JSON.parse(r.goal) as FoldRow['goal']) : null,
     canContinue: !!r.can_continue,
-    failure: r.failure ? (JSON.parse(r.failure) as Failure) : null
+    failure: r.failure ? (JSON.parse(r.failure) as Failure) : null,
+    ...(r.todo ? { todo: r.todo } : {})
   }
 }
 
@@ -1582,6 +1591,53 @@ export class Store {
     }))
   }
 
+  /** The highest seq of a session's log, 0 when it has none: the counter
+   *  appendEvent hands seqs out from (seeded once from MAX(seq)). */
+  lastSeq(sessionId: string): number {
+    let next = this.nextSeq.get(sessionId)
+    if (next === undefined) {
+      next = this.maxSeq(sessionId) + 1
+      this.nextSeq.set(sessionId, next)
+    }
+    return next - 1
+  }
+
+  /**
+   * Up to `limit` (-1: all) of a session's rows after `afterSeq` and through
+   * `throughSeq`, oldest first, read on the reader worker while it is up and
+   * on the writer otherwise. `payloadSql` is the expression read as each
+   * row's payload and `whereSql` an extra predicate, both over the `payload`
+   * column: the caller cuts what it never reads (a fold's bodies, a mirror's
+   * deltas) in the worker, before anything crosses to this thread. The
+   * rows through `throughSeq` that this tick appended land first.
+   */
+  async readRows(
+    sessionId: string,
+    opts: { afterSeq: number; throughSeq?: number; limit: number; payloadSql?: string; whereSql?: string }
+  ): Promise<EventRow[]> {
+    this.flushEvents()
+    const sqlFor = (table: string): string =>
+      `SELECT seq, ts, ${opts.payloadSql ?? 'payload'} AS payload FROM ${table}
+         WHERE session_id = ? AND seq > ? AND seq <= ?${opts.whereSql ? ` AND (${opts.whereSql})` : ''}
+         ORDER BY seq LIMIT ?`
+    const params = [sessionId, opts.afterSeq, opts.throughSeq ?? Number.MAX_SAFE_INTEGER, opts.limit]
+    type Raw = { seq: number; ts: number; payload: string }
+    const table = this.eventsTable(sessionId)
+    let rows: Raw[] | null = null
+    if (this.reader?.available) {
+      try {
+        rows = await this.reader.query<Raw>(sqlFor(table), params)
+      } catch {
+        // The worker ended under this call: the writer answers.
+        rows = null
+      }
+      // A move between the files landed while the worker read: read again where the rows are now.
+      if (rows && (this.moving === sessionId || (this.coldIds.has(sessionId) ? 'cold.events' : 'events') !== table)) rows = null
+    }
+    rows ??= this.stmt(sqlFor(this.eventsTable(sessionId))).all(...params) as unknown as Raw[]
+    return rows.map((r) => ({ sessionId, seq: r.seq, ts: r.ts, event: JSON.parse(r.payload) as AgentEvent }))
+  }
+
   /** Up to `limit` events after `afterSeq` (-1 for all) — the chunked
    *  read the fold sweep walks big logs with, yielding between chunks. */
   eventsRange(sessionId: string, afterSeq: number, limit: number): EventRow[] {
@@ -1649,13 +1705,14 @@ export class Store {
     this
       .stmt(
         `INSERT INTO session_folds
-           (session_id, folded_seq, fold_version, tasks_done, tasks_total, tasks_current, goal, can_continue, failure)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           (session_id, folded_seq, fold_version, tasks_done, tasks_total, tasks_current, goal, can_continue, failure, todo)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(session_id) DO UPDATE SET
            folded_seq = excluded.folded_seq, fold_version = excluded.fold_version,
            tasks_done = excluded.tasks_done, tasks_total = excluded.tasks_total,
            tasks_current = excluded.tasks_current, goal = excluded.goal,
-           can_continue = excluded.can_continue, failure = excluded.failure`
+           can_continue = excluded.can_continue, failure = excluded.failure,
+           todo = excluded.todo`
       )
       .run(
         fold.sessionId,
@@ -1666,7 +1723,8 @@ export class Store {
         fold.tasks?.current ?? null,
         fold.goal ? JSON.stringify(fold.goal) : null,
         fold.canContinue ? 1 : 0,
-        fold.failure ? JSON.stringify(fold.failure) : null
+        fold.failure ? JSON.stringify(fold.failure) : null,
+        fold.todo ?? null
       )
   }
 

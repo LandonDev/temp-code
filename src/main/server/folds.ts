@@ -1,6 +1,7 @@
 import type { EventRow, Failure, SessionMeta } from '@shared/events'
 import { foldContinuableError, foldFailure, foldGoal, type GoalState } from '@shared/session-lifecycle'
 import { FOLD_VERSION, type FoldRow, type Store } from './db'
+import { untilLoopIdle } from './stalls'
 import { foldTodo, newTodoFold, tallyOf, type TodoFold } from './todos'
 
 /**
@@ -37,7 +38,119 @@ export function toFoldRow(sessionId: string, state: FoldState): FoldRow {
     tasks: tallyOf(state.todo),
     goal: state.goal,
     canContinue: state.canContinue,
-    failure: state.failure
+    failure: state.failure,
+    todo: serializeTodo(state.todo, state.seq)
+  }
+}
+
+// ── the task fold, persisted ─────────────────────────────────────────
+
+/** The task fold as JSON, stamped with the seq it has folded through: a
+ *  snapshot older than its fold row is still a valid starting point, since
+ *  it says where it stands. */
+export function serializeTodo(todo: TodoFold, seq: number): string {
+  return JSON.stringify({
+    seq,
+    list: todo.list,
+    taskIdx: [...todo.taskIdx],
+    byCall: [...todo.byCall],
+    seen: [...todo.seen],
+    turnOpen: todo.turnOpen,
+    sawUser: todo.sawUser,
+    lastTs: todo.lastTs
+  })
+}
+
+/** A stored snapshot back as a live task fold; null when there is none or it does not read. */
+export function reviveTodo(json: string | null | undefined): { todo: TodoFold; seq: number } | null {
+  if (!json) return null
+  try {
+    const v = JSON.parse(json) as {
+      seq: number
+      list: TodoFold['list']
+      taskIdx: [string, number][]
+      byCall: [string, number][]
+      seen: string[]
+      turnOpen: boolean
+      sawUser: boolean
+      lastTs: number
+    }
+    if (typeof v.seq !== 'number' || !Array.isArray(v.list)) return null
+    return {
+      seq: v.seq,
+      todo: {
+        list: v.list,
+        taskIdx: new Map(v.taskIdx),
+        byCall: new Map(v.byCall),
+        seen: new Set(v.seen),
+        turnOpen: !!v.turnOpen,
+        sawUser: !!v.sawUser,
+        lastTs: v.lastTs ?? 0
+      }
+    }
+  } catch {
+    return null
+  }
+}
+
+/** The tool calls whose input the task fold reads (todos.ts foldTodo). */
+const TODO_TOOLS = `('TodoWrite', 'update_plan', 'TaskCreate', 'TaskUpdate')`
+
+/**
+ * Each row's payload cut, in SQL on the reader worker, to what the folds
+ * read (foldTodo, foldGoal, foldContinuableError, foldFailure): a tool
+ * call's input only for the task tools, the head of a tool result (a
+ * TaskCreate result names its "#N" in its first words), no message text.
+ * Every other row stays whole. A big log's bodies never cross to the loop.
+ */
+export const FOLD_PAYLOAD_SQL = `CASE WHEN NOT json_valid(payload) THEN payload ELSE
+  CASE json_extract(payload, '$.type')
+    WHEN 'tool-call' THEN CASE WHEN json_extract(payload, '$.name') IN ${TODO_TOOLS} THEN payload
+                              ELSE json_remove(payload, '$.input', '$.preview') END
+    WHEN 'tool-result' THEN json_replace(payload, '$.output', substr(json_extract(payload, '$.output'), 1, 512))
+    WHEN 'assistant-text' THEN json_remove(payload, '$.text')
+    WHEN 'thinking' THEN json_remove(payload, '$.text')
+    WHEN 'user-text' THEN json_remove(payload, '$.text', '$.attachments', '$.preamble')
+    ELSE payload
+  END
+END`
+
+const LOG_CHUNK = 2_000
+
+/**
+ * Fold a session's log into `state` from where it stands, through `through`:
+ * the task fold from `todoSeq`, the other three from `state.seq` (a stored
+ * row and its task snapshot may stand at different seqs). Read in chunks on
+ * the reader worker (Store.readRows) with the payload cut to what the folds
+ * read, a quiet loop awaited between chunks.
+ */
+export async function foldLog(
+  store: Pick<Store, 'readRows'>,
+  sessionId: string,
+  state: FoldState,
+  todoSeq: number,
+  through: number,
+  opts: { chunk?: number; between?: () => Promise<void> } = {}
+): Promise<void> {
+  const chunk = opts.chunk ?? LOG_CHUNK
+  const between = opts.between ?? (() => untilLoopIdle())
+  let after = Math.min(state.seq, todoSeq)
+  for (;;) {
+    if (after >= through) return
+    const rows = await store.readRows(sessionId, { afterSeq: after, throughSeq: through, limit: chunk, payloadSql: FOLD_PAYLOAD_SQL })
+    for (const row of rows) {
+      if (row.seq > todoSeq) foldTodo(state.todo, row.event, row.ts)
+      if (row.seq > state.seq) {
+        state.goal = foldGoal(state.goal, row.event, row.ts)
+        state.canContinue = foldContinuableError(state.canContinue, row.event)
+        state.failure = foldFailure(state.failure, row.event)
+        state.seq = row.seq
+      }
+    }
+    if (rows.length < chunk) return
+    after = rows[rows.length - 1].seq
+    await between()
+    await new Promise((r) => setImmediate(r))
   }
 }
 
