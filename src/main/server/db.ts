@@ -276,7 +276,10 @@ export function openDb(path: string): DatabaseSync {
     // last changed here (the follower compares it with the home's).
     `ALTER TABLE workspaces ADD COLUMN link_id TEXT`,
     `ALTER TABLE projects ADD COLUMN link_id TEXT`,
-    `ALTER TABLE projects ADD COLUMN settings_updated_at INTEGER`
+    `ALTER TABLE projects ADD COLUMN settings_updated_at INTEGER`,
+    // A dev server's row (kind 'port'): the listening pid, and the tool call that opened it.
+    `ALTER TABLE thread_resources ADD COLUMN pid INTEGER`,
+    `ALTER TABLE thread_resources ADD COLUMN call_id TEXT`
   ]) {
     try {
       db.exec(stmt)

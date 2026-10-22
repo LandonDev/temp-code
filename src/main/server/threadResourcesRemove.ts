@@ -1,5 +1,6 @@
 import { basename, dirname } from 'node:path'
 import type { ThreadResource } from '@shared/contract-resources'
+import { parseLsof, parseSs } from './threadPortsParse'
 
 /**
  * How one ledger row is removed on its host (docs/box.md "Thread
@@ -14,6 +15,9 @@ import type { ThreadResource } from '@shared/contract-resources'
  *   simulator   xcrun simctl shutdown <udid> (its failure is nothing), then
  *               xcrun simctl delete <udid>.
  *   devInstance rm -rf <userData dir>, never the installed app's dir.
+ *   port        kill -TERM <pid> only while that pid still listens on the
+ *               port (ss on Linux, lsof on macOS), up to 3 s for it to go,
+ *               then kill -KILL; another process on the port is never touched.
  * A resource already gone is a removal with a note, not a failure.
  */
 
@@ -41,7 +45,38 @@ export async function removeResource(row: ThreadResource, run: ResourceRunner): 
       return removeSimulator(row, run)
     case 'devInstance':
       return removeDevInstance(row, run)
+    case 'port':
+      return removePort(row, run)
   }
+}
+
+/** The pids listening on a port on the runner's host: ss where it exists, else lsof. */
+export async function listenersOn(port: number, run: ResourceRunner): Promise<Set<number>> {
+  const ss = await run(['ss', '-ltnpH', `sport = :${port}`], '/').catch(() => null)
+  if (ss && ss.exitCode === 0) return new Set(parseSs(ss.stdout).filter((l) => l.port === port).map((l) => l.pid))
+  const lsof = await run(['lsof', '-nP', `-iTCP:${port}`, '-sTCP:LISTEN'], '/').catch(() => null)
+  return new Set(parseLsof(lsof?.stdout ?? '').filter((l) => l.port === port).map((l) => l.pid))
+}
+
+/** How long a SIGTERM gets before the SIGKILL, and how often the pid is checked meanwhile. */
+export const PORT_TERM_GRACE_MS = 3_000
+const PORT_POLL_MS = 150
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+async function removePort(row: ThreadResource, run: ResourceRunner): Promise<RemovalOutcome> {
+  const port = Number(row.identifier)
+  const pid = row.pid
+  if (!pid || !Number.isInteger(port)) throw new Error(`refused: the row names no listening process`)
+  if (!(await listenersOn(port, run)).has(pid)) return { note: 'was already gone' }
+  await run(['kill', '-TERM', String(pid)], '/')
+  for (let waited = 0; waited < PORT_TERM_GRACE_MS; waited += PORT_POLL_MS) {
+    if ((await run(['kill', '-0', String(pid)], '/')).exitCode !== 0) return { note: null }
+    await sleep(PORT_POLL_MS)
+  }
+  const killed = await run(['kill', '-KILL', String(pid)], '/')
+  if (killed.exitCode !== 0 && (await run(['kill', '-0', String(pid)], '/')).exitCode === 0) throw new Error(`kill: ${trimmed(killed) || 'failed'}`)
+  return { note: 'killed after 3 s' }
 }
 
 async function exists(path: string, run: ResourceRunner): Promise<boolean> {

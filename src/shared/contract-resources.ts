@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { PortForwardInfo } from './contract-ports'
 
 // Thread-owned resources (docs/box.md "Thread resources"). A thread that
 // creates a git worktree, a simulator or an isolated dev instance, on its
@@ -9,8 +10,11 @@ import { z } from 'zod'
 // panel in the thread header removes one at a time. Rows are only ever added
 // and stamped (`remove_requested_at`, `removed_at`), never deleted, so a
 // reader that joins on the table (the device row) sees history too.
+// A `port` is a dev server the thread's command opened (docs/box.md "Dev
+// servers on the box"): removing it kills the listening pid, and a port that
+// stops listening is stamped removed on its own.
 
-export const THREAD_RESOURCE_KINDS = ['worktree', 'simulator', 'devInstance'] as const
+export const THREAD_RESOURCE_KINDS = ['worktree', 'simulator', 'devInstance', 'port'] as const
 export type ThreadResourceKind = (typeof THREAD_RESOURCE_KINDS)[number]
 
 export interface ThreadResource {
@@ -20,9 +24,9 @@ export interface ThreadResource {
   /** The host the resource lives on: this host's environment id, or the Mac's for a bridged call. */
   environmentId: string
   kind: ThreadResourceKind
-  /** worktree: the absolute path; simulator: the UDID; devInstance: the userData dir. */
+  /** worktree: the absolute path; simulator: the UDID; devInstance: the userData dir; port: the port number. */
   identifier: string
-  /** What a person recognises it by: the branch, the simulator's name, the dir's base name. */
+  /** What a person recognises it by: the branch, the simulator's name, the dir's base name, a port's announced URL or command. */
   label: string
   /** worktree only: the branch the command created, deleted with it when it has no unpushed commits; null means none to delete. */
   branch: string | null
@@ -32,6 +36,12 @@ export interface ThreadResource {
   removedAt: number | null
   /** The last removal outcome, for the row: "branch kept: 2 unpushed commits", "Mac offline, waiting". */
   note: string | null
+  /** port only: the listening process. */
+  pid?: number | null
+  /** port only: the tool call whose command opened it (its transcript row offers the link). */
+  callId?: string | null
+  /** port only: where it is forwarded (a Mac's number for it; contract-ports.ts). */
+  forwards?: PortForwardInfo[]
 }
 
 /** One row's answer to resources.remove. */

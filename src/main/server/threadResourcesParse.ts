@@ -20,6 +20,9 @@ export interface Created {
   label: string
   /** worktree: the branch the command made (null: an existing branch or detached, so nothing to delete). */
   branch: string | null
+  /** port: the listening pid and the tool call that opened it. */
+  pid?: number | null
+  callId?: string | null
 }
 
 export interface Removed {

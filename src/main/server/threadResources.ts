@@ -35,9 +35,12 @@ interface Row {
   remove_requested_at: number | null
   removed_at: number | null
   note: string | null
+  pid: number | null
+  call_id: string | null
 }
 
 const toResource = (r: Row): ThreadResource => ({
+  ...(r.kind === 'port' ? { pid: r.pid, callId: r.call_id } : {}),
   id: r.id,
   sessionId: r.session_id,
   environmentId: r.environment_id,
@@ -94,6 +97,19 @@ export class ThreadResources {
     return () => this.listeners.delete(listener)
   }
 
+  /** Adds what the ledger does not keep to a row on its way out: a port's forwards (portForward.ts). */
+  decorate: ((r: ThreadResource) => ThreadResource) | null = null
+
+  /** Something outside the ledger changed a thread's rows (a forward landed): its listeners hear the list again. */
+  notify(sessionId: string): void {
+    this.changed(sessionId)
+  }
+
+  private out(rows: Row[]): ThreadResource[] {
+    const d = this.decorate
+    return d ? rows.map((r) => d(toResource(r))) : rows.map(toResource)
+  }
+
   private changed(sessionId: string): void {
     if (!this.listeners.size) return
     const rows = this.list(sessionId, true)
@@ -108,7 +124,7 @@ export class ThreadResources {
         `SELECT * FROM thread_resources WHERE session_id = ? ${includeRemoved ? '' : 'AND removed_at IS NULL'} ORDER BY created_at DESC, id DESC`
       )
       .all(sessionId) as unknown as Row[]
-    return rows.map(toResource)
+    return this.out(rows)
   }
 
   /** Every live row on this ledger, any thread (a device list joins on it). */
@@ -116,9 +132,9 @@ export class ThreadResources {
     const rows = this.deps.db
       .prepare(`SELECT * FROM thread_resources WHERE removed_at IS NULL ORDER BY created_at DESC, id DESC`)
       .all() as unknown as Row[]
-    return rows
-      .filter((r) => (!filter.kind || r.kind === filter.kind) && (!filter.environmentId || r.environment_id === filter.environmentId))
-      .map(toResource)
+    return this.out(
+      rows.filter((r) => (!filter.kind || r.kind === filter.kind) && (!filter.environmentId || r.environment_id === filter.environmentId))
+    )
   }
 
   get(id: string): ThreadResource | null {
@@ -155,10 +171,10 @@ export class ThreadResources {
       const id = `r${randomBytes(9).toString('base64url')}`
       const r = this.deps.db
         .prepare(
-          `INSERT OR IGNORE INTO thread_resources (id, session_id, environment_id, kind, identifier, label, branch, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          `INSERT OR IGNORE INTO thread_resources (id, session_id, environment_id, kind, identifier, label, branch, created_at, pid, call_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
-        .run(id, owner, environmentId, c.kind, c.identifier, c.label, c.branch, this.now())
+        .run(id, owner, environmentId, c.kind, c.identifier, c.label, c.branch, this.now(), c.pid ?? null, c.callId ?? null)
       if (r.changes > 0) {
         made.push(this.get(id) as ThreadResource)
         this.log(`thread=${owner}${owner !== sessionId ? ` (via ${sessionId})` : ''} ${c.kind} ${c.identifier} on ${environmentId}`)
@@ -167,6 +183,26 @@ export class ThreadResources {
     const gone = this.markRemoved(environmentId, detected.removed, 'removed by the thread')
     if (made.length || gone) this.changed(owner)
     return made
+  }
+
+  /** The live row of a resource on a host, whoever owns it. */
+  live(environmentId: string, kind: ThreadResourceKind, identifier: string): ThreadResource | null {
+    const row = this.deps.db
+      .prepare(`SELECT * FROM thread_resources WHERE environment_id = ? AND kind = ? AND identifier = ? AND removed_at IS NULL`)
+      .get(environmentId, kind, identifier) as Row | undefined
+    return row ? toResource(row) : null
+  }
+
+  /** A resource ended on its own (a port stopped listening): its live row is stamped with the note. */
+  ended(environmentId: string, kind: ThreadResourceKind, identifier: string, note: string): number {
+    return this.markRemoved(environmentId, [{ kind, identifier }], note)
+  }
+
+  /** A port's listener changed hands (a watcher restarted the server): the row follows the new pid. */
+  setPid(id: string, pid: number): void {
+    this.deps.db.prepare(`UPDATE thread_resources SET pid = ? WHERE id = ? AND removed_at IS NULL`).run(pid, id)
+    const row = this.get(id)
+    if (row) this.changed(row.sessionId)
   }
 
   /** The thread (or the harness) removed it itself: the live row is stamped, whoever owns it. */

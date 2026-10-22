@@ -641,6 +641,11 @@ export class SessionRegistry {
     return pids
   }
 
+  /** One thread's harness pid, null without a live process (threadPorts.ts walks its tree). */
+  harnessPid(sessionId: string): number | null {
+    return this.handles.get(sessionId)?.pid?.() ?? null
+  }
+
   /** The line a queued row carries ("Queued · 120 of 120 running"), null when not queued. */
   queuedLine(sessionId: string): string | null {
     const line = this.queuedLines.get(sessionId)
