@@ -191,7 +191,7 @@ describe('RelayServer', () => {
           : null,
       environments: () => [{ id: 'env_box', name: 'The box' }, { id: 'env_other', name: 'Other' }],
       presence,
-      facade: () => ({ registry: registry as unknown as FacadeContext['registry'], origin: null }),
+      facade: () => ({ registry: registry as unknown as FacadeContext['registry'], origin: null, environmentId: 'env_mac', hostName: 'Studio' }),
       deliversNotices: () => opts.deliversNotices ?? false,
       build: { release: 300, version: '1.0.300', sha: 'abc', platform: 'darwin' },
       hostname: 'Studio',
@@ -311,7 +311,10 @@ describe('RelayServer', () => {
     const { call, principal } = make()
     expect(await call('relay.facade', { principal, name: 'list_projects', arguments: {} })).toEqual({
       ok: true,
-      result: { repos: [{ id: 'w1', name: 'repo', path: '/tmp/repo', github: null, projects: [] }] }
+      result: {
+        hosts: [expect.objectContaining({ environmentId: 'env_mac', name: 'Studio', self: true, state: 'available' })],
+        repos: [{ id: 'w1', name: 'repo', path: '/tmp/repo', github: null, host: 'env_mac', projects: [] }]
+      }
     })
     expect(await call('relay.facade', { principal, name: 'no_such_tool', arguments: {} })).toEqual({ ok: false, code: 'not_found', message: 'unknown tool "no_such_tool"' })
     expect(await call('relay.facade', { principal: { ...principal, caps: ['read'] }, name: 'stop_session', arguments: { session: 'x' } })).toMatchObject({ ok: false, code: 'forbidden' })
