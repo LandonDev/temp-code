@@ -125,6 +125,7 @@ struct HostRow: View {
             }
             .layoutPriority(1)
             Spacer(minLength: Layout.rowGap)
+            DriftMark(client: client)
             // An id must stay legible: `caption` mono, not the stamp step's
             // caption2, which falls under the floor for eight glyphs of mono.
             Text(abbreviatedEnvironmentId(client.environment.id))
@@ -210,11 +211,8 @@ struct HostDetailView: View {
                 }
             }
 
-            // 2. Activity: what the host is doing. Thread 21 ("Hosts: deploy
-            // drift, the Mac bridge, devices, sync") adds exactly one line here,
-            // `HostActivitySections(client: client)`, a view of its own under
-            // Shell/Hosts/ whose body is one or more Sections, so they take the
-            // inset grouped style and the list's animations like the rest.
+            // 2. Activity: what the host is doing (Shell/Hosts/, thread 21).
+            HostActivitySections(client: client)
 
             // 3. Key: the four capabilities and whether this key has them.
             Section {

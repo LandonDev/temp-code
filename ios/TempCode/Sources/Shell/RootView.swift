@@ -111,6 +111,7 @@ struct RootView: View {
             projectTrailing: { AnyView(ProjectPlanChip(client: $0, project: $1)) }
         )
         let registry = model.registry
+        slots.hostTrailing = { AnyView(DriftMark(client: $0)) } // iOS 21: the deploy drift mark (Shell/Hosts)
         // Thread 29: a relayed host's "through <carrier> · <presence>" line under its header's name.
         slots.hostSubline = { client in
             AnyView(HostSubline(client: client, carrierName: registry.carrier(of: client.environment.id)?.environment.name))

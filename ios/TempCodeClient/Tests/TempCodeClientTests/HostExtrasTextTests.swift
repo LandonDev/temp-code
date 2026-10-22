@@ -71,7 +71,7 @@ struct DriftLineTests {
     @Test(arguments: [
         (build(release: 270), master(273), false, true, true, "3 releases behind master: v1.0.270 → v1.0.273. Deploy from here."),
         (build(release: 272), master(273), false, true, false, "1 release behind master: v1.0.272 → v1.0.273. Deploying needs an admin key."),
-        (build(release: 270), master(273), false, false, true, "3 releases behind master: v1.0.270 → v1.0.273. Deploying needs an admin key."),
+        (build(release: 270), master(273), false, false, true, "3 releases behind master: v1.0.270 → v1.0.273."),
         (build(release: 270, platform: "darwin"), master(273), false, false, false, "3 releases behind master: v1.0.270 → v1.0.273. Publish from the Mac."),
         (build(release: 273), master(273), false, true, true, "Up to date with master (v1.0.273)."),
         (build(release: 275), master(273), false, true, true, "Up to date with master (v1.0.273)."),
@@ -211,11 +211,10 @@ struct DeviceWordsTests {
         #expect(DeviceWords.phoneState(phone("iPad", .unavailable)) == DeviceState(tone: .off, text: "iPad · iOS 26.0 · Unavailable"))
     }
 
-    @Test func `the Xcode line`() {
-        let load = HostLoad(oneMinute: 2.1, cores: 10)
-        #expect(DeviceWords.xcodeLine(XcodeInfo(path: "/Applications/Xcode-beta.app", name: "Xcode-beta", version: "27.0", from: .newest), load: load) == "Xcode-beta 27.0 · load 2.1 / 10 cores")
-        #expect(DeviceWords.xcodeLine(XcodeInfo(path: "/x", name: "Xcode", version: nil, from: .xcodeSelect), load: load) == "Xcode · load 2.1 / 10 cores")
-        #expect(DeviceWords.xcodeLine(nil, load: load) == "No Xcode found · load 2.1 / 10 cores")
+    @Test func `the Xcode line names the Xcode alone`() {
+        #expect(DeviceWords.xcodeLine(XcodeInfo(path: "/Applications/Xcode-beta.app", name: "Xcode-beta", version: "27.0", from: .newest)) == "Xcode-beta 27.0")
+        #expect(DeviceWords.xcodeLine(XcodeInfo(path: "/x", name: "Xcode", version: nil, from: .xcodeSelect)) == "Xcode")
+        #expect(DeviceWords.xcodeLine(nil) == "No Xcode found")
     }
 }
 
@@ -250,6 +249,8 @@ struct MacBridgeWordsTests {
         #expect(MacBridgeWords.loadValue(load) == "12.3 of 32")
         let hot = MacBridgeLoad(load: 40, cores: 16, limit: 32, pinned: false, resumeBelow: 24, busy: true, sampledAt: 0)
         #expect(MacBridgeWords.loadLine(hot) == "Load 40.0 of 32 · 16 cores, holding new commands until under 24")
+        #expect(MacBridgeWords.holdingLine(load) == nil)
+        #expect(MacBridgeWords.holdingLine(hot) == "Holding new commands until under 24")
         #expect(MacBridgeWords.pendingFooter(pending: 0, macName: "Studio") == nil)
         #expect(MacBridgeWords.pendingFooter(pending: 1, macName: "Studio") == "1 command waits for a decision on Studio; approve it there.")
         #expect(MacBridgeWords.pendingFooter(pending: 2, macName: "Studio") == "2 commands wait for a decision on Studio; approve them there.")

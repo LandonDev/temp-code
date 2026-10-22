@@ -59,10 +59,12 @@ public enum DriftLine {
     }
 
     /// The Build section's footer. Behind: the count and both versions, then
-    /// what brings the host up (deploy from here, an admin key, or the Mac's
-    /// publish). Current: one sentence. Master unknown: a sentence only when a
-    /// fetch failed and nothing is held, so the footer is silent before the
-    /// first fetch. No build in the hello (an older host): nil.
+    /// what brings the host up: the Mac's publish, deploying from here, or
+    /// the admin key a lesser key lacks; nothing more when the box cannot
+    /// take a deploy right now (the row's own line says why). Current: one
+    /// sentence. Master unknown: a sentence only when a fetch failed and
+    /// nothing is held, so the footer is silent before the first fetch. No
+    /// build in the hello (an older host): nil.
     public static func footer(build: HelloPush.Build?, master: MasterRelease?, fetchFailed: Bool, canDeploy: Bool, isAdmin: Bool) -> String? {
         guard let build else { return nil }
         guard let master else { return fetchFailed ? "Master's version could not be read." : nil }
@@ -71,10 +73,12 @@ public enum DriftLine {
         let count = "\(behind) \(behind == 1 ? "release" : "releases") behind master: v\(build.version) → v\(master.version)."
         let fix: String = if build.platform == "darwin" {
             " Publish from the Mac."
-        } else if canDeploy && isAdmin {
+        } else if !isAdmin {
+            " Deploying needs an admin key."
+        } else if canDeploy {
             " Deploy from here."
         } else {
-            " Deploying needs an admin key."
+            ""
         }
         return count + fix
     }
@@ -294,14 +298,11 @@ public enum DeviceWords {
         }
     }
 
-    /// "Xcode-beta 27.0 · load 2.1 / 10 cores"; "No Xcode found · load …" without one.
-    public static func xcodeLine(_ xcode: XcodeInfo?, load: HostLoad) -> String {
-        let name: String = if let xcode {
-            xcode.version.map { "\(xcode.name) \($0)" } ?? xcode.name
-        } else {
-            "No Xcode found"
-        }
-        return "\(name) · load \(String(format: "%.1f", load.oneMinute)) / \(load.cores) cores"
+    /// "Xcode-beta 27.0", "Xcode", or "No Xcode found": the Xcode the Mac's tools run under.
+    /// The load is the summary's; it is not said twice.
+    public static func xcodeLine(_ xcode: XcodeInfo?) -> String {
+        guard let xcode else { return "No Xcode found" }
+        return xcode.version.map { "\(xcode.name) \($0)" } ?? xcode.name
     }
 }
 
@@ -368,6 +369,11 @@ public enum MacBridgeWords {
     public static func loadLine(_ load: MacBridgeLoad) -> String {
         let base = "Load \(String(format: "%.1f", load.load)) of \(trim(load.limit)) · \(load.cores) cores"
         return load.busy ? "\(base), holding new commands until under \(trim(load.resumeBelow))" : base
+    }
+
+    /// "Holding new commands until under 24" while the guard holds for load; nil otherwise.
+    public static func holdingLine(_ load: MacBridgeLoad) -> String? {
+        load.busy ? "Holding new commands until under \(trim(load.resumeBelow))" : nil
     }
 
     /// "12.3 of 32": the Load row's value.
