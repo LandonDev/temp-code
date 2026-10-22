@@ -313,7 +313,8 @@ export class FocusSignal {
 
   constructor(
     private readonly linkOf: (environmentId: string) => FocusLink | undefined,
-    private readonly defer: (fn: () => void) => void = queueMicrotask,
+    // Wrapped: called as `this.defer(…)`, the bare global throws "Illegal invocation".
+    private readonly defer: (fn: () => void) => void = (fn) => queueMicrotask(fn),
   ) {}
 
   /** The focused, visible pane shows this thread. */
