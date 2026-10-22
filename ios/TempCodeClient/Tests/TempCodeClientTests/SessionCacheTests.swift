@@ -3,8 +3,8 @@ import Testing
 import TempCodeContract
 @testable import TempCodeClient
 
-func sampleSession(_ id: String, projectId: String = "p1", title: String = "A thread", updatedAt: Int = 1, threadType: ThreadType? = .implementation) -> SessionMeta {
-    SessionMeta(id: id, parentId: nil, projectId: projectId, workspaceId: nil, threadType: threadType, planPath: nil, provider: .claude, model: "claude-sonnet-5-5", reasoning: .low, agentType: .implementer, title: title, cwd: "/tmp/repo", status: .idle, pinned: false, archived: false, permission: .edits, fast: false, ultrafast: false, context1m: false, busySince: nil, pausedAt: nil, frozenActiveElapsed: nil, nativeId: nil, account: nil, activity: nil, activityKind: nil, tasks: nil, goal: nil, context: nil, canContinue: nil, treeCanContinue: nil, treeHasLiveWork: nil, treeHasPaused: nil, treeFrozenActiveElapsed: nil, threadRules: nil, createdAt: 1, updatedAt: updatedAt)
+func sampleSession(_ id: String, projectId: String = "p1", title: String = "A thread", updatedAt: Int = 1, threadType: ThreadType? = .implementation, status: SessionStatus = .idle, busySince: Int? = nil) -> SessionMeta {
+    SessionMeta(id: id, parentId: nil, projectId: projectId, workspaceId: nil, threadType: threadType, planPath: nil, provider: .claude, model: "claude-sonnet-5-5", reasoning: .low, agentType: .implementer, title: title, cwd: "/tmp/repo", status: status, pinned: false, archived: false, permission: .edits, fast: false, ultrafast: false, context1m: false, busySince: busySince, pausedAt: nil, frozenActiveElapsed: nil, nativeId: nil, account: nil, activity: nil, activityKind: nil, tasks: nil, goal: nil, context: nil, canContinue: nil, treeCanContinue: nil, treeHasLiveWork: nil, treeHasPaused: nil, treeFrozenActiveElapsed: nil, threadRules: nil, createdAt: 1, updatedAt: updatedAt)
 }
 
 func sampleProject(_ id: String, workspaceId: String = "w1", name: String = "A project") -> ProjectMeta {
@@ -75,7 +75,7 @@ func textRow(_ sessionId: String, seq: Int, text: String? = nil, ephemeral: Bool
 
     @Test func `a running thread's host clock survives the cache for the elapsed timer`() async throws {
         let cache = try SessionCache.inMemory()
-        let running = SessionMeta(id: "s1", parentId: nil, projectId: "p1", workspaceId: nil, threadType: .chat, planPath: nil, provider: .claude, model: "claude-sonnet-5-5", reasoning: .low, agentType: .implementer, title: "Running", cwd: "/tmp/repo", status: .running, pinned: false, archived: false, permission: .edits, fast: false, ultrafast: false, context1m: false, busySince: 1_699_999_990_000, pausedAt: nil, frozenActiveElapsed: nil, nativeId: nil, account: nil, activity: nil, activityKind: nil, tasks: nil, goal: nil, context: nil, canContinue: nil, treeCanContinue: nil, treeHasLiveWork: nil, treeHasPaused: nil, treeFrozenActiveElapsed: nil, threadRules: nil, createdAt: 1, updatedAt: 1_700_000_000_000)
+        let running = sampleSession("s1", title: "Running", updatedAt: 1_700_000_000_000, status: .running, busySince: 1_699_999_990_000)
         try await cache.upsertSessions("env_test", [running])
         let shell = try await cache.shell("env_test")
         #expect(shell.sessions.first?.busySince == 1_699_999_990_000)
