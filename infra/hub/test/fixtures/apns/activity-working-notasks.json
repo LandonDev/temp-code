@@ -1,0 +1,34 @@
+{
+  "input": {
+    "hostId": "box",
+    "environmentId": "env_box",
+    "threadId": "thread-1",
+    "event": "update",
+    "state": {
+      "phase": "working",
+      "since": 1759999000000,
+      "ts": 1760000000000,
+      "seq": 41,
+      "title": "Ship it",
+      "task": "Editing PromptBar.tsx"
+    },
+    "title": "Ship it",
+    "threadType": "implementation",
+    "ts": 1760000000000
+  },
+  "payload": {
+    "aps": {
+      "timestamp": 1760000000,
+      "event": "update",
+      "content-state": {
+        "phase": "working",
+        "since": 1759999000000,
+        "ts": 1760000000000,
+        "seq": 41,
+        "title": "Ship it",
+        "task": "Editing PromptBar.tsx"
+      },
+      "relevance-score": 50
+    }
+  }
+}

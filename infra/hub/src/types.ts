@@ -21,8 +21,10 @@ export interface Notice {
   kind?: NoticeKind
   /** The approval a phone may decide from the notification (kind `approval`). */
   requestId?: string
+  /** The host's name: `tc.host`, which the phone's service extension adds to the subtitle when several hosts are paired. */
+  hostName?: string
 }
-export const noticeKinds = ['approval', 'question', 'plan', 'waiting', 'finished', 'failed', 'stuck'] as const
+export const noticeKinds = ['approval', 'question', 'plan', 'waiting', 'finished', 'failed', 'stuck', 'batch', 'stopped'] as const
 export type NoticeKind = (typeof noticeKinds)[number]
 export interface Heartbeat {
   environmentId: string
@@ -57,8 +59,11 @@ export type Subscription = {
 } & ({ kind: 'webhook'; url: string; encryptedSecret: string } | ({ kind: 'apns' } & ApnsDevice))
 /** The Live Activity tokens held for one thread, by device. */
 export type Activities = Record<string, ApnsDevice>
-export const activityPhases = ['working', 'paused', 'waiting', 'finished', 'failed'] as const
+export const activityPhases = ['working', 'paused', 'waiting', 'finished', 'failed', 'stopped'] as const
 export type ActivityPhase = (typeof activityPhases)[number]
+/** What `done`/`total` count; absent means tasks. A watching master sends its batch's threads. */
+export const activityUnits = ['tasks', 'threads'] as const
+export type ActivityUnit = (typeof activityUnits)[number]
 /** The Live Activity's `content-state`, keys as the phone's ContentState: the clock runs from `since`, the rest is the desktop's running row. */
 export interface ActivityState {
   phase: ActivityPhase
@@ -69,6 +74,7 @@ export interface ActivityState {
   task?: string
   done?: number
   total?: number
+  unit?: ActivityUnit
   reason?: string
 }
 /** `POST /v1/activity`: one state for every device watching the thread. */

@@ -1,0 +1,41 @@
+{
+  "input": {
+    "event": "needs_you",
+    "hostId": "box",
+    "environmentId": "env_box",
+    "threadId": "thread-1",
+    "seq": 41,
+    "title": "Ship it",
+    "subtitle": "temp-code",
+    "body": "Waiting for you",
+    "kind": "waiting",
+    "hostName": "box",
+    "ts": 1760000000000
+  },
+  "payload": {
+    "aps": {
+      "alert": {
+        "title": "Ship it",
+        "subtitle": "temp-code",
+        "body": "Waiting for you"
+      },
+      "sound": "default",
+      "thread-id": "thread-1",
+      "summary-arg": "temp-code",
+      "interruption-level": "time-sensitive",
+      "relevance-score": 1,
+      "category": "tc.thread",
+      "mutable-content": 1
+    },
+    "tc": {
+      "event": "needs_you",
+      "hostId": "box",
+      "environmentId": "env_box",
+      "threadId": "thread-1",
+      "seq": 41,
+      "kind": "waiting",
+      "host": "box",
+      "ts": 1760000000000
+    }
+  }
+}

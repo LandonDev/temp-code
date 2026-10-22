@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import {
   env,
   SELF,
@@ -9,9 +10,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import worker from '../src/index'
 import { hash, seal, signature } from '../src/crypto'
 import { apnsReset, JWT_LIFETIME_MS, providerToken } from '../src/apns'
-import { ACTIVITY_DISMISS_S } from '../src/delivery'
+import { ACTIVITY_DISMISS_S, activityPayload, notificationPayload } from '../src/delivery'
 import { dohResolve, guardTarget, isPrivateAddress, setResolver } from '../src/target'
-import type { Env as HubEnv, Host, Subscription } from '../src/types'
+import type { ActivityUpdate, Env as HubEnv, Host, Notice, Subscription } from '../src/types'
 declare global {
   namespace Cloudflare {
     interface Env extends HubEnv {}
@@ -603,7 +604,7 @@ describe('APNs delivery', () => {
         'summary-arg': 'Done',
         'interruption-level': 'time-sensitive',
         'relevance-score': 1,
-        category: 'tc.thread'
+        category: 'tc.thread', 'mutable-content': 1
       },
       tc: { event: 'needs_you', hostId: 'box', environmentId: 'env_box', threadId: 'thread-1', seq: 42, ts: 2000 }
     })
@@ -611,7 +612,7 @@ describe('APNs delivery', () => {
     fetch.mockClear()
     expect(await (await callWith(hubEnv, '/v1/notify', 'POST', { ...apnsNotice, subtitle: 'temp-code', kind: 'approval', requestId: 'a1' }, auth)).json()).toEqual({ delivered: 1, failed: 0 })
     const approval = JSON.parse(fetch.mock.calls[0][1]!.body as string)
-    expect(approval.aps).toMatchObject({ alert: { title: 'Done', subtitle: 'temp-code', body: 'Permission: Bash — git push' }, 'summary-arg': 'temp-code', category: 'tc.approval' })
+    expect(approval.aps).toMatchObject({ alert: { title: 'Done', subtitle: 'temp-code', body: 'Permission: Bash — git push' }, 'summary-arg': 'temp-code', category: 'tc.approval', 'mutable-content': 1 })
     expect(approval.tc).toMatchObject({ kind: 'approval', requestId: 'a1' })
     expect((await callWith(hubEnv, '/v1/notify', 'POST', { ...apnsNotice, kind: 'party' }, auth)).status).toBe(400)
     // A finished notice is not time-sensitive, lands without a sound, and the subscription did not ask for stuck.
@@ -711,5 +712,55 @@ describe('APNs delivery', () => {
     expect(await directory().activities('box', 'thread-1')).toEqual({})
     expect((await callWith(hubEnv, '/v1/activity', 'POST', { ...update, state: { phase: 'resting', since: 1, ts: 2 } }, auth)).status).toBe(400)
     expect((await env.HUB_KV.list({ prefix: 'act:' })).keys).toEqual([])
+  })
+})
+
+/**
+ * Parity with the host: infra/hub/test/fixtures/apns/*.json, one case per
+ * notification kind and activity phase, `{ input, payload }`, read by
+ * temp-code's src/main/server/remote/apnsPayload.test.ts against its own
+ * builders too. Each payload is also what the simulator pass pushes.
+ */
+describe('the APNs payloads match the shared fixtures', () => {
+  // Vite inlines the files at build time: the Workers pool has no filesystem.
+  const files = import.meta.glob('./fixtures/apns/*.json', { eager: true, import: 'default' }) as Record<string, { input: unknown; payload: unknown }>
+  const fixtures = Object.keys(files)
+    .sort()
+    .map((path) => ({ file: path.replace(/^.*\//, ''), ...files[path] }))
+  it('has every case', () => {
+    expect(fixtures).toHaveLength(22)
+  })
+  for (const f of fixtures.filter((f) => !f.file.startsWith('activity-'))) {
+    it(`alert ${f.file}`, () => {
+      expect(notificationPayload(f.input as Notice)).toEqual(f.payload)
+    })
+  }
+  for (const f of fixtures.filter((f) => f.file.startsWith('activity-'))) {
+    it(`activity ${f.file}`, () => {
+      const update = f.input as ActivityUpdate
+      expect(activityPayload(update, update.ts)).toEqual(f.payload)
+    })
+  }
+  it('validates the new keys on the routes: hostName as a short string, unit as tasks or threads, the batch and stopped kinds, the stopped phase', async () => {
+    const { env: hubEnv } = await apnsEnv()
+    const auth = await register()
+    await registerDevice(hubEnv, auth)
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(''))
+    expect((await callWith(hubEnv, '/v1/notify', 'POST', { ...apnsNotice, hostName: 'x'.repeat(81) }, auth)).status).toBe(400)
+    expect((await callWith(hubEnv, '/v1/notify', 'POST', { ...apnsNotice, hostName: 42 }, auth)).status).toBe(400)
+    for (const kind of ['batch', 'stopped']) {
+      expect(await (await callWith(hubEnv, '/v1/notify', 'POST', { ...apnsNotice, event: 'failed', kind, hostName: 'box' }, auth)).json()).toEqual({ delivered: 1, failed: 0 })
+      const sent = JSON.parse(fetch.mock.calls.at(-1)![1]!.body as string)
+      expect(sent.tc).toMatchObject({ kind, host: 'box' })
+      expect(sent.aps['mutable-content']).toBe(1)
+    }
+    await callWith(hubEnv, `/v1/hosts/box/activities/thread-1/k1`, 'PUT', { token: TOKEN, bundleId: 'dev.landon.tempcode.ios', environment: 'production' }, auth)
+    const update = { hostId: 'box', threadId: 'thread-1', event: 'update', state: { phase: 'working', since: 1000, ts: 5000, done: 2, total: 4, unit: 'threads' }, ts: 5000 }
+    expect(await (await callWith(hubEnv, '/v1/activity', 'POST', update, auth)).json()).toEqual({ delivered: 1, failed: 0 })
+    expect(JSON.parse(fetch.mock.calls.at(-1)![1]!.body as string).aps['content-state']).toEqual(update.state)
+    expect((await callWith(hubEnv, '/v1/activity', 'POST', { ...update, state: { ...update.state, unit: 'steps' } }, auth)).status).toBe(400)
+    const stopped = { ...update, event: 'end', state: { phase: 'stopped', since: 1000, ts: 6000 }, ts: 6000 }
+    expect(await (await callWith(hubEnv, '/v1/activity', 'POST', stopped, auth)).json()).toEqual({ delivered: 1, failed: 0 })
+    expect(JSON.parse(fetch.mock.calls.at(-1)![1]!.body as string).aps).toMatchObject({ event: 'end', 'relevance-score': 100 })
   })
 })

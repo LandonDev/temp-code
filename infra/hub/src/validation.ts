@@ -1,5 +1,5 @@
 import { guardTarget } from './target'
-import { activityPhases, events, pushEnvironments, type ActivityUpdate, type ApnsDevice, type Heartbeat, type Notice, noticeKinds, type NoticeKind } from './types'
+import { activityPhases, activityUnits, events, pushEnvironments, type ActivityUpdate, type ApnsDevice, type Heartbeat, type Notice, noticeKinds, type NoticeKind } from './types'
 export class Invalid extends Error {}
 export function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -92,7 +92,8 @@ export function notice(value: unknown): Notice {
     ...(v.url === undefined ? {} : { url: url(v.url) }),
     ...(v.subtitle === undefined ? {} : { subtitle: str(v.subtitle, 'subtitle', 200) }),
     ...(v.kind === undefined ? {} : { kind: noticeKind(v.kind) }),
-    ...(v.requestId === undefined ? {} : { requestId: str(v.requestId, 'requestId', 200) })
+    ...(v.requestId === undefined ? {} : { requestId: str(v.requestId, 'requestId', 200) }),
+    ...(v.hostName === undefined ? {} : { hostName: str(v.hostName, 'hostName', 80) })
   }
 }
 function noticeKind(value: unknown): NoticeKind {
@@ -132,6 +133,7 @@ export function activity(value: unknown): ActivityUpdate {
       ...(state.task === undefined ? {} : { task: str(state.task, 'task', 200) }),
       ...(state.done === undefined ? {} : { done: count(state.done, 'done') }),
       ...(state.total === undefined ? {} : { total: count(state.total, 'total') }),
+      ...(state.unit === undefined ? {} : { unit: unit(state.unit) }),
       ...(state.reason === undefined ? {} : { reason: str(state.reason, 'reason', 200) })
     },
     ts: timestamp(v.ts),
@@ -140,6 +142,10 @@ export function activity(value: unknown): ActivityUpdate {
     ...(v.threadType === undefined ? {} : { threadType: str(v.threadType, 'threadType', 40) }),
     ...(v.priority === undefined ? {} : { priority: v.priority === 5 ? 5 : v.priority === 10 ? 10 : invalidPriority() })
   }
+}
+function unit(value: unknown): ActivityUpdate['state']['unit'] {
+  if (!activityUnits.includes(value as never)) throw new Invalid('Invalid unit')
+  return value as ActivityUpdate['state']['unit']
 }
 function invalidPriority(): never {
   throw new Invalid('Invalid priority')

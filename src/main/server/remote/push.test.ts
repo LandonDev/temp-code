@@ -227,7 +227,7 @@ describe('a host with its own APNs sender', () => {
     expect(sent).toHaveLength(1)
     expect(sent[0]).toMatchObject({ token: TOKEN.toLowerCase(), topic: 'dev.landon.tempcode.ios', pushType: 'alert', environment: 'sandbox', collapseId: 't1:needs_you' })
     expect(sent[0].payload).toEqual({
-      aps: { alert: { title: 'Ship it', body: 'Permission: Bash' }, sound: 'default', 'thread-id': 't1', 'summary-arg': 'Ship it', 'interruption-level': 'time-sensitive', 'relevance-score': 1, category: 'tc.thread' },
+      aps: { alert: { title: 'Ship it', body: 'Permission: Bash' }, sound: 'default', 'thread-id': 't1', 'summary-arg': 'Ship it', 'interruption-level': 'time-sensitive', 'relevance-score': 1, category: 'tc.thread', 'mutable-content': 1 },
       tc: { event: 'needs_you', hostId: 'box', environmentId: 'env_box', threadId: 't1', seq: 21, ts: 5000 }
     })
     expect(await push.deliver({ event: 'finished', threadId: 't1', seq: 30, title: 'Ship it', body: 'Finished its turn', ts: 6000 })).toEqual({ delivered: 1, failed: 0 })

@@ -1,0 +1,43 @@
+{
+  "input": {
+    "event": "needs_you",
+    "hostId": "box",
+    "environmentId": "env_box",
+    "threadId": "thread-1",
+    "seq": 41,
+    "title": "Ship it",
+    "subtitle": "temp-code",
+    "body": "Needs approval: Bash — bun test",
+    "kind": "approval",
+    "requestId": "req-7",
+    "hostName": "box",
+    "ts": 1760000000000
+  },
+  "payload": {
+    "aps": {
+      "alert": {
+        "title": "Ship it",
+        "subtitle": "temp-code",
+        "body": "Needs approval: Bash — bun test"
+      },
+      "sound": "default",
+      "thread-id": "thread-1",
+      "summary-arg": "temp-code",
+      "interruption-level": "time-sensitive",
+      "relevance-score": 1,
+      "category": "tc.approval",
+      "mutable-content": 1
+    },
+    "tc": {
+      "event": "needs_you",
+      "hostId": "box",
+      "environmentId": "env_box",
+      "threadId": "thread-1",
+      "seq": 41,
+      "kind": "approval",
+      "requestId": "req-7",
+      "host": "box",
+      "ts": 1760000000000
+    }
+  }
+}

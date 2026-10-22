@@ -1,0 +1,37 @@
+{
+  "input": {
+    "hostId": "box",
+    "environmentId": "env_box",
+    "threadId": "thread-1",
+    "event": "end",
+    "state": {
+      "phase": "finished",
+      "since": 1759999000000,
+      "ts": 1760000000000,
+      "seq": 60,
+      "title": "Ship it",
+      "done": 7,
+      "total": 7
+    },
+    "title": "Ship it",
+    "threadType": "implementation",
+    "ts": 1760000000000
+  },
+  "payload": {
+    "aps": {
+      "timestamp": 1760000000,
+      "event": "end",
+      "content-state": {
+        "phase": "finished",
+        "since": 1759999000000,
+        "ts": 1760000000000,
+        "seq": 60,
+        "title": "Ship it",
+        "done": 7,
+        "total": 7
+      },
+      "dismissal-date": 1760000120,
+      "relevance-score": 50
+    }
+  }
+}

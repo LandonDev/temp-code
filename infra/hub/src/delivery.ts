@@ -36,7 +36,9 @@ export function notificationPayload(notice: Notice): unknown {
       'summary-arg': notice.subtitle ?? notice.title,
       'interruption-level': notice.event === 'needs_you' ? 'time-sensitive' : 'active',
       'relevance-score': RELEVANCE[notice.event],
-      ...(notice.threadId === undefined ? {} : { category: notice.kind === 'approval' ? APPROVAL_CATEGORY : THREAD_CATEGORY })
+      ...(notice.threadId === undefined ? {} : { category: notice.kind === 'approval' ? APPROVAL_CATEGORY : THREAD_CATEGORY }),
+      // The phone's service extension may add the host to the subtitle when several hosts are paired.
+      'mutable-content': 1
     },
     tc: {
       event: notice.event,
@@ -46,10 +48,14 @@ export function notificationPayload(notice: Notice): unknown {
       ...(notice.seq === undefined ? {} : { seq: notice.seq }),
       ...(notice.kind === undefined ? {} : { kind: notice.kind }),
       ...(notice.requestId === undefined ? {} : { requestId: notice.requestId }),
+      ...(notice.hostName === undefined ? {} : { host: notice.hostName }),
       ts: notice.ts
     }
   }
 }
+
+/** The phases a phone should rank first: the thread wants something, or ended badly. */
+const URGENT_PHASES = new Set<ActivityUpdate['state']['phase']>(['waiting', 'failed', 'stopped'])
 
 /** The Live Activity update: the phone's ContentState under `content-state`; an end dismisses after a while. */
 export function activityPayload(update: ActivityUpdate, now = Date.now()): unknown {
@@ -60,7 +66,7 @@ export function activityPayload(update: ActivityUpdate, now = Date.now()): unkno
       event: update.event,
       'content-state': update.state,
       ...(update.event === 'end' ? { 'dismissal-date': seconds + ACTIVITY_DISMISS_S } : {}),
-      'relevance-score': update.state.phase === 'waiting' || update.state.phase === 'failed' ? 100 : 50
+      'relevance-score': URGENT_PHASES.has(update.state.phase) ? 100 : 50
     }
   }
 }

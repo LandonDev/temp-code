@@ -1,0 +1,28 @@
+{
+  "input": {
+    "event": "host_down",
+    "hostId": "box",
+    "title": "box",
+    "body": "Host box has not been heard from in 3 min",
+    "ts": 1760000300000
+  },
+  "payload": {
+    "aps": {
+      "alert": {
+        "title": "box",
+        "body": "Host box has not been heard from in 3 min"
+      },
+      "sound": "default",
+      "thread-id": "box",
+      "summary-arg": "box",
+      "interruption-level": "active",
+      "relevance-score": 0.8,
+      "mutable-content": 1
+    },
+    "tc": {
+      "event": "host_down",
+      "hostId": "box",
+      "ts": 1760000300000
+    }
+  }
+}

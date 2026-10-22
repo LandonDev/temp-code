@@ -1,0 +1,40 @@
+{
+  "input": {
+    "event": "finished",
+    "hostId": "box",
+    "environmentId": "env_box",
+    "threadId": "thread-1",
+    "seq": 41,
+    "title": "Master",
+    "subtitle": "temp-code",
+    "body": "Batch done · 3 landed · gate passed in 4m 12s · release-281 tagged",
+    "kind": "batch",
+    "hostName": "box",
+    "ts": 1760000000000
+  },
+  "payload": {
+    "aps": {
+      "alert": {
+        "title": "Master",
+        "subtitle": "temp-code",
+        "body": "Batch done · 3 landed · gate passed in 4m 12s · release-281 tagged"
+      },
+      "thread-id": "thread-1",
+      "summary-arg": "temp-code",
+      "interruption-level": "active",
+      "relevance-score": 0.4,
+      "category": "tc.thread",
+      "mutable-content": 1
+    },
+    "tc": {
+      "event": "finished",
+      "hostId": "box",
+      "environmentId": "env_box",
+      "threadId": "thread-1",
+      "seq": 41,
+      "kind": "batch",
+      "host": "box",
+      "ts": 1760000000000
+    }
+  }
+}

@@ -26,6 +26,8 @@ export interface ApnsNotice {
   body: string
   kind?: HubNoticeKind
   requestId?: string
+  /** The host's name: `tc.host`, which the phone's service extension adds to the subtitle when several hosts are paired. */
+  hostName?: string
   ts: number
 }
 
@@ -67,7 +69,9 @@ export function notificationPayload(notice: ApnsNotice): unknown {
       'summary-arg': notice.subtitle ?? notice.title,
       'interruption-level': notice.event === 'needs_you' ? 'time-sensitive' : 'active',
       'relevance-score': RELEVANCE[notice.event],
-      ...(notice.threadId === undefined ? {} : { category: notice.kind === 'approval' ? APPROVAL_CATEGORY : THREAD_CATEGORY })
+      ...(notice.threadId === undefined ? {} : { category: notice.kind === 'approval' ? APPROVAL_CATEGORY : THREAD_CATEGORY }),
+      // The phone's service extension may add the host to the subtitle when several hosts are paired.
+      'mutable-content': 1
     },
     tc: {
       event: notice.event,
@@ -77,10 +81,14 @@ export function notificationPayload(notice: ApnsNotice): unknown {
       ...(notice.seq === undefined ? {} : { seq: notice.seq }),
       ...(notice.kind === undefined ? {} : { kind: notice.kind }),
       ...(notice.requestId === undefined ? {} : { requestId: notice.requestId }),
+      ...(notice.hostName === undefined ? {} : { host: notice.hostName }),
       ts: notice.ts
     }
   }
 }
+
+/** The phases a phone should rank first: the thread wants something, or ended badly. */
+const URGENT_PHASES = new Set<HubActivityState['phase']>(['waiting', 'failed', 'stopped'])
 
 export function activityPayload(update: ApnsActivityUpdate, now = Date.now()): unknown {
   const seconds = Math.floor(now / 1000)
@@ -90,7 +98,7 @@ export function activityPayload(update: ApnsActivityUpdate, now = Date.now()): u
       event: update.event,
       'content-state': update.state,
       ...(update.event === 'end' ? { 'dismissal-date': seconds + ACTIVITY_DISMISS_S } : {}),
-      'relevance-score': update.state.phase === 'waiting' || update.state.phase === 'failed' ? 100 : 50
+      'relevance-score': URGENT_PHASES.has(update.state.phase) ? 100 : 50
     }
   }
 }

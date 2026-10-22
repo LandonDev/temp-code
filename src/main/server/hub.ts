@@ -15,8 +15,10 @@ export interface HubEvent {
   kind?: HubNoticeKind
   /** The approval a phone's Approve or Deny decides (kind `approval`). */
   requestId?: string
+  /** This host's name: the payload's `tc.host`, which the phone adds to the subtitle when several hosts are paired. */
+  hostName?: string
 }
-export type HubNoticeKind = 'approval' | 'question' | 'plan' | 'waiting' | 'finished' | 'failed' | 'stuck'
+export type HubNoticeKind = 'approval' | 'question' | 'plan' | 'waiting' | 'finished' | 'failed' | 'stuck' | 'batch' | 'stopped'
 /** A phone's APNs registration, forwarded as the hub's `apns` subscription for this host. */
 export interface HubDevice {
   /** The key id on this host: one subscription per key, replaced on a rotated token. */
@@ -34,7 +36,7 @@ export interface HubDevice {
  * thread waits.
  */
 export interface HubActivityState {
-  phase: 'working' | 'paused' | 'waiting' | 'finished' | 'failed'
+  phase: 'working' | 'paused' | 'waiting' | 'finished' | 'failed' | 'stopped'
   since: number
   ts: number
   seq?: number
@@ -42,9 +44,11 @@ export interface HubActivityState {
   title?: string
   /** The in-progress task of the thread's list, else what it is doing right now. */
   task?: string
-  /** The list's tally, when the thread has one. */
+  /** The list's tally, when the thread has one; a watching master's batch, children done of total. */
   done?: number
   total?: number
+  /** What done/total count; absent means tasks. */
+  unit?: 'tasks' | 'threads'
   /** Why the thread waits: the needs-you line. */
   reason?: string
 }
@@ -242,7 +246,8 @@ export function startHub(options: HubOptions, dependencies: Dependencies = {}): 
           ...(event.seq === undefined ? {} : { seq: event.seq }),
           ...(event.subtitle === undefined ? {} : { subtitle: event.subtitle }),
           ...(event.kind === undefined ? {} : { kind: event.kind }),
-          ...(event.requestId === undefined ? {} : { requestId: event.requestId })
+          ...(event.requestId === undefined ? {} : { requestId: event.requestId }),
+          ...(event.hostName === undefined ? {} : { hostName: event.hostName })
         },
         'notify',
         25_000

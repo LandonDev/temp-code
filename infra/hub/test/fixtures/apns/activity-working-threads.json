@@ -1,0 +1,40 @@
+{
+  "input": {
+    "hostId": "box",
+    "environmentId": "env_box",
+    "threadId": "thread-1",
+    "event": "update",
+    "state": {
+      "phase": "working",
+      "since": 1759999000000,
+      "ts": 1760000000000,
+      "seq": 12,
+      "title": "Master",
+      "task": "gate",
+      "done": 2,
+      "total": 4,
+      "unit": "threads"
+    },
+    "title": "Master",
+    "threadType": "implementation",
+    "ts": 1760000000000
+  },
+  "payload": {
+    "aps": {
+      "timestamp": 1760000000,
+      "event": "update",
+      "content-state": {
+        "phase": "working",
+        "since": 1759999000000,
+        "ts": 1760000000000,
+        "seq": 12,
+        "title": "Master",
+        "task": "gate",
+        "done": 2,
+        "total": 4,
+        "unit": "threads"
+      },
+      "relevance-score": 50
+    }
+  }
+}

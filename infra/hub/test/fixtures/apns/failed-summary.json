@@ -1,0 +1,41 @@
+{
+  "input": {
+    "event": "failed",
+    "hostId": "box",
+    "environmentId": "env_box",
+    "threadId": "thread-1",
+    "seq": 41,
+    "title": "Ship it",
+    "subtitle": "temp-code",
+    "body": "Failed: Usage limit reached for the 5h window",
+    "kind": "failed",
+    "hostName": "box",
+    "ts": 1760000000000
+  },
+  "payload": {
+    "aps": {
+      "alert": {
+        "title": "Ship it",
+        "subtitle": "temp-code",
+        "body": "Failed: Usage limit reached for the 5h window"
+      },
+      "sound": "default",
+      "thread-id": "thread-1",
+      "summary-arg": "temp-code",
+      "interruption-level": "active",
+      "relevance-score": 0.8,
+      "category": "tc.thread",
+      "mutable-content": 1
+    },
+    "tc": {
+      "event": "failed",
+      "hostId": "box",
+      "environmentId": "env_box",
+      "threadId": "thread-1",
+      "seq": 41,
+      "kind": "failed",
+      "host": "box",
+      "ts": 1760000000000
+    }
+  }
+}

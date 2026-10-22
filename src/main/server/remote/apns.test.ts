@@ -137,7 +137,7 @@ describe('ApnsSender', () => {
 describe('payloads', () => {
   it('match the hub: the alert with tc, the activity with content-state and a dismissal date on end', () => {
     expect(notificationPayload({ event: 'needs_you', hostId: 'box', environmentId: 'env_box', threadId: 't1', seq: 42, title: 'Ship it', body: 'Permission: Bash', ts: 2000 })).toEqual({
-      aps: { alert: { title: 'Ship it', body: 'Permission: Bash' }, sound: 'default', 'thread-id': 't1', 'summary-arg': 'Ship it', 'interruption-level': 'time-sensitive', 'relevance-score': 1, category: 'tc.thread' },
+      aps: { alert: { title: 'Ship it', body: 'Permission: Bash' }, sound: 'default', 'thread-id': 't1', 'summary-arg': 'Ship it', 'interruption-level': 'time-sensitive', 'relevance-score': 1, category: 'tc.thread', 'mutable-content': 1 },
       tc: { event: 'needs_you', hostId: 'box', environmentId: 'env_box', threadId: 't1', seq: 42, ts: 2000 }
     })
     const finished = notificationPayload({ event: 'finished', hostId: 'box', title: 'Done', body: 'Finished its turn', ts: 3 }) as { aps: Record<string, unknown>; tc: Record<string, unknown> }

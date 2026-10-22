@@ -1,0 +1,40 @@
+{
+  "input": {
+    "event": "finished",
+    "hostId": "box",
+    "environmentId": "env_box",
+    "threadId": "thread-1",
+    "seq": 41,
+    "title": "Plan: notifications",
+    "subtitle": "temp-code",
+    "body": "Plan complete — implementation started: Ship it",
+    "kind": "plan",
+    "hostName": "box",
+    "ts": 1760000000000
+  },
+  "payload": {
+    "aps": {
+      "alert": {
+        "title": "Plan: notifications",
+        "subtitle": "temp-code",
+        "body": "Plan complete — implementation started: Ship it"
+      },
+      "thread-id": "thread-1",
+      "summary-arg": "temp-code",
+      "interruption-level": "active",
+      "relevance-score": 0.4,
+      "category": "tc.thread",
+      "mutable-content": 1
+    },
+    "tc": {
+      "event": "finished",
+      "hostId": "box",
+      "environmentId": "env_box",
+      "threadId": "thread-1",
+      "seq": 41,
+      "kind": "plan",
+      "host": "box",
+      "ts": 1760000000000
+    }
+  }
+}
