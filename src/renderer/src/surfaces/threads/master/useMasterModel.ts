@@ -568,6 +568,47 @@ export function useBoard(masterId: string, environmentId: string): Board {
   return { ...data, digests };
 }
 
+/**
+ * The digests of the batch's threads on other hosts: each host in reach
+ * that has rows on the board answers `batch.board` for its own threads
+ * carrying the master's id (its index by master), and sends their `board`
+ * pushes to this socket while it watches. Only the digests are taken; the
+ * batch's state is the master's host's.
+ */
+export function useFarDigests(masterId: string, hostsKey: string, digests: BoardDigests): void {
+  const visible = usePaneVisible();
+  useEffect(() => {
+    if (!hostsKey) return;
+    let alive = true;
+    const offs: (() => void)[] = [];
+    const timers: number[] = [];
+    for (const environmentId of hostsKey.split("\n")) {
+      const link = registry.link(environmentId);
+      if (!link) continue;
+      const read = () =>
+        link.request<BatchBoard>("batch.board", { masterId }).then(
+          (answer) => {
+            if (alive && answer?.digests) digests.replace(answer.digests);
+          },
+          () => undefined,
+        );
+      void read();
+      if (visible) timers.push(window.setInterval(read, BOARD_RENEW_MS));
+      offs.push(link.onOpen(read));
+      offs.push(
+        link.onPush((push) => {
+          if (alive && push.push === "board" && push.masterId === masterId) digests.set(push.sessionId, push.digest);
+        }),
+      );
+    }
+    return () => {
+      alive = false;
+      for (const t of timers) window.clearInterval(t);
+      for (const off of offs) off();
+    };
+  }, [masterId, hostsKey, digests, visible]);
+}
+
 // ── the layout ──────────────────────────────────────────────────────────
 
 /** One row as the list lays it out: the thread, the plan it came from, its
@@ -710,6 +751,12 @@ export function useMasterModel(master: Pick<SessionMeta, "id" | "environmentId">
   const statuses = useEnvironmentStatuses();
   const live = useCallback((environmentId: string) => statuses.get(environmentId)?.transport === "open", [statuses]);
   const layout = useBoardLayout(master.id, board.children, listed, live);
+  // The other hosts in reach with rows on the board, as one stable key.
+  const farHosts = useMemo(
+    () => [...new Set(layout.rows.map((r) => r.environmentId))].filter((id) => id !== master.environmentId && live(id)).sort().join("\n"),
+    [layout, master.environmentId, live],
+  );
+  useFarDigests(master.id, farHosts, board.digests);
   const landed = useMemo(() => new Set(board.state.landed), [board.state.landed]);
   const [openId, setOpenId] = useState<string | null>(null);
   // A child that left the batch (archived, removed) closes its view.

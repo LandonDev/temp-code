@@ -970,6 +970,31 @@ describe("the batch across hosts", () => {
     expect(again.querySelector("[data-model] .rounded-full")?.className).toContain("bg-success");
   });
 
+  it("a row of another host reads its digest from that host's batch.board, and an offline host is not asked", async () => {
+    seed([meta({ id: "c-home", title: "Home", status: "running" })]);
+    seedBox([boxMeta({ id: "c-box", title: "Inbox", status: "running" })], true);
+    boxLink.digests.set("c-box", { todos: [{ content: "Swipe", status: "in_progress" }, { content: "Tests", status: "pending" }] });
+    render(<MasterView {...props} />);
+    await flush();
+    const box = screen.getByRole("button", { name: /Inbox/ });
+    expect(within(box).getByText("0/2")).toBeTruthy();
+    expect(within(box).getAllByRole("listitem").map((t) => t.textContent)).toEqual(["Swipe", "Tests"]);
+    expect(boxLink.calls.filter((c) => c.method === "batch.board").map((c) => c.params)).toEqual([{ masterId: "m" }]);
+    // Its board push moves the row; nothing is read per row on either host.
+    act(() => boxLink.push({ push: "board", masterId: "m", sessionId: "c-box", digest: { todos: [{ content: "Swipe", status: "completed" }] } } as ServerPush));
+    expect(within(screen.getByRole("button", { name: /Inbox/ })).getByText("1/1")).toBeTruthy();
+    expect([...link.calls, ...boxLink.calls].filter((c) => PER_ROW_READS.includes(c.method))).toEqual([]);
+    cleanup();
+    boxLink.calls = [];
+    hosts.statuses = new Map([
+      ["local", { transport: "open", fresh: true }],
+      ["box", { transport: "offline", fresh: false }],
+    ]);
+    render(<MasterView {...props} />);
+    await flush();
+    expect(boxLink.calls.some((c) => c.method === "batch.board")).toBe(false);
+  });
+
   it("a row of another host opens its view on that host", async () => {
     seed([meta({ id: "c-home", title: "Home", status: "running" })]);
     seedBox([boxMeta({ id: "c-box", title: "Inbox", status: "running" })], true);
