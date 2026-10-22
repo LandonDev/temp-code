@@ -697,6 +697,35 @@ describe('local sockets', () => {
   })
 })
 
+describe('live edits', () => {
+  it('a live edit reaches only the sockets subscribed to a thread that owns it', async () => {
+    const { emitLiveEdit } = await import('../livediff')
+    for (const id of ['edit-a', 'edit-b']) {
+      server.store.insertSession({
+        id, parentId: null, projectId: null, workspaceId: null, threadType: 'chat', planPath: null, provider: 'claude',
+        model: 'm', reasoning: 'medium', agentType: 'implementer', title: id, cwd: root, status: 'idle', pinned: false,
+        archived: false, fast: false, ultrafast: false, context1m: false, busySince: null, pausedAt: null,
+        frozenActiveElapsed: null, threadRules: null, permission: 'edits', nativeId: null, createdAt: 1, updatedAt: 1
+      })
+    }
+    const watchingA = await open(`ws://127.0.0.1:${server.port}/`)
+    const watchingNone = await open(`ws://127.0.0.1:${server.port}/`)
+    expect((await watchingA.request('session.subscribe', { sessionId: 'edit-a' })).ok).toBe(true)
+    const edit = (path: string, sessionIds: string[]) =>
+      emitLiveEdit({ push: 'live-edit', cwd: root, sessionIds, edit: { path, kind: 'changed', adds: 1, dels: 0, diff: '+x', ts: Date.now() } })
+    edit('a.ts', ['edit-a'])
+    edit('b.ts', ['edit-b'])
+    // A subagent's edit names its root too: a socket on the root hears it.
+    edit('sub.ts', ['sub-of-a', 'edit-a'])
+    await sleep(400)
+    const paths = (sock: Socket): string[] =>
+      sock.frames.flatMap((f) => (f.push === 'live-edits' ? f.items.map((i: { edit: { path: string } }) => i.edit.path) : f.push === 'live-edit' ? [f.edit.path] : []))
+    expect(paths(watchingA)).toEqual(['a.ts', 'sub.ts'])
+    expect(paths(watchingNone)).toEqual([])
+    for (const sock of [watchingA, watchingNone]) sock.ws.close()
+  })
+})
+
 // Last: it stops the listener every other test talks to.
 describe('remote.settings.set', () => {
   it('enabled off closes the port; on brings it back', async () => {

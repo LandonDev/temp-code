@@ -1055,7 +1055,12 @@ export async function startServer(
     const offCatalog = registry.onCatalog((kind) => emitPush(kind === 'workspaces'
       ? { push: 'workspaces', workspaces: registry.listWorkspaces() }
       : { push: 'projects', projects: registry.listProjects() }))
-    const offLive = onLiveEdit((p) => emitPush(p))
+    // A live edit goes only to the sockets watching a thread that owns it
+    // (the writer or its root, livediff.ts): every edit of a fleet went to
+    // every socket, each with its diff.
+    const offLive = onLiveEdit((p) => {
+      if (p.sessionIds.some((id) => unsubs.has(id))) emitPush(p)
+    })
     // A thread's checkpoint moved (a turn settled): only the sockets watching it.
     const onCheckpoint = (sessionId: string, push: ServerPush): void => {
       if (unsubs.has(sessionId)) emitPush(push)

@@ -20,6 +20,7 @@ import type { SessionRegistry } from './sessions'
  * is ever persisted: the event log stays the only durable record.
  */
 
+/** Sent only to sockets subscribed to one of `sessionIds` (the writer and its root; index.ts). */
 export interface LiveEditPush {
   push: 'live-edit'
   cwd: string
@@ -94,9 +95,12 @@ export function onLiveEdit(listener: (p: LiveEditPush) => void): () => void {
   return () => listeners.delete(listener)
 }
 
-const emit = (p: LiveEditPush): void => {
+/** Hand a live edit to every listener: the server's sockets (each sends it
+ *  only when subscribed to an owner) and the checkpoint turns. */
+export const emitLiveEdit = (p: LiveEditPush): void => {
   for (const l of listeners) l(p)
 }
+const emit = emitLiveEdit
 
 
 /** Copy current content as a baseline, within the caps. */
