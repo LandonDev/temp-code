@@ -131,6 +131,19 @@ server.registry.append('ios-paused', { type: 'user-text', text: 'Migrate every s
 server.registry.append('ios-paused', { type: 'status', status: 'running' })
 server.registry.append('ios-paused', { type: 'status', status: 'paused' })
 
+// A master with its batch: a queued child waiting on the running thread
+// below, and a thread whose harness went away (the host's `stopped`). The
+// seed appends `queued` the way the scheduler does on a held first message.
+await make('ios-master', { projectId: project.id, threadType: 'chat', title: 'Ship the stats pipeline' })
+say('ios-master', 'Run the stats pipeline rebuild as a batch', 'Four threads, landing as they finish.')
+server.registry.setMaster('ios-master', true)
+await make('ios-queued', { projectId: project.id, threadType: 'implementation', title: 'Backfill the rollups', masterId: 'ios-master', after: 'ios-running' })
+server.registry.append('ios-queued', { type: 'status', status: 'queued' })
+await make('ios-stopped', { projectId: project.id, threadType: 'chat', title: 'Rename the config keys again' })
+server.registry.append('ios-stopped', { type: 'user-text', text: 'Rename every config key to kebab-case' })
+server.registry.append('ios-stopped', { type: 'status', status: 'running' })
+server.registry.append('ios-stopped', { type: 'status', status: 'stopped' })
+
 // A chat waiting on an approval, and in the other project one waiting on a question.
 await make('ios-waiting', { projectId: project.id, threadType: 'chat', title: 'Run the test suite' })
 server.registry.append('ios-waiting', { type: 'user-text', text: 'Run the tests and fix what fails' })

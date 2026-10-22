@@ -22,6 +22,8 @@ Sources/TempCodeClient
   Client/       Subscriptions, EnvironmentClient, ClientRegistry
   Rendering/    ThreadFold (rows → stamped items + BoardState), Transcript (item types), Board,
                 ResearchBoard, Fleet, PlanDoc, MarkdownBlocks, MarkdownCache
+  Design/       TimeFormat, ModelName, CompactNumber, ThreadRowModel: the design kit's pure
+                logic, tested here; the app's Design/ holds the views
   Support/      SocketClock (SystemClock, ManualClock)
 Tests/TempCodeClientTests
   fake-socket and manual-clock suites, cache and client suites, LiveServerTests (a real server)

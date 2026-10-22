@@ -393,28 +393,32 @@ a person learns why a control elsewhere is disabled.
 
 Everything maps to the desktop's `DESIGN.md`: quiet chrome, one gray step,
 hairlines, small dense type, color only for meaning. The kit that carries it
-is `ios/TempCode/Sources/Design/`; every screen names its helpers and never
-a raw color, radius, font step, inset or duration. A sibling that needs a
-shared piece the kit lacks builds it in its own area on these names.
+is `ios/TempCode/Sources/Design/` (the views) and the client package's
+`Sources/TempCodeClient/Design/` (the pure logic: `TimeFormat`, `ModelName`,
+`CompactNumber`, `ThreadRowModel`, unit-tested there with Swift Testing);
+every screen names its helpers and never a raw color, radius, font step,
+inset or duration. A sibling that needs a shared piece the kit lacks builds
+it in its own area on these names.
 
 | Token | Value | Use | Helper |
 | --- | --- | --- | --- |
 | Background | `systemBackground` | content | `Surface.background` |
 | Chrome step | `secondarySystemBackground` | section headers, fields, the composer bar | `Surface.chrome` |
-| Raised | `tertiarySystemBackground` (dark) / white with shadow (light) | sheets and cards that float | `Surface.raised`, `.raised(radius:)` |
+| Raised | `tertiarySystemBackground`; in light mode two soft shadows with an offset (black 6 % r 1 y 1, black 8 % r 12 y 4), in dark the ring only | sheets and cards that float | `Surface.raised`, `.raised(radius:)` |
 | Fill | `tertiarySystemFill` | what a chip or pill sits on | `Surface.fill` |
 | Hairline | `separator` at 1 px, inset to the text edge | rows, fields, chips | `Hairline(inset:)`, `.hairlineBorder(shape)`, `.separatorAtTextEdge()` |
-| Text | `label`, `secondaryLabel`, `tertiaryLabel` | three steps and no more | `.textStep(.title / .meta / .stamp, weight:)` |
+| Text | `label`, `secondaryLabel`, `tertiaryLabel` | three steps and no more; a tint replaces the color alone | `.textStep(.title / .meta / .stamp, weight:, tint:)` |
 | Info | `systemBlue` | chat type, starting and watching dots | `Tint.info` |
 | Success | `systemGreen` | implementation type, `+n`, completed | `Tint.success` |
 | Warning | `systemOrange` | orchestration type, waiting, paused, needs-you tint at 8 % | `Tint.warning`, `Surface.needsYou` |
-| Destructive | `systemRed` | errors, `−m`, failed tools | `Tint.destructive` |
-| Violet | `systemPurple` | planning type | `Tint.violet` |
+| Destructive | `systemRed` | errors, `−m`, failed tools, a failure summary | `Tint.destructive` |
+| Violet | `systemPurple` | planning and project-plan types | `Tint.violet` |
 | Cyan | `systemCyan` | research type | `Tint.cyan` |
+| Quiet | `systemGray2` | a state with no urgency: the queued dot, the stopped square | `Tint.quiet` |
 | Radius | 8 pt chips and rows, 12 pt fields and cards, 16 pt sheets | outer = inner + padding, always | `Radius.row / .field / .sheet`, `Radius.around(inner, padding:)`, `Radius.inside(outer, padding:)`, `.rowCorner / .fieldCorner / .sheetCorner` (continuous) |
 | Type | `subheadline` rows, `body` transcript, `footnote` meta, `caption2` timestamps; mono one step down | Dynamic Type honored up to accessibility sizes | `TextStep.title` (subheadline, label), `.meta` (footnote, secondary), `.stamp` (caption2, tertiary, tabular) |
 | Numbers | `monospacedDigit()` on every elapsed, count and cost | nothing jitters as it ticks | `.numeric(value)`, `CountText`, `ElapsedText`, `AgoText` |
-| Lengths | 16 pt text edge, 44 pt rows, 10 pt gaps, 14 pt mark, 20 pt glyph, 16 pt subagent indent | rows, headers and separators meet on the same edges | `Layout.textEdge / .rowHeight / .rowGap / .markWidth / .glyphWidth / .indent / .rowTextEdge / .rowInsets` |
+| Lengths | 16 pt text edge, 44 pt rows with 6 pt vertical padding, 10 pt gaps, 14 pt mark, 7 pt dot, 20 pt glyph, 16 pt subagent indent, 6 pt before a title's tag | rows, headers and separators meet on the same edges | `Layout.textEdge / .rowHeight / .rowVertical / .rowGap / .markWidth / .dotSize / .glyphWidth / .indent / .tagGap / .rowTextEdge / .rowInsets` |
 
 Thread type glyphs are the desktop's, in SF Symbols: chat `bubble.left`,
 planning `map`, project plan `flag.checkered` (violet, like planning),
@@ -427,28 +431,60 @@ symbol weight is the stroke: `TypeGlyph(type:weight:)`, `AgentGlyph(type:weight:
 beside semibold); outline default, fill marks the active state
 (`TypeGlyph(active: true)` cross-fades to `ThreadType.filledSymbol`).
 
+The status mark (`StatusDot(status:running:weight:)`) leads every row in a
+14 pt column that scales with the title; the marks cross-fade and the column
+never moves. Each is a static cue VoiceOver reads; an empty column is hidden
+from it.
+
+| Status | Mark | VoiceOver |
+| --- | --- | --- |
+| `running`, or a settled root whose subagents still work (`running: true`) | the mini spinner | Running |
+| `starting`, `watching` | dot, `Tint.info` | Starting, Watching |
+| `waiting` | dot, `Tint.warning` | Needs you |
+| `error` | dot, `Tint.destructive` | Failed |
+| `paused` | `pause.fill` at the title's weight, `Tint.warning` | Paused |
+| `stopped` | a 6 pt continuous square, `Tint.quiet` | Stopped |
+| `queued` | dot, `Tint.quiet` | Queued |
+| `idle`, `done` | nothing | |
+
 The row: `ThreadRow(row: ThreadRowModel)` is the one list row (44 pt,
 `StatusDot`, the glyph at the title's weight, the title semibold while
-unseen, `ThreadRowSecondLine` with the model and a `SwapText` detail,
-`ThreadRowTime` trailing); `.threadRowActions(client:meta:)` adds pin,
-archive and rename. Section chrome: `SectionHeader` is the band on the chrome
-step for long lists (Home, Search, the archive); `GroupHeader` sits above an
-inset card (`.groupCard()`) on screens that are a few short groups (Settings,
-sheets, a detail). Small actions: `PillButton(title, systemImage:, tint:)` in a
-row, `WideButton(title, prominent:)` at the foot of a sheet or card.
+unseen, `ThreadRowSecondLine`, `ThreadRowTime` trailing);
+`.threadRowActions(client:meta:)` adds pin, archive and rename. The model
+(`ThreadRowModel(session:unseen:)`, in the package) decides what the row
+says: after the title, one muted word (`tag`, "Master" for a pinned master,
+never truncated); the second line opens with `model` and then shows, in
+order of precedence, the host's `failure.summary` in destructive, the tasks
+("3/7 Writing tests"), the last activity (the host writes "Queued · waiting
+for X" there), or nothing at the same height. Two slots keep siblings out of
+the kit: `ThreadRow(row:) { accessory }` places a view between the second
+line and the pin (an account mark: thread 24), and `.threadRowActions(client:
+meta:) { menu }` places rows after Pin and before Archive (Start now, Resume:
+thread 20). A sibling that composes the model fills `model`, `detail` or
+`tag` and never parses them back. Section chrome: `SectionHeader` is the
+band on the chrome step for long lists (Home, Search, the archive);
+`GroupHeader` sits above an inset card (`.groupCard()`) on screens that are
+a few short groups (Settings, sheets, a detail); inside a `List`, use
+`.listStyle(.insetGrouped)` with `Section` instead. Small actions:
+`PillButton(title, systemImage:, tint:)` in a row (a 28 pt capsule with a
+44 pt hit area), `WideButton(title, prominent:)` at the foot of a sheet or
+card.
 
-No shadows except on floating layers (`.raised()` adds one, in light mode
-only, with an offset). No glows. No badges with text; dots only, and only when
+No shadows except on floating layers (`.raised()` adds two in light mode,
+both with an offset). No glows. No badges with text; dots only, and only when
 they mean something. Nothing is shown twice.
 
 ## Motion
 
 Values are exact, and each row has a name in `Motion` (Design/Motion.swift)
-so a screen references the name, never the number.
+so a screen references the name, never the number. Every "ease-out" below
+is the desktop's `EASE_OUT` (lib/ease.ts), `cubic-bezier(0.16, 1, 0.3, 1)`,
+behind one private `Motion.out(seconds)`; SwiftUI's `.easeOut` is never
+used.
 
 | Interaction | Motion | Name |
 | --- | --- | --- |
-| Press on any row or button | scale `0.96`, 160 ms, ease-out, from pointer-down; no hover states on touch; reduced motion dims to 60 % instead | `.buttonStyle(.pressable)`; `.pressableStatic` dims without scaling where a scale would fight a swipe |
+| Press on any row or button | scale `0.96`, 160 ms, ease-out, from pointer-down; no hover states on touch; reduced motion dims to 60 % instead | `.buttonStyle(.pressable)` (`Motion.press`, `Motion.pressScale`, `Motion.pressDim`); `.pressableStatic` dims without scaling where a scale would fight a swipe |
 | Push and pop | the system navigation transition, untouched | |
 | Sheets | the system sheet, 16 pt radius, detents medium and large | `Radius.sheet` |
 | Segment swipe | interactive, follows the finger, settles with the drawer curve `cubic-bezier(0.32, 0.72, 0, 1)` | `Motion.drawer` |
@@ -458,12 +494,14 @@ so a screen references the name, never the number.
 | Counts and elapsed | `contentTransition(.numericText())` on 150 ms | `.numeric(value)` (`Motion.numeric`), `CountText`, `ElapsedText`, `AgoText` |
 | Streaming text | none; append only | |
 | Status dot to spinner | cross-fade 150 ms | `StatusDot` (`Motion.crossFade`) |
+| A glyph trading state (Send ↔ Stop, outline ↔ fill, pin ↔ unpin) | scale 0.25 → 1, opacity 0 → 1, blur 4 → 0, spring `duration 0.3, bounce 0`; reduced motion: opacity on `cubic-bezier(0.2, 0, 0, 1)` 150 ms | `.iconSwapTransition()` with `.id(symbol)` in a `ZStack` (`Motion.iconSwap(reduced:)`, `Motion.iconSwap`, `Motion.iconSwapScale`, `Motion.iconSwapBlur`, `Motion.iconFade`); `TypeGlyph(active:)` uses the symbol replace effect instead, since Glyphs builds without Motion |
 | Jump-to-latest pill | 150 ms opacity and 8 pt translateY, both directions | `.jumpTransition()` (`Motion.jump(reduced:)`) |
-| Reduced motion | cross-fades replace every translate and spring | every `Motion.*(reduced:)` and the three transition modifiers read it themselves |
+| Reduced motion | cross-fades replace every translate and spring | every `Motion.*(reduced:)` and the four transition modifiers read it themselves |
 
-Nothing animates on first paint from cache (`Motion.withoutAnimation {}`
-around the paint). Nothing animates on a keyboard action. Every animated
-change has a static cue as well.
+Every transition carries its own timing, so an enclosing `withAnimation`
+cannot stretch it. Nothing animates on first paint from cache
+(`Motion.withoutAnimation {}` around the paint). Nothing animates on a
+keyboard action. Every animated change has a static cue as well.
 
 ## Performance
 
