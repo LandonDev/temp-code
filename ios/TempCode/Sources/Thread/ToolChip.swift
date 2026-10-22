@@ -348,7 +348,7 @@ extension ToolItem {
     var planLine: String {
         switch name {
         case "TodoWrite", "update_plan":
-            if let count = BoardState.todos(from: name, input: input)?.count { return "Updated the task list · \(count) \(count == 1 ? "task" : "tasks")" }
+            if let count = BoardState.todos(from: name, input: input)?.count { return "Updated the task list (\(count) \(count == 1 ? "task" : "tasks"))" }
             return "Updated the task list"
         case "TaskCreate":
             if let subject = input?["subject"]?.stringValue, !subject.isEmpty { return "New task: \(subject)" }

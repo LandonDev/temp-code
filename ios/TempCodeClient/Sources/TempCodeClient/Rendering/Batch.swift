@@ -293,7 +293,7 @@ public enum MasterBoard {
             return WhatLine(text: "Paused", tone: .muted)
         case .queued, .starting, .running, .watching:
             let own = activity?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return WhatLine(text: own.isEmpty ? line.text : own, tone: .muted)
+            return WhatLine(text: own.isEmpty ? line.text : StripWords.reason(fromActivity: own), tone: .muted)
         case .stopped:
             return WhatLine(text: "Stopped", tone: .muted)
         default:

@@ -61,7 +61,7 @@ private func source(_ callId: String, url: String? = nil, query: String? = nil, 
     @Test func `coverage names what has happened and nothing else`() {
         #expect(ResearchBoard.coverage(sources: 0, searches: 0, angles: 0, done: 0) == "")
         #expect(ResearchBoard.coverage(sources: 1, searches: 1, angles: 0, done: 0) == "1 source · 1 search")
-        #expect(ResearchBoard.coverage(sources: 15, searches: 4, angles: 3, done: 1) == "15 sources · 4 searches · 1 of 3 angles done")
+        #expect(ResearchBoard.coverage(sources: 15, searches: 4, angles: 3, done: 1) == "15 sources, 4 searches, 1 of 3 angles done")
     }
 
     @Test func `an angle is searching under a bare query and reading once pages land`() {

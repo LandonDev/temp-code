@@ -236,7 +236,7 @@ struct PlanBlockView: View {
                 .padding(.leading, 12)
                 .padding(.vertical, 2)
                 .overlay(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 1)
+                    Capsule()
                         .fill(Color(.tertiaryLabel))
                         .frame(width: 2)
                 }

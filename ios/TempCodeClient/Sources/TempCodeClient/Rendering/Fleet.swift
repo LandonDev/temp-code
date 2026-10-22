@@ -273,7 +273,7 @@ public enum Fleet {
             case .tool(let tool):
                 let name = tool.display?.app ?? tool.name
                 let detail = tool.detail.map(firstLine) ?? ""
-                return detail.isEmpty ? name : "\(name) · \(detail)"
+                return detail.isEmpty ? name : "\(name): \(detail)"
             case .assistant(let block) where !block.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
                 return firstLine(block.text)
             case .system(let line) where line.kind == .error && !line.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
@@ -321,14 +321,15 @@ public enum Fleet {
 
     /// The row's one-line status and its colour; compaction shows while live.
     /// `activity` is the host's own line for the row (`SessionMeta.activity`,
-    /// "Queued · waiting for <sibling>"), read for a queued agent.
+    /// "Queued · waiting for <sibling>"), read for a queued agent, whose row
+    /// shows the reason alone ("Waiting for <sibling>"): its dot says queued.
     public static func line(status: SessionStatus?, items: [ThreadEntry], compacting: Bool = false, activity: String? = nil) -> Line {
         if isLive(status), compacting { return Line("compacting the context…", tone: .muted) }
         switch status {
         case .queued?:
             let own = activity?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return Line(own.isEmpty ? "Queued" : own, tone: .muted)
-        case .stopped?: return Line("stopped · the harness is gone", tone: .muted)
+            return Line(own.isEmpty ? "Queued" : StripWords.reason(fromActivity: own), tone: .muted)
+        case .stopped?: return Line("the harness is gone", tone: .muted)
         case .paused?: return Line("paused", tone: .muted)
         default: break
         }

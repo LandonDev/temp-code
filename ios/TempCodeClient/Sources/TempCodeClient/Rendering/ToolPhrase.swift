@@ -230,8 +230,19 @@ public struct ToolPhrase: Hashable, Sendable {
         }
         let phrases = commandPhrases(commandOf(tool)).map { tense($0, live: live) }
         if phrases.isEmpty { return ToolPhrase(verb: live ? "Running a command" : "Ran a command", target: nil, isFile: false) }
-        let extra = phrases.count - 2
-        return ToolPhrase(verb: cap(phrases.prefix(2).joined(separator: " · ") + (extra > 0 ? " +\(extra) more" : "")), target: nil, isFile: false)
+        return ToolPhrase(verb: cap(sentence(phrases)), target: nil, isFile: false)
+    }
+
+    /// A command's phrases as one clause of prose: "check git status",
+    /// "check git status and run the tests", "check git status, run the
+    /// tests and 2 more".
+    public static func sentence(_ phrases: [String]) -> String {
+        switch phrases.count {
+        case 0: return ""
+        case 1: return phrases[0]
+        case 2: return "\(phrases[0]) and \(phrases[1])"
+        default: return "\(phrases[0]), \(phrases[1]) and \(phrases.count - 2) more"
+        }
     }
 
     /// Drop a `sh -lc '…'` wrapper.

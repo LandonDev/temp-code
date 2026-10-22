@@ -157,9 +157,13 @@ private struct PlanLine: View {
                 Image(systemName: "map")
                     .font(.footnote.weight(.regular))
                     .foregroundStyle(Tint.violet)
-                Text("Planned in \(title)" + (plan.archived ? " · archived" : ""))
+                Text("Planned in \(title)")
                     .textStep(.meta)
                     .lineLimit(1)
+                if plan.archived {
+                    Text("Archived")
+                        .textStep(.meta, tint: Color(.tertiaryLabel))
+                }
             }
             .frame(maxWidth: .infinity, minHeight: Layout.rowHeight, alignment: .leading)
             .contentShape(Rectangle())
@@ -200,8 +204,7 @@ private struct EmptyBoard: View {
             if loading {
                 ProgressView()
             } else {
-                Text("No tasks yet")
-                    .textStep(.meta)
+                ContentUnavailableView("No Tasks Yet", systemImage: "checklist")
             }
             Spacer()
         }

@@ -66,7 +66,8 @@ private struct ItemRow: View {
 }
 
 /// A settled turn's closing line, the desktop's `TurnEnd`: "Worked for 12s"
-/// and the clock time, quiet, with Copy answer in the context menu. Nothing
+/// and, at the trailing edge, the clock time, quiet, with Copy answer in the
+/// context menu. Nothing
 /// while the turn runs; the working strip has the live timer.
 struct TurnEndRow: View {
     let end: TurnEnd
@@ -77,9 +78,7 @@ struct TurnEndRow: View {
                 .frame(width: 18)
                 .accessibilityHidden(true)
             Text(TranscriptRows.workedLabel(ms: end.durationMs))
-            Circle()
-                .frame(width: 3, height: 3)
-                .accessibilityHidden(true)
+            Spacer(minLength: 8)
             Text(TimeFormat.stamp(end.completedTs))
                 .monospacedDigit()
         }
@@ -417,7 +416,7 @@ private enum ApprovalDetail {
         }()
         if let command, !command.isEmpty, ["bash", "shell", "local_shell", "exec"].contains(name) {
             let phrases = ToolPhrase.commandPhrases(command)
-            let doing = phrases.isEmpty ? "Run a command" : phrases.prefix(2).joined(separator: " · ")
+            let doing = phrases.isEmpty ? "Run a command" : ToolPhrase.sentence(phrases)
             return .shell(doing: doing.prefix(1).uppercased() + doing.dropFirst(), command: ToolPhrase.bareCommand(command))
         }
         if let path = input["file_path"]?.stringValue ?? input["notebook_path"]?.stringValue ?? input["path"]?.stringValue, !path.isEmpty {
@@ -827,11 +826,11 @@ struct CompactionLine: View {
             .accessibilityElement(children: .combine)
         case .done, .unknown:
             LabeledDivider {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Text("Context compacted")
                         .foregroundStyle(.secondary)
-                    if !parts.isEmpty {
-                        Text(parts.joined(separator: " · "))
+                    ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
+                        Text(part)
                             .foregroundStyle(.tertiary)
                             .monospacedDigit()
                     }
@@ -878,7 +877,14 @@ struct SystemRow: View {
                         .font(.footnote)
                         .frame(width: 18)
                         .accessibilityHidden(true)
-                    Text("\(Text("Failed").fontWeight(.medium))\(line.text.isEmpty ? "" : " · \(Board.firstLine(line.text))")")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Failed")
+                            .fontWeight(.medium)
+                        if !line.text.isEmpty {
+                            Text(Board.firstLine(line.text))
+                                .opacity(0.8)
+                        }
+                    }
                 }
                 .font(.footnote)
                 .foregroundStyle(Tint.destructive)
@@ -894,7 +900,7 @@ struct SystemRow: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("Pass")
                     .frame(width: 18)
-                Text(line.text.replacingOccurrences(of: ", ", with: " · "))
+                Text(line.text)
                     .lineLimit(1)
             }
             .font(.footnote)
@@ -909,7 +915,7 @@ struct SystemRow: View {
         case .planHandoff:
             PlanHandoffRow(line: line, client: client)
         case .backgroundTask:
-            QuietLine(symbol: "clock", text: line.detail.map { "\(line.text) · \($0)" } ?? line.text)
+            QuietLine(symbol: "clock", text: line.detail.map { "\(line.text) (\($0))" } ?? line.text)
         case .goal:
             QuietLine(symbol: "target", text: line.detail.map { "Goal \($0): \(line.text)" } ?? line.text)
         case .status:

@@ -240,9 +240,9 @@ import TempCodeContract
             SearchHostFoot(environmentId: "mac", name: "Mac", state: .answered(ms: 320)),
             SearchHostFoot(environmentId: "box", name: "box", state: .answered(ms: 1234))
         ]
-        #expect(SearchRows.footLine(feet) == "Mac 320 ms · box 1.2 s")
-        #expect(SearchRows.footLine([feet[0], SearchHostFoot(environmentId: "box", name: "box", state: .offline)]) == "Mac 320 ms · box offline")
-        #expect(SearchRows.footLine([feet[0], SearchHostFoot(environmentId: "box", name: "box", state: .failed)]) == "Mac 320 ms · box failed")
+        #expect(SearchRows.footLine(feet) == "Mac 320 ms, box 1.2 s")
+        #expect(SearchRows.footLine([feet[0], SearchHostFoot(environmentId: "box", name: "box", state: .offline)]) == "Mac 320 ms, box offline")
+        #expect(SearchRows.footLine([feet[0], SearchHostFoot(environmentId: "box", name: "box", state: .failed)]) == "Mac 320 ms, box failed")
     }
 
     @Test(arguments: [(320, "320 ms"), (1234, "1.2 s"), (12000, "12.0 s"), (0, "0 ms"), (999, "999 ms"), (1050, "1.1 s")])

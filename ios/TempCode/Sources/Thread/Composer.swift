@@ -284,8 +284,8 @@ struct ComposerBar: View {
             }
         }
         .animation(Motion.iconSwap, value: actionShown)
-        .tcGlass(in: RoundedRectangle.corner(fieldHeight / 2))
-        .contentShape(RoundedRectangle.corner(fieldHeight / 2))
+        .tcGlass(in: RoundedRectangle.corner(Radius.capsuleEnds(fieldHeight)))
+        .contentShape(RoundedRectangle.corner(Radius.capsuleEnds(fieldHeight)))
         .onTapGesture { if block == nil { focused = true } }
     }
 

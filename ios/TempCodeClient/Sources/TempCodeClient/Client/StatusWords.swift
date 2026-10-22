@@ -6,14 +6,13 @@ import TempCodeContract
 /// once-per-boot restart note. The host owns the facts; these are the
 /// desktop's sentences (scheduler.ts, ThreadBanners.tsx, bootResume.ts).
 public enum StatusWords {
-    /// The host's line for a queued root ("Queued · waiting for Backfill the
-    /// rollups (paused)"), else "Queued".
-    public static func queuedLine(_ m: SessionMeta) -> String {
-        if let activity = m.activity, activity.hasPrefix("Queued") { return activity }
-        return "Queued"
+    /// A queued root's words: "Queued", and the host's reason ("Waiting for
+    /// Backfill the rollups (paused)") as the detail when it gave one.
+    public static func queuedLine(_ m: SessionMeta) -> StripWords {
+        StripWords.queued(activity: m.activity)
     }
 
-    public static let stopped = "Stopped · the harness is gone"
+    public static let stopped = StripWords.stopped
     public static let stoppedShort = "Stopped"
 
     /// Roots of the master's batch paused with it: the master's id on them,

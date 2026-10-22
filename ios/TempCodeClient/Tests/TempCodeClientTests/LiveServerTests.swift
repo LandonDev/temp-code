@@ -626,7 +626,7 @@ struct LiveHostExtrasTests {
         #expect(activity.hosts.contains { $0.environmentId == LiveServer.seedBoxId })
         #expect(MacBridgeWords.sorted(activity.calls).map(\.status) == [.running, .held])
         let held = try #require(activity.calls.first { $0.status == .held }?.held)
-        #expect(MacBridgeWords.heldLine(held) == "Waiting for the Mac · load 12.3 of 8 · 3rd in line")
+        #expect(MacBridgeWords.heldLine(held) == "3rd in line for the Mac (load 12.3 of 8)")
 
         let deploy = try await socket.request(Methods.HostDeployStatus.self, .init())
         #expect(deploy.phase == .done)

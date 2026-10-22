@@ -37,7 +37,7 @@ struct StatusDot: View {
                     .transition(.opacity)
             case .stopped:
                 // The harness is gone: a still square, the quiet opposite of the spinner.
-                RoundedRectangle(cornerRadius: 1, style: .continuous)
+                RoundedRectangle.corner(Radius.mark)
                     .fill(Tint.quiet)
                     .frame(width: dot - 1, height: dot - 1)
                     .transition(.opacity)

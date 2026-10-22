@@ -544,16 +544,13 @@ private struct DiffHunkHeader: View {
     let height: CGFloat
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             if showFile, let file = hunk.file {
                 Text(Board.fileName(file))
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Text("·")
-                    .font(.footnote)
-                    .foregroundStyle(.tertiary)
             }
             Text(hunk.range)
                 .font(.footnote.weight(showFile ? .regular : .semibold))

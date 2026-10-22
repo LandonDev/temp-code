@@ -3,7 +3,7 @@ import TempCodeClient
 import TempCodeContract
 
 /// A host reached through another, under its carrier's row in Settings →
-/// Hosts: the lane's dot in the mark column, the name, "through <carrier> ·
+/// Hosts: the lane's dot in the mark column, the name, "through <carrier>,
 /// <presence>" in the meta step, the abbreviated environment id trailing.
 /// Nothing here waits on the person: no swipe, no menu (there is nothing to
 /// pair again or forget; the carrier's Forget takes it along).

@@ -320,7 +320,7 @@ private struct HomeRowView: View {
                 if slots.hasProjectMenu {
                     HeaderMenu(systemImage: "ellipsis", label: "\(project.name) menu") {
                         if let workspace {
-                            Button("New thread") { newThread(client, workspace, project) }
+                            Button("New Thread", systemImage: "square.and.pencil") { newThread(client, workspace, project) }
                         }
                         if let settings = slots.projectSettings {
                             Divider()
@@ -505,11 +505,11 @@ private struct NoHostsView: View {
 
     var body: some View {
         ContentUnavailableView {
-            Label("Nothing paired yet", systemImage: "desktopcomputer")
+            Label("Nothing Paired Yet", systemImage: "desktopcomputer")
         } description: {
             Text("Pair your Mac or the agent host to see its threads here.")
         } actions: {
-            Button("Pair a host", action: add)
+            Button("Pair a Host", action: add)
                 .buttonStyle(.borderedProminent)
         }
     }

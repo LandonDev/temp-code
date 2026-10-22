@@ -341,7 +341,7 @@ public nonisolated enum SearchRows {
         return SearchAnswer(query: query, scope: scope, rows: rows, hosts: feet)
     }
 
-    /// "Mac 320 ms · box 1.2 s", "box …" while a host is still answering,
+    /// "Mac 320 ms, box 1.2 s", "box …" while a host is still answering,
     /// "box offline", "box failed"; nil with one host.
     public static func footLine(_ hosts: [SearchHostFoot]) -> String? {
         guard hosts.count > 1 else { return nil }
@@ -352,7 +352,7 @@ public nonisolated enum SearchRows {
             case .offline: "\(host.name) offline"
             case .failed: "\(host.name) failed"
             }
-        }.joined(separator: " · ")
+        }.joined(separator: ", ")
     }
 
     /// "320 ms" under a second, else "1.2 s" with one decimal.

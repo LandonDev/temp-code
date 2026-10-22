@@ -79,7 +79,7 @@ struct ThreadHeader: View {
         }
 
         private func row(now: Date) -> some View {
-            HStack(spacing: 5) {
+            HStack(spacing: 6) {
                 if line.mark != .empty {
                     HeaderMark(status: session.status, spinning: line.mark == .spinner)
                         .transition(.opacity)
@@ -111,8 +111,10 @@ struct HeaderMark: View {
     }
 }
 
-/// The subtitle's parts joined by a middle dot; `.words` is never preceded
-/// by one when it leads the line.
+/// The subtitle's parts side by side, 8 pt apart, told apart by their own
+/// weight and color (the type tinted at medium weight, the model and agent
+/// in secondary, the host, "Master" and the clock in tertiary), never by a
+/// dot between them.
 private struct HeaderParts: View {
     let client: EnvironmentClient
     let session: SessionMeta
@@ -120,20 +122,10 @@ private struct HeaderParts: View {
     let now: Date
 
     var body: some View {
-        HStack(spacing: 5) {
-            ForEach(Array(parts.enumerated()), id: \.offset) { index, part in
-                if index > 0 { Separator() }
+        HStack(spacing: 8) {
+            ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
                 HeaderPartView(client: client, session: session, part: part, now: now)
             }
-        }
-    }
-
-    /// The middle dot between the subtitle's parts, a step quieter than them.
-    private struct Separator: View {
-        var body: some View {
-            Text("·")
-                .foregroundStyle(.tertiary)
-                .accessibilityHidden(true)
         }
     }
 }
@@ -163,11 +155,17 @@ struct HeaderPartView: View {
         case .elapsed(let since):
             let text = TimeFormat.elapsed(since: since, now: now)
             Text(text)
+                .foregroundStyle(.tertiary)
                 .numeric(text)
         case .frozen(let ms):
-            Text(TimeFormat.duration(ms: ms)).monospacedDigit()
-        case .words(let words):
-            Text(words)
+            Text(TimeFormat.duration(ms: ms)).monospacedDigit().foregroundStyle(.tertiary)
+        case .words(let words, let detail):
+            HStack(spacing: 6) {
+                Text(words)
+                if let detail {
+                    Text(detail).foregroundStyle(.tertiary)
+                }
+            }
         }
     }
 }

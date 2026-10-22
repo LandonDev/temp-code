@@ -91,8 +91,9 @@ struct MacBridgeSection: View {
 }
 
 /// One call on the Mac: the mark (spinner, waiting, paused), the command in
-/// mono, and what it is doing in the meta step: the thread and how long it
-/// has run, the held standing swapping in place, or paused on the box.
+/// mono, and under it the thread in the meta step with how long it has run
+/// (or that it is paused on the box) a step quieter after it; a held call
+/// says its place in line instead, swapping in place.
 struct MacCallRow: View {
     let call: MacBridgeCall
 
@@ -122,18 +123,26 @@ struct MacCallRow: View {
     @ViewBuilder private var second: some View {
         switch call.status {
         case .running:
-            HStack(spacing: 0) {
-                Text("\(call.threadTitle) · ")
-                    .textStep(.meta)
-                    .lineLimit(1)
-                ElapsedText(since: call.createdAt, step: .meta)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                threadTitle
+                ElapsedText(since: call.createdAt)
+                    .fixedSize()
             }
         case .held:
             SwapText(call.held.map(MacBridgeWords.heldLine) ?? "Waiting for the Mac")
         case .paused, .unknown:
-            Text("\(call.threadTitle) · paused on the box")
-                .textStep(.meta)
-                .lineLimit(1)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                threadTitle
+                Text("Paused on the box")
+                    .textStep(.stamp)
+                    .fixedSize()
+            }
         }
+    }
+
+    private var threadTitle: some View {
+        Text(call.threadTitle)
+            .textStep(.meta)
+            .lineLimit(1)
     }
 }

@@ -58,8 +58,20 @@ enum Radius {
     /// A wash or an icon box inside a block, 4 pt in from its edge.
     static let inner = inside(block, padding: 4)
 
+    /// The stopped status mark: a 6 pt square whose corners only soften.
+    static let mark: CGFloat = 1
+
     /// A square icon tile (a favicon, a workspace icon): a quarter of its side.
     static func tile(_ side: CGFloat) -> CGFloat { side / 4 }
+
+    /// A field that is a capsule at its one-line `height` and keeps those
+    /// round ends as it grows taller (the chat bar, the way Messages does it).
+    static func capsuleEnds(_ height: CGFloat) -> CGFloat { height / 2 }
+
+    /// The system shapes the DEBUG activity gallery stands in for: the lock
+    /// screen's Live Activity card and the expanded Dynamic Island.
+    static let liveActivity: CGFloat = 24
+    static let island: CGFloat = 44
 
     /// The outer radius around a corner of `inner` with `padding` between them.
     static func around(_ inner: CGFloat, padding: CGFloat) -> CGFloat {

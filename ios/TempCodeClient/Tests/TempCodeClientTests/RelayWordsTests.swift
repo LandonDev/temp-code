@@ -69,7 +69,7 @@ struct RelayWordsTests {
 
     @Test func `the subline names the carrier and adds the presence`() {
         #expect(RelayWords.subline(presence(), carrierName: "box", lockedSince: nil, now: noon, calendar: utc, locale: posix) == "through box")
-        #expect(RelayWords.subline(presence(power: "asleep"), carrierName: "box", lockedSince: nil, now: noon, calendar: utc, locale: posix) == "through box · asleep")
+        #expect(RelayWords.subline(presence(power: "asleep"), carrierName: "box", lockedSince: nil, now: noon, calendar: utc, locale: posix) == "through box, asleep")
     }
 
     @Test func `the strip line speaks only when locked`() {
@@ -198,7 +198,7 @@ struct ForgetCopyTests {
         #expect(HostFix.fix(for: EnvironmentStatus(transport: .reconnecting), environment: relayed) == nil)
         #expect(HostFix.fix(for: EnvironmentStatus(transport: .unauthorized), environment: relayed) == nil)
         #expect(HostFix.fix(for: EnvironmentStatus(transport: .reconnecting)) == .retry)
-        #expect(HostBuildLine.text(version: "1.0.300", sha: "5edeb5dabc") == "1.0.300 · 5edeb5d")
+        #expect(HostBuildLine.text(version: "1.0.300", sha: "5edeb5dabc") == "1.0.300 (5edeb5d)")
         #expect(HostBuildLine.text(version: "1.0.300", sha: nil) == "1.0.300")
     }
 }

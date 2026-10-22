@@ -112,13 +112,13 @@ import TempCodeContract
 
     @Test func `a failed gate names what failed`() {
         let typecheck = GateNotice(step: .typecheck, branch: "f", ok: false, log: "src/a.ts(1,2): error TS2322: x\nFound 3 errors in 2 files.", at: 0)
-        #expect(GateLine.text(typecheck) == "Typecheck failed on f · 3 errors")
+        #expect(GateLine.text(typecheck) == "Typecheck failed on f with 3 errors")
         let one = GateNotice(step: .typecheck, branch: "f", ok: false, log: "Found 1 error.", at: 0)
         #expect(GateLine.text(one) == "Typecheck failed on f · 1 error")
         let silent = GateNotice(step: .typecheck, branch: "f", ok: false, log: "tsc crashed", at: 0)
         #expect(GateLine.text(silent) == "Typecheck failed on f")
         let gate = GateNotice(step: .gate, branch: "master", ok: false, log: "✓ typecheck 12s\n✗ vitest 40s failed", at: 0)
-        #expect(GateLine.text(gate) == "Gate failed on master · at vitest")
+        #expect(GateLine.text(gate) == "Gate failed on master at vitest")
         let gateNoStep = GateNotice(step: .gate, branch: "master", ok: false, log: "boom", at: 0)
         #expect(GateLine.text(gateNoStep) == "Gate failed on master")
         let release = GateNotice(step: .release, branch: "master", ok: false, log: "✗ vitest", at: 0)

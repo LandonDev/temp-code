@@ -65,13 +65,18 @@ struct ReviewCard: View {
                     .font(held ? .footnote.weight(.medium) : .footnote)
                     .foregroundStyle(tint)
                     .frame(width: 16)
-                (Text(ReviewText.lead(review, label: ModelName.short(review.model)))
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(held ? Color.primary : Color.secondary)
-                 + Text(detailSuffix)
-                    .font(.subheadline)
-                    .foregroundStyle(held ? Color.secondary : Color(.tertiaryLabel)))
-                    .lineLimit(2)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(ReviewText.lead(review, label: ModelName.short(review.model)))
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(held ? Color.primary : Color.secondary)
+                    let detail = ReviewText.detail(review, resolved: resolved)
+                    if !detail.isEmpty {
+                        Text(detail)
+                            .font(.footnote)
+                            .foregroundStyle(held ? Color.secondary : Color(.tertiaryLabel))
+                            .lineLimit(2)
+                    }
+                }
                 Spacer(minLength: 8)
                 if let reviewerId = review.reviewerId, client.session(reviewerId) != nil {
                     ReviewerChip(reviewerId: reviewerId)
@@ -124,11 +129,6 @@ struct ReviewCard: View {
         .animation(reduceMotion ? nil : Motion.collapse, value: held)
         .animation(Motion.crossFade, value: failure)
         .accessibilityElement(children: .contain)
-    }
-
-    private var detailSuffix: String {
-        let detail = ReviewText.detail(review, resolved: resolved)
-        return detail.isEmpty ? "" : " · \(detail)"
     }
 
     private var symbol: String {
@@ -185,7 +185,7 @@ struct ReviewFindingRow: View {
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
-                        .background(Surface.fill, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        .background(Surface.fill, in: RoundedRectangle.inlineCorner)
                     if finding.verdict == .plausible {
                         Text("plausible")
                             .font(.caption)
@@ -285,13 +285,23 @@ struct GateCard: View {
                     .font(gate.ok ? .footnote : .footnote.weight(.medium))
                     .foregroundStyle(gate.ok ? Tint.success : Tint.destructive)
                     .frame(width: 16)
-                (Text(GateText.lead(gate))
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(gate.ok ? Color.secondary : Color.primary)
-                 + Text(" · \(GateText.detail(gate))")
-                    .font(.subheadline)
-                    .foregroundStyle(gate.ok ? Color(.tertiaryLabel) : Color.secondary))
-                    .lineLimit(2)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(GateText.lead(gate))
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(gate.ok ? Color.secondary : Color.primary)
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        MetaGlyph("arrow.triangle.branch", label: "Branch")
+                        Text(gate.branch)
+                            .foregroundStyle(gate.ok ? Color(.tertiaryLabel) : Color.secondary)
+                        if let tail = GateText.tail(gate) {
+                            Text(tail)
+                                .foregroundStyle(gate.ok ? Color(.tertiaryLabel) : Tint.destructive)
+                                .padding(.leading, 4)
+                        }
+                    }
+                    .font(.footnote)
+                    .lineLimit(1)
+                }
                 Spacer(minLength: 0)
             }
             if !gate.ok, lines > 0 {
@@ -364,7 +374,7 @@ struct PlanHandoffRow: View {
             }
             .buttonStyle(.pressable)
         } else {
-            QuietLine(symbol: "hammer", text: "Build started · \(line.text)")
+            QuietLine(symbol: "hammer", text: "Build started: \(line.text)")
         }
     }
 }

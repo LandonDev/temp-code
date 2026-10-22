@@ -56,7 +56,7 @@
 #           hosts' threads and their glyphs, and Thread A with its host chip.
 #   glass   The chrome the Liquid Glass pass touched: a chat thread with the
 #           keyboard down (read key) and up (re-paired with the acting key,
-#           TC_TEST_OPEN=composer), a running, a queued and a stopped thread,
+#           TC_TEST_OPEN=composer), a running, a paused, a queued and a stopped thread,
 #           Home, Search, Hosts, an implementation board, a master's board,
 #           the subagent list and the New thread sheet, light and dark, then
 #           the chat and Home at the accessibility size. The bottom dock's
@@ -580,7 +580,8 @@ glass_set() {
   for mode in light dark; do
     appearance "$mode"
     shot "glass-chat-$mode" thread "gateway refuse"; dock "glass-chat-$mode"
-    shot "glass-running-$mode" thread "Streaming on the phone"; dock "glass-running-$mode"
+    shot "glass-running-$mode" thread "Index the archive"; dock "glass-running-$mode"
+    shot "glass-paused-$mode" thread "Migrate the stats pipeline"; dock "glass-paused-$mode"
     shot "glass-queued-$mode" thread "Backfill the rollups"
     shot "glass-stopped-$mode" thread "Rename the config keys again"
     shot "glass-home-$mode" home
@@ -594,7 +595,7 @@ glass_set() {
   appearance light
   xcrun simctl ui "$TC_SIM_UDID" content_size "$A11Y_SIZE" >/dev/null
   shot glass-chat-a11y thread "gateway refuse"; dock glass-chat-a11y
-  shot glass-running-a11y thread "Streaming on the phone"
+  shot glass-running-a11y thread "Index the archive"
   shot glass-home-a11y home
   xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
   if [ -n "${TC_TEST_PAIR_LINK_OPERATE:-}" ]; then

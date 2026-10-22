@@ -52,13 +52,17 @@ extension View {
 
     /// The bar that floats at the screen's bottom edge over scrolling
     /// content: `safeAreaBar` on iOS 26, so the content scrolls under it
-    /// behind the soft scroll edge effect and no divider is drawn; before
-    /// that a `safeAreaInset` on the bar material.
+    /// behind the soft scroll edge effect and no divider is drawn, with the
+    /// app's own soft edge under it (`BottomEdgeFade`) so text passing
+    /// beneath the glass never competes with the field; before iOS 26 a
+    /// `safeAreaInset` on the bar material.
     @ViewBuilder
     func tcBottomBar<Bar: View>(@ViewBuilder _ bar: () -> Bar) -> some View {
         if #available(iOS 26.0, *) {
-            safeAreaBar(edge: .bottom, spacing: 0, content: bar)
-                .scrollEdgeEffectStyle(.soft, for: .bottom)
+            safeAreaBar(edge: .bottom, spacing: 0) {
+                bar().background(alignment: .top) { BottomEdgeFade() }
+            }
+            .scrollEdgeEffectStyle(.soft, for: .bottom)
         } else {
             safeAreaInset(edge: .bottom, spacing: 0) {
                 bar().background(.bar)
@@ -86,6 +90,19 @@ extension View {
     }
 }
 
+extension Shape where Self == AnyShape {
+    /// A corner concentric with the container it sits in (a sheet, the
+    /// screen's own corners) and never tighter than `minimum`:
+    /// `ConcentricRectangle` on iOS 26, the `minimum` corner before.
+    static func concentric(minimum: CGFloat) -> AnyShape {
+        if #available(iOS 26.0, *) {
+            AnyShape(ConcentricRectangle(corners: .concentric(minimum: .fixed(minimum)), isUniform: true))
+        } else {
+            AnyShape(RoundedRectangle.corner(minimum))
+        }
+    }
+}
+
 /// Glass siblings that sit close together blend and morph as one surface
 /// (`GlassEffectContainer` on iOS 26; a plain stack of thin material
 /// before). `spacing` is how near two pieces must be to merge.
@@ -99,6 +116,27 @@ struct TCGlassContainer<Content: View>: View {
         } else {
             content
         }
+    }
+}
+
+/// The soft edge under a floating bottom bar: the thin material fading in
+/// from nothing 16 pt above the bar, and the background step fading in under
+/// it, down to the screen's edge. Content that scrolls beneath blurs and
+/// recedes instead of reading through the glass. Under Reduce Transparency
+/// the material is the system's opaque one.
+private struct BottomEdgeFade: View {
+    static let lead: CGFloat = 16
+
+    var body: some View {
+        let fade = LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.45)], startPoint: .top, endPoint: .bottom)
+        ZStack {
+            Rectangle().fill(.ultraThinMaterial).mask(fade)
+            LinearGradient(stops: [.init(color: Surface.background.opacity(0), location: 0), .init(color: Surface.background.opacity(0.7), location: 0.6)], startPoint: .top, endPoint: .bottom)
+        }
+        .padding(.top, -Self.lead)
+        .ignoresSafeArea(edges: .bottom)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 

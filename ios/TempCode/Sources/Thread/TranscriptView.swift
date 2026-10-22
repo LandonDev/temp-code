@@ -350,9 +350,7 @@ private struct EmptyTranscript: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             } else {
-                Text("No messages yet")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                ContentUnavailableView("No Messages Yet", systemImage: "bubble.left.and.bubble.right")
             }
             Spacer()
         }

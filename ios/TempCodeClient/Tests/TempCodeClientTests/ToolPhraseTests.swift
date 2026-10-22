@@ -29,7 +29,7 @@ import TempCodeContract
         let described = ToolPhrase.of(tool("Bash", ["command": .string("ls"), "description": .string("Check the deploy")]))
         #expect(described.verb == "Checked the deploy")
         let two = ToolPhrase.of(tool("Bash", ["command": .string("git status && bun run typecheck && ls && pwd")]))
-        #expect(two.verb == "Checked git status · ran bun run typecheck +1 more")
+        #expect(two.verb == "Checked git status, ran bun run typecheck and 1 more")
         #expect(ToolPhrase.of(tool("Bash", ["command": .string("")])).verb == "Ran a command")
     }
 
@@ -77,5 +77,14 @@ import TempCodeContract
         #expect(ToolPhrase.shortName("mcp__a__b") == "b")
         let skill = ToolPhrase.of(tool("Skill", ["skill": .string("impeccable")]))
         #expect(skill.target == "Skill impeccable")
+    }
+}
+
+@Suite struct ToolPhraseSentenceTests {
+    @Test func `a command's phrases read as prose, never joined with a dot`() {
+        #expect(ToolPhrase.sentence([]) == "")
+        #expect(ToolPhrase.sentence(["run the tests"]) == "run the tests")
+        #expect(ToolPhrase.sentence(["check git status", "run the tests"]) == "check git status and run the tests")
+        #expect(ToolPhrase.sentence(["a", "b", "c", "d"]) == "a, b and 2 more")
     }
 }

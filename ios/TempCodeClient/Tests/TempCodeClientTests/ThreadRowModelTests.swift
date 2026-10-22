@@ -37,7 +37,7 @@ private let rateLimited = Failure(kind: .rateLimited, account: nil, summary: "Ra
     }
 
     @Test func `no tasks falls to the activity, and an empty activity to nothing`() {
-        #expect(ThreadRowModel.detail(of: session(activity: "Queued · waiting for Backfill", tasks: .init(done: 0, total: 0))) == "Queued · waiting for Backfill")
+        #expect(ThreadRowModel.detail(of: session(activity: "Queued · waiting for Backfill", tasks: .init(done: 0, total: 0))) == "Waiting for Backfill", "the queued dot says queued: the host's reason alone")
         #expect(ThreadRowModel.detail(of: session(activity: "")) == nil)
         #expect(ThreadRowModel.detail(of: session()) == nil)
     }

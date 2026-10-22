@@ -64,6 +64,14 @@ public struct StripWords: Hashable, Sendable {
         guard let first = rest.first else { return StripWords(title: "Queued") }
         return StripWords(title: "Queued", detail: first.uppercased() + rest.dropFirst())
     }
+
+    /// The host's activity line where a status mark beside it already says
+    /// queued: the reason alone ("Waiting for Backfill the rollups"), "Queued"
+    /// when the host gave none; any other activity unchanged.
+    public static func reason(fromActivity activity: String) -> String {
+        guard activity.hasPrefix("Queued") else { return activity }
+        return queued(activity: activity).detail ?? "Queued"
+    }
 }
 
 /// What the composer decides from the session: whether its button stops a

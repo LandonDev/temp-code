@@ -12,7 +12,7 @@ public struct ThreadRowModel: Hashable, Sendable {
     /// Settled work the user has not looked at: the title goes semibold.
     public var unseen = false
     /// What the second line opens with; a sibling may compose it
-    /// ("Sonnet 5.5 · work"). The row never parses it.
+    /// ("Sonnet 5.5", then "work"). The row never parses it.
     public var model: String
     /// `done/total current`, else the last activity (the host writes
     /// "Queued · waiting for X" there).
@@ -83,7 +83,8 @@ public struct ThreadRowModel: Hashable, Sendable {
             if let current = tasks.current, !current.isEmpty { return "\(count) \(current)" }
             return count
         }
-        if let activity = session.activity, !activity.isEmpty { return activity }
+        // The row's queued dot already says queued: the host's reason alone.
+        if let activity = session.activity, !activity.isEmpty { return StripWords.reason(fromActivity: activity) }
         return nil
     }
 

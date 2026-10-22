@@ -223,17 +223,20 @@ struct PreambleEditor: View {
         .animation(Motion.crossFade, value: error)
     }
 
-    /// `{{worktree}} a slug from the thread title · {{project}} … · {{host}} …. Substituted when the thread starts.`
+    /// One sentence, the names in code: "{{worktree}} is a slug from the
+    /// thread title, {{project}} the project name and {{host}} the machine
+    /// the thread runs on, filled in when the thread starts."
     private var variables: AttributedString {
         var out = AttributedString()
-        for (index, variable) in Preamble.variables.enumerated() {
-            if index > 0 { out += AttributedString(" · ") }
+        let all = Preamble.variables
+        for (index, variable) in all.enumerated() {
+            if index > 0 { out += AttributedString(index == all.count - 1 ? " and " : ", ") }
             var name = AttributedString("{{\(variable.name)}}")
             name.inlinePresentationIntent = .code
             out += name
-            out += AttributedString(" \(variable.meaning)")
+            out += AttributedString(index == 0 ? " is \(variable.meaning)" : " \(variable.meaning)")
         }
-        out += AttributedString(". Substituted when the thread starts.")
+        out += AttributedString(", filled in when the thread starts.")
         return out
     }
 

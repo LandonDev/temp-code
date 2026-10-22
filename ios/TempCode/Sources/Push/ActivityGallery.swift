@@ -72,12 +72,12 @@ struct ActivityGalleryView: View {
 
     private var samples: [(label: String, attributes: ThreadActivityAttributes, state: ThreadActivityAttributes.ContentState)] {
         let own = phases.map { phase in
-            (label: threads ? "\(phase.rawValue) · threads" : phase.rawValue,
+            (label: threads ? "\(phase.rawValue), threads" : phase.rawValue,
              attributes: threads ? ActivityGallery.masterAttributes : ActivityGallery.attributes,
              state: ActivityGallery.sample(phase: phase, tasks: tasks, threads: threads))
         }
         guard !threads, phases.count > 1 else { return own }
-        return own + [(label: "working · threads", attributes: ActivityGallery.masterAttributes, state: ActivityGallery.sample(phase: .working, tasks: true, threads: true))]
+        return own + [(label: "working, threads", attributes: ActivityGallery.masterAttributes, state: ActivityGallery.sample(phase: .working, tasks: true, threads: true))]
     }
 
     var body: some View {
@@ -114,8 +114,8 @@ private struct LockScreenFrame<Content: View>: View {
     var body: some View {
         content
             .frame(width: 361)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(Color(.secondarySystemBackground)))
+            .background(.regularMaterial, in: RoundedRectangle.corner(Radius.liveActivity))
+            .background(RoundedRectangle.corner(Radius.liveActivity).fill(Color(.secondarySystemBackground)))
     }
 }
 
@@ -144,7 +144,7 @@ private struct IslandExpandedFrame: View {
         .padding(.top, 14)
         .padding(.bottom, 16)
         .frame(width: 371)
-        .background(Color.black, in: RoundedRectangle(cornerRadius: 44, style: .continuous))
+        .background(Color.black, in: RoundedRectangle.corner(Radius.island))
         .environment(\.colorScheme, .dark)
     }
 }
