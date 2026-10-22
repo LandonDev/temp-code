@@ -76,6 +76,18 @@ private final class Rig: Sendable {
     }
 }
 
+/// Waits up to three seconds for `condition`, polling every millisecond: a
+/// check that counted yields instead went red under the gate's parallel load
+/// when the cancel or the event landed a few yields late.
+func eventually(_ condition: @Sendable () -> Bool) async -> Bool {
+    let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+    while ContinuousClock.now < deadline {
+        if condition() { return true }
+        try? await Task.sleep(for: .milliseconds(1))
+    }
+    return false
+}
+
 @Suite struct TempCodeSocketTests {
     @Test func `start mints a ticket, opens the socket with it and goes open on the hello`() async throws {
         let rig = Rig()
@@ -305,7 +317,7 @@ private final class Rig: Sendable {
         #expect(await rig.wait(for: .open))
         await rig.socket.stop()
         #expect(await rig.wait(for: .offline))
-        for _ in 0..<50 where fake.cancelledWith == nil { await Task.yield() }
+        _ = await eventually { fake.cancelledWith != nil }
         #expect(fake.cancelledWith?.reason == "local")
         await rig.clock.advance(ms: 600_000)
         #expect(rig.sockets.sockets.count == 1)
@@ -341,7 +353,7 @@ private final class Rig: Sendable {
         #expect(await rig.wait(for: .open))
         second.deliver(#"{"push":"session-removed","sessionIds":["b"]}"#)
         await rig.clock.settle()
-        for _ in 0..<50 where events.withLock({ $0.count }) < 5 { await Task.yield() }
+        _ = await eventually { events.withLock { $0.count } >= 5 }
         #expect(events.withLock { $0 } == ["opened:env_test", "removed:a", "closed:network", "opened:env_test", "removed:b"])
         collecting.cancel()
         pushing.cancel()
