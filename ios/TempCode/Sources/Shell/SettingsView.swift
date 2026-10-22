@@ -51,9 +51,9 @@ struct SettingsView: View {
                             HostsSummary(clients: clients)
                         }
                     } else {
-                        HStack(spacing: 12) {
+                        HStack(spacing: Layout.rowGap) {
                             Text("Hosts")
-                            Spacer(minLength: 12)
+                            Spacer(minLength: Layout.rowGap)
                             HostsSummary(clients: clients)
                         }
                     }
@@ -66,9 +66,9 @@ struct SettingsView: View {
             Section {
                 // One row: the switch, with the registration's state beside it.
                 Toggle(isOn: pushBinding) {
-                    HStack(spacing: 12) {
+                    HStack(spacing: Layout.rowGap) {
                         Text("Notifications")
-                        Spacer(minLength: 12)
+                        Spacer(minLength: Layout.rowGap)
                         Text(pushWord(push))
                             .foregroundStyle(.secondary)
                             .contentTransition(.opacity)

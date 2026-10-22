@@ -70,7 +70,7 @@ struct RootView: View {
         case .settings:
             SettingsView()
         case .hosts:
-            HostsView()
+            HostsView(path: path)
         }
     }
 

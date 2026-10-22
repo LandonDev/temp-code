@@ -24,7 +24,6 @@ struct AddEnvironmentSheet: View {
 
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var focus: Field?
     @State private var method: Method = .link
     @State private var link = ""
@@ -53,7 +52,7 @@ struct AddEnvironmentSheet: View {
                 Section {
                     switch method {
                     case .link:
-                        HStack(alignment: .top, spacing: 12) {
+                        HStack(alignment: .top, spacing: Layout.rowGap) {
                             TextField("https://host/pair#XXXXX-XXXXX", text: $link)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
@@ -99,7 +98,7 @@ struct AddEnvironmentSheet: View {
                     }
                     if let error {
                         InlineFieldError(message: error)
-                            .transition(Motion.appear(reduced: reduceMotion))
+                            .rowAppearTransition()
                     }
                 } footer: {
                     Text(hint)

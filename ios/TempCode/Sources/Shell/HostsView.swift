@@ -6,12 +6,15 @@ import TempCodeContract
 /// id, each row pushing its detail. Adding one is a sheet; pairing again and
 /// forgetting are on the detail, and also a swipe and a long press here.
 struct HostsView: View {
+    /// The stack's path: rows push `HostDetailRoute` through it, and so does
+    /// the proof's hook, so the detail is one screen however it is reached.
+    @Binding var path: NavigationPath
     @Environment(AppModel.self) private var model
     @State private var adding = false
     @State private var pairingAgain: PairedEnvironment?
     @State private var forgetting: PairedEnvironment?
-    /// DEBUG: the proof opens the first host's detail with `TC_TEST_OPEN=host`.
-    @State private var openedByHook: HostDetailRoute?
+    /// DEBUG: the proof's `TC_TEST_OPEN=host` pushes the first host's detail once.
+    @State private var hookPushed = false
 
     var body: some View {
         let clients = model.registry.ordered
@@ -54,7 +57,6 @@ struct HostsView: View {
         .navigationTitle("Hosts")
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(for: HostDetailRoute.self) { HostDetailView(environmentId: $0.environmentId) }
-        .navigationDestination(item: $openedByHook) { HostDetailView(environmentId: $0.environmentId) }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("Add a Host", systemImage: "plus") { adding = true }
@@ -63,13 +65,15 @@ struct HostsView: View {
         .sheet(isPresented: $adding) { AddEnvironmentSheet() }
         .sheet(item: $pairingAgain) { AddEnvironmentSheet(replacing: $0) }
         .forgetHostDialog(host: $forgetting) { id in
-            await model.registry.remove(id)
+            await forgetHost(id, registry: model.registry)
         }
         .onAppear {
             #if DEBUG
             if TestHooks.sheet == "pair" || TestHooks.sheet == "pair-error" { adding = true }
-            if TestHooks.open == "host", let first = clients.first {
-                openedByHook = HostDetailRoute(environmentId: first.environment.id)
+            if TestHooks.open == "host", !hookPushed, let first = clients.first {
+                // The same push a row's tap makes.
+                hookPushed = true
+                path.append(HostDetailRoute(environmentId: first.environment.id))
             }
             #endif
         }
@@ -85,52 +89,50 @@ struct HostDetailRoute: Hashable {
 /// wrong, in two words), and the abbreviated environment id trailing dim.
 struct HostRow: View {
     let client: EnvironmentClient
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let status = client.status
-        HStack(spacing: 12) {
+        let line = second(status)
+        HStack(spacing: Layout.rowGap) {
             ConnectionDot(status: status)
-                .frame(width: 14)
+                .frame(width: Layout.markWidth)
             VStack(alignment: .leading, spacing: 2) {
                 Text(client.environment.name)
                     .lineLimit(1)
-                Text(second(status))
-                    .font(.footnote)
-                    .foregroundStyle(wrong(status) ? AnyShapeStyle(Tint.destructive) : AnyShapeStyle(HierarchicalShapeStyle.secondary))
-                    .lineLimit(1)
-                    .id(second(status))
-                    .transition(Motion.swap(reduced: reduceMotion))
+                // The meta step's footnote; destructive only when the state
+                // waits on the person, else the step's own secondary.
+                ZStack(alignment: .leading) {
+                    Text(line)
+                        .font(TextStep.meta.font)
+                        .foregroundStyle(HostFix.waitsOnUser(status) ? AnyShapeStyle(Tint.destructive) : AnyShapeStyle(HierarchicalShapeStyle.secondary))
+                        .lineLimit(1)
+                        .id(line)
+                        .swapTransition()
+                }
             }
             .layoutPriority(1)
-            Spacer(minLength: 12)
+            Spacer(minLength: Layout.rowGap)
+            // An id must stay legible: `caption` mono, not the stamp step's
+            // caption2, which falls under the floor for eight glyphs of mono.
             Text(abbreviatedEnvironmentId(client.environment.id))
                 .font(.caption.monospaced())
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
+                .truncationMode(.middle)
         }
         .padding(.vertical, 2)
-        .animation(Motion.crossFade, value: second(status))
+        .animation(Motion.crossFade, value: line)
         .accessibilityElement(children: .combine)
     }
 
     private func second(_ status: EnvironmentStatus) -> String {
         status.transport == .open ? client.environment.host : ConnectionWord.text(for: status)
     }
-
-    /// Destructive only when something is wrong that waits on the user; a
-    /// socket on its way is quiet.
-    private func wrong(_ status: EnvironmentStatus) -> Bool {
-        switch status.transport {
-        case .unauthorized, .offline: true
-        case .connecting: status.attempts > 0
-        case .open, .reconnecting, .suspended: false
-        }
-    }
 }
 
-/// One host in full: its state and the action that fixes it, the key and
-/// what it may do, the host's facts, then Pair Again and Forget.
+/// One host in full: its state and the action that fixes it, what the host
+/// is doing (thread 21's sections), the key and what it may do, the host's
+/// facts, then Pair Again and Forget.
 struct HostDetailView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -151,16 +153,6 @@ struct HostDetailView: View {
         }
         .navigationTitle(client?.environment.name ?? "")
         .navigationBarTitleDisplayMode(.inline)
-        // The bar showed no title for this screen when it was pushed through
-        // `navigationDestination(item:)`; the principal slot carries it on either path.
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Text(client?.environment.name ?? "")
-                    .font(.headline)
-                    .lineLimit(1)
-                    .accessibilityAddTraits(.isHeader)
-            }
-        }
     }
 
     @ViewBuilder
@@ -169,13 +161,14 @@ struct HostDetailView: View {
         let status = client.status
         let push = model.registry.push
         List {
+            // 1. Status: the state, the one action that fixes it, and why.
             Section {
-                HStack(spacing: 12) {
+                HStack(spacing: Layout.rowGap) {
                     ConnectionDot(status: status)
-                        .frame(width: 14)
+                        .frame(width: Layout.markWidth)
                     StatusText(status: status)
                         .lineLimit(2)
-                    Spacer(minLength: 12)
+                    Spacer(minLength: Layout.rowGap)
                     if status.transport == .connecting {
                         ProgressView()
                             .controlSize(.small)
@@ -184,7 +177,7 @@ struct HostDetailView: View {
                 }
                 .animation(Motion.crossFade, value: status.transport)
                 .accessibilityIdentifier("host-status")
-                if let fix = fix(for: status) {
+                if let fix = HostFix.fix(for: status) {
                     Button(fix.title) {
                         switch fix {
                         case .retry:
@@ -195,23 +188,30 @@ struct HostDetailView: View {
                     }
                 }
             } footer: {
-                if let explanation = explanation(for: status) {
+                if let explanation = HostFix.explanation(for: status) {
                     Text(explanation)
                 }
             }
 
+            // 2. Activity: what the host is doing. Thread 21 ("Hosts: deploy
+            // drift, the Mac bridge, devices, sync") adds exactly one line here,
+            // `HostActivitySections(client: client)`, a view of its own under
+            // Shell/Hosts/ whose body is one or more Sections, so they take the
+            // inset grouped style and the list's animations like the rest.
+
+            // 3. Key: the four capabilities and whether this key has them.
             Section {
                 ForEach(Capability.ordered, id: \.rawValue) { capability in
                     let allowed = environment.allows(capability)
-                    HStack(spacing: 12) {
+                    HStack(spacing: Layout.rowGap) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(capability.title)
                                 .foregroundStyle(allowed ? Color.primary : Color.secondary)
                             Text(capability.detail)
-                                .font(.footnote)
+                                .font(TextStep.meta.font)
                                 .foregroundStyle(allowed ? AnyShapeStyle(HierarchicalShapeStyle.secondary) : AnyShapeStyle(HierarchicalShapeStyle.tertiary))
                         }
-                        Spacer(minLength: 12)
+                        Spacer(minLength: Layout.rowGap)
                         Image(systemName: "checkmark")
                             .font(.body.weight(.semibold))
                             .foregroundStyle(.tint)
@@ -227,6 +227,7 @@ struct HostDetailView: View {
                 Text("What \u{201C}\(environment.keyName)\u{201D} may do on the host. Make a new key on the host to change it.")
             }
 
+            // 4. Host: its facts.
             Section {
                 LabeledContent("Name") {
                     TextField("Name", text: $name)
@@ -242,15 +243,23 @@ struct HostDetailView: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
+                // Older hosts send no build; the row shows only when the hello carried one.
+                if let build = status.lastHello?.build {
+                    LabeledContent("Version") {
+                        Text(HostBuildLine.text(build))
+                            .monospacedDigit()
+                    }
+                }
                 if let hello = status.lastHello {
                     LabeledContent("Contract", value: "\(hello.contract)")
                 }
-                LabeledContent("Notifications", value: pushWord(push, for: environment.id))
+                LabeledContent("Notifications", value: HostPushWord.text(enabled: push.enabled, failure: push.failures[environment.id], status: push.statuses[environment.id]))
                 LabeledContent("Paired", value: Date(timeIntervalSince1970: environment.addedAt / 1000), format: .dateTime.day().month().year())
             } header: {
                 Text("Host")
             }
 
+            // 5. Pair Again and Forget.
             Section {
                 Button("Pair Again") { pairingAgain = environment }
                     .accessibilityIdentifier("pair-again")
@@ -264,67 +273,10 @@ struct HostDetailView: View {
         .scrollDismissesKeyboard(.interactively)
         .sheet(item: $pairingAgain) { AddEnvironmentSheet(replacing: $0) }
         .forgetHostDialog(host: $forgetting) { id in
-            await model.registry.remove(id)
+            await forgetHost(id, registry: model.registry)
         }
         .onAppear { name = environment.name }
         .onDisappear { rename(environment) }
-    }
-
-    private enum Fix {
-        case retry
-        case pairAgain
-
-        var title: String {
-            switch self {
-            case .retry: "Retry Now"
-            case .pairAgain: "Pair Again"
-            }
-        }
-    }
-
-    /// The one action that helps: a new key when the key or the host's
-    /// identity is wrong, a retry when the host is out of reach, nothing
-    /// while it is connected, connecting, or needs an update this app cannot do.
-    private func fix(for status: EnvironmentStatus) -> Fix? {
-        switch status.transport {
-        case .unauthorized: .pairAgain
-        case .reconnecting: .retry
-        case .offline:
-            switch status.halt {
-            case .identityChanged?: .pairAgain
-            case .contractMismatch?: nil
-            case nil: .retry
-            }
-        case .connecting: status.attempts > 0 ? .retry : nil
-        case .open, .suspended: nil
-        }
-    }
-
-    private func explanation(for status: EnvironmentStatus) -> String? {
-        switch status.transport {
-        case .open: nil
-        case .connecting, .reconnecting: status.attempts > 0 ? "The phone keeps trying on its own; Retry tries now." : nil
-        case .offline:
-            switch status.halt {
-            case .identityChanged?: "The address now answers as another host. Pair again to trust it."
-            case .contractMismatch(let app, let host)?: host > app ? "Update this app to talk to the host." : "Update the host to talk to this app."
-            case nil: "The phone will try again when the network returns."
-            }
-        case .unauthorized: "The host refused this key. A new pairing link from its Remote access pane replaces it."
-        case .suspended: "Reconnects when the app comes forward."
-        }
-    }
-
-    private func pushWord(_ push: PushRegistrar, for id: String) -> String {
-        guard push.enabled else { return "Off" }
-        if push.failures[id] != nil { return "Failed" }
-        guard let status = push.statuses[id], status.registered else { return "Not registered" }
-        switch status.relay {
-        case .ok: return "On"
-        case .none: return "No relay"
-        case .failed: return "Failed"
-        case .unknown: return "Registered"
-        }
     }
 
     private func rename(_ environment: PairedEnvironment) {
@@ -335,7 +287,9 @@ struct HostDetailView: View {
 }
 
 /// Forgetting is confirmed: a confirmation dialog naming the host, with the
-/// destructive action and what it means. Shared by the list and the detail.
+/// destructive action and what it means. Shared by the list and the detail;
+/// `forget` is the package's `forgetHost`, which unregisters push on the
+/// host first.
 private struct ForgetHostDialog: ViewModifier {
     @Binding var host: PairedEnvironment?
     let forget: (String) async -> Void
@@ -351,7 +305,7 @@ private struct ForgetHostDialog: ViewModifier {
                 Task { await forget(environment.id) }
             }
         } message: { _ in
-            Text("Its threads stay on the host, and its key stays valid there until revoked. Pair again to come back.")
+            Text("Its threads stay on the host and it stops sending notifications here. The key stays valid there until revoked. Pair again to come back.")
         }
     }
 }
