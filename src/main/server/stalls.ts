@@ -51,6 +51,24 @@ export async function untilLoopIdle(opts: { thresholdMs?: number; maxWaitMs?: nu
   }
 }
 
+/** A background job's pause between slices: one turn of the loop (sockets
+ *  and timers run), then untilLoopIdle, so a walk or a move never takes the
+ *  loop from a person's request while it lags. */
+export async function yieldUntilIdle(opts: { thresholdMs?: number; maxWaitMs?: number } = {}): Promise<void> {
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  await untilLoopIdle(opts)
+}
+
+/** Run a host job now when the loop keeps up, else once it is quiet (or
+ *  the wait bound passed): a timer's sweep or save never lands on a busy loop. */
+export function whenLoopIdle(fn: () => void, opts: { thresholdMs?: number; maxWaitMs?: number } = {}): void {
+  if (currentLag().meanMs < (opts.thresholdMs ?? DEFAULT_IDLE_THRESHOLD_MS)) {
+    fn()
+    return
+  }
+  void untilLoopIdle(opts).then(fn)
+}
+
 let file: string | null = null
 let runningCount: () => number = () => 0
 let bufferedBytes: () => number = () => 0

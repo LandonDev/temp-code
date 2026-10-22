@@ -911,7 +911,7 @@ export async function startServer(
       bootMark('archive-sweep done', `${ids.length} archived`)
       await coldMover.kick()
       // Attachments of a thread archived 30 days ago, and directories no thread owns.
-      const swept = sweepAttachmentRoots(attachmentRoots(), (id) => {
+      const swept = await sweepAttachmentRoots(attachmentRoots(), (id) => {
         const meta = store.getSession(id)
         return meta ? { archived: meta.archived, updatedAt: meta.updatedAt } : null
       })

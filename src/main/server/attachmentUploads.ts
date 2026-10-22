@@ -19,6 +19,7 @@ import {
 } from '@shared/contract-attachments'
 import { assertSessionId, attachmentDirsOf, type AttachmentSession } from './attachmentDir'
 import { mimeFor } from './attachments'
+import { yieldUntilIdle } from './stalls'
 
 /**
  * Chunked uploads into a thread's attachment directory (attachmentDir.ts):
@@ -316,11 +317,12 @@ export type SweepVerdict = { archived: boolean; updatedAt: number } | null
  * host was off) once it is a day old. Live threads keep theirs. Answers the
  * directories removed.
  */
-export function sweepAttachmentRoots(
+export async function sweepAttachmentRoots(
   roots: readonly string[],
   lookup: (sessionId: string) => SweepVerdict,
-  opts: { now?: number; archivedDays?: number; orphanMs?: number } = {}
-): string[] {
+  opts: { now?: number; archivedDays?: number; orphanMs?: number; between?: () => Promise<void> } = {}
+): Promise<string[]> {
+  const between = opts.between ?? (() => yieldUntilIdle())
   const now = opts.now ?? Date.now()
   const archivedMs = (opts.archivedDays ?? 30) * 86_400_000
   const orphanMs = opts.orphanMs ?? 86_400_000
@@ -332,7 +334,9 @@ export function sweepAttachmentRoots(
     } catch {
       continue
     }
-    for (const name of names) {
+    for (const [i, name] of names.entries()) {
+      // A quiet loop between slices of a big root, and before every removal.
+      if (i > 0 && i % 50 === 0) await between()
       const dir = join(root, name)
       let mtime: number
       try {
@@ -345,7 +349,8 @@ export function sweepAttachmentRoots(
       const verdict = lookup(name)
       const drop = verdict ? verdict.archived && now - verdict.updatedAt > archivedMs : now - mtime > orphanMs
       if (!drop) continue
-      rmSync(dir, { recursive: true, force: true })
+      await between()
+      await rm(dir, { recursive: true, force: true })
       removed.push(dir)
     }
   }

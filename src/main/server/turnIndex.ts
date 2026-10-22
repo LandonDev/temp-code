@@ -1,5 +1,6 @@
 import type { DatabaseSync, StatementSync } from 'node:sqlite'
 import type { AgentEvent } from '@shared/events'
+import { yieldUntilIdle } from './stalls'
 
 /**
  * Full-text index over turn text, one per host (db.ts owns the hooks).
@@ -259,7 +260,7 @@ export class TurnIndex {
     if (!this.available) return 0
     if (this.ready.has(sessionId)) return 0
     const batch = opts.batch ?? 5_000
-    const yieldNow = opts.yieldNow ?? yieldToLoop
+    const yieldNow = opts.yieldNow ?? (() => yieldUntilIdle())
     const ordinal = this.allocate(sessionId)
     let total = 0
     let after = 0
@@ -316,7 +317,7 @@ export class TurnIndex {
   }
 
   private async drain(tableOf: (sessionId: string) => IndexTable, opts: BackfillOptions): Promise<void> {
-    const yieldNow = opts.yieldNow ?? yieldToLoop
+    const yieldNow = opts.yieldNow ?? (() => yieldUntilIdle())
     for (const id of this.pending()) {
       if (this.ready.has(id)) continue
       await this.indexSession(id, () => tableOf(id), opts)
@@ -351,5 +352,3 @@ function rangeOf(ordinal: number): [bigint, bigint] {
   const lo = BigInt(ordinal) << ORDINAL_SHIFT
   return [lo, lo | BigInt(SEQ_MASK)]
 }
-
-const yieldToLoop = (): Promise<void> => new Promise((r) => setImmediate(r))

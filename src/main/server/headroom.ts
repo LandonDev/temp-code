@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { ServiceId } from 'aliax-core'
+import { whenLoopIdle } from './stalls'
 import type { AccountHeadroom } from '@shared/accounts'
 
 /**
@@ -300,10 +301,8 @@ export class HeadroomStore {
   private touched(): void {
     this.dirty = true
     if (!this.deps.file || this.saveTimer) return
-    this.saveTimer = setTimeout(() => {
-      this.saveTimer = null
-      this.flush()
-    }, SAVE_DEBOUNCE_MS)
+    // The write waits for a quiet loop; flush() clears the timer.
+    this.saveTimer = setTimeout(() => whenLoopIdle(() => this.flush()), SAVE_DEBOUNCE_MS)
     this.saveTimer.unref()
   }
 

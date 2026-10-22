@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openDb, Store } from './db'
 import { SessionRegistry } from './sessions'
 import { BootResumer } from './resumeAfterBoot'
-import { ThreadScheduler, type SchedulerRegistry } from './scheduler'
+import { PASS_GAP_MS, ThreadScheduler, type SchedulerRegistry } from './scheduler'
+import { setLagForTests } from './stalls'
 import type { DriverCtx, DriverHandle } from './drivers/types'
 import type { AgentEvent, SessionMeta } from '../../shared/events'
 
@@ -372,6 +373,47 @@ describe('the scheduler alone', () => {
     expect(started).toEqual(['a', 'b'])
     expect(scheduler.counts()).toEqual({ running: 2, queued: 5 })
     expect(scheduler.lineOf('c')).toBe('Queued · 2 of 2 running')
+  })
+
+  it('while the loop lags, a storm of changes is one pass per 250 ms, each after a quiet moment', async () => {
+    vi.useFakeTimers()
+    const { reg } = fakeRegistry([row('a', 1)])
+    let passes = 0
+    const queued = reg.queued
+    reg.queued = () => {
+      passes++
+      return queued()
+    }
+    const scheduler = new ThreadScheduler(reg)
+    try {
+      setLagForTests({ meanMs: 10, maxMs: 30, ewmaMs: 20 })
+      scheduler.schedule()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(passes).toBe(1)
+      setLagForTests({ meanMs: 70, maxMs: 300, ewmaMs: 60 })
+      for (let i = 0; i < 40; i++) {
+        scheduler.schedule()
+        await vi.advanceTimersByTimeAsync(10)
+      }
+      // 400 ms of changes on a lagging loop: the passes wait on the idle bound, never one per change.
+      expect(passes).toBe(1)
+      setLagForTests({ meanMs: 20, maxMs: 60, ewmaMs: 40 })
+      await vi.advanceTimersByTimeAsync(50)
+      expect(passes).toBe(2)
+      setLagForTests({ meanMs: 70, maxMs: 300, ewmaMs: 60 })
+      scheduler.schedule()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(passes).toBe(2)
+      setLagForTests({ meanMs: 20, maxMs: 60, ewmaMs: 40 })
+      await vi.advanceTimersByTimeAsync(PASS_GAP_MS - 60)
+      expect(passes).toBe(2)
+      await vi.advanceTimersByTimeAsync(60)
+      expect(passes).toBe(3)
+    } finally {
+      setLagForTests(null)
+      vi.useRealTimers()
+      scheduler.dispose()
+    }
   })
 
   it('threads created in the same millisecond start in the order they were queued', async () => {

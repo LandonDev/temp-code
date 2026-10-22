@@ -33,6 +33,7 @@ import {
 import type { SessionMeta } from '@shared/events'
 import { chooseAccount, type ResolvedPin, type RouteOptions } from './accountRouting'
 import type { HeadroomStore } from './headroom'
+import { whenLoopIdle } from './stalls'
 
 export interface AccountsDeps {
   listServices: () => Promise<ServiceView[]>
@@ -289,7 +290,7 @@ export class AccountsService {
     // Aliax polls when it owns the gateway; anyone else's poll would only
     // read the cache it writes. With no live owner, nobody else will.
     this.poll = setInterval(() => {
-      if (this.deps.owner() !== 'aliax') void this.rebuild(false)
+      if (this.deps.owner() !== 'aliax') whenLoopIdle(() => void this.rebuild(false))
     }, this.deps.pollMs)
     void this.rebuild(false)
   }
@@ -297,7 +298,8 @@ export class AccountsService {
   /** Something changed under us (a file, an observed window): rebuild soon, once. */
   nudge(): void {
     if (this.debounce) clearTimeout(this.debounce)
-    this.debounce = setTimeout(() => void this.rebuild(false), 200)
+    // Every routed answer nudges: the rebuild waits for a quiet loop.
+    this.debounce = setTimeout(() => whenLoopIdle(() => void this.rebuild(false)), 200)
   }
 
   stop(): void {

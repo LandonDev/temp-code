@@ -1,5 +1,6 @@
 import type { SessionMeta } from '@shared/events'
 import type { Store } from './db'
+import { yieldUntilIdle } from './stalls'
 
 /**
  * The cold file (db.ts): archived threads' logs leave `events` so every
@@ -7,15 +8,13 @@ import type { Store } from './db'
  *
  * - ColdMover drains `store.coldBacklog()` in the background — archived
  *   sessions whose rows are still hot — in bounded transactions with a
- *   yield between them, so neither boot nor the loop waits on a 2M-row
- *   move. Resumable: a session half-moved when the app quit is in the
+ *   quiet loop awaited between them (yieldUntilIdle), so neither boot nor
+ *   the loop waits on a 2M-row move. Resumable: a session half-moved when the app quit is in the
  *   backlog again next boot, and the copy is idempotent.
  * - sweepArchive archives whole idle thread trees (root and descendants)
  *   after `idleDays` without a touch, sparing anything a person or a
  *   harness still holds, and drops their checkpoint dirs.
  */
-
-const yieldToLoop = (): Promise<void> => new Promise((r) => setImmediate(r))
 
 export interface MoverOptions {
   /** rows per transaction */
@@ -53,7 +52,7 @@ export class ColdMover {
     // 5k rows (about 2.5 MB of payload) keeps one transaction under ~50 ms
     // on the loop; 20k batches blocked it for 200 ms each on a 4 GB file.
     const batch = this.opts.batch ?? 5_000
-    const yieldNow = this.opts.yieldNow ?? yieldToLoop
+    const yieldNow = this.opts.yieldNow ?? (() => yieldUntilIdle())
     const { toCold, toHot } = this.store.coldBacklog()
     for (const id of toHot) {
       const moved = this.store.moveToHot(id)
@@ -205,7 +204,7 @@ export async function sweepArchive(
   host: SweepHost,
   opts: { now?: number; yieldNow?: () => Promise<void> } = {}
 ): Promise<string[]> {
-  const yieldNow = opts.yieldNow ?? yieldToLoop
+  const yieldNow = opts.yieldNow ?? (() => yieldUntilIdle())
   const sessions = host.list()
   const ids = archivable({
     sessions,

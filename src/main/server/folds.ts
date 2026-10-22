@@ -1,7 +1,7 @@
 import type { EventRow, Failure, SessionMeta } from '@shared/events'
 import { foldContinuableError, foldFailure, foldGoal, type GoalState } from '@shared/session-lifecycle'
 import { FOLD_VERSION, type FoldRow, type Store } from './db'
-import { untilLoopIdle } from './stalls'
+import { untilLoopIdle, yieldUntilIdle } from './stalls'
 import { foldTodo, newTodoFold, tallyOf, type TodoFold } from './todos'
 
 /**
@@ -179,8 +179,6 @@ export interface SweepOptions {
   onProgress?: (folded: number, total: number) => void
 }
 
-const yieldToLoop = (): Promise<void> => new Promise((r) => setImmediate(r))
-
 /**
  * One-time catch-up: every session whose fold row is missing or behind its
  * log (or behind FOLD_VERSION) is re-walked, newest first, in chunks with a
@@ -195,7 +193,7 @@ export async function sweepFolds(
 ): Promise<number> {
   const chunk = opts.chunk ?? 5_000
   const batch = opts.batch ?? 50
-  const yieldNow = opts.yieldNow ?? yieldToLoop
+  const yieldNow = opts.yieldNow ?? (() => yieldUntilIdle())
   // Archived sessions are skipped outright: their rows are (or are on
   // their way to) the cold file, and append() re-folds a revived thread.
   const maxSeqs = store.maxSeqs()

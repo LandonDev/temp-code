@@ -278,7 +278,7 @@ describe('sweeps', () => {
     expect(existsSync(other)).toBe(true)
   })
 
-  it('the retention sweep drops threads archived 30 days ago and old orphans, nothing else', () => {
+  it('the retention sweep drops threads archived 30 days ago and old orphans, nothing else', async () => {
     const now = Date.now()
     const day = 86_400_000
     const root = join(dir, 'root')
@@ -300,7 +300,7 @@ describe('sweeps', () => {
       'fresh-archive': { archived: true, updatedAt: now - 29 * day },
       'old-archive': { archived: true, updatedAt: now - 31 * day }
     }
-    const removed = sweepAttachmentRoots([root, join(dir, 'missing-root')], (id) => rows[id] ?? null, { now })
+    const removed = await sweepAttachmentRoots([root, join(dir, 'missing-root')], (id) => rows[id] ?? null, { now })
     expect(removed.sort()).toEqual([oldArchive, oldOrphan].sort())
     expect(existsSync(live) && existsSync(freshArchive) && existsSync(newOrphan)).toBe(true)
     expect(existsSync(join(root, 'stray-file'))).toBe(true)

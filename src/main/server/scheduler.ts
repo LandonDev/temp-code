@@ -1,4 +1,5 @@
 import type { SessionMeta } from '@shared/events'
+import { currentLag, DEFAULT_IDLE_THRESHOLD_MS, untilLoopIdle } from './stalls'
 
 /**
  * The thread scheduler (CLAUDE.md "Master threads"): a thread is created
@@ -37,6 +38,11 @@ import type { SessionMeta } from '@shared/events'
  * harnesses (`reclaimIdle`, what the 10-minute idle sweep does, only
  * sooner); the next send on such a thread resumes it. That is how a
  * settle frees a slot.
+ *
+ * Passes follow the loop: while it keeps up, a burst of changes is one pass
+ * on the next microtask; while it lags (a fleet's meta storm), each pass
+ * waits for a quiet loop (untilLoopIdle) and comes at most once per
+ * PASS_GAP_MS.
  */
 
 export interface SchedulerRegistry {
@@ -66,6 +72,9 @@ export interface SchedulerRegistry {
 
 export type Admission = 'start' | 'queue'
 
+/** Passes at most this often while the loop lags. */
+export const PASS_GAP_MS = 250
+
 /** Focused threads a send may start past the cap at once. */
 export const FOCUSED_OVER_CAP = 2
 
@@ -87,6 +96,7 @@ export class ThreadScheduler {
   private orderSeq = 0
   /** Threads a focused send started past the cap, while they stay live. */
   private readonly overCap = new Set<string>()
+  private lastPassAt = Number.NEGATIVE_INFINITY
 
   /** Is the person looking at this thread? The server wires it to the windows' focus (focus.ts). */
   focused: (sessionId: string) => boolean = () => false
@@ -216,7 +226,12 @@ export class ThreadScheduler {
     // Off the caller's stack: a burst of changes becomes one pass.
     await Promise.resolve()
     while (this.dirty) {
+      if (currentLag().meanMs >= DEFAULT_IDLE_THRESHOLD_MS) {
+        const gap = this.lastPassAt + PASS_GAP_MS - Date.now()
+        await Promise.all([gap > 0 ? new Promise((r) => setTimeout(r, gap)) : null, untilLoopIdle()])
+      }
       this.dirty = false
+      this.lastPassAt = Date.now()
       try {
         await this.pass()
       } catch (error) {

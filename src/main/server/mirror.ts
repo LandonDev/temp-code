@@ -11,7 +11,7 @@ import {
   statSync,
   writeFileSync
 } from 'node:fs'
-import { timed, untilLoopIdle } from './stalls'
+import { timed, untilLoopIdle, yieldUntilIdle } from './stalls'
 import { appendFile, readFile } from 'node:fs/promises'
 import { bootMark } from './boot'
 import { basename, join, relative, isAbsolute } from 'node:path'
@@ -435,14 +435,17 @@ function mirrorFresh(dir: string, meta: SessionMeta): boolean {
 
 /** Boot-time catch-up for mirrors that are missing or older than their
  *  thread. Pure serialization off the event log — no model, no network —
- *  one session per turn of the event loop so the window never freezes,
- *  and each project's INDEX.md written once at the end. */
-export async function backfillMirrors(reg: SessionRegistry): Promise<void> {
+ *  a quiet loop awaited after every rewrite and every 50 freshness checks
+ *  so the window never freezes, and each project's INDEX.md written once
+ *  at the end. */
+export async function backfillMirrors(reg: SessionRegistry, between: () => Promise<void> = () => yieldUntilIdle()): Promise<void> {
   bootMark('mirror-backfill start')
   const dirs = new Set<string>()
   let written = 0
+  let checked = 0
   for (const meta of reg.list()) {
     if (!meta.projectId || meta.archived) continue
+    if (++checked % 50 === 0) await between()
     const cwd = contextCwd(reg, meta)
     if (!cwd) continue
     const dir = join(cwd, '.temp-code', 'threads')
@@ -450,6 +453,7 @@ export async function backfillMirrors(reg: SessionRegistry): Promise<void> {
     if (mirrorFresh(dir, meta)) continue
     await mirrorSession(reg, meta.id, { index: false })
     written++
+    await between()
   }
   for (const dir of dirs) {
     try {

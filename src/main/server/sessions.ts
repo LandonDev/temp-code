@@ -113,7 +113,7 @@ import { batchMembershipOf, isMasterSession, notifyParentOfSettle, settleTargets
 import { batches } from './batch'
 import { foldTodo, newTodoFold, tallyOf, type TaskTally, type TodoFold } from './todos'
 import { liveDiffOnStatus } from './livediff'
-import { timed } from './stalls'
+import { timed, whenLoopIdle } from './stalls'
 import { applyRowChange, buildSessionIndex, type SessionIndex } from './sessionIndex'
 import {
   appendJournal,
@@ -1014,7 +1014,7 @@ export class SessionRegistry {
    *  SIGKILL), a boot resume that never produced a handle, or a harness
    *  process that died without the driver settling the status. */
   startLivenessSweep(graceMs = HARNESS_GONE_GRACE_MS, everyMs = HARNESS_GONE_SWEEP_MS): void {
-    this.livenessTimer = setInterval(() => this.sweepLiveness(graceMs), everyMs)
+    this.livenessTimer = setInterval(() => whenLoopIdle(() => this.sweepLiveness(graceMs)), everyMs)
     this.livenessTimer.unref?.()
   }
 

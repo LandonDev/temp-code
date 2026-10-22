@@ -25,7 +25,9 @@ import {
   TIMED_MS,
   trackRequest,
   untrackRequest,
-  untilLoopIdle
+  untilLoopIdle,
+  whenLoopIdle,
+  yieldUntilIdle
 } from './stalls'
 
 let dir: string
@@ -97,6 +99,27 @@ describe('loop lag', () => {
     await vi.advanceTimersByTimeAsync(50)
     await wait
     expect(done).toBe(true)
+  })
+
+  it('a host job runs at once on a quiet loop and waits for quiet on a busy one', async () => {
+    vi.useFakeTimers()
+    const ran: string[] = []
+    whenLoopIdle(() => ran.push('quiet'))
+    expect(ran).toEqual(['quiet'])
+    setLagForTests({ meanMs: 80, maxMs: 200, ewmaMs: 60 })
+    whenLoopIdle(() => ran.push('busy'))
+    await vi.advanceTimersByTimeAsync(500)
+    expect(ran).toEqual(['quiet'])
+    setLagForTests({ meanMs: 5, maxMs: 20, ewmaMs: 30 })
+    await vi.advanceTimersByTimeAsync(50)
+    expect(ran).toEqual(['quiet', 'busy'])
+  })
+
+  it('a background slice gives the loop a turn even when it is quiet', async () => {
+    let turned = false
+    setImmediate(() => (turned = true))
+    await yieldUntilIdle()
+    expect(turned).toBe(true)
   })
 
   it('resolves at the wait bound even while lag stays high', async () => {
