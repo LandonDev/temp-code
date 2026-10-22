@@ -150,6 +150,14 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   }),
   // Per-provider health: binary found on the login-shell PATH, version.
   z.object({ id: z.string(), method: z.literal('doctor.get') }),
+  z.object({
+    id: z.string(),
+    method: z.literal('doctor.profile'),
+    params: z.object({
+      seconds: z.number().min(1).max(60).default(10),
+      intervalUs: z.number().int().positive().default(1000)
+    }).prefault({})
+  }),
   // The warm harness processes (drivers/warm.ts): counts and ages, never a
   // session. `retire` kills them; the next thread start warms again.
   z.object({ id: z.string(), method: z.literal('harness.warm'), params: z.object({ retire: z.boolean().optional() }).optional() }),
@@ -1136,6 +1144,40 @@ export interface ThreadNotesDoc {
   updatedAt: number | null
   /** The notes.md on the thread's host, or null when it has no directory yet. */
   path: string | null
+}
+
+export interface LoopLag {
+  meanMs: number
+  maxMs: number
+  ewmaMs: number
+}
+
+export interface InFlightRequest {
+  method: string
+  ageMs: number
+}
+
+export interface DoctorProfileResult {
+  path: string
+  bytes: number
+  seconds: number
+  samples: number
+}
+
+export interface DoctorReport {
+  found: boolean
+  path?: string
+  version?: string
+  error?: string
+}
+
+export type DoctorGetResult = Record<z.infer<typeof providerEnum>, DoctorReport> & {
+  java: DoctorReport & {
+    jdtls: boolean
+    ideaServer?: { dist: boolean; accepted: boolean; build: string }
+  }
+  loop: LoopLag
+  inFlight: InFlightRequest[]
 }
 
 export type ServerResponse =

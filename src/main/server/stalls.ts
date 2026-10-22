@@ -14,17 +14,41 @@
  * Every server line carries the requests in flight (method + age), the
  * pushes sent in the last second, the running thread count, loadavg and
  * RSS. Cost: two integer counters, one Map entry per in-flight request,
- * one histogram read a second. Nothing allocates per event.
+ * two histogram reads a second. Nothing allocates per event.
  */
 import { appendFileSync, mkdirSync, renameSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadavg } from 'node:os'
 import { monitorEventLoopDelay } from 'node:perf_hooks'
+import type { InFlightRequest, LoopLag } from '@shared/contract'
 
 export const STALL_MS = 150
 export const TIMED_MS = 50
 const ROTATE_BYTES = 2 * 1024 * 1024
 const SAMPLE_MS = 1000
+export const DEFAULT_IDLE_THRESHOLD_MS = 50
+export const DEFAULT_IDLE_MAX_WAIT_MS = 2000
+const EWMA_ALPHA = 1 / 10
+let lag: LoopLag = { meanMs: 0, maxMs: 0, ewmaMs: 0 }
+let testLag: LoopLag | null = null
+
+export function currentLag(): LoopLag {
+  return { ...(testLag ?? lag) }
+}
+
+export function setLagForTests(sample: LoopLag | null): void {
+  testLag = sample
+}
+
+export async function untilLoopIdle(opts: { thresholdMs?: number; maxWaitMs?: number } = {}): Promise<void> {
+  const thresholdMs = opts.thresholdMs ?? DEFAULT_IDLE_THRESHOLD_MS
+  const deadline = performance.now() + (opts.maxWaitMs ?? DEFAULT_IDLE_MAX_WAIT_MS)
+  while (currentLag().meanMs >= thresholdMs) {
+    const remaining = deadline - performance.now()
+    if (remaining <= 0) return
+    await new Promise<void>((resolve) => setTimeout(resolve, Math.min(50, remaining)))
+  }
+}
 
 let file: string | null = null
 let runningCount: () => number = () => 0
@@ -64,6 +88,11 @@ export function trackRequest(key: string, method: string): void {
 
 export function untrackRequest(key: string): void {
   inFlight.delete(key)
+}
+
+export function inFlightRequests(): InFlightRequest[] {
+  const now = Date.now()
+  return [...inFlight.values()].map((r) => ({ method: r.method, ageMs: now - r.startedAt }))
 }
 
 /** One push frame went out; the loop line reports the last second's totals. */
@@ -109,8 +138,18 @@ export function loopLine(sample: { max: number; mean: number }): string | null {
  */
 export function startStallMonitor(): () => void {
   const histogram = monitorEventLoopDelay({ resolution: 20 })
+  const history = monitorEventLoopDelay({ resolution: 20 })
+  lag = { meanMs: 0, maxMs: 0, ewmaMs: 0 }
   histogram.enable()
+  history.enable()
   const timer = setInterval(() => {
+    const meanMs = Number.isFinite(histogram.mean) ? histogram.mean / 1e6 : 0
+    const historyMeanMs = Number.isFinite(history.mean) ? history.mean / 1e6 : 0
+    lag = {
+      meanMs,
+      maxMs: histogram.max / 1e6,
+      ewmaMs: lag.ewmaMs + EWMA_ALPHA * (historyMeanMs - lag.ewmaMs)
+    }
     const line = loopLine({ max: histogram.max, mean: histogram.mean })
     histogram.reset()
     if (line) write(line)
@@ -121,14 +160,15 @@ export function startStallMonitor(): () => void {
   return () => {
     clearInterval(timer)
     histogram.disable()
+    history.disable()
+    lag = { meanMs: 0, maxMs: 0, ewmaMs: 0 }
   }
 }
 
 /** The state suffix every server line ends with. */
 export function context(): string {
-  const now = Date.now()
-  const requests = [...inFlight.values()]
-    .map((r) => `${r.method}:${now - r.startedAt}ms`)
+  const requests = inFlightRequests()
+    .map((r) => `${r.method}:${r.ageMs}ms`)
     .slice(0, 12)
     .join(',')
   let running = 0

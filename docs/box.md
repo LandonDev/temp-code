@@ -2008,6 +2008,33 @@ after the second start resumed from the saved cursor over
 one left, the archived one archived, the new one appeared, and the mirror
 was rewritten with the new cursor.
 
+## Profiling the host
+
+On the box, run `tc-local doctor.profile '{"seconds":15}'` (the local
+client is `scripts/box/tc-local.mjs`). This admin RPC answers with `path`,
+`bytes`, `seconds` and `samples`. `seconds` accepts 1–60 and defaults to 10;
+`intervalUs` defaults to 1000. Only one capture runs at a time; another
+request fails with `a profile is running`.
+
+On the Mac, choose Help → "Profile the host (10 s)". It profiles the main
+process and reveals the file in Finder when done. Both paths write to
+`<userData>/logs/profiles/<timestamp>.cpuprofile` and keep the newest ten
+files. The box uses `/srv/agents/temp-code-data/logs/profiles/`.
+
+Read a capture with `bun scripts/profile-summary.ts <file.cpuprofile>`.
+It prints the top 30 frames by self time, the shares of `(program)`,
+`(garbage collector)` and `(idle)`, and the top 15 by total time including
+descendants. Lines use one-based source line numbers; times come from the
+sample deltas.
+
+Run `bun scripts/stalls-summary.ts <stalls.log> [more files]` for loop lag,
+slow request counts and percentiles, push rates, in-flight depth and timed
+section counts. Both scripts run with plain Bun and no app imports, on
+either host. Loop and push figures cover logged stall seconds only;
+in-flight depth counts the entries in the log, capped at twelve.
+`doctor.get` also answers with the last second's `loop` mean and max,
+its `ewmaMs`, and all `inFlight` requests with their method and age in ms.
+
 ## Updating
 
 For a ref already on GitHub, press "Deploy master to the box" in the Mac

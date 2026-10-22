@@ -118,7 +118,8 @@ export const MENU_TREE: MenuSection[] = [
       cmd('zoom_reset', 'Actual Size', 'CmdOrCtrl+0')
     ]
   },
-  { label: 'Window', role: 'windowMenu', items: [] }
+  { label: 'Window', role: 'windowMenu', items: [] },
+  { label: 'Help', items: [cmd('profile_host', 'Profile the host (10 s)')] }
 ]
 
 /** Every custom item, in menu order. */
@@ -126,9 +127,9 @@ export const MENU_COMMANDS: MenuCommand[] = MENU_TREE.flatMap((section) =>
   section.items.filter((item): item is { kind: 'command' } & MenuCommand => item.kind === 'command')
 ).map(({ id, label, accelerator }) => ({ id, label, ...(accelerator ? { accelerator } : {}) }))
 
-/** Quit acts in main; the other 35 go to the focused renderer (New Window
+/** Quit and profiling act in main; other commands go to the focused renderer (New Window
  *  falls back to main only when no window is there to take it). */
-export const MAIN_MENU_IDS = ['quit'] as const
+export const MAIN_MENU_IDS = ['quit', 'profile_host'] as const
 
 export const RENDERER_MENU_IDS: string[] = MENU_COMMANDS.map((c) => c.id).filter(
   (id) => !(MAIN_MENU_IDS as readonly string[]).includes(id)

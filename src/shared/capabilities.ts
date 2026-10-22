@@ -51,6 +51,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   // read
   'catalog.get': 'read',
   'doctor.get': 'read',
+  'doctor.profile': 'admin',
   'workspace.list': 'read',
   'workspace.root': 'read',
   'workspace.icon': 'read',

@@ -57,6 +57,7 @@ describe('METHOD_CAPABILITY', () => {
   it('admin covers settings writes and remote management', () => {
     expect(withCap('admin')).toEqual(
       [
+        'doctor.profile',
         'rules.set',
         'defaults.set',
         // What happens when a plan completes (plans.ts): a settings write.

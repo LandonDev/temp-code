@@ -1,10 +1,14 @@
 import { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   BACKPRESSURE_BYTES,
   countPush,
+  currentLag,
+  DEFAULT_IDLE_MAX_WAIT_MS,
+  DEFAULT_IDLE_THRESHOLD_MS,
+  inFlightRequests,
   loopLine,
   recordBackpressure,
   recordCheckpoint,
@@ -13,11 +17,14 @@ import {
   setBufferedBytes,
   setRunningCount,
   setStallLog,
+  setLagForTests,
+  startStallMonitor,
   STALL_MS,
   timed,
   TIMED_MS,
   trackRequest,
-  untrackRequest
+  untrackRequest,
+  untilLoopIdle
 } from './stalls'
 
 let dir: string
@@ -30,8 +37,80 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
+  setLagForTests(null)
   setStallLog(null)
   rmSync(dir, { recursive: true, force: true })
+})
+
+describe('loop lag', () => {
+  it('returns zeros without a monitor', () => {
+    expect(currentLag()).toEqual({ meanMs: 0, maxMs: 0, ewmaMs: 0 })
+  })
+
+  it('reports a busy section in the last second', async () => {
+    const stop = startStallMonitor()
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 60))
+      spin(120)
+      await new Promise((resolve) => setTimeout(resolve, 1100))
+      expect(currentLag().maxMs).toBeGreaterThanOrEqual(100)
+      expect(currentLag().meanMs).toBeGreaterThan(0)
+      expect(currentLag().ewmaMs).toBeGreaterThan(0)
+    } finally {
+      stop()
+    }
+    expect(currentLag()).toEqual({ meanMs: 0, maxMs: 0, ewmaMs: 0 })
+  })
+
+  it('returns every in-flight request with its age without exposing the map', () => {
+    vi.useFakeTimers()
+    for (let i = 0; i < 14; i++) trackRequest(`lag:${i}`, 'git.status')
+    try {
+      vi.advanceTimersByTime(1200)
+      const requests = inFlightRequests()
+      expect(requests).toHaveLength(14)
+      expect(requests[0]).toEqual({ method: 'git.status', ageMs: 1200 })
+      requests[0].method = 'changed'
+      expect(inFlightRequests()[0].method).toBe('git.status')
+    } finally {
+      for (let i = 0; i < 14; i++) untrackRequest(`lag:${i}`)
+    }
+  })
+
+  it('resolves at once below the default threshold', async () => {
+    vi.useFakeTimers()
+    setLagForTests({ meanMs: DEFAULT_IDLE_THRESHOLD_MS - 1, maxMs: 120, ewmaMs: 80 })
+    await untilLoopIdle()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('polls until lag drops below the chosen threshold', async () => {
+    vi.useFakeTimers()
+    setLagForTests({ meanMs: 30, maxMs: 100, ewmaMs: 50 })
+    let done = false
+    const wait = untilLoopIdle({ thresholdMs: 30 }).then(() => { done = true })
+    await vi.advanceTimersByTimeAsync(100)
+    expect(done).toBe(false)
+    setLagForTests({ meanMs: 29, maxMs: 100, ewmaMs: 50 })
+    await vi.advanceTimersByTimeAsync(50)
+    await wait
+    expect(done).toBe(true)
+  })
+
+  it('resolves at the wait bound even while lag stays high', async () => {
+    vi.useFakeTimers()
+    setLagForTests({ meanMs: 90, maxMs: 200, ewmaMs: 80 })
+    for (const maxWaitMs of [125, DEFAULT_IDLE_MAX_WAIT_MS]) {
+      let done = false
+      const wait = untilLoopIdle(maxWaitMs === 125 ? { maxWaitMs } : undefined).then(() => { done = true })
+      await vi.advanceTimersByTimeAsync(maxWaitMs - 1)
+      expect(done).toBe(false)
+      await vi.advanceTimersByTimeAsync(1)
+      await wait
+      expect(done).toBe(true)
+    }
+  })
 })
 
 const spin = (ms: number): void => {

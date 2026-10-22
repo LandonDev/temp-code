@@ -96,6 +96,8 @@ import { setCodexBootFailureLog } from './drivers/codex'
 import {
   BACKPRESSURE_BYTES,
   countPush,
+  currentLag,
+  inFlightRequests,
   recordBackpressure,
   recordSlowRequest,
   reportRendererStall,
@@ -107,6 +109,8 @@ import {
   trackRequest,
   untrackRequest
 } from './stalls'
+import { configureHostProfiler, profileHost } from './doctorProfile'
+import type { DoctorGetResult } from '@shared/contract'
 import { sweepFolds } from './folds'
 import { ColdMover, sweepArchive } from './cold'
 import {
@@ -411,7 +415,9 @@ export async function startServer(
   ]
   setLimitMissLog(join(options.dataDir ?? dirname(dbPath), 'logs'))
   setCodexBootFailureLog(join(options.dataDir ?? dirname(dbPath), 'logs'))
-  setStallLog(join(options.dataDir ?? dirname(dbPath), 'logs'))
+  const logDir = join(options.dataDir ?? dirname(dbPath), 'logs')
+  setStallLog(logDir)
+  configureHostProfiler(logDir)
   setRunningCount(() => registry.runningCount())
   const stopStallMonitor = startStallMonitor()
   registry.checkpoints = checkpointTurns
@@ -1201,8 +1207,16 @@ export async function startServer(
             sendFrame({
               id: req.id,
               ok: true,
-              result: { ...(await runDoctor()), java: await javaDoctor() }
+              result: {
+                ...(await runDoctor()),
+                java: await javaDoctor(),
+                loop: currentLag(),
+                inFlight: inFlightRequests()
+              } satisfies DoctorGetResult
             })
+            break
+          case 'doctor.profile':
+            sendFrame({ id: req.id, ok: true, result: await profileHost(req.params) })
             break
           case 'providers.update': {
             const updated = await updateProvider(req.params.provider)

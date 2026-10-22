@@ -1,6 +1,7 @@
-import { app, BrowserWindow, Menu, type MenuItemConstructorOptions } from 'electron'
+import { app, BrowserWindow, Menu, shell, type MenuItemConstructorOptions } from 'electron'
 import { MENU_TREE, type MenuNode } from './menu-tree'
 import { createWindow } from './windows'
+import { hostProfileRunning, profileHost } from './server/doctorProfile'
 
 /** Only set while a dev-only synthetic click runs: a menu can be clicked
  *  from CDP while the app is not frontmost, when nothing is focused. */
@@ -11,6 +12,13 @@ let debugTarget: BrowserWindow | null = null
  *  Only with no window to ask (all closed, app still in the dock) does
  *  main open one itself. */
 function dispatch(id: string): void {
+  if (id === 'profile_host') {
+    if (hostProfileRunning()) return
+    void profileHost({ seconds: 10 }).then(({ path }) => shell.showItemInFolder(path)).catch((error) => {
+      console.error(`[doctor] ${String(error).replace(/[\r\n]+/g, ' ')}`)
+    })
+    return
+  }
   if (id === 'quit') {
     app.quit()
     return

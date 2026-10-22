@@ -42,7 +42,8 @@ const EXPECTED: [string, string | undefined][] = [
   ['sidebar_opacity', undefined],
   ['zoom_in', 'CmdOrCtrl+='],
   ['zoom_out', 'CmdOrCtrl+-'],
-  ['zoom_reset', 'CmdOrCtrl+0']
+  ['zoom_reset', 'CmdOrCtrl+0'],
+  ['profile_host', undefined]
 ]
 
 describe('menu tree', () => {
@@ -51,11 +52,12 @@ describe('menu tree', () => {
     expect(actual).toEqual(EXPECTED)
   })
 
-  it('sends 38 ids to the renderer and keeps quit in main', () => {
-    expect(MAIN_MENU_IDS).toEqual(['quit'])
+  it('sends 38 ids to the renderer and keeps quit and profiling in main', () => {
+    expect(MAIN_MENU_IDS).toEqual(['quit', 'profile_host'])
     expect(RENDERER_MENU_IDS).toHaveLength(38)
     expect(RENDERER_MENU_IDS).toContain('new_window')
     expect(RENDERER_MENU_IDS).not.toContain('quit')
+    expect(RENDERER_MENU_IDS).not.toContain('profile_host')
   })
 
   it('has no duplicate ids', () => {
@@ -64,7 +66,7 @@ describe('menu tree', () => {
   })
 
   it('orders the sections the way the donor did and names us', () => {
-    expect(MENU_TREE.map((s) => s.label)).toEqual([APP_NAME, 'File', 'Edit', 'View', 'Window'])
+    expect(MENU_TREE.map((s) => s.label)).toEqual([APP_NAME, 'File', 'Edit', 'View', 'Window', 'Help'])
     expect(APP_NAME).toBe('TempCode')
     expect(MENU_TREE[0].items.some((i) => i.kind === 'command' && i.label === 'Quit TempCode')).toBe(
       true
