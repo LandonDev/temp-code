@@ -47,9 +47,6 @@ import {
   SimulatorStateSchema,
   XcodeInfoSchema
 } from '../src/shared/contract-hostdevices'
-import { GateNoticeSchema, GateStepSchema } from '../src/shared/gate'
-import { PlanSettingsSchema } from '../src/shared/plans'
-import { ReviewFindingSchema, ReviewNoticeSchema, ReviewSettingsSchema } from '../src/shared/review'
 import {
   AudienceSchema,
   CapabilitySchema,

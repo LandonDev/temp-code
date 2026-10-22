@@ -124,7 +124,7 @@ describe('devices', () => {
 })
 
 describe('accounts', () => {
-  it('the snapshot carries two Claude profiles of different headroom and the peer, and the phone's subset parses it', () => {
+  it('the snapshot carries two Claude profiles of different headroom and the peer, and the phone subset parses it', () => {
     const build = { release: 400, version: '1.0.400', sha: 'abc', platform: 'linux' }
     const snapshot = accountsSnapshot({ environmentId: 'env_b', name: 'The box', build })
     expect(AccountsSnapshotSchema.safeParse(snapshot).success).toBe(true)

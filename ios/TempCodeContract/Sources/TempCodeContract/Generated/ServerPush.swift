@@ -127,16 +127,6 @@ public struct BatchPush: Codable, Hashable, Sendable {
     }
 }
 
-public struct ResourcesPush: Codable, Hashable, Sendable {
-    public let sessionId: String
-    public let resources: [ThreadResource]
-
-    public init(sessionId: String, resources: [ThreadResource]) {
-        self.sessionId = sessionId
-        self.resources = resources
-    }
-}
-
 public struct BootResumePush: Codable, Hashable, Sendable {
     public let count: Int
     public let at: Int
@@ -210,7 +200,6 @@ public enum ServerPush: Codable, Hashable, Sendable {
     case sessionRemoved(SessionRemovedPush)
     case sessionMoved(SessionMovedPush)
     case batch(BatchPush)
-    case resources(ResourcesPush)
     case bootResume(BootResumePush)
     case resources(ResourcesPush)
     case accounts(AccountsPush)
@@ -239,7 +228,6 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case "session-removed": self = .sessionRemoved(try SessionRemovedPush(from: decoder))
         case "session-moved": self = .sessionMoved(try SessionMovedPush(from: decoder))
         case "batch": self = .batch(try BatchPush(from: decoder))
-        case "resources": self = .resources(try ResourcesPush(from: decoder))
         case "boot-resume": self = .bootResume(try BootResumePush(from: decoder))
         case "resources": self = .resources(try ResourcesPush(from: decoder))
         case "accounts": self = .accounts(try AccountsPush(from: decoder))
@@ -264,7 +252,6 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case .sessionRemoved(let value): try Self.encode(tag: "session-removed", value, to: encoder)
         case .sessionMoved(let value): try Self.encode(tag: "session-moved", value, to: encoder)
         case .batch(let value): try Self.encode(tag: "batch", value, to: encoder)
-        case .resources(let value): try Self.encode(tag: "resources", value, to: encoder)
         case .bootResume(let value): try Self.encode(tag: "boot-resume", value, to: encoder)
         case .resources(let value): try Self.encode(tag: "resources", value, to: encoder)
         case .accounts(let value): try Self.encode(tag: "accounts", value, to: encoder)

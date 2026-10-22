@@ -929,7 +929,6 @@ export const RemotePushSchema = z.discriminatedUnion('push', [
   SessionRemovedPushSchema,
   SessionMovedPushSchema,
   BatchPushSchema,
-  ResourcesPushSchema,
   BootResumePushSchema,
   ResourcesPushSchema,
   AccountsPushSchema,

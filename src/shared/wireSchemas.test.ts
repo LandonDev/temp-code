@@ -208,7 +208,7 @@ describe('devices, deploy, the bridge, accounts', () => {
     parses(W.MacBridgeThreadStateSchema, { ...state, macPeer: 'env_m', online: true, registered: ['env_m'], held: 3 })
     parses(W.MacBridgeHeldPushSchema, { push: 'macBridge.held', sessionId: 's', held: 3 })
   })
-  it('parse the accounts snapshot (the phone's subset) and its push', () => {
+  it('parse the accounts snapshot (the phone subset) and its push', () => {
     // The snapshot schema is a subset of the desktop's (thread 24): it parses
     // the whole snapshot and keeps the fields the phone reads.
     const parsed = W.AccountsSnapshotSchema.parse(snapshot)
