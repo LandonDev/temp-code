@@ -120,6 +120,7 @@ interface Lane {
 }
 
 export class HostRelay {
+  private transport: RelayTransport
   private readonly rows = new Map<string, HostPresence>()
   private readonly lanes = new Map<string, Lane>()
   private readonly now: () => number
@@ -130,6 +131,7 @@ export class HostRelay {
   private closed = false
 
   constructor(private readonly deps: HostRelayDeps) {
+    this.transport = deps.transport
     this.now = deps.now ?? Date.now
     this.log = deps.log ?? ((line) => console.log(`[relay] ${line}`))
     this.load()
@@ -140,6 +142,16 @@ export class HostRelay {
     this.offDrop = deps.calls.onDrop((id, offers) => {
       if (offers.has(RELAY_OFFER) || this.rows.has(id)) this.dropped(id)
     })
+  }
+
+  /** Whether a lane to the host can open now: the listener's 503 when not. */
+  online(envId: string): boolean {
+    return this.transport.online(envId)
+  }
+
+  /** The iOS test server's seam (relayLoopback.ts): carry lanes in-process instead of over the link. */
+  setTransport(transport: RelayTransport): void {
+    this.transport = transport
   }
 
   // ── presence ─────────────────────────────────────────────────────────
@@ -288,13 +300,13 @@ export class HostRelay {
       if (lane.closed) return
       lane.closed = true
       this.lanes.delete(socketId)
-      this.deps.transport.close(envId, socketId, 'client closed').catch(() => {})
+      this.transport.close(envId, socketId, 'client closed').catch(() => {})
     })
     if (!row || row.link !== 'up') {
       this.unreachable(lane, row)
       return
     }
-    this.deps.transport
+    this.transport
       .open(envId, socketId, { keyId: principal.keyId, name: principal.name, audience: principal.audience, caps: principal.caps })
       .then((answer) => {
         if (lane.closed) return
@@ -385,7 +397,7 @@ export class HostRelay {
 
   private forward(lane: Lane, req: ClientRequest): void {
     lane.pending.add(req.id)
-    this.deps.transport.frame(lane.envId, lane.socketId, req).catch((err: unknown) => {
+    this.transport.frame(lane.envId, lane.socketId, req).catch((err: unknown) => {
       if (!lane.pending.delete(req.id)) return
       const row = this.presenceOf(lane.envId)
       const error = err instanceof PeerOfflineError && row ? linkDownText(row, this.now(), this.deps.timeZone) : err instanceof Error ? err.message : String(err)
@@ -416,7 +428,7 @@ export class HostRelay {
       /* already closing */
     }
     if (lane.opened && code !== RELAY_CLOSE_UNREACHABLE && code !== RELAY_CLOSE_HOST_CLOSED)
-      this.deps.transport.close(lane.envId, lane.socketId, reason).catch(() => {})
+      this.transport.close(lane.envId, lane.socketId, reason).catch(() => {})
   }
 
   private send(lane: Lane, frame: ServerFrame): void {
@@ -435,7 +447,7 @@ export class HostRelay {
         const refusal = relayRefusal(row, 'link', this.now(), this.deps.timeZone)
         if (refusal) return { ok: false, code: 'unavailable', message: refusal }
         try {
-          return await this.deps.transport.facade(envId, principal, name, args)
+          return await this.transport.facade(envId, principal, name, args)
         } catch (err) {
           const current = this.presenceOf(envId) ?? row
           if (err instanceof PeerOfflineError) return { ok: false, code: 'unavailable', message: linkDownText(current, this.now(), this.deps.timeZone) }

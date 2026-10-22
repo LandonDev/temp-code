@@ -70,7 +70,7 @@ import { Notifier } from './remote/notifier'
 import { MacPresenceWatcher, type PresenceSource } from '../presence'
 import { HostRelay, PeerRelayTransport } from './remote/relay'
 import { RelayServer, relayOffers } from './remote/relayServe'
-import { RELAY_OFFER, type PowerState, type ScreenState } from '@shared/contract-relay'
+import type { PowerState, ScreenState } from '@shared/contract-relay'
 import type { MacPresence } from '@shared/contract-relay'
 import { apnsFromEnv } from './remote/apns'
 import { ActivityFeed, PushRegistry } from './remote/push'
@@ -999,7 +999,7 @@ export async function startServer(
         build,
         // `host` makes the socket a relayed lane to that host (remote/relay.ts).
         attach: (ws, principal, host) => (host ? hostRelay.attachRelayed(ws, principal, host) : attach(ws, principal)),
-        relayOnline: (id) => peerCalls.online(id, RELAY_OFFER),
+        relayOnline: (id) => hostRelay.online(id),
         hosts: () => hostRelay.hosts(),
         mcp: createMcpHandler({
           auth: remoteAuth,

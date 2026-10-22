@@ -26,6 +26,7 @@
  *   POST /batch-log { masterId, lines }  → appends lines to the master's running shell step (a streaming console)
  *   POST /notes { sessionId, text }      → writes a thread's notes.md (the `notes` push follows)
  *   POST /resources/remove { sessionId } → removes the thread's live resources; answers { results }
+ *   POST /presence { environmentId, screen?, power? }  → flips a relayed host's screen or power (the relay seed)
  *   POST /quit                  → closes everything
  *
  * The seeds of the 2026-10-21/22 features (a master's batch mid-run, the
@@ -38,6 +39,14 @@
  * startServer's `devices` option, so host.devices answers on Linux.
  * scripts/ios-client-test-server.test.ts
  * checks every seeded id is used once.
+ *
+ * The relay seed (remote/relayLoopback.ts): four fake hosts reachable through
+ * this server, one per state (Studio Mac available, locked, asleep and
+ * unreachable since five minutes ago), listed in the JSON line as
+ * `relayHosts`. A lane to the available or locked host
+ * (`/ws?ticket=…&host=<id>`) lists this server's own seeded threads under
+ * that host's id; the asleep one answers `unavailable: the Mac is asleep`;
+ * the unreachable one is refused 503.
  */
 import { createServer } from 'node:http'
 import { execFileSync, spawn } from 'node:child_process'
@@ -65,6 +74,7 @@ import type { GithubInboxItem } from '../src/shared/contract-github'
 import type { ReviewNotice } from '../src/shared/review'
 import { DEFAULT_PLAN_SETTINGS } from '../src/shared/plans'
 import { DEFAULT_REVIEW_SETTINGS } from '../src/shared/review'
+import { startLoopbackHosts } from '../src/main/server/remote/relayLoopback'
 
 const root = mkdtempSync(join(tmpdir(), 'tc-ios-client-'))
 configure({
@@ -1075,6 +1085,24 @@ const operatePairing = server.remoteAuth.createPairing({ name: 'ios-sim-operate'
 // A key that operates but never approves: the forbidden path of the approval card.
 const operateOnly = await server.remoteAuth.createKey({ name: 'ios-test-operate-only', audience: 'client', caps: ['operate'], createdBy: 'local' })
 
+// ── the relay seed: four fake hosts, one per state ──────────────────────
+const relayId = (word: string): string => `env_relay${word}`.padEnd(26, '0')
+const relayRow = { platform: 'darwin', link: 'up' as const, since: Date.now(), screen: 'unlocked' as const, power: 'awake' as const, lastSeenAt: Date.now(), build: null }
+const relaySeed = [
+  { environmentId: relayId('Available'), name: 'Studio Mac', state: 'available', row: relayRow },
+  { environmentId: relayId('Locked'), name: 'Studio Mac (locked)', state: 'locked', row: { ...relayRow, screen: 'locked' as const } },
+  { environmentId: relayId('Asleep'), name: 'Studio Mac (asleep)', state: 'asleep', row: { ...relayRow, power: 'asleep' as const } },
+  { environmentId: relayId('Unreachable'), name: 'Studio Mac (unreachable)', state: 'unreachable', row: { ...relayRow, link: 'down' as const, since: Date.now() - 5 * 60_000 } }
+]
+const relayHosts = startLoopbackHosts({
+  carrierId: server.environmentId,
+  carrierName: 'iOS test server',
+  relay: server.relay,
+  attach: (socket, principal) => server.attach(socket as never, principal),
+  facade: () => ({ registry: server.registry, origin: null }),
+  hosts: relaySeed
+})
+
 // ── the auth clock, shiftable for ticket expiry ─────────────────────────
 let clockOffsetMs = 0
 ;(server.remoteAuth as unknown as { now: () => number }).now = () => Date.now() + clockOffsetMs
@@ -1580,6 +1608,13 @@ const control = createServer((req, res) => {
         const results = await server.resources.remove(String(body.sessionId ?? THREAD_RESOURCES))
         return answer(200, { results })
       }
+      case '/presence': {
+        const patch: { screen?: 'locked' | 'unlocked'; power?: 'asleep' | 'awake' } = {}
+        if (body.screen === 'locked' || body.screen === 'unlocked') patch.screen = body.screen
+        if (body.power === 'asleep' || body.power === 'awake') patch.power = body.power
+        const row = relayHosts.setPresence(String(body.environmentId ?? ''), patch)
+        return row ? answer(200, row) : answer(404, { error: 'no such relayed host' })
+      }
       case '/clock':
         clockOffsetMs = Number(body.offsetMs ?? 0)
         return answer(200, { clockOffsetMs })
@@ -1608,6 +1643,7 @@ await new Promise<void>((ok) => control.listen(0, '127.0.0.1', ok))
 const controlPort = (control.address() as { port: number }).port
 
 async function shutdown(): Promise<void> {
+  relayHosts.close()
   control.close()
   secondProcess.kill('SIGTERM')
   await server.close()
@@ -1684,6 +1720,7 @@ process.stdout.write(
     projectPlanPath: PROJECT_PLAN_PATH,
     mediaUrl: mediaUrl(shot, { kind: 'image', mime: 'image/png' }, Date.now()),
     projectId: project.id,
-    workspaceId: workspace.id
+    workspaceId: workspace.id,
+    relayHosts: relaySeed.map(({ environmentId, name, state }) => ({ environmentId, name, state }))
   }) + '\n'
 )
