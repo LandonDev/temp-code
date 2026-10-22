@@ -4,8 +4,8 @@ import TempCodeContract
 
 /// Where every thread opens. One header for every type (Frame/); below it
 /// the kind decides the body: a transcript for chats and subagents, two
-/// swipeable segments for the board types. At the bottom the 28 pt working
-/// strip over the composer bar (Composer.swift, WorkingStrip.swift). The
+/// swipeable segments for the board types. At the bottom the chat bar
+/// floats over the content (Composer.swift, WorkingStrip.swift). The
 /// rules (which segments, which shows, the dot, the pill, the subtitle) are
 /// the client package's `ThreadFrame`; this file routes and wires.
 struct ThreadScreen: View {
@@ -77,7 +77,7 @@ struct ThreadScreen: View {
         }
         .background(Surface.background)
         .animation(Motion.rowAppear, value: gone)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+        .tcBottomBar {
             if gone == nil {
                 BottomDock(client: client, sessionId: sessionId, session: session, thread: thread)
                     #if DEBUG

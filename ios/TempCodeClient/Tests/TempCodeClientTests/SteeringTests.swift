@@ -78,3 +78,21 @@ private func session(_ id: String, status: SessionStatus, parentId: String? = ni
         #expect(ComposerRules.placeholder(for: session("s", status: .idle, parentId: "root", threadType: .implementation)) == "Message the agent", "a subagent is never steered")
     }
 }
+
+@Suite struct StripWordsTests {
+    @Test func `the queued line splits the host's reason off as its own detail`() {
+        #expect(StripWords.queued(activity: "Queued · waiting for Build the share sheet") == StripWords(title: "Queued", detail: "Waiting for Build the share sheet"))
+        #expect(StripWords.queued(activity: "Queued · waiting for Port it (errored)") == StripWords(title: "Queued", detail: "Waiting for Port it (errored)"))
+        #expect(StripWords.queued(activity: "Queued · 120 of 120 running") == StripWords(title: "Queued", detail: "120 of 120 running"))
+        #expect(StripWords.queued(activity: "Queued") == StripWords(title: "Queued"))
+        #expect(StripWords.queued(activity: nil) == StripWords(title: "Queued"))
+        #expect(StripWords.queued(activity: "Reading files") == StripWords(title: "Queued"), "an activity that is not the host's queued line says nothing more")
+    }
+
+    @Test func `paused names the batch only on a master with paused threads, stopped names the harness`() {
+        #expect(StripWords.paused(batch: 0) == StripWords(title: "Paused"))
+        #expect(StripWords.paused(batch: 1) == StripWords(title: "Paused", detail: "1 batch thread with it"))
+        #expect(StripWords.paused(batch: 3) == StripWords(title: "Paused", detail: "3 batch threads with it"))
+        #expect(StripWords.stopped == StripWords(title: "Stopped", detail: "The harness is gone"))
+    }
+}

@@ -3,41 +3,61 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// The bottom of every thread screen: the 28 pt working strip over the
-/// composer bar, on the bar material. The strip never changes height and
-/// the bar grows only while the person types (the chip row on focus, the
-/// field with the text, the photos they attach), so nothing above shifts
-/// when work starts or stops.
+/// The bottom of every thread screen: the chat bar, floating over the
+/// transcript the way Messages' does on iOS 26 (the content scrolls under
+/// it behind the scroll edge effect; ThreadScreen hangs it with
+/// `.tcBottomBar`). At rest it is the glass capsule and the attach circle
+/// and nothing else; a status line rises above them only while there is
+/// something to say (sending, working, paused, stopped, queued, a locked
+/// relayed host), and the photos of the next turn and a picked model sit
+/// above the capsule while there are any.
 struct BottomDock: View {
     let client: EnvironmentClient
     let sessionId: String
     let session: SessionMeta?
     let thread: ThreadState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var phase: WorkingPhase { WorkingPhase(status: session?.status, sending: thread.sending) }
+
+    /// A relayed host that is locked or asleep says so on the status line while idle.
+    private var relayLine: Bool {
+        guard client.environment.isRelayed, let presence = client.presence else { return false }
+        return RelayWords.stripLine(presence, lockedSince: client.stateSince, now: Date()) != nil
+    }
+
+    private var statusShown: Bool { phase != .idle || relayLine }
 
     var body: some View {
-        VStack(spacing: 0) {
-            WorkingStripView(client: client, sessionId: sessionId, session: session, thread: thread)
+        VStack(spacing: 6) {
+            if statusShown {
+                WorkingStripView(client: client, sessionId: sessionId, session: session, thread: thread)
+                    .transition(Motion.appear(reduced: reduceMotion))
+            }
             ComposerBar(client: client, sessionId: sessionId, session: session, thread: thread)
         }
-        .background(.bar)
+        .padding(.horizontal, ComposerBar.edge)
+        .padding(.top, 6)
+        .padding(.bottom, 6)
+        .animation(reduceMotion ? Motion.crossFade : Motion.expand, value: statusShown)
     }
 }
 
-/// The composer, the way Messages does it: one 12 pt field with a hairline,
-/// the send button inside it at the trailing edge, filling in the accent
-/// only once there is text, and the photo button beside the field. The
-/// field grows with the text to five lines and scrolls past that; it never
-/// changes height on focus. On focus a chip row appears above it naming
-/// the model and reasoning the next turn runs with; each chip opens the
-/// host's catalog, the same one the desktop's picker shows (the row arrives
-/// with the house travel and fade, and leaves by fade alone). One button
-/// swaps Send ↔ Stop the way the desktop's Action Swap does (the kit's
-/// icon swap, the button never moves); a master mid-turn
-/// with text sends, and the host steers the live turn with it. Photos go up
-/// to the host as they are picked (ComposerAttachments.swift) and the turn
-/// names them. While the host is degraded or the key cannot act, the field
-/// carries the reason in place of its placeholder and nothing sends. A
-/// light tap on send, never on typing.
+/// The composer, the way Messages draws it on iOS 26: one glass capsule
+/// holding the field, and one glass circle beside it. The field grows with
+/// the text to five lines and scrolls past that; the capsule keeps its
+/// round ends as it grows (its corner is half its one-line height). The
+/// send button lives inside the capsule at the trailing edge and shows only
+/// once there is text; while a turn runs and the box is empty it is Stop,
+/// and the glyphs trade places with the kit's icon swap. A master mid-turn
+/// with text sends, and the host steers the live turn with it. The circle
+/// is a menu: Photos, then the model and the reasoning the next turn runs
+/// with (the host's catalog, the same one the desktop's picker shows); a
+/// pick that differs from the thread's shows as one line above the capsule
+/// until it goes out with the turn. Photos go up to the host as they are
+/// picked (ComposerAttachments.swift). While the host is degraded or the
+/// key cannot act, the field carries the reason in place of its placeholder,
+/// the circle leaves and nothing sends. A light tap on send, never on typing.
 struct ComposerBar: View {
     let client: EnvironmentClient
     let sessionId: String
@@ -46,27 +66,32 @@ struct ComposerBar: View {
     @State private var text = ""
     @FocusState private var focused: Bool
     @State private var busy = false
-    /// The host's refusal, shown under the field until the next edit.
+    /// The host's refusal, shown above the capsule until the next edit.
     @State private var failure: String?
     /// The block after its grace: a short drop never flashes the field.
     @State private var block: ActionBlock?
     @State private var sentCount = 0
-    /// The chips: the thread's model until the person picks another; the
-    /// pick rides on the next send and the chips follow the thread again.
+    /// The thread's model until the person picks another; the pick rides
+    /// on the next send and the choice follows the thread again.
     @State private var choice = CatalogChoice(provider: .claude, model: "", reasoning: nil)
     /// The photos of the next turn, each uploading as soon as it is picked.
     @State private var uploads: [PhotoUpload] = []
     @State private var picking = false
     @State private var picked: [PhotosPickerItem] = []
     @State private var photoCount = 0
+    @Namespace private var glass
     @Environment(AppModel.self) private var app
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The capsule at one line of body text, and the send circle inside it;
+    /// both follow the text size, so the 5 pt between them holds.
+    @ScaledMetric(relativeTo: .body) private var fieldHeight: CGFloat = 40
+    @ScaledMetric(relativeTo: .body) private var buttonSize: CGFloat = 30
 
     /// A drop that comes back inside this never shows (the desktop's grace).
     static let blockGraceMs = 1_500
-    /// The field: one line of body text with 7 pt above and below.
-    static let fieldMinHeight: CGFloat = 36
-    static let buttonSize: CGFloat = 28
+    /// From the screen edge to the capsule, and from the capsule's edge to its text.
+    static let edge: CGFloat = 12
+    static let textInset: CGFloat = 16
     /// Photos per turn.
     static let maxPhotos = 4
 
@@ -85,35 +110,49 @@ struct ComposerBar: View {
 
     private var enabled: Bool { block == nil && !busy && (stops || (hasText && photosSettled)) }
 
-    /// The chip row shows while the person composes, never over a block.
-    private var chipsShown: Bool { block == nil && session != nil && (focused || hasText) }
+    /// The send circle: there is text to send, or a turn to stop.
+    private var actionShown: Bool { block == nil && (stops || hasText) }
+
+    /// A model or a level the person picked that differs from the thread's
+    /// own: the line above the capsule names it until it goes out.
+    private var pickShown: Bool {
+        guard block == nil, choice.picked, let session else { return false }
+        return choice.key.provider != session.provider || choice.key.model != session.model || choice.reasoning != session.reasoning
+    }
 
     /// The photo button: the key operates and the host is reachable.
     private var canAttach: Bool { block == nil && client.environment.allows(.operate) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
+            if let failure {
+                QuietLine(symbol: "exclamationmark.circle", text: failure, tint: Tint.destructive)
+                    .transition(.opacity)
+            }
+            if pickShown {
+                pickLine
+                    .transition(Motion.appear(reduced: reduceMotion))
+            }
             if !uploads.isEmpty {
                 AttachmentStrip(uploads: uploads, onRemove: remove, onRetry: retry)
                     .transition(Motion.appear(reduced: reduceMotion))
             }
-            if chipsShown {
-                chips
-                    .transition(Motion.appear(reduced: reduceMotion))
-            }
-            fieldRow
-            if let failure {
-                QuietLine(symbol: "arrow.uturn.backward", text: failure)
-                    .padding(.horizontal, 4)
-                    .transition(.opacity)
+            TCGlassContainer {
+                HStack(alignment: .bottom, spacing: GlassMetrics.mergeSpacing) {
+                    if canAttach {
+                        attachMenu
+                            .tcGlassID("attach", in: glass)
+                            .transition(.opacity)
+                    }
+                    capsule
+                        .tcGlassID("field", in: glass)
+                }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.top, 2)
-        .padding(.bottom, 8)
-        .animation(reduceMotion ? nil : Motion.collapse, value: chipsShown)
+        .animation(reduceMotion ? nil : Motion.collapse, value: pickShown)
         .animation(reduceMotion ? nil : Motion.collapse, value: uploads.isEmpty)
         .animation(Motion.crossFade, value: failure)
+        .animation(Motion.crossFade, value: canAttach)
         .sensoryFeedback(.impact(weight: .light), trigger: sentCount)
         .photosPicker(isPresented: $picking, selection: $picked, maxSelectionCount: max(1, Self.maxPhotos - uploads.count), matching: .images)
         .onChange(of: picked) { _, items in
@@ -122,7 +161,8 @@ struct ComposerBar: View {
             picked = []
         }
         .task(id: client.operateBlock) { await settleBlock() }
-        .task(id: focused) { if focused { await choice.load(client) } }
+        // The circle's menu offers the catalog: load it once the key may act.
+        .task(id: canAttach) { if canAttach { await choice.load(client) } }
         #if DEBUG
         .task {
             guard TestHooks.open == "composer", block == nil else { return }
@@ -131,85 +171,122 @@ struct ComposerBar: View {
         }
         #endif
         .task(id: session.map { "\($0.provider.rawValue)/\($0.model)/\($0.reasoning.rawValue)" }) {
-            // The thread's own model lands (or changes under us): the chips follow it unless the person has a pick in hand.
+            // The thread's own model lands (or changes under us): the choice follows it unless the person has a pick in hand.
             guard let session, !choice.picked else { return }
             choice.follow(session)
         }
     }
 
-    /// Model and reasoning, each a chip opening its menu; a catalog still
-    /// loading or missing leaves the model chip naming the thread's model
-    /// with no menu behind it.
-    private var chips: some View {
-        HStack(spacing: 6) {
-            if choice.catalog == nil {
-                MenuChip(text: choice.modelLabel, symbol: "cpu", enabled: false)
-                    .accessibilityLabel("Model \(choice.modelLabel)")
-            } else {
-                ModelMenu(choice: choice) {
-                    MenuChip(text: choice.modelLabel, symbol: "cpu")
-                }
-                .accessibilityLabel("Model \(choice.modelLabel)")
-                if choice.levels.count > 1, let level = choice.reasoning {
-                    ReasoningMenu(choice: choice) {
-                        MenuChip(text: level.label, symbol: "dial.medium")
+    /// The glass circle beside the capsule: Photos, then the model and the
+    /// reasoning of the next turn, each a submenu with the current value
+    /// as its subtitle. The circle is the capsule's height, so the two sit
+    /// on one line and merge into one surface as they meet.
+    private var attachMenu: some View {
+        Menu {
+            Button {
+                picking = true
+            } label: {
+                Label("Photos", systemImage: "photo.on.rectangle")
+            }
+            .disabled(uploads.count >= Self.maxPhotos)
+            if session != nil, choice.catalog != nil {
+                Section {
+                    ModelMenu(choice: choice) {
+                        Label {
+                            Text("Model")
+                            Text(choice.modelLabel)
+                        } icon: {
+                            Image(systemName: "cpu")
+                        }
                     }
-                    .accessibilityLabel("Reasoning \(level.label)")
-                    .transition(.opacity)
+                    if choice.levels.count > 1, let level = choice.reasoning {
+                        ReasoningMenu(choice: choice) {
+                            Label {
+                                Text("Reasoning")
+                                Text(level.label)
+                            } icon: {
+                                Image(systemName: "gauge.with.dots.needle.50percent")
+                            }
+                        }
+                    }
                 }
+            }
+        } label: {
+            Image(systemName: "plus")
+                .font(.body.weight(.medium))
+                .foregroundStyle(Color.primary)
+                .frame(width: fieldHeight, height: fieldHeight)
+                .tcGlass(in: Circle(), interactive: true)
+                .contentShape(Circle())
+        }
+        .menuOrder(.fixed)
+        .accessibilityLabel("Add")
+        .accessibilityHint("Photos, the model and the reasoning")
+    }
+
+    /// The pick that rides on the next turn: the model in the label color,
+    /// its level after it in secondary, and a clear control that hands the
+    /// choice back to the thread.
+    private var pickLine: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "cpu")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text(choice.modelLabel)
+                .font(.footnote.weight(.medium))
+                .lineLimit(1)
+            if choice.levels.count > 1, let level = choice.reasoning {
+                Text(level.label)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
             Spacer(minLength: 0)
-        }
-        .animation(Motion.crossFade, value: choice.levels.count > 1)
-    }
-
-    /// The photo button beside the field, then the field with the action
-    /// button inside at its trailing edge; both buttons stay on the field's
-    /// last line while the text grows.
-    private var fieldRow: some View {
-        HStack(alignment: .bottom, spacing: 6) {
-            if canAttach {
-                Button {
-                    picking = true
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Color.primary)
-                        .frame(width: Self.buttonSize, height: Self.buttonSize)
-                        .background(Surface.fill, in: Circle())
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.pressable)
-                .disabled(uploads.count >= Self.maxPhotos)
-                .padding(.bottom, (Self.fieldMinHeight - Self.buttonSize) / 2)
-                .accessibilityLabel("Add photos")
-                .transition(.opacity)
+            Button {
+                if let session { choice.follow(session) }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.body)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 44, height: 28)
+                    .contentShape(Rectangle())
             }
-            field
+            .buttonStyle(.pressable)
+            .accessibilityLabel("Use the thread's model")
         }
-        .animation(Motion.crossFade, value: canAttach)
+        .padding(.leading, Self.textInset)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Next turn runs on \(choice.modelLabel)")
     }
 
-    private var field: some View {
-        HStack(alignment: .bottom, spacing: 6) {
+    /// The glass capsule: the field, and the send circle inside it on the
+    /// last line while the text grows.
+    private var capsule: some View {
+        HStack(alignment: .bottom, spacing: 0) {
             TextField(placeholder, text: $text, axis: .vertical)
                 .font(.body)
                 .lineLimit(1...5)
                 .focused($focused)
                 .disabled(block != nil)
-                .padding(.leading, 12)
-                .padding(.vertical, 7)
-                .frame(minHeight: Self.fieldMinHeight)
+                .padding(.leading, Self.textInset)
+                .padding(.trailing, actionShown ? 0 : Self.textInset)
+                .padding(.vertical, 8)
+                .frame(minHeight: fieldHeight)
                 .onChange(of: text) { failure = nil }
                 .accessibilityLabel(block == nil ? "Message" : block!.text(now: Date().timeIntervalSince1970 * 1000))
-            ActionSwap(stops: stops, hasText: hasText, enabled: enabled, reduced: reduceMotion) {
-                if stops { stop() } else { send() }
+            if actionShown {
+                ActionSwap(stops: stops, enabled: enabled, size: buttonSize, frame: fieldHeight, reduced: reduceMotion) {
+                    if stops { stop() } else { send() }
+                }
+                .transition(Motion.iconSwap(reduced: reduceMotion))
             }
-            .padding(.trailing, 4)
-            .padding(.bottom, (Self.fieldMinHeight - Self.buttonSize) / 2)
         }
-        .background(Surface.chrome, in: RoundedRectangle.fieldCorner)
-        .hairlineBorder(RoundedRectangle.fieldCorner)
+        .animation(Motion.iconSwap, value: actionShown)
+        .tcGlass(in: RoundedRectangle.corner(fieldHeight / 2))
+        .contentShape(RoundedRectangle.corner(fieldHeight / 2))
+        .onTapGesture { if block == nil { focused = true } }
     }
 
     private var placeholder: String {
@@ -304,43 +381,38 @@ struct ComposerBar: View {
     }
 }
 
-/// The composer's one button: a circle whose fill turns to the accent the
-/// moment there is text (150 ms on color alone), and whose glyph trades
-/// places between the arrow and the stop square with the kit's icon swap.
-/// Both glyphs sit in the same frame, so the swap moves nothing around it.
-/// Stop fills in the label color, the way the desktop's does.
+/// The capsule's one button: the accent circle with the arrow while there
+/// is text, the label-colored circle with the stop square while a turn runs
+/// and the box is empty. The glyphs trade places with the kit's icon swap
+/// inside the same frame, so the swap moves nothing around it. A send held
+/// back (a photo still going up) dims. The button's square is the capsule's
+/// whole end, so the hit area is the end and the circle is concentric in it.
 private struct ActionSwap: View {
     let stops: Bool
-    let hasText: Bool
     let enabled: Bool
+    let size: CGFloat
+    /// The square the button takes: the capsule's one-line height, so the circle sits concentric in its end.
+    let frame: CGFloat
     let reduced: Bool
     let action: () -> Void
-
-    private var fill: Color {
-        if stops { return Color(.label) }
-        return hasText && enabled ? Color.accentColor : Surface.fill
-    }
-
-    private var glyph: Color {
-        if stops { return Color(.systemBackground) }
-        return hasText && enabled ? Color.white : Color(.tertiaryLabel)
-    }
 
     var body: some View {
         Button(action: action) {
             ZStack {
                 Circle()
-                    .fill(fill)
+                    .fill(stops ? Color(.label) : Color.accentColor)
                 Image(systemName: stops ? "stop.fill" : "arrow.up")
-                    .font(.system(size: stops ? 11 : 15, weight: .semibold))
-                    .foregroundStyle(glyph)
+                    .font(.system(size: size * (stops ? 0.38 : 0.5), weight: .semibold))
+                    .foregroundStyle(stops ? Color(.systemBackground) : Color.white)
                     .id(stops)
                     .transition(Motion.iconSwap(reduced: reduced))
             }
-            .frame(width: ComposerBar.buttonSize, height: ComposerBar.buttonSize)
+            .frame(width: size, height: size)
+            .opacity(enabled ? 1 : 0.4)
             .animation(Motion.iconSwap, value: stops)
-            .animation(Motion.crossFade, value: hasText && enabled)
-            .contentShape(Circle())
+            .animation(Motion.crossFade, value: enabled)
+            .frame(width: frame, height: frame)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.pressable)
         .disabled(!enabled)
