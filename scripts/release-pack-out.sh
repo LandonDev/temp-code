@@ -39,7 +39,7 @@ if [ -z "$SHA" ]; then
 fi
 case $SHA in *[!0-9a-f]*) SHA= ;; esac
 [ ${#SHA} -eq 40 ] || { echo "the commit must be 40 hex characters (--sha or TEMP_CODE_BUILD_SHA)" >&2; exit 1; }
-for f in out/main/boot.js out/main/index.js out/preload/index.js out/renderer/index.html bun.lock \
+for f in out/main/boot.js out/main/index.js out/main/gateway.js out/preload/index.js out/renderer/index.html bun.lock \
          scripts/box/temp-code-run.sh scripts/box/tc-local.mjs scripts/box/box-probe.mjs \
          src/main/server/historyImport.ts; do
   [ -f "$f" ] || { echo "missing $f: run electron-vite build first" >&2; exit 1; }
