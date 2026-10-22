@@ -200,7 +200,7 @@ private struct AgentsLine: View {
     var body: some View {
         summary.parts.enumerated().reduce(Text("")) { text, item in
             let part = Text(item.element.text).foregroundStyle(tone(item.element.tone))
-            return item.offset == 0 ? text + part : text + Text(" · ").foregroundStyle(.tertiary) + part
+            return item.offset == 0 ? text + part : text + Text(", ") + part
         }
         .textStep(.meta)
         .monospacedDigit()
