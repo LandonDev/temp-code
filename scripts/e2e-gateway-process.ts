@@ -28,6 +28,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { join } from 'node:path'
 import { chromiumEncrypt, deriveChromiumKey } from 'aliax-core/vault'
 import { REPO, prepareEnv, sh, sleep } from './lib/packagedApp'
+import { alive, stopTree } from './lib/processTree'
 
 prepareEnv()
 const OUT = '/tmp/tc-gateway-process'
@@ -51,14 +52,6 @@ const check = (name: string, ok: boolean, detail = ''): boolean => {
   return ok
 }
 const log = (m: string): void => console.log(`      ${m}`)
-const alive = (pid: number): boolean => {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch {
-    return false
-  }
-}
 
 // ── the fake provider: every answer streams a word every 250 ms ───────────────
 /** Every POST with when it started and when its stream ended (Bun's server never says a client went away, so a cut shows as an end after the kill). */
@@ -174,6 +167,8 @@ const pending = new Map<string, { ok: (v: unknown) => void; bad: (e: Error) => v
 const listeners: ((frame: Frame) => void)[] = []
 let ws: WebSocket
 let next = 1
+/** Electron's main process, from server.json. */
+let mainPid = 0
 const request = <T = unknown>(method: string, params?: unknown): Promise<T> => {
   const id = `g${next++}`
   return new Promise<T>((ok, bad) => {
@@ -183,7 +178,8 @@ const request = <T = unknown>(method: string, params?: unknown): Promise<T> => {
 }
 async function connect(): Promise<void> {
   await until('server.json', 90_000, () => existsSync(join(data, 'server.json')))
-  const port = (JSON.parse(readFileSync(join(data, 'server.json'), 'utf8')) as { port: number }).port
+  const { port, pid } = JSON.parse(readFileSync(join(data, 'server.json'), 'utf8')) as { port: number; pid: number }
+  mainPid = pid
   ws = new WebSocket(`ws://127.0.0.1:${port}/`)
   await new Promise<void>((ok, bad) => {
     ws.addEventListener('open', () => ok())
@@ -237,7 +233,6 @@ async function turn(sessionId: string, text: string, onFirstText?: () => void | 
 }
 
 const report: Record<string, unknown> = { at: new Date().toISOString() }
-let mainPid = 0
 const gatewayPids: number[] = []
 try {
   await connect()
@@ -254,8 +249,8 @@ try {
   check('doctor.get names the gateway process', before?.mode === 'child' && before.pid > 0 && before.port > 0, JSON.stringify(before))
   if (!before || before.mode !== 'child') throw new Error('the gateway is not in its own process')
   gatewayPids.push(before.pid)
-  mainPid = Number((await sh(['ps', '-o', 'ppid=', '-p', String(before.pid)], { quiet: true })).trim())
-  check("the gateway process is the instance's child, not the instance", mainPid > 0 && mainPid !== before.pid && alive(before.pid), `gateway ${before.pid}, main ${mainPid}`)
+  const parent = Number((await sh(['ps', '-o', 'ppid=', '-p', String(before.pid)], { quiet: true })).trim())
+  check("the gateway process is the instance's child, not the instance", parent === mainPid && mainPid !== before.pid && alive(before.pid), `gateway ${before.pid}, its parent ${parent}, main ${mainPid}`)
 
   // 2. A turn streams; the gateway process dies mid-answer.
   const session = await request<{ id: string }>('session.create', { cwd: scratch, provider: 'claude', model: 'claude-haiku-5-5', reasoning: 'low', threadType: 'chat', permission: 'auto', title: 'gateway process' })
@@ -321,19 +316,13 @@ try {
   check('run completed', false, (e as Error).message)
 } finally {
   ws?.close()
-  // The instance: Electron's main process (the gateway's parent), then the preview wrapper.
-  if (mainPid && alive(mainPid)) process.kill(mainPid, 'SIGTERM')
-  wrapper.kill('SIGTERM')
-  await until('the instance to exit', 15_000, () => !mainPid || !alive(mainPid)).catch(() => {
-    if (mainPid && alive(mainPid)) process.kill(mainPid, 'SIGKILL')
-  })
-  // 7. The gateway process goes with it.
-  const left = await until('the gateway processes to exit', 15_000, () => gatewayPids.every((p) => !alive(p))).then(
-    () => [],
-    () => gatewayPids.filter(alive)
-  )
-  check('stopping the instance took the gateway process with it', left.length === 0, left.length ? `still alive: ${left.join(', ')}` : '')
-  for (const pid of left) process.kill(pid, 'SIGKILL')
+  // The instance by the pids this script launched: Electron's main (server.json) and the
+  // preview wrapper get SIGTERM, and whatever of their tree outlives the grace gets SIGKILL.
+  const left = await stopTree([mainPid, wrapper.pid ?? 0], 15_000)
+  // 7. The gateway process goes with main, without the SIGKILL.
+  const outlived = gatewayPids.filter((p) => left.includes(p))
+  check('stopping the instance took the gateway process with it', gatewayPids.length > 0 && outlived.length === 0, outlived.length ? `outlived main: ${outlived.join(', ')}` : '')
+  if (left.length) log(`${left.length} process(es) of the instance needed SIGKILL`)
   provider.closeAllConnections()
   provider.close()
   closeSync(logFd)

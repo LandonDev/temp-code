@@ -27,16 +27,26 @@
  * measured. Nothing here touches /Applications/TempCode.app, the box's
  * temp-code.service or its data.
  *
+ * On a Mac with Aliax installed the instances must see no shim and no user
+ * Claude config: ~/.claude/settings.json sends every Claude CLI to the shim
+ * (and from there to the installed app), overriding the gateway URL the
+ * driver passes, and a thread the shim routes is never warmable. So the
+ * shim probe points at a closed port (ALIAX_SHIM_PORT=1) and each instance's
+ * CLIs run on their own CLAUDE_CONFIG_DIR with a placeholder token the
+ * gateway swaps, no non-essential traffic, and no Keychain reads. stop()
+ * ends each instance by the pids it launched (scripts/lib/processTree.ts).
+ *
  * Run: bun scripts/e2e-warm-start.ts     (build first: electron-vite build)
  * Report: /tmp/tc-warm-start/report.json
  */
 import { randomBytes } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { chromiumEncrypt, deriveChromiumKey } from 'aliax-core/vault'
 import { REPO, prepareEnv, sh, sleep } from './lib/packagedApp'
+import { stopTree } from './lib/processTree'
 
 prepareEnv()
 const OUT = '/tmp/tc-warm-start'
@@ -108,7 +118,11 @@ interface Inst {
   name: string
   data: string
   log: string
+  /** One append fd for stdout and stderr: two opens of one file overwrite each other's lines. */
+  logFd: number
   proc: ReturnType<typeof Bun.spawn> | null
+  /** Electron's main process, from server.json once it answers. */
+  mainPid: number | null
 }
 const claudeBlob = (access: string): string =>
   JSON.stringify({ keychain: JSON.stringify({ claudeAiOauth: { accessToken: access, expiresAt: Date.now() + 365 * 86_400_000, scopes: ['user:inference', 'user:profile'] } }), oauthAccount: { accountUuid: 'u-fake', emailAddress: ACCOUNT } })
@@ -130,8 +144,15 @@ function launch(name: string, extra: Record<string, string>, real = false): Inst
     TEMP_CODE_REMOTE_PORT: '0',
     TEMP_CODE_GATEWAY_TRACE: '1',
     TEMP_CODE_WORK_ROOT: OUT,
+    // The CLIs see no shim and no user config (see the header).
+    ALIAX_SHIM_PORT: '1',
+    CLAUDE_CONFIG_DIR: join(data, 'claude-config'),
+    ANTHROPIC_AUTH_TOKEN: 'placeholder-the-gateway-swaps-it',
+    ALIAX_CREDENTIAL_BACKEND: 'file',
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
     ...extra
   }
+  mkdirSync(env.CLAUDE_CONFIG_DIR, { recursive: true })
   if (!real) {
     seedVault(join(data, 'aliax'))
     env.TEMP_CODE_ALIAX_DATA_DIR = join(data, 'aliax')
@@ -139,9 +160,10 @@ function launch(name: string, extra: Record<string, string>, real = false): Inst
     env.TEMP_CODE_GATEWAY_ROLE = 'owner'
   }
   delete env.ELECTRON_RUN_AS_NODE
-  const inst: Inst = { name, data, log: join(OUT, `${name}.log`), proc: null }
-  const out = Bun.file(inst.log)
-  inst.proc = Bun.spawn([join(REPO, 'node_modules', '.bin', 'electron-vite'), 'preview', '--skipBuild'], { cwd: REPO, env, stdout: out, stderr: out })
+  delete env.TEMP_CODE_CLAIM_SHIM
+  const log = join(OUT, `${name}.log`)
+  const inst: Inst = { name, data, log, logFd: openSync(log, 'a'), proc: null, mainPid: null }
+  inst.proc = Bun.spawn([join(REPO, 'node_modules', '.bin', 'electron-vite'), 'preview', '--skipBuild'], { cwd: REPO, env, stdout: inst.logFd, stderr: inst.logFd })
   return inst
 }
 const logText = (inst: Inst): string => (existsSync(inst.log) ? readFileSync(inst.log, 'utf8') : '')
@@ -155,15 +177,19 @@ const until = async (label: string, ms: number, test: () => Promise<boolean> | b
 }
 /**
  * Everything of the instance: the preview wrapper, Electron's main process
- * (`electron .`, which outlives the wrapper's SIGTERM) and every child they
- * spawned, found by the instance's own TEMP_CODE_USER_DATA in /proc (Linux;
- * on macOS the port-holder kill of the other e2e scripts would be the way).
+ * (`electron .`, which outlives the wrapper's SIGTERM) and every process
+ * under them, by the pids this script launched (the wrapper's, and main's
+ * from server.json); on Linux, then, anything left that carries the
+ * instance's own TEMP_CODE_USER_DATA in /proc.
  */
 async function stop(inst: Inst): Promise<void> {
-  const pid = inst.proc?.pid
-  if (inst.proc) inst.proc.kill('SIGTERM')
-  await sleep(1_500)
-  if (pid) await sh(['sh', '-c', `pkill -TERM -P ${pid} || true; kill -KILL ${pid} 2>/dev/null || true`], { quiet: true }).catch(() => '')
+  const left = await stopTree([inst.mainPid ?? 0, inst.proc?.pid ?? 0])
+  if (left.length) log(`${inst.name}: ${left.length} process(es) needed SIGKILL`)
+  inst.mainPid = null
+  if (inst.logFd >= 0) {
+    closeSync(inst.logFd)
+    inst.logFd = -1
+  }
   if (existsSync('/proc')) {
     const marker = `TEMP_CODE_USER_DATA=${inst.data}`
     for (const entry of readdirSync('/proc')) {
@@ -192,7 +218,8 @@ class Local {
   readonly pushes: ((frame: Record<string, unknown>) => void)[] = []
   async open(inst: Inst): Promise<void> {
     await until(`${inst.name} server.json`, 60_000, () => existsSync(join(inst.data, 'server.json')))
-    const port = (JSON.parse(readFileSync(join(inst.data, 'server.json'), 'utf8')) as { port: number }).port
+    const { port, pid } = JSON.parse(readFileSync(join(inst.data, 'server.json'), 'utf8')) as { port: number; pid: number }
+    inst.mainPid = pid
     this.ws = new WebSocket(`ws://127.0.0.1:${port}/`)
     await new Promise<void>((ok, bad) => {
       this.ws.addEventListener('open', () => ok())
