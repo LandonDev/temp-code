@@ -149,6 +149,11 @@ const server = await startServer(dbPath, {
   devices: new MacDevices(fakeMacDevicesDeps(environmentId, { session: (id) => (id === 'ios-resources' ? { title: 'Clean up after the simulator run', status: 'idle' } : null) }))
 })
 if (!server.remote || server.remote.port === 0) throw new Error('the remote listener did not bind')
+// No pass of the scheduler until the registry stubs below are in: a pass during the seeds ran the
+// real startQueued on the queued seed, a real harness turn whose settle then woke the master into one.
+const scheduler = server.registry.scheduler
+const realSchedule = scheduler.schedule.bind(scheduler)
+scheduler.schedule = () => {}
 
 // ── the second host: the same project on another machine ───────────────
 // Module-level state in the server (setMediaHost, the media tokens, the log
@@ -401,7 +406,7 @@ server.registry.append('ios-waiting', { type: 'status', status: 'waiting', detai
 await make('ios-question', { projectId: project2.id, threadType: 'implementation', title: 'Fix the invoice totals' })
 server.registry.append('ios-question', { type: 'user-text', text: 'Invoices round the wrong way', newPass: true })
 server.registry.append('ios-question', { type: 'status', status: 'running' })
-server.registry.append('ios-question', { type: 'question-request', requestId: 'seed-question', questions: [{ question: 'Round half up or to even?', header: 'Rounding', options: [{ label: 'Half up' }, { label: 'To even' }] }] })
+server.registry.append('ios-question', { type: 'question-request', requestId: 'seed-question', questions: [{ question: 'Round half up or to even?', header: 'Rounding', options: [{ label: 'Half up', description: 'Round 2.5 to 3 and -2.5 to -3, the rule the billing ledger already uses for invoices' }, { label: 'To even' }] }] })
 server.registry.append('ios-question', { type: 'status', status: 'waiting', detail: 'awaiting an answer' })
 
 // A running implementation with tasks, and an orchestration fleet with a working explorer and a settled reviewer.
@@ -1091,7 +1096,7 @@ server.registry.append(THREAD_MASTER, { type: 'status', status: 'watching' })
 await make('ios-master-impl-a', { projectId: project.id, threadType: 'implementation', title: 'Rebuild the rollup writer', masterId: THREAD_MASTER, startedBy: THREAD_MASTER })
 say('ios-master-impl-a', 'Rebuild the rollup writer.', 'Landed on master.')
 server.registry.append('ios-master-impl-a', { type: 'status', status: 'done' })
-await make('ios-master-impl-b', { projectId: project.id, threadType: 'implementation', title: 'Backfill the rollups', masterId: THREAD_MASTER, after: 'ios-master-impl-a', startedBy: THREAD_MASTER })
+await make('ios-master-impl-b', { projectId: project.id, threadType: 'implementation', title: 'Backfill the March rollups', masterId: THREAD_MASTER, after: 'ios-master-impl-a', startedBy: THREAD_MASTER })
 server.registry.append('ios-master-impl-b', { type: 'user-text', text: 'Backfill every rollup since March.', newPass: true })
 server.registry.append('ios-master-impl-b', { type: 'status', status: 'running' })
 await make('ios-master-plan', { projectId: project.id, threadType: 'planning', title: 'Plan the backfill', masterId: THREAD_MASTER, startedBy: THREAD_MASTER })
@@ -1325,6 +1330,9 @@ server.batches.stopStep = async (masterId, stepId) => {
   server.batches.seedRow(row)
   return { stopped: true }
 }
+// The stubs are in: the scheduler may run its passes again (a start now goes to the stub).
+scheduler.schedule = realSchedule
+scheduler.schedule()
 
 // ── a GitHub inbox for the simulator proof ──────────────────────────────
 // Two repositories' worth of pull requests and issues in every state the
