@@ -126,7 +126,13 @@ import {
 } from './mirror'
 import { removePages } from './htmlRender'
 import { composePreambled, decidePreamble, normalizePreamble } from './projectPreamble'
-import type { CatalogLinkArgs, ProjectSettingsBundle } from '@shared/projectLinks'
+import {
+  newProjectLinkId,
+  newWorkspaceLinkId,
+  type CatalogLinkArgs,
+  type ProjectLinkFacts,
+  type ProjectSettingsBundle
+} from '@shared/projectLinks'
 
 const THREAD_TITLES = {
   chat: 'New chat',
@@ -1566,7 +1572,7 @@ export class SessionRegistry {
 
   // ── workspaces & projects ──────────────────────────────────────────
 
-  async createWorkspace(path: string, name?: string): Promise<WorkspaceMeta> {
+  async createWorkspace(path: string, name?: string, opts: { linkId?: string } = {}): Promise<WorkspaceMeta> {
     const existing = this.store.listWorkspaces().find((w) => w.path === path)
     if (existing) return existing
     // A workspace names a folder on this host. A client that has not yet
@@ -1581,6 +1587,7 @@ export class SessionRegistry {
       git,
       githubRepo: git ? await githubRepoOf(path) : null,
       githubRepoCheckedAt: git ? Date.now() : null,
+      ...(opts.linkId ? { linkId: opts.linkId } : {}),
       createdAt: Date.now()
     }
     this.store.insertWorkspace(meta)
@@ -1634,7 +1641,7 @@ export class SessionRegistry {
     workspaceId: string,
     name: string,
     mode: ProjectMode,
-    opts: { branch?: string; baseRef?: string } = {}
+    opts: { branch?: string; baseRef?: string; linkId?: string } = {}
   ): Promise<ProjectMeta> {
     const ws = this.store.listWorkspaces().find((w) => w.id === workspaceId)
     if (!ws) throw new Error(`unknown workspace: ${workspaceId}`)
@@ -1656,6 +1663,7 @@ export class SessionRegistry {
       branch,
       cwd,
       archived: false,
+      ...(opts.linkId ? { linkId: opts.linkId } : {}),
       createdAt: Date.now()
     }
     this.store.insertProject(meta)
@@ -1725,6 +1733,36 @@ export class SessionRegistry {
     }
     if (ws) this.notifyCatalog('workspaces')
     if (pr) this.notifyCatalog('projects')
+  }
+
+  /** A project's link facts for a start on another host (crossHostAgents.ts):
+   *  the far host finds or creates its copy by them (projectLinks.ts). A
+   *  project or workspace with no link id yet gets one minted and stamped
+   *  here, and the catalog pushed, so the far copy carries a durable id. */
+  projectLinkFacts(projectId: string): ProjectLinkFacts | null {
+    const p = this.store.getProject(projectId)
+    const ws = p ? this.store.listWorkspaces().find((w) => w.id === p.workspaceId) : null
+    if (!p || !ws) return null
+    const workspaceLinkId = ws.linkId || newWorkspaceLinkId()
+    const linkId = p.linkId || newProjectLinkId()
+    if (!ws.linkId) {
+      this.store.setWorkspaceLink(ws.id, workspaceLinkId)
+      this.notifyCatalog('workspaces')
+    }
+    if (!p.linkId) {
+      this.store.setProjectLink(p.id, linkId)
+      this.notifyCatalog('projects')
+    }
+    return {
+      linkId,
+      workspaceLinkId,
+      name: p.name,
+      branch: p.branch,
+      mode: p.mode,
+      workspacePath: ws.path,
+      cwd: p.cwd,
+      ...(ws.githubRepo ? { workspaceGithubRepo: ws.githubRepo } : {})
+    }
   }
 
   /** Everything the project's settings home holds for it, as one bundle. */

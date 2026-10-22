@@ -2127,9 +2127,10 @@ public enum Methods {
             public let callerWorkspacePath: String
             public let callerProjectCwd: String
             public let callerWorkRoot: String?
+            public let workspaceGithubRepo: String?
             public let dryRun: Bool?
 
-            public init(projectLinkId: String, workspaceLinkId: String, name: String, branch: String?, mode: ProjectMode, callerWorkspacePath: String, callerProjectCwd: String, callerWorkRoot: String? = nil, dryRun: Bool? = nil) {
+            public init(projectLinkId: String, workspaceLinkId: String, name: String, branch: String?, mode: ProjectMode, callerWorkspacePath: String, callerProjectCwd: String, callerWorkRoot: String? = nil, workspaceGithubRepo: String? = nil, dryRun: Bool? = nil) {
                 self.projectLinkId = projectLinkId
                 self.workspaceLinkId = workspaceLinkId
                 self.name = name
@@ -2138,11 +2139,12 @@ public enum Methods {
                 self.callerWorkspacePath = callerWorkspacePath
                 self.callerProjectCwd = callerProjectCwd
                 self.callerWorkRoot = callerWorkRoot
+                self.workspaceGithubRepo = workspaceGithubRepo
                 self.dryRun = dryRun
             }
 
             private enum CodingKeys: String, CodingKey {
-                case projectLinkId, workspaceLinkId, name, branch, mode, callerWorkspacePath, callerProjectCwd, callerWorkRoot, dryRun
+                case projectLinkId, workspaceLinkId, name, branch, mode, callerWorkspacePath, callerProjectCwd, callerWorkRoot, workspaceGithubRepo, dryRun
             }
 
             public func encode(to encoder: any Encoder) throws {
@@ -2155,6 +2157,7 @@ public enum Methods {
                 try container.encode(callerWorkspacePath, forKey: .callerWorkspacePath)
                 try container.encode(callerProjectCwd, forKey: .callerProjectCwd)
                 try container.encodeIfPresent(callerWorkRoot, forKey: .callerWorkRoot)
+                try container.encodeIfPresent(workspaceGithubRepo, forKey: .workspaceGithubRepo)
                 try container.encodeIfPresent(dryRun, forKey: .dryRun)
             }
         }

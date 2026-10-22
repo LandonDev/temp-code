@@ -40,6 +40,8 @@ import {
   type ThreadWaitResult
 } from '@shared/contract-crosshost'
 import type { EventRow, SessionMeta, SessionStatus } from '@shared/events'
+import type { EnsureLinkedArgs, ProjectLinkFacts } from '@shared/projectLinks'
+import type { EnsureLinkedResult } from '@shared/wireSchemas'
 import {
   latestTurnRows,
   pendingOf,
@@ -139,6 +141,12 @@ export interface CrossHostThreadsDeps {
   attachmentDirs?: (meta: SessionMeta) => string[]
   /** Push a branch to origin before it is held for the owner's end (mergeBranch.ts). */
   pushBranch?: (cwd: string, branch: string) => Promise<void>
+  /**
+   * Find or create this host's copy of the caller's project (projectLinks.ts
+   * `ensureLinked`): a start that carries the caller's project facts lands in
+   * that copy. Absent, or no copy: the path logic decides as before.
+   */
+  ensureLinked?: (args: EnsureLinkedArgs) => Promise<EnsureLinkedResult>
 }
 
 const isDir = (path: string): boolean => {
@@ -530,8 +538,40 @@ export class CrossHostThreads {
     return hostPathFor(callerPath, this.deps.pathMap(), stripSlash(this.deps.workRoot()), callerWorkRoot, exists)?.path ?? null
   }
 
+  /**
+   * Where a thread for a caller works here, and the project that is: the
+   * linked copy of the caller's project when the call carries its facts
+   * (created here when this host has the workspace and no copy yet), else
+   * the caller's path mapped onto a checkout here, else the work root.
+   */
+  private async place(
+    callerCwd: string,
+    callerWorkRoot: string | undefined,
+    project: ProjectLinkFacts | undefined
+  ): Promise<{ cwd: string; projectId: string | null; cwdNote?: string }> {
+    if (project && this.deps.ensureLinked) {
+      try {
+        const copy = await this.deps.ensureLinked({
+          projectLinkId: project.linkId,
+          workspaceLinkId: project.workspaceLinkId,
+          name: project.name,
+          branch: project.branch,
+          mode: project.mode,
+          callerWorkspacePath: project.workspacePath,
+          callerProjectCwd: project.cwd,
+          ...(callerWorkRoot ? { callerWorkRoot } : {}),
+          ...(project.workspaceGithubRepo ? { workspaceGithubRepo: project.workspaceGithubRepo } : {})
+        })
+        if (copy.cwd && copy.project) return { cwd: copy.cwd, projectId: copy.project.id, ...(copy.note ? { cwdNote: copy.note } : {}) }
+      } catch (err) {
+        this.deps.log?.(`[crossHost] no linked copy of ${project.name}: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
+    return this.placeByPath(callerCwd, callerWorkRoot)
+  }
+
   /** Where a thread for a caller's path works here, and the project that is, if any. */
-  private place(callerCwd: string, callerWorkRoot?: string): { cwd: string; projectId: string | null; cwdNote?: string } {
+  private placeByPath(callerCwd: string, callerWorkRoot?: string): { cwd: string; projectId: string | null; cwdNote?: string } {
     const exists = this.deps.exists ?? isDir
     const root = stripSlash(this.deps.workRoot())
     const mapped = hostPathFor(callerCwd, this.deps.pathMap(), root, callerWorkRoot, exists)
@@ -547,12 +587,13 @@ export class CrossHostThreads {
   }
 
   private async start(caller: CrossHostCaller, args: ThreadStartArgs): Promise<ThreadStartResult> {
-    const placed = this.place(args.cwd, args.workRoot)
+    // Admission first: a refused start creates no copy of the project here.
+    this.admitted(caller)
+    const placed = await this.place(args.cwd, args.workRoot, args.project)
     const planPath =
       args.planPath && (args.threadType === 'implementation' || args.threadType === 'orchestration')
         ? (this.mapPath(args.planPath, args.workRoot) ?? undefined)
         : undefined
-    this.admitted(caller)
     const thread = await this.deps.registry.create({
       provider: args.provider,
       model: args.model,
@@ -578,9 +619,9 @@ export class CrossHostThreads {
   }
 
   private async spawn(caller: CrossHostCaller, args: ThreadSpawnArgs): Promise<ThreadStartResult> {
-    const placed = this.place(args.cwd, args.workRoot)
-    const writer = args.agentType === 'implementer'
     this.admitted(caller)
+    const placed = await this.place(args.cwd, args.workRoot, args.project)
+    const writer = args.agentType === 'implementer'
     const cwd =
       (writer && args.useWorktree
         ? await (this.deps.worktree ?? worktreeFor)(placed.cwd, `${caller.sessionId}-${Date.now() % 100000}`)

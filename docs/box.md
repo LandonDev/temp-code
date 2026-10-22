@@ -2789,3 +2789,43 @@ project, and every write on the box itself, behave as before.
 Tests: `remote/projectSettingsSync.test.ts` (the pull, an older stamp, a
 rename and an archive following, the forwarded write, the refusal, the cold
 refusal) and the linked-project case in `projectPreamble.test.ts`.
+
+## One project across hosts: a far start lands in the linked project
+
+A thread one host starts on another (`app_start_thread` or `spawn_agent`
+with `environmentId`) carries the caller's project as link facts: the
+project's and its workspace's link ids, its name, branch and mode, the
+workspace folder, the project cwd and the workspace's GitHub repo.
+`crossHostAgents.ts` reads them from the project ROW (`projectLinkFacts`
+in sessions.ts), not from the thread's cwd; a row with no link id yet gets
+one minted and stamped there, with the catalog pushed, so the far copy
+carries an id that lasts. `app_start_thread` with `environmentId` no
+longer refuses a `projectId` this host does not know: it sends the
+caller's own project instead.
+
+The far host's `CrossHostThreads.place()` asks `ensureLinked`
+(src/main/server/projectLinks.ts, also the `project.ensureLinked` RPC)
+for its copy, in this order:
+
+1. a project with the link id;
+2. else the workspace: by its link id, else the caller's workspace folder
+   mapped onto this host (`hostPathFor`; a folder with no row gets a
+   workspace row born with the link id), else the same GitHub repo;
+3. in that workspace an unlinked project of the same name is adopted and
+   stamped; else the project is created with the caller's name, branch
+   and mode. A `worktree` copy checks out the caller's branch when this
+   host has it (locally or on origin) and makes it otherwise; a worktree
+   that fails becomes a `local` copy at the workspace path, and the
+   thread's `cwdNote` says so.
+
+The thread lands in that project with its cwd. With no workspace, the
+start falls back to the path logic of "Threads across hosts": the work
+root, `projectId` null, and the note. Admission runs first, so a refused
+start makes no copy.
+
+`dryRun: true` answers the same `{ cwd, exists, project, note }` and
+changes nothing; a host with no checkout answers `cwd: null` and the note
+"no checkout of <folder> on this host (looked for <path>)", which the
+pickers show on a disabled host. Tests: projectLinks.test.ts (the order,
+dryRun, and a real worktree in a scratch repo), crossHostThreads.test.ts,
+crossHostAgents.test.ts, apptools.test.ts.

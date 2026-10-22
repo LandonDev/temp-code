@@ -139,13 +139,21 @@ function fakeRegistry() {
   return registry
 }
 
-function service(opts: { exists?: (p: string) => boolean; link?: (m: string, p: unknown) => Promise<unknown>; admit?: (envId: string) => { ok: boolean; reason?: string } } = {}) {
+function service(
+  opts: {
+    exists?: (p: string) => boolean
+    link?: (m: string, p: unknown) => Promise<unknown>
+    admit?: (envId: string) => { ok: boolean; reason?: string }
+    ensureLinked?: ConstructorParameters<typeof CrossHostThreads>[0]['ensureLinked']
+  } = {}
+) {
   const settings = new Map<string, string>()
   const registry = fakeRegistry()
   const requests: { method: string; params: unknown }[] = []
   const pushed: string[] = []
   const svc = new CrossHostThreads({
     ...(opts.admit ? { admit: opts.admit } : {}),
+    ...(opts.ensureLinked ? { ensureLinked: opts.ensureLinked } : {}),
     environmentId: MAC,
     store: { getSetting: (k) => settings.get(k) ?? null, setSetting: (k, v) => (v === null ? settings.delete(k) : settings.set(k, v)) },
     registry: registry as never,
@@ -457,5 +465,95 @@ describe('CrossHostThreads: a batch thread here landing', () => {
     })
     const { sessionId } = (await svc.handle('thread.start', { caller, args: { ...startArgs, masterId: 'box-master' } }, ctx)) as { sessionId: string }
     await expect(svc.landingHold(registry.get(sessionId)!, { cwd: '/wt', branch: 'b', target: 'master', subjects: [] })).rejects.toThrow("the master's host (box) could not be asked")
+  })
+})
+
+// ── a start that carries the caller's project lands in the linked copy ──
+
+import { ensureLinked, type EnsureLinkedDeps } from '../projectLinks'
+import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
+import type { ProjectLinkFacts } from '@shared/projectLinks'
+
+describe('CrossHostThreads: the linked project', () => {
+  /** The real ensureLinked over an in-memory catalog of this host (the Mac). */
+  function linker(dirs: string[]) {
+    const workspaces: WorkspaceMeta[] = []
+    const projects: ProjectMeta[] = []
+    let n = 0
+    const deps: EnsureLinkedDeps = {
+      listProjects: () => projects,
+      listWorkspaces: () => workspaces,
+      async createWorkspace(path, { linkId }) {
+        const row = { id: `w${++n}`, name: 'alpha', path, git: true, githubRepo: null, linkId, createdAt: n } as WorkspaceMeta
+        workspaces.push(row)
+        return row
+      },
+      async createProject(workspaceId, name, mode, o) {
+        const cwd = mode === 'worktree' ? `/Users/landon/.temp-code/worktrees/${name.toLowerCase()}` : workspaces.find((w) => w.id === workspaceId)!.path
+        const row = { id: `lp${++n}`, workspaceId, name, mode, branch: o.branch ?? 'main', cwd, archived: false, linkId: o.linkId, createdAt: n } as ProjectMeta
+        projects.push(row)
+        return row
+      },
+      linkCatalog: () => {},
+      pathMap: () => MAP,
+      workRoot: () => '/Users/landon/IdeaProjects',
+      exists: (p) => dirs.includes(p)
+    }
+    return { ensure: (a: Parameters<typeof ensureLinked>[1]) => ensureLinked(deps, a), workspaces, projects }
+  }
+  const facts: ProjectLinkFacts = {
+    linkId: 'pl_alpha',
+    workspaceLinkId: 'wl_alpha',
+    name: 'Alpha',
+    branch: 'tc/alpha',
+    mode: 'worktree',
+    workspacePath: '/srv/agents/work/alpha',
+    cwd: '/srv/agents/home/.temp-code/worktrees/alpha'
+  }
+  const linkedArgs = { ...startArgs, cwd: facts.cwd, project: facts }
+
+  it('a start into a host with no copy creates and links it, and the thread lands in it; a second start reuses it', async () => {
+    const l = linker(['/Users/landon/IdeaProjects/alpha'])
+    const { svc, registry } = service({ ensureLinked: l.ensure })
+    const r = (await svc.handle('thread.start', { caller, args: linkedArgs }, ctx)) as { sessionId: string; cwd: string; projectId: string | null; cwdNote?: string }
+    expect(l.workspaces).toEqual([expect.objectContaining({ path: '/Users/landon/IdeaProjects/alpha', linkId: 'wl_alpha' })])
+    expect(l.projects).toEqual([expect.objectContaining({ name: 'Alpha', mode: 'worktree', branch: 'tc/alpha', linkId: 'pl_alpha' })])
+    expect(r.projectId).toBe(l.projects[0].id)
+    expect(r.cwd).toBe('/Users/landon/.temp-code/worktrees/alpha')
+    expect(r.cwdNote).toBeUndefined()
+    expect(registry.get(r.sessionId)).toMatchObject({ projectId: l.projects[0].id, cwd: '/Users/landon/.temp-code/worktrees/alpha' })
+
+    const again = (await svc.handle('thread.start', { caller, args: linkedArgs }, ctx)) as { projectId: string | null }
+    expect(again.projectId).toBe(l.projects[0].id)
+    expect(l.projects).toHaveLength(1)
+  })
+
+  it('thread.spawn lands the child in the linked copy too', async () => {
+    const l = linker(['/Users/landon/IdeaProjects/alpha'])
+    const { svc, registry } = service({ ensureLinked: l.ensure })
+    const r = (await svc.handle(
+      'thread.spawn',
+      { caller, args: { provider: 'claude' as const, model: 'claude-sonnet-5-5', reasoning: 'medium' as const, context1m: false, agentType: 'explorer' as const, task: 'look', title: 'look', useWorktree: false, cwd: facts.cwd, workRoot: '/srv/agents/work', project: facts } },
+      ctx
+    )) as { sessionId: string; projectId: string | null }
+    expect(r.projectId).toBe(l.projects[0].id)
+    expect(registry.get(r.sessionId)).toMatchObject({ parentId: 'box-thread', projectId: l.projects[0].id })
+  })
+
+  it('no checkout here: the path logic decides as before, a note and no project', async () => {
+    const l = linker([])
+    const { svc } = service({ ensureLinked: l.ensure, exists: () => false })
+    const r = (await svc.handle('thread.start', { caller, args: linkedArgs }, ctx)) as { cwd: string; projectId: string | null; cwdNote?: string }
+    expect(l.projects).toEqual([])
+    expect(r.projectId).toBeNull()
+    expect(r.cwd).toBe('/Users/landon/IdeaProjects')
+    expect(r.cwdNote).toContain('no checkout for /srv/agents/home/.temp-code/worktrees/alpha')
+  })
+
+  it('a refused start makes no copy', async () => {
+    const l = linker(['/Users/landon/IdeaProjects/alpha'])
+    const { svc } = service({ ensureLinked: l.ensure, admit: () => ({ ok: false, reason: 'full' }) })
+    await expect(svc.handle('thread.start', { caller, args: linkedArgs }, ctx)).rejects.toThrow('full')
+    expect(l.workspaces).toEqual([])
   })
 })

@@ -26,6 +26,7 @@ import {
   type ThreadWaitResult
 } from '@shared/contract-crosshost'
 import type { SessionMeta, SessionStatus } from '@shared/events'
+import type { ProjectLinkFacts } from '@shared/projectLinks'
 import { batchMembershipOf, type ResolvedSpawn } from './orchestration'
 import type { HostTransport } from './remote/hostLinks'
 import { PeerOfflineError, servePeerCall, type LinkRequest } from './remote/peerCalls'
@@ -129,6 +130,12 @@ export interface CrossHostAgentsDeps {
   hostName?: (envId: string) => string | null
   /** Where this host's checkouts live (workRoot.ts): sent with the cwd so the other host can map `<root>/<name>`. */
   workRoot: () => string
+  /**
+   * The caller's project as a far start carries it (sessions.ts
+   * projectLinkFacts: mints and stamps the link ids a row lacks), so the far
+   * host lands the thread in its linked copy (projectLinks.ts ensureLinked).
+   */
+  projectLink?: (projectId: string) => ProjectLinkFacts | null
   /** A batch child on another host is landing: the engine decides a hold and records a landing (batch.ts). */
   landing?: (l: RemoteLanding) => CrossHostLandingResult
   /** A batch child on another host changed state: the engine reviews the batch (batch.ts schedule). */
@@ -137,9 +144,11 @@ export interface CrossHostAgentsDeps {
   now?: () => number
 }
 
-export interface StartOnHostArgs extends Omit<ThreadStartArgs, 'cwd' | 'workRoot'> {
+export interface StartOnHostArgs extends Omit<ThreadStartArgs, 'cwd' | 'workRoot' | 'project'> {
   /** The path here the thread would work in (the caller's project cwd). */
   cwd: string
+  /** The project here the thread belongs to: its link facts ride along. */
+  projectId?: string | null
 }
 
 export interface RemoteWaitReport {
@@ -457,6 +466,11 @@ export class CrossHostAgents {
     return this.deps.links.call<T>(envId, method, { caller: this.callerOf(session), args }, deadlineMs)
   }
 
+  /** The link facts of a project here, the ids minted on first use; null with no project. */
+  private projectFacts(projectId: string | null | undefined): ProjectLinkFacts | null {
+    return projectId ? (this.deps.projectLink?.(projectId) ?? null) : null
+  }
+
   private fresh(session: SessionMeta): SessionMeta {
     return this.deps.sessions.get(session.id) ?? session
   }
@@ -473,7 +487,9 @@ export class CrossHostAgents {
       throw new Error(`this thread already has ${CROSS_HOST_MAX_PER_THREAD} threads on other hosts`)
     // The batch follows the starter here as on this host (orchestration.ts batchMembershipOf).
     const membership = batchMembershipOf(session)
-    const wire: ThreadStartArgs = { ...args, workRoot: this.deps.workRoot(), ...membership }
+    const { projectId, ...rest } = args
+    const project = this.projectFacts(projectId)
+    const wire: ThreadStartArgs = { ...rest, workRoot: this.deps.workRoot(), ...membership, ...(project ? { project } : {}) }
     const result = await this.call<ThreadStartResult>(host, session, 'thread.start', wire)
     this.record(session.id, {
       environmentId: host,
@@ -505,6 +521,7 @@ export class CrossHostAgents {
     if (this.children(session.id).length + specs.length > CROSS_HOST_MAX_PER_THREAD)
       throw new Error(`this thread may have at most ${CROSS_HOST_MAX_PER_THREAD} threads on other hosts`)
     const started: { agentId: string; title: string; cwd: string; host: string; cwdNote?: string }[] = []
+    const project = this.projectFacts(session.projectId)
     for (const r of specs) {
       const title = r.task.split('\n')[0].slice(0, 80) || `${r.provider} · ${r.agentType}`
       const wire: ThreadSpawnArgs = {
@@ -518,7 +535,8 @@ export class CrossHostAgents {
         useWorktree: r.useWorktree,
         cwd: session.cwd,
         workRoot: this.deps.workRoot(),
-        ...(r.preamble ? {} : { preamble: false })
+        ...(r.preamble ? {} : { preamble: false }),
+        ...(project ? { project } : {})
       }
       const result = await this.call<ThreadStartResult>(host, session, 'thread.spawn', wire)
       this.record(session.id, {

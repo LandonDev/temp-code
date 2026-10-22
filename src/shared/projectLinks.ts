@@ -171,7 +171,9 @@ export const ProjectLinkFactsSchema = z.object({
   /** the caller's workspace folder (its host's path) */
   workspacePath: z.string().max(2_000),
   /** the caller's project cwd (its host's path) */
-  cwd: z.string().max(2_000)
+  cwd: z.string().max(2_000),
+  /** the caller's workspace repo (owner/name), so a host whose folder sits elsewhere still finds it */
+  workspaceGithubRepo: z.string().max(300).optional()
 })
 export type ProjectLinkFacts = z.infer<typeof ProjectLinkFactsSchema>
 
@@ -188,6 +190,8 @@ export const EnsureLinkedArgsSchema = z.object({
   callerProjectCwd: z.string().max(2_000),
   /** the caller's work root, so `<root>/<name>` maps onto this host's */
   callerWorkRoot: z.string().max(2_000).optional(),
+  /** the caller's workspace repo (owner/name): the last way to find the workspace here */
+  workspaceGithubRepo: z.string().max(300).optional(),
   /** answer what would happen without creating anything */
   dryRun: z.boolean().optional()
 })

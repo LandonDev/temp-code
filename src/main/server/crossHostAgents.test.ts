@@ -3,6 +3,7 @@ import type { ServerFrame } from '@shared/contract'
 import type { MacBridgePush } from '@shared/contract-macbridge'
 import { CROSS_HOST_OFFER, encodeAgentId, type CrossHostCallParams } from '@shared/contract-crosshost'
 import type { SessionMeta } from '@shared/events'
+import type { ProjectLinkFacts } from '@shared/projectLinks'
 import { CHILDREN_PREFIX, CrossHostAgents, type RemoteLanding } from './crossHostAgents'
 import { HostLinks } from './remote/hostLinks'
 import { PeerCalls, handlePeerRequest, servePeerCall, type LinkRequest, type PeerCallHandler, type PeerSocket } from './remote/peerCalls'
@@ -32,7 +33,15 @@ function mac(calls: PeerCalls, envId: string, handler: PeerCallHandler, connecti
   return socket
 }
 
-function setup(opts: { bridged?: string | null; linked?: Record<string, LinkRequest | null>; parent?: SessionMeta; landing?: (l: RemoteLanding) => { hold: boolean } } = {}) {
+function setup(
+  opts: {
+    bridged?: string | null
+    linked?: Record<string, LinkRequest | null>
+    parent?: SessionMeta
+    landing?: (l: RemoteLanding) => { hold: boolean }
+    projectLink?: (projectId: string) => ProjectLinkFacts | null
+  } = {}
+) {
   const calls = new PeerCalls(BOX, () => {})
   const settings = new Map<string, string>()
   const appended: unknown[] = []
@@ -89,6 +98,7 @@ function setup(opts: { bridged?: string | null; linked?: Record<string, LinkRequ
     hostName: (id) => (id === MAC ? 'Landon Mac' : id === BOX2 ? 'The box' : null),
     workRoot: () => '/srv/agents/work',
     landing: opts.landing,
+    ...(opts.projectLink ? { projectLink: opts.projectLink } : {}),
     batchChanged: (id) => changed.push(id),
     log: () => {}
   })
@@ -380,5 +390,43 @@ describe('CrossHostAgents: a master\'s batch across hosts', () => {
     expect(landings).toHaveLength(1)
     expect(replies).toEqual([{ method: 'peer.reply', params: { callId: 'c9', ok: true, result: { hold: false } } }])
     expect(agents.onPeerPush(BOX2, { push: 'peer.call', callId: 'c1', method: 'mac.run', params: {}, deadlineMs: 1 } as never)).toBe(false)
+  })
+})
+
+describe("CrossHostAgents: the caller's project rides along", () => {
+  /** The registry's projectLinkFacts over one row: ids minted on first use, then kept. */
+  function rows() {
+    const row = { id: 'proj-1', name: 'Alpha', branch: 'tc/alpha', mode: 'worktree' as const, cwd: '/srv/agents/home/.temp-code/worktrees/alpha', linkId: null as string | null }
+    const workspace = { path: '/srv/agents/work/alpha', linkId: null as string | null, githubRepo: 'LandonDev/alpha' }
+    const minted: string[] = []
+    const projectLink = (projectId: string): ProjectLinkFacts | null => {
+      if (projectId !== row.id) return null
+      if (!workspace.linkId) minted.push((workspace.linkId = 'wl_1'))
+      if (!row.linkId) minted.push((row.linkId = 'pl_1'))
+      return { linkId: row.linkId, workspaceLinkId: workspace.linkId, name: row.name, branch: row.branch, mode: row.mode, workspacePath: workspace.path, cwd: row.cwd, workspaceGithubRepo: workspace.githubRepo }
+    }
+    return { projectLink, minted }
+  }
+
+  it('startThread sends the named project row, not the session cwd; spawn sends the parent project; the ids are minted once', async () => {
+    const { projectLink, minted } = rows()
+    const inProject = { ...parent, projectId: 'proj-1', cwd: '/srv/agents/work/temp-code/.claude/worktrees/x' } as SessionMeta
+    const { agents, seen } = setup({ projectLink, parent: inProject })
+    await agents.startThread(inProject, 'mac', { threadType: 'chat', provider: 'claude', firstMessage: 'go', cwd: '/srv/agents/home/.temp-code/worktrees/alpha', projectId: 'proj-1' })
+    await agents.spawn(inProject, MAC, [{ provider: 'claude', model: 'm', reasoning: 'medium', context1m: false, agentType: 'explorer', task: 't', useWorktree: false, preamble: true }])
+    const [start, spawn] = seen.map((c) => c.params.args as Record<string, unknown>)
+    const facts = { linkId: 'pl_1', workspaceLinkId: 'wl_1', name: 'Alpha', branch: 'tc/alpha', mode: 'worktree', workspacePath: '/srv/agents/work/alpha', cwd: '/srv/agents/home/.temp-code/worktrees/alpha', workspaceGithubRepo: 'LandonDev/alpha' }
+    expect(start.project).toEqual(facts)
+    expect(start).not.toHaveProperty('projectId')
+    expect(spawn.project).toEqual(facts)
+    expect(minted).toEqual(['wl_1', 'pl_1'])
+  })
+
+  it('no project, or one this host does not have: no facts, the path decides on the far host', async () => {
+    const { projectLink } = rows()
+    const { agents, seen } = setup({ projectLink })
+    await agents.startThread(parent, 'mac', { threadType: 'chat', provider: 'claude', firstMessage: 'go', cwd: '/srv/agents/work/temp-code', projectId: 'gone' })
+    await agents.spawn(parent, MAC, [{ provider: 'claude', model: 'm', reasoning: 'medium', context1m: false, agentType: 'explorer', task: 't', useWorktree: false, preamble: true }])
+    for (const call of seen) expect(call.params.args).not.toHaveProperty('project')
   })
 })

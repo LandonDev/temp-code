@@ -285,7 +285,10 @@ export async function appStartThread(
     return `refused: ${model} does not offer the 1M context window — only Claude models do. Start the thread without context1m, or pick a Claude model.`
   }
   const projectId = args.projectId ?? caller.projectId
-  if (args.projectId && !reg.getProject(args.projectId)) {
+  const known = args.projectId ? reg.getProject(args.projectId) : null
+  // On another host an id this host does not know is no refusal: the far
+  // host lands the thread in its copy of the caller's project by the link.
+  if (args.projectId && !known && !args.environmentId?.trim()) {
     return `refused: unknown projectId "${args.projectId}".`
   }
   // On another host: the Mac maps this box's cwd onto its own checkout and
@@ -295,7 +298,10 @@ export async function appStartThread(
     if (!crossHost) return 'refused: threads on other hosts are not available here'
     if (args.seedThreadIds?.length) return 'refused: seedThreadIds cannot ride to another host; put what the thread needs into firstMessage.'
     const callerNow = reg.get(caller.id) ?? caller
-    const cwd = (projectId ? reg.getProject(projectId)?.cwd : null) ?? callerNow.cwd
+    // The project whose link facts ride along: the one named when this host
+    // has it, else the caller's own (projectLinks.ts on the far host).
+    const sent = known ?? (callerNow.projectId ? reg.getProject(callerNow.projectId) : null)
+    const cwd = sent?.cwd ?? callerNow.cwd
     try {
       const started = await crossHost.startThread(callerNow, args.environmentId, {
         threadType: args.threadType,
@@ -306,7 +312,8 @@ export async function appStartThread(
         firstMessage: args.firstMessage,
         ...(args.title ? { title: args.title } : {}),
         ...(args.planPath ? { planPath: args.planPath } : {}),
-        cwd
+        cwd,
+        projectId: sent?.id ?? null
       })
       return started
     } catch (err) {

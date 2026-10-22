@@ -164,7 +164,7 @@ import { DEFAULT_RULES } from '@shared/rules'
 import { DEFAULT_THREAD_DEFAULTS } from '@shared/defaults'
 import { DEFAULT_PLAN_SETTINGS, type PlanScope } from '@shared/plans'
 import type { ReviewScope } from '@shared/review'
-import { ensureLinked } from './projectLinks'
+import { ensureLinked, type EnsureLinkedDeps } from './projectLinks'
 import {
   blameRange,
   aheadCount,
@@ -671,10 +671,22 @@ export async function startServer(
   // served over the Mac's link as peer.call pushes, and on this listener as
   // thread.* requests from a registered peer. The Mac bridge's thread cap
   // admits them on a Mac; the box keeps its own (crossHost.maxThreads.<envId>).
+  // One project across hosts: this host's copy of a caller's linked project,
+  // found or made (projectLinks.ts), for a far start and project.ensureLinked.
+  const linkedCopies: EnsureLinkedDeps = {
+    listProjects: () => registry.listProjects(),
+    listWorkspaces: () => registry.listWorkspaces(),
+    createWorkspace: (path, opts) => registry.createWorkspace(path, undefined, opts),
+    createProject: (workspaceId, name, mode, opts) => registry.createProject(workspaceId, name, mode, opts),
+    linkCatalog: (args) => registry.linkCatalog(args),
+    pathMap: () => harnessSync.pathMap(),
+    workRoot: () => workRoot(store).root
+  }
   const crossHostThreads = new CrossHostThreads({
     environmentId,
     store,
     registry,
+    ensureLinked: (args) => ensureLinked(linkedCopies, args),
     environments: knownHosts,
     link: peerRequest,
     links: hostLinks,
@@ -899,6 +911,7 @@ export async function startServer(
     macPeerOf: (id) => macTools.macPeerOf(id).macPeer,
     hostName: hostNameOf,
     workRoot: () => workRoot(store).root,
+    projectLink: (projectId) => registry.projectLinkFacts(projectId),
     // A batch child on another host landing, or changing state: the engine here (batch.ts) decides and reviews.
     landing: (l) => batchRuns.remoteLanding(l),
     batchChanged: (masterId) => batchRuns.schedule(masterId)
@@ -1659,7 +1672,7 @@ export async function startServer(
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'project.ensureLinked':
-            sendFrame({ id: req.id, ok: true, result: await ensureLinked(registry, req.params) })
+            sendFrame({ id: req.id, ok: true, result: await ensureLinked(linkedCopies, req.params) })
             break
           case 'project.settings.get':
             sendFrame({ id: req.id, ok: true, result: registry.getProjectSettings(req.params.projectId) })

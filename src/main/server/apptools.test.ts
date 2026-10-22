@@ -423,3 +423,35 @@ it("a remote thread's digest names the host, the files its tool calls wrote and 
   expect(writtenPathOf('Write', { file_path: 'relative' })).toBeNull()
   expect(writtenPathOf('screenshot', { path: '/shots/1.png' })).toBe('/shots/1.png')
 })
+
+// ── app_start_thread on another host: the project is the far host's to resolve ──
+
+it('an unknown projectId is refused for a local start and admitted with environmentId, sending the caller project', async () => {
+  const { setAppCrossHost } = await import('./apptools')
+  const asked: Record<string, unknown>[] = []
+  setAppCrossHost({
+    startThread: async (_caller: SessionMeta, host: string, args: Record<string, unknown>) => {
+      asked.push({ host, ...args })
+      return { threadId: 'env_m:t1', title: 't', host: 'env_m', cwd: '/far', projectId: 'far-p' }
+    }
+  } as never)
+  const mine = { id: 'proj-mine', cwd: '/srv/agents/work/alpha' }
+  const inProject = { ...caller, projectId: mine.id, cwd: '/srv/agents/work/alpha/.claude/worktrees/x' } as SessionMeta
+  const reg = {
+    ...fakeRegistry,
+    get: (id: string) => (id === inProject.id ? inProject : null),
+    getProject: (id: string) => (id === mine.id ? mine : null)
+  } as unknown as SessionRegistry
+  try {
+    const local = await appStartThread(reg, inProject, { threadType: 'chat', provider: 'claude', firstMessage: 'go', projectId: 'far-only' })
+    expect(local).toBe('refused: unknown projectId "far-only".')
+    const far = await appStartThread(reg, inProject, { threadType: 'chat', provider: 'claude', firstMessage: 'go', projectId: 'far-only', environmentId: 'mac' })
+    expect(far).toMatchObject({ threadId: 'env_m:t1' })
+    expect(asked[0]).toMatchObject({ host: 'mac', projectId: mine.id, cwd: mine.cwd })
+    // A project this host has is the one sent.
+    await appStartThread(reg, inProject, { threadType: 'chat', provider: 'claude', firstMessage: 'go', projectId: mine.id, environmentId: 'mac' })
+    expect(asked[1]).toMatchObject({ projectId: mine.id })
+  } finally {
+    setAppCrossHost(null)
+  }
+})
