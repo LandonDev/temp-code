@@ -2,88 +2,62 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// What one thread row reads. The shell builds it from a `SessionMeta` and
-/// the cache's seen state; L4's fleet rows build the same shape by hand.
-struct ThreadRowModel: Hashable {
-    var title: String
-    var type: ThreadType?
-    var status: SessionStatus
-    /// Settled work the user has not looked at: the title goes semibold.
-    var unseen = false
-    var model: String
-    /// `done/total` with the current task when the thread has tasks, else the last activity.
-    var detail: String?
-    var updatedAt: Int
-    var busySince: Int?
-    /// The spinner leads and the trailing time runs.
-    var running = false
-    var pinned = false
-    /// A subagent under its root: one step in, the agent glyph instead of the type.
-    var agent: AgentType?
-}
-
-extension ThreadRowModel {
-    init(session: SessionMeta, unseen: Bool = false) {
-        let child = session.parentId != nil
-        title = session.title.isEmpty ? (child ? "Subagent" : "Untitled") : session.title
-        type = session.threadType
-        status = session.status
-        self.unseen = unseen
-        model = ModelName.short(session.model)
-        detail = Self.detail(of: session)
-        updatedAt = session.updatedAt
-        busySince = session.busySince
-        running = HomeModel.isLive(session)
-        pinned = session.pinned
-        agent = child ? session.agentType : nil
-    }
-
-    /// The second line's variable half: tasks first, since they say where the work is.
-    nonisolated static func detail(of session: SessionMeta) -> String? {
-        if let tasks = session.tasks, tasks.total > 0 {
-            let count = "\(tasks.done)/\(tasks.total)"
-            if let current = tasks.current, !current.isEmpty { return "\(count) \(current)" }
-            return count
-        }
-        if let activity = session.activity, !activity.isEmpty { return activity }
-        return nil
-    }
-
-    /// The weight of the title, and of every glyph beside it.
-    var weight: Font.Weight { unseen ? .semibold : .regular }
-}
-
 /// The one row shape every list shares: 44 pt minimum, the status dot or
 /// spinner, the tinted type glyph at the title's weight, the title
-/// (semibold while unseen), a dim line with the model and the tasks or
-/// activity that cross-fades without changing height, the time trailing in
-/// tabular digits that roll. Subagents step in with the agent glyph. No
-/// chevron: every row pushes. The separator starts at the title.
-struct ThreadRow: View {
+/// (semibold while unseen) with one muted word after it when the thread is
+/// a master, a dim line with the model and the tasks or activity (or the
+/// host's verdict in destructive when the thread failed) that cross-fades
+/// without changing height, the time trailing in tabular digits that roll.
+/// Subagents step in with the agent glyph. No chevron: every row pushes. The
+/// separator starts at the title. The model is `ThreadRowModel` in the
+/// client package; this file only draws it.
+///
+/// `accessory` sits between the second line and the pin: an account mark, a
+/// count, nothing by default. A sibling that needs more puts it there or in
+/// the `menu:` slot of `.threadRowActions`, never in this file.
+struct ThreadRow<Accessory: View>: View {
     let row: ThreadRowModel
+    let accessory: Accessory
     @Environment(\.dynamicTypeSize) private var typeSize
     @ScaledMetric(relativeTo: .subheadline) private var gap = Layout.rowGap
     @ScaledMetric(relativeTo: .subheadline) private var textEdge = Layout.rowTextEdge
 
+    init(row: ThreadRowModel, @ViewBuilder accessory: () -> Accessory) {
+        self.row = row
+        self.accessory = accessory()
+    }
+
+    /// The weight of the title, and of every glyph beside it.
+    private var weight: Font.Weight { row.emphasized ? .semibold : .regular }
+
     var body: some View {
         HStack(alignment: .center, spacing: gap) {
-            StatusDot(status: row.status, running: row.running, weight: row.weight)
+            StatusDot(status: row.status, running: row.running, weight: weight)
             if let agent = row.agent {
-                AgentGlyph(type: agent, weight: row.weight)
+                AgentGlyph(type: agent, weight: weight)
             } else {
-                TypeGlyph(type: row.type, weight: row.weight)
+                TypeGlyph(type: row.type, weight: weight)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(row.title)
-                    .textStep(.title, weight: row.weight)
-                    .lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
-                ThreadRowSecondLine(model: row.model, detail: row.detail)
+                HStack(alignment: .firstTextBaseline, spacing: Layout.tagGap) {
+                    Text(row.title)
+                        .textStep(.title, weight: weight)
+                        .lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
+                    if let tag = row.tag {
+                        // The tag never truncates; the title does.
+                        Text(tag)
+                            .textStep(.meta)
+                            .fixedSize()
+                    }
+                }
+                ThreadRowSecondLine(line: row.secondLine, model: row.model)
             }
             Spacer(minLength: 8)
             HStack(spacing: 6) {
+                accessory
                 if row.pinned {
                     Image(systemName: "pin.fill")
-                        .font(.caption2.weight(row.weight))
+                        .font(.caption2.weight(weight))
                         .foregroundStyle(.tertiary)
                         .accessibilityLabel("Pinned")
                 }
@@ -91,18 +65,26 @@ struct ThreadRow: View {
             }
         }
         .padding(.leading, row.agent == nil ? 0 : Layout.indent)
-        .padding(.vertical, 6)
+        .padding(.vertical, Layout.rowVertical)
         .frame(minHeight: Layout.rowHeight)
         .separatorAtTextEdge(textEdge + (row.agent == nil ? 0 : Layout.indent))
         .accessibilityElement(children: .combine)
     }
 }
 
-/// The model, then the tasks or activity. The variable half cross-fades
-/// when it changes (2 pt of blur) and the line never changes height.
+extension ThreadRow where Accessory == EmptyView {
+    /// The row with nothing in the accessory slot.
+    init(row: ThreadRowModel) {
+        self.init(row: row) { EmptyView() }
+    }
+}
+
+/// The model, then the tasks or activity, or the host's verdict on a failed
+/// turn in destructive. The variable half cross-fades when it changes (2 pt
+/// of blur) and the line never changes height, so rows in one list share one.
 struct ThreadRowSecondLine: View {
+    let line: ThreadRowModel.SecondLine
     let model: String
-    let detail: String?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -110,13 +92,21 @@ struct ThreadRowSecondLine: View {
                 .textStep(.meta)
                 .lineLimit(1)
                 .layoutPriority(1)
-            if detail != nil {
-                Text(" · ")
-                    .textStep(.meta)
-                    .layoutPriority(1)
+            switch line {
+            case .failure(let summary):
+                separator
+                SwapText(summary, step: .meta, tint: Tint.destructive)
+            case .detail(let detail):
+                if detail != nil { separator }
+                SwapText(detail, step: .meta)
             }
-            SwapText(detail, step: .meta)
         }
+    }
+
+    private var separator: some View {
+        Text(" · ")
+            .textStep(.meta)
+            .layoutPriority(1)
     }
 }
 

@@ -3,8 +3,8 @@ import Foundation
 /// A model id as a row reads it: "claude-sonnet-5-5" → "Sonnet 5.5",
 /// "gpt-6.1-sol" → "GPT-6.1 Sol". The catalog's own names replace this once a
 /// screen has them; the row must read right from the cache before any socket.
-enum ModelName {
-    nonisolated static func short(_ id: String) -> String {
+public enum ModelName {
+    public static func short(_ id: String) -> String {
         var parts = id.split(separator: "-").map(String.init)
         if parts.count > 1, parts[0] == "claude" { parts.removeFirst() }
         // A trailing "5-5" or "4-8" is a version: join it with a dot.

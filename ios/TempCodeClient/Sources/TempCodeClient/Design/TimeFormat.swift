@@ -2,10 +2,10 @@ import Foundation
 
 /// The desktop's time formats (src/renderer/src/lib/format.ts), so the two
 /// apps read the same at a glance. Every string here is digits a stamp can
-/// roll: the views in LiveText.swift wrap them.
-enum TimeFormat {
-    /// "now", "3m", "2h", "5d", then "Oct 3".
-    nonisolated static func ago(_ ms: Int, now: Date = .now) -> String {
+/// roll: the app's LiveText views wrap them. Pure, so the package tests it.
+public enum TimeFormat {
+    /// "now", "3m", "2h", "5d", then "Oct 3". An epoch of zero or less reads as nothing.
+    public static func ago(_ ms: Int, now: Date = .now) -> String {
         guard ms > 0 else { return "" }
         let seconds = max(0, Int((now.timeIntervalSince1970 - Double(ms) / 1000).rounded()))
         if seconds < 60 { return "now" }
@@ -18,8 +18,8 @@ enum TimeFormat {
         return Date(timeIntervalSince1970: Double(ms) / 1000).formatted(.dateTime.month(.abbreviated).day())
     }
 
-    /// "12s", "3m 4s", "2h 5m", "1d 3h".
-    nonisolated static func duration(ms: Int) -> String {
+    /// "12s", "3m 4s", "2h 5m", "1d 3h"; never below "0s".
+    public static func duration(ms: Int) -> String {
         let s = max(0, ms / 1000)
         if s < 60 { return "\(s)s" }
         let m = s / 60
@@ -30,22 +30,31 @@ enum TimeFormat {
     }
 
     /// The running span since `ms`, as of `now`.
-    nonisolated static func elapsed(since ms: Int, now: Date = .now) -> String {
+    public static func elapsed(since ms: Int, now: Date = .now) -> String {
         duration(ms: Int(now.timeIntervalSince1970 * 1000) - ms)
     }
 
     /// A moment as a transcript stamp reads it: "9:41 AM" today, "Mon 9:41 AM"
-    /// this week, "Oct 3, 9:41 AM" before that; the year only when it differs.
-    nonisolated static func stamp(_ ms: Int, now: Date = .now, calendar: Calendar = .current) -> String {
+    /// within six days, "Oct 3, 9:41 AM" before that; the year only when it
+    /// differs. `calendar` carries the time zone and locale a test fixes.
+    public static func stamp(_ ms: Int, now: Date = .now, calendar: Calendar = .current) -> String {
         let date = Date(timeIntervalSince1970: Double(ms) / 1000)
-        let time = date.formatted(.dateTime.hour().minute())
+        let locale = calendar.locale ?? .current
+        let zone = calendar.timeZone
+        func format(_ style: Date.FormatStyle) -> String {
+            var style = style
+            style.locale = locale
+            style.timeZone = zone
+            return date.formatted(style)
+        }
+        let time = format(.dateTime.hour().minute())
         if calendar.isDate(date, inSameDayAs: now) { return time }
         if let week = calendar.date(byAdding: .day, value: -6, to: now), date > week {
-            return "\(date.formatted(.dateTime.weekday(.abbreviated))) \(time)"
+            return "\(format(.dateTime.weekday(.abbreviated))) \(time)"
         }
         if calendar.isDate(date, equalTo: now, toGranularity: .year) {
-            return "\(date.formatted(.dateTime.month(.abbreviated).day())), \(time)"
+            return "\(format(.dateTime.month(.abbreviated).day())), \(time)"
         }
-        return "\(date.formatted(.dateTime.month(.abbreviated).day().year())), \(time)"
+        return "\(format(.dateTime.month(.abbreviated).day().year())), \(time)"
     }
 }

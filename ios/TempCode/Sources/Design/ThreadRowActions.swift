@@ -4,14 +4,20 @@ import TempCodeContract
 
 /// What a thread row can do without opening it: swipe leading to pin,
 /// swipe trailing to archive (or bring back), and a context menu with
-/// Rename, Pin and Archive. Every action goes out as its RPC and the
-/// `sessions` push brings the row's new state; a key that cannot act sees
-/// the actions disabled with the reason as the menu's first line. The
-/// swipe tints are the system's (orange pin, gray archive, blue restore)
-/// so the gestures read the same as Mail's.
-struct ThreadRowActions: ViewModifier {
+/// Rename, Pin, the caller's own rows, and Archive. Every action goes out
+/// as its RPC and the `sessions` push brings the row's new state; a key
+/// that cannot act sees the actions disabled with the reason as the menu's
+/// first line. The swipe tints are the system's (orange pin, gray archive,
+/// blue restore) and their glyphs filled, so the gestures read the same as
+/// Mail's; the menu's glyphs are outline, like every menu's.
+///
+/// `menu` is the slot for a sibling's rows (Start now on a queued thread,
+/// Resume on a stopped one): they render after Pin and before the Divider
+/// that sets Archive apart.
+struct ThreadRowActions<Menu: View>: ViewModifier {
     let client: EnvironmentClient
     let meta: SessionMeta
+    let menu: () -> Menu
     @State private var renaming = false
     @State private var title = ""
     @State private var failure: String?
@@ -55,6 +61,7 @@ struct ThreadRowActions: ViewModifier {
                     Label(meta.pinned ? "Unpin" : "Pin", systemImage: meta.pinned ? "pin.slash" : "pin")
                 }
                 .disabled(block != nil)
+                menu()
                 Divider()
                 Button(role: meta.archived ? nil : .destructive) {
                     act { try await client.setArchived(meta.id, !meta.archived) }
@@ -89,7 +96,13 @@ struct ThreadRowActions: ViewModifier {
 }
 
 extension View {
+    /// Swipe, context menu and the rename and failure alerts for one thread row.
     func threadRowActions(client: EnvironmentClient, meta: SessionMeta) -> some View {
-        modifier(ThreadRowActions(client: client, meta: meta))
+        modifier(ThreadRowActions(client: client, meta: meta) { EmptyView() })
+    }
+
+    /// The same, with the caller's rows after Pin and before Archive.
+    func threadRowActions<Menu: View>(client: EnvironmentClient, meta: SessionMeta, @ViewBuilder menu: @escaping () -> Menu) -> some View {
+        modifier(ThreadRowActions(client: client, meta: meta, menu: menu))
     }
 }
