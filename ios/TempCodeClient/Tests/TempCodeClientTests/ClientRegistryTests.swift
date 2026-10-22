@@ -114,7 +114,7 @@ private final class RegistryRig {
         rig.registry.setVisible(environmentId: "env_b", sessionId: "s9", listVisible: true)
         #expect(rig.registry.client("env_a")?.visibleThread == nil)
         #expect(rig.registry.client("env_b")?.visibleThread == "s9")
-        #expect(rig.registry.clients.values.allSatisfy(\.listVisible))
+        #expect(rig.registry.clients.values.allSatisfy { $0.listVisible })
         rig.registry.setVisible(environmentId: nil, sessionId: nil, listVisible: false)
         #expect(rig.registry.clients.values.allSatisfy { $0.visibleThread == nil && !$0.listVisible })
         // A client made before `setQuietly` publishes through it too: the first paint is quiet.

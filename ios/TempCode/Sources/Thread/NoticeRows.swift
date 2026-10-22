@@ -166,7 +166,7 @@ struct ReviewCard: View {
 /// One finding: the place in mono, the claim, and the failure scenario
 /// under the thumb. The row is a button only when there is a scenario to show.
 struct ReviewFindingRow: View {
-    let finding: ReviewFinding
+    let finding: TempCodeContract.ReviewFinding
     let strong: Bool
     @State private var open = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -343,6 +343,28 @@ struct PlanHandoffRow: View {
     let client: EnvironmentClient
 
     var body: some View {
-        AgentLinkRow(childId: line.detail, client: client, fallback: "Build started · \(line.text)", symbol: "hammer")
+        if let buildId = line.agentId, let build = client.session(buildId) {
+            NavigationLink(value: ThreadScreenRoute(sessionId: buildId)) {
+                HStack(spacing: 10) {
+                    StatusDot(status: build.status, running: Fleet.isLive(build.status))
+                    AgentGlyph(type: build.agentType)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(build.title.isEmpty ? line.text : build.title)
+                            .font(.subheadline)
+                            .lineLimit(1)
+                        Text(ModelName.short(build.model))
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 8)
+                }
+                .padding(.horizontal, 8)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.pressable)
+        } else {
+            QuietLine(symbol: "hammer", text: "Build started · \(line.text)")
+        }
     }
 }

@@ -144,7 +144,7 @@ private let plansOff = PlanSettings(autoImplement: false, archiveAfterStart: tru
         let set = rules(["claude:claude-fable-5-1": ModelPolicy(approved: .string("orchestrators"))])
         let claude = Reviewers.options(provider: .claude, catalog: catalog, rules: set, current: "claude-sonnet-5-5")
         #expect(claude.map(\.model) == ["claude-sonnet-5-5"])
-        #expect(claude.allSatisfy(\.approved))
+        #expect(claude.allSatisfy { $0.approved })
         let unfiltered = Reviewers.options(provider: .claude, catalog: catalog, rules: nil, current: "claude-sonnet-5-5")
         #expect(unfiltered.map(\.model) == ["claude-fable-5-1", "claude-sonnet-5-5"])
         let kept = Reviewers.options(provider: .claude, catalog: catalog, rules: set, current: "claude-fable-5-1")

@@ -36,6 +36,8 @@ private final class NotesRig {
                 switch sent.method {
                 case "workspace.list": fake.answer(id: sent.id, result: json([sampleWorkspace("w1")]))
                 case "project.list": fake.answer(id: sent.id, result: json([sampleProject("p1")]))
+                // The client asks for the change log at open; reset makes it list whole.
+                case "session.changes": fake.answer(id: sent.id, result: json(SessionChanges(reset: true, seq: 1, generation: "g")))
                 case "session.list": fake.answer(id: sent.id, result: json(SessionPage(sessions: [sampleSession("s1"), sampleSession("s2")], cursor: nil)))
                 case "session.subscribe": fake.answer(id: sent.id, result: "null")
                 case "session.events": fake.answer(id: sent.id, result: json(EventsPage(rows: [textRow("s1", seq: 1)], moreBefore: false, moreAfter: false, reset: false)))

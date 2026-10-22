@@ -246,7 +246,7 @@ private struct InboxLabels: View {
 }
 
 /// Children laid left to right, wrapping to the next line when the row is full.
-private nonisolated struct FlowRow: Layout {
+private nonisolated struct FlowRow: SwiftUI.Layout {
     var spacing: CGFloat = 6
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {

@@ -470,7 +470,7 @@ public struct ThreadFold: Sendable, Hashable {
                     break
                 }
             }
-            append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .status, text: event.message, detail: event.kind, stopped: false, notice: event)))
+            append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .status, text: event.message, detail: event.kind.rawValue, stopped: false, notice: event)))
         case .context:
             break
         case .unknown:

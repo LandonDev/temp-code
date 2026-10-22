@@ -138,7 +138,7 @@ private func isSearching(_ state: SearchHostFoot.State) -> Bool {
 /// the children land in whatever order the pool runs them.
 private func untilSettled(_ answers: inout AsyncStream<SearchAnswer>.AsyncIterator) async -> [SearchAnswer] {
     var seen: [SearchAnswer] = []
-    while let next = await answers.next() {
+    while let next = await answers.next(isolation: #isolation) {
         seen.append(next)
         if !next.hosts.contains(where: { isSearching($0.state) }) { break }
     }

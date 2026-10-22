@@ -340,7 +340,7 @@ private struct TodoRowView: View {
         Button(action: toggle) {
             HStack(alignment: .firstTextBaseline, spacing: Layout.rowGap) {
                 TodoStatusGlyph(status: todo.status, live: live)
-                    .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + baselineDrop }
+                    .alignmentGuide(.firstTextBaseline) { [baselineDrop] in $0[VerticalAlignment.center] + baselineDrop }
                 Text(todo.content)
                     .font(.subheadline.weight(live ? .medium : .regular))
                     .foregroundStyle(live ? Color(.label) : todo.status == .completed ? Color(.secondaryLabel) : Color(.tertiaryLabel))

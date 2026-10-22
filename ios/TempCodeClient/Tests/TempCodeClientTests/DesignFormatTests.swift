@@ -15,7 +15,7 @@ private func ms(secondsAgo: Double) -> Int {
     @Test(arguments: [
         (0.0, "now"), (59.0, "now"), (60.0, "1m"), (59.0 * 60, "59m"), (3_600.0, "1h"),
         (23.0 * 3_600, "23h"), (24.0 * 3_600, "1d"), (6.0 * 86_400, "6d")
-    ])
+    ] as [(Double, String)])
     func `counts seconds, minutes, hours and days`(secondsAgo: Double, expected: String) {
         #expect(TimeFormat.ago(ms(secondsAgo: secondsAgo), now: now) == expected)
     }

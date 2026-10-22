@@ -34,7 +34,7 @@ private final class ScriptedFetch: Sendable {
 }
 
 @MainActor
-private func eventually(_ predicate: () -> Bool) async -> Bool {
+private func eventuallyOnMain(_ predicate: () -> Bool) async -> Bool {
     let deadline = ContinuousClock.now.advanced(by: .seconds(3))
     while ContinuousClock.now < deadline {
         if predicate() { return true }
@@ -51,7 +51,7 @@ private func eventually(_ predicate: () -> Bool) async -> Bool {
         let watcher = MasterReleaseWatcher(clock: clock, fetch: script.fetch)
         let first = Task { await watcher.run() }
         let second = Task { await watcher.run() }
-        #expect(await eventually { watcher.release?.release == 273 })
+        #expect(await eventuallyOnMain { watcher.release?.release == 273 })
         await clock.settle()
         #expect(script.calls == 1)
         #expect(watcher.release?.version == "1.0.273")
@@ -66,11 +66,11 @@ private func eventually(_ predicate: () -> Bool) async -> Bool {
         let script = ScriptedFetch([.body(#"{"n": 273}"#), .body(#"{"n": 274}"#)])
         let watcher = MasterReleaseWatcher(clock: clock, fetch: script.fetch)
         let run = Task { await watcher.run() }
-        #expect(await eventually { script.calls == 1 })
+        #expect(await eventuallyOnMain { script.calls == 1 })
         await clock.advance(ms: MasterReleaseWatcher.everyMs - 1)
         #expect(script.calls == 1)
         await clock.advance(ms: 1)
-        #expect(await eventually { watcher.release?.release == 274 })
+        #expect(await eventuallyOnMain { watcher.release?.release == 274 })
         #expect(script.calls == 2)
         run.cancel()
     }

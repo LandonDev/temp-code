@@ -197,7 +197,7 @@ private func snapshot(claude accounts: ProviderAccounts = claude(), updatedAt: I
         (3 * hour, "3h", "3 hours"),
         (3 * 24 * hour + 4 * hour, "3d 4h", "3 days 4 hours"),
         (24 * hour, "1d", "1 day")
-    ])
+    ] as [(Int, String, String)])
     func `until reads like the desktop, and spoken in words`(ms: Int, label: String, spoken: String) {
         #expect(HeadroomLook.until(now + ms, now: now) == label)
         #expect(HeadroomLook.spoken(now + ms, now: now) == spoken)
@@ -320,6 +320,8 @@ private final class AccountsRig {
                 switch sent.method {
                 case "workspace.list": fake.answer(id: sent.id, result: json([workspace()]))
                 case "project.list": fake.answer(id: sent.id, result: json(projects))
+                // The client asks for the change log at open; reset makes it list whole.
+                case "session.changes": fake.answer(id: sent.id, result: json(SessionChanges(reset: true, seq: 1, generation: "g")))
                 case "session.list": fake.answer(id: sent.id, result: json(SessionPage(sessions: [session(account: work)], cursor: nil)))
                 default: continue
                 }

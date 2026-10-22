@@ -83,6 +83,8 @@ private final class RelayRig {
                 switch sent.method {
                 case "workspace.list": fake.answer(id: sent.id, result: json([sampleWorkspace("w1")]))
                 case "project.list": fake.answer(id: sent.id, result: json([sampleProject("p1")]))
+                // The client asks for the change log at open; reset makes it list whole.
+                case "session.changes": fake.answer(id: sent.id, result: json(SessionChanges(reset: true, seq: 1, generation: "g")))
                 case "session.list": fake.answer(id: sent.id, result: json(SessionPage(sessions: [], cursor: nil)))
                 case "remote.push.register", "remote.push.status":
                     fake.answer(id: sent.id, result: json(PushStatus(registered: true, relay: .ok, error: nil, events: [.needsYou], updatedAt: 1)))

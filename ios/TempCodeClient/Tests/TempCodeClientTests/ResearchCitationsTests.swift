@@ -80,7 +80,7 @@ private func source(_ callId: String, url: String? = nil, query: String? = nil, 
         let plain = String(text.characters)
         #expect(plain == "GRDB maps rows \u{2009}1 and rows[0] is an index; see the docs too \u{2009}9.")
         let links = text.runs.compactMap { $0.link }.map(\.absoluteString)
-        #expect(links == ["https://x.dev", "tempcode-cite://1", "tempcode-cite-missing://9"])
+        #expect(links == ["tempcode-cite://1", "https://x.dev", "tempcode-cite-missing://9"], "in document order")
         #expect(decorated.textHash == document.textHash)
     }
 

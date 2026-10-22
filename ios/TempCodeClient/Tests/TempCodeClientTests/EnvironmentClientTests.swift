@@ -623,6 +623,9 @@ private func seqs(_ rows: [EventRow]) -> [Int] { rows.map(\.seq) }
     @Test func `a reconcile that confirms the list republishes nothing`() async throws {
         let cache = try SessionCache.inMemory()
         try await cache.upsertSessions("env_test", [clientSession("s1", updatedAt: 5), clientSession("s2", updatedAt: 2)])
+        // The workspaces and projects the rig answers, so they confirm the cache too.
+        try await cache.replaceWorkspaces("env_test", [sampleWorkspace("w1")])
+        try await cache.replaceProjects("env_test", [sampleProject("p1")])
         try await cache.setCursor("env_test", ListCursor(seq: 10, generation: "g1"))
         let rig = try ClientRig(cache: cache)
         var quiet = 0

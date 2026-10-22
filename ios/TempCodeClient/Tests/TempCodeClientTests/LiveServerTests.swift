@@ -407,7 +407,7 @@ struct LiveServerTests {
         // fs.media stamps the minting host on every URL.
         await primary.openThread(LiveServer.threadChat)
         #expect(await LiveServer.until { primary.threads[LiveServer.threadChat]?.rows.contains { if case .userText(let t) = $0.event { return t.attachments?.isEmpty == false } else { return false } } == true })
-        let attachment = try #require(primary.threads[LiveServer.threadChat]?.rows.lazy.compactMap { row -> Attachment? in
+        let attachment = try #require(primary.threads[LiveServer.threadChat]?.rows.lazy.compactMap { row -> TempCodeContract.Attachment? in
             if case .userText(let t) = row.event { return t.attachments?.first } else { return nil }
         }.first)
         let media = try #require(try await primary.request(Methods.FsMedia.self, .init(path: attachment.path)))

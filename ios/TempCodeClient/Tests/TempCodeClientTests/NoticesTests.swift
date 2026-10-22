@@ -11,8 +11,8 @@ private func finding(_ file: String, line: Int? = nil, verdict: ReviewFinding.Ve
     ReviewFinding(file: file, line: line, summary: "claim", failure_scenario: "scenario", verdict: verdict)
 }
 
-private func review(_ outcome: ReviewNotice.Outcome, blocking: Int = 0, minor: Int = 0, reason: String? = nil, minutes: Double? = nil) -> ReviewNotice {
-    ReviewNotice(runId: "r1", reviewerId: nil, provider: "codex", model: "gpt-6.1-sol", outcome: outcome, branch: "feature", target: "master", blocking: (0..<blocking).map { finding("a.ts", line: $0) }, minor: (0..<minor).map { finding("b.ts") }, merged: false, pushed: false, reason: reason, minutes: minutes)
+private func review(_ outcome: ReviewOutcome, blocking: Int = 0, minor: Int = 0, reason: String? = nil, minutes: Double? = nil) -> ReviewNotice {
+    ReviewNotice(runId: "r1", reviewerId: nil, provider: "codex", model: "gpt-6.1-sol", outcome: outcome, branch: "feature", target: "master", blocking: (0..<blocking).map { finding("a.ts", line: $0) }, minor: (0..<minor).map { _ in finding("b.ts") }, merged: false, pushed: false, reason: reason, minutes: minutes)
 }
 
 @Suite struct GateTextTests {

@@ -185,7 +185,7 @@ private let pendingApproval: [AgentEvent] = [
     private let type: [Line.Part] = [.type(.implementation), .model("claude-sonnet-5-5"), .account(nil)]
 
     private func line(_ status: SessionStatus, host: String? = nil, parentId: String? = nil, isMaster: Bool? = nil, activity: String? = nil, busySince: Int? = 500, frozen: Int? = nil, live: Bool? = nil) -> Line {
-        Line(session: meta("t", parentId: parentId, status: status, updatedAt: 900, threadType: .implementation, agentType: .reviewer, isMaster: isMaster, activity: activity, busySince: busySince, frozenActiveElapsed: frozen, treeHasLiveWork: live), hostName: host)
+        Line(session: meta("t", parentId: parentId, status: status, updatedAt: 900, frozenActiveElapsed: frozen, activity: activity, agentType: .reviewer, threadType: .implementation, isMaster: isMaster, busySince: busySince, treeHasLiveWork: live), hostName: host)
     }
 
     @Test("the mark and the parts by status", arguments: [SessionStatus.starting, .idle, .running, .waiting, .watching, .paused, .stopped, .queued, .error, .done, .unknown("odd")])

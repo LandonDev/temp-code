@@ -66,7 +66,7 @@ struct ActionTests {
         let running = ThreadBatch.targets(.pause, client.sessions, selection).map(\.id)
         #expect(Set(running) == ["ios-batch-a-run", "ios-batch-b-run"], "a subagent follows its parent: \(running)")
         let toast = try await client.batch(.pause, selection: selection)
-        #expect(toast.failed.isEmpty, toast.summary)
+        #expect(toast.failed.isEmpty, "\(toast.summary)")
         #expect(toast.succeeded == 2)
         let actions = try await LiveServer.actions()
         let paused = Set(actions.filter { $0["kind"] as? String == "pause" }.compactMap { $0["sessionId"] as? String })
@@ -74,7 +74,7 @@ struct ActionTests {
         #expect(await LiveServer.until { client.session("ios-batch-a-run")?.status == .paused })
         // Back the way it was, through the fleet's Resume all over the same project.
         let resumed = try await client.batch(.resume, selection: selection)
-        #expect(resumed.succeeded == 2, resumed.summary)
+        #expect(resumed.succeeded == 2, "\(resumed.summary)")
         #expect(await LiveServer.until { client.session("ios-batch-a-run")?.status == .running })
 
         if client.session("ios-queued")?.status == .queued {

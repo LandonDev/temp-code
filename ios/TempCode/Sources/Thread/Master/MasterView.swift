@@ -75,7 +75,7 @@ struct MasterView: View {
                             )
                             .listRowInsets(EdgeInsets())
                             .listRowSeparator(.visible)
-                            .alignmentGuide(.listRowSeparatorLeading) { _ in MasterLayout.bodyInset }
+                            .alignmentGuide(.listRowSeparatorLeading) { [inset = MasterLayout.bodyInset] _ in inset }
                             .listRowBackground(row.status == .waiting ? Surface.needsYou : Color.clear)
                         }
                     } header: {

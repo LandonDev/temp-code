@@ -67,17 +67,17 @@ nonisolated struct PushDecision: Sendable, Hashable {
 /// launch (`PushDelegate.handler`).
 final class PushDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     @MainActor static weak var handler: PushHandler?
-    private static let log = Logger(subsystem: "dev.landon.tempcode", category: "push")
+    nonisolated private static let log = Logger(subsystem: "dev.landon.tempcode", category: "push")
 
     /// The categories the host names in `aps.category` (remote/apnsPayload.ts).
     enum Category {
-        static let approval = "tc.approval"
-        static let thread = "tc.thread"
+        nonisolated static let approval = "tc.approval"
+        nonisolated static let thread = "tc.thread"
     }
 
     enum Action {
-        static let approve = "tc.approve"
-        static let deny = "tc.deny"
+        nonisolated static let approve = "tc.approve"
+        nonisolated static let deny = "tc.deny"
     }
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
@@ -123,11 +123,12 @@ final class PushDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCen
             return PushDecision(target: target, requestId: requestId, allow: response.actionIdentifier == Action.approve, title: content.title, subtitle: content.subtitle)
         }()
         // UIKit's handler is not Sendable in this SDK; it is made to be called once, on the main thread, which is where this lands.
+        let action = response.actionIdentifier
         nonisolated(unsafe) let finish = completionHandler
         Task { @MainActor in
             if let decision {
                 await PushDelegate.handler?.pushDecide(decision)
-            } else if let target, response.actionIdentifier == UNNotificationDefaultActionIdentifier {
+            } else if let target, action == UNNotificationDefaultActionIdentifier {
                 PushDelegate.route(target)
             }
             finish()

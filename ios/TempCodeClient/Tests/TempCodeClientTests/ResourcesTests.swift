@@ -8,7 +8,7 @@ private func row(_ id: String, sessionId: String = "s1", environmentId: String =
 }
 
 private func paired(_ id: String, name: String) -> PairedEnvironment {
-    PairedEnvironment(id: id, name: name, origin: URL(string: "https://\(name).example")!, caps: [.read], keyId: "K", keyName: "k", addedAt: 0)
+    PairedEnvironment(id: id, name: name, origin: URL(string: "https://\(id).example")!, caps: [.read], keyId: "K", keyName: "k", addedAt: 0)
 }
 
 @MainActor

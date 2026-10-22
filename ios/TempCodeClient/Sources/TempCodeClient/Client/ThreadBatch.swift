@@ -75,6 +75,12 @@ public struct BatchToast: Sendable, Hashable {
     public var summary: String
     public var succeeded: Int
     public var failed: [BatchFailure]
+
+    public init(summary: String, succeeded: Int, failed: [BatchFailure]) {
+        self.summary = summary
+        self.succeeded = succeeded
+        self.failed = failed
+    }
 }
 
 public enum ThreadBatch {

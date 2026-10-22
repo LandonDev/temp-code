@@ -143,8 +143,11 @@ public final class MarkdownCache {
 
     @discardableResult
     public func render(scope: MarkdownScope = MarkdownScope(), seq: Int, text: String) async -> MarkdownDocument {
-        if let ready = document(scope: scope, seq: seq, text: text) { return ready }
+        let ready = document(scope: scope, seq: seq, text: text)
         let key = Key(scope: scope, seq: seq, textHash: text.hashValue)
+        // While the settled parse runs, `document` answers the streaming
+        // render as a stand-in; the caller asked for the settled one.
+        if let ready, !inflight.contains(key) { return ready }
         let row = slot(key)
         while inflight.contains(key) { try? await Task.sleep(for: .milliseconds(5)) }
         return row.document ?? MarkdownDocument.parse(text)

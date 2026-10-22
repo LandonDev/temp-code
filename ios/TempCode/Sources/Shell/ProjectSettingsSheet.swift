@@ -173,7 +173,7 @@ struct ProjectSettingsSheet: View {
                     Section {
                         NavigationLink(value: PreambleScope.project(projectId: project.id, workspaceId: project.workspaceId)) {
                             LabeledContent("Project rules") {
-                                Text(PreambleRow.summary(project: project, workspace: workspace))
+                                Text(TempCodeClient.PreambleRow.summary(project: project, workspace: workspace))
                                     .foregroundStyle(.secondary)
                             }
                         }
@@ -181,7 +181,7 @@ struct ProjectSettingsSheet: View {
                         if let workspace {
                             NavigationLink(value: PreambleScope.workspace(workspaceId: workspace.id)) {
                                 LabeledContent("Workspace default") {
-                                    Text(PreambleRow.summary(workspace: workspace))
+                                    Text(TempCodeClient.PreambleRow.summary(workspace: workspace))
                                         .foregroundStyle(.secondary)
                                 }
                             }
