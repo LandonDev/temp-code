@@ -78,7 +78,7 @@ export function ChildPane({
 
   return (
     <div ref={paneRef} tabIndex={-1} onKeyDown={onKey} className="flex min-h-0 min-w-0 flex-1 flex-col outline-none" data-child-pane={sessionId}>
-      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-content/10 pr-3 pl-1.5">
+      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-content/10 pr-3 pl-1.5">
         <button
           type="button"
           onClick={onBack}

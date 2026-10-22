@@ -179,16 +179,18 @@ implicit "setup" row).
 
 ### Master — the project's batch
 
-A thread pinned as its project's master (`ProjectMeta.masterThreadId`) routes
-to `MasterView` whatever its type (CLAUDE.md "Master threads",
-docs/master-threads.md for the why). The board | sash | chat recipe
-(SplitShell): the batch on the left, the master's own chat on the right,
-folding to the edge tab. Until the first child the chat is the whole view.
-A child of the batch is never a tab: it lives on the board, and opens in
-the right pane in the chat's place.
+A thread whose `isMaster` flag is on routes to `MasterView` whatever its
+type (CLAUDE.md "Master threads", docs/master-threads.md for the why); a
+project may have any number of masters, each with its own batch, and the
+tab's or the rail row's menu makes one ("Make master thread" / "Not a
+master", `session.setMaster`). The board | sash | chat recipe (SplitShell):
+the batch on the left, the master's own chat on the right, folding to the
+edge tab. Until the first child the chat is the whole view. A child of the
+batch is never a tab: it lives on the board, and a click puts its full view
+in the whole pane, with Back.
 
 ```
-┌ iOS batch 2                                      Pause all  [+ Thread] ┐
+┌ iOS batch 2                                            ⋯  [+ Thread ▾] ┐
 │ Needs you  1                                                           │
 │  ☷  Live Activity strip  Implementation                                │
 │  ●  has a question — Ad Hoc or Debug?        (hover: ✉ ⏸ ■ ✕ at right) │
@@ -218,13 +220,23 @@ the right pane in the chat's place.
 │ ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬░░░░░░░░░░░░░░                                        │
 │ │ ✓ typecheck 12s                                                      │
 │ │ vitest  src/main/server/batch.test.ts (14 tests) 120ms              │
-│ ○ Release   ○ Deploy                                                   │
+│ ○ Release   ○ Deploy to dev  ./deploy.sh dev   ○ Smoke test            │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Title bar**: the batch name (the master's title), a quiet Pause all (the
-  fleet switches' running-turn rule, confirmed with the live count), and
-  + Thread. No counts sentence: the sections carry their counts.
+- **Title bar**: the batch name (the master's title), a quiet ⋯ and
+  + Thread ▾. The ⋯ menu is the batch's fleet switches
+  (`master/boardActions.ts`): Pause all (the running-turn rule, confirmed
+  with the live count), Resume all, then Archive done… and Archive all…
+  (`master/ArchiveBatchDialog.tsx`: "Archive 3 done threads?" / "Archive
+  all 7 threads?" with the live count, the resources checkbox the fleet's
+  Archive done offers, `batch.archive`; a running thread is stopped first,
+  the master stays; the rows leave from the push). A row with nothing to
+  act on is disabled. + Thread is a menu: New thread… (the add sheet) and
+  Add existing thread… (`master/AdoptThreadDialog.tsx`: the project's
+  unarchived root threads on this host in no batch and no master
+  themselves, one checkbox row each; Add is `batch.adopt`). No counts
+  sentence: the sections carry their counts.
 - **Sections**, each a muted 12px label with its count, in this order: Needs
   you (waiting, error), Running (starting, running, watching, paused), Queued
   (waiting for a sibling: there is no running cap), Done (idle, stopped). An
@@ -254,32 +266,40 @@ the right pane in the chat's place.
   Implementation; the plan, archived after the start or not, is never a
   second row.
 - **Hover** trades the tally and the model mark for the action cluster
-  (1.5px strokes, tooltips): Message (opens the thread in the pane with the
+  (1.5px strokes, tooltips): Message (opens the thread's full view with the
   composer focused), Pause or Resume, Stop, Remove (archive with the
   resources offer, ArchiveThreadDialog). A queued row offers Start now
   (`session.start`, past `after`) and "Remove from queue" (the fleet
   switches' Stop on a queued root, which archives it).
-- **Click** opens the thread in the right pane (`master/ChildPane.tsx`):
-  the pane becomes the thread's own view, the one its type gets as a tab
-  (the implementation board, the plan document, the fleet), over its
-  transcript and a one-line composer that sends while it is idle and
-  steers while it runs, with Stop beside Send. The header is one Back
-  control; Escape or ⌘↩ anywhere in the pane goes back to the master's
-  chat. The row reads `aria-current` while open. Nothing opens a tab; the
-  strip never lists a child (`isBatchChild` in lib/threadStripModel.ts).
+- **Click** opens the thread's full view in the board's place
+  (`master/ChildPane.tsx`): the whole pane, board and master chat gone,
+  becomes the thread's own view, the one its type gets as a tab (the
+  implementation board, the plan document, the fleet), over its transcript
+  and a one-line composer that sends while it is idle and steers while it
+  runs, with Stop beside Send. The header is one Back control on the same
+  40px bar as the board's title; Escape or ⌘↩ anywhere in the view goes
+  back, and the board returns at the scroll it was left at. Nothing opens a
+  tab; the strip never lists a child (`isBatchChild` in
+  lib/threadStripModel.ts).
 - **The foot** (`master/BatchFoot.tsx`, the step rules in `master/steps.ts`)
   stays put under the scrolling list: "When the threads are done", the
   master's summary line when it wrote one, the rules as one sentence
-  (`rulesSentence`: how branches land, the gate, the release, the Mac
-  release, the deploy, then notify or archive) with Edit beside it, and the
-  blocked line in red when a child blocks the batch's end. Then the steps,
-  in two sizes. Idle: one quiet row, each step its glyph, name and, once
-  finished, how long it took ("Gate 4m 12s"; "skipped" after one the rules
-  left out). The moment a step runs the foot grows to its console: the
-  steps before it in a line above with their state and time; the running
-  step's name with its elapsed ticking every second from `startedAt`, its
-  progress as "3 of 7" with the host's label and a 2px bar when the total
-  is known, Stop at the right (`batch.stop`); its console lines in the
+  (`rulesSentence`: how branches land, then the steps by the names the
+  master gave them, then notify or archive) with Edit beside it, and the
+  blocked line in red when a child blocks the batch's end. Then the steps:
+  the master's list (`rules.steps`, a `BatchStepSpec` each: id, name, kind,
+  a shell step's command and cwd) joined by id with the host's telemetry
+  (`state.steps`; `liveSteps` in `master/steps.ts`), in the state's order,
+  a step the rules name that the host has not seen yet pending at the end;
+  the renderer writes no step name of its own. Two sizes. Idle: one quiet
+  row, each step its glyph, name and, once finished, how long it took
+  ("Gate 4m 12s"; "skipped" after one the engine passed over). The moment
+  a step runs the foot grows to its console, the same for a shell step
+  (its command in mono after the name) as for a publish: the steps before
+  it in a line above with their state and time; the running step's name
+  with its elapsed ticking every second from `startedAt`, its progress as
+  "3 of 7" with the host's label and a 2px bar when the total is known,
+  Stop at the right (`batch.stopStep` with the step's id); its console lines in the
   app's monospace, newest at the bottom, following until the person scrolls
   up (back at the bottom, it follows again); the steps still ahead in a
   muted row below. A failed step stays open with its last lines and the
@@ -289,12 +309,20 @@ the right pane in the chat's place.
   the idle row and the console both mounted so either can tween shut, the
   hidden one inert. Read on mount, every 5 s while the pane shows, and from
   the `batch` push when one arrives.
-- **Edit** opens the rules (`master/RulesDialog.tsx`, Modal sm): Branches
-  land (As they finish / All at once), Gate the merged tree, Release,
-  Publish Mac release, Deploy (Nowhere / The box), Then (Notify me /
-  Archive the threads), Summary, the sentence read back under the fields;
-  Save is `batch.setRules`, the foot takes the change from the push.
-- **+ Thread** opens the add sheet (Modal md, `master/AddThreadDialog.tsx`):
+- **Edit** opens the rules (`master/RulesDialog.tsx`, Modal md; the pure
+  moves in `master/rulesEdit.ts`): Branches land (As they finish / All at
+  once, shown while a merge step is in the list), then the steps in order,
+  one row each: its number, its name in a field, its kind or a shell step's
+  command muted, and Up, Down, Remove. Under them "Add a step…": a built-in
+  kind (Merge the branches, Gate the merged tree, Release, Publish the Mac
+  release, Deploy to the box) lands at once with its name; Shell command
+  opens a draft with a name, the command (exit 0 passes) and a directory
+  (default the project), and its own Add. Then (Notify me / Archive the
+  threads), Summary, the sentence read back under the fields. Save stays
+  off while a step has no name or a shell step no command; it is
+  `batch.setRules` with the whole list, the foot takes the change from the
+  push.
+- **New thread…** opens the add sheet (Modal md, `master/AddThreadDialog.tsx`):
   "Add a thread to <batch>", the brief first (focused; ⌘↩ adds), then one
   row per choice, label left and control right: Type (segmented), Model
   (the app's picker, every catalog model), Effort (segmented from the
@@ -303,7 +331,9 @@ the right pane in the chat's place.
   its paired copy of the project and is disabled without one), After
   ("Nothing, start now", else a sibling). Cancel, Add. One column, nothing
   scrolls. Add is `session.create` with `masterId` and `after` plus the
-  brief as the first message; the row arrives from the push.
+  brief as the first message; the row arrives from the push. Its model
+  menu, like every Popover opened inside a Modal, reads the dialog's layer
+  (`LayerContext` in lib/layers.ts) and sits above the sheet.
 - **Everywhere else** a child is an ordinary root thread in the rail with
   its activity line ("Queued · waiting for <sibling>") and its own working
   strip with one quiet Start now; only the strip and its shelf leave it out.

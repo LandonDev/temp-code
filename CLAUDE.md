@@ -1335,13 +1335,31 @@ this is the short one.
   thread to run typecheck and the tests it wrote or touched, never the full
   suite or the build, and to land with `merge_branch`.
 - **The view** (docs/LAYOUT.md "Master"): `MasterView` (surfaces/threads,
-  routed when the session is its project's master, whatever its type) on
-  the SplitShell recipe, the board left of the master's chat; the board,
-  its rows, the foot and the add sheet are the UI thread's
-  (surfaces/threads/master/**). `lib/threadBatch.ts` exports
-  `hasRunningTurn` so the rows and Pause all use the fleet switches' rule.
-  The phone draws a queued root with the label "Queued" (StatusDot.swift),
-  never under Home's Running (`HomeModel.isLive`); no phone surface.
+  routed when the session's `isMaster` flag is on, whatever its type;
+  `isMasterThread(session)` and `useMasterIds()` in lib/masterThread.ts,
+  the tab's and the rail row's "Make master thread" / "Not a master" over
+  `session.setMaster`) on the SplitShell recipe, the board left of the
+  master's chat; the board, its rows, the foot, the dialogs and the add
+  sheet are surfaces/threads/master/**. A row's click puts the child's
+  full view in the whole pane with one Back control (`master/ChildPane.tsx`;
+  Escape and ⌘↩ go back; the board keeps its scroll). The title bar's ⋯
+  menu is the batch's fleet switches (Pause all, Resume all, Archive
+  done…, Archive all… over `batch.archive`, with the live count and the
+  resources checkbox; `master/boardActions.ts`), + Thread a menu with New
+  thread… and Add existing thread… (`batch.adopt`, the project's roots in
+  no batch). The foot and the rules dialog read the steps as the master's
+  list: `master/steps.ts` joins `rules.steps` with `state.steps` by id (a
+  step the rules name that the host has not seen is pending at the end),
+  the console is the same for a shell step (its command in mono) as for a
+  publish, Stop is `batch.stopStep { stepId }`, and the dialog
+  (`master/rulesEdit.ts`) reorders, renames, adds a built-in kind or a
+  shell command with a cwd and removes steps; no step name is written in
+  the renderer. A Popover opened inside a Modal reads the dialog's layer
+  (`LayerContext`, lib/layers.ts) and sits above it. `lib/threadBatch.ts`
+  exports `hasRunningTurn` so the rows and Pause all use the fleet
+  switches' rule. The phone draws a queued root with the label "Queued"
+  (StatusDot.swift), never under Home's Running (`HomeModel.isLive`); no
+  phone surface.
 - **Proofs and tests.** `bun run script:e2e-master-batch`
   (scripts/e2e-master-batch.ts: the whole flow in one process, a haiku
   master pinned with `session.setMaster` beside a second master of the same
