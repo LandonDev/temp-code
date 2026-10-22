@@ -150,8 +150,10 @@ export interface StoredBatch {
   held: string[]
   blocked: BatchState['blocked']
   finishedAt: number | null
-  /** the engine runs on the next all-done; cleared when it has run, set by any change since */
+  /** the engine runs on the next all-done; cleared when it starts, set by a landing, a hold, a rules call or an adoption since */
   armed: boolean
+  /** the children when the end last started; a child not in it arms the engine. null: a row from before this field, filled at the next review */
+  ranChildren: string[] | null
   branches: Record<string, string>
   subjects: Record<string, string[]>
   holds: Record<string, HeldLanding>
@@ -167,6 +169,7 @@ export interface StoredBatch {
 export const freshRow = (masterId: string, rules: BatchRules = DEFAULT_BATCH_RULES): StoredBatch => ({
   ...emptyBatch(masterId, [], rules),
   armed: true,
+  ranChildren: [],
   branches: {},
   subjects: {},
   holds: {},
@@ -260,6 +263,14 @@ export interface BatchesDeps {
 const ROW_PREFIX = 'batch:'
 const DONE = new Set<SessionMeta['status']>(['done'])
 const BLOCKS: Partial<Record<SessionMeta['status'], 'errored' | 'stopped'>> = { error: 'errored', stopped: 'stopped' }
+/** What blocks the end on one child: errored, stopped, or idle on a turn
+ *  that ended in a failure (a usage limit, a refused route: the row's
+ *  `failure`). An idle child after a capped turn did no work; counting it
+ *  done once ended a batch with nothing new, every time the child retried. */
+function blockOf(m: { status: SessionMeta['status']; local?: SessionMeta | null }): 'errored' | 'stopped' | 'failed' | null {
+  if (m.local && m.local.status === 'idle' && m.local.failure) return 'failed'
+  return BLOCKS[m.status] ?? null
+}
 /** A thread on another host is done when its host said so, or when it went idle (its host reports a settle only after a turn). */
 const REMOTE_DONE = new Set<SessionMeta['status']>(['done', 'idle'])
 /** The connection number the engine subscribes to the deploy log with (never a socket's). */
@@ -382,19 +393,19 @@ export class Batches {
           // The Mac restarted into the release its own publish step made: the step is done, the rest waits for a message.
           this.end(row, publish.id, 'passed', `v${row.version} published; this host restarted into it`)
           this.save(row)
-          if (master) this.tell(master, 'done', `The batch's publish of v${row.version} landed and this host restarted into it; the steps after it did not run. Send a message to run the end of the batch again if the rules name a deploy.`)
+          if (master) this.tell(master, 'done', `The batch's publish of v${row.version} landed and this host restarted into it; the steps after it did not run. Call batch_rules to run the end of the batch again if the rules name a deploy.`)
           continue
         }
         this.end(row, publish.id, 'failed', 'the host restarted during the publish; its outcome is on the Mac')
         this.save(row)
-        if (master) this.tell(master, 'failed', `The batch's publish was running on the Mac when this host restarted; check the Mac's publish log, then send a message to run the end of the batch again.`)
+        if (master) this.tell(master, 'failed', `The batch's publish was running on the Mac when this host restarted; check the Mac's publish log, then call batch_rules to run the end of the batch again.`)
         continue
       }
       const shell = row.steps.find((s) => s.kind === 'shell' && s.status === 'running')
       if (shell) {
         this.end(row, shell.id, 'failed', 'the host restarted during the step')
         this.save(row)
-        if (master) this.tell(master, 'failed', `The batch's step "${shell.name}" was running when this host restarted; send a message to run the end of the batch again.`)
+        if (master) this.tell(master, 'failed', `The batch's step "${shell.name}" was running when this host restarted; call batch_rules to run the end of the batch again.`)
         continue
       }
       const deploy = this.byKind(row, 'deploy')
@@ -889,6 +900,7 @@ export class Batches {
   private done(s: SessionMeta): boolean {
     if (s.threadType === 'planning' && s.planCompletedAt && !s.implementationId) return false
     if (DONE.has(s.status)) return true
+    if (s.status === 'idle' && s.failure) return false
     return s.status === 'idle' && (this.deps.registry.hasCompletedTurn?.(s.id) ?? true)
   }
 
@@ -929,16 +941,23 @@ export class Batches {
       this.unreachable.set(masterId, new Set(r.unreachable))
       members = this.members(masterId)
     }
-    // Any child moving again arms the engine for the next all-done.
-    if (members.some((m) => !this.memberDone(m) && !BLOCKS[m.status]) && !row.armed) {
+    // The end runs once per cycle. What opens a new one: a landing (record,
+    // hold, a far landing), a rules call (setRules), an adopted child, or a
+    // child that was not in the batch when the end last ran. A child that
+    // merely moves and goes idle again does not: it once re-ran the gate and
+    // the release every ten minutes on a thread retrying a capped turn.
+    if (row.ranChildren === null) {
+      row.ranChildren = members.map((m) => m.id)
+      this.save(row)
+    } else if (!row.armed && members.some((m) => !row.ranChildren!.includes(m.id))) {
       row.armed = true
       this.save(row)
     }
     const down = this.unreachable.get(masterId)
     const away = down?.size ? members.find((m) => m.remote && down.has(m.remote.environmentId) && !this.memberDone(m)) : undefined
-    const blocker = members.find((m) => BLOCKS[m.status])
+    const blocker = members.find((m) => blockOf(m))
     const blocked: BatchState['blocked'] = blocker
-      ? { sessionId: blocker.id, why: BLOCKS[blocker.status]! }
+      ? { sessionId: blocker.id, why: blockOf(blocker)! }
       : away
         ? { sessionId: away.id, why: 'unreachable', environmentId: away.environmentId! }
         : null
@@ -957,7 +976,7 @@ export class Batches {
           'blocked',
           blocked.why === 'unreachable'
             ? `The batch cannot finish yet: batch thread "${who.title}" (${who.id})${where} is out of reach (the link to its host is down). It stays in the batch; the batch's steps run once the host is back and every thread is done.`
-            : `The batch cannot finish: batch thread "${who.title}" (${who.id})${where} ${blocked.why}. Fix it (a message, a new thread) or remove it (archive); the batch's steps run once every thread is done.`
+            : `The batch cannot finish: batch thread "${who.title}" (${who.id})${where} ${blocked.why === 'failed' ? `failed: ${who.local?.failure?.summary ?? 'its last turn ended in an error'}` : blocked.why}. Fix it (a message, a new thread) or remove it (archive); the batch's steps run once every thread is done.`
         )
       }
       return
@@ -976,6 +995,7 @@ export class Batches {
     const project = master.projectId ? this.deps.registry.getProject(master.projectId) : null
     if (!project) return
     row.armed = false
+    row.ranChildren = members.map((m) => m.id)
     row.finishedAt = null
     this.gating.add(master.id)
     let handedOff = false
@@ -1013,7 +1033,7 @@ export class Batches {
         } catch (err) {
           const why = err instanceof Error ? err.message : String(err)
           this.logLine(row, land, `✗ fetch: ${why}`)
-          return this.fail(master, row, land, `The batch could not bring ${project.cwd} up to origin/${target}: ${why}. Fix the checkout and send a message to run the batch's end again.`)
+          return this.fail(master, row, land, `The batch could not bring ${project.cwd} up to origin/${target}: ${why}. Fix the checkout, then call batch_rules to run the batch's end again.`)
         }
       }
       row.leftOut = this.leftOut(row, members)
@@ -1066,7 +1086,7 @@ export class Batches {
         case 'gate': {
           if (!target || (await this.branchOf(project.cwd)) !== target) {
             this.begin(row, spec.id, '')
-            this.fail(master, row, spec.id, `The project checkout at ${project.cwd} is not on ${target ?? 'the project branch'}; check it out there and send a message to run the batch's end again.`)
+            this.fail(master, row, spec.id, `The project checkout at ${project.cwd} is not on ${target ?? 'the project branch'}; check it out there, then call batch_rules to run the batch's end again.`)
             return 'failed'
           }
           const gate = await this.runStep(master, row, spec, { cwd: project.cwd, branch: target })
@@ -1083,8 +1103,10 @@ export class Batches {
             this.fail(master, row, spec.id, `The batch's release FAILED: ${lastLine(release.log)}\n\n${logTail(release.log, GATE_TEXT_TAIL)}`)
             return 'failed'
           }
-          const tag = releaseTag(release.log)
-          row.version = tag ? `1.0.${tag.slice('release-'.length)}` : null
+          // Nothing new since the last tag: the step is skipped, and a
+          // publish or deploy after it takes the existing v1.0.N.
+          const out = releaseOutcome(release.log)
+          row.version = out ? versionOf(out.tag) : null
           this.save(row)
           break
         }
@@ -1171,7 +1193,7 @@ export class Batches {
           if (!ok) {
             const step = this.step(row, spec.id)
             this.save(row)
-            this.tell(master, 'failed', `The batch's step "${spec.name}" FAILED: ${step.detail}\n\n${logTail(step.log.join('\n'), GATE_TEXT_TAIL)}\n\nFix it and send a message to run the end of the batch again.`)
+            this.tell(master, 'failed', `The batch's step "${spec.name}" FAILED: ${step.detail}\n\n${logTail(step.log.join('\n'), GATE_TEXT_TAIL)}\n\nFix it (land the fix, or call batch_rules once it is fixed outside the batch) to run the end of the batch again.`)
             return 'failed'
           }
           break
@@ -1254,6 +1276,7 @@ export class Batches {
     row.finishedAt = this.now()
     this.save(row)
     const outcome = (s: BatchStep): string | null => {
+      if (s.status === 'skipped' && s.kind === 'release') return s.detail
       if (s.status !== 'passed') return null
       // Each step with its time: the detail already says it for publish, deploy and a shell step.
       const took = s.startedAt !== undefined && s.endedAt !== undefined && !/ in \d/.test(s.detail) ? ` in ${formatDuration(s.endedAt - s.startedAt)}` : ''
@@ -1349,11 +1372,11 @@ export class Batches {
       }
       const notes = (args.notes?.trim() || this.notes(master, row)).replace(/\s+/g, ' ')
       const release = await this.runStep(master, row, releaseSpec, { cwd: project.cwd, branch: target, notes })
-      const tag = releaseTag(release.log)
       if (!release.ok) return `${passed}, but the release FAILED: ${lastLine(release.log)}\n\n${logTail(release.log, GATE_TEXT_TAIL)}`
-      row.version = tag ? `1.0.${tag.slice('release-'.length)}` : null
+      const out = releaseOutcome(release.log)
+      row.version = out ? versionOf(out.tag) : null
       this.save(row)
-      return `${passed} · ${tag ? `${tag} tagged` : lastLine(release.log)}`
+      return `${passed} · ${!out ? lastLine(release.log) : out.fresh ? `${out.tag} tagged` : `nothing to release since ${out.tag}`}`
     } finally {
       this.gating.delete(master.id)
     }
@@ -1408,6 +1431,14 @@ export class Batches {
       }
     )
     const waited = wait ? ` after ${fmtMs(this.now() - started - result.ms)} in the gate queue behind ${(wait as GateWait).ahead.length}` : ''
+    // A release with nothing new since the last tag cut nothing: the step
+    // is skipped with release.ts's own words, and no gate row says "passed".
+    const unchanged = kind === 'release' && result.ok ? releaseOutcome(result.log) : null
+    if (unchanged && !unchanged.fresh) {
+      this.end(row, id, 'skipped', `nothing to release since ${unchanged.tag}`)
+      this.save(row)
+      return { ...result, waited }
+    }
     const notice: GateNotice = { step: kind, branch: opts.branch, ok: result.ok, log: result.log, at: this.now() }
     this.deps.registry.append(master.id, { type: 'notice', kind: 'gate', message: gateLine(notice), gate: notice })
     const detail =
@@ -1529,6 +1560,7 @@ function parseRow(raw: string | null | undefined): StoredBatch | null {
       blocked: v.blocked ?? null,
       finishedAt: v.finishedAt ?? null,
       armed: v.armed ?? true,
+      ranChildren: Array.isArray(v.ranChildren) ? v.ranChildren : null,
       branches: v.branches ?? {},
       subjects: v.subjects ?? {},
       holds: v.holds ?? {},
@@ -1558,6 +1590,18 @@ function failedAt(log: string): string {
 export function releaseTag(log: string): string | null {
   return /tag (release-\d+)/.exec(log)?.[1] ?? null
 }
+
+/** What release.ts answered: the tag it cut (`fresh`), or the tag nothing
+ *  new followed ("nothing to release since release-N", scripts/releaseCheck.ts);
+ *  null when the log names neither. */
+export function releaseOutcome(log: string): { tag: string; fresh: boolean } | null {
+  const none = /nothing to release since (release-\d+)/.exec(log)
+  if (none) return { tag: none[1], fresh: false }
+  const tag = releaseTag(log)
+  return tag ? { tag, fresh: true } : null
+}
+
+const versionOf = (tag: string): string => `1.0.${tag.slice('release-'.length)}`
 
 function fmtMs(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000))

@@ -153,11 +153,11 @@ export const BatchStateSchema = z.object({
   pending: z.array(z.string()),
   /** under `all-at-once`: children whose merge_branch was held, their branch recorded, in landing order */
   held: z.array(z.string()),
-  /** the child that blocks the batch's end (errored, stopped, or on a host out of reach), with why; null when nothing blocks */
+  /** the child that blocks the batch's end (errored, stopped, idle on a failed turn, or on a host out of reach), with why; null when nothing blocks */
   blocked: z
     .object({
       sessionId: z.string(),
-      why: z.enum(['errored', 'stopped', 'unreachable']),
+      why: z.enum(['errored', 'stopped', 'failed', 'unreachable']),
       /** `unreachable`: the host the child lives on */
       environmentId: z.string().optional()
     })
