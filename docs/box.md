@@ -2175,6 +2175,34 @@ runner against a scratch directory and a fake `box-update`
 drives the app's side through the same files. The Mac's "Publish Mac
 release" button is the other half (CLAUDE.md "Releases").
 
+### Publish a box release through the Mac peer
+
+The publish peer modules (`src/main/server/remote/peerPublish.ts` on the box,
+`macPublish.ts` on the Mac) publish a release the box has already cut and
+pushed. They await construction, the push hook and offer registration in
+`index.ts`. The Mac advertises `publish`; `publish.start` carries the box
+thread's caller, the 40-character commit SHA, branch, `1.0.N` version and
+notes. Only a saved host may call, and its caller id must match the link.
+
+The Mac uses the Publisher's login-shell git in its release checkout to
+fetch origin and pull the named branch with `--ff-only`. It refuses a HEAD
+that differs from the requested SHA or a HEAD package.json version that
+differs from the requested version. It then runs the Publisher with
+`train: false`: only `bun run release:publish`, since running release.ts
+again would cut another release. The local button still cuts then
+publishes. The Publisher's dirty-tree, master-branch, feed-version and
+running-job checks still apply.
+
+The box picks the thread's bridge peer when it is online with the offer,
+else the only registered publisher. No choice says `no Mac paired`;
+several choices name the Macs. One call waits up to 90 minutes and streams
+log chunks as lines through `peer.progress`. Its result carries `ok`,
+`exit`, `version` and a one-line outcome (the last meaningful log line on
+failure). A refused start rejects with the Mac's error text; a dropped link
+says `the Mac went offline during the publish`. Stop sends `publish.stop`
+to the same Mac with a 30-second deadline, then cancels the start call;
+the Mac stops the Publisher's whole process group.
+
 ### Build once: the release asset and the lockfile rule
 
 The Mac's `bun run release:publish` already builds the tree it ships, and

@@ -12,6 +12,7 @@ import {
   Publisher,
   handleHost,
   notesFrom,
+  releaseCommand,
   scriptsEnv,
   subjectClause
 } from './hostJobs'
@@ -336,6 +337,34 @@ describe('Publisher', () => {
     } finally {
       process.kill = realKill
     }
+  })
+
+  it('publishes HEAD without the train when a peer already cut the release, using that version for the target and feed check', async () => {
+    const home = join(root, 'home')
+    // Deliberately different from HEAD: no-train mode must use package.json, not n + 1.
+    const checkout = checkoutAt(join(home, 'IdeaProjects', 'temp-code'), 999)
+    const children: FakeChild[] = []
+    const spawned: { train: boolean; cwd: string }[] = []
+    const make = (feed: string) => new Publisher({
+      store: store(), home, git: fakeGit({ version: '1.0.273' }).git,
+      feedVersion: async () => feed,
+      spawnScripts: (opts) => {
+        spawned.push(opts)
+        const child = fakeChild()
+        children.push(child)
+        return child as never
+      }
+    })
+    await expect(make('1.0.273').publish('notes', { train: false })).rejects.toThrow('v1.0.273 is already published; the feed serves it')
+    expect(spawned).toHaveLength(0)
+    const publisher = make('1.0.272')
+    const status = await publisher.publish('notes', { train: false })
+    expect(status.target).toBe('v1.0.273')
+    expect(spawned).toEqual([expect.objectContaining({ cwd: checkout, train: false })])
+    expect(releaseCommand({ train: false })).toBe('bun run release:publish')
+    expect(releaseCommand()).toBe('bun scripts/release.ts "$TC_RELEASE_NOTES" && bun run release:publish')
+    expect(releaseCommand({ train: true })).toBe(releaseCommand())
+    children[0].emit('exit', 0, null)
   })
 
   it('scriptsEnv drops what Electron, npm and the post-commit hook leak', () => {

@@ -217,6 +217,18 @@ function bridge(opts: { managed?: string[]; load?: { load: number; cores: number
   return { mb, settings, pushes, lines, requests, nextRequest, call, sample }
 }
 
+describe('MacBridge publish routing', () => {
+  it('refuses publish methods when their offer handler has not taken the call', async () => {
+    const { mb } = bridge()
+    for (const method of ['publish.start', 'publish.stop'] as const) {
+      await expect(mb.handle(method, {
+        caller: { environmentId: 'env_box', sessionId: 'thread' }, args: {}
+      }, { from: 'env_box', deadlineAt: Date.now() + 1000 })).rejects.toThrow(`${method} is not a Mac bridge call`)
+    }
+    mb.close()
+  })
+})
+
 describe('MacBridge policy', () => {
   it('off by default: every call refused, nothing asked', async () => {
     const b = bridge()

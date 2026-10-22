@@ -183,6 +183,21 @@ Two separate steps, on purpose, over one gate.
    trigger of docs/box.md "Deploy from the app"; its confirm names the
    versions ("v1.0.270 → v1.0.273, 3 releases").
 
+The batch publish peer modules are `remote/peerPublish.ts` (box) and
+`remote/macPublish.ts` (Mac), with the `publish` offer and `publish.start` /
+`publish.stop` contract in `src/shared/contract-publish.ts`. The box has
+already cut and pushed the release: the Mac fetches origin, pulls the named
+branch with `--ff-only`, checks HEAD against the requested SHA and HEAD's
+package.json against the requested `1.0.N`, then calls
+`Publisher.publish(notes, { train: false })`. That mode runs only
+`bun run release:publish`; the button still cuts then publishes. Progress
+streams over `peer.progress`, the call returns the exit and a one-line
+outcome, and Stop kills the Publisher's process group. Only a saved host
+whose caller id matches the link may ask. The box picks the thread's live
+bridge peer with the offer, else the sole registered publisher; a dropped
+link fails the call. These modules await the server's construction, push
+hook and offer wiring in `index.ts`.
+
 Never build into or swap /Applications/TempCode.app yourself: the installed
 app replaces itself from the feed, and only from the feed.
 

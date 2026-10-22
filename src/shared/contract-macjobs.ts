@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { MacMethod } from './contract-macbridge'
 import type { CrossHostPeerMethod } from './contract-crosshost'
+import type { PublishPeerMethod } from './contract-publish'
 import type { HostDevicesPeerMethod } from './contract-hostdevices'
 
 // Interactive commands over the Mac bridge (docs/box.md "The Mac bridge",
@@ -45,13 +46,14 @@ export const MAC_PAUSE_PEER_METHODS = ['mac.cancel', 'mac.held'] as const
 export type MacPausePeerMethod = (typeof MAC_PAUSE_PEER_METHODS)[number]
 export const isMacPausePeerMethod = (m: string): m is MacPausePeerMethod =>
   (MAC_PAUSE_PEER_METHODS as readonly string[]).includes(m)
-/** Every method a `peer.call` may name: the Mac bridge's, the jobs', the pause's, the threads offer's (contract-crosshost.ts) and the devices offer's. */
+/** Every method a `peer.call` may name: the Mac bridge's, the jobs', the pause's, the threads offer's (contract-crosshost.ts), the devices offer's and the publish offer's. */
 export type MacPeerMethod =
   | MacMethod
   | MacJobPeerMethod
   | MacPausePeerMethod
   | CrossHostPeerMethod
   | HostDevicesPeerMethod
+  | PublishPeerMethod
 
 export const isMacJobPeerMethod = (m: string): m is MacJobPeerMethod =>
   (MAC_JOB_PEER_METHODS as readonly string[]).includes(m)

@@ -51,6 +51,7 @@ import { trackChild } from './spawnBudget'
  *    group Stop can kill. It refuses what the scripts refuse (a dirty tree,
  *    a branch other than master, a version the feed already serves) before
  *    starting, and their own refusals come through as the log's last lines.
+ *    The publish peer uses train: false to publish HEAD without cutting another release.
  *
  * HostLog is the one shape both feed: the text so far (capped), the status,
  * and the sockets that asked for it with `host.log`.
@@ -324,7 +325,7 @@ export interface PublisherDeps {
   /** The version the GitHub feed serves now, or null when unreachable; the scripts check too. */
   feedVersion?: () => Promise<string | null>
   /** The scripts as a child in a process group of its own; stdout and stderr piped. */
-  spawnScripts?: (opts: { cwd: string; notes: string; shell: string; env: NodeJS.ProcessEnv }) => ChildProcess
+  spawnScripts?: (opts: { cwd: string; notes: string; shell: string; env: NodeJS.ProcessEnv; train: boolean }) => ChildProcess
   now?: () => number
 }
 
@@ -410,6 +411,11 @@ export class Publisher {
     return expandHome(raw, this.deps.home)
   }
 
+  /** Use the same login-shell git as the publish checks. */
+  git(args: string[], cwd: string = this.checkout()): Promise<string> {
+    return this.deps.git(args, cwd)
+  }
+
   setCheckout(value: string): void {
     const trimmed = value.trim()
     this.deps.store.setSetting(RELEASE_CHECKOUT_KEY, trimmed && trimmed !== RELEASE_CHECKOUT_DEFAULT ? trimmed : null)
@@ -477,24 +483,26 @@ export class Publisher {
     return null
   }
 
-  async publish(notes: string): Promise<PublishStatus> {
+  async publish(notes: string, { train = true }: { train?: boolean } = {}): Promise<PublishStatus> {
     const status = await this.status()
     if (status.refusal) throw new Error(status.refusal)
     const trimmed = notes.trim()
     if (!trimmed) throw new Error('release notes are empty')
     const feed = await this.deps.feedVersion().catch(() => null)
-    // What the train is about to cut: release.json's n + 1.
-    let next: number | null = null
-    try {
-      next = (JSON.parse(readFileSync(join(status.checkout, 'release.json'), 'utf8')) as { n: number }).n + 1
-    } catch {
-      next = null
+    // The button cuts the next release; a peer publishes the release already at HEAD.
+    let next: number | null = releaseNumber(status.version)
+    if (train) {
+      try {
+        next = (JSON.parse(readFileSync(join(status.checkout, 'release.json'), 'utf8')) as { n: number }).n + 1
+      } catch {
+        next = null
+      }
     }
     const feedN = releaseNumber(feed)
     if (feedN !== null && next !== null && feedN >= next) throw new Error(`v1.0.${feedN} is already published; the feed serves it`)
     const at = this.deps.now()
     const target = next !== null ? `v1.0.${next}` : null
-    const child = this.deps.spawnScripts({ cwd: status.checkout, notes: trimmed, shell: this.deps.shell, env: this.deps.env })
+    const child = this.deps.spawnScripts({ cwd: status.checkout, notes: trimmed, shell: this.deps.shell, env: this.deps.env, train })
     this.child = child
     this.log.reset({ job: 'publish', phase: 'running', target, startedAt: at, finishedAt: null, exit: null, stoppable: true })
     this.log.append(`== release ${target ?? ''} from ${status.checkout}\n`)
@@ -564,14 +572,15 @@ async function fetchFeedVersion(): Promise<string | null> {
   }
 }
 
-/** The two scripts in order: the local train with the notes (read from the environment, never the command line), then the publish. */
-export function releaseCommand(): string {
+/** Cut then publish by default; peers publish the release already cut on the box. */
+export function releaseCommand({ train = true }: { train?: boolean } = {}): string {
+  if (!train) return 'bun run release:publish'
   return 'bun scripts/release.ts "$TC_RELEASE_NOTES" && bun run release:publish'
 }
 
-function spawnReleaseScripts(opts: { cwd: string; notes: string; shell: string; env: NodeJS.ProcessEnv }): ChildProcess {
+function spawnReleaseScripts(opts: { cwd: string; notes: string; shell: string; env: NodeJS.ProcessEnv; train: boolean }): ChildProcess {
   return trackChild(
-    spawn(opts.shell, ['-lc', releaseCommand()], {
+    spawn(opts.shell, ['-lc', releaseCommand({ train: opts.train })], {
       cwd: opts.cwd,
       env: { ...opts.env, TC_RELEASE_NOTES: opts.notes },
       detached: true,
