@@ -548,12 +548,19 @@ renderer's read of the flag on the thread).
   (src/shared/contract-publish.ts).
 - Pushes: `batch` (every client, coalesced), the ordinary `session` meta
   on a pin change and with its `activity` line for a queued row.
-- The Swift contract carries `queued` and `GateNotice`; the `batch` push
-  is outside the phone's subset and its decoder folds it into `unknown`.
-  The phone draws a queued root with the starting dot and the label
-  "Queued" (StatusDot.swift); on Home it is not under Running
-  (`HomeModel.isLive` counts running and starting only). No phone surface
-  was added.
+- The Swift contract carries `queued`, `GateNotice`, the `batch` push and
+  the batch types (`BatchState` with its `Children`, `BatchStep`,
+  `BatchStepSpec`, `BatchRules`, `BatchLand`, `BatchThen`,
+  `BatchAdoptResult`, `SessionBatchResult`), and the methods `batch.get`,
+  `batch.setRules`, `batch.stopStep`, `batch.adopt`, `batch.archive`,
+  `session.setMaster` and `session.batch`. The phone's master opens on its
+  Board (docs/IOS-DESIGN.md "Master: the batch is the hero"): the rows in
+  four groups, the foot with the steps and the running step's console, the
+  bar's + Thread and fleet switches, the Rules, add, adopt and archive
+  sheets, and the pin for an admin key. The client lands the push at most
+  twice a second and asks `batch.get` every 5 s while the board shows. On
+  Home a queued root is not under Running (`HomeModel.isLive` counts running
+  and starting only).
 
 ## Proofs and tests
 

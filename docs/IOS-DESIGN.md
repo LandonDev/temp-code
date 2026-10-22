@@ -1085,6 +1085,71 @@ distinct urls in arrival order; a matching list renders as numbered
 reading-list rows (`ReportLayout.pieces`). The document keeps streaming
 while open; Done dismisses.
 
+### Master: the batch is the hero
+
+A pinned master (`isMaster`, any type) opens on **Board**, Chat second,
+from the first open: the board and its + Thread are the way in even before
+the first child exists. `Sources/Thread/Master/` draws it from the client
+package's `Rendering/Batch.swift` (`MasterBoard`, `BatchSteps`, `RulesEdit`,
+`BoardActions`) and the batch state the client keeps (`Client/Batches.swift`).
+
+- **The bar**, 44 pt on the chrome step under the segment control: **+
+  Thread** (a pill menu: New thread…, Add existing thread…) on the left, the
+  batch's **⋯** on the right (Pause all, Resume all, Archive done…, Archive
+  all…). The navigation bar's ⋯ stays the thread's own. A switch with
+  nothing to act on is disabled, never hidden; a key that cannot operate
+  reads the reason as each menu's last line.
+- **The rows**, one plain list in four groups under the kit's section
+  headers with counts: Needs you (waiting, failed), Running (starting,
+  running, watching, paused), Queued, Done. Each row: the fleet's status
+  mark in the 14 pt column, the type glyph, the title in the title step with
+  the type word muted after it and the task tally at the right (a chevron
+  folds an implementation's tasks), then the activity line (the host's
+  `activity`, the question, "Paused", "Stopped", "Landed 12:08") with the
+  model mark at its right: provider glyph, short model name, effort and
+  "1M" quieter. A plan and the build it started are one row under the
+  plan's title. A queued child reads "Queued · waiting for <sibling>". A
+  child on another host names the host in its model mark and reads "Out of
+  reach on <host>" in red while that host is away. Waiting rows sit on the
+  needs-you tint; separators start at the title. Settled rows drop to the
+  regular weight and secondary text.
+- **The body** under a row: an implementation's tasks (check, spinner,
+  open ring), open while it works or needs you, folded once it is done; a
+  research or orchestration thread's one summary line (its notes' State,
+  else its latest words, never a repeat of the activity line); chat and
+  plan rows carry nothing more.
+- **A tap** pushes the child's own thread screen with its type's segments;
+  Back returns to the board where it was. A long press is the kit's menu
+  with the batch's rows in its slot: Start now and Remove from queue on a
+  queued child, Pause and Stop on a working one, Resume on a paused or
+  stopped one. A far child has no menu here: its host acts on it.
+- **The foot** is the list's last section, "When the threads are done"
+  with Edit: the master's summary, the rules as one sentence ("Branches land
+  as they finish, then Gate and Smoke test. Then you are notified."), what
+  blocks the end in red, then the steps in the master's order, each a row
+  with its mark (check, spinner, red dot, dashed ring), name, a shell step's
+  command in mono, its time. The console opens under the running step, or a
+  failed one until Hide: the progress count and label, a 2 pt bar, then the
+  newest lines in mono one step down, in a field that grows to 220 pt and
+  then scrolls inside; it follows the tail until the person scrolls up, and
+  a line arriving never animates. Stop sits on a running shell or publish
+  step (`batch.stopStep`); a gate or release runs to its end.
+- **The sheets**, all system sheets at `Radius.sheet`: Rules (large: how
+  branches land, the steps renamed in place, reordered behind Edit, swiped
+  away, a built-in kind or a shell command added, what happens after, the
+  summary; the footer reads the sentence back and says what the contract
+  refuses), Add a thread (large: the brief first, type, model and effort,
+  1M where offered, After), Add existing threads (medium, one flat list of
+  the project's free roots), Archive done or all (medium: what leaves, what
+  stays, the clean-up switch when resources are known).
+- **The pin**: "Make master thread" / "Not the master" in a root thread's
+  menu (the thread screen's ⋯ after Pin, Home's row menus) for an admin key;
+  any other key sees it disabled with the `noAdmin` line.
+- **Data**: `batch.get` on appear, on every socket open and every 5 s while
+  the board shows; the `batch` push between, which the client lands at most
+  twice a second (the newest of a burst always lands). Nothing animates on
+  the first paint.
+
 ## Settings
 
 Settings is the one place the app is Apple's own: a pushed, inset grouped
@@ -1522,6 +1587,12 @@ used.
 | Fleet confirm's count | `contentTransition(.numericText())` on the title, 150 ms | `FleetConfirmSheet` (`Motion.numeric`) |
 | Resource row removed | 150 ms opacity, once the host's push says so | `ResourcesSheet` (`Motion.rowLeave`) |
 | Headroom bar on a snapshot change | fill width 200 ms ease-out; never on the first paint; reduced motion snaps | `AccountMenu`'s `AccountMotion.bar` (for `Motion` to absorb) |
+| A batch step changing status | its mark cross-fades 150 ms | `StepGlyph` (`Motion.crossFade`) |
+| The step console opening and closing | spring `duration 0.35, bounce 0` in with opacity and a short drop from the step; 200 ms ease-out out; reduced motion: opacity | `Motion.expand`, `Motion.collapse` |
+| A step's progress bar | width linear 200 ms | `.linear(duration: 0.2)`, the one linear curve |
+| A console line arriving | none; the scroll to the tail runs without a transaction | `Motion.withoutAnimation` |
+| A board row's tasks folding | the row expand above; the tally chevron turns 90° on 150 ms | `Motion.expand`, `Motion.collapse`, `Motion.crossFade` |
+| Stop ↔ Hide on the console's step | the glyph-trading row above | `.iconSwapTransition()` |
 | Reduced motion | cross-fades replace every translate and spring | every `Motion.*(reduced:)` and the four transition modifiers read it themselves |
 
 Every transition carries its own timing, so an enclosing `withAnimation`

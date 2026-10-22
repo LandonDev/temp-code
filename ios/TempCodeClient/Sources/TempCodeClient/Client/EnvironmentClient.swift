@@ -167,6 +167,8 @@ public final class EnvironmentClient {
     public let resources = ResourceLedger()
     /// The host's accounts snapshot (`accounts.list`, then the `accounts` push); the chip and the menu read it.
     public let accounts = HostAccounts()
+    /// Each master's batch as last heard (`batch.get` or the `batch` push), by the master's id.
+    public internal(set) var batches: [String: BatchState] = [:]
     /// The shell has been listed at least once in this process.
     public private(set) var hasShell = false
     /// Where the session list last came from.
@@ -185,6 +187,11 @@ public final class EnvironmentClient {
     private var iconRequests: Set<String> = []
     /// Each thread's notes (Client/NotesState.swift, iOS 18): fetched on first use, kept by the notes push.
     public internal(set) var notes: [String: NotesState] = [:]
+    /// The batch push's coalescing (Client/Batches.swift): when each master's state last landed, the
+    /// newest one waiting for its window, and the timer that lands it. Bookkeeping, never observed.
+    @ObservationIgnored var batchLanded: [String: ContinuousClock.Instant] = [:]
+    @ObservationIgnored var batchPending: [String: BatchState] = [:]
+    @ObservationIgnored var batchTimers: [String: Task<Void, Never>] = [:]
 
     public let socket: TempCodeSocket
     public let cache: SessionCache
@@ -741,7 +748,9 @@ public final class EnvironmentClient {
             }
         case .hostDevices, .hostLog:
             extras.applyPush(push) // iOS 21: devices and the deploy log (Client/HostExtras.swift)
-        case .queue, .builds, .batch, .macBridgeHeld, .unknown:
+        case .batch(let value):
+            applyBatch(value.state) // iOS 16: a master's batch, coalesced (Client/Batches.swift)
+        case .queue, .builds, .macBridgeHeld, .unknown:
             break
         }
     }

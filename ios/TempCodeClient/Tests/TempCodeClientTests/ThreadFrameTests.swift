@@ -44,7 +44,7 @@ private let pendingApproval: [AgentEvent] = [
         #expect(ThreadSegment.segments(for: .projectPlan) == [.plan, .chat])
         #expect(ThreadSegment.segments(for: .orchestration) == [.fleet, .log])
         #expect(ThreadSegment.segments(for: .research) == [.sources, .chat])
-        #expect(ThreadSegment.segments(for: .master) == [.chat])
+        #expect(ThreadSegment.segments(for: .master) == [.board, .chat])
         #expect(ThreadSegment.segments(for: .chat) == [.chat])
         #expect(ThreadSegment.segments(for: .subagent) == [.chat])
         #expect(ThreadSegment.segments(for: .other("debate")) == [.chat])
@@ -101,6 +101,8 @@ private let pendingApproval: [AgentEvent] = [
     @Test("a chat and a master take the first segment; running reads running and starting") func aChatAndAMasterTakeTheFirstSegmentRunningReadsRunningAndStarting() {
         #expect(phase(.chat).defaultSegment(in: [.chat]) == .chat)
         #expect(ThreadPhase(session: meta("m", threadType: .chat, isMaster: true), thread: ThreadState(), document: nil).defaultSegment(in: [.chat]) == .chat)
+        // A master opens on its board, whatever its type, from the first open.
+        #expect(ThreadPhase(session: meta("m", threadType: .chat, isMaster: true), thread: ThreadState(), document: nil).defaultSegment(in: [.board, .chat]) == .board)
         #expect(phase(.chat, status: .running).running)
         #expect(phase(.chat, status: .starting).running)
         #expect(!phase(.chat, status: .watching).running)

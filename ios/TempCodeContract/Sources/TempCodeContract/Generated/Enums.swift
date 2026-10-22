@@ -692,6 +692,52 @@ public enum BatchStepStatus: RawRepresentable, Codable, Hashable, Sendable {
     }
 }
 
+public enum BatchLand: RawRepresentable, Codable, Hashable, Sendable {
+    case asTheyFinish
+    case allAtOnce
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "as-they-finish": self = .asTheyFinish
+        case "all-at-once": self = .allAtOnce
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .asTheyFinish: "as-they-finish"
+        case .allAtOnce: "all-at-once"
+        case .unknown(let value): value
+        }
+    }
+}
+
+public enum BatchThen: RawRepresentable, Codable, Hashable, Sendable {
+    case notify
+    case archiveChildren
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "notify": self = .notify
+        case "archive-children": self = .archiveChildren
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .notify: "notify"
+        case .archiveChildren: "archive-children"
+        case .unknown(let value): value
+        }
+    }
+}
+
 public enum SimulatorState: RawRepresentable, Codable, Hashable, Sendable {
     case booted
     case shutdown

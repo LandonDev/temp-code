@@ -300,7 +300,7 @@ private struct HomeRowView: View {
             .buttonStyle(.pressable)
             .listRowInsets(Layout.rowInsets)
             .listRowBackground(Surface.needsYou)
-            .threadRowActions(client: client, meta: item.meta)
+            .threadRowActions(client: client, meta: item.meta) { MasterPinButton(client: client, session: item.meta) }
         case .running(_, let meta):
             threadButton(meta, ThreadRowModel(session: meta))
         case .calm(_, let workspace):
@@ -383,7 +383,10 @@ private struct HomeRowView: View {
         .buttonStyle(.pressable)
         .listRowInsets(Layout.rowInsets)
         // Start now on a queued root, Resume on a stopped one (thread iOS 20).
-        .threadRowActions(client: client, meta: meta) { RowStateActions(client: client, meta: meta) }
+        .threadRowActions(client: client, meta: meta) {
+            RowStateActions(client: client, meta: meta)
+            MasterPinButton(client: client, session: meta)
+        }
     }
 }
 

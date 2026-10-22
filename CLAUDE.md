@@ -1216,6 +1216,19 @@ routed to (aliax-core's `forward`). Two listeners:
   saves over `project.setPreamble`, `review.set` and `plans.set`, admin
   only, with the reason on a lesser key. DEBUG
   hooks: `TC_TEST_ACTION=start-now|resume` beside the L4 ones.
+  A master opens on its Board (`ios/TempCode/Sources/Thread/Master/**`:
+  MasterView with its bar, MasterRows, BatchFoot and StepConsole, the
+  Rules, add, adopt and archive sheets, MasterPinButton for an admin key)
+  over the client package's `Rendering/Batch.swift` (`MasterBoard`,
+  `BatchSteps`, `RulesEdit`, `BoardActions`), `Client/ThreadBatch.swift` (the fleet switches' rule)
+  and `Client/Batches.swift` (each master's `BatchState`, the `batch` push
+  landed at most twice a second, `batch.get` every 5 s while the board
+  shows); the SUBSET carries the batch types, the push and `batch.get`,
+  `batch.setRules`, `batch.stopStep`, `batch.adopt`, `batch.archive`,
+  `session.setMaster` and `session.batch` (docs/IOS-DESIGN.md "Master: the
+  batch is the hero"). DEBUG hooks `TC_TEST_OPEN=rules|add-thread|adopt|
+  archive-done` and `TC_TEST_ACTION=stop-step|set-master`; the test server
+  seeds the batch under `ios-master` with a streaming shell step.
   The host's own rows
   (`Thread/NoticeRows.swift`: review and gate cards, batch, account-gone and
   plan-handoff lines; `FailureCard.swift`; `PreambleRow.swift`) draw from the
@@ -1703,7 +1716,8 @@ this is the short one.
   strip offers Start now (`session.start`) and a stopped root Resume; the
   fleet switches sit in the host's and the project's menus
   (ios/TempCode/Sources/Shell/FleetSwitches.swift over the client package's
-  ThreadBatch.swift).
+  ThreadBatch.swift); a master opens on its Board segment ("The iOS
+  client" below).
 - **The rail houses the batch under the master's row** the way subagents
   sit under a root (`batchHome`, `railMasters` in lib/workspaceSessions.ts):
   each unarchived root carrying the master's id is a child row one step in

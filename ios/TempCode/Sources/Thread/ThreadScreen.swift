@@ -306,6 +306,12 @@ struct ThreadScreen: View {
             try? await client.archive(sessionId, removeResources: true)
         case "remove-resources":
             _ = try? await client.removeResources(sessionId)
+        case "stop-step":
+            if let step = client.batchState(sessionId).map(BatchSteps.liveSteps)?.first(where: { $0.status == .running }) {
+                _ = try? await client.stopBatchStep(sessionId, stepId: step.id)
+            }
+        case "set-master":
+            try? await client.setMaster(sessionId, session.isMaster != true)
         default:
             break
         }
@@ -339,8 +345,11 @@ struct ThreadScreen: View {
         case .chat, .log:
             transcript(session: session, thread: thread)
         case .board:
-            // Slot (e), thread 16: `if kind == .master { MasterView(client:sessionId:session:thread:) } else { … }`.
-            ImplementationBoardView(client: client, sessionId: sessionId, session: session, thread: thread, document: model.document)
+            if kind == .master {
+                MasterView(client: client, sessionId: sessionId, session: session, thread: thread)
+            } else {
+                ImplementationBoardView(client: client, sessionId: sessionId, session: session, thread: thread, document: model.document)
+            }
         case .plan:
             if kind == .projectPlan {
                 ProjectPlanView(client: client, sessionId: sessionId, session: session, document: model.document, running: phase.running)

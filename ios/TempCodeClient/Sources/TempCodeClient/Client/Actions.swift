@@ -184,8 +184,16 @@ public struct ThreadDraft: Sendable, Hashable {
     public var title: String?
     /// The kickoff message sent right after the create, when there is one.
     public var brief: String?
+    /// A master's batch the thread joins (the board's add sheet).
+    public var masterId: String?
+    /// The sibling the thread waits for; the host queues it until that one is done.
+    public var after: String?
+    /// The thread that started it, for its settle reports.
+    public var startedBy: String?
+    /// The 1M context window, where the model offers it.
+    public var context1m: Bool?
 
-    public init(threadType: ThreadType, provider: ProviderId, model: String, reasoning: Reasoning? = nil, projectId: String? = nil, workspaceId: String? = nil, cwd: String? = nil, permission: PermissionPolicy? = nil, planPath: String? = nil, goal: String? = nil, title: String? = nil, brief: String? = nil) {
+    public init(threadType: ThreadType, provider: ProviderId, model: String, reasoning: Reasoning? = nil, projectId: String? = nil, workspaceId: String? = nil, cwd: String? = nil, permission: PermissionPolicy? = nil, planPath: String? = nil, goal: String? = nil, title: String? = nil, brief: String? = nil, masterId: String? = nil, after: String? = nil, startedBy: String? = nil, context1m: Bool? = nil) {
         self.threadType = threadType
         self.provider = provider
         self.model = model
@@ -198,6 +206,10 @@ public struct ThreadDraft: Sendable, Hashable {
         self.goal = goal
         self.title = title
         self.brief = brief
+        self.masterId = masterId
+        self.after = after
+        self.startedBy = startedBy
+        self.context1m = context1m
     }
 
     /// The desktop's `agentTypeFor`: an orchestration thread is run by an orchestrator.
@@ -221,7 +233,11 @@ public struct ThreadDraft: Sendable, Hashable {
             threadType: .set(threadType),
             planPath: planPath,
             permission: permission,
-            goal: goal
+            context1m: context1m,
+            goal: goal,
+            startedBy: startedBy,
+            masterId: masterId,
+            after: after
         )
     }
 
@@ -250,6 +266,30 @@ public struct ThreadDraft: Sendable, Hashable {
             goal: goal,
             title: base.isEmpty ? nil : base,
             brief: brief
+        )
+    }
+
+    /// A thread added to a master's batch from the board (the desktop's
+    /// AddThreadDialog): in the master's project, workspace, directory and
+    /// access, carrying the master's id as its batch and its starter, waiting
+    /// for `after` when one is picked; the brief is its first message and the
+    /// host titles it.
+    public static func batch(brief: String, type: ThreadType, master: SessionMeta, provider: ProviderId, model: String, reasoning: Reasoning?, context1m: Bool?, after: String?) -> ThreadDraft {
+        let text = brief.trimmingCharacters(in: .whitespacesAndNewlines)
+        return ThreadDraft(
+            threadType: type,
+            provider: provider,
+            model: model,
+            reasoning: reasoning,
+            projectId: master.projectId,
+            workspaceId: master.workspaceId,
+            cwd: master.cwd,
+            permission: master.permission,
+            brief: text.isEmpty ? nil : text,
+            masterId: master.id,
+            after: after,
+            startedBy: master.id,
+            context1m: context1m == true ? true : nil
         )
     }
 
@@ -418,12 +458,62 @@ extension EnvironmentClient {
         return meta
     }
 
+    // MARK: a master's batch
+
+    /// Set the batch's rules whole (`batch.setRules`); the answer lands as the batch's state.
+    @discardableResult
+    public func setBatchRules(_ masterId: String, _ rules: BatchRules) async throws -> BatchState {
+        let state = try await acting(.operate) { try await self.request(Methods.BatchSetRules.self, RulesEdit.params(masterId: masterId, rules: rules)) }
+        publishBatch(state)
+        return state
+    }
+
+    /// Stop the batch's running shell or publish step; the host answers whether one stopped.
+    @discardableResult
+    public func stopBatchStep(_ masterId: String, stepId: String) async throws -> Bool {
+        try await acting(.operate) { try await self.request(Methods.BatchStopStep.self, .init(masterId: masterId, stepId: stepId)).stopped }
+    }
+
+    /// Bring existing root threads into the batch; refusals come back with their reasons.
+    @discardableResult
+    public func adoptIntoBatch(_ masterId: String, _ sessionIds: [String]) async throws -> BatchAdoptResult {
+        let result = try await acting(.operate) { try await self.request(Methods.BatchAdopt.self, .init(masterId: masterId, sessionIds: sessionIds)) }
+        publishBatch(result.state)
+        return result
+    }
+
+    /// Archive the batch's done children, or every one (the live ones stopped first); the master stays.
+    @discardableResult
+    public func archiveBatch(_ masterId: String, which: BoardActions.Which, removeResources: Bool) async throws -> SessionBatchResult {
+        try await acting(.operate) { try await self.request(Methods.BatchArchive.self, .init(masterId: masterId, which: which.wire, removeResources: removeResources ? true : nil)) }
+    }
+
+    /// The fleet switches over a set of root threads (`session.batch`): every id answered.
+    @discardableResult
+    public func sessionBatch(_ action: Methods.SessionBatch.Params.Action, ids: [String]) async throws -> SessionBatchResult {
+        try await acting(.operate) { try await self.request(Methods.SessionBatch.self, .init(action: action, ids: ids)) }
+    }
+
+    /// Pin a root thread as a master, or unpin it; admin only. The meta push says the rest.
+    public func setMaster(_ sessionId: String, _ master: Bool) async throws {
+        try await act(.admin) { try await self.request(Methods.SessionSetMaster.self, .init(sessionId: sessionId, master: master)) }
+    }
+
     /// The host's catalog, fetched once per session and kept; `refresh` asks the host to re-probe.
     public func loadCatalog(refresh: Bool = false) async -> Catalog? {
         if let catalog, !refresh { return catalog }
         guard let fetched = try? await request(Methods.CatalogGet.self, .init(refresh: refresh ? true : nil)) else { return catalog }
         catalog = fetched
         return fetched
+    }
+
+    private func acting<T>(_ capability: Capability, _ body: () async throws -> T) async throws -> T {
+        if let block = block(needs: capability) { throw ActionError.blocked(block) }
+        do {
+            return try await body()
+        } catch {
+            throw ActionError.wrap(error)
+        }
     }
 
     private func act(_ capability: Capability, _ body: () async throws -> Void) async throws {

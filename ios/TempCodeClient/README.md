@@ -19,13 +19,15 @@ Sources/TempCodeClient
                 WebSocketConnection (+ URLSessionWebSocket), Transport, TempCodeSocket
   Environments/ PairedEnvironment + PairingLink, KeyStore (Keychain, in-memory), RemoteAPI, EnvironmentStore
   Cache/        Database (sqlite3), SessionCache
-  Client/       Subscriptions, EnvironmentClient (+ MovedThread), ClientRegistry, SearchRows, CrossHostSearch, Actions, PlanFlow, ProjectSettings
+  Client/       Subscriptions, EnvironmentClient (+ MovedThread), ClientRegistry, SearchRows, CrossHostSearch, Actions, PlanFlow, ProjectSettings,
+                Batches (each master's BatchState, the push coalesced to two landings a second)
   Rendering/    ThreadFold (rows → stamped items + BoardState), Transcript (item types), Board,
                 ResearchBoard, Fleet, PlanDoc, Inbox, DiffDocument (the diff screen's lines,
                 hunks and column geometry), MarkdownBlocks, MarkdownCache, PlanDocument,
                 PlanPages, ProjectPlan, ProjectPairs, CrossHost, PathHost (two hosts: pairs, cross-host
                 children, the host of a path), TranscriptRows (entries → the list's rows:
-                items, activity groups, turn ends), ToolPhrase (the desktop's toolPhrase.ts)
+                items, activity groups, turn ends), ToolPhrase (the desktop's toolPhrase.ts),
+                Batch (MasterBoard, BatchSteps, RulesEdit, BoardActions: the master board)
   Design/       TimeFormat, ModelName, CompactNumber, ThreadRowModel: the design kit's pure
                 logic, tested here; the app's Design/ holds the views
   Support/      SocketClock (SystemClock, ManualClock)
@@ -439,14 +441,27 @@ would have shown as "Key refused".
   words and the action table live in `Rendering/Notices.swift` (`GateText`,
   `ReviewText`, `FailureActions`: at most three actions, Retry last, a note
   naming what only the desktop can do).
+- **A master's batch** (`Client/Batches.swift`, the batch section of
+  `Actions.swift`). `batchState(_:)` is the state as last heard, `loadBatch(_:)`
+  asks `batch.get`; the `batch` push lands at once, then at most once per
+  500 ms with the newest state of a burst, and an RPC answer lands at once
+  over anything waiting. `setBatchRules` (the whole rules through
+  `RulesEdit.params`), `stopBatchStep`, `adoptIntoBatch`, `archiveBatch` and
+  `sessionBatch` (the fleet switches) need operate; `setMaster` needs admin,
+  and a key without admin reads `.noAdmin` before the wire. `ThreadDraft.batch` builds the board's
+  add sheet draft: the master's project, directory and access, `masterId`
+  and `startedBy` the master, `after` and `context1m` when chosen.
 
 The test server (scripts/ios-client-test-server.ts) stands in for the
 registry's action methods: each is recorded (`GET /actions`, `POST
 /actions/clear`) and plays out the rows a real run pushes; `POST /finish`
 ends a simulated turn and `POST /ask` raises a fresh approval or question.
 It mints three keys: read-only, read+operate+approve, and operate-only
-(the approval card's forbidden path), and two pairings for the simulator
-proof's `actions` set.
+(the approval card's forbidden path), two pairings for the simulator
+proof's `actions` set, and an admin pairing (`adminPairing`) for the
+master pin. `ios-master`'s batch is seeded mid-run (four children, a shell
+step streaming a line every 700 ms); `setMaster` and Stop on that step are
+recorded too.
 
 ## Fleet switches, statuses, resources (thread iOS 20)
 

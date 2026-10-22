@@ -59,6 +59,7 @@ struct ThreadMenu: View {
             renameItem
             if root {
                 pinItem
+                MasterPinButton(client: client, session: session, onFailure: onFailure)
                 fleetSection
                 resourcesItem
                 Divider()

@@ -1085,7 +1085,13 @@ say('ios-master-plan', 'Plan the backfill.', 'The plan is complete; the build ha
 server.store.updateSession('ios-master-plan', { planCompletedAt: Date.now() - 600_000, implementationId: 'ios-master-impl-b' })
 await make('ios-master-research', { projectId: project.id, threadType: 'research', agentType: 'explorer', title: 'Which rollups are read?', masterId: THREAD_MASTER, startedBy: THREAD_MASTER })
 say('ios-master-research', 'Which rollups does the dashboard read?', 'Seven of the twelve.')
-server.batches.seedRow(batchRowMidRun(THREAD_MASTER, { landed: ['ios-master-impl-a', 'ios-master-research'], pending: ['ios-master-impl-b', 'ios-master-plan', THREAD_QUEUED] }, Date.now()))
+const MASTER_CHILDREN = { landed: ['ios-master-impl-a', 'ios-master-research'], pending: ['ios-master-impl-b', 'ios-master-plan', THREAD_QUEUED] }
+server.batches.seedRow(batchRowMidRun(THREAD_MASTER, MASTER_CHILDREN, Date.now()))
+// Seeded running rows have no harness: the liveness sweep would flip them to
+// `stopped` after 20 s and block the batch. The proofs assume they stay running.
+const sweep = server.registry as unknown as { livenessTimer?: ReturnType<typeof setInterval> | null }
+if (sweep.livenessTimer) clearInterval(sweep.livenessTimer)
+sweep.livenessTimer = null
 
 // The paused master is thread 20's guarded seed (ios-master-paused with ios-batch-a and ios-batch-b).
 export const THREAD_MASTER_PAUSED = 'ios-master-paused'
@@ -1283,6 +1289,26 @@ stub('setPinned', (sessionId, pinned) => {
   record('pin', sessionId, { pinned })
   realSetPinned(sessionId, pinned)
 })
+// The master board's actions (iOS 16/27): the pin, and Stop on the seeded smoke step (which then reads failed).
+const realSetMaster = registry.setMaster.bind(registry)
+stub('setMaster', (sessionId, master) => {
+  record('setMaster', sessionId, { master })
+  realSetMaster(sessionId, master)
+})
+const realStopStep = server.batches.stopStep.bind(server.batches)
+server.batches.stopStep = async (masterId, stepId) => {
+  record('stopStep', masterId, { stepId })
+  if (masterId !== THREAD_MASTER) return realStopStep(masterId, stepId)
+  const row = batchRowMidRun(masterId, MASTER_CHILDREN, Date.now())
+  const step = row.steps.find((s) => s.id === stepId)
+  if (!step || step.status !== 'running') return { stopped: false }
+  step.status = 'failed'
+  step.detail = 'stopped after 12s'
+  step.endedAt = Date.now()
+  step.log = [...step.log, '✗ stopped']
+  server.batches.seedRow(row)
+  return { stopped: true }
+}
 
 // ── a GitHub inbox for the simulator proof ──────────────────────────────
 // Two repositories' worth of pull requests and issues in every state the
@@ -1678,7 +1704,7 @@ const control = createServer((req, res) => {
       case '/batch-log': {
         const masterId = String(body.masterId ?? THREAD_MASTER)
         const lines = Array.isArray(body.lines) ? body.lines.map(String) : [String(body.lines ?? 'smoke: still checking')]
-        const row = batchRowMidRun(masterId, { landed: ['ios-master-impl-a', 'ios-master-research'], pending: ['ios-master-impl-b', 'ios-master-plan', THREAD_QUEUED] }, Date.now())
+        const row = batchRowMidRun(masterId, MASTER_CHILDREN, Date.now())
         batchLogLines.push(...lines)
         server.batches.seedRow(withShellLog(row, batchLogLines))
         return answer(200, { lines: batchLogLines.length })

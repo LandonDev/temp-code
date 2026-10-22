@@ -143,6 +143,9 @@ export const SUBSET: SubsetEntry[] = [
   type('HostJobPhase', W.HostJobPhaseSchema),
   type('BatchStepKind', BatchStepKindSchema),
   type('BatchStepStatus', BatchStepStatusSchema),
+  // named so BatchRules and batch.setRules's partial share one enum each and a BatchRules can be sent whole
+  type('BatchLand', BatchRulesSchema.shape.land),
+  type('BatchThen', BatchRulesSchema.shape.then),
   type('SimulatorState', SimulatorStateSchema),
   type('PhoneConnection', PhoneConnectionSchema),
   type('ReviewOutcome', ReviewNoticeSchema.shape.outcome),

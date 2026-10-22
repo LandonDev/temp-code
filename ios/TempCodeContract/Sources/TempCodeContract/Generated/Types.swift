@@ -1407,57 +1407,12 @@ public struct BatchStep: Codable, Hashable, Sendable {
 }
 
 public struct BatchRules: Codable, Hashable, Sendable {
-    public enum Land: RawRepresentable, Codable, Hashable, Sendable {
-        case asTheyFinish
-        case allAtOnce
-        /// A value this build does not know; `rawValue` keeps it.
-        case unknown(String)
-
-        public init(rawValue: String) {
-            switch rawValue {
-            case "as-they-finish": self = .asTheyFinish
-            case "all-at-once": self = .allAtOnce
-            default: self = .unknown(rawValue)
-            }
-        }
-
-        public var rawValue: String {
-            switch self {
-            case .asTheyFinish: "as-they-finish"
-            case .allAtOnce: "all-at-once"
-            case .unknown(let value): value
-            }
-        }
-    }
-    public enum Then: RawRepresentable, Codable, Hashable, Sendable {
-        case notify
-        case archiveChildren
-        /// A value this build does not know; `rawValue` keeps it.
-        case unknown(String)
-
-        public init(rawValue: String) {
-            switch rawValue {
-            case "notify": self = .notify
-            case "archive-children": self = .archiveChildren
-            default: self = .unknown(rawValue)
-            }
-        }
-
-        public var rawValue: String {
-            switch self {
-            case .notify: "notify"
-            case .archiveChildren: "archive-children"
-            case .unknown(let value): value
-            }
-        }
-    }
-
-    public let land: Land
+    public let land: BatchLand
     public let steps: [BatchStepSpec]
-    public let then: Then
+    public let then: BatchThen
     public let summary: String?
 
-    public init(land: Land, steps: [BatchStepSpec], then: Then, summary: String? = nil) {
+    public init(land: BatchLand, steps: [BatchStepSpec], then: BatchThen, summary: String? = nil) {
         self.land = land
         self.steps = steps
         self.then = then

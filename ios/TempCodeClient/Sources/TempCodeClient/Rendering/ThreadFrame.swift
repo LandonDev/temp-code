@@ -65,8 +65,8 @@ public enum ThreadSegment: String, CaseIterable, Identifiable, Sendable {
         case .planning, .projectPlan: [.plan, .chat]
         case .orchestration: [.fleet, .log]
         case .research: [.sources, .chat]
-        // Slot (e): thread 16 makes this [.board, .chat]; the screen routes .board for .master to MasterView.
-        case .master: [.chat]
+        // Slot (e), thread 16: the batch's board is the hero; the screen routes .board for .master to MasterView.
+        case .master: [.board, .chat]
         case .subagent, .chat, .other: [.chat]
         }
     }
