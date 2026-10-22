@@ -13,6 +13,8 @@ import { FileTree } from "../FileTree";
 import { Spinner } from "../../surfaces/threads/bits";
 import { BranchPanel } from "./BranchPanel";
 import { BuildPanel } from "./BuildPanel";
+import { DevServerPanel } from "./DevServerPanel";
+import { useDevRunning } from "../../lib/devServers";
 import { ChangesPanel } from "./ChangesPanel";
 
 // The Debug tab drives the editor chunk's DAP session; it loads with it.
@@ -21,7 +23,7 @@ const DebugPanel = lazy(() => import("./DebugPanel"));
 /**
  * The project's right rail: a 288px drawer at the main grid boundary, right
  * of the pane tree and the diff pane. Files reuses the sidebar's tree;
- * Changes, Branch, Build and Debug are temp-code's. Everything inside is
+ * Changes, Branch, Build, Dev and Debug are temp-code's. Everything inside is
  * keyed by the project the current cwd resolves to, never a global selection.
  */
 
@@ -31,6 +33,7 @@ const TABS: { id: RailPanel; label: string }[] = [
   { id: "files", label: "Files" },
   { id: "branch", label: "Branch" },
   { id: "build", label: "Build" },
+  { id: "dev", label: "Dev" },
   { id: "debug", label: "Debug" },
 ];
 
@@ -81,6 +84,7 @@ function RailBody({ projectId, cwd, selectedPath, onOpenFile, onOpenDiff }: Prop
   const panel = useRailPanel();
   const gitStatuses = useGitFileStatuses(cwd, panel === "files");
   const building = useBuild(projectId)?.run?.status === "running";
+  const serving = useDevRunning(projectId);
   const debugPhase = useEditorState((s) => s.debugPhase);
   return (
     <>
@@ -106,6 +110,9 @@ function RailBody({ projectId, cwd, selectedPath, onOpenFile, onOpenDiff }: Prop
             {t.id === "build" && building ? (
               <span className="size-1.5 motion-safe:animate-pulse rounded-full bg-success" aria-label="Building" />
             ) : null}
+            {t.id === "dev" && serving ? (
+              <span className="size-1.5 rounded-full bg-success" aria-label="Running" />
+            ) : null}
             {t.id === "debug" && debugPhase !== "idle" ? (
               <span
                 className={cn("size-1.5 rounded-full", debugPhase === "stopped" ? "bg-warning" : "motion-safe:animate-pulse bg-busy")}
@@ -126,6 +133,7 @@ function RailBody({ projectId, cwd, selectedPath, onOpenFile, onOpenDiff }: Prop
           <BranchPanel projectId={projectId} selectedPath={selectedPath} onOpenDiff={onOpenDiff} />
         ) : null}
         {panel === "build" ? <BuildPanel projectId={projectId} /> : null}
+        {panel === "dev" ? <DevServerPanel projectId={projectId} /> : null}
         {panel === "debug" ? (
           <Suspense
             fallback={

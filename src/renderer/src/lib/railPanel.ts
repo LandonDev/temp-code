@@ -2,10 +2,10 @@ import { useSyncExternalStore } from "react";
 import { setRightRailOpen } from "./rightRail";
 
 /** Which tab the project rail shows. Persisted; a fresh launch reopens the last one. */
-export type RailPanel = "changes" | "files" | "branch" | "build" | "debug";
+export type RailPanel = "changes" | "files" | "branch" | "build" | "dev" | "debug";
 
 const KEY = "monocode.railPanel";
-const PANELS: RailPanel[] = ["changes", "files", "branch", "build", "debug"];
+const PANELS: RailPanel[] = ["changes", "files", "branch", "build", "dev", "debug"];
 
 function load(): RailPanel {
   try {
@@ -33,6 +33,12 @@ export function setRailPanel(next: RailPanel): void {
 /** ⌃D / "Debug this file": the session shows in the rail's Debug tab. */
 export function showDebugRail(): void {
   setRailPanel("debug");
+  setRightRailOpen(true);
+}
+
+/** The Dev Server button: the project's Dev tab, with the rail open. */
+export function showDevRail(): void {
+  setRailPanel("dev");
   setRightRailOpen(true);
 }
 

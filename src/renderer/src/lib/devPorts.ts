@@ -1,6 +1,7 @@
 import { useStore } from 'zustand'
 import { macUrl, type PortForwardInfo } from '@server/shared/contract-ports'
 import type { ThreadResource } from '@server/shared/contract-resources'
+import { LOCAL_ENVIRONMENT_ID } from './connection/registry'
 import { macBridgeStore } from './macBridge'
 import { isWebMode } from './nativeWeb'
 import { threadResourcesStore } from './threadResources'
@@ -25,7 +26,8 @@ export interface PortOpen {
 /** How a port opens here, given where it lives and its forwards; null when it cannot. */
 export function portOpen(hostPort: number, environmentId: string, forwards: readonly PortForwardInfo[] | undefined, localId: string | null): PortOpen | null {
   if (!localId) return null
-  if (environmentId === localId) return { label: 'Open in browser', url: macUrl(hostPort), port: hostPort, movedFrom: null }
+  // The local link answers as "local"; the ledger names this host by its real id.
+  if (environmentId === localId || environmentId === LOCAL_ENVIRONMENT_ID) return { label: 'Open in browser', url: macUrl(hostPort), port: hostPort, movedFrom: null }
   const f = forwards?.find((x) => x.environmentId === localId && x.macPort !== null)
   if (!f || f.macPort === null) return null
   return { label: 'Open on the Mac', url: macUrl(f.macPort), port: f.macPort, movedFrom: f.macPort !== hostPort ? hostPort : null }

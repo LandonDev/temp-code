@@ -86,6 +86,10 @@ describe('DevRuns', () => {
     expect(list.map((r) => r.id)).toEqual([second.id])
   }, 20_000)
 
+  it('offers an iOS target only on a Mac', async () => {
+    expect((await runs.targets('p1')).targets.map((t) => t.id)).toEqual(['serve', 'boom'])
+  })
+
   it('refuses a Mac-only target off a Mac, and a target the host did not detect', async () => {
     await expect(runs.start('p1', 'ios:./App.xcodeproj')).rejects.toThrow('runs on a Mac')
     await expect(runs.start('p1', 'rm -rf /')).rejects.toThrow('no such dev target')

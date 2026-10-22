@@ -90,7 +90,10 @@ export class DevRuns {
 
   async targets(projectId: string): Promise<{ targets: DevTarget[]; runs: DevRun[] }> {
     const p = this.must(projectId)
-    return { targets: await (this.deps.detect ?? detectDevTargets)(p.cwd, p.name), runs: this.runs(projectId) }
+    // An iOS app is offered only by a Mac; the person picks the Mac's copy to run it.
+    const mac = (this.deps.platform ?? process.platform) === 'darwin'
+    const targets = (await (this.deps.detect ?? detectDevTargets)(p.cwd, p.name)).filter((t) => mac || !t.macOnly)
+    return { targets, runs: this.runs(projectId) }
   }
 
   private slot(runId: string): Slot {

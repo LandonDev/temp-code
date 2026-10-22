@@ -19,6 +19,7 @@ import { MacBridgeRulesDialog } from "./MacBridgeRemember";
 import { ArchiveThreadDialog, ThreadResourcesDialog } from "./ThreadResourcesDialog";
 import { liveResources, loadThreadResources, startThreadResources, useThreadResources } from "../lib/threadResources";
 import { ThreadHostChip } from "./ThreadHostChip";
+import { DevServerButton } from "./DevServerButton";
 import { IconButton } from "./TitleBar";
 import { masterMenuLabel, useMasterIds } from "../lib/masterThread";
 import { setMaster } from "../lib/tcserver/commands";
@@ -229,6 +230,7 @@ export function ThreadHeader({
                 {pauseAllLabel(pauseAll)}
               </button>
             ) : null}
+            {model.activeId ? <DevServerButton sessionId={model.activeId} /> : null}
             <IconButton label={railOpen ? "Hide rail" : "Show rail"} active={railOpen} onClick={onToggleRail}>
               <PanelRight className="size-3.5" strokeWidth={1.75} />
             </IconButton>
