@@ -87,7 +87,9 @@ public struct HomePairing: Sendable {
 }
 
 /// One row of Home. Rows carry ids and metas, never a client; the view
-/// resolves the host from `environmentId`.
+/// resolves the host from `environmentId`. Every id names the host: a thread
+/// moved between hosts can sit in the old host's cache while it lists on the
+/// new one, and two rows must never share an id.
 public enum HomeRow: Sendable, Hashable, Identifiable {
     case status(environmentId: String)
     case hostNote(environmentId: String, HomeNote)
@@ -110,12 +112,12 @@ public enum HomeRow: Sendable, Hashable, Identifiable {
         switch self {
         case .status(let env): "status:\(env)"
         case .hostNote(let env, let note): "note:\(env):\(note.id)"
-        case .needsYou(_, let item): "needs:\(item.id)"
-        case .running(_, let meta): "running:\(meta.id)"
+        case .needsYou(let env, let item): "needs:\(env):\(item.id)"
+        case .running(let env, let meta): "running:\(env):\(meta.id)"
         case .calm(let env, _): "calm:\(env)"
         case .project(let env, let group, _): "project:\(env):\(group.id)"
-        case .thread(_, let item): "thread:\(item.id)"
-        case .moreAgents(_, let root, _): "more:\(root.id)"
+        case .thread(let env, let item): "thread:\(env):\(item.id)"
+        case .moreAgents(let env, let root, _): "more:\(env):\(root.id)"
         case .archivedThreads(let env, let group): "archived:\(env):\(group.id)"
         case .archivedProjects(let env, let workspace, _): "archived-projects:\(env):\(workspace.id)"
         case .emptyWorkspace(let env, let workspace): "empty:\(env):\(workspace.id)"

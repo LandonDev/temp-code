@@ -13,7 +13,8 @@ struct HomeView: View {
     var slots = HomeSlots()
     /// Folded workspace keys, one per line, remembered across launches.
     @AppStorage("home.folded") private var foldedRaw = ""
-    /// The needs-you cue per thread (its line and the row to land on), from its newest rows.
+    /// The needs-you cue per thread (its line and the row to land on), from its
+    /// newest rows, keyed by host and thread (a moved thread can be cached on two).
     @State private var cues: [String: HomeModel.Cue] = [:]
     @State private var adding = false
     @State private var pairingAgain: PairedEnvironment?
@@ -140,14 +141,18 @@ struct HomeView: View {
     }
 
     private func cue(for row: HomeRow) -> HomeModel.Cue? {
-        if case .needsYou(_, let item) = row { return cues[item.id] }
+        if case .needsYou(let environmentId, let item) = row { return cues[Self.cueKey(environmentId, item.id)] }
         return nil
+    }
+
+    private static func cueKey(_ environmentId: String, _ sessionId: String) -> String {
+        "\(environmentId):\(sessionId)"
     }
 
     /// Changes when a needs-you thread arrives, leaves or moves.
     private func needsKey(_ sections: [HomeSection]) -> String {
         sections.flatMap(\.rows).compactMap { row -> String? in
-            if case .needsYou(_, let item) = row { return "\(item.id):\(item.meta.updatedAt)" }
+            if case .needsYou(let environmentId, let item) = row { return "\(environmentId):\(item.id):\(item.meta.updatedAt)" }
             return nil
         }.joined(separator: ",")
     }
@@ -163,8 +168,11 @@ struct HomeView: View {
         for row in sections.flatMap(\.rows) {
             guard case .needsYou(let environmentId, let item) = row, let client = model.registry.client(environmentId) else { continue }
             let tail = item.kind == .paused ? [] : await client.peekTail(item.id)
+            // The key changed under this task: a newer run owns the cues now.
+            guard !Task.isCancelled else { return }
             let cue = HomeModel.cue(for: item.kind, rows: tail)
-            if cues[item.id] != cue { cues[item.id] = cue }
+            let key = Self.cueKey(environmentId, item.id)
+            if cues[key] != cue { cues[key] = cue }
         }
     }
 }

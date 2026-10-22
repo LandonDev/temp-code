@@ -38,7 +38,8 @@ struct WorkspaceIconView: View {
             }
         }
         .accessibilityHidden(true)
-        .task(id: workspace.id) { await client.loadIcon(workspace.id) }
+        // The cached shell paints before the socket is up; the open socket asks again.
+        .task(id: "\(workspace.id):\(client.status.transport.rawValue)") { await client.loadIcon(workspace.id) }
     }
 
     private var outline: Color {

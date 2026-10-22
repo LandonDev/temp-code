@@ -45,9 +45,9 @@ private func ids(_ out: [HomeSection]) -> [String] { out.map(\.id) }
         #expect(ids(out) == ["status", "needs", "running", "workspace:box:wa"])
         #expect(out[1].header == .title("Needs you"))
         #expect(out[2].header == .title("Running"))
-        #expect(out[1].rows.map(\.id) == ["needs:wait"])
-        #expect(out[2].rows.map(\.id) == ["running:run"])
-        #expect(out[3].rows.map(\.id) == ["project:box:p1", "thread:idle", "thread:run", "thread:wait"])
+        #expect(out[1].rows.map(\.id) == ["needs:box:wait"])
+        #expect(out[2].rows.map(\.id) == ["running:box:run"])
+        #expect(out[3].rows.map(\.id) == ["project:box:p1", "thread:box:idle", "thread:box:run", "thread:box:wait"])
     }
 
     @Test func `a quiet home has no needs or running section`() {
@@ -59,8 +59,8 @@ private func ids(_ out: [HomeSection]) -> [String] { out.map(\.id) }
         let a = host("a", sessions: [meta("a-wait", status: .waiting, updatedAt: 300), meta("a-run", status: .running, updatedAt: 10)])
         let b = host("b", sessions: [meta("b-wait", status: .waiting, updatedAt: 100), meta("b-run", status: .running, updatedAt: 20)])
         let out = sections([a, b])
-        #expect(out.first { $0.id == "needs" }?.rows.map(\.id) == ["needs:b-wait", "needs:a-wait"])
-        #expect(out.first { $0.id == "running" }?.rows.map(\.id) == ["running:b-run", "running:a-run"])
+        #expect(out.first { $0.id == "needs" }?.rows.map(\.id) == ["needs:b:b-wait", "needs:a:a-wait"])
+        #expect(out.first { $0.id == "running" }?.rows.map(\.id) == ["running:b:b-run", "running:a:a-run"])
         #expect(out.first { $0.id == "needs" }?.rows.map(\.environmentId) == ["b", "a"])
     }
 }
@@ -132,7 +132,7 @@ private func ids(_ out: [HomeSection]) -> [String] { out.map(\.id) }
         let out = sections([host("box", workspaces: [wa], sessions: [meta("loose", cwd: "/tmp/x")])])
         #expect(ids(out) == ["calm", "chats:box", "workspace:box:wa"])
         #expect(out[1].header == .chats(environmentId: "box"))
-        #expect(out[1].rows.map(\.id) == ["thread:loose"])
+        #expect(out[1].rows.map(\.id) == ["thread:box:loose"])
     }
 
     @Test func `a host with no workspace and no chat gets the nothing row, listed once its shell is`() {
@@ -174,7 +174,7 @@ private func ids(_ out: [HomeSection]) -> [String] { out.map(\.id) }
     @Test func `an open workspace lists chats, each project with its threads and archived row, then the archived projects`() {
         let out = sections([host("box", workspaces: [wa], projects: projects, sessions: sessions)])
         let workspace = out.first { $0.id == "workspace:box:wa" }
-        #expect(workspace?.rows.map(\.id) == ["thread:chat", "project:box:p1", "thread:t1", "thread:t2", "archived:box:p1", "archived-projects:box:wa"])
+        #expect(workspace?.rows.map(\.id) == ["thread:box:chat", "project:box:p1", "thread:box:t1", "thread:box:t2", "archived:box:p1", "archived-projects:box:wa"])
         guard case .workspace(let listed, let collapsed, let threads)? = workspace?.header else {
             Issue.record("no workspace header")
             return
@@ -200,9 +200,9 @@ private func ids(_ out: [HomeSection]) -> [String] { out.map(\.id) }
     }
 
     @Test func `an open workspace with nothing in it says so once`() {
-        let out = sections([host("box", workspaces: [wa], projects: [p1])])
+        let out = sections([host("box", workspaces: [wa])])
         #expect(out.first { $0.id == "workspace:box:wa" }?.rows == [.emptyWorkspace(environmentId: "box", wa)])
-        let folded = sections([host("box", workspaces: [wa], projects: [p1])], folded: ["box:wa"])
+        let folded = sections([host("box", workspaces: [wa])], folded: ["box:wa"])
         #expect(folded.first { $0.id == "workspace:box:wa" }?.rows.isEmpty == true)
     }
 
@@ -229,13 +229,13 @@ private func ids(_ out: [HomeSection]) -> [String] { out.map(\.id) }
             meta("c-fail", parentId: "root", status: .error, createdAt: 8)
         ]
         let rows = HomeSections.threadRows("box", [root(children)])
-        #expect(rows.map(\.id) == ["thread:root", "thread:c-wait", "thread:c-fail", "thread:c-run", "thread:c-done-1", "thread:c-done-2", "thread:c-done-3", "more:root"])
+        #expect(rows.map(\.id) == ["thread:box:root", "thread:box:c-wait", "thread:box:c-fail", "thread:box:c-run", "thread:box:c-done-1", "thread:box:c-done-2", "thread:box:c-done-3", "more:box:root"])
         #expect(rows.last == .moreAgents(environmentId: "box", root: meta("root", projectId: "p1"), hidden: 2))
     }
 
     @Test func `a root with few settled children has no more row`() {
         let rows = HomeSections.threadRows("box", [root([meta("c1", parentId: "root"), meta("c2", parentId: "root", createdAt: 2)])])
-        #expect(rows.map(\.id) == ["thread:root", "thread:c1", "thread:c2"])
+        #expect(rows.map(\.id) == ["thread:box:root", "thread:box:c1", "thread:box:c2"])
     }
 
     @Test func `every row names its host`() {
@@ -269,7 +269,7 @@ private func ids(_ out: [HomeSection]) -> [String] { out.map(\.id) }
         #expect(workspace.repo == "LandonDev/temp-code")
         #expect(!collapsed)
         #expect(threads == 3)
-        #expect(paired.rows.map(\.id) == ["project:box:pb", "thread:box-t", "project:mac:pm", "thread:mac-t1", "thread:mac-t2"])
+        #expect(paired.rows.map(\.id) == ["project:box:pb", "thread:box:box-t", "project:mac:pm", "thread:mac:mac-t1", "thread:mac:mac-t2"])
         guard case .project(_, _, let flagged)? = paired.rows.first else {
             Issue.record("no project row")
             return
@@ -319,8 +319,10 @@ private func ids(_ out: [HomeSection]) -> [String] { out.map(\.id) }
         #expect(!HomeRow.nothing(environmentId: "a", name: "A", listed: true).isEvent)
     }
 
-    @Test func `ids are stable and name the host where a meta id alone would not`() {
+    @Test func `ids are stable and every one names the host`() {
         #expect(HomeRow.status(environmentId: "a").id == "status:a")
+        #expect(HomeRow.thread(environmentId: "a", ThreadItem(meta: meta("t"))).id == "thread:a:t")
+        #expect(HomeRow.running(environmentId: "b", meta("t", status: .running)).id == "running:b:t")
         #expect(HomeRow.hostNote(environmentId: "a", HomeNote(id: "boot", text: "x")).id == "note:a:boot")
         #expect(HomeRow.calm(environmentId: "a", wa).id == "calm:a")
         #expect(HomeRow.archivedProjects(environmentId: "a", wa, count: 2).id == "archived-projects:a:wa")
@@ -334,7 +336,7 @@ private func ids(_ out: [HomeSection]) -> [String] { out.map(\.id) }
         #expect(!ids(out).contains("running"))
         #expect(!ids(out).contains("needs"))
         let rows = out.first { $0.id == "workspace:box:wa" }?.rows ?? []
-        #expect(rows.map(\.id) == ["project:box:p1", "thread:s", "thread:q"])
+        #expect(rows.map(\.id) == ["project:box:p1", "thread:box:s", "thread:box:q"])
         #expect(rows.allSatisfy { !$0.isEvent })
     }
 }
