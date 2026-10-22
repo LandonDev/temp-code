@@ -1,16 +1,16 @@
-import { DEFAULT_BATCH_RULES } from "@server/shared/contract-batch";
 import { describe, expect, it } from "vitest";
+import { DEFAULT_BATCH_RULES } from "@server/shared/contract-batch";
 import type { SessionMeta, SessionStatus } from "../../../lib/tcserver/types";
 import {
   batchFromPush,
-  branchOf,
-  countsSentence,
-  groupChildren,
+  blockedLine,
+  foldRows,
   groupOf,
+  groupRows,
   masterChildrenOf,
   masterCounts,
   mergedLine,
-  queuedHint,
+  rulesSentence,
   typeWord,
 } from "./useMasterModel";
 
@@ -26,8 +26,11 @@ const meta = (status: SessionStatus, extra: Partial<SessionMeta> = {}): SessionM
     updatedAt: n,
     cwd: "/repo",
     threadType: "implementation",
+    title: `Thread ${n}`,
     ...extra,
   }) as unknown as SessionMeta;
+
+const rowOf = (m: SessionMeta) => ({ key: m.id, meta: m, plan: null, title: m.title });
 
 describe("grouping by status", () => {
   it("files every status into one of the four sections", () => {
@@ -42,71 +45,85 @@ describe("grouping by status", () => {
     expect(groupOf("stopped")).toBe("done");
   });
 
-  it("returns the non-empty sections in order, rows oldest first", () => {
-    const groups = groupChildren([
-      meta("idle", { createdAt: 9 }),
-      meta("running", { createdAt: 5 }),
-      meta("running", { createdAt: 2 }),
-      meta("waiting", { createdAt: 7 }),
-    ]);
+  it("returns the non-empty sections in order", () => {
+    const rows = [meta("idle"), meta("running"), meta("waiting")].map(rowOf);
+    const groups = groupRows(rows);
     expect(groups.map((g) => g.id)).toEqual(["needsYou", "running", "done"]);
-    expect(groups[1].rows.map((r) => r.createdAt)).toEqual([2, 5]);
-    expect(groups.find((g) => g.id === "queued")).toBeUndefined();
+    expect(groups.map((g) => g.label)).toEqual(["Needs you", "Running", "Done"]);
+    expect(masterCounts(rows)).toEqual({ needsYou: 1, running: 1, queued: 0, done: 1 });
   });
 
   it("filters the master's unarchived roots and nothing else", () => {
-    const rows = masterChildrenOf(
-      [
-        meta("running"),
-        meta("running", { masterId: "other" }),
-        meta("running", { archived: true }),
-        meta("running", { parentId: "p" }),
-        meta("idle", { masterId: null as unknown as string }),
-      ],
-      "m",
-    );
+    const mine = meta("running");
+    const all = [
+      mine,
+      meta("running", { masterId: "other" }),
+      meta("running", { parentId: "x" }),
+      meta("idle", { archived: true }),
+      meta("idle", { masterId: null as unknown as string }),
+    ];
+    expect(masterChildrenOf(all, "m")).toEqual([mine]);
+  });
+});
+
+describe("a plan and its build are one row", () => {
+  it("gives the build the plan's row: its key, its title, the plan beside it", () => {
+    const plan = meta("idle", { threadType: "planning", title: "Search screen", archived: true, implementationId: "build" });
+    const build = meta("running", { id: "build", title: "Search: the results screen", planThreadId: plan.id });
+    const other = meta("queued", { title: "Inbox" });
+    const metas = [plan, build, other];
+    const rows = foldRows(masterChildrenOf(metas, "m"), metas, "m");
+    expect(rows.map((r) => r.key)).toEqual([plan.id, other.id]);
+    expect(rows[0]).toMatchObject({ meta: build, plan, title: "Search screen" });
+    expect(typeWord(rows[0].meta)).toBe("Implementation");
+  });
+
+  it("draws a plan still unarchived once as its build's row, and a plan without a build as itself", () => {
+    const plan = meta("idle", { threadType: "planning", title: "Search screen" });
+    const build = meta("running", { planThreadId: plan.id });
+    const lone = meta("running", { threadType: "planning", title: "Settings" });
+    const metas = [plan, build, lone];
+    const rows = foldRows(masterChildrenOf(metas, "m"), metas, "m");
+    expect(rows.map((r) => r.title)).toEqual(["Search screen", "Settings"]);
+    expect(rows[1].plan).toBeNull();
+  });
+
+  it("never folds against a plan outside the batch", () => {
+    const foreign = meta("idle", { threadType: "planning", masterId: "other", title: "Elsewhere" });
+    const build = meta("running", { title: "Build", planThreadId: foreign.id });
+    const rows = foldRows([build], [foreign, build], "m");
     expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ key: build.id, plan: null, title: "Build" });
   });
 });
 
-describe("the counts sentence", () => {
-  it("names only the non-zero parts, running first", () => {
-    const counts = masterCounts([
-      meta("running"),
-      meta("running"),
-      meta("waiting"),
-      meta("queued"),
-      meta("queued"),
-      meta("queued"),
-      meta("idle"),
-    ]);
-    expect(countsSentence(counts)).toBe("2 running · 1 needs you · 3 queued · 1 done");
+describe("the rules sentence", () => {
+  it("reads the defaults as one sentence", () => {
+    expect(rulesSentence(DEFAULT_BATCH_RULES)).toBe(
+      "Branches land as they finish, then one gate on the merged tree and a release. Then you are notified.",
+    );
   });
-  it("is empty with no children, and pluralises needs you", () => {
-    expect(countsSentence(masterCounts([]))).toBe("");
-    expect(countsSentence(masterCounts([meta("waiting"), meta("error")]))).toBe("2 need you");
+  it("names every step the rules ask for, and none when they ask for nothing", () => {
+    expect(rulesSentence({ land: "all-at-once", gate: true, release: true, deploy: "box", then: "archive-children" })).toBe(
+      "Branches land together once every thread is done, then one gate on the merged tree, a release and a deploy to the box. Then the threads are archived.",
+    );
+    expect(rulesSentence({ land: "as-they-finish", gate: false, release: false, deploy: "none", then: "notify" })).toBe(
+      "Branches land as they finish, nothing runs after. Then you are notified.",
+    );
   });
-});
-
-describe("row words", () => {
-  it("hints the Queued label only for a row waiting on the cap", () => {
-    expect(queuedHint([meta("queued", { after: "c1" })])).toBeNull();
-    expect(queuedHint([meta("queued", { after: null }), meta("queued", { after: "c1" })])).toBe("starts as a slot frees");
-  });
-  it("names the type in one word and the branch off the worktree", () => {
-    expect(typeWord({ threadType: "implementation" })).toBe("impl");
-    expect(typeWord({ threadType: "project-plan" })).toBe("project plan");
-    expect(typeWord({ threadType: null })).toBe("");
-    expect(branchOf({ cwd: "/repo/.claude/worktrees/ios-home" }, "/repo")).toBe("ios-home");
-    expect(branchOf({ cwd: "/repo/" }, "/repo")).toBeNull();
+  it("names the blocking child", () => {
+    const titleOf = (id: string) => (id === "c9" ? "Inbox" : undefined);
+    expect(blockedLine({ blocked: { sessionId: "c9", why: "errored" } }, titleOf)).toBe("Blocked: Inbox errored");
+    expect(blockedLine({ blocked: { sessionId: "zz", why: "stopped" } }, titleOf)).toBe("Blocked: a thread stopped");
+    expect(blockedLine({ blocked: null }, titleOf)).toBeNull();
   });
 });
 
 describe("the batch", () => {
   it("reads 'n of m merged' from landed and pending", () => {
-    expect(mergedLine({ landed: ["a", "b"], pending: Array.from({ length: 8 }, (_, i) => `p${i}`) })).toBe("2 of 10 merged");
+    expect(mergedLine({ landed: ["a", "b"], pending: Array.from({ length: 8 }, (_, i) => `p${i}`) })).toBe("2 of 10 landed");
   });
-  it("takes a batch push for this master and ignores anything else", () => {
+  it("takes a batch push for this master, with its rules, and ignores anything else", () => {
     const steps = [{ id: "land", status: "running", detail: "1 of 3", at: 1 }];
     expect(batchFromPush({ push: "batch", state: { masterId: "m", steps, landed: ["a"], pending: [] } }, "m")).toEqual({
       masterId: "m",
@@ -118,6 +135,8 @@ describe("the batch", () => {
       blocked: null,
       finishedAt: null,
     });
+    const rules = { ...DEFAULT_BATCH_RULES, deploy: "box", summary: "Land all seven" };
+    expect(batchFromPush({ push: "batch", state: { masterId: "m", steps, rules } }, "m")?.rules).toEqual(rules);
     expect(batchFromPush({ push: "batch", state: { masterId: "m", steps } }, "m")?.landed).toEqual([]);
     expect(batchFromPush({ push: "batch", masterId: "m", steps }, "m")).toBeNull();
     expect(batchFromPush({ push: "batch", state: { masterId: "x", steps } }, "m")).toBeNull();

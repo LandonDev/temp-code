@@ -1,231 +1,166 @@
-import { useReducedMotion } from "motion/react";
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { ArrowUp, MessageSquare, Pause, Play, Square, X } from "../../../chrome/icons";
+import { useState, type KeyboardEvent, type ReactNode } from "react";
+import { Check, Circle, MessageSquare, Pause, Play, Square, X } from "../../../chrome/icons";
+import { HarnessIcon } from "../../../chrome/HarnessIcon";
 import { ArchiveThreadDialog } from "../../../chrome/ThreadResourcesDialog";
-import { EASE_OUT_CSS } from "../../../lib/ease";
-import type { Block } from "../../../lib/session";
 import * as commands from "../../../lib/tcserver/commands";
+import { asHarness } from "../../../lib/tcserver/store";
+import type { TodoItem } from "../../../lib/tcserver/todos";
 import type { SessionMeta } from "../../../lib/tcserver/types";
 import { hasRunningTurn } from "../../../lib/threadBatch";
+import { useThreadNotes } from "../../../lib/threadNotes";
 import { loadThreadResources, useThreadResources } from "../../../lib/threadResources";
-import { TONE_CLASS, type AgentTone } from "../../../lib/threads/agents";
-import { duration } from "../bits";
-import { AgentStatsLine, ModelLine, StatusGlyph } from "../fleet/rowBits";
+import { modelLabel, TONE_CLASS } from "../../../lib/threads/agents";
+import { MatrixSpinner, THREAD_GLYPHS, THREAD_TINTS } from "../bits";
+import { StatusGlyph } from "../fleet/rowBits";
 import { useAgentModel } from "../fleet/useFleetModel";
-import { branchOf, clockTime, typeWord } from "./useMasterModel";
+import { rowBody, taskList, taskTally, whatLine } from "./rowBody";
+import { typeWord, type MasterRowModel } from "./useMasterModel";
 
 /**
- * One child of the batch as a row (docs/LAYOUT.md "Master"): the fleet
- * row's look with the child's type and host after its title, what it is
- * doing on the second line, its tallies on the third, and the model with
- * the elapsed time at the right. Hover trades the right column for the
- * actions; a click unfolds the row in place to its last lines and a
- * message field; ⌘↩ opens the child as a tab.
+ * One row of the batch (docs/LAYOUT.md "Master"). Two lines: the type's
+ * glyph, the title and the task tally; then the status glyph beside what
+ * the thread is doing, and at the right the provider's mark, the model,
+ * its effort and context. Under an implementation its task list; under a
+ * research or orchestration thread one summary line. A click opens the
+ * thread in the master view's right pane; hover shows Message, Pause or
+ * Resume, Stop and Remove. Nothing on the row is separated by a dot.
  */
 
-const UNFOLD_MS = 200;
-const FEED_LINES = 4;
-
-/** The last `limit` things the child did, newest last: a tool with its
- *  detail, the child's own words, an error. */
-export function feedLines(blocks: readonly Block[], limit = FEED_LINES): { key: string; head: string; text: string }[] {
-  const out: { key: string; head: string; text: string }[] = [];
-  for (let i = blocks.length - 1; i >= 0 && out.length < limit; i--) {
-    const b = blocks[i];
-    if (b.role === "tool") {
-      const name = b.tool?.title ?? b.tool?.name ?? "tool";
-      const detail = b.tool?.detail || firstLine(toolInput(b.tool?.input));
-      out.push({ key: b.id, head: name, text: detail });
-    } else if (b.role === "assistant" && b.text.trim()) {
-      out.push({ key: b.id, head: "", text: firstLine(b.text) });
-    } else if (b.role === "system" && b.id.startsWith("err:") && b.text.trim()) {
-      out.push({ key: b.id, head: "error", text: firstLine(b.text) });
-    }
-  }
-  return out.reverse();
-}
-
-function firstLine(text: string): string {
-  return text.trim().split("\n")[0]?.trim() ?? "";
-}
-
-function toolInput(input: unknown): string {
-  if (!input || typeof input !== "object") return "";
-  const rec = input as Record<string, unknown>;
-  for (const key of ["command", "file_path", "path", "pattern", "description", "query"]) {
-    const v = rec[key];
-    if (typeof v === "string" && v.trim()) return v;
-  }
-  return "";
-}
-
-/** The row's second line: the scheduler's or the harness's `activity` while
- *  the child is queued or working, the question or the failure while it
- *  needs the person, nothing once it is done. */
-export function whatLine(
-  meta: Pick<SessionMeta, "status" | "activity">,
-  line: { text: string; tone: AgentTone },
-): { text: string; tone: AgentTone } | null {
-  switch (meta.status) {
-    case "waiting":
-    case "error":
-      return line.text ? line : null;
-    case "paused":
-      return { text: "Paused", tone: "muted" };
-    case "queued":
-    case "starting":
-    case "running":
-    case "watching":
-      return { text: meta.activity?.trim() || line.text, tone: "muted" };
-    default:
-      return null;
-  }
-}
-
 export function MasterRow({
-  child,
-  masterCwd,
+  row,
   now,
   fleetSize,
   landed,
   hostName,
   open,
-  onToggle,
-  onOpenSession,
+  onOpen,
 }: {
-  child: SessionMeta;
-  masterCwd: string;
+  row: MasterRowModel;
   now: number;
   fleetSize: number;
-  /** The batch marked this child's branch landed. */
+  /** The batch marked this row's branch landed. */
   landed: boolean;
-  /** The child's host when it is not the master's; null otherwise. */
+  /** The thread's host when it is not the master's; null otherwise. */
   hostName: string | null;
+  /** This row's thread is the one open in the right pane. */
   open: boolean;
-  onToggle: () => void;
-  onOpenSession?: (sessionId: string) => void;
+  /** Open the thread in the pane; `focus` lands in its composer. */
+  onOpen: (id: string, focus?: boolean) => void;
 }) {
-  const { session, live, idle, line, stats, elapsed } = useAgentModel(child, now, fleetSize);
-  const what = whatLine(child, line);
-  const branch = branchOf(child, masterCwd);
-  const queued = child.status === "queued";
-  const dim = idle || queued;
+  const { meta, plan, title } = row;
+  const { session, line } = useAgentModel(meta, now, fleetSize);
+  const notes = useThreadNotes(
+    meta.threadType === "research" || meta.threadType === "orchestration" ? meta.environmentId : null,
+    meta.id,
+  );
+  const what = whatLine(meta, line, landed);
+  const body = rowBody(meta, session, notes?.text, what?.text);
+  const tally = taskTally(taskList(session));
+  const queued = meta.status === "queued";
+  const settled = !queued && !what && !landed && meta.status !== "waiting" && meta.status !== "error";
+  const dim = queued || meta.status === "idle" || meta.status === "stopped" || meta.status === "done";
   const [archiving, setArchiving] = useState(false);
-  const resources = useThreadResources(archiving ? child.id : null);
-  const fieldRef = useRef<HTMLInputElement>(null);
-  const [wantFocus, setWantFocus] = useState(false);
+  const resources = useThreadResources(archiving ? meta.id : null);
+  const Glyph = meta.threadType ? THREAD_GLYPHS[meta.threadType] : null;
+  const tint = meta.threadType ? THREAD_TINTS[meta.threadType] : "text-content/50";
 
-  useEffect(() => {
-    if (open && wantFocus) {
-      fieldRef.current?.focus();
-      setWantFocus(false);
-    }
-  }, [open, wantFocus]);
-
-  const message = () => {
-    setWantFocus(true);
-    if (!open) onToggle();
-  };
   const openArchive = () => {
-    void loadThreadResources(child.id);
+    void loadThreadResources(meta.id);
     setArchiving(true);
   };
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === "Enter" && e.metaKey && onOpenSession) {
+    if (e.key === "Enter") {
       e.preventDefault();
-      onOpenSession(child.id);
+      onOpen(meta.id);
     }
   };
 
   const actions: ReactNode[] = [];
   if (queued) {
-    // Start now goes past the host's cap and `after`; Remove from queue is the
-    // fleet switches' Stop on a queued root (it archives; lib/threadBatch.ts).
-    actions.push(<Action key="start" title="Start now" icon={Play} onClick={() => void commands.startNow(child.id)} />);
+    // Start now goes past `after`; Remove from queue is the fleet switches'
+    // Stop on a queued root (it archives; lib/threadBatch.ts).
+    actions.push(<Action key="start" title="Start now" icon={Play} onClick={() => void commands.startNow(meta.id)} />);
     actions.push(
-      <Action
-        key="remove"
-        title="Remove from queue"
-        icon={X}
-        onClick={() => void commands.sessionBatch(child.environmentId, "stop", [child.id])}
-      />,
+      <Action key="remove" title="Remove from queue" icon={X} onClick={() => void commands.sessionBatch(meta.environmentId, "stop", [meta.id])} />,
     );
   } else {
-    actions.push(<Action key="message" title="Message" icon={MessageSquare} onClick={message} />);
-    if (hasRunningTurn(child)) {
-      actions.push(<Action key="pause" title="Pause" icon={Pause} onClick={() => void commands.pause(child.id)} />);
-      actions.push(<Action key="stop" title="Stop" icon={Square} onClick={() => void commands.interrupt(child.id)} />);
-    } else if (child.status === "paused" || child.status === "stopped") {
-      actions.push(<Action key="resume" title="Resume" icon={Play} onClick={() => void commands.resume(child.id)} />);
+    actions.push(<Action key="message" title="Message" icon={MessageSquare} onClick={() => onOpen(meta.id, true)} />);
+    if (hasRunningTurn(meta)) {
+      actions.push(<Action key="pause" title="Pause" icon={Pause} onClick={() => void commands.pause(meta.id)} />);
+      actions.push(<Action key="stop" title="Stop" icon={Square} onClick={() => void commands.interrupt(meta.id)} />);
+    } else if (meta.status === "paused" || meta.status === "stopped") {
+      actions.push(<Action key="resume" title="Resume" icon={Play} onClick={() => void commands.resume(meta.id)} />);
     }
     actions.push(<Action key="remove" title="Remove" icon={X} onClick={openArchive} />);
   }
 
   return (
     <div
-      className={`group relative rounded-lg transition-colors hover:bg-content/5 ${open ? "bg-content/5" : ""}`}
+      className={`group relative rounded-lg transition-colors duration-100 hover:bg-content/5 ${open ? "bg-content/5" : ""}`}
       data-open={open || undefined}
-      data-status={child.status}
+      data-status={meta.status}
+      data-type={meta.threadType ?? undefined}
+      data-plan={plan?.id}
     >
       <button
         type="button"
-        onClick={onToggle}
+        onClick={() => onOpen(meta.id)}
         onKeyDown={onKey}
-        aria-expanded={open}
-        className="flex w-full items-start gap-2.5 rounded-lg px-3 py-2 text-left"
+        aria-current={open || undefined}
+        className="grid w-full grid-cols-[16px_1fr] gap-x-2 rounded-lg px-3 py-2 text-left"
       >
-        <span className="flex h-[18px] w-4 shrink-0 items-center justify-center">
-          <StatusGlyph status={child.status} />
+        {/* Line one: the type's glyph, the title, the tally. */}
+        <span className="flex h-[18px] items-center justify-center">
+          {Glyph ? <Glyph className={`size-3.5 ${dim ? "text-content/40" : tint}`} strokeWidth={1.75} /> : null}
         </span>
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="flex min-w-0 items-center gap-1.5 leading-[18px]">
-            <span className={`truncate text-[13px] font-medium ${dim ? "text-content/50" : "text-content"}`}>
-              {child.title || "Untitled"}
+        <span className="flex min-w-0 items-baseline gap-2 leading-[18px]">
+          <span className={`min-w-0 truncate text-[13px] font-medium ${dim ? "text-content/60" : "text-content"}`}>{title || "Untitled"}</span>
+          <span className="shrink-0 text-xs text-content/40">{typeWord(meta)}</span>
+          <span className="flex-1" />
+          {tally ? (
+            <span className="shrink-0 text-xs tabular-nums text-content/50 transition-opacity duration-100 group-hover:opacity-0 group-focus-within:opacity-0" data-tally>
+              {tally}
             </span>
-            {typeWord(child) ? <span className="shrink-0 text-xs text-content/40">{typeWord(child)}</span> : null}
-            {hostName ? <span className="shrink-0 text-xs text-content/40">· {hostName}</span> : null}
-          </span>
-          {what ? (
-            <span className={`truncate text-xs leading-4 ${TONE_CLASS[what.tone]}`}>{what.text}</span>
-          ) : live ? (
-            <span className="text-xs leading-4 text-content/40 italic">starting up</span>
           ) : null}
-          <AgentStatsLine
-            stats={stats}
-            tail={[branch, landed ? `landed ${clockTime(child.updatedAt)}` : null]}
-            className="text-[11px]"
-          />
         </span>
-        <span className="flex shrink-0 flex-col items-end gap-0.5 pt-px text-xs tabular-nums text-content/40 transition-opacity group-hover:opacity-0">
-          <ModelLine meta={child} className="text-content/50" />
-          {!queued && elapsed > 2000 ? <span>{duration(elapsed)}</span> : null}
+
+        {/* Line two: the status glyph beside the activity; the model at the right. */}
+        <span className="flex h-4 items-center justify-center">
+          <StatusGlyph status={settled ? "idle" : meta.status} />
         </span>
+        <span className="flex min-w-0 items-center gap-3 leading-4">
+          <span className={`min-w-0 flex-1 truncate text-xs ${what ? TONE_CLASS[what.tone] : "text-content/40"}`}>
+            {what?.text ?? (settled ? "Done" : "")}
+          </span>
+          <ModelMark meta={meta} hostName={hostName} />
+        </span>
+
+        {body?.kind === "tasks" ? (
+          <>
+            <span />
+            <TaskList tasks={body.tasks} dim={dim} />
+          </>
+        ) : body?.kind === "summary" ? (
+          <>
+            <span />
+            <span className="mt-1 line-clamp-2 text-xs leading-4 text-content/50" data-summary>
+              {body.text}
+            </span>
+          </>
+        ) : null}
       </button>
 
       <div
         data-actions
-        className="pointer-events-none absolute top-1.5 right-2 flex gap-0.5 rounded-md border border-content/10 bg-background-base p-0.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
+        className="pointer-events-none absolute top-[13px] right-2 flex gap-0.5 rounded-md border border-content/10 bg-background-base p-0.5 opacity-0 transition-opacity duration-100 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
       >
         {actions}
       </div>
 
-      <Unfold open={open}>
-        <div className="flex flex-col gap-1.5 border-t border-content/10 px-3 pt-2 pb-2.5 pl-[38px]">
-          <Feed blocks={session?.blocks ?? []} loaded={!!session?.loaded} />
-          <MessageField
-            inputRef={fieldRef}
-            session={session}
-            live={live}
-            canOpen={!!onOpenSession}
-            onOpen={() => onOpenSession?.(child.id)}
-          />
-        </div>
-      </Unfold>
-
       {archiving ? (
         <ArchiveThreadDialog
-          sessionId={child.id}
-          title={child.title || "this thread"}
+          sessionId={meta.id}
+          title={title || "this thread"}
           resources={resources}
           onCancel={() => setArchiving(false)}
           onArchived={() => setArchiving(false)}
@@ -235,15 +170,54 @@ export function MasterRow({
   );
 }
 
-function Action({
-  title,
-  icon: Icon,
-  onClick,
-}: {
-  title: string;
-  icon: typeof X;
-  onClick: () => void;
-}) {
+/** The provider's mark, the model, then its effort and context in a
+ *  quieter gray; the host's name first when the thread runs elsewhere. */
+function ModelMark({ meta, hostName }: { meta: SessionMeta; hostName: string | null }) {
+  const rest = [meta.reasoning, meta.context1m ? "1M" : null].filter(Boolean).join(" ");
+  return (
+    <span
+      className="flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap transition-opacity duration-100 group-hover:opacity-0 group-focus-within:opacity-0"
+      data-model
+    >
+      {hostName ? <span className="text-content/40">{hostName}</span> : null}
+      <HarnessIcon harness={asHarness(meta.provider)} className="size-3 text-content/60" />
+      <span className="text-content/60">{modelLabel(meta.provider, meta.model)}</span>
+      {rest ? <span className="text-content/35">{rest}</span> : null}
+    </span>
+  );
+}
+
+/** The implementation's tasks as a checklist: a check once done, the
+ *  spinner on the one in hand, a hollow ring ahead. Progress reads down
+ *  the glyph column. */
+export function TaskList({ tasks, dim = false }: { tasks: readonly TodoItem[]; dim?: boolean }) {
+  return (
+    <ul className="mt-1.5 flex flex-col gap-[3px]" data-tasks>
+      {tasks.map((task, i) => (
+        <li key={i} className="grid grid-cols-[12px_1fr] items-start gap-x-2 text-xs leading-4" data-task-status={task.status}>
+          <span className="flex h-4 items-center justify-center">
+            {task.status === "completed" ? (
+              <Check className="size-3 text-content/35" strokeWidth={2} />
+            ) : task.status === "in_progress" && !dim ? (
+              <MatrixSpinner cell={1.5} />
+            ) : (
+              <Circle className="size-[9px] text-content/25" strokeWidth={2} />
+            )}
+          </span>
+          <span
+            className={`min-w-0 truncate ${
+              task.status === "completed" ? "text-content/40" : task.status === "in_progress" ? "text-content" : "text-content/55"
+            }`}
+          >
+            {task.content}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Action({ title, icon: Icon, onClick }: { title: string; icon: typeof X; onClick: () => void }) {
   return (
     <button
       type="button"
@@ -257,113 +231,5 @@ function Action({
     >
       <Icon className="size-3" strokeWidth={1.5} />
     </button>
-  );
-}
-
-/** The unfold: a grid row tweening 0fr → 1fr with the body fading in, a
- *  CSS transition so a second click mid-way turns it round from where it
- *  is. The body stays mounted while closed so its text is ready. */
-function Unfold({ open, children }: { open: boolean; children: ReactNode }) {
-  const reduce = useReducedMotion();
-  return (
-    <div
-      className="grid"
-      style={{
-        gridTemplateRows: open ? "1fr" : "0fr",
-        transition: reduce ? "none" : `grid-template-rows ${UNFOLD_MS}ms ${EASE_OUT_CSS}`,
-      }}
-    >
-      <div
-        inert={!open}
-        className="min-h-0 overflow-hidden"
-        style={{
-          opacity: open ? 1 : 0,
-          transition: reduce ? "none" : `opacity ${open ? 160 : 100}ms ${EASE_OUT_CSS}`,
-        }}
-      >
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function Feed({ blocks, loaded }: { blocks: readonly Block[]; loaded: boolean }) {
-  const lines = feedLines(blocks);
-  if (lines.length === 0) {
-    return <p className="text-xs text-content/40">{loaded ? "Nothing yet" : "Loading…"}</p>;
-  }
-  return (
-    <ul className="flex flex-col gap-0.5 text-xs text-content/50">
-      {lines.map((l) => (
-        <li key={l.key} className="flex min-w-0 items-baseline gap-2">
-          {l.head ? <span className="shrink-0 text-content/80">{l.head}</span> : null}
-          <span className="min-w-0 truncate">{l.text}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function MessageField({
-  inputRef,
-  session,
-  live,
-  canOpen,
-  onOpen,
-}: {
-  inputRef: React.RefObject<HTMLInputElement | null>;
-  session: ReturnType<typeof useAgentModel>["session"];
-  live: boolean;
-  canOpen: boolean;
-  onOpen: () => void;
-}) {
-  const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
-  const submit = async () => {
-    const body = text.trim();
-    if (!body || !session || sending) return;
-    setSending(true);
-    setText("");
-    try {
-      if (live) await commands.steer(session, body);
-      else await commands.send(session, body);
-    } finally {
-      setSending(false);
-      inputRef.current?.focus();
-    }
-  };
-  return (
-    <form
-      className="flex h-7 items-center gap-2 rounded-md border border-content/10 pr-1 pl-2.5"
-      onSubmit={(e) => {
-        e.preventDefault();
-        void submit();
-      }}
-    >
-      <input
-        ref={inputRef}
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && e.metaKey && canOpen) {
-            e.preventDefault();
-            onOpen();
-          }
-        }}
-        placeholder="Message this thread…"
-        aria-label="Message this thread"
-        disabled={!session}
-        className="h-full min-w-0 flex-1 bg-transparent text-xs text-content outline-none placeholder:text-content/40 disabled:cursor-default"
-      />
-      {canOpen ? <span className="shrink-0 text-[11px] text-content/30">⌘↩ open</span> : null}
-      <button
-        type="submit"
-        disabled={!text.trim() || !session || sending}
-        aria-label="Send"
-        className="pressable grid size-5 shrink-0 place-items-center rounded bg-content text-background-base disabled:opacity-30"
-      >
-        <ArrowUp className="size-3" strokeWidth={2} />
-      </button>
-    </form>
   );
 }

@@ -1209,21 +1209,37 @@ this is the short one.
 - **The view** (docs/LAYOUT.md "Master"): `MasterView` (surfaces/threads,
   routed when the session is its project's master, whatever its type) on
   the SplitShell recipe, the board left of the master's chat, the chat
-  alone until the first child. `master/useMasterModel.ts` holds the rules
-  (sections Needs you / Running / Queued / Done by status, an empty one not
-  drawn; the title bar's counts sentence; `useBatchState`: `batch.get` on
-  mount, every 5 s while the pane shows, and the `batch` push through
-  `batchFromPush`). `master/MasterRow.tsx` is one child on the pieces
-  AgentRow shares in `fleet/rowBits.tsx` (type and host words after the
-  title, the `activity` line, the branch off the worktree folder, "landed
-  HH:MM", hover actions Message / Pause or Resume / Stop / Remove, Start now
-  and "Remove from queue" on a queued row, the in-place unfold with the last
-  four feed lines and a message field, ⌘↩ opens the tab).
-  `master/BatchFoot.tsx` is the three steps; `master/AddThreadDialog.tsx`
-  the add sheet. `lib/threadBatch.ts` exports `hasRunningTurn` so the rows
-  and Pause all use the fleet switches' rule. The phone draws a queued root
-  with the label "Queued" (StatusDot.swift), never under Home's Running
-  (`HomeModel.isLive`); no phone surface.
+  alone until the first child. A child is never a tab: `isBatchChild`
+  (lib/threadStripModel.ts) keeps a root with a `masterId` off the strip
+  and its shelf, and a row's click opens the child in the right pane
+  (`master/ChildPane.tsx`: the thread's own ThreadView over its transcript
+  and a send-or-steer line, one Back control, Escape or ⌘↩ back).
+  `master/useMasterModel.ts` holds the rules: `foldRows` makes a plan and
+  the build whose `planThreadId` names it one row (the plan's key and
+  title, the build's status and body); sections Needs you / Running /
+  Queued / Done by status, an empty one not drawn; `useBatchState`
+  (`batch.get` on mount, every 5 s while the pane shows, and the `batch`
+  push through `batchFromPush`, rules included); `rulesSentence`;
+  `setBatchRules` / `stopBatchStep` (`batch.setRules`, `batch.stop`).
+  `master/MasterRow.tsx` is two dotless lines (the type glyph, title and
+  task tally; the status glyph, the activity, and the provider mark with
+  model, effort and context at the right) plus the body `master/rowBody.ts`
+  picks by type: an implementation's task list from `session.thread.todos`,
+  a research or orchestration thread's summary (the notes' State line, else
+  its latest words); hover actions Message / Pause or Resume / Stop /
+  Remove, Start now and Remove from queue on a queued row.
+  `master/BatchFoot.tsx` on `master/steps.ts` is the foot: the summary and
+  the rules sentence with Edit (`master/RulesDialog.tsx`, with the publish
+  choice), then the steps idle as one row with their durations, or grown
+  (`TweenHeight`) to the running or failed step's console: elapsed from
+  `startedAt`, `progress` as count, label and bar, the `log` lines
+  following until scrolled up, Stop. `liveStep` reads the host's step
+  telemetry (`status` passed/failed/skipped, `startedAt`/`endedAt`,
+  `progress`, `log`) and an older `done` step alike.
+  `master/AddThreadDialog.tsx` is the add sheet: the brief, then one row per
+  choice with every catalog model and its whole effort ladder. The phone
+  draws a queued root with the label "Queued" (StatusDot.swift), never under
+  Home's Running (`HomeModel.isLive`); no phone surface.
 - **Proofs and tests.** `bun run script:e2e-master-batch`
   (scripts/e2e-master-batch.ts: the whole flow in one process, a pinned
   haiku master starting four children of three types with one `after`

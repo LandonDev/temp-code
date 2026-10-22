@@ -15,7 +15,7 @@ export type StripThread = Pick<
   "id" | "status" | "updatedAt" | "projectId" | "parentId" | "archived"
 > &
   Partial<
-    Pick<SessionMeta, "treeHasLiveWork" | "treeHasPaused" | "treeCanContinue">
+    Pick<SessionMeta, "treeHasLiveWork" | "treeHasPaused" | "treeCanContinue" | "masterId">
   > & {
     /** Minted locally, not on the server yet; always live. */
     draft?: boolean;
@@ -24,15 +24,21 @@ export type StripThread = Pick<
 export type SeenMap = Record<string, number>;
 export type ReadyMap = Record<string, boolean>;
 
+/** A root thread of a master's batch (CLAUDE.md "Master threads"): it
+ *  lives on the master's board and never on the strip or its shelf. */
+export function isBatchChild(thread: Pick<StripThread, "parentId" | "masterId">): boolean {
+  return !thread.parentId && !!thread.masterId;
+}
+
 /** Root, unarchived threads of `projectId`, freshest first. No project → nothing:
- *  loose chats never sit on the strip. */
+ *  loose chats never sit on the strip, and a batch child never does. */
 export function projectRootThreads<T extends StripThread>(
   threads: readonly T[],
   projectId: string | null,
 ): T[] {
   if (!projectId) return [];
   return threads
-    .filter((t) => t.projectId === projectId && !t.parentId && !t.archived)
+    .filter((t) => t.projectId === projectId && !t.parentId && !t.archived && !isBatchChild(t))
     .sort(freshestFirst);
 }
 
@@ -43,7 +49,7 @@ export function archivedRootThreads<T extends StripThread>(
 ): T[] {
   if (!projectId) return [];
   return threads
-    .filter((t) => t.projectId === projectId && !t.parentId && t.archived)
+    .filter((t) => t.projectId === projectId && !t.parentId && t.archived && !isBatchChild(t))
     .sort(freshestFirst);
 }
 

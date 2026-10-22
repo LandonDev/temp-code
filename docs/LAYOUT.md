@@ -184,83 +184,129 @@ to `MasterView` whatever its type (CLAUDE.md "Master threads",
 docs/master-threads.md for the why). The board | sash | chat recipe
 (SplitShell): the batch on the left, the master's own chat on the right,
 folding to the edge tab. Until the first child the chat is the whole view.
+A child of the batch is never a tab: it lives on the board, and opens in
+the right pane in the chat's place.
 
 ```
-┌ iOS batch 2   4 running · 1 needs you · 3 queued   Pause all  [+ Thread] ┐
-│ Needs you 1                                                              │
-│  ●  Live Activity strip   impl · Mac        Fable 5.1 · high · 1M   41m  │
-│     has a question — Ad Hoc or Debug?                 (hover: ✉ ⏸ ■ ✕)  │
-│     +418 −61 · 5/8 tasks · live-activity                                 │
-│ Running 4                                                                │
-│  ▦  Home: Needs you…      impl · Mac        Fable 5.1 · high · 1M  1h12m │
-│     Running ios:test:client                                              │
-│     +1,204 −88 · 7/9 tasks · ◔ 62% · home                                │
-│     ├ last four lines of the feed            (click: unfolds in place)   │
-│     └ [ Message this thread…            ⌘↩ open ]                        │
-│ Queued 3 · starts as a slot frees                                        │
-│  ◌  Inbox: swipe actions  impl · Mac        Fable 5.1 · high · 1M        │
-│     Queued · waiting for Home                                            │
-│ Done 2                                                                   │
-│  ✓  Design foundations    impl · Mac        Fable 5.1 · high · 1M  2h04m │
-│     +612 −40 · foundations · landed 12:08                                │
-├ When the batch lands                                   2 of 10 merged ───┤
-│  ✓ Merge queue  ios/foundations, ios/contract-notice                     │
-│  ▦ Gate once    typecheck · vitest · build · ios                         │
-│  ◌ Release      v1.0.276 · deploy box                                    │
-└──────────────────────────────────────────────────────────────────────────┘
+┌ iOS batch 2                                      Pause all  [+ Thread] ┐
+│ Needs you  1                                                           │
+│  ☷  Live Activity strip  Implementation                                │
+│  ●  has a question — Ad Hoc or Debug?        (hover: ✉ ⏸ ■ ✕ at right) │
+│ Running  3                                                             │
+│  ☷  Home: Needs you, Running, Workspaces  Implementation          3/7  │
+│  ▦  Running ios:test:client           ✺ Claude Fable 5.1  high 1M      │
+│       ✓ Read docs/IOS-DESIGN.md and the home model                     │
+│       ▦ Workspaces list with the project headers                       │
+│       ○ Snapshot tests for the three sections                          │
+│  ⌕  Pricing survey  Research                                           │
+│  ▦  Reading the third source                  ◉ gpt-6.1-sol  xhigh     │
+│       Two of five pricing pages read; Stripe and Paddle left           │
+│  ☷  Search screen  Implementation                                 0/3  │
+│  ▦  Writing SearchScreen.swift        ✺ Claude Fable 5.1  medium 1M    │
+│       ▦ Results list on the search model                               │
+│ Queued  1                                                              │
+│  ☷  Inbox swipe actions  Implementation                                │
+│  ◌  Queued · waiting for Home             ✺ Claude Fable 5.1  high 1M  │
+│ Done  1                                                                │
+│  ☷  Design foundations  Implementation                                 │
+│  ✓  Landed 12:08                          ✺ Claude Fable 5.1  high 1M  │
+├ When the threads are done                                        Edit ─┤
+│ Land all seven, gate once, release, then tell me                       │
+│ Branches land as they finish, then one gate on the merged tree, a      │
+│ release and a deploy to the box. Then you are notified.                │
+│ ✓ Merging 2m   ▦ Gate 1m 12s  3 of 7 vitest                     Stop  │
+│ ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬░░░░░░░░░░░░░░                                        │
+│ │ ✓ typecheck 12s                                                      │
+│ │ vitest  src/main/server/batch.test.ts (14 tests) 120ms              │
+│ ○ Release   ○ Deploy                                                   │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Title bar**: the batch name (the master's title; it holds its ground, the
-  sentence gives way first), one muted tabular sentence of the non-zero
-  counts, a quiet Pause all (the fleet switches' running-turn rule, confirmed
-  with the live count), and + Thread. No chips, no badges.
+- **Title bar**: the batch name (the master's title), a quiet Pause all (the
+  fleet switches' running-turn rule, confirmed with the live count), and
+  + Thread. No counts sentence: the sections carry their counts.
 - **Sections**, each a muted 12px label with its count, in this order: Needs
   you (waiting, error), Running (starting, running, watching, paused), Queued
-  (the label adds "starts as a slot frees" when a row waits on the host's cap
-  rather than a sibling), Done (idle, stopped). An empty section is not
-  drawn. Rows oldest first within a section; nothing animates a reorder.
-- **A row** is the fleet row's look (`fleet/rowBits.tsx`, shared with
-  AgentRow): the glyph (matrix spinner, amber or red dot, a still dashed
-  ring while queued, a pause mark, a check), the 13px medium title, then two
-  muted words: the type (impl, plan, orchestration, research, project plan)
-  and "· <host>" only when the child runs on another host. The 12px what
-  line is the row's `activity` while queued or working, the question or
-  failure in amber or red while it needs you, nothing once done. The 11px
-  stats line: +adds −dels, tasks n/m, the context ring, the branch (the
-  worktree's folder when the cwd is not the master's) and "landed 12:08"
-  once `batch.get` lists the child; what exists, clipped never wrapped.
-  Right: model · effort · 1M, elapsed. Done and queued rows are dimmed.
-- **Hover** trades the right column for the action cluster (1.5px strokes,
-  tooltips): Message, Pause or Resume, Stop, Remove (archive with the
+  (waiting for a sibling: there is no running cap), Done (idle, stopped). An
+  empty section is not drawn. Rows oldest first within a section; nothing
+  animates a reorder.
+- **A row** (`master/MasterRow.tsx`, the rules in `master/rowBody.ts`) is two
+  lines on a 16px glyph column, and nothing on it is separated by a dot.
+  Line one: the type's glyph in its tint (`THREAD_GLYPHS`), the 13px medium
+  title, the type word, and at the right the task tally ("3/7") once the
+  thread has a list. Line two: the status glyph (the matrix spinner, an
+  amber or red dot, a dashed ring while queued, a pause mark, a check once
+  done) beside what the thread is doing (its `activity` while queued or
+  working, the question or failure in amber or red while it needs you,
+  "Landed 12:08" once the batch lists it, "Done" otherwise), and at the
+  right the provider's mark, the model's name, then its effort and context
+  in a quieter gray (the host's name first when the thread runs elsewhere).
+  Under the lines, by type: an implementation its task list from the fold's
+  board state (`session.thread.todos`), a check once done, the spinner on
+  the one in hand, a hollow ring ahead; a research or orchestration thread
+  one summary line, the first line under `## State` in its notes, else its
+  latest words, never the line two already says. Chat and plan rows carry
+  the two lines only. Done and queued rows are dimmed.
+- **A plan and its build are one row** (`foldRows` in `useMasterModel.ts`):
+  a build whose `planThreadId` names a thread of the batch takes that plan's
+  row, keyed by the plan's id and titled with the plan's title, so the row
+  stays in place when the build starts and the type word turns from Plan to
+  Implementation; the plan, archived after the start or not, is never a
+  second row.
+- **Hover** trades the tally and the model mark for the action cluster
+  (1.5px strokes, tooltips): Message (opens the thread in the pane with the
+  composer focused), Pause or Resume, Stop, Remove (archive with the
   resources offer, ArchiveThreadDialog). A queued row offers Start now
-  (`session.start`, past the cap and `after`) and "Remove from queue" (the
-  fleet switches' Stop on a queued root, which archives it).
-- **Click** unfolds the row in place (a `grid-template-rows` 0fr → 1fr
-  transition, 200ms ease-out, interruptible; never a modal): its last four
-  feed lines and a one-line "Message this thread…" field that sends into
-  the child (`steer` while live, `send` otherwise). ⌘↩ on the row or in the
-  field opens the child as a tab.
-- **The foot** stays put under the scrolling list: "When the batch lands"
-  with "n of m merged" at the right, then Merge queue / Gate once / Release
-  from `batch.get` (check, matrix spinner, dashed ring, red dot; the detail
-  after each label, truncated). Read on mount, every 5 s while the pane
-  shows, and from the `batch` push when one arrives.
-- **+ Thread** opens the add sheet (Modal, `master/AddThreadDialog.tsx`):
-  "Add a thread to <batch>", Type (segmented), Model (the app's picker),
-  Effort (segmented from the model's ladder cut to the policy), Context
-  (200k / 1M, Claude only), Host (segmented over the registry's hosts, this
-  one first; another host offers its paired copy of the project and is
-  disabled without one), After (the batch's other children, "Start when a
-  slot frees" default), Brief. Footer: "Starts with the project rules · no
-  gate, the batch runs it once", Cancel, Add. Add is `session.create` with
-  `masterId` and `after` plus the brief as the first message; the row
-  arrives from the push.
-- **Everywhere else** a child is an ordinary thread: an ordinary rail row,
-  an ordinary tab, no chrome outside the view. A queued child is a still
-  gray dot in the rail with its activity line ("Queued · 3rd in line",
-  "Queued · waiting for <sibling>"), the same line on the tab edge's
-  tooltip, and on its own working strip with one quiet Start now where a
-  paused thread's Continue sits.
+  (`session.start`, past `after`) and "Remove from queue" (the fleet
+  switches' Stop on a queued root, which archives it).
+- **Click** opens the thread in the right pane (`master/ChildPane.tsx`):
+  the pane becomes the thread's own view, the one its type gets as a tab
+  (the implementation board, the plan document, the fleet), over its
+  transcript and a one-line composer that sends while it is idle and
+  steers while it runs, with Stop beside Send. The header is one Back
+  control; Escape or ⌘↩ anywhere in the pane goes back to the master's
+  chat. The row reads `aria-current` while open. Nothing opens a tab; the
+  strip never lists a child (`isBatchChild` in lib/threadStripModel.ts).
+- **The foot** (`master/BatchFoot.tsx`, the step rules in `master/steps.ts`)
+  stays put under the scrolling list: "When the threads are done", the
+  master's summary line when it wrote one, the rules as one sentence
+  (`rulesSentence`: how branches land, the gate, the release, the Mac
+  release, the deploy, then notify or archive) with Edit beside it, and the
+  blocked line in red when a child blocks the batch's end. Then the steps,
+  in two sizes. Idle: one quiet row, each step its glyph, name and, once
+  finished, how long it took ("Gate 4m 12s"; "skipped" after one the rules
+  left out). The moment a step runs the foot grows to its console: the
+  steps before it in a line above with their state and time; the running
+  step's name with its elapsed ticking every second from `startedAt`, its
+  progress as "3 of 7" with the host's label and a 2px bar when the total
+  is known, Stop at the right (`batch.stop`); its console lines in the
+  app's monospace, newest at the bottom, following until the person scrolls
+  up (back at the bottom, it follows again); the steps still ahead in a
+  muted row below. A failed step stays open with its last lines and the
+  failure in red until Hide folds it. Every step done, the foot shrinks
+  back to the row. The grow and shrink are the app's height tween
+  (`TweenHeight`: 200 ms, the ease-out curve, a snap under reduced motion),
+  the idle row and the console both mounted so either can tween shut, the
+  hidden one inert. Read on mount, every 5 s while the pane shows, and from
+  the `batch` push when one arrives.
+- **Edit** opens the rules (`master/RulesDialog.tsx`, Modal sm): Branches
+  land (As they finish / All at once), Gate the merged tree, Release,
+  Publish Mac release, Deploy (Nowhere / The box), Then (Notify me /
+  Archive the threads), Summary, the sentence read back under the fields;
+  Save is `batch.setRules`, the foot takes the change from the push.
+- **+ Thread** opens the add sheet (Modal md, `master/AddThreadDialog.tsx`):
+  "Add a thread to <batch>", the brief first (focused; ⌘↩ adds), then one
+  row per choice, label left and control right: Type (segmented), Model
+  (the app's picker, every catalog model), Effort (segmented from the
+  model's own ladder, whole), Context (200k / 1M, Claude only), Host
+  (segmented over the registry's hosts, this one first; another host offers
+  its paired copy of the project and is disabled without one), After
+  ("Nothing, start now", else a sibling). Cancel, Add. One column, nothing
+  scrolls. Add is `session.create` with `masterId` and `after` plus the
+  brief as the first message; the row arrives from the push.
+- **Everywhere else** a child is an ordinary root thread in the rail with
+  its activity line ("Queued · waiting for <sibling>") and its own working
+  strip with one quiet Start now; only the strip and its shelf leave it out.
 
 ## ADE ambitions (later — but the frame reserves room now)
 

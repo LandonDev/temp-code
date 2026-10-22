@@ -36,6 +36,17 @@ describe("projectRootThreads", () => {
     expect(projectRootThreads(all, "p1").map((t) => t.id)).toEqual(["new", "old"]);
   });
 
+  it("keeps a master's batch children off the strip: they live on the board", () => {
+    const all = [
+      thread("master", { updatedAt: 5 }),
+      thread("child", { masterId: "master", updatedAt: 9 }),
+      thread("gone-child", { masterId: "master", archived: true }),
+      thread("plain", { updatedAt: 1 }),
+    ];
+    expect(projectRootThreads(all, "p1").map((t) => t.id)).toEqual(["master", "plain"]);
+    expect(archivedRootThreads(all, "p1").map((t) => t.id)).toEqual([]);
+  });
+
   it("shows nothing when no project is selected: loose chats stay off the strip", () => {
     expect(projectRootThreads([thread("loose", { projectId: null })], null)).toEqual([]);
   });
