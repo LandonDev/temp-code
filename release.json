@@ -1,5 +1,5 @@
 {
-  "n": 294,
-  "notes": "One project across hosts: link ids pair a workspace and project on the Mac and the box, one rail across hosts, project settings live on the box (seeded once from the Mac), far starts land in the linked project, @thread across hosts; dev servers on the box forwarded to the Mac; master board rows count subagents; phone fixes",
-  "ts": 1792711932407
+  "n": 295,
+  "notes": "Release 294 merged with the box's latest: the phone's Liquid Glass chat bar and chrome, text hierarchy in place of dotted joins, transcripts open at the bottom, frames reach the wire in request order, Mac pass rounds 6-7",
+  "ts": 1792712481328
 }
