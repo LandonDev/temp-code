@@ -1417,8 +1417,10 @@ this is the short one.
   under 10% of the budget (MemAvailable on Linux, `kern.memorystatus_level`
   on macOS: os.freemem() there counts only never-used pages). Every live
   harness counts, roots and subagents, in starting, running, waiting or
-  watching, plus idle rows still holding a handle; warm processes and
-  queued rows never do. The cap applies to every start: create's eager
+  watching (unarchived), plus every row still holding a handle; warm
+  processes and queued rows never do. The count and the queue come from the
+  session index (sessionIndex.ts `live` and `queued`, roots and subagents)
+  and the live handles: a pass reads no sessions table. The cap applies to every start: create's eager
   boot, a first message, a send on a thread whose handle is gone, a
   `spawn_agent` child (created `queued`; `wait_for_agent` waits through
   queued and starting; spawn, `list_agents` and `check_agent` say "queued ·
@@ -1428,8 +1430,8 @@ this is the short one.
   scheduler; `session.start { sessionId }`, operate, the strip's Start now,
   past `after` and past the cap) sends it through the same path; a focused
   send is admitted over the cap, up to two (`scheduler.focused`, false
-  until a later step wires it). `tick` runs oldest-first on every meta
-  change and removal and after boot once the BootResumer is done
+  until a later step wires it). `tick` runs oldest-first (createdAt, then
+  the order the scheduler queued them in) on every meta change and removal and after boot once the BootResumer is done
   (`holdUntil`); a pass reserves the slots of the starts it picks before
   launching them, and while rows wait on the cap it puts down the
   longest-idle harnesses (`reclaimIdle`, 3 s grace, never one with a pass,
