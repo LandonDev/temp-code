@@ -37,6 +37,8 @@ export interface WebhookPayload {
   ts: number
   /** The row the notice is about (the prompt, the error, the last row). */
   seq: number
+  /** The host the thread lives on, when it is not the sender (a relayed host's notice, remote/relay.ts). */
+  environmentId?: string
 }
 
 export const WEBHOOK_TIMEOUT_MS = 5_000
@@ -48,7 +50,7 @@ export const loopbackWebhooksAllowed = (): boolean => process.env.TEMP_CODE_WEBH
 export const signPayload = (body: string, secret: string): string =>
   `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`
 
-export function webhookPayload(notice: Notice, hostId: string): WebhookPayload {
+export function webhookPayload(notice: Omit<Notice, 'url'> & { url?: string }, hostId: string, environmentId?: string): WebhookPayload {
   return {
     event: notice.event,
     hostId,
@@ -57,7 +59,8 @@ export function webhookPayload(notice: Notice, hostId: string): WebhookPayload {
     body: notice.body,
     ...(notice.url ? { url: notice.url } : {}),
     ts: notice.ts,
-    seq: notice.seq
+    seq: notice.seq,
+    ...(environmentId ? { environmentId } : {})
   }
 }
 

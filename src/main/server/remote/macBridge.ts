@@ -148,6 +148,8 @@ export interface MacBridgeDeps {
   load?: { sample?: () => LoadSample; intervalMs?: number }
   /** Mac-local threads a host started here that are live now (crossHostThreads.ts); counts toward `macBridge.maxThreads.<envId>`. */
   liveThreads?: (envId: string) => number
+  /** What peer.register says of this host besides its offers: its hostname, build and presence (remote/relayServe.ts registration). */
+  registration?: () => { name: string; presence: import('@shared/contract-relay').MacPresence; build?: import('@shared/deployDrift').BuildFacts }
 }
 
 // ── the policy, pure ─────────────────────────────────────────────────
@@ -536,7 +538,8 @@ export class MacBridge {
       await request('peer.register', {
         from: this.deps.environmentId,
         offers: [MAC_BRIDGE_OFFER, ...(this.deps.offers?.() ?? [])],
-        home: this.home
+        home: this.home,
+        ...(this.deps.registration?.() ?? {})
       })
       this.registered.add(envId)
     } catch (err) {

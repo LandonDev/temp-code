@@ -300,6 +300,9 @@ describe('a host with its own APNs sender', () => {
     })
     expect(await push.deliver({ event: 'finished', threadId: 't1', seq: 30, title: 'Ship it', body: 'Finished its turn', ts: 6000 })).toEqual({ delivered: 1, failed: 0 })
     expect(sent[1]).toMatchObject({ environment: 'production', token: 'cd'.repeat(32) })
+    // a relayed host's notice names that host, so the tap opens the thread there
+    await push.deliver({ event: 'needs_you', threadId: 'm1', seq: 4, title: 'On the Mac', body: 'Asked', ts: 7000, environmentId: 'env_mac' })
+    expect((sent[2].payload as { tc: Record<string, unknown> }).tc).toMatchObject({ hostId: 'box', environmentId: 'env_mac', threadId: 'm1', seq: 4 })
   })
   it('drops a phone Apple calls gone, records other failures on the row, and pushes activity states to the thread tokens', async () => {
     const { apns, sent } = fakeApns((token) => (token.startsWith('ab') ? { ok: false, error: 'APNs 410 Unregistered', gone: true } : { ok: false, error: 'APNs 500', gone: false }))

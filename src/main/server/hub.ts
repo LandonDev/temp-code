@@ -17,6 +17,8 @@ export interface HubEvent {
   requestId?: string
   /** This host's name: the payload's `tc.host`, which the phone adds to the subtitle when several hosts are paired. */
   hostName?: string
+  /** Another host's thread: a relayed host's notice (remote/relay.ts); default this host's own id. */
+  environmentId?: string
 }
 export type HubNoticeKind = 'approval' | 'question' | 'plan' | 'waiting' | 'finished' | 'failed' | 'stuck' | 'batch' | 'stopped'
 /** A phone's APNs registration, forwarded as the hub's `apns` subscription for this host. */
@@ -240,7 +242,7 @@ export function startHub(options: HubOptions, dependencies: Dependencies = {}): 
           title: event.title,
           body: event.body,
           ts: event.ts ?? Date.now(),
-          environmentId: options.environmentId,
+          environmentId: event.environmentId ?? options.environmentId,
           ...(event.threadId === undefined ? {} : { threadId: event.threadId }),
           ...(event.url === undefined ? {} : { url: event.url }),
           ...(event.seq === undefined ? {} : { seq: event.seq }),

@@ -39,6 +39,8 @@ describe('payload and signature', () => {
       seq: notice.seq
     })
     expect(webhookPayload({ ...notice, url: undefined }, 'box')).not.toHaveProperty('url')
+    expect(payload).not.toHaveProperty('environmentId')
+    expect(webhookPayload(notice, 'box', 'env_mac')).toMatchObject({ hostId: 'box', environmentId: 'env_mac' })
     const body = JSON.stringify(payload)
     expect(signPayload(body, 's3cret')).toBe(
       `sha256=${createHmac('sha256', 's3cret').update(body).digest('hex')}`

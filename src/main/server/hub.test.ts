@@ -80,6 +80,11 @@ describe('host hub client', () => {
       transcript: 'private'
     }
     expect(await client.notify(event)).toEqual({ delivered: 2, failed: 1 })
+    expect(JSON.parse(fetch.mock.calls[1][1]!.body as string).environmentId).toBe('env-1')
+    fetch.mockResolvedValueOnce(Response.json({ delivered: 1, failed: 0 }))
+    await client.notify({ ...event, environmentId: 'env_mac' })
+    // a relayed host's notice carries that host's id; the hub's host id stays this one
+    expect(JSON.parse(fetch.mock.calls[2][1]!.body as string)).toMatchObject({ hostId: 'box', environmentId: 'env_mac' })
     const [, init] = fetch.mock.calls[1]
     expect(JSON.parse(init!.body as string)).toMatchObject({
       event: 'finished',

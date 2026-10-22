@@ -337,6 +337,30 @@ describe('MacBridge policy', () => {
     ])
   })
 
+  it('peer.register names the host, its build and its presence for the relay, with the relay offer', async () => {
+    const sent: { method: string; params: unknown }[] = []
+    const build = { release: 300, version: '1.0.300', sha: 'abc', platform: 'darwin' }
+    const presence = { screen: 'locked' as const, power: 'awake' as const, at: 5 }
+    const mb = new MacBridge({
+      environmentId: 'env_mac',
+      store: { getSetting: () => null, setSetting: () => {} },
+      managedRoots: () => [],
+      environments: () => [{ id: 'env_box', name: 'box' }],
+      link: () => async (method: string, params: unknown) => {
+        sent.push({ method, params })
+        return { environmentId: 'env_box' }
+      },
+      home,
+      offers: () => ['relay'],
+      registration: () => ({ name: 'Studio', presence, build }),
+      log: () => {}
+    })
+    await mb.linkUp('env_box')
+    expect(sent).toEqual([
+      { method: 'peer.register', params: { from: 'env_mac', offers: ['mac-bridge', 'relay'], home, name: 'Studio', presence, build } }
+    ])
+  })
+
   it('a path that does not exist is decided before anything is read: off refuses, read asks, a denial never says ENOENT', async () => {
     const ghost = join(root, 'Users', 'someone-else', 'Desktop')
     const b = bridge()
