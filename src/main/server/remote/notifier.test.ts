@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentEvent, EventRow, SessionMeta } from '@shared/events'
-import { Notifier, type Notice, type NotifierRegistry } from './notifier'
+import { batchBody, Notifier, type Notice, type NotifierRegistry } from './notifier'
 
 /** A registry of metas and rows the test drives by hand. */
 class FakeRegistry implements NotifierRegistry {
@@ -347,5 +347,111 @@ describe('a completed plan', () => {
     reg.push('p', { status: 'idle', planCompletedAt: 7, implementationId: 'b' })
     settle()
     expect(notices.at(-1)).toMatchObject({ event: 'finished', threadId: 'p', body: 'Plan complete — implementation started: Ship it' })
+  })
+})
+
+describe("the host's verdict, a gone harness, a queued thread", () => {
+  it('a failure summary beats the raw error line', () => {
+    reg.add('f', { status: 'running' })
+    notifier.start()
+    reg.row('f', {
+      type: 'error',
+      message: 'API Error: 429 {"type":"error","error":{"type":"rate_limit_error"}}',
+      failure: { kind: 'rate_limited', account: 'work', summary: 'Usage limit reached for the 5h window on work', cause: 'The window resets at 14:00.' }
+    })
+    reg.status('f', 'error')
+    settle()
+    expect(notices.map((n) => [n.event, n.kind, n.body])).toEqual([['failed', 'failed', 'Failed: Usage limit reached for the 5h window on work']])
+  })
+  it('a stopped thread says the harness is gone, once', () => {
+    reg.add('g', { status: 'running' })
+    notifier.start()
+    reg.row('g', { type: 'user-text', text: 'go' })
+    reg.status('g', 'stopped')
+    settle()
+    expect(notices.map((n) => [n.event, n.kind, n.body, n.seq])).toEqual([['failed', 'stopped', 'Stopped: the harness is gone', 1]])
+    reg.status('g', 'stopped')
+    settle()
+    expect(seen()).toEqual(['failed:g'])
+    // Resumed and finished: a new state.
+    reg.status('g', 'running')
+    reg.row('g', { type: 'turn-complete' })
+    reg.status('g', 'idle')
+    settle()
+    expect(seen()).toEqual(['failed:g', 'finished:g'])
+  })
+  it('a queued thread emits nothing until it runs', () => {
+    reg.add('q', { status: 'queued' })
+    notifier.start()
+    reg.status('q', 'queued')
+    reg.push('q', { activity: 'Queued · waiting for t0' })
+    settle()
+    minutes(30)
+    expect(notices).toEqual([])
+    reg.status('q', 'running')
+    reg.row('q', { type: 'user-text', text: 'go' })
+    reg.status('q', 'idle')
+    settle()
+    expect(notices.map((n) => [n.event, n.kind])).toEqual([['finished', 'finished']])
+  })
+  it('every notice names the host and the plan body carries its kind', () => {
+    notifier.stop()
+    notifier = new Notifier({ registry: reg, stuckMinutes: () => 10, hostName: () => 'box', now: () => Date.now(), log: () => {} })
+    notifier.onNotice((n) => notices.push(n))
+    reg.add('p', { threadType: 'planning', planPath: '/p.md', status: 'running' })
+    notifier.start()
+    reg.row('p', { type: 'user-text', text: 'plan it' })
+    reg.push('p', { status: 'idle', planCompletedAt: 7 })
+    settle()
+    expect(notices).toEqual([expect.objectContaining({ event: 'finished', kind: 'plan', hostName: 'box', body: 'Plan complete — waiting for you to start the build' })])
+  })
+})
+
+describe("a master's batch", () => {
+  const gate = (ok: boolean, step: 'gate' | 'release' = 'gate') => ({ step, branch: 'master', ok, log: ok ? '✓ vitest 12s' : '✗ vitest 12s failed', at: 1 })
+  it('says the batch is done once the master is between turns, and stays quiet on a thread that is not a master', () => {
+    reg.add('m', { threadType: 'chat', isMaster: true, status: 'running' })
+    reg.add('c', { status: 'running' })
+    notifier.start()
+    reg.row('m', { type: 'user-text', text: 'run the batch' })
+    reg.row('m', { type: 'notice', kind: 'batch', message: 'Batch done: 3 landed · gate passed in 4m 12s · release-281 tagged' })
+    settle()
+    expect(notices).toEqual([])
+    reg.status('m', 'watching')
+    settle()
+    expect(notices.map((n) => [n.event, n.kind, n.body, n.seq])).toEqual([['finished', 'batch', 'Batch done · 3 landed · gate passed in 4m 12s · release-281 tagged', 2]])
+    // Told once: the master's next idle is an ordinary finish, not the batch again.
+    reg.status('m', 'running')
+    reg.row('m', { type: 'assistant-text', text: 'Landed.', delta: false } as AgentEvent)
+    reg.status('m', 'idle')
+    settle()
+    expect(notices.map((n) => n.kind)).toEqual(['batch', 'finished'])
+    // A gate row on a thread that is not a master is merge_branch's own gate: nothing.
+    reg.row('c', { type: 'notice', kind: 'gate', message: 'Gate failed on c · at vitest', gate: gate(false) })
+    reg.status('c', 'idle')
+    settle()
+    expect(notices.map((n) => n.threadId)).toEqual(['m', 'm', 'c'])
+    expect(notices.at(-1)).toMatchObject({ kind: 'finished', body: 'Done' })
+  })
+  it('a failing gate or release step stops the batch; a passing one says nothing', () => {
+    reg.add('m', { threadType: 'chat', isMaster: true, status: 'watching' })
+    notifier.start()
+    reg.row('m', { type: 'notice', kind: 'gate', message: 'Gate passed on master', gate: gate(true) })
+    settle()
+    expect(notices).toEqual([])
+    reg.row('m', { type: 'notice', kind: 'gate', message: 'Gate failed on master · at vitest', gate: gate(false) })
+    settle()
+    expect(notices.map((n) => [n.event, n.kind, n.body])).toEqual([['failed', 'batch', 'Batch stopped: gate failed · at vitest']])
+    reg.row('m', { type: 'notice', kind: 'gate', message: 'Release failed on master', gate: gate(false, 'release') })
+    settle()
+    expect(notices.at(-1)).toMatchObject({ event: 'failed', kind: 'batch', body: 'Batch stopped: release failed' })
+  })
+  it('batchBody reads the engine rows and nothing else', () => {
+    expect(batchBody({ kind: 'batch', message: 'Batch done: 2 landed\nmore' })).toEqual({ body: 'Batch done · 2 landed', failed: false })
+    expect(batchBody({ kind: 'batch', message: 'Batch done' })).toEqual({ body: 'Batch done', failed: false })
+    expect(batchBody({ kind: 'batch', message: 'Merged by the batch: b → master at abc' })).toBeNull()
+    expect(batchBody({ kind: 'gate', message: 'Gate passed on master', gate: { step: 'gate', ok: true } })).toBeNull()
+    expect(batchBody({ kind: 'gate', message: 'Typecheck failed on b · 3 errors', gate: { step: 'typecheck', ok: false } })).toEqual({ body: 'Batch stopped: typecheck failed · 3 errors', failed: true })
+    expect(batchBody({ kind: 'account-gone', message: 'Account work is gone' })).toBeNull()
   })
 })

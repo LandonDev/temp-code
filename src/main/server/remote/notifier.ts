@@ -1,4 +1,4 @@
-import type { EventRow, SessionMeta } from '@shared/events'
+import type { EventRow, Failure, SessionMeta } from '@shared/events'
 import { toolFace } from './facade'
 
 /**
@@ -6,8 +6,10 @@ import { toolFace } from './facade'
  * and anything in-process that wants to know (the renderer later):
  *
  *   needs_you  a permission or question prompt appeared (the thread waits)
- *   finished   a turn ended idle with nothing pending
- *   failed     an error row ended the turn, or an account needs sign-in
+ *   finished   a turn ended idle with nothing pending; a plan completed; a
+ *              master's batch ended
+ *   failed     an error row ended the turn, an account needs sign-in, the
+ *              harness is gone (`stopped`), or a batch step failed
  *   stuck      a working thread wrote no row for `stuckMinutes`, or a
  *              stall was reported for it
  *
@@ -22,7 +24,7 @@ import { toolFace } from './facade'
 
 export type NoticeEvent = 'needs_you' | 'finished' | 'failed' | 'stuck'
 /** What a notice is about: the phone's category (Approve and Deny on an approval) and the body's shape. */
-export type NoticeKind = 'approval' | 'question' | 'plan' | 'waiting' | 'finished' | 'failed' | 'stuck'
+export type NoticeKind = 'approval' | 'question' | 'plan' | 'waiting' | 'finished' | 'failed' | 'stuck' | 'batch' | 'stopped'
 
 export interface Notice {
   event: NoticeEvent
@@ -38,6 +40,8 @@ export interface Notice {
   seq: number
   /** The approval a phone may decide from the notification (kind `approval`). */
   requestId?: string
+  /** This host's name: the phone adds it to the subtitle when several hosts are paired. */
+  hostName?: string
 }
 
 export type NoticeSink = (notice: Notice) => void | Promise<void>
@@ -60,6 +64,8 @@ export interface NotifierOptions {
   origin?: () => string | null
   /** The project's or workspace's name for a thread: the notification's subtitle. */
   place?: (meta: SessionMeta) => string | null
+  /** This host's name, carried on every notice. */
+  hostName?: () => string
   now?: () => number
   /** Signals inside this window settle into one decision. */
   debounceMs?: number
@@ -91,7 +97,9 @@ interface ThreadState {
   /** The last notice sent and the state it described. */
   sent: { event: NoticeEvent; key: string } | null
   pending: Pending | null
-  lastError: { message: string; stopped: boolean; seq: number } | null
+  lastError: { message: string; stopped: boolean; seq: number; failure: Failure | null } | null
+  /** A master's batch ended (kind `batch`) or a batch step failed (kind `gate`): told once the master is idle or watching. */
+  lastBatch: { body: string; failed: boolean; seq: number } | null
   lastRowAt: number
   lastRowSeq: number
   /** When the current stretch of work began, for "Done in 12m". */
@@ -106,6 +114,26 @@ const oneLine = (text: string): string => text.replace(/\s+/g, ' ').trim()
 const firstLine = (text: string): string => oneLine(text.split(/\r?\n/).find((l) => l.trim()) ?? '')
 const cut = (text: string, max: number): string =>
   text.length <= max ? text : `${text.slice(0, max - 1)}…`
+
+/**
+ * The body of a batch engine row on a master (batch.ts): "Batch done · 3
+ * landed · gate passed in 4m 12s" from its `Batch done: <line>` notice, or
+ * "Batch stopped: gate failed · at vitest" from a failing gate or release
+ * step (the row's message is `gateLine`; what follows its " · " is kept).
+ * Null for any other notice row.
+ */
+export function batchBody(event: { kind: string; message: string; gate?: { step: string; ok: boolean } }): { body: string; failed: boolean } | null {
+  if (event.kind === 'batch') {
+    const m = /^Batch done(?::\s*(.*))?$/s.exec(firstLine(event.message))
+    if (!m) return null
+    return { body: cut(m[1] ? `Batch done · ${m[1]}` : 'Batch done', BODY_CHARS), failed: false }
+  }
+  if (event.kind === 'gate' && event.gate && !event.gate.ok) {
+    const tail = firstLine(event.message).split(' · ').slice(1).join(' · ')
+    return { body: cut(`Batch stopped: ${event.gate.step} failed${tail ? ` · ${tail}` : ''}`, BODY_CHARS), failed: true }
+  }
+  return null
+}
 
 /** "45s", "12m", "1h 05m": the desktop's duration at the coarseness a notification wants. */
 export function briefDuration(ms: number): string {
@@ -180,6 +208,7 @@ export class Notifier {
         sent: null,
         pending: null,
         lastError: null,
+        lastBatch: null,
         lastRowAt: this.options.registry.lastActivityAt(id) || this.now(),
         lastRowSeq: 0,
         startedAt: WORKING.has(status) ? (this.options.registry.get(id)?.busySince ?? null) : null,
@@ -266,10 +295,19 @@ export class Notifier {
         return
       case 'error':
         if (!own) return
-        state.lastError = { message: event.message, stopped: event.stopped === true, seq: row.seq }
+        state.lastError = { message: event.message, stopped: event.stopped === true, seq: row.seq, failure: event.failure ?? null }
         // A sign-in that lapsed stops the thread without a status change: failed now.
         if (/needs sign-in/.test(event.message)) this.arm(rootId)
         return
+      case 'notice': {
+        // The batch engine's rows on a master (batch.ts): its end, or a gate or release step that failed.
+        if (!own) return
+        const batch = batchBody(event)
+        if (!batch) return
+        state.lastBatch = { ...batch, seq: row.seq }
+        this.arm(rootId)
+        return
+      }
       default:
         return
     }
@@ -294,6 +332,8 @@ export class Notifier {
     const meta = this.options.registry.get(id)
     if (!meta || meta.archived) return null
     state.status = meta.status
+    // Created, not yet booted: nothing has happened to tell.
+    if (meta.status === 'queued') return null
     const signIn =
       state.lastError && !state.lastError.stopped && /needs sign-in/.test(state.lastError.message)
         ? state.lastError
@@ -329,8 +369,9 @@ export class Notifier {
       }
     }
     if (meta.status === 'error') {
+      // The host's verdict when it gave one (failureKind.ts), else the error's first line.
       const e = state.lastError
-      const line = e && !e.stopped ? firstLine(e.message) : ''
+      const line = e && !e.stopped ? e.failure?.summary || firstLine(e.message) : ''
       return {
         event: 'failed',
         kind: 'failed',
@@ -338,6 +379,10 @@ export class Notifier {
         body: cut(line ? `Failed: ${line}` : 'Failed', BODY_CHARS),
         seq: e?.seq ?? state.lastRowSeq
       }
+    }
+    if (meta.status === 'stopped') {
+      // The liveness sweep found no harness behind a running row (sessions.ts).
+      return { event: 'failed', kind: 'stopped', key: `stopped:${state.lastRowSeq}`, body: 'Stopped: the harness is gone', seq: state.lastRowSeq }
     }
     if (signIn && WORKING.has(meta.status)) {
       return {
@@ -347,6 +392,11 @@ export class Notifier {
         body: cut(`Failed: ${firstLine(signIn.message)}`, BODY_CHARS),
         seq: signIn.seq
       }
+    }
+    // A master's batch ended, or a step of it failed: said once the master is between turns.
+    if (state.lastBatch && meta.isMaster === true && (meta.status === 'idle' || meta.status === 'watching')) {
+      const b = state.lastBatch
+      return { event: b.failed ? 'failed' : 'finished', kind: 'batch', key: `batch:${b.seq}`, body: b.body, seq: b.seq }
     }
     if (WORKING.has(meta.status)) {
       if (state.stalled)
@@ -392,6 +442,7 @@ export class Notifier {
     if (!decision) return
     if (state.sent && state.sent.event === decision.event && state.sent.key === decision.key) return
     if (decision.event === 'stuck') state.stuckSent = true
+    if (decision.kind === 'batch') state.lastBatch = null
     state.sent = { event: decision.event, key: decision.key }
     this.emit(id, decision.event, decision.kind, decision.body, decision.seq, decision.requestId)
   }
@@ -424,6 +475,7 @@ export class Notifier {
     if (!meta) return
     const origin = this.options.origin?.() ?? null
     const place = this.options.place?.(meta) ?? null
+    const hostName = this.options.hostName?.() ?? null
     const notice: Notice = {
       event,
       kind,
@@ -434,7 +486,8 @@ export class Notifier {
       ...(origin ? { url: `${origin}/ui#thread=${id}` } : {}),
       ts: this.now(),
       seq,
-      ...(requestId === undefined ? {} : { requestId })
+      ...(requestId === undefined ? {} : { requestId }),
+      ...(hostName ? { hostName: cut(oneLine(hostName), 80) } : {})
     }
     this.log(`${event} ${id} "${notice.title}": ${body}`)
     for (const sink of this.sinks) {
