@@ -481,7 +481,7 @@ export class MacBridge {
 
   /**
    * Whether a host may start another Mac-local thread here now (docs/box.md
-   * "Starting a thread on the Mac from the box"): crossHostThreads.ts asks
+   * "Threads across hosts"): crossHostThreads.ts asks
    * before every `thread.start` and `thread.spawn`. A refusal names the cap
    * and where to raise it; nothing is queued, the box thread tries again.
    */

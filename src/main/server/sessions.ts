@@ -2402,7 +2402,7 @@ export class SessionRegistry {
    * pause a thread and continue it. Straight to the row, as pauseRun writes
    * its own: append() would drop a status while the row says paused.
    */
-  markStatusForProof(sessionId: string, status: 'running' | 'idle'): void {
+  markStatusForProof(sessionId: string, status: 'running' | 'idle' | 'done'): void {
     if (!this.store.getSession(sessionId)) throw new Error(`unknown session: ${sessionId}`)
     this.appendStatus(sessionId, status)
     const next = this.store.updateSession(sessionId, {

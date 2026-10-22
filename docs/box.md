@@ -1251,7 +1251,7 @@ On the Mac (`src/main/server/remote/macBridge.ts`, `macRunner.ts`):
     whole `timeoutMs`), a job until the call's deadline; past that the call
     fails "the Mac stayed too busy" and the box thread may try again.
   - `macBridge.maxThreads.<envId>` (default 2) caps the Mac-local threads a
-    host starts here ("Starting a thread on the Mac from the box" below).
+    host starts here ("Threads across hosts" below).
   - The pane shows it all on the host's row: "n running · m waiting · k
     threads" with the two caps as small fields (At once: running, threads),
     and once for the Mac, "Load 3.2 · 8 cores" with the limit field (empty
@@ -1552,88 +1552,144 @@ after a removal is a new row.
   the bridge, finds it on the box's ledger with the Mac's id, removes it, and
   checks the branch with an unpushed commit stayed with its note.
 
-### Starting a thread on the Mac from the box
+### Threads across hosts
 
-iOS builds, the simulator, screenshots and every Mac app exist only on the
-Mac, and a box thread reaching them through `mac_run` loses the link, the
-tools and the simulator to every other thread doing the same. So a box
-thread can start a thread, or spawn a subagent, ON the Mac instead, and
-supervise it from the box: the work runs where the tools are, as an ordinary
-thread the Mac app shows under This Mac the moment it is created.
+iOS builds, the simulator, screenshots, computer use and every Mac app
+exist only on the Mac; the checkouts and the services a long build needs
+live on the box. A thread on either host can start a thread, or spawn a
+subagent, ON the other and supervise it from where it sits: the work runs
+where the tools are, as an ordinary thread the other host lists the moment
+it is created. The same objects are built on every host: the asking side
+is `src/main/server/crossHostAgents.ts`, the serving side
+`src/main/server/remote/crossHostThreads.ts`, and the socket between the
+two runs whichever way it runs.
 
 The app tools. `app_start_thread` and `spawn_agent` take `environmentId`:
-`mac` for the thread's own Mac, or a host's environment id. Which Mac
-(`src/main/server/crossHostAgents.ts` `resolveHost`): the thread's Mac
-bridge peer when set (`macBridge.thread.<id>`, an ancestor's counts), else
-the only Mac registered with the offer, else a refusal naming
-`macBridge.thread.set`. Every id that comes back is `<environmentId>:
-<sessionId>` (`src/shared/contract-crosshost.ts` `encodeAgentId`), and
-`send_to_agent`, `check_agent`, `wait_for_agent`, `answer_agent`,
-`interrupt_agent`, `list_agents` and `app_read_thread` route by that id, so
-the model never learns which host it is talking to. The tool text tells the
-model when to use a Mac host: anything that needs Xcode, the simulator, a
-Mac app, or files that live on the Mac. The box thread's rules still gate a
-remote spawn (`resolveSpawnSpecs` in orchestration.ts: approved models,
-effort, the caps, with the agents on other hosts counted), and the thread on
-the Mac inherits the box thread's permission, so a full-access thread runs
-unattended there and `answer_agent` takes `allow` for its approvals.
-Codex reaches the same fields through `scripts/app-mcp-bridge.mjs`.
+`mac` for the thread's own Mac (its Mac bridge peer, `macBridge.thread.
+<id>`, an ancestor's counts), else the only host registered here with the
+`threads` offer; `box` for the only saved host this process holds a link
+to; or a host's environment id, reached either way. Nothing named is the
+bridge peer, else the only host reachable at all; several hosts and no name
+is a refusal that lists them. The tool description ends with the hosts
+reachable right now and their aliases (`hostParamDescription`). Every id
+that comes back is `<environmentId>:<sessionId>` (`src/shared/
+contract-crosshost.ts` `encodeAgentId`), and `send_to_agent`,
+`check_agent`, `wait_for_agent`, `answer_agent`, `interrupt_agent`,
+`list_agents` (each row with `host` and `hostName`) and `app_read_thread`
+route by that id, so the model never learns which way the socket runs.
+The thread's rules still gate a remote spawn (`resolveSpawnSpecs` in
+orchestration.ts: approved models, effort, the caps, with the agents on
+other hosts counted), and the thread on the other host inherits the
+caller's permission, so a full-access thread runs unattended there and
+`answer_agent` takes `allow` for its approvals. Codex reaches the same
+fields through `scripts/app-mcp-bridge.mjs`.
 
-Transport. The `threads` offer rides the Mac bridge's reverse RPC
-(`remote/peerCalls.ts`): the Mac's `peer.register` now carries
-`offers: ['mac-bridge', 'threads']`, and the box sends `peer.call` pushes
-naming `thread.start`, `thread.spawn`, `thread.send`, `thread.list`,
-`thread.events` (at most 500 rows, each text field cut to 4,000 characters),
-`thread.check`, `thread.wait`, `thread.interrupt` and `thread.answer`, with
-the box thread as `caller` (its id, title and permission). None of these is
-a contract request: they ride only inside `peer.call`, whose frames are
-admin, so a remote key never names them; the app tools stay local. One
-`thread.wait` is at most 60 s; the box loops windows until the thread settles
-or the tool's timeout passes, so a link that drops mid-wait is seen within a
-window and the call answers the last state the box saw with `linkDown: true`
-instead of hanging. The Mac reports a settle back as `crossHost.settled`
-(admin, a request on its own link), and the box wakes the thread that
-started it the way a local child's settle would, unless a wait already
-covers it.
+Transport (`src/main/server/remote/hostLinks.ts`, one `HostTransport` for
+both). A host that dialed this one and registered (`peer.register` with
+`offers: ['mac-bridge', 'threads']`: the Mac on the box) is called with a
+`peer.call` push down that socket, the Mac bridge's reverse RPC
+(`remote/peerCalls.ts`), answered by `peer.reply`. A host this one dialed
+(the box, from the Mac) is called with the same `thread.*` methods as
+ordinary admin requests on its listener, over this host's own PeerLink
+(`remote/peers.ts`); the box takes the caller to be the environment the
+socket registered as (`PeerCalls.environmentOf`), never what the params
+say, and a socket that never registered is refused. The methods:
+`thread.start`, `thread.spawn`, `thread.send`, `thread.list`,
+`thread.events` (at most 500 rows, each text field cut to 4,000 characters,
+plus the files under the thread's attachments directory), `thread.check`,
+`thread.wait`, `thread.interrupt`, `thread.answer`, `thread.pause`,
+`thread.resume`, `thread.archive` and `thread.adopt`, every one with the
+calling thread as `caller` (its id, title and permission). One
+`thread.wait` is at most 60 s; the caller loops windows until the thread
+settles or the tool's timeout passes, so a link that drops mid-wait is seen
+within a window and the call answers the last state it saw with
+`linkDown: true` instead of hanging. The reports go the other way by the
+same rule: a settle (`crossHost.settled`) and a batch landing
+(`crossHost.landing`) are requests on the owner's listener when the runner
+holds a link to it (the Mac → the box), else a `peer.call` down the owner's
+registered socket (the box → the Mac), served by `CrossHostAgents.
+onPeerPush`; a settle wakes the thread that started or spawned the thread
+the way a local child's settle would, unless a wait already covers it.
 
-On the Mac (`src/main/server/remote/crossHostThreads.ts`). Only a saved host
-may call, and every later call must name a thread that host started here
-(`crossHost.owner.<sessionId>`), so a box never reaches a thread of the
-Mac's own or another host's. The box names where it works (its project cwd)
-and its work root; the Mac maps that onto its own checkout through the
-inverse of its path map (the one the harness sync and the history import
-share: `/srv/agents/work/temp-code` → `~/IdeaProjects/temp-code`) or, for a
-checkout the map does not name, `<box work root>/<name>` →
-`<Mac work root>/<name>`; when nothing is there the thread starts in the
-Mac's work root and the result carries `cwdNote`. A thread.start is a root
-thread with its type and title, under the Mac project at that cwd; a
-thread.spawn is a child whose `parentId` is the box thread, so the Mac's
-fleet view lists it under the box thread it shows over the link (the Mac
-holds no log for that parent: the spawn is recorded on the box, as
-`agent-spawned` with the Mac's environment id). A writing agent gets a
-worktree there as it would locally. Such a child is not archived with its
-parent (the parent is not on the Mac); archive it from the Mac when done.
-Before either, the Mac bridge's thread cap is asked (`MacBridge.admitThread`,
-`macBridge.maxThreads.<envId>`, default 2, the "threads" field on the host's
-row in Settings → Remote access): it counts the threads that host started
-here that are live now (`CrossHostThreads.liveThreadsOf`), and at the cap
-the start fails with "the Mac already runs 2 threads from this host, its cap
-of 2: wait for one to finish, or raise …"; nothing is queued, the box thread
-tries again later. `macBridge.admitThread {environmentId}` (local) answers
-the same verdict for the pane.
+The serving side (`remote/crossHostThreads.ts`, `handle` for a peer.call,
+`handleRequest` for a request). Only a saved host may call, and every later
+call must name a thread that host started, spawned or adopted here
+(`crossHost.owner.<sessionId>`), so a host never reaches a thread of this
+host's own or another host's. The caller names where it works (its project
+cwd) and its work root; this host maps that through its path map, read in
+both directions since a Mac path never matches the box side and the other
+way round (`hostPathFor`: the inverse, `/srv/agents/work/temp-code` →
+`~/IdeaProjects/temp-code`, then the forward map, then `<caller work root>/
+<name>` → `<own work root>/<name>`), taking the first that exists; when
+nothing is there the thread starts in this host's work root and the result
+carries `cwdNote`. A thread.start is a root thread with its type and title,
+under the project at that cwd, with the caller as `startedBy` and the
+caller's batch (`masterId`) when it rides along; a thread.spawn is a child
+whose `parentId` is the calling thread, so the fleet view lists it under
+the thread it shows over the link (the spawn is recorded on the caller's
+side, as `agent-spawned` with the host's environment id). A writing agent
+gets a worktree there as it would locally. Such a child is not archived
+with its parent (the parent is not here); archive it from here, or through
+the batch. Admission: on a Mac the Mac bridge's thread cap
+(`MacBridge.admitThread`, `macBridge.maxThreads.<envId>`, default 2, the
+"threads" field on the host's row in Settings → Remote access); on the box
+its own `crossHost.maxThreads.<envId>` (default 4, cap 32, a settings row,
+no pane), counting the threads that host started here that are live now
+(`liveThreadsOf`); at the cap the start fails with the count and the key,
+nothing is queued, the caller tries again later. The Mac's running cap and
+load guard for commands are untouched.
 
-On the box (`src/main/server/crossHostAgents.ts`), what a thread started
-or spawned is kept in `crossHost.children.<sessionId>` with the last state
-seen, so `list_agents` still names it, marked `linkDown`, while the Mac is
-away. `TEMP_CODE_WORK_ROOT` sets an isolated instance's work root (the
-proof's two hosts). Proof: `bun run script:e2e-cross-host-threads`
+What a thread started, spawned or adopted elsewhere is kept on the asking
+side in `crossHost.children.<sessionId>` with the last state seen, so
+`list_agents` still names it, marked `linkDown`, while the host is away.
+`TEMP_CODE_WORK_ROOT` sets an isolated instance's work root (the proof's two
+hosts). Proof: `bun run script:e2e-cross-host-threads`
 (scripts/e2e-cross-host-threads.ts): two headless instances paired over the
-fixed port under `xvfb-run`; a thread on the box starts a thread on the
-Mac, sends it a message, waits for it to settle, reads its rows, spawns an
-agent there and collects its report, lists both with host, then drops the
-link and gets `linkDown` and the refusal. No turn reaches a model there
-(TEMP_CODE_FAKE_PROVIDERS is a dead origin); the live pass is a box thread
-with the Mac app open.
+fixed port under `xvfb-run`, two clones of one bare origin; a box thread
+starts a thread on the Mac, sends it a message, waits for it to settle,
+reads its rows, spawns an agent there and collects its report, lists both
+with host; a Mac thread does the same on the box over its own link and gets
+the box child's settle as a report; a master on the box runs a child on
+each host (below); then the link drops and the box gets `linkDown` and the
+refusal. No turn reaches a model there (TEMP_CODE_FAKE_PROVIDERS is a dead
+origin; `session.markStatus` moves the children); the live pass is a box
+thread with the Mac app open.
+
+#### A master's batch across hosts
+
+A thread a master (or a batch root) starts on another host is a batch
+member: it carries the `masterId` there, reports its settles to the master
+(the starter is the parent of a started thread's report), and the engine on
+the master's host counts it (docs/master-threads.md "The children are root
+threads"). The asking side keeps an index per master
+(`crossHost.batch.<masterId>` → the parents' child records);
+`Batches.members` joins the local roots and those records, keyed
+`<envId>:<sessionId>`, and `batch.get` answers `children` with every one
+(`sessionId`, `environmentId`, `title`, `status`, `threadType`, `provider`,
+`model`; a far child with `seenAt` and `linkDown`). State comes from the
+settle pushes as they arrive and from one `thread.list` per host when the
+engine reviews a batch whose local children are done; a far child is done
+when its host says `done` or `idle` (its host reports a settle only after a
+turn). A host out of reach keeps the batch open with `blocked { why:
+'unreachable', environmentId }` and the master told once; back, it
+unblocks. Pause and Resume on the master reach the far children through
+`thread.pause` / `thread.resume` (`Batches.cascade`, after the local
+cascade); `batch.archive` archives them through `thread.archive`, lists
+them in `succeeded`, and drops them from the index; `batch.adopt` takes a
+`<envId>:<sessionId>` root through `thread.adopt` on its host (an unarchived
+root of no batch there; the master's host becomes its owner) and answers
+refusals per id. Landing: a far child lands through its own host's
+`merge_branch`; before the fast-forward that host asks the owner
+(`crossHost.landing` phase `ask`, after pushing the branch to origin):
+under all-at-once the owner records `{ branch, host }` and the child reads
+HELD, else the merge goes through there, pushes origin, and the owner
+hears `landed`. The owner's land step then brings its project checkout to
+the project branch's origin head (`fetchFastForward`: `git fetch origin
+<target>`, `merge --ff-only origin/<target>`) before the gate and the
+release, and merges a held far branch from `origin/<branch>` after a fetch
+(`fastForwardFromOrigin`). An owner that cannot be asked refuses the
+child's merge rather than landing blind. Nothing changes for the gate,
+release, publish and deploy steps.
 
 ### Devices on the Mac
 

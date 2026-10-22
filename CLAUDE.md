@@ -782,16 +782,24 @@ routed to (aliax-core's `forward`). Two listeners:
   bridge: what a box thread may touch on the Mac"; proof
   `bun run script:e2e-mac-bridge` (its pause step uses the proof seam
   `session.markStatus`, `TEMP_CODE_E2E_STATUS=1` on an isolated instance).
-- Threads on the Mac from the box: `app_start_thread` and `spawn_agent`
-  take `environmentId` (`mac`, or a host id), and the thread runs on that
-  Mac as an ordinary This Mac thread; its id comes back as `<envId>:
-  <sessionId>` and every supervision tool routes by it (`src/main/server/
-  crossHostAgents.ts` on the box, `remote/crossHostThreads.ts` on the Mac,
-  `src/shared/contract-crosshost.ts`; the `threads` peer offer rides the
-  Mac bridge's `peer.call`, `thread.*` methods, `crossHost.settled` back).
-  Which Mac: the thread's `macBridge.thread` peer, else the only one
-  registered. A dropped link answers `linkDown` with the last state, never
-  a hang. docs/box.md "Starting a thread on the Mac from the box"; proof
+- Threads across hosts, both ways: `app_start_thread` and `spawn_agent`
+  take `environmentId` (`mac` for the thread's Mac or the only host
+  registered here, `box` for the only host linked from here, or a host id),
+  and the thread runs on that host as one of its ordinary threads; its id
+  comes back as `<envId>:<sessionId>` and every supervision tool routes by
+  it, `list_agents` with `host`, `app_read_thread` with the files it left
+  there (`src/main/server/crossHostAgents.ts` asking, `remote/
+  crossHostThreads.ts` serving, both built on every host; `src/shared/
+  contract-crosshost.ts`). One transport abstraction (`remote/hostLinks.ts`):
+  a host registered here with the `threads` offer is called by `peer.call`
+  (the box → the Mac), a host linked from here by the same `thread.*`
+  methods as admin requests on its listener (the Mac → the box; the caller
+  is the socket's registration); the reports back (`crossHost.settled`,
+  `crossHost.landing`) take the same road the other way. Path translation
+  runs the map in both directions (`hostPathFor`). Admission on a Mac is the
+  Mac bridge's thread cap, on the box `crossHost.maxThreads.<envId>`
+  (default 4). A dropped link answers `linkDown` with the last state, never
+  a hang. docs/box.md "Threads across hosts"; proof
   `bun run script:e2e-cross-host-threads`.
 - Devices on the Mac: Settings → Remote access, under the Mac bridge's
   host rows, lists this Mac's simulators and iPhones with a state dot, the
@@ -1257,7 +1265,24 @@ this is the short one.
   `<subagent-report>`, a waiting one with its question for `answer_agent`;
   a `wait_for_agent` in flight takes the settle instead; a plan child's
   plan-complete report is its one report; two threads naming each other as
-  master wake neither. Cross-host batch threads are not supervised yet.
+  master wake neither. A thread a master (or a batch root) starts on
+  another host is a batch member there and counted here: the asking side
+  indexes it under the master (`crossHost.batch.<masterId>`),
+  `Batches.members` joins it with the local roots keyed
+  `<envId>:<sessionId>`, `batch.get` lists every child with its host
+  (`children`), its state comes from the settle pushes and one
+  `thread.list` per host when the local children are done (a far child is
+  done when its host says `done` or `idle`), a host out of reach blocks the
+  end as `unreachable` naming the host, Pause and Resume cascade to it
+  (`thread.pause/resume`), `batch.archive` archives it there
+  (`thread.archive`, listed in `succeeded`), `batch.adopt` takes a
+  `<envId>:<sessionId>` root (`thread.adopt`), and it lands through its own
+  host's `merge_branch`, which asks the owner first (`crossHost.landing`:
+  held with `{ branch, host }` under all-at-once after a push to origin,
+  else merged and pushed there and reported); the owner's land step fetches
+  origin and fast-forwards the project checkout before the gate and release,
+  and merges a held far branch from origin. docs/box.md "A master's batch
+  across hosts".
 - **A thread is the person's choice; the model policy is for subagents.**
   The orchestration rules (src/shared/rules.ts `modelApproved`,
   `approvedDefault`, `fitReasoning`; Settings → Orchestration's Everyone /

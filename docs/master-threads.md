@@ -97,9 +97,11 @@ master's id; a thread a batch root starts inherits that root's
 `masterId`; a thread anyone else starts carries none. `startedBy` stays
 the caller in every case. It runs in `app_start_thread` (with `after`
 when the thread is in a batch), in the cross-host `thread.start`
-(`crossHostAgents.startThread` puts `masterId` in the args and the Mac
-stamps it with the box caller as `startedBy`; the ids are the box's, so
-the Mac reports to neither and the box supervises), and in
+(`crossHostAgents.startThread` puts `masterId` in the args and the other
+host stamps it with the caller as `startedBy`; the ids are the caller's
+host's, so that host reports to neither and the caller's host supervises;
+the asking side indexes the thread under the master, so the engine there
+counts it, docs/box.md "A master's batch across hosts"), and in
 `SessionRegistry.create` whenever `startedBy` names a thread and the
 caller gave no `masterId`, which is what `session.create` from a thread
 and the plan flow's auto-started build go through (planFlow.ts also
@@ -517,8 +519,11 @@ renderer's read of the flag on the thread).
   telemetry, `BatchState` with `rules`, `steps`, `held`, `blocked`,
   `finishedAt`, `BatchAdoptResult`), `app.batchGate`, `app.batchRules` and
   `app.adoptThread` (local, the codex bridge), the cross-host
-  `thread.start` args' `masterId` (src/shared/contract-crosshost.ts), the
-  peer methods `publish.start` / `publish.stop` under the `publish` offer
+  `thread.start` args' `masterId`, `thread.pause`, `thread.resume`,
+  `thread.archive`, `thread.adopt` and the `crossHost.landing` report
+  (src/shared/contract-crosshost.ts; `BatchState.children` and
+  `blocked.why: 'unreachable'` in contract-batch.ts), the peer methods
+  `publish.start` / `publish.stop` under the `publish` offer
   (src/shared/contract-publish.ts).
 - Pushes: `batch` (every client, coalesced), the ordinary `session` meta
   on a pin change and with its `activity` line for a queued row.
@@ -587,9 +592,11 @@ None of the proofs that boot harnesses are in the release gate.
 
 ## Not yet
 
-- Batch threads on other hosts are started (`environmentId`) but not
-  supervised as batch rows and not counted by the engine; `list_agents`
-  lists them through the cross-host link as before.
+- A far batch child is counted, paused, archived, adopted and landed from
+  the master's host; a thread that child starts on ITS host (a far plan's
+  build) joins the batch there and is not seen by the master's engine.
+- A far child's "done" is its host's `done` or `idle`; the engine cannot
+  read a completed turn over the link.
 - A thread outside any batch passing `after` to `app_start_thread` has it
   dropped; the tool description says it is for a master.
 - `batch.stopStep` stops a shell step and the publish; a gate or release

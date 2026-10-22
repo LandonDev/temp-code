@@ -743,11 +743,12 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     params: z.object({ sessionId: z.string() })
   }),
   // A proof's seam (local; isolated instances only, TEMP_CODE_E2E_STATUS=1):
-  // set a thread's status without a harness, so a pause has something to pause.
+  // set a thread's status without a harness, so a pause has something to
+  // pause and a batch something done (scripts/e2e-cross-host-threads.ts).
   z.object({
     id: z.string(),
     method: z.literal('session.markStatus'),
-    params: z.object({ sessionId: z.string(), status: z.enum(['running', 'idle']) })
+    params: z.object({ sessionId: z.string(), status: z.enum(['running', 'idle', 'done']) })
   }),
   z.object({ id: z.string(), method: z.literal('session.continueAllErrors') }),
   z.object({ id: z.string(), method: z.literal('session.pauseAllRunning') }),
