@@ -383,3 +383,55 @@ struct LiveServerTests {
         await second.stop()
     }
 }
+
+/// The accounts the test server seeds (two Claude accounts, one thread on an
+/// account, one project pinned, a failed thread with the host's verdict) as
+/// the phone reads them. Nested in the live suite like the action tests.
+extension LiveServerTests {
+@MainActor
+@Suite(.enabled(if: LiveServer.isConfigured && LiveServer.hasOperateKey, "needs the live server: bun run ios:test:client"), .serialized)
+struct AccountsLiveTests {
+    @Test func `accounts.list over the read key answers two Claude profiles with headroom for both`() async throws {
+        let socket = TempCodeSocket(environment: LiveServer.environment(), keys: try LiveServer.keys())
+        await socket.start()
+        #expect(await LiveServer.until { await socket.status.transport == .open })
+        let snapshot = try await socket.request(Methods.AccountsList.self, NoParams())
+        let claude = snapshot.providers.claude
+        #expect(claude.profiles.map(\.name) == ["work@example.com", "spare@example.com"])
+        #expect(claude.profiles.first?.nickname == "work")
+        #expect(claude.profiles.first?.color == "#5b8def")
+        #expect(claude.reports.map(\.profileName) == ["work@example.com", "spare@example.com"])
+        #expect(claude.headroom?["work@example.com"]?.room == 0.8)
+        #expect(claude.headroom?["spare@example.com"]?.room == 0.1)
+        #expect(snapshot.providers.codex.profiles.isEmpty)
+        await socket.stop()
+    }
+
+    @Test func `a thread on an account names it, and a failed thread carries the host's verdict`() async throws {
+        let client = try await LiveServer.actingClient()
+        #expect(await LiveServer.until { client.session("ios-pinned") != nil && client.session("ios-failed") != nil })
+        #expect(client.session("ios-pinned")?.account == "work@example.com")
+        let failed = try #require(client.session("ios-failed"))
+        #expect(failed.status == .error)
+        #expect(failed.failure?.kind == .rateLimited)
+        #expect(failed.failureSummary?.isEmpty == false)
+        let scope = try #require(AccountScope.of(client.session("ios-question")!, projects: client.projects, workspaces: client.workspaces))
+        #expect(scope.sourceLine == "From project billing-page")
+        await client.stop()
+    }
+
+    @Test func `a usage change on the host reaches the phone as an accounts push`() async throws {
+        let client = try await LiveServer.actingClient()
+        await client.loadAccounts(force: true)
+        #expect(client.accounts.snapshot?.providers.claude.profiles.count == 2)
+        let before = client.accounts.receivedAt
+        _ = try await LiveServer.control("/accounts/headroom", ["name": "work@example.com", "usedPercent": 77])
+        #expect(await LiveServer.until(3) {
+            client.accounts.receivedAt != before
+                && client.accounts.snapshot?.providers.claude.reports.first { $0.profileName == "work@example.com" }?.windows.first { $0.label == "5h" }?.usedPercent == 77
+        })
+        _ = try await LiveServer.control("/accounts/headroom", ["name": "work@example.com", "usedPercent": 12])
+        await client.stop()
+    }
+}
+}

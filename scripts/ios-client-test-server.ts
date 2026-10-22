@@ -30,6 +30,7 @@ import { deflateSync } from 'node:zlib'
 import { configure } from 'aliax-core'
 import { startServer } from '../src/main/server/index'
 import { serveMedia } from '../src/main/server/media'
+import type { AccountsSnapshot } from '../src/shared/accounts'
 import type { AgentEvent, FailureKind } from '../src/shared/events'
 import type { GithubInboxItem } from '../src/shared/contract-github'
 import type { ReviewNotice } from '../src/shared/review'
@@ -896,6 +897,39 @@ for (const id of [THREAD_IMPL, THREAD_RESEARCH]) {
   ])
 }
 
+// ── accounts: two Claude accounts with different headroom (thread 24's chip and menu) ──
+const hour = 3_600_000
+const seededAccounts: AccountsSnapshot = {
+  updatedAt: Date.now(),
+  providers: {
+    claude: {
+      pinned: null,
+      owner: null,
+      profiles: [
+        { name: 'work@example.com', email: 'work@example.com', nickname: 'work', color: '#5b8def', createdAt: Date.now() - 30 * 24 * hour, active: true },
+        { name: 'spare@example.com', email: 'spare@example.com', color: '#d97757', createdAt: Date.now() - 10 * 24 * hour, active: false }
+      ],
+      reports: [
+        { profileName: 'work@example.com', windows: [{ label: '5h', usedPercent: 12, resetsAt: Date.now() + 3 * hour, periodMs: 5 * hour }, { label: 'Weekly', usedPercent: 40, resetsAt: Date.now() + 3 * 24 * hour, periodMs: 7 * 24 * hour }] },
+        { profileName: 'spare@example.com', windows: [{ label: '5h', usedPercent: 91, resetsAt: Date.now() + 40 * 60_000, periodMs: 5 * hour }, { label: 'Weekly', usedPercent: 55, resetsAt: Date.now() + 2 * 24 * hour, periodMs: 7 * 24 * hour }] }
+      ],
+      headroom: {
+        'work@example.com': { room: 0.8, ratePerMin: 3, seenAt: Date.now() },
+        'spare@example.com': { room: 0.1, ratePerMin: 12, resetsAt: Date.now() + 40 * 60_000, seenAt: Date.now() }
+      }
+    },
+    codex: { pinned: null, profiles: [], reports: [], owner: null },
+    cursor: { pinned: null, profiles: [], reports: [], owner: null }
+  }
+}
+// The service has no vault here: hold the seeded snapshot in place of its rebuild (the poll would empty it).
+const accountsService = server.accounts as unknown as { snap: AccountsSnapshot; built: boolean; rebuild: () => Promise<void>; listeners: Set<(s: AccountsSnapshot) => void> }
+accountsService.rebuild = async () => {}
+accountsService.snap = seededAccounts
+accountsService.built = true
+server.registry.setAccount('ios-pinned', 'work@example.com') // a thread on an account
+server.registry.setProjectAccounts(project2.id, { claude: 'work@example.com' }) // ios-question reads "From project billing-page"
+
 // ── the key, and a pairing link for the simulator rehearsal ─────────────
 const created = await server.remoteAuth.createKey({ name: 'ios-test', audience: 'client', caps: [], createdBy: 'local' })
 const pairing = server.remoteAuth.createPairing({ name: 'ios-sim', audience: 'client', caps: [], createdBy: 'local' })
@@ -1270,6 +1304,17 @@ const control = createServer((req, res) => {
         registry.append(sessionId, { type: 'turn-complete' })
         registry.append(sessionId, { type: 'status', status: 'idle' })
         return answer(200, { finished: sessionId })
+      }
+      case '/accounts/headroom': {
+        // A usage change on one account: the 5h window moves and the accounts push goes out.
+        const name = String(body.name ?? 'work@example.com')
+        const report = seededAccounts.providers.claude.reports.find((r) => r.profileName === name)
+        const window = report?.windows.find((w) => w.label === '5h')
+        if (!window) return answer(404, { error: `no 5h window for ${name}` })
+        window.usedPercent = Number(body.usedPercent ?? window.usedPercent)
+        seededAccounts.updatedAt = Date.now()
+        for (const l of accountsService.listeners) l(seededAccounts)
+        return answer(200, { name, usedPercent: window.usedPercent })
       }
       case '/clock':
         clockOffsetMs = Number(body.offsetMs ?? 0)
