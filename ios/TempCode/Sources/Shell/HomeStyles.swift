@@ -132,9 +132,13 @@ struct HeaderMenu<Content: View>: View {
     }
 }
 
-/// The transport in one color: open green, trying orange, refused or offline red.
+/// The host in one color: open green, trying orange, refused or offline
+/// red. A host the box relays follows its relay state over an open lane:
+/// locked orange (it answers, but the screen is locked), asleep the quiet
+/// gray, unreachable red.
 struct ConnectionDot: View {
     let status: EnvironmentStatus
+    var relay: RelayState? = nil
 
     var body: some View {
         Circle()
@@ -145,7 +149,13 @@ struct ConnectionDot: View {
 
     private var color: Color {
         switch status.transport {
-        case .open: Tint.success
+        case .open:
+            switch relay {
+            case .locked?: Tint.warning
+            case .asleep?: Tint.quiet
+            case .unreachable?: Tint.destructive
+            case .available?, nil: Tint.success
+            }
         case .connecting, .reconnecting, .suspended: Tint.warning
         case .offline, .unauthorized: Tint.destructive
         }

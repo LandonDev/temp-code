@@ -422,7 +422,7 @@ private struct HostHeader: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            ConnectionDot(status: client.status)
+            ConnectionDot(status: client.status, relay: client.relayState)
             VStack(alignment: .leading, spacing: 1) {
                 Text(client.environment.name)
                     .textStep(.title, weight: .semibold)
@@ -468,7 +468,7 @@ private struct GroupHeaderRow<Icon: View>: View {
                 icon()
                 ForEach(members, id: \.environmentId) { member in
                     if let client = model.registry.client(member.environmentId) {
-                        ConnectionDot(status: client.status)
+                        ConnectionDot(status: client.status, relay: client.relayState)
                     }
                 }
             }

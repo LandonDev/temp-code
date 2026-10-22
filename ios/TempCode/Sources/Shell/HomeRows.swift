@@ -18,7 +18,8 @@ enum HomeRows {
                 projects: client.projects,
                 sessions: client.sessions,
                 seen: client.seen,
-                notes: notes(client)
+                notes: notes(client),
+                via: client.environment.via
             )
         }
     }

@@ -91,6 +91,15 @@ private func ids(_ out: [HomeSection]) -> [String] { out.map(\.id) }
 }
 
 @Suite struct HomeSectionsStatusTests {
+    @Test func `a relayed host's status row folds under its carrier's while the carrier is troubled`() {
+        var mac = host("mac", troubled: true)
+        mac.via = "box"
+        let both = sections([host("box", troubled: true), mac])
+        #expect(both.first?.rows == [.status(environmentId: "box")], "one card for the box, none for the Mac behind it")
+        let alone = sections([host("box"), mac])
+        #expect(alone.first?.rows == [.status(environmentId: "mac")], "with the box fine, the Mac's own trouble shows")
+    }
+
     @Test(arguments: [TransportState.unauthorized, .offline, .reconnecting])
     func `a refused, offline or reconnecting host is troubled`(transport: TransportState) {
         #expect(HomeSections.troubled(status(transport)))

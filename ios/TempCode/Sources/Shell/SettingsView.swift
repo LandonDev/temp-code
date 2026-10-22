@@ -159,7 +159,7 @@ private struct HostsSummary: View {
             if !clients.isEmpty {
                 HStack(spacing: 4) {
                     ForEach(clients, id: \.environment.id) { client in
-                        ConnectionDot(status: client.status)
+                        ConnectionDot(status: client.status, relay: client.relayState)
                     }
                 }
             }

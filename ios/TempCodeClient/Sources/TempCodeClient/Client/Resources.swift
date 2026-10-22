@@ -144,4 +144,10 @@ public enum ResourceWords {
         if let other = paired.first(where: { $0.id == environmentId }) { return other.name }
         return "the Mac"
     }
+
+    /// The host's name as a section's heading: "The Mac" for an unknown one.
+    public static func hostHeading(_ environmentId: String, here: PairedEnvironment, paired: [PairedEnvironment]) -> String {
+        let name = hostName(environmentId, here: here, paired: paired)
+        return name.prefix(1).uppercased() + name.dropFirst()
+    }
 }

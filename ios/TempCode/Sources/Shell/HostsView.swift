@@ -104,7 +104,7 @@ struct HostRow: View {
         let status = client.status
         let line = second(status)
         HStack(spacing: Layout.rowGap) {
-            ConnectionDot(status: status)
+            ConnectionDot(status: status, relay: client.relayState)
                 .frame(width: Layout.markWidth)
                 // The second line says the state; the dot's label would say it again.
                 .accessibilityHidden(true)
@@ -169,6 +169,16 @@ struct HostDetailView: View {
         }
         .navigationTitle(client?.environment.name ?? "")
         .navigationBarTitleDisplayMode(.inline)
+        // iOS 27 sometimes drops the title of a pushed destination whose body swaps
+        // views; the principal item draws it either way (the title stays for the back button).
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text(client?.environment.name ?? "")
+                    .font(.headline)
+                    .lineLimit(1)
+                    .accessibilityAddTraits(.isHeader)
+            }
+        }
     }
 
     @ViewBuilder
@@ -180,7 +190,7 @@ struct HostDetailView: View {
             // 1. Status: the state, the one action that fixes it, and why.
             Section {
                 HStack(spacing: Layout.rowGap) {
-                    ConnectionDot(status: status)
+                    ConnectionDot(status: status, relay: client.relayState)
                         .frame(width: Layout.markWidth)
                         .accessibilityHidden(true)
                     StatusText(status: status)

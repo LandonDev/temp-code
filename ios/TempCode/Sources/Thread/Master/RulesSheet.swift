@@ -106,7 +106,7 @@ struct RulesSheet: View {
                         }
                     }
                 }
-                Section("Then") {
+                Section("When the threads are done") {
                     Picker("Then", selection: $then) {
                         Text("Notify me").tag(BatchThen.notify)
                         Text("Archive the threads").tag(BatchThen.archiveChildren)

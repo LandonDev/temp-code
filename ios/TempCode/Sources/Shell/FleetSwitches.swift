@@ -152,7 +152,11 @@ struct FleetConfirmSheet: View {
     let pending: PendingBatch
     @State private var cleanup = true
     @State private var confirmedAt = 0
+    /// The content's height, so the sheet is as tall as what it says.
+    @State private var contentHeight: CGFloat = 280
     @Environment(\.dismiss) private var dismiss
+    /// The inline navigation bar and the drag indicator above the content.
+    @ScaledMetric(relativeTo: .body) private var chrome: CGFloat = 60
 
     var body: some View {
         NavigationStack {
@@ -167,7 +171,7 @@ struct FleetConfirmSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.height(contentHeight + chrome)])
         .presentationCornerRadius(Radius.sheet)
         .presentationDragIndicator(.visible)
         .sensoryFeedback(.impact(weight: .light), trigger: confirmedAt)
@@ -197,7 +201,6 @@ struct FleetConfirmSheet: View {
                 .groupCard()
                 .padding(.top, 8)
             }
-            Spacer(minLength: 16)
             Button {
                 confirmedAt += 1
                 let cleanup = copy.cleanup != nil && cleanup
@@ -213,9 +216,11 @@ struct FleetConfirmSheet: View {
             .buttonStyle(.pressable)
             .disabled(targets.isEmpty)
             .opacity(targets.isEmpty ? 0.5 : 1)
+            .padding(.top, 16)
         }
         .padding(Layout.textEdge)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, alignment: .top)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
     }
 }
 

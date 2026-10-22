@@ -90,7 +90,7 @@ struct ModelMark: View {
             ProviderGlyph(provider: provider)
             Text(ModelName.short(model))
             if !rest.isEmpty {
-                Text(rest).foregroundStyle(.quaternary)
+                Text(rest).foregroundStyle(.secondary)
             }
         }
         .textStep(.stamp)
