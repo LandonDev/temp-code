@@ -221,13 +221,16 @@ end
 
 # ── zip ─────────────────────────────────────────────────────────────────
 # The zip (and the dmg on --dmg) from the signed app, nothing re-signed.
-# electron-builder writes latest-mac.yml beside them when it is minded to;
-# otherwise the feed file is written here from the zip's own digest.
+# --prepackaged names the .app itself (electron-builder's packMacTargets
+# takes it as the app path; the folder would put a mac-arm64/ level in the
+# zip and ShipIt would find no app). electron-builder writes latest-mac.yml
+# and the blockmap beside the zip; should it leave none, the feed file is
+# written here from the zip's own digest.
 begin zip
 TARGETS=zip
 [ "$DMG" = 1 ] && TARGETS="zip dmg"
 # shellcheck disable=SC2086
-bunx electron-builder --mac $TARGETS --arm64 --publish never --prepackaged dist/mac-arm64 \
+bunx electron-builder --mac $TARGETS --arm64 --publish never --prepackaged "$APP" \
   -c.mac.identity="${IDENTITY#Developer ID Application: }" \
   -c.mac.notarize=false \
   >"$STAGE/zip.log" 2>&1 || { tail -40 "$STAGE/zip.log" >&2; exit 1; }

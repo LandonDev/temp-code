@@ -2203,6 +2203,16 @@ says `the Mac went offline during the publish`. Stop sends `publish.stop`
 to the same Mac with a 30-second deadline, then cancels the start call;
 the Mac stops the Publisher's whole process group.
 
+The result's text reads "Published 1.0.N in 4m12s" from the script's
+`phase ✓ total` line, and the box then sends `release-available { version }`
+down every registered Mac's socket (src/main/server/releaseAnnounce.ts), so
+the installed app fetches the release that second and offers "Restart to
+update"; the Mac's own Publisher had already asked its updater as the
+script's `update` phase. A master on the Mac runs the same steps without
+the link: `LocalPublish` for the publish and `remote/peerDeploy.ts` for
+the box deploy over the Mac's link (docs/master-threads.md "The same
+engine on the Mac").
+
 ### Build once: the release asset and the lockfile rule
 
 The Mac's `bun run release:publish` already builds the tree it ships, and
@@ -2216,17 +2226,19 @@ node_modules has native parts. So the box no longer builds a published
 release; it lays in what the Mac built, and installs node_modules only
 when they changed.
 
-**The asset.** After the Mac build, release-publish.sh runs
+**The asset.** The moment the electron-vite build is done, and while
+electron-builder is still signing the app, release-publish.sh runs
 `scripts/release-pack-out.sh`, which packs `out/`, package.json with the
 commit under `tempcodeBuild.sha`, release.json, bun.lock, `scripts/box`
 (the runner, `tc-local`, the probe, the history map), the history importer,
 docs/box.md and a `build-manifest.json` (version, release number, commit,
 contract version, bun.lock's sha256, when and on what it was built) into
 `temp-code-out-1.0.N.tar.gz`, writes a sha256sum line beside it and
-uploads both as assets of the GitHub release `v1.0.N`. The dry run is
+uploads both to the draft of the GitHub release `v1.0.N` (a red gate
+deletes the draft with them). The dry run is
 `scripts/release-publish.sh --pack-only [dist-dir]` (or `bun run
 release:pack-out`): tar and sha from the `out/` already built, no Keychain,
-nothing uploaded.
+nothing uploaded; `--dry-run` runs every local phase with its timing.
 
 **What box-update does with it** (scripts/box/box-update.sh, the install
 half in scripts/box/box-update-lib.sh, installed by stage 85 at

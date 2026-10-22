@@ -3,9 +3,15 @@
 ## One line: prod runs the newest published GitHub release
 - `/Applications/TempCode.app` runs the newest `v1.0.N` release on
   github.com/LandonDev/temp-code (public). It updates itself through
-  electron-updater: at launch, every 30 minutes, and when a window comes
+  electron-updater: at launch, every 5 minutes, and when a window comes
   forward after 15 idle minutes it reads the feed's latest-mac.yml, offers
-  the release, downloads only when asked, and restarts on request. Its data
+  the release, downloads only when asked, and restarts on request. A
+  release it is TOLD about skips the wait: the Publish button's script
+  exiting green inside the app, or the box's `release-available` push over
+  the peer link after its deploy, makes it fetch that second and offer
+  "Restart to update" (src/main/update.ts `selfUpdate`, the rules in
+  updateTrigger.ts: a version it already runs or holds is ignored, and
+  nothing installs without the restart click). Its data
   lives in `~/Library/Application Support/TempCode/` (`dev:prod` still runs
   on the older `temp-code/` dir).
 - Nothing reaches users until `bun run release:publish` runs (see below).
@@ -151,20 +157,38 @@ Two separate steps, on purpose, over one gate.
      trailers: GitHub renders them as a second contributor on every commit.
      `.claude/settings.json` turns the trailer off; do not add one by hand.
 2. **`bun run release:publish` publishes HEAD's 1.0.N** (scripts/
-   release-publish.sh, the same shape as Aliax's release): clean tree on
-   master, runs `gate --tier publish` (`GATE_SKIP=1` only to retry a failed
-   upload), signs with the Developer ID Application identity in the login
-   Keychain, notarizes through the `aliax` notarytool Keychain profile,
-   uploads the arm64 zip + dmg + latest-mac.yml and the box's
+   release-publish.sh): the fast path, about five minutes on the Mac. A
+   clean tree on master; master and the `v1.0.N` tag pushed and a draft
+   release opened first; then `gate --tier publish` runs BESIDE the
+   electron-vite build (they share nothing; a red gate still stops the
+   upload and deletes the draft; `GATE_SKIP=1` only to retry a failed
+   upload); electron-builder packs and signs with the Developer ID
+   Application identity in the login Keychain (`--dir`), the zip is made
+   from that app (`--prepackaged`), and the box's
    `temp-code-out-1.0.N.tar.gz` + `.sha256` (scripts/release-pack-out.sh:
    the same `out/`, package.json with `tempcodeBuild.sha`, release.json,
-   bun.lock, scripts/box, a build-manifest.json; `release-publish.sh
-   --pack-only [dir]` is the dry run, tar + sha and nothing else) to the
-   GitHub release `v1.0.N`, writes the notes from the commits since the
-   last `v1.0.*` tag, verifies the feed, and pushes the `v1.0.N` tag. It
-   refuses a version the feed already serves. Apple silicon only; Intel is
-   out of scope for now. The box's `box-update v1.0.N` lays that tarball
-   in instead of building (docs/box.md "Build once").
+   bun.lock, scripts/box, a build-manifest.json) is packed from `out/` the
+   moment the build is done and uploaded to the draft while the app is
+   still being signed. The zip is checked the way Squirrel's ShipIt will
+   (against /Applications/TempCode.app when it is there), then the zip (and
+   its blockmap), latest-mac.yml and the tarball are the whole upload, the
+   draft goes live, the feed is verified. One line per phase with its
+   duration (`phase › gate`, `phase ✓ gate 1m11s`, `phase ✗ build 12s`,
+   `phase – gate skipped`, `phase ✓ total 4m12s 1.0.N`; the parser is
+   src/shared/releasePhases.ts). Not notarized by default: Squirrel
+   validates an update against the installed app's designated requirement,
+   so the signature is what makes updates install, and Gatekeeper reads a
+   notarization ticket only on a quarantined (browser-downloaded) bundle.
+   `--notarize` (or `TEMP_CODE_NOTARIZE=1`) notarizes through the `aliax`
+   notarytool Keychain profile, checked only then; `--dmg` (or
+   `TEMP_CODE_DMG=1`) builds and uploads the dmg too, for a fresh install;
+   both for a release someone else will download. `--dry-run` runs every
+   local phase with its timing on any commit and pushes, releases and
+   uploads nothing; `--pack-only [dir]` is the tarball alone. It refuses a
+   version the feed already serves. Apple silicon only; Intel is out of
+   scope for now. The box's `box-update v1.0.N` lays that tarball in
+   instead of building (docs/box.md "Build once"). docs/release-gate.md
+   has the phase times.
 
 3. **Both are buttons in the app too, still pressed by the user** (Settings →
    Remote access → Deploy and publish; src/main/server/hostJobs.ts,
@@ -177,8 +201,12 @@ Two separate steps, on purpose, over one gate.
    a dirty tree, a branch other than master and a version the feed already
    serves before starting, and the scripts' own refusals come through as the
    log's last lines. The log streams into a card under the rows (last 40
-   lines, following, Stop kills the scripts' process group). `host.publish*`
-   is local-only: no key ever reaches it. "Deploy master to the box" on a
+   lines, following, Stop kills the scripts' process group). When the script
+   exits green the Publisher adds the `update` phase itself: the installed
+   app it runs in fetches the version the total line names (`selfUpdate`)
+   and the log ends `phase ✓ update 31s` once "Restart to update" is there,
+   `phase – update skipped (current)` on a dev instance or an old version.
+   `host.publish*` is local-only: no key ever reaches it. "Deploy master to the box" on a
    host's row is `host.deploy` (admin, over the box's link) and the root-owned
    trigger of docs/box.md "Deploy from the app"; its confirm names the
    versions ("v1.0.270 → v1.0.273, 3 releases").
@@ -192,11 +220,20 @@ package.json against the requested `1.0.N`, then calls
 `Publisher.publish(notes, { train: false })`. That mode runs only
 `bun run release:publish`; the button still cuts then publishes. Progress
 streams over `peer.progress`, the call returns the exit and a one-line
-outcome, and Stop kills the Publisher's process group. Only a saved host
-whose caller id matches the link may ask. The box picks the thread's live
-bridge peer with the offer, else the sole registered publisher; a dropped
-link fails the call. The batch engine (batch.ts) drives it as the
-`publish` step; `batch.stopStep` stops it.
+outcome ("Published 1.0.N in 4m12s"), and Stop kills the Publisher's
+process group. Only a saved host whose caller id matches the link may ask.
+The box picks the thread's live bridge peer with the offer, else the sole
+registered publisher; a dropped link fails the call. The batch engine
+(batch.ts) drives it as the `publish` step; `batch.stopStep` stops it. When
+the master thread lives on the Mac the same engine runs there: the publish
+step is `LocalPublish` (macPublish.ts, the same `run` with no link) and the
+deploy step reaches the box as `host.deploy` + `host.log` over the Mac's
+link (`remote/peerDeploy.ts`, which re-asks the log when the link comes
+back after the box restarted into the new build). A green publish, or a
+green deploy of a v1.0.N, is announced (src/main/server/releaseAnnounce.ts):
+the box pushes `release-available { version }` down every registered Mac's
+socket and the Mac's updater fetches it; on the Mac the announcer is the
+local updater itself.
 
 Never build into or swap /Applications/TempCode.app yourself: the installed
 app replaces itself from the feed, and only from the feed.

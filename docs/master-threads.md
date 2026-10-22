@@ -242,8 +242,15 @@ pending | running | passed | failed | skipped, `detail` (one line),
 `startedAt`, `endedAt`, `progress { done, total, label? }` (land: branches
 merged of total; gate: the tier's steps done of total with the running
 one as label, read from gate.ts's own `gate: … N steps`, `› step` and
-`✓ step` lines; publish and deploy: their stage from the scripts' `==`
-lines) and `log` (the console lines as they arrive, the newest 200 kept).
+`✓ step` lines; publish: the script's phases done of eight (gate, build,
+sign, zip, pack, upload, feed, and the Mac app's own update) with the
+running one as label, read from release-publish.sh's `phase › name` and
+`phase ✓ name 71s` lines by src/shared/releasePhases.ts; deploy:
+box-update's stages seen of seven (source, modules, build, trial,
+snapshot, commit, prune) from its `SOURCE:` / `TRIAL PASS:` lines) and
+`log` (the console lines as they arrive, the newest 200 kept; the publish
+and deploy logs end with one line naming the version and the time, the
+publish one with every phase's time in brackets).
 The `batch` push is coalesced to at most four a second while a log
 streams (the first change goes out at once, the rest trail), and the row
 is persisted with each push, so a restart keeps the log. The board's foot
@@ -277,7 +284,27 @@ come back as the step's failure text; the job's log lines stream through
 one-line outcome. `batch.stopStep { masterId }` (operate) sends
 `publish.stop`, which kills the Publisher's process group, then cancels
 the call. A publish in flight when the box restarts is failed with a
-pointer to the Mac's publish log.
+pointer to the Mac's publish log. The step's detail ends "v1.0.N published
+in 4m43s", and the version is announced (src/main/server/releaseAnnounce.ts):
+the box sends `release-available { version }` down every registered Mac's
+socket, the Mac's updater fetches it at once (update.ts `selfUpdate`) and
+"Restart to update" is there without waiting for the poll. The Mac's own
+Publisher already did the same for itself as the script's `update` phase.
+
+**The same engine on the Mac.** When the master thread lives on the Mac,
+`publish` is `LocalPublish` (remote/macPublish.ts: the peer handler's
+`run` with no link, Stop through the Publisher) and `deploy` is
+`PeerDeploy` (remote/peerDeploy.ts): `host.deploy` with the ref over the
+Mac's link to the box (exactly one connected link, else the step names
+the choices), then `host.log { job: 'deploy' }` for the snapshot and the
+box's `host-log` pushes on the link for the rest. The box restarts into
+the new build mid-deploy and the link drops; when it comes back `linkUp`
+asks for the log again and feeds only the text the step has not seen (the
+box's new process re-reads the whole file), and the fresh snapshot's done
+status closes the step. A deploy of a v1.0.N announces the version to the
+local updater too. A publish step found running at boot whose version this
+Mac now runs is passed ("this host restarted into it"): the person clicked
+Restart during the batch.
 
 **The deploy, and the restart it causes.** `deploy: 'box'` fires
 `host.deploy` with the ref (hostJobs.ts `DeployTrigger`: the ref written to
@@ -439,5 +466,6 @@ None of the proofs that boot harnesses are in the release gate.
   tool description says it is for a master.
 - `batch.stopStep` stops the publish only; a gate or release step runs to
   its end.
-- The publish and deploy stages are read from the scripts' `==` lines;
-  neither has a numeric progress.
+- The publish step's progress counts the script's phases and the deploy
+  step's box-update's stages; a line neither script prints as such adds
+  nothing to the count.
