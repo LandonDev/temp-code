@@ -75,6 +75,9 @@ describe('METHOD_CAPABILITY', () => {
         'session.setMaster',
         'workspace.setAccounts',
         'project.setPreamble',
+        // One project across hosts (shared/projectLinks.ts): the linker's stamp and the settings home's whole-bundle write.
+        'catalog.link',
+        'project.settings.set',
         'workspace.setPreamble',
         'linear.setToken',
         // A phone's own push registration (remote.push.*) is the key's row: read.

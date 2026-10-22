@@ -235,6 +235,7 @@ export const RELAY_METHODS: Partial<Record<ClientRequest['method'], 'link' | 'sc
   'workspace.setPreamble': 'link',
   'project.settings.get': 'link',
   'project.settings.set': 'link',
+  'project.ensureLinked': 'link',
   'plans.set': 'link',
   'review.set': 'link',
   // the host's own harness and memory sync with its links: the Mac answers for itself (admin on both hosts)
