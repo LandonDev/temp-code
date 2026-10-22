@@ -1642,7 +1642,8 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
   host can serve the thread's project, with a dot while one runs; it opens
   the rail's Dev tab (chrome/rail/DevServerPanel.tsx): the target (a menu
   when there are several), the host (this Mac or the box's copy of the
-  project, paired by repo or folder name), Run, Stop and Restart, where the
+  project: the linked copy, else one paired by repo or folder name), Run,
+  Stop and Restart, where the
   server opens, and the live console. The host detects the targets itself
   (src/main/server/devTargets.ts): the `dev`, `start`, `serve`, `preview`,
   `web` and `storybook` scripts of the root package.json and of its
@@ -1955,7 +1956,7 @@ The search surface (⌘⇧F opens it; src/renderer/src/surfaces/SearchView.tsx)
 asks every connected host the same query at once and shows one list. Each
 host answers for itself: its threads by title (from the metas the window
 already holds) and by transcript row (`session.search`), its copy of the
-project by file name and file content (`search.project`, within the paired
+project by file name and file content (`search.project`, within the linked
 project; see below), and its notes (`notes.search`, new, capability read).
 Hosts answer in parallel and the rows land as each one does
 (`runCrossHostSearch` in src/renderer/src/lib/crossHostSearch.ts streams a
@@ -1966,8 +1967,9 @@ a message's score is its match quality (the best bm25 among the hits is 1,
 a row a host had to scan or a loaded transcript matched in memory sits in
 the middle) plus recency; titles and files keep their fuzzy scores.
 
-Hits carry the host as the rail does: the connection dot and the host's
-name at the row's trailing edge, and nothing when only one host is paired.
+Hits carry the host as the rail does: the host glyph (`chrome/HostGlyph.tsx`,
+the name on hover) at the row's trailing edge, and nothing when only one
+host is paired.
 Enter opens a hit where it lives (a thread through the session store's
 route to its host, a file through the catalog's host for its path, a note
 in the notes view on its host, `focusNote`); ⌘↩ opens it in a new pane
@@ -2171,7 +2173,7 @@ because they always asked the thread's host (`attachment.read`).
 The desktop paints every host's rows from its launch mirror before any
 socket is up (CLAUDE.md "Launch: the rail paints from the launch mirror"),
 so a box that is asleep, far away or slow to answer no longer leaves its
-section of the rail blank. To play that case on purpose, run a host with
+rows in the rail blank. To play that case on purpose, run a host with
 `TEMP_CODE_PEER_DELAY_MS=<ms>` (src/main/server/peerDelay.ts): every
 request a remote principal makes there waits that long before it is
 handled; the host's own local socket never waits. Isolated instances only.

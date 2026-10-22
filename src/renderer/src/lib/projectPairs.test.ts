@@ -31,6 +31,11 @@ describe("pairWorkspaces", () => {
     expect(pairs[0].name).toBe("temp-code");
   });
 
+  it("keys on the link id first: two copies the linker stamped pair whatever their repo or folder", () => {
+    expect(pairKey({ path: "/a/B", githubRepo: "O/R", linkId: "wl_x" })).toBe("link:wl_x");
+    const pairs = pairWorkspaces([ws("local", "/Users/me/one", { linkId: "wl_x" }), ws("env_box", "/srv/work/two", { linkId: "wl_x" }), ws("env_box", "/srv/work/one")]);
+    expect(pairs.map((p) => p.members.map((m) => m.environmentId))).toEqual([["local", "env_box"], ["env_box"]]);
+  });
   it("keys on the repo when known, the folder name otherwise", () => {
     expect(pairKey({ path: "/a/B", githubRepo: "O/R" })).toBe("repo:o/r");
     expect(pairKey({ path: "/a/B/", githubRepo: null })).toBe("name:b");

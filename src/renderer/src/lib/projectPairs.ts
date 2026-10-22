@@ -6,12 +6,13 @@ import type { WorkspaceMeta } from "./tcserver/types";
  * which copies are the same project, so a file at the same relative path
  * in both folds into one row and both hosts' hits carry one project name.
  *
- * This is the seam the cross-host project pairing (the path-map thread)
- * replaces with its own table; until then two workspaces pair when they
- * name the same GitHub repository, else when their folders share a name.
- * Within one host the first workspace with a key keeps it, so a pair has
- * at most one member per host; a workspace with no partner is a pair of
- * one, so every path has a pair to be relative to.
+ * Two workspaces pair when they carry one link id (shared/projectLinks.ts:
+ * the linker stamps copies of one workspace with a `wl_…` id); rows the
+ * linker has not reached yet pair when they name the same GitHub
+ * repository, else when their folders share a name, the rule the linker
+ * itself applies. Within one host the first workspace with a key keeps
+ * it, so a pair has at most one member per host; a workspace with no
+ * partner is a pair of one, so every path has a pair to be relative to.
  */
 
 export type PairMember = {
@@ -31,7 +32,9 @@ export type ProjectPair = {
 const strip = (path: string): string => path.replace(/\/+$/, "") || "/";
 const basename = (path: string): string => strip(path).split("/").pop() ?? path;
 
-export function pairKey(workspace: Pick<WorkspaceMeta, "path" | "githubRepo">): string {
+export function pairKey(workspace: Pick<WorkspaceMeta, "path" | "githubRepo" | "linkId">): string {
+  const link = workspace.linkId?.trim();
+  if (link) return `link:${link}`;
   const repo = workspace.githubRepo?.trim().toLowerCase();
   return repo ? `repo:${repo}` : `name:${basename(workspace.path).toLowerCase()}`;
 }

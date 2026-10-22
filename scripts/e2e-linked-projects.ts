@@ -297,6 +297,9 @@ try {
     return rows.some((r) => r.event.type === 'user-text' && r.event.attachments?.some((a) => a.kind === 'thread' && a.environmentId === boxId))
   })
   check('a @thread: reference to a box thread rides the mac turn with its host', digested)
+  const refFile = join(macProj, '.temp-code', 'refs', `${alphaCaller.id}.md`)
+  const refWritten = await until('the far digest lands in .temp-code/refs', 60_000, () => existsSync(refFile) && readFileSync(refFile, 'utf8').includes('alpha on the box'))
+  check("the box thread's digest was read over thread.read and written as the mac project's refs file", refWritten, refFile)
   const spawned = JSON.parse(await rpc<string>(box, 'app.spawnAgent', { sessionId: alphaCaller.id, environmentId: 'mac', provider: 'claude', agentType: 'explorer', task: 'look around\non the Mac' })) as { agentId?: string }
   const listed = JSON.parse(await rpc<string>(box, 'app.listAgents', { sessionId: alphaCaller.id })) as { agentId: string; host?: string }[]
   check('app.listAgents on the box names the child spawned on mac with its host', !!spawned.agentId && listed.some((a) => a.agentId === spawned.agentId && a.host === macId), JSON.stringify(listed))

@@ -924,11 +924,11 @@ routed to (aliax-core's `forward`). Two listeners:
   `notes.search`), streams each host's rows as it answers, ranks without
   looking at the host (match quality from the hosts' bm25 ranks plus
   recency), folds a file at the same relative path in both copies of a
-  paired project (src/renderer/src/lib/projectPairs.ts: same GitHub repo,
-  else same folder name; the seam the path-map pairing replaces) into one
-  row on the newer copy (`search.project` matches carry `mtime`), marks
-  each hit with the rail's host dot and name when more than one host is
-  paired, and says "box: 1.2 s" per host at the foot (skipped when
+  linked project (src/renderer/src/lib/projectPairs.ts: one `linkId`, else
+  the linker's own rule of same GitHub repo, else same folder name, for rows
+  it has not stamped yet) into one row on the newer copy (`search.project`
+  matches carry `mtime`), marks each hit with the host glyph when more than
+  one host is paired, and says "box: 1.2 s" per host at the foot (skipped when
   offline). Filters are typed in the box: `host:`, `type:` (thread, file,
   note, project), `project:`; one hint line, no other chrome. Enter opens
   where the hit lives, ⌘↩ in a new pane; nothing in the list animates.
@@ -949,6 +949,99 @@ routed to (aliax-core's `forward`). Two listeners:
   (pure, Swift Testing in CrossHostSearchTests.swift), emitting thread 4's
   row model (`SearchRows.swift`) as an `AsyncStream<SearchAnswer>` the
   Search tab iterates; `notes.search` is in the phone's subset for it.
+## One project across hosts: linked projects, one rail, host glyphs
+docs/box.md "One project across hosts" (four sections) and
+docs/LAYOUT.md's sidebar rows are the long account; the proof is
+`bun run script:e2e-linked-projects` (scripts/e2e-linked-projects.ts: two
+headless instances; the linker stamps both copies, a far start into a
+project with no copy creates and links it, a box edit reaches the Mac, a
+Mac edit lands on the box, a Mac edit with the box down is refused, a
+`@thread:` reference to a box thread yields its digest, `list_agents`
+names the far child).
+- **The link.** `workspaces.link_id` (`wl_…`) and `projects.link_id`
+  (`pl_…`) are the ids a row shares with its copies on other hosts, on the
+  wire as `linkId` on `WorkspaceMeta`/`ProjectMeta` (`projects.
+  settings_updated_at` → `settingsUpdatedAt` beside it). Linking is automatic
+  and has no UI: the linker (src/main/server/remote/projectLinks.ts) runs on
+  the host holding the admin peer link (the Mac), on link-up, on the peer's
+  `workspaces`/`projects` push, on a local catalog change and every 5 minutes,
+  debounced; it pairs with the pure rules of src/shared/projectLinks.ts
+  (workspaces by GitHub repo, else folder name; projects by name inside paired
+  workspaces; the oldest row when a host has two of a key), decides with
+  `decideLink` (one side's id adopted by the other, neither → mint, both
+  different → the settings home's wins) and stamps through
+  `registry.linkCatalog` here and `catalog.link` (admin) there. It never
+  unlinks and never gives one id to a second row on a host; a wrong link is
+  undone by deleting one copy, not by renaming it. `project.ensureLinked`
+  (operate; src/main/server/projectLinks.ts) is the one function that finds
+  or makes this host's copy: by link id, else the workspace by link id,
+  mapped folder (`hostPathFor`) or repo, adopting a same-named unlinked
+  project or creating one with the caller's name, branch and mode (a
+  worktree on the caller's branch, a local copy with a note when that
+  fails); no workspace → `cwd: null` and a note naming the folder; `dryRun`
+  for the pickers. A cross-host `thread.start`/`thread.spawn` carries the
+  caller's `project` facts (contract-crosshost.ts `ProjectLinkFactsSchema`,
+  filled by crossHostAgents.ts from the project row, the ids minted once by
+  `registry.projectLinkFacts`), `CrossHostThreads.place()` calls
+  `ensureLinked` first, and `app_start_thread` with `environmentId` admits a
+  `projectId` the far host lacks.
+- **Settings live on the box.** The settings home of a link is its copy on
+  the host whose hello `build.platform` is not `darwin` (two of one platform:
+  the environment id sorting first; `settingsHomeOf`; `hostPlatform()` in
+  src/main/buildInfo.ts is the one platform read, `TEMP_CODE_BUILD_PLATFORM`
+  its seam for an isolated instance). `project.settings.get` (read) answers
+  one bundle (name, archived, preamble, pins, review, plans, build, turn
+  pass, `updatedAt`), `project.settings.set` (admin) writes it whole; every
+  existing setter stamps `settings_updated_at` and pushes `projects`. The
+  follower (src/main/server/remote/projectSettingsSync.ts, on the Mac) pulls
+  a linked copy's bundle from its home when the home's stamp is newer, on
+  link-up, the home's `projects` push and every 5 minutes; a settings write
+  on a non-home host is forwarded to the home (then pulled back with the
+  home's stamp) or refused with `refused: settings of <name> live on <host>;
+  it is offline`. The dialogs (`lib/projectHome.ts`, ProjectSettingsDialog,
+  PreambleDialog, rename, archive every copy, delete asking about the other
+  copy) act on the home over its link, footer "Saved on <host>", Save off
+  with the reason while the home is out of reach.
+- **One rail.** `lib/linkedRail.ts` (`mergeRailSections`, restored from
+  a39cc107 and keyed by `linkId`) joins copies into one row led by this
+  machine's copy, the other copies aliased to the leader's keys
+  (`aliasKeys`) so order, pins, recents, labels, colours and mascots keep
+  theirs; one "Workspaces" section, no host headers, every copy's threads by
+  recency, unread sums, Mark all read and the fleet switches over every
+  copy, a down host's rows under the offline tint. Host status (connection
+  dot, boot-resume line, deploy drift) is one row per host at the rail's
+  foot (`chrome/HostRows.tsx`, two or more hosts only) with the host's menu.
+  `chrome/HostGlyph.tsx` (12 px, laptop for darwin, server otherwise, the
+  name on hover, platform from the hello, remembered on the saved host row
+  by `rememberPlatform`, preload for this machine; `lib/hostPlatform.ts`)
+  marks every thread and agent row with two or more hosts: the rail, ChildRow,
+  the fleet panel, the spawn row, the Inbox, search, the master board.
+  `lib/projectHostChoice.ts` picks a new thread's host (the thread on
+  screen's, else the last used for the link, else this machine, else the
+  first connected host with a copy) and `chrome/DraftHostPicker.tsx` in the
+  composer retargets an unsent draft, making the copy through
+  `project.ensureLinked` on pick; the master board's add sheet offers every
+  host the same way.
+- **Threads across copies.** `@thread:<env_…>:<id>` names a thread on
+  another host (threadMentions.ts; the composer's picker emits the host's
+  own id; the attachment carries `environmentId`); sessions.ts reads its
+  digest over the new `thread.read` (admin, any thread of that host) into
+  the same `.temp-code/refs/<id>.md`, or leaves one line `thread "<title>"
+  on <host> is unreachable (<why>)`. The fleet panel already spans hosts
+  (the store is global; a far child keeps its parent's bare id).
+- **Phone.** `ProjectPairs` folds by `linkId` alone, Home draws one row per
+  linked project with the `HostGlyph`, the settings sheet saves on the home
+  (`ProjectLinks.settingsHome`); the test server's `TC_IOS_SECOND_HOST=1`
+  seeds the link; docs/IOS-DESIGN.md "Two hosts".
+- **Tests.** shared/projectLinks.test.ts, remote/projectLinks.test.ts,
+  server projectLinks.test.ts, crossHostThreads, crossHostAgents, apptools,
+  projectSettingsSync, projectPreamble, sessions-mentions, threadMentions,
+  mentionAttachments, agents; the renderer's linkedRail, MergedProjectRail,
+  HostRows, BatchMenus, HostGlyph, HostGlyphRows, projectHostChoice,
+  DraftHostPicker, AddThreadDialog, ProjectDialogs, projectHome,
+  projectPairs; the phone's ProjectPairsTests, HomeSectionsTests,
+  ProjectLinksTests, EnvironmentStoreTests, FixtureTests.
+
 ## Thread notes: the document that survives a compaction
 - Every root thread keeps `notes.md` at `attachmentDir(session)/notes.md`
   (the project's `.temp-code/attachments/<sid>/`, so the harness can read
@@ -1468,7 +1561,9 @@ proof and the sizing rules; the pieces, by name:
   automatic signing, install; `aps-environment` production, no DEBUG hooks,
   the pairing from an earlier Debug install carries over in the keychain).
 - Two hosts on the phone: `ProjectPairs` folds one checkout on both hosts
-  into one Home row (repo, else folder name; no path map), `HostChip` names a
+  into one Home row by its `linkId` alone (every host's threads by recency;
+  the `HostGlyph` on each thread and agent row with two or more hosts; the
+  settings sheet saves on `ProjectLinks.settingsHome`), `HostChip` names a
   thread's host in the header's subtitle with the five-tone `HostDot` (no
   move: `session.move` is Mac-local), a `session-moved` push leaves a
   `MovedThread` record the open screen shows as "Moved to <host>",
@@ -1504,9 +1599,10 @@ proof and the sizing rules; the pieces, by name:
 
 ## The fleet switches: one click for every thread of a scope
 Pause all, Resume all, Stop all and Archive done sit beside Mark all read in
-a project's menu (rail row and project header), a host's menu (the `…` on
-the rail's host row, and Settings → Remote access), and the View menu for
-everything. Roots only, subagents follow their parent; a row with nothing to
+a project's menu (rail row and project header; on a project linked across
+hosts they act on every copy, one `session.batch` per host), a host's row at
+the rail's foot (`chrome/HostRows.tsx`, with two or more hosts) and its menu
+in Settings → Remote access, and the View menu for everything. Roots only, subagents follow their parent; a row with nothing to
 act on is disabled. The rules per row, the confirm copy with its live count
 and the toast line are `src/renderer/src/lib/threadBatch.ts` (unit-tested);
 the menus' rows are `threadBatchMenu.ts`; the dialog and toast are
