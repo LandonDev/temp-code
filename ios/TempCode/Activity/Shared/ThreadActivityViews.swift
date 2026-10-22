@@ -21,15 +21,17 @@ import WidgetKit
 struct ThreadActivityCard: View {
     let attributes: ThreadActivityAttributes
     let state: ThreadActivityAttributes.ContentState
+    /// The glyph's frame plus the 8 pt gap, scaled as the glyph is: the lines under the title start at the title's edge.
+    @ScaledMetric(relativeTo: .subheadline) private var indent = ActivityMetrics.indent
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ActivityTitleRow(attributes: attributes, state: state)
             ActivityStatusLine(type: attributes.threadType, state: state)
-                .padding(.leading, ActivityMetrics.indent)
+                .padding(.leading, indent)
             if state.hasTasks {
                 ActivityTally(type: attributes.threadType, state: state)
-                    .padding(.leading, ActivityMetrics.indent)
+                    .padding(.leading, indent)
             }
         }
         .padding(.horizontal, 16)
@@ -40,8 +42,8 @@ struct ThreadActivityCard: View {
 }
 
 enum ActivityMetrics {
-    /// The glyph's 20 pt frame plus the 8 pt gap: the lines under the title start at the title's edge.
-    static let indent: CGFloat = 28
+    /// The glyph's frame (Layout.glyphWidth, 20 pt) plus the 8 pt gap, at the default text size; the card scales it with the glyph.
+    static let indent: CGFloat = Layout.glyphWidth + 8
     static let barHeight: CGFloat = 3
     /// The status line's fixed height: its text changes, its height never does.
     static let lineHeight: CGFloat = 18
@@ -162,7 +164,7 @@ struct PhaseMark: View {
                     .frame(width: 7, height: 7)
             case .stopped:
                 RoundedRectangle(cornerRadius: 1, style: .continuous)
-                    .fill(Color.secondary)
+                    .fill(Tint.quiet)
                     .frame(width: 6, height: 6)
             }
         }
@@ -239,7 +241,7 @@ struct ActivityMinimal: View {
         Group {
             if state.phase == .stopped {
                 RoundedRectangle(cornerRadius: 1, style: .continuous)
-                    .fill(Color.secondary)
+                    .fill(Tint.quiet)
                     .frame(width: 6, height: 6)
             } else {
                 Circle()
@@ -287,7 +289,7 @@ extension ThreadActivityAttributes.Phase {
         case .paused, .waiting: Tint.warning
         case .finished: Tint.success
         case .failed: Tint.destructive
-        case .stopped: Color.secondary
+        case .stopped: Tint.quiet
         }
     }
 
@@ -298,7 +300,7 @@ extension ThreadActivityAttributes.Phase {
         case .paused: Tint.warning
         case .finished: Tint.success
         case .failed: Tint.destructive
-        case .stopped: Color.secondary
+        case .stopped: Tint.quiet
         }
     }
 }
