@@ -4,7 +4,7 @@ import { DialogFooter, ErrorLine, errorText } from "../../../chrome/ConfirmDialo
 import { ChevronDown, ChevronUp, X } from "../../../chrome/icons";
 import { Modal } from "../../../chrome/Modal";
 import { Input, Segmented, Select } from "../../settingsBits";
-import { addStep, KIND_CHOICES, moveStep, removeStep, renameStep, shellDraftValid, stepLine, stepsValid, type ShellDraft } from "./rulesEdit";
+import { addableKinds, addStep, moveStep, removeStep, renameStep, shellDraftValid, stepLine, stepsValid, type ShellDraft } from "./rulesEdit";
 import { stepsOf } from "./steps";
 import { rulesSentence, type Rules } from "./useMasterModel";
 
@@ -128,7 +128,7 @@ export function RulesDialog({
               <Select
                 label="Add a step"
                 value={shell ? "shell" : NO_KIND}
-                options={[{ value: NO_KIND, label: "Add a step…" }, ...KIND_CHOICES]}
+                options={[{ value: NO_KIND, label: "Add a step…" }, ...addableKinds(steps)]}
                 onChange={pickKind}
                 className="max-w-56"
               />

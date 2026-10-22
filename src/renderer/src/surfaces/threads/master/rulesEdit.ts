@@ -1,4 +1,4 @@
-import { BatchStepKindSchema, type BatchStepKind, type BatchStepSpec } from "@server/shared/contract-batch";
+import { BatchStepKindSchema, stepsProblem, type BatchStepKind, type BatchStepSpec } from "@server/shared/contract-batch";
 
 /**
  * Editing the batch's step list in the rules dialog, pure: the kinds a
@@ -18,6 +18,12 @@ export const KIND_LABEL: Record<BatchStepKind, string> = {
 
 /** The add menu's choices, in the contract's order. */
 export const KIND_CHOICES: { value: BatchStepKind; label: string }[] = BatchStepKindSchema.options.map((value) => ({ value, label: KIND_LABEL[value] }));
+
+/** The kinds the list may still take: one of each built-in kind, any number of shell steps. */
+export function addableKinds(steps: readonly Pick<BatchStepSpec, "kind">[]): { value: BatchStepKind; label: string }[] {
+  const taken = new Set(steps.map((s) => s.kind));
+  return KIND_CHOICES.filter((c) => c.value === "shell" || !taken.has(c.value));
+}
 
 /** What a built-in step is called until the person renames it; a shell step is named by hand. */
 export function defaultName(kind: BatchStepKind): string {
@@ -64,9 +70,10 @@ export function renameStep(steps: readonly BatchStepSpec[], index: number, name:
   return steps.map((s, i) => (i === index ? { ...s, name } : s));
 }
 
-/** Save is allowed: every step has a name, every shell step a command. */
+/** Save is allowed: every step has a name, and the list passes the contract's own check
+ *  (ids unique, one of each built-in kind, a command on every shell step). */
 export function stepsValid(steps: readonly BatchStepSpec[]): boolean {
-  return steps.every((s) => s.name.trim().length > 0 && (s.kind !== "shell" || !!s.run?.trim()));
+  return steps.every((s) => s.name.trim().length > 0) && stepsProblem(steps) === null;
 }
 
 /** A shell draft the Add button takes: a name and a command. */

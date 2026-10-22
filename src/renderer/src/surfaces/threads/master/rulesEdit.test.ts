@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BatchStepSpec } from "@server/shared/contract-batch";
-import { addStep, defaultName, KIND_CHOICES, moveStep, newStepId, removeStep, renameStep, shellDraftValid, stepLine, stepsValid } from "./rulesEdit";
+import { addableKinds, addStep, defaultName, KIND_CHOICES, moveStep, newStepId, removeStep, renameStep, shellDraftValid, stepLine, stepsValid } from "./rulesEdit";
 
 const steps: BatchStepSpec[] = [
   { id: "land", name: "Merging", kind: "land" },
@@ -16,6 +16,9 @@ describe("editing the step list", () => {
     expect(stepLine({ kind: "release" })).toBe("Release");
     expect(stepLine({ kind: "shell", run: "bun run smoke" })).toBe("bun run smoke");
     expect(stepLine({ kind: "shell" })).toBe("no command");
+    // One of each built-in kind; shell steps without limit.
+    expect(addableKinds(steps).map((c) => c.value)).toEqual(["release", "publish", "deploy", "shell"]);
+    expect(addableKinds([...steps, { id: "s", name: "S", kind: "shell", run: "x" }]).map((c) => c.value)).toContain("shell");
   });
 
   it("adds a built-in kind with its default name and a fresh id, a shell step with the draft", () => {
@@ -39,6 +42,7 @@ describe("editing the step list", () => {
     expect(stepsValid([...steps, { id: "x", name: " ", kind: "gate" }])).toBe(false);
     expect(stepsValid([...steps, { id: "x", name: "Smoke", kind: "shell" }])).toBe(false);
     expect(stepsValid([...steps, { id: "x", name: "Smoke", kind: "shell", run: "bun t" }])).toBe(true);
+    expect(stepsValid([...steps, { id: "gate-2", name: "Gate again", kind: "gate" }])).toBe(false);
     expect(shellDraftValid({ name: "Smoke", run: "" })).toBe(false);
     expect(shellDraftValid({ name: "Smoke", run: "bun t" })).toBe(true);
   });

@@ -40,9 +40,12 @@ export type LiveStep = {
   log: string[];
 };
 
-/** The wire step with the telemetry fields a host may add. */
-type WireStep = Omit<BatchStep, "status" | "id"> & {
+/** The wire step with the telemetry fields a host may add; an older host
+ *  sends no name or kind, so both are optional here. */
+type WireStep = Omit<BatchStep, "status" | "id" | "name" | "kind"> & {
   id: string;
+  name?: string;
+  kind?: BatchStepKind;
   status: BatchStep["status"] | StepStatus;
   startedAt?: number | null;
   endedAt?: number | null;
@@ -64,11 +67,18 @@ export function specOf(id: string, specs: readonly BatchStepSpec[]): BatchStepSp
   return { id, name: id, kind: kind.success ? kind.data : "shell" };
 }
 
+/** The state's own name and kind when the host sent them (the step row
+ *  carries both), else the rules' row for the id. */
+function describe(wire: WireStep, specs: readonly BatchStepSpec[]): BatchStepSpec {
+  const spec = specOf(wire.id, specs);
+  return { ...spec, name: wire.name || spec.name, kind: wire.kind ?? spec.kind };
+}
+
 /** One step as the foot reads it; `batch` lends a land step its
  *  progress (landed of all) when the host sent none. */
 export function liveStep(step: BatchStep, batch: Pick<BatchState, "landed" | "pending">, specs: readonly BatchStepSpec[] = []): LiveStep {
   const wire = step as WireStep;
-  const spec = specOf(wire.id, specs);
+  const spec = describe(wire, specs);
   const status: StepStatus = (wire.status as string) === "done" ? "passed" : wire.status;
   const ended = wire.endedAt ?? (status === "passed" || status === "failed" || status === "skipped" ? (wire.at ?? undefined) : undefined);
   const started = wire.startedAt ?? (status === "running" ? (wire.at ?? undefined) : undefined);
