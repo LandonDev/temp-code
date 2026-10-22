@@ -27,8 +27,9 @@ struct AccountChip: View {
                         .foregroundStyle(label == nil ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.secondary))
                         .lineLimit(1)
                 }
+                // The header's bar sets the height; the hit area is the padding, not a frame.
                 .padding(.horizontal, 4)
-                .frame(minHeight: 44)
+                .padding(.vertical, 6)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.pressableStatic)
@@ -56,7 +57,7 @@ struct AccountChip: View {
 /// The dot's colour: the profile's `#rrggbb` from Aliax, else tertiary.
 enum AccountColor {
     static func of(_ name: String?, in accounts: ProviderAccounts?) -> Color {
-        guard let name, let hex = accounts?.profiles.first(where: { $0.name == name })?.color, let color = Color(hex: hex) else {
+        guard let name, let hex = accounts?.profiles.first(where: { $0.name == name })?.color, let color = Color(accountHex: hex) else {
             return Color(.tertiaryLabel)
         }
         return color
@@ -64,8 +65,9 @@ enum AccountColor {
 }
 
 extension Color {
-    /// `#rrggbb` (or `rrggbb`); anything else is nil.
-    init?(hex: String) {
+    /// Aliax's `#rrggbb` (or `rrggbb`); anything else is nil. (The board's
+    /// `Color(hex:)` takes its own fixed wheel and never fails.)
+    init?(accountHex hex: String) {
         var text = Substring(hex)
         if text.hasPrefix("#") { text = text.dropFirst() }
         guard text.count == 6, let value = UInt32(text, radix: 16) else { return nil }

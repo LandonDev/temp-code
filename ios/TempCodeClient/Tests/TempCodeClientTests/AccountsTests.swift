@@ -163,18 +163,20 @@ private func snapshot(claude accounts: ProviderAccounts = claude(), updatedAt: I
         #expect(look(allLifted).stamp == "no usage yet")
     }
 
-    @Test func `a model cap counts for its model and not another's`() {
-        let accounts = claude(reports: [report(work, [window("5h", used: 10, resetsAt: now + hour), window("Fable 5", used: 95, resetsAt: now + 2 * hour), window("Opus", used: 100)])])
+    @Test func `the Fable cap counts for a Fable model and no other; any other label is not a tier`() {
+        let accounts = claude(reports: [report(work, [window("5h", used: 10, resetsAt: now + hour), window("Fable", used: 95, resetsAt: now + 2 * hour), window("Opus", used: 100), window("Credits", used: 100)])])
         #expect(look(accounts, model: "claude-fable-5-1").fraction == 0.05)
         #expect(look(accounts, model: "claude-fable-5-1").stamp == "in 2h")
-        #expect(look(accounts, model: "claude-sonnet-5-5").fraction == 0.9)
+        #expect(look(accounts, model: "claude-opus-5-5").fraction == 0.9)
         #expect(look(accounts, model: nil).fraction == 0.9)
-        #expect(HeadroomLook.applies(label: "week", model: nil))
-        #expect(HeadroomLook.applies(label: "5h", model: nil))
-        #expect(!HeadroomLook.applies(label: "Credits", model: "claude-fable-5-1"))
+        #expect(HeadroomLook.tiers(provider: .claude, model: "claude-fable-5-1") == ["5h", "Weekly", "Fable"])
+        #expect(HeadroomLook.tiers(provider: .claude, model: "claude-sonnet-5-5") == ["5h", "Weekly"])
+        #expect(HeadroomLook.tiers(provider: .codex, model: "gpt-6.1-sol") == ["5h", "week"])
+        let codex = ProviderAccounts(pinned: nil, profiles: [profile("c@example.com")], reports: [report("c@example.com", [window("week", used: 50), window("Weekly", used: 99)])], note: nil, headroom: nil)
+        #expect(HeadroomLook.of(profile: "c@example.com", model: "gpt-6.1-sol", provider: .codex, accounts: codex, now: now).fraction == 0.5)
     }
 
-    @Test(arguments: [(80.0, HeadroomLook.Tone.success), (75.0, .warning), (90.0, .warning), (95.0, .warning), (96.0, .destructive), (100.0, .destructive)])
+    @Test(arguments: [(70.0, HeadroomLook.Tone.success), (75.0, .success), (80.0, .warning), (95.0, .warning), (96.0, .destructive), (100.0, .destructive)])
     func `the tone turns at a quarter and at a twentieth left`(used: Double, tone: HeadroomLook.Tone) {
         let accounts = claude(reports: [report(work, [window("5h", used: used)])])
         #expect(look(accounts).tone == tone)
@@ -259,11 +261,17 @@ private func snapshot(claude accounts: ProviderAccounts = claude(), updatedAt: I
         #expect(rows(.thread, session: session(account: work)).map(\.id) == ["auto", work, spare])
     }
 
-    @Test func `without a snapshot the rows are Automatic and the checked name alone`() {
+    @Test func `an empty snapshot makes the checked name gone; no snapshot yet shows it as a row with an empty bar`() {
         let empty = ProviderAccounts(pinned: nil, profiles: [], reports: [], note: nil, headroom: nil)
-        #expect(rows(.thread, session: session(account: work), accounts: empty).map(\.id) == ["auto", work])
-        let scope = AccountScope.of(session(), projects: [], workspaces: [])!
-        #expect(AccountMenuModel.rows(scope: scope, kind: .thread, session: session(), project: nil, workspace: nil, accounts: nil, now: now).map(\.id) == ["auto"])
+        let gone = rows(.thread, session: session(account: work), accounts: empty)
+        #expect(gone.map(\.id) == ["auto", work])
+        #expect(gone.last?.kind == .gone(name: work))
+        let scope = AccountScope.of(session(account: work), projects: [], workspaces: [])!
+        let loading = AccountMenuModel.rows(scope: scope, kind: .thread, session: session(account: work), project: nil, workspace: nil, accounts: nil, now: now)
+        #expect(loading.map(\.id) == ["auto", work])
+        #expect(loading.last?.kind == .account(name: work, shortName: "work", color: nil, look: HeadroomLook(fraction: 0, tone: .none, stamp: nil, accessibility: "work")))
+        #expect(loading.last?.checked == true)
+        #expect(AccountMenuModel.rows(scope: AccountScope.of(session(), projects: [], workspaces: [])!, kind: .thread, session: session(), project: nil, workspace: nil, accounts: nil, now: now).map(\.id) == ["auto"])
     }
 
     @Test func `the scopes a thread has`() {
@@ -501,6 +509,7 @@ private final class AccountsRig {
         #expect(HomeModel.cue(for: plain, rows: rows) == HomeModel.Cue(text: "Error: The provider answered 429", seq: 2))
         let empty = NeedsYouItem(meta: session(status: .error, failure: Failure(kind: .unknown, account: nil, summary: "", cause: "")), kind: .error, since: 2)
         #expect(HomeModel.cue(for: empty, rows: rows).text == "Error: The provider answered 429")
+        #expect(empty.meta.failureSummary == nil)
         let waiting = NeedsYouItem(meta: session(status: .waiting, failure: verdict), kind: .waiting, since: 2)
         #expect(HomeModel.cue(for: waiting, rows: []) == HomeModel.Cue(text: "Waiting for you", seq: nil))
     }

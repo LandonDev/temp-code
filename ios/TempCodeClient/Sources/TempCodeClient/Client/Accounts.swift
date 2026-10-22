@@ -174,14 +174,15 @@ public struct HeadroomLook: Sendable, Hashable {
         if report?.expired == true {
             return HeadroomLook(fraction: 0, tone: .destructive, stamp: "sign in again", accessibility: "\(shortName): signed out, sign in again")
         }
+        let labels = tiers(provider: provider, model: model)
         let windows = (report?.windows ?? []).filter { window in
-            (window.resetsAt.map { $0 > now } ?? true) && applies(label: window.label, model: model)
+            (window.resetsAt.map { $0 > now } ?? true) && labels.contains(window.label)
         }
         guard let tightest = windows.max(by: { $0.usedPercent < $1.usedPercent }) else {
             return HeadroomLook(fraction: 0, tone: .none, stamp: "no usage yet", accessibility: "\(shortName): no usage yet")
         }
         let least = min(1, max(0, (100 - tightest.usedPercent) / 100))
-        let tone: Tone = least > warningBelow ? .success : least >= destructiveBelow ? .warning : .destructive
+        let tone: Tone = least >= warningBelow ? .success : least >= destructiveBelow ? .warning : .destructive
         let percent = Int((least * 100).rounded())
         let stamp = tightest.resetsAt.map { "in \(Self.until($0, now: now))" }
         let spoken = tightest.resetsAt.map { "\(shortName): \(percent) percent left, refills in \(Self.spoken($0, now: now))" }
@@ -189,13 +190,17 @@ public struct HeadroomLook: Sendable, Hashable {
         return HeadroomLook(fraction: least, tone: tone, stamp: stamp, accessibility: spoken)
     }
 
-    /// The windows a model spends (aliax-core `tiersFor`): the five-hour one,
-    /// the weekly one, and a model cap whose first word names the model.
-    public static func applies(label: String, model: String?) -> Bool {
-        if label == "5h" { return true }
-        if label.localizedCaseInsensitiveContains("week") { return true }
-        guard let model, let word = label.split(whereSeparator: { $0.isWhitespace }).first else { return false }
-        return model.localizedCaseInsensitiveContains(String(word))
+    /// The window labels a model spends, in the report's own vocabulary
+    /// (aliax-core `tiersFor` and `SCOPED_CAPS`): Claude's five-hour and
+    /// Weekly windows plus the Fable cap for a Fable model; Codex's 5h and week.
+    public static func tiers(provider: RoutedProvider, model: String?) -> [String] {
+        switch provider {
+        case .codex:
+            return ["5h", "week"]
+        case .claude:
+            let fable = model?.range(of: "fable", options: .caseInsensitive) != nil
+            return fable ? ["5h", "Weekly", "Fable"] : ["5h", "Weekly"]
+        }
     }
 
     /// The desktop's `untilLabel`: "under a minute", "12m", "2h 14m", "3d 4h".
@@ -296,7 +301,12 @@ public enum AccountMenuModel {
             rows.append(AccountRowModel(kind: .account(name: profile.name, shortName: AccountName.short(profile), color: profile.color, look: look), checked: profile.name == checked))
         }
         if let checked, !(accounts?.profiles.contains { $0.name == checked } ?? false) {
-            rows.append(AccountRowModel(kind: .gone(name: checked), checked: true))
+            // Before the snapshot lands the name is shown as a row with an empty
+            // bar; once it has, a name the host does not know is gone.
+            let kind: AccountRowModel.Kind = accounts == nil
+                ? .account(name: checked, shortName: AccountName.short(raw: checked), color: nil, look: HeadroomLook(fraction: 0, tone: .none, stamp: nil, accessibility: AccountName.short(raw: checked)))
+                : .gone(name: checked)
+            rows.append(AccountRowModel(kind: kind, checked: true))
         }
         return rows
     }

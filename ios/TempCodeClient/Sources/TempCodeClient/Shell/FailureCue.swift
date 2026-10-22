@@ -7,9 +7,11 @@ import TempCodeContract
 // error row's first line is the fallback for a host that sent none.
 
 extension SessionMeta {
-    /// The host's one-line verdict on the last failed turn; nil while the thread is not in error.
+    /// The host's one-line verdict on the last failed turn; nil while the
+    /// thread is not in error, and nil for an empty summary.
     public var failureSummary: String? {
-        status == .error ? failure?.summary : nil
+        guard status == .error, let summary = failure?.summary, !summary.isEmpty else { return nil }
+        return summary
     }
 }
 
@@ -19,7 +21,7 @@ extension HomeModel {
     /// lands on the card), else the kind's line from the rows.
     public static func cue(for item: NeedsYouItem, rows: [EventRow]) -> Cue {
         let fallback = cue(for: item.kind, rows: rows)
-        guard item.kind == .error, let summary = item.meta.failureSummary, !summary.isEmpty else { return fallback }
+        guard item.kind == .error, let summary = item.meta.failureSummary else { return fallback }
         return Cue(text: summary, seq: fallback.seq)
     }
 }

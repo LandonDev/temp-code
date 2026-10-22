@@ -16,6 +16,7 @@ struct AccountMenu: View {
     @State private var pending: PendingPin?
     /// The refusal, or the reroute's word; the key's block while none.
     @State private var reason: String?
+    @State private var reasonTone: ReasonLine.Tone = .secondary
     /// False through the first body, so nothing animates on first paint.
     @State private var appeared = false
     @Environment(\.dismiss) private var dismiss
@@ -48,8 +49,8 @@ struct AccountMenu: View {
         }
         .task { appeared = true }
         .task(id: pending) {
-            guard pending != nil else { return }
-            try? await Task.sleep(for: .seconds(10))
+            // A second pick cancels this sleep; only an uncancelled wait clears.
+            guard pending != nil, (try? await Task.sleep(for: .seconds(10))) != nil else { return }
             pending = nil
         }
     }
@@ -72,7 +73,7 @@ struct AccountMenu: View {
                     }
                     .pickerStyle(.segmented)
                 }
-                ReasonLine(text: reason ?? blockLine, tone: reason == nil ? .secondary : .destructive)
+                ReasonLine(text: reason ?? blockLine, tone: reason == nil ? .secondary : reasonTone)
             }
             .padding(.horizontal, Layout.textEdge)
             .padding(.top, 8)
@@ -135,7 +136,7 @@ struct AccountMenu: View {
     private func choose(_ name: String?, project: ProjectMeta?, workspace: WorkspaceMeta?) {
         guard let provider = RoutedProvider(session.provider) else { return }
         if let block = client.pinBlock {
-            reason = block.text(now: Date().timeIntervalSince1970 * 1000)
+            say(block.text(now: Date().timeIntervalSince1970 * 1000), tone: .secondary)
             return
         }
         let kind = scopeKind
@@ -155,7 +156,7 @@ struct AccountMenu: View {
                 }
             } catch {
                 pending = nil
-                reason = (error as? ActionError)?.message ?? "Couldn't change the pin"
+                say((error as? ActionError)?.message ?? "Couldn't change the pin", tone: .destructive)
             }
         }
     }
@@ -163,18 +164,24 @@ struct AccountMenu: View {
     /// `session.reroute`: the host re-picks; its `sessions` push moves the check.
     private func reroute(_ sessionId: String) {
         if let block = client.operateBlock {
-            reason = block.text(now: Date().timeIntervalSince1970 * 1000)
+            say(block.text(now: Date().timeIntervalSince1970 * 1000), tone: .secondary)
             return
         }
         reason = nil
         Task {
             do {
                 let moved = try await client.rerouteAccount(sessionId)
-                if !moved { reason = "Already on the best account" }
+                if !moved { say("Already on the best account", tone: .secondary) }
             } catch {
-                reason = (error as? ActionError)?.message ?? "Couldn't reroute"
+                say((error as? ActionError)?.message ?? "Couldn't reroute", tone: .destructive)
             }
         }
+    }
+
+    /// The reserved line's text: a refusal in destructive, information in secondary.
+    private func say(_ text: String, tone: ReasonLine.Tone) {
+        reasonTone = tone
+        reason = text
     }
 }
 
@@ -234,7 +241,7 @@ private struct AccountRow: View {
     @ViewBuilder private var mark: some View {
         if case .account(_, _, let color, _) = row.kind {
             Circle()
-                .fill(color.flatMap(Color.init(hex:)) ?? Color(.tertiaryLabel))
+                .fill(color.flatMap(Color.init(accountHex:)) ?? Color(.tertiaryLabel))
                 .frame(width: Layout.dotSize, height: Layout.dotSize)
         } else {
             Color.clear
