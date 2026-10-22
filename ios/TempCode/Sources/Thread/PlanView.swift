@@ -267,9 +267,11 @@ struct PlanCodeView: View {
                     .font(.system(PlanType.mono, design: .monospaced))
                     .textSelection(.enabled)
                     .fixedSize(horizontal: true, vertical: false)
-                    .padding(PlanType.codePadding)
+                    .padding(.vertical, PlanType.codePadding)
             }
             .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+            // The first character rests on the block's inset at either end of a sideways scroll.
+            .contentMargins(.horizontal, PlanType.codePadding, for: .scrollContent)
             if folds {
                 Button(expanded ? "Show less" : "Show all \(lines.count) lines") {
                     withAnimation(expanded ? Motion.collapse : Motion.expand) { expanded.toggle() }
@@ -362,6 +364,10 @@ private struct PlanTableView: View {
             }
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+        // The table scrolls the screen's full width, its first column resting on the
+        // text inset: the margins are the page's, the frame bleeds past them.
+        .contentMargins(.horizontal, PlanType.inset, for: .scrollContent)
+        .padding(.horizontal, -PlanType.inset)
         .padding(.vertical, 2)
     }
 }
