@@ -414,7 +414,7 @@ Glass, which overrides the earlier docked bar). It floats over the
 transcript: ThreadScreen hangs it with `.tcBottomBar` (Design/Glass.swift),
 `safeAreaBar` with the soft scroll edge effect on iOS 26, so the content
 scrolls under it, a soft edge (the thin material and the background step
-fading in from 16 pt above the bar) keeps passing text from reading through
+fading in from 24 pt above the bar) keeps passing text from reading through
 the glass, and no divider is drawn; before iOS 26 the same call is a
 `safeAreaInset` on the bar material. At rest the bar is two pieces of glass
 in one `GlassEffectContainer` and nothing else: a 40 pt circle and a capsule

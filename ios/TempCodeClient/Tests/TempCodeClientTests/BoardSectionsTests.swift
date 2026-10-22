@@ -114,7 +114,7 @@ import TempCodeContract
         let typecheck = GateNotice(step: .typecheck, branch: "f", ok: false, log: "src/a.ts(1,2): error TS2322: x\nFound 3 errors in 2 files.", at: 0)
         #expect(GateLine.text(typecheck) == "Typecheck failed on f with 3 errors")
         let one = GateNotice(step: .typecheck, branch: "f", ok: false, log: "Found 1 error.", at: 0)
-        #expect(GateLine.text(one) == "Typecheck failed on f · 1 error")
+        #expect(GateLine.text(one) == "Typecheck failed on f with 1 error")
         let silent = GateNotice(step: .typecheck, branch: "f", ok: false, log: "tsc crashed", at: 0)
         #expect(GateLine.text(silent) == "Typecheck failed on f")
         let gate = GateNotice(step: .gate, branch: "master", ok: false, log: "✓ typecheck 12s\n✗ vitest 40s failed", at: 0)

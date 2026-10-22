@@ -120,18 +120,18 @@ struct TCGlassContainer<Content: View>: View {
 }
 
 /// The soft edge under a floating bottom bar: the thin material fading in
-/// from nothing 16 pt above the bar, and the background step fading in under
+/// from nothing 24 pt above the bar, and the background step fading in under
 /// it, down to the screen's edge. Content that scrolls beneath blurs and
 /// recedes instead of reading through the glass. Under Reduce Transparency
 /// the material is the system's opaque one.
 private struct BottomEdgeFade: View {
-    static let lead: CGFloat = 16
+    static let lead: CGFloat = 24
 
     var body: some View {
         let fade = LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.45)], startPoint: .top, endPoint: .bottom)
         ZStack {
             Rectangle().fill(.ultraThinMaterial).mask(fade)
-            LinearGradient(stops: [.init(color: Surface.background.opacity(0), location: 0), .init(color: Surface.background.opacity(0.7), location: 0.6)], startPoint: .top, endPoint: .bottom)
+            LinearGradient(stops: [.init(color: Surface.background.opacity(0), location: 0), .init(color: Surface.background.opacity(0.85), location: 0.5)], startPoint: .top, endPoint: .bottom)
         }
         .padding(.top, -Self.lead)
         .ignoresSafeArea(edges: .bottom)
