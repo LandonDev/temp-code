@@ -21,7 +21,8 @@ Sources/TempCodeClient
   Cache/        Database (sqlite3), SessionCache
   Client/       Subscriptions, EnvironmentClient, ClientRegistry
   Rendering/    ThreadFold (rows → stamped items + BoardState), Transcript (item types), Board,
-                ResearchBoard, Fleet, PlanDoc, Inbox, MarkdownBlocks, MarkdownCache
+                ResearchBoard, Fleet, PlanDoc, Inbox, MarkdownBlocks, MarkdownCache, PlanDocument,
+                PlanPages
   Design/       TimeFormat, ModelName, CompactNumber, ThreadRowModel: the design kit's pure
                 logic, tested here; the app's Design/ holds the views
   Support/      SocketClock (SystemClock, ManualClock)
@@ -187,7 +188,17 @@ diff screen and lines the blocks up with the host's file metadata).
 row's markdown into `RenderedBlock`s with inline `AttributedString`s off
 the main actor (`@concurrent`), keyed by environment, session, seq and text hash: a read is
 synchronous, a miss parses and lands as an observable change, a changed
-row shows plain text until its own parse lands.
+row shows plain text until its own parse lands. **PlanDocument** is the
+plan page's parser: the file's frontmatter lifted out, then blocks with
+nested and task lists (depth, ordinals, checkboxes), pipe tables with
+alignments, fences, quotes and rules, inline markdown resolved; `sections(
+level:)` cuts it at its headings for a composed page. **PlanPages**
+(`@MainActor @Observable`) is the pages' store: the last text of every
+plan on disk under `Caches/plans/` so the next open paints before the
+socket answers, the document per page kept through a re-parse (a short
+text parses on the first paint, a longer one off the actor, a newer text
+superseding a parse in flight), and the reading position per page in
+`UserDefaults`; both the directory and the defaults are injectable.
 
 **SearchRows** (`Client/SearchRows.swift`) is the Search tab's pure side:
 the flat row model (`SearchRow`: thread head, hit, project head, file,

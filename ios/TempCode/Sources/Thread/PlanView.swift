@@ -4,44 +4,123 @@ import TempCodeClient
 /// The plan file as the page: a set document at body size, streaming in as
 /// the agent writes it. The last text seen paints at once from the plan
 /// cache; a plan with no content yet is one quiet line, never a spinner.
-/// The Start action and the segment rules live on the thread screen.
-struct PlanView: View {
+/// The segment rules live on the thread screen.
+///
+/// Two slots sit in a row above the first block, on the text edge: `status`
+/// (the state line, drawn at the meta step) and `action` (the Start control
+/// or the build chip; a `PillButton` or anything on `.buttonStyle(.pressable)`).
+/// The row exists only through the two-slot init; the plain init draws none.
+struct PlanView<Status: View, Action: View>: View {
     let sessionId: String
     let document: String?
     let running: Bool
+    private let hasHeader: Bool
+    private let status: Status
+    private let action: Action
+    @Environment(\.markdownScope) private var scope
+
+    init(sessionId: String, document: String?, running: Bool, @ViewBuilder status: () -> Status, @ViewBuilder action: () -> Action) {
+        self.init(sessionId: sessionId, document: document, running: running, hasHeader: true, status: status(), action: action())
+    }
+
+    private init(sessionId: String, document: String?, running: Bool, hasHeader: Bool, status: Status, action: Action) {
+        self.sessionId = sessionId
+        self.document = document
+        self.running = running
+        self.hasHeader = hasHeader
+        self.status = status
+        self.action = action
+    }
 
     var body: some View {
-        PlanPage(key: sessionId, text: document ?? PlanPages.shared.cached(sessionId), running: running, cache: document != nil)
+        let key = ThreadCaches.planKey(scope.environmentId, sessionId)
+        PlanPage(key: key, text: document ?? ThreadCaches.plans.cached(key), running: running, cache: document != nil) { document in
+            if hasHeader {
+                PlanPageHeader(status: status, action: action)
+                    .rowAppearTransition()
+                    .animation(Motion.rowAppear, value: hasHeader)
+            }
+            PlanDocumentView(document: document)
+        }
     }
 }
 
-/// One document page: the blocks of `PlanDocument`, the reading position
-/// remembered per key, and content that only ever appends below the reader.
-struct PlanPage: View {
+extension PlanView where Status == EmptyView, Action == EmptyView {
+    /// The page alone: what the thread screen calls.
+    init(sessionId: String, document: String?, running: Bool) {
+        self.init(sessionId: sessionId, document: document, running: running, hasHeader: false, status: EmptyView(), action: EmptyView())
+    }
+}
+
+/// The status and action slots in one row at the top of the measure:
+/// status at the meta step, the action trailing, both on the first text
+/// baseline. 32 pt tall at least, 8 pt before the first block.
+struct PlanPageHeader<Status: View, Action: View>: View {
+    let status: Status
+    let action: Action
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 0) {
+            status
+                .textStep(.meta)
+            Spacer(minLength: 12)
+            action
+        }
+        .frame(maxWidth: .infinity, minHeight: PlanType.headerHeight, alignment: .leading)
+        .padding(.bottom, PlanType.headerBelow)
+    }
+}
+
+/// One document page: the scroll view, the measure and its insets, the
+/// reading position remembered per key, the cache write, the empty line and
+/// the no-animation transaction. `content` draws inside the measure once the
+/// text has parsed; the default is the whole document. A sibling composes
+/// `PlanDocumentView(document:range:)` runs with its own views between
+/// them, keeping the block ids the document's indices so the position
+/// memory keeps working.
+struct PlanPage<Content: View>: View {
     let key: String
     let text: String?
     let running: Bool
     /// Whether `text` is live and should be remembered for the next open.
-    var cache = true
+    let cache: Bool
+    let content: (PlanDocument) -> Content
+
+    private enum Restore {
+        /// No non-empty document yet.
+        case fresh
+        /// The saved position is on its way; nothing is saved meanwhile.
+        case restoring
+        /// Every change of the top block is saved.
+        case live
+    }
 
     @State private var position = ScrollPosition(idType: Int.self)
-    @State private var restored = false
+    @State private var restore = Restore.fresh
+
+    init(key: String, text: String?, running: Bool, cache: Bool = true, @ViewBuilder content: @escaping (PlanDocument) -> Content) {
+        self.key = key
+        self.text = text
+        self.running = running
+        self.cache = cache
+        self.content = content
+    }
 
     var body: some View {
-        let pages = PlanPages.shared
+        let pages = ThreadCaches.plans
         let document = text.flatMap { pages.document(key, text: $0) }
         let empty = text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
         ScrollView {
-            Group {
+            VStack(alignment: .leading, spacing: 0) {
                 if empty {
                     Text(running ? "Writing the plan…" : "No plan yet")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .padding(.top, PlanType.pageTop + 4)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityAddTraits(.updatesFrequently)
+                        .accessibilityAddTraits(running ? .updatesFrequently : [])
                 } else if let document {
-                    PlanDocumentView(document: document)
+                    content(document)
                 } else if let text {
                     // A long plan on its first paint: plain text at the same
                     // size until the parse lands, so only the styling changes.
@@ -64,29 +143,53 @@ struct PlanPage: View {
             if cache, let now { pages.remember(key, text: now) }
         }
         .onChange(of: document?.textHash, initial: true) { _, _ in
-            guard !restored, let document, !document.isEmpty else { return }
-            restored = true
+            guard restore == .fresh, let document, !document.isEmpty else { return }
             let saved = pages.position(key)
-            guard saved > 0, saved < document.blocks.count else { return }
-            // After this layout pass, so the lazy stack knows the id; no animation.
-            Task { @MainActor in position.scrollTo(id: saved, anchor: .top) }
+            guard saved > 0, saved < document.blocks.count else {
+                restore = .live
+                return
+            }
+            restore = .restoring
+            // After this layout pass, so the lazy stack knows the id; never animated.
+            Task { @MainActor in
+                withTransaction(Transaction(animation: nil)) {
+                    position.scrollTo(id: saved, anchor: .top)
+                }
+                restore = .live
+            }
         }
         .onChange(of: position.viewID(type: Int.self)) { _, id in
-            guard restored, let id else { return }
+            guard restore == .live, let id else { return }
             pages.savePosition(key, id)
         }
     }
 }
 
-/// The blocks, each carrying its own space above, so an appended block
-/// never moves the ones before it.
-private struct PlanDocumentView: View {
+extension PlanPage where Content == PlanDocumentView {
+    /// The whole document.
+    init(key: String, text: String?, running: Bool, cache: Bool = true) {
+        self.init(key: key, text: text, running: running, cache: cache) { PlanDocumentView(document: $0) }
+    }
+}
+
+/// The blocks of `range` (the whole document by default), each carrying
+/// its own space above, so an appended block never moves the ones before
+/// it. Ids are the document's block indices.
+struct PlanDocumentView: View {
     let document: PlanDocument
+    let range: Range<Int>?
+
+    init(document: PlanDocument, range: Range<Int>? = nil) {
+        self.document = document
+        self.range = range
+    }
 
     var body: some View {
+        let all = 0..<document.blocks.count
+        let shown = range.map { $0.clamped(to: all) } ?? all
         LazyVStack(alignment: .leading, spacing: PlanType.gap) {
-            ForEach(Array(document.blocks.enumerated()), id: \.offset) { index, block in
-                PlanBlockView(block: block, first: index == 0)
+            ForEach(shown, id: \.self) { index in
+                PlanBlockView(block: document.blocks[index], first: index == 0)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .id(index)
             }
@@ -95,9 +198,16 @@ private struct PlanDocumentView: View {
     }
 }
 
-private struct PlanBlockView: View {
+/// One block in the document's type. `first` is the document's first block,
+/// which takes no space above.
+struct PlanBlockView: View {
     let block: PlanBlock
     let first: Bool
+
+    init(block: PlanBlock, first: Bool) {
+        self.block = block
+        self.first = first
+    }
 
     var body: some View {
         switch block {
@@ -115,7 +225,7 @@ private struct PlanBlockView: View {
         case .list(let items):
             PlanListView(items: items)
         case .code(let code, _):
-            CodeBlock(text: code, font: PlanType.mono, maxLines: 40)
+            PlanCodeView(text: code)
         case .quote(let text):
             Text(text.inlineStyled())
                 .font(.body)
@@ -133,6 +243,47 @@ private struct PlanBlockView: View {
                 .padding(.vertical, PlanType.ruleInset)
         case .table(let table):
             PlanTableView(table: table)
+        }
+    }
+}
+
+/// A fence as a document's code, not a terminal's: mono one step down,
+/// never wrapped (it scrolls sideways), no language header and no line
+/// numbers, folded past 40 lines, copied from the context menu. The fold
+/// is the one thing in the page that animates.
+struct PlanCodeView: View {
+    let text: String
+    @State private var expanded = false
+
+    var body: some View {
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        let folds = lines.count > PlanType.codeFold
+        let shown = folds && !expanded ? Array(lines.prefix(PlanType.codeFold)) : Array(lines)
+        VStack(alignment: .leading, spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text(shown.joined(separator: "\n"))
+                    .font(.system(PlanType.mono, design: .monospaced))
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .padding(PlanType.codePadding)
+            }
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+            if folds {
+                Button(expanded ? "Show less" : "Show all \(lines.count) lines") {
+                    expanded.toggle()
+                }
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(.secondary)
+                .buttonStyle(.pressable)
+                .frame(minHeight: PlanType.headerHeight)
+                .padding(.horizontal, PlanType.codePadding)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Surface.fill.opacity(0.5), in: RoundedRectangle.corner(Radius.row))
+        .animation(expanded ? Motion.expand : Motion.collapse, value: expanded)
+        .contextMenu {
+            Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = text }
         }
     }
 }
@@ -184,9 +335,9 @@ private struct PlanListView: View {
 
 /// A pipe table one step down from body, as wide as its content and
 /// scrolling sideways past the page: the header semibold over a hairline,
-/// a dimmer hairline between rows, no vertical rules, the first column on
-/// the text edge. Each cell draws the rule under itself, so the rules run
-/// exactly the table's width.
+/// a dimmer hairline between rows, none under the last, no vertical rules,
+/// the first column on the text edge. Each cell draws the rule under
+/// itself, so the rules run exactly the table's width.
 private struct PlanTableView: View {
     let table: PlanTable
 
@@ -220,19 +371,17 @@ private struct PlanCell: View {
     /// The opacity of the hairline under this cell; 0 for none.
     let rule: Double
 
-    /// A cell wider than a short phrase wraps at this width; a horizontal
-    /// scroll view proposes no width, so a short cell takes its own.
-    static let wrapWidth: CGFloat = 280
-
     var body: some View {
         let horizontal: HorizontalAlignment = alignment == .center ? .center : alignment == .trailing ? .trailing : .leading
-        let long = text.characters.count > 40
+        // A horizontal scroll view proposes no width: a short cell takes
+        // its own, a long one wraps at the cell width.
+        let long = text.characters.count > PlanType.cellWrapAfter
         Text(text.inlineStyled())
             .font(header ? PlanType.table.weight(.semibold) : PlanType.table)
             .monospacedDigit()
             .multilineTextAlignment(alignment == .center ? .center : alignment == .trailing ? .trailing : .leading)
             .fixedSize(horizontal: !long, vertical: true)
-            .frame(width: long ? Self.wrapWidth : nil, alignment: Alignment(horizontal: horizontal, vertical: .center))
+            .frame(width: long ? PlanType.cellWrap : nil, alignment: Alignment(horizontal: horizontal, vertical: .center))
             .padding(.vertical, 8)
             .padding(.leading, first ? 0 : 16)
             .padding(.trailing, 16)
@@ -241,109 +390,6 @@ private struct PlanCell: View {
                 if rule > 0 { Hairline().opacity(rule) }
             }
             .gridColumnAlignment(horizontal)
-    }
-}
-
-// MARK: - the plan cache
-
-/// The pages' store: the last text of every plan and report on disk, so the
-/// next open paints before the socket answers; the rendered document per
-/// page, kept through a re-parse so a poll never drops the page to plain
-/// text; and the reading position per page.
-@MainActor @Observable
-final class PlanPages {
-    static let shared = PlanPages()
-
-    /// A page's rendered document: what its view observes.
-    @Observable
-    final class Slot {
-        var document: PlanDocument?
-    }
-
-    /// Texts at or under this size parse on the first paint instead of a
-    /// frame of plain text.
-    static let syncLimit = 6 * 1024
-
-    @ObservationIgnored private var texts: [String: String] = [:]
-    @ObservationIgnored private var read: Set<String> = []
-    @ObservationIgnored private var slots: [String: Slot] = [:]
-    @ObservationIgnored private var ready: [String: PlanDocument] = [:]
-    @ObservationIgnored private var inflight: [String: Int] = [:]
-    @ObservationIgnored private let directory: URL
-    /// One serial queue, so consecutive polls land on disk in order.
-    @ObservationIgnored private let disk = DispatchQueue(label: "dev.landon.tempcode.plan-cache", qos: .utility)
-
-    init(directory: URL? = nil) {
-        self.directory = directory ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appending(path: "plans", directoryHint: .isDirectory)
-    }
-
-    /// The last text seen for a page, from memory, else from disk once.
-    func cached(_ key: String) -> String? {
-        if let text = texts[key] { return text }
-        guard !read.contains(key) else { return nil }
-        read.insert(key)
-        guard let text = try? String(contentsOf: url(key), encoding: .utf8) else { return nil }
-        texts[key] = text
-        return text
-    }
-
-    /// Keeps a page's live text for its next open.
-    func remember(_ key: String, text: String) {
-        guard texts[key] != text else { return }
-        texts[key] = text
-        read.insert(key)
-        let file = url(key)
-        let directory = directory
-        disk.async {
-            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try? text.write(to: file, atomically: true, encoding: .utf8)
-        }
-    }
-
-    /// The document for this text: parsed now on a page's first paint when
-    /// the text is short, otherwise off the main actor while the page keeps
-    /// the document it had.
-    func document(_ key: String, text: String) -> PlanDocument? {
-        let hash = text.hashValue
-        let slot = slot(key)
-        if let document = slot.document, document.textHash == hash { return document }
-        if let document = ready[key], document.textHash == hash { return document }
-        if slot.document == nil, ready[key] == nil, text.utf8.count <= Self.syncLimit {
-            let document = PlanDocument.parse(text)
-            ready[key] = document
-            return document
-        }
-        if inflight[key] != hash {
-            inflight[key] = hash
-            Task {
-                let document = await PlanDocument.render(text)
-                guard self.inflight[key] == hash else { return }
-                self.inflight[key] = nil
-                self.ready[key] = nil
-                slot.document = document
-            }
-        }
-        return slot.document ?? ready[key]
-    }
-
-    func position(_ key: String) -> Int {
-        UserDefaults.standard.integer(forKey: "plan.position.\(key)")
-    }
-
-    func savePosition(_ key: String, _ index: Int) {
-        UserDefaults.standard.set(index, forKey: "plan.position.\(key)")
-    }
-
-    private func slot(_ key: String) -> Slot {
-        if let slot = slots[key] { return slot }
-        let slot = Slot()
-        slots[key] = slot
-        return slot
-    }
-
-    private func url(_ key: String) -> URL {
-        let safe = key.unicodeScalars.map { CharacterSet.alphanumerics.contains($0) || $0 == "-" ? String($0) : "_" }.joined()
-        return directory.appending(path: "\(safe).md")
     }
 }
 
@@ -356,11 +402,14 @@ struct ReportRoute: Hashable {
 }
 
 /// A research report, opened from its pin: the same set page as the plan.
+/// Kept while the thread screen routes to it; the research thread's own
+/// screen replaces both.
 struct ReportScreen: View {
     let route: ReportRoute
+    @Environment(\.markdownScope) private var scope
 
     var body: some View {
-        PlanPage(key: "\(route.sessionId)/report", text: route.body, running: false, cache: false)
+        PlanPage(key: ThreadCaches.planKey(scope.environmentId, route.sessionId) + "/report", text: route.body, running: false, cache: false)
             .background(Surface.background)
             .navigationTitle(route.title)
             .navigationBarTitleDisplayMode(.inline)
@@ -368,6 +417,15 @@ struct ReportScreen: View {
 }
 
 extension ThreadCaches {
+    /// The plan pages' store; one per process.
+    static let plans = PlanPages()
+
+    /// A page's key in `PlanPages`: the host and the thread, so two hosts
+    /// never share a slot.
+    static func planKey(_ environmentId: String, _ sessionId: String) -> String {
+        "\(environmentId)/\(sessionId)"
+    }
+
     /// A negative seq for a thread's document, so it caches beside the rows.
     static func documentSeq(_ sessionId: String) -> Int {
         -2 - abs(sessionId.hashValue % 1_000_000) * 2

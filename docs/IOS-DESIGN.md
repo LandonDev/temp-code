@@ -332,36 +332,62 @@ The page is a set document (`PlanView.swift`, type in `PlanStyles.swift`,
 blocks from the client package's `PlanDocument`), the way Notes or iA
 Writer set one:
 
-- **Type.** Headings `title.bold` (tracking −0.5), `title2.semibold`
-  (−0.3), `title3.semibold` (−0.2), then `headline`; 16/14/10/6 pt more
-  space above a heading than the 12 pt block gap and 4 pt less below it.
-  Prose is `body` with 4 pt of lead; the measure is the page width inset
-  20 pt, capped at 640 pt and centered beyond it. Code is mono one step
-  down (`callout`) in the transcript's code block; tables are
-  `subheadline`, header semibold over a hairline, hairlines between rows
-  and no vertical rules, scrolling sideways when wider than the page, the
-  first column on the text edge.
+- **Type.** Headings `title.bold`, `title2.semibold`, `title3.semibold`,
+  then `headline`, the large ones tracked −0.02 em of their size (−0.5,
+  −0.4, −0.3, 0); 16/14/10/6 pt more space above a heading than the 12 pt
+  block gap and 4 pt less below it; the document's first block takes no
+  space above. Prose is `body` with 4 pt of lead; the measure is the page
+  width inset 20 pt, capped at 640 pt and centered beyond it. Code is the
+  page's own `PlanCodeView`: mono one step down (`callout`), never wrapped,
+  no language header and no line numbers, 10 pt inside `Surface.fill` at
+  half opacity in `Radius.row`, folded past 40 lines ("Show all N lines" on
+  `.pressable`, the fold with `Motion.expand` / `Motion.collapse`), Copy in
+  the context menu. Tables are `subheadline` with tabular digits, header
+  semibold over a hairline, hairlines at 60 % between rows, none under the
+  last, no vertical rules, 16 pt between columns, the first column on the
+  text edge, a cell over 40 characters wrapped at 280 pt, the grid scrolling
+  sideways when wider than the page. A quote is body secondary behind a
+  2 pt `tertiaryLabel` bar; a rule is a `Hairline` with 6 pt each side.
 - **Lists** hang: the marker sits in a 26 pt column (scaled with the
   body), the text starts after it and wraps to its own edge, each depth
   moves one column in; ordinals count per depth in tabular digits; `• ◦ ▪`
   by depth. A `[ ]` / `[x]` item carries the board's task glyph (`circle`
-  tertiary, `checkmark.circle.fill` green) at `subheadline` beside the body
-  text, and a done item reads secondary.
+  tertiary, `checkmark.circle.fill` `Tint.success`) at `subheadline` on the
+  first text baseline, and a done item reads secondary.
 - **Streaming.** Blocks are identified by index and only ever append, each
   carrying its own space above, so new content lands below the reader and
-  nothing above it moves; the page keeps the document it has while a new
-  version parses (never a drop to plain text), and nothing in the page
-  animates (`transaction` with no animation).
-- **Position.** The first visible block is remembered per thread
-  (`plan.position.<id>`) and restored without animation on the next open.
+  nothing above it moves (`PlanDocumentTests` holds the parser to it: a
+  longer text keeps every block but the last); the page keeps the document
+  it has while a new version parses (never a drop to plain text), and
+  nothing in the page animates (`transaction` with no animation) but the
+  code fold and the slot row.
+- **Position.** The first visible block is remembered per host and thread
+  (`plan.position.<environmentId>/<sessionId>`) and restored without
+  animation on the next open; nothing is saved while the restore is on
+  its way.
 - **Loading.** The last text of every plan is cached on disk
-  (`Caches/plans/<id>.md`, `PlanPages`) and paints before the first read
-  answers; a short plan parses on its first paint, a long one shows its
-  plain text at body size until the parse lands. No content yet is one
-  quiet `subheadline` line at the text edge ("Writing the plan…" while
-  running, "No plan yet" idle); never a spinner in the page.
+  (`Caches/plans/<safe key>.md`) by the client package's `PlanPages`,
+  keyed `<environmentId>/<sessionId>` so two hosts never share a slot, and
+  paints before the first read answers; a plan under 6 KiB parses on its
+  first paint, a longer one shows its plain text at body size until the
+  parse lands. No content yet is one quiet `subheadline` line at the text
+  edge ("Writing the plan…" while running, "No plan yet" idle); never a
+  spinner in the page.
+- **Slots.** `PlanView(sessionId:document:running:status:action:)` draws
+  one row above the first block, on the text edge: the status line at the
+  meta step leading, the action (a `PillButton`, or the build chip, on
+  `.pressable`) trailing, both on the first text baseline, 32 pt tall at
+  least with 8 pt below. The row appears with `.rowAppearTransition()`;
+  the plain init draws no row at all.
+- **Composition.** `PlanPage(key:text:running:cache:content:)` owns the
+  scroll view, the measure, the position memory, the cache write and the
+  empty line; `PlanDocumentView(document:range:)` draws a run of blocks
+  with the document's indices as ids; `PlanDocument.frontmatter` and
+  `.sections(level:)` cut a file with a header and fixed sections. The
+  project plan view composes these.
 
-The research report opens on the same page (`ReportScreen`).
+The research report opens on the same page (`ReportScreen`), until the
+research thread's own screen replaces it.
 
 ### Orchestration: the fleet is the hero
 

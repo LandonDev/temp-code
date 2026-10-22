@@ -54,30 +54,111 @@ public enum PlanBlock: Sendable, Hashable {
 
 /// The plan or report file as blocks, parsed once per text version.
 public struct PlanDocument: Sendable, Hashable {
+    /// A run of blocks under one heading: what a composed page draws per
+    /// section (the project plan's Goals, Milestones, Risks).
+    public struct Section: Sendable, Hashable {
+        /// Empty for the preamble before the first heading.
+        public var heading: AttributedString
+        /// The heading's level; 0 for the preamble.
+        public var level: Int
+        /// The section's blocks, the heading block first (none for the preamble).
+        public var blocks: Range<Int>
+
+        public init(heading: AttributedString, level: Int, blocks: Range<Int>) {
+            self.heading = heading
+            self.level = level
+            self.blocks = blocks
+        }
+
+        /// The blocks after the heading.
+        public var body: Range<Int> {
+            level == 0 ? blocks : (blocks.lowerBound + 1)..<blocks.upperBound
+        }
+    }
+
     public var blocks: [PlanBlock]
+    /// `key: value` lines between a leading `---` and its closing `---`,
+    /// quotes stripped; empty when the file has none.
+    public var frontmatter: [String: String]
     /// The hash of the markdown this came from; a page compares it to know
     /// whether what it holds is the current text or the one before.
     public var textHash: Int
 
-    public init(blocks: [PlanBlock], textHash: Int) {
+    public init(blocks: [PlanBlock], frontmatter: [String: String] = [:], textHash: Int) {
         self.blocks = blocks
+        self.frontmatter = frontmatter
         self.textHash = textHash
     }
 
     public var isEmpty: Bool { blocks.isEmpty }
 
-    /// The whole parse, synchronous: the plan's block grammar (fences,
-    /// headings, rules, pipe tables, quotes, nested and task lists,
-    /// paragraphs with soft breaks joined) and inline markdown per block.
+    /// The whole parse, synchronous: the frontmatter, then the plan's block
+    /// grammar (fences, headings, rules, pipe tables, quotes, nested and
+    /// task lists, paragraphs with soft breaks joined) and inline markdown
+    /// per block.
     public static func parse(_ md: String) -> PlanDocument {
-        var parser = PlanDocumentParser(md)
-        return PlanDocument(blocks: parser.run(), textHash: md.hashValue)
+        let (frontmatter, body) = Frontmatter.split(md)
+        var parser = PlanDocumentParser(body)
+        return PlanDocument(blocks: parser.run(), frontmatter: frontmatter, textHash: md.hashValue)
+    }
+
+    /// The document cut at its headings of `level` or shallower: one
+    /// section per such heading, with every deeper heading folded into it,
+    /// and a level-0 preamble first when blocks come before the first one.
+    public func sections(level: Int = 2) -> [Section] {
+        var out: [Section] = []
+        var start = 0
+        var open: (heading: AttributedString, level: Int)? = nil
+        func close(at end: Int) {
+            guard end > start else { return }
+            out.append(Section(heading: open?.heading ?? AttributedString(), level: open?.level ?? 0, blocks: start..<end))
+        }
+        for (index, block) in blocks.enumerated() {
+            guard case .heading(let depth, let text) = block, depth <= level else { continue }
+            close(at: index)
+            start = index
+            open = (text, depth)
+        }
+        close(at: blocks.count)
+        return out
     }
 
     /// The same parse, off the caller's actor.
     @concurrent
     public static func render(_ md: String) async -> PlanDocument {
         parse(md)
+    }
+}
+
+/// A leading `---` line, `key: value` lines and the closing `---`: what a
+/// tool writes above a plan (`status: complete`). Anything else that starts
+/// with `---` is a rule.
+private enum Frontmatter {
+    static func split(_ md: String) -> (fields: [String: String], body: String) {
+        let lines = md.split(separator: "\n", omittingEmptySubsequences: false)
+        guard lines.count >= 2, lines[0].trimmingCharacters(in: .whitespaces) == "---" else { return ([:], md) }
+        var fields: [String: String] = [:]
+        var index = 1
+        while index < lines.count {
+            let line = lines[index].trimmingCharacters(in: .whitespaces)
+            if line == "---" {
+                let body = lines[(index + 1)...].joined(separator: "\n")
+                return (fields, body)
+            }
+            if !line.isEmpty {
+                guard let colon = line.firstIndex(of: ":"), colon > line.startIndex else { return ([:], md) }
+                let key = String(line[..<colon])
+                guard key.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" }) else { return ([:], md) }
+                var value = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+                if value.count >= 2, let first = value.first, let last = value.last, first == last, first == "\"" || first == "'" {
+                    value = String(value.dropFirst().dropLast())
+                }
+                fields[key] = value
+            }
+            index += 1
+        }
+        // No closing line: a rule, and whatever follows it.
+        return ([:], md)
     }
 }
 

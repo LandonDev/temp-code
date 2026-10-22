@@ -30,12 +30,13 @@ enum PlanType {
         }
     }
 
-    /// Large headings tighten: −0.02 em at the title size, less below it.
+    /// Large headings tighten by −0.02 em of their point size: title (28 pt)
+    /// −0.5, title2 (22 pt) −0.4, title3 (20 pt) −0.3; headline and body 0.
     static func tracking(_ level: Int) -> CGFloat {
         switch level {
         case 1: -0.5
-        case 2: -0.3
-        case 3: -0.2
+        case 2: -0.4
+        case 3: -0.3
         default: 0
         }
     }
@@ -60,4 +61,15 @@ enum PlanType {
     /// Code and tables: one step down from body.
     static let mono: Font.TextStyle = .callout
     static let table: Font = .subheadline
+
+    /// A code block folds past this many lines.
+    static let codeFold = 40
+    /// Inside a code block, around the text.
+    static let codePadding: CGFloat = 10
+    /// A table cell longer than a short phrase wraps at this width.
+    static let cellWrap: CGFloat = 280
+    static let cellWrapAfter = 40
+    /// The status and action row above the first block.
+    static let headerHeight: CGFloat = 32
+    static let headerBelow: CGFloat = 8
 }
