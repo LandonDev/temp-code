@@ -4,8 +4,8 @@ import TempCodeContract
 
 /// The project plans' state per host and project (`projectPlan.get`), as
 /// the Home chip reads it: loaded once per key, refreshed after every action
-/// from the chip and when a thread of the project settles, forgotten for a
-/// host when its socket opens a new session.
+/// from the chip and when a thread of the project settles, asked again when
+/// a host's socket reopens.
 @MainActor @Observable
 final class ProjectPlanStates {
     /// By `"<environmentId>/<projectId>"`; `.some(nil)` once asked and the project has no plan.
@@ -31,11 +31,6 @@ final class ProjectPlanStates {
     /// Asks again whatever is held.
     func refresh(_ client: EnvironmentClient, projectId: String) async {
         await fetch(client, projectId: projectId, key: Self.key(client.environment.id, projectId))
-    }
-
-    /// A host reconnected: its states are asked again on the next appear.
-    func invalidate(environmentId: String) {
-        for key in states.keys where key.hasPrefix(environmentId + "/") { states[key] = nil }
     }
 
     func set(_ client: EnvironmentClient, projectId: String, _ state: ProjectPlanState?) {
@@ -69,10 +64,12 @@ struct ProjectPlanChip: View {
     let client: EnvironmentClient
     let project: ProjectMeta
 
+    @Environment(NavigationRouter.self) private var router
     @State private var model = ProjectPlanModel()
     @State private var sheet: MilestoneStartTarget?
     @State private var revising = false
-    @State private var pushed: Route?
+    /// A refusal from the menu's actions; the chip has no footer, so it alerts.
+    @State private var failure: String?
     @ScaledMetric(relativeTo: .caption2) private var height: CGFloat = 28
 
     private var states: ProjectPlanStates { ThreadCaches.projectPlans }
@@ -111,12 +108,13 @@ struct ProjectPlanChip: View {
         }
         .task(id: project.id) { await states.load(client, projectId: project.id) }
         .onChange(of: client.status.transport) { _, transport in
+            // A reconnect asks again, keeping the chip drawn meanwhile.
             guard transport == .open else { return }
-            states.invalidate(environmentId: client.environment.id)
-            Task { await states.load(client, projectId: project.id) }
+            Task { await states.refresh(client, projectId: project.id) }
         }
         .onChange(of: settled) { before, now in
-            let moved = now.contains { id, status in status == .idle && before[id] != .idle && before[id] != nil }
+            let settledNow: (SessionStatus?) -> Bool = { $0 == .idle || $0 == .done }
+            let moved = now.contains { id, status in settledNow(status) && !settledNow(before[id]) && before[id] != nil }
             guard moved else { return }
             Task { await states.refresh(client, projectId: project.id) }
         }
@@ -143,9 +141,11 @@ struct ProjectPlanChip: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(total > 0 ? "Project plan, \(done) of \(total) milestones done" : "Project plan")
 
+        // A Button through the router, not a NavigationLink: a link inside a
+        // List row turns the row into a link cell and takes its other buttons' taps.
         Group {
             if let sessionId = state.sessionId {
-                NavigationLink(value: Route.thread(environmentId: client.environment.id, sessionId: sessionId, seq: nil)) { label }
+                Button { open(sessionId) } label: { label }
                     .buttonStyle(.pressable)
             } else {
                 label
@@ -154,9 +154,10 @@ struct ProjectPlanChip: View {
         .contextMenu { options(state) }
         .sheet(item: $sheet) { target in
             if let plan {
-                MilestoneStartSheet(client: client, plan: plan, milestone: target.milestone, kind: target.kind) { built, _ in
+                MilestoneStartSheet(client: client, plan: plan, milestone: target.milestone, kind: target.kind) { built, linkError in
                     Task { await states.refresh(client, projectId: project.id) }
-                    pushed = Route.thread(environmentId: client.environment.id, sessionId: built.id, seq: nil)
+                    failure = linkError
+                    open(built.id)
                 }
             }
         }
@@ -164,14 +165,18 @@ struct ProjectPlanChip: View {
             guard let sessionId = state.sessionId else { return }
             Task {
                 await model.revise(client, sessionId: sessionId, ask: ask)
+                failure = model.error
                 await states.refresh(client, projectId: project.id)
             }
         }
-        .navigationDestination(item: $pushed) { route in
-            if case .thread(_, let sessionId, let seq) = route {
-                ThreadScreen(client: client, sessionId: sessionId, targetSeq: seq)
-            }
+        .alert(failure ?? "", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
+            Button("OK", role: .cancel) {}
         }
+    }
+
+    /// The Home stack pushes the thread the way a notification tap does.
+    private func open(_ sessionId: String) {
+        router.pending = .thread(environmentId: client.environment.id, sessionId: sessionId, seq: nil)
     }
 
     /// The options card's four options, as menu rows. A read key reads why
@@ -207,7 +212,7 @@ struct ProjectPlanChip: View {
             model.adopt(state)
             Task {
                 await model.pin(client, projectId: project.id)
-                states.set(client, projectId: project.id, model.state)
+                failure = model.error
             }
         } label: {
             Label(state.pinned ? "Stop keeping as the project's plan" : "Keep as the project's plan", systemImage: state.pinned ? "pin.slash" : "pin")

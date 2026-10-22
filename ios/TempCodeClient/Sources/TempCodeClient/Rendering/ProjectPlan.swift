@@ -47,7 +47,8 @@ public enum ProjectPlan {
         /// 0-based line of the `###` heading in the whole file, frontmatter included.
         public var line: Int
 
-        public var id: Int { index }
+        /// The heading's line: unique even when two headings share a number.
+        public var id: Int { line }
 
         public init(index: Int, title: String, done: Bool, scope: String? = nil, dependencies: String? = nil, doneWhen: String? = nil, body: String = "", line: Int = 0) {
             self.index = index
@@ -117,7 +118,7 @@ public enum ProjectPlan {
         let afterOpen = md.index(md.startIndex, offsetBy: 4)
         guard let close = md[afterOpen...].range(of: "\n---") else { return ([:], Substring(md)) }
         var fields: [String: String] = [:]
-        for line in md[afterOpen..<close.lowerBound].split(separator: "\n", omittingEmptySubsequences: false) {
+        for line in md[afterOpen..<close.lowerBound].split(omittingEmptySubsequences: false, whereSeparator: Self.isLineBreak) {
             if let m = line.wholeMatch(of: frontmatterField) {
                 fields[String(m.output.1)] = m.output.2.trimmingCharacters(in: .whitespaces)
             }
@@ -126,6 +127,9 @@ public enum ProjectPlan {
         if restStart < md.endIndex, md[restStart] == "\n" { restStart = md.index(after: restStart) }
         return (fields, md[restStart...])
     }
+
+    /// A Swift `Character` holds `\r\n` as one grapheme, so a CRLF file splits here too.
+    private static func isLineBreak(_ c: Character) -> Bool { c == "\n" || c == "\r\n" }
 
     /// The first line of `body` that names the field, its value trimmed; nil when absent or empty.
     private static func field(_ lines: ArraySlice<Substring>, _ regex: Regex<(Substring, Substring)>) -> String? {
@@ -145,8 +149,8 @@ public enum ProjectPlan {
 
     public static func parse(_ md: String) -> Document {
         let (fields, rest) = frontmatter(of: md)
-        let lines = rest.split(separator: "\n", omittingEmptySubsequences: false)
-        let offset = md[..<rest.startIndex].filter { $0 == "\n" }.count
+        let lines = rest.split(omittingEmptySubsequences: false, whereSeparator: Self.isLineBreak)
+        let offset = md[..<rest.startIndex].filter(Self.isLineBreak).count
         var title: String?
         var sections: [String: String] = [:]
         var order: [String] = []

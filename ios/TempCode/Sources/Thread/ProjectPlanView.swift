@@ -51,11 +51,12 @@ struct ProjectPlanView: View {
         .onChange(of: text, initial: true) { _, now in model.update(text: now) }
         .task(id: projectId) {
             guard let projectId else { return }
+            if let cached = ThreadCaches.projectPlans.state(scope.environmentId, projectId) { model.adopt(cached) }
             await model.load(client, projectId: projectId)
         }
         .onChange(of: session?.status) { _, status in
             // plan_complete lands at the end of the plan thread's turn: the state follows.
-            guard status == .idle, let projectId else { return }
+            guard status == .idle || status == .done, let projectId else { return }
             Task { await model.load(client, projectId: projectId) }
         }
         .sheet(item: $sheet) { target in
@@ -93,7 +94,7 @@ struct ProjectPlanView: View {
                     done: model.done(milestone),
                     expanded: model.expanded == milestone.index,
                     busy: model.busy == .tick(milestone.index),
-                    disabled: blocked != nil || model.busy != nil,
+                    disabled: blocked != nil || model.busy != nil || projectId == nil,
                     onTick: {
                         guard let projectId else { return }
                         Task { await model.tick(client, projectId: projectId, milestone) }
@@ -202,10 +203,13 @@ final class ProjectPlanModel {
             let answer = try await client.request(Methods.ProjectPlanTick.self, .init(projectId: projectId, milestone: milestone.index, done: want))
             if answer.ticked {
                 overlay[milestone.index] = want
+                // The poll may have landed the file between the host's write and this answer.
+                overlay = ProjectPlan.reconcile(overlay: overlay, with: plan.milestones)
             } else {
                 error = "The plan file has no milestone \(milestone.index)"
             }
             state = answer.state
+            ThreadCaches.projectPlans.set(client, projectId: projectId, state)
         } catch {
             self.error = Self.message(of: error)
         }
@@ -218,6 +222,7 @@ final class ProjectPlanModel {
         defer { busy = nil }
         do {
             state = try await client.request(Methods.ProjectPlanPin.self, .init(projectId: projectId, pinned: !(state?.pinned ?? false)))
+            ThreadCaches.projectPlans.set(client, projectId: projectId, state)
         } catch {
             self.error = Self.message(of: error)
         }
@@ -345,14 +350,15 @@ private struct MilestoneRow: View {
                 if busy {
                     ProgressView()
                         .controlSize(.small)
+                        .iconSwapTransition()
                 } else {
                     Image(systemName: done ? "checkmark.circle.fill" : "circle")
                         .font(ProjectPlanType.checkboxGlyph)
                         .foregroundStyle(done ? AnyShapeStyle(Tint.success) : AnyShapeStyle(Color(.tertiaryLabel)))
                         .id(done)
+                        .iconSwapTransition()
                 }
             }
-            .iconSwapTransition()
             .animation(reduceMotion ? Motion.iconFade : Motion.iconSwap, value: done)
             .frame(width: ProjectPlanType.checkboxHit, height: ProjectPlanType.checkboxHit)
             .contentShape(Rectangle())
@@ -541,14 +547,15 @@ private struct CardAction: View {
                     if busy {
                         ProgressView()
                             .controlSize(.small)
+                            .iconSwapTransition()
                     } else {
                         Image(systemName: systemName)
                             .font(.subheadline)
                             .foregroundStyle(tint)
                             .id(systemName)
+                            .iconSwapTransition()
                     }
                 }
-                .iconSwapTransition()
                 .animation(Motion.iconSwap, value: busy)
                 .frame(width: ProjectPlanType.glyphColumn)
                 VStack(alignment: .leading, spacing: 2) {
