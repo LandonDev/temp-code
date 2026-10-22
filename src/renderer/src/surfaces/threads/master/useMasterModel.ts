@@ -511,9 +511,10 @@ export function useBoard(masterId: string, environmentId: string): Board {
     let alive = true;
     const link = registry.link(environmentId);
     if (!link) return;
-    const take = (state: BatchState, children?: SessionMeta[]) => {
+    // An answer marks the board loaded; a push only moves the state it holds.
+    const take = (state: BatchState, children?: SessionMeta[], answer = true) => {
       held.current = state;
-      setData((d) => ({ state, children: children ?? d.children, loaded: true }));
+      setData((d) => ({ state, children: children ?? d.children, loaded: d.loaded || answer }));
     };
     const readState = () =>
       link
@@ -547,7 +548,7 @@ export function useBoard(masterId: string, environmentId: string): Board {
       const next = batchFromPush(push, masterId);
       if (!next) return;
       const folded = foldBatchPush(held.current, next);
-      take(folded.state);
+      take(folded.state, undefined, false);
       if (folded.gap) void readState();
     });
     return () => {

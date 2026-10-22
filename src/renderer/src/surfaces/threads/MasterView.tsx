@@ -170,11 +170,11 @@ export function MasterView(props: ThreadViewProps) {
   const openedAt = useRef(performance.now());
   const painted = useRef(false);
   useEffect(() => {
-    if (painted.current || !loaded || openId) return;
+    if (painted.current || !loaded || openId || !hasBoard) return;
     painted.current = true;
     const n = layout.rows.length;
     requestAnimationFrame(() => reportBoardPaint(session.id, n, performance.now() - openedAt.current));
-  }, [loaded, openId, layout, session.id]);
+  }, [loaded, openId, hasBoard, layout, session.id]);
 
   const openRef = useRef<(id: string, focus?: boolean) => void>(() => {});
   openRef.current = (id: string, focus = false) => {

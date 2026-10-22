@@ -140,7 +140,7 @@ import {
 } from './apptools'
 import { ProjectPlans, handleProjectPlan } from './projectPlan'
 import { Batches, batchChildren, handleBatch, setBatches } from './batch'
-import { BOARD_TAIL_ROWS, BOARD_TAIL_TYPES, BoardDigests } from './boardDigest'
+import { hostBoardDigests } from './boardDigest'
 import { BoardWatch } from './boardWatch'
 import { LocalPublish, MacPublish, macPublishOffers } from './remote/macPublish'
 import { PeerDeploy } from './remote/peerDeploy'
@@ -755,22 +755,7 @@ export async function startServer(
   // A master's board in one answer (batch.board) and its pushes, only to
   // the sockets watching that master (boardDigest.ts, boardWatch.ts).
   const boardWatch = new BoardWatch()
-  const boardDigests = new BoardDigests({
-    children: (masterId) => registry.batchChildren(masterId),
-    masterOf: (sessionId) => registry.batchMasterOf(sessionId),
-    todos: (sessionId) => registry.todoListOf(sessionId),
-    notesText: (sessionId) => store.getSessionNotes(sessionId)?.text ?? null,
-    readTail: (sessionId) =>
-      store.readRows(sessionId, {
-        afterSeq: Math.max(0, store.lastSeq(sessionId) - BOARD_TAIL_ROWS),
-        limit: BOARD_TAIL_ROWS,
-        whereSql: `json_extract(payload, '$.type') IN (${BOARD_TAIL_TYPES.map((t) => `'${t}'`).join(', ')})`
-      }),
-    watched: (masterId) => boardWatch.watched(masterId),
-    onEvent: (listener) => registry.onEvent(listener),
-    onMeta: (listener) => registry.onMeta(listener),
-    onNotes: (listener) => registry.notes.onChange((sessionId, doc) => listener(sessionId, doc.text))
-  })
+  const boardDigests = hostBoardDigests(registry, store, (masterId) => boardWatch.watched(masterId))
   boardDigests.attach()
   registry.onRemoved((sessionIds) => boardDigests.forget(sessionIds))
   // A thread of another host's batch lands by asking that host (remote/crossHostThreads.ts); a local one by the engine here.

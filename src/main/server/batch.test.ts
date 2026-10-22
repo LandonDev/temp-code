@@ -1356,6 +1356,7 @@ describe('the board: batch.board, digests and their watchers', () => {
       [...sessions.values()].filter((s) => s.masterId === masterId && !s.parentId && !s.archived).sort((p, q) => p.createdAt - q.createdAt)
     const digests = new BoardDigests({
       children,
+      meta: (id) => sessions.get(id) ?? null,
       masterOf: (id) => sessions.get(id)?.masterId ?? null,
       todos: (id) => todos.get(id) ?? null,
       notesText: (id) => notes.get(id) ?? null,
@@ -1472,6 +1473,40 @@ describe('the board: batch.board, digests and their watchers', () => {
     h.writeNotes('r', '## State\n\nFour read\n')
     vi.advanceTimersByTime(250)
     expect(h.pushes.at(-1)).toEqual({ masterId: 'm', sessionId: 'r', digest: { state: 'Four read' } })
+  })
+
+  it("a row that lands while a child's first read is in flight is folded in and pushed once the read is in", async () => {
+    vi.useFakeTimers()
+    const h = board()
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    const appended = new Set<(r: EventRow) => void>()
+    const slow = new BoardDigests({
+      children: (m) => [...h.sessions.values()].filter((s) => s.masterId === m),
+      meta: (id) => h.sessions.get(id) ?? null,
+      masterOf: (id) => h.sessions.get(id)?.masterId ?? null,
+      todos: () => null,
+      notesText: () => null,
+      readTail: async () => {
+        await gate
+        return []
+      },
+      watched: () => true,
+      onEvent: (l) => {
+        appended.add(l)
+        return () => appended.delete(l)
+      }
+    })
+    slow.attach()
+    const got: BoardPush[] = []
+    slow.onPush((p) => got.push(p))
+    const answer = slow.board('m', state('m'))
+    // The row arrives through the registry's listener while the tail read waits.
+    for (const l of appended) l(h.row('a', 9, { type: 'assistant-text', text: 'Mid-read.', delta: false, msgId: 'm9', blockIndex: 0 } as AgentEvent))
+    release()
+    expect((await answer).digests.a.last).toBe('Mid-read.')
+    await vi.advanceTimersByTimeAsync(250)
+    expect(got.find((p) => p.sessionId === 'a')?.digest.last).toBe('Mid-read.')
   })
 
   it('nothing is computed or pushed for a master no socket watches', async () => {

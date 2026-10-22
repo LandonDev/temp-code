@@ -48,6 +48,7 @@ import { SessionRegistry } from '../src/main/server/sessions'
 import { setOrchestrationRegistry } from '../src/main/server/orchestration'
 import { setAppToolsRegistry } from '../src/main/server/apptools'
 import { Batches, setBatches } from '../src/main/server/batch'
+import { hostBoardDigests } from '../src/main/server/boardDigest'
 import { MergeReviews, setMergeReviews } from '../src/main/server/mergeReview'
 import { DEFAULT_PLAN_SETTINGS } from '../src/shared/plans'
 import type { BatchState } from '../src/shared/contract-batch'
@@ -314,6 +315,12 @@ check('child b started only once child a was idle after a turn', !!aIdle && !!bS
 check('child b answered', /b done/i.test(finalText(b.id)), finalText(b.id).slice(-60))
 check('three children were live at once (no cap held them)', peakChildren >= 3, `peak ${peakChildren}`)
 check('no child left queued', childrenOf().every((k) => k.status !== 'queued'), childrenOf().map((k) => `${k.title}:${k.status}`).join(', '))
+
+// ── the board in one answer (batch.board), read as the host serves it ───
+const boardDigests = hostBoardDigests(registry, store, () => true)
+const board = await boardDigests.board(master.id, batches.get(master.id))
+check('batch.board answers the four children here with the state', board.children.length === 4 && [a, r, p, b].every((k) => board.children.some((c) => c.id === k.id)) && board.state.masterId === master.id, board.children.map((c) => c.title).join(', '))
+check("batch.board's digests carry each child's last words from its own rows", /research done:\s*blue/i.test(board.digests[r.id]?.last ?? '') && /b done/i.test(board.digests[b.id]?.last ?? ''), JSON.stringify({ r: board.digests[r.id], b: board.digests[b.id] }))
 
 // ── 3. child a lands ─────────────────────────────────────────────────────
 console.log('\n[3] child a again, typecheck green: merged')

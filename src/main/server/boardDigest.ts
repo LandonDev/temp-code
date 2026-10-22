@@ -1,6 +1,8 @@
 import type { BatchBoard, BatchState, BoardDigest, BoardTodo } from '@shared/contract-batch'
 import type { AgentEvent, EventRow, SessionMeta } from '@shared/events'
 import { stateLine } from '@shared/notes'
+import type { Store } from './db'
+import type { SessionRegistry } from './sessions'
 
 /**
  * A master's board in one answer (`batch.board`, contract-batch.ts): the
@@ -35,6 +37,8 @@ export interface BoardPush {
 export interface BoardDigestsDeps {
   /** The master's unarchived root threads here, decorated, oldest first (registry.batchChildren). */
   children(masterId: string): SessionMeta[]
+  /** One thread's decorated meta (registry.get): the flush reads only the children that moved. */
+  meta(sessionId: string): SessionMeta | null
   /** The master of a root batch thread here; null for anything else (the registry's index, no read). */
   masterOf(sessionId: string): string | null
   /** The thread's current task list from the registry's fold; null before one. */
@@ -176,8 +180,8 @@ export class BoardDigests {
     this.dirty.clear()
     for (const [sessionId, masterId] of due) {
       if (!this.deps.watched(masterId)) continue
-      const meta = this.deps.children(masterId).find((c) => c.id === sessionId)
-      if (!meta) continue
+      const meta = this.deps.meta(sessionId)
+      if (!meta || meta.masterId !== masterId || meta.parentId || meta.archived) continue
       const digest = this.digest(meta)
       const json = JSON.stringify(digest)
       if (this.sent.get(sessionId) === json) continue
@@ -198,18 +202,18 @@ export class BoardDigests {
 
   private onRow(row: EventRow): void {
     const reading = this.reading.get(row.sessionId)
-    if (reading) {
-      reading.live.push(row)
-      return
+    if (reading) reading.live.push(row)
+    else {
+      const lines = this.lines.get(row.sessionId)
+      if (lines) foldLines(lines, row.event, row.seq)
     }
-    const lines = this.lines.get(row.sessionId)
-    if (lines) foldLines(lines, row.event, row.seq)
     if (isStreamed(row.event)) return
     const master = this.deps.masterOf(row.sessionId)
     if (!master || !this.deps.watched(master)) return
-    // A child that joined while its master was on screen reads its tail now.
-    if (!lines) void this.ensureLines(row.sessionId).then(() => this.touch(row.sessionId, master))
-    else this.touch(row.sessionId, master)
+    if (this.lines.has(row.sessionId)) this.touch(row.sessionId, master)
+    // A read in flight, or a child that joined while its master was on
+    // screen (its tail is read now, this row with it): looked at once it is in.
+    else void this.ensureLines(row.sessionId).then(() => this.touch(row.sessionId, master))
   }
 
   private touch(sessionId: string, masterId: string): void {
@@ -244,4 +248,30 @@ export class BoardDigests {
     this.reading.set(sessionId, { done, live })
     return done
   }
+}
+
+/** The digests over this host's registry and store, as server/index.ts
+ *  wires them (the proof scripts use the same). Call `attach()` to follow. */
+export function hostBoardDigests(
+  registry: Pick<SessionRegistry, 'batchChildren' | 'get' | 'batchMasterOf' | 'todoListOf' | 'onEvent' | 'onMeta' | 'notes'>,
+  store: Pick<Store, 'getSessionNotes' | 'readRows' | 'lastSeq'>,
+  watched: (masterId: string) => boolean
+): BoardDigests {
+  return new BoardDigests({
+    children: (masterId) => registry.batchChildren(masterId),
+    meta: (sessionId) => registry.get(sessionId),
+    masterOf: (sessionId) => registry.batchMasterOf(sessionId),
+    todos: (sessionId) => registry.todoListOf(sessionId),
+    notesText: (sessionId) => store.getSessionNotes(sessionId)?.text ?? null,
+    readTail: (sessionId) =>
+      store.readRows(sessionId, {
+        afterSeq: Math.max(0, store.lastSeq(sessionId) - BOARD_TAIL_ROWS),
+        limit: BOARD_TAIL_ROWS,
+        whereSql: `json_extract(payload, '$.type') IN (${BOARD_TAIL_TYPES.map((t) => `'${t}'`).join(', ')})`
+      }),
+    watched,
+    onEvent: (listener) => registry.onEvent(listener),
+    onMeta: (listener) => registry.onMeta(listener),
+    onNotes: (listener) => registry.notes.onChange((sessionId, doc) => listener(sessionId, doc.text))
+  })
 }
