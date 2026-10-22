@@ -139,7 +139,8 @@ import { PeerPublish } from './remote/peerPublish'
 import { ReleaseAnnouncer } from './releaseAnnounce'
 import { DEFAULT_RULES } from '@shared/rules'
 import { DEFAULT_THREAD_DEFAULTS } from '@shared/defaults'
-import { DEFAULT_PLAN_SETTINGS } from '@shared/plans'
+import { DEFAULT_PLAN_SETTINGS, type PlanScope } from '@shared/plans'
+import type { ReviewScope } from '@shared/review'
 import {
   blameRange,
   aheadCount,
@@ -1535,7 +1536,7 @@ export async function startServer(
                   (req.params.projectId ? registry.getPlanSettings(null) : null) ??
                   DEFAULT_PLAN_SETTINGS,
                 overridden: scoped !== null
-              }
+              } satisfies PlanScope
             })
             break
           }
@@ -1653,7 +1654,7 @@ export async function startServer(
                 override: projectId ? registry.getReviewSettings(projectId) : null,
                 global: registry.getReviewSettings(null),
                 ...registry.effectiveReview(projectId)
-              }
+              } satisfies ReviewScope
             })
             break
           }

@@ -37,6 +37,8 @@ import type { AccountsSnapshot } from '../src/shared/accounts'
 import type { AgentEvent, FailureKind } from '../src/shared/events'
 import type { GithubInboxItem } from '../src/shared/contract-github'
 import type { ReviewNotice } from '../src/shared/review'
+import { DEFAULT_PLAN_SETTINGS } from '../src/shared/plans'
+import { DEFAULT_REVIEW_SETTINGS } from '../src/shared/review'
 
 const root = mkdtempSync(join(tmpdir(), 'tc-ios-client-'))
 configure({
@@ -958,6 +960,34 @@ accountsService.snap = seededAccounts
 accountsService.built = true
 server.registry.setAccount('ios-pinned', 'work@example.com') // a thread on an account
 server.registry.setProjectAccounts(project2.id, { claude: 'work@example.com' }) // ios-question reads "From project billing-page"
+
+// Thread 25: the plan flow and project settings. A complete plan with its
+// build started, a complete plan waiting for Start, a project with a
+// preamble of its own, a workspace default and a review override.
+if (!server.registry.get('ios-plan-built')) {
+  const writePlan = (meta: { planPath: string | null }, title: string): void => {
+    if (!meta.planPath) throw new Error('a planning thread has no plan path')
+    mkdirSync(dirname(meta.planPath), { recursive: true })
+    writeFileSync(meta.planPath, `# ${title}\n\n## Overview\n\nOne paragraph.\n\n## Tasks\n\n- [ ] First task\n- [ ] Second task\n`)
+  }
+  // The plan is live while the build is created, so linkPlanHandoff links both ways and lands the handoff row without archiving the plan.
+  const built = await makeTyped('ios-plan-built', 'planning', 'Plan: Split the billing export')
+  writePlan(built, 'Split the billing export')
+  say('ios-plan-built', 'Plan the split of the billing export', 'The plan is written.')
+  server.registry.append('ios-plan-built', { type: 'status', status: 'running' })
+  await makeTyped('ios-plan-build', 'implementation', 'Split the billing export', { planPath: built.planPath })
+  server.registry.append('ios-plan-build', { type: 'user-text', text: 'Implement the plan "Split the billing export".' })
+  server.registry.append('ios-plan-built', { type: 'status', status: 'idle' })
+  // Its project's plans override turns auto-start off, so completePlan stamps the plan and starts nothing.
+  server.registry.setPlanSettings(project2.id, { ...DEFAULT_PLAN_SETTINGS, autoImplement: false })
+  const waiting = await makeTyped('ios-plan-waiting', 'planning', 'Plan: Move invoices to the ledger', { projectId: project2.id })
+  writePlan(waiting, 'Move invoices to the ledger')
+  say('ios-plan-waiting', 'Plan the ledger move', 'The plan is ready.')
+  await server.registry.completePlan('ios-plan-waiting')
+  server.registry.setProjectPreamble(project2.id, '- Work in `{{worktree}}` on {{host}}.\n- Keep {{project}} green before you merge.', true)
+  server.registry.setWorkspacePreamble(workspace.id, '- Commit often, plain prose.', true)
+  server.registry.setReviewSettings(project.id, { ...DEFAULT_REVIEW_SETTINGS, beforeMerge: true, provider: 'claude', model: 'claude-sonnet-5-5', reasoning: 'medium', maxMinutes: 10 })
+}
 
 // ── the key, and a pairing link for the simulator rehearsal ─────────────
 const created = await server.remoteAuth.createKey({ name: 'ios-test', audience: 'client', caps: [], createdBy: 'local' })

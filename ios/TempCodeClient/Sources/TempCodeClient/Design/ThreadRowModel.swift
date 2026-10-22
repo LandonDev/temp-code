@@ -68,7 +68,7 @@ public struct ThreadRowModel: Hashable, Sendable {
         model = ModelName.short(session.model)
         detail = Self.detail(of: session)
         failure = session.failureSummary
-        tag = session.isMaster == true ? "Master" : nil
+        tag = session.isMaster == true ? "Master" : PlanFlowState.rowTag(session)
         updatedAt = session.updatedAt
         busySince = session.busySince
         running = HomeModel.isLive(session)

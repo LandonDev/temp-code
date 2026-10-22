@@ -58,7 +58,9 @@ import {
   SessionStatusSchema
 } from '../src/shared/events'
 import { GateNoticeSchema, GateStepSchema } from '../src/shared/gate'
-import { ReviewFindingSchema, ReviewNoticeSchema } from '../src/shared/review'
+import { ReviewFindingSchema, ReviewNoticeSchema, ReviewScopeSchema, ReviewSettingsSchema } from '../src/shared/review'
+import { PlanScopeSchema, PlanSettingsSchema } from '../src/shared/plans'
+import { ModelPolicySchema, OrchestrationRulesSchema } from '../src/shared/rules'
 import * as W from '../src/shared/wireSchemas'
 
 // ── the subset ──────────────────────────────────────────────────────────
@@ -195,6 +197,13 @@ export const SUBSET: SubsetEntry[] = [
   type('BuildRun', W.BuildRunSchema),
   type('BuildUpdate', W.BuildUpdateSchema),
   type('ThreadNotesDoc', W.ThreadNotesDocSchema),
+  // Thread 25: the plan flow and project settings on the phone.
+  type('PlanSettings', PlanSettingsSchema),
+  type('PlanScope', PlanScopeSchema),
+  type('ReviewSettings', ReviewSettingsSchema),
+  type('ReviewScope', ReviewScopeSchema),
+  type('ModelPolicy', ModelPolicySchema),
+  type('OrchestrationRules', OrchestrationRulesSchema),
   union('ServerPush', W.RemotePushSchema, 'push', 'Push'),
   // methods: params from contract.ts, outputs from the handlers in server/index.ts
   method('catalog.get', W.CatalogSchema),
@@ -281,7 +290,16 @@ export const SUBSET: SubsetEntry[] = [
   method('projectPlan.pin', ProjectPlanStateSchema.nullable()),
   method('projectPlan.tick', ProjectPlanTickAnswerSchema),
   method('projectPlan.link', z.null()),
-  method('notes.search', W.NoteSearchResultSchema)
+  method('notes.search', W.NoteSearchResultSchema),
+  // Thread 25: the plan flow and project settings on the phone.
+  method('plan.implement', W.SessionMetaSchema),
+  method('plans.get', PlanScopeSchema),
+  method('plans.set', z.null()),
+  method('review.get', ReviewScopeSchema),
+  method('review.set', z.null()),
+  method('project.setPreamble', z.null()),
+  method('workspace.setPreamble', z.null()),
+  method('rules.get', z.object({ rules: OrchestrationRulesSchema, overridden: z.boolean() }))
 ]
 
 /** Enum values that need an explicit Swift case name. */

@@ -146,12 +146,12 @@ private struct SheetFooter: View {
 // MARK: - Start a build
 
 /// The plan header's Start: Implementation or Orchestration, who builds it
-/// and how hard it thinks, then the thread is created seeded from the plan
-/// the way the desktop does it, and pushed.
+/// and how hard it thinks, then `plan.implement` starts the build the way
+/// the desktop does (the host picks the title, the seed and the project's
+/// plan settings), and the build is pushed.
 struct StartBuildSheet: View {
     let client: EnvironmentClient
     let plan: SessionMeta
-    let document: String?
     let onStarted: (SessionMeta) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var type: ThreadType = .implementation
@@ -159,10 +159,9 @@ struct StartBuildSheet: View {
     @State private var busy = false
     @State private var error: String?
 
-    init(client: EnvironmentClient, plan: SessionMeta, document: String?, onStarted: @escaping (SessionMeta) -> Void) {
+    init(client: EnvironmentClient, plan: SessionMeta, onStarted: @escaping (SessionMeta) -> Void) {
         self.client = client
         self.plan = plan
-        self.document = document
         self.onStarted = onStarted
         _choice = State(initialValue: CatalogChoice(provider: plan.provider, model: plan.model, reasoning: plan.reasoning))
     }
@@ -205,10 +204,8 @@ struct StartBuildSheet: View {
         busy = true
         error = nil
         defer { busy = false }
-        let tasks = PlanDoc.tasks(PlanDoc.sections(document ?? "")).count
-        let draft = ThreadDraft.build(from: plan, type: type, provider: choice.key.provider, model: choice.key.model, reasoning: choice.reasoning, tasks: tasks)
         do {
-            let built = try await client.createThread(draft)
+            let built = try await client.implementPlan(plan.id, type: type, provider: choice.key.provider, model: choice.key.model, reasoning: choice.reasoning)
             dismiss()
             onStarted(built)
         } catch {

@@ -5,7 +5,8 @@ import {
   DEFAULT_PLAN_SETTINGS,
   parsePlanSettings,
   planDoneNotice,
-  planHeadingOf
+  planHeadingOf,
+  PlanScopeSchema
 } from './plans'
 
 const plan = { provider: 'claude' as const, model: 'claude-haiku-5-5', reasoning: 'high' as const, context1m: true }
@@ -50,5 +51,16 @@ describe('titles and notices', () => {
     )
     expect(planDoneNotice({ title: 'T', planPath: '/p.md', planId: 'p', implementation: null, autoImplement: false })).toContain('Waiting for you to start it')
     expect(planDoneNotice({ title: 'T', planPath: '/p.md', planId: 'p', implementation: null, autoImplement: true })).toContain('could not be started')
+  })
+})
+
+describe('PlanScopeSchema', () => {
+  it('parses what the plans.get handler answers', () => {
+    const scope = PlanScopeSchema.parse({ settings: DEFAULT_PLAN_SETTINGS, overridden: false })
+    expect(scope.overridden).toBe(false)
+    expect(scope.settings.autoImplement).toBe(true)
+  })
+  it('rejects an answer missing its settings', () => {
+    expect(PlanScopeSchema.safeParse({ overridden: true }).success).toBe(false)
   })
 })

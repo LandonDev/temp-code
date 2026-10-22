@@ -107,7 +107,7 @@ struct ThreadScreen: View {
         }
         .sheet(isPresented: $starting) {
             if let session {
-                StartBuildSheet(client: client, plan: session, document: model.document) { built in
+                StartBuildSheet(client: client, plan: session) { built in
                     pushed = ThreadScreenRoute(sessionId: built.id)
                 }
             }
@@ -214,23 +214,11 @@ struct ThreadScreen: View {
         }
     }
 
-    /// The trailing group, left to right: Start or Build (planning roots),
-    /// slot (c) Notes (thread 18), the agents button, the menu last.
+    /// The trailing group, left to right: slot (c) Notes (thread 18), the
+    /// agents button, the menu last. A planning root's Start and Build live
+    /// in the plan page's header row (PlanFlow.swift), not here.
     @ViewBuilder
     private func trailing(session: SessionMeta, phase: ThreadPhase, children: [SessionMeta], segments: [ThreadSegment]) -> some View {
-        if session.threadType == .planning, session.parentId == nil, let buildId = session.implementationId, client.session(buildId) != nil {
-            // The host linked a build to this plan (auto-started, or begun elsewhere): the toolbar points at it.
-            Button("Build") { pushed = ThreadScreenRoute(sessionId: buildId) }
-                .font(.subheadline.weight(.semibold))
-                .buttonStyle(.pressableStatic)
-                .accessibilityHint("Open the implementation thread started from this plan")
-        } else if session.threadType == .planning, session.parentId == nil, phase.planHasContent, !phase.running, session.status != .waiting {
-            Button("Start") { starting = true }
-                .font(.subheadline.weight(.semibold))
-                .buttonStyle(.pressableStatic)
-                .disabled(client.operateBlock != nil)
-                .accessibilityHint(client.operateBlock.map { $0.text(now: Date().timeIntervalSince1970 * 1000) } ?? "Start building this plan")
-        }
         // iOS 18: a root thread's notes (NotesSheet.swift), before the agents button.
         if session.parentId == nil { NotesButton(client: client, sessionId: sessionId) }
         if SegmentRules.showsAgents(children: children.count, segments: segments) {
@@ -307,9 +295,7 @@ struct ThreadScreen: View {
                 try? await client.answer(sessionId, requestId: question.request.requestId, answers: question.request.questions.map { _ in [argument] })
             }
         case "start-build" where session.threadType == .planning:
-            let tasks = PlanDoc.tasks(PlanDoc.sections(model.document ?? "")).count
-            let draft = ThreadDraft.build(from: session, type: .implementation, provider: session.provider, model: session.model, reasoning: session.reasoning, tasks: tasks)
-            if let built = try? await client.createThread(draft) { pushed = ThreadScreenRoute(sessionId: built.id) }
+            if let built = try? await client.implementPlan(sessionId, type: .implementation, provider: session.provider, model: session.model, reasoning: session.reasoning) { pushed = ThreadScreenRoute(sessionId: built.id) }
         case "rename":
             try? await client.rename(sessionId, title: argument)
         case "pin":
@@ -359,7 +345,17 @@ struct ThreadScreen: View {
             if kind == .projectPlan {
                 ProjectPlanView(client: client, sessionId: sessionId, session: session, document: model.document, running: phase.running)
             } else {
-                PlanView(sessionId: sessionId, document: model.document, running: phase.running)
+                // The plan flow's header row (the state line and Start or the build chip) exists only once the plan is complete.
+                let flow = session.map { PlanFlowState.of($0, session: { client.session($0) }) } ?? .open
+                if flow == .open {
+                    PlanView(sessionId: sessionId, document: model.document, running: phase.running)
+                } else {
+                    PlanView(sessionId: sessionId, document: model.document, running: phase.running) {
+                        PlanStatusLine(state: flow)
+                    } action: {
+                        PlanAction(client: client, state: flow, onStart: { starting = true }, onOpen: { pushed = ThreadScreenRoute(sessionId: $0) })
+                    }
+                }
             }
         case .fleet:
             FleetView(client: client, sessionId: sessionId, session: session, thread: thread)

@@ -23,6 +23,11 @@ export const PlanSettingsSchema = z.object({
 })
 export type PlanSettings = z.infer<typeof PlanSettingsSchema>
 
+/** What `plans.get` answers: the set a scope runs under, and whether the
+ *  scope has its own (the phone's generated contract pins this shape). */
+export const PlanScopeSchema = z.object({ settings: PlanSettingsSchema, overridden: z.boolean() })
+export type PlanScope = z.infer<typeof PlanScopeSchema>
+
 export const DEFAULT_PLAN_SETTINGS: PlanSettings = {
   autoImplement: true,
   archiveAfterStart: true,

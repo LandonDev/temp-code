@@ -26,6 +26,17 @@ export const ReviewSettingsSchema = z.object({
 })
 export type ReviewSettings = z.infer<typeof ReviewSettingsSchema>
 
+/** What `review.get` answers: the scope's own set (null when it follows),
+ *  the global set, the effective one and where it came from (the phone's
+ *  generated contract pins this shape). */
+export const ReviewScopeSchema = z.object({
+  override: ReviewSettingsSchema.nullable(),
+  global: ReviewSettingsSchema.nullable(),
+  settings: ReviewSettingsSchema,
+  source: z.enum(['project', 'global', 'default'])
+})
+export type ReviewScope = z.infer<typeof ReviewScopeSchema>
+
 export const DEFAULT_REVIEW_SETTINGS: ReviewSettings = {
   beforeMerge: false,
   provider: 'codex',

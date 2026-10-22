@@ -1128,7 +1128,12 @@ routed to (aliax-core's `forward`). Two listeners:
   turns, optimistic decisions, `ThreadDraft`, `TurnModel`, `start` as
   `session.start`), `Client/Attachments.swift` (`upload`) and
   `Client/Steering.swift`; the README there has the rules. A read key
-  hides nothing: the field and the cards carry the reason instead. DEBUG
+  hides nothing: the field and the cards carry the reason instead. `Client/PlanFlow.swift`
+  is the plan page's state (`PlanFlowState`) and `implementPlan` over
+  `plan.implement`; `Client/ProjectSettings.swift` the preamble, review and
+  plan drafts the project settings sheet (`Shell/ProjectSettingsSheet.swift`)
+  saves over `project.setPreamble`, `review.set` and `plans.set`, admin
+  only, with the reason on a lesser key. DEBUG
   hooks: `TC_TEST_ACTION=start-now|resume` beside the L4 ones.
   The host's own rows
   (`Thread/NoticeRows.swift`: review and gate cards, batch, account-gone and
@@ -1326,8 +1331,9 @@ threadBatch.test.ts), one `session.batch` per host.
   `deliverAgentReport`; a person-started plan is the notifier's finished
   notice ("Plan complete — implementation started: …" or "…waiting for you
   to start the build") and the tab's "Plan ready" mark. With auto-start off
-  the plan view's single Start button, the phone's Start a build sheet and
-  `plan.implement` over the wire start the build through the same function.
+  the plan view's single Start button, the phone's Start a build sheet (its
+  confirm is `plan.implement` since thread 25) and `plan.implement` over the
+  wire start the build through the same function.
   Sending into a completed plan whose build has not started reopens it.
   Unit tests: planFlow.test.ts, plans.test.ts; proof
   `bun run script:e2e-plan-auto-implement` (three haiku planners on an

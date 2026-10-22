@@ -2370,6 +2370,300 @@ public struct ThreadNotesDoc: Codable, Hashable, Sendable {
     }
 }
 
+public struct PlanSettings: Codable, Hashable, Sendable {
+    public enum ImplementReasoning: RawRepresentable, Codable, Hashable, Sendable {
+        case none
+        case low
+        case medium
+        case high
+        case xhigh
+        case max
+        case ultra
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "": self = .none
+            case "low": self = .low
+            case "medium": self = .medium
+            case "high": self = .high
+            case "xhigh": self = .xhigh
+            case "max": self = .max
+            case "ultra": self = .ultra
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .none: ""
+            case .low: "low"
+            case .medium: "medium"
+            case .high: "high"
+            case .xhigh: "xhigh"
+            case .max: "max"
+            case .ultra: "ultra"
+            case .unknown(let value): value
+            }
+        }
+    }
+    public enum ImplementContext: RawRepresentable, Codable, Hashable, Sendable {
+        case none
+        case _1m
+        case _200k
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "": self = .none
+            case "1m": self = ._1m
+            case "200k": self = ._200k
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .none: ""
+            case ._1m: "1m"
+            case ._200k: "200k"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let autoImplement: Bool
+    public let archiveAfterStart: Bool
+    public let implementModel: String
+    public let implementReasoning: ImplementReasoning
+    public let implementContext: ImplementContext
+
+    public init(autoImplement: Bool, archiveAfterStart: Bool, implementModel: String, implementReasoning: ImplementReasoning, implementContext: ImplementContext) {
+        self.autoImplement = autoImplement
+        self.archiveAfterStart = archiveAfterStart
+        self.implementModel = implementModel
+        self.implementReasoning = implementReasoning
+        self.implementContext = implementContext
+    }
+}
+
+public struct PlanScope: Codable, Hashable, Sendable {
+    public let settings: PlanSettings
+    public let overridden: Bool
+
+    public init(settings: PlanSettings, overridden: Bool) {
+        self.settings = settings
+        self.overridden = overridden
+    }
+}
+
+public struct ReviewSettings: Codable, Hashable, Sendable {
+    public enum BlockOn: RawRepresentable, Codable, Hashable, Sendable {
+        case confirmed
+        case `any`
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "confirmed": self = .confirmed
+            case "any": self = .`any`
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .confirmed: "confirmed"
+            case .`any`: "any"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let beforeMerge: Bool
+    public let provider: ProviderId
+    public let model: String
+    public let reasoning: Reasoning
+    public let blockOn: BlockOn
+    public let maxMinutes: Int
+
+    public init(beforeMerge: Bool, provider: ProviderId, model: String, reasoning: Reasoning, blockOn: BlockOn, maxMinutes: Int) {
+        self.beforeMerge = beforeMerge
+        self.provider = provider
+        self.model = model
+        self.reasoning = reasoning
+        self.blockOn = blockOn
+        self.maxMinutes = maxMinutes
+    }
+}
+
+public struct ReviewScope: Codable, Hashable, Sendable {
+    public enum Source: RawRepresentable, Codable, Hashable, Sendable {
+        case project
+        case global
+        case `default`
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "project": self = .project
+            case "global": self = .global
+            case "default": self = .`default`
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .project: "project"
+            case .global: "global"
+            case .`default`: "default"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let override: ReviewSettings?
+    public let global: ReviewSettings?
+    public let settings: ReviewSettings
+    public let source: Source
+
+    public init(override: ReviewSettings?, global: ReviewSettings?, settings: ReviewSettings, source: Source) {
+        self.override = override
+        self.global = global
+        self.settings = settings
+        self.source = source
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case override, global, settings, source
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(override, forKey: .override)
+        try container.encode(global, forKey: .global)
+        try container.encode(settings, forKey: .settings)
+        try container.encode(source, forKey: .source)
+    }
+}
+
+public struct ModelPolicy: Codable, Hashable, Sendable {
+    public enum Approved: Codable, Hashable, Sendable {
+        case bool(Bool)
+        case string(String)
+        /// A shape this build does not know, untouched.
+        case unknown(JSONValue)
+
+        public init(from decoder: any Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            if let value = try? container.decode(Bool.self) { self = .bool(value); return }
+            if let value = try? container.decode(String.self) { self = .string(value); return }
+            self = .unknown(try container.decode(JSONValue.self))
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.singleValueContainer()
+            switch self {
+            case .bool(let value): try container.encode(value)
+            case .string(let value): try container.encode(value)
+            case .unknown(let value): try container.encode(value)
+            }
+        }
+    }
+
+    public let approved: Approved
+    public let minReasoning: Reasoning?
+    public let maxReasoning: Reasoning?
+
+    public init(approved: Approved, minReasoning: Reasoning? = nil, maxReasoning: Reasoning? = nil) {
+        self.approved = approved
+        self.minReasoning = minReasoning
+        self.maxReasoning = maxReasoning
+    }
+}
+
+public struct OrchestrationRules: Codable, Hashable, Sendable {
+    public struct Conduct: Codable, Hashable, Sendable {
+        public enum Delegation: RawRepresentable, Codable, Hashable, Sendable {
+            case strict
+            case balanced
+            case free
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "strict": self = .strict
+                case "balanced": self = .balanced
+                case "free": self = .free
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .strict: "strict"
+                case .balanced: "balanced"
+                case .free: "free"
+                case .unknown(let value): value
+                }
+            }
+        }
+
+        public let delegation: Delegation
+        public let selfEdit: Bool
+        public let selfShell: Bool
+        public let verifyResults: Bool
+        public let escalate: Bool
+        public let useWorktrees: Bool
+        public let maxParallel: Int
+        public let maxAgents: Int
+
+        public init(delegation: Delegation, selfEdit: Bool, selfShell: Bool, verifyResults: Bool, escalate: Bool, useWorktrees: Bool, maxParallel: Int, maxAgents: Int) {
+            self.delegation = delegation
+            self.selfEdit = selfEdit
+            self.selfShell = selfShell
+            self.verifyResults = verifyResults
+            self.escalate = escalate
+            self.useWorktrees = useWorktrees
+            self.maxParallel = maxParallel
+            self.maxAgents = maxAgents
+        }
+    }
+    public struct Routing: Codable, Hashable, Sendable {
+        public let id: String
+        public let task: String
+        public let provider: ProviderId
+        public let model: String
+        public let reasoning: Reasoning
+        public let enabled: Bool
+
+        public init(id: String, task: String, provider: ProviderId, model: String, reasoning: Reasoning, enabled: Bool) {
+            self.id = id
+            self.task = task
+            self.provider = provider
+            self.model = model
+            self.reasoning = reasoning
+            self.enabled = enabled
+        }
+    }
+
+    public let conduct: Conduct
+    public let models: [String: ModelPolicy]
+    public let routing: [Routing]
+
+    public init(conduct: Conduct, models: [String: ModelPolicy], routing: [Routing]) {
+        self.conduct = conduct
+        self.models = models
+        self.routing = routing
+    }
+}
+
 public struct ProjectPlanMilestone: Codable, Hashable, Sendable {
     public let index: Int
     public let title: String

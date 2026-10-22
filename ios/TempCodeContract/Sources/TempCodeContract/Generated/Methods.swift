@@ -1476,4 +1476,274 @@ public enum Methods {
 
         public typealias Output = NoteSearchResult
     }
+
+    public enum PlanImplement: ContractMethod {
+        public static let name = "plan.implement"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum ThreadType: RawRepresentable, Codable, Hashable, Sendable {
+                case implementation
+                case orchestration
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "implementation": self = .implementation
+                    case "orchestration": self = .orchestration
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .implementation: "implementation"
+                    case .orchestration: "orchestration"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+            public struct ThreadRules: Codable, Hashable, Sendable {
+                public struct Conduct: Codable, Hashable, Sendable {
+                    public enum Delegation: RawRepresentable, Codable, Hashable, Sendable {
+                        case strict
+                        case balanced
+                        case free
+                        /// A value this build does not know; `rawValue` keeps it.
+                        case unknown(String)
+
+                        public init(rawValue: String) {
+                            switch rawValue {
+                            case "strict": self = .strict
+                            case "balanced": self = .balanced
+                            case "free": self = .free
+                            default: self = .unknown(rawValue)
+                            }
+                        }
+
+                        public var rawValue: String {
+                            switch self {
+                            case .strict: "strict"
+                            case .balanced: "balanced"
+                            case .free: "free"
+                            case .unknown(let value): value
+                            }
+                        }
+                    }
+
+                    public let delegation: Delegation?
+                    public let selfEdit: Bool?
+                    public let selfShell: Bool?
+                    public let verifyResults: Bool?
+                    public let escalate: Bool?
+                    public let useWorktrees: Bool?
+                    public let maxParallel: Int?
+                    public let maxAgents: Int?
+
+                    public init(delegation: Delegation? = nil, selfEdit: Bool? = nil, selfShell: Bool? = nil, verifyResults: Bool? = nil, escalate: Bool? = nil, useWorktrees: Bool? = nil, maxParallel: Int? = nil, maxAgents: Int? = nil) {
+                        self.delegation = delegation
+                        self.selfEdit = selfEdit
+                        self.selfShell = selfShell
+                        self.verifyResults = verifyResults
+                        self.escalate = escalate
+                        self.useWorktrees = useWorktrees
+                        self.maxParallel = maxParallel
+                        self.maxAgents = maxAgents
+                    }
+                }
+
+                public let conduct: Conduct?
+                public let instructions: String?
+
+                public init(conduct: Conduct? = nil, instructions: String? = nil) {
+                    self.conduct = conduct
+                    self.instructions = instructions
+                }
+            }
+
+            public let sessionId: String
+            public let provider: ProviderId?
+            public let model: String?
+            public let reasoning: Reasoning?
+            public let context1m: Bool?
+            public let permission: PermissionPolicy?
+            public let threadType: ThreadType?
+            public let goal: String?
+            public let threadRules: ThreadRules?
+
+            public init(sessionId: String, provider: ProviderId? = nil, model: String? = nil, reasoning: Reasoning? = nil, context1m: Bool? = nil, permission: PermissionPolicy? = nil, threadType: ThreadType? = nil, goal: String? = nil, threadRules: ThreadRules? = nil) {
+                self.sessionId = sessionId
+                self.provider = provider
+                self.model = model
+                self.reasoning = reasoning
+                self.context1m = context1m
+                self.permission = permission
+                self.threadType = threadType
+                self.goal = goal
+                self.threadRules = threadRules
+            }
+        }
+
+        public typealias Output = SessionMeta
+    }
+
+    public enum PlansGet: ContractMethod {
+        public static let name = "plans.get"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let projectId: Patch<String>?
+
+            public init(projectId: Patch<String>? = nil) {
+                self.projectId = projectId
+            }
+        }
+
+        public typealias Output = PlanScope
+    }
+
+    public enum PlansSet: ContractMethod {
+        public static let name = "plans.set"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let projectId: Patch<String>?
+            public let settings: PlanSettings?
+
+            public init(projectId: Patch<String>? = nil, settings: PlanSettings?) {
+                self.projectId = projectId
+                self.settings = settings
+            }
+
+            private enum CodingKeys: String, CodingKey {
+                case projectId, settings
+            }
+
+            public func encode(to encoder: any Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encodeIfPresent(projectId, forKey: .projectId)
+                try container.encode(settings, forKey: .settings)
+            }
+        }
+
+        public typealias Output = NoOutput
+    }
+
+    public enum ReviewGet: ContractMethod {
+        public static let name = "review.get"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let projectId: Patch<String>?
+
+            public init(projectId: Patch<String>? = nil) {
+                self.projectId = projectId
+            }
+        }
+
+        public typealias Output = ReviewScope
+    }
+
+    public enum ReviewSet: ContractMethod {
+        public static let name = "review.set"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let projectId: Patch<String>?
+            public let settings: ReviewSettings?
+
+            public init(projectId: Patch<String>? = nil, settings: ReviewSettings?) {
+                self.projectId = projectId
+                self.settings = settings
+            }
+
+            private enum CodingKeys: String, CodingKey {
+                case projectId, settings
+            }
+
+            public func encode(to encoder: any Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encodeIfPresent(projectId, forKey: .projectId)
+                try container.encode(settings, forKey: .settings)
+            }
+        }
+
+        public typealias Output = NoOutput
+    }
+
+    public enum ProjectSetPreamble: ContractMethod {
+        public static let name = "project.setPreamble"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let projectId: String
+            public let preamble: String?
+            public let enabled: Bool
+
+            public init(projectId: String, preamble: String?, enabled: Bool) {
+                self.projectId = projectId
+                self.preamble = preamble
+                self.enabled = enabled
+            }
+
+            private enum CodingKeys: String, CodingKey {
+                case projectId, preamble, enabled
+            }
+
+            public func encode(to encoder: any Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(projectId, forKey: .projectId)
+                try container.encode(preamble, forKey: .preamble)
+                try container.encode(enabled, forKey: .enabled)
+            }
+        }
+
+        public typealias Output = NoOutput
+    }
+
+    public enum WorkspaceSetPreamble: ContractMethod {
+        public static let name = "workspace.setPreamble"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let workspaceId: String
+            public let preamble: String?
+            public let enabled: Bool
+
+            public init(workspaceId: String, preamble: String?, enabled: Bool) {
+                self.workspaceId = workspaceId
+                self.preamble = preamble
+                self.enabled = enabled
+            }
+
+            private enum CodingKeys: String, CodingKey {
+                case workspaceId, preamble, enabled
+            }
+
+            public func encode(to encoder: any Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(workspaceId, forKey: .workspaceId)
+                try container.encode(preamble, forKey: .preamble)
+                try container.encode(enabled, forKey: .enabled)
+            }
+        }
+
+        public typealias Output = NoOutput
+    }
+
+    public enum RulesGet: ContractMethod {
+        public static let name = "rules.get"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let workspaceId: Patch<String>?
+
+            public init(workspaceId: Patch<String>? = nil) {
+                self.workspaceId = workspaceId
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let rules: OrchestrationRules
+            public let overridden: Bool
+
+            public init(rules: OrchestrationRules, overridden: Bool) {
+                self.rules = rules
+                self.overridden = overridden
+            }
+        }
+    }
 }

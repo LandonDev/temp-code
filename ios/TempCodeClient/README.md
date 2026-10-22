@@ -19,7 +19,7 @@ Sources/TempCodeClient
                 WebSocketConnection (+ URLSessionWebSocket), Transport, TempCodeSocket
   Environments/ PairedEnvironment + PairingLink, KeyStore (Keychain, in-memory), RemoteAPI, EnvironmentStore
   Cache/        Database (sqlite3), SessionCache
-  Client/       Subscriptions, EnvironmentClient (+ MovedThread), ClientRegistry, SearchRows, CrossHostSearch
+  Client/       Subscriptions, EnvironmentClient (+ MovedThread), ClientRegistry, SearchRows, CrossHostSearch, Actions, PlanFlow, ProjectSettings
   Rendering/    ThreadFold (rows → stamped items + BoardState), Transcript (item types), Board,
                 ResearchBoard, Fleet, PlanDoc, Inbox, DiffDocument (the diff screen's lines,
                 hunks and column geometry), MarkdownBlocks, MarkdownCache, PlanDocument,
@@ -509,6 +509,31 @@ Tests: `AccountsTests.swift` (every rule above on fixtures and on the fake
 socket) and the `AccountsLiveTests` suite in `LiveServerTests.swift`
 (`accounts.list`, the seeded pinned thread and failed thread, the push after
 `POST /accounts/headroom`).
+
+## The plan flow and project settings (thread 25)
+
+`Client/PlanFlow.swift`: `PlanFlowState.of(meta, session:)` is the plan
+page's header (`open` while the planner writes, `complete` once
+`plan_complete` stamped it and the thread is still live, `waiting` once it
+settled with no build, `started(buildId:title:type:)` once the host linked
+one; the title and type are nil when the build is on another host), `line`
+its words, `rowTag` the "Plan ready" tag of a complete plan with no build,
+`PlanOrigin.line(for:session:)` a build's "Planned in <title>", and
+`implementPlan(_:type:provider:model:reasoning:)` the one `plan.implement`
+call behind the Start sheet (gated on `operate`, the answer adopted).
+`Client/ProjectSettings.swift`: `Preamble` (the worktree slug, the word
+count, `{{name}}` substitution, the project → workspace precedence, the
+preview's sample values), `PreambleDraft` and `PreambleRow`'s words,
+`RulesPolicy.approves` over the generated model policy, the `Reviewers`
+picker helpers (options filtered by the rules with the set's model kept
+first, the ladder, the minute presets, the summary), `ReviewDraft` and
+`PlanDraft` (a scope follows the global set until `touch`; `useGlobal` goes
+back; `payload` is nil to follow, the set to override), `PlanBuild`'s model
+options and summary, and the client's `loadReviewScope`, `saveReview`,
+`loadPlanScope`, `savePlans`, `setPreamble` and `loadRules`; the saves run
+behind `adminBlock` (`ActionBlock.noAdmin`). Tests: `PlanFlowTests`,
+`ProjectSettingsTests`, and one live case that starts a build from the
+seeded waiting plan.
 
 ## Push (L6): the token to every host, taps to the card, the Live Activity
 

@@ -119,6 +119,36 @@ of every member under it with the host's name on each project header, the
 count summed, and one fold for both copies (the fold key is the pairing
 key). The default pairing pairs nothing.
 
+**Project settings.** The project header's menu opens the sheet
+(`Shell/ProjectSettingsSheet.swift`, presented from the root through
+`ProjectSettingsPresenter`, since a sheet on a menu item never shows) at the
+large detent with the sheet radius: an inset grouped list, three sections,
+one sentence of footer each, one Save top right that sends only the dirty
+set (review before plans) and is disabled until something changed; a
+failed save is one destructive line in the footer of the section that
+failed. **Preamble** has two rows that push the editor
+(`Shell/PreambleEditor.swift`): "Project rules" with its word count ("212
+words", "Off", "Workspace default · 80 words", "None") and "Workspace
+default". The editor is its own screen: Edit and Preview segments in the
+bar, the whole height for the text (the desktop's three placeholder lines
+while empty), the preview rendered with `{{project}}`, `{{host}}` and
+`{{worktree}}` substituted (the host's name, the project's name and its
+slug), a panel on the chrome step at the bottom with the "Apply to new
+threads" switch and the live word count rolling beside it, "Use workspace
+default" when the project has text of its own, the variables in code, and
+its own Save. **Reviews** and **Plans** (`Shell/ReviewSettings.swift`,
+`Shell/PlanSettings.swift`) follow the global set until a field changes;
+the footer's second sentence says which ("Following the global setting.",
+"Built-in defaults.", "This project's own setting.") and "Use global
+setting" appears only while overriding. The reviewer picker lists Codex and
+Claude from the catalog filtered by the host's orchestration rules, the set's
+own model kept first as "(not approved)" when the rules no longer approve
+it; the time limit is a menu of presets with the current value folded in.
+A key without admin sees every control disabled and one footnote at the top
+("This key can read these settings but not change them"); the editor opens
+read-only with the same line. The drafts and words are the client package's
+`Client/ProjectSettings.swift`, under Swift Testing.
+
 **Hosts on Home.** With one host there is no host header; its menu (the fleet
 switches), when a slot fills it, is an `ellipsis.circle` in the navigation
 bar before Settings. With several, each host's workspaces sit under a header
@@ -753,10 +783,20 @@ same two segments; it has no Start (its milestones are planned one at a
 time from the options card, see Project plan below). Plan
 renders the markdown file (`file.read` of `planPath`, polled 1.5 s running
 and 8 s idle while the screen shows) document-first, `body` size, generous
-measure, streaming in as it is written. Header action **Start** (L5) opens a
-sheet choosing
-Implementation or Orchestration. A thread stopped on a question forces the
-Chat segment with the question card in view.
+measure, streaming in as it is written. The page's header row (the state line and the action, in
+`PlanView`'s two slots; `Thread/PlanFlow.swift` on the client package's
+`PlanFlowState`) follows the plan flow of planFlow.ts and exists only once
+the plan is complete: "Plan complete" while the planner still speaks;
+"Waiting for you to start the build" with **Start**, which opens the Start
+sheet (Implementation first, Orchestration second) whose confirm calls
+`plan.implement`, so the host picks the title, the seed and the project's
+plan settings and the build is pushed; "Build started" with a chip naming
+the build, which pushes it (no chip when the build lives on another host).
+A key that cannot operate keeps the Start pill and the tap says why. The
+toolbar carries no Start or Build. A build shows "Planned in <title>" under
+its board's goal, a row that pushes the planning thread; a thread row of a
+complete plan with no build carries the tag "Plan ready". A thread stopped
+on a question forces the Chat segment with the question card in view.
 
 The page is a set document (`PlanView.swift`, type in `PlanStyles.swift`,
 blocks from the client package's `PlanDocument`), the way Notes or iA

@@ -15,6 +15,8 @@ public enum ActionBlock: Sendable, Hashable {
     case readOnly
     /// The key operates but does not approve.
     case noApprove
+    /// The key reads the settings but does not change them (admin).
+    case noAdmin
 
     /// The line shown in the composer field or under a card. `now` is clock
     /// milliseconds, for the retry countdown.
@@ -41,13 +43,15 @@ public enum ActionBlock: Sendable, Hashable {
             return "This key can read but not act"
         case .noApprove:
             return "This key can't approve"
+        case .noAdmin:
+            return "This key can read these settings but not change them"
         }
     }
 
     /// The host is the problem, not the key: a retry can lift it.
     public var isTransient: Bool {
         switch self {
-        case .readOnly, .noApprove, .halted, .unauthorized: false
+        case .readOnly, .noApprove, .noAdmin, .halted, .unauthorized: false
         default: true
         }
     }
@@ -83,6 +87,7 @@ public enum ActionError: Error, Hashable, Sendable {
     /// `forbidden: session.send needs operate` reads better as what to do.
     private static func plain(_ message: String) -> String {
         guard message.hasPrefix("forbidden") else { return message }
+        if message.contains("admin") { return ActionBlock.noAdmin.text(now: 0) }
         return message.contains("approve") ? ActionBlock.noApprove.text(now: 0) : ActionBlock.readOnly.text(now: 0)
     }
 }
@@ -261,7 +266,10 @@ public enum Actions {
     /// The block for an action needing `capability`, or nil when it may go.
     /// The key's standing comes first: it never changes by itself.
     public static func block(status: EnvironmentStatus, environment: PairedEnvironment, needs capability: Capability) -> ActionBlock? {
-        if !environment.allows(capability) { return capability == .approve && environment.allows(.operate) ? .noApprove : .readOnly }
+        if !environment.allows(capability) {
+            if capability == .admin { return .noAdmin }
+            return capability == .approve && environment.allows(.operate) ? .noApprove : .readOnly
+        }
         switch status.transport {
         case .open: return nil
         case .connecting: return .connecting
