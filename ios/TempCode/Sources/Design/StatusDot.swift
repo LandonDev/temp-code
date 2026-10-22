@@ -56,7 +56,7 @@ struct StatusDot: View {
         case dot(Color)
         case paused
         case stopped
-        case none
+        case empty
     }
 
     private var mark: Mark {
