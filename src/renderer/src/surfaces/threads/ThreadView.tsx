@@ -30,8 +30,8 @@ export type ThreadViewProps = ChatSource & {
 };
 
 /** The switch on a session's thread type; null and chat fall through to
- *  ChatView, and the project's master thread (CLAUDE.md "Master threads")
- *  to MasterView whatever its type. Every root thread carries its notes
+ *  ChatView, and a master thread (CLAUDE.md "Master threads") to
+ *  MasterView whatever its type. Every root thread carries its notes
  *  panel at the right edge (a subagent's notes read through its parent's
  *  digest instead). */
 export function ThreadView(props: ThreadViewProps) {

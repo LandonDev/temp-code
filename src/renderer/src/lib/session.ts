@@ -309,6 +309,8 @@ export type Session = {
   planThreadId?: string | null;
   /** The master thread this root thread belongs to (not a parent). */
   masterId?: string | null;
+  /** This root thread is a master: it runs a batch of root threads (CLAUDE.md "Master threads"). */
+  isMaster?: boolean;
   /** A queued thread's sibling: the session it waits for before it boots. */
   after?: string | null;
   /** Parent session for subagent children. */

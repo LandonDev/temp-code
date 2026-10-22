@@ -297,6 +297,7 @@ export function applyThreadMeta(
   if (changed("implementationId")) set({ implementationId: meta.implementationId ?? null });
   if (changed("planThreadId")) set({ planThreadId: meta.planThreadId ?? null });
   if (changed("masterId")) set({ masterId: meta.masterId ?? null });
+  if (changed("isMaster")) set({ isMaster: !!meta.isMaster });
   if (changed("after")) set({ after: meta.after ?? null });
   if (changed("parentId")) set({ parentId: meta.parentId });
   if (changed("agentType")) set({ agentType: meta.agentType });

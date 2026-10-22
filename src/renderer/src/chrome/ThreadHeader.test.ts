@@ -79,9 +79,9 @@ describe("chipMenuItems: the master pin", () => {
   const label = (c: StripChip, master = false) =>
     chipMenuItems(c, undefined, 0, master).find((i) => i.kind === "item" && i.id === "master")?.label;
 
-  it("offers Make master thread to a root thread in a project, Not the master to the master", () => {
+  it("offers Make master thread to a root thread in a project, Not a master to a master", () => {
     expect(label(chip("idle"))).toBe("Make master thread");
-    expect(label(chip("running"), true)).toBe("Not the master");
+    expect(label(chip("running"), true)).toBe("Not a master");
   });
 
   it("offers nothing to a thread outside a project or to a subagent", () => {

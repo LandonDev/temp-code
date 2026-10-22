@@ -268,9 +268,9 @@ describe('the rail row menu: the master pin', () => {
     return items[0]?.flatMap((i) => (i.kind === 'item' && i.id === 'master' ? [i.label] : [])) ?? []
   }
 
-  it('offers Make master thread to a root in a project, Not the master to the pinned one', () => {
+  it('offers Make master thread to a root in a project, Not a master to a master', () => {
     expect(openOn()).toEqual(['Make master thread'])
-    expect(openOn(new Set(['t0']))).toEqual(['Not the master'])
+    expect(openOn(new Set(['t0']))).toEqual(['Not a master'])
     expect(openOn(new Set(['other']))).toEqual(['Make master thread'])
   })
 

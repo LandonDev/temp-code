@@ -59,13 +59,13 @@ import {
   type SidebarItem,
 } from "../lib/sidebarRows";
 import type { AliaxPageId } from "../stores/shell";
-import { archive as archiveThread, interrupt, pause, resume } from "../lib/tcserver/commands";
+import { archive as archiveThread, interrupt, pause, resume, setMaster } from "../lib/tcserver/commands";
+import { masterMenuLabel, useMasterIds } from "../lib/masterThread";
 import { dormantByType, dormantThreads, focusedTree } from "../lib/threadStripModel";
 import {
   archiveProject,
   deleteProject,
   renameProject,
-  setProjectMaster,
 } from "../lib/tcserver/projects";
 import { sessionPrefetch } from "../lib/sessionPrefetch";
 import { useSessionMetas } from "../lib/tcserver/store";
@@ -281,12 +281,6 @@ function InlineRename({
   );
 }
 
-/** The ids pinned as masters (the flag on the thread's row), one set for every row. */
-function useMasterIds(): ReadonlySet<string> {
-  const metas = useSessionMetas();
-  return useMemo(() => new Set(metas.filter((m) => m.isMaster && !m.parentId).map((m) => m.id)), [metas]);
-}
-
 const menuAt = (anchor: HTMLElement) => {
   const rect = anchor.getBoundingClientRect();
   return { x: Math.max(8, rect.right - MENU_WIDTH), y: rect.bottom + 4 };
@@ -302,19 +296,18 @@ type RowActions = {
   onRename: (id: string, title: string) => void;
   onDelete: (thread: ThreadRow) => void;
   openMenu: (state: MenuState) => void;
-  /** Every project's pinned master thread (CLAUDE.md "Master threads"). */
+  /** The master threads (CLAUDE.md "Master threads"), any number per project. */
   masterIds?: ReadonlySet<string>;
 };
 
-/** The rail row's pin item: a root thread in a project may be made the
- *  project's master, and the master may be unpinned. */
+/** The rail row's pin item: a root thread in a project may be made a
+ *  master, and a master may stop being one. */
 export function masterMenuItem(
   thread: Pick<ThreadRow, "id" | "projectId">,
   masterIds: ReadonlySet<string> | undefined,
 ): ExplorerMenuItem | null {
   if (!thread.projectId) return null;
-  const master = !!masterIds?.has(thread.id);
-  return { kind: "item", id: "master", label: master ? "Not the master" : "Make master thread" };
+  return { kind: "item", id: "master", label: masterMenuLabel(!!masterIds?.has(thread.id)) };
 }
 
 /** Row sizes come from the ResizeObserver, which reports every row once on
@@ -395,8 +388,7 @@ const ChatRow = memo(function ChatRow({
         if (id === "rename") setRenaming(true);
         else if (id === "stop") void interrupt(thread.id);
         else if (id === "resume") void resume(thread.id);
-        else if (id === "master" && thread.projectId)
-          void setProjectMaster(thread.projectId, thread.id, !actions.masterIds?.has(thread.id));
+        else if (id === "master") void setMaster(thread.id, !actions.masterIds?.has(thread.id));
         else if (id === "delete") actions.onDelete(thread);
       },
     });

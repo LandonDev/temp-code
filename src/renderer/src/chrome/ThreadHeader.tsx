@@ -1,7 +1,7 @@
-import { sessionStore, useSessionMetas } from "../lib/tcserver/store";
+import { sessionStore } from "../lib/tcserver/store";
 import { bridgeableEnvironment, loadThreadBridge, setThreadBridge, useThreadBridge } from "../lib/macBridge";
 import type { MacBridgeThreadState } from "@server/shared/contract-macbridge";
-import { useCallback, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
 import type { ThreadRules } from "@server/shared/rules";
 import type { ThreadType } from "../lib/tcserver/types";
 import type { HeaderModel } from "../lib/threadHeaderModel";
@@ -20,7 +20,8 @@ import { ArchiveThreadDialog, ThreadResourcesDialog } from "./ThreadResourcesDia
 import { liveResources, loadThreadResources, startThreadResources, useThreadResources } from "../lib/threadResources";
 import { ThreadHostChip } from "./ThreadHostChip";
 import { IconButton } from "./TitleBar";
-import { setProjectMaster } from "../lib/tcserver/projects";
+import { masterMenuLabel, useMasterIds } from "../lib/masterThread";
+import { setMaster } from "../lib/tcserver/commands";
 
 /**
  * The deck title bar's thread surface: temp-code's strip and heading
@@ -93,8 +94,8 @@ export function chipMenuItems(chip: StripChip, bridge?: ChipBridge, resources = 
   }
   // What the thread created (worktrees, simulators, dev instances), with Remove per row.
   items.push({ kind: "sep" }, { kind: "item", id: "resources", label: resources ? `Resources (${resources})…` : "Resources…" });
-  // The project's master thread (CLAUDE.md "Master threads"): one root per project, or none.
-  if (t.projectId && !t.parentId) items.push({ kind: "item", id: "master", label: master ? "Not the master" : "Make master thread" });
+  // A master thread (CLAUDE.md "Master threads"): any root in a project, as many as the person wants.
+  if (t.projectId && !t.parentId) items.push({ kind: "item", id: "master", label: masterMenuLabel(master) });
   items.push({ kind: "sep" }, { kind: "item", id: "archive", label: resources ? "Archive…" : "Archive" });
   items.push({ kind: "sep" }, { kind: "item", id: "delete", label: "Delete…", danger: true });
   return items;
@@ -145,8 +146,7 @@ export function ThreadHeader({
   const menuBridgeState = useThreadBridge(menu?.chip.id);
   const menuResources = useThreadResources(menu?.chip.id);
   const menuBridge: ChipBridge | undefined = menuEnv && bridgeableEnvironment(menuEnv) ? { state: menuBridgeState } : undefined;
-  const metas = useSessionMetas();
-  const masterIds = useMemo(() => new Set(metas.filter((m) => m.isMaster && !m.parentId).map((m) => m.id)), [metas]);
+  const masterIds = useMasterIds();
   const menuMaster = !!menu && masterIds.has(menu.chip.id);
 
   const onPick = (id: string) => {
@@ -158,8 +158,7 @@ export function ThreadHeader({
     // With resources on the ledger the archive asks whether they go too (ArchiveThreadDialog).
     else if (id === "archive") (liveResources(chip.id).length ? setArchiving(chip) : onArchive(chip.id));
     else if (id === "resources") setResourcesFor(chip);
-    else if (id === "master" && chip.thread.projectId)
-      void setProjectMaster(chip.thread.projectId, chip.id, !menuMaster).catch((err) => console.warn("[master]", err));
+    else if (id === "master") void setMaster(chip.id, !menuMaster).catch((err) => console.warn("[master]", err));
     else if (id === "delete") setDeleting(chip);
     else if (id === "mac-bridge-rules") setBridgeRules(chip);
     else if (id === "mac-bridge") {

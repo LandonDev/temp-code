@@ -531,6 +531,13 @@ export async function archive(sessionId: string, archived: boolean): Promise<voi
   await link.request("session.archive", { sessionId, archived });
 }
 
+/** Make a root thread a master, or stop it being one (CLAUDE.md "Master threads"). */
+export async function setMaster(sessionId: string, master: boolean): Promise<void> {
+  const link = linkFor(sessionId);
+  if (sessionStore.isDraft(sessionId)) return;
+  await link.request("session.setMaster", { sessionId, master });
+}
+
 export async function pin(sessionId: string, pinned: boolean): Promise<void> {
   const link = linkFor(sessionId);
   if (sessionStore.isDraft(sessionId)) return;
