@@ -562,6 +562,7 @@ struct FleetUnpairedNote: View {
 /// each host by id, the hosts' names, the transport line of every host
 /// that is not open ("Reconnecting in 12 s", "Offline"), and how many
 /// agents the root spawned on hosts this phone is not paired with.
+@MainActor
 struct FleetGather {
     let agents: [Fleet.Agent]
     let clients: [String: EnvironmentClient]

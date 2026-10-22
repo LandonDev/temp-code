@@ -124,7 +124,7 @@ import TempCodeContract
         #expect(sections[0].agents.map(\.id) == ["run1", "run2", "watch"])
         #expect(sections[1].agents.map(\.id) == ["wait"])
         #expect(sections[2].agents.map(\.id) == ["fail", "done", "idle"])
-        #expect(Fleet.sections([]).isEmpty)
+        #expect(Fleet.sections([SessionMeta]()).isEmpty)
         #expect(Fleet.sections([meta("a", status: .waiting)]).map(\.group) == [.waiting])
         #expect(Fleet.group(.paused) == .done)
         #expect(Fleet.group(nil) == .done)

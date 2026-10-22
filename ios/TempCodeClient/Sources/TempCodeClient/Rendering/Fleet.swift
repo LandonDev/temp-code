@@ -180,15 +180,18 @@ public enum Fleet {
     public static func gather(rootId: String, rootHost: String, hosts: [Host]) -> [Agent] {
         let ordered = hosts.filter { $0.id == rootHost } + hosts.filter { $0.id != rootHost }
         var seen = Set<String>()
-        var out: [Agent] = []
-        for host in ordered {
+        var out: [(agent: Agent, host: Int)] = []
+        for (index, host) in ordered.enumerated() {
             for meta in children(of: rootId, in: host.sessions) {
                 let agent = Agent(meta: meta, environmentId: host.id, remote: host.id != rootHost)
                 guard seen.insert(agent.id).inserted else { continue }
-                out.append(agent)
+                out.append((agent, index))
             }
         }
-        return out.sorted { (rank($0.meta.status), $0.meta.createdAt) < (rank($1.meta.status), $1.meta.createdAt) }
+        // Rank, then age, then the host order, so two hosts' rows never trade places between renders.
+        return out
+            .sorted { (rank($0.agent.meta.status), $0.agent.meta.createdAt, $0.host) < (rank($1.agent.meta.status), $1.agent.meta.createdAt, $1.host) }
+            .map(\.agent)
     }
 
     /// `sections(_:)` over agents with hosts: the same groups, the same order.
