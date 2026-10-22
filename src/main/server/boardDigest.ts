@@ -98,7 +98,9 @@ export class BoardDigests {
   /** first reads in flight, with the rows appended meanwhile */
   private readonly reading = new Map<string, { done: Promise<void>; live: EventRow[] }>()
   private readonly states = new Map<string, string | null>()
-  /** the digest last pushed per child (JSON), so an unchanged one is never sent */
+  /** the digest last pushed per child (JSON), so an unchanged one is never
+   *  sent; dropped when the child moves while nobody watches, since a later
+   *  answer may then show a digest no push carried */
   private readonly sent = new Map<string, string>()
   /** children to look at again: sessionId → its master */
   private readonly dirty = new Map<string, string>()
@@ -180,7 +182,10 @@ export class BoardDigests {
     const due = [...this.dirty]
     this.dirty.clear()
     for (const [sessionId, masterId] of due) {
-      if (!this.deps.watched(masterId)) continue
+      if (!this.deps.watched(masterId)) {
+        this.sent.delete(sessionId)
+        continue
+      }
       const meta = this.deps.meta(sessionId)
       if (!meta || meta.masterId !== masterId || meta.parentId || meta.archived) continue
       const digest = this.digest(meta)
@@ -210,7 +215,11 @@ export class BoardDigests {
     }
     if (isStreamed(row.event)) return
     const master = this.deps.masterOf(row.sessionId)
-    if (!master || !this.deps.watched(master)) return
+    if (!master) return
+    if (!this.deps.watched(master)) {
+      this.sent.delete(row.sessionId)
+      return
+    }
     if (this.lines.has(row.sessionId)) this.touch(row.sessionId, master)
     // A read in flight, or a child that joined while its master was on
     // screen (its tail is read now, this row with it): looked at once it is in.
@@ -218,7 +227,10 @@ export class BoardDigests {
   }
 
   private touch(sessionId: string, masterId: string): void {
-    if (!this.deps.watched(masterId)) return
+    if (!this.deps.watched(masterId)) {
+      this.sent.delete(sessionId)
+      return
+    }
     this.dirty.set(sessionId, masterId)
     if (this.timer) return
     this.timer = setTimeout(() => this.flush(), this.pushEveryMs)

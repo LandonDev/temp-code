@@ -1522,6 +1522,27 @@ describe('the board: batch.board, digests and their watchers', () => {
     expect((await h.digests.board('m', () => state('m'))).digests.a.last).toBe('Unseen.')
   })
 
+  it('a digest that moved while nobody watched is pushed again when it moves back', async () => {
+    vi.useFakeTimers()
+    let watching = true
+    const h = board({ watched: () => watching })
+    await h.digests.board('m', () => state('m'))
+    const said = (seq: number, text: string) => h.append(h.row('a', seq, { type: 'assistant-text', text, delta: false, msgId: `m${seq}`, blockIndex: 0 } as AgentEvent))
+    said(5, 'A')
+    vi.advanceTimersByTime(250)
+    expect(h.pushes.at(-1)?.digest.last).toBe('A')
+    // Unwatched, it says B: no push; a new watcher's answer shows B.
+    watching = false
+    said(6, 'B')
+    watching = true
+    expect((await h.digests.board('m', () => state('m'))).digests.a.last).toBe('B')
+    // Back to A: the push goes out, though A was the last one pushed.
+    said(7, 'A')
+    vi.advanceTimersByTime(250)
+    expect(h.pushes.at(-1)?.digest.last).toBe('A')
+    expect(h.pushes.filter((p) => p.sessionId === 'a')).toHaveLength(2)
+  })
+
   it("a socket watches a master for a minute after its batch.board, or while it has the master on screen; never another master's", () => {
     let now = 0
     const watch = new BoardWatch(() => now)
