@@ -56,6 +56,7 @@
 		5E94305D77CCDC74A173C510 /* ProjectPlanStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC3C0B2E870A25CE9A0FFF91 /* ProjectPlanStyles.swift */; };
 		5F4BE132C2D7AC3A0EAD2715 /* PushDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0569978934342B78AA271564 /* PushDelegate.swift */; };
 		5F73AFAFA25453523C16CA96 /* AgentDetailScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5205F9177D20AB027FD7DFB0 /* AgentDetailScreen.swift */; };
+		5FE1B16646A33B09FA1F1161 /* Glass.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70755BDC0AE581F0B20CD960 /* Glass.swift */; };
 		60B418CA37F7BCBDB6312C70 /* HomeRowModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C07E016517D9A2DE012E6F5B /* HomeRowModels.swift */; };
 		61930567B4B51D8A351A4A6C /* ThreadActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38091D4AA307C8AE81C19643 /* ThreadActivity.swift */; };
 		6314676328C74CBBC9E337DA /* Pressable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 458CA933FF6A32D8B310B3D6 /* Pressable.swift */; };
@@ -233,6 +234,7 @@
 		6AB775DFEAC401CE7C5E00C6 /* SearchRowViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchRowViews.swift; sourceTree = "<group>"; };
 		6D2535CBE81AC0372C62332F /* TempCodeActivity.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = TempCodeActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		6D36905AD6DB2091BCE8AD3E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		70755BDC0AE581F0B20CD960 /* Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glass.swift; sourceTree = "<group>"; };
 		709C36838327A4F049A08ECF /* ProjectSettingsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectSettingsSheet.swift; sourceTree = "<group>"; };
 		71FD17E331D1A7892718F0B3 /* Glyphs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glyphs.swift; sourceTree = "<group>"; };
 		728030024F26E8BF8E4FE9CF /* BoardOutcomes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardOutcomes.swift; sourceTree = "<group>"; };
@@ -366,6 +368,7 @@
 		316A60D00C7FF13082F442B6 /* Design */ = {
 			isa = PBXGroup;
 			children = (
+				70755BDC0AE581F0B20CD960 /* Glass.swift */,
 				71FD17E331D1A7892718F0B3 /* Glyphs.swift */,
 				641553FAFC34373347B4887C /* HostMark.swift */,
 				F7058E3A970F021E13295DB8 /* LiveText.swift */,
@@ -766,6 +769,7 @@
 				6A6C387ED4631DDA31979076 /* FleetSwitches.swift in Sources */,
 				A556DA576836A86B8B54F96C /* FleetView.swift in Sources */,
 				39A74CE131F601E205716F1B /* Formatting.swift in Sources */,
+				5FE1B16646A33B09FA1F1161 /* Glass.swift in Sources */,
 				8BA4DAAA0205B3E066819A2C /* Glyphs.swift in Sources */,
 				60B418CA37F7BCBDB6312C70 /* HomeRowModels.swift in Sources */,
 				3F55B406D1444F914CD71435 /* HomeRows.swift in Sources */,
