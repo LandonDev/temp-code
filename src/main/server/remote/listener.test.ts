@@ -815,3 +815,93 @@ describe('remote.settings.set', () => {
     local.ws.close()
   })
 })
+
+describe('the relay (remote/relay.ts): a lane to another host through this one', () => {
+  const MAC = 'env_relayMac000000000000a'
+  const wsBase = (): string => base.replace('http', 'ws')
+  const ticketFor = async (token: string): Promise<string> => (await call('POST', '/api/ticket', { headers: bearer(token) })).body.ticket
+  const until = async (test: () => boolean): Promise<void> => {
+    for (let i = 0; i < 200 && !test(); i++) await sleep(25)
+  }
+
+  it('refuses a lane to a host that is not registered with 503, and names hosts in /api/hello to a known caller only', async () => {
+    const { token } = await server.remoteAuth.createKey({ name: 'phone-relay-0', audience: 'client', caps: ['operate'], createdBy: 'local' })
+    expect(await upgradeStatus(`${wsBase()}/ws?ticket=${await ticketFor(token)}&host=${MAC}`)).toBe(503)
+    expect((await call('GET', '/api/hello')).body.hosts).toBeUndefined()
+    expect(Array.isArray((await call('GET', '/api/hello', { headers: bearer(token) })).body.hosts)).toBe(true)
+  })
+
+  it('carries a phone to a registered host: the hello under its id, frames both ways, presence, revoke and the drop', async () => {
+    // The "Mac": an admin link that registers with the relay offer and serves relay.* peer calls.
+    const mac = await open(`${wsBase()}/ws?ticket=${await ticketFor(await adminKey())}`)
+    await firstFrame(mac)
+    const lanes: string[] = []
+    const answered: unknown[] = []
+    mac.ws.on('message', (d) => {
+      const frame = JSON.parse(String(d))
+      if (frame.push !== 'peer.call') return
+      const { callId, method, params } = frame
+      const reply = (result: unknown): void => void mac.request('peer.reply', { callId, ok: true, result })
+      if (method === 'relay.open') {
+        lanes.push(params.args.socketId)
+        reply({ ok: true, contract: 1 })
+      } else if (method === 'relay.frame') {
+        answered.push(params.args.frame)
+        reply({ ok: true })
+        void mac.request('relay.frames', { from: MAC, socketId: params.args.socketId, frames: [{ id: params.args.frame.id, ok: true, result: `answered ${params.args.frame.method} on the Mac` }] })
+      } else reply({ ok: true })
+    })
+    expect(
+      (await mac.request('peer.register', { from: MAC, offers: ['mac-bridge', 'relay'], name: 'Studio', presence: { screen: 'unlocked', power: 'awake', at: 1 }, build: { release: 9, version: '1.0.9', sha: null, platform: 'darwin' } })).ok
+    ).toBe(true)
+    const { key, token } = await server.remoteAuth.createKey({ name: 'phone-relay', audience: 'client', caps: ['operate'], createdBy: 'local' })
+    expect((await call('GET', '/api/hello', { headers: bearer(token) })).body.hosts).toEqual([
+      expect.objectContaining({ environmentId: MAC, name: 'Studio', platform: 'darwin', link: 'up', screen: 'unlocked', power: 'awake' })
+    ])
+    // A direct lane's hello names the host too.
+    const direct = await open(`${wsBase()}/ws?ticket=${await ticketFor(token)}`)
+    expect((await firstFrame(direct)).hosts).toEqual([expect.objectContaining({ environmentId: MAC, link: 'up' })])
+
+    const phone = await open(`${wsBase()}/ws?ticket=${await ticketFor(token)}&host=${MAC}`)
+    expect(await firstFrame(phone)).toMatchObject({
+      push: 'hello',
+      environmentId: MAC,
+      via: server.environmentId,
+      caps: ['operate', 'read'],
+      key: { id: key.id, name: 'phone-relay' },
+      build: { version: '1.0.9' },
+      presence: { environmentId: MAC, link: 'up' }
+    })
+    await until(() => lanes.length === 1)
+    expect(await phone.request('session.list', {})).toEqual({ id: expect.any(String), ok: true, result: 'answered session.list on the Mac' })
+    expect(answered).toEqual([{ id: expect.any(String), method: 'session.list', params: {} }])
+    // The box's own gate and the relay's refusals never cross.
+    expect((await phone.request('app.listThreads', { sessionId: 'x' })).error).toBe('forbidden: app.listThreads is local-only')
+    expect((await phone.request('remote.keys.list', {})).error).toBe('forbidden: remote.keys.list needs admin')
+    expect((await phone.request('doctor.get', {})).error).toBe('forbidden: doctor.get does not relay to another host')
+    expect((await phone.request('remote.push.status', {})).ok).toBe(true)
+    expect(answered).toHaveLength(1)
+
+    // The Mac locks: every remote socket hears it; the screen method is refused, the rest runs.
+    await mac.request('peer.presence', { from: MAC, presence: { screen: 'locked', power: 'awake', at: 2 } })
+    await until(() => phone.frames.some((f) => f.push === 'presence'))
+    expect(phone.frames.find((f) => f.push === 'presence').hosts[0]).toMatchObject({ environmentId: MAC, screen: 'locked' })
+    await until(() => direct.frames.some((f) => f.push === 'presence'))
+    expect((await phone.request('host.device.openXcode', { udid: 'U' })).error).toBe('unavailable: the Mac is locked')
+    // A host may speak only for itself, on its own socket.
+    expect((await direct.request('peer.presence', { from: MAC, presence: { screen: 'unlocked', power: 'awake', at: 3 } })).error).toMatch(/^forbidden: /)
+
+    // Revoking the key closes its relayed lane with every other socket.
+    expect(server.remoteAuth.revokeKey(key.id)).toBe(true)
+    expect(await phone.closed).toMatchObject({ code: 4001 })
+    expect(await direct.closed).toMatchObject({ code: 4001 })
+
+    // The Mac's link drops: the host is listed down, and a new lane is refused 503.
+    mac.ws.close()
+    await mac.closed
+    const { token: again } = await server.remoteAuth.createKey({ name: 'phone-relay-2', audience: 'client', caps: ['operate'], createdBy: 'local' })
+    await until(() => server.relay.presenceOf(MAC)?.link === 'down')
+    expect((await call('GET', '/api/hello', { headers: bearer(again) })).body.hosts[0]).toMatchObject({ environmentId: MAC, link: 'down' })
+    expect(await upgradeStatus(`${wsBase()}/ws?ticket=${await ticketFor(again)}&host=${MAC}`)).toBe(503)
+  })
+})

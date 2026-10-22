@@ -20,6 +20,7 @@ import { createServer } from 'node:http'
 import { visibleCatalog } from '@shared/catalog'
 import { refusalCodeOf } from './failureKind'
 import { ClientRequestSchema, type ClientRequest, type ServerFrame, type ServerPush, type ServerResponse } from '@shared/contract'
+import type { SessionChanges } from '@shared/wire'
 import {
   CONTRACT_VERSION,
   LOCAL_PRINCIPAL,
@@ -67,6 +68,11 @@ import { startRemoteListener, type RemoteListener } from './remote/listener'
 import { fenceRequest } from './remote/fence'
 import { createMcpHandler } from './remote/mcp'
 import { Notifier } from './remote/notifier'
+import { MacPresenceWatcher, type PresenceSource } from '../presence'
+import { HostRelay, PeerRelayTransport } from './remote/relay'
+import { RelayServer, relayOffers } from './remote/relayServe'
+import type { PowerState, ScreenState } from '@shared/contract-relay'
+import type { MacPresence } from '@shared/contract-relay'
 import { apnsFromEnv } from './remote/apns'
 import { ActivityFeed, PushRegistry } from './remote/push'
 import { deliverWebhooks, webhookPayload } from './remote/webhooks'
@@ -148,7 +154,8 @@ import { PeerPublish } from './remote/peerPublish'
 import { ReleaseAnnouncer } from './releaseAnnounce'
 import { DEFAULT_RULES } from '@shared/rules'
 import { DEFAULT_THREAD_DEFAULTS } from '@shared/defaults'
-import { DEFAULT_PLAN_SETTINGS } from '@shared/plans'
+import { DEFAULT_PLAN_SETTINGS, type PlanScope } from '@shared/plans'
+import type { ReviewScope } from '@shared/review'
 import {
   blameRange,
   aheadCount,
@@ -266,18 +273,36 @@ export interface RunningServer {
   notifier: Notifier
   /** The shared Aliax accounts poll; the embedded Aliax pages nudge it after a change. */
   accounts: AccountsService
+  /** The app's notes, so a proof can seed one in-process. */
+  notes: Notes
   /** Account ownership and sync with the hosts this machine holds admin keys for (remote/accountSync.ts). */
   accountSync: AccountSync
   /** What this host runs: the hello's `build` (buildInfo.ts). */
   build: BuildFacts
   /** Master's release number from GitHub (deployDrift.ts); `focus()` when a window comes forward. */
   masterRelease: MasterReleaseWatcher
+  /** The Mac bridge (remote/macBridge.ts); a proof seeds calls through it (TEMP_CODE_E2E_SEED). */
+  macBridge: MacBridge
   /** What the desktop paints at boot before any socket is up (launchMirror.ts). */
   launchMirror: LaunchMirror
+  /** The box side of the relay (remote/relay.ts): the relayed hosts' presence and the phones' lanes. */
+  relay: HostRelay
+  /** The host side of the relay (remote/relayServe.ts): lanes this host serves for a carrier. */
+  relayServer: RelayServer
+  /** This host's screen and power state (src/main/presence.ts). */
+  presence: PresenceSource
   /** A stored agent page of a thread on `host`, over the peer link; null when the host has no such page. */
   remotePage: (host: string, sessionId: string, pageId: string) => Promise<string | null>
   /** A slice of a media file on `host` by its token, over the peer link; null when the host has no such token. */
   remoteMedia: (host: string, token: string, offset: number, length: number) => Promise<MediaRange | null>
+  /** The master threads' batch engine (batch.ts); proofs seed a row through `seedRow`. */
+  batches: Batches
+  /** The thread resources ledger (threadResources.ts); proofs record rows through `record`. */
+  resources: ThreadResources
+  /** The devices hub (devices/hostDevices.ts), over the `devices` option's gatherer. */
+  hostDevices: HostDevicesHub
+  /** The project plans (projectPlan.ts); proofs pin and link through it. */
+  projectPlans: ProjectPlans
   close: () => Promise<void>
 }
 
@@ -325,6 +350,10 @@ export async function startServer(
     spawnGatewayChild?: SpawnGatewayChild
     /** This app's updater (update.ts selfUpdate): fetch a version just published, by this host's Publisher or on a peer's word. The installed Mac app only. */
     selfUpdate?: (version: string) => Promise<SelfUpdateOutcome>
+    /** The local devices gatherer, in place of the `isMacHost()` pick: a proof injects a fake on Linux (scripts/ios-client-test-server.ts); null for none. */
+    devices?: MacDevices | null
+    /** This host's screen and power state for the relay (src/main/presence.ts); default unknown/awake, never changing. */
+    presence?: PresenceSource & { set?: (patch: Partial<Pick<MacPresence, 'screen' | 'power'>>) => MacPresence }
   } = {}
 ): Promise<RunningServer> {
   bootMark('server-start')
@@ -472,6 +501,23 @@ export async function startServer(
   // The main process's own links to the hosts this machine shares accounts
   // with, and the sync over them (thread V). The core's vault hooks reach the
   // sync through accountSyncHooks (aliax.ts configured the core before this).
+  // The relay, this host's side (remote/relayServe.ts, docs/box.md "The relay"):
+  // lanes a carrier (the box) opens for its phones and bots, served by this
+  // host's own attach(), and this host's presence published on every link.
+  const presence = options.presence ?? new MacPresenceWatcher({ initial: { screen: 'unknown', power: 'awake' } })
+  const relayServer = new RelayServer({
+    environmentId,
+    attach: (ws, principal) => attach(ws as unknown as WebSocket, principal, 'remote'),
+    link: (id) => {
+      const link = peers.get(id)
+      return link?.connected ? (method, params, opts) => link.request(method, params, opts) : null
+    },
+    environments: () => listEnvironments(store).map((e) => ({ id: e.id, name: e.name })),
+    presence,
+    facade: () => ({ registry, origin: null, environmentId }),
+    deliversNotices: () => apns !== null || hub !== null,
+    build
+  })
   const peers = new Peers(
     { store, environmentId },
     {
@@ -481,15 +527,18 @@ export async function startServer(
         void harnessSync.syncWith(id, 'link-up')
         void memorySync.syncWith(id, 'link-up')
         void sessionMover.settleWith(id)
+        relayServer.linkUp(id)
         void macBridge.linkUp(id)
         peerDeploy.linkUp(id)
         accounts.nudge()
       },
       onClose: (id) => {
+        relayServer.linkDown(id)
         macBridge.linkDown(id)
         accounts.nudge()
       },
       onPush: (from, push) => {
+        if (relayServer.onPeerPush(from, push)) return
         if (hostDevices.onPeerPush(from, push)) return
         if (crossHostThreads.onPeerPush(from, push)) return
         if (crossHostAgents.onPeerPush(from, push)) return
@@ -582,9 +631,11 @@ export async function startServer(
       const link = peers.get(id)
       return link?.connected ? (method, params, opts) => link.request(method, params, opts) : null
     },
-    offers: () => [...crossHostOffers(), ...hostDevicesOffers(), ...macPublishOffers()],
+    offers: () => [...crossHostOffers(), ...hostDevicesOffers(), ...macPublishOffers(), ...relayOffers()],
     // The thread cap counts the threads a host started here that are live (crossHostThreads below).
-    liveThreads: (envId) => crossHostThreads.liveThreadsOf(envId)
+    liveThreads: (envId) => crossHostThreads.liveThreadsOf(envId),
+    // The relay's host row on the carrier: this host's name, presence and build.
+    registration: () => relayServer.registration()
   })
   // Threads another host starts here (docs/box.md "Threads across hosts"):
   // served over the Mac's link as peer.call pushes, and on this listener as
@@ -612,6 +663,36 @@ export async function startServer(
     },
     publisher: hostJobs.publish
   })
+  // Every remote client socket of this host, for the relay's presence push.
+  const remoteSinks = new Set<(push: ServerPush) => void>()
+  // The relay, the carrier's side (remote/relay.ts): a phone or bot paired
+  // with this host reaches a host that registered with the relay offer.
+  const hostRelay = new HostRelay({
+    environmentId,
+    transport: new PeerRelayTransport(peerCalls, environmentId),
+    calls: peerCalls,
+    store,
+    broadcast: (push) => {
+      for (const sink of remoteSinks) sink(push)
+    },
+    pushLocal: async (req, principal) => {
+      const answer = await handleRemote(req, { ...remoteContext, ceiling: principal.caps, createdBy: principal.keyId })
+      if (!answer.handled) throw new Error(`${req.method} is not answered here`)
+      return answer.result
+    },
+    deliverNotice: async (from, relayed) => {
+      const hostId = process.env.TEMP_CODE_HUB_HOST_ID || environmentId
+      // An older host sends no kind: read it off the event.
+      const n = { ...relayed, kind: relayed.kind ?? (relayed.event === 'needs_you' ? ('waiting' as const) : relayed.event) }
+      const jobs: Promise<unknown>[] = []
+      if (hub) jobs.push(hub.notify({ ...n, environmentId: from }))
+      if (apns) jobs.push(pushRegistry.deliver({ ...n, environmentId: from }))
+      const targets = remoteAuth.webhookTargets(n.event)
+      if (targets.length > 0) jobs.push(deliverWebhooks(targets, webhookPayload(n, hostId, from)))
+      await Promise.all(jobs)
+    },
+    contract: CONTRACT_VERSION
+  })
   // Devices on a Mac (devices/hostDevices.ts, docs/box.md "Devices on the Mac"):
   // gathered on this Mac while a viewer is open, or asked of a registered Mac
   // over the peer link; the ledger join names the thread that holds each one.
@@ -619,9 +700,12 @@ export async function startServer(
     const meta = store.getSession(id)
     return meta ? { title: meta.title, status: meta.status } : null
   }
-  const macDevices = isMacHost()
-    ? new MacDevices({ environmentId, ledger: () => readSimulatorHolders(db, environmentId), session: sessionLookup })
-    : null
+  const macDevices =
+    options.devices !== undefined
+      ? options.devices
+      : isMacHost()
+        ? new MacDevices({ environmentId, ledger: () => readSimulatorHolders(db, environmentId), session: sessionLookup })
+        : null
   const hostDevices = new HostDevicesHub({
     environmentId,
     local: macDevices,
@@ -982,12 +1066,18 @@ export async function startServer(
         environmentId,
         version: appVersion,
         build,
-        attach: (ws, principal) => attach(ws, principal),
+        // `host` makes the socket a relayed lane to that host (remote/relay.ts).
+        attach: (ws, principal, host) => (host ? hostRelay.attachRelayed(ws, principal, host) : attach(ws, principal)),
+        relayOnline: (id) => hostRelay.online(id),
+        hosts: () => hostRelay.hosts(),
         mcp: createMcpHandler({
           auth: remoteAuth,
           registry,
           version: appVersion,
-          origin: () => pairingOrigin(readRemoteSettings(store), remote?.port ?? 0)
+          origin: () => pairingOrigin(readRemoteSettings(store), remote?.port ?? 0),
+          environmentId,
+          hostName: hostname(),
+          relay: hostRelay.facadeHosts()
         }),
         // The built renderer (electron-vite build); a dev tree without it answers 503.
         ui: createUiHandler({ rendererDir: join(options.appPath ?? process.cwd(), 'out', 'renderer'), assets: options.assets })
@@ -1048,6 +1138,9 @@ export async function startServer(
     // Master's release number, when it changes: this host's own sockets only.
     const localSink = principal.kind === 'local' ? (push: ServerPush): void => sendFrame(push) : null
     if (localSink) localSinks.add(localSink)
+    // The relay's presence push: every remote client socket (a relayed lane's are the relay's own).
+    const remoteSink = principal.kind === 'remote' ? (push: ServerPush): void => sendFrame(push) : null
+    if (remoteSink) remoteSinks.add(remoteSink)
     /** The host-log subscriptions this socket asked for (hostJobs.ts). */
     const offHostLogs: (() => void)[] = []
     const offResources = resources.onChange((sessionId, list) => emitPush({ push: 'resources', sessionId, resources: list }))
@@ -1102,10 +1195,12 @@ export async function startServer(
     })
     // A thread's notes changed: every client follows (the panel, the rows).
     const offNotes = registry.notes.onChange((sessionId, doc) => emitPush({ push: 'notes', sessionId, doc }))
-    // A master's batch moved a step, or one child's digest moved: only the
-    // sockets watching that master's board hear it (boardWatch.ts).
+    // A master's batch moved a step, or one child's digest moved: the
+    // sockets watching that master's board hear the delta (boardWatch.ts);
+    // a socket that never asked for a board (the phone) gets the whole state.
     const offBatch = batchRuns.onChange((state, push) => {
-      if (boardWatch.isWatching(connection, state.masterId)) emitPush({ push: 'batch', state: push })
+      if (boardWatch.isWatching(connection, state.masterId)) emitPush({ push: 'batch-delta', state: push })
+      else if (!boardWatch.asksBoards(connection)) emitPush({ push: 'batch', state })
     })
     const offBoard = boardDigests.onPush((p) => {
       if (boardWatch.isWatching(connection, p.masterId)) emitPush({ push: 'board', ...p })
@@ -1151,7 +1246,9 @@ export async function startServer(
       contract: CONTRACT_VERSION,
       caps: principalCaps(principal),
       ...(principal.kind === 'remote' ? { key: { id: principal.keyId, name: principal.name } } : {}),
-      build
+      build,
+      // The hosts reachable through this one (remote/relay.ts), for a remote caller.
+      ...(principal.kind === 'remote' && hostRelay.hosts().length > 0 ? { hosts: hostRelay.hosts() } : {})
     })
     // The boot's resume count: already known to a late socket, announced to an open one.
     if (bootResumer.notice) sendFrame({ push: 'boot-resume', ...bootResumer.notice })
@@ -1246,6 +1343,31 @@ export async function startServer(
         // A Mac pulling a staged mac.writeFile, only on the socket the call went out on (macWriteStage.ts).
         if (req.method === 'peer.pull')
           return sendFrame({ id: req.id, ok: true, result: handlePeerPull(macWriteStages, { connection, remote: principal.kind === 'remote' }, req.params) })
+        // The relay (remote/relay.ts): a host's presence and its lanes' frames, each only
+        // from the socket that host registered on.
+        if (req.method === 'peer.presence' || req.method === 'relay.frames' || req.method === 'relay.closed' || req.method === 'relay.notice') {
+          if (principal.kind !== 'remote') throw new Error(`forbidden: ${req.method} is for another host's main process`)
+          if (peerCalls.connectionOf(req.params.from) !== connection) throw new Error(`forbidden: ${req.params.from} is not registered on this socket`)
+          switch (req.method) {
+            case 'peer.presence':
+              peerCalls.touch(connection, req.params.presence)
+              return sendFrame({ id: req.id, ok: true, result: hostRelay.onPeerPresence(req.params.from, req.params.presence) })
+            case 'relay.frames':
+              peerCalls.touch(connection)
+              return sendFrame({ id: req.id, ok: true, result: hostRelay.onFrames(req.params.from, req.params.socketId, req.params.frames) })
+            case 'relay.closed':
+              return sendFrame({ id: req.id, ok: true, result: hostRelay.onClosed(req.params.from, req.params.socketId, req.params.reason) })
+            case 'relay.notice':
+              return sendFrame({ id: req.id, ok: true, result: hostRelay.onNotice(req.params.from, req.params.notice) })
+          }
+        }
+        // A proof seam: this isolated instance's screen and power state (src/main/presence.ts).
+        if (req.method === 'presence.set') {
+          const set = (presence as { set?: (patch: { screen?: ScreenState; power?: PowerState }) => unknown }).set
+          if (process.env.TEMP_CODE_E2E_PRESENCE !== '1' || !process.env.TEMP_CODE_USER_DATA || !set)
+            throw new Error('presence.set is a proof seam (TEMP_CODE_E2E_PRESENCE=1 on an isolated instance)')
+          return sendFrame({ id: req.id, ok: true, result: set.call(presence, req.params) })
+        }
         // Another host reporting on a thread it runs for this one (remote/crossHostThreads.ts): a settle, or a batch landing.
         if (req.method === 'crossHost.settled' || req.method === 'crossHost.landing') {
           if (principal.kind !== 'remote') throw new Error(`forbidden: ${req.method} is for another host's main process`)
@@ -1676,7 +1798,7 @@ export async function startServer(
                   (req.params.projectId ? registry.getPlanSettings(null) : null) ??
                   DEFAULT_PLAN_SETTINGS,
                 overridden: scoped !== null
-              }
+              } satisfies PlanScope
             })
             break
           }
@@ -1794,7 +1916,7 @@ export async function startServer(
                 override: projectId ? registry.getReviewSettings(projectId) : null,
                 global: registry.getReviewSettings(null),
                 ...registry.effectiveReview(projectId)
-              }
+              } satisfies ReviewScope
             })
             break
           }
@@ -1858,7 +1980,8 @@ export async function startServer(
           case 'session.changes': {
             const changes = listChanges.since(req.params.afterSeq, req.params.generation)
             if (changes.reset) {
-              sendFrame({ id: req.id, ok: true, result: { reset: true, seq: changes.seq, generation: changes.generation } })
+              const result: SessionChanges = { reset: true, seq: changes.seq, generation: changes.generation }
+              sendFrame({ id: req.id, ok: true, result })
               break
             }
             const sessions: SessionMeta[] = []
@@ -1868,11 +1991,8 @@ export async function startServer(
               if (meta) sessions.push(meta)
               else removed.push(id)
             }
-            sendFrame({
-              id: req.id,
-              ok: true,
-              result: { reset: false, seq: changes.seq, generation: changes.generation, sessions, removed }
-            })
+            const result: SessionChanges = { reset: false, seq: changes.seq, generation: changes.generation, sessions, removed }
+            sendFrame({ id: req.id, ok: true, result })
             break
           }
           case 'session.events':
@@ -2338,6 +2458,7 @@ export async function startServer(
       unsubscribeAccounts?.()
       offMacBridge?.()
       if (localSink) localSinks.delete(localSink)
+      if (remoteSink) remoteSinks.delete(remoteSink)
       for (const off of offHostLogs) off()
       offResources()
       heldListeners.delete(onHeld)
@@ -2457,6 +2578,8 @@ export async function startServer(
     if (targets.length === 0) return
     return deliverWebhooks(targets, webhookPayload(n, process.env.TEMP_CODE_HUB_HOST_ID || environmentId)).then(() => undefined)
   })
+  // A host with no delivery of its own sends its notices through the hosts it links to (remote/relayServe.ts).
+  notifier.onNotice((n) => relayServer.onNotice(n))
   notifier.start()
 
   return {
@@ -2464,6 +2587,9 @@ export async function startServer(
     environmentId,
     accountSync,
     launchMirror,
+    relay: hostRelay,
+    relayServer,
+    presence,
     remotePage: async (host, sessionId, pageId) => {
       const link = peers.get(host)
       if (!link) throw new Error('no link to that host')
@@ -2487,8 +2613,14 @@ export async function startServer(
     store,
     gateway,
     accounts: m3a.accounts,
+    notes: m3a.notes,
     build,
     masterRelease,
+    batches: batchRuns,
+    resources,
+    hostDevices,
+    projectPlans,
+    macBridge,
     close: async () => {
       masterRelease.stop()
       notifier.stop()
@@ -2511,6 +2643,8 @@ export async function startServer(
       memorySync.close()
       uploads.close()
       sessionMover.close()
+      relayServer.close()
+      hostRelay.close()
       macBridge.close()
       crossHostThreads.close()
       hostDevices.close()

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BOARD_WATCH_MS, type BatchBoard, type BatchPushState, type BatchState } from '@shared/contract-batch'
 import type { DeployStatus, HostLogPush } from '@shared/contract-host'
 import type { AgentEvent, EventRow, SessionMeta } from '@shared/events'
-import { Batches, handleBatch, releaseTag, spawnShellStep, type BatchesDeps, type PublishRun } from './batch'
+import { Batches, handleBatch, releaseOutcome, releaseTag, spawnShellStep, type BatchesDeps, type PublishRun } from './batch'
 import { BoardDigests, type BoardPush } from './boardDigest'
 import { BoardWatch } from './boardWatch'
 import { FocusSet } from './focus'
@@ -1587,5 +1587,191 @@ describe('the board: batch.board, digests and their watchers', () => {
     expect(watch.watched('n')).toBe(false)
     watch.drop(1)
     expect(watch.watched('m')).toBe(false)
+    // A socket that asked once reads deltas from then on; one that never asked gets the whole state.
+    expect(watch.asksBoards(1)).toBe(false)
+    watch.ask(3, 'm')
+    expect(watch.asksBoards(3)).toBe(true)
+    expect(watch.asksBoards(2)).toBe(false)
+  })
+})
+
+describe('Batches: one end per cycle', () => {
+  it('a child that goes idle again with nothing new never re-runs the end; a new landing does', async () => {
+    const w = world()
+    const b = w.make()
+    w.set('b', { status: 'idle' })
+    b.landed(w.landed('a'))
+    await b.review('m')
+    expect(w.runs.map((r) => r.step)).toEqual(['gate', 'release'])
+    // A retry loop: the child resumes and settles idle again, three times.
+    for (let i = 0; i < 3; i++) {
+      w.set('a', { status: 'running' })
+      await b.review('m')
+      expect(b.open('m')).toBe(true)
+      w.set('a', { status: 'idle' })
+      await b.review('m')
+    }
+    expect(w.runs.map((r) => r.step)).toEqual(['gate', 'release'])
+    expect(w.reports.map((r) => r.status)).toEqual(['done'])
+    expect(b.open('m')).toBe(false)
+    // A landing opens the next cycle.
+    b.landed(w.landed('b'))
+    await b.review('m')
+    expect(w.runs.map((r) => r.step)).toEqual(['gate', 'release', 'gate', 'release'])
+    expect(w.reports.map((r) => r.status)).toEqual(['done', 'done'])
+  })
+
+  it('a failed publish, then a child idling again: no fresh release, no second publish', async () => {
+    const w = world()
+    const b = w.make()
+    b.setRules('m', { steps: [S.land, S.gate, S.release, S.publish] })
+    w.set('b', { status: 'idle' })
+    b.landed(w.landed('a'))
+    const review = b.review('m')
+    await flush()
+    w.publish.finish({ ok: false, exit: 1, version: '1.0.277', text: 'the release checkout has uncommitted changes' })
+    await review
+    expect(steps(b.get('m')).publish[0]).toBe('failed')
+    w.set('a', { status: 'running' })
+    await b.review('m')
+    w.set('a', { status: 'idle' })
+    await b.review('m')
+    await flush()
+    expect(w.runs.map((r) => r.step)).toEqual(['gate', 'release'])
+    expect(w.publish.calls).toHaveLength(1)
+    expect(steps(b.get('m')).publish[0]).toBe('failed')
+  })
+
+  it('a child that joins after the end opens a cycle, one that leaves does not; a rules call re-runs the end', async () => {
+    const w = world()
+    const b = w.make()
+    w.set('b', { status: 'idle' })
+    b.landed(w.landed('a'))
+    await b.review('m')
+    expect(w.runs).toHaveLength(2)
+    // b archived: the batch shrinks, nothing runs.
+    w.set('b', { archived: true })
+    await b.review('m')
+    expect(w.runs).toHaveLength(2)
+    // A new thread started into the batch (not adopted) runs and settles: the end runs on it.
+    w.sessions.set('c', meta('c', { masterId: 'm', createdAt: 9, status: 'running' }))
+    await b.review('m')
+    w.set('c', { status: 'done' })
+    await b.review('m')
+    expect(w.runs).toHaveLength(4)
+    // The master's batch_rules (even the same steps) is the hand re-run.
+    b.setRules('m', {})
+    await flush()
+    await b.review('m')
+    expect(w.runs).toHaveLength(6)
+  })
+
+  it('archive-children at the end does not start another cycle', async () => {
+    const w = world()
+    const b = w.make()
+    b.setRules('m', { then: 'archive-children' })
+    w.set('b', { status: 'idle' })
+    b.landed(w.landed('a'))
+    await b.review('m')
+    expect(w.sessions.get('a')?.archived).toBe(true)
+    await b.review('m')
+    expect(w.runs.map((r) => r.step)).toEqual(['gate', 'release'])
+  })
+
+  it('a row from before the cycle field takes its children as seen: an old batch does not run again on the upgrade', async () => {
+    const w = world()
+    const b = w.make()
+    w.set('b', { status: 'idle' })
+    b.landed(w.landed('a'))
+    await b.review('m')
+    b.flush()
+    // The stored row as an older build wrote it: no ranChildren.
+    const key = [...w.store.settingsWithPrefix('')].find(([, v]) => v.includes('"masterId":"m"'))![0]
+    const raw = JSON.parse(w.store.getSetting(key)!)
+    delete raw.ranChildren
+    w.store.setSetting(key, JSON.stringify(raw))
+    const fresh = w.make()
+    await fresh.review('m')
+    w.set('a', { status: 'running' })
+    await fresh.review('m')
+    w.set('a', { status: 'idle' })
+    await fresh.review('m')
+    expect(w.runs).toHaveLength(2)
+  })
+})
+
+describe('Batches: a child whose turn failed', () => {
+  const capped: NonNullable<SessionMeta['failure']> = { kind: 'rate_limited', account: 'acct', summary: 'Usage limit reached on acct', cause: 'the account spent its window' }
+
+  it('idle on a failed turn is not done: it blocks the end as failed, named, the master told once; cleared, the end runs', async () => {
+    const w = world()
+    const b = w.make()
+    w.set('b', { status: 'idle' })
+    b.landed(w.landed('a'))
+    w.set('b', { status: 'idle', failure: capped })
+    await b.review('m')
+    expect(b.get('m').blocked).toEqual({ sessionId: 'b', why: 'failed' })
+    expect(w.runs).toHaveLength(0)
+    expect(b.open('m')).toBe(true)
+    expect(w.reports.map((r) => r.status)).toEqual(['blocked'])
+    expect(w.reports[0].text).toContain('failed: Usage limit reached on acct')
+    // It retries and fails again: still blocked, not told twice, nothing tagged.
+    w.set('b', { status: 'running', failure: null })
+    await b.review('m')
+    w.set('b', { status: 'idle', failure: capped })
+    await b.review('m')
+    expect(w.runs).toHaveLength(0)
+    expect(w.reports).toHaveLength(1)
+    // A turn that ends well clears the failure: the end runs.
+    w.set('b', { status: 'idle', failure: null })
+    await b.review('m')
+    expect(b.get('m').blocked).toBeNull()
+    expect(w.runs.map((r) => r.step)).toEqual(['gate', 'release'])
+  })
+})
+
+describe('Batches: a release with nothing new', () => {
+  const none = 'nothing to release since release-276 (package.json 1.0.276)'
+
+  it('the release step is skipped with release.ts\'s words, no gate row says passed, and publish takes the existing v1.0.N', async () => {
+    const w = world()
+    const b = w.make()
+    b.setRules('m', { steps: [S.land, S.gate, S.release, S.publish] })
+    w.setOutcome((o) => (o.step === 'release' ? { log: none } : {}))
+    w.set('b', { status: 'idle' })
+    b.landed(w.landed('a'))
+    const review = b.review('m')
+    await flush()
+    expect(steps(b.get('m')).release).toEqual(['skipped', 'nothing to release since release-276'])
+    expect(w.publish.calls[0].args.version).toBe('1.0.276')
+    expect(w.rows.m.filter((e) => e.type === 'notice' && e.kind === 'gate')).toHaveLength(1)
+    w.publish.finish({ ok: true, exit: 0, version: '1.0.276', text: 'Published 1.0.276 in 4m' })
+    await review
+    expect(steps(b.get('m')).publish[0]).toBe('passed')
+    expect(w.reports.at(-1)?.text).toContain('nothing to release since release-276')
+  })
+
+  it('a deploy after a skipped release runs (master without a publish), never "needs a release"', async () => {
+    const w = world()
+    const b = w.make()
+    b.setRules('m', { steps: [S.land, S.gate, S.release, S.deploy] })
+    w.setOutcome((o) => (o.step === 'release' ? { log: none } : {}))
+    w.set('b', { status: 'idle' })
+    b.landed(w.landed('a'))
+    await b.review('m')
+    await flush()
+    expect(w.deploy.requested).toEqual(['master'])
+    expect(steps(b.get('m')).deploy[0]).toBe('running')
+  })
+
+  it('batch_gate answers it in words; releaseOutcome reads both lines', async () => {
+    const w = world()
+    const b = w.make()
+    w.setOutcome((o) => (o.step === 'release' ? { log: none } : {}))
+    b.landed(w.landed('a'))
+    expect(await b.gate(w.sessions.get('m')!)).toBe('passed in 1m 12s · nothing to release since release-276')
+    expect(releaseOutcome(none)).toEqual({ tag: 'release-276', fresh: false })
+    expect(releaseOutcome('released v277 (tag release-277, package.json 1.0.277)')).toEqual({ tag: 'release-277', fresh: true })
+    expect(releaseOutcome('stub: release passed on master')).toBeNull()
   })
 })

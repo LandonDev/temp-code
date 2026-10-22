@@ -29,6 +29,24 @@ enum LiveServer {
     static var threadCrossHost: String { environment["TC_TEST_THREAD_CROSS_HOST"]! }
     static var threadChat: String { environment["TC_TEST_THREAD_CHAT"]! }
 
+    /// Thread 28's relayed seed, one fake Mac per state (`state` is the wire's
+    /// `relayState` word); empty on a server without it.
+    struct RelayHost: Decodable {
+        let environmentId: String
+        let name: String
+        let state: String
+    }
+    static var relayHosts: [RelayHost] {
+        guard let raw = environment["TC_TEST_RELAY_HOSTS"], let data = raw.data(using: .utf8) else { return [] }
+        return (try? JSONDecoder().decode([RelayHost].self, from: data)) ?? []
+    }
+    static func relayHost(_ state: String) -> RelayHost? { relayHosts.first { $0.state == state } }
+
+    /// A relayed lane's environment: the carrier's origin and key under the relayed host's id.
+    static func relayedEnvironment(_ host: RelayHost) -> PairedEnvironment {
+        PairedEnvironment(id: host.environmentId, name: host.name, origin: baseURL, caps: [.read], keyId: keyId, keyName: "ios-test", addedAt: 0, via: environmentId)
+    }
+
     /// One control call; answers the JSON object.
     static func control(_ path: String, _ body: [String: Any]? = nil) async throws -> [String: Any] {
         var request = URLRequest(url: controlURL.appending(path: path))
@@ -49,6 +67,22 @@ enum LiveServer {
         let keys = InMemoryKeyStore()
         try keys.set(key, for: environmentId)
         return keys
+    }
+
+    /// The admin key the host detail's tests read with (iOS 21); absent, those tests are skipped.
+    static var hasAdmin: Bool { environment["TC_TEST_ADMIN_KEY"] != nil && environment["TC_TEST_ADMIN_KEY_ID"] != nil }
+    static var seedBoxId: String { environment["TC_TEST_SEED_BOX_ID"] ?? "" }
+    static var deployLogLines: Int { Int(environment["TC_TEST_DEPLOY_LOG_LINES"] ?? "") ?? 0 }
+
+    /// An open socket on the admin key.
+    static func adminSocket() async throws -> TempCodeSocket {
+        let keys = InMemoryKeyStore()
+        try keys.set(environment["TC_TEST_ADMIN_KEY"]!, for: environmentId)
+        let paired = PairedEnvironment(id: environmentId, name: "test host", origin: baseURL, caps: [.read, .operate, .approve, .admin], keyId: environment["TC_TEST_ADMIN_KEY_ID"]!, keyName: "ios-test-admin", addedAt: 0)
+        let socket = TempCodeSocket(environment: paired, keys: keys)
+        await socket.start()
+        _ = await until { await socket.status.transport == .open }
+        return socket
     }
 
     static func secondEnvironment() -> PairedEnvironment {
@@ -381,5 +415,216 @@ struct LiveServerTests {
         #expect(PathHost.environment(ofMediaURL: url) == primary.environment.id)
         await primary.stop()
         await second.stop()
+    }
+
+    /// Mac-hosted threads through the box (thread 29): the relayed lanes against thread 28's seed.
+    @Suite(.enabled(if: LiveServer.relayHosts.count == 4, "needs thread 28's relayed seed"), .serialized)
+    @MainActor
+    struct LiveRelayTests {
+        @Test func `hello over http lists the relayed hosts with their state`() async throws {
+            let hello = try await RemoteAPI().hello(origin: LiveServer.baseURL, key: LiveServer.key)
+            let hosts = try #require(hello.hosts)
+            #expect(Set(hosts.map(\.environmentId)) == Set(LiveServer.relayHosts.map(\.environmentId)))
+            let down = try #require(LiveServer.relayHost("unreachable"))
+            let row = try #require(hosts.first { $0.environmentId == down.environmentId })
+            #expect(RelayState(row) == .unreachable)
+            #expect(row.link.rawValue == "down")
+        }
+
+        @Test func `a lane to the available host opens under its own id and lists the seeded threads`() async throws {
+            let host = try #require(LiveServer.relayHost("available"))
+            let client = EnvironmentClient(environment: LiveServer.relayedEnvironment(host), keys: try LiveServer.keys(), cache: try SessionCache.inMemory())
+            await client.start()
+            #expect(await LiveServer.until { client.status.transport == .open })
+            #expect(client.status.lastHello?.environmentId == host.environmentId)
+            #expect(client.status.lastHello?.via == LiveServer.environmentId)
+            #expect(client.status.lastHello?.presence?.environmentId == host.environmentId)
+            #expect(await LiveServer.until { client.sessions.contains { $0.id == LiveServer.threadA } })
+            await client.stop()
+        }
+
+        @Test func `the locked host answers reads and keeps Send admitted`() async throws {
+            let host = try #require(LiveServer.relayHost("locked"))
+            let client = EnvironmentClient(environment: LiveServer.relayedEnvironment(host), keys: try LiveServer.keys(), cache: try SessionCache.inMemory())
+            await client.start()
+            #expect(await LiveServer.until { client.status.transport == .open && client.presence != nil })
+            #expect(client.relayState == .locked)
+            #expect(client.relayBlock == nil)
+            // The read key is the block, never the lock.
+            #expect(client.operateBlock == .readOnly)
+            let page = try await client.request(Methods.SessionList.self, .init(archived: nil, projectId: nil, cursor: nil))
+            #expect(!page.sessions.isEmpty)
+            await client.stop()
+        }
+
+        @Test func `the asleep host refuses with one line`() async throws {
+            let host = try #require(LiveServer.relayHost("asleep"))
+            let client = EnvironmentClient(environment: LiveServer.relayedEnvironment(host), keys: try LiveServer.keys(), cache: try SessionCache.inMemory())
+            await client.start()
+            #expect(await LiveServer.until { client.status.transport == .open && client.presence != nil })
+            #expect(client.relayState == .asleep)
+            #expect(client.relayBlock == .hostAsleep(subject: "the Mac"))
+            do {
+                _ = try await client.request(Methods.SessionList.self, .init(archived: nil, projectId: nil, cursor: nil))
+                Issue.record("an asleep host should refuse")
+            } catch let error as TransportError {
+                guard case .server(_, let message) = error else { throw error }
+                let refusal = try #require(RelayRefusal(message: message))
+                #expect(refusal.kind == .asleep)
+                #expect(refusal.line == "The Mac is asleep")
+                #expect(ActionError.wrap(error) == .refused(message: "The Mac is asleep", forbidden: false))
+            }
+            await client.stop()
+        }
+
+        @Test func `the unreachable host's lane is held without an attempt`() async throws {
+            let host = try #require(LiveServer.relayHost("unreachable"))
+            let hello = try await RemoteAPI().hello(origin: LiveServer.baseURL, key: LiveServer.key)
+            let row = try #require(hello.hosts?.first { $0.environmentId == host.environmentId })
+            let client = EnvironmentClient(environment: LiveServer.relayedEnvironment(host), keys: try LiveServer.keys(), cache: try SessionCache.inMemory())
+            await client.applyRelayState(.unreachable, presence: row, since: nil)
+            await client.start()
+            try? await Task.sleep(for: .seconds(3))
+            #expect(client.status.transport == .offline)
+            #expect(client.status.attempts == 0)
+            #expect(client.status.lastError == RelayWords.heldLine(row, now: .now))
+            #expect(client.status.lastHello == nil)
+            await client.stop()
+        }
+
+        @Test func `a presence flip reaches the carrier's socket and moves the state`() async throws {
+            let locked = try #require(LiveServer.relayHost("locked"))
+            let directory = FileManager.default.temporaryDirectory.appending(path: "tc-live-relay-\(UUID().uuidString)")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try JSONEncoder().encode([LiveServer.environment()]).write(to: directory.appending(path: "environments.json"))
+            let keys = try LiveServer.keys()
+            let store = EnvironmentStore(directory: directory, keys: keys)
+            let registry = ClientRegistry(store: store, cache: try SessionCache.inMemory())
+            await registry.sync()
+            #expect(await LiveServer.until { registry.relayed.state(of: locked.environmentId) == .locked })
+            #expect(await LiveServer.until { registry.client(locked.environmentId) != nil })
+            _ = try await LiveServer.control("/presence", ["environmentId": locked.environmentId, "screen": "unlocked"])
+            #expect(await LiveServer.until { registry.relayed.state(of: locked.environmentId) == .available })
+            #expect(await LiveServer.until { registry.client(locked.environmentId)?.presence.map { RelayState($0) } == .available })
+            _ = try await LiveServer.control("/presence", ["environmentId": locked.environmentId, "screen": "locked"])
+            #expect(await LiveServer.until { registry.relayed.state(of: locked.environmentId) == .locked })
+            for client in registry.clients.values { await client.stop() }
+        }
+    }
+}
+
+/// The accounts the test server seeds (two Claude accounts, one thread on an
+/// account, one project pinned, a failed thread with the host's verdict) as
+/// the phone reads them. Nested in the live suite like the action tests.
+extension LiveServerTests {
+@MainActor
+@Suite(.enabled(if: LiveServer.isConfigured && LiveServer.hasOperateKey, "needs the live server: bun run ios:test:client"), .serialized)
+struct AccountsLiveTests {
+    @Test func `accounts.list over the read key answers two Claude profiles with headroom for both`() async throws {
+        let socket = TempCodeSocket(environment: LiveServer.environment(), keys: try LiveServer.keys())
+        await socket.start()
+        #expect(await LiveServer.until { await socket.status.transport == .open })
+        let snapshot = try await socket.request(Methods.AccountsList.self, NoParams())
+        let claude = snapshot.providers.claude
+        #expect(claude.profiles.map(\.name) == ["work@example.com", "spare@example.com"])
+        #expect(claude.profiles.first?.nickname == "work")
+        #expect(claude.profiles.first?.color == "#5b8def")
+        #expect(claude.reports.map(\.profileName) == ["work@example.com", "spare@example.com"])
+        #expect(claude.headroom?["work@example.com"]?.room == 0.8)
+        #expect(claude.headroom?["spare@example.com"]?.room == 0.1)
+        #expect(snapshot.providers.codex.profiles.isEmpty)
+        await socket.stop()
+    }
+
+    @Test func `a thread on an account names it, and a failed thread carries the host's verdict`() async throws {
+        let client = try await LiveServer.actingClient()
+        #expect(await LiveServer.until { client.session("ios-pinned") != nil && client.session("ios-failed") != nil })
+        #expect(client.session("ios-pinned")?.account == "work@example.com")
+        let failed = try #require(client.session("ios-failed"))
+        #expect(failed.status == .error)
+        #expect(failed.failure?.kind == .rateLimited)
+        #expect(failed.failureSummary?.isEmpty == false)
+        let scope = try #require(AccountScope.of(client.session("ios-question")!, projects: client.projects, workspaces: client.workspaces))
+        #expect(scope.sourceLine == "From project billing-page")
+        await client.stop()
+    }
+
+    @Test func `a usage change on the host reaches the phone as an accounts push`() async throws {
+        let client = try await LiveServer.actingClient()
+        await client.loadAccounts(force: true)
+        #expect(client.accounts.snapshot?.providers.claude.profiles.count == 2)
+        let before = client.accounts.receivedAt
+        _ = try await LiveServer.control("/accounts/headroom", ["name": "work@example.com", "usedPercent": 77])
+        #expect(await LiveServer.until(3) {
+            client.accounts.receivedAt != before
+                && client.accounts.snapshot?.providers.claude.reports.first { $0.profileName == "work@example.com" }?.windows.first { $0.label == "5h" }?.usedPercent == 77
+        })
+        _ = try await LiveServer.control("/accounts/headroom", ["name": "work@example.com", "usedPercent": 12])
+        await client.stop()
+    }
+}
+}
+
+/// The host detail's Activity sections against the seeded server (iOS 21):
+/// the hello's build, the fixture Mac's devices, the two seeded Mac bridge
+/// calls, the finished deploy with its log, and a read key's refusals.
+@Suite(.enabled(if: LiveServer.isConfigured && LiveServer.hasAdmin, "needs the live server's admin key: bun run ios:test:client"), .serialized)
+struct LiveHostExtrasTests {
+    @Test func `the hello carries the host's build`() async throws {
+        let socket = TempCodeSocket(environment: LiveServer.environment(), keys: try LiveServer.keys())
+        await socket.start()
+        #expect(await LiveServer.until { await socket.status.transport == .open })
+        let build = try #require(await socket.status.lastHello?.build)
+        #expect(build.version == "1.0.\(build.release)")
+        await socket.stop()
+    }
+
+    @Test func `an admin key reads the devices, the Mac bridge's calls, the deploy and its log`() async throws {
+        let socket = try await LiveServer.adminSocket()
+        // The test server's fake gatherer (scripts/lib/ios-seeds.ts fakeMacDevicesDeps).
+        let hosts = try await socket.request(Methods.HostDevicesHosts.self, .init())
+        let mac = try #require(hosts.first { $0.local })
+        let report = try await socket.request(Methods.HostDevicesWatch.self, .init(environmentId: mac.environmentId))
+        #expect(report.environmentId == mac.environmentId)
+        #expect(report.simulators.filter { $0.state == .booted }.map(\.name) == ["iPhone 17"])
+        #expect(report.phones.map(\.connection) == [.paired])
+        #expect(report.xcode?.name == "Xcode-26")
+        _ = try await socket.request(Methods.HostDevicesUnwatch.self, .init(environmentId: mac.environmentId))
+
+        let activity = try await socket.request(Methods.MacBridgeActivity.self, .init())
+        #expect(activity.hosts.contains { $0.environmentId == LiveServer.seedBoxId })
+        #expect(MacBridgeWords.sorted(activity.calls).map(\.status) == [.running, .held])
+        let held = try #require(activity.calls.first { $0.status == .held }?.held)
+        #expect(MacBridgeWords.heldLine(held) == "Waiting for the Mac · load 12.3 of 8 · 3rd in line")
+
+        let deploy = try await socket.request(Methods.HostDeployStatus.self, .init())
+        #expect(deploy.phase == .done)
+        #expect(deploy.exit == 0)
+        #expect(deploy.installed)
+        let log = try await socket.request(Methods.HostLog.self, .init(job: .deploy))
+        #expect(LogTail.tail(log.text).count == LiveServer.deployLogLines)
+
+        let harness = try await socket.request(Methods.HarnessStatus.self, .init())
+        #expect(harness.environments.contains { $0.id == LiveServer.seedBoxId })
+        await socket.stop()
+    }
+
+    @Test func `a read key is refused the deploy and the sync state, and may not stop a call`() async throws {
+        let socket = TempCodeSocket(environment: LiveServer.environment(), keys: try LiveServer.keys())
+        await socket.start()
+        #expect(await LiveServer.until { await socket.status.transport == .open })
+        for refusal in [
+            { try await socket.request(Methods.HostDeployStatus.self, .init()) as Any },
+            { try await socket.request(Methods.HarnessStatus.self, .init()) as Any },
+            { try await socket.request(Methods.MacBridgeStop.self, .init(id: "mb_seed_held")) as Any },
+        ] as [@Sendable () async throws -> Any] {
+            do {
+                _ = try await refusal()
+                Issue.record("a read key was answered")
+            } catch let error as TransportError {
+                #expect(error.isForbidden)
+            }
+        }
+        await socket.stop()
     }
 }

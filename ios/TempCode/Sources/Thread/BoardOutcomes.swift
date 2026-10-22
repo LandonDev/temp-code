@@ -33,10 +33,10 @@ struct OutcomeRows: View {
 /// failed step. A failed run opens its last 20 lines on a tap, the shape of
 /// a tool chip's body; a passed one never expands.
 struct GateRow: View {
-    let gate: NoticeEvent.Gate
+    let gate: GateNotice
     @State private var open: Bool
 
-    init(gate: NoticeEvent.Gate) {
+    init(gate: GateNotice) {
         self.gate = gate
         // The proof's `TC_TEST_OPEN=gate` shoots the failed row with its tail out.
         _open = State(initialValue: !gate.ok && TestHooks.open == "gate")
@@ -94,7 +94,7 @@ struct GateRow: View {
 /// approve capability and is off the phone's wire), so the summary says
 /// "merge held" and the desktop holds the override.
 struct ReviewRow: View {
-    let review: NoticeEvent.Review
+    let review: ReviewNotice
     /// When the notice landed (the row's time; the payload carries none).
     let ts: Int
     let client: EnvironmentClient

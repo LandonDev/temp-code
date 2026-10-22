@@ -11,8 +11,8 @@ export interface BoardFocus {
 const NO_FOCUS: BoardFocus = { focusOf: () => null, focused: () => [] }
 
 /**
- * Which sockets watch which master's board: the `board` and `batch` pushes
- * go only to them (server/index.ts). A socket watches a master while the
+ * Which sockets watch which master's board: the `board` and `batch-delta`
+ * pushes go only to them (server/index.ts). A socket watches a master while the
  * thread it has on screen is the master (`session.focus`), and for
  * BOARD_WATCH_MS after it asked `batch.board` for it (a board shown beside
  * the focused pane asks again inside the minute).
@@ -39,6 +39,11 @@ export class BoardWatch {
     if (this.focus.focusOf(connection) === masterId) return true
     const at = this.asked.get(connection)?.get(masterId)
     return at !== undefined && this.now() - at < this.ms
+  }
+
+  /** Has this socket ever asked `batch.board`: such a client reads the delta push, never the whole `batch` state. */
+  asksBoards(connection: number): boolean {
+    return this.asked.has(connection)
   }
 
   /** Does any socket hear the master's pushes now (nothing is computed for a master nobody watches). */

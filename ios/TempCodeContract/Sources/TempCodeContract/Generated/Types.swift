@@ -258,6 +258,32 @@ public struct Failure: Codable, Hashable, Sendable {
     }
 }
 
+public struct BuildFacts: Codable, Hashable, Sendable {
+    public let release: Int
+    public let version: String
+    public let sha: String?
+    public let platform: String
+
+    public init(release: Int, version: String, sha: String?, platform: String) {
+        self.release = release
+        self.version = version
+        self.sha = sha
+        self.platform = platform
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case release, version, sha, platform
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(release, forKey: .release)
+        try container.encode(version, forKey: .version)
+        try container.encode(sha, forKey: .sha)
+        try container.encode(platform, forKey: .platform)
+    }
+}
+
 public struct PreambleStamp: Codable, Hashable, Sendable {
     public let text: String
     public let words: Int
@@ -312,46 +338,11 @@ public struct ReviewFinding: Codable, Hashable, Sendable {
 }
 
 public struct ReviewNotice: Codable, Hashable, Sendable {
-    public enum Outcome: RawRepresentable, Codable, Hashable, Sendable {
-        case pass
-        case held
-        case timeout
-        case failed
-        case mergedAnyway
-        case skipped
-        /// A value this build does not know; `rawValue` keeps it.
-        case unknown(String)
-
-        public init(rawValue: String) {
-            switch rawValue {
-            case "pass": self = .pass
-            case "held": self = .held
-            case "timeout": self = .timeout
-            case "failed": self = .failed
-            case "merged-anyway": self = .mergedAnyway
-            case "skipped": self = .skipped
-            default: self = .unknown(rawValue)
-            }
-        }
-
-        public var rawValue: String {
-            switch self {
-            case .pass: "pass"
-            case .held: "held"
-            case .timeout: "timeout"
-            case .failed: "failed"
-            case .mergedAnyway: "merged-anyway"
-            case .skipped: "skipped"
-            case .unknown(let value): value
-            }
-        }
-    }
-
     public let runId: String
     public let reviewerId: String?
     public let provider: String
     public let model: String
-    public let outcome: Outcome
+    public let outcome: ReviewOutcome
     public let branch: String
     public let target: String
     public let blocking: [ReviewFinding]
@@ -361,7 +352,7 @@ public struct ReviewNotice: Codable, Hashable, Sendable {
     public let reason: String?
     public let minutes: Double?
 
-    public init(runId: String, reviewerId: String? = nil, provider: String, model: String, outcome: Outcome, branch: String, target: String, blocking: [ReviewFinding], minor: [ReviewFinding], merged: Bool, pushed: Bool, reason: String? = nil, minutes: Double? = nil) {
+    public init(runId: String, reviewerId: String? = nil, provider: String, model: String, outcome: ReviewOutcome, branch: String, target: String, blocking: [ReviewFinding], minor: [ReviewFinding], merged: Bool, pushed: Bool, reason: String? = nil, minutes: Double? = nil) {
         self.runId = runId
         self.reviewerId = reviewerId
         self.provider = provider
@@ -708,6 +699,124 @@ public struct SessionChanges: Codable, Hashable, Sendable {
     }
 }
 
+public struct ThreadResource: Codable, Hashable, Sendable {
+    public let id: String
+    public let sessionId: String
+    public let environmentId: String
+    public let kind: ThreadResourceKind
+    public let identifier: String
+    public let label: String
+    public let branch: String?
+    public let createdAt: Int
+    public let removeRequestedAt: Int?
+    public let removedAt: Int?
+    public let note: String?
+
+    public init(id: String, sessionId: String, environmentId: String, kind: ThreadResourceKind, identifier: String, label: String, branch: String?, createdAt: Int, removeRequestedAt: Int?, removedAt: Int?, note: String?) {
+        self.id = id
+        self.sessionId = sessionId
+        self.environmentId = environmentId
+        self.kind = kind
+        self.identifier = identifier
+        self.label = label
+        self.branch = branch
+        self.createdAt = createdAt
+        self.removeRequestedAt = removeRequestedAt
+        self.removedAt = removedAt
+        self.note = note
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, sessionId, environmentId, kind, identifier, label, branch, createdAt, removeRequestedAt, removedAt, note
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(sessionId, forKey: .sessionId)
+        try container.encode(environmentId, forKey: .environmentId)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(identifier, forKey: .identifier)
+        try container.encode(label, forKey: .label)
+        try container.encode(branch, forKey: .branch)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(removeRequestedAt, forKey: .removeRequestedAt)
+        try container.encode(removedAt, forKey: .removedAt)
+        try container.encode(note, forKey: .note)
+    }
+}
+
+public struct ThreadResourceRemoval: Codable, Hashable, Sendable {
+    public enum Outcome: RawRepresentable, Codable, Hashable, Sendable {
+        case removed
+        case waiting
+        case failed
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "removed": self = .removed
+            case "waiting": self = .waiting
+            case "failed": self = .failed
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .removed: "removed"
+            case .waiting: "waiting"
+            case .failed: "failed"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let id: String
+    public let outcome: Outcome
+    public let note: String?
+
+    public init(id: String, outcome: Outcome, note: String?) {
+        self.id = id
+        self.outcome = outcome
+        self.note = note
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, outcome, note
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(outcome, forKey: .outcome)
+        try container.encode(note, forKey: .note)
+    }
+}
+
+public struct SessionBatchResult: Codable, Hashable, Sendable {
+    public struct Failed: Codable, Hashable, Sendable {
+        public let sessionId: String
+        public let error: String
+
+        public init(sessionId: String, error: String) {
+            self.sessionId = sessionId
+            self.error = error
+        }
+    }
+
+    public let attempted: [String]
+    public let succeeded: [String]
+    public let failed: [Failed]
+
+    public init(attempted: [String], succeeded: [String], failed: [Failed]) {
+        self.attempted = attempted
+        self.succeeded = succeeded
+        self.failed = failed
+    }
+}
+
 public struct WorkspaceMeta: Codable, Hashable, Sendable {
     public let id: String
     public let name: String
@@ -895,6 +1004,149 @@ public struct QueuedMessage: Codable, Hashable, Sendable {
 
 public typealias AccountPins = [String: String]
 
+public struct AccountProfile: Codable, Hashable, Sendable {
+    public let name: String
+    public let email: String?
+    public let nickname: String?
+    public let color: String?
+    public let active: Bool
+    public let duplicate: Bool?
+    public let `static`: Bool?
+
+    public init(name: String, email: String? = nil, nickname: String? = nil, color: String? = nil, active: Bool, duplicate: Bool? = nil, `static`: Bool? = nil) {
+        self.name = name
+        self.email = email
+        self.nickname = nickname
+        self.color = color
+        self.active = active
+        self.duplicate = duplicate
+        self.`static` = `static`
+    }
+}
+
+public struct UsageWindow: Codable, Hashable, Sendable {
+    public let label: String
+    public let usedPercent: Double
+    public let resetsAt: Int?
+    public let periodMs: Int?
+
+    public init(label: String, usedPercent: Double, resetsAt: Int? = nil, periodMs: Int? = nil) {
+        self.label = label
+        self.usedPercent = usedPercent
+        self.resetsAt = resetsAt
+        self.periodMs = periodMs
+    }
+}
+
+public struct UsageReport: Codable, Hashable, Sendable {
+    public struct RateLimit: Codable, Hashable, Sendable {
+        public let provider: String
+        public let until: Int?
+
+        public init(provider: String, until: Int? = nil) {
+            self.provider = provider
+            self.until = until
+        }
+    }
+
+    public let profileName: String
+    public let windows: [UsageWindow]
+    public let note: String?
+    public let expired: Bool?
+    public let rateLimit: RateLimit?
+
+    public init(profileName: String, windows: [UsageWindow], note: String? = nil, expired: Bool? = nil, rateLimit: RateLimit? = nil) {
+        self.profileName = profileName
+        self.windows = windows
+        self.note = note
+        self.expired = expired
+        self.rateLimit = rateLimit
+    }
+}
+
+public struct AccountHeadroom: Codable, Hashable, Sendable {
+    public let room: Double?
+    public let resetsAt: Int?
+    public let throttledUntil: Int?
+    public let ratePerMin: Double
+    public let tier: String?
+    public let seenAt: Int?
+
+    public init(room: Double?, resetsAt: Int? = nil, throttledUntil: Int? = nil, ratePerMin: Double, tier: String? = nil, seenAt: Int?) {
+        self.room = room
+        self.resetsAt = resetsAt
+        self.throttledUntil = throttledUntil
+        self.ratePerMin = ratePerMin
+        self.tier = tier
+        self.seenAt = seenAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case room, resetsAt, throttledUntil, ratePerMin, tier, seenAt
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(room, forKey: .room)
+        try container.encodeIfPresent(resetsAt, forKey: .resetsAt)
+        try container.encodeIfPresent(throttledUntil, forKey: .throttledUntil)
+        try container.encode(ratePerMin, forKey: .ratePerMin)
+        try container.encodeIfPresent(tier, forKey: .tier)
+        try container.encode(seenAt, forKey: .seenAt)
+    }
+}
+
+public struct ProviderAccounts: Codable, Hashable, Sendable {
+    public let pinned: String?
+    public let profiles: [AccountProfile]
+    public let reports: [UsageReport]
+    public let note: String?
+    public let headroom: [String: AccountHeadroom]?
+
+    public init(pinned: String?, profiles: [AccountProfile], reports: [UsageReport], note: String? = nil, headroom: [String: AccountHeadroom]? = nil) {
+        self.pinned = pinned
+        self.profiles = profiles
+        self.reports = reports
+        self.note = note
+        self.headroom = headroom
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case pinned, profiles, reports, note, headroom
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(pinned, forKey: .pinned)
+        try container.encode(profiles, forKey: .profiles)
+        try container.encode(reports, forKey: .reports)
+        try container.encodeIfPresent(note, forKey: .note)
+        try container.encodeIfPresent(headroom, forKey: .headroom)
+    }
+}
+
+public struct AccountsSnapshot: Codable, Hashable, Sendable {
+    public struct Providers: Codable, Hashable, Sendable {
+        public let claude: ProviderAccounts
+        public let codex: ProviderAccounts
+        public let cursor: ProviderAccounts
+
+        public init(claude: ProviderAccounts, codex: ProviderAccounts, cursor: ProviderAccounts) {
+            self.claude = claude
+            self.codex = codex
+            self.cursor = cursor
+        }
+    }
+
+    public let updatedAt: Int
+    public let providers: Providers
+
+    public init(updatedAt: Int, providers: Providers) {
+        self.updatedAt = updatedAt
+        self.providers = providers
+    }
+}
+
 public struct ModelInfo: Codable, Hashable, Sendable {
     public let id: String
     public let label: String
@@ -1028,6 +1280,712 @@ public struct ProjectSearchResult: Codable, Hashable, Sendable {
     public init(matches: [ProjectSearchMatch], truncated: Bool) {
         self.matches = matches
         self.truncated = truncated
+    }
+}
+
+public struct NoteSearchHit: Codable, Hashable, Sendable {
+    public let id: String
+    public let title: String
+    public let snippet: String
+    public let updatedAt: Int
+    public let sourceCwd: String?
+
+    public init(id: String, title: String, snippet: String, updatedAt: Int, sourceCwd: String? = nil) {
+        self.id = id
+        self.title = title
+        self.snippet = snippet
+        self.updatedAt = updatedAt
+        self.sourceCwd = sourceCwd
+    }
+}
+
+public struct NoteSearchResult: Codable, Hashable, Sendable {
+    public let hits: [NoteSearchHit]
+    public let truncated: Bool
+
+    public init(hits: [NoteSearchHit], truncated: Bool) {
+        self.hits = hits
+        self.truncated = truncated
+    }
+}
+
+public struct BatchStepSpec: Codable, Hashable, Sendable {
+    public enum When: RawRepresentable, Codable, Hashable, Sendable {
+        case allDone
+        case eachLanding
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "all-done": self = .allDone
+            case "each-landing": self = .eachLanding
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .allDone: "all-done"
+            case .eachLanding: "each-landing"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let id: String
+    public let name: String
+    public let kind: BatchStepKind
+    public let run: String?
+    public let cwd: String?
+    public let when: When?
+
+    public init(id: String, name: String, kind: BatchStepKind, run: String? = nil, cwd: String? = nil, when: When? = nil) {
+        self.id = id
+        self.name = name
+        self.kind = kind
+        self.run = run
+        self.cwd = cwd
+        self.when = when
+    }
+}
+
+public struct BatchStep: Codable, Hashable, Sendable {
+    public struct Progress: Codable, Hashable, Sendable {
+        public let done: Int
+        public let total: Int
+        public let label: String?
+
+        public init(done: Int, total: Int, label: String? = nil) {
+            self.done = done
+            self.total = total
+            self.label = label
+        }
+    }
+
+    public let id: String
+    public let name: String
+    public let kind: BatchStepKind
+    public let status: BatchStepStatus
+    public let detail: String
+    public let at: Int?
+    public let startedAt: Int?
+    public let endedAt: Int?
+    public let progress: Progress?
+    public let log: [String]
+    public let logCount: Int?
+
+    public init(id: String, name: String, kind: BatchStepKind, status: BatchStepStatus, detail: String, at: Int?, startedAt: Int? = nil, endedAt: Int? = nil, progress: Progress? = nil, log: [String], logCount: Int? = nil) {
+        self.id = id
+        self.name = name
+        self.kind = kind
+        self.status = status
+        self.detail = detail
+        self.at = at
+        self.startedAt = startedAt
+        self.endedAt = endedAt
+        self.progress = progress
+        self.log = log
+        self.logCount = logCount
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, kind, status, detail, at, startedAt, endedAt, progress, log, logCount
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(status, forKey: .status)
+        try container.encode(detail, forKey: .detail)
+        try container.encode(at, forKey: .at)
+        try container.encodeIfPresent(startedAt, forKey: .startedAt)
+        try container.encodeIfPresent(endedAt, forKey: .endedAt)
+        try container.encodeIfPresent(progress, forKey: .progress)
+        try container.encode(log, forKey: .log)
+        try container.encodeIfPresent(logCount, forKey: .logCount)
+    }
+}
+
+public struct BatchRules: Codable, Hashable, Sendable {
+    public let land: BatchLand
+    public let steps: [BatchStepSpec]
+    public let then: BatchThen
+    public let summary: String?
+
+    public init(land: BatchLand, steps: [BatchStepSpec], then: BatchThen, summary: String? = nil) {
+        self.land = land
+        self.steps = steps
+        self.then = then
+        self.summary = summary
+    }
+}
+
+public struct BatchState: Codable, Hashable, Sendable {
+    public struct Blocked: Codable, Hashable, Sendable {
+        public enum Why: RawRepresentable, Codable, Hashable, Sendable {
+            case errored
+            case stopped
+            case failed
+            case unreachable
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "errored": self = .errored
+                case "stopped": self = .stopped
+                case "failed": self = .failed
+                case "unreachable": self = .unreachable
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .errored: "errored"
+                case .stopped: "stopped"
+                case .failed: "failed"
+                case .unreachable: "unreachable"
+                case .unknown(let value): value
+                }
+            }
+        }
+
+        public let sessionId: String
+        public let why: Why
+        public let environmentId: String?
+
+        public init(sessionId: String, why: Why, environmentId: String? = nil) {
+            self.sessionId = sessionId
+            self.why = why
+            self.environmentId = environmentId
+        }
+    }
+    public struct Children: Codable, Hashable, Sendable {
+        public let sessionId: String
+        public let environmentId: String
+        public let title: String
+        public let status: String
+        public let threadType: String?
+        public let provider: String
+        public let model: String
+        public let seenAt: Double?
+        public let linkDown: Bool?
+
+        public init(sessionId: String, environmentId: String, title: String, status: String, threadType: String?, provider: String, model: String, seenAt: Double? = nil, linkDown: Bool? = nil) {
+            self.sessionId = sessionId
+            self.environmentId = environmentId
+            self.title = title
+            self.status = status
+            self.threadType = threadType
+            self.provider = provider
+            self.model = model
+            self.seenAt = seenAt
+            self.linkDown = linkDown
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case sessionId, environmentId, title, status, threadType, provider, model, seenAt, linkDown
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(sessionId, forKey: .sessionId)
+            try container.encode(environmentId, forKey: .environmentId)
+            try container.encode(title, forKey: .title)
+            try container.encode(status, forKey: .status)
+            try container.encode(threadType, forKey: .threadType)
+            try container.encode(provider, forKey: .provider)
+            try container.encode(model, forKey: .model)
+            try container.encodeIfPresent(seenAt, forKey: .seenAt)
+            try container.encodeIfPresent(linkDown, forKey: .linkDown)
+        }
+    }
+
+    public let masterId: String
+    public let rules: BatchRules
+    public let steps: [BatchStep]
+    public let landed: [String]
+    public let pending: [String]
+    public let held: [String]
+    public let blocked: Blocked?
+    public let finishedAt: Int?
+    public let children: [Children]?
+
+    public init(masterId: String, rules: BatchRules, steps: [BatchStep], landed: [String], pending: [String], held: [String], blocked: Blocked?, finishedAt: Int?, children: [Children]? = nil) {
+        self.masterId = masterId
+        self.rules = rules
+        self.steps = steps
+        self.landed = landed
+        self.pending = pending
+        self.held = held
+        self.blocked = blocked
+        self.finishedAt = finishedAt
+        self.children = children
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case masterId, rules, steps, landed, pending, held, blocked, finishedAt, children
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(masterId, forKey: .masterId)
+        try container.encode(rules, forKey: .rules)
+        try container.encode(steps, forKey: .steps)
+        try container.encode(landed, forKey: .landed)
+        try container.encode(pending, forKey: .pending)
+        try container.encode(held, forKey: .held)
+        try container.encode(blocked, forKey: .blocked)
+        try container.encode(finishedAt, forKey: .finishedAt)
+        try container.encodeIfPresent(children, forKey: .children)
+    }
+}
+
+public struct BatchAdoptResult: Codable, Hashable, Sendable {
+    public struct Refused: Codable, Hashable, Sendable {
+        public let sessionId: String
+        public let why: String
+
+        public init(sessionId: String, why: String) {
+            self.sessionId = sessionId
+            self.why = why
+        }
+    }
+
+    public let adopted: [String]
+    public let refused: [Refused]
+    public let state: BatchState
+
+    public init(adopted: [String], refused: [Refused], state: BatchState) {
+        self.adopted = adopted
+        self.refused = refused
+        self.state = state
+    }
+}
+
+public struct ReviewSettings: Codable, Hashable, Sendable {
+    public enum BlockOn: RawRepresentable, Codable, Hashable, Sendable {
+        case confirmed
+        case `any`
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "confirmed": self = .confirmed
+            case "any": self = .`any`
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .confirmed: "confirmed"
+            case .`any`: "any"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let beforeMerge: Bool
+    public let provider: ProviderId
+    public let model: String
+    public let reasoning: Reasoning
+    public let blockOn: BlockOn
+    public let maxMinutes: Int
+
+    public init(beforeMerge: Bool, provider: ProviderId, model: String, reasoning: Reasoning, blockOn: BlockOn, maxMinutes: Int) {
+        self.beforeMerge = beforeMerge
+        self.provider = provider
+        self.model = model
+        self.reasoning = reasoning
+        self.blockOn = blockOn
+        self.maxMinutes = maxMinutes
+    }
+}
+
+public struct PlanSettings: Codable, Hashable, Sendable {
+    public enum ImplementReasoning: RawRepresentable, Codable, Hashable, Sendable {
+        case none
+        case low
+        case medium
+        case high
+        case xhigh
+        case max
+        case ultra
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "": self = .none
+            case "low": self = .low
+            case "medium": self = .medium
+            case "high": self = .high
+            case "xhigh": self = .xhigh
+            case "max": self = .max
+            case "ultra": self = .ultra
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .none: ""
+            case .low: "low"
+            case .medium: "medium"
+            case .high: "high"
+            case .xhigh: "xhigh"
+            case .max: "max"
+            case .ultra: "ultra"
+            case .unknown(let value): value
+            }
+        }
+    }
+    public enum ImplementContext: RawRepresentable, Codable, Hashable, Sendable {
+        case none
+        case _1m
+        case _200k
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "": self = .none
+            case "1m": self = ._1m
+            case "200k": self = ._200k
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .none: ""
+            case ._1m: "1m"
+            case ._200k: "200k"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let autoImplement: Bool
+    public let archiveAfterStart: Bool
+    public let implementModel: String
+    public let implementReasoning: ImplementReasoning
+    public let implementContext: ImplementContext
+
+    public init(autoImplement: Bool, archiveAfterStart: Bool, implementModel: String, implementReasoning: ImplementReasoning, implementContext: ImplementContext) {
+        self.autoImplement = autoImplement
+        self.archiveAfterStart = archiveAfterStart
+        self.implementModel = implementModel
+        self.implementReasoning = implementReasoning
+        self.implementContext = implementContext
+    }
+}
+
+public struct DeviceHolder: Codable, Hashable, Sendable {
+    public let sessionId: String
+    public let environmentId: String?
+    public let title: String
+    public let status: String?
+
+    public init(sessionId: String, environmentId: String? = nil, title: String, status: String? = nil) {
+        self.sessionId = sessionId
+        self.environmentId = environmentId
+        self.title = title
+        self.status = status
+    }
+}
+
+public struct Simulator: Codable, Hashable, Sendable {
+    public let udid: String
+    public let name: String
+    public let runtime: String
+    public let state: SimulatorState
+    public let stateText: String?
+    public let cpu: Double?
+    public let holder: DeviceHolder?
+
+    public init(udid: String, name: String, runtime: String, state: SimulatorState, stateText: String? = nil, cpu: Double? = nil, holder: DeviceHolder?) {
+        self.udid = udid
+        self.name = name
+        self.runtime = runtime
+        self.state = state
+        self.stateText = stateText
+        self.cpu = cpu
+        self.holder = holder
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case udid, name, runtime, state, stateText, cpu, holder
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(udid, forKey: .udid)
+        try container.encode(name, forKey: .name)
+        try container.encode(runtime, forKey: .runtime)
+        try container.encode(state, forKey: .state)
+        try container.encodeIfPresent(stateText, forKey: .stateText)
+        try container.encodeIfPresent(cpu, forKey: .cpu)
+        try container.encode(holder, forKey: .holder)
+    }
+}
+
+public struct Phone: Codable, Hashable, Sendable {
+    public let udid: String
+    public let name: String
+    public let model: String
+    public let os: String
+    public let connection: PhoneConnection
+    public let transport: String?
+    public let holder: DeviceHolder?
+
+    public init(udid: String, name: String, model: String, os: String, connection: PhoneConnection, transport: String? = nil, holder: DeviceHolder?) {
+        self.udid = udid
+        self.name = name
+        self.model = model
+        self.os = os
+        self.connection = connection
+        self.transport = transport
+        self.holder = holder
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case udid, name, model, os, connection, transport, holder
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(udid, forKey: .udid)
+        try container.encode(name, forKey: .name)
+        try container.encode(model, forKey: .model)
+        try container.encode(os, forKey: .os)
+        try container.encode(connection, forKey: .connection)
+        try container.encodeIfPresent(transport, forKey: .transport)
+        try container.encode(holder, forKey: .holder)
+    }
+}
+
+public struct XcodeInfo: Codable, Hashable, Sendable {
+    public enum From: RawRepresentable, Codable, Hashable, Sendable {
+        case developerDir
+        case newest
+        case xcodeSelect
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "developerDir": self = .developerDir
+            case "newest": self = .newest
+            case "xcodeSelect": self = .xcodeSelect
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .developerDir: "developerDir"
+            case .newest: "newest"
+            case .xcodeSelect: "xcodeSelect"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let path: String
+    public let name: String
+    public let version: String?
+    public let from: From
+
+    public init(path: String, name: String, version: String? = nil, from: From) {
+        self.path = path
+        self.name = name
+        self.version = version
+        self.from = from
+    }
+}
+
+public struct HostLoad: Codable, Hashable, Sendable {
+    public let oneMinute: Double
+    public let cores: Int
+
+    public init(oneMinute: Double, cores: Int) {
+        self.oneMinute = oneMinute
+        self.cores = cores
+    }
+}
+
+public struct HostDevicesReport: Codable, Hashable, Sendable {
+    public let environmentId: String
+    public let at: Double
+    public let simulators: [Simulator]
+    public let phones: [Phone]
+    public let xcode: XcodeInfo?
+    public let load: HostLoad
+    public let problems: [String]
+
+    public init(environmentId: String, at: Double, simulators: [Simulator], phones: [Phone], xcode: XcodeInfo?, load: HostLoad, problems: [String]) {
+        self.environmentId = environmentId
+        self.at = at
+        self.simulators = simulators
+        self.phones = phones
+        self.xcode = xcode
+        self.load = load
+        self.problems = problems
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case environmentId, at, simulators, phones, xcode, load, problems
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(environmentId, forKey: .environmentId)
+        try container.encode(at, forKey: .at)
+        try container.encode(simulators, forKey: .simulators)
+        try container.encode(phones, forKey: .phones)
+        try container.encode(xcode, forKey: .xcode)
+        try container.encode(load, forKey: .load)
+        try container.encode(problems, forKey: .problems)
+    }
+}
+
+public struct HostDevicesHost: Codable, Hashable, Sendable {
+    public let environmentId: String
+    public let name: String
+    public let local: Bool
+
+    public init(environmentId: String, name: String, local: Bool) {
+        self.environmentId = environmentId
+        self.name = name
+        self.local = local
+    }
+}
+
+public struct HostJobStatus: Codable, Hashable, Sendable {
+    public let job: HostJob
+    public let phase: HostJobPhase
+    public let target: String?
+    public let startedAt: Int?
+    public let finishedAt: Int?
+    public let exit: Int?
+    public let stoppable: Bool
+
+    public init(job: HostJob, phase: HostJobPhase, target: String?, startedAt: Int?, finishedAt: Int?, exit: Int?, stoppable: Bool) {
+        self.job = job
+        self.phase = phase
+        self.target = target
+        self.startedAt = startedAt
+        self.finishedAt = finishedAt
+        self.exit = exit
+        self.stoppable = stoppable
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case job, phase, target, startedAt, finishedAt, exit, stoppable
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(job, forKey: .job)
+        try container.encode(phase, forKey: .phase)
+        try container.encode(target, forKey: .target)
+        try container.encode(startedAt, forKey: .startedAt)
+        try container.encode(finishedAt, forKey: .finishedAt)
+        try container.encode(exit, forKey: .exit)
+        try container.encode(stoppable, forKey: .stoppable)
+    }
+}
+
+public struct DeployStatus: Codable, Hashable, Sendable {
+    public let job: String
+    public let phase: HostJobPhase
+    public let target: String?
+    public let startedAt: Int?
+    public let finishedAt: Int?
+    public let exit: Int?
+    public let stoppable: Bool
+    public let installed: Bool
+    public let installHint: String
+    public let version: String
+
+    public init(job: String, phase: HostJobPhase, target: String?, startedAt: Int?, finishedAt: Int?, exit: Int?, stoppable: Bool, installed: Bool, installHint: String, version: String) {
+        self.job = job
+        self.phase = phase
+        self.target = target
+        self.startedAt = startedAt
+        self.finishedAt = finishedAt
+        self.exit = exit
+        self.stoppable = stoppable
+        self.installed = installed
+        self.installHint = installHint
+        self.version = version
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case job, phase, target, startedAt, finishedAt, exit, stoppable, installed, installHint, version
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(job, forKey: .job)
+        try container.encode(phase, forKey: .phase)
+        try container.encode(target, forKey: .target)
+        try container.encode(startedAt, forKey: .startedAt)
+        try container.encode(finishedAt, forKey: .finishedAt)
+        try container.encode(exit, forKey: .exit)
+        try container.encode(stoppable, forKey: .stoppable)
+        try container.encode(installed, forKey: .installed)
+        try container.encode(installHint, forKey: .installHint)
+        try container.encode(version, forKey: .version)
+    }
+}
+
+public struct HostLogSnapshot: Codable, Hashable, Sendable {
+    public let text: String
+    public let status: HostJobStatus
+
+    public init(text: String, status: HostJobStatus) {
+        self.text = text
+        self.status = status
+    }
+}
+
+public struct MacBridgeThreadState: Codable, Hashable, Sendable {
+    public let sessionId: String
+    public let macPeer: String?
+    public let inherited: Bool
+    public let online: Bool
+    public let registered: [String]
+    public let held: Int?
+
+    public init(sessionId: String, macPeer: String?, inherited: Bool, online: Bool, registered: [String], held: Int? = nil) {
+        self.sessionId = sessionId
+        self.macPeer = macPeer
+        self.inherited = inherited
+        self.online = online
+        self.registered = registered
+        self.held = held
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case sessionId, macPeer, inherited, online, registered, held
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(sessionId, forKey: .sessionId)
+        try container.encode(macPeer, forKey: .macPeer)
+        try container.encode(inherited, forKey: .inherited)
+        try container.encode(online, forKey: .online)
+        try container.encode(registered, forKey: .registered)
+        try container.encodeIfPresent(held, forKey: .held)
     }
 }
 
@@ -1644,32 +2602,71 @@ public struct CreatedPairing: Codable, Hashable, Sendable {
     }
 }
 
-public struct HelloResponse: Codable, Hashable, Sendable {
-    public struct Build: Codable, Hashable, Sendable {
-        public let release: Int
-        public let version: String
-        public let sha: String?
-        public let platform: String
+public struct HostPresence: Codable, Hashable, Sendable {
+    public enum Link: RawRepresentable, Codable, Hashable, Sendable {
+        case up
+        case down
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
 
-        public init(release: Int, version: String, sha: String?, platform: String) {
-            self.release = release
-            self.version = version
-            self.sha = sha
-            self.platform = platform
+        public init(rawValue: String) {
+            switch rawValue {
+            case "up": self = .up
+            case "down": self = .down
+            default: self = .unknown(rawValue)
+            }
         }
 
-        private enum CodingKeys: String, CodingKey {
-            case release, version, sha, platform
-        }
-
-        public func encode(to encoder: any Encoder) throws {
-            var container = encoder.container(keyedBy: CodingKeys.self)
-            try container.encode(release, forKey: .release)
-            try container.encode(version, forKey: .version)
-            try container.encode(sha, forKey: .sha)
-            try container.encode(platform, forKey: .platform)
+        public var rawValue: String {
+            switch self {
+            case .up: "up"
+            case .down: "down"
+            case .unknown(let value): value
+            }
         }
     }
+
+    public let environmentId: String
+    public let name: String
+    public let platform: String
+    public let link: Link
+    public let since: Int
+    public let screen: ScreenState
+    public let power: PowerState
+    public let lastSeenAt: Int?
+    public let build: BuildFacts?
+
+    public init(environmentId: String, name: String, platform: String, link: Link, since: Int, screen: ScreenState, power: PowerState, lastSeenAt: Int?, build: BuildFacts?) {
+        self.environmentId = environmentId
+        self.name = name
+        self.platform = platform
+        self.link = link
+        self.since = since
+        self.screen = screen
+        self.power = power
+        self.lastSeenAt = lastSeenAt
+        self.build = build
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case environmentId, name, platform, link, since, screen, power, lastSeenAt, build
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(environmentId, forKey: .environmentId)
+        try container.encode(name, forKey: .name)
+        try container.encode(platform, forKey: .platform)
+        try container.encode(link, forKey: .link)
+        try container.encode(since, forKey: .since)
+        try container.encode(screen, forKey: .screen)
+        try container.encode(power, forKey: .power)
+        try container.encode(lastSeenAt, forKey: .lastSeenAt)
+        try container.encode(build, forKey: .build)
+    }
+}
+
+public struct HelloResponse: Codable, Hashable, Sendable {
     public struct Key: Codable, Hashable, Sendable {
         public let id: String
         public let name: String
@@ -1687,17 +2684,19 @@ public struct HelloResponse: Codable, Hashable, Sendable {
     public let environmentId: String
     public let name: String?
     public let version: String?
-    public let build: Build?
+    public let build: BuildFacts?
     public let contract: Int
     public let key: Key?
+    public let hosts: [HostPresence]?
 
-    public init(environmentId: String, name: String? = nil, version: String? = nil, build: Build? = nil, contract: Int, key: Key? = nil) {
+    public init(environmentId: String, name: String? = nil, version: String? = nil, build: BuildFacts? = nil, contract: Int, key: Key? = nil, hosts: [HostPresence]? = nil) {
         self.environmentId = environmentId
         self.name = name
         self.version = version
         self.build = build
         self.contract = contract
         self.key = key
+        self.hosts = hosts
     }
 }
 
@@ -2057,5 +3056,645 @@ public struct BuildUpdate: Codable, Hashable, Sendable {
         self.projectId = projectId
         self.run = run
         self.lines = lines
+    }
+}
+
+public struct ThreadNotesDoc: Codable, Hashable, Sendable {
+    public let text: String
+    public let updatedAt: Double?
+    public let path: String?
+
+    public init(text: String, updatedAt: Double?, path: String?) {
+        self.text = text
+        self.updatedAt = updatedAt
+        self.path = path
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case text, updatedAt, path
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(text, forKey: .text)
+        try container.encode(updatedAt, forKey: .updatedAt)
+        try container.encode(path, forKey: .path)
+    }
+}
+
+public struct PlanScope: Codable, Hashable, Sendable {
+    public let settings: PlanSettings
+    public let overridden: Bool
+
+    public init(settings: PlanSettings, overridden: Bool) {
+        self.settings = settings
+        self.overridden = overridden
+    }
+}
+
+public struct ReviewScope: Codable, Hashable, Sendable {
+    public enum Source: RawRepresentable, Codable, Hashable, Sendable {
+        case project
+        case global
+        case `default`
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "project": self = .project
+            case "global": self = .global
+            case "default": self = .`default`
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .project: "project"
+            case .global: "global"
+            case .`default`: "default"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let override: ReviewSettings?
+    public let global: ReviewSettings?
+    public let settings: ReviewSettings
+    public let source: Source
+
+    public init(override: ReviewSettings?, global: ReviewSettings?, settings: ReviewSettings, source: Source) {
+        self.override = override
+        self.global = global
+        self.settings = settings
+        self.source = source
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case override, global, settings, source
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(override, forKey: .override)
+        try container.encode(global, forKey: .global)
+        try container.encode(settings, forKey: .settings)
+        try container.encode(source, forKey: .source)
+    }
+}
+
+public struct ModelPolicy: Codable, Hashable, Sendable {
+    public enum Approved: Codable, Hashable, Sendable {
+        case bool(Bool)
+        case string(String)
+        /// A shape this build does not know, untouched.
+        case unknown(JSONValue)
+
+        public init(from decoder: any Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            if let value = try? container.decode(Bool.self) { self = .bool(value); return }
+            if let value = try? container.decode(String.self) { self = .string(value); return }
+            self = .unknown(try container.decode(JSONValue.self))
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.singleValueContainer()
+            switch self {
+            case .bool(let value): try container.encode(value)
+            case .string(let value): try container.encode(value)
+            case .unknown(let value): try container.encode(value)
+            }
+        }
+    }
+
+    public let approved: Approved
+    public let minReasoning: Reasoning?
+    public let maxReasoning: Reasoning?
+
+    public init(approved: Approved, minReasoning: Reasoning? = nil, maxReasoning: Reasoning? = nil) {
+        self.approved = approved
+        self.minReasoning = minReasoning
+        self.maxReasoning = maxReasoning
+    }
+}
+
+public struct OrchestrationRules: Codable, Hashable, Sendable {
+    public struct Conduct: Codable, Hashable, Sendable {
+        public enum Delegation: RawRepresentable, Codable, Hashable, Sendable {
+            case strict
+            case balanced
+            case free
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "strict": self = .strict
+                case "balanced": self = .balanced
+                case "free": self = .free
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .strict: "strict"
+                case .balanced: "balanced"
+                case .free: "free"
+                case .unknown(let value): value
+                }
+            }
+        }
+
+        public let delegation: Delegation
+        public let selfEdit: Bool
+        public let selfShell: Bool
+        public let verifyResults: Bool
+        public let escalate: Bool
+        public let useWorktrees: Bool
+        public let maxParallel: Int
+        public let maxAgents: Int
+
+        public init(delegation: Delegation, selfEdit: Bool, selfShell: Bool, verifyResults: Bool, escalate: Bool, useWorktrees: Bool, maxParallel: Int, maxAgents: Int) {
+            self.delegation = delegation
+            self.selfEdit = selfEdit
+            self.selfShell = selfShell
+            self.verifyResults = verifyResults
+            self.escalate = escalate
+            self.useWorktrees = useWorktrees
+            self.maxParallel = maxParallel
+            self.maxAgents = maxAgents
+        }
+    }
+    public struct Routing: Codable, Hashable, Sendable {
+        public let id: String
+        public let task: String
+        public let provider: ProviderId
+        public let model: String
+        public let reasoning: Reasoning
+        public let enabled: Bool
+
+        public init(id: String, task: String, provider: ProviderId, model: String, reasoning: Reasoning, enabled: Bool) {
+            self.id = id
+            self.task = task
+            self.provider = provider
+            self.model = model
+            self.reasoning = reasoning
+            self.enabled = enabled
+        }
+    }
+
+    public let conduct: Conduct
+    public let models: [String: ModelPolicy]
+    public let routing: [Routing]
+
+    public init(conduct: Conduct, models: [String: ModelPolicy], routing: [Routing]) {
+        self.conduct = conduct
+        self.models = models
+        self.routing = routing
+    }
+}
+
+public struct HarnessEnvironmentStatus: Codable, Hashable, Sendable {
+    public let id: String
+    public let name: String
+    public let connected: Bool
+    public let running: Bool
+    public let files: Int?
+    public let sets: [String: Int]?
+    public let syncedAt: Int?
+    public let lastAttemptAt: Int?
+    public let error: String?
+
+    public init(id: String, name: String, connected: Bool, running: Bool, files: Int?, sets: [String: Int]?, syncedAt: Int?, lastAttemptAt: Int?, error: String?) {
+        self.id = id
+        self.name = name
+        self.connected = connected
+        self.running = running
+        self.files = files
+        self.sets = sets
+        self.syncedAt = syncedAt
+        self.lastAttemptAt = lastAttemptAt
+        self.error = error
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, connected, running, files, sets, syncedAt, lastAttemptAt, error
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(connected, forKey: .connected)
+        try container.encode(running, forKey: .running)
+        try container.encode(files, forKey: .files)
+        try container.encode(sets, forKey: .sets)
+        try container.encode(syncedAt, forKey: .syncedAt)
+        try container.encode(lastAttemptAt, forKey: .lastAttemptAt)
+        try container.encode(error, forKey: .error)
+    }
+}
+
+public struct HarnessSyncStatus: Codable, Hashable, Sendable {
+    public struct PathMap: Codable, Hashable, Sendable {
+        public let roots: [String: String]
+        public let prefixes: [String: String]
+
+        public init(roots: [String: String], prefixes: [String: String]) {
+            self.roots = roots
+            self.prefixes = prefixes
+        }
+    }
+
+    public let enabled: Bool
+    public let skipped: Int
+    public let environments: [HarnessEnvironmentStatus]
+    public let pathMap: PathMap
+
+    public init(enabled: Bool, skipped: Int, environments: [HarnessEnvironmentStatus], pathMap: PathMap) {
+        self.enabled = enabled
+        self.skipped = skipped
+        self.environments = environments
+        self.pathMap = pathMap
+    }
+}
+
+public struct MemoryEnvironmentStatus: Codable, Hashable, Sendable {
+    public let id: String
+    public let name: String
+    public let connected: Bool
+    public let running: Bool
+    public let files: Int?
+    public let syncedAt: Int?
+    public let lastAttemptAt: Int?
+    public let error: String?
+    public let conflicts: Int
+
+    public init(id: String, name: String, connected: Bool, running: Bool, files: Int?, syncedAt: Int?, lastAttemptAt: Int?, error: String?, conflicts: Int) {
+        self.id = id
+        self.name = name
+        self.connected = connected
+        self.running = running
+        self.files = files
+        self.syncedAt = syncedAt
+        self.lastAttemptAt = lastAttemptAt
+        self.error = error
+        self.conflicts = conflicts
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, connected, running, files, syncedAt, lastAttemptAt, error, conflicts
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(connected, forKey: .connected)
+        try container.encode(running, forKey: .running)
+        try container.encode(files, forKey: .files)
+        try container.encode(syncedAt, forKey: .syncedAt)
+        try container.encode(lastAttemptAt, forKey: .lastAttemptAt)
+        try container.encode(error, forKey: .error)
+        try container.encode(conflicts, forKey: .conflicts)
+    }
+}
+
+public struct MemoryConflict: Codable, Hashable, Sendable {
+    public let path: String
+    public let of: String
+    public let host: String
+    public let at: Int
+
+    public init(path: String, of: String, host: String, at: Int) {
+        self.path = path
+        self.of = of
+        self.host = host
+        self.at = at
+    }
+}
+
+public struct MemorySyncStatus: Codable, Hashable, Sendable {
+    public let enabled: Bool
+    public let skipped: Int
+    public let environments: [MemoryEnvironmentStatus]
+    public let conflicts: [MemoryConflict]
+
+    public init(enabled: Bool, skipped: Int, environments: [MemoryEnvironmentStatus], conflicts: [MemoryConflict]) {
+        self.enabled = enabled
+        self.skipped = skipped
+        self.environments = environments
+        self.conflicts = conflicts
+    }
+}
+
+public struct MacBridgeHeld: Codable, Hashable, Sendable {
+    public enum Reason: RawRepresentable, Codable, Hashable, Sendable {
+        case cap
+        case load
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "cap": self = .cap
+            case "load": self = .load
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .cap: "cap"
+            case .load: "load"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let reason: Reason
+    public let position: Int
+    public let load: Double
+    public let limit: Double
+    public let cores: Int
+    public let maxRunning: Int
+    public let running: Int
+
+    public init(reason: Reason, position: Int, load: Double, limit: Double, cores: Int, maxRunning: Int, running: Int) {
+        self.reason = reason
+        self.position = position
+        self.load = load
+        self.limit = limit
+        self.cores = cores
+        self.maxRunning = maxRunning
+        self.running = running
+    }
+}
+
+public struct MacBridgeLoad: Codable, Hashable, Sendable {
+    public let load: Double
+    public let cores: Int
+    public let limit: Double
+    public let pinned: Bool
+    public let resumeBelow: Double
+    public let busy: Bool
+    public let sampledAt: Int
+
+    public init(load: Double, cores: Int, limit: Double, pinned: Bool, resumeBelow: Double, busy: Bool, sampledAt: Int) {
+        self.load = load
+        self.cores = cores
+        self.limit = limit
+        self.pinned = pinned
+        self.resumeBelow = resumeBelow
+        self.busy = busy
+        self.sampledAt = sampledAt
+    }
+}
+
+public struct MacBridgeCall: Codable, Hashable, Sendable {
+    public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+        case read
+        case run
+        case write
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "read": self = .read
+            case "run": self = .run
+            case "write": self = .write
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .read: "read"
+            case .run: "run"
+            case .write: "write"
+            case .unknown(let value): value
+            }
+        }
+    }
+    public enum Method: RawRepresentable, Codable, Hashable, Sendable {
+        case macReadFile
+        case macListDir
+        case macFetchFile
+        case macRun
+        case macWriteFile
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "mac.readFile": self = .macReadFile
+            case "mac.listDir": self = .macListDir
+            case "mac.fetchFile": self = .macFetchFile
+            case "mac.run": self = .macRun
+            case "mac.writeFile": self = .macWriteFile
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .macReadFile: "mac.readFile"
+            case .macListDir: "mac.listDir"
+            case .macFetchFile: "mac.fetchFile"
+            case .macRun: "mac.run"
+            case .macWriteFile: "mac.writeFile"
+            case .unknown(let value): value
+            }
+        }
+    }
+    public enum Status: RawRepresentable, Codable, Hashable, Sendable {
+        case held
+        case running
+        case paused
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "held": self = .held
+            case "running": self = .running
+            case "paused": self = .paused
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .held: "held"
+            case .running: "running"
+            case .paused: "paused"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let id: String
+    public let environmentId: String
+    public let hostName: String
+    public let sessionId: String
+    public let threadTitle: String
+    public let kind: Kind
+    public let method: Method
+    public let command: String?
+    public let argv: [String]?
+    public let cwd: String?
+    public let path: String?
+    public let status: Status
+    public let held: MacBridgeHeld?
+    public let interactive: Bool?
+    public let createdAt: Int
+
+    public init(id: String, environmentId: String, hostName: String, sessionId: String, threadTitle: String, kind: Kind, method: Method, command: String? = nil, argv: [String]? = nil, cwd: String? = nil, path: String? = nil, status: Status, held: MacBridgeHeld? = nil, interactive: Bool? = nil, createdAt: Int) {
+        self.id = id
+        self.environmentId = environmentId
+        self.hostName = hostName
+        self.sessionId = sessionId
+        self.threadTitle = threadTitle
+        self.kind = kind
+        self.method = method
+        self.command = command
+        self.argv = argv
+        self.cwd = cwd
+        self.path = path
+        self.status = status
+        self.held = held
+        self.interactive = interactive
+        self.createdAt = createdAt
+    }
+}
+
+public struct MacBridgeActivityHost: Codable, Hashable, Sendable {
+    public let environmentId: String
+    public let name: String
+    public let policy: MacBridgePolicy
+    public let registered: Bool
+    public let maxRunning: Int
+    public let maxThreads: Int
+    public let running: Int
+    public let held: Int
+    public let threads: Int
+    public let pending: Int
+
+    public init(environmentId: String, name: String, policy: MacBridgePolicy, registered: Bool, maxRunning: Int, maxThreads: Int, running: Int, held: Int, threads: Int, pending: Int) {
+        self.environmentId = environmentId
+        self.name = name
+        self.policy = policy
+        self.registered = registered
+        self.maxRunning = maxRunning
+        self.maxThreads = maxThreads
+        self.running = running
+        self.held = held
+        self.threads = threads
+        self.pending = pending
+    }
+}
+
+public struct MacBridgeActivity: Codable, Hashable, Sendable {
+    public let hosts: [MacBridgeActivityHost]
+    public let load: MacBridgeLoad
+    public let calls: [MacBridgeCall]
+    public let at: Int
+
+    public init(hosts: [MacBridgeActivityHost], load: MacBridgeLoad, calls: [MacBridgeCall], at: Int) {
+        self.hosts = hosts
+        self.load = load
+        self.calls = calls
+        self.at = at
+    }
+}
+
+public struct Ok: Codable, Hashable, Sendable {
+    public let ok: Bool
+
+    public init(ok: Bool) {
+        self.ok = ok
+    }
+}
+
+public struct ProjectPlanMilestone: Codable, Hashable, Sendable {
+    public let index: Int
+    public let title: String
+    public let done: Bool
+
+    public init(index: Int, title: String, done: Bool) {
+        self.index = index
+        self.title = title
+        self.done = done
+    }
+}
+
+public struct ProjectPlanState: Codable, Hashable, Sendable {
+    public let projectId: String
+    public let path: String
+    public let exists: Bool
+    public let pinned: Bool
+    public let sessionId: String?
+    public let complete: Bool
+    public let milestones: [ProjectPlanMilestone]
+    public let missing: [String]
+
+    public init(projectId: String, path: String, exists: Bool, pinned: Bool, sessionId: String?, complete: Bool, milestones: [ProjectPlanMilestone], missing: [String]) {
+        self.projectId = projectId
+        self.path = path
+        self.exists = exists
+        self.pinned = pinned
+        self.sessionId = sessionId
+        self.complete = complete
+        self.milestones = milestones
+        self.missing = missing
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case projectId, path, exists, pinned, sessionId, complete, milestones, missing
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(projectId, forKey: .projectId)
+        try container.encode(path, forKey: .path)
+        try container.encode(exists, forKey: .exists)
+        try container.encode(pinned, forKey: .pinned)
+        try container.encode(sessionId, forKey: .sessionId)
+        try container.encode(complete, forKey: .complete)
+        try container.encode(milestones, forKey: .milestones)
+        try container.encode(missing, forKey: .missing)
+    }
+}
+
+public struct MilestoneLink: Codable, Hashable, Sendable {
+    public let projectId: String
+    public let milestone: Int
+
+    public init(projectId: String, milestone: Int) {
+        self.projectId = projectId
+        self.milestone = milestone
+    }
+}
+
+public struct ProjectPlanTickAnswer: Codable, Hashable, Sendable {
+    public let ticked: Bool
+    public let state: ProjectPlanState?
+
+    public init(ticked: Bool, state: ProjectPlanState?) {
+        self.ticked = ticked
+        self.state = state
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case ticked, state
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(ticked, forKey: .ticked)
+        try container.encode(state, forKey: .state)
     }
 }

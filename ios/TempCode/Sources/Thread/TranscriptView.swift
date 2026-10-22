@@ -84,6 +84,7 @@ struct TranscriptView: View {
             .scrollBounceBehavior(.basedOnSize)
             .defaultScrollAnchor(.bottom, for: .initialOffset)
             .defaultScrollAnchor(.bottom, for: .alignment)
+            .defaultScrollAnchor(.bottom, for: .sizeChanges)
             .scrollDismissesKeyboard(.interactively)
             .onScrollGeometryChange(for: Bool.self) { geometry in
                 // Content shorter than the screen is "at the bottom" too.

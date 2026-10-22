@@ -44,7 +44,7 @@ private let pendingApproval: [AgentEvent] = [
         #expect(ThreadSegment.segments(for: .projectPlan) == [.plan, .chat])
         #expect(ThreadSegment.segments(for: .orchestration) == [.fleet, .log])
         #expect(ThreadSegment.segments(for: .research) == [.sources, .chat])
-        #expect(ThreadSegment.segments(for: .master) == [.chat])
+        #expect(ThreadSegment.segments(for: .master) == [.board, .chat])
         #expect(ThreadSegment.segments(for: .chat) == [.chat])
         #expect(ThreadSegment.segments(for: .subagent) == [.chat])
         #expect(ThreadSegment.segments(for: .other("debate")) == [.chat])
@@ -101,6 +101,8 @@ private let pendingApproval: [AgentEvent] = [
     @Test("a chat and a master take the first segment; running reads running and starting") func aChatAndAMasterTakeTheFirstSegmentRunningReadsRunningAndStarting() {
         #expect(phase(.chat).defaultSegment(in: [.chat]) == .chat)
         #expect(ThreadPhase(session: meta("m", threadType: .chat, isMaster: true), thread: ThreadState(), document: nil).defaultSegment(in: [.chat]) == .chat)
+        // A master opens on its board, whatever its type, from the first open.
+        #expect(ThreadPhase(session: meta("m", threadType: .chat, isMaster: true), thread: ThreadState(), document: nil).defaultSegment(in: [.board, .chat]) == .board)
         #expect(phase(.chat, status: .running).running)
         #expect(phase(.chat, status: .starting).running)
         #expect(!phase(.chat, status: .watching).running)
@@ -178,7 +180,9 @@ private let pendingApproval: [AgentEvent] = [
 
 @Suite struct ThreadHeaderLineTests {
     private typealias Line = ThreadHeaderLine
-    private let type: [Line.Part] = [.type(.implementation), .model("claude-sonnet-5-5")]
+    /// Type and model, then the account part a routed (Claude) thread always carries.
+    private let identity: [Line.Part] = [.type(.implementation), .model("claude-sonnet-5-5")]
+    private let type: [Line.Part] = [.type(.implementation), .model("claude-sonnet-5-5"), .account(nil)]
 
     private func line(_ status: SessionStatus, host: String? = nil, parentId: String? = nil, isMaster: Bool? = nil, activity: String? = nil, busySince: Int? = 500, frozen: Int? = nil, live: Bool? = nil) -> Line {
         Line(session: meta("t", parentId: parentId, status: status, updatedAt: 900, threadType: .implementation, agentType: .reviewer, isMaster: isMaster, activity: activity, busySince: busySince, frozenActiveElapsed: frozen, treeHasLiveWork: live), hostName: host)
@@ -225,7 +229,7 @@ private let pendingApproval: [AgentEvent] = [
         #expect(with.parts == [.host("box")] + type + [.elapsed(since: 500)])
         #expect(with.withoutHost == type + [.elapsed(since: 500)])
         #expect(line(.running).parts.first == .type(.implementation))
-        #expect(with.compact == type)
+        #expect(with.compact == identity)
     }
 
     @Test("compact is the words alone for queued and stopped") func compactIsTheWordsAloneForQueuedAndStopped() {
@@ -240,7 +244,7 @@ private let pendingApproval: [AgentEvent] = [
     }
 
     @Test("a subagent names its role; a master says so before its type") func aSubagentNamesItsRoleAMasterSaysSoBeforeItsType() {
-        #expect(line(.idle, parentId: "p").parts == [.agent(.reviewer), .model("claude-sonnet-5-5")])
+        #expect(line(.idle, parentId: "p").parts == [.agent(.reviewer), .model("claude-sonnet-5-5"), .account(nil)])
         #expect(line(.idle, parentId: "p", isMaster: true).parts.first == .agent(.reviewer))
         #expect(line(.idle, isMaster: true).parts == [.master] + type)
         #expect(line(.idle, host: "box", isMaster: true).parts == [.host("box"), .master] + type)
@@ -265,6 +269,14 @@ private let pendingApproval: [AgentEvent] = [
 
     @Test("a root with no type reads as a chat") func aRootWithNoTypeReadsAsAChat() {
         let chat = Line(session: meta("t", status: .idle), hostName: nil)
-        #expect(chat.parts == [.type(.chat), .model("claude-sonnet-5-5")])
+        #expect(chat.parts == [.type(.chat), .model("claude-sonnet-5-5"), .account(nil)])
+    }
+
+    @Test("the account part follows the model for a routed provider and names the thread's account") func theAccountPartFollowsTheModel() {
+        let routed = Line(session: meta("t", status: .idle, account: "work@example.com"), hostName: nil)
+        #expect(routed.parts == [.type(.chat), .model("claude-sonnet-5-5"), .account("work@example.com")])
+        #expect(routed.compact == [.type(.chat), .model("claude-sonnet-5-5")])
+        let cursor = Line(session: meta("t", status: .idle, provider: .cursor), hostName: nil)
+        #expect(cursor.parts == [.type(.chat), .model("claude-sonnet-5-5")])
     }
 }

@@ -60,7 +60,10 @@ struct HostStatusRow: View {
 
     @ViewBuilder
     private func action(_ status: EnvironmentStatus) -> some View {
-        if status.transport == .unauthorized {
+        if !RelayWords.showsRetry(for: client) {
+            // Thread 29: a lane the box holds has no Retry; the box retries the link.
+            EmptyView()
+        } else if status.transport == .unauthorized {
             PillButton("Pair again", action: pairAgain)
         } else {
             PillButton("Retry") { Task { await client.retry() } }

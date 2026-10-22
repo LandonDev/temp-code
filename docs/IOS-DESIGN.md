@@ -119,6 +119,36 @@ of every member under it with the host's name on each project header, the
 count summed, and one fold for both copies (the fold key is the pairing
 key). The default pairing pairs nothing.
 
+**Project settings.** The project header's menu opens the sheet
+(`Shell/ProjectSettingsSheet.swift`, presented from the root through
+`ProjectSettingsPresenter`, since a sheet on a menu item never shows) at the
+large detent with the sheet radius: an inset grouped list, three sections,
+one sentence of footer each, one Save top right that sends only the dirty
+set (review before plans) and is disabled until something changed; a
+failed save is one destructive line in the footer of the section that
+failed. **Preamble** has two rows that push the editor
+(`Shell/PreambleEditor.swift`): "Project rules" with its word count ("212
+words", "Off", "Workspace default · 80 words", "None") and "Workspace
+default". The editor is its own screen: Edit and Preview segments in the
+bar, the whole height for the text (the desktop's three placeholder lines
+while empty), the preview rendered with `{{project}}`, `{{host}}` and
+`{{worktree}}` substituted (the host's name, the project's name and its
+slug), a panel on the chrome step at the bottom with the "Apply to new
+threads" switch and the live word count rolling beside it, "Use workspace
+default" when the project has text of its own, the variables in code, and
+its own Save. **Reviews** and **Plans** (`Shell/ReviewSettings.swift`,
+`Shell/PlanSettings.swift`) follow the global set until a field changes;
+the footer's second sentence says which ("Following the global setting.",
+"Built-in defaults.", "This project's own setting.") and "Use global
+setting" appears only while overriding. The reviewer picker lists Codex and
+Claude from the catalog filtered by the host's orchestration rules, the set's
+own model kept first as "(not approved)" when the rules no longer approve
+it; the time limit is a menu of presets with the current value folded in.
+A key without admin sees every control disabled and one footnote at the top
+("This key can read these settings but not change them"); the editor opens
+read-only with the same line. The drafts and words are the client package's
+`Client/ProjectSettings.swift`, under Swift Testing.
+
 **Hosts on Home.** With one host there is no host header; its menu (the fleet
 switches), when a slot fills it, is an `ellipsis.circle` in the navigation
 bar before Settings. With several, each host's workspaces sit under a header
@@ -126,13 +156,48 @@ with the connection dot, the name, a sibling's trailing mark (the deploy
 drift) and the menu. A host's one-off lines (the boot-resume note) are quiet
 rows under its header with the event motion and no action.
 
+**Hosts through the box.** A host the box relays (the Mac, when the phone is
+away from the LAN and only the box has a tunnel) is a host like any other:
+its own `EnvironmentClient` in the registry on a second `/ws` lane to the
+box's origin (`?host=<macId>`, minted with the box's key), its own mark,
+name, rows and cache on Home, in Search's fan-out, the Inbox's host name and
+the subagent list's host mark, listed right after its carrier. A cold launch
+paints its threads from the cache like any host's (`relayed.json` beside
+`environments.json` keeps the row). It adds two lines and nothing else: a
+presence line and a refusal line. The presence line is one dim line of text
+in the meta step, no badge, no icon; the only colour stays on the status
+dot. Its words per state (`RelayWords`): nothing when the Mac is up and
+unlocked; "locked since 9:14" (the time the phone saw the lock, "locked"
+alone before it has); "asleep"; "unreachable since 9:14" (the box's time of
+the link's drop). On a row whose title is the host's name the line has no
+subject ("through box · locked since 9:14" under the host header on Home and
+on the Settings row); on the thread screen the subject is "the Mac" for a
+darwin host and the host's name otherwise. Locked keeps Send: the relay
+forwards every method the phone uses on a locked Mac, so the working strip's
+idle slot says "The Mac is locked since 9:14" and the composer stays open.
+Asleep and unreachable block through the composer's own line, Send
+disabled: "The Mac is asleep: reading only until it wakes", "The Mac is
+unreachable since 9:14" (the lane is held by the box's word, the socket's
+`setHostReachable`, with no attempt and no Retry; the box retries the
+link). A refusal that still comes back from the host (a `screen` method on
+a locked Mac, a race at a transition) is one line on the action that hit it,
+the host's own words capitalised: "The Mac is asleep" (`RelayRefusal`). The
+status line under the bar reads "Reconnecting to the Mac…" past its 1.5 s
+hold and "The Mac is unreachable since 9:14" while held, with no Retry
+button then. The presence line cross-fades in place on a change
+(`Motion.crossFade`, blur; opacity alone under reduced motion), never on
+first paint, and re-renders once a minute at most. Forgetting the box
+forgets the Mac with it (the dialog names it: "Studio Mac goes with it."); a
+relayed host has no Pair Again and no Forget of its own.
+
 **Home's extension points** (`HomeSlots`, one value passed from `RootView`'s
 `HomeView(path: $homePath, slots: …)`; every slot optional, a nil slot draws
 nothing, so no menu is ever empty): `pairing` (paired projects), `hostNotes`
 and `hostMenu` and `projectBatch` (the fleet switches and the boot-resume
 note), `projectSettings` (the project settings entry in the project header's
 menu, after New thread and before the batch entries), `hostTrailing` (the
-deploy-drift mark on the status row and the host header). Masters need no
+deploy-drift mark on the status row and the host header), `hostSubline` (the
+relayed host's "through box · locked since 9:14" under the header's name). Masters need no
 slot: a master's row carries its word from `ThreadRow`, its batch children are
 roots that Home lists through `HomeModel`, and whatever fills
 `ThreadItem.children` nests under its root as subagents do.
@@ -178,6 +243,41 @@ snapshot instead; it, a signed-out gh and a repository that failed each get
 one meta line at the top. Empty: one calm meta line, shown once every host has
 answered or cannot; the system `ProgressView` until then, never on a paint
 from disk.
+
+**The fleet switches** (ios/TempCode/Sources/Shell/FleetSwitches.swift over
+the client package's ThreadBatch.swift, the desktop's threadBatch.ts ported
+whole) are four rows beside Mark all read: Pause all, Resume all, Stop all,
+Archive done, in the host's menu (the `ellipsis.circle` in Home's bar with
+one host, on each host header with several) and in the project header's
+menu, and again in a thread's menu for its project. A row with nothing to
+act on is disabled, never hidden; a key that cannot act reads the reason as
+the menu's first line. Pause, Stop and Archive done confirm in a medium
+sheet whose title is the live count ("Pause 15 running threads on the
+box?", the digits rolling as threads settle while it shows), with the
+resources clause and its switch when Archive done would release worktrees
+or simulators, and one full-width confirm at the foot (destructive tint for
+Stop and Archive done). Resume all runs at once. The outcome is one status
+line on the bar material above the tab bar, "Paused 14 · 1 failed: Search
+(harness not responding)": a clean result leaves after four seconds, a
+failure waits for a tap.
+
+**Queued, stopped, resources.** A queued root (created, waiting for its
+`after` sibling) reads the host's "Queued · waiting for X" line through its
+`activity`, never sits under Running, and offers Start now in its context
+menu and in the working strip (`session.start`, past the `after`); a
+stopped root (its harness gone after a restart) reads "Stopped · the
+harness is gone" in the strip with Resume (`session.resume`, a fresh
+harness on the transcript). A paused master's strip says ", and 2 batch
+threads with it". A host that resumed threads after a restart shows "7
+threads resumed after restart" once per boot as one quiet line at the top
+of Home for fifteen seconds. Resources… in a thread's menu opens the
+Resources sheet (ios/TempCode/Sources/Thread/ResourcesSheet.swift): one
+group per host the rows live on, each row the label, its path or UDID in
+mono, the state word, and Remove (a spinner while the removal is out,
+"Waiting for the Mac" when that host is offline); the row leaves when the
+host's push says it is gone. Archiving a thread that holds resources, from
+a swipe, a context menu or the thread menu, asks first: "Archive <title>?"
+with "and remove 2 resources on the Mac" switched on by default.
 
 The detail paints its header from the row (picture, author, `repo #n` dim,
 the title in `title3` semibold, the state word in its color or Open in
@@ -237,6 +337,23 @@ field and returns to the hint. Nothing animates on a keystroke or a scope
 tap; the press scale and the ticking time are the only motion. DEBUG
 hooks: `TC_TEST_SEARCH` is the query, `TC_TEST_SEARCH_SCOPE=files` opens
 the Files scope.
+Every paired host is asked at once and rows land per host as it answers
+(`CrossHostSearch.run` in `Client/CrossHostSearch.swift`, an `AsyncStream`
+of answers the screen writes inside `Motion.withoutAnimation`; the previous
+answer stays until the first batch lands, and stable row ids keep an
+unchanged row in place while a second host's rows insert). The ranking is
+by the hosts' bm25 rank and recency, never by host: thread groups by their
+best hit, then the app's notes, then file groups by newest mtime, then
+projects by name. A thread's working notes are hits under its head (the
+`note.text` glyph, `seq` nil) and the app's notes (`notes.search`) are note
+rows (`NoteRow`: the glyph, the title, the snippet with the match in weight,
+the host trailing when several; a fact, not a button). The same file in two
+copies of a paired project (`ProjectPairs` over every host's workspaces,
+through `CrossHostSearch.pairLookup`) is one row on the newer copy, "· newer"
+after its line number, the other hosts in the accessibility label. `host:` (a name,
+an id, or `mac`), `type:` (thread, file, note, project; it wins over the
+scope buttons) and `project:` are typed in the box; the foot names each host
+with its time, "…" while it is still answering, offline or failed.
 
 ## The thread screen
 
@@ -420,6 +537,28 @@ files, never an empty view):
   (thread 17).
 - (g) the subtitle by status: the table above, in `ThreadHeaderLine.init`.
 
+**Notes.** Every root thread's bar carries a `note.text` glyph with a 6 pt
+neutral dot when the notes changed since this device last read them (a
+per-thread mark in UserDefaults, never synced). It presents the Notes sheet
+at the large detent with the 16 pt sheet radius: the menu (Copy as brief,
+light haptic) leading, Edit ↔ Done trailing, no close button; swiping down
+dismisses and saves. The document is the five sections (Goal, Decisions,
+State, Pointers, Open questions) in order, each heading in `.headline` and
+its body through the plan page's block stack (PlanType's type and spacing,
+parsed through the plan pages' cache); an empty section is folded
+to its heading in tertiary with the same spacing, so a thread that wrote only
+Goal and State still shows the five-part outline; headings the thread
+invented come after. Edit swaps the page for a plain `.body` text editor of
+the whole file (autocorrection on, no mono), saved 800 ms after the last
+keystroke, on Done and on dismiss; the one quiet line under it reads "Not
+saved" after a failure, or "The thread updated the notes meanwhile · Load
+theirs" when a push passed the text the edit began from. A push while the
+sheet is open replaces sections in place by heading: the reader's section
+stays anchored, a changed body cross-fades 150 ms, and nothing animates on
+first paint. A read key shows its reason where Edit would be. On Home, a
+waiting thread's needs-you row carries the first line of its State as its
+second line; the cue's seq still routes the tap to the card.
+
 ### Chat
 
 The transcript is the whole body, the desktop's `AgentTranscript` row by
@@ -508,6 +647,9 @@ the package's `ToolPhrase` (tested). Row kinds and their mobile form:
 - **Errors and system**: "Failed · the harness's words" in destructive with
   the alert glyph; the user's own Stop is a gray "Stopped"; a pass row reads
   "Pass · what it did"; everything else is one quiet line, glyph and text.
+- **A failed thread's row** (Home's Needs you, every list) reads the host's
+  one-line verdict (`failure.summary`) on its second line; the error row's
+  first line is the fallback for a host that sent none.
 - **Subagent spawn and report**: a row under a rail: the agent's glyph,
   "Spawned" or "Reported", its title in a wash, its status with the dot;
   tap pushes the subagent thread.
@@ -544,6 +686,40 @@ bottom and shows a "Jump to latest" pill (one, raised, 150 ms opacity and
 and nothing else. Nothing animates on first paint from cache. Images reach
 the phone through `fs.media` and the `/asset` GET; the host an image lives
 on is `MediaImage.hostOf(_:)` (the media-host thread's seam).
+
+### The account chip and menu
+
+Every Claude or Codex thread's subtitle ends with the account it spends
+from: a 6 pt dot in the account's own colour (Aliax's `#rrggbb`; tertiary
+when it has none) and the short name (nickname, else the email's local
+part) in `caption` medium secondary, or "Auto" one step dimmer with no dot
+when the host picks. A 44 pt hit area; press dims (`pressableStatic`), no
+scale in the dense bar. Tap opens the system sheet (16 pt, medium and large
+detents), titled "Account", with the source line under it ("From project
+billing-page", "From workspace cosmic-web", "Auto · picked by model").
+
+Three scopes in a segmented row, only those the thread has: **This thread**
+reads the route (the account checked is the one it spends from; a "Route
+automatically" pill under the rows asks the host to re-pick, and "Already
+on the best account" is the one word back when nothing moved); **Project**
+and **Workspace** pin over `project.setAccounts` and `workspace.setAccounts`
+(admin). Rows: "Automatic" first, with what it follows ("Best account for
+the model", "Follows the workspace: work"), then the provider's accounts in
+the snapshot's order, a check on the one that applies at that scope, and
+one "gone from this host" row in tertiary when the pin or the route names
+an account the snapshot no longer knows. A pin shows at once and reverts
+with the reason on the reserved line under the segments when the host
+refuses. A key below admin keeps the rows and says "This key can't change
+pins" there; nothing hides.
+
+Each account row carries a 3 pt capsule bar: the least room among the
+usage windows the thread's model spends (5h, the weekly one, and the
+Fable cap for a Fable model), success above a quarter, warning down
+to a twentieth, destructive below, and destructive at zero while the
+account is rate limited ("rate limited · 39m") or signed out ("sign in
+again"); the stamp beside the name is the tightest window's reset ("in 2h
+14m"), tabular. The sheet reads `accounts.list` once on open and the
+`accounts` push after; stamps tick every 30 s.
 
 ### Implementation: the board is the hero
 
@@ -638,14 +814,24 @@ Chat body as above.
 
 Segments: **Plan** and **Chat**; Chat is default until the plan file has
 content, then Plan. A project-plan thread (docs/PROJECT-PLAN.md) has the
-same two segments and renders its file the same way; it has no Start (its
-milestones are planned one at a time from the desktop's options card). Plan
+same two segments; it has no Start (its milestones are planned one at a
+time from the options card, see Project plan below). Plan
 renders the markdown file (`file.read` of `planPath`, polled 1.5 s running
 and 8 s idle while the screen shows) document-first, `body` size, generous
-measure, streaming in as it is written. Header action **Start** (L5) opens a
-sheet choosing
-Implementation or Orchestration. A thread stopped on a question forces the
-Chat segment with the question card in view.
+measure, streaming in as it is written. The page's header row (the state line and the action, in
+`PlanView`'s two slots; `Thread/PlanFlow.swift` on the client package's
+`PlanFlowState`) follows the plan flow of planFlow.ts and exists only once
+the plan is complete: "Plan complete" while the planner still speaks;
+"Waiting for you to start the build" with **Start**, which opens the Start
+sheet (Implementation first, Orchestration second) whose confirm calls
+`plan.implement`, so the host picks the title, the seed and the project's
+plan settings and the build is pushed; "Build started" with a chip naming
+the build, which pushes it (no chip when the build lives on another host).
+A key that cannot operate keeps the Start pill and the tap says why. The
+toolbar carries no Start or Build. A build shows "Planned in <title>" under
+its board's goal, a row that pushes the planning thread; a thread row of a
+complete plan with no build carries the tag "Plan ready". A thread stopped
+on a question forces the Chat segment with the question card in view.
 
 The page is a set document (`PlanView.swift`, type in `PlanStyles.swift`,
 blocks from the client package's `PlanDocument`), the way Notes or iA
@@ -707,6 +893,68 @@ Writer set one:
 
 The research report opens on the same page (`ReportScreen`), until the
 research thread's own screen replaces it.
+
+
+### Project plan: the milestones are the hero
+
+The same Plan and Chat segments as a planning thread, and the same page
+(`ProjectPlanView.swift` composed on `PlanPage`, values in
+`ProjectPlanStyles.swift`, the parse in the client package's `ProjectPlan`):
+the fixed sections (the title, Goals, Current state, Risks, Open questions)
+render as the document through `PlanDocumentView(range:)`, and `## Milestones`
+keeps its heading and trades its body for native rows. Nothing animates while
+the file streams in: a milestone appearing adds a row below the reader, a
+field landing changes that row's own lines.
+
+- **The progress line** under the heading: a 3 pt `Surface.fill` capsule
+  filled `Tint.success` to done of total, "3 of 7 done" beside it in the
+  stamp step with rolling digits; no percentage. The fill's width animates
+  with `Motion.expand` (none under reduced motion).
+- **A milestone row** (44 pt min, 8 pt vertical, a `Hairline` below at the
+  text edge): the checkbox in the 26 pt marker column (`circle` tertiary /
+  `checkmark.circle.fill` `Tint.success` at `body`, a 44 × 44 hit area,
+  `.pressable`, a light impact on the tick), the ordinal in a second 26 pt
+  column in the meta step, then the title at `body` (secondary once done, no
+  strikethrough; the color crosses over `Motion.crossFade`) with the scope as
+  one dim `footnote` line. Tapping the text expands the row with
+  `Motion.expand` (`Motion.collapse` back, `Motion.crossFade` under reduced
+  motion): the scope wraps, "Done when" semibold with its text, and the
+  dependency chips ("Depends on" and a 20 pt `Surface.fill` capsule per
+  number at `caption2`, scrolling sideways past the row). One row open at a
+  time; a milestone with no fields has no expand. A tick is optimistic over
+  `projectPlan.tick` (the glyph swaps with `Motion.iconSwap`, the row's
+  glyph a small spinner meanwhile) and reconciles when the next poll shows
+  the file; a build landing on the host ticks the file and the row follows
+  on the 8 s idle poll.
+- **The options card** after `status: complete` in the frontmatter (and only
+  that): a `groupCard` with "The plan is complete" and the count in its
+  header, then four `.pressable` rows (glyph in a 20 pt column, title in the
+  title step, a one-line detail in the meta step, hairlines at the text edge):
+  Plan the next milestone (`map` violet, the next milestone's number and
+  title; "Every milestone is done" disables it), Start an orchestration
+  thread for milestone N (`arrow.triangle.branch` warning), Revise the plan
+  (`pencil`, a native alert with a text field; empty sends the desktop's
+  default re-survey turn), Keep / Stop keeping as the project's plan (`pin`
+  info / `pin.slash`). The two starts open a sheet in the Start-a-build
+  shape (the milestone with its scope and done-when, the model and reasoning
+  prefilled from the plan thread), create the thread with its brief, link it
+  to the milestone over `projectPlan.link` and push it. The card appears with
+  `.rowAppearTransition()`; a busy row's glyph is a small spinner; the footer
+  reads a read key's reason or the last refusal.
+- **A read key** disables the checkbox and the four rows and says why: one
+  meta line under the progress line and in the card's footer, the same
+  `ActionBlock.text`. Nothing is hidden.
+- **The Home chip** sits in the project header before the plus
+  (`ProjectPlanChip.swift`, the `projectTrailing` slot): `flag.checkered`
+  violet at `caption2.semibold` and "Plan", or "Plan · 3/7" once kept, in a
+  28 pt `Surface.fill` capsule inside a 44 pt hit area, the count rolling.
+  It opens the plan thread; its context menu holds the four options (a read
+  key's reason as the first, disabled line). The state (`projectPlan.get`)
+  is cached per host and project, loaded on appear, refreshed after every
+  action from the chip and when a project-plan, implementation or
+  orchestration thread of the project goes idle, and asked again after a
+  reconnect. Nothing shows for a project with no plan file and no plan
+  thread.
 
 ### Orchestration: the fleet is the hero
 
@@ -837,6 +1085,71 @@ distinct urls in arrival order; a matching list renders as numbered
 reading-list rows (`ReportLayout.pieces`). The document keeps streaming
 while open; Done dismisses.
 
+### Master: the batch is the hero
+
+A pinned master (`isMaster`, any type) opens on **Board**, Chat second,
+from the first open: the board and its + Thread are the way in even before
+the first child exists. `Sources/Thread/Master/` draws it from the client
+package's `Rendering/Batch.swift` (`MasterBoard`, `BatchSteps`, `RulesEdit`,
+`BoardActions`) and the batch state the client keeps (`Client/Batches.swift`).
+
+- **The bar**, 44 pt on the chrome step under the segment control: **+
+  Thread** (a pill menu: New thread…, Add existing thread…) on the left, the
+  batch's **⋯** on the right (Pause all, Resume all, Archive done…, Archive
+  all…). The navigation bar's ⋯ stays the thread's own. A switch with
+  nothing to act on is disabled, never hidden; a key that cannot operate
+  reads the reason as each menu's last line.
+- **The rows**, one plain list in four groups under the kit's section
+  headers with counts: Needs you (waiting, failed), Running (starting,
+  running, watching, paused), Queued, Done. Each row: the fleet's status
+  mark in the 14 pt column, the type glyph, the title in the title step with
+  the type word muted after it and the task tally at the right (a chevron
+  folds an implementation's tasks), then the activity line (the host's
+  `activity`, the question, "Paused", "Stopped", "Landed 12:08") with the
+  model mark at its right: provider glyph, short model name, effort and
+  "1M" quieter. A plan and the build it started are one row under the
+  plan's title. A queued child reads "Queued · waiting for <sibling>". A
+  child on another host names the host in its model mark and reads "Out of
+  reach on <host>" in red while that host is away. Waiting rows sit on the
+  needs-you tint; separators start at the title. Settled rows drop to the
+  regular weight and secondary text.
+- **The body** under a row: an implementation's tasks (check, spinner,
+  open ring), open while it works or needs you, folded once it is done; a
+  research or orchestration thread's one summary line (its notes' State,
+  else its latest words, never a repeat of the activity line); chat and
+  plan rows carry nothing more.
+- **A tap** pushes the child's own thread screen with its type's segments;
+  Back returns to the board where it was. A long press is the kit's menu
+  with the batch's rows in its slot: Start now and Remove from queue on a
+  queued child, Pause and Stop on a working one, Resume on a paused or
+  stopped one. A far child has no menu here: its host acts on it.
+- **The foot** is the list's last section, "When the threads are done"
+  with Edit: the master's summary, the rules as one sentence ("Branches land
+  as they finish, then Gate and Smoke test. Then you are notified."), what
+  blocks the end in red, then the steps in the master's order, each a row
+  with its mark (check, spinner, red dot, dashed ring), name, a shell step's
+  command in mono, its time. The console opens under the running step, or a
+  failed one until Hide: the progress count and label, a 2 pt bar, then the
+  newest lines in mono one step down, in a field that grows to 220 pt and
+  then scrolls inside; it follows the tail until the person scrolls up, and
+  a line arriving never animates. Stop sits on a running shell or publish
+  step (`batch.stopStep`); a gate or release runs to its end.
+- **The sheets**, all system sheets at `Radius.sheet`: Rules (large: how
+  branches land, the steps renamed in place, reordered behind Edit, swiped
+  away, a built-in kind or a shell command added, what happens after, the
+  summary; the footer reads the sentence back and says what the contract
+  refuses), Add a thread (large: the brief first, type, model and effort,
+  1M where offered, After), Add existing threads (medium, one flat list of
+  the project's free roots), Archive done or all (medium: what leaves, what
+  stays, the clean-up switch when resources are known).
+- **The pin**: "Make master thread" / "Not the master" in a root thread's
+  menu (the thread screen's ⋯ after Pin, Home's row menus) for an admin key;
+  any other key sees it disabled with the `noAdmin` line.
+- **Data**: `batch.get` on appear, on every socket open and every 5 s while
+  the board shows; the `batch` push between, which the client lands at most
+  twice a second (the newest of a burst always lands). Nothing animates on
+  the first paint.
+
 ## Settings
 
 Settings is the one place the app is Apple's own: a pushed, inset grouped
@@ -890,11 +1203,9 @@ so the bar's title is the host's name on either path with no principal item.
    when the host is out of reach, Pair Again when the key was refused or the
    address answers as another host, nothing when the host needs an update
    the phone cannot do); the footer says why.
-2. **Activity**: what the host is doing. Thread 21 fills it with one line,
-   `HostActivitySections(client:)`, a view of its own under `Shell/Hosts/`
-   whose body is one or more `Section`s (deploy drift, the Mac bridge's
-   running and held calls, the devices, the harness and memory sync lines,
-   a running deploy's log). Empty until it lands.
+2. **Activity**: `HostActivitySections(client:)` (`Shell/Hosts/`): Build,
+   Mac bridge, Devices, Sync, in that order; "Host activity" below has
+   their rules.
 3. **Key**: Read, Operate, Approve, Admin, each with one line of what it
    allows and a checkmark in the tint when the key has it; the footer says
    a new key on the host is how to change it.
@@ -905,13 +1216,96 @@ so the bar's title is the host's name on either path with no principal item.
    host, the pairing date.
 5. **Pair Again** and the red **Forget This Host**.
 
+**Relayed hosts in Settings → Hosts.** A host reached through another sits
+under its carrier's row (`RelayedHostRow`): the lane's dot in the mark
+column, the name, "through <carrier> · <presence>" in the meta step (the
+presence line's words above, nothing after the carrier's name when the host
+is up and unlocked), the abbreviated id trailing; no swipe and no menu,
+since nothing waits on the person. Its detail (`RelayedHostDetailView`) has
+two sections: Status (the dot, the lane's `StatusText`, the presence line
+under it, a spinner while connecting; the footer names the carrier and that
+it relays the host's threads while the host is awake and its link is up; no
+Retry Now, `HostFix.fix(for:environment:)` answers nil for a relayed host)
+and Host (Name read-only, since it is the Mac's own hostname; Through;
+Environment id in mono; Version from the presence row's build, else the
+lane's hello; Contract). No Key section (a footer says whose key it uses),
+no Pair Again, no Forget: the footer says forgetting the carrier forgets
+this host with it.
+
 Forgetting is a confirmation dialog naming the host. `forgetHost` first
 sends `remote.push.unregister` on the host while the socket is open (best
 effort, so a forgotten host stops sending notices whose tap would land on an
 environment the phone no longer knows), then removes the key, stops the
 socket and clears the cache. The message says what holds: the threads stay
 on the host, it stops sending notifications here when it can be reached, and
-the key stays valid there until revoked.
+the key stays valid there until revoked; a carrier's names the relayed hosts
+that go with it (`forgetCopy`).
+
+**Host activity.** Four kinds of section, each absent when the host has
+nothing of the kind, all in the same inset grouped grammar: system headers,
+no glyphs on rows except the status column (`Layout.markWidth`: a dot, a
+spinner, a check or a cross), footers of at most two lines.
+
+- **Build**: a Master row with master's version, read by the phone itself
+  from GitHub (`MasterReleaseWatcher`: every ten minutes while a drift mark
+  or a detail shows, and on foreground after fifteen; a failure keeps the
+  last value). For a box, Deploy Master, behind a confirm naming both
+  versions ("v1.0.270 → v1.0.273, 3 releases. …"), and once a run exists the
+  job row: spinner, check or cross, the title swapping in place, the note or
+  ending under it, a chevron to the log sheet. The footer names the gap and
+  the fix ("3 releases behind master: v1.0.270 → v1.0.273. Deploy from
+  here.", "Publish from the Mac." on a Mac) or why it is out of reach (not
+  connected, not installed, an admin key). The host's own version stays in
+  the Host section; nothing says it twice. The `+N` mark (`DriftMark`)
+  trails the Hosts row before the id and fills Home's `hostTrailing` slot
+  (the status row and the host header), muted, tabular, never animated.
+- **The deploy log** is a medium/large sheet (`Radius.sheet`): the card's
+  title, its note under it ("Cannot be stopped mid-way; the box rolls back
+  on failure", or "The box is restarting; the log continues when it is
+  back" while the link is down), the last 40 lines in mono one step down,
+  selectable, and the ending line. It follows the tail while the reader is
+  at the bottom and holds still once they scroll up; appends never animate.
+  A deploy is never stoppable, so there is no Stop.
+- **Mac bridge** (a box's detail, from each paired Mac that serves it,
+  headed "On <Mac>"): the box's calls past the prompt, running first, then
+  held with their standing ("Waiting for the Mac · load 12.3 of 8 · 3rd in
+  line", swapping in place), then paused on the box; the command in mono,
+  the thread and its elapsed under it. Stop is a swipe (no destructive role:
+  the row stays until the Mac answers) and a context-menu item, never on a
+  paused row. Then Running and Threads against their caps and the Load row
+  with "Holding new commands until under 24" while the guard holds. The
+  footer says how many requests wait for a decision on the Mac; deciding
+  stays there.
+- **Devices** (one section per Mac this host can show: "Devices" on the Mac
+  itself, "Devices on <Mac>" on a box): simulators then iPhones, a dot in
+  success, warning or tertiary that cross-fades in place, the state line
+  with a booted simulator's CPU rolling (`.numeric`), the holder trailing in
+  the footnote's tertiary, pushing its thread when that host is paired here.
+  Shut Down and Delete on a swipe and in the context menu (Delete confirmed
+  by an alert naming the holder), Open in Xcode on a phone's; a spinner
+  replaces the dot while one is out. The footer is the summary, then the
+  Xcode in use, then any tool that did not answer.
+- **Sync** (admin): per peer its name, the harness config and memory lines
+  (cross-fading, up to three lines so "synced 2m ago" survives), and a Sync
+  Now pill; the conflict copies behind a disclosure. The footer is the rule
+  ("Skills, commands, hooks and settings go from the Mac to its hosts;
+  memory crosses both ways, the newer copy wins.") or that sync is off.
+
+A key that lacks a capability sees the section and its rows with the
+control disabled and the reason in the footer: "Deploying needs an admin
+key.", "Reading the sync state needs an admin key." (one quiet row instead
+of the lines), "Shutting down or deleting a simulator needs an operate
+key.", "Stopping a command needs an operate key on the Mac." An action the
+host refuses lands as the destructive footnote line under the section's
+rows (`RowErrorLine`), arriving like a needs-you row and leaving after four
+seconds. Motion: the first report paints still; rows that come and go after
+it use `.rowAppearTransition()`; the dot, the spinner and the check
+cross-fade on `Motion.crossFade`; counts and CPU roll on `Motion.numeric`;
+nothing else moves. Every loop runs in one `ActivityPollers` behind the
+Master row, so a row changing never restarts the devices watch; leaving the
+detail ends them all and sends the unwatch. The words are the client
+package's `Client/HostExtrasText.swift`, ported from the desktop's; the
+stores are `Client/HostExtras.swift`.
 
 **Pairing** (Add a Host, Pair Again) is a medium sheet, 16 pt radius
 (`Radius.sheet`), with the large detent for the keyboard: a segmented
@@ -1176,7 +1570,7 @@ used.
 | Needs-you row appearing | 200 ms ease-out, opacity and 8 pt translateY; removal 150 ms opacity only | `.rowAppearTransition()` (`Motion.appear(reduced:)`, `Motion.rowAppear`, `Motion.rowLeave`, `Motion.travel`) |
 | Last-activity line changing | 150 ms cross-fade with 2 pt blur; the row never changes height | `SwapText`, `.swapTransition()` (`Motion.swap(reduced:)`, `Motion.crossFade`, `Motion.crossFadeBlur`) |
 | Counts and elapsed | `contentTransition(.numericText())` on 150 ms | `.numeric(value)` (`Motion.numeric`), `CountText`, `ElapsedText`, `AgoText` |
-| Streaming text | none; append only | |
+| Streaming text | the jitter-buffer reveal (`SmoothText`): paced at the measured arrival rate behind a 120–500 ms playout lag, painted every 33 ms, no fade and no translate; a chip's target types in and cross-fades 150 ms with 2 pt blur when replaced; edit counts tick with `numericText`; reduced motion reveals per batch | `SmoothTextReveal`, `StreamingAssistantRow`, `LiveChipLabel` (`Motion.swap`, `Motion.crossFade`) |
 | Status dot to spinner | cross-fade 150 ms | `StatusDot` (`Motion.crossFade`) |
 | A glyph trading state (Send ↔ Stop, outline ↔ fill, pin ↔ unpin) | scale 0.25 → 1, opacity 0 → 1, blur 4 → 0, spring `duration 0.3, bounce 0`; reduced motion: opacity on `cubic-bezier(0.2, 0, 0, 1)` 150 ms | `.iconSwapTransition()` with `.id(symbol)` in a `ZStack` (`Motion.iconSwap(reduced:)`, `Motion.iconSwap`, `Motion.iconSwapScale`, `Motion.iconSwapBlur`, `Motion.iconFade`); `TypeGlyph(active:)` uses the symbol replace effect instead, since Glyphs builds without Motion |
 | Send button filling | fill and glyph color 150 ms ease-out when text arrives or leaves; the arrow ↔ stop square is the glyph-trading row above, the circle never moves | `Motion.crossFade` on the fill; `.id(stops)` with `Motion.iconSwap(reduced:)` on the glyph |
@@ -1189,6 +1583,16 @@ used.
 | Jump-to-latest pill | 150 ms opacity and 8 pt translateY, both directions | `.jumpTransition()` (`Motion.jump(reduced:)`) |
 | Diff hunk sideways | follows the finger through an interactive spring, momentum from the release velocity, rubber band at both ends, settles with spring `duration min(0.6, 0.35 + travel × 0.0004), bounce 0`; next and previous hunk scroll 250 ms on `timingCurve(0.23, 1, 0.32, 1)` to the header's exact offset | `DiffMotion.track`, `DiffMotion.settle(travel:)`, `DiffMotion.jump` (Thread/DiffStyles.swift); `DiffLayout.hunkStarts` for the offsets |
 | Diff lines landing | 150 ms cross-fade over the shimmer; nothing when the lines were in hand | `Motion.crossFade`; the counter rolls with `.numeric(current)` |
+| Fleet toast | 150 ms opacity, both directions; a clean result leaves after 4 s | `FleetToastLine` (`Motion.crossFade`) |
+| Fleet confirm's count | `contentTransition(.numericText())` on the title, 150 ms | `FleetConfirmSheet` (`Motion.numeric`) |
+| Resource row removed | 150 ms opacity, once the host's push says so | `ResourcesSheet` (`Motion.rowLeave`) |
+| Headroom bar on a snapshot change | fill width 200 ms ease-out; never on the first paint; reduced motion snaps | `AccountMenu`'s `AccountMotion.bar` (for `Motion` to absorb) |
+| A batch step changing status | its mark cross-fades 150 ms | `StepGlyph` (`Motion.crossFade`) |
+| The step console opening and closing | spring `duration 0.35, bounce 0` in with opacity and a short drop from the step; 200 ms ease-out out; reduced motion: opacity | `Motion.expand`, `Motion.collapse` |
+| A step's progress bar | width linear 200 ms | `.linear(duration: 0.2)`, the one linear curve |
+| A console line arriving | none; the scroll to the tail runs without a transaction | `Motion.withoutAnimation` |
+| A board row's tasks folding | the row expand above; the tally chevron turns 90° on 150 ms | `Motion.expand`, `Motion.collapse`, `Motion.crossFade` |
+| Stop ↔ Hide on the console's step | the glyph-trading row above | `.iconSwapTransition()` |
 | Reduced motion | cross-fades replace every translate and spring | every `Motion.*(reduced:)` and the four transition modifiers read it themselves |
 
 Every transition carries its own timing, so an enclosing `withAnimation`
@@ -1253,6 +1657,14 @@ keyboard action. Every animated change has a static cue as well.
   once per boot (`bootResume`, deduped by the boot's time in the cache).
 - **Measure.** Scroll a 2,000-row thread at 120 Hz with the Instruments
   animation hitch template; a hitch over 8 ms in the transcript is a bug.
+- **Streaming.** A streaming row's text is paced by `SmoothTextReveal`
+  inside the row's own state, so a paint changes one row's body and nothing
+  in the fold; the revealed prefix goes through the incremental markdown
+  path (the last block only). Partial tool calls and live edits update one
+  row in place by `callId` and by path; a batch of N rows is one write to
+  the thread's state. The list anchors its bottom edge on size changes.
+  Budget: no frame over 8 ms at 120 Hz on the 2,000-row chat while a turn
+  streams.
 
 ## Push, the Live Activity and the Dynamic Island
 

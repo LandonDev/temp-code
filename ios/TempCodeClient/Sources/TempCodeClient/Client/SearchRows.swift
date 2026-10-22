@@ -7,9 +7,9 @@ import TempCodeContract
 /// No SwiftUI, every type `Sendable`, so the Swift Testing suites cover
 /// it and the view stays a thin draw.
 ///
-/// `SearchRows.build` is the one seam for the cross-host selector (merge,
-/// rank, fold, typed filters): it replaces that body, or maps its own
-/// output onto `SearchRow`, and nothing in the view changes.
+/// `CrossHostSearch` (merge, rank, fold, typed filters) maps its output onto
+/// `SearchRow` and the view draws it; `SearchRows.build` is the single-host
+/// shaping it grew from, kept with its suite.
 
 /// What the field searches: threads by what was said in them, or lines of
 /// a project's files. Files are offered only where an open host has a project.
@@ -31,6 +31,8 @@ public enum SearchRow: Identifiable, Sendable, Hashable {
     case file(FileHit)
     /// A project matched by name; the selector supplies these.
     case project(ProjectHit)
+    /// One of the app's notes (`notes.search`). A fact: the phone has no note viewer.
+    case note(NoteHit)
     /// A host cut its answer short, once per answer.
     case more
 
@@ -44,6 +46,7 @@ public enum SearchRow: Identifiable, Sendable, Hashable {
         case .projectHead(let head): "phead:\(head.environmentId):\(head.projectId)"
         case .file(let file): "file:\(file.environmentId):\(file.path):\(file.line):\(file.column)"
         case .project(let project): "project:\(project.environmentId):\(project.projectId)"
+        case .note(let note): "appnote:\(note.environmentId):\(note.noteId)"
         case .more: "more"
         }
     }
@@ -115,8 +118,13 @@ public enum SearchRow: Identifiable, Sendable, Hashable {
         /// The line, leading whitespace trimmed; `matches` index into this text.
         public let preview: String
         public let matches: [Range<Int>]
+        /// The names of the other hosts whose copy of a paired project holds
+        /// this same line; the cross-host fold fills it.
+        public var alsoOn: [String] = []
+        /// This copy won the fold by its later mtime.
+        public var newer = false
 
-        public init(environmentId: String, path: String, relative: String, line: Int, column: Int, preview: String, matches: [Range<Int>]) {
+        public init(environmentId: String, path: String, relative: String, line: Int, column: Int, preview: String, matches: [Range<Int>], alsoOn: [String] = [], newer: Bool = false) {
             self.environmentId = environmentId
             self.path = path
             self.relative = relative
@@ -124,6 +132,30 @@ public enum SearchRow: Identifiable, Sendable, Hashable {
             self.column = column
             self.preview = preview
             self.matches = matches
+            self.alsoOn = alsoOn
+            self.newer = newer
+        }
+    }
+
+    public struct NoteHit: Sendable, Hashable {
+        public let environmentId: String
+        public let noteId: String
+        public let title: String
+        public let snippet: String
+        /// The runs of `snippet` the query matched.
+        public let matches: [Range<Int>]
+        public let updatedAt: Int
+        /// The host's name, only when several hosts are paired.
+        public let host: String?
+
+        public init(environmentId: String, noteId: String, title: String, snippet: String, matches: [Range<Int>], updatedAt: Int, host: String?) {
+            self.environmentId = environmentId
+            self.noteId = noteId
+            self.title = title
+            self.snippet = snippet
+            self.matches = matches
+            self.updatedAt = updatedAt
+            self.host = host
         }
     }
 
@@ -152,6 +184,8 @@ public enum SearchRow: Identifiable, Sendable, Hashable {
 /// One host's standing after a search, for the foot line.
 public struct SearchHostFoot: Sendable, Hashable {
     public enum State: Sendable, Hashable {
+        /// Asked and not yet done; `ms` is the time so far.
+        case searching(ms: Int)
         case answered(ms: Int)
         case offline
         case failed
@@ -307,11 +341,13 @@ public nonisolated enum SearchRows {
         return SearchAnswer(query: query, scope: scope, rows: rows, hosts: feet)
     }
 
-    /// "Mac 320 ms · box 1.2 s", "box offline", "box failed"; nil with one host.
+    /// "Mac 320 ms · box 1.2 s", "box …" while a host is still answering,
+    /// "box offline", "box failed"; nil with one host.
     public static func footLine(_ hosts: [SearchHostFoot]) -> String? {
         guard hosts.count > 1 else { return nil }
         return hosts.map { host in
             switch host.state {
+            case .searching: "\(host.name) …"
             case .answered(let ms): "\(host.name) \(duration(ms: ms))"
             case .offline: "\(host.name) offline"
             case .failed: "\(host.name) failed"

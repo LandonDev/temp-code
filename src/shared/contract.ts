@@ -11,6 +11,7 @@ import { AttachmentRequestSchemas } from './contract-attachments'
 import { SessionMoveRequestSchemas } from './contract-session-move'
 import { MacBridgeRequestSchemas } from './contract-macbridge'
 import { CrossHostRequestSchemas } from './contract-crosshost'
+import { RelayRequestSchemas } from './contract-relay'
 import { MacBridgeRulesRequestSchemas } from './contract-macbridge-rules'
 import { ProjectPlanRequestSchemas } from './contract-projectplan'
 import { BatchRequestSchemas, BatchRulesSchema } from './contract-batch'
@@ -134,6 +135,8 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...SessionMoveRequestSchemas,
   ...MacBridgeRequestSchemas,
   ...CrossHostRequestSchemas,
+  // The relay (contract-relay.ts): a host's presence and the frames of its relayed lanes, over its link.
+  ...RelayRequestSchemas,
   ...MacBridgeRulesRequestSchemas,
   // The project plan (contract-projectplan.ts): pin, ticks, milestone links.
   ...ProjectPlanRequestSchemas,
@@ -1152,6 +1155,20 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
 export type RequestLane = 'ui'
 export type ClientRequest = z.infer<typeof ClientRequestSchema> & { lane?: RequestLane }
 
+/** What `review.get` answers: the scope's override, the global set, and the effective one with where it came from. */
+export interface ReviewState {
+  override: import('./review').ReviewSettings | null
+  global: import('./review').ReviewSettings | null
+  settings: import('./review').ReviewSettings
+  source: 'project' | 'global' | 'default'
+}
+
+/** What `plans.get` answers: the effective plan settings and whether the project overrides them. */
+export interface PlanState {
+  settings: import('./plans').PlanSettings
+  overridden: boolean
+}
+
 /** A thread's notes as `session.notes.get` answers and the `notes` push carries. */
 export interface ThreadNotesDoc {
   text: string
@@ -1222,7 +1239,16 @@ export type ServerPush =
       key?: { id: string; name: string }
       /** What the host runs (release number, version, commit, platform); the deploy-drift mark reads it. */
       build?: import('./deployDrift').BuildFacts
+      /** Hosts reachable through this one (contract-relay.ts), with their presence; this host's own id is never in it. Absent on a host that relays nothing. */
+      hosts?: import('./contract-relay').HostPresence[]
+      /** On a relayed lane: the environment id of the host that carried the socket. */
+      via?: string
+      /** On a relayed lane: this host's presence as the carrier sees it, at open time. */
+      presence?: import('./contract-relay').HostPresence
     }
+  // A relayed host's presence changed (contract-relay.ts): the whole list, to
+  // every remote client socket of the carrier, direct lanes and relayed ones alike.
+  | { push: 'presence'; hosts: import('./contract-relay').HostPresence[] }
   | { push: 'workspaces'; workspaces: import('./domain').WorkspaceMeta[] }
   | { push: 'projects'; projects: import('./domain').ProjectMeta[] }
   | { push: 'event'; row: EventRow }
@@ -1238,8 +1264,8 @@ export type ServerPush =
   | { push: 'builds'; items: Omit<Extract<ServerPush, { push: 'build' }>, 'push'>[] }
   | { push: 'queue'; sessionId: string; items: QueuedMessage[] }
   // A thread's notes changed (the harness's update_notes, the person's
-  // edit, or the file edited behind the mirror). Every client gets it;
-  // the phone's decoder folds it into its unknown case.
+  // edit, or the file edited behind the mirror). Every client gets it,
+  // the phone included (NotesPush in the Swift contract).
   | { push: 'notes'; sessionId: string; doc: ThreadNotesDoc }
   // A thread's undo checkpoint changed (checkpointTurns.ts: a turn settled,
   // or edits after it were written). To the sockets subscribed to that
@@ -1247,10 +1273,13 @@ export type ServerPush =
   // phone's subset.
   | { push: 'checkpoint-changed'; sessionId: string }
   // A master's batch changed a step (batch.ts: a child landed, the gate or
-  // the release moved), each step's log as the lines since the last push.
-  // Only to the sockets watching that master (boardWatch.ts); not in the
-  // phone's subset.
-  | { push: 'batch'; state: import('./contract-batch').BatchPushState }
+  // the release moved). A socket that never asked for a board (the phone's
+  // BatchPush, an older desktop) gets the whole state on every change.
+  | { push: 'batch'; state: import('./contract-batch').BatchState }
+  // The same change for the sockets watching that master (boardWatch.ts),
+  // each step's log as the lines since the last push; a socket that has
+  // asked for a board hears only these. Not in the phone's subset.
+  | { push: 'batch-delta'; state: import('./contract-batch').BatchPushState }
   // One child's board digest changed (boardDigest.ts), at most every 250 ms
   // per child; only to the sockets watching its master. Not in the phone's subset.
   | { push: 'board'; masterId: string; sessionId: string; digest: import('./contract-batch').BoardDigest }

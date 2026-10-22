@@ -1,5 +1,21 @@
 import { z } from 'zod'
-import type { AccountPins, AccountProvider } from './accounts'
+import type { AccountPins, AccountProvider, AccountsSnapshot } from './accounts'
+import { BatchStateSchema } from './contract-batch'
+import type { DeployStatus, HostJobPhase, HostJobStatus } from './contract-host'
+import { HostJobSchema } from './contract-host'
+import { HostDevicesReportSchema, type HostDevicesHost } from './contract-hostdevices'
+import type { MacBridgeThreadState } from './contract-macbridge'
+import {
+  THREAD_RESOURCE_KINDS,
+  type ThreadResource,
+  type ThreadResourceKind,
+  type ThreadResourceRemoval
+} from './contract-resources'
+import type { BuildFacts } from './deployDrift'
+import type { PlanSettings } from './plans'
+import { PlanSettingsSchema } from './plans'
+import type { ReviewSettings } from './review'
+import { ReviewSettingsSchema } from './review'
 import type { BuildOutput, BuildRun, BuildStatus } from './build'
 import {
   AGENT_TYPES,
@@ -10,7 +26,13 @@ import {
   type Reasoning
 } from './catalog'
 import type { Capability } from './capabilities'
-import type { QueuedMessage, ServerPush } from './contract'
+import { PowerStateSchema, ScreenStateSchema, type HostPresence } from './contract-relay'
+import type {
+  QueuedMessage,
+  ServerPush,
+  SessionBatchResult,
+  ThreadNotesDoc
+} from './contract'
 import type {
   FsMedia,
   GitHubPrDiff,
@@ -59,15 +81,28 @@ import {
   AgentEventSchema,
   FailureSchema,
   AttachmentSchema,
+  NoticeKindSchema,
   PermissionPolicySchema,
   SessionStatusSchema,
   ToolPreviewSchema,
   type AgentEvent,
   type EventRow,
+  type NoticeKind,
   type SessionMeta,
   type ToolPreview
 } from './events'
 import type { EventsPage, OmittedBody, SessionChanges, SessionPage } from './wire'
+import type { HarnessEnvironmentStatus, HarnessSyncStatus } from './contract-harness'
+import type { MemoryConflict, MemoryEnvironmentStatus, MemorySyncStatus } from './contract-memory'
+import {
+  MAC_METHODS,
+  MacBridgePolicySchema,
+  type MacBridgeActivity,
+  type MacBridgeActivityHost,
+  type MacBridgeCall,
+  type MacBridgeHeld,
+  type MacBridgeLoad
+} from './contract-macbridge'
 
 /**
  * The server → client shapes as zod, for clients that are not this
@@ -154,6 +189,58 @@ export const ReasoningSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 
 export const AgentTypeSchema = z.enum(AGENT_TYPES)
 export const AccountProviderSchema = z.enum(['claude', 'codex', 'cursor'])
 export const AccountPinsSchema = z.partialRecord(AccountProviderSchema, z.string())
+
+// ── accounts on the wire (the phone's subset of accounts.ts) ────────────
+// The desktop's ProfileView and UsageReport carry more; the phone reads the
+// fields the chip, the menu's rows and the headroom bar need and ignores
+// the rest (createdAt, syncedAt, plan, …).
+
+/** The account fields the phone reads; the desktop's ProfileView carries more. */
+export const AccountProfileSchema = z.object({
+  name: z.string(),
+  email: z.string().optional(),
+  nickname: z.string().optional(),
+  color: z.string().optional(),
+  active: z.boolean(),
+  duplicate: z.boolean().optional(),
+  static: z.boolean().optional()
+})
+export const UsageWindowSchema = z.object({
+  label: z.string(),
+  usedPercent: z.number(),
+  resetsAt: z.number().int().optional(),
+  periodMs: z.number().int().optional()
+})
+export const UsageReportSchema = z.object({
+  profileName: z.string(),
+  windows: z.array(UsageWindowSchema),
+  note: z.string().optional(),
+  expired: z.boolean().optional(),
+  rateLimit: z.object({ provider: z.string(), until: z.number().int().optional() }).optional()
+})
+export const AccountHeadroomSchema = z.object({
+  room: z.number().nullable(),
+  resetsAt: z.number().int().optional(),
+  throttledUntil: z.number().int().optional(),
+  ratePerMin: z.number(),
+  tier: z.string().optional(),
+  seenAt: z.number().int().nullable()
+})
+export const ProviderAccountsSchema = z.object({
+  pinned: z.string().nullable(),
+  profiles: z.array(AccountProfileSchema),
+  reports: z.array(UsageReportSchema),
+  note: z.string().optional(),
+  headroom: z.record(z.string(), AccountHeadroomSchema).optional()
+})
+export const AccountsSnapshotSchema = z.object({
+  updatedAt: z.number().int(),
+  providers: z.object({
+    claude: ProviderAccountsSchema,
+    codex: ProviderAccountsSchema,
+    cursor: ProviderAccountsSchema
+  })
+})
 
 export const ModelInfoSchema = z.object({
   id: z.string(),
@@ -444,6 +531,80 @@ export const NoteSearchResultSchema = z.object({
 
 // ── GitHub ─────────────────────────────────────────────────────────────
 
+// ── the 2026-10-21/22 features: what each method answers and each push carries ──
+// (CLAUDE.md "Master threads", "Thread notes", "Plans", "Review before merge",
+// "Thread resources", the restart ledger, the launch mirror, devices, deploy,
+// the Mac bridge's thread switch, accounts). The interface each pins to is
+// named beside it.
+
+// master threads (contract-batch.ts, contract.ts)
+export const SessionBatchResultSchema = z.object({
+  attempted: z.array(z.string()),
+  succeeded: z.array(z.string()),
+  failed: z.array(z.object({ sessionId: z.string(), error: z.string() }))
+})
+export const SessionStartedSchema = z.object({ started: z.boolean() })
+export const BatchChildrenSchema = z.object({ children: z.array(SessionMetaSchema) })
+export const BatchStoppedSchema = z.object({ stopped: z.boolean() })
+
+
+// thread resources (contract-resources.ts)
+export const ThreadResourceKindSchema = z.enum(THREAD_RESOURCE_KINDS)
+export const ThreadResourceSchema = z.object({
+  id: z.string(),
+  sessionId: z.string(),
+  environmentId: z.string(),
+  kind: ThreadResourceKindSchema,
+  identifier: z.string(),
+  label: z.string(),
+  branch: z.string().nullable(),
+  createdAt: z.number().int(),
+  removeRequestedAt: z.number().int().nullable(),
+  removedAt: z.number().int().nullable(),
+  note: z.string().nullable()
+})
+export const ThreadResourceRemovalSchema = z.object({
+  id: z.string(),
+  outcome: z.enum(['removed', 'waiting', 'failed']),
+  note: z.string().nullable()
+})
+export const ResourcesListSchema = z.object({ resources: z.array(ThreadResourceSchema) })
+export const ResourcesRemovedSchema = z.object({ results: z.array(ThreadResourceRemovalSchema) })
+
+// devices on a Mac (contract-hostdevices.ts has the report; the hosts row is an interface)
+export const HostDevicesHostSchema = z.object({ environmentId: z.string(), name: z.string(), local: z.boolean() })
+export const HostDevicesOkSchema = z.object({ ok: z.literal(true) })
+export const HostDeviceOpenedSchema = z.object({ ok: z.literal(true), opened: z.enum(['devices', 'xcode']) })
+
+// deploy from the app (contract-host.ts)
+export const HostJobPhaseSchema = z.enum(['idle', 'pending', 'running', 'done'])
+export const HostJobStatusSchema = z.object({
+  job: HostJobSchema,
+  phase: HostJobPhaseSchema,
+  target: z.string().nullable(),
+  startedAt: z.number().int().nullable(),
+  finishedAt: z.number().int().nullable(),
+  exit: z.number().int().nullable(),
+  stoppable: z.boolean()
+})
+export const DeployStatusSchema = HostJobStatusSchema.extend({
+  job: z.literal('deploy'),
+  installed: z.boolean(),
+  installHint: z.string(),
+  version: z.string()
+})
+export const HostLogSnapshotSchema = z.object({ text: z.string(), status: HostJobStatusSchema })
+
+// the Mac bridge's thread switch (contract-macbridge.ts MacBridgeThreadState)
+export const MacBridgeThreadStateSchema = z.object({
+  sessionId: z.string(),
+  macPeer: z.string().nullable(),
+  inherited: z.boolean(),
+  online: z.boolean(),
+  registered: z.array(z.string()),
+  held: z.number().int().optional()
+})
+
 export const GithubInboxAuthSchema = z.object({
   state: z.enum(['ok', 'missing-gh', 'logged-out', 'error']),
   message: z.string()
@@ -622,6 +783,20 @@ export const BuildFactsSchema = z.object({
   platform: z.string()
 })
 
+/** The relay's host rows (contract-relay.ts HostPresence): a host reachable through this one and its state. */
+export { PowerStateSchema, ScreenStateSchema }
+export const HostPresenceSchema = z.object({
+  environmentId: z.string(),
+  name: z.string(),
+  platform: z.string(),
+  link: z.enum(['up', 'down']),
+  since: z.number().int(),
+  screen: ScreenStateSchema,
+  power: PowerStateSchema,
+  lastSeenAt: z.number().int().nullable(),
+  build: BuildFactsSchema.nullable()
+})
+
 /** `GET /api/hello`: public, with `key` when the bearer was accepted. */
 export const HelloResponseSchema = z.object({
   environmentId: z.string(),
@@ -637,7 +812,9 @@ export const HelloResponseSchema = z.object({
       caps: z.array(CapabilitySchema),
       audience: AudienceSchema
     })
-    .optional()
+    .optional(),
+  /** Hosts reachable through this one with their presence (contract-relay.ts); with a credential the host accepted. */
+  hosts: z.array(HostPresenceSchema).optional()
 })
 /** `POST /api/pair` with `kind: 'key'`: the raw key, readable once. */
 export const PairKeyResponseSchema = z.object({
@@ -666,6 +843,110 @@ export type HelloResponse = z.infer<typeof HelloResponseSchema>
 export type PairKeyResponse = z.infer<typeof PairKeyResponseSchema>
 export type TicketResponse = z.infer<typeof TicketResponseSchema>
 
+// ── a host's activity, as the phone reads it (iOS thread 21) ─────────────
+// The sync lines (contract-harness.ts, contract-memory.ts) and the Mac
+// bridge's calls past the prompt (contract-macbridge.ts); the devices and
+// the deploy job above are the subset's own.
+
+/** `{ ok: true }`: the answer of every method that only acts. */
+export const OkSchema = z.object({ ok: z.literal(true) })
+
+
+export const HarnessEnvironmentStatusSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  connected: z.boolean(),
+  running: z.boolean(),
+  files: z.number().int().nullable(),
+  sets: z.record(z.string(), z.number().int()).nullable(),
+  syncedAt: z.number().int().nullable(),
+  lastAttemptAt: z.number().int().nullable(),
+  error: z.string().nullable()
+})
+export const HarnessSyncStatusSchema = z.object({
+  enabled: z.boolean(),
+  skipped: z.number().int(),
+  environments: z.array(HarnessEnvironmentStatusSchema),
+  pathMap: z.object({ roots: z.record(z.string(), z.string()), prefixes: z.record(z.string(), z.string()) })
+})
+export const MemoryEnvironmentStatusSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  connected: z.boolean(),
+  running: z.boolean(),
+  files: z.number().int().nullable(),
+  syncedAt: z.number().int().nullable(),
+  lastAttemptAt: z.number().int().nullable(),
+  error: z.string().nullable(),
+  conflicts: z.number().int()
+})
+export const MemoryConflictSchema = z.object({
+  path: z.string(),
+  of: z.string(),
+  host: z.string(),
+  at: z.number().int()
+})
+export const MemorySyncStatusSchema = z.object({
+  enabled: z.boolean(),
+  skipped: z.number().int(),
+  environments: z.array(MemoryEnvironmentStatusSchema),
+  conflicts: z.array(MemoryConflictSchema)
+})
+
+export const MacBridgeHeldSchema = z.object({
+  reason: z.enum(['cap', 'load']),
+  position: z.number().int(),
+  load: z.number(),
+  limit: z.number(),
+  cores: z.number().int(),
+  maxRunning: z.number().int(),
+  running: z.number().int()
+})
+export const MacBridgeLoadSchema = z.object({
+  load: z.number(),
+  cores: z.number().int(),
+  limit: z.number(),
+  pinned: z.boolean(),
+  resumeBelow: z.number(),
+  busy: z.boolean(),
+  sampledAt: z.number().int()
+})
+export const MacBridgeCallSchema = z.object({
+  id: z.string(),
+  environmentId: z.string(),
+  hostName: z.string(),
+  sessionId: z.string(),
+  threadTitle: z.string(),
+  kind: z.enum(['read', 'run', 'write']),
+  method: z.enum(MAC_METHODS),
+  command: z.string().optional(),
+  argv: z.array(z.string()).optional(),
+  cwd: z.string().optional(),
+  path: z.string().optional(),
+  status: z.enum(['held', 'running', 'paused']),
+  held: MacBridgeHeldSchema.optional(),
+  interactive: z.literal(true).optional(),
+  createdAt: z.number().int()
+})
+export const MacBridgeActivityHostSchema = z.object({
+  environmentId: z.string(),
+  name: z.string(),
+  policy: MacBridgePolicySchema,
+  registered: z.boolean(),
+  maxRunning: z.number().int(),
+  maxThreads: z.number().int(),
+  running: z.number().int(),
+  held: z.number().int(),
+  threads: z.number().int(),
+  pending: z.number().int()
+})
+export const MacBridgeActivitySchema = z.object({
+  hosts: z.array(MacBridgeActivityHostSchema),
+  load: MacBridgeLoadSchema,
+  calls: z.array(MacBridgeCallSchema),
+  at: z.number().int()
+})
+
 // ── pushes a remote socket receives ─────────────────────────────────────
 
 const push = <P extends string, S extends z.ZodRawShape>(
@@ -678,8 +959,13 @@ export const HelloPushSchema = push('hello', {
   contract: z.number().int(),
   caps: z.array(CapabilitySchema),
   key: z.object({ id: z.string(), name: z.string() }).optional(),
-  build: BuildFactsSchema.optional()
+  build: BuildFactsSchema.optional(),
+  hosts: z.array(HostPresenceSchema).optional(),
+  via: z.string().optional(),
+  presence: HostPresenceSchema.optional()
 })
+/** A relayed host's presence changed: the whole list (contract-relay.ts). */
+export const PresencePushSchema = push('presence', { hosts: z.array(HostPresenceSchema) })
 export const WorkspacesPushSchema = push('workspaces', { workspaces: z.array(WorkspaceMetaSchema) })
 export const ProjectsPushSchema = push('projects', { projects: z.array(ProjectMetaSchema) })
 export const EventsPushSchema = push('events', {
@@ -733,12 +1019,40 @@ export const QueuePushSchema = push('queue', {
   sessionId: z.string(),
   items: z.array(QueuedMessageSchema)
 })
+/** A thread's notes as `session.notes.get` answers and the `notes` push carries (contract.ts ThreadNotesDoc). */
+export const ThreadNotesDocSchema = z.object({
+  text: z.string(),
+  updatedAt: z.number().nullable(),
+  path: z.string().nullable()
+})
+export const NotesPushSchema = push('notes', { sessionId: z.string(), doc: ThreadNotesDocSchema })
 export const SessionRemovedPushSchema = push('session-removed', { sessionIds: z.array(z.string()) })
 export const SessionMovedPushSchema = push('session-moved', { id: z.string(), sessionIds: z.array(z.string()), to: z.string() })
 export const BootResumePushSchema = push('boot-resume', { count: z.number().int(), at: z.number().int() })
+/** The whole accounts snapshot, to every socket, whenever it rebuilds (index.ts); headroom changes at most every 5 s. */
+export const AccountsPushSchema = push('accounts', { snapshot: AccountsSnapshotSchema })
+export const BatchPushSchema = push('batch', { state: BatchStateSchema })
+export const ResourcesPushSchema = push('resources', {
+  sessionId: z.string(),
+  resources: z.array(ThreadResourceSchema)
+})
+export const HostDevicesPushSchema = push('host.devices', { report: HostDevicesReportSchema })
+export const HostLogPushSchema = push('host-log', {
+  job: HostJobSchema,
+  append: z.string().optional(),
+  reset: z.boolean().optional(),
+  status: HostJobStatusSchema
+})
+export const MacBridgeHeldPushSchema = push('macBridge.held', { sessionId: z.string(), held: z.number().int() })
 
-/** Every push a remote connection can receive; the singular `event`,
- *  `session`, `live-edit` and `build` frames stay local. */
+/**
+ * Every push a remote connection can receive. Out by rule: the singular
+ * `event`, `session`, `live-edit` and `build` frames (local sockets), the
+ * peer-link pushes (`account`, `accounts-removed`, `memory.nudge`,
+ * `release-available`, `peer.call`), the Mac's own renderer's
+ * (`macBridge.request`, `macBridge.resolved`), `deploy-master`,
+ * `file-event` and `sync`; a client that meets one keeps it as unknown.
+ */
 export const RemotePushSchema = z.discriminatedUnion('push', [
   HelloPushSchema,
   WorkspacesPushSchema,
@@ -748,9 +1062,17 @@ export const RemotePushSchema = z.discriminatedUnion('push', [
   LiveEditsPushSchema,
   BuildsPushSchema,
   QueuePushSchema,
+  NotesPushSchema,
   SessionRemovedPushSchema,
   SessionMovedPushSchema,
-  BootResumePushSchema
+  BatchPushSchema,
+  BootResumePushSchema,
+  ResourcesPushSchema,
+  AccountsPushSchema,
+  HostDevicesPushSchema,
+  HostLogPushSchema,
+  MacBridgeHeldPushSchema,
+  PresencePushSchema
 ])
 
 // ── the pins ────────────────────────────────────────────────────────────
@@ -809,7 +1131,9 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof BuildOutputSchema, BuildOutput>>,
   Expect<Equal<z.infer<typeof BuildRunSchema>['status'], BuildStatus>>,
   Expect<Mirror<typeof BuildRunSchema, BuildRun>>,
+  Expect<Mirror<typeof HostPresenceSchema, HostPresence>>,
   Expect<Mirror<typeof HelloPushSchema, PushOf<'hello'>>>,
+  Expect<Mirror<typeof PresencePushSchema, PushOf<'presence'>>>,
   Expect<Mirror<typeof WorkspacesPushSchema, PushOf<'workspaces'>>>,
   Expect<Mirror<typeof ProjectsPushSchema, PushOf<'projects'>>>,
   Expect<
@@ -826,5 +1150,42 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof QueuePushSchema, PushOf<'queue'>>>,
   Expect<Mirror<typeof SessionRemovedPushSchema, PushOf<'session-removed'>>>,
   Expect<Mirror<typeof SessionMovedPushSchema, PushOf<'session-moved'>>>,
-  Expect<Mirror<typeof BootResumePushSchema, PushOf<'boot-resume'>>>
+  // the 2026-10-21/22 features
+  Expect<Equal<z.infer<typeof NoticeKindSchema>, NoticeKind>>,
+  Expect<Mirror<typeof BuildFactsSchema, BuildFacts>>,
+  Expect<Mirror<typeof SessionBatchResultSchema, SessionBatchResult>>,
+  Expect<Mirror<typeof BatchChildrenSchema, { children: WireSessionMeta[] }>>,
+  Expect<Mirror<typeof ThreadNotesDocSchema, ThreadNotesDoc>>,
+  Expect<Equal<z.infer<typeof ReviewSettingsSchema>, ReviewSettings>>,
+  Expect<Equal<z.infer<typeof PlanSettingsSchema>, PlanSettings>>,
+  Expect<Equal<z.infer<typeof ThreadResourceKindSchema>, ThreadResourceKind>>,
+  Expect<Mirror<typeof ThreadResourceSchema, ThreadResource>>,
+  Expect<Mirror<typeof ThreadResourceRemovalSchema, ThreadResourceRemoval>>,
+  Expect<Mirror<typeof SessionBatchResultSchema, SessionBatchResult>>,
+  Expect<Mirror<typeof ResourcesPushSchema, PushOf<'resources'>>>,
+  // The account shapes are subsets of the desktop's (ProfileView carries
+  // more), so the check is `extends`, as AgentEvent's is.
+  Expect<AccountsSnapshot extends z.infer<typeof AccountsSnapshotSchema> ? true : false>,
+  Expect<PushOf<'accounts'>['snapshot'] extends z.infer<typeof AccountsSnapshotSchema> ? true : false>,
+  Expect<Mirror<typeof HostDevicesHostSchema, HostDevicesHost>>,
+  Expect<Equal<z.infer<typeof HostJobPhaseSchema>, HostJobPhase>>,
+  Expect<Mirror<typeof HostJobStatusSchema, HostJobStatus>>,
+  Expect<Mirror<typeof DeployStatusSchema, DeployStatus>>,
+  Expect<Mirror<typeof MacBridgeThreadStateSchema, MacBridgeThreadState>>,
+  Expect<Mirror<typeof NotesPushSchema, PushOf<'notes'>>>,
+  Expect<Mirror<typeof BatchPushSchema, PushOf<'batch'>>>,
+  Expect<Mirror<typeof BootResumePushSchema, PushOf<'boot-resume'>>>,
+  Expect<Mirror<typeof HostDevicesPushSchema, PushOf<'host.devices'>>>,
+  Expect<Mirror<typeof HostLogPushSchema, PushOf<'host-log'>>>,
+  Expect<Mirror<typeof MacBridgeHeldPushSchema, PushOf<'macBridge.held'>>>,
+  Expect<Mirror<typeof HarnessEnvironmentStatusSchema, HarnessEnvironmentStatus>>,
+  Expect<Mirror<typeof HarnessSyncStatusSchema, HarnessSyncStatus>>,
+  Expect<Mirror<typeof MemoryEnvironmentStatusSchema, MemoryEnvironmentStatus>>,
+  Expect<Mirror<typeof MemoryConflictSchema, MemoryConflict>>,
+  Expect<Mirror<typeof MemorySyncStatusSchema, MemorySyncStatus>>,
+  Expect<Mirror<typeof MacBridgeHeldSchema, MacBridgeHeld>>,
+  Expect<Mirror<typeof MacBridgeLoadSchema, MacBridgeLoad>>,
+  Expect<Mirror<typeof MacBridgeCallSchema, MacBridgeCall>>,
+  Expect<Mirror<typeof MacBridgeActivityHostSchema, MacBridgeActivityHost>>,
+  Expect<Mirror<typeof MacBridgeActivitySchema, MacBridgeActivity>>
 ]

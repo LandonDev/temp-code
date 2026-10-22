@@ -25,8 +25,10 @@ public struct ChangeCard: Sendable, Hashable, Identifiable {
     public var lines: [ToolPreview.Line]? {
         var all: [ToolPreview.Line] = []
         for edit in edits {
-            guard case .array(let lines)? = edit.preview?.lines else { return nil }
-            all += lines
+            if case .array(let lines)? = edit.preview?.lines { all += lines; continue }
+            // A running edit with no preview yet: the host's live diff, as far as it got.
+            if edit.preview?.lines == nil, edit.status == .running { all += Board.diffLines(edit.live?.diff ?? ""); continue }
+            return nil
         }
         return all
     }
@@ -182,6 +184,7 @@ public enum Board {
     /// Additions and deletions an edit reports: the host's preview, else a
     /// count of the lines the edit's own input replaces.
     public static func stat(_ tool: ToolItem) -> (adds: Int, dels: Int) {
+        if tool.status == .running, let live = tool.live { return (live.adds, live.dels) }
         if let preview = tool.preview, preview.additions != nil || preview.deletions != nil {
             return (Int(preview.additions ?? 0), Int(preview.deletions ?? 0))
         }

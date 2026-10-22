@@ -19,13 +19,15 @@ Sources/TempCodeClient
                 WebSocketConnection (+ URLSessionWebSocket), Transport, TempCodeSocket
   Environments/ PairedEnvironment + PairingLink, KeyStore (Keychain, in-memory), RemoteAPI, EnvironmentStore
   Cache/        Database (sqlite3), SessionCache
-  Client/       Subscriptions, EnvironmentClient (+ MovedThread), ClientRegistry
+  Client/       Subscriptions, EnvironmentClient (+ MovedThread), ClientRegistry, SearchRows, CrossHostSearch, Actions, PlanFlow, ProjectSettings,
+                Batches (each master's BatchState, the push coalesced to two landings a second)
   Rendering/    ThreadFold (rows → stamped items + BoardState), Transcript (item types), Board,
                 ResearchBoard, Fleet, PlanDoc, Inbox, DiffDocument (the diff screen's lines,
                 hunks and column geometry), MarkdownBlocks, MarkdownCache, PlanDocument,
-                PlanPages, ProjectPairs, CrossHost, PathHost (two hosts: pairs, cross-host
+                PlanPages, ProjectPlan, ProjectPairs, CrossHost, PathHost (two hosts: pairs, cross-host
                 children, the host of a path), TranscriptRows (entries → the list's rows:
-                items, activity groups, turn ends), ToolPhrase (the desktop's toolPhrase.ts)
+                items, activity groups, turn ends), ToolPhrase (the desktop's toolPhrase.ts),
+                Batch (MasterBoard, BatchSteps, RulesEdit, BoardActions: the master board)
   Design/       TimeFormat, ModelName, CompactNumber, ThreadRowModel: the design kit's pure
                 logic, tested here; the app's Design/ holds the views
   Support/      SocketClock (SystemClock, ManualClock)
@@ -241,7 +243,14 @@ plan on disk under `Caches/plans/` so the next open paints before the
 socket answers, the document per page kept through a re-parse (a short
 text parses on the first paint, a longer one off the actor, a newer text
 superseding a parse in flight), and the reading position per page in
-`UserDefaults`; both the directory and the defaults are injectable.
+`UserDefaults`; both the directory and the defaults are injectable. **ProjectPlan** (projectPlan.ts, line for line:
+the frontmatter status, the title, the sections in order and the missing
+fixed ones, the milestones under `## Milestones` with index, title, done,
+scope, dependencies, done-when, body and line, fences skipped; progress,
+next, the summary and chip text, dependency chips, the two milestone
+briefs, the thread title, the revise text and the optimistic-tick
+reconcile) and `ThreadDraft.milestone(from:milestone:kind:…)`, the planning
+or orchestration draft for one milestone; the phone never writes the file.
 
 **SearchRows** (`Client/SearchRows.swift`) is the Search tab's pure side:
 the flat row model (`SearchRow`: thread head, hit, project head, file,
@@ -252,6 +261,13 @@ query's words longest first, case and diacritic insensitive, as character
 offsets the views set in weight), `SearchDebounce` and `footLine`.
 `build`'s body is the slot the cross-host selector (merge, rank, fold,
 typed filters) replaces; the screen calls it from one line.
+
+**CrossHostSearch** (`Client/CrossHostSearch.swift`) is that selector: the
+fan-out over every open host as an `AsyncStream<SearchAnswer>` (a batch per
+landed source, the three calls injected as `SearchAsk` closures), the
+host-neutral scoring and total ordering, the paired-file fold through a
+`PairLookup`, `ParsedQuery` (`host:`, `type:`, `project:`), and the per-host
+feet with the offline skip; `SearchRows` stays the row model it emits.
 
 **ProjectPairs** (src/renderer/src/lib/projectPairs.ts, host-aware: the
 phone's `WorkspaceMeta` has no environment id, the client is the host): two
@@ -281,6 +297,18 @@ phone has no disk); `environment(ofMediaURL:)` reads `&host=` off an
 on <host>."; `uploadHost(threadHost:)` is the one rule for a photo the phone
 sends: always the thread's host.
 
+**Notes** (iOS 18) is a thread's working notes on the phone.
+`Rendering/Notes.swift` is the port of src/shared/notes.ts: parse, the fixed
+order, replace and append, the State line, compact, demote, the brief, the
+display model, `unread(updatedAt:readAt:)` for the glyph's dot and
+`needsYouLine` for Home. `Client/NotesState.swift` holds one `NotesState` per
+thread on the client (`loadNotes`: memory, else one `session.notes.get`;
+`saveNotes`: `session.notes.set` behind the operate gate; the `notes` push
+replaces the doc in place; a removed thread drops it). `Client/NotesEditor.swift`
+is the edit session: the draft, the quiet period (800 ms in the app), save on
+finish and on flush, a failed save that keeps the draft dirty, a remote change
+measured against the text the edit began from, Load theirs.
+
 ## Tests
 
 ```sh
@@ -304,8 +332,10 @@ child unpaired, `fs.media` stamped with its host) runs only with them.
 
 Both `ios:test` and `ios:test:client` run in the release gate
 (scripts/release.ts). Without the live environment the `LiveServerTests`
-suite is skipped and `swift test` in this directory still runs the 56 unit
-tests: backoff bounds, the manual clock, pairing links, the store on a fake
+suite is skipped and `swift test` in this directory still runs the unit
+tests: NotesTests, NotesClientTests and NotesEditorTests (the notes port,
+the client's notes state on the fake socket, the edit session with a 20 ms
+quiet period), backoff bounds, the manual clock, pairing links, the store on a fake
 host, the transport on a scripted socket (hello first, timeout, correlation,
 pushes, close mapping), the supervisor on a manual clock (identity and
 contract halts, backoff and reset after 30 s up, the 5 min cap, unauthorized
@@ -411,14 +441,114 @@ would have shown as "Key refused".
   words and the action table live in `Rendering/Notices.swift` (`GateText`,
   `ReviewText`, `FailureActions`: at most three actions, Retry last, a note
   naming what only the desktop can do).
+- **A master's batch** (`Client/Batches.swift`, the batch section of
+  `Actions.swift`). `batchState(_:)` is the state as last heard, `loadBatch(_:)`
+  asks `batch.get`; the `batch` push lands at once, then at most once per
+  500 ms with the newest state of a burst, and an RPC answer lands at once
+  over anything waiting. `setBatchRules` (the whole rules through
+  `RulesEdit.params`), `stopBatchStep`, `adoptIntoBatch`, `archiveBatch` and
+  `sessionBatch` (the fleet switches) need operate; `setMaster` needs admin,
+  and a key without admin reads `.noAdmin` before the wire. `ThreadDraft.batch` builds the board's
+  add sheet draft: the master's project, directory and access, `masterId`
+  and `startedBy` the master, `after` and `context1m` when chosen.
 
 The test server (scripts/ios-client-test-server.ts) stands in for the
 registry's action methods: each is recorded (`GET /actions`, `POST
 /actions/clear`) and plays out the rows a real run pushes; `POST /finish`
 ends a simulated turn and `POST /ask` raises a fresh approval or question.
 It mints three keys: read-only, read+operate+approve, and operate-only
-(the approval card's forbidden path), and two pairings for the simulator
-proof's `actions` set.
+(the approval card's forbidden path), two pairings for the simulator
+proof's `actions` set, and an admin pairing (`adminPairing`) for the
+master pin. `ios-master`'s batch is seeded mid-run (four children, a shell
+step streaming a line every 700 ms); `setMaster` and Stop on that step are
+recorded too.
+
+## Fleet switches, statuses, resources (thread iOS 20)
+
+- `Client/ThreadBatch.swift` is the desktop's `threadBatch.ts` as values:
+  `BatchAction`, `BatchScope` (a host or a project; the phone has no
+  "everywhere"), `BatchSelection` (the seen marks and the floor the Archive
+  done rule reads), `ThreadBatch` (`hasRunningTurn`, `qualifies`, `inScope`,
+  `targets`, `counts`, the labels and symbols, `confirm` and `toast` with the
+  desktop's strings), and `EnvironmentClient.batch(_:selection:cleanup:)`:
+  one `session.batch` over what qualifies now, the answer's `failed` folded
+  into a `BatchToast` naming each thread's title, a whole-call refusal
+  naming every target, a read key refused before the wire.
+  `batchSelection(_:now:)` builds the selection from `seen` and the pairing.
+- `Client/StatusWords.swift`: `queuedLine` (the host's "Queued · waiting for
+  X" through `activity`, else "Queued"), `stopped`, `batchPaused` and
+  `batchPausedClause` (", and 2 batch threads with it" for a paused
+  master) and `bootResume` ("7 threads resumed after restart"; the
+  client's `bootResume` notice is already once per boot).
+- `Client/Resources.swift`: `ResourceLedger` (`bySession` from the
+  `resources` push and `resources.list`, `loadAll` over `resources.listAll`
+  at every socket open, `live(for:)`, `countHeld(by:)`, `removing` marked
+  from `removeResources` until the push answers), the client's
+  `removeResources(_:ids:)` and `archive(_:removeResources:)` (Start now
+  and Resume are the existing `start` and `resume`), and `ResourceWords`
+  (kind labels and symbols, `removalClause`, `rowState`, `isWaiting`,
+  `hostName`). `EnvironmentClient.resources` is the new observable.
+- Tests: `ThreadBatchTests` (mirrors threadBatch.test.ts), `StatusWordsTests`,
+  `ResourcesTests`, the batch, start, archive and resources cases in
+  `ActionsTests`, and one live case in `LiveActionTests` (Pause all over the
+  test server's running roots, Start now on `ios-queued`).
+
+## Accounts: the chip, the menu, the pins
+
+`Client/Accounts.swift` is what the account chip and menu read:
+
+- **`HostAccounts`** on every `EnvironmentClient` (`client.accounts`): the
+  last `accounts.list` answer or `accounts` push, with when it landed;
+  `loadAccounts(force:)` asks once unless a snapshot under 30 s old is held
+  and keeps the old one on a refusal.
+- **`AccountScope.of(session, projects:, workspaces:)`** is the desktop's
+  `scopeOf`: the project's pin, else the workspace's (found through the
+  project), the thread's own `account`, `shown` and the source line; nil for
+  a provider the gateway does not route (`RoutedProvider`).
+- **`AccountName`**: nickname, else the email's local part, else the name's.
+- **`HeadroomLook.of(...)`**: one bar per account from the least room among
+  the usage windows the model spends (aliax-core's `tiersFor`: 5h, the
+  weekly one, and the Fable cap for a Fable model); throttled or rate limited and expired sign-ins are
+  destructive at zero; `until`/`spoken` are the desktop's `untilLabel` and
+  its VoiceOver form.
+- **`AccountMenuModel`**: the rows at a scope (Automatic with what it
+  follows, the profiles, one gone row), the scopes a thread has, and
+  `pins(after:provider:name:)`.
+- **`PinBlock`** and the pin calls: `pinBlock` (`needsAdmin` below admin,
+  else the socket's block), `setProjectAccount`, `setWorkspaceAccount`
+  (a `forbidden` answer reads as the pin block), `rerouteAccount` (operate).
+- **`Shell/FailureCue.swift`**: `SessionMeta.failureSummary` (only while in
+  error) and `HomeModel.cue(for: item, rows:)`, which prefers it.
+
+Tests: `AccountsTests.swift` (every rule above on fixtures and on the fake
+socket) and the `AccountsLiveTests` suite in `LiveServerTests.swift`
+(`accounts.list`, the seeded pinned thread and failed thread, the push after
+`POST /accounts/headroom`).
+
+## The plan flow and project settings (thread 25)
+
+`Client/PlanFlow.swift`: `PlanFlowState.of(meta, session:)` is the plan
+page's header (`open` while the planner writes, `complete` once
+`plan_complete` stamped it and the thread is still live, `waiting` once it
+settled with no build, `started(buildId:title:type:)` once the host linked
+one; the title and type are nil when the build is on another host), `line`
+its words, `rowTag` the "Plan ready" tag of a complete plan with no build,
+`PlanOrigin.line(for:session:)` a build's "Planned in <title>", and
+`implementPlan(_:type:provider:model:reasoning:)` the one `plan.implement`
+call behind the Start sheet (gated on `operate`, the answer adopted).
+`Client/ProjectSettings.swift`: `Preamble` (the worktree slug, the word
+count, `{{name}}` substitution, the project → workspace precedence, the
+preview's sample values), `PreambleDraft` and `PreambleRow`'s words,
+`RulesPolicy.approves` over the generated model policy, the `Reviewers`
+picker helpers (options filtered by the rules with the set's model kept
+first, the ladder, the minute presets, the summary), `ReviewDraft` and
+`PlanDraft` (a scope follows the global set until `touch`; `useGlobal` goes
+back; `payload` is nil to follow, the set to override), `PlanBuild`'s model
+options and summary, and the client's `loadReviewScope`, `saveReview`,
+`loadPlanScope`, `savePlans`, `setPreamble` and `loadRules`; the saves run
+behind `adminBlock` (`ActionBlock.noAdmin`). Tests: `PlanFlowTests`,
+`ProjectSettingsTests`, and one live case that starts a build from the
+seeded waiting plan.
 
 ## Push (L6): the token to every host, taps to the card, the Live Activity
 
@@ -457,3 +587,71 @@ proof's `actions` set.
 - Tests: `PushRegistrarTests` (the payload and URL parsing, the row's word,
   a register at open, a status read for the same token, a second register
   for a rotated one, the unregister on the switch, the activity token).
+
+## Relayed hosts: the Mac through the box
+
+- A host the box relays (its `hello` lists them under `hosts`, a `presence`
+  push follows every change, `/api/hello` carries the same list) is a
+  client of its own in `ClientRegistry`: `Client/RelayedHosts.swift` keeps
+  the rows (`RelayedHost`: id, carrier `via`, the wire's `HostPresence`,
+  `learnedAt`, and `stateSince`, the phone's clock when the state last
+  moved) in `relayed.json` beside `environments.json`, fed by `apply` (a
+  carrier's whole list: adds, keeps, moves, renames, drops the rows of that
+  carrier it no longer lists), `update` (a relayed lane's own hello row;
+  never adds) and `forget(via:)`; `onChange` hands the registry a
+  `RelayedChange` (added, removed, moved with the new `RelayState`, renamed).
+  `RelayState` is the one word the phone acts on, read from `link`, `screen`
+  and `power` in the wire's order (down → unreachable, asleep, locked,
+  available); `admitsSends` is true for available and locked.
+- `PairedEnvironment.relayed(_:through:)` builds the relayed environment:
+  the relayed host's own id and name, the carrier's origin, caps, key id and
+  name, `via` = the carrier's id. `isRelayed`, `keyOwner` (the id the
+  `KeyStore` holds the key under: the carrier's) and `socketURL`
+  (`wss://carrier/ws?host=<id>`; the socket appends the ticket) follow from
+  `via`, which decodes as optional so an older `environments.json` reads
+  unchanged. The registry's `sync()` wants the union (each stored
+  environment, then the hosts relayed through it, in `learnedAt` order;
+  `ordered` reads the same), rebuilds a relayed client whose carrier's key
+  or name changed (its cache kept), removes clients outside the union
+  (their caches cleared), and seeds each relayed client's `presence` from
+  the store before its socket starts so the cold paint and the first block
+  are right; `relayed(via:)` and `carrier(of:)` answer the views; `remove`
+  forgets the relayed hosts of a carrier with it. Syncs are serialized.
+- The socket: `TempCodeSocket.setHostReachable(_:reason:)` is the carrier's
+  word on a relayed lane. Down closes the session, holds `offline` with the
+  reason as `lastError` and tries nothing (not on a retry, a foreground or
+  the network coming back; `attempt`, `probe` and `retryFired` all guard on
+  it); up attempts at once in the foreground with the count reset, or waits
+  `suspended` for the foreground. The flag and `online` are independent.
+  `EnvironmentClient.applyRelayState` sets `presence` and `stateSince` and
+  moves the flag; `relayObserver` carries the hello's `hosts` (whole), a
+  lane's hello `presence` (one row) and the `presence` push (whole) to the
+  registry.
+- The words and the gate: `RelayWords` (pure; the subject is "the Mac" for a
+  darwin host, else the name; `since` prints `9:14` today and `21 Oct 9:14`
+  otherwise from the calendar and locale passed in; `rowLine`, `subline`,
+  `stripLine` (locked only), `heldLine`, `reconnecting`, and the status
+  line's `statusLine(for:status:)` and `showsRetry(for:)`), `RelayRefusal`
+  (the wire's `unavailable: …` and `linkDown: …` lines parsed to a kind and
+  the host's sentence capitalised; `ActionError.wrap` maps a `server`
+  refusal through it first), `ActionBlock.hostAsleep(subject:)` and
+  `.hostUnreachable(subject:since:)` with `EnvironmentClient.relayBlock`,
+  folded into `operateBlock` and `approveBlock` after the key and the
+  socket. `HostFix.fix(for:environment:)` answers nil for a relayed host;
+  `forgetCopy(carrier:relayed:)` is the Forget dialog's message;
+  `PushRegistrar.sync` returns at once for a relayed client (the box's row
+  covers the key). `remote.push.activity` answers `null` on a relayed lane:
+  no Live Activity for a relayed thread in this slice.
+- Tests: `RelayWordsTests` (the state order, the words, the refusal, the
+  blocks, the relayed environment, `forgetCopy`), `RelayedHostsTests` (the
+  store's apply/update/forget and its file; the registry: the carrier's
+  hello making the lane with the carrier's key, a presence push holding and
+  releasing the socket, a lane's own hello, the asleep block, a dropped host
+  and its cache, forget, the cold paint, a held lane at launch, the
+  carrier's key rewritten, the registrar skipping), the socket's three
+  `setHostReachable` cases in `TempCodeSocketTests`, and `LiveRelayTests`
+  (nested in `LiveServerTests`, enabled when the test server seeds thread
+  28's four relayed hosts, `TC_TEST_RELAY_HOSTS`): the http hello's list, a
+  lane under its own id, the locked host answering with Send admitted, the
+  asleep host's one-line refusal, the unreachable host held, a presence flip
+  over the carrier's socket.

@@ -272,9 +272,9 @@ kind:
 | --- | --- |
 | `land` | the landings; always first (a list without one gets `{ id: 'land', name: 'Land' }` at the front) |
 | `gate` | `bun scripts/gate.ts --tier commit` once on the project checkout at the project branch's head |
-| `release` | `bun scripts/release.ts "<master title; landed subjects>" --push`: the tag, and master with it, pushed to origin |
+| `release` | `bun scripts/release.ts "<master title; landed subjects>" --push`: the tag, and master with it, pushed to origin; with nothing new since the last `release-N` the step is skipped as "nothing to release since release-N" and the steps after it take that version |
 | `publish` | the Mac's publish job for that commit over the peer link (below); a person's decision; skipped "needs a release" without a release before it |
-| `deploy` | the box's deploy trigger (docs/box.md "Deploy from the app"): `v1.0.N` when a publish passed, `master` otherwise; skipped "needs a release" when no release step comes before it |
+| `deploy` | the box's deploy trigger (docs/box.md "Deploy from the app"): `v1.0.N` when a publish passed, `master` otherwise; skipped "needs a release" when no release step comes before it (a skipped release step counts) |
 | `shell` | `run` through the login shell in `cwd` (default the project checkout), detached in its own process group, stdout and stderr line by line into the step's log; exit 0 passes, anything else fails with "exit N after 3s · <last line>" |
 
 `when` is `all-done` (the default: the end of the batch) or
@@ -307,15 +307,30 @@ child's status change, archive or removal reviews its batch) and runs when
 the last child is done: every unarchived root carrying the masterId is
 `done`, or `idle` with a turn completed (`Store.hasCompletedTurn`: a thread
 between its first user row and its first turn is idle too, and must not
-end a batch early). A child that errored or stopped blocks the end:
-`blocked` names it, the master is told once as a `<batch-report>`, and
-nothing runs until it is fixed or archived. Then, on the host's
+end a batch early). A child that errored or stopped blocks the end, and
+so does a child idle on a turn that ended in a failure (its row carries
+`failure`: a usage cap, a refused route; `blocked.why` is `failed`): it did
+no work, and counting it done once ended a batch with nothing new every
+time it retried. `blocked` names the child, the master is told once as a
+`<batch-report>`, and nothing runs until it is fixed or archived. Then, on the host's
 `GateQueue`: the held merges (all-at-once) under the land step, and the
 steps after it in the order written (`runSteps`), the each-landing ones
 passed over. A red step stops the rest, the step says why, and the master
-is told; a child moving again or a new one arms the engine for the next
-all-done; a landing after the end starts a new cycle, and a landing after
-any end step ran reopens the steps after land. The gate and the release
+is told. **The end runs once per cycle.** It runs at all-done when it has
+never run, or when, since it last started, a landing came in
+(merge_branch landed a branch, held one under all-at-once, or a far host
+reported one), a child joined that was not in the batch then (adopted, or
+started into it), or the rules were set (`batch_rules` or `batch.setRules`,
+even with the same steps: the hand re-run once something outside the batch
+is fixed). Nothing else starts it again: not a child resuming and settling
+idle with nothing landed, not a child leaving (archive-children archives
+them at the end), not a failed step. A failed publish therefore never cuts
+a fresh release on the next idle; one batch once tagged eight empty
+releases in a row that way, a child retrying a capped turn every ten
+minutes. The row keeps `armed` (a landing, a hold, an adoption or a rules
+call since the last start) and `ranChildren` (the children when the end
+last started; a row from before the field takes the children it finds as
+seen). A landing after any end step ran reopens the steps after land. The gate and the release
 row the master with `gate` notice rows as `batch_gate` does; `batch_gate`
 stays the master's way to run the gate and release steps early, with
 children still out left out of the land step ("4 of 7 landed · 3 left
@@ -362,7 +377,13 @@ these fields; `batch.get` answers the same shape.
 **The release on the box.** `release.ts --push` (only the engine passes
 it; the post-commit train never does) pushes the branch and the new
 `release-N` tag to origin after tagging, so the Mac can publish the
-commit. Its gate runs through gate.ts, whose Mac-only steps are skipped
+commit. With nothing new since the newest `release-N` (HEAD is that
+commit, or only release bookkeeping follows it: scripts/releaseCheck.ts)
+release.ts prints "nothing to release since release-N (package.json
+1.0.N)" and exits 0 with no bump, commit or tag (`--push` still pushes the
+branch and that tag); the step is `skipped` with those words, no gate row
+says it passed, the done line carries it, and a publish after it takes the
+existing `1.0.N` (`releaseOutcome`). `batch_gate` answers the same words. Its gate runs through gate.ts, whose Mac-only steps are skipped
 off macOS as above.
 
 **The publish, from the box, on the Mac** (remote/peerPublish.ts on the
@@ -531,12 +552,19 @@ renderer's read of the flag on the thread).
   (src/shared/contract-publish.ts).
 - Pushes: `batch` (every client, coalesced), the ordinary `session` meta
   on a pin change and with its `activity` line for a queued row.
-- The Swift contract carries `queued` and `GateNotice`; the `batch` push
-  is outside the phone's subset and its decoder folds it into `unknown`.
-  The phone draws a queued root with the starting dot and the label
-  "Queued" (StatusDot.swift); on Home it is not under Running
-  (`HomeModel.isLive` counts running and starting only). No phone surface
-  was added.
+- The Swift contract carries `queued`, `GateNotice`, the `batch` push and
+  the batch types (`BatchState` with its `Children`, `BatchStep`,
+  `BatchStepSpec`, `BatchRules`, `BatchLand`, `BatchThen`,
+  `BatchAdoptResult`, `SessionBatchResult`), and the methods `batch.get`,
+  `batch.setRules`, `batch.stopStep`, `batch.adopt`, `batch.archive`,
+  `session.setMaster` and `session.batch`. The phone's master opens on its
+  Board (docs/IOS-DESIGN.md "Master: the batch is the hero"): the rows in
+  four groups, the foot with the steps and the running step's console, the
+  bar's + Thread and fleet switches, the Rules, add, adopt and archive
+  sheets, and the pin for an admin key. The client lands the push at most
+  twice a second and asks `batch.get` every 5 s while the board shows. On
+  Home a queued root is not under Running (`HomeModel.isLive` counts running
+  and starting only).
 
 ## Proofs and tests
 

@@ -1,6 +1,6 @@
 {
   "name": "temp-code",
-  "version": "1.0.289",
+  "version": "1.0.291",
   "description": "An Electron application with React and TypeScript",
   "main": "./out/main/boot.js",
   "author": "example.com",
@@ -55,6 +55,7 @@
     "script:e2e-session-move": "bun scripts/e2e-session-move.ts",
     "script:e2e-mac-bridge": "bun scripts/e2e-mac-bridge.ts",
     "script:e2e-cross-host-threads": "bun scripts/e2e-cross-host-threads.ts",
+    "script:e2e-mac-relay": "bun scripts/e2e-mac-relay.ts",
     "script:e2e-thread-batch": "bun scripts/e2e-thread-batch.ts",
     "script:e2e-cross-host-search": "bun scripts/e2e-cross-host-search.ts",
     "script:measure-turn-index": "bunx vite-node --config vitest.config.ts scripts/measure-turn-index.ts",

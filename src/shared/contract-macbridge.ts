@@ -4,6 +4,7 @@ import type { PublishCallParams } from './contract-publish'
 import { MAC_RUN_BACKGROUND, type MacPeerMethod } from './contract-macjobs'
 import type { CrossHostCallParams } from './contract-crosshost'
 import type { HostDevicesCallParams } from './contract-hostdevices'
+import { MacPresenceSchema, type RelayCallParams } from './contract-relay'
 
 // The Mac bridge (docs/box.md "The Mac bridge: what a box thread may touch
 // on the Mac"). Threads run on the box; the user's files and macOS-only
@@ -422,6 +423,54 @@ export interface MacBridgeHostPolicy {
   threads: number
 }
 
+/**
+ * One call on the Mac that is past the prompt, as a key may read it
+ * (`macBridge.activity`): admitted and held on the load guard, running, or
+ * held on its box while the thread is paused. Never a request that waits for
+ * a decision: those stay the Mac's own (`macBridge.pending`, local).
+ */
+export interface MacBridgeCall {
+  id: string
+  /** The box's environment id and saved name. */
+  environmentId: string
+  hostName: string
+  sessionId: string
+  threadTitle: string
+  kind: 'read' | 'run' | 'write'
+  method: MacMethod
+  command?: string
+  argv?: string[]
+  cwd?: string
+  path?: string
+  status: 'held' | 'running' | 'paused'
+  held?: MacBridgeHeld
+  interactive?: true
+  createdAt: number
+}
+
+/** A saved host's standing on this Mac, as a key may read it: the caps and the counts, not the policy's folders. */
+export interface MacBridgeActivityHost {
+  environmentId: string
+  name: string
+  policy: MacBridgePolicy
+  registered: boolean
+  maxRunning: number
+  maxThreads: number
+  running: number
+  held: number
+  threads: number
+  /** Requests waiting for a decision on the Mac right now; the phone says so and never decides them. */
+  pending: number
+}
+
+/** → `macBridge.activity`: what this Mac runs for the hosts it serves, at `at`. */
+export interface MacBridgeActivity {
+  hosts: MacBridgeActivityHost[]
+  load: MacBridgeLoad
+  calls: MacBridgeCall[]
+  at: number
+}
+
 /** A box thread's bridge state, as its header shows it. */
 export interface MacBridgeThreadState {
   sessionId: string
@@ -442,8 +491,8 @@ export type MacBridgePush =
       push: 'peer.call'
       callId: string
       method: MacPeerMethod
-      /** A mac.* call names its thread and args; a thread.* call (contract-crosshost.ts) its caller and args; a host.* call (contract-hostdevices.ts) its args; a publish.* call its caller and args. */
-      params: MacCallParams | CrossHostCallParams | HostDevicesCallParams | PublishCallParams
+      /** A mac.* call names its thread and args; a thread.* call (contract-crosshost.ts) its caller and args; a host.* call (contract-hostdevices.ts) its args; a publish.* call its caller and args; a relay.* call (contract-relay.ts) the box and its args. */
+      params: MacCallParams | CrossHostCallParams | HostDevicesCallParams | PublishCallParams | RelayCallParams
       deadlineMs: number
     }
   | { push: 'macBridge.request'; request: MacBridgeRequest }
@@ -521,7 +570,15 @@ export const MacBridgeRequestSchemas = [
       from: envId,
       offers: z.array(z.string().max(64)).max(16),
       /** The Mac's home directory, for the box threads' tool text (absent from an older Mac). */
-      home: MacHomeSchema.optional()
+      home: MacHomeSchema.optional(),
+      /** The host's hostname, for the relay's host rows (contract-relay.ts). */
+      name: z.string().max(120).optional(),
+      /** What the host runs (deployDrift.ts BuildFacts; declared inline: wireSchemas.ts is never imported here). */
+      build: z
+        .object({ release: z.number().int(), version: z.string(), sha: z.string().nullable(), platform: z.string() })
+        .optional(),
+      /** The host's screen and power state at register time (src/main/presence.ts). */
+      presence: MacPresenceSchema.optional()
     })
   ),
   request(
@@ -625,5 +682,10 @@ export const MacBridgeRequestSchemas = [
   /** → MacBridgeLoad, as last sampled. */
   request('macBridge.load.get', z.object({}).optional()),
   /** → MacBridgeThreadAdmission: whether a host may start another Mac-local thread here now. */
-  request('macBridge.admitThread', z.object({ environmentId: envId }))
+  request('macBridge.admitThread', z.object({ environmentId: envId })),
+  // ── a key (the phone, a box's /ui) ───────────────────────────────────
+  /** → MacBridgeActivity: the hosts' caps and counts, the load, and every call past the prompt. Read. */
+  request('macBridge.activity', z.object({}).optional()),
+  /** → { ok: true }: stops a running command or takes a held one out of the line; refuses a request that waits for a decision. Operate. */
+  request('macBridge.stop', z.object({ id: z.string().min(1).max(100) }))
 ] as const

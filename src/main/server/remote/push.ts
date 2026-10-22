@@ -237,12 +237,13 @@ export class PushRegistry {
   }
 
   /** A notifier notice to every registered phone that asked for its event, from this host's own sender (nothing when there is none). */
-  async deliver(notice: Omit<ApnsNotice, 'hostId' | 'environmentId'>): Promise<PushDelivery> {
+  /** `environmentId` names another host's thread: a relayed host's notice (remote/relay.ts), so the tap opens it there. */
+  async deliver(notice: Omit<ApnsNotice, 'hostId' | 'environmentId'> & { environmentId?: string }): Promise<PushDelivery> {
     const apns = this.apns
     if (!apns) return { delivered: 0, failed: 0 }
     const rows = (this.db.prepare(`SELECT * FROM remote_push`).all() as unknown as PushRow[]).filter((r) => eventsOf(r.events).includes(notice.event))
     const hostId = this.options.hostId?.() ?? 'host'
-    const environmentId = this.options.environmentId?.()
+    const environmentId = notice.environmentId ?? this.options.environmentId?.()
     const payload = notificationPayload({ ...notice, hostId, ...(environmentId ? { environmentId } : {}) })
     let delivered = 0
     let failed = 0

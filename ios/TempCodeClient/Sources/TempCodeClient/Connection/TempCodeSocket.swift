@@ -75,6 +75,12 @@ public actor TempCodeSocket {
     private var suspending = false
     /// Clock ms when the app left the foreground; the return compares it with the grace.
     private var backgroundedAt: Double?
+    /// A relayed lane: the carrier says the host's link is up. Down, nothing
+    /// is tried (the box retries the link; its `presence` push lifts this).
+    /// Independent of `online`: both must hold to try.
+    private var hostReachable = true
+    /// The carrier's words for the held lane, kept so a lane held before `start()` says them.
+    private var heldReason: String?
     /// Bumps on stop/retry so a walk still in flight drops its result.
     private var generation = 0
 
@@ -94,8 +100,10 @@ public actor TempCodeSocket {
     public init(environment: PairedEnvironment, keys: any KeyStore, api: RemoteAPI = RemoteAPI(), connect: @escaping WebSocketFactory = URLSessionWebSocket.factory(), clock: any SocketClock = SystemClock(), configuration: SocketConfiguration = SocketConfiguration()) {
         let origin = environment.origin
         let id = environment.id
+        // A relayed host's key is its carrier's (`keyOwner`); the lane is minted at the carrier's origin.
+        let owner = environment.keyOwner
         self.init(environmentId: id, socketURL: environment.socketURL, mint: { () throws(RemoteAPIError) -> String in
-            guard let key = try? keys.key(for: id) else { throw .unauthorized("no key for this host; pair again") }
+            guard let key = try? keys.key(for: owner) else { throw .unauthorized("no key for this host; pair again") }
             return try await api.ticket(origin: origin, key: key).ticket
         }, connect: connect, clock: clock, configuration: configuration)
     }
@@ -215,10 +223,63 @@ public actor TempCodeSocket {
         }
     }
 
+    /// The carrier says the relayed host's link is down (or back). Down: the
+    /// session, if any, is closed, the status holds `offline` with `reason` as
+    /// `lastError`, and nothing is tried, not even on a retry. Up: an attempt
+    /// at once (in the foreground; `suspended` otherwise, so the foreground
+    /// reconnects as it does for any host).
+    public func setHostReachable(_ reachable: Bool, reason: String?) {
+        if hostReachable == reachable {
+            // The same standing with new words (a later `since`): the line follows.
+            if !reachable, let reason, status.lastError != reason, session == nil {
+                var next = status
+                next.lastError = reason
+                set(next)
+            }
+            return
+        }
+        hostReachable = reachable
+        heldReason = reachable ? nil : (reason ?? "host unreachable")
+        guard !stopped else { return }
+        if reachable {
+            var next = status
+            next.attempts = 0
+            next.lastError = nil
+            next.nextRetryAt = nil
+            if session == nil && foreground {
+                set(next)
+                clearRetry()
+                attempt()
+            } else if session == nil {
+                next.transport = .suspended
+                set(next)
+            }
+            return
+        }
+        clearRetry()
+        attempting?.cancel()
+        attempting = nil
+        probing?.cancel()
+        probing = nil
+        generation += 1
+        let message = reason ?? "host unreachable"
+        if let live = session {
+            dropSession()
+            Task { await live.close(CloseReason(kind: .local, message: message)) }
+            sessionSink.yield(.closed(CloseReason(kind: .local, message: message)))
+        }
+        var next = status
+        next.transport = .offline
+        next.fresh = false
+        next.lastError = message
+        next.nextRetryAt = nil
+        set(next)
+    }
+
     /// Checks the live session with one cheap request; only a failed probe
     /// reconnects, and then at once. With no session, a pending retry fires now.
     public func probe(_ trigger: ProbeTrigger) {
-        guard !stopped else { return }
+        guard !stopped, hostReachable else { return }
         if status.transport == .unauthorized && trigger != .retry { return }
         if halted && trigger != .retry { return }
         if !foreground && trigger != .retry { return }
@@ -252,6 +313,17 @@ public actor TempCodeSocket {
 
     private func attempt() {
         guard attempting == nil else { return }
+        guard hostReachable else {
+            // The carrier holds the lane: say so and wait for its `presence` push.
+            if status.transport != .offline || status.lastError != heldReason {
+                var next = status
+                next.transport = .offline
+                next.lastError = heldReason
+                next.nextRetryAt = nil
+                set(next)
+            }
+            return
+        }
         generation += 1
         let generation = self.generation
         attempting = Task { [weak self] in
@@ -261,8 +333,9 @@ public actor TempCodeSocket {
 
     private func walk(_ generation: Int) async {
         // Cleared on the actor as the walk's last act, so no call can land
-        // between "the walk is over" and "another may start".
-        defer { attempting = nil }
+        // between "the walk is over" and "another may start"; a walk a newer
+        // generation superseded leaves the newer walk's handle alone.
+        defer { if generation == self.generation { attempting = nil } }
         clearRetry()
         var pending = status
         pending.transport = pendingState()
@@ -465,7 +538,7 @@ public actor TempCodeSocket {
 
     private func retryFired() {
         retryTimer = nil
-        guard !stopped, foreground || !everOpened else { return }
+        guard !stopped, hostReachable, foreground || !everOpened else { return }
         attempt()
     }
 

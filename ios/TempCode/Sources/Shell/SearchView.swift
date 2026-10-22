@@ -2,17 +2,20 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// Search every host: thread rows that mention the query (`session.search`),
-/// grouped by thread with the matching rows quoted, or lines of each live
-/// project's files (`search.project`). The field is the system one; the
-/// scopes show only when an open host has a project to grep. A query waits
-/// 250 ms after the last keystroke and runs on every open host at once, off
-/// the main actor; the previous answer stays on screen until the next one
-/// lands, whole, so two queries' rows never mix. Tap a thread to open it,
-/// tap a hit to land on its row. Nothing here animates on a keystroke.
+/// Search every host: thread rows that mention the query (`session.search`,
+/// a thread's working notes among them), the app's notes (`notes.search`),
+/// or lines of each live project's files (`search.project`) and projects by
+/// name. The field is the system one; the scopes show only when an open
+/// host has a project to grep; `host:`, `type:` (which wins over the scope)
+/// and `project:` are typed in the box. A query waits 250 ms after the last
+/// keystroke and runs on every open host at once, off the main actor; rows
+/// land per host as it answers, ranked together without regard to the host,
+/// and the previous answer stays on screen until the first batch lands, so
+/// two queries' rows never mix. Tap a thread to open it, tap a hit to land
+/// on its row. Nothing here animates on a keystroke.
 ///
-/// The rows are `SearchRows.build`'s: the one call in `run()` is where the
-/// cross-host selector lands, and the view draws whatever it emits.
+/// The rows are `CrossHostSearch.run`'s: the one loop in `run()` is the
+/// model's seam, and the view draws whatever it emits.
 struct SearchView: View {
     @Environment(AppModel.self) private var model
     @Binding var path: NavigationPath
@@ -71,6 +74,10 @@ struct SearchView: View {
                         .separatorAtTextEdge(glyphEdge)
                 case .project(let project):
                     ProjectRow(project: project)
+                        .listRowInsets(Layout.rowInsets)
+                        .separatorAtTextEdge(glyphEdge)
+                case .note(let note):
+                    NoteRow(note: note)
                         .listRowInsets(Layout.rowInsets)
                         .separatorAtTextEdge(glyphEdge)
                 case .more:
@@ -132,21 +139,11 @@ struct SearchView: View {
         path.append(Route.thread(environmentId: environmentId, sessionId: sessionId, seq: seq))
     }
 
-    /// One host to ask, with what its answer needs snapshotted on the main
-    /// actor before the task group starts. `EnvironmentClient` is main-actor,
-    /// so the reference is Sendable; the children only call `request` on it.
-    nonisolated private struct Target: Sendable {
-        let client: EnvironmentClient
-        let id: String
-        let name: String
-        let sessions: [SessionMeta]
-        let projects: [ProjectMeta]
-    }
-
     private func run() async {
         let text = trimmed
         let scope = scope
-        guard text.count >= SearchDebounce.minimumLength else {
+        // The words alone must be long enough: `host:box` by itself asks nobody.
+        guard ParsedQuery.parse(text).text.count >= SearchDebounce.minimumLength else {
             answer = .none
             searching = false
             return
@@ -156,63 +153,42 @@ struct SearchView: View {
             try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
         }
-        let targets = openHosts.map {
-            Target(client: $0, id: $0.environment.id, name: $0.environment.name, sessions: $0.sessions, projects: Array($0.projects.filter { !$0.archived }.prefix(8)))
-        }
-        let hosts = paired.map {
-            SearchHost(id: $0.environment.id, name: $0.environment.name, open: $0.status.transport == .open)
+        // Every paired host in rail order, open or not, snapshotted on the main
+        // actor; the closures hop back to it only to send. `EnvironmentClient`
+        // is main-actor, so capturing it in a `@Sendable` closure is allowed.
+        let targets: [SearchTarget] = paired.map { client in
+            SearchTarget(
+                id: client.environment.id,
+                name: client.environment.name,
+                open: client.status.transport == .open,
+                isMac: client.status.lastHello?.build?.platform == "darwin",
+                sessions: client.sessions.filter { $0.parentId == nil },
+                projects: client.projects.filter { !$0.archived },
+                workspaces: client.workspaces,
+                ask: SearchAsk(
+                    threads: { query in try await client.request(Methods.SessionSearch.self, .init(query: query, limit: CrossHostSearch.threadLimit)) },
+                    files: { cwd, query in try await client.request(Methods.SearchProject.self, .init(options: .init(cwd: cwd, query: query))) },
+                    notes: { query in try await client.request(Methods.NotesSearch.self, .init(query: query, limit: CrossHostSearch.noteLimit)) }
+                )
+            )
         }
         searching = true
         // A cancelled search may finish after its replacement started; only the live one clears the cue.
         defer { if !Task.isCancelled { searching = false } }
-        let answers = await withTaskGroup(of: SearchHostAnswer.self) { group in
-            for target in targets {
-                group.addTask { await Self.ask(target, text: text, scope: scope) }
-            }
-            var out: [SearchHostAnswer] = []
-            for await one in group { out.append(one) }
-            return out
+        // The cross-host model: a batch after every landed source, the previous
+        // answer kept until the first lands. Ids are stable across batches, so an
+        // unchanged row keeps its place and nothing animates on a keystroke.
+        for await next in CrossHostSearch.run(raw: text, scope: scope, targets: targets, pairs: pairLookup, clock: SystemClock(), now: { Int(Date().timeIntervalSince1970 * 1000) }) {
+            guard !Task.isCancelled else { return }
+            Motion.withoutAnimation { answer = next }
         }
-        // The one line the cross-host selector slots into.
-        let next = SearchRows.build(query: text, scope: scope, hosts: hosts, answers: answers)
-        guard !Task.isCancelled else { return }
-        Motion.withoutAnimation { answer = next }
     }
 
-    /// One host's calls, off the main actor: the thread search, or one
-    /// project search per project in turn. Measures what the host took and
-    /// marks the answer failed when every call threw.
-    private nonisolated static func ask(_ target: Target, text: String, scope: SearchScope) async -> SearchHostAnswer {
-        let clock = ContinuousClock()
-        let start = clock.now
-        var threads: SessionSearchResult?
-        var files: [SearchHostAnswer.ProjectFiles] = []
-        var failed = false
-        switch scope {
-        case .threads:
-            threads = try? await target.client.request(Methods.SessionSearch.self, .init(query: text, limit: 60))
-            failed = threads == nil
-        case .files:
-            var threw = 0
-            for project in target.projects {
-                if let result = try? await target.client.request(Methods.SearchProject.self, .init(options: .init(cwd: project.cwd, query: text))) {
-                    files.append(.init(project: project, result: result))
-                } else {
-                    threw += 1
-                }
-            }
-            failed = !target.projects.isEmpty && threw == target.projects.count
-        }
-        let elapsed = clock.now - start
-        return SearchHostAnswer(
-            environmentId: target.id,
-            name: target.name,
-            sessions: target.sessions,
-            threads: threads,
-            files: files,
-            elapsedMs: Int(elapsed / .milliseconds(1)),
-            failed: failed
-        )
+    /// Where a path sits in its paired project, for the fold of the same
+    /// file on two hosts: the pairs over every paired host's workspaces, read
+    /// on the main actor once per search.
+    private var pairLookup: PairLookup {
+        CrossHostSearch.pairLookup(ProjectPairs.pairs(paired.map { HostWorkspaces(environmentId: $0.environment.id, workspaces: $0.workspaces) }))
     }
 }
 

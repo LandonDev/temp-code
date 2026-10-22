@@ -26,6 +26,17 @@ export const ReviewSettingsSchema = z.object({
 })
 export type ReviewSettings = z.infer<typeof ReviewSettingsSchema>
 
+/** What `review.get` answers: the scope's own set (null when it follows),
+ *  the global set, the effective one and where it came from (the phone's
+ *  generated contract pins this shape). */
+export const ReviewScopeSchema = z.object({
+  override: ReviewSettingsSchema.nullable(),
+  global: ReviewSettingsSchema.nullable(),
+  settings: ReviewSettingsSchema,
+  source: z.enum(['project', 'global', 'default'])
+})
+export type ReviewScope = z.infer<typeof ReviewScopeSchema>
+
 export const DEFAULT_REVIEW_SETTINGS: ReviewSettings = {
   beforeMerge: false,
   provider: 'codex',
@@ -103,6 +114,14 @@ export function splitFindings(
   const minor: ReviewFinding[] = []
   for (const f of findings) (isBlocking(f, blockOn) ? blocking : minor).push(f)
   return { blocking, minor }
+}
+
+/** What `merge_branch` and `review.override` answer (mergeBranch.ts does the git). */
+export interface MergeResult {
+  /** the target's commit after the merge */
+  sha: string
+  merged: boolean
+  pushed: boolean
 }
 
 // ── what the transcript shows (the `notice` event's `review` payload) ───

@@ -24,30 +24,47 @@ struct RootView: View {
         _searchPath = State(initialValue: NavigationMemory.path(memory?.search))
         _restoredSheet = State(initialValue: memory?.sheet)
     }
+    /// Project settings present from the root: a sheet on a menu item never shows.
+    @State private var projectSettings = ProjectSettingsPresenter()
 
     var body: some View {
         TabView(selection: $tab) {
             Tab("Home", systemImage: "house", value: AppTab.home) {
                 NavigationStack(path: $homePath) {
-                    HomeView(path: $homePath)
+                    HomeView(path: $homePath, slots: FleetSwitches.homeSlots(homeSlots))
+                        .fleetToastInset()
                         .navigationDestination(for: Route.self) { destination($0, path: $homePath) }
                 }
             }
             Tab("Inbox", systemImage: "tray", value: AppTab.inbox) {
                 NavigationStack(path: $inboxPath) {
                     InboxView(path: $inboxPath)
+                        .fleetToastInset()
                         .navigationDestination(for: Route.self) { destination($0, path: $inboxPath) }
                 }
             }
             Tab(value: AppTab.search, role: .search) {
                 NavigationStack(path: $searchPath) {
                     SearchView(path: $searchPath, initialQuery: model.launchSearch)
+                        .fleetToastInset()
                         .navigationDestination(for: Route.self) { destination($0, path: $searchPath) }
                 }
             }
         }
         .preferredColorScheme(appearance.scheme)
+        // The fleet switches' confirm sheet, shared by every menu; the outcome line sits on each tab (thread iOS 20).
+        .fleetSwitchHost()
+        .onChange(of: model.registry.ordered.map { $0.bootResume }) { BootResumeNotes.shared.observe(model.registry.ordered) }
+        .environment(projectSettings)
+        .sheet(item: $projectSettings.target) { target in
+            if let client = model.registry.client(target.environmentId) {
+                ProjectSettingsSheet(client: client, projectId: target.projectId)
+            } else {
+                Color.clear.onAppear { projectSettings.target = nil }
+            }
+        }
         .task(id: model.ready) { await followLaunchRoute() }
+        .task { await MasterReleaseWatcher.shared.run() } // master's release for the drift marks (Shell/Hosts, iOS 21)
         // The sheet the last run had up, handed to the view that owns it once
         // the restored stacks are on screen.
         .task {
@@ -86,6 +103,21 @@ struct RootView: View {
     private func reportVisibility() {
         let active = scenePhase == .active
         model.setVisible(thread: active ? router.visible : nil, listVisible: active && tab == .home && homePath.isEmpty)
+    }
+
+    /// What sibling features plug into Home; every slot optional.
+    private var homeSlots: HomeSlots {
+        var slots = HomeSlots(
+            projectSettings: { client, project in AnyView(ProjectSettingsMenuItem(client: client, project: project)) },
+            projectTrailing: { AnyView(ProjectPlanChip(client: $0, project: $1)) }
+        )
+        let registry = model.registry
+        slots.hostTrailing = { AnyView(DriftMark(client: $0)) } // iOS 21: the deploy drift mark (Shell/Hosts)
+        // Thread 29: a relayed host's "through <carrier> · <presence>" line under its header's name.
+        slots.hostSubline = { client in
+            AnyView(HostSubline(client: client, carrierName: registry.carrier(of: client.environment.id)?.environment.name))
+        }
+        return slots
     }
 
     @ViewBuilder

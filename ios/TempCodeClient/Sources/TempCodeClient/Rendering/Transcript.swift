@@ -66,6 +66,8 @@ public struct ToolItem: Sendable, Hashable {
     public var reauth: ToolResultEvent.Reauth?
     /// When the result landed.
     public var doneTs: Int? = nil
+    /// The host's live diff of the file this edit is changing, while it runs.
+    public var live: LiveEditState? = nil
 
     /// What the row shows after the name: a command, a path, a query.
     public var detail: String? {

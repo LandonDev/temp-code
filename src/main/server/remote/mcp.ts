@@ -4,8 +4,11 @@ import { z, ZodError } from 'zod'
 import type { Principal } from '@shared/capabilities'
 import type { SessionRegistry } from '../sessions'
 import type { RemoteAuth } from './auth'
-import { FACADE_TOOLS, FacadeError, callFacade, type FacadeContext } from './facade'
+import { decodeAgentId, encodeAgentId } from '@shared/contract-crosshost'
+import { RELAY_FACADE_MS, relayState, type RelayPrincipal } from '@shared/contract-relay'
+import { FACADE_TOOLS, FacadeError, callFacade, hostRowOf, selfHostRow, type FacadeContext, type HostRow, type SessionRow } from './facade'
 import { HttpError, type RequestContext } from './listener'
+import type { RelayFacadeHosts } from './relay'
 
 /**
  * `/mcp` on the fixed port: the Model Context Protocol over streamable
@@ -38,11 +41,12 @@ export const MCP_SERVER_NAME = 'temp-code'
 const TRACE = process.env.TEMP_CODE_REMOTE_TRACE === '1'
 const log = (line: string): void => console.log(`[remote] ${line}`)
 
-const INSTRUCTIONS = [
+export const INSTRUCTIONS = [
   'temp-code runs coding agents (Claude, Codex) in threads called sessions, each inside a repo.',
   'Flow: list_projects → start_session(repo, prompt) → get_session / get_transcript to watch → send_message to steer → list_pending + respond when it asks a question → get_diff to see the result → stop_session / archive_session.',
   'Status is working | waiting | failed | done. A waiting session has a pending prompt: a question you can answer with respond, or a permission request only the user can approve in the app (this key cannot; relay it instead).',
-  'Transcript pages are bounded; page older with before=firstSeq and newer with after=lastSeq.'
+  'Transcript pages are bounded; page older with before=firstSeq and newer with after=lastSeq.',
+  'Hosts: list_projects names every host reachable from here with its state; a session id of the form env_…:id lives on that host and routes there.'
 ].join(' ')
 
 export interface McpHandlerOptions {
@@ -51,7 +55,181 @@ export interface McpHandlerOptions {
   version: string
   /** The public origin for the links in answers, resolved per call. */
   origin: () => string | null
+  /** This host's environment id: stamped on every row as `host`, and what a `host` argument naming it routes to. */
+  environmentId?: string
+  hostName?: string
+  /** The relayed hosts (remote/relay.ts): a `host` argument or an env_…:id session routes the call there; the list_* tools merge every available one. */
+  relay?: RelayFacadeHosts
   now?: () => number
+}
+
+// ── routing a tool across hosts ─────────────────────────────────────────
+
+export interface ToolDeps {
+  environmentId: string
+  hostName?: string
+  relay?: RelayFacadeHosts
+  /** The box key as a relayed host sees it. */
+  principal: RelayPrincipal
+  /** callFacade on this host. */
+  local: (name: string, args: Record<string, unknown>) => Promise<unknown>
+}
+
+type Target = { kind: 'local' } | { kind: 'remote'; envId: string }
+
+/** `host` as an environment id or a row's name (case-insensitive); this host's own id or name is local. */
+function resolveHost(deps: ToolDeps, host: string): Target {
+  const wanted = host.trim().toLowerCase()
+  if (wanted === deps.environmentId.toLowerCase() || wanted === (deps.hostName ?? '').toLowerCase()) return { kind: 'local' }
+  const row = deps.relay?.list().find((h) => h.environmentId.toLowerCase() === wanted || h.name.toLowerCase() === wanted)
+  if (!row) throw new FacadeError('not_found', `no host "${host}" is known here; list_projects names the hosts`)
+  return { kind: 'remote', envId: row.environmentId }
+}
+
+/** Where a call goes: its `host`, else the host its session id names, else here. `args` loses `host` and gets the plain session id. */
+export function routeOf(deps: ToolDeps, rawArgs: unknown): { target: Target; args: Record<string, unknown>; explicit: boolean } {
+  const args = { ...((rawArgs ?? {}) as Record<string, unknown>) }
+  const host = typeof args.host === 'string' ? args.host : undefined
+  delete args.host
+  if (host) {
+    const target = resolveHost(deps, host)
+    if (target.kind === 'remote' && typeof args.session === 'string') {
+      const decoded = decodeId(args.session)
+      if (decoded) {
+        if (decoded.environmentId !== target.envId)
+          throw new FacadeError('invalid', `session "${args.session}" lives on ${decoded.environmentId}, not on host "${host}"`)
+        args.session = decoded.sessionId
+      }
+    }
+    return { target, args, explicit: true }
+  }
+  if (typeof args.session === 'string') {
+    const decoded = decodeId(args.session)
+    if (decoded) {
+      args.session = decoded.sessionId
+      if (decoded.environmentId === deps.environmentId) return { target: { kind: 'local' }, args, explicit: false }
+      if (!deps.relay?.list().some((h) => h.environmentId === decoded.environmentId))
+        throw new FacadeError('not_found', `no host "${decoded.environmentId}" is known here; list_projects names the hosts`)
+      return { target: { kind: 'remote', envId: decoded.environmentId }, args, explicit: false }
+    }
+  }
+  return { target: { kind: 'local' }, args, explicit: false }
+}
+
+function decodeId(id: string): { environmentId: string; sessionId: string } | null {
+  try {
+    return decodeAgentId(id)
+  } catch {
+    return null
+  }
+}
+
+/** A relayed answer as this host's caller sees it: ids prefixed with the host, `host` stamped, `url` dropped (this host's /ui cannot open it). */
+export function prefixIds(result: unknown, envId: string): unknown {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return result
+  const r = { ...(result as Record<string, unknown>) }
+  const enc = (id: unknown): unknown => (typeof id === 'string' ? encodeAgentId(envId, id) : id)
+  const row = (x: unknown): unknown => {
+    if (!x || typeof x !== 'object') return x
+    const o = { ...(x as Record<string, unknown>) }
+    if (typeof o.id === 'string') o.id = enc(o.id)
+    o.host = envId
+    delete o.url
+    if (Array.isArray(o.prompts)) o.prompts = o.prompts.map((p) => prompt(p))
+    return o
+  }
+  const prompt = (x: unknown): unknown => (x && typeof x === 'object' ? { ...(x as Record<string, unknown>), session: enc((x as { session?: unknown }).session) } : x)
+  if (Array.isArray(r.sessions)) r.sessions = r.sessions.map(row)
+  if (Array.isArray(r.pending)) r.pending = r.pending.map(prompt)
+  if (Array.isArray(r.repos)) r.repos = r.repos.map((repo) => (repo && typeof repo === 'object' ? { ...(repo as Record<string, unknown>), host: envId } : repo))
+  if (typeof r.session === 'string') r.session = enc(r.session)
+  if (typeof r.id === 'string' && 'status' in r) return row(r)
+  if ('url' in r && typeof r.id === 'string') delete r.url
+  return r
+}
+
+const MERGED = new Set(['list_projects', 'list_sessions', 'list_pending'])
+const STATUS_ORDER: Record<string, number> = { working: 0, waiting: 1, failed: 2, done: 3 }
+
+/** Working first, then the newest activity. */
+export function mergeSessions(rows: SessionRow[]): SessionRow[] {
+  return [...rows].sort((a, b) => {
+    const s = (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9)
+    return s !== 0 ? s : b.lastActivity.localeCompare(a.lastActivity)
+  })
+}
+
+export interface Unavailable {
+  host: string
+  name: string
+  reason: string
+}
+
+/** One tool call, routed: a host or an env_…:id session goes to that host; the list_* tools without a host merge every relayed host in. */
+export async function runTool(deps: ToolDeps, name: string, rawArgs: unknown): Promise<unknown> {
+  const { target, args, explicit } = routeOf(deps, rawArgs)
+  if (target.kind === 'remote') {
+    const relay = deps.relay
+    if (!relay) throw new FacadeError('not_found', 'no host is reachable from here')
+    const out = await relay.call(target.envId, deps.principal, name, args)
+    if (!out.ok) throw new FacadeError(out.code, out.message)
+    const result = prefixIds(out.result, target.envId) as Record<string, unknown>
+    if (name === 'list_projects') result.hosts = hostRows(deps)
+    return result
+  }
+  const local = (await deps.local(name, args)) as Record<string, unknown>
+  if (explicit || !MERGED.has(name) || !deps.relay || (name === 'list_sessions' && args.cursor !== undefined)) return local
+  const relay = deps.relay
+  const hosts = relay.list()
+  if (hosts.length === 0) return local
+  // list_projects says a host's state in its row, so it asks only hosts that answer (a locked one does);
+  // the other lists ask every host and name the ones that did not answer in `unavailable`.
+  const asked = name === 'list_projects' ? hosts.filter((h) => { const s = relayState(h); return s === 'available' || s === 'locked' }) : hosts
+  const answers = await Promise.all(
+    asked.map(async (h) => {
+      try {
+        const out = await withDeadline(relay.call(h.environmentId, deps.principal, name, args), RELAY_FACADE_MS)
+        return { host: h, out }
+      } catch (err) {
+        return { host: h, out: { ok: false as const, code: 'unavailable' as const, message: err instanceof Error ? err.message : String(err) } }
+      }
+    })
+  )
+  const unavailable: Unavailable[] = []
+  const got: Record<string, unknown>[] = []
+  for (const { host, out } of answers) {
+    if (out.ok) got.push(prefixIds(out.result, host.environmentId) as Record<string, unknown>)
+    else unavailable.push({ host: host.environmentId, name: host.name, reason: out.message })
+  }
+  if (name === 'list_projects') {
+    return { hosts: hostRows(deps), repos: [...(local.repos as unknown[]), ...got.flatMap((g) => (g.repos as unknown[]) ?? [])] }
+  }
+  if (name === 'list_sessions') {
+    const sessions = mergeSessions([...(local.sessions as SessionRow[]), ...got.flatMap((g) => (g.sessions as SessionRow[]) ?? [])])
+    return { sessions, cursor: local.cursor ?? null, ...(unavailable.length ? { unavailable } : {}) }
+  }
+  return { pending: [...(local.pending as unknown[]), ...got.flatMap((g) => (g.pending as unknown[]) ?? [])], ...(unavailable.length ? { unavailable } : {}) }
+}
+
+function hostRows(deps: ToolDeps): HostRow[] {
+  return [selfHostRow({ environmentId: deps.environmentId, hostName: deps.hostName }), ...(deps.relay?.list() ?? []).map(hostRowOf)]
+}
+
+function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`unavailable: the host did not answer within ${Math.round(ms / 1000)} s`)), ms)
+    timer.unref?.()
+    p.then(
+      (v) => {
+        clearTimeout(timer)
+        resolve(v)
+      },
+      (e: unknown) => {
+        clearTimeout(timer)
+        reject(e)
+      }
+    )
+  })
 }
 
 type JsonRpcId = string | number | null
@@ -230,10 +408,23 @@ export function createMcpHandler(options: McpHandlerOptions): McpHandler {
         const facade: FacadeContext = {
           registry: options.registry,
           principal,
-          origin: options.origin()
+          origin: options.origin(),
+          ...(options.environmentId ? { environmentId: options.environmentId } : {}),
+          ...(options.hostName ? { hostName: options.hostName } : {}),
+          ...(options.relay ? { relay: options.relay } : {})
         }
         try {
-          const result = await callFacade(facade, name, params.arguments ?? {})
+          const result = await runTool(
+            {
+              environmentId: options.environmentId ?? 'local',
+              hostName: options.hostName,
+              relay: options.relay,
+              principal: { keyId: principal.keyId, name: principal.name, audience: principal.audience, caps: principal.caps },
+              local: (tool, args) => callFacade(facade, tool, args)
+            },
+            name,
+            params.arguments ?? {}
+          )
           if (TRACE) log(`mcp ${principal.keyId} ${name} ${now() - started}ms ok`)
           return {
             jsonrpc: '2.0',

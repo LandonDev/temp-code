@@ -39,9 +39,14 @@ describe('METHOD_CAPABILITY', () => {
         'session.move',
         // A proof's seam (isolated instances only): a status with no harness, for the e2e's pause step.
         'session.markStatus',
+        // A proof's seam (isolated instances only): this host's screen and power state (contract-relay.ts).
+        'presence.set',
         // The Mac bridge: a box thread's own tools (token-gated), and the Mac's decisions and policy.
+        // A key may read what runs (`macBridge.activity`) and stop a command (`macBridge.stop`).
         ...methods.filter((m) => m.startsWith('mac.')),
-        ...methods.filter((m) => m.startsWith('macBridge.') && !m.startsWith('macBridge.thread.')),
+        ...methods.filter(
+          (m) => m.startsWith('macBridge.') && !m.startsWith('macBridge.thread.') && m !== 'macBridge.activity' && m !== 'macBridge.stop'
+        ),
         // The Mac release signs and uploads from this machine (contract-host.ts).
         'host.publishStatus',
         'host.publish',
@@ -102,6 +107,8 @@ describe('METHOD_CAPABILITY', () => {
         'crossHost.landing',
         // A thread on this host asked for by another host's main process over its link (contract-crosshost.ts).
         ...methods.filter((m) => m.startsWith('thread.')),
+        // The relay (contract-relay.ts): a host's lane frames, closes and notices, over its own admin link.
+        ...methods.filter((m) => m.startsWith('relay.')),
         // A deploy of this host, and its log, are asked over its link under an admin key (contract-host.ts).
         'host.deploy',
         'host.deployStatus',
@@ -148,5 +155,9 @@ describe('the Mac bridge (contract-macbridge.ts)', () => {
     for (const m of ['macBridge.decide', 'macBridge.pending', 'macBridge.policy.get', 'macBridge.policy.set', 'macBridge.shared.set', 'mac.readFile', 'mac.listDir', 'mac.fetchFile', 'mac.run', 'mac.writeFile'] as const)
       expect(METHOD_CAPABILITY[m]).toBe('local')
     expect(METHOD_CAPABILITY['macBridge.thread.get']).toBe('read')
+  })
+  it('a key reads what the Mac runs and may stop a command, nothing more', () => {
+    expect(METHOD_CAPABILITY['macBridge.activity']).toBe('read')
+    expect(METHOD_CAPABILITY['macBridge.stop']).toBe('operate')
   })
 })

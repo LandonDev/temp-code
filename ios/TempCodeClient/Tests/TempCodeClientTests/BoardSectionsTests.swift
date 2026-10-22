@@ -81,8 +81,8 @@ import TempCodeContract
     // MARK: landing outcomes
 
     @Test func `outcomes land on their round and never in work`() {
-        let gate = NoticeEvent.Gate(step: .typecheck, branch: "feature", ok: true, log: "", at: 1_500)
-        let review = NoticeEvent.Review(runId: "r1", provider: "codex", model: "gpt-6.1-sol", outcome: .pass, branch: "feature", target: "master", blocking: [], minor: [], merged: true, pushed: true)
+        let gate = GateNotice(step: .typecheck, branch: "feature", ok: true, log: "", at: 1_500)
+        let review = ReviewNotice(runId: "r1", provider: "codex", model: "gpt-6.1-sol", outcome: .pass, branch: "feature", target: "master", blocking: [], minor: [], merged: true, pushed: true)
         let fold = ThreadFold.fold(rows([
             user("go", newPass: true),
             todoWrite("t1", [("a", "completed")]),
@@ -103,25 +103,25 @@ import TempCodeContract
         #expect(Board.isOutcome(fold.items[2].item))
     }
 
-    static let gateSteps: [(NoticeEvent.Gate.Step, String)] = [(.typecheck, "Typecheck"), (.gate, "Gate"), (.release, "Release"), (.unknown("smoke"), "Smoke")]
+    static let gateSteps: [(GateStep, String)] = [(.typecheck, "Typecheck"), (.gate, "Gate"), (.release, "Release"), (.unknown("smoke"), "Smoke")]
 
-    @Test(arguments: gateSteps) func `a passed gate names its step and branch`(step: NoticeEvent.Gate.Step, label: String) {
-        let gate = NoticeEvent.Gate(step: step, branch: "ios/board", ok: true, log: "anything", at: 0)
+    @Test(arguments: gateSteps) func `a passed gate names its step and branch`(step: GateStep, label: String) {
+        let gate = GateNotice(step: step, branch: "ios/board", ok: true, log: "anything", at: 0)
         #expect(GateLine.text(gate) == "\(label) passed on ios/board")
     }
 
     @Test func `a failed gate names what failed`() {
-        let typecheck = NoticeEvent.Gate(step: .typecheck, branch: "f", ok: false, log: "src/a.ts(1,2): error TS2322: x\nFound 3 errors in 2 files.", at: 0)
+        let typecheck = GateNotice(step: .typecheck, branch: "f", ok: false, log: "src/a.ts(1,2): error TS2322: x\nFound 3 errors in 2 files.", at: 0)
         #expect(GateLine.text(typecheck) == "Typecheck failed on f · 3 errors")
-        let one = NoticeEvent.Gate(step: .typecheck, branch: "f", ok: false, log: "Found 1 error.", at: 0)
+        let one = GateNotice(step: .typecheck, branch: "f", ok: false, log: "Found 1 error.", at: 0)
         #expect(GateLine.text(one) == "Typecheck failed on f · 1 error")
-        let silent = NoticeEvent.Gate(step: .typecheck, branch: "f", ok: false, log: "tsc crashed", at: 0)
+        let silent = GateNotice(step: .typecheck, branch: "f", ok: false, log: "tsc crashed", at: 0)
         #expect(GateLine.text(silent) == "Typecheck failed on f")
-        let gate = NoticeEvent.Gate(step: .gate, branch: "master", ok: false, log: "✓ typecheck 12s\n✗ vitest 40s failed", at: 0)
+        let gate = GateNotice(step: .gate, branch: "master", ok: false, log: "✓ typecheck 12s\n✗ vitest 40s failed", at: 0)
         #expect(GateLine.text(gate) == "Gate failed on master · at vitest")
-        let gateNoStep = NoticeEvent.Gate(step: .gate, branch: "master", ok: false, log: "boom", at: 0)
+        let gateNoStep = GateNotice(step: .gate, branch: "master", ok: false, log: "boom", at: 0)
         #expect(GateLine.text(gateNoStep) == "Gate failed on master")
-        let release = NoticeEvent.Gate(step: .release, branch: "master", ok: false, log: "✗ vitest", at: 0)
+        let release = GateNotice(step: .release, branch: "master", ok: false, log: "✗ vitest", at: 0)
         #expect(GateLine.text(release) == "Release failed on master")
     }
 
@@ -141,18 +141,18 @@ import TempCodeContract
         #expect(GateLine.tail("", lines: 20) == "")
     }
 
-    static func review(_ outcome: NoticeEvent.Review.Outcome, blocking: Int = 0, minor: Int = 0, merged: Bool = false, reason: String? = nil, minutes: Double? = nil) -> NoticeEvent.Review {
-        let finding = { (i: Int) in NoticeEvent.Review.Blocking(file: "src/a\(i).ts", line: i, summary: "s", failure_scenario: "f") }
-        let note = { (i: Int) in NoticeEvent.Review.Minor(file: "src/m\(i).ts", line: i, summary: "s", failure_scenario: "f") }
-        return NoticeEvent.Review(runId: "r", reviewerId: "rev", provider: "codex", model: "gpt-6.1-sol", outcome: outcome, branch: "f", target: "master", blocking: (0..<blocking).map(finding), minor: (0..<minor).map(note), merged: merged, pushed: merged, reason: reason, minutes: minutes)
+    static func review(_ outcome: ReviewOutcome, blocking: Int = 0, minor: Int = 0, merged: Bool = false, reason: String? = nil, minutes: Double? = nil) -> ReviewNotice {
+        let finding = { (i: Int) in ReviewFinding(file: "src/a\(i).ts", line: i, summary: "s", failure_scenario: "f") }
+        let note = { (i: Int) in ReviewFinding(file: "src/m\(i).ts", line: i, summary: "s", failure_scenario: "f") }
+        return ReviewNotice(runId: "r", reviewerId: "rev", provider: "codex", model: "gpt-6.1-sol", outcome: outcome, branch: "f", target: "master", blocking: (0..<blocking).map(finding), minor: (0..<minor).map(note), merged: merged, pushed: merged, reason: reason, minutes: minutes)
     }
 
-    static let leads: [(NoticeEvent.Review.Outcome, String)] = [
+    static let leads: [(ReviewOutcome, String)] = [
         (.pass, "Reviewed by GPT-6.1 Sol"), (.held, "Reviewed by GPT-6.1 Sol"), (.timeout, "Review by GPT-6.1 Sol timed out"),
         (.failed, "Review by GPT-6.1 Sol did not run"), (.mergedAnyway, "Merged anyway"), (.skipped, "Merged"), (.unknown("odd"), "Review")
     ]
 
-    @Test(arguments: leads) func `the review lead follows the outcome`(outcome: NoticeEvent.Review.Outcome, expected: String) {
+    @Test(arguments: leads) func `the review lead follows the outcome`(outcome: ReviewOutcome, expected: String) {
         #expect(ReviewLine.lead(Self.review(outcome)) == expected)
     }
 

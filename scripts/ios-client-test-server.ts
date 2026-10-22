@@ -17,9 +17,36 @@
  *   GET  /actions               → { actions: [{ kind, sessionId, at, … }] } the sends, stops, approvals,
  *                                 answers, creates, renames, archives and pins the stubs recorded
  *   POST /actions/clear         → forgets them
- *   POST /finish { sessionId, text? }  → ends a simulated turn: the reply, turn-complete, idle
+ *   POST /finish { sessionId, text? }  → ends a simulated turn: the reply, turn-complete, idle (and stops a /stream)
+ *   POST /stream { sessionId?, cps?, seconds?, seed? }  → plays a bursty streaming turn with a growing Edit and
+ *                                 live edits into ios-streaming; 409 while one runs
  *   POST /ask { sessionId, kind: 'approval' | 'question' }  → a fresh card on a thread, which waits
+ *   POST /push { frame }        → writes any push frame to every remote socket (a push with no
+ *                                 machinery behind it here: macBridge.held, boot-resume, accounts)
+ *   POST /batch-log { masterId, lines }  → appends lines to the master's running shell step (a streaming console)
+ *   POST /notes { sessionId, text }      → writes a thread's notes.md (the `notes` push follows)
+ *   POST /resources/remove { sessionId } → removes the thread's live resources; answers { results }
+ *   POST /presence { environmentId, screen?, power? }  → flips a relayed host's screen or power (the relay seed)
  *   POST /quit                  → closes everything
+ *
+ * The seeds of the 2026-10-21/22 features (a master's batch mid-run, the
+ * queued and stopped rows, a paused master, the project plan, notes, the
+ * host's own rows, resources, a pinned account, a cross-host child, media,
+ * a note for notes.search) come from scripts/lib/ios-seeds.ts; every id is
+ * a key of the JSON line's `threads` map, which the runner exports as
+ * TC_TEST_THREAD_<KEY>. The main host gets a fake MacDevices (two
+ * simulators, one paired iPhone, Xcode-26, load 3.2 of 8) through
+ * startServer's `devices` option, so host.devices answers on Linux.
+ * scripts/ios-client-test-server.test.ts
+ * checks every seeded id is used once.
+ *
+ * The relay seed (remote/relayLoopback.ts): four fake hosts reachable through
+ * this server, one per state (Studio Mac available, locked, asleep and
+ * unreachable since five minutes ago), listed in the JSON line as
+ * `relayHosts`. A lane to the available or locked host
+ * (`/ws?ticket=…&host=<id>`) lists this server's own seeded threads under
+ * that host's id; the asleep one answers `unavailable: the Mac is asleep`;
+ * the unreachable one is refused 503.
  */
 import { createServer } from 'node:http'
 import { execFileSync, spawn } from 'node:child_process'
@@ -29,10 +56,28 @@ import { dirname, join } from 'node:path'
 import { deflateSync } from 'node:zlib'
 import { configure } from 'aliax-core'
 import { startServer } from '../src/main/server/index'
-import { serveMedia } from '../src/main/server/media'
+import { emitLiveEdit } from '../src/main/server/livediff'
+import { MacDevices } from '../src/main/server/devices/hostDevices'
+import { loadEnvironmentId } from '../src/main/server/remote/environment'
+import { mediaUrl, serveMedia } from '../src/main/server/media'
+import { projectPlanPathFor } from '../src/shared/projectPlan'
+import type { AccountsSnapshot } from '../src/shared/accounts'
+import {
+  batchRowMidRun,
+  fakeMacDevicesDeps,
+  notesFive,
+  notesTwo,
+  withShellLog
+} from './lib/ios-seeds'
+import { openDb, Store } from '../src/main/server/db'
+import { ENVIRONMENTS_PREFIX } from '../src/main/server/remote/environments'
+import type { MacBridgeRequest } from '../src/shared/contract-macbridge'
 import type { AgentEvent, FailureKind } from '../src/shared/events'
 import type { GithubInboxItem } from '../src/shared/contract-github'
 import type { ReviewNotice } from '../src/shared/review'
+import { DEFAULT_PLAN_SETTINGS } from '../src/shared/plans'
+import { DEFAULT_REVIEW_SETTINGS } from '../src/shared/review'
+import { startLoopbackHosts } from '../src/main/server/remote/relayLoopback'
 
 const root = mkdtempSync(join(tmpdir(), 'tc-ios-client-'))
 configure({
@@ -47,7 +92,61 @@ configure({
 // server alone (the Electron asset handler has no place under plain node).
 const assets = async (request: Request): Promise<Response> =>
   new URL(request.url).host === 'file' ? serveMedia(request) : new Response('not found', { status: 404 })
-const server = await startServer(join(root, 'app.db'), { claimShim: false, remotePort: 0, assets })
+// ── a host's activity (iOS thread 21): what the host detail reads ───────
+// A saved host "box" (admin caps, a route nobody answers: "not connected"
+// on the sync lines, and the host the seeded Mac bridge calls belong to),
+// written before boot so the peers read it with the rest. The deploy
+// trigger directory holds a finished run (ref, 12 log lines, exit 0), so
+// `host.deployStatus` is done and `host.log` has text.
+export const SEED_BOX_ID = 'env_box_seed'
+const dbPath = join(root, 'app.db')
+{
+  const db = openDb(dbPath)
+  new Store(db).setSetting(
+    `${ENVIRONMENTS_PREFIX}${SEED_BOX_ID}`,
+    JSON.stringify({
+      name: 'box',
+      routes: [{ url: 'ws://127.0.0.1:9/ws', kind: 'lan' }],
+      addedAt: Date.now() - 86_400_000,
+      caps: ['read', 'operate', 'approve', 'admin'],
+      keyName: 'the Mac',
+      key: 'tc_seedbox.not-a-real-key'
+    })
+  )
+  db.close()
+}
+const deployDir = join(root, 'deploy')
+mkdirSync(deployDir, { recursive: true })
+export const DEPLOY_LOG_LINES = 12
+writeFileSync(join(deployDir, 'ref'), 'master\n')
+writeFileSync(
+  join(deployDir, 'log'),
+  [
+    'box-update: master requested',
+    'stage 10: clone → /srv/agents/temp-code-builds/next',
+    'stage 20: bun install --frozen-lockfile (node_modules hardlinked, bun.lock unchanged)',
+    'stage 30: electron-vite build',
+    'stage 40: trial boot on :7690',
+    'stage 40: tc:ready in 2.1 s',
+    'stage 50: snapshot /srv/agents/temp-code-data/app.db → VACUUM INTO',
+    'stage 60: current → next',
+    'stage 70: systemctl restart temp-code.service',
+    'stage 80: service answered /api/hello in 4.3 s',
+    'stage 85: launcher and library installed',
+    'box-update: done (v1.0.312)'
+  ].join('\n') + '\n'
+)
+writeFileSync(join(deployDir, 'exit'), '0\n')
+process.env.TEMP_CODE_DEPLOY_DIR = deployDir
+process.env.TEMP_CODE_E2E_SEED = '1'
+// The host's id is made in its data dir before the boot, so the fake devices gatherer can carry it.
+const environmentId = loadEnvironmentId(root)
+const server = await startServer(dbPath, {
+  claimShim: false,
+  remotePort: 0,
+  assets,
+  devices: new MacDevices(fakeMacDevicesDeps(environmentId, { session: (id) => (id === 'ios-resources' ? { title: 'Clean up after the simulator run', status: 'idle' } : null) }))
+})
 if (!server.remote || server.remote.port === 0) throw new Error('the remote listener did not bind')
 
 // ── the second host: the same project on another machine ───────────────
@@ -73,6 +172,8 @@ export const THREAD_CROSS_HOST_CHILD = 'ios-xhost-child'
 if (process.env.TC_IOS_SECOND_HOST === '1') {
   const secondRepo = workspaceDir('tc-ios-client-second-')
   gitInit(secondRepo)
+  // The same file as the main host's, so a cross-host file search folds the two hits (search.project matches carry mtime).
+  writeFileSync(join(secondRepo, 'fixture-search.txt'), '// Search fixture\nconst fixtureNeedle = true\n')
   const secondWorkspace = await server.registry.createWorkspace(secondRepo, 'ios-workspace')
   const secondProject = await server.registry.createProject(secondWorkspace.id, 'ios-project', 'local')
   const talk = (id: string, user: string, assistant: string): void => {
@@ -125,6 +226,7 @@ execFileSync('git', ['-C', repo, 'init', '-q'])
 execFileSync('git', ['-C', repo, '-c', 'user.name=fixture', '-c', 'user.email=fixture@example.com', 'commit', '-q', '--allow-empty', '-m', 'init'])
 // One file for the phone's Files scope: the proof's `hello` query matches it through search.project.
 writeFileSync(join(repo, 'README.md'), 'hello from the ios project\nsay hello to search\n')
+writeFileSync(join(repo, 'fixture-search.txt'), '// Search fixture\nconst fixtureNeedle = true\n')
 const workspace = await server.registry.createWorkspace(repo, 'ios-workspace')
 const project = await server.registry.createProject(workspace.id, 'ios-project', 'local')
 export const THREAD_A = 'ios-thread-a'
@@ -202,6 +304,83 @@ server.registry.append('ios-paused', { type: 'user-text', text: 'Migrate every s
 server.registry.append('ios-paused', { type: 'status', status: 'running' })
 server.registry.append('ios-paused', { type: 'status', status: 'paused' })
 
+// The fleet switches, the queued and stopped roots, the paused master's
+// batch and a thread with resources (thread iOS 20). Each seed is skipped
+// when a sibling already made the id; the shapes are theirs then.
+const has = (id: string): boolean => server.registry.get(id) !== null
+if (!has('ios-master')) {
+  await make('ios-master', { projectId: project.id, threadType: 'chat', title: 'Ship the stats pipeline' })
+  say('ios-master', 'Run the stats batch to the end.', 'Four threads, landing as they finish.')
+  server.registry.setMaster('ios-master', true)
+}
+if (!has('ios-queued')) {
+  // A master's child waits for its `after` sibling: created, never booted. The status is appended the way
+  // the paused seed appends paused; the scheduler's own line is set beside it so the row reads as the host's.
+  await make('ios-queued', { projectId: project.id, threadType: 'implementation', title: 'Backfill the rollups', masterId: 'ios-master', after: 'ios-running' })
+  server.registry.append('ios-queued', { type: 'user-text', text: 'Backfill the rollups once the export lands' })
+  server.registry.append('ios-queued', { type: 'status', status: 'queued' })
+  const lines = (server.registry as unknown as { queuedLines?: Map<string, string> }).queuedLines
+  const queued = server.registry.get('ios-queued')
+  if (lines && queued) {
+    lines.set('ios-queued', 'Queued · waiting for Add the billing export')
+    ;(server.registry as unknown as { notifyMeta: (meta: unknown) => void }).notifyMeta(queued)
+  }
+}
+if (!has('ios-stopped')) {
+  await make('ios-stopped', { projectId: project.id, threadType: 'chat', title: 'Rename the config keys again' })
+  server.registry.append('ios-stopped', { type: 'user-text', text: 'Rename the config keys to the new scheme' })
+  server.registry.append('ios-stopped', { type: 'status', status: 'running' })
+  server.registry.append('ios-stopped', { type: 'status', status: 'stopped' })
+}
+if (!has('ios-master-paused')) {
+  await make('ios-master-paused', { projectId: project.id, threadType: 'orchestration', agentType: 'orchestrator', title: 'Port the admin pages' })
+  server.registry.setMaster('ios-master-paused', true)
+  server.registry.append('ios-master-paused', { type: 'user-text', text: 'Port every admin page to the new shell' })
+  server.registry.append('ios-master-paused', { type: 'status', status: 'running' })
+  server.registry.append('ios-master-paused', { type: 'status', status: 'paused' })
+  for (const [id, title] of [['ios-batch-a', 'Admin: users page'], ['ios-batch-b', 'Admin: billing page']] as const) {
+    await make(id, { projectId: project.id, threadType: 'implementation', title, masterId: 'ios-master-paused' })
+    server.registry.append(id, { type: 'user-text', text: title })
+    server.registry.append(id, { type: 'status', status: 'running' })
+    server.registry.append(id, { type: 'status', status: 'paused' })
+  }
+}
+if (!has('ios-batch-a-run')) {
+  // The live fleet test's own project: two running roots and one running subagent, so Pause all and
+  // Resume all over it never touch the seeds the other live tests read.
+  const fleetProject = await server.registry.createProject(workspace.id, 'ios-fleet-project', 'local')
+  for (const [id, title] of [['ios-batch-a-run', 'Index the archive'], ['ios-batch-b-run', 'Rebuild the search']] as const) {
+    await make(id, { projectId: fleetProject.id, threadType: 'implementation', title })
+    server.registry.append(id, { type: 'user-text', text: title })
+    server.registry.append(id, { type: 'status', status: 'running' })
+  }
+  await make('ios-batch-a-run-child', { parentId: 'ios-batch-a-run', projectId: fleetProject.id, agentType: 'explorer', title: 'Read the archive layout' })
+  server.registry.append('ios-batch-a-run-child', { type: 'user-text', text: 'Read the archive layout' })
+  server.registry.append('ios-batch-a-run-child', { type: 'status', status: 'running' })
+}
+if (!has('ios-resources')) {
+  // Two worktrees and a simulator through the real detection path (threadResourcesParse.ts): a Bash call
+  // paired with git's "Preparing worktree" line, and a simctl create paired with the UDID it printed.
+  await make('ios-resources', { projectId: project.id, threadType: 'implementation', title: 'Build the share sheet' })
+  server.registry.append('ios-resources', { type: 'user-text', text: 'Build the share sheet in its own worktree', newPass: true })
+  server.registry.append('ios-resources', { type: 'status', status: 'running' })
+  for (const [callId, branch] of [['r1', 'ios/share-a'], ['r2', 'ios/share-b']] as const) {
+    server.registry.append('ios-resources', { type: 'tool-call', callId, name: 'Bash', input: { command: `git worktree add ../wt-${branch.split('/')[1]} -b ${branch}` } })
+    server.registry.append('ios-resources', { type: 'tool-result', callId, output: `Preparing worktree (new branch '${branch}')\nHEAD is now at 1234abc init\n`, isError: false })
+  }
+  server.registry.append('ios-resources', { type: 'tool-call', callId: 'r3', name: 'Bash', input: { command: 'xcrun simctl create "TC iPhone" "iPhone 17"' } })
+  server.registry.append('ios-resources', { type: 'tool-result', callId: 'r3', output: '9F1D2C3B-4A5E-4F60-8B7C-1D2E3F4A5B6C\n', isError: false })
+  server.registry.append('ios-resources', { type: 'status', status: 'idle' })
+  // A row on another host whose removal waits for its link: straight into the ledger, since no bridge runs here.
+  const db = (server.store as unknown as { db?: { prepare: (sql: string) => { run: (...args: unknown[]) => unknown } } }).db
+  if (db) {
+    db.prepare(
+      `INSERT OR IGNORE INTO thread_resources (id, session_id, environment_id, kind, identifier, label, branch, created_at, remove_requested_at, note)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run('r-mac', 'ios-resources', 'env_mac_test', 'simulator', 'A0B1C2D3-E4F5-4607-8899-AABBCCDDEEFF', 'TC iPhone (Mac)', null, Date.now(), Date.now(), 'host offline, waiting for its link')
+  }
+}
+
 // A chat waiting on an approval, and in the other project one waiting on a question.
 await make('ios-waiting', { projectId: project.id, threadType: 'chat', title: 'Run the test suite' })
 server.registry.append('ios-waiting', { type: 'user-text', text: 'Run the tests and fix what fails' })
@@ -226,18 +405,11 @@ server.registry.append('ios-running', { type: 'tool-call', callId: 't1', name: '
 server.registry.append('ios-running', { type: 'tool-result', callId: 't1', output: 'ok', isError: false })
 server.registry.append('ios-running', { type: 'tool-call', callId: 't2', name: 'Edit', input: { file_path: 'src/billing/export.ts' } })
 
-// A master with its batch: a queued child waiting on the running thread
-// below, and a thread whose harness went away (the host's `stopped`). The
-// seed appends `queued` the way the scheduler does on a held first message.
-await make('ios-master', { projectId: project.id, threadType: 'chat', title: 'Ship the stats pipeline' })
-say('ios-master', 'Run the stats pipeline rebuild as a batch', 'Four threads, landing as they finish.')
-server.registry.setMaster('ios-master', true)
-await make('ios-batch-queued', { projectId: project.id, threadType: 'implementation', title: 'Backfill the rollups', masterId: 'ios-master', after: 'ios-running' })
-server.registry.append('ios-batch-queued', { type: 'status', status: 'queued' })
-await make('ios-stopped', { projectId: project.id, threadType: 'chat', title: 'Rename the config keys again' })
-server.registry.append('ios-stopped', { type: 'user-text', text: 'Rename every config key to kebab-case' })
-server.registry.append('ios-stopped', { type: 'status', status: 'running' })
-server.registry.append('ios-stopped', { type: 'status', status: 'stopped' })
+// The master, the one queued seed and the stopped root are thread 20's
+// guarded seeds above (ios-master, ios-queued behind ios-running,
+// ios-stopped); THREAD_QUEUED names the queued one for the board and the
+// fleet hooks alike.
+export const THREAD_QUEUED = 'ios-queued'
 await make('ios-fleet', { projectId: project.id, threadType: 'orchestration', agentType: 'orchestrator', title: 'Port the sky plugins' })
 server.registry.append('ios-fleet', { type: 'user-text', text: 'Port every sky plugin to the new core' })
 server.registry.append('ios-fleet', { type: 'status', status: 'running' })
@@ -273,6 +445,9 @@ say('ios-chat-loose', 'A regex for ISO dates?', 'Use a date parser instead.')
 await make('ios-retired', { projectId: retired.id, threadType: 'chat', title: 'Old migration notes' })
 say('ios-retired', 'Keep these notes.', 'Kept.')
 await server.registry.archiveProject(retired.id, true)
+// The Search tab's notes hits: a thread's working notes (session.search answers a source: 'notes' row for "gateway") and an app note (notes.search).
+server.registry.notes.write('ios-chat-workspace', '## Pointers\n\n- the gateway port is 8787\n', Date.now(), 'tool')
+server.notes.upsert({ id: 'ios-note-gateway', title: 'Gateway notes', body: 'the gateway trace flag is TEMP_CODE_GATEWAY_TRACE', sourceCwd: repo })
 // ── one thread per type, with realistic rows (the thread screens' proof) ──
 const at = (id: string, events: AgentEvent[]): void => {
   for (const event of events) server.registry.append(id, event)
@@ -308,7 +483,7 @@ const think = (msgId: string, text: string): AgentEvent[] => [
 ]
 const status = (s: 'idle' | 'running' | 'waiting'): AgentEvent => ({ type: 'status', status: s })
 
-const makeTyped = async (id: string, threadType: 'chat' | 'planning' | 'implementation' | 'orchestration' | 'research', title: string, extra: Record<string, unknown> = {}) =>
+const makeTyped = async (id: string, threadType: 'chat' | 'planning' | 'project-plan' | 'implementation' | 'orchestration' | 'research', title: string, extra: Record<string, unknown> = {}) =>
   server.registry.create({ id, provider: 'claude', model: 'claude-sonnet-5-5', reasoning: 'medium', agentType: 'implementer', permission: 'edits', projectId: project.id, threadType, title, ...extra })
 
 // Implementation: two passes, todos in every status, edits with stats, an undecided approval, a closing report.
@@ -388,17 +563,6 @@ at(THREAD_HELD, [
 ])
 await make('ios-held-review', { parentId: THREAD_HELD, projectId: project.id, agentType: 'reviewer', provider: 'codex', model: 'gpt-6.1-sol', title: 'Review: ios/export-flag → master' })
 say('ios-held-review', 'Review the diff of ios/export-flag against master.', 'One blocking finding: report.ts still reads flags.csv.')
-
-// A build queued behind the running one (`after`): created, never booted,
-// so the board draws the goal and the host's line alone. The status row is
-// what the scheduler appends when it holds a first message (sessions.ts);
-// the scheduler's tick writes its "Queued · waiting for …" activity line.
-export const THREAD_QUEUED = 'ios-queued'
-await makeTyped(THREAD_QUEUED, 'implementation', 'Add the CSV import', { after: 'ios-running' })
-at(THREAD_QUEUED, [
-  { type: 'user-text', text: 'Add a CSV import beside the export on the billing page.', newPass: true },
-  { type: 'status', status: 'queued' }
-])
 
 // Implementation whose first edit is one big diff: 3,600 preview lines over
 // 60 hunks with a long line in each, for the diff screen's virtualization,
@@ -492,6 +656,81 @@ if (plan.planPath) {
     ].join('\n')
   )
 }
+
+// Project plan: a complete plan with seven milestones, three landed, kept as
+// the project's plan; and the build that landed milestone 3, linked to it.
+// The real projectPlan.* handlers serve the phone from this seed.
+export const THREAD_PROJECT_PLAN = 'ios-project-plan'
+const projectPlan = await makeTyped(THREAD_PROJECT_PLAN, 'project-plan', 'Project plan: the billing service')
+at(THREAD_PROJECT_PLAN, [
+  { type: 'user-text', text: 'Plan the billing service end to end.', newPass: true },
+  ...think('pp1', 'Seven milestones: the data model first, the ledger on it, then the money paths, the admin screens and the cutover last.'),
+  answer('pp2', 'The project plan is written: seven milestones, three already landed.'),
+  { type: 'turn-complete', costUsd: 0.18 },
+  status('idle')
+])
+if (projectPlan.planPath) {
+  mkdirSync(dirname(projectPlan.planPath), { recursive: true })
+  const milestone = (done: boolean, n: number, title: string, scope: string, deps: string, doneWhen: string): string[] => [
+    `### [${done ? 'x' : ' '}] ${n}. ${title}`,
+    `- Scope: ${scope}`,
+    `- Dependencies: ${deps}`,
+    `- Done when: ${doneWhen}`,
+    ''
+  ]
+  writeFileSync(
+    projectPlan.planPath,
+    [
+      '---',
+      'status: complete',
+      'completed: 2026-10-21T12:00:00.000Z',
+      '---',
+      '# The billing service — project plan',
+      '',
+      '## Goals',
+      '',
+      'Bill every account once a month from the ledger, with no hand-made invoice. Every charge and refund traces back to one ledger entry.',
+      '',
+      '## Current state',
+      '',
+      'The ledger schema and its API are in and the invoice totals land on the ledger. Nothing reaches a card yet.',
+      '',
+      '- Stripe is the only processor in scope.',
+      '',
+      '## Milestones',
+      '',
+      ...milestone(true, 1, 'Data model', 'accounts, ledger entries, invoices and their migrations', 'none', 'the schema tests pass on an empty database'),
+      ...milestone(true, 2, 'Ledger API', 'post, reverse and list entries over the control API', '1', 'the ledger e2e passes'),
+      ...milestone(true, 3, 'Invoice totals', 'the monthly roll-up of entries into an invoice per account', '1, 2', 'a generated invoice matches the fixture to the cent'),
+      ...milestone(false, 4, 'Payments webhook', 'Stripe events into ledger entries, idempotent per event id', '3', 'a replayed event books nothing twice'),
+      ...milestone(false, 5, 'Statements export', 'monthly statements as PDF and CSV from the invoice', '4', 'a statement renders for every seeded account'),
+      ...milestone(false, 6, 'Admin screens', 'the invoice list, the ledger view and a refund button', '2, 5', 'an admin refunds a test charge from the screen'),
+      ...milestone(false, 7, 'Cutover', 'the first real billing run with the old invoices frozen', '4, 5, 6', 'one month billed with no hand-made invoice'),
+      '## Risks',
+      '',
+      '- A webhook delivered twice books a charge twice: the event id is the idempotency key.',
+      '- The roll-up crosses a month boundary in the wrong zone: every date is UTC.',
+      '',
+      '## Open questions',
+      '',
+      '- Do refunds reopen a closed invoice or book a credit on the next one?',
+      ''
+    ].join('\n')
+  )
+}
+export const THREAD_M3_BUILD = 'ios-m3-build'
+await makeTyped(THREAD_M3_BUILD, 'implementation', 'M3 · Invoice totals')
+at(THREAD_M3_BUILD, [
+  { type: 'user-text', text: 'Implement the plan "M3 · Invoice totals".', newPass: true },
+  todos('m3t', [['Roll entries up per account and month', 'completed'], ['Match the fixture to the cent', 'completed']]),
+  answer('m3a', 'The roll-up is in and the fixture matches to the cent.'),
+  { type: 'turn-complete', costUsd: 0.31 },
+  status('idle')
+])
+// The link a landed build carries: milestone 3's tick in the file is the one that landing wrote.
+server.store.setSetting(`projectPlan.milestone:${THREAD_M3_BUILD}`, JSON.stringify({ projectId: project.id, milestone: 3 }))
+// Kept as the project's plan, so the chip on Home reads "Plan · 3/7".
+server.store.setSetting(`projectPlan.pinned:${project.id}`, '1')
 
 // Orchestration: three agents in different states.
 export const THREAD_ORCH = 'ios-orch'
@@ -731,6 +970,32 @@ at(THREAD_HANDOFF, [
   status('idle')
 ])
 
+// A chat for the streaming proof (POST /stream plays a turn into it): one
+// settled turn of about 1,400 words, so `TC_TEST_SEGMENT=chat` opens on prose.
+export const THREAD_STREAM = 'ios-streaming'
+await makeTyped(THREAD_STREAM, 'chat', 'Streaming on the phone')
+const streamParagraph = (n: number): string =>
+  Array.from({ length: 6 }, (_, i) => `Sentence ${i + 1} of paragraph ${n} explains how the gateway forwards a request, swaps in the routed account and records the limit headers the answer carries.`).join(' ')
+const streamSeedAnswer = [
+  'The gateway sits between every harness and the provider. ' + streamParagraph(1),
+  streamParagraph(2),
+  streamParagraph(3),
+  '- the plain-http port carries the thread scope on its path\n- one https port per codex thread keeps the origin\n- every answer feeds the headroom store',
+  '```ts\nconst route = await gateway.scopedCodexUrl(threadId)\nconst answer = await forward(route, request)\n```',
+  streamParagraph(4),
+  streamParagraph(5),
+  streamParagraph(6),
+  streamParagraph(7),
+  streamParagraph(8)
+].join('\n\n')
+at(THREAD_STREAM, [
+  { type: 'user-text', text: 'Explain the gateway.', model: 'claude-sonnet-5-5', reasoning: 'medium', newPass: true },
+  ...think('st0', 'The gateway has two listeners and a headroom store; three paragraphs each.'),
+  answer('st0a', streamSeedAnswer),
+  { type: 'turn-complete', costUsd: 0.12, inputTokens: 4_000, outputTokens: 1_900 },
+  status('idle')
+])
+
 // Keep board tasks, rounds and sources outside a cold tail for the phone's
 // history proof. A single merged block keeps the board itself readable.
 for (const id of [THREAD_IMPL, THREAD_RESEARCH]) {
@@ -741,6 +1006,131 @@ for (const id of [THREAD_IMPL, THREAD_RESEARCH]) {
   ])
 }
 
+// ── accounts: two Claude accounts with different headroom (thread 24's chip and menu) ──
+const hour = 3_600_000
+const seededAccounts: AccountsSnapshot = {
+  updatedAt: Date.now(),
+  providers: {
+    claude: {
+      pinned: null,
+      owner: null,
+      profiles: [
+        { name: 'work@example.com', email: 'work@example.com', nickname: 'work', color: '#5b8def', createdAt: Date.now() - 30 * 24 * hour, active: true },
+        { name: 'spare@example.com', email: 'spare@example.com', color: '#d97757', createdAt: Date.now() - 10 * 24 * hour, active: false }
+      ],
+      reports: [
+        { profileName: 'work@example.com', windows: [{ label: '5h', usedPercent: 12, resetsAt: Date.now() + 3 * hour, periodMs: 5 * hour }, { label: 'Weekly', usedPercent: 40, resetsAt: Date.now() + 3 * 24 * hour, periodMs: 7 * 24 * hour }] },
+        { profileName: 'spare@example.com', windows: [{ label: '5h', usedPercent: 91, resetsAt: Date.now() + 40 * 60_000, periodMs: 5 * hour }, { label: 'Weekly', usedPercent: 55, resetsAt: Date.now() + 2 * 24 * hour, periodMs: 7 * 24 * hour }] }
+      ],
+      headroom: {
+        'work@example.com': { room: 0.8, ratePerMin: 3, seenAt: Date.now() },
+        'spare@example.com': { room: 0.1, ratePerMin: 12, resetsAt: Date.now() + 40 * 60_000, seenAt: Date.now() }
+      }
+    },
+    codex: { pinned: null, profiles: [], reports: [], owner: null },
+    cursor: { pinned: null, profiles: [], reports: [], owner: null }
+  }
+}
+// The service has no vault here: hold the seeded snapshot in place of its rebuild (the poll would empty it).
+const accountsService = server.accounts as unknown as { snap: AccountsSnapshot; built: boolean; rebuild: () => Promise<void>; listeners: Set<(s: AccountsSnapshot) => void> }
+accountsService.rebuild = async () => {}
+accountsService.snap = seededAccounts
+accountsService.built = true
+server.registry.setAccount('ios-pinned', 'work@example.com') // a thread on an account
+server.registry.setProjectAccounts(project2.id, { claude: 'work@example.com' }) // ios-question reads "From project billing-page"
+
+// Thread 25: the plan flow and project settings. A complete plan with its
+// build started, a complete plan waiting for Start, a project with a
+// preamble of its own, a workspace default and a review override.
+if (!server.registry.get('ios-plan-built')) {
+  const writePlan = (meta: { planPath: string | null }, title: string): void => {
+    if (!meta.planPath) throw new Error('a planning thread has no plan path')
+    mkdirSync(dirname(meta.planPath), { recursive: true })
+    writeFileSync(meta.planPath, `# ${title}\n\n## Overview\n\nOne paragraph.\n\n## Tasks\n\n- [ ] First task\n- [ ] Second task\n`)
+  }
+  // The plan is live while the build is created, so linkPlanHandoff links both ways and lands the handoff row without archiving the plan.
+  const built = await makeTyped('ios-plan-built', 'planning', 'Plan: Split the billing export')
+  writePlan(built, 'Split the billing export')
+  say('ios-plan-built', 'Plan the split of the billing export', 'The plan is written.')
+  server.registry.append('ios-plan-built', { type: 'status', status: 'running' })
+  await makeTyped('ios-plan-build', 'implementation', 'Split the billing export', { planPath: built.planPath })
+  server.registry.append('ios-plan-build', { type: 'user-text', text: 'Implement the plan "Split the billing export".' })
+  server.registry.append('ios-plan-built', { type: 'status', status: 'idle' })
+  // Its project's plans override turns auto-start off, so completePlan stamps the plan and starts nothing.
+  server.registry.setPlanSettings(project2.id, { ...DEFAULT_PLAN_SETTINGS, autoImplement: false })
+  const waiting = await makeTyped('ios-plan-waiting', 'planning', 'Plan: Move invoices to the ledger', { projectId: project2.id })
+  writePlan(waiting, 'Move invoices to the ledger')
+  say('ios-plan-waiting', 'Plan the ledger move', 'The plan is ready.')
+  await server.registry.completePlan('ios-plan-waiting')
+  server.registry.setProjectPreamble(project2.id, '- Work in `{{worktree}}` on {{host}}.\n- Keep {{project}} green before you merge.', true)
+  server.registry.setWorkspacePreamble(workspace.id, '- Commit often, plain prose.', true)
+  server.registry.setReviewSettings(project.id, { ...DEFAULT_REVIEW_SETTINGS, beforeMerge: true, provider: 'claude', model: 'claude-sonnet-5-5', reasoning: 'medium', maxMinutes: 10 })
+}
+
+// ── the 2026-10-21/22 features (scripts/lib/ios-seeds.ts) ───────────────
+// The master's batch: the master watching, four children of three types
+// (one done, one running behind it, a complete plan whose build is the
+// running one, an idle research), the batch row mid-run with a streaming
+// shell step, and the queued child above.
+export const THREAD_MASTER = 'ios-master'
+server.registry.append(THREAD_MASTER, { type: 'status', status: 'watching' })
+await make('ios-master-impl-a', { projectId: project.id, threadType: 'implementation', title: 'Rebuild the rollup writer', masterId: THREAD_MASTER, startedBy: THREAD_MASTER })
+say('ios-master-impl-a', 'Rebuild the rollup writer.', 'Landed on master.')
+server.registry.append('ios-master-impl-a', { type: 'status', status: 'done' })
+await make('ios-master-impl-b', { projectId: project.id, threadType: 'implementation', title: 'Backfill the rollups', masterId: THREAD_MASTER, after: 'ios-master-impl-a', startedBy: THREAD_MASTER })
+server.registry.append('ios-master-impl-b', { type: 'user-text', text: 'Backfill every rollup since March.', newPass: true })
+server.registry.append('ios-master-impl-b', { type: 'status', status: 'running' })
+await make('ios-master-plan', { projectId: project.id, threadType: 'planning', title: 'Plan the backfill', masterId: THREAD_MASTER, startedBy: THREAD_MASTER })
+say('ios-master-plan', 'Plan the backfill.', 'The plan is complete; the build has started.')
+server.store.updateSession('ios-master-plan', { planCompletedAt: Date.now() - 600_000, implementationId: 'ios-master-impl-b' })
+await make('ios-master-research', { projectId: project.id, threadType: 'research', agentType: 'explorer', title: 'Which rollups are read?', masterId: THREAD_MASTER, startedBy: THREAD_MASTER })
+say('ios-master-research', 'Which rollups does the dashboard read?', 'Seven of the twelve.')
+const MASTER_CHILDREN = { landed: ['ios-master-impl-a', 'ios-master-research'], pending: ['ios-master-impl-b', 'ios-master-plan', THREAD_QUEUED] }
+server.batches.seedRow(batchRowMidRun(THREAD_MASTER, MASTER_CHILDREN, Date.now()))
+// Seeded running rows have no harness: the liveness sweep would flip them to
+// `stopped` after 20 s and block the batch. The proofs assume they stay running.
+const sweep = server.registry as unknown as { livenessTimer?: ReturnType<typeof setInterval> | null }
+if (sweep.livenessTimer) clearInterval(sweep.livenessTimer)
+sweep.livenessTimer = null
+
+// The paused master is thread 20's guarded seed (ios-master-paused with ios-batch-a and ios-batch-b).
+export const THREAD_MASTER_PAUSED = 'ios-master-paused'
+
+// The project plan is thread 17's seed above (seven milestones, three
+// landed, pinned, milestone 3's build linked); this adds the "Plan the next
+// milestone" thread, linked to milestone 4.
+export const PROJECT_PLAN_PATH = projectPlan.planPath ?? projectPlanPathFor(project.cwd)
+await make('ios-project-plan-m4', { projectId: project.id, threadType: 'planning', title: 'M4 · Payments webhook', startedBy: THREAD_PROJECT_PLAN })
+say('ios-project-plan-m4', 'Plan milestone 4: the payments webhook.', 'Four tasks.')
+server.projectPlans.link('ios-project-plan-m4', { projectId: project.id, milestone: 4 })
+
+// Notes: every section filled, and only two.
+export const THREAD_NOTES_FIVE = 'ios-notes-five'
+export const THREAD_NOTES_TWO = 'ios-notes-two'
+await make(THREAD_NOTES_FIVE, { projectId: project.id, threadType: 'chat', title: 'Thread notes on the phone' })
+say(THREAD_NOTES_FIVE, 'Keep notes as you go.', 'Notes kept.')
+server.registry.notes.write(THREAD_NOTES_FIVE, notesFive())
+await make(THREAD_NOTES_TWO, { projectId: project.id, threadType: 'chat', title: 'A thread that just started' })
+say(THREAD_NOTES_TWO, 'Start the notes.', 'Started.')
+server.registry.notes.write(THREAD_NOTES_TWO, notesTwo())
+
+// Resources are thread 20's guarded seed (two worktrees through the real
+// detection path, a simulator, a row on another host waiting for its link).
+export const THREAD_RESOURCES = 'ios-resources'
+
+// A thread on a pinned account, in a project pinned to it.
+export const THREAD_PINNED_ACCOUNT = 'ios-pinned-account'
+await make(THREAD_PINNED_ACCOUNT, { projectId: project.id, threadType: 'chat', title: 'On the work account' })
+say(THREAD_PINNED_ACCOUNT, 'Which account is this?', 'The pinned one.')
+server.registry.setAccount(THREAD_PINNED_ACCOUNT, 'work@example.com')
+server.store.setProjectAccounts(project.id, { claude: 'work@example.com' })
+
+// A note for notes.search ("fixtureNeedle"), beside the file of the same word on both hosts.
+export const SEARCH_NOTE = 'ios-search-note'
+server.notes.upsert({ id: SEARCH_NOTE, title: 'Cutover checklist', body: 'Before the cutover: run the proofs, then grep for fixtureNeedle on both hosts.' })
+
+// Accounts are thread 24's seed above (two Claude accounts with different headroom, held in place of the poll).
+
 // ── the key, and a pairing link for the simulator rehearsal ─────────────
 const created = await server.remoteAuth.createKey({ name: 'ios-test', audience: 'client', caps: [], createdBy: 'local' })
 const pairing = server.remoteAuth.createPairing({ name: 'ios-sim', audience: 'client', caps: [], createdBy: 'local' })
@@ -750,6 +1140,57 @@ const operate = await server.remoteAuth.createKey({ name: 'ios-test-operate', au
 const operatePairing = server.remoteAuth.createPairing({ name: 'ios-sim-operate', audience: 'client', caps: ['operate', 'approve'], createdBy: 'local' })
 // A key that operates but never approves: the forbidden path of the approval card.
 const operateOnly = await server.remoteAuth.createKey({ name: 'ios-test-operate-only', audience: 'client', caps: ['operate'], createdBy: 'local' })
+// An admin key and pairing: the host detail's deploy row, log sheet and sync lines (iOS thread 21).
+const admin = await server.remoteAuth.createKey({ name: 'ios-test-admin', audience: 'client', caps: ['operate', 'approve', 'admin'], createdBy: 'local' })
+const adminPairing = server.remoteAuth.createPairing({ name: 'ios-sim-admin', audience: 'client', caps: ['operate', 'approve', 'admin'], createdBy: 'local' })
+
+// ── the Mac bridge's calls for the host detail (iOS thread 21) ──────────
+// Two of the saved host's calls past the prompt, as a Mac lists them in
+// `macBridge.activity`: one running, one held on the load guard with its
+// standing. Seeded rows only (TEMP_CODE_E2E_SEED); Stop on them does nothing.
+const seededCall = (over: Partial<MacBridgeRequest> & Pick<MacBridgeRequest, 'id' | 'status' | 'command' | 'createdAt'>): MacBridgeRequest => ({
+  environmentId: SEED_BOX_ID,
+  hostName: 'box',
+  sessionId: THREAD_IMPL,
+  threadTitle: 'Composer, working strip, approval actions',
+  kind: 'run',
+  method: 'mac.run',
+  cwd: '/Users/landon/IdeaProjects/temp-code',
+  expiresAt: Number.MAX_SAFE_INTEGER,
+  ...over
+})
+export const MAC_CALL_RUNNING = 'mb_seed_running'
+export const MAC_CALL_HELD = 'mb_seed_held'
+server.macBridge.seed([
+  seededCall({ id: MAC_CALL_RUNNING, status: 'running', command: 'bun run ios:test:client', createdAt: Date.now() - 95_000 }),
+  seededCall({
+    id: MAC_CALL_HELD,
+    status: 'held',
+    command: 'xcodebuild test -scheme TempCode',
+    createdAt: Date.now() - 20_000,
+    sessionId: THREAD_PLAN,
+    threadTitle: 'Planning thread: the plan document',
+    held: { reason: 'load', position: 3, load: 12.3, limit: 8, cores: 4, maxRunning: 4, running: 4 }
+  })
+])
+
+// ── the relay seed: four fake hosts, one per state ──────────────────────
+const relayId = (word: string): string => `env_relay${word}`.padEnd(26, '0')
+const relayRow = { platform: 'darwin', link: 'up' as const, since: Date.now(), screen: 'unlocked' as const, power: 'awake' as const, lastSeenAt: Date.now(), build: null }
+const relaySeed = [
+  { environmentId: relayId('Available'), name: 'Studio Mac', state: 'available', row: relayRow },
+  { environmentId: relayId('Locked'), name: 'Studio Mac (locked)', state: 'locked', row: { ...relayRow, screen: 'locked' as const } },
+  { environmentId: relayId('Asleep'), name: 'Studio Mac (asleep)', state: 'asleep', row: { ...relayRow, power: 'asleep' as const } },
+  { environmentId: relayId('Unreachable'), name: 'Studio Mac (unreachable)', state: 'unreachable', row: { ...relayRow, link: 'down' as const, since: Date.now() - 5 * 60_000 } }
+]
+const relayHosts = startLoopbackHosts({
+  carrierId: server.environmentId,
+  carrierName: 'iOS test server',
+  relay: server.relay,
+  attach: (socket, principal) => server.attach(socket as never, principal),
+  facade: () => ({ registry: server.registry, origin: null }),
+  hosts: relaySeed
+})
 
 // ── the auth clock, shiftable for ticket expiry ─────────────────────────
 let clockOffsetMs = 0
@@ -804,6 +1245,8 @@ stub('resumePausedRun', async (sessionId) => {
   record('resume', sessionId)
   registry.append(sessionId, { type: 'status', status: 'running' })
 })
+// The seeds have no harness, so the liveness sweep would mark every running one stopped after 20 s.
+stub('sweepLiveness', () => [])
 stub('resumeStopped', async (sessionId) => {
   // The harness is gone: a fresh one on the same transcript, running.
   record('resume', sessionId, { stopped: true })
@@ -846,6 +1289,26 @@ stub('setPinned', (sessionId, pinned) => {
   record('pin', sessionId, { pinned })
   realSetPinned(sessionId, pinned)
 })
+// The master board's actions (iOS 16/27): the pin, and Stop on the seeded smoke step (which then reads failed).
+const realSetMaster = registry.setMaster.bind(registry)
+stub('setMaster', (sessionId, master) => {
+  record('setMaster', sessionId, { master })
+  realSetMaster(sessionId, master)
+})
+const realStopStep = server.batches.stopStep.bind(server.batches)
+server.batches.stopStep = async (masterId, stepId) => {
+  record('stopStep', masterId, { stepId })
+  if (masterId !== THREAD_MASTER) return realStopStep(masterId, stepId)
+  const row = batchRowMidRun(masterId, MASTER_CHILDREN, Date.now())
+  const step = row.steps.find((s) => s.id === stepId)
+  if (!step || step.status !== 'running') return { stopped: false }
+  step.status = 'failed'
+  step.detail = 'stopped after 12s'
+  step.endedAt = Date.now()
+  step.log = [...step.log, '✗ stopped']
+  server.batches.seedRow(row)
+  return { stopped: true }
+}
 
 // ── a GitHub inbox for the simulator proof ──────────────────────────────
 // Two repositories' worth of pull requests and issues in every state the
@@ -1039,6 +1502,107 @@ writeFileSync(
 )
 process.env.TEMP_CODE_GH_BIN = ghScript
 
+// ── a bursty streaming turn (POST /stream) ──────────────────────────────
+// Plays a scripted turn on timers: 1.5 s of thinking deltas, then an answer
+// at `cps` chars/s as a bursty stream (a delta every 7 ms of 1–5 chars, a
+// 250 ms stall every 2 s, one 400 ms stall at 6 s: the shape of the desktop
+// smoothText tests), a partial Edit call from 4 s whose new_string grows 12
+// lines every 100 ms to 420 lines (the first three partials carry a
+// truncated file_path, so the chip's target types in), a live edit for the
+// same file every 100 ms (the coalescer's previews lane), then the final
+// call and result, the whole answer, turn-complete and idle. The same LCG
+// as smoothText.test.ts, seeded, so a run repeats.
+const sleep = (ms: number): Promise<void> => new Promise((ok) => setTimeout(ok, ms))
+let streamRun: { sessionId: string; stopped: boolean } | null = null
+const streamAnswer = (length: number): string => {
+  const parts = [
+    'The gateway forwards every request a harness makes and swaps in the account the thread is routed to. ' + streamParagraph(1),
+    '- the plain-http port carries the thread scope\n- one https port per codex thread\n- every answer feeds the headroom store',
+    '```ts\nconst url = await gateway.scopedCodexUrl(threadId)\n```',
+    streamParagraph(2),
+    streamParagraph(3)
+  ]
+  let text = ''
+  for (let i = 0; text.length < length; i++) text += (i === 0 ? '' : '\n\n') + parts[i % parts.length]
+  return text.slice(0, length)
+}
+async function playStream(sessionId: string, cps: number, seconds: number, seed: number): Promise<void> {
+  const run = { sessionId, stopped: false }
+  streamRun = run
+  const live = (): boolean => !run.stopped
+  let s = seed >>> 0
+  const rand = (): number => {
+    s = (s * 1664525 + 1013904223) >>> 0
+    return s / 2 ** 32
+  }
+  const cwd = repo
+  const path = 'src/gateway/route.ts'
+  const answer = streamAnswer(Math.round(cps * seconds))
+  try {
+    registry.append(sessionId, { type: 'user-text', text: 'Explain the gateway in detail' })
+    registry.append(sessionId, { type: 'status', status: 'running' })
+    // 1. thinking for 1.5 s
+    const thought = 'Two listeners, one headroom store, and the warm harness in front: describe each, then the routing.'
+    for (let i = 0; i < 10 && live(); i++) {
+      registry.append(sessionId, { type: 'thinking', text: thought.slice(Math.floor((i * thought.length) / 10), Math.floor(((i + 1) * thought.length) / 10)), delta: true, msgId: 'st-think', blockIndex: 0 })
+      await sleep(150)
+    }
+    if (!live()) return
+    registry.append(sessionId, { type: 'thinking', text: thought, delta: false, msgId: 'st-think', blockIndex: 0 })
+    const started = Date.now()
+    // 2. the answer, bursty
+    const answerLoop = async (): Promise<void> => {
+      let at = 0
+      let owed = 0
+      let nextStall = 2_000
+      let longStalled = false
+      while (at < answer.length && live()) {
+        const elapsed = Date.now() - started
+        if (!longStalled && elapsed >= 6_000) {
+          longStalled = true
+          await sleep(400)
+        } else if (elapsed >= nextStall) {
+          nextStall += 2_000
+          await sleep(250)
+        }
+        owed += (cps * 7) / 1000
+        const chars = Math.min(5, Math.max(1, Math.round(owed * (0.5 + rand()))))
+        owed -= chars
+        registry.append(sessionId, { type: 'assistant-text', text: answer.slice(at, at + chars), delta: true, msgId: 'st-answer', blockIndex: 0 })
+        at += chars
+        await sleep(7)
+      }
+    }
+    // 3 + 4. the growing edit and its live diff, from 4 s
+    const editLoop = async (): Promise<void> => {
+      await sleep(Math.max(0, 4_000 - (Date.now() - started)))
+      const oldString = 'export const route = (req: Request) => forward(req)'
+      const lines: string[] = []
+      let diff = ''
+      for (let push = 0; push < 35 && live(); push++) {
+        for (let i = 0; i < 12; i++) lines.push(`  const step${lines.length + 1} = await forward(req, { hop: ${lines.length + 1} })`)
+        diff = `@@ -1,1 +1,${lines.length + 1} @@\n-${oldString}\n+export const route = async (req: Request) => {\n${lines.map((l) => '+' + l).join('\n')}\n`
+        const filePath = push === 0 ? 'src/ga' : push === 1 ? 'src/gateway/ro' : path
+        registry.append(sessionId, { type: 'tool-call', callId: 'st-edit', name: 'Edit', input: { file_path: filePath, old_string: oldString, new_string: `export const route = async (req: Request) => {\n${lines.join('\n')}` }, partial: true })
+        emitLiveEdit({ push: 'live-edit', cwd, sessionIds: [sessionId], edit: { path, kind: 'changed', adds: lines.length, dels: 3, diff, settled: push === 34 || undefined, ts: Date.now() } })
+        await sleep(100)
+      }
+      if (!live()) return
+      const previewLines = [{ kind: 'del' as const, number: 1, text: oldString }, { kind: 'add' as const, number: 1, text: 'export const route = async (req: Request) => {' }, ...lines.map((text, i) => ({ kind: 'add' as const, number: i + 2, text }))]
+      registry.append(sessionId, { type: 'tool-call', callId: 'st-edit', name: 'Edit', input: { file_path: path, old_string: oldString, new_string: `export const route = async (req: Request) => {\n${lines.join('\n')}` }, preview: { kind: 'write', path, fileName: 'route.ts', additions: 420, deletions: 3, lines: previewLines } })
+      registry.append(sessionId, { type: 'tool-result', callId: 'st-edit', output: `The file ${path} has been updated.`, isError: false })
+    }
+    await Promise.all([answerLoop(), editLoop()])
+    if (!live()) return
+    // 5. the final row, turn-complete, idle
+    registry.append(sessionId, { type: 'assistant-text', text: answer, delta: false, msgId: 'st-answer', blockIndex: 0 })
+    registry.append(sessionId, { type: 'turn-complete', costUsd: 0.2, inputTokens: 6_000, outputTokens: 1_200 })
+    registry.append(sessionId, { type: 'status', status: 'idle' })
+  } finally {
+    if (streamRun === run) streamRun = null
+  }
+}
+
 // ── control ─────────────────────────────────────────────────────────────
 const readJson = (req: import('node:http').IncomingMessage): Promise<Record<string, unknown>> =>
   new Promise((resolve) => {
@@ -1053,6 +1617,7 @@ const readJson = (req: import('node:http').IncomingMessage): Promise<Record<stri
     })
   })
 let appended = 0
+const batchLogLines: string[] = []
 const control = createServer((req, res) => {
   void (async () => {
     const url = new URL(req.url ?? '/', 'http://x')
@@ -1108,17 +1673,69 @@ const control = createServer((req, res) => {
       case '/finish': {
         // Ends a simulated turn the way a real one ends: the reply, turn-complete, idle.
         const sessionId = String(body.sessionId ?? THREAD_A)
+        if (streamRun?.sessionId === sessionId) streamRun.stopped = true
         appended++
         registry.append(sessionId, { type: 'assistant-text', text: String(body.text ?? 'Done.'), delta: false, msgId: `f${appended}`, blockIndex: 0 })
         registry.append(sessionId, { type: 'turn-complete' })
         registry.append(sessionId, { type: 'status', status: 'idle' })
         return answer(200, { finished: sessionId })
       }
+      case '/accounts/headroom': {
+        // A usage change on one account: the 5h window moves and the accounts push goes out.
+        const name = String(body.name ?? 'work@example.com')
+        const report = seededAccounts.providers.claude.reports.find((r) => r.profileName === name)
+        const window = report?.windows.find((w) => w.label === '5h')
+        if (!window) return answer(404, { error: `no 5h window for ${name}` })
+        window.usedPercent = Number(body.usedPercent ?? window.usedPercent)
+        seededAccounts.updatedAt = Date.now()
+        for (const l of accountsService.listeners) l(seededAccounts)
+        return answer(200, { name, usedPercent: window.usedPercent })
+      }
+      case '/push': {
+        // Any push to every remote socket: for a push with no machinery behind it here.
+        const frame = JSON.stringify(body.frame ?? {})
+        let count = 0
+        for (const set of server.remote?.sockets.values() ?? []) for (const ws of set) {
+          ws.send(frame)
+          count++
+        }
+        return answer(200, { sent: count })
+      }
+      case '/batch-log': {
+        const masterId = String(body.masterId ?? THREAD_MASTER)
+        const lines = Array.isArray(body.lines) ? body.lines.map(String) : [String(body.lines ?? 'smoke: still checking')]
+        const row = batchRowMidRun(masterId, MASTER_CHILDREN, Date.now())
+        batchLogLines.push(...lines)
+        server.batches.seedRow(withShellLog(row, batchLogLines))
+        return answer(200, { lines: batchLogLines.length })
+      }
+      case '/notes': {
+        const doc = server.registry.notes.write(String(body.sessionId ?? THREAD_NOTES_FIVE), String(body.text ?? ''))
+        return answer(200, { updatedAt: doc.updatedAt })
+      }
+      case '/resources/remove': {
+        const results = await server.resources.remove(String(body.sessionId ?? THREAD_RESOURCES))
+        return answer(200, { results })
+      }
+      case '/presence': {
+        const patch: { screen?: 'locked' | 'unlocked'; power?: 'asleep' | 'awake' } = {}
+        if (body.screen === 'locked' || body.screen === 'unlocked') patch.screen = body.screen
+        if (body.power === 'asleep' || body.power === 'awake') patch.power = body.power
+        const row = relayHosts.setPresence(String(body.environmentId ?? ''), patch)
+        return row ? answer(200, row) : answer(404, { error: 'no such relayed host' })
+      }
       case '/clock':
         clockOffsetMs = Number(body.offsetMs ?? 0)
         return answer(200, { clockOffsetMs })
       case '/revoke':
         return answer(200, { ok: server.remoteAuth.revokeKey(String(body.keyId ?? '')) })
+      case '/stream': {
+        // A bursty streaming turn into a thread; one at a time.
+        if (streamRun) return answer(409, { error: `a stream is running on ${streamRun.sessionId}` })
+        const sessionId = String(body.sessionId ?? THREAD_STREAM)
+        void playStream(sessionId, Number(body.cps ?? 300), Number(body.seconds ?? 12), Number(body.seed ?? 1)).catch((err) => console.error('[stream]', err))
+        return answer(200, { started: sessionId })
+      }
       case '/quit':
         answer(200, { ok: true })
         setTimeout(() => void shutdown(), 50)
@@ -1135,6 +1752,7 @@ await new Promise<void>((ok) => control.listen(0, '127.0.0.1', ok))
 const controlPort = (control.address() as { port: number }).port
 
 async function shutdown(): Promise<void> {
+  relayHosts.close()
   control.close()
   secondProcess.kill('SIGTERM')
   await server.close()
@@ -1142,6 +1760,21 @@ async function shutdown(): Promise<void> {
 }
 process.on('SIGTERM', () => void shutdown())
 process.on('SIGINT', () => void shutdown())
+
+// Thread notes (iOS 18): every section filled on the implementation thread; Goal and State alone on the waiting chat, so Home's needs-you row shows its State line.
+server.registry.notes.write(
+  THREAD_IMPL,
+  [
+    '## Goal', '', 'Dark mode on the settings screen, behind one toggle.', '',
+    '## Decisions', '', '- One `theme(mode)` function, no second palette file.', '- The toggle lives under Appearance.', '',
+    '## State', '', '- Done: `Theme.ts`, the toggle, four tests.', '- In flight: nothing.', '',
+    '## Pointers', '', '- src/settings/Theme.ts', '- `bun test src/settings`', '',
+    '## Open questions', '', '- Should the system setting win over the toggle?', ''
+  ].join('\n'),
+  Date.now(),
+  'tool'
+)
+server.registry.notes.write('ios-waiting', '## Goal\n\nRun the suite and fix what fails.\n\n## State\n\n- Blocked: `bun test` needs your approval\n', Date.now(), 'tool')
 
 // The one line the runner reads. The key appears here and nowhere else.
 process.stdout.write(
@@ -1156,6 +1789,11 @@ process.stdout.write(
     operateKey: operate.token,
     operateOnlyKeyId: operateOnly.key.id,
     operateOnlyKey: operateOnly.token,
+    adminKeyId: admin.key.id,
+    adminKey: admin.token,
+    adminPairing: `http://127.0.0.1:${server.remote.port}/pair#${adminPairing.code}`,
+    seedBoxId: SEED_BOX_ID,
+    deployLogLines: DEPLOY_LOG_LINES,
     pairingLinkOperate: `http://127.0.0.1:${server.remote.port}/pair#${operatePairing.code}`,
     planPath: plan.planPath ?? null,
     pairingLink: `http://127.0.0.1:${server.remote.port}/pair#${pairing.code}`,
@@ -1165,8 +1803,38 @@ process.stdout.write(
     second,
     localPort: server.port,
     shot,
-    threads: { implementation: THREAD_IMPL, planning: THREAD_PLAN, orchestration: THREAD_ORCH, research: THREAD_RESEARCH, chat: THREAD_CHAT, long: THREAD_LONG, held: THREAD_HELD, queued: THREAD_QUEUED, stopped: 'ios-stopped', notices: THREAD_NOTICES, failures: THREAD_FAILURES, preamble: THREAD_PREAMBLE, handoff: THREAD_HANDOFF },
+    threads: {
+      implementation: THREAD_IMPL,
+      planning: THREAD_PLAN,
+      orchestration: THREAD_ORCH,
+      research: THREAD_RESEARCH,
+      chat: THREAD_CHAT,
+      long: THREAD_LONG,
+      held: THREAD_HELD,
+      queued: THREAD_QUEUED,
+      stopped: 'ios-stopped',
+      notices: THREAD_NOTICES,
+      failures: THREAD_FAILURES,
+      preamble: THREAD_PREAMBLE,
+      handoff: THREAD_HANDOFF,
+      streaming: THREAD_STREAM,
+      master: THREAD_MASTER,
+      pausedMaster: THREAD_MASTER_PAUSED,
+      projectPlan: THREAD_PROJECT_PLAN,
+      m3Build: THREAD_M3_BUILD,
+      notesFive: THREAD_NOTES_FIVE,
+      notesTwo: THREAD_NOTES_TWO,
+      resources: THREAD_RESOURCES,
+      pinned: THREAD_PINNED_ACCOUNT,
+      crossHost: THREAD_CROSS_HOST,
+      media: THREAD_CHAT,
+      searchNotes: SEARCH_NOTE
+    },
+    masterId: THREAD_MASTER,
+    projectPlanPath: PROJECT_PLAN_PATH,
+    mediaUrl: mediaUrl(shot, { kind: 'image', mime: 'image/png' }, Date.now()),
     projectId: project.id,
-    workspaceId: workspace.id
+    workspaceId: workspace.id,
+    relayHosts: relaySeed.map(({ environmentId, name, state }) => ({ environmentId, name, state }))
   }) + '\n'
 )

@@ -207,15 +207,9 @@ struct AssistantRow: View {
     var body: some View {
         if block.text.isEmpty, block.streaming {
             EmptyView()
-        } else if block.streaming {
-            StreamingAssistantRow(block: block)
         } else {
-            MarkdownView(seq: block.seq, text: block.text)
-                .textSelection(.enabled)
-                .padding(.vertical, 6)
-                .contextMenu {
-                    Button("Copy Message", systemImage: "doc.on.doc") { UIPasteboard.general.string = block.text }
-                }
+            // One identity across the final row, so the reveal drains before the markdown settles.
+            StreamingAssistantRow(block: block)
         }
     }
 }
@@ -242,7 +236,7 @@ struct ThinkingRow: View {
                         .rotationEffect(.degrees(open ? 90 : 0))
                         .accessibilityHidden(true)
                     if block.streaming {
-                        ShimmerText(text: "Thinking")
+                        StreamingThinkingLine(block: block)
                     } else {
                         Text("Thought")
                             .foregroundStyle(.secondary)
@@ -382,8 +376,7 @@ struct ChangeStat: View {
             }
         }
         .font(.footnote.weight(.semibold))
-        .monospacedDigit()
-        .contentTransition(.numericText())
+        .numeric([adds, dels])
     }
 }
 

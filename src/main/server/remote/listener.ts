@@ -8,6 +8,7 @@ import { CONTRACT_VERSION, allows, type Principal } from '@shared/capabilities'
 import { NewClientSchema, NewPairingSchema, PairBodySchema } from '@shared/contract-remote'
 import type { Store } from '../db'
 import type { BuildFacts } from '@shared/deployDrift'
+import { RELAY_HOST_QUERY, type HostPresence } from '@shared/contract-relay'
 import { COOKIE_NAME, RemoteAuth, RemoteAuthError, SESSION_TTL_MS, type Verified } from './auth'
 import { pairingOrigin, readRemoteSettings, writeRemoteSettings } from './handlers'
 
@@ -60,7 +61,12 @@ export interface RemoteListenerOptions {
   version: string
   /** What this host runs (buildInfo.ts); answered with the version to a caller the host knows. */
   build?: BuildFacts
-  attach: (ws: WebSocket, principal: Principal) => void
+  /** A socket for this host, or with `host` a relayed lane to that host (remote/relay.ts attachRelayed). */
+  attach: (ws: WebSocket, principal: Principal & { kind: 'remote' }, host?: string) => void
+  /** Whether `host` is registered with the relay offer right now; a `?host=` upgrade for one that is not answers 503. */
+  relayOnline?: (envId: string) => boolean
+  /** The relayed hosts with their presence, for `/api/hello` to a caller the host knows. */
+  hosts?: () => HostPresence[]
   ui?: UiHandler
   /** The MCP endpoint (mcp.ts): answers `/mcp` for bot keys. */
   mcp?: UiHandler
@@ -222,7 +228,8 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
               name: hostname(),
               version: options.version,
               ...(options.build ? { build: options.build } : {}),
-              key: { id: p.keyId, name: p.name, caps: p.caps, audience: p.audience }
+              key: { id: p.keyId, name: p.name, caps: p.caps, audience: p.audience },
+              ...(options.hosts ? { hosts: options.hosts() } : {})
             }
           : {})
       })
@@ -371,6 +378,12 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
         return refuseUpgrade(socket, 401, 'Unauthorized')
       }
       if (principal.audience !== 'client') return refuseUpgrade(socket, 403, 'Forbidden')
+      // A relayed lane (remote/relay.ts): the host must be registered with the relay offer right now.
+      const host = base.query.get(RELAY_HOST_QUERY) || undefined
+      if (host && !options.relayOnline?.(host)) {
+        log(`upgrade refused from ${base.ip}: host ${host} is not reachable from here`)
+        return refuseUpgrade(socket, 503, 'Host Unreachable')
+      }
       wss.handleUpgrade(req, socket, head, (ws) => {
         const keyId = principal.keyId
         let set = sockets.get(keyId)
@@ -389,8 +402,8 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
           if (set.size === 0) sockets.delete(keyId)
           log(`socket closed: key ${keyId} (${principal.name})`)
         })
-        log(`socket open: key ${keyId} (${principal.name}, ${principal.caps.join(',')}) from ${base.ip}`)
-        attach(ws, principal)
+        log(`socket open: key ${keyId} (${principal.name}, ${principal.caps.join(',')}) from ${base.ip}${host ? ` to ${host}` : ''}`)
+        attach(ws, principal, host)
       })
     })().catch((err) => {
       console.error('[remote] upgrade failed', err)

@@ -2,6 +2,8 @@ import { randomBytes } from 'node:crypto'
 import type { ServerFrame } from '@shared/contract'
 import { PEER_CHUNK_CHARS, PEER_MAX_CHUNKS, type MacBridgePush } from '@shared/contract-macbridge'
 import type { MacPeerMethod } from '@shared/contract-macjobs'
+import type { MacPresence } from '@shared/contract-relay'
+import type { BuildFacts } from '@shared/deployDrift'
 import { ProgressOrder, progressSender, type ProgressFrame } from './peerStreams'
 
 /**
@@ -36,7 +38,32 @@ interface Registration {
   offers: Set<string>
   /** The Mac's home directory, as it said in peer.register (an older Mac says nothing). */
   home?: string
+  /** The host's hostname, build and presence as it said in peer.register (the relay's host row; an older host says nothing). */
+  name?: string
+  build?: BuildFacts
+  presence?: MacPresence
   at: number
+  /** The last frame this socket carried (register, presence, reply, chunk, progress). */
+  lastSeenAt: number
+}
+
+/** What the box knows of a registered peer besides its socket (remote/relay.ts reads it). */
+export interface PeerInfo {
+  name: string | null
+  build: BuildFacts | null
+  presence: MacPresence | null
+  at: number
+  lastSeenAt: number
+}
+
+/** peer.register's params. */
+export interface PeerRegisterParams {
+  from: string
+  offers: string[]
+  home?: string
+  name?: string
+  build?: BuildFacts
+  presence?: MacPresence
 }
 
 interface PendingCall {
@@ -62,6 +89,7 @@ export class PeerCalls {
   private readonly registered = new Map<string, Registration>()
   private readonly calls = new Map<string, PendingCall>()
   private readonly registerListeners = new Set<(envId: string, offers: ReadonlySet<string>) => void>()
+  private readonly dropListeners = new Set<(envId: string, offers: ReadonlySet<string>) => void>()
 
   constructor(
     readonly environmentId: string,
@@ -69,16 +97,18 @@ export class PeerCalls {
   ) {}
 
   /** peer.register: the latest socket under an environment id wins. */
-  register(
-    socket: PeerSocket,
-    params: { from: string; offers: string[]; home?: string }
-  ): { environmentId: string } {
+  register(socket: PeerSocket, params: PeerRegisterParams): { environmentId: string } {
     const prior = this.registered.get(params.from)
+    const now = Date.now()
     this.registered.set(params.from, {
       socket,
       offers: new Set(params.offers),
       ...(params.home ? { home: params.home } : {}),
-      at: Date.now()
+      ...(params.name ? { name: params.name } : {}),
+      ...(params.build ? { build: params.build } : {}),
+      ...(params.presence ? { presence: params.presence } : {}),
+      at: now,
+      lastSeenAt: now
     })
     if (prior?.socket.connection !== socket.connection) {
       this.log(
@@ -96,12 +126,19 @@ export class PeerCalls {
     return () => this.registerListeners.delete(listener)
   }
 
+  /** A peer's socket closed and its registration went with it. */
+  onDrop(listener: (envId: string, offers: ReadonlySet<string>) => void): () => void {
+    this.dropListeners.add(listener)
+    return () => this.dropListeners.delete(listener)
+  }
+
   /** The socket closed: its registrations go, and every call still out on it fails now. */
   drop(connection: number): void {
     for (const [envId, reg] of this.registered) {
       if (reg.socket.connection !== connection) continue
       this.registered.delete(envId)
       this.log(`${envId} went offline`)
+      for (const l of this.dropListeners) l(envId, reg.offers)
     }
     for (const [callId, call] of this.calls) {
       if (call.connection !== connection) continue
@@ -117,6 +154,23 @@ export class PeerCalls {
   /** The home directory a registered peer named, while it is registered. */
   homeOf(envId: string): string | null {
     return this.registered.get(envId)?.home ?? null
+  }
+
+  /** What a registered peer said of itself and when it was last heard; null while it is not registered. */
+  info(envId: string): PeerInfo | null {
+    const reg = this.registered.get(envId)
+    if (!reg) return null
+    return { name: reg.name ?? null, build: reg.build ?? null, presence: reg.presence ?? null, at: reg.at, lastSeenAt: reg.lastSeenAt }
+  }
+
+  /** A frame arrived on a registered socket (the attach loop calls it for peer.presence too): the peer is alive. */
+  touch(connection: number, presence?: MacPresence): void {
+    const now = Date.now()
+    for (const reg of this.registered.values()) {
+      if (reg.socket.connection !== connection) continue
+      reg.lastSeenAt = now
+      if (presence) reg.presence = presence
+    }
   }
 
   registeredIds(offer?: string): string[] {
@@ -209,6 +263,7 @@ export class PeerCalls {
   }
 
   chunk(connection: number, params: { callId: string; index: number; data: string }): { ok: true } {
+    this.touch(connection)
     const call = this.own(connection, params.callId)
     if (params.index >= PEER_MAX_CHUNKS) throw new Error('too many chunks')
     call.chunks[params.index] = params.data
@@ -219,6 +274,7 @@ export class PeerCalls {
     connection: number,
     params: { callId: string; ok: boolean; result?: unknown; error?: string; chunks?: number }
   ): { ok: true } {
+    this.touch(connection)
     const call = this.own(connection, params.callId)
     if (!params.ok) {
       this.settle(
@@ -259,6 +315,7 @@ export class PeerCalls {
     connection: number,
     params: { callId: string; seq: number; chunk: string; skipped?: number }
   ): { ok: true } {
+    this.touch(connection)
     const call = this.calls.get(params.callId)
     if (!call) return { ok: true }
     if (call.connection !== connection)
@@ -307,7 +364,7 @@ export function handlePeerRequest(
   calls: PeerCalls,
   socket: PeerSocket & { remote: boolean },
   req:
-    | { method: 'peer.register'; params: { from: string; offers: string[]; home?: string } }
+    | { method: 'peer.register'; params: PeerRegisterParams }
     | {
         method: 'peer.reply'
         params: { callId: string; ok: boolean; result?: unknown; error?: string; chunks?: number }

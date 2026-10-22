@@ -65,8 +65,8 @@ public enum ThreadSegment: String, CaseIterable, Identifiable, Sendable {
         case .planning, .projectPlan: [.plan, .chat]
         case .orchestration: [.fleet, .log]
         case .research: [.sources, .chat]
-        // Slot (e): thread 16 makes this [.board, .chat]; the screen routes .board for .master to MasterView.
-        case .master: [.chat]
+        // Slot (e), thread 16: the batch's board is the hero; the screen routes .board for .master to MasterView.
+        case .master: [.board, .chat]
         case .subagent, .chat, .other: [.chat]
         }
     }
@@ -178,7 +178,8 @@ public struct ThreadHeaderLine: Equatable, Sendable {
         case agent(AgentType)
         /// `ModelName.short` of the id.
         case model(String)
-        // Slot (b): thread 24 adds `case account(String)` here, rendered after .model.
+        /// The account the thread spends from (`session.account`), nil for Auto; only for a provider the gateway routes (thread 24's chip).
+        case account(String?)
         /// Ticks; only while live.
         case elapsed(since: Int)
         /// Paused: the frozen elapsed, in ms.
@@ -200,7 +201,8 @@ public struct ThreadHeaderLine: Equatable, Sendable {
         if let hostName { parts.append(.host(hostName)) }
         let root = session.parentId == nil
         if root, session.isMaster == true { parts.append(.master) }
-        let identity: [Part] = root ? [.type(session.threadType ?? .chat), .model(session.model)] : [.agent(session.agentType), .model(session.model)]
+        var identity: [Part] = root ? [.type(session.threadType ?? .chat), .model(session.model)] : [.agent(session.agentType), .model(session.model)]
+        if RoutedProvider(session.provider) != nil { identity.append(.account(session.account)) }
         let since = session.busySince ?? session.updatedAt
         var live = false
         let mark: Mark

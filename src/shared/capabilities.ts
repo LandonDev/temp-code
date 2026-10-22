@@ -351,6 +351,13 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'thread.resume': 'admin',
   'thread.archive': 'admin',
   'thread.adopt': 'admin',
+  // The relay (contract-relay.ts): a host's presence and its relayed lanes' frames, over its own link.
+  'peer.presence': 'admin',
+  'relay.frames': 'admin',
+  'relay.closed': 'admin',
+  'relay.notice': 'admin',
+  /** A proof seam: an isolated instance's presence, flipped by hand (TEMP_CODE_E2E_PRESENCE=1). */
+  'presence.set': 'local',
   'mac.readFile': 'local',
   'mac.listDir': 'local',
   'mac.fetchFile': 'local',
@@ -368,6 +375,12 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'macBridge.loadLimit.set': 'local',
   'macBridge.load.get': 'local',
   'macBridge.admitThread': 'local',
+  // A key reads what the Mac runs for the hosts it serves (the same commands
+  // those threads' transcripts show) and may stop a command, as
+  // `session.interrupt` may; the prompts (`macBridge.pending`,
+  // `macBridge.decide`) and every setting stay the Mac's own.
+  'macBridge.activity': 'read',
+  'macBridge.stop': 'operate',
   // The Mac's remembered approvals (contract-macbridge-rules.ts): only its own renderer.
   'macBridge.rules.list': 'local',
   'macBridge.rules.forget': 'local',

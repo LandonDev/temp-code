@@ -11,7 +11,11 @@
  * tail with moreBefore, a session.rowBody answer, a coalesced `events`
  * frame, a `sessions` frame, a `queue` push and an error response, plus
  * the HTTP bodies of /api/hello, /api/pair and /api/ticket and a few
- * list, icon, search and stored GitHub inbox answers. Every frame is
+ * list, icon, search and stored GitHub inbox answers, and the shapes of
+ * the 2026-10-21/22 features from scripts/lib/ios-seeds.ts (a batch mid-run,
+ * notes, the project plan, reviews, plans, resources, session.changes, the
+ * host's own rows, notes.search, session.start and session.batch, devices,
+ * deploy, the Mac bridge switch, accounts, boot-resume). Every frame is
  * parsed with src/shared/wireSchemas.ts and compared key for key with
  * what the server sent before it is written,
  * so a mirror that disagrees with the server stops here, not in Swift.
@@ -30,6 +34,21 @@ import { isOmittedBody } from '../src/shared/wire'
 import type { AgentEvent } from '../src/shared/events'
 import type { ServerFrame } from '../src/shared/contract'
 import * as W from '../src/shared/wireSchemas'
+import { BatchStateSchema } from '../src/shared/contract-batch'
+import { HostDevicesReportSchema } from '../src/shared/contract-hostdevices'
+import { MilestoneLinkSchema, ProjectPlanStateSchema } from '../src/shared/contract-projectplan'
+import { projectPlanPathFor } from '../src/shared/projectPlan'
+import { PlanScopeSchema } from '../src/shared/plans'
+import { ReviewScopeSchema } from '../src/shared/review'
+import type { AccountsSnapshot } from '../src/shared/accounts'
+import {
+  accountsSnapshot,
+  batchRowMidRun,
+  noticesThreadRows,
+  notesFive,
+  projectPlanMarkdown,
+  SIMULATOR_BOOTED
+} from './lib/ios-seeds'
 
 // FixtureTests.swift asserts these.
 const SESSION_ID = 'fixture-thread'
@@ -422,6 +441,145 @@ const inbox = record(
 if (inbox.result.repos.length !== 0 || inbox.result.auth.state !== 'ok')
   throw new Error('github.inbox did not return the empty stored snapshot')
 
+// ── the 2026-10-21/22 features (seeds from scripts/lib/ios-seeds.ts) ────
+// Each frame goes through record() with its wire schema, so a disagreement
+// between the server and wireSchemas.ts stops the capture here. Three pushes
+// have no machinery behind them on a fresh capture server (boot-resume is
+// sent once per boot after a real resume; accounts needs an Aliax vault), so
+// they are written to the socket from their schema's parse of a literal and
+// recorded as the client receives them: push-boot-resume and push-accounts.
+// The admin methods (host.deployStatus, host.log) ride a second socket
+// paired with the admin key.
+const sendToSockets = (frame: unknown): void => {
+  for (const set of server.remote?.sockets.values() ?? []) for (const socket of set) socket.send(JSON.stringify(frame))
+}
+const responseOf = <S extends z.ZodType>(schema: S) => ok(schema)
+
+// A master with three children and its batch row mid-run.
+const MASTER_ID = 'fixture-master'
+const child = (id: string, title: string, threadType: 'implementation' | 'planning' | 'research'): Promise<unknown> =>
+  server.registry.create({ id, provider: 'claude', model: 'claude-haiku-5-5', reasoning: 'low', agentType: 'implementer', permission: 'edits', projectId: project.id, threadType, title, masterId: MASTER_ID, startedBy: MASTER_ID })
+await server.registry.create({ id: MASTER_ID, provider: 'claude', model: 'claude-sonnet-5-5', reasoning: 'low', agentType: 'implementer', permission: 'edits', projectId: project.id, threadType: 'chat', title: 'Fixture master' })
+server.registry.setMaster(MASTER_ID, true)
+await child('fixture-child-a', 'Rebuild the writer', 'implementation')
+await child('fixture-child-b', 'Backfill the rollups', 'implementation')
+await child('fixture-child-c', 'Which rollups are read?', 'research')
+server.registry.append('fixture-child-a', { type: 'status', status: 'done' })
+const batchFrom = frames.length
+server.batches.seedRow(batchRowMidRun(MASTER_ID, { landed: ['fixture-child-a'], pending: ['fixture-child-b', 'fixture-child-c'] }, Date.now()))
+record('push-batch', W.BatchPushSchema, await waitFrame((f, i = frames.indexOf(f)) => i >= batchFrom && isPush(f, 'batch'), 'the batch push'))
+const batch = record('batch-get', responseOf(BatchStateSchema), await request('batch.get', { masterId: MASTER_ID }))
+if (!batch.result.steps.some((st) => st.kind === 'shell' && st.status === 'running' && st.log.length > 0))
+  throw new Error('batch.get lacks the running shell step with its log')
+const children = record('batch-children', responseOf(W.BatchChildrenSchema), await request('batch.children', { masterId: MASTER_ID }))
+if (children.result.children.length !== 3) throw new Error(`batch.children answered ${children.result.children.length} children, expected 3`)
+
+// Notes: the five-section document, read and pushed.
+const notesFrom = frames.length
+server.registry.notes.write(SESSION_ID, notesFive())
+record('push-notes', W.NotesPushSchema, await waitFrame((f, i = frames.indexOf(f)) => i >= notesFrom && isPush(f, 'notes'), 'the notes push'))
+record('session-notes-get', responseOf(W.ThreadNotesDocSchema), await request('session.notes.get', { sessionId: SESSION_ID }))
+
+// The project plan: seven milestones, three done, pinned; and a project with none.
+const planPath = projectPlanPathFor(project.cwd)
+mkdirSync(join(planPath, '..'), { recursive: true })
+writeFileSync(planPath, projectPlanMarkdown())
+await server.registry.create({ id: 'fixture-project-plan', provider: 'claude', model: 'claude-sonnet-5-5', reasoning: 'low', agentType: 'implementer', permission: 'edits', projectId: project.id, threadType: 'project-plan', title: 'Fixture project plan', planPath })
+server.projectPlans.pin(project.id, true)
+const planned = record('project-plan-get', responseOf(ProjectPlanStateSchema.nullable()), await request('projectPlan.get', { projectId: project.id }))
+if (planned.result?.milestones.length !== 7 || planned.result.milestones.filter((m) => m.done).length !== 3)
+  throw new Error('projectPlan.get did not read seven milestones, three done')
+const emptyRepo = mkdtempSync(join(tmpdir(), 'tc-swift-fixtures-empty-'))
+execFileSync('git', ['-C', emptyRepo, 'init', '-q'])
+const emptyWorkspace = await server.registry.createWorkspace(emptyRepo, 'fixture-empty')
+const emptyProject = await server.registry.createProject(emptyWorkspace.id, 'fixture-empty', 'local')
+record('project-plan-get-null', responseOf(ProjectPlanStateSchema.nullable()), await request('projectPlan.get', { projectId: emptyProject.id }))
+server.projectPlans.link(SESSION_ID, { projectId: project.id, milestone: 4 })
+record('project-plan-link-of', responseOf(MilestoneLinkSchema.nullable()), await request('projectPlan.linkOf', { sessionId: SESSION_ID }))
+
+// Review and plan settings as the project sees them.
+record('review-get', responseOf(ReviewScopeSchema), await request('review.get', { projectId: project.id }))
+record('plans-get', responseOf(PlanScopeSchema), await request('plans.get', { projectId: project.id }))
+
+// Resources: two worktrees here, a simulator on another host; the push, then the list.
+const resourcesFrom = frames.length
+server.resources.record(SESSION_ID, server.environmentId, {
+  created: [
+    { kind: 'worktree', identifier: join(repo, '.claude', 'worktrees', 'fixture'), label: 'fixture', branch: 'fixture' },
+    { kind: 'worktree', identifier: join(repo, '.claude', 'worktrees', 'scratch'), label: 'scratch', branch: null },
+    { kind: 'simulator', identifier: SIMULATOR_BOOTED, label: 'iPhone 17', branch: null }
+  ],
+  removed: []
+})
+record('push-resources', W.ResourcesPushSchema, await waitFrame((f, i = frames.indexOf(f)) => i >= resourcesFrom && isPush(f, 'resources'), 'the resources push'))
+record('resources-list', responseOf(W.ResourcesListSchema), await request('resources.list', { sessionId: SESSION_ID }))
+
+// The launch mirror's reconcile: a stale cursor resets; the head's cursor answers a delta.
+const reset = record('session-changes-reset', responseOf(W.SessionChangesSchema), await request('session.changes', { afterSeq: 0, generation: 'not-this-run' }))
+if (!reset.result.reset) throw new Error('session.changes with a foreign generation did not reset')
+await server.registry.rename(SESSION_ID, `${RENAMED_TITLE} (again)`)
+const delta = record('session-changes', responseOf(W.SessionChangesSchema), await request('session.changes', { afterSeq: reset.result.seq, generation: reset.result.generation }))
+if (delta.result.reset || !delta.result.sessions?.some((m) => m.id === SESSION_ID)) throw new Error('session.changes did not answer the renamed thread')
+
+// The host's own rows: every NoticeKind, every FailureKind, the preamble stamp, a plan hand-off.
+const NOTICES_ID = 'fixture-notices'
+await server.registry.create({ id: NOTICES_ID, provider: 'claude', model: 'claude-sonnet-5-5', reasoning: 'low', agentType: 'implementer', permission: 'edits', projectId: project.id, threadType: 'implementation', title: 'Fixture notices' })
+for (const event of noticesThreadRows('fixture-child-b')) server.registry.append(NOTICES_ID, event)
+record('session-events-notices', responseOf(W.EventsPageSchema), await request('session.events', { sessionId: NOTICES_ID, tail: 200 }))
+
+// notes.search over an m3a note with the fixture's word.
+server.notes.upsert({ id: 'fixture-note', title: 'Cutover checklist', body: 'Before the cutover: run the proofs, then grep for fixtureNeedle on both hosts.' })
+const notesFound = record('notes-search', responseOf(W.NoteSearchResultSchema), await request('notes.search', { query: 'fixtureNeedle' }))
+if (!JSON.stringify(notesFound.result).includes('fixture-note')) throw new Error('notes.search did not find the fixture note')
+
+// The queue and the fleet: Start on a thread that is not queued, an archive of nothing.
+const started = record('session-start', responseOf(W.SessionStartedSchema), await request('session.start', { sessionId: SESSION_ID }))
+if (started.result.started) throw new Error('session.start started a thread that was not queued')
+record('session-batch', responseOf(W.SessionBatchResultSchema), await request('session.batch', { action: 'archive', ids: [] }))
+
+// Devices: the capture's host has no gatherer, so the list is empty; the shape is what matters.
+record('host-devices-hosts', responseOf(z.array(W.HostDevicesHostSchema)), await request('host.devices.hosts', {}))
+void HostDevicesReportSchema
+
+// The Mac bridge's switch for a thread with no Mac.
+record('mac-bridge-thread-get', responseOf(W.MacBridgeThreadStateSchema), await request('macBridge.thread.get', { sessionId: SESSION_ID }))
+
+// Accounts: the service is stood in for (no Aliax vault here), then its snapshot is pushed.
+// The phone's subset of the snapshot (thread 24's AccountsSnapshotSchema), so the server sends only keys the schema knows.
+const snapshot = (): AccountsSnapshot =>
+  W.AccountsSnapshotSchema.parse(accountsSnapshot({ environmentId: 'env_fixturepeer000000000000', name: 'The box', build: server.build }, Date.now())) as unknown as AccountsSnapshot
+;(server.accounts as unknown as { list: () => Promise<AccountsSnapshot> }).list = async () => snapshot()
+record('accounts-list', responseOf(W.AccountsSnapshotSchema), await request('accounts.list', {}))
+const accountsFrom = frames.length
+sendToSockets({ push: 'accounts', snapshot: snapshot() })
+record('push-accounts', W.AccountsPushSchema, await waitFrame((f, i = frames.indexOf(f)) => i >= accountsFrom && isPush(f, 'accounts'), 'the accounts push'))
+const bootFrom = frames.length
+sendToSockets(W.BootResumePushSchema.parse({ push: 'boot-resume', count: 4, at: Date.now() }))
+record('push-boot-resume', W.BootResumePushSchema, await waitFrame((f, i = frames.indexOf(f)) => i >= bootFrom && isPush(f, 'boot-resume'), 'the boot-resume push'))
+
+// Deploy status and its log: admin, over a socket paired with the admin key.
+const adminTicket = (await api('POST', '/api/ticket', { headers: { Authorization: `Bearer ${admin}` } })).body as { ticket: string }
+const adminWs = new WebSocket(`${base.replace('http', 'ws')}/ws?ticket=${adminTicket.ticket}`)
+const adminFrames: ServerFrame[] = []
+adminWs.on('message', (d) => adminFrames.push(JSON.parse(String(d)) as ServerFrame))
+await new Promise<void>((resolveOpen, rejectOpen) => {
+  adminWs.on('open', () => resolveOpen())
+  adminWs.on('error', rejectOpen)
+})
+const adminRequest = async (method: string, params: unknown): Promise<ServerFrame> => {
+  const id = `admin-${nextId++}`
+  adminWs.send(JSON.stringify({ id, method, params }))
+  for (let waited = 0; waited < 5000; waited += 20) {
+    const found = adminFrames.find((f) => 'id' in f && f.id === id)
+    if (found) return found
+    await new Promise((r) => setTimeout(r, 20))
+  }
+  throw new Error(`timed out waiting for ${method}`)
+}
+record('host-deploy-status', responseOf(W.DeployStatusSchema), await adminRequest('host.deployStatus', {}))
+record('host-log', responseOf(W.HostLogSnapshotSchema), await adminRequest('host.log', { job: 'deploy' }))
+adminWs.close()
+
 // ── write ───────────────────────────────────────────────────────────────
 mkdirSync(FIXTURES_DIR, { recursive: true })
 for (const name of readdirSync(FIXTURES_DIR))
@@ -434,4 +592,5 @@ ws.close()
 await server.close()
 rmSync(root, { recursive: true, force: true })
 rmSync(repo, { recursive: true, force: true })
+rmSync(emptyRepo, { recursive: true, force: true })
 process.exit(0)

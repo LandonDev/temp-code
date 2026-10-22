@@ -5,6 +5,7 @@ import {
   isBlocking,
   parseReviewSettings,
   reviewLine,
+  ReviewScopeSchema,
   splitFindings,
   type ReviewFinding
 } from './review'
@@ -70,5 +71,21 @@ describe('findings', () => {
     expect(reviewLine({ ...base, outcome: 'timeout', minutes: 15 })).toBe('Review by gpt-6.1-sol timed out after 15 min — merged without it')
     expect(reviewLine({ ...base, outcome: 'failed', reason: 'no report' })).toBe('Review by gpt-6.1-sol failed to run (no report) — merged without it')
     expect(reviewLine({ ...base, outcome: 'merged-anyway', blocking: [f(), f()] })).toBe('Merged anyway: 2 blocking findings overridden')
+  })
+})
+
+describe('ReviewScopeSchema', () => {
+  it('parses what the review.get handler answers', () => {
+    const scope = ReviewScopeSchema.parse({
+      override: null,
+      global: DEFAULT_REVIEW_SETTINGS,
+      settings: DEFAULT_REVIEW_SETTINGS,
+      source: 'global'
+    })
+    expect(scope.override).toBeNull()
+    expect(scope.source).toBe('global')
+  })
+  it('rejects an answer missing its settings', () => {
+    expect(ReviewScopeSchema.safeParse({ override: null, global: null, source: 'default' }).success).toBe(false)
   })
 })

@@ -23,18 +23,26 @@ function makeClock(periodMs: number): Clock {
   const listeners = new Set<() => void>();
   const tick = (): void => {
     now = Date.now();
-    for (const l of listeners) l();
+    // A snapshot: a listener that re-subscribes while it is told is told once.
+    for (const l of [...listeners]) l();
   };
   // A timeout chain aimed at the next wall-clock multiple of the period, not
   // an interval: every tick lands on a boundary, so both clocks and all their
   // subscribers commit in the same frame, and a tick that runs late never
   // pushes the ones after it.
+  // One chain only: the handle in `timer` is always the one queued tick, so
+  // the last unsubscribe's clearTimeout stops it. A listener that leaves and
+  // re-subscribes inside a tick once queued a second chain whose handle was
+  // lost; it kept ticking after the last unsubscribe, into a torn-down React.
   const schedule = (): void => {
-    timer = setTimeout(() => {
+    if (timer) clearTimeout(timer);
+    const queued = setTimeout(() => {
+      if (timer !== queued) return;
+      timer = null;
       tick();
-      if (listeners.size > 0) schedule();
-      else timer = null;
+      if (listeners.size > 0 && !timer) schedule();
     }, periodMs - (Date.now() % periodMs));
+    timer = queued;
   };
   const subscribe = (l: () => void): (() => void) => {
     listeners.add(l);

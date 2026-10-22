@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { ProjectPlanStateSchema, ProjectPlanTickAnswerSchema } from '@shared/contract-projectplan'
 import type { SessionMeta } from '@shared/events'
 import { openDb, Store } from './db'
 import { isPlanSettle } from './planFlow'
@@ -219,6 +220,18 @@ describe('pin, ticks and milestone links', () => {
     expect(req('projectPlan.link', { sessionId: 'pp', projectId: 'p1', milestone: 2 })).toEqual({ handled: true, result: null })
     expect(req('projectPlan.linkOf', { sessionId: 'pp' })).toEqual({ handled: true, result: { projectId: 'p1', milestone: 2 } })
     expect(req('session.list', {})).toEqual({ handled: false })
+  })
+
+  it('the get and tick answers parse with the contract schemas the phone decodes', () => {
+    writePlan()
+    const req = (method: string, params: unknown): unknown =>
+      (handleProjectPlan({ id: '1', method, params } as never, plans) as { result: unknown }).result
+    expect(ProjectPlanStateSchema.nullable().parse(req('projectPlan.get', { projectId: 'p1' }))).toMatchObject({ projectId: 'p1', exists: true })
+    expect(ProjectPlanStateSchema.nullable().parse(req('projectPlan.get', { projectId: 'nope' }))).toBeNull()
+    const tick = ProjectPlanTickAnswerSchema.parse(req('projectPlan.tick', { projectId: 'p1', milestone: 2, done: true }))
+    expect(tick.ticked).toBe(true)
+    expect(tick.state?.milestones.find((m) => m.index === 2)?.done).toBe(true)
+    expect(ProjectPlanTickAnswerSchema.parse(req('projectPlan.tick', { projectId: 'nope', milestone: 1, done: true }))).toEqual({ ticked: false, state: null })
   })
 })
 

@@ -41,6 +41,80 @@ public struct ThreadState: Sendable, Hashable {
 
     /// The last persisted seq held; a streaming preview at the tail never moves it.
     public var cursor: Int { rows.last(where: { $0.ephemeral != true })?.seq ?? 0 }
+
+    /// Whole refolds run so far (`ThreadFold.fold` over every row held); a test seam.
+    internal var refolds = 0
+
+    /// Adds rows after the fold, never a seq twice; a replayed row with a
+    /// known seq replaces the one held. A streaming preview (a partial tool
+    /// call, seq -1, ephemeral) carries the whole input so far: one row per
+    /// call, replaced in place wherever it sits and retired by its final
+    /// call row; both fold incrementally, since the fold updates the call's
+    /// item by callId. Rows that extend the tail fold incrementally too;
+    /// a replayed replacement, an out-of-order page or a trim folds again.
+    /// Called through the dictionary's modify accessor, so neither `rows`
+    /// nor the fold's items are copied per push.
+    mutating func append(_ incoming: [EventRow], trim: Bool) {
+        revision += 1
+        var incremental = true
+        var needsSort = false
+        for row in incoming {
+            if let callId = Self.partialCallId(row) {
+                if let at = rows.lastIndex(where: { Self.partialCallId($0) == callId }) {
+                    rows[at] = row
+                } else if rows.contains(where: { Self.persistedCallId($0) == callId }) {
+                    // A partial behind its own final row: stale, never held.
+                    continue
+                } else {
+                    rows.append(row)
+                }
+                if incremental { fold.apply(row) }
+                continue
+            }
+            if let at = rows.firstIndex(where: { $0.ephemeral != true && $0.seq == row.seq }) {
+                rows[at] = row
+                incremental = false
+                continue
+            }
+            if case .toolCall(let call) = row.event, let at = rows.lastIndex(where: { Self.partialCallId($0) == call.callId }) {
+                rows.remove(at: at)
+            }
+            if let last = rows.last(where: { $0.ephemeral != true }), row.seq < last.seq {
+                needsSort = true
+                incremental = false
+            }
+            rows.append(row)
+            if incremental { fold.apply(row) }
+        }
+        if needsSort {
+            // Persisted rows by seq; a streaming preview stays at the tail.
+            rows.sort { ($0.ephemeral == true ? Int.max : $0.seq) < ($1.ephemeral == true ? Int.max : $1.seq) }
+        }
+        if trim, rows.count > threadRowsInMemory {
+            rows.removeFirst(rows.count - threadRowsInMemory)
+            moreBefore = true
+            incremental = false
+        }
+        if !incremental { refold() }
+    }
+
+    /// The fold rebuilt from every row held; the live edits carry over.
+    mutating func refold() {
+        var rebuilt = ThreadFold.fold(rows)
+        rebuilt.carryLiveEdits(from: fold)
+        fold = rebuilt
+        refolds += 1
+    }
+
+    static func partialCallId(_ row: EventRow) -> String? {
+        guard row.ephemeral == true, case .toolCall(let call) = row.event else { return nil }
+        return call.callId
+    }
+
+    static func persistedCallId(_ row: EventRow) -> String? {
+        guard row.ephemeral != true, case .toolCall(let call) = row.event else { return nil }
+        return call.callId
+    }
 }
 
 /// Tail retained after live appends for transcript-only threads. Board
@@ -89,6 +163,12 @@ public final class EnvironmentClient {
     public internal(set) var threads: [String: ThreadState] = [:]
     /// The host's catalog once `loadCatalog` fetched it.
     public internal(set) var catalog: Catalog?
+    /// What each thread created (worktrees, simulators, dev instances), from the `resources` push (thread iOS 20).
+    public let resources = ResourceLedger()
+    /// The host's accounts snapshot (`accounts.list`, then the `accounts` push); the chip and the menu read it.
+    public let accounts = HostAccounts()
+    /// Each master's batch as last heard (`batch.get` or the `batch` push), by the master's id.
+    public internal(set) var batches: [String: BatchState] = [:]
     /// The shell has been listed at least once in this process.
     public private(set) var hasShell = false
     /// Where the session list last came from.
@@ -105,10 +185,19 @@ public final class EnvironmentClient {
     /// Threads this host moved elsewhere in this process, by the root's and each subagent's id.
     public private(set) var moved: [String: MovedThread] = [:]
     private var iconRequests: Set<String> = []
+    /// Each thread's notes (Client/NotesState.swift, iOS 18): fetched on first use, kept by the notes push.
+    public internal(set) var notes: [String: NotesState] = [:]
+    /// The batch push's coalescing (Client/Batches.swift): when each master's state last landed, the
+    /// newest one waiting for its window, and the timer that lands it. Bookkeeping, never observed.
+    @ObservationIgnored var batchLanded: [String: ContinuousClock.Instant] = [:]
+    @ObservationIgnored var batchPending: [String: BatchState] = [:]
+    @ObservationIgnored var batchTimers: [String: Task<Void, Never>] = [:]
 
     public let socket: TempCodeSocket
     public let cache: SessionCache
     public let subscriptions: Subscriptions
+    /// The host detail's Activity sections (Client/HostExtras.swift, iOS 21).
+    public let extras: HostExtras
     /// The phone's push registrar, when the registry gave it one: told at every open (thread L6).
     public internal(set) var push: PushRegistrar?
     /// Called with every session meta the host sent (the Live Activity follows a thread's status through it).
@@ -124,6 +213,14 @@ public final class EnvironmentClient {
     /// while the person was elsewhere are simply there when they come back,
     /// with nothing travelling. Tests count the calls.
     public var quietly: @MainActor (() -> Void) -> Void = { $0() }
+    /// A relayed host's presence as the carrier last said it; nil on a paired host.
+    public internal(set) var presence: HostPresence?
+    /// When the relay state last moved, the phone's clock (ms); for the locked line.
+    public internal(set) var stateSince: Int?
+    /// The registry's ear for presence: the hello's `hosts` (`whole: true`),
+    /// the hello's `presence` on a relayed lane (`whole: false`), a `presence`
+    /// push (`whole: true`).
+    public var relayObserver: (@MainActor (EnvironmentClient, [HostPresence], _ whole: Bool) -> Void)?
     private let keys: any KeyStore
     private var loops: [Task<Void, Never>] = []
     private var started = false
@@ -132,12 +229,17 @@ public final class EnvironmentClient {
     /// Screens showing each thread right now; the subscription lives while any does.
     private var opens: [String: Int] = [:]
 
-    public init(environment: PairedEnvironment, keys: any KeyStore, cache: SessionCache, api: RemoteAPI = RemoteAPI(), connect: @escaping WebSocketFactory = URLSessionWebSocket.factory(), clock: any SocketClock = SystemClock(), configuration: SocketConfiguration = SocketConfiguration()) {
+    /// - Parameter presence: a relayed host's last known presence (the
+    ///   registry's store), so the cold paint and the first block are right
+    ///   before the carrier speaks.
+    public init(environment: PairedEnvironment, keys: any KeyStore, cache: SessionCache, api: RemoteAPI = RemoteAPI(), connect: @escaping WebSocketFactory = URLSessionWebSocket.factory(), clock: any SocketClock = SystemClock(), configuration: SocketConfiguration = SocketConfiguration(), presence: HostPresence? = nil) {
         self.environment = environment
         self.keys = keys
         self.cache = cache
+        self.presence = presence
         self.socket = TempCodeSocket(environment: environment, keys: keys, api: api, connect: connect, clock: clock, configuration: configuration)
         self.subscriptions = Subscriptions(socket: socket)
+        self.extras = HostExtras(socket: socket, environment: environment, clock: clock)
     }
 
     // MARK: - lifecycle
@@ -201,6 +303,19 @@ public final class EnvironmentClient {
     public func retry() async { await socket.retry() }
     public func setForeground(_ foreground: Bool) async { await socket.setForeground(foreground) }
     public func setOnline(_ online: Bool) async { await socket.setOnline(online) }
+
+    /// The one word the phone acts on for a relayed host; nil on a paired one.
+    public var relayState: RelayState? { presence.map { RelayState($0) } }
+
+    /// The registry heard the carrier: the relayed host's state moved. A down
+    /// link holds the socket with the presence line as its reason; anything
+    /// else lets it try.
+    func applyRelayState(_ state: RelayState, presence: HostPresence, since: Int?) async {
+        self.presence = presence
+        self.stateSince = since
+        let reason = state == .unreachable ? RelayWords.heldLine(presence, now: .now) : nil
+        await socket.setHostReachable(state != .unreachable, reason: reason)
+    }
 
     /// One request over the live session; what L3's actions are built on.
     public func request<M: ContractMethod>(_ method: M.Type, _ params: M.Params) async throws -> M.Output {
@@ -388,7 +503,9 @@ public final class EnvironmentClient {
                     guard self.historyTokens[id] == token, var latest = self.threads[id] else { return }
                     if latest.revision != revision { continue }
                     latest.rows = complete.rows
-                    latest.fold = complete.fold
+                    var fold = complete.fold
+                    fold.carryLiveEdits(from: latest.fold)
+                    latest.fold = fold
                     latest.moreBefore = false
                     latest.revision += 1
                     self.threads[id] = latest
@@ -436,7 +553,8 @@ public final class EnvironmentClient {
     /// A `GET` the host answers for `tempcode-asset://<host>/<path>` content
     /// (logos, media, agent pages), with the key as the bearer.
     public func assetRequest(host: String, path: String) -> URLRequest? {
-        guard let key = try? keys.key(for: environment.id) else { return nil }
+        // A relayed host's media is out of scope for this slice; the request carries the carrier's key.
+        guard let key = try? keys.key(for: environment.keyOwner) else { return nil }
         var request = URLRequest(url: environment.origin.appending(path: "/asset/\(host)/\(path)"))
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         return request
@@ -446,7 +564,11 @@ public final class EnvironmentClient {
 
     private func handle(_ event: SessionEvent) async {
         switch event {
-        case .opened:
+        case .opened(let hello):
+            // The transport keeps the hello off the push stream: a carrier's hello lists the
+            // hosts it relays, a relayed lane's carries its own row; the registry hears both here.
+            if let hosts = hello.hosts { relayObserver?(self, hosts, true) }
+            if let presence = hello.presence { relayObserver?(self, [presence], false) }
             subscriptions.sessionChanged()
             // The thread on screen catches up first, the rest of the open set
             // after it, while the shell lists alongside: the person came back
@@ -454,6 +576,11 @@ public final class EnvironmentClient {
             async let shell: Void = refreshShell()
             await subscriptions.resumeAll(tail: coldOpenTail, first: visibleThread)
             await shell
+            // Off the open handler, as the desktop's: a count of worktrees never delays the subscriptions.
+            Task { [weak self] in
+                guard let self else { return }
+                await self.resources.loadAll(self)
+            }
             for id in threads.keys where subscriptions.has(id) {
                 threads[id]?.isLoading = false
                 threads[id]?.isLive = subscriptions.isLive(id)
@@ -462,6 +589,7 @@ public final class EnvironmentClient {
             await push?.sync(self)
         case .closed:
             subscriptions.sessionChanged()
+            extras.connectionLost()
             for id in Array(historyLoads.keys) { cancelHistory(id) }
             for id in threads.keys { threads[id]?.isLive = false }
         }
@@ -567,7 +695,10 @@ public final class EnvironmentClient {
     private func apply(_ push: ServerPush) async {
         switch push {
         case .hello:
+            // The transport answers `open()` with the hello; it arrives as `SessionEvent.opened`.
             break
+        case .presence(let value):
+            relayObserver?(self, value.hosts, true)
         case .workspaces(let value):
             if value.workspaces != workspaces { publishList { workspaces = value.workspaces } }
             try? await cache.replaceWorkspaces(environment.id, value.workspaces)
@@ -594,6 +725,8 @@ public final class EnvironmentClient {
             append(value.sessionId, rows: value.rows)
             threads[value.sessionId]?.isLive = true
             try? await cache.store(environment.id, sessionId: value.sessionId, rows: value.rows)
+        case .resources(let value):
+            resources.apply(value)
         case .bootResume(let value):
             // The host sends it after hello on every socket; the screen shows
             // it once per boot, the stamp kept in the cache across launches.
@@ -601,7 +734,23 @@ public final class EnvironmentClient {
             guard shown != value.at else { return }
             try? await cache.markNotice(environment.id, kind: Self.bootResumeKind, at: value.at)
             bootResume = BootResumeNotice(count: value.count, at: value.at)
-        case .queue, .liveEdits, .builds, .unknown:
+        case .notes(let value):
+            applyNotes(value) // iOS 18: the thread's notes (Client/NotesState.swift)
+        case .accounts(let value):
+            accounts.apply(value.snapshot, now: Int(Date().timeIntervalSince1970 * 1000))
+        case .liveEdits(let value):
+            // The host's live diff of a file a thread is changing: into that
+            // thread's fold, onto its running edit row; memory only, as on the desktop.
+            for item in value.items {
+                for sessionId in item.sessionIds where threads[sessionId] != nil {
+                    threads[sessionId]!.fold.applyLiveEdit(item.edit)
+                }
+            }
+        case .hostDevices, .hostLog:
+            extras.applyPush(push) // iOS 21: devices and the deploy log (Client/HostExtras.swift)
+        case .batch(let value):
+            applyBatch(value.state) // iOS 16: a master's batch, coalesced (Client/Batches.swift)
+        case .queue, .builds, .macBridgeHeld, .unknown:
             break
         }
     }
@@ -646,6 +795,7 @@ public final class EnvironmentClient {
             cancelHistory(id)
             seen[id] = nil
             peeked[id] = nil
+            notes[id] = nil // iOS 18: a removed thread's notes go with it
         }
         let env = environment.id
         let cache = self.cache
@@ -672,7 +822,7 @@ public final class EnvironmentClient {
             state.historyError = nil
             state.rows = page.rows
             state.moreBefore = page.moreBefore
-            state.fold = ThreadFold.fold(page.rows)
+            state.refold()
             Self.settle(&state, rows: page.rows)
             state.isLoading = false
             state.isLive = true
@@ -695,56 +845,16 @@ public final class EnvironmentClient {
         loadBoardHistory(id)
     }
 
-    /// Adds rows after the fold, never a seq twice; a replayed row with a
-    /// known seq replaces the one held. A streaming preview (a partial tool
-    /// call, seq -1, ephemeral) carries the whole input so far: one row per
-    /// call, replaced in place and retired by its final call row. Rows that
-    /// only extend the tail fold incrementally; anything else (a
-    /// replacement, an out-of-order page, a trim) folds again.
+    /// A batch of rows into one thread: one write to `threads[id]` through
+    /// the subscript's modify accessor (`ThreadState.append`), so the row
+    /// array and the fold's items stay unique and are mutated in place.
     private func append(_ id: String, rows: [EventRow]) {
-        guard var state = threads[id], !rows.isEmpty else { return }
-        state.revision += 1
-        var incremental = true
-        var needsSort = false
-        for row in rows {
-            if let callId = Self.partialCallId(row) {
-                if let at = state.rows.lastIndex(where: { Self.partialCallId($0) == callId }) {
-                    state.rows[at] = row
-                    if incremental, at == state.rows.count - 1 { state.fold.apply(row) } else { incremental = false }
-                } else {
-                    state.rows.append(row)
-                    if incremental { state.fold.apply(row) }
-                }
-                continue
-            }
-            if let at = state.rows.firstIndex(where: { $0.ephemeral != true && $0.seq == row.seq }) {
-                state.rows[at] = row
-                incremental = false
-                continue
-            }
-            if case .toolCall(let call) = row.event, let at = state.rows.lastIndex(where: { Self.partialCallId($0) == call.callId }) {
-                state.rows.remove(at: at)
-                incremental = false
-            }
-            if let last = state.rows.last(where: { $0.ephemeral != true }), row.seq < last.seq {
-                needsSort = true
-                incremental = false
-            }
-            state.rows.append(row)
-            if incremental { state.fold.apply(row) }
+        guard threads[id] != nil, !rows.isEmpty else { return }
+        let trim = !needsBoardHistory(id)
+        publish(thread: id) {
+            threads[id]!.append(rows, trim: trim)
+            Self.settle(&threads[id]!, rows: rows)
         }
-        if needsSort {
-            // Persisted rows by seq; a streaming preview stays at the tail.
-            state.rows.sort { ($0.ephemeral == true ? Int.max : $0.seq) < ($1.ephemeral == true ? Int.max : $1.seq) }
-        }
-        if state.rows.count > threadRowsInMemory && !needsBoardHistory(id) {
-            state.rows.removeFirst(state.rows.count - threadRowsInMemory)
-            state.moreBefore = true
-            incremental = false
-        }
-        if !incremental { state.fold = ThreadFold.fold(state.rows) }
-        Self.settle(&state, rows: rows)
-        publish(thread: id) { threads[id] = state }
     }
 
     /// What this device did optimistically, confirmed by the host's rows: the
@@ -766,18 +876,13 @@ public final class EnvironmentClient {
         }
     }
 
-    private static func partialCallId(_ row: EventRow) -> String? {
-        guard row.ephemeral == true, case .toolCall(let call) = row.event else { return nil }
-        return call.callId
-    }
-
     private func prepend(_ id: String, rows: [EventRow], moreBefore: Bool?) {
         guard var state = threads[id] else { return }
         state.revision += 1
         let known = Set(state.rows.map(\.seq))
         let fresh = rows.filter { !known.contains($0.seq) }
         state.rows = (fresh + state.rows).sorted { ($0.ephemeral == true ? Int.max : $0.seq) < ($1.ephemeral == true ? Int.max : $1.seq) }
-        state.fold = ThreadFold.fold(state.rows)
+        state.refold()
         if let moreBefore {
             state.moreBefore = moreBefore
         } else if fresh.isEmpty {

@@ -13,44 +13,25 @@ public struct HelloPush: Codable, Hashable, Sendable {
             self.name = name
         }
     }
-    public struct Build: Codable, Hashable, Sendable {
-        public let release: Int
-        public let version: String
-        public let sha: String?
-        public let platform: String
-
-        public init(release: Int, version: String, sha: String?, platform: String) {
-            self.release = release
-            self.version = version
-            self.sha = sha
-            self.platform = platform
-        }
-
-        private enum CodingKeys: String, CodingKey {
-            case release, version, sha, platform
-        }
-
-        public func encode(to encoder: any Encoder) throws {
-            var container = encoder.container(keyedBy: CodingKeys.self)
-            try container.encode(release, forKey: .release)
-            try container.encode(version, forKey: .version)
-            try container.encode(sha, forKey: .sha)
-            try container.encode(platform, forKey: .platform)
-        }
-    }
 
     public let environmentId: String
     public let contract: Int
     public let caps: [Capability]
     public let key: Key?
-    public let build: Build?
+    public let build: BuildFacts?
+    public let hosts: [HostPresence]?
+    public let via: String?
+    public let presence: HostPresence?
 
-    public init(environmentId: String, contract: Int, caps: [Capability], key: Key? = nil, build: Build? = nil) {
+    public init(environmentId: String, contract: Int, caps: [Capability], key: Key? = nil, build: BuildFacts? = nil, hosts: [HostPresence]? = nil, via: String? = nil, presence: HostPresence? = nil) {
         self.environmentId = environmentId
         self.contract = contract
         self.caps = caps
         self.key = key
         self.build = build
+        self.hosts = hosts
+        self.via = via
+        self.presence = presence
     }
 }
 
@@ -114,6 +95,16 @@ public struct QueuePush: Codable, Hashable, Sendable {
     }
 }
 
+public struct NotesPush: Codable, Hashable, Sendable {
+    public let sessionId: String
+    public let doc: ThreadNotesDoc
+
+    public init(sessionId: String, doc: ThreadNotesDoc) {
+        self.sessionId = sessionId
+        self.doc = doc
+    }
+}
+
 public struct SessionRemovedPush: Codable, Hashable, Sendable {
     public let sessionIds: [String]
 
@@ -134,6 +125,14 @@ public struct SessionMovedPush: Codable, Hashable, Sendable {
     }
 }
 
+public struct BatchPush: Codable, Hashable, Sendable {
+    public let state: BatchState
+
+    public init(state: BatchState) {
+        self.state = state
+    }
+}
+
 public struct BootResumePush: Codable, Hashable, Sendable {
     public let count: Int
     public let at: Int
@@ -141,6 +140,64 @@ public struct BootResumePush: Codable, Hashable, Sendable {
     public init(count: Int, at: Int) {
         self.count = count
         self.at = at
+    }
+}
+
+public struct ResourcesPush: Codable, Hashable, Sendable {
+    public let sessionId: String
+    public let resources: [ThreadResource]
+
+    public init(sessionId: String, resources: [ThreadResource]) {
+        self.sessionId = sessionId
+        self.resources = resources
+    }
+}
+
+public struct AccountsPush: Codable, Hashable, Sendable {
+    public let snapshot: AccountsSnapshot
+
+    public init(snapshot: AccountsSnapshot) {
+        self.snapshot = snapshot
+    }
+}
+
+public struct HostDevicesPush: Codable, Hashable, Sendable {
+    public let report: HostDevicesReport
+
+    public init(report: HostDevicesReport) {
+        self.report = report
+    }
+}
+
+public struct HostLogPush: Codable, Hashable, Sendable {
+    public let job: HostJob
+    public let append: String?
+    public let reset: Bool?
+    public let status: HostJobStatus
+
+    public init(job: HostJob, append: String? = nil, reset: Bool? = nil, status: HostJobStatus) {
+        self.job = job
+        self.append = append
+        self.reset = reset
+        self.status = status
+    }
+}
+
+public struct MacBridgeHeldPush: Codable, Hashable, Sendable {
+    public let sessionId: String
+    public let held: Int
+
+    public init(sessionId: String, held: Int) {
+        self.sessionId = sessionId
+        self.held = held
+    }
+}
+
+public struct PresencePush: Codable, Hashable, Sendable {
+    public let hosts: [HostPresence]
+
+    public init(hosts: [HostPresence]) {
+        self.hosts = hosts
     }
 }
 
@@ -153,9 +210,17 @@ public enum ServerPush: Codable, Hashable, Sendable {
     case liveEdits(LiveEditsPush)
     case builds(BuildsPush)
     case queue(QueuePush)
+    case notes(NotesPush)
     case sessionRemoved(SessionRemovedPush)
     case sessionMoved(SessionMovedPush)
+    case batch(BatchPush)
     case bootResume(BootResumePush)
+    case resources(ResourcesPush)
+    case accounts(AccountsPush)
+    case hostDevices(HostDevicesPush)
+    case hostLog(HostLogPush)
+    case macBridgeHeld(MacBridgeHeldPush)
+    case presence(PresencePush)
     /// A `push` this build does not know: the whole object, untouched.
     case unknown(JSONValue)
 
@@ -174,9 +239,17 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case "live-edits": self = .liveEdits(try LiveEditsPush(from: decoder))
         case "builds": self = .builds(try BuildsPush(from: decoder))
         case "queue": self = .queue(try QueuePush(from: decoder))
+        case "notes": self = .notes(try NotesPush(from: decoder))
         case "session-removed": self = .sessionRemoved(try SessionRemovedPush(from: decoder))
         case "session-moved": self = .sessionMoved(try SessionMovedPush(from: decoder))
+        case "batch": self = .batch(try BatchPush(from: decoder))
         case "boot-resume": self = .bootResume(try BootResumePush(from: decoder))
+        case "resources": self = .resources(try ResourcesPush(from: decoder))
+        case "accounts": self = .accounts(try AccountsPush(from: decoder))
+        case "host.devices": self = .hostDevices(try HostDevicesPush(from: decoder))
+        case "host-log": self = .hostLog(try HostLogPush(from: decoder))
+        case "macBridge.held": self = .macBridgeHeld(try MacBridgeHeldPush(from: decoder))
+        case "presence": self = .presence(try PresencePush(from: decoder))
         default: self = .unknown(try JSONValue(from: decoder))
         }
     }
@@ -191,9 +264,17 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case .liveEdits(let value): try Self.encode(tag: "live-edits", value, to: encoder)
         case .builds(let value): try Self.encode(tag: "builds", value, to: encoder)
         case .queue(let value): try Self.encode(tag: "queue", value, to: encoder)
+        case .notes(let value): try Self.encode(tag: "notes", value, to: encoder)
         case .sessionRemoved(let value): try Self.encode(tag: "session-removed", value, to: encoder)
         case .sessionMoved(let value): try Self.encode(tag: "session-moved", value, to: encoder)
+        case .batch(let value): try Self.encode(tag: "batch", value, to: encoder)
         case .bootResume(let value): try Self.encode(tag: "boot-resume", value, to: encoder)
+        case .resources(let value): try Self.encode(tag: "resources", value, to: encoder)
+        case .accounts(let value): try Self.encode(tag: "accounts", value, to: encoder)
+        case .hostDevices(let value): try Self.encode(tag: "host.devices", value, to: encoder)
+        case .hostLog(let value): try Self.encode(tag: "host-log", value, to: encoder)
+        case .macBridgeHeld(let value): try Self.encode(tag: "macBridge.held", value, to: encoder)
+        case .presence(let value): try Self.encode(tag: "presence", value, to: encoder)
         case .unknown(let value): try value.encode(to: encoder)
         }
     }

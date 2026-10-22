@@ -145,7 +145,10 @@ Two separate steps, on purpose, over one gate.
    --since release-N` (the commits since the last release decide whether
    the `publish` tier joins), bumps release.json to N and package.json to
    `1.0.N`, commits both, and tags `release-N`, using your commit subject
-   as the release notes. That is bookkeeping: no user sees it.
+   as the release notes. That is bookkeeping: no user sees it. With nothing
+   new since `release-N` (HEAD is the tagged commit, or only release
+   bookkeeping follows it; scripts/releaseCheck.ts) it prints "nothing to
+   release since release-N" and exits 0 with no bump, commit or tag.
    - If the hook skipped (tree was dirty at commit time, or the gate was
      red), the next green commit releases everything since; you can also
      run `bun scripts/release.ts "notes"` yourself (`--full` to run the
@@ -745,7 +748,10 @@ routed to (aliax-core's `forward`). Two listeners:
   (`remote/peerCalls.ts`: `peer.register`, `peer.call` push, `peer.reply`,
   `peer.chunk`). The Mac decides everything in `remote/macBridge.ts`: a
   per-host policy (off by default), shared folders, and a Mac-local prompt
-  for any other path and every command (`macBridge.decide` is local-only).
+  for any other path and every command (`macBridge.decide` is local-only;
+  a key sees what runs through `macBridge.activity`, read, and stops a
+  running or held call through `macBridge.stop`, operate; the prompts and
+  every setting stay the Mac's).
   Codex calls carry a per-thread token (`macTools.ts`). A thread in full
   access on its box (permission `auto`) is never prompted: the box sends its
   permission with every call and the Mac treats every call the policy admits
@@ -826,6 +832,28 @@ routed to (aliax-core's `forward`). Two listeners:
   (default 4). A dropped link answers `linkDown` with the last state, never
   a hang. docs/box.md "Threads across hosts"; proof
   `bun run script:e2e-cross-host-threads`.
+- The relay: a phone or bot paired with the box reaches the Mac's threads
+  through the box. `/ws?ticket=…&host=<envId>` is a second socket under the
+  Mac's id: the box answers the hello (the Mac's `environmentId`, `via` the
+  box, `presence` the Mac's row), runs its own gate, refuses a method outside
+  `RELAY_METHODS` and answers the key's `remote.push.*` itself, and forwards
+  the rest over the Mac's link as `relay.frame`; the Mac serves the lane with
+  its own `attach()` on a `RelaySocket` and sends its frames back as
+  `relay.frames` (src/shared/contract-relay.ts; box side remote/relay.ts,
+  Mac side remote/relayServe.ts). The Mac reports its screen and power
+  (src/main/presence.ts: powerMonitor, `ioreg` at boot) in `peer.register`,
+  on every change and every minute (`peer.presence`); the box keeps the rows
+  (`relay.hosts`), lists them in the hello (`hosts`) and `/api/hello`, and
+  pushes `presence` on a change. A state that forbids a call answers one line
+  (`relayRefusal`): `unavailable: the Mac is locked` (the screen method
+  only), `… asleep`, `… unreachable since HH:MM`; a drop mid-request is
+  `linkDown: …` and closes the lane 4010; an unregistered host is 503 at the
+  upgrade. `/mcp` takes `host` and `env_…:id` sessions (docs/remote-mcp.md
+  "Hosts"). A Mac with no delivery of its own sends its notices as
+  `relay.notice`. Seams: `TEMP_CODE_PRESENCE`, `presence.set` under
+  `TEMP_CODE_E2E_PRESENCE=1`, the iOS test server's four relayed hosts
+  (remote/relayLoopback.ts, `POST /presence`). docs/box.md "The relay";
+  proof `bun run script:e2e-mac-relay`.
 - Devices on the Mac: Settings → Remote access, under the Mac bridge's
   host rows, lists this Mac's simulators and iPhones with a state dot, the
   booted ones' CPU, the thread that holds each (the `thread_resources`
@@ -888,6 +916,11 @@ routed to (aliax-core's `forward`). Two listeners:
   0.5 s / 5 s to 2-72 ms / 3-338 ms; the backfill took 15 s. Measure on a
   copy with `bun run script:measure-turn-index <copy>`; proof
   `bun run script:e2e-cross-host-search`. docs/box.md "Search across hosts".
+- The phone runs the same fan-out, merge, fold and filters in
+  `ios/TempCodeClient/Sources/TempCodeClient/Client/CrossHostSearch.swift`
+  (pure, Swift Testing in CrossHostSearchTests.swift), emitting thread 4's
+  row model (`SearchRows.swift`) as an `AsyncStream<SearchAnswer>` the
+  Search tab iterates; `notes.search` is in the phone's subset for it.
 ## Thread notes: the document that survives a compaction
 - Every root thread keeps `notes.md` at `attachmentDir(session)/notes.md`
   (the project's `.temp-code/attachments/<sid>/`, so the harness can read
@@ -919,8 +952,12 @@ routed to (aliax-core's `forward`). Two listeners:
   thread's first message carries its planning thread's notes
   (`<planning-notes>`) beside the plan seed.
 - Wire: `session.notes.get` (read), `session.notes.set` (operate, the
-  person's whole-text edit), the `notes` push to every client (not in the
-  phone's subset; its decoder folds it into `unknown`). `session.search`
+  person's whole-text edit), the `notes` push to every client. The phone
+  speaks all three (`ios/TempCode/Sources/Thread/NotesSheet.swift` on the
+  client package's `notes` state, `Client/NotesState.swift`; the edit session is
+  `Client/NotesEditor.swift`, the text port `Rendering/Notes.swift`; a
+  waiting thread's needs-you row on Home reads its State line through
+  `Shell/NeedsYouNotes.swift`). `session.search`
   folds notes hits in ahead of the rows (`source: 'notes'`, seq 0).
   Renderer: `lib/threadNotes.ts` (the store on the push) feeds the Notes
   drawer at every root thread's right edge (surfaces/threads/NotesPanel.tsx:
@@ -1084,7 +1121,15 @@ proof and the sizing rules; the pieces, by name:
   Fixtures under `Tests/Fixtures` come from a real server through
   `bun run script:capture-swift-fixtures`; re-record them when a captured
   shape changes. The package README has the subset policy and what L2
-  (the socket actor) builds on it.
+  (the socket actor) builds on it. The subset covers the master, notes,
+  project-plan, review, plans, resources, devices, deploy, Mac bridge and
+  accounts methods and their pushes (`notes`, `batch`, `resources`,
+  `boot-resume`, `accounts`, `host.devices`, `host-log`, `macBridge.held`);
+  the README's table is the list, with the capability each needs. The
+  generator refuses a `local` method (`jsonSchemas` throws), names
+  `BuildFacts` and `NoticeKind` once, and `scripts/gen-swift-contract.test.ts`
+  pins its rules; `DecoderRulesTests.swift` proves the decoder on
+  hand-written JSON, so it passes before the fixtures are re-recorded.
 
 ## The iOS client: ios/TempCodeClient and ios/TempCode
 - docs/IOS-DESIGN.md fixes the phone's design: information architecture
@@ -1147,13 +1192,17 @@ proof and the sizing rules; the pieces, by name:
   `file.read` (in the subset since L4), polled 1.5 s running / 8 s idle
   while the screen shows; the plan page parses it with the client package's
   `PlanDocument` (nested and task lists, tables, frontmatter, sections) and
-  paints from `PlanPages`' disk cache before the first read answers. The
+  paints from `PlanPages`' disk cache before the first read answers. A
+  project-plan thread renders through `ProjectPlanView` (the client
+  package's `ProjectPlan` parser, milestone rows that tick over
+  `projectPlan.tick`, the options card after `status: complete`, the Home
+  chip in `ProjectPlanChip.swift` through the `projectTrailing` Home slot). The
   fleet surfaces are `Thread/FleetStyles.swift` (the agent row and its
   pieces, `FleetSections`, `FleetGather` over every paired host,
   `AgentDetailRoute`), `SubagentListScreen(client:rootSessionId:)` and
   `AgentDetailScreen(client:agentId:parentCwd:hostName:)`
   (docs/IOS-DESIGN.md "Orchestration"). DEBUG launch hooks (`TC_TEST_SEGMENT`,
-  `TC_TEST_OPEN=chip|group|diff|agent|agents|rename|agent-detail|report|source|item|item-diff`,
+  `TC_TEST_OPEN=chip|group|diff|agent|agents|rename|agent-detail|report|source|item|item-diff|account`,
   `TC_TEST_SCROLL=1`, the Search tab's `TC_TEST_SEARCH=<query>` and
   `TC_TEST_SEARCH_SCOPE=files`, and L5's
   `TC_TEST_ACTION=send:<text>|stop|approve|deny|answer:<label>|start-build|
@@ -1161,6 +1210,15 @@ proof and the sizing rules; the pieces, by name:
   for the proof only; an action runs once, on the screen the launch route
   opened, through the same calls the buttons make. The test server's
   `TC_TEST_FLEET=large` seeds a twelve-agent fleet in all four groups.
+- Streaming (27): `Rendering/SmoothText.swift` is the desktop's jitter
+  buffer in Swift (`Pacer`, `SmoothTextReveal` on a display link, 33 ms
+  paints, UTF-8 positions); the fold gives a partial-born tool item a
+  provisional id and the final row's seq, folds `live-edits` into the
+  running edit tool by path (`ToolItem.live`, `ThreadFold.liveEdits`), and
+  `EnvironmentClient.append` applies a batch in place;
+  `Thread/StreamingRow.swift` holds the streaming assistant row, the
+  thinking tail line and the live chip label. The test server's
+  `POST /stream` plays a bursty turn with a growing Edit and live edits.
 - Settings (thread 5): `ios/TempCode/Sources/Shell/{SettingsView,HostsView,
   AddEnvironmentSheet,SettingsStyles}.swift` are the SwiftUI alone; every
   word they say (`ConnectionWord`, `HostFix`, `HostBuildLine`,
@@ -1169,6 +1227,51 @@ proof and the sizing rules; the pieces, by name:
   client package's `Shell/HostPresentation.swift` with their tests; the
   `settings` proof set shoots them with `TC_TEST_OPEN=host` (pushed through
   the stack's path) and `TC_TEST_SHEET=pair|pair-error`.
+- Relayed hosts (thread 29, the phone side of the box's relay): a host the
+  box relays is a client of its own in `ClientRegistry` on the box's
+  `/ws?host=<id>` lane with the box's key (`PairedEnvironment.via`,
+  `isRelayed`, `keyOwner`, `socketURL`); `Client/RelayedHosts.swift` is the
+  store (`RelayedHosts`, `relayed.json` beside `environments.json`, fed by
+  the carrier's hello `hosts`, the `presence` push and a lane's hello
+  `presence`), `RelayState` (the one word, read from link/screen/power in
+  the wire's order), `RelayWords` (every sentence: the row line, the
+  subline, the strip line for locked, the held and reconnecting lines) and
+  `RelayRefusal` (`unavailable: …` / `linkDown: …` parsed to one line); the
+  registry syncs the union of stored and relayed environments and seeds
+  each relayed client's `presence` before its socket starts; the socket's
+  `setHostReachable` holds a lane the box says is down (no attempt, no
+  Retry) and tries at once when it is back; `relayBlock` folds into
+  `operateBlock`/`approveBlock` (asleep and unreachable block, locked keeps
+  Send). Views: `Shell/Hosts/PresenceLine.swift` (`PresenceLine`,
+  `HostSubline`, `RelayStripLine`) and `RelayedHostRow.swift` (the row under
+  its carrier in Settings → Hosts, the detail with no key, Pair Again or
+  Forget); hooks: HostsView (the relayed rows, the relayed detail, the
+  Forget copy), `HomeSlots.hostSubline` + HomeView's host header + RootView,
+  WorkingStrip's idle arm, StatusLine's words and Retry rule,
+  `PushRegistrar.sync`'s guard. Tests: RelayWordsTests, RelayedHostsTests,
+  the socket's `setHostReachable` cases, and `LiveRelayTests` in
+  LiveServerTests.swift (enabled by `TC_TEST_RELAY_HOSTS`, which
+  scripts/ios-client-test.ts passes from thread 28's `relayHosts` seed).
+  docs/IOS-DESIGN.md "Hosts through the box".
+- Host activity (thread 21): the host detail's Activity slot is
+  `ios/TempCode/Sources/Shell/Hosts/` (`HostActivitySections`: Build with
+  the `+N` drift mark, Deploy Master and the log sheet; the Mac bridge's
+  calls on a box's detail with Stop; Devices per Mac; Sync), every loop in
+  one `ActivityPollers`; the drift mark also fills Home's `hostTrailing`
+  slot. The stores are the client package's `Client/HostExtras.swift`
+  (`HostExtras` on `EnvironmentClient.extras`, and `MasterReleaseWatcher`,
+  which reads master's release.json from GitHub itself) and the words
+  `Client/HostExtrasText.swift`, ported from the desktop's, with their
+  suites. The wire it reads: `host.devices*`, `host.simulator.*`,
+  `host.device.openXcode`, `host.deployStatus`/`deploy`/`log` (admin),
+  `harness.status`/`sync` and `memory.status`/`sync` (admin), and
+  `macBridge.activity`/`stop`, with the `host.devices` and `host-log`
+  pushes in the subset. The test server seeds a saved host "box", two Mac
+  bridge calls for it (`MacBridge.seed`, behind `TEMP_CODE_E2E_SEED`), a
+  finished deploy (`TEMP_CODE_DEPLOY_DIR`) and an admin key
+  (`adminPairing`), beside thread 26's fake devices;
+  `TC_PROOF_SET=host-extras` shoots it (`TC_TEST_SHEET=deploy-log` opens
+  the log).
 - Steering (L5): `ios/TempCode/Sources/Thread/Composer.swift` (the bar on
   every segment, Send ↔ Stop, the model and reasoning chips on focus; a
   watching master's button is Send and a master mid-turn with text steers)
@@ -1190,8 +1293,26 @@ proof and the sizing rules; the pieces, by name:
   turns, optimistic decisions, `ThreadDraft`, `TurnModel`, `start` as
   `session.start`), `Client/Attachments.swift` (`upload`) and
   `Client/Steering.swift`; the README there has the rules. A read key
-  hides nothing: the field and the cards carry the reason instead. DEBUG
+  hides nothing: the field and the cards carry the reason instead. `Client/PlanFlow.swift`
+  is the plan page's state (`PlanFlowState`) and `implementPlan` over
+  `plan.implement`; `Client/ProjectSettings.swift` the preamble, review and
+  plan drafts the project settings sheet (`Shell/ProjectSettingsSheet.swift`)
+  saves over `project.setPreamble`, `review.set` and `plans.set`, admin
+  only, with the reason on a lesser key. DEBUG
   hooks: `TC_TEST_ACTION=start-now|resume` beside the L4 ones.
+  A master opens on its Board (`ios/TempCode/Sources/Thread/Master/**`:
+  MasterView with its bar, MasterRows, BatchFoot and StepConsole, the
+  Rules, add, adopt and archive sheets, MasterPinButton for an admin key)
+  over the client package's `Rendering/Batch.swift` (`MasterBoard`,
+  `BatchSteps`, `RulesEdit`, `BoardActions`), `Client/ThreadBatch.swift` (the fleet switches' rule)
+  and `Client/Batches.swift` (each master's `BatchState`, the `batch` push
+  landed at most twice a second, `batch.get` every 5 s while the board
+  shows); the SUBSET carries the batch types, the push and `batch.get`,
+  `batch.setRules`, `batch.stopStep`, `batch.adopt`, `batch.archive`,
+  `session.setMaster` and `session.batch` (docs/IOS-DESIGN.md "Master: the
+  batch is the hero"). DEBUG hooks `TC_TEST_OPEN=rules|add-thread|adopt|
+  archive-done` and `TC_TEST_ACTION=stop-step|set-master`; the test server
+  seeds the batch under `ios-master` with a streaming shell step.
   The host's own rows
   (`Thread/NoticeRows.swift`: review and gate cards, batch, account-gone and
   plan-handoff lines; `FailureCard.swift`; `PreambleRow.swift`) draw from the
@@ -1200,6 +1321,23 @@ proof and the sizing rules; the pieces, by name:
   `failureActions` as `FailureActions` (`Rendering/Notices.swift`, with
   `GateText` and `ReviewText`) and speaks `session.continue`,
   `session.reroute` and `review.override` (`Client/NoticeActions.swift`).
+  The fleet switches, the Resources sheet and the archive prompt (thread
+  iOS 20) sit on the client package's `Client/ThreadBatch.swift`,
+  `StatusWords.swift` and `Resources.swift` (`ResourceLedger` on the
+  `resources` push, loaded whole at every open) through
+  `Shell/FleetSwitches.swift` and `Thread/ResourcesSheet.swift`.
+- Accounts on the phone (iOS 24): every routed thread's header ends with
+  the account chip (`ios/TempCode/Sources/Thread/AccountChip.swift`) and
+  its menu sheet (`AccountMenu.swift`): `accounts.list` once on open, then
+  the `accounts` push into `EnvironmentClient.accounts` (`HostAccounts`);
+  This thread reads the route and offers `session.reroute` (operate),
+  Project and Workspace pin over `project.setAccounts` /
+  `workspace.setAccounts` (admin; a lesser key sees "This key can't change
+  pins"); the pure rules (`AccountScope`, `HeadroomLook`, `AccountMenuModel`)
+  are the client package's `Client/Accounts.swift`. A failed thread's row
+  and Home's cue read the host's `failure.summary` (`Shell/FailureCue.swift`).
+  The test server seeds two Claude accounts and answers
+  `POST /accounts/headroom`.
 - Push (L6): the phone registers its APNs token with every paired host
   (`remote.push.register`/`unregister`/`status`/`activity`, capability read:
   the key's own row); the host keeps one row per key (`remote_push`,
@@ -1346,7 +1484,11 @@ mapped to roots once, the existing per-session calls four at a time, every
 id answered. `registry.resourceCleanup` (null today) is where the
 thread-resources build hangs its clean-up; `setResourceCleanup` in the
 renderer turns the Archive done checkbox on. Proof:
-`bun run script:e2e-thread-batch`. docs/box.md "The fleet switches".
+`bun run script:e2e-thread-batch`. docs/box.md "The fleet switches". The
+phone has the same rows in its host and project menus
+(ios/TempCode/Sources/Shell/FleetSwitches.swift over the client package's
+ThreadBatch.swift, the rules and copy ported with tests mirroring
+threadBatch.test.ts), one `session.batch` per host.
 
 ## Plans: `plan_complete` and the auto-start
 - A plan is finished when the planner calls the `plan_complete` app tool
@@ -1367,8 +1509,9 @@ renderer turns the Archive done checkbox on. Proof:
   `deliverAgentReport`; a person-started plan is the notifier's finished
   notice ("Plan complete — implementation started: …" or "…waiting for you
   to start the build") and the tab's "Plan ready" mark. With auto-start off
-  the plan view's single Start button, the phone's Start a build sheet and
-  `plan.implement` over the wire start the build through the same function.
+  the plan view's single Start button, the phone's Start a build sheet (its
+  confirm is `plan.implement` since thread 25) and `plan.implement` over the
+  wire start the build through the same function.
   Sending into a completed plan whose build has not started reopens it.
   Unit tests: planFlow.test.ts, plans.test.ts; proof
   `bun run script:e2e-plan-auto-implement` (three haiku planners on an
@@ -1544,7 +1687,9 @@ this is the short one.
   a list without one gets it); `gate` (the commit tier once on the project
   checkout at the project branch's head); `release` (`bun
   scripts/release.ts "<master title; landed subjects>" --push`: the tag,
-  and master with it pushed to origin); `publish` (the Mac's publish job
+  and master with it pushed to origin; with nothing new since the last
+  tag the step is skipped as "nothing to release since release-N" and a
+  publish or deploy after it takes that version); `publish` (the Mac's publish job
   for that commit over the peer link, "Releases" above; a person's
   decision); `deploy` (the box's deploy trigger of docs/box.md "Deploy from
   the app": `v1.0.N` when a publish passed, `master` otherwise; skipped as
@@ -1565,7 +1710,9 @@ this is the short one.
   The engine runs when the last child is done (every unarchived root
   carrying the masterId is `done`, or `idle` with a turn completed,
   `Store.hasCompletedTurn`); an errored or stopped child blocks the end,
-  `blocked` names it and the master is told once as a `<batch-report>`.
+  and so does one idle on a turn that ended in a failure (its row's
+  `failure`, a usage cap; `blocked.why` `failed`), `blocked` names it and
+  the master is told once as a `<batch-report>`.
   Steps run in order on the host's `GateQueue`, a gate or release outcome a
   `gate` notice row on the master; a red step stops the rest and tells the
   master; the steps after land run whenever the batch ends, on the project
@@ -1576,9 +1723,14 @@ this is the short one.
   a release"); the land step counts only threads with a branch to land
   (`canLand`: implementation and orchestration, a chat or research thread
   once it landed or holds one, a planner never); a planning child whose
-  plan is complete holds the batch open until its build exists; a child moving again
-  or a new one arms the engine for the next all-done, and a landing after
-  the end starts a new cycle. `batch_gate` stays the master's way to run
+  plan is complete holds the batch open until its build exists. The end
+  runs once per cycle: at all-done when it never ran, or when since it last
+  started a landing came in (landed, held, or reported by a far host), a
+  child joined that was not in the batch then, or the rules were set
+  (`batch_rules`/`batch.setRules`, even unchanged: the hand re-run); a
+  child resuming and settling idle again, a child leaving or a failed step
+  never starts it (`armed`, `ranChildren` on the row), so a failed publish
+  never cuts a fresh release on the next idle. `batch_gate` stays the master's way to run
   the gate and release steps early, with children still out left out of
   the land step (refused when the list names no gate). The deploy restarts
   the box's own process: the row is persisted before the trigger fires and
@@ -1590,10 +1742,11 @@ this is the short one.
   (rules `{ step, branch?, ok, log? }`) decides a gate or release step
   without spawning.
 - **Step telemetry on the wire.** `BatchState` (`batch.get`, `batch.board`,
-  and the `batch` push, coalesced to four a second while a log streams,
-  each step's log there as `{ from, lines }` since the last push; only to
-  sockets watching that master, boardWatch.ts; not in the phone's subset)
-  carries `rules`, `steps`: the list
+  and the pushes, coalesced to four a second while a log streams) carries
+  `rules`, `steps`. Sockets watching that master (boardWatch.ts) get
+  `batch-delta`, each step's log as `{ from, lines }` since the last push;
+  a socket that never asked `batch.board` (the phone's `BatchPush`) gets
+  the whole state as `batch`. `steps` is the list
   in order, each `{ id, name, kind }` with `status` pending | running |
   passed | failed | skipped, `detail`, `startedAt`, `endedAt`, `progress
   { done, total, label? }` (land: branches merged of total; gate: the
@@ -1674,8 +1827,12 @@ this is the short one.
   (`LayerContext`, lib/layers.ts) and sits above it. `lib/threadBatch.ts`
   exports `hasRunningTurn` so the rows and Pause all use the fleet
   switches' rule. The phone draws a queued root with the label "Queued"
-  (StatusDot.swift), never under Home's Running (`HomeModel.isLive`); no
-  phone surface.
+  (StatusDot.swift), never under Home's Running (`HomeModel.isLive`); the
+  strip offers Start now (`session.start`) and a stopped root Resume; the
+  fleet switches sit in the host's and the project's menus
+  (ios/TempCode/Sources/Shell/FleetSwitches.swift over the client package's
+  ThreadBatch.swift); a master opens on its Board segment ("The iOS
+  client" below).
 - **The rail houses the batch under the master's row** the way subagents
   sit under a root (`batchHome`, `railMasters` in lib/workspaceSessions.ts):
   each unarchived root carrying the master's id is a child row one step in

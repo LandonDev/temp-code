@@ -15,10 +15,13 @@
  * tagging, so the Mac can publish the commit; the post-commit train never
  * passes it. Off macOS the gate skips its Mac-only publish steps (hub, ios,
  * ios-client) with a note; the Mac's publish gate runs them before anything
- * ships.
+ * ships. With nothing new since the newest `release-N` (HEAD is that
+ * commit, or only release bookkeeping follows it) it prints "nothing to
+ * release since release-N" and exits 0 untouched (scripts/releaseCheck.ts).
  */
 import { execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
+import { commitsSince, nothingLine, nothingToRelease } from './releaseCheck'
 
 // The post-commit hook exports GIT_AUTHOR_*, GIT_INDEX_FILE and friends.
 // Leaked into the gate they make every git command in a test act as the
@@ -47,19 +50,27 @@ if (dirty.length > 0) {
   process.exit(1)
 }
 
+const last = JSON.parse(readFileSync('release.json', 'utf8')) as { n: number }
+const tag = `release-${last.n}`
+const since = commitsSince(tag, process.cwd(), env)
+
+// Nothing new since the newest tag (HEAD is that commit, or every commit
+// since is release bookkeeping): no bump, no commit, no tag. With --push the
+// branch and the existing tag still go to origin, so a publish after this
+// can take the commit the tag names.
+if (since && nothingToRelease(since)) {
+  if (push) {
+    const branch = run('git', ['rev-parse', '--abbrev-ref', 'HEAD']).trim()
+    execFileSync('git', ['push', 'origin', branch, tag], { stdio: 'inherit', env })
+  }
+  console.log(nothingLine(tag))
+  process.exit(0)
+}
+
 // The gate (scripts/gate.ts): the commit tier always, the publish tier when
 // the commits since the last release (tag release-N, else the parent) touch
 // what it guards. The gate prints its own per-step times.
-const last = JSON.parse(readFileSync('release.json', 'utf8')) as { n: number }
-const since = (() => {
-  try {
-    run('git', ['rev-parse', '-q', '--verify', `release-${last.n}^{commit}`])
-    return `release-${last.n}`
-  } catch {
-    return 'HEAD~1'
-  }
-})()
-execFileSync('bun', ['scripts/gate.ts', '--tier', 'commit', '--since', since, ...(full ? ['--full'] : [])], {
+execFileSync('bun', ['scripts/gate.ts', '--tier', 'commit', '--since', since ? tag : 'HEAD~1', ...(full ? ['--full'] : [])], {
   stdio: 'inherit',
   env
 })

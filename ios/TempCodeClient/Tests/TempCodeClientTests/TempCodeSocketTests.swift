@@ -385,4 +385,76 @@ func eventually(_ condition: @Sendable () -> Bool) async -> Bool {
         collecting.cancel()
         pushing.cancel()
     }
+
+    // MARK: - a relayed lane the carrier holds
+
+    @Test func `the carrier saying down closes the session, holds offline with the reason and tries nothing`() async throws {
+        let rig = Rig()
+        await rig.socket.start()
+        let first = await rig.open(0)
+        #expect(await rig.wait(for: .open))
+        await rig.socket.setHostReachable(false, reason: "The Mac is unreachable since 9:14")
+        #expect(await rig.wait(for: .offline))
+        let held = await rig.status()
+        #expect(held.lastError == "The Mac is unreachable since 9:14")
+        #expect(held.nextRetryAt == nil)
+        #expect(await eventually { first.cancelledWith != nil })
+        #expect(await rig.socket.isOpen == false)
+        // Past every backoff, still nothing: the box retries the link, not the phone.
+        await rig.clock.advance(ms: 600_000)
+        await rig.clock.settle()
+        #expect(rig.sockets.sockets.count == 1)
+        // A retry from the person tries nothing either, and the words stay.
+        await rig.socket.retry()
+        await rig.clock.settle()
+        #expect(rig.sockets.sockets.count == 1)
+        #expect(await rig.status().transport == .offline)
+        await rig.socket.setForeground(true)
+        await rig.socket.setOnline(true)
+        await rig.clock.settle()
+        #expect(rig.sockets.sockets.count == 1)
+        // New words for the same standing (a later `since`) follow.
+        await rig.socket.setHostReachable(false, reason: "The Mac is unreachable since 9:20")
+        #expect(await rig.status().lastError == "The Mac is unreachable since 9:20")
+    }
+
+    @Test func `the carrier saying up tries at once with the count reset`() async throws {
+        let rig = Rig()
+        await rig.socket.start()
+        _ = await rig.open(0)
+        #expect(await rig.wait(for: .open))
+        await rig.socket.setHostReachable(false, reason: "held")
+        #expect(await rig.wait(for: .offline))
+        await rig.socket.setHostReachable(true, reason: nil)
+        let second = await rig.sockets.socket(1)
+        #expect(rig.sockets.sockets.count == 2)
+        #expect(await rig.status().transport == .reconnecting)
+        second.hello()
+        #expect(await rig.wait(for: .open))
+        let status = await rig.status()
+        #expect(status.attempts == 0)
+        #expect(status.lastError == nil)
+        // The same word twice changes nothing.
+        await rig.socket.setHostReachable(true, reason: nil)
+        await rig.clock.settle()
+        #expect(rig.sockets.sockets.count == 2)
+    }
+
+    @Test func `down before the first attempt holds the lane, and up in the background waits for the foreground`() async throws {
+        let rig = Rig()
+        await rig.socket.setHostReachable(false, reason: "held")
+        await rig.socket.start()
+        await rig.clock.settle()
+        #expect(rig.sockets.sockets.isEmpty)
+        #expect(rig.mint.count == 0)
+        #expect(await rig.status().transport == .offline)
+        await rig.socket.setForeground(false)
+        await rig.socket.setHostReachable(true, reason: nil)
+        await rig.clock.settle()
+        #expect(rig.sockets.sockets.isEmpty)
+        #expect(await rig.status().transport == .suspended)
+        await rig.socket.setForeground(true)
+        _ = await rig.sockets.socket(0)
+        #expect(rig.sockets.sockets.count == 1)
+    }
 }

@@ -17,7 +17,8 @@ struct HostsView: View {
     @State private var hooksFired = false
 
     var body: some View {
-        let clients = model.registry.ordered
+        // The paired hosts; each host relayed through one sits under it (the hook below), never listed twice.
+        let clients = model.registry.ordered.filter { !$0.environment.isRelayed }
         List {
             Section {
                 ForEach(clients, id: \.environment.id) { client in
@@ -37,6 +38,12 @@ struct HostsView: View {
                         Button("Forget", systemImage: "trash", role: .destructive) { forgetting = client.environment }
                     }
                     .accessibilityIdentifier("environment-row")
+                    // Thread 29: the hosts reached through this one (the Mac through the box).
+                    ForEach(model.registry.relayed(via: client.environment.id), id: \.environment.id) { relayed in
+                        NavigationLink(value: HostDetailRoute(environmentId: relayed.environment.id)) {
+                            RelayedHostRow(client: relayed, carrierName: client.environment.name)
+                        }
+                    }
                 }
             } footer: {
                 if !clients.isEmpty {
@@ -118,6 +125,7 @@ struct HostRow: View {
             }
             .layoutPriority(1)
             Spacer(minLength: Layout.rowGap)
+            DriftMark(client: client)
             // An id must stay legible: `caption` mono, not the stamp step's
             // caption2, which falls under the floor for eight glyphs of mono.
             Text(abbreviatedEnvironmentId(client.environment.id))
@@ -150,7 +158,10 @@ struct HostDetailView: View {
     var body: some View {
         let client = model.registry.client(environmentId)
         Group {
-            if let client {
+            if let client, client.environment.isRelayed, let carrier = model.registry.carrier(of: client.environment.id) {
+                // Thread 29: a relayed host's detail borrows its carrier's key and has no fix of its own.
+                RelayedHostDetailView(client: client, carrier: carrier.environment)
+            } else if let client {
                 detail(client)
             } else {
                 // Forgotten while on screen: the list behind is already without it.
@@ -200,11 +211,8 @@ struct HostDetailView: View {
                 }
             }
 
-            // 2. Activity: what the host is doing. Thread 21 ("Hosts: deploy
-            // drift, the Mac bridge, devices, sync") adds exactly one line here,
-            // `HostActivitySections(client: client)`, a view of its own under
-            // Shell/Hosts/ whose body is one or more Sections, so they take the
-            // inset grouped style and the list's animations like the rest.
+            // 2. Activity: what the host is doing (Shell/Hosts/, thread 21).
+            HostActivitySections(client: client)
 
             // 3. Key: the four capabilities and whether this key has them.
             Section {
@@ -277,6 +285,7 @@ struct HostDetailView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .background { ActivityPollers(client: client) } // the Activity sections' loops, outlive any row (Shell/Hosts)
         .scrollDismissesKeyboard(.interactively)
         .sheet(item: $pairingAgain) { AddEnvironmentSheet(replacing: $0) }
         .forgetHostDialog(host: $forgetting) { id in
@@ -298,6 +307,7 @@ struct HostDetailView: View {
 /// `forget` is the package's `forgetHost`, which unregisters push on the
 /// host first.
 private struct ForgetHostDialog: ViewModifier {
+    @Environment(AppModel.self) private var model
     @Binding var host: PairedEnvironment?
     let forget: (String) async -> Void
 
@@ -311,8 +321,9 @@ private struct ForgetHostDialog: ViewModifier {
             Button("Forget Host", role: .destructive) {
                 Task { await forget(environment.id) }
             }
-        } message: { _ in
-            Text("Its threads stay on the host, and it stops sending notifications here when it can be reached. The key stays valid there until revoked. Pair again to come back.")
+        } message: { environment in
+            // Thread 29: the hosts relayed through this one go with it, by name.
+            Text(forgetCopy(carrier: environment.name, relayed: model.registry.relayed(via: environment.id).map(\.environment.name)))
         }
     }
 }

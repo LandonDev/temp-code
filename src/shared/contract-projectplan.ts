@@ -42,6 +42,11 @@ export type ProjectPlanState = z.infer<typeof ProjectPlanStateSchema>
 export const MilestoneLinkSchema = z.object({ projectId: z.string(), milestone: z.number().int() })
 export type MilestoneLink = z.infer<typeof MilestoneLinkSchema>
 
+/** What `projectPlan.tick` answers: whether the heading changed (or already
+ *  read that way) and the state after it. The phone decodes this shape. */
+export const ProjectPlanTickAnswerSchema = z.object({ ticked: z.boolean(), state: ProjectPlanStateSchema.nullable() })
+export type ProjectPlanTickAnswer = z.infer<typeof ProjectPlanTickAnswerSchema>
+
 export const ProjectPlanRequestSchemas = [
   request('projectPlan.get', z.object({ projectId: z.string() })),
   request('projectPlan.pin', z.object({ projectId: z.string(), pinned: z.boolean() })),

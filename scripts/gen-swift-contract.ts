@@ -25,8 +25,28 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
-import { CONTRACT_VERSION } from '../src/shared/capabilities'
+import { CONTRACT_VERSION, METHOD_CAPABILITY } from '../src/shared/capabilities'
 import { ClientRequestSchema } from '../src/shared/contract'
+import {
+  BatchAdoptResultSchema,
+  BatchRulesSchema,
+  BatchStateSchema,
+  BatchStepKindSchema,
+  BatchStepSchema,
+  BatchStepSpecSchema,
+  BatchStepStatusSchema
+} from '../src/shared/contract-batch'
+import { HostJobSchema } from '../src/shared/contract-host'
+import {
+  DeviceHolderSchema,
+  HostDevicesReportSchema,
+  HostLoadSchema,
+  PhoneConnectionSchema,
+  PhoneSchema,
+  SimulatorSchema,
+  SimulatorStateSchema,
+  XcodeInfoSchema
+} from '../src/shared/contract-hostdevices'
 import {
   AudienceSchema,
   CapabilitySchema,
@@ -36,6 +56,12 @@ import {
   WebhookEventSchema
 } from '../src/shared/contract-remote'
 import { ProjectModeSchema, ThreadTypeSchema } from '../src/shared/domain'
+import {
+  MilestoneLinkSchema,
+  ProjectPlanMilestoneSchema,
+  ProjectPlanStateSchema,
+  ProjectPlanTickAnswerSchema
+} from '../src/shared/contract-projectplan'
 import {
   AttachmentBeginAnswerSchema,
   AttachmentChunkAnswerSchema,
@@ -47,12 +73,16 @@ import {
   FailureKindSchema,
   FailureSchema,
   LimitWindowSchema,
+  NoticeKindSchema,
   PermissionPolicySchema,
   PreambleStampSchema,
   SessionStatusSchema
 } from '../src/shared/events'
 import { GateNoticeSchema, GateStepSchema } from '../src/shared/gate'
-import { ReviewFindingSchema, ReviewNoticeSchema } from '../src/shared/review'
+import { ReviewFindingSchema, ReviewNoticeSchema, ReviewScopeSchema, ReviewSettingsSchema } from '../src/shared/review'
+import { PlanScopeSchema, PlanSettingsSchema } from '../src/shared/plans'
+import { ModelPolicySchema, OrchestrationRulesSchema } from '../src/shared/rules'
+import { MacBridgePolicySchema } from '../src/shared/contract-macbridge'
 import * as W from '../src/shared/wireSchemas'
 
 // ── the subset ──────────────────────────────────────────────────────────
@@ -68,7 +98,7 @@ type UnionEntry = {
 type MethodEntry = { kind: 'method'; method: string; output: z.ZodType }
 export type SubsetEntry = NamedEntry | UnionEntry | MethodEntry
 
-const type = (id: string, schema: z.ZodType): NamedEntry => ({ kind: 'type', id, schema })
+export const type = (id: string, schema: z.ZodType): NamedEntry => ({ kind: 'type', id, schema })
 /** A discriminated union: each branch becomes `<PascalCase(value)><suffix>`. */
 const union = (
   id: string,
@@ -82,7 +112,7 @@ const union = (
   discriminator,
   suffix
 })
-const method = (name: string, output: z.ZodType): MethodEntry => ({
+export const method = (name: string, output: z.ZodType): MethodEntry => ({
   kind: 'method',
   method: name,
   output
@@ -103,8 +133,22 @@ export const SUBSET: SubsetEntry[] = [
   type('PushEnvironment', PushEnvironmentSchema),
   type('PushEvent', PushEventSchema),
   type('LimitBucket', (LimitWindowSchema as z.ZodUnion<[z.ZodType, z.ZodType]>).options[0]),
+  type('ScreenState', W.ScreenStateSchema),
+  type('PowerState', W.PowerStateSchema),
   type('GithubInboxChecks', W.GithubInboxChecksSchema.unwrap()),
   type('GithubInboxReviewDecision', W.GithubInboxReviewDecisionSchema),
+  type('NoticeKind', NoticeKindSchema),
+  type('ThreadResourceKind', W.ThreadResourceKindSchema),
+  type('HostJob', HostJobSchema),
+  type('HostJobPhase', W.HostJobPhaseSchema),
+  type('BatchStepKind', BatchStepKindSchema),
+  type('BatchStepStatus', BatchStepStatusSchema),
+  // named so BatchRules and batch.setRules's partial share one enum each and a BatchRules can be sent whole
+  type('BatchLand', BatchRulesSchema.shape.land),
+  type('BatchThen', BatchRulesSchema.shape.then),
+  type('SimulatorState', SimulatorStateSchema),
+  type('PhoneConnection', PhoneConnectionSchema),
+  type('ReviewOutcome', ReviewNoticeSchema.shape.outcome),
   // bodies and rows
   type('OmittedBody', W.OmittedBodySchema),
   type('Body', W.BodySchema),
@@ -114,6 +158,8 @@ export const SUBSET: SubsetEntry[] = [
   type('LimitWindow', LimitWindowSchema),
   type('FailureKind', FailureKindSchema),
   type('Failure', FailureSchema),
+  // named before the shapes that reuse it (hello, /api/hello, PeerState), so it is emitted once
+  type('BuildFacts', W.BuildFactsSchema),
   // the host's own rows: the review and gate payloads a notice carries, the preamble stamp
   type('PreambleStamp', PreambleStampSchema),
   type('ReviewFinding', ReviewFindingSchema),
@@ -129,18 +175,50 @@ export const SUBSET: SubsetEntry[] = [
   type('SessionMeta', W.SessionMetaSchema),
   type('SessionPage', W.SessionPageSchema),
   type('SessionChanges', W.SessionChangesSchema),
+  type('ThreadResource', W.ThreadResourceSchema),
+  type('ThreadResourceRemoval', W.ThreadResourceRemovalSchema),
+  type('SessionBatchResult', W.SessionBatchResultSchema),
   type('WorkspaceMeta', W.WorkspaceMetaSchema),
   type('WorkspaceIcon', W.WorkspaceIconSchema),
   type('ProjectMeta', W.ProjectMetaSchema),
   type('FileChange', W.FileChangeSchema),
   type('QueuedMessage', W.QueuedMessageSchema),
   type('AccountPins', W.AccountPinsSchema),
+  type('AccountProfile', W.AccountProfileSchema),
+  type('UsageWindow', W.UsageWindowSchema),
+  type('UsageReport', W.UsageReportSchema),
+  type('AccountHeadroom', W.AccountHeadroomSchema),
+  type('ProviderAccounts', W.ProviderAccountsSchema),
+  type('AccountsSnapshot', W.AccountsSnapshotSchema),
   type('ModelInfo', W.ModelInfoSchema),
   type('ProviderInfo', W.ProviderInfoSchema),
   type('SessionSearchHit', W.SessionSearchHitSchema),
   type('SessionSearchResult', W.SessionSearchResultSchema),
   type('ProjectSearchMatch', W.ProjectSearchMatchSchema),
   type('ProjectSearchResult', W.ProjectSearchResultSchema),
+  type('NoteSearchHit', W.NoteSearchHitSchema),
+  type('NoteSearchResult', W.NoteSearchResultSchema),
+  // master threads (contract-batch.ts)
+  type('BatchStepSpec', BatchStepSpecSchema),
+  type('BatchStep', BatchStepSchema),
+  type('BatchRules', BatchRulesSchema),
+  type('BatchState', BatchStateSchema),
+  type('BatchAdoptResult', BatchAdoptResultSchema),
+  // notes, the project plan, reviews, plans, resources, the launch mirror
+  type('ReviewSettings', ReviewSettingsSchema),
+  type('PlanSettings', PlanSettingsSchema),
+  // devices on a Mac, deploy from the app, the Mac bridge's thread switch (contract-hostdevices.ts, contract-host.ts, contract-macbridge.ts)
+  type('DeviceHolder', DeviceHolderSchema),
+  type('Simulator', SimulatorSchema),
+  type('Phone', PhoneSchema),
+  type('XcodeInfo', XcodeInfoSchema),
+  type('HostLoad', HostLoadSchema),
+  type('HostDevicesReport', HostDevicesReportSchema),
+  type('HostDevicesHost', W.HostDevicesHostSchema),
+  type('HostJobStatus', W.HostJobStatusSchema),
+  type('DeployStatus', W.DeployStatusSchema),
+  type('HostLogSnapshot', W.HostLogSnapshotSchema),
+  type('MacBridgeThreadState', W.MacBridgeThreadStateSchema),
   // GitHub inbox and work items
   type('GithubInboxAuth', W.GithubInboxAuthSchema),
   type('GithubInboxPerson', W.GithubInboxPersonSchema),
@@ -160,6 +238,8 @@ export const SUBSET: SubsetEntry[] = [
   type('PushStatus', W.PushStatusSchema),
   type('CreatedKey', W.CreatedKeySchema),
   type('CreatedPairing', W.CreatedPairingSchema),
+  // the relay (contract-relay.ts): a host reachable through the paired one, and its state
+  type('HostPresence', W.HostPresenceSchema),
   type('HelloResponse', W.HelloResponseSchema),
   type('PairBody', PairBodySchema),
   type('PairKeyResponse', W.PairKeyResponseSchema),
@@ -176,6 +256,25 @@ export const SUBSET: SubsetEntry[] = [
   type('BuildOutput', W.BuildOutputSchema),
   type('BuildRun', W.BuildRunSchema),
   type('BuildUpdate', W.BuildUpdateSchema),
+  type('ThreadNotesDoc', W.ThreadNotesDocSchema),
+  // Thread 25: the plan flow and project settings on the phone.
+  type('PlanScope', PlanScopeSchema),
+  type('ReviewScope', ReviewScopeSchema),
+  type('ModelPolicy', ModelPolicySchema),
+  type('OrchestrationRules', OrchestrationRulesSchema),
+  // a host's activity (iOS thread 21): the sync lines and the Mac bridge's calls
+  type('HarnessEnvironmentStatus', W.HarnessEnvironmentStatusSchema),
+  type('HarnessSyncStatus', W.HarnessSyncStatusSchema),
+  type('MemoryEnvironmentStatus', W.MemoryEnvironmentStatusSchema),
+  type('MemoryConflict', W.MemoryConflictSchema),
+  type('MemorySyncStatus', W.MemorySyncStatusSchema),
+  type('MacBridgePolicy', MacBridgePolicySchema),
+  type('MacBridgeHeld', W.MacBridgeHeldSchema),
+  type('MacBridgeLoad', W.MacBridgeLoadSchema),
+  type('MacBridgeCall', W.MacBridgeCallSchema),
+  type('MacBridgeActivityHost', W.MacBridgeActivityHostSchema),
+  type('MacBridgeActivity', W.MacBridgeActivitySchema),
+  type('Ok', W.OkSchema),
   union('ServerPush', W.RemotePushSchema, 'push', 'Push'),
   // methods: params from contract.ts, outputs from the handlers in server/index.ts
   method('catalog.get', W.CatalogSchema),
@@ -202,18 +301,48 @@ export const SUBSET: SubsetEntry[] = [
   method('session.pin', z.null()),
   method('session.pause', z.null()),
   method('session.resume', z.null()),
-  // a queued batch thread started ahead of its sibling (the strip's Start now)
-  method('session.start', z.object({ started: z.boolean() })),
   // the failure card's Retry and Route automatically, the review card's Merge anyway
   method('session.continue', z.null()),
   method('session.reroute', W.RerouteAnswerSchema),
   method('review.override', W.ReviewOverrideAnswerSchema),
+  // master threads, the queue, the launch mirror, notes
+  method('session.setMaster', z.null()),
+  method('session.start', W.SessionStartedSchema),
+  method('session.batch', W.SessionBatchResultSchema),
+  method('resources.list', z.object({ resources: z.array(W.ThreadResourceSchema) })),
+  method('resources.listAll', z.object({ resources: z.array(W.ThreadResourceSchema) })),
+  method('resources.remove', z.object({ results: z.array(W.ThreadResourceRemovalSchema) })),
+  method('accounts.list', W.AccountsSnapshotSchema),
+  method('project.setAccounts', z.null()),
+  method('workspace.setAccounts', z.null()),
+  method('batch.get', BatchStateSchema),
+  method('batch.children', W.BatchChildrenSchema),
+  method('batch.setRules', BatchStateSchema),
+  method('batch.stopStep', W.BatchStoppedSchema),
+  method('batch.adopt', BatchAdoptResultSchema),
+  method('batch.archive', W.SessionBatchResultSchema),
+  // the project plan's link (the rest of projectPlan.*, review.*, plans.* and the preamble setters are thread 17's and 25's rows below)
+  method('projectPlan.linkOf', MilestoneLinkSchema.nullable()),
+  // devices on a Mac, deploy from the app, the Mac bridge, accounts
+  method('host.devices.hosts', z.array(W.HostDevicesHostSchema)),
+  method('host.devices', HostDevicesReportSchema),
+  method('host.devices.watch', HostDevicesReportSchema),
+  method('host.devices.unwatch', W.HostDevicesOkSchema),
+  method('host.simulator.shutdown', HostDevicesReportSchema),
+  method('host.simulator.delete', HostDevicesReportSchema),
+  method('host.device.openXcode', W.HostDeviceOpenedSchema),
+  method('host.deployStatus', W.DeployStatusSchema),
+  method('host.deploy', W.DeployStatusSchema),
+  method('host.log', W.HostLogSnapshotSchema),
+  method('macBridge.thread.get', W.MacBridgeThreadStateSchema),
   method('queue.list', z.array(W.QueuedMessageSchema)),
   method('queue.add', z.null()),
   method('queue.remove', z.null()),
   method('queue.update', z.null()),
   method('queue.reorder', z.null()),
   method('queue.steer', z.null()),
+  method('session.notes.get', W.ThreadNotesDocSchema),
+  method('session.notes.set', W.ThreadNotesDocSchema),
   // a photo or file from the phone lands in the thread's attachment dir
   method('attachment.begin', AttachmentBeginAnswerSchema),
   method('attachment.chunk', AttachmentChunkAnswerSchema),
@@ -242,7 +371,33 @@ export const SUBSET: SubsetEntry[] = [
   method('github.thread', W.GitHubWorkItemThreadSchema),
   method('github.prDiff', W.GitHubPrDiffSchema),
   method('session.search', W.SessionSearchResultSchema),
-  method('search.project', W.ProjectSearchResultSchema)
+  method('search.project', W.ProjectSearchResultSchema),
+  // the project plan (contract-projectplan.ts): the phone's milestone rows, the options card and the chip
+  type('ProjectPlanMilestone', ProjectPlanMilestoneSchema),
+  type('ProjectPlanState', ProjectPlanStateSchema),
+  type('MilestoneLink', MilestoneLinkSchema),
+  type('ProjectPlanTickAnswer', ProjectPlanTickAnswerSchema),
+  method('projectPlan.get', ProjectPlanStateSchema.nullable()),
+  method('projectPlan.pin', ProjectPlanStateSchema.nullable()),
+  method('projectPlan.tick', ProjectPlanTickAnswerSchema),
+  method('projectPlan.link', z.null()),
+  method('notes.search', W.NoteSearchResultSchema),
+  // Thread 25: the plan flow and project settings on the phone.
+  method('plan.implement', W.SessionMetaSchema),
+  method('plans.get', PlanScopeSchema),
+  method('plans.set', z.null()),
+  method('review.get', ReviewScopeSchema),
+  method('review.set', z.null()),
+  method('project.setPreamble', z.null()),
+  method('workspace.setPreamble', z.null()),
+  method('rules.get', z.object({ rules: OrchestrationRulesSchema, overridden: z.boolean() })),
+  // a host's activity (iOS thread 21): the sync lines and the Mac bridge's calls
+  method('harness.status', W.HarnessSyncStatusSchema),
+  method('harness.sync', W.HarnessSyncStatusSchema),
+  method('memory.status', W.MemorySyncStatusSchema),
+  method('memory.sync', W.MemorySyncStatusSchema),
+  method('macBridge.activity', W.MacBridgeActivitySchema),
+  method('macBridge.stop', W.OkSchema)
 ]
 
 /** Enum values that need an explicit Swift case name. */
@@ -289,7 +444,7 @@ interface MethodShape {
 }
 
 /** The schemas the subset names (and the params of its methods), one JSON Schema each. */
-export function jsonSchemas(): { defs: Record<string, JS>; methods: MethodShape[] } {
+export function jsonSchemas(subset: readonly SubsetEntry[] = SUBSET): { defs: Record<string, JS>; methods: MethodShape[] } {
   const registry = z.registry<{ id: string }>()
   // The same schema instance keeps its first id (a named type an output
   // reuses, the `Id` params several remote.* methods share).
@@ -298,7 +453,7 @@ export function jsonSchemas(): { defs: Record<string, JS>; methods: MethodShape[
     return registry.get(schema)!.id
   }
   const methods: MethodShape[] = []
-  for (const entry of SUBSET) {
+  for (const entry of subset) {
     if (entry.kind === 'type') add(entry.schema, entry.id)
     else if (entry.kind === 'union') {
       add(entry.schema, entry.id)
@@ -310,6 +465,10 @@ export function jsonSchemas(): { defs: Record<string, JS>; methods: MethodShape[
     } else {
       const request = ClientRequestSchema.options.find((o) => o.shape.method.value === entry.method)
       if (!request) throw new Error(`${entry.method} is not in ClientRequestSchema`)
+      // A method only the renderer's loopback socket may call never reaches a
+      // phone: the capability gate refuses every remote caller before the handler.
+      if (METHOD_CAPABILITY[entry.method as keyof typeof METHOD_CAPABILITY] === 'local')
+        throw new Error(`${entry.method} is local-only (capabilities.ts); a phone can never call it`)
       const raw = (request.shape as { params?: z.ZodType }).params ?? null
       const params = raw instanceof z.ZodOptional ? (raw.unwrap() as z.ZodType) : raw
       methods.push({
@@ -755,10 +914,10 @@ const HEADER = [
   ''
 ]
 
-export function generate(): Record<string, string> {
-  const { defs, methods } = jsonSchemas()
+export function generate(subset: readonly SubsetEntry[] = SUBSET): Record<string, string> {
+  const { defs, methods } = jsonSchemas(subset)
   const em: Emitter = { defs, enumNames: new Map(), branchKeys: new Map(), shadowed: new Set() }
-  for (const entry of SUBSET) {
+  for (const entry of subset) {
     if (entry.kind === 'type' && defs[entry.id]?.enum)
       em.enumNames.set(enumKey(defs[entry.id].enum!), entry.id)
     if (entry.kind === 'union') {
@@ -772,7 +931,7 @@ export function generate(): Record<string, string> {
     if (files[file].length) files[file].push('')
     files[file].push(...lines)
   }
-  for (const entry of SUBSET) {
+  for (const entry of subset) {
     if (entry.kind === 'type')
       push(
         defs[entry.id].enum ? 'Enums.swift' : 'Types.swift',

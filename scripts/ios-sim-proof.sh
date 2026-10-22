@@ -33,6 +33,14 @@
 #   settings Settings, Hosts, a host's detail (TC_TEST_OPEN=host) and the pairing
 #           sheet (TC_TEST_SHEET=pair, and pair-error for a refused code), light
 #           and dark, then Settings and the detail at the accessibility size.
+#   host-extras The host detail's Activity sections (iOS 21): first with the
+#           read key (every reason in the footers, no deploy row live), then
+#           the app re-paired with TC_TEST_PAIR_LINK_ADMIN: Build with the
+#           finished deploy's row, Devices with the fixture Mac's booted
+#           simulator and paired iPhone, Sync with the never-synced peer, light
+#           and dark; the deploy log sheet (TC_TEST_SHEET=deploy-log) light and
+#           dark; the detail at the accessibility size. The Mac bridge section
+#           needs a paired Mac serving the host, so a single test server has none.
 #   diff    The diff screen: the small edit of the dark-mode thread and the
 #           3,600-line edit of the gateway-router thread, light and dark, then
 #           the big one at the accessibility size.
@@ -445,6 +453,29 @@ settings_set() {
   xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
 }
 
+host_extras_set() {
+  [ -n "${TC_TEST_PAIR_LINK_ADMIN:-}" ] || { echo "ios-sim-proof: the host-extras set needs TC_TEST_PAIR_LINK_ADMIN" >&2; return 2; }
+  appearance light
+  # The read key: the Build row disabled, the deploy, sync and device reasons in the footers.
+  shot "host-detail-activity-read" hosts "" "" host
+  xcrun simctl uninstall "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
+  xcrun simctl install "$TC_SIM_UDID" "$APP"
+  TC_TEST_PAIR_LINK="$TC_TEST_PAIR_LINK_ADMIN" TC_TEST_PAIR_NAME="${TC_TEST_PAIR_NAME:-} (admin)" pair || { echo "ios-sim-proof: the app did not pair with the admin key" >&2; return 3; }
+  rm -f "$OUT/shots/00-pairing.png"
+  for mode in light dark; do
+    appearance "$mode"
+    # Build: Master, Deploy Master, the finished deploy's row; Devices: the booted
+    # iPhone 17 Pro's green dot and CPU, the paired iPhone; Sync: the peer never synced.
+    shot "host-detail-activity-$mode" hosts "" "" host
+    # The log: twelve mono lines ending in the ending line, following the tail.
+    TC_SHEET=deploy-log shot "deploy-log-$mode" hosts "" "" host
+  done
+  appearance light
+  xcrun simctl ui "$TC_SIM_UDID" content_size "$A11Y_SIZE" >/dev/null
+  shot "host-detail-activity-a11y" hosts "" "" host
+  xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
+}
+
 diff_set() {
   for mode in light dark; do
     appearance "$mode"
@@ -461,6 +492,7 @@ case "$SET" in
   f4) f4_set ;;
   settings) settings_set ;;
   diff) diff_set ;;
+  host-extras) host_extras_set ;;
   f4-ui) f4_ui_set ;;
   shell) shell_set; host_gone_set ;;
   threads) threads_set ;;

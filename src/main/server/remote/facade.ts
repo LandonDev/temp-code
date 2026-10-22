@@ -1,6 +1,8 @@
+import { hostname } from 'node:os'
 import { basename } from 'node:path'
 import { z } from 'zod'
 import { allows, type Capability, type Principal } from '@shared/capabilities'
+import { relayState, type HostPresence, type PowerState, type RelayState, type ScreenState } from '@shared/contract-relay'
 import { CATALOG, modelInfo, resolveModel, visibleCatalog, type ProviderId } from '@shared/catalog'
 import type { FileChange, ProjectMeta, WorkspaceMeta } from '@shared/domain'
 import type { EventRow, SessionMeta } from '@shared/events'
@@ -8,6 +10,7 @@ import { LIVE_STATUSES } from '@shared/session-lifecycle'
 import { isOmittedBody } from '@shared/wire'
 import { currentBranch, fileDiff, workingTreeChanges } from '../git'
 import type { SessionRegistry } from '../sessions'
+import type { RelayFacadeHosts } from './relay'
 import { eventsPage, sessionPage } from '../wire'
 
 /**
@@ -43,7 +46,7 @@ export function collapseStatus(status: SessionMeta['status']): FacadeStatus {
 
 export class FacadeError extends Error {
   constructor(
-    readonly code: 'not_found' | 'forbidden' | 'invalid' | 'conflict',
+    readonly code: 'not_found' | 'forbidden' | 'invalid' | 'conflict' | 'unavailable',
     message: string
   ) {
     super(message)
@@ -55,7 +58,38 @@ export interface FacadeContext {
   principal: Principal
   /** The public origin, for the thread links in answers; null when unknown. */
   origin?: string | null
+  /** This host's environment id, stamped on every row as `host`; 'local' when unknown (tests). */
+  environmentId?: string
+  /** This host's name for list_projects' own row; os.hostname() by default. */
+  hostName?: string
+  /** The relayed hosts (remote/relay.ts), for list_projects' host rows; mcp.ts does the merge. */
+  relay?: RelayFacadeHosts
 }
+
+/** One host in list_projects: this one (`self`) and every host reachable through it, with the one word a bot acts on. */
+export interface HostRow {
+  environmentId: string
+  name: string
+  self: boolean
+  state: RelayState
+  /** When the host's link state last changed (ISO); for this host, when it started. */
+  since: string
+  screen: ScreenState
+  power: PowerState
+}
+
+export const hostRowOf = (p: HostPresence): HostRow => ({
+  environmentId: p.environmentId,
+  name: p.name,
+  self: false,
+  state: relayState(p),
+  since: new Date(p.since).toISOString(),
+  screen: p.screen,
+  power: p.power
+})
+
+const STARTED_AT = Date.now()
+export const hostOf = (ctx: Pick<FacadeContext, 'environmentId'>): string => ctx.environmentId ?? 'local'
 
 const capsOf = (p: Principal): Capability[] => (p.kind === 'local' ? ['admin'] : p.caps)
 
@@ -410,6 +444,8 @@ export interface SessionRow {
   queued: number
   archived: boolean
   lastActivity: string
+  /** The environment id of the host the session lives on; a relayed row's `id` is `<host>:<sessionId>`. */
+  host: string
   url?: string
 }
 
@@ -433,17 +469,29 @@ function rowOf(ctx: FacadeContext, meta: SessionMeta, prompts?: PendingPrompt[])
     queued: ctx.registry.queueList(meta.id).length,
     archived: meta.archived,
     lastActivity: iso(ctx.registry.lastActivityAt(meta.id) || meta.updatedAt),
+    host: hostOf(ctx),
     ...(ctx.origin ? { url: `${ctx.origin}/ui#thread=${meta.id}` } : {})
   }
 }
 
 // ── the operations ───────────────────────────────────────────────────
 
-const Session = z.string().min(1).describe('The session id (from list_sessions or start_session).')
+const Session = z
+  .string()
+  .min(1)
+  .describe('The session id (from list_sessions or start_session). An id of the form env_…:id lives on that host and routes there.')
+/** On every tool: which host answers (mcp.ts routes by it). */
+export const Host = z
+  .string()
+  .min(1)
+  .max(120)
+  .optional()
+  .describe("The host to ask: an environment id or a name from list_projects' hosts. Default: this host, or the host a session id names.")
 const StatusInput = z.enum(['working', 'waiting', 'failed', 'done'])
 
-export const ListProjectsInput = z.object({}).describe('No arguments.')
+export const ListProjectsInput = z.object({ host: Host })
 export const ListSessionsInput = z.object({
+  host: Host,
   repo: z
     .string()
     .min(1)
@@ -466,6 +514,7 @@ export const ListSessionsInput = z.object({
   cursor: z.string().optional().describe('The cursor from the previous page.')
 })
 export const StartSessionInput = z.object({
+  host: Host,
   repo: z
     .string()
     .min(1)
@@ -518,6 +567,7 @@ export const StartSessionInput = z.object({
     )
 })
 export const SendMessageInput = z.object({
+  host: Host,
   session: Session,
   text: z.string().min(1).max(PROMPT_CHARS_MAX).describe('The message.'),
   when: z
@@ -527,8 +577,9 @@ export const SendMessageInput = z.object({
       'after_turn (default): queue it behind the current turn, sent at once if idle. now: steer the running turn with it. interrupt: stop the current turn, then send it.'
     )
 })
-export const GetSessionInput = z.object({ session: Session })
+export const GetSessionInput = z.object({ host: Host, session: Session })
 export const GetTranscriptInput = z.object({
+  host: Host,
   session: Session,
   limit: z
     .number()
@@ -560,9 +611,11 @@ export const GetTranscriptInput = z.object({
     .describe(`Character budget of the page (default ${TRANSCRIPT_CHARS_DEFAULT}).`)
 })
 export const ListPendingInput = z.object({
+  host: Host,
   session: Session.optional().describe('Only this session; default every waiting session.')
 })
 export const RespondInput = z.object({
+  host: Host,
   session: Session,
   requestId: z.string().min(1).describe('The prompt id from list_pending or the transcript.'),
   allow: z.boolean().optional().describe('For a permission or plan prompt: allow or deny.'),
@@ -574,12 +627,14 @@ export const RespondInput = z.object({
     ),
   answer: z.string().optional().describe('For a single question: the one answer.')
 })
-export const StopSessionInput = z.object({ session: Session })
+export const StopSessionInput = z.object({ host: Host, session: Session })
 export const ArchiveSessionInput = z.object({
+  host: Host,
   session: Session,
   archived: z.boolean().optional().describe('false restores an archived session. Default true.')
 })
 export const GetDiffInput = z.object({
+  host: Host,
   session: Session,
   path: z.string().min(1).optional().describe('One changed file: include its unified diff.'),
   chars: z
@@ -591,28 +646,45 @@ export const GetDiffInput = z.object({
     .describe(`Character budget of the diff text (default ${DIFF_CHARS_DEFAULT}).`)
 })
 
-export async function listProjects(ctx: FacadeContext): Promise<{
-  repos: {
+export interface Repo {
+  id: string
+  name: string
+  path: string
+  github: string | null
+  /** The environment id of the host the checkout is on. */
+  host: string
+  projects: {
     id: string
     name: string
-    path: string
-    github: string | null
-    projects: {
-      id: string
-      name: string
-      branch: string | null
-      mode: ProjectMeta['mode']
-      cwd: string
-    }[]
+    branch: string | null
+    mode: ProjectMeta['mode']
+    cwd: string
   }[]
-}> {
+}
+
+/** This host's own row: first in list_projects, always available. */
+export function selfHostRow(ctx: Pick<FacadeContext, 'environmentId' | 'hostName'>): HostRow {
+  return {
+    environmentId: hostOf(ctx),
+    name: ctx.hostName ?? hostname(),
+    self: true,
+    state: 'available',
+    since: new Date(STARTED_AT).toISOString(),
+    screen: 'unknown',
+    power: 'awake'
+  }
+}
+
+export async function listProjects(ctx: FacadeContext): Promise<{ hosts: HostRow[]; repos: Repo[] }> {
   const projects = ctx.registry.listProjects().filter((p) => !p.archived)
   return {
+    hosts: [selfHostRow(ctx), ...(ctx.relay?.list() ?? []).map(hostRowOf)],
     repos: ctx.registry.listWorkspaces().map((w) => ({
       id: w.id,
       name: w.name,
       path: w.path,
       github: w.githubRepo ?? null,
+      host: hostOf(ctx),
       projects: projects
         .filter((p) => p.workspaceId === w.id)
         .map((p) => ({ id: p.id, name: p.name, branch: p.branch, mode: p.mode, cwd: p.cwd }))
@@ -1068,14 +1140,14 @@ export const FACADE_TOOLS: readonly FacadeTool[] = [
   def(
     'list_projects',
     'read',
-    'The repos temp-code knows and the projects (branches or worktrees) inside each. Use a repo name with start_session.',
+    'The hosts reachable from here with their state (available | locked | asleep | unreachable), and the repos temp-code knows with the projects (branches or worktrees) inside each, each repo stamped with its host. Use a repo name with start_session.',
     ListProjectsInput,
     listProjects
   ),
   def(
     'list_sessions',
     'read',
-    'Sessions (threads), working ones first: id, title, repo, project, branch, model, status (working | waiting | failed | done), pending prompt kind, queued messages, last activity. Paged by cursor.',
+    'Sessions (threads), working ones first: id, title, repo, project, branch, model, status (working | waiting | failed | done), pending prompt kind, queued messages, last activity, host. Without host: this host plus the first page of every available relayed host (a relayed id is env_…:id); cursor pages this host only. With host: that host alone, paged by cursor.',
     ListSessionsInput,
     listSessions
   ),

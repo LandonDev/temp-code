@@ -423,7 +423,8 @@ export function useBoardDigest(id: string): BoardDigest {
   return useSyncExternalStore(store ? store.subscribe : noSubscribe, () => (store ? store.get(id) : NO_DIGEST));
 }
 
-/** The `batch` push (`{ push: 'batch', state }`, contract.ts), read by
+/** The `batch-delta` push (`{ push: 'batch-delta', state }`, contract.ts),
+ *  or an older host's `batch`, read by
  *  shape so a malformed frame never breaks the view. Its steps' logs are
  *  as the host sent them: the lines since the last push (`{ from, lines }`)
  *  or, from an older host, the whole log; `foldBatchPush` lays them on the
@@ -431,7 +432,7 @@ export function useBoardDigest(id: string): BoardDigest {
 export function batchFromPush(push: unknown, masterId: string): BatchState | null {
   if (!push || typeof push !== "object") return null;
   const rec = push as { push?: unknown; state?: unknown };
-  if (rec.push !== "batch" || !rec.state || typeof rec.state !== "object") return null;
+  if ((rec.push !== "batch-delta" && rec.push !== "batch") || !rec.state || typeof rec.state !== "object") return null;
   const batch = rec.state as Partial<BatchState>;
   if (batch.masterId !== masterId || !Array.isArray(batch.steps)) return null;
   const children = batchChildrenOf(batch);

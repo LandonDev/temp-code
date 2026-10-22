@@ -169,7 +169,7 @@ import TempCodeContract
     }
 
     @Test func `a notice row keeps its payload and a plain one carries none`() {
-        let gate = NoticeEvent.Gate(step: .typecheck, branch: "feature", ok: true, log: "", at: 1_200)
+        let gate = GateNotice(step: .typecheck, branch: "feature", ok: true, log: "", at: 1_200)
         let fold = ThreadFold.fold(rows([
             user("go"),
             .notice(NoticeEvent(kind: "gate", message: "Typecheck passed on feature", gate: gate)),

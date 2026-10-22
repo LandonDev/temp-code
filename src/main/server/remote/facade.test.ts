@@ -147,10 +147,44 @@ describe('list_projects', () => {
     expect(scratch.projects).toEqual([
       { id: projectId, name: 'main-work', branch: 'main', mode: 'local', cwd: repo }
     ])
+    // every repo names its host; this host is the first host row, always available
+    expect(scratch.host).toBe('local')
+    expect(out.hosts).toEqual([
+      expect.objectContaining({ environmentId: 'local', self: true, state: 'available', screen: 'unknown', power: 'awake' })
+    ])
+  })
+  it('names this host by its id and name, and lists the relayed hosts with their state', async () => {
+    const since = Date.UTC(2026, 2, 4, 9, 14)
+    const relayed = (environmentId: string, name: string, over: Record<string, unknown>) => ({
+      environmentId, name, platform: 'darwin', link: 'up' as const, since, screen: 'unlocked' as const, power: 'awake' as const, lastSeenAt: since, build: null, ...over
+    })
+    const out = await listProjects({
+      ...ctx(),
+      environmentId: 'env_box',
+      hostName: 'The box',
+      relay: {
+        list: () => [relayed('env_mac', 'Studio', { screen: 'locked' }), relayed('env_gone', 'Gone', { link: 'down' })],
+        call: async () => ({ ok: true, result: null })
+      }
+    })
+    expect(out.hosts).toEqual([
+      expect.objectContaining({ environmentId: 'env_box', name: 'The box', self: true, state: 'available' }),
+      { environmentId: 'env_mac', name: 'Studio', self: false, state: 'locked', since: new Date(since).toISOString(), screen: 'locked', power: 'awake' },
+      { environmentId: 'env_gone', name: 'Gone', self: false, state: 'unreachable', since: new Date(since).toISOString(), screen: 'unlocked', power: 'awake' }
+    ])
+    expect(out.repos.every((r) => r.host === 'env_box')).toBe(true)
   })
 })
 
 describe('list_sessions', () => {
+  it('stamps every row with this host', async () => {
+    const stamped = await thread('stamped one')
+    const out = await listSessions({ ...ctx(), environmentId: 'env_box' }, {})
+    expect(out.sessions.length).toBeGreaterThan(0)
+    expect(out.sessions.every((r) => r.host === 'env_box')).toBe(true)
+    // the next test counts the live threads exactly
+    await server.registry.setArchived(stamped.id, true)
+  })
   it('returns compact rows, working first, with a cursor', async () => {
     const idle = await thread('idle one')
     const busy = await thread('busy one', 'running')

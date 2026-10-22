@@ -449,6 +449,108 @@ final class ActingRig {
         await rig.client.stop()
     }
 
+    @Test func `the fleet batch sends the qualifying ids and folds the answer's failures into a toast naming the thread`() async throws {
+        let rig = try ActingRig()
+        let fake = try await rig.open()
+        // Two settled roots read long ago, one running: Archive done takes the two.
+        let old = 1_000_000
+        let now = old + ThreadBatch.archiveDoneAgeMs + 1
+        let metas = [sampleSession("s1", title: "Search", updatedAt: old), sampleSession("s2", title: "Billing", updatedAt: old), sampleSession("s3", title: "Live", updatedAt: now)]
+        fake.deliver(json(ServerPush.sessions(SessionsPush(sessions: metas))))
+        #expect(await rig.wait { rig.client.session("s3") != nil })
+        let selection = BatchSelection(scope: .host(name: "box"), seen: [:], floor: now, now: now)
+        #expect(ThreadBatch.targets(.archiveDone, rig.client.sessions, selection).map(\.id).sorted() == ["s1", "s2"])
+        let batching = Task { try await rig.client.batch(.archiveDone, selection: selection, cleanup: true) }
+        let request = try #require(await rig.request(fake, "session.batch"))
+        guard case .object(let params) = request.params else { throw TransportError.notConnected }
+        #expect(params["action"] == .string("archive"))
+        #expect(params["cleanup"] == .bool(true))
+        if case .array(let ids)? = params["ids"] { #expect(Set(ids) == [.string("s1"), .string("s2")]) } else { Issue.record("no ids") }
+        fake.answer(id: request.id, result: json(SessionBatchResult(attempted: ["s1", "s2"], succeeded: ["s2"], failed: [.init(sessionId: "s1", error: "harness not responding")])))
+        let toast = try await batching.value
+        #expect(toast.summary == "Archived 1 · 1 failed: Search (harness not responding)")
+        #expect(toast.failed.map(\.sessionId) == ["s1"])
+        // A whole-call refusal names every target.
+        let refused = Task { try await rig.client.batch(.archiveDone, selection: selection) }
+        let second = try #require(await rig.request(fake, "session.batch", count: 2))
+        guard case .object(let plain) = second.params else { throw TransportError.notConnected }
+        #expect(plain["cleanup"] == nil, "no cleanup key unless asked")
+        fake.refuse(id: second.id, error: "unknown session")
+        let whole = try await refused.value
+        #expect(whole.succeeded == 0)
+        #expect(whole.failed.count == 2)
+        #expect(whole.summary.hasPrefix("Archived 0 · 2 failed: "))
+        // Nothing qualifying never reaches the wire.
+        let none = try await rig.client.batch(.pause, selection: selection)
+        #expect(none.summary == "Paused 0")
+        #expect(fake.sentRequests.filter { $0.method == "session.batch" }.count == 2)
+        await rig.client.stop()
+    }
+
+    @Test func `a read key is refused before the wire for the fleet batch, start now and resources`() async throws {
+        let rig = try ActingRig(caps: [.read])
+        let fake = try await rig.open()
+        let selection = BatchSelection(scope: .host(name: "box"), now: 0)
+        await #expect(throws: ActionError.blocked(.readOnly)) { try await rig.client.batch(.pause, selection: selection) }
+        await #expect(throws: ActionError.blocked(.readOnly)) { try await rig.client.start("s1") }
+        await #expect(throws: ActionError.blocked(.readOnly)) { try await rig.client.removeResources("s1") }
+        await #expect(throws: ActionError.blocked(.readOnly)) { try await rig.client.archive("s1", removeResources: true) }
+        #expect(fake.sentRequests.contains { ["session.batch", "session.start", "resources.remove", "session.archive"].contains($0.method) } == false)
+        await rig.client.stop()
+    }
+
+    @Test func `archive with resources sends the key only when asked`() async throws {
+        let rig = try ActingRig()
+        let fake = try await rig.open()
+        let removing = Task { try await rig.client.archive("s1", removeResources: true) }
+        let first = try #require(await rig.request(fake, "session.archive"))
+        #expect(first.params == .object(["sessionId": .string("s1"), "archived": .bool(true), "removeResources": .bool(true)]))
+        fake.answer(id: first.id, result: "null")
+        try await removing.value
+        let keeping = Task { try await rig.client.archive("s1", removeResources: false) }
+        let second = try #require(await rig.request(fake, "session.archive", count: 2))
+        #expect(second.params == .object(["sessionId": .string("s1"), "archived": .bool(true)]))
+        fake.answer(id: second.id, result: "null")
+        try await keeping.value
+        await rig.client.stop()
+    }
+
+    @Test func `the ledger loads at open, follows the resources push, and marks a removal until the push lands`() async throws {
+        let rig = try ActingRig()
+        let fake = try await rig.open()
+        let all = try #require(await rig.request(fake, "resources.listAll"))
+        #expect(all.params == .object([:]))
+        let wt = ThreadResource(id: "r1", sessionId: "s1", environmentId: "env_test", kind: .worktree, identifier: "/wt/a", label: "ios/a", branch: "ios/a", createdAt: 1, removeRequestedAt: nil, removedAt: nil, note: nil)
+        let sim = ThreadResource(id: "r2", sessionId: "s1", environmentId: "env_mac", kind: .simulator, identifier: "UDID", label: "TC iPhone", branch: nil, createdAt: 1, removeRequestedAt: nil, removedAt: nil, note: nil)
+        fake.answer(id: all.id, result: json(Methods.ResourcesListAll.Output(resources: [wt, sim])))
+        #expect(await rig.wait { rig.client.resources.live(for: "s1").count == 2 })
+        #expect(rig.client.resources.countHeld(by: ["s1"]) == 2)
+
+        let removal = Task { try await rig.client.removeResources("s1", ids: ["r1"]) }
+        let request = try #require(await rig.request(fake, "resources.remove"))
+        #expect(request.params == .object(["sessionId": .string("s1"), "ids": .array([.string("r1")])]))
+        #expect(rig.client.resources.removing == ["r1"])
+        fake.answer(id: request.id, result: json(Methods.ResourcesRemove.Output(results: [ThreadResourceRemoval(id: "r1", outcome: .removed, note: nil)])))
+        let results = try await removal.value
+        #expect(results.map(\.id) == ["r1"])
+        #expect(rig.client.resources.removing == ["r1"], "the push is the truth, not the answer")
+        let gone = ThreadResource(id: "r1", sessionId: "s1", environmentId: "env_test", kind: .worktree, identifier: "/wt/a", label: "ios/a", branch: "ios/a", createdAt: 1, removeRequestedAt: 5, removedAt: 6, note: nil)
+        fake.deliver(json(ServerPush.resources(ResourcesPush(sessionId: "s1", resources: [gone, sim]))))
+        #expect(await rig.wait { rig.client.resources.removing.isEmpty })
+        #expect(rig.client.resources.live(for: "s1").map(\.id) == ["r2"])
+        #expect(rig.client.resources.bySession["s1"]?.count == 2, "removed rows stay for the sheet")
+
+        // Every live row when no ids are named; a refusal clears the mark.
+        let whole = Task { try await rig.client.removeResources("s1") }
+        let second = try #require(await rig.request(fake, "resources.remove", count: 2))
+        #expect(second.params == .object(["sessionId": .string("s1")]))
+        #expect(rig.client.resources.removing == ["r2"])
+        fake.refuse(id: second.id, error: "unknown session")
+        await #expect(throws: ActionError.self) { try await whole.value }
+        #expect(rig.client.resources.removing.isEmpty)
+        await rig.client.stop()
+    }
+
     @Test func `the catalog is fetched once and kept`() async throws {
         let rig = try ActingRig()
         let fake = try await rig.open()

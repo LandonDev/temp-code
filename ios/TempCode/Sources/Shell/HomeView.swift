@@ -129,6 +129,13 @@ struct HomeView: View {
         }
         if TestHooks.sheet == "new", composing == nil {
             composing = NewThreadTarget(client: client, workspace: workspace, project: nil)
+        } else if let sheet = TestHooks.sheet, sheet.hasPrefix("fleet:"), let action = TestHooks.batchAction(String(sheet.dropFirst(6))), !launched {
+            // The fleet confirm for the shot, host scope (thread iOS 20).
+            launched = true
+            FleetSwitches.shared.request(action, client: client, scope: .host(name: client.environment.name))
+        } else if let hook = TestHooks.action, hook.hasPrefix("batch:"), let action = TestHooks.batchAction(String(hook.dropFirst(6))), !launched {
+            launched = true
+            await FleetSwitches.shared.run(action, client: client, scope: .host(name: client.environment.name))
         } else if TestHooks.action == "new-chat", !launched {
             launched = true
             guard let catalog = await client.loadCatalog(), let provider = CatalogChoice.providerOrder.compactMap({ catalog[$0.rawValue] }).first else { return }
@@ -181,9 +188,10 @@ struct HomeView: View {
         for row in sections.flatMap(\.rows) {
             guard case .needsYou(let environmentId, let item) = row, let client = model.registry.client(environmentId) else { continue }
             let tail = item.kind == .paused ? [] : await client.peekTail(item.id)
+            // iOS 18: a waiting thread's row reads its notes' State line (NeedsYouNotes.swift).
+            let cue = await NeedsYouNotes.cue(HomeModel.cue(for: item, rows: tail), for: item, client: client)
             // The key changed under this task: a newer run owns the cues now.
             guard !Task.isCancelled else { return }
-            let cue = HomeModel.cue(for: item.kind, rows: tail)
             let key = Self.cueKey(environmentId, item.id)
             if cues[key] != cue { cues[key] = cue }
         }
@@ -292,7 +300,7 @@ private struct HomeRowView: View {
             .buttonStyle(.pressable)
             .listRowInsets(Layout.rowInsets)
             .listRowBackground(Surface.needsYou)
-            .threadRowActions(client: client, meta: item.meta)
+            .threadRowActions(client: client, meta: item.meta) { MasterPinButton(client: client, session: item.meta) }
         case .running(_, let meta):
             threadButton(meta, ThreadRowModel(session: meta))
         case .calm(_, let workspace):
@@ -302,6 +310,7 @@ private struct HomeRowView: View {
         case .project(_, let group, let paired):
             let workspace = client.workspaces.first { $0.id == group.project.workspaceId }
             ProjectHeaderRow(project: group.project, host: paired ? client.environment.name : nil) {
+                slots.projectTrailing?(client, group.project)
                 if let workspace {
                     NewThreadButton { newThread(client, workspace, group.project) }
                 }
@@ -373,7 +382,11 @@ private struct HomeRowView: View {
         }
         .buttonStyle(.pressable)
         .listRowInsets(Layout.rowInsets)
-        .threadRowActions(client: client, meta: meta)
+        // Start now on a queued root, Resume on a stopped one (thread iOS 20).
+        .threadRowActions(client: client, meta: meta) {
+            RowStateActions(client: client, meta: meta)
+            MasterPinButton(client: client, session: meta)
+        }
     }
 }
 
@@ -395,9 +408,12 @@ private struct HostHeader: View {
     var body: some View {
         HStack(spacing: 8) {
             ConnectionDot(status: client.status)
-            Text(client.environment.name)
-                .textStep(.title, weight: .semibold)
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(client.environment.name)
+                    .textStep(.title, weight: .semibold)
+                    .lineLimit(1)
+                slots.hostSubline?(client)
+            }
             Spacer(minLength: 8)
             slots.hostTrailing?(client)
             if let hostMenu = slots.hostMenu {

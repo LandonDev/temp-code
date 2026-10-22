@@ -101,8 +101,9 @@ struct ProjectHeadRow: View {
 }
 
 /// A file line: a file glyph in the glyph column, the path with its line
-/// number dim, the line itself in mono with the match in weight. The phone
-/// has no editor, so the row is a fact, not a push.
+/// number dim and "· newer" after it when this copy won the cross-host fold,
+/// the line itself in mono with the match in weight. The phone has no
+/// editor, so the row is a fact, not a push.
 struct FileRow: View {
     let file: SearchRow.FileHit
     @ScaledMetric(relativeTo: .subheadline) private var glyphWidth = Layout.glyphWidth
@@ -115,7 +116,7 @@ struct FileRow: View {
                 .frame(width: glyphWidth)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                (Text(file.relative) + Text(":\(file.line)").foregroundStyle(.tertiary))
+                (Text(file.relative) + Text(":\(file.line)").foregroundStyle(.tertiary) + Text(file.newer ? " · newer" : "").foregroundStyle(.tertiary))
                     .textStep(.meta)
                     .monospacedDigit()
                     .lineLimit(1)
@@ -129,6 +130,17 @@ struct FileRow: View {
         .padding(.vertical, 8)
         .frame(minHeight: Layout.rowHeight)
         .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    /// The path and line, the newer mark, the line itself, and the other
+    /// hosts whose copy folded into this row.
+    private var accessibilityLabel: String {
+        var parts = ["\(file.relative) line \(file.line)"]
+        if file.newer { parts.append("newer") }
+        parts.append(file.preview)
+        if !file.alsoOn.isEmpty { parts.append("Also on \(file.alsoOn.joined(separator: ", "))") }
+        return parts.joined(separator: ", ")
     }
 }
 

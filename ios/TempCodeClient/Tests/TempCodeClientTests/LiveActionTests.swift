@@ -56,6 +56,34 @@ extension LiveServerTests {
 @MainActor
 @Suite(.enabled(if: LiveServer.isConfigured && LiveServer.hasOperateKey, "needs the live server: bun run ios:test:client"), .serialized)
 struct ActionTests {
+    @Test func `the fleet's Pause all reaches every running root of the host and no subagent; Start now reaches a queued root`() async throws {
+        try await LiveServer.clearActions()
+        let client = try await LiveServer.actingClient()
+        #expect(await LiveServer.until { client.session("ios-batch-a-run") != nil && client.projects.contains { $0.name == "ios-fleet-project" } })
+        // The test server's own project for this test: two running roots and a running subagent.
+        let project = try #require(client.projects.first { $0.name == "ios-fleet-project" })
+        let selection = client.batchSelection(.project(id: project.id, name: project.name, cwd: project.cwd))
+        let running = ThreadBatch.targets(.pause, client.sessions, selection).map(\.id)
+        #expect(Set(running) == ["ios-batch-a-run", "ios-batch-b-run"], "a subagent follows its parent: \(running)")
+        let toast = try await client.batch(.pause, selection: selection)
+        #expect(toast.failed.isEmpty, toast.summary)
+        #expect(toast.succeeded == 2)
+        let actions = try await LiveServer.actions()
+        let paused = Set(actions.filter { $0["kind"] as? String == "pause" }.compactMap { $0["sessionId"] as? String })
+        #expect(paused == ["ios-batch-a-run", "ios-batch-b-run"], "\(paused)")
+        #expect(await LiveServer.until { client.session("ios-batch-a-run")?.status == .paused })
+        // Back the way it was, through the fleet's Resume all over the same project.
+        let resumed = try await client.batch(.resume, selection: selection)
+        #expect(resumed.succeeded == 2, resumed.summary)
+        #expect(await LiveServer.until { client.session("ios-batch-a-run")?.status == .running })
+
+        if client.session("ios-queued")?.status == .queued {
+            try await client.start("ios-queued")
+            #expect(try await LiveServer.actions().contains { $0["kind"] as? String == "start" && $0["sessionId"] as? String == "ios-queued" })
+        }
+        await client.stop()
+    }
+
     @Test func `a send lands on the host, echoes back as the user row, and the turn it starts can be stopped`() async throws {
         try await LiveServer.clearActions()
         let client = try await LiveServer.actingClient()
@@ -148,6 +176,29 @@ struct ActionTests {
         #expect(create?["agentType"] as? String == "implementer")
         #expect(actions.contains { $0["kind"] as? String == "send" && $0["sessionId"] as? String == built.id && $0["text"] as? String == "Implement the plan \"\(plan.title)\"." })
         #expect(await LiveServer.until { client.session(built.id)?.status == .running }, "the brief started the turn")
+        try await client.setArchived(built.id, true)
+        await client.stop()
+    }
+
+    @Test func `plan.implement starts the build from a complete plan: the host picks the title, the seed and the brief`() async throws {
+        try await LiveServer.clearActions()
+        let client = try await LiveServer.actingClient()
+        let planId = "ios-plan-waiting"
+        let plan = try #require(client.session(planId))
+        #expect(PlanFlowState.of(plan, session: { client.session($0) }) == .waiting)
+        let built = try await client.implementPlan(planId, type: .implementation, provider: nil, model: nil, reasoning: nil)
+        #expect(built.threadType == .implementation)
+        #expect(built.planThreadId == planId)
+        #expect(built.planPath == plan.planPath)
+        #expect(built.projectId == plan.projectId)
+        #expect(built.title == "Move invoices to the ledger")
+        #expect(client.session(built.id) != nil, "adopted at once")
+        let actions = try await LiveServer.actions()
+        let create = actions.first { $0["kind"] as? String == "create" }
+        #expect(create?["sessionId"] as? String == built.id)
+        #expect(create?["planPath"] as? String == plan.planPath)
+        #expect(actions.contains { $0["kind"] as? String == "send" && $0["sessionId"] as? String == built.id && ($0["text"] as? String)?.hasPrefix("Implement the plan") == true }, "\(actions)")
+        #expect(await LiveServer.until { client.session(planId).map { PlanFlowState.of($0, session: { client.session($0) }) } == .started(buildId: built.id, title: built.title, type: .implementation) })
         try await client.setArchived(built.id, true)
         await client.stop()
     }
