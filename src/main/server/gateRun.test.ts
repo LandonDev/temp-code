@@ -1,9 +1,9 @@
 import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { failedGateStep, gateLine, typecheckErrorCount } from '@shared/gate'
-import { gateCommand, gateEnv, parseGateStub, runGateStep, tailOf } from './gateRun'
+import { gateCommand, gateEnv, nodeBinary, parseGateStub, runGateStep, tailOf } from './gateRun'
 
 describe('gateRun', () => {
   it('names each step\'s command', () => {
@@ -38,12 +38,15 @@ describe('gateRun', () => {
     writeFileSync(join(bin, 'bun'), '#!/bin/sh\n')
     chmodSync(join(bin, 'bun'), 0o755)
     const env = gateEnv({ HOME: home, PATH: '/usr/bin', GIT_DIR: '/x/.git', GIT_INDEX_FILE: '/x/index', KEEP: '1' })
-    expect(env.PATH).toBe(`${bin}:/usr/bin`)
+    // bun first, then node's directory when the PATH has none (the installed app's PATH).
+    const node = nodeBinary({ PATH: '/usr/bin' })
+    expect(env.PATH).toBe(node ? `${bin}:${dirname(node)}:/usr/bin` : `${bin}:/usr/bin`)
     expect(env.GIT_DIR).toBeUndefined()
     expect(env.GIT_INDEX_FILE).toBeUndefined()
     expect(env.KEEP).toBe('1')
     // Already on the PATH: left where it is.
-    expect(gateEnv({ HOME: home, PATH: `/usr/bin:${bin}` }).PATH).toBe(`/usr/bin:${bin}`)
+    const nodeDir = node ? dirname(node) : ''
+    expect(gateEnv({ HOME: home, PATH: `/usr/bin:${nodeDir}:${bin}` }).PATH).toBe(`/usr/bin:${nodeDir}:${bin}`)
   })
 
   it('a bad stub is ignored', () => {

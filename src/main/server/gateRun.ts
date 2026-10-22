@@ -65,16 +65,25 @@ export function bunBinary(env: NodeJS.ProcessEnv = process.env): string {
   return candidates.find((c): c is string => !!c && existsSync(c)) ?? 'bun'
 }
 
+/** node as the app finds it when its own PATH has none: Homebrew, /usr/local, else nothing. */
+export function nodeBinary(env: NodeJS.ProcessEnv = process.env): string | null {
+  const onPath = (env.PATH ?? '').split(':').filter(Boolean).map((d) => join(d, 'node'))
+  return [...onPath, '/opt/homebrew/bin/node', '/usr/local/bin/node'].find((c) => existsSync(c)) ?? null
+}
+
 /** The child's environment: the post-commit hook's GIT_* dropped (every
  *  git call in a test would act as the hook's commit; release.ts says the
- *  same), and bun's own directory ahead of PATH, since the steps gate.ts
- *  and release.ts spawn say `bun` by name and the app's service on the box
- *  has no bun on its PATH. */
+ *  same), and bun's and node's own directories ahead of PATH, since the
+ *  steps gate.ts and release.ts spawn say `bun` by name and the app's
+ *  service on the box has no bun on its PATH, and `bunx vitest` runs
+ *  vitest under Bun when no node is on the PATH (the installed Mac app,
+ *  launched by Finder or ShipIt, has only /usr/bin:/bin:/usr/sbin:/sbin),
+ *  where the DOM suites fail by the hundreds. */
 export function gateEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const out = Object.fromEntries(Object.entries(env).filter(([k]) => !k.startsWith('GIT_'))) as NodeJS.ProcessEnv
-  const bun = bunBinary(env)
-  if (bun.startsWith('/')) {
-    const dir = dirname(bun)
+  for (const bin of [nodeBinary(env), bunBinary(env)]) {
+    if (!bin?.startsWith('/')) continue
+    const dir = dirname(bin)
     const path = (out.PATH ?? '').split(':').filter(Boolean)
     if (!path.includes(dir)) out.PATH = [dir, ...path].join(':')
   }
