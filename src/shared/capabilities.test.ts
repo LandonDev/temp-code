@@ -105,7 +105,9 @@ describe('METHOD_CAPABILITY', () => {
         // A deploy of this host, and its log, are asked over its link under an admin key (contract-host.ts).
         'host.deploy',
         'host.deployStatus',
-        'host.log'
+        'host.log',
+        // A host's running cap (contract-admission.ts): a settings write.
+        'admission.set'
       ].sort()
     )
   })
