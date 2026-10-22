@@ -75,6 +75,7 @@ struct ToolChip: View {
                     .font(.subheadline)
                     .foregroundStyle(tool.status == .failed ? Tint.destructive : Color(.secondaryLabel))
                     .lineLimit(1)
+                    .fixedSize(horizontal: phrase.target != nil, vertical: false)
                     .layoutPriority(phrase.target == nil ? 1 : 0)
                 if let target = phrase.target {
                     Text(target)

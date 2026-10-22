@@ -946,6 +946,7 @@ struct AgentSpawnRow: View {
             }
             Text(kind == .reported ? "Reported" : "Spawned")
                 .foregroundStyle(.secondary)
+                .fixedSize()
             Text(title)
                 .foregroundStyle(.primary)
                 .lineLimit(1)
@@ -957,6 +958,7 @@ struct AgentSpawnRow: View {
                     Text(status)
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
+                        .fixedSize()
                 }
                 .font(.footnote)
             }

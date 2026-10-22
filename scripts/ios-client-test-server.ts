@@ -808,13 +808,16 @@ at(THREAD_ORCH, [
 // Research: a report with two angles.
 export const THREAD_RESEARCH = 'ios-research'
 const research = await makeTyped(THREAD_RESEARCH, 'research', 'SQLite on the phone: bun:sqlite or GRDB')
+// The person's turn first, then the angles spawn inside it, as a real research turn orders them.
+at(THREAD_RESEARCH, [
+  { type: 'user-text', text: 'Compare bun:sqlite and GRDB for the phone\'s cache: write speed, migrations, and Swift ergonomics.', newPass: true },
+  answer('r1', 'Two angles: the Bun side and the Swift side.')
+])
 for (const [id, title] of [['ios-research-a1', 'Angle: bun:sqlite'], ['ios-research-a2', 'Angle: GRDB']] as const) {
   await server.registry.create({ id, parentId: THREAD_RESEARCH, provider: 'claude', model: 'claude-sonnet-5-5', reasoning: 'low', agentType: 'explorer', permission: 'safe', projectId: project.id, title })
   at(id, [{ type: 'user-text', text: `Research ${title.slice(7)}` }, answer(`${id}s`, 'Findings written.'), { type: 'turn-complete' }, status('idle')])
 }
 at(THREAD_RESEARCH, [
-  { type: 'user-text', text: 'Compare bun:sqlite and GRDB for the phone\'s cache: write speed, migrations, and Swift ergonomics.', newPass: true },
-  answer('r1', 'Two angles: the Bun side and the Swift side.'),
   { type: 'research-source', callId: 'q1', query: 'bun sqlite write performance', agentId: 'ios-research-a1', agentLabel: 'Angle: bun:sqlite' },
   { type: 'research-source', callId: 's1', url: 'https://bun.sh/docs/api/sqlite', agentId: 'ios-research-a1', agentLabel: 'Angle: bun:sqlite', title: 'SQLite – Bun Docs' },
   { type: 'research-source', callId: 's1', url: 'https://bun.sh/docs/api/sqlite', agentId: 'ios-research-a1', agentLabel: 'Angle: bun:sqlite', claim: 'bun:sqlite ships built in and binds synchronously' },
