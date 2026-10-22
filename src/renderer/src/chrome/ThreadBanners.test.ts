@@ -43,6 +43,15 @@ describe("bannerThreads", () => {
     expect(result.recovery).toEqual([recovering]);
   });
 
+  it("folds a batch thread paused with its master under the master, and counts it", () => {
+    const master = meta("m", { treeHasPaused: true, projectId: "a" });
+    const child = meta("c", { treeHasPaused: true, projectId: "a", masterId: "m" });
+    const loner = meta("l", { treeHasPaused: true, projectId: "a", masterId: "other" });
+    const result = bannerThreads([master, child, loner], "a", undefined);
+    expect(result.paused.map((m) => m.id)).toEqual(["m", "l"]);
+    expect(result.batchPaused).toBe(1);
+  });
+
   it("scopes needs-you to the given project, unlike paused and recovery", () => {
     const here = meta("h1", { status: "waiting", projectId: "a" });
     const elsewhere = meta("e1", { status: "waiting", projectId: "b" });
@@ -77,5 +86,9 @@ describe("pausedText", () => {
     expect(pausedText([{ title: "Build" }], 0)).toBe("Build is paused");
     expect(pausedText([{ title: "Build" }], 2)).toBe("Build is paused, and 2 Mac jobs with it");
     expect(pausedText([{ title: "A" }, { title: "B" }], 1)).toBe("2 threads paused, and 1 Mac job with it");
+  });
+  it("counts the batch threads paused with their master before the Mac jobs", () => {
+    expect(pausedText([{ title: "Master" }], 0, 3)).toBe("Master is paused, and 3 batch threads with it");
+    expect(pausedText([{ title: "Master" }], 2, 1)).toBe("Master is paused, and 1 batch thread with it, and 2 Mac jobs with it");
   });
 });

@@ -237,6 +237,18 @@ describe('implementPlan (inheritance and overrides)', () => {
     expect(reg.get('p')).toMatchObject({ implementationId: built.id })
     expect(reg.get(built.id)).toMatchObject({ planThreadId: 'p' })
   })
+  it("a plan child's build stays in the batch: masterId, after and the master as startedBy travel", async () => {
+    reg.add('p', { planPath: planFile(), status: 'idle', masterId: 'master', after: 'sib', startedBy: 'master' })
+    const built = await implementPlan(reg, 'p')
+    expect(reg.created[0]).toMatchObject({ masterId: 'master', after: 'sib', startedBy: 'master', planPath: reg.get('p')!.planPath })
+    expect(reg.get(built.id)).toMatchObject({ planThreadId: 'p' })
+    // A plan outside any batch carries none of it.
+    reg.add('q', { planPath: planFile(), status: 'idle' })
+    await implementPlan(reg, 'q')
+    expect(reg.created[1]).not.toHaveProperty('masterId')
+    expect(reg.created[1]).not.toHaveProperty('after')
+    expect(reg.created[1]).not.toHaveProperty('startedBy')
+  })
   it('a fixed plans.implementModel routes to its own provider and clamps the effort to that ladder', async () => {
     setPlanSettings(reg, 'proj', { ...DEFAULT_PLAN_SETTINGS, implementModel: 'gpt-6.1-sol', implementReasoning: 'xhigh' })
     reg.add('p', { planPath: planFile(), status: 'idle' })

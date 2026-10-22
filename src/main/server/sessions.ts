@@ -17,7 +17,7 @@ import { homedir } from 'node:os'
 import { basename } from 'node:path'
 import { CreateSessionParams, type CreateSessionInput } from '@shared/contract'
 import type { SessionBatchResult } from '@shared/contract'
-import { runSessionBatch, type SessionBatchAction } from './sessionBatch'
+import { batchChildIds, runSessionBatch, type SessionBatchAction } from './sessionBatch'
 import { ThreadScheduler } from './scheduler'
 import { CATALOG, resolveModel, visibleModels, type ProviderId } from '@shared/catalog'
 import type { AgentEvent, Attachment, EventRow, Failure, SessionMeta, SessionStatus } from '@shared/events'
@@ -109,7 +109,8 @@ import {
   reportPathFor,
   threadPreamble
 } from './threads'
-import { notifyParentOfSettle, settleTarget } from './orchestration'
+import { isMasterSession, notifyParentOfSettle, settleTarget } from './orchestration'
+import { batches } from './batch'
 import { foldTodo, newTodoFold, tallyOf, type TaskTally, type TodoFold } from './todos'
 import { liveDiffOnStatus } from './livediff'
 import { timed } from './stalls'
@@ -407,6 +408,8 @@ export class SessionRegistry {
   private queueOptIn = new Set<string>()
   /** The lines queued rows carry (scheduler.ts): what the rail and the strip read. */
   private queuedLines = new Map<string, string>()
+  /** wait_for_agent calls of a master waiting for the person's next steer (nextSteer). */
+  private steerWaiters = new Map<string, Set<(text: string) => void>>()
   /** The thread scheduler: `after` (CLAUDE.md "Master threads"). */
   readonly scheduler: ThreadScheduler
   private queueListeners = new Set<QueueListener>()
@@ -2256,6 +2259,11 @@ export class SessionRegistry {
    *  provider interrupt, so late callbacks can only observe `paused`. */
   async pauseRun(sessionId: string): Promise<void> {
     const rootId = this.rootSessionOf(sessionId)
+    await this.pauseTree(rootId)
+    await this.cascadeBatch('pause', rootId)
+  }
+
+  private async pauseTree(rootId: string): Promise<void> {
     const tree = this.sessionTree(rootId)
     const live = tree.filter(
       (session) =>
@@ -2300,6 +2308,25 @@ export class SessionRegistry {
    *  until its replacement handle accepts the control send. */
   async resumePausedRun(sessionId: string): Promise<void> {
     const rootId = this.rootSessionOf(sessionId)
+    await this.resumeTree(rootId)
+    await this.cascadeBatch('resume', rootId)
+  }
+
+  /** Pause and Resume on a master reach every root of its batch on this
+   *  host, four at a time (sessionBatch.ts); Stop stays per thread. A
+   *  child that fails is logged and the rest still move. */
+  private async cascadeBatch(action: 'pause' | 'resume', rootId: string): Promise<void> {
+    if (!this.isMaster(rootId)) return
+    const ids = batchChildIds(this.store.listSessions(), rootId)
+    if (ids.length === 0) return
+    const result = await runSessionBatch(action, ids, {
+      rootOf: (id) => this.rootSessionOf(id),
+      run: (what, id) => (what === 'pause' ? this.pauseTree(id) : this.resumeTree(id))
+    })
+    for (const f of result.failed) console.log(`[master] ${action} of batch thread ${f.sessionId} failed: ${f.error}`)
+  }
+
+  private async resumeTree(rootId: string): Promise<void> {
     const tree = this.sessionTree(rootId)
     const depth = new Map<string, number>()
     for (const session of tree) {
@@ -3174,6 +3201,13 @@ export class SessionRegistry {
     if (persisted?.status === 'paused' && (event.type === 'status' || event.type === 'error')) {
       return
     }
+    // A master whose batch is open never idles (CLAUDE.md "Master threads"):
+    // its harness stays up as `watching` and the batch's settles and reports
+    // wake it; batch.ts open() says when the batch is done and the next idle
+    // is a real one. Below, such a watching counts as idle for the queue,
+    // the completed-turn pass and the boot ledger.
+    const masterWatch = event.type === 'status' && event.status === 'idle' && this.masterKeepsWatching(sessionId)
+    if (masterWatch) event = { type: 'status', status: 'watching' }
     // Streaming previews (partial tool input) are broadcast-only: each one
     // carries the whole input so far, so persisting them would write the
     // same growing payload into the log over and over. The final tool-call
@@ -3324,13 +3358,13 @@ export class SessionRegistry {
       // The ledger of threads mid-turn (resumeAfterBoot.ts): a row while a
       // harness works the turn, gone the moment it settles, so a boot after
       // any kind of death knows exactly what to bring back.
-      if (event.status === 'running' || event.status === 'starting') this.recordMidTurn(sessionId, row.ts)
+      if (event.status === 'running' || event.status === 'starting' || masterWatch) this.recordMidTurn(sessionId, row.ts)
       else this.store.clearResumeAfterBoot([sessionId])
       // Live change stream (M22): watchers follow running sessions.
       if (next) liveDiffOnStatus(this, next, cur?.status)
       // A settled turn runs the pending completed-turn pass first; only a
       // fully settled session (pass included) releases queued messages.
-      if (event.status === 'idle') {
+      if (event.status === 'idle' || masterWatch) {
         const pass = this.passActive.has(sessionId) ? null : this.passPending.get(sessionId)
         this.passActive.delete(sessionId)
         if (pass) {
@@ -3632,6 +3666,67 @@ export class SessionRegistry {
     this.holdNotice(sessionId, text)
   }
 
+  // ── the master thread (CLAUDE.md "Master threads") ────────────────────
+
+  /** Has the thread finished a turn (batch.ts: an idle child is done only then)? */
+  hasCompletedTurn(sessionId: string): boolean {
+    return this.store.hasCompletedTurn(sessionId)
+  }
+
+  /** Is the thread its project's master (the pin on the project row)? */
+  isMaster(sessionId: string): boolean {
+    const meta = this.store.getSession(sessionId)
+    return !!meta && !meta.parentId && isMasterSession(meta, this)
+  }
+
+  /** A master with an open batch (children not all done, or the engine
+   *  still at work) takes `watching` in place of `idle`. */
+  private masterKeepsWatching(sessionId: string): boolean {
+    return this.isMaster(sessionId) && (batches()?.open(sessionId) ?? false)
+  }
+
+  /** The batch closed with nothing coming (batch.ts review): a master left
+   *  watching, with no report on its way, idles. */
+  masterIdle(sessionId: string): void {
+    if (this.store.getSession(sessionId)?.status !== 'watching') return
+    if ((this.pendingReports.get(sessionId)?.length ?? 0) > 0 || this.draining.has(sessionId)) return
+    this.append(sessionId, { type: 'status', status: 'idle' })
+  }
+
+  /** A person's message into a master's live turn: the user row, the
+   *  steer whispered to the harness, the waiters told. False when the
+   *  master is not mid-turn (the caller queues as usual). */
+  private steerMaster(sessionId: string, text: string): boolean {
+    const status = this.store.getSession(sessionId)?.status
+    if (status !== 'running' && status !== 'starting') return false
+    if (!this.handles.get(sessionId) || this.isTreePaused(sessionId) || !this.isMaster(sessionId)) return false
+    this.append(sessionId, { type: 'user-text', text })
+    this.whisper(sessionId, `<user-steer>\n${text}\n</user-steer>`)
+    const waiters = this.steerWaiters.get(sessionId)
+    if (waiters) {
+      this.steerWaiters.delete(sessionId)
+      for (const w of waiters) w(text)
+    }
+    return true
+  }
+
+  /** The next steer into a master's turn (orchestration.ts: a master's
+   *  wait_for_agent returns on it). `cancel` drops the waiter. */
+  nextSteer(sessionId: string): { promise: Promise<string>; cancel: () => void } {
+    let resolve!: (text: string) => void
+    const promise = new Promise<string>((r) => (resolve = r))
+    const set = this.steerWaiters.get(sessionId) ?? new Set()
+    set.add(resolve)
+    this.steerWaiters.set(sessionId, set)
+    return {
+      promise,
+      cancel: () => {
+        set.delete(resolve)
+        if (set.size === 0 && this.steerWaiters.get(sessionId) === set) this.steerWaiters.delete(sessionId)
+      }
+    }
+  }
+
   private holdNotice(sessionId: string, text: string): void {
     const list = this.notices.get(sessionId) ?? []
     if (!list.includes(text)) list.push(text)
@@ -3698,6 +3793,11 @@ export class SessionRegistry {
   queueAdd(sessionId: string, text: string, opts?: QueuedSendOpts, front = false): QueuedMessage {
     this.assertNotMoving(sessionId)
     const item: QueuedMessage = { id: nanoid(10), text, ts: Date.now(), ...opts }
+    // A person's message to a master mid-turn goes straight in as a steer
+    // (CLAUDE.md "Master threads"), never behind the turn: the transcript
+    // keeps the user row, the harness reads it now, and a wait_for_agent in
+    // flight returns on it (nextSteer). Attachments still queue.
+    if (!front && !opts?.attachments?.length && this.steerMaster(sessionId, text)) return item
     const q = this.queues.get(sessionId) ?? []
     if (front) q.unshift(item)
     else q.push(item)

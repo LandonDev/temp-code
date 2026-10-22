@@ -1,4 +1,5 @@
 import type { SessionBatchResult } from '@shared/contract'
+import type { SessionMeta } from '@shared/events'
 
 /** What `session.batch` does to each thread, in the registry's own words. */
 export type SessionBatchAction = 'pause' | 'resume' | 'stop' | 'archive'
@@ -7,6 +8,19 @@ export const SESSION_BATCH_ACTIONS: readonly SessionBatchAction[] = ['pause', 'r
 
 /** How many per-session calls run at once. */
 export const SESSION_BATCH_WIDTH = 4
+
+/** The unarchived root threads of a master's batch, oldest first: what a
+ *  pause or resume of the master cascades to (CLAUDE.md "Master threads").
+ *  Stop stays per thread. */
+export function batchChildIds(
+  sessions: readonly Pick<SessionMeta, 'id' | 'parentId' | 'masterId' | 'archived' | 'createdAt'>[],
+  masterId: string
+): string[] {
+  return sessions
+    .filter((s) => s.masterId === masterId && !s.parentId && !s.archived && s.id !== masterId)
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .map((s) => s.id)
+}
 
 export type SessionBatchDeps = {
   /** The visible root of a thread: a subagent follows its parent. */

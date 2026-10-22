@@ -31,6 +31,8 @@ const ROOT = (m: SessionMeta, projectId: string | null): boolean =>
 
 export type BannerThreads = {
   paused: SessionMeta[];
+  /** batch threads paused with their master, folded out of `paused` */
+  batchPaused: number;
   recovery: SessionMeta[];
   needsYou: SessionMeta[];
 };
@@ -46,25 +48,29 @@ export function bannerThreads(
   projectId: string | null,
   activeSessionId: string | undefined,
 ): BannerThreads {
-  const paused: SessionMeta[] = [];
+  const allPaused: SessionMeta[] = [];
   const recovery: SessionMeta[] = [];
   const needsYou: SessionMeta[] = [];
   for (const m of metas) {
     if (GLOBAL_ROOT(m)) {
-      if (m.treeHasPaused) paused.push(m);
+      if (m.treeHasPaused) allPaused.push(m);
       if (m.treeCanContinue) recovery.push(m);
     }
     if (ROOT(m, projectId) && m.status === "waiting" && m.id !== activeSessionId) {
       needsYou.push(m);
     }
   }
-  return { paused, recovery, needsYou };
+  // A batch thread paused with its master folds under the master's line.
+  const pausedIds = new Set(allPaused.map((m) => m.id));
+  const paused = allPaused.filter((m) => !(m.masterId && pausedIds.has(m.masterId)));
+  return { paused, recovery, needsYou, batchPaused: allPaused.length - paused.length };
 }
 
-/** The paused strip's line: the thread (or the count), and the Mac jobs waiting with it when any. */
-export function pausedText(paused: readonly Pick<SessionMeta, "title">[], held: number): string {
+/** The paused strip's line: the thread (or the count), the batch threads paused with their master, and the Mac jobs waiting with it when any. */
+export function pausedText(paused: readonly Pick<SessionMeta, "title">[], held: number, batchPaused = 0): string {
   const head = paused.length === 1 ? `${paused[0].title} is paused` : `${paused.length} threads paused`;
-  return `${head}${heldSuffix(held)}`;
+  const batch = batchPaused > 0 ? `, and ${batchPaused} batch thread${batchPaused === 1 ? "" : "s"} with it` : "";
+  return `${head}${batch}${heldSuffix(held)}`;
 }
 
 /**
@@ -76,7 +82,7 @@ export function pausedText(paused: readonly Pick<SessionMeta, "title">[], held: 
 export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
   const metas = useSessionMetas();
   // One pass per meta change, never per render: the lists feed the buttons below.
-  const { paused, recovery, needsYou } = useMemo(
+  const { paused, recovery, needsYou, batchPaused } = useMemo(
     () => bannerThreads(metas, projectId, activeSessionId),
     [activeSessionId, metas, projectId],
   );
@@ -151,7 +157,7 @@ export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
       {paused.length > 0 ? (
         <Banner
           kind="paused"
-          text={pausedText(paused, held)}
+          text={pausedText(paused, held, batchPaused)}
           failed={failed.paused}
           disabled={busy !== null}
           secondary={{

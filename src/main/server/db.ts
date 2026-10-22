@@ -1422,6 +1422,18 @@ export class Store {
     return { hits: all.slice(0, limit), truncated: all.length > limit }
   }
 
+  /** Has the thread finished at least one turn (a `turn-complete` row)? A
+   *  thread between its first user row and its first turn has not. */
+  hasCompletedTurn(sessionId: string): boolean {
+    this.flushEvents()
+    const r = this
+      .stmt(
+        `SELECT 1 AS x FROM ${this.eventsTable(sessionId)} WHERE session_id = ? AND payload LIKE '%"turn-complete"%' LIMIT 1`
+      )
+      .get(sessionId)
+    return !!r
+  }
+
   hasUserText(sessionId: string): boolean {
     this.flushEvents()
     const r = this

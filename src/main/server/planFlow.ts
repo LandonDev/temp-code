@@ -323,6 +323,12 @@ export async function implementPlan(
       title,
       goal: opts.goal ?? goalFor(doc),
       ...(threadType === 'orchestration' && opts.threadRules ? { threadRules: opts.threadRules } : {}),
+      // A plan child's build stays in the batch (CLAUDE.md "Master threads"):
+      // the master's id and the sibling it waited for travel, and the master
+      // that started the plan hears the build's settles as it heard the plan's.
+      ...(plan.masterId ? { masterId: plan.masterId } : {}),
+      ...(plan.after ? { after: plan.after } : {}),
+      ...(plan.startedBy ? { startedBy: plan.startedBy } : {}),
       parentId: null
     })
     await reg.send(created.id, threadType === 'orchestration' ? ORCHESTRATE_BRIEF : IMPLEMENT_BRIEF(title), {

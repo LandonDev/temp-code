@@ -640,6 +640,7 @@ export async function startServer(
   // engine, one per host, the gate out of the children inside it.
   const peerPublish = new PeerPublish({ environmentId, calls: peerCalls, macPeerOf: (id) => macTools.macPeerOf(id).macPeer })
   const batchRuns = new Batches({ registry, store, deploy: hostJobs.deploy, publish: peerPublish })
+
   batchRuns.attach()
   setBatches(batchRuns)
   setMergeReviews(new MergeReviews({ registry, store, onLanded: (l) => batchRuns.landed(l), hold: (s, l) => batchRuns.hold(s, l) }))

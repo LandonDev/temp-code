@@ -40,7 +40,7 @@ import type { SessionRegistry } from './sessions'
  * every done child archived).
  *
  * The engine runs when the last child is done: every unarchived root
- * carrying the masterId is `done`, or `idle` after at least one turn. A
+ * carrying the masterId is `done`, or `idle` with a turn completed. A
  * child that errored or stopped blocks the end, `blocked` names it and the
  * master is told once. Steps run in order on the host's gate queue, each
  * with its own log, progress and times on the wire (the board's foot draws
@@ -137,9 +137,12 @@ export interface DeployLike {
 
 export interface BatchesDeps {
   registry: Pick<SessionRegistry, 'list' | 'get' | 'getProject' | 'append'> & {
-    hasUserText?(sessionId: string): boolean
+    /** has the thread finished a turn: an idle child counts as done only then (a fresh thread between its first row and its first turn is idle too) */
+    hasCompletedTurn?(sessionId: string): boolean
     setArchived?(sessionId: string, archived: boolean): Promise<void>
     deliverAgentReport?(sessionId: string, report: { text: string; agentId: string; title: string; status: string }): void
+    /** the batch closed with nothing coming: a master left watching idles (sessions.ts) */
+    masterIdle?(sessionId: string): void
     onMeta?(listener: (session: SessionMeta) => void): () => void
     onRemoved?(listener: (sessionIds: string[]) => void): () => void
   }
@@ -473,7 +476,7 @@ export class Batches {
 
   private done(s: SessionMeta): boolean {
     if (DONE.has(s.status)) return true
-    return s.status === 'idle' && (this.deps.registry.hasUserText?.(s.id) ?? true)
+    return s.status === 'idle' && (this.deps.registry.hasCompletedTurn?.(s.id) ?? true)
   }
 
   private allDone(children: SessionMeta[]): boolean {
@@ -516,7 +519,10 @@ export class Batches {
       }
       return
     }
-    if (children.length === 0 || !row.armed || this.gating.has(masterId)) return
+    if (children.length === 0 || !row.armed || this.gating.has(masterId)) {
+      if (master.status === 'watching' && !this.open(masterId)) this.deps.registry.masterIdle?.(masterId)
+      return
+    }
     if (!this.allDone(children)) return
     await this.finish(master, row, children)
   }

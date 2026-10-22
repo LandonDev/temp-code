@@ -816,12 +816,31 @@ export async function orchWaitForAgent(
   // wait over both kinds races them for 'any' and gathers them for 'all'.
   const stop = { stopped: false }
   const remoteWait = (id: string) => crossHost!.wait(parent, id, timeoutMs, stop)
+  // A master's wait never swallows the person: a message into its live
+  // turn (sessions.ts steerMaster) ends the wait with the message as the
+  // reason, whatever the mode; the agents keep running.
+  const now = registry.get(parent.id) ?? parent
+  const steer = isMasterSession(now) ? registry.nextSteer(parent.id) : null
+  const STEERED = Symbol('steered')
+  const raced = <T>(p: Promise<T>): Promise<T | { [STEERED]: string }> =>
+    steer ? Promise.race([p, steer.promise.then((text) => ({ [STEERED]: text }))]) : p
+  const steered = (v: unknown): v is { [STEERED]: string } => !!v && typeof v === 'object' && STEERED in v
+  const steerReport = (text: string): string =>
+    JSON.stringify({
+      status: 'steered',
+      message: text,
+      note: 'the person sent a message into your turn; act on it, then wait_for_agent again for the agents still running'
+    })
   try {
     if (args.mode === 'all' && all.length > 1) {
-      const [metas, remotes] = await Promise.all([
-        Promise.all(ids.map((id) => waitForSettled(registry!, id, timeoutMs))),
-        Promise.all(remoteIds.map(remoteWait))
-      ])
+      const both = await raced(
+        Promise.all([
+          Promise.all(ids.map((id) => waitForSettled(registry!, id, timeoutMs))),
+          Promise.all(remoteIds.map(remoteWait))
+        ])
+      )
+      if (steered(both)) return steerReport(both[STEERED])
+      const [metas, remotes] = both
       return JSON.stringify([
         ...ids.map((id, i) => {
           const meta = metas[i]
@@ -836,15 +855,19 @@ export async function orchWaitForAgent(
       const local = ids.length
         ? waitForAnySettled(registry, ids, timeoutMs).then((s) => (s ? settledReport(s.id, s.meta) : null))
         : null
-      const first = await Promise.race([
-        ...(local ? [local] : []),
-        ...remoteIds.map((id) => remoteWait(id).then((r) => (typeof r === 'string' ? { agentId: id, status: 'refused', note: r } : r)))
-      ])
+      const first = await raced(
+        Promise.race([
+          ...(local ? [local] : []),
+          ...remoteIds.map((id) => remoteWait(id).then((r) => (typeof r === 'string' ? { agentId: id, status: 'refused', note: r } : r)))
+        ])
+      )
       stop.stopped = true
+      if (steered(first)) return steerReport(first[STEERED])
       if (!first) return JSON.stringify({ status: 'timeout', note: 'still running — check_agent shows progress' })
       return JSON.stringify(first)
     }
-    const settled = await waitForAnySettled(registry, ids, timeoutMs)
+    const settled = await raced(waitForAnySettled(registry, ids, timeoutMs))
+    if (steered(settled)) return steerReport(settled[STEERED])
     if (!settled) {
       return JSON.stringify({
         status: 'timeout',
@@ -853,6 +876,7 @@ export async function orchWaitForAgent(
     }
     return JSON.stringify(settledReport(settled.id, settled.meta))
   } finally {
+    steer?.cancel()
     release()
   }
 }

@@ -100,7 +100,7 @@ function world(opts: { master?: string | null; branch?: string | null; children?
     get: (id) => sessions.get(id) ?? null,
     getProject: () => ({ id: 'p1', workspaceId: 'w1', name: 'p', mode: 'local', branch: 'master', cwd: '/repo', archived: false, createdAt: 1, masterThreadId: opts.master === undefined ? 'm' : opts.master }),
     append: (id, e) => void (rows[id] ??= []).push(e),
-    hasUserText: (id) => spoke.has(id),
+    hasCompletedTurn: (id) => spoke.has(id),
     setArchived: async (id, archived) => {
       const s = sessions.get(id)
       if (s) sessions.set(id, { ...s, archived })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { batchRoots, runSessionBatch, SESSION_BATCH_WIDTH } from './sessionBatch'
+import { batchChildIds, batchRoots, runSessionBatch, SESSION_BATCH_WIDTH } from './sessionBatch'
 
 const identity = (id: string) => id
 
@@ -93,5 +93,22 @@ describe('runSessionBatch', () => {
       }
     })
     expect(result.failed).toEqual([{ sessionId: 'a', error: 'nope' }])
+  })
+})
+
+describe('batchChildIds', () => {
+  it("names a master's unarchived root threads oldest first, never a subagent, an archived one or the master itself", () => {
+    const rows = [
+      { id: 'm', parentId: null, masterId: null, archived: false, createdAt: 1 },
+      { id: 'b', parentId: null, masterId: 'm', archived: false, createdAt: 3 },
+      { id: 'a', parentId: null, masterId: 'm', archived: false, createdAt: 2 },
+      { id: 'sub', parentId: 'a', masterId: 'm', archived: false, createdAt: 4 },
+      { id: 'gone', parentId: null, masterId: 'm', archived: true, createdAt: 5 },
+      { id: 'other', parentId: null, masterId: 'n', archived: false, createdAt: 6 },
+      { id: 'self', parentId: null, masterId: 'self', archived: false, createdAt: 7 }
+    ]
+    expect(batchChildIds(rows, 'm')).toEqual(['a', 'b'])
+    expect(batchChildIds(rows, 'self')).toEqual([])
+    expect(batchChildIds(rows, 'x')).toEqual([])
   })
 })
