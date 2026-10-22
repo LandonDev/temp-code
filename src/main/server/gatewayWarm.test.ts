@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { Gateway, rebindWarmPath } from './gateway'
 
 describe('warm scope paths', () => {
-  const scopes: Record<string, { thread: string; account: string; pin: boolean } | null> = {
+  const scopes: Record<string, { thread: string; account: string; pin: boolean; model?: string } | null> = {
     adopted: { thread: 'T1', account: 'work', pin: false },
     pinned: { thread: 'T2', account: 'home', pin: true },
+    modelled: { thread: 'T3', account: 'work', pin: true, model: 'claude-opus-5-5' },
     waiting: null
   }
   const lookup = (id: string) => scopes[id]
@@ -12,6 +13,8 @@ describe('warm scope paths', () => {
   it('rewrites an adopted warm id into the thread\'s scoped path', () => {
     expect(rebindWarmPath('/claude/~w=adopted/v1/messages', lookup)).toBe('/claude/~t=T1;a=work/v1/messages')
     expect(rebindWarmPath('/claude/~w=pinned/v1/messages?beta=true', lookup)).toBe('/claude/~t=T2;a=home;pin=1/v1/messages?beta=true')
+    // The adopting thread's model rides the rebound scope, so the gateway never parses the body for it.
+    expect(rebindWarmPath('/claude/~w=modelled/v1/messages', lookup)).toBe('/claude/~t=T3;a=work;pin=1;m=claude-opus-5-5/v1/messages')
   })
 
   it('sends an unadopted or unknown warm id unscoped', () => {

@@ -15,8 +15,8 @@ export interface EndpointDeps {
   shimInstalled: () => boolean
   fetch: typeof globalThis.fetch
   gatewayUrl: (service: Service) => string | null
-  /** Our gateway's https origin for one codex thread, scoped to its route; null without TLS. */
-  scopedCodexUrl: (thread: string, route: AccountRoute) => Promise<string | null>
+  /** Our gateway's https origin for one codex thread, scoped to its route (and model); null without TLS. */
+  scopedCodexUrl: (thread: string, route: AccountRoute, model?: string) => Promise<string | null>
   now: () => number
 }
 
@@ -24,7 +24,7 @@ const defaults: EndpointDeps = {
   shimInstalled: () => existsSync(SHIM_PLIST),
   fetch: (input, init) => globalThis.fetch(input, init),
   gatewayUrl: (service) => gateway()?.url(service) ?? null,
-  scopedCodexUrl: (thread, route) => gateway()?.scopedCodexUrl(thread, { thread, ...route }) ?? Promise.resolve(null),
+  scopedCodexUrl: (thread, route, model) => gateway()?.scopedCodexUrl(thread, { thread, ...route, ...(model ? { model } : {}) }) ?? Promise.resolve(null),
   now: Date.now
 }
 
@@ -57,14 +57,23 @@ export async function endpointFor(service: Service, deps: Partial<EndpointDeps> 
   return d.gatewayUrl(service)
 }
 
+/** The model id as the scope carries it: the CLI's `[1m]` window suffix is not part of the model. */
+export function scopeModel(model: string | null | undefined): string | undefined {
+  const bare = model?.replace(/\[1m\]$/, '')
+  return bare || undefined
+}
+
 /**
  * The per-thread scope segment, appended to the service base:
- *   <endpoint>/~t=<thread>;a=<account>[;pin=1]
+ *   <endpoint>/~t=<thread>;a=<account>[;pin=1][;m=<model>]
  * Only a gateway that lists `scoped-routes` honours it; anything older would
- * pass the segment upstream as part of the path.
+ * pass the segment upstream as part of the path. `m=` is the thread's model,
+ * so the gateway attributes a request without parsing its body (a side
+ * call's body may still name another model; its first bytes win).
  */
-export function routeUrl(endpoint: string, thread: string, route: AccountRoute): string {
-  return `${endpoint}/~t=${encodeURIComponent(thread)};a=${encodeURIComponent(route.account)}${route.pin ? ';pin=1' : ''}`
+export function routeUrl(endpoint: string, thread: string, route: AccountRoute, model?: string | null): string {
+  const m = scopeModel(model)
+  return `${endpoint}/~t=${encodeURIComponent(thread)};a=${encodeURIComponent(route.account)}${route.pin ? ';pin=1' : ''}${m ? `;m=${encodeURIComponent(m)}` : ''}`
 }
 
 /**
@@ -106,12 +115,13 @@ export interface RoutedEndpoint {
  */
 export async function routedEndpointFor(
   service: Service,
-  scope: { thread: string; route: AccountRoute | null },
+  scope: { thread: string; route: AccountRoute | null; model?: string | null },
   deps: Partial<EndpointDeps> = {}
 ): Promise<RoutedEndpoint> {
   const d = { ...defaults, ...deps }
+  const model = scopeModel(scope.model)
   if (service === 'codex' && scope.route) {
-    const url = await d.scopedCodexUrl(scope.thread, scope.route)
+    const url = await (model ? d.scopedCodexUrl(scope.thread, scope.route, model) : d.scopedCodexUrl(scope.thread, scope.route))
     if (url) {
       console.log(`[gateway] codex ${scope.thread}: ${scope.route.account}${scope.route.pin ? ' (pinned)' : ''} on ${url}`)
       return { url, account: scope.route.account }
@@ -124,7 +134,7 @@ export async function routedEndpointFor(
     return { url: endpoint, account: null }
   }
   console.log(`[gateway] ${service} ${scope.thread}: ${scope.route.account}${scope.route.pin ? ' (pinned)' : ''}`)
-  return { url: routeUrl(endpoint, scope.thread, scope.route), account: scope.route.account }
+  return { url: routeUrl(endpoint, scope.thread, scope.route, model), account: scope.route.account }
 }
 
 export const forgetShimAnswer = (): void => {

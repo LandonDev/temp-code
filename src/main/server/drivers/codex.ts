@@ -805,7 +805,7 @@ export const codexDriver: HarnessDriver = {
         const bridgeEntry = bridgeMcpConfig(session.id)
         // Provider traffic goes through Aliax's shim or our own gateway, which
         // swap in this thread's account's token.
-        const routed = await routedEndpointFor('codex', { thread: session.id, route: ctx.route ?? null })
+        const routed = await routedEndpointFor('codex', { thread: session.id, route: ctx.route ?? null, model: session.model })
         const endpoint = routed.url
         account = routed.account
         const writeRoots = researchWriteRoots(session)

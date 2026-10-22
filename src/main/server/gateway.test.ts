@@ -268,6 +268,39 @@ describe('Gateway forwarding', () => {
     await g.releaseScoped('thread-1') // idempotent
   })
 
+  it('reads the model off the scope or the body prefix, never by parsing the body, and forwards the bytes as they came', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'temp-code-gateway-data-'))
+    cleanupData = () => rmSync(dataDir, { recursive: true, force: true })
+    const bodies: string[] = []
+    core.configure({
+      dataDir,
+      fetch: async (_url, init) => {
+        bodies.push(init?.body ? Buffer.from(init.body as Uint8Array).toString() : '')
+        return new Response('{"ok":true}', { status: 200, headers: { 'content-type': 'application/json' } })
+      },
+      secrets: { mode: 'chromiumKey', keychainItem: 'Test Safe Storage' },
+      appName: 'temp-code-test'
+    })
+    core.vault.useFixedChromiumKey('Test Safe Storage', core.vault.randomChromiumKey())
+    core.vault.upsertProfile('codex', { name: 'p', accountId: 'acct-1', createdAt: 1 })
+    core.vault.saveSecret('codex', 'p', JSON.stringify({ tokens: { access_token: 'TOKEN', account_id: 'acct-1' } }))
+    core.pinProfile('codex', 'p')
+    core.clearRoutes()
+    const models: (string | null)[] = []
+    const g = await start({ claimShim: false, hooks: { substitute: () => null, onResponse: (i) => models.push(i.model) } })
+    const port = g.status().port
+    const post = (segment: string, body: string): Promise<Response> =>
+      fetch(`http://127.0.0.1:${port}/codex/${segment}/v1/responses`, { method: 'POST', headers: { authorization: 'Bearer CLI' }, body })
+    // The scope's model when the body names none; the body's first bytes when it does (a side call on another model).
+    expect((await post('~t=t1;a=p;m=gpt-6.1-sol', '{"input":"hi"}')).status).toBe(200)
+    expect((await post('~t=t1;a=p;m=gpt-6.1-sol', '{"model":"gpt-6-astra","input":"hi"}')).status).toBe(200)
+    // A model past the first 1,024 bytes with no scope model is unknown: the body is never parsed whole.
+    const far = JSON.stringify({ input: 'x'.repeat(2048), model: 'gpt-6-astra' })
+    expect((await post('~t=t1;a=p', far)).status).toBe(200)
+    expect(models).toEqual(['gpt-6.1-sol', 'gpt-6-astra', null])
+    expect(bodies).toEqual(['{"input":"hi"}', '{"model":"gpt-6-astra","input":"hi"}', far])
+  })
+
   it('moves a scoped request off an account that answers 401, replays it once, and keeps the thread there', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'temp-code-gateway-data-'))
     cleanupData = () => rmSync(dataDir, { recursive: true, force: true })

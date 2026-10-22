@@ -136,11 +136,12 @@ for (let i = 0; i < 50 && snapshot.providers.claude.profiles.length < ACCOUNTS.l
 check('the vault\'s eleven accounts are in the snapshot', snapshot.providers.claude.profiles.length === ACCOUNTS.length, `${snapshot.providers.claude.profiles.length} profiles`)
 
 /** One answer as a thread's child would get it: through the gateway, scoped to the thread and its account. */
-const turn = async (thread: string, account: string): Promise<number> => {
-  const res = await fetch(`${gateway}/claude/~t=${encodeURIComponent(thread)};a=${encodeURIComponent(account)}/v1/messages`, {
+const turn = async (thread: string, account: string, models: { scope?: string; body?: string } = { body: 'claude-opus-5-5' }): Promise<number> => {
+  const scope = `~t=${encodeURIComponent(thread)};a=${encodeURIComponent(account)}${models.scope ? `;m=${encodeURIComponent(models.scope)}` : ''}`
+  const res = await fetch(`${gateway}/claude/${scope}/v1/messages`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: 'Bearer child-placeholder' },
-    body: JSON.stringify({ model: 'claude-opus-5-5', max_tokens: 8, messages: [{ role: 'user', content: 'hi' }] })
+    body: JSON.stringify({ ...(models.body ? { model: models.body } : {}), max_tokens: 8, messages: [{ role: 'user', content: 'hi' }] })
   })
   await res.text()
   return res.status
@@ -150,7 +151,8 @@ const meta = (id: string, account: string | null = null): SessionMeta =>
 const headroomOf = async (account: string) => (await server.accounts.list()).providers.claude.headroom?.[account]
 
 // ── a thread on the throttled account gets refused: the gateway sees it and the store keeps the account out ──
-const refusedStatus = await turn('t-throttled', THROTTLED)
+// The scope names the thread's model (Opus), the body a side call's (Sonnet): the body's first bytes win, nothing parses the body.
+const refusedStatus = await turn('t-throttled', THROTTLED, { scope: 'claude-opus-5-5', body: 'claude-sonnet-5-5' })
 check('the fake refused the throttled account once', fake.refused === 1, `status back to the child ${refusedStatus}, refused ${fake.refused}`)
 // The gateway's own failover replayed that request under another account: one answer there already.
 const replayedTo = OTHERS.find((a) => fake.answers.get(a) === 1) ?? null
@@ -209,6 +211,8 @@ const file = join(root, 'headroom.json')
 const saved = existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as { version: number; hosts: Record<string, Record<string, { throttles: unknown[] }>> }) : null
 const own = saved?.hosts?.[server.environmentId]
 check('headroom.json holds this host\'s picture with the 429', !!own && own[`claude-code:${THROTTLED}`]?.throttles.length === 1 && Object.keys(own).length === ACCOUNTS.length, own ? `${Object.keys(own).length} accounts` : 'no file')
+const event = own?.[`claude-code:${THROTTLED}`]?.throttles[0] as { model?: string | null } | undefined
+check('the 429 is attributed to the body\'s model, not the scope\'s', event?.model === 'claude-sonnet-5-5', JSON.stringify(event))
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed')
 process.exit(failures ? 1 : 0)

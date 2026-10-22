@@ -1113,7 +1113,7 @@ export const claudeDriver: HarnessDriver = {
     const claudeCli = await resolveClaude()
     // Provider traffic goes through Aliax's shim or our own gateway, which
     // swap in this thread's account's token and read the limit headers.
-    const { url: endpoint } = await routedEndpointFor('claude', { thread: session.id, route: ctx.route ?? null })
+    const { url: endpoint } = await routedEndpointFor('claude', { thread: session.id, route: ctx.route ?? null, model: session.model })
 
     const writeRoots = researchWriteRoots(session)
     const webTools = permittedWebTools(session.permission)
@@ -1267,7 +1267,7 @@ export const claudeDriver: HarnessDriver = {
       spawnOrAdoptClaude(
         { command: spawnOpts.command, args: spawnOpts.args, cwd: spawnOpts.cwd, env: spawnOpts.env },
         (spawnOpts as { signal?: AbortSignal }).signal,
-        { thread: session.id, scope: ctx.route ? { thread: session.id, ...ctx.route } : null, warmable }
+        { thread: session.id, scope: ctx.route ? { thread: session.id, ...ctx.route, model: session.model } : null, warmable }
       ).proc as unknown as SpawnedProcess
     const q = query({ prompt: input, options })
 

@@ -13,9 +13,11 @@ import {
   readMarker,
   release,
   routeOf,
+  scanModel,
   splitPath,
   watchMarker,
   type ForwardHooks,
+  type ForwardInput,
   type Owner,
   type RouteScope,
   type ServiceId
@@ -352,18 +354,23 @@ export class Gateway {
     if (out.status !== null) this.routed[out.service] = (this.routed[out.service] ?? 0) + 1
   }
 
-  private forward(req: IncomingMessage, res: ServerResponse, onResponse?: ForwardHooks['onResponse']): ReturnType<typeof forward> {
-    return forward(req, res, {
-      ...this.options.hooks,
-      onResponse: (info) => {
-        onResponse?.(info)
-        this.options.hooks?.onResponse?.(info)
+  private forward(req: IncomingMessage, res: ServerResponse, onResponse?: ForwardHooks['onResponse'], input?: ForwardInput): ReturnType<typeof forward> {
+    return forward(
+      req,
+      res,
+      {
+        ...this.options.hooks,
+        onResponse: (info) => {
+          onResponse?.(info)
+          this.options.hooks?.onResponse?.(info)
+        },
+        onError: (m) => {
+          this.lastError = m
+          this.options.hooks?.onError?.(m)
+        }
       },
-      onError: (m) => {
-        this.lastError = m
-        this.options.hooks?.onError?.(m)
-      }
-    })
+      input
+    )
   }
 
   /**
@@ -377,8 +384,10 @@ export class Gateway {
   private async forwardScoped(req: IncomingMessage, res: ServerResponse, service: string, serviceId: ServiceId, scope: RouteScope): ReturnType<typeof forward> {
     const hooks = this.options.hooks!
     const url = req.url ?? '/'
+    // One Buffer, kept for the replays; the model is read off its first bytes
+    // (a side call on another model), else off the scope the driver wrote.
     const body = ['GET', 'HEAD'].includes(req.method ?? 'GET') ? undefined : await readBody(req)
-    const model = modelOf(body)
+    const model = scanModel(body) ?? scope.model ?? null
     const info = (account: string, body?: string): ScopedRequest => ({ service, serviceId, thread: scope.thread, account, own: scope.account, model, ...(body !== undefined ? { body } : {}) })
     let substitute = hooks.substitute!(info(routeOf(scope.thread) ?? scope.account))
     for (let attempt = 0; ; attempt++) {
@@ -386,9 +395,14 @@ export class Gateway {
       this.noteSubstitute(service, serviceId, scope, substitute)
       let answered: string | null = null
       const held = new HeldResponse(res)
-      const out = await this.forward(replay(req, rescope(url, effective), body), held as unknown as ServerResponse, (i) => {
-        answered = i.account
-      })
+      const out = await this.forward(
+        replay(req, rescope(url, effective), body),
+        held as unknown as ServerResponse,
+        (i) => {
+          answered = i.account
+        },
+        { body, model }
+      )
       if (held.status === 401 && hooks.onUnauthorized) {
         // Every 401 marks its account; only the first replays.
         const next = hooks.onUnauthorized(info(answered ?? effective.account, held.heldText()))
@@ -483,18 +497,8 @@ function replay(req: IncomingMessage, url: string, body: Buffer | undefined): In
   return Object.assign(Readable.from(body ? [body] : []), { url, method: req.method, headers: req.headers }) as unknown as IncomingMessage
 }
 
-const modelOf = (body: Buffer | undefined): string | null => {
-  if (!body || body.length === 0) return null
-  try {
-    const model = JSON.parse(body.toString('utf8'))?.model
-    return typeof model === 'string' ? model : null
-  } catch {
-    return null
-  }
-}
-
 const scopeSegment = (scope: RouteScope): string =>
-  `~t=${encodeURIComponent(scope.thread)};a=${encodeURIComponent(scope.account)}${scope.pin ? ';pin=1' : ''}`
+  `~t=${encodeURIComponent(scope.thread)};a=${encodeURIComponent(scope.account)}${scope.pin ? ';pin=1' : ''}${scope.model ? `;m=${encodeURIComponent(scope.model)}` : ''}`
 
 /** The same scoped path under another scope: `/codex/~t=T;a=A/rest` → `/codex/~t=T;a=B;pin=1/rest`. */
 export function rescope(url: string, scope: RouteScope): string {
