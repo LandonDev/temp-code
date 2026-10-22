@@ -164,6 +164,14 @@ public struct ResourcesPush: Codable, Hashable, Sendable {
     }
 }
 
+public struct AccountsPush: Codable, Hashable, Sendable {
+    public let snapshot: AccountsSnapshot
+
+    public init(snapshot: AccountsSnapshot) {
+        self.snapshot = snapshot
+    }
+}
+
 public enum ServerPush: Codable, Hashable, Sendable {
     case hello(HelloPush)
     case workspaces(WorkspacesPush)
@@ -178,6 +186,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
     case sessionMoved(SessionMovedPush)
     case bootResume(BootResumePush)
     case resources(ResourcesPush)
+    case accounts(AccountsPush)
     /// A `push` this build does not know: the whole object, untouched.
     case unknown(JSONValue)
 
@@ -201,6 +210,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case "session-moved": self = .sessionMoved(try SessionMovedPush(from: decoder))
         case "boot-resume": self = .bootResume(try BootResumePush(from: decoder))
         case "resources": self = .resources(try ResourcesPush(from: decoder))
+        case "accounts": self = .accounts(try AccountsPush(from: decoder))
         default: self = .unknown(try JSONValue(from: decoder))
         }
     }
@@ -220,6 +230,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case .sessionMoved(let value): try Self.encode(tag: "session-moved", value, to: encoder)
         case .bootResume(let value): try Self.encode(tag: "boot-resume", value, to: encoder)
         case .resources(let value): try Self.encode(tag: "resources", value, to: encoder)
+        case .accounts(let value): try Self.encode(tag: "accounts", value, to: encoder)
         case .unknown(let value): try value.encode(to: encoder)
         }
     }

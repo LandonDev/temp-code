@@ -1013,6 +1013,149 @@ public struct QueuedMessage: Codable, Hashable, Sendable {
 
 public typealias AccountPins = [String: String]
 
+public struct AccountProfile: Codable, Hashable, Sendable {
+    public let name: String
+    public let email: String?
+    public let nickname: String?
+    public let color: String?
+    public let active: Bool
+    public let duplicate: Bool?
+    public let `static`: Bool?
+
+    public init(name: String, email: String? = nil, nickname: String? = nil, color: String? = nil, active: Bool, duplicate: Bool? = nil, `static`: Bool? = nil) {
+        self.name = name
+        self.email = email
+        self.nickname = nickname
+        self.color = color
+        self.active = active
+        self.duplicate = duplicate
+        self.`static` = `static`
+    }
+}
+
+public struct UsageWindow: Codable, Hashable, Sendable {
+    public let label: String
+    public let usedPercent: Double
+    public let resetsAt: Int?
+    public let periodMs: Int?
+
+    public init(label: String, usedPercent: Double, resetsAt: Int? = nil, periodMs: Int? = nil) {
+        self.label = label
+        self.usedPercent = usedPercent
+        self.resetsAt = resetsAt
+        self.periodMs = periodMs
+    }
+}
+
+public struct UsageReport: Codable, Hashable, Sendable {
+    public struct RateLimit: Codable, Hashable, Sendable {
+        public let provider: String
+        public let until: Int?
+
+        public init(provider: String, until: Int? = nil) {
+            self.provider = provider
+            self.until = until
+        }
+    }
+
+    public let profileName: String
+    public let windows: [UsageWindow]
+    public let note: String?
+    public let expired: Bool?
+    public let rateLimit: RateLimit?
+
+    public init(profileName: String, windows: [UsageWindow], note: String? = nil, expired: Bool? = nil, rateLimit: RateLimit? = nil) {
+        self.profileName = profileName
+        self.windows = windows
+        self.note = note
+        self.expired = expired
+        self.rateLimit = rateLimit
+    }
+}
+
+public struct AccountHeadroom: Codable, Hashable, Sendable {
+    public let room: Double?
+    public let resetsAt: Int?
+    public let throttledUntil: Int?
+    public let ratePerMin: Double
+    public let tier: String?
+    public let seenAt: Int?
+
+    public init(room: Double?, resetsAt: Int? = nil, throttledUntil: Int? = nil, ratePerMin: Double, tier: String? = nil, seenAt: Int?) {
+        self.room = room
+        self.resetsAt = resetsAt
+        self.throttledUntil = throttledUntil
+        self.ratePerMin = ratePerMin
+        self.tier = tier
+        self.seenAt = seenAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case room, resetsAt, throttledUntil, ratePerMin, tier, seenAt
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(room, forKey: .room)
+        try container.encodeIfPresent(resetsAt, forKey: .resetsAt)
+        try container.encodeIfPresent(throttledUntil, forKey: .throttledUntil)
+        try container.encode(ratePerMin, forKey: .ratePerMin)
+        try container.encodeIfPresent(tier, forKey: .tier)
+        try container.encode(seenAt, forKey: .seenAt)
+    }
+}
+
+public struct ProviderAccounts: Codable, Hashable, Sendable {
+    public let pinned: String?
+    public let profiles: [AccountProfile]
+    public let reports: [UsageReport]
+    public let note: String?
+    public let headroom: [String: AccountHeadroom]?
+
+    public init(pinned: String?, profiles: [AccountProfile], reports: [UsageReport], note: String? = nil, headroom: [String: AccountHeadroom]? = nil) {
+        self.pinned = pinned
+        self.profiles = profiles
+        self.reports = reports
+        self.note = note
+        self.headroom = headroom
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case pinned, profiles, reports, note, headroom
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(pinned, forKey: .pinned)
+        try container.encode(profiles, forKey: .profiles)
+        try container.encode(reports, forKey: .reports)
+        try container.encodeIfPresent(note, forKey: .note)
+        try container.encodeIfPresent(headroom, forKey: .headroom)
+    }
+}
+
+public struct AccountsSnapshot: Codable, Hashable, Sendable {
+    public struct Providers: Codable, Hashable, Sendable {
+        public let claude: ProviderAccounts
+        public let codex: ProviderAccounts
+        public let cursor: ProviderAccounts
+
+        public init(claude: ProviderAccounts, codex: ProviderAccounts, cursor: ProviderAccounts) {
+            self.claude = claude
+            self.codex = codex
+            self.cursor = cursor
+        }
+    }
+
+    public let updatedAt: Int
+    public let providers: Providers
+
+    public init(updatedAt: Int, providers: Providers) {
+        self.updatedAt = updatedAt
+        self.providers = providers
+    }
+}
+
 public struct ModelInfo: Codable, Hashable, Sendable {
     public let id: String
     public let label: String

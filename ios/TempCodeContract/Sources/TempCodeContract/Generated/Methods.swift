@@ -673,6 +673,66 @@ public enum Methods {
         }
     }
 
+    public enum AccountsList: ContractMethod {
+        public static let name = "accounts.list"
+
+        public typealias Params = NoParams
+
+        public typealias Output = AccountsSnapshot
+    }
+
+    public enum ProjectSetAccounts: ContractMethod {
+        public static let name = "project.setAccounts"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public struct Pins: Codable, Hashable, Sendable {
+                public let claude: String?
+                public let codex: String?
+
+                public init(claude: String? = nil, codex: String? = nil) {
+                    self.claude = claude
+                    self.codex = codex
+                }
+            }
+
+            public let projectId: String
+            public let pins: Pins
+
+            public init(projectId: String, pins: Pins) {
+                self.projectId = projectId
+                self.pins = pins
+            }
+        }
+
+        public typealias Output = NoOutput
+    }
+
+    public enum WorkspaceSetAccounts: ContractMethod {
+        public static let name = "workspace.setAccounts"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public struct Pins: Codable, Hashable, Sendable {
+                public let claude: String?
+                public let codex: String?
+
+                public init(claude: String? = nil, codex: String? = nil) {
+                    self.claude = claude
+                    self.codex = codex
+                }
+            }
+
+            public let workspaceId: String
+            public let pins: Pins
+
+            public init(workspaceId: String, pins: Pins) {
+                self.workspaceId = workspaceId
+                self.pins = pins
+            }
+        }
+
+        public typealias Output = NoOutput
+    }
+
     public enum QueueList: ContractMethod {
         public static let name = "queue.list"
 
