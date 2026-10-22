@@ -71,4 +71,63 @@ private func source(_ callId: String, url: String? = nil, query: String? = nil, 
         #expect(reading.angles[0].activity == .reading)
         #expect(ResearchAngle(agentId: "x", label: "", queries: []).activity == nil)
     }
+
+    @Test func `decorate links every marker by scheme and leaves inline code and links alone`() {
+        let document = MarkdownDocument.parse("GRDB maps rows [1] and `rows[0]` is an index; see [the docs](https://x.dev) too [9].")
+        let citations = [1: Citation(number: 1, url: "https://github.com/groue/GRDB.swift", title: "GRDB")]
+        let decorated = ReportCitations.decorate(document, citations: citations)
+        guard case .paragraph(let text) = decorated.blocks[0] else { Issue.record("not a paragraph"); return }
+        let plain = String(text.characters)
+        #expect(plain == "GRDB maps rows \u{2009}1 and rows[0] is an index; see the docs too \u{2009}9.")
+        let links = text.runs.compactMap { $0.link }.map(\.absoluteString)
+        #expect(links == ["https://x.dev", "tempcode-cite://1", "tempcode-cite-missing://9"])
+        #expect(decorated.textHash == document.textHash)
+    }
+
+    @Test func `a marker naming two numbers becomes two linked runs with a comma between`() {
+        let document = MarkdownDocument.parse("Both agree [2, 5].")
+        let citations = [2: Citation(number: 2, url: "https://two.dev"), 5: Citation(number: 5, url: "https://five.dev")]
+        guard case .paragraph(let text) = ReportCitations.decorate(document, citations: citations).blocks[0] else { Issue.record("not a paragraph"); return }
+        #expect(String(text.characters) == "Both agree \u{2009}2,5.")
+        let linked = text.runs.filter { $0.link != nil }.map { (String(text[$0.range].characters), $0.link?.host()) }
+        #expect(linked.map(\.0) == ["2", "5"])
+        #expect(linked.map(\.1) == ["2", "5"])
+    }
+
+    @Test func `decorate reaches headings, list items and quotes and passes code and rules through`() {
+        let document = MarkdownDocument.parse("## Findings [1]\n\n- One [1]\n- Two\n\n> Quoted [1]\n\n---\n\n```\nrows[1]\n```\n")
+        let decorated = ReportCitations.decorate(document, citations: [1: Citation(number: 1, url: "https://one.dev")])
+        func links(_ text: AttributedString) -> [String] { text.runs.compactMap { $0.link?.absoluteString } }
+        guard case .heading(2, let heading) = decorated.blocks[0], case .list(let items, false) = decorated.blocks[1],
+              case .quote(let quote) = decorated.blocks[2] else { Issue.record("unexpected blocks \(decorated.blocks)"); return }
+        #expect(links(heading) == ["tempcode-cite://1"])
+        #expect(links(items[0]) == ["tempcode-cite://1"])
+        #expect(links(items[1]).isEmpty)
+        #expect(links(quote) == ["tempcode-cite://1"])
+        #expect(decorated.blocks[3] == .rule)
+        #expect(decorated.blocks[4] == .code("rows[1]", language: nil))
+    }
+
+    @Test func `pieces drops the title's H1, swaps the matching sources list and groups the rest`() {
+        let body = "# SQLite\n\nIntro.\n\n## Findings\n\n- A [1]\n\n## Sources\n\n1. [A](https://a.dev)\n2. [B](https://b.dev)\n\nAfter.\n"
+        let listed = ReportCitations.sourcesList(body)
+        let pieces = ReportLayout.pieces(MarkdownDocument.parse(body).blocks, title: "SQLite", listed: listed)
+        #expect(pieces.count == 3)
+        guard case .blocks(let head) = pieces[0], case .sources(let rows) = pieces[1], case .blocks(let tail) = pieces[2] else { Issue.record("unexpected pieces \(pieces)"); return }
+        #expect(head.count == 4)
+        if case .paragraph(let intro) = head[0] { #expect(String(intro.characters) == "Intro.") } else { Issue.record("the H1 stayed") }
+        #expect(rows == listed)
+        #expect(tail.count == 1)
+    }
+
+    @Test func `pieces keeps a mismatched list as blocks and the H1 when it is not the title`() {
+        let body = "# Another title\n\n## Sources\n\n- [A](https://a.dev)\n- [B](https://b.dev)\n- just words\n"
+        let listed = ReportCitations.sourcesList(body)
+        #expect(listed.count == 2)
+        let pieces = ReportLayout.pieces(MarkdownDocument.parse(body).blocks, title: "SQLite", listed: listed)
+        #expect(pieces.count == 1)
+        guard case .blocks(let blocks) = pieces[0] else { Issue.record("swapped a mismatched list"); return }
+        #expect(blocks.count == 3)
+        #expect(blocks[0] == .heading(1, MarkdownBlocks.inline("Another title")))
+    }
 }

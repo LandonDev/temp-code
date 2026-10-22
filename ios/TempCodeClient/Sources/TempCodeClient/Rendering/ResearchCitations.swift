@@ -143,3 +143,99 @@ public enum ReportCitations {
         return (number, url, around.isEmpty ? nil : around)
     }
 }
+
+// MARK: - the citation pass over a rendered document
+
+extension ReportCitations {
+    /// The scheme a superscript's link carries when the number resolves; the host is the number.
+    public static let scheme = "tempcode-cite"
+    /// The scheme of a number the report never lists: styled dim, linked nowhere.
+    public static let missingScheme = "tempcode-cite-missing"
+
+    /// Every `[n]` marker in the document's prose becomes a thin space and
+    /// the numbers, each a run linked by scheme: `tempcode-cite://n` when
+    /// `citations[n]` exists, `tempcode-cite-missing://n` otherwise. Code
+    /// blocks and rules pass through, as does any block kind this pass does
+    /// not know. No fonts or colors: the app styles the runs by scheme.
+    public static func decorate(_ document: MarkdownDocument, citations: [Int: Citation]) -> MarkdownDocument {
+        let blocks = document.blocks.map { block -> RenderedBlock in
+            switch block {
+            case .paragraph(let text): .paragraph(cite(text, citations: citations))
+            case .heading(let level, let text): .heading(level, cite(text, citations: citations))
+            case .list(let items, let ordered): .list(items.map { cite($0, citations: citations) }, ordered: ordered)
+            case .quote(let text): .quote(cite(text, citations: citations))
+            default: block
+            }
+        }
+        return MarkdownDocument(blocks: blocks, textHash: document.textHash)
+    }
+
+    /// One line of prose with its markers replaced; a marker inside inline
+    /// code (`rows[0]` is an index) is left as written.
+    public static func cite(_ text: AttributedString, citations: [Int: Citation]) -> AttributedString {
+        var styled = text
+        let plain = String(styled.characters)
+        for match in plain.matches(of: marker).reversed() {
+            let numbers = numbers(in: match.1)
+            guard !numbers.isEmpty else { continue }
+            let start = styled.characters.index(styled.startIndex, offsetBy: plain.distance(from: plain.startIndex, to: match.range.lowerBound))
+            let end = styled.characters.index(start, offsetBy: plain.distance(from: match.range.lowerBound, to: match.range.upperBound))
+            if styled[start..<end].runs.contains(where: { $0.inlinePresentationIntent?.contains(.code) == true }) { continue }
+            var replacement = AttributedString("\u{2009}")
+            for (offset, number) in numbers.enumerated() {
+                if offset > 0 { replacement.append(AttributedString(",")) }
+                var mark = AttributedString("\(number)")
+                mark.link = URL(string: "\(citations[number] == nil ? missingScheme : scheme)://\(number)")
+                replacement.append(mark)
+            }
+            styled.replaceSubrange(start..<end, with: replacement)
+        }
+        return styled
+    }
+}
+
+/// How the report's blocks are laid out as a document: the title once, the
+/// sources list as rows, the rest in runs of ordinary blocks.
+public enum ReportLayout {
+    public enum Piece: Sendable, Hashable {
+        /// Consecutive ordinary blocks, rendered by the one markdown renderer.
+        case blocks([RenderedBlock])
+        /// The sources list as numbered reading-list rows.
+        case sources([Citation])
+    }
+
+    /// Drops a leading H1 equal to the title (the lede shows it), swaps the
+    /// one list under the first Sources / References / Citations heading for
+    /// the citations it names when the counts match, and groups consecutive
+    /// blocks so the view renders few block views. Anything else stays as
+    /// the agent wrote it.
+    public static func pieces(_ blocks: [RenderedBlock], title: String?, listed: [Citation]) -> [Piece] {
+        var out: [Piece] = []
+        var run: [RenderedBlock] = []
+        var underSources = false
+        var swapped = false
+        func flush() {
+            if !run.isEmpty { out.append(.blocks(run)) }
+            run = []
+        }
+        for (index, block) in blocks.enumerated() {
+            switch block {
+            case .heading(let level, let text):
+                let heading = String(text.characters).trimmingCharacters(in: .whitespaces)
+                if index == 0, level == 1, let title, heading == title.trimmingCharacters(in: .whitespaces) { continue }
+                let lower = heading.lowercased()
+                underSources = !swapped && (lower.hasPrefix("source") || lower.hasPrefix("reference") || lower.hasPrefix("citation"))
+                run.append(block)
+            case .list(let items, _) where underSources && !listed.isEmpty && items.count == listed.count:
+                flush()
+                out.append(.sources(listed))
+                underSources = false
+                swapped = true
+            default:
+                run.append(block)
+            }
+        }
+        flush()
+        return out
+    }
+}
