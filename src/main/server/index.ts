@@ -1050,6 +1050,8 @@ export async function startServer(
     // One line per connection the first time its unsent bytes pass the mark:
     // the client is not draining its socket, whatever the request log says.
     let backpressureLogged = false
+    /** Closed: a bulk request of this socket still waiting in the lane gate is dropped. */
+    let socketClosed = false
     const dropped = new Set<string>()
     const sendFrame = (frame: ServerFrame): void => {
       if (ws.readyState !== ws.OPEN) return
@@ -1176,7 +1178,11 @@ export async function startServer(
         // its turn and a duplicate shares the answer of the one before it.
         const lane = laneOf(req, focus)
         if (lane === 'bulk') {
-          const answer = await laneGate.run(lane, bulkKey(req, connection), () => captureAnswer(req))
+          // A read joins whoever asked first and runs even if this socket
+          // closes (they want it); this socket's own request is dropped once
+          // it closed (a watch must not register for a closed socket).
+          const key = bulkKey(req)
+          const answer = await laneGate.run(lane, key, () => (key === null && socketClosed ? Promise.resolve(null) : captureAnswer(req)))
           if (answer) sendFrame({ ...answer, id: req.id })
         } else await serve(req, sendFrame)
       } catch (err) {
@@ -2297,6 +2303,7 @@ export async function startServer(
       })
 
     ws.on('close', () => {
+      socketClosed = true
       coalescer.dispose()
       focus.drop(connection)
       offBootResume()

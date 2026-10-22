@@ -19,9 +19,10 @@ import { currentLag } from './stalls'
  * time per host and only while the loop keeps up (`currentLag().meanMs`
  * under BULK_LAG_MS); otherwise it waits in a FIFO, and a duplicate of a
  * request waiting or running (same method and params) joins it and gets
- * its answer: five windows polling one cwd's git status cost one run. A
- * read joins across sockets; a write or a per-socket subscription joins
- * only on its own socket. Nothing waits past BULK_MAX_WAIT_MS.
+ * its answer: five windows polling one cwd's git status cost one run. Only
+ * a read joins (from any socket); a write or a per-socket subscription
+ * always runs, in its turn, so a subscribe, unsubscribe, subscribe never
+ * loses the last one. Nothing waits past BULK_MAX_WAIT_MS.
  */
 
 export type Lane = 'interactive' | 'normal' | 'bulk'
@@ -88,17 +89,17 @@ export function laneOf(req: ClientRequest, interactive: InteractiveSet): Lane {
   return isBulkMethod(req.method) ? 'bulk' : 'normal'
 }
 
-/** The join key of a bulk request: method and a digest of its params, and the
- *  socket's number unless the request is a read every socket may share. */
-export function bulkKey(req: ClientRequest, connection: number): string {
+/** The join key of a bulk request: its method and a digest of its params,
+ *  for a read every socket may share; null for anything else (never joins). */
+export function bulkKey(req: ClientRequest): string | null {
+  if (METHOD_CAPABILITY[req.method] !== 'read' || PER_SOCKET.has(req.method)) return null
   const params = 'params' in req ? JSON.stringify(req.params ?? null) : 'null'
   const digest = params.length > 64 ? createHash('sha1').update(params).digest('base64') : params
-  const shared = METHOD_CAPABILITY[req.method] === 'read' && !PER_SOCKET.has(req.method)
-  return `${shared ? '*' : connection}\0${req.method}\0${digest}`
+  return `${req.method}\0${digest}`
 }
 
 interface Entry {
-  key: string
+  key: string | null
   enqueuedAt: number
   run: () => Promise<unknown>
   promise: Promise<unknown>
@@ -137,10 +138,11 @@ export class LaneGate {
     this.now = options.now ?? (() => Date.now())
   }
 
-  /** Run `task` in its lane: at once unless bulk; a bulk duplicate of `key` shares the first one's outcome. */
-  run<T>(lane: Lane, key: string, task: () => Promise<T>): Promise<T> {
+  /** Run `task` in its lane: at once unless bulk; a bulk duplicate of `key`
+   *  shares the first one's outcome, and a null key never joins. */
+  run<T>(lane: Lane, key: string | null, task: () => Promise<T>): Promise<T> {
     if (lane !== 'bulk') return task()
-    const known = this.byKey.get(key)
+    const known = key === null ? undefined : this.byKey.get(key)
     if (known) {
       this.joins++
       return known.promise as Promise<T>
@@ -152,7 +154,7 @@ export class LaneGate {
       reject = rej
     })
     const entry: Entry = { key, enqueuedAt: this.now(), run: task, promise, resolve, reject }
-    this.byKey.set(key, entry)
+    if (key !== null) this.byKey.set(key, entry)
     this.waiting.push(entry)
     this.pump()
     return promise as Promise<T>
@@ -201,7 +203,7 @@ export class LaneGate {
     }
     settled.then(entry.resolve, entry.reject).finally(() => {
       this.running--
-      this.byKey.delete(entry.key)
+      if (entry.key !== null) this.byKey.delete(entry.key)
       this.pump()
     })
   }

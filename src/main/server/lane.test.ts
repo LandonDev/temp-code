@@ -58,15 +58,12 @@ describe('laneOf', () => {
 })
 
 describe('bulkKey', () => {
-  it('a read joins across sockets; a write and a per-socket watch only on their own socket', () => {
-    const status = (connection: number) => bulkKey(req('git.diffStats', { cwd: '/repo' }), connection)
-    expect(status(1)).toBe(status(2))
-    expect(status(1)).not.toBe(bulkKey(req('git.diffStats', { cwd: '/other' }), 1))
-    const remove = (connection: number) => bulkKey(req('resources.remove', { id: 'r' }), connection)
-    expect(remove(1)).not.toBe(remove(2))
-    const watch = (connection: number) => bulkKey(req('fs.watch', { projectId: 'p', subscribe: true }), connection)
-    expect(watch(1)).not.toBe(watch(2))
-    expect(watch(1)).toBe(watch(1))
+  it('a read has a key by method and params; a write and a per-socket watch have none and never join', () => {
+    const status = bulkKey(req('git.diffStats', { cwd: '/repo' }))
+    expect(status).toBe(bulkKey(req('git.diffStats', { cwd: '/repo' })))
+    expect(status).not.toBe(bulkKey(req('git.diffStats', { cwd: '/other' })))
+    expect(bulkKey(req('resources.remove', { id: 'r' }))).toBeNull()
+    expect(bulkKey(req('fs.watch', { projectId: 'p', subscribe: true }))).toBeNull()
   })
 })
 
@@ -90,6 +87,23 @@ describe('LaneGate', () => {
       return 'again'
     })
     expect(runs).toBe(2)
+  })
+
+  it('requests with no key run each in turn: subscribe, unsubscribe, subscribe all land', async () => {
+    const gate = new LaneGate({ lag: () => 0, maxRunning: 1 })
+    const ran: string[] = []
+    const first = deferred<void>()
+    const block = gate.run('bulk', 'k', () => first.promise)
+    const asks = ['on', 'off', 'on'].map((state) =>
+      gate.run('bulk', null, async () => {
+        ran.push(state)
+      })
+    )
+    expect(gate.stats()).toEqual({ running: 1, held: 3 })
+    first.resolve()
+    await block
+    await Promise.all(asks)
+    expect(ran).toEqual(['on', 'off', 'on'])
   })
 
   it('a failure reaches every request that joined it', async () => {

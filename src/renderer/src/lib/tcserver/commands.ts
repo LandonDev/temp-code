@@ -293,6 +293,9 @@ export async function queueSteer(sessionId: string, messageId: string): Promise<
 
 type FocusLink = Pick<Link, "connected" | "request">;
 
+/** A send that failed: the host may hold the focus or not, so the next change is sent whatever it is. */
+const UNKNOWN = Symbol("unknown focus");
+
 /**
  * `session.focus`: the thread this window's focused pane shows goes to its
  * host, null to every other host and to all of them while the window is
@@ -305,7 +308,7 @@ export class FocusSignal {
   private active: { environmentId: string; sessionId: string } | null = null;
   private windowFocused = true;
   /** What each link's socket was last told; absent: nothing since it opened. */
-  private sent = new Map<string, string | null>();
+  private sent = new Map<string, string | null | typeof UNKNOWN>();
   private queued = false;
 
   constructor(
@@ -362,7 +365,8 @@ export class FocusSignal {
       }
       this.sent.set(environmentId, next);
       void link.request("session.focus", { sessionId: next }, { retry: false }).catch(() => {
-        if (this.sent.get(environmentId) === next) this.sent.delete(environmentId);
+        // It may have landed (a late answer) or not: the next change goes to this host either way.
+        if (this.sent.get(environmentId) === next) this.sent.set(environmentId, UNKNOWN);
       });
     }
   }

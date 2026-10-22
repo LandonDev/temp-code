@@ -390,6 +390,26 @@ describe("FocusSignal", () => {
     expect(links.box.sent).toEqual(["x", null, "x"]);
   });
 
+  it("a send that failed leaves the host unknown, so the next change still reaches it", async () => {
+    const { links, signal, settle } = setup();
+    let fail = true;
+    const request = links.mac.request.bind(links.mac);
+    links.mac.request = <T,>(method: string, params?: unknown): Promise<T> => {
+      const sent = request<T>(method, params);
+      return fail ? sent.then(() => Promise.reject(new Error("timed out"))) : sent;
+    };
+    signal.pane("mac", "a");
+    settle();
+    await Promise.resolve();
+    await Promise.resolve();
+    fail = false;
+    signal.left("a");
+    signal.pane("box", "x");
+    settle();
+    expect(links.mac.sent).toEqual(["a", null]);
+    expect(links.box.sent).toEqual(["x"]);
+  });
+
   it("a reconnect sends the focus again; a closed link is told once it opens", () => {
     const { links, signal, settle } = setup();
     links.mac.connected = false;

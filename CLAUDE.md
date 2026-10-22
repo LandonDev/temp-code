@@ -1029,10 +1029,10 @@ routed to (aliax-core's `forward`). Two listeners:
   commands.list, github.*, resources.*, doctor.get, fs.watch, the deploy,
   publish and sync methods), normal (the rest). attach() answers through
   `serve(req, sendFrame)`; the `LaneGate` runs bulk two at a time while the
-  loop's mean lag is under 50 ms, joins a duplicate (method and a digest of
-  params; reads across sockets, writes and fs.watch on their own socket) to
-  the one waiting or running, and runs anything that waited 20 s. The path
-  fence runs before the gate.
+  loop's mean lag is under 50 ms, joins a duplicate read (method and a
+  digest of params, from any socket) to the one waiting or running, runs a
+  write or fs.watch each in its turn (dropped if its socket closed first),
+  and runs anything that waited 20 s. The path fence runs before the gate.
 - Pushes: a socket's own focused thread's rows go at once; other threads'
   rows wait 33 ms, or 100 ms locally and 250 ms remotely while the loop
   lags (wire.ts `eventsWindowMs`). Stall lines end

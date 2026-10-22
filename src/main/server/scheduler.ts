@@ -97,6 +97,7 @@ export class ThreadScheduler {
   /** Threads a focused send started past the cap, while they stay live. */
   private readonly overCap = new Set<string>()
   private lastPassAt = Number.NEGATIVE_INFINITY
+  private disposed = false
 
   /** Is the person looking at this thread? The server wires it to the windows' focus (focus.ts). */
   focused: (sessionId: string) => boolean = () => false
@@ -207,6 +208,7 @@ export class ThreadScheduler {
 
   /** Something changed: run a pass soon, coalescing bursts into one. */
   schedule(): void {
+    if (this.disposed) return
     this.dirty = true
     if (this.running) return
     this.running = this.loop().finally(() => {
@@ -229,6 +231,8 @@ export class ThreadScheduler {
       if (currentLag().meanMs >= DEFAULT_IDLE_THRESHOLD_MS) {
         const gap = this.lastPassAt + PASS_GAP_MS - Date.now()
         await Promise.all([gap > 0 ? new Promise((r) => setTimeout(r, gap)) : null, untilLoopIdle()])
+        // Disposed while it waited: nothing may start now.
+        if (this.disposed) return
       }
       this.dirty = false
       this.lastPassAt = Date.now()
@@ -333,6 +337,8 @@ export class ThreadScheduler {
   }
 
   dispose(): void {
+    this.disposed = true
+    this.dirty = false
     this.detach?.()
     this.lines.clear()
     this.inFlight.clear()

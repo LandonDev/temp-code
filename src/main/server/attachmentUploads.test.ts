@@ -307,6 +307,27 @@ describe('sweeps', () => {
   })
 })
 
+describe('the retention sweep and a restore', () => {
+  it('a thread restored while the sweep paused keeps its files', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tc-sweep-restore-'))
+    const root = join(dir, 'attachments')
+    const target = join(root, 'old-archive')
+    mkdirSync(target, { recursive: true })
+    const now = Date.now()
+    const row = { archived: true, updatedAt: now - 40 * 86_400_000 }
+    const removed = await sweepAttachmentRoots([root], () => row, {
+      now,
+      between: async () => {
+        // The person restores the thread while the sweep waits for a quiet loop.
+        row.archived = false
+      }
+    })
+    expect(removed).toEqual([])
+    expect(existsSync(target)).toBe(true)
+    rmSync(dir, { recursive: true, force: true })
+  })
+})
+
 describe('readAttachment', () => {
   it('refuses a sibling whose name only starts with a root (the old startsWith check)', async () => {
     const root = join(dir, 'repo')

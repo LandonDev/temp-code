@@ -334,22 +334,27 @@ export async function sweepAttachmentRoots(
     } catch {
       continue
     }
+    /** Is this directory due to go, as things stand now? */
+    const due = (name: string): boolean => {
+      let mtime: number
+      try {
+        const info = statSync(join(root, name))
+        if (!info.isDirectory()) return false
+        mtime = info.mtimeMs
+      } catch {
+        return false
+      }
+      const verdict = lookup(name)
+      return verdict ? verdict.archived && now - verdict.updatedAt > archivedMs : now - mtime > orphanMs
+    }
     for (const [i, name] of names.entries()) {
       // A quiet loop between slices of a big root, and before every removal.
       if (i > 0 && i % 50 === 0) await between()
-      const dir = join(root, name)
-      let mtime: number
-      try {
-        const info = statSync(dir)
-        if (!info.isDirectory()) continue
-        mtime = info.mtimeMs
-      } catch {
-        continue
-      }
-      const verdict = lookup(name)
-      const drop = verdict ? verdict.archived && now - verdict.updatedAt > archivedMs : now - mtime > orphanMs
-      if (!drop) continue
+      if (!due(name)) continue
       await between()
+      // Decided again after the pause: a thread restored meanwhile keeps its files.
+      if (!due(name)) continue
+      const dir = join(root, name)
       await rm(dir, { recursive: true, force: true })
       removed.push(dir)
     }

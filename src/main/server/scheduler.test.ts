@@ -416,6 +416,26 @@ describe('the scheduler alone', () => {
     }
   })
 
+  it('a pass waiting for a quiet loop starts nothing once the scheduler is disposed', async () => {
+    vi.useFakeTimers()
+    const { reg, started } = fakeRegistry([row('a', 1)])
+    const scheduler = new ThreadScheduler(reg)
+    try {
+      setLagForTests({ meanMs: 90, maxMs: 300, ewmaMs: 80 })
+      scheduler.schedule()
+      await vi.advanceTimersByTimeAsync(100)
+      scheduler.dispose()
+      setLagForTests(null)
+      await vi.advanceTimersByTimeAsync(3_000)
+      scheduler.schedule()
+      await vi.advanceTimersByTimeAsync(100)
+      expect(started).toEqual([])
+    } finally {
+      setLagForTests(null)
+      vi.useRealTimers()
+    }
+  })
+
   it('threads created in the same millisecond start in the order they were queued', async () => {
     const rows = [row('z', 7), row('m', 7), row('a', 7)]
     const { reg, started } = fakeRegistry(rows)
