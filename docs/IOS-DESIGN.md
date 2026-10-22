@@ -147,45 +147,60 @@ rows indent one step under their root with the agent glyph. No chevrons:
 every row pushes.
 
 **Inbox** is the desktop's GitHub inbox over `github.inbox`, laid out the
-way Mail lays a message out. A row: the author's picture (36 pt, a 1 pt
-outline at black or white 10 % so the edge reads the same on every avatar,
-a letter until the picture lands, cross-faded in 150 ms), the title in
-`subheadline` (semibold while unread: weight is the whole unread mark, no
-badge, no dot) with the time trailing in tabular `caption` tertiary, then a
-`footnote` line: the kind glyph, the author, the repository's name with the
-number dim, the one word the item waits on in the color that means it
-(Changes requested warning, Checks failing destructive, Approved success,
-Your review info, Merged violet, Closed destructive for a pull request,
-Draft and an issue's Closed plain), and the host's name when there are
-several. Nothing else is colored. Rows sort newest first across every host,
-as the desktop does, with no sections. Swipe trailing marks read or unread
-(info tint; full swipe), swipe leading opens on GitHub, and the context menu
-has both plus Copy Link. Seen marks and the last snapshot of every host live
-in `InboxStore` (UserDefaults and a JSON per host under Application
+way Mail lays a message out, on the kit by name. A row: the author's picture
+(36 pt scaled with the title, on the fill step behind the kit's one-pixel
+`hairlineBorder` at black or white 10 % so the edge reads the same on every
+avatar, a letter until the picture lands, cross-faded in on `Motion.crossFade`),
+the title in the title step (semibold while unread: weight is the whole
+unread mark, no badge, no dot) with the time trailing as `AgoText` in the
+stamp step, then a meta line: the kind glyph (`MetaGlyph`, its stroke the
+title's weight), the author, the repository's name with the number dim, the
+one word the item waits on in the color that means it (Changes requested
+warning, Checks failing destructive, Approved success, Your review info,
+Merged violet, Closed destructive for a pull request, Draft and an issue's
+Closed plain), and the host's name when there are several; at accessibility
+sizes two lines, who over what. Nothing else is colored. Rows sit on
+`Layout.rowInsets` and the separator starts at the title. Rows sort newest
+first across every host, as the desktop does, with no sections. Swipe
+trailing marks read or unread (info tint; full swipe), swipe leading opens on
+GitHub, and the context menu has both plus Copy Link; a mark swaps the weight
+with no animation. The rules are `InboxModel` in the client package
+(`Rendering/Inbox.swift`, tested); seen marks and the last snapshot of every
+host live in `InboxStore` (UserDefaults and a JSON per host under Application
 Support), so the tab paints at once and never flashes; the first snapshot
 ever seeds everything older than a day as seen. Opening the tab reads each
 host's stored snapshot (`github.inbox`, SQLite only, again after a minute)
 with animations disabled; a pull is the one refresh (`github.inboxRefresh`,
 since the inbox is a poll, not a live push), shows the system indicator, and
-is the only time the rows reorder under the default animation. A key that
-cannot refresh gets one footnote line at the top, as do a signed-out gh and a
-repository that failed. Empty: one calm secondary line, shown only once every
-host has answered or cannot.
+is the only time the rows reorder under the default animation. A read-only
+key is known from `operateBlock` before the pull and reads the stored
+snapshot instead; it, a signed-out gh and a repository that failed each get
+one meta line at the top. Empty: one calm meta line, shown once every host has
+answered or cannot; the system `ProgressView` until then, never on a paint
+from disk.
 
 The detail paints its header from the row (picture, author, `repo #n` dim,
-the title in `title3` semibold, the state word in its color, `head → base`
-in mono one step down, labels as plain capsules with no color), then the
-body as markdown, the conversation (comments, reviews and review threads in
-time order, 24 pt pictures, the review verdict in its color, Resolved plain,
-`path:line` in mono, replies one step in) and for a pull request the patch by
-file and hunk: one fold per file on the chrome step with its `+n −m`, the
-first open, dim tabular line numbers and a tinted marker in `footnote` mono
-(adds success at 12 %, deletes destructive at 12 %), hunk headers in
-`caption` mono on the quaternary fill, never side by side, long lines
-scrolling sideways inside the file, 2,000 lines before Show all. What loaded
-once stays in the store so going back and in paints from memory. Open on
-GitHub is the bar's one button. Nothing on either screen animates except
-the fold (the expand spring) and the press.
+the title in `title3` semibold, the state word in its color or Open in
+success, `head → base` in mono one step down, labels as plain capsules on the
+fill step), then the body as markdown and the conversation (comments, reviews
+and review threads in time order, 24 pt pictures, the review verdict in its
+color, Resolved plain, `path:line` in mono, replies one step in). A host with
+no checkout of the repository says "No checkout of <repo> on <host>." and
+asks nothing. For a pull request the Changes section is a count line and a
+`groupCard` of rows over `InboxPatch.changes`, 44 pt each with a hairline
+between: "All files" first when there are several, then one per file (the
+directory dim, the name primary, in mono one step down, head-truncated) with
+its `+n −m` or Binary; a row pushes the diff thread's `DiffScreen` with a
+`PatchDiffRoute` of that file's slice of the patch, so the phone has one diff
+screen, not two. A file whose block the host did not send is inert, and a
+truncated patch ends with "The rest of the patch is on GitHub." The body and
+the diff load behind a `Shimmer` of the height they will take and cross-fade
+in on `Motion.crossFade` (a plain swap under reduced motion); a failed load is
+one meta line with Retry. What loaded once stays in the store so going back
+and in paints from memory. Open on GitHub is the bar's one button. Nothing on
+either screen animates except the press, the cross-fades above and `AgoText`'s
+digits.
+
 
 **Search** uses `session.search` and `search.project` over every paired
 host: the system field (on iOS 26 the search tab's own field, `.automatic`;

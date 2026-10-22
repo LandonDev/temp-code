@@ -21,7 +21,7 @@ Sources/TempCodeClient
   Cache/        Database (sqlite3), SessionCache
   Client/       Subscriptions, EnvironmentClient, ClientRegistry
   Rendering/    ThreadFold (rows → stamped items + BoardState), Transcript (item types), Board,
-                ResearchBoard, Fleet, PlanDoc, MarkdownBlocks, MarkdownCache
+                ResearchBoard, Fleet, PlanDoc, Inbox, MarkdownBlocks, MarkdownCache
   Design/       TimeFormat, ModelName, CompactNumber, ThreadRowModel: the design kit's pure
                 logic, tested here; the app's Design/ holds the views
   Support/      SocketClock (SystemClock, ManualClock)
@@ -178,7 +178,12 @@ and sources, unique totals, `mergeAngles` with the spawned children,
 `host(of:)`); **Fleet** (agents.ts: rank and sort, `children(of:in:)`,
 `counts`, the activity and status `line`, `stats`, `loadsTranscript`);
 **PlanDoc** (planDoc.ts: sections, the task checklist, progress, the H1,
-report frontmatter). **MarkdownCache** (`@MainActor @Observable`) parses a
+report frontmatter); **Inbox** (the desktop's InboxView.tsx and github.ts:
+`InboxModel` sorts every host's items newest first, picks the one status
+word and its tone, keeps the seen marks and their first-snapshot seed and
+writes the notices; `InboxPatch` splits a unified patch by file for the
+diff screen and lines the blocks up with the host's file metadata).
+**MarkdownCache** (`@MainActor @Observable`) parses a
 row's markdown into `RenderedBlock`s with inline `AttributedString`s off
 the main actor (`@concurrent`), keyed by environment, session, seq and text hash: a read is
 synchronous, a miss parses and lands as an observable change, a changed
@@ -217,7 +222,7 @@ stops, rate limit, probes, background grace, offline/online, stop,
 replacement sessions), the cache (cold paint from disk, duplicates, reset,
 pruning, removal), the client (cold paint, shell listing, tail, pushes, drop
 and resume without duplicates, reset, older pages, bodies), the fold and the
-markdown splitter, the fold's stamps and board (todos per round, TaskCreate ids, warm resume versus an explicit new pass, the pass flag, sources and agents), the board selectors and the implementation board, the research board, the fleet lines and stats, the plan document readers and the markdown cache. The action tests add the gate by key and socket, the draft payloads, and on the fake socket: a pending turn retired by its echo, a refused send, a send while the link is down, a read key refused before the wire, an approval's optimistic decision and its revert, an answer, a create that adopts and briefs, the row RPCs, and the catalog fetched once. The live suite adds: hello over http, a socket on a fresh
+markdown splitter, the fold's stamps and board (todos per round, TaskCreate ids, warm resume versus an explicit new pass, the pass flag, sources and agents), the board selectors and the implementation board, the research board, the fleet lines and stats, the plan document readers, the inbox rules (the sort across hosts, every status branch, review verdicts, the seen marks and seed, the notices, the patch split on renames, binaries, quoted paths, CRLF and cut-short blocks, the metadata join) and the markdown cache. The action tests add the gate by key and socket, the draft payloads, and on the fake socket: a pending turn retired by its echo, a refused send, a send while the link is down, a read key refused before the wire, an approval's optimistic decision and its revert, an answer, a create that adopts and briefs, the row RPCs, and the catalog fetched once. The live suite adds: hello over http, a socket on a fresh
 ticket with the negotiated deflate extension and a forbidden call, identity
 and contract halts against the real hello, an expired and a reused ticket,
 a dropped link resumed from the last seq with no duplicate and no gap, and

@@ -170,7 +170,7 @@ shell_set() {
   shot 02-archived-light archived
   shot 03-inbox-light inbox
   shot 03b-inbox-item-light inbox "" "" item
-  shot 03c-inbox-changes-light inbox "" "" item-changes
+  shot 03c-inbox-diff-light inbox "" "" item-diff
   shot 04-search-light search
   shot 05-settings-light settings
   shot 06-hosts-light hosts
@@ -180,7 +180,7 @@ shell_set() {
   shot 09-archived-dark archived
   shot 10-inbox-dark inbox
   shot 10b-inbox-item-dark inbox "" "" item
-  shot 10c-inbox-changes-dark inbox "" "" item-changes
+  shot 10c-inbox-diff-dark inbox "" "" item-diff
   shot 11-search-dark search
   shot 12-settings-dark settings
   shot 13-hosts-dark hosts

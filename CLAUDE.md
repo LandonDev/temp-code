@@ -1020,12 +1020,13 @@ routed to (aliax-core's `forward`). Two listeners:
   screen for every type and for a subagent's detail. The models they read
   are the client package's `Rendering/`: `ThreadFold` (the desktop's fold
   with round, todo and pass stamps and the `BoardState` of todos.ts), the
-  `Board`, `ResearchBoard`, `Fleet` and `PlanDoc` selectors, and the
-  `MarkdownCache` that parses rows off the main actor; `threads[id].fold`
+  `Board`, `ResearchBoard`, `Fleet`, `PlanDoc` and `Inbox` selectors (the
+  Inbox's sort, status words, seen marks and the patch split by file), and
+  the `MarkdownCache` that parses rows off the main actor; `threads[id].fold`
   stays current incrementally. The plan or report file is read with
   `file.read` (in the subset since L4), polled 1.5 s running / 8 s idle
   while the screen shows. DEBUG launch hooks (`TC_TEST_SEGMENT`,
-  `TC_TEST_OPEN=chip|diff|agent|report|source`, `TC_TEST_SCROLL=1`, the Search tab's
+  `TC_TEST_OPEN=chip|diff|agent|report|source|item|item-diff`, `TC_TEST_SCROLL=1`, the Search tab's
   `TC_TEST_SEARCH=<query>` and `TC_TEST_SEARCH_SCOPE=files`, and L5's
   `TC_TEST_ACTION=send:<text>|stop|approve|deny|answer:<label>|start-build|
   rename:<title>|pin|archive|new-chat` and `TC_TEST_SHEET=start|new`) exist
