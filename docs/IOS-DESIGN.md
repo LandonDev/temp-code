@@ -582,6 +582,9 @@ the package's `ToolPhrase` (tested). Row kinds and their mobile form:
 - **Errors and system**: "Failed · the harness's words" in destructive with
   the alert glyph; the user's own Stop is a gray "Stopped"; a pass row reads
   "Pass · what it did"; everything else is one quiet line, glyph and text.
+- **A failed thread's row** (Home's Needs you, every list) reads the host's
+  one-line verdict (`failure.summary`) on its second line; the error row's
+  first line is the fallback for a host that sent none.
 - **Subagent spawn and report**: a row under a rail: the agent's glyph,
   "Spawned" or "Reported", its title in a wash, its status with the dot;
   tap pushes the subagent thread.
@@ -618,6 +621,40 @@ bottom and shows a "Jump to latest" pill (one, raised, 150 ms opacity and
 and nothing else. Nothing animates on first paint from cache. Images reach
 the phone through `fs.media` and the `/asset` GET; the host an image lives
 on is `MediaImage.hostOf(_:)` (the media-host thread's seam).
+
+### The account chip and menu
+
+Every Claude or Codex thread's subtitle ends with the account it spends
+from: a 6 pt dot in the account's own colour (Aliax's `#rrggbb`; tertiary
+when it has none) and the short name (nickname, else the email's local
+part) in `caption` medium secondary, or "Auto" one step dimmer with no dot
+when the host picks. A 44 pt hit area; press dims (`pressableStatic`), no
+scale in the dense bar. Tap opens the system sheet (16 pt, medium and large
+detents), titled "Account", with the source line under it ("From project
+billing-page", "From workspace cosmic-web", "Auto · picked by model").
+
+Three scopes in a segmented row, only those the thread has: **This thread**
+reads the route (the account checked is the one it spends from; a "Route
+automatically" pill under the rows asks the host to re-pick, and "Already
+on the best account" is the one word back when nothing moved); **Project**
+and **Workspace** pin over `project.setAccounts` and `workspace.setAccounts`
+(admin). Rows: "Automatic" first, with what it follows ("Best account for
+the model", "Follows the workspace: work"), then the provider's accounts in
+the snapshot's order, a check on the one that applies at that scope, and
+one "gone from this host" row in tertiary when the pin or the route names
+an account the snapshot no longer knows. A pin shows at once and reverts
+with the reason on the reserved line under the segments when the host
+refuses. A key below admin keeps the rows and says "This key can't change
+pins" there; nothing hides.
+
+Each account row carries a 3 pt capsule bar: the least room among the
+usage windows the thread's model spends (5h, the weekly one, and the
+Fable cap for a Fable model), success above a quarter, warning down
+to a twentieth, destructive below, and destructive at zero while the
+account is rate limited ("rate limited · 39m") or signed out ("sign in
+again"); the stamp beside the name is the tightest window's reset ("in 2h
+14m"), tabular. The sheet reads `accounts.list` once on open and the
+`accounts` push after; stamps tick every 30 s.
 
 ### Implementation: the board is the hero
 
@@ -1328,6 +1365,7 @@ used.
 | Fleet toast | 150 ms opacity, both directions; a clean result leaves after 4 s | `FleetToastLine` (`Motion.crossFade`) |
 | Fleet confirm's count | `contentTransition(.numericText())` on the title, 150 ms | `FleetConfirmSheet` (`Motion.numeric`) |
 | Resource row removed | 150 ms opacity, once the host's push says so | `ResourcesSheet` (`Motion.rowLeave`) |
+| Headroom bar on a snapshot change | fill width 200 ms ease-out; never on the first paint; reduced motion snaps | `AccountMenu`'s `AccountMotion.bar` (for `Motion` to absorb) |
 | Reduced motion | cross-fades replace every translate and spring | every `Motion.*(reduced:)` and the four transition modifiers read it themselves |
 
 Every transition carries its own timing, so an enclosing `withAnimation`

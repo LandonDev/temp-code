@@ -1082,7 +1082,7 @@ routed to (aliax-core's `forward`). Two listeners:
   `AgentDetailRoute`), `SubagentListScreen(client:rootSessionId:)` and
   `AgentDetailScreen(client:agentId:parentCwd:hostName:)`
   (docs/IOS-DESIGN.md "Orchestration"). DEBUG launch hooks (`TC_TEST_SEGMENT`,
-  `TC_TEST_OPEN=chip|group|diff|agent|agents|rename|agent-detail|report|source|item|item-diff`,
+  `TC_TEST_OPEN=chip|group|diff|agent|agents|rename|agent-detail|report|source|item|item-diff|account`,
   `TC_TEST_SCROLL=1`, the Search tab's `TC_TEST_SEARCH=<query>` and
   `TC_TEST_SEARCH_SCOPE=files`, and L5's
   `TC_TEST_ACTION=send:<text>|stop|approve|deny|answer:<label>|start-build|
@@ -1134,6 +1134,18 @@ routed to (aliax-core's `forward`). Two listeners:
   `StatusWords.swift` and `Resources.swift` (`ResourceLedger` on the
   `resources` push, loaded whole at every open) through
   `Shell/FleetSwitches.swift` and `Thread/ResourcesSheet.swift`.
+- Accounts on the phone (iOS 24): every routed thread's header ends with
+  the account chip (`ios/TempCode/Sources/Thread/AccountChip.swift`) and
+  its menu sheet (`AccountMenu.swift`): `accounts.list` once on open, then
+  the `accounts` push into `EnvironmentClient.accounts` (`HostAccounts`);
+  This thread reads the route and offers `session.reroute` (operate),
+  Project and Workspace pin over `project.setAccounts` /
+  `workspace.setAccounts` (admin; a lesser key sees "This key can't change
+  pins"); the pure rules (`AccountScope`, `HeadroomLook`, `AccountMenuModel`)
+  are the client package's `Client/Accounts.swift`. A failed thread's row
+  and Home's cue read the host's `failure.summary` (`Shell/FailureCue.swift`).
+  The test server seeds two Claude accounts and answers
+  `POST /accounts/headroom`.
 - Push (L6): the phone registers its APNs token with every paired host
   (`remote.push.register`/`unregister`/`status`/`activity`, capability read:
   the key's own row); the host keeps one row per key (`remote_push`,

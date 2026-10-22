@@ -478,6 +478,38 @@ proof's `actions` set.
   `ActionsTests`, and one live case in `LiveActionTests` (Pause all over the
   test server's running roots, Start now on `ios-queued`).
 
+## Accounts: the chip, the menu, the pins
+
+`Client/Accounts.swift` is what the account chip and menu read:
+
+- **`HostAccounts`** on every `EnvironmentClient` (`client.accounts`): the
+  last `accounts.list` answer or `accounts` push, with when it landed;
+  `loadAccounts(force:)` asks once unless a snapshot under 30 s old is held
+  and keeps the old one on a refusal.
+- **`AccountScope.of(session, projects:, workspaces:)`** is the desktop's
+  `scopeOf`: the project's pin, else the workspace's (found through the
+  project), the thread's own `account`, `shown` and the source line; nil for
+  a provider the gateway does not route (`RoutedProvider`).
+- **`AccountName`**: nickname, else the email's local part, else the name's.
+- **`HeadroomLook.of(...)`**: one bar per account from the least room among
+  the usage windows the model spends (aliax-core's `tiersFor`: 5h, the
+  weekly one, and the Fable cap for a Fable model); throttled or rate limited and expired sign-ins are
+  destructive at zero; `until`/`spoken` are the desktop's `untilLabel` and
+  its VoiceOver form.
+- **`AccountMenuModel`**: the rows at a scope (Automatic with what it
+  follows, the profiles, one gone row), the scopes a thread has, and
+  `pins(after:provider:name:)`.
+- **`PinBlock`** and the pin calls: `pinBlock` (`needsAdmin` below admin,
+  else the socket's block), `setProjectAccount`, `setWorkspaceAccount`
+  (a `forbidden` answer reads as the pin block), `rerouteAccount` (operate).
+- **`Shell/FailureCue.swift`**: `SessionMeta.failureSummary` (only while in
+  error) and `HomeModel.cue(for: item, rows:)`, which prefers it.
+
+Tests: `AccountsTests.swift` (every rule above on fixtures and on the fake
+socket) and the `AccountsLiveTests` suite in `LiveServerTests.swift`
+(`accounts.list`, the seeded pinned thread and failed thread, the push after
+`POST /accounts/headroom`).
+
 ## Push (L6): the token to every host, taps to the card, the Live Activity
 
 - `Push/PushRegistrar.swift` holds the APNs token (`Device`: token, bundle
