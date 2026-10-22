@@ -11,6 +11,7 @@ import { timed } from './stalls'
 import { ftsQuery, TURN_ROW_SQL, TurnIndex, turnText, type BackfillOptions } from './turnIndex'
 import type { EventReader } from './dbWorkers'
 import { dirname } from 'node:path'
+import { seedRowJson } from './wire'
 import type { AgentEvent, EventRow, Failure, PreambleStamp, SessionMeta, SessionStatus } from '@shared/events'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
 import type { GithubInboxRepo } from '@shared/contract-github'
@@ -1091,12 +1092,15 @@ export class Store {
     this.nextSeq.set(sessionId, seq + 1)
     // A row for a cold session lands in the cold file, where its log is.
     const table = this.eventsTable(sessionId)
-    this.pendingEvents.push({ sessionId, seq, ts, payload: JSON.stringify(event), text: turnText(event), table })
+    const payload = JSON.stringify(event)
+    this.pendingEvents.push({ sessionId, seq, ts, payload, text: turnText(event), table })
     if (!this.flushScheduled) {
       this.flushScheduled = true
       setImmediate(() => this.flushEvents())
     }
-    return { sessionId, seq, ts, event }
+    const row: EventRow = { sessionId, seq, ts, event }
+    seedRowJson(row, payload)
+    return row
   }
 
   private maxSeq(sessionId: string): number {

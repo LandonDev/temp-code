@@ -547,6 +547,7 @@ export class SessionRegistry {
     // The index follows every row the store writes (sessionIndex.ts); a
     // stale one (a version bump) is read again on its next use.
     store.observeSessionRows((change) => {
+      if ('row' in change && change.row === null) this.roots.clear()
       const cache = this.indexCache
       if (cache && cache.version === this.store.sessionsVersion) applyRowChange(cache.index, change)
     })
@@ -941,8 +942,9 @@ export class SessionRegistry {
   /** One decorated session — the lookup-by-id every caller used to do
    *  with list().find(), which decorated all n sessions to read one. */
   get(sessionId: string): SessionMeta | null {
-    const meta = this.store.getSession(sessionId)
-    return meta ? this.decorate(meta) : null
+    const index = this.indexOf()
+    const meta = index.byId.get(sessionId)
+    return meta ? this.decorate(meta, index) : null
   }
 
   /** A parent's direct children, decorated. */
@@ -961,6 +963,7 @@ export class SessionRegistry {
   private indexOf(sessions?: SessionMeta[]): SessionIndex {
     const version = this.store.sessionsVersion
     if (this.indexCache?.version === version) return this.indexCache.index
+    this.roots.clear()
     const index = buildSessionIndex(sessions ?? this.store.listSessions())
     this.indexCache = { version, index }
     return index
@@ -987,15 +990,31 @@ export class SessionRegistry {
     return false
   }
 
-  /** Root thread of a subagent chain — the board that displays its work. */
+  /** Roots already walked: a thread's parent chain never changes. Cleared
+   *  when a row leaves the index or the index is read again. */
+  private roots = new Map<string, string>()
+
+  /** Root thread of a subagent chain — the board that displays its work.
+   *  Asked on every appended row (the notifier, every meta push of a
+   *  subagent): walked once over the index, then remembered. */
   rootSessionOf(sessionId: string): string {
-    let cur = this.store.getSession(sessionId)
-    for (let hops = 0; cur?.parentId && hops < 20; hops++) {
-      const parent = this.store.getSession(cur.parentId)
+    const known = this.roots.get(sessionId)
+    if (known !== undefined) return known
+    const index = this.indexOf()
+    let cur = index.byId.get(sessionId)
+    if (!cur) return sessionId
+    for (let hops = 0; cur.parentId && hops < 20; hops++) {
+      const parent: SessionMeta | undefined = index.byId.get(cur.parentId)
       if (!parent) break
       cur = parent
     }
-    return cur?.id ?? sessionId
+    this.roots.set(sessionId, cur.id)
+    return cur.id
+  }
+
+  /** The stored row, from the index: no SELECT (the append path, get()). */
+  private row(sessionId: string): SessionMeta | null {
+    return this.indexOf().byId.get(sessionId) ?? null
   }
 
   /** The thread's current task tally: the warm fold if append() has
@@ -3228,10 +3247,21 @@ export class SessionRegistry {
   }
 
   append(sessionId: string, event: AgentEvent): void {
+    // Streaming previews (partial tool input) are broadcast-only: each one
+    // carries the whole input so far, so persisting them would write the
+    // same growing payload into the log over and over. The final tool-call
+    // event has everything replay needs. A streamed Write sends many a
+    // second: they leave before any lookup.
+    if (event.type === 'tool-call' && event.partial) {
+      const row: EventRow = { sessionId, seq: -1, ts: Date.now(), event, ephemeral: true }
+      for (const listener of this.subscribers.get(sessionId) ?? []) listener(row)
+      return
+    }
     // A manual pause wins races with the old provider and with a replacement
     // handle that has not accepted its continuation yet. Pause never gains
     // an error chip or loses its state through a late status callback.
-    const persisted = this.store.getSession(sessionId)
+    // Every row read on this path is the index's (sessionIndex.ts), never a SELECT.
+    const persisted = this.row(sessionId)
     if (persisted?.status === 'paused' && (event.type === 'status' || event.type === 'error')) {
       return
     }
@@ -3242,15 +3272,6 @@ export class SessionRegistry {
     // the completed-turn pass and the boot ledger.
     const masterWatch = event.type === 'status' && event.status === 'idle' && this.masterKeepsWatching(sessionId)
     if (masterWatch) event = { type: 'status', status: 'watching' }
-    // Streaming previews (partial tool input) are broadcast-only: each one
-    // carries the whole input so far, so persisting them would write the
-    // same growing payload into the log over and over. The final tool-call
-    // event has everything replay needs.
-    if (event.type === 'tool-call' && event.partial) {
-      const row: EventRow = { sessionId, seq: -1, ts: Date.now(), event, ephemeral: true }
-      for (const listener of this.subscribers.get(sessionId) ?? []) listener(row)
-      return
-    }
     // Research boards: web tool calls anywhere in a research thread's agent
     // tree surface as research-source events on the ROOT session (partials
     // returned above, so every tool-call here is final).
@@ -3265,7 +3286,7 @@ export class SessionRegistry {
       const context = { tokens: event.tokens, window }
       this.liveContexts.set(sessionId, context)
       this.store.setSessionContext(sessionId, context)
-      const meta = this.store.getSession(sessionId)
+      const meta = this.row(sessionId)
       if (meta) this.notifyMeta(meta)
       this.checkNotesReminder(sessionId, event.tokens, window)
       return
@@ -3371,7 +3392,7 @@ export class SessionRegistry {
       this.watching.delete(sessionId)
     }
     if ((actMoved || tasksMoved || goalMoved || recoveryMoved || failureMoved || watchMoved) && event.type !== 'status') {
-      const meta = this.store.getSession(sessionId)
+      const meta = this.row(sessionId)
       if (meta) this.notifyMeta(meta)
     }
     let settleToReport: SessionMeta | null = null
@@ -3380,7 +3401,7 @@ export class SessionRegistry {
     // of work begins and holds through steers and queue drains, so the
     // clock counts from the first message, not the latest wake-up.
     if (event.type === 'status') {
-      const cur = this.store.getSession(sessionId)
+      const cur = this.row(sessionId)
       const busySince =
         event.status === 'idle'
           ? (this.queues.get(sessionId)?.length ?? 0) > 0
@@ -3502,7 +3523,7 @@ export class SessionRegistry {
       this.turnNoted.delete(sessionId)
     }
     if (event.type === 'turn-complete' && persisted?.status !== 'paused') {
-      if (this.store.getSession(sessionId)?.projectId) scheduleMirror(this, sessionId)
+      if (this.row(sessionId)?.projectId) scheduleMirror(this, sessionId)
       if (!this.erroredTurns.has(sessionId)) {
         this.armTurnPass(sessionId)
         // A turn went through: the sign-in works again, so a later 401 posts afresh.
@@ -3518,9 +3539,8 @@ export class SessionRegistry {
 
   /** The research thread this session's ancestor chain roots in, if any. */
   researchRootOf(sessionId: string): SessionMeta | null {
-    let cur = this.store.getSession(sessionId)
-    for (let i = 0; cur?.parentId && i < 16; i++) cur = this.store.getSession(cur.parentId)
-    return cur?.threadType === 'research' ? cur : null
+    const root = this.row(this.rootSessionOf(sessionId))
+    return root?.threadType === 'research' ? root : null
   }
 
   private researchSeenOf(rootId: string): Map<string, { callId: string; claimed: boolean }> {
@@ -3551,7 +3571,7 @@ export class SessionRegistry {
     const input = (
       event.input && typeof event.input === 'object' ? event.input : {}
     ) as Record<string, unknown>
-    const agentLabel = this.store.getSession(sessionId)?.title ?? 'research'
+    const agentLabel = this.row(sessionId)?.title ?? 'research'
     const callId = `${sessionId}:${event.callId}`
     if (isSearch) {
       const query = typeof input.query === 'string' ? input.query.trim() : ''
@@ -3609,7 +3629,7 @@ export class SessionRegistry {
     const claim = args.claim.trim().replace(/\s+/g, ' ').slice(0, CITE_CLAIM_MAX)
     if (!url || !claim) return 'refused: url and a one-line claim are both required.'
     const title = args.title?.trim() || undefined
-    const agentLabel = this.store.getSession(sessionId)?.title ?? 'research'
+    const agentLabel = this.row(sessionId)?.title ?? 'research'
     const seen = this.researchSeenOf(root.id)
     const key = `u:${sessionId}:${url}`
     const row = seen.get(key)

@@ -385,6 +385,13 @@ function jsonOf(piece: object): string {
   return json
 }
 
+/** A row whose event the store just stringified for the log
+ *  (Store.appendEvent): the wire reuses that string instead of a second
+ *  stringify of the same event. The bytes are JSON.stringify(row)'s. */
+export function seedRowJson(row: EventRow, eventJson: string): void {
+  pieceJson.set(row, `{"sessionId":${JSON.stringify(row.sessionId)},"seq":${row.seq},"ts":${row.ts},"event":${eventJson}}`)
+}
+
 /** A frame as the socket sends it. The pushes that carry metas and rows are
  *  assembled from each piece's shared JSON (the same bytes JSON.stringify
  *  would give); everything else is stringified as it is. */

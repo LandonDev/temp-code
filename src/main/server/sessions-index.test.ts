@@ -129,6 +129,38 @@ it("byMaster follows a batch: children created, adopted, archived and removed, w
   expect(lists).not.toHaveBeenCalled()
 })
 
+it("a subagent's rows read no sessions row: the index answers each lookup and the root walk is remembered", async () => {
+  const root = await registry.create({ cwd: tmpdir() })
+  const mid = await registry.create({ cwd: tmpdir(), parentId: root.id })
+  const leaf = await registry.create({ cwd: tmpdir(), parentId: mid.id })
+  const roots: string[] = []
+  // The remote notifier's question on every row.
+  registry.onEvent((row) => roots.push(registry.rootSessionOf(row.sessionId)))
+  const metas: string[] = []
+  registry.onMeta((m) => metas.push(m.id))
+  registry.append(leaf.id, { type: 'tool-call', callId: 'warm', name: 'Read', input: { file_path: '/w.ts' } })
+  const reads = vi.spyOn(store, 'getSession')
+  const kids = vi.spyOn(store, 'childrenOf')
+  for (let i = 0; i < 100; i++) {
+    registry.append(leaf.id, { type: 'assistant-text', text: `t${i}`, delta: true })
+    registry.append(leaf.id, { type: 'tool-call', callId: `p${i}`, name: 'Write', input: { file_path: '/a.ts', content: 'x'.repeat(i) }, partial: true })
+    registry.append(leaf.id, { type: 'tool-call', callId: `c${i}`, name: 'Bash', input: { command: `echo ${i}` } })
+    registry.append(leaf.id, { type: 'tool-result', callId: `c${i}`, output: 'ok', isError: false })
+    registry.append(leaf.id, { type: 'context', tokens: 1000 + i, window: 200_000 })
+  }
+  expect(reads).not.toHaveBeenCalled()
+  expect(kids).not.toHaveBeenCalled()
+  // Partials are broadcast-only: never in the log, never at the event listeners.
+  expect(roots.length).toBe(1 + 300)
+  expect(new Set(roots)).toEqual(new Set([root.id]))
+  // A subagent's meta push carries its root's along.
+  expect(metas.filter((id) => id === root.id).length).toBeGreaterThan(100)
+  expect(store.eventsAfter(leaf.id, 0).some((r) => r.event.type === 'tool-call' && r.event.partial)).toBe(false)
+  // A deleted chain is forgotten: the walk does not answer from memory.
+  store.deleteSessionTree(mid.id)
+  expect(registry.rootSessionOf(leaf.id)).toBe(leaf.id)
+})
+
 it('deleting a thread removes its HTML pages along with its children\'s', async () => {
   const { mkdir, writeFile } = await import('node:fs/promises')
   const { existsSync } = await import('node:fs')

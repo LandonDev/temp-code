@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { openDb, Store } from './db'
+import { frameJson } from './wire'
 import type { AgentEvent, SessionMeta } from '@shared/events'
 
 /**
@@ -123,5 +124,28 @@ describe('batched event log', () => {
     expect(store.hasUserText('a')).toBe(true)
     expect(store.maxSeqs().get('a')).toBe(5)
     expect((await store.searchEvents({ query: 'hello' })).hits.map((h) => h.seq)).toEqual([4])
+  })
+
+  it("an appended row's wire JSON is the log's payload string, the same bytes as stringifying the row", () => {
+    store.insertSession(meta('s'))
+    const big: AgentEvent = { type: 'tool-result', callId: 'c', output: 'x'.repeat(200_000), isError: false }
+    const row = store.appendEvent('s', big)
+    const stringify = JSON.stringify
+    let rowStringified = 0
+    JSON.stringify = ((value: unknown, ...rest: unknown[]) => {
+      if (value === row || value === big) rowStringified++
+      return (stringify as (...a: unknown[]) => string)(value, ...rest)
+    }) as typeof JSON.stringify
+    let wire: string
+    try {
+      wire = frameJson({ push: 'events', sessionId: 's', rows: [row] })
+      frameJson({ push: 'event', row })
+    } finally {
+      JSON.stringify = stringify
+    }
+    expect(rowStringified).toBe(0)
+    expect(wire).toBe(JSON.stringify({ push: 'events', sessionId: 's', rows: [row] }))
+    store.flushEvents()
+    expect(store.eventsAfter('s', 0)[0].event).toEqual(big)
   })
 })
