@@ -521,6 +521,14 @@ export async function startServer(
     return link?.connected ? (method, params, opts) => link.request(method, params, opts) : null
   }
   const hostLinks = new HostLinks({ calls: peerCalls, offer: CROSS_HOST_OFFER, link: peerRequest, linkIds: () => listEnvironments(store).map((e) => e.id) })
+  // The hosts this one knows: the ones it saved (and dials), and the ones
+  // that dialed it and registered (the Mac on the box), named by their key.
+  const knownHosts = (): { id: string; name: string }[] => {
+    const saved = listEnvironments(store).map((e) => ({ id: e.id, name: e.name }))
+    const registered = peerCalls.registeredIds().filter((id) => !saved.some((e) => e.id === id)).map((id) => ({ id, name: peerCalls.nameOf(id) ?? id }))
+    return [...saved, ...registered]
+  }
+  const hostNameOf = (id: string): string | null => knownHosts().find((e) => e.id === id)?.name ?? null
   // The Mac bridge (docs/box.md): this host as the Mac, answering the hosts it
   // links to under its own policy; and as the box, asking a registered Mac.
   const macBridge = new MacBridge({
@@ -544,7 +552,7 @@ export async function startServer(
     environmentId,
     store,
     registry,
-    environments: () => listEnvironments(store).map((e) => ({ id: e.id, name: e.name })),
+    environments: knownHosts,
     link: peerRequest,
     links: hostLinks,
     pathMap: () => harnessSync.pathMap(),
@@ -650,7 +658,7 @@ export async function startServer(
     links: hostLinks,
     link: peerRequest,
     macPeerOf: (id) => macTools.macPeerOf(id).macPeer,
-    hostName: (id) => listEnvironments(store).find((e) => e.id === id)?.name ?? null,
+    hostName: hostNameOf,
     workRoot: () => workRoot(store).root,
     // A batch child on another host landing, or changing state: the engine here (batch.ts) decides and reviews.
     landing: (l) => batchRuns.remoteLanding(l),
@@ -696,7 +704,7 @@ export async function startServer(
       refresh: (masterId) => crossHostAgents.refreshBatch(masterId),
       act: (masterId, action, ids) => crossHostAgents.batchAction(masterId, action, ids),
       adopt: (master, ids) => crossHostAgents.adopt(master, ids),
-      hostName: (id) => listEnvironments(store).find((e) => e.id === id)?.name ?? null
+      hostName: hostNameOf
     }
   })
 
@@ -1099,7 +1107,7 @@ export async function startServer(
         // The reverse RPC (remote/peerCalls.ts): a Mac's main process registers
         // this socket and answers calls on it; then the bridge's own methods.
         if (req.method === 'peer.register' || req.method === 'peer.reply' || req.method === 'peer.chunk' || req.method === 'peer.progress') {
-          const peerSocket = { connection, keyId: principal.kind === 'remote' ? principal.keyId : null, remote: principal.kind === 'remote', send: sendFrame }
+          const peerSocket = { connection, keyId: principal.kind === 'remote' ? principal.keyId : null, keyName: principal.kind === 'remote' ? principal.name : null, remote: principal.kind === 'remote', send: sendFrame }
           return sendFrame({ id: req.id, ok: true, result: handlePeerRequest(peerCalls, peerSocket, req) })
         }
         // A Mac pulling a staged mac.writeFile, only on the socket the call went out on (macWriteStage.ts).

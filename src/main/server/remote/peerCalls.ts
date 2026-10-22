@@ -26,6 +26,8 @@ export interface PeerSocket {
   connection: number
   /** The remote key it authenticated with, for the log line. */
   keyId: string | null
+  /** That key's name ("Landon Mac"): what this host calls the peer, which it never saved as an environment. */
+  keyName?: string | null
   send: (frame: ServerFrame) => void
 }
 
@@ -274,6 +276,11 @@ export class PeerCalls {
   /** The connection a peer registered on, for a stage only that socket may pull (macWriteStage.ts). */
   connectionOf(envId: string): number | null {
     return this.registered.get(envId)?.socket.connection ?? null
+  }
+
+  /** What a registered peer is called here: the name of the key its socket authenticated with, while it is registered. */
+  nameOf(envId: string): string | null {
+    return this.registered.get(envId)?.socket.keyName ?? null
   }
 
   /** The environment a socket registered as, while it is registered: the caller of a thread.* request on it (remote/crossHostThreads.ts). */

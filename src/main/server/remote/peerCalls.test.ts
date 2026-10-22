@@ -63,6 +63,22 @@ describe('PeerCalls', () => {
     expect(calls.registeredIds('mac-bridge')).toEqual(['env_mac'])
   })
 
+  it('a registered socket names its environment and its key, and takes one frame by environment id', () => {
+    const calls = new PeerCalls('env_box', () => {})
+    const frames: unknown[] = []
+    const socket = { connection: 4, keyId: 'k1', keyName: 'Landon Mac', remote: true, send: (f: unknown) => void frames.push(f) }
+    handlePeerRequest(calls, socket, { method: 'peer.register', params: { from: 'env_mac', offers: ['threads'] } })
+    expect(calls.environmentOf(4)).toBe('env_mac')
+    expect(calls.environmentOf(5)).toBeNull()
+    expect(calls.nameOf('env_mac')).toBe('Landon Mac')
+    expect(calls.nameOf('env_other')).toBeNull()
+    expect(calls.push('env_mac', { push: 'release-available', from: 'env_box', version: '1' })).toBe(true)
+    expect(frames).toHaveLength(1)
+    expect(calls.push('env_other', { push: 'release-available', from: 'env_box', version: '1' })).toBe(false)
+    calls.drop(4)
+    expect(calls.environmentOf(4)).toBeNull()
+  })
+
   it('notify sends one frame down every registered socket and nothing to a dropped one', () => {
     const calls = new PeerCalls('env_box', () => {})
     const got: Record<string, ServerFrame[]> = { a: [], b: [] }
