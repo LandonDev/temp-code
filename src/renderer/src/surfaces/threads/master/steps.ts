@@ -52,7 +52,7 @@ export function stepLabel(id: string): string {
  *  progress (landed of all) when the host sent none. */
 export function liveStep(step: BatchStep, batch: Pick<BatchState, "landed" | "pending">): LiveStep {
   const wire = step as WireStep;
-  const status: StepStatus = wire.status === "done" ? "passed" : wire.status;
+  const status: StepStatus = (wire.status as string) === "done" ? "passed" : wire.status;
   const ended = wire.endedAt ?? (status === "passed" || status === "failed" || status === "skipped" ? (wire.at ?? undefined) : undefined);
   const started = wire.startedAt ?? (status === "running" ? (wire.at ?? undefined) : undefined);
   let progress = wire.progress ?? undefined;
