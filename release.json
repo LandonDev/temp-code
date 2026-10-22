@@ -1,5 +1,5 @@
 {
-  "n": 279,
-  "notes": "Master threads wave 4: the batch follows the starter, many masters per project, adopt and archive a batch, the steps the master writes; the board opens a child full with Back, archives the batch, the menus above the sheet",
-  "ts": 1792649138701
+  "n": 280,
+  "notes": "The release ships app-update.yml again: one electron-builder call signs and zips, the script refuses a zip without the feed file, the app sets the github feed itself when the file is missing, and the merge gate's child finds node",
+  "ts": 1792650693179
 }
