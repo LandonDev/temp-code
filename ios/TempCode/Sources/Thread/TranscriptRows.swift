@@ -377,6 +377,9 @@ struct ChangeStat: View {
         }
         .font(.footnote.weight(.semibold))
         .numeric([adds, dels])
+        .lineLimit(1)
+        // Never wraps: in the diff's bar, "+1,200 −600" broke into two lines of digits.
+        .fixedSize()
     }
 }
 
