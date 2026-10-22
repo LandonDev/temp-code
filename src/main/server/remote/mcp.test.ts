@@ -349,13 +349,22 @@ describe('tools', () => {
         createdBy: 'local'
       })
     ).token
+    // The bucket refills two tokens a second, so under the release gate's
+    // load a burst of 121 sequential requests spreads past a token's worth
+    // of time and the 121st is let through. Post until the limiter answers
+    // (bounded), prove a whole window of 200s came first, and read
+    // Retry-After off that very answer.
     const replies: number[] = []
-    for (let i = 0; i < MCP_RATE_PER_MINUTE + 1; i++)
-      replies.push((await post(rpc('ping'), { key })).status)
-    expect(replies.slice(0, MCP_RATE_PER_MINUTE).every((s) => s === 200)).toBe(true)
-    expect(replies[MCP_RATE_PER_MINUTE]).toBe(429)
-    const limited = await post(rpc('ping'), { key })
-    expect(limited.headers.get('retry-after')).toMatch(/^\d+$/)
+    let limited: Awaited<ReturnType<typeof post>> | null = null
+    for (let i = 0; i < MCP_RATE_PER_MINUTE * 2 && !limited; i++) {
+      const reply = await post(rpc('ping'), { key })
+      replies.push(reply.status)
+      if (reply.status === 429) limited = reply
+    }
+    expect(limited, `no 429 in ${replies.length} calls`).not.toBeNull()
+    expect(replies.length - 1).toBeGreaterThanOrEqual(MCP_RATE_PER_MINUTE)
+    expect(replies.slice(0, -1).every((s) => s === 200)).toBe(true)
+    expect(limited!.headers.get('retry-after')).toMatch(/^\d+$/)
     expect((await post(rpc('ping'))).status).toBe(200)
   })
 })
