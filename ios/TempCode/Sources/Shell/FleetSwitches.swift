@@ -80,7 +80,7 @@ final class FleetSwitches {
             toast = try await client.batch(action, selection: client.batchSelection(scope), cleanup: cleanup)
         } catch {
             let message = (error as? ActionError)?.message ?? String(describing: error)
-            toast = BatchToast(summary: message, succeeded: 0, failed: [])
+            toast = BatchToast(headline: message, succeeded: 0, failed: [])
         }
         FleetToastCenter.shared.post(toast)
     }
@@ -152,7 +152,11 @@ struct FleetConfirmSheet: View {
     let pending: PendingBatch
     @State private var cleanup = true
     @State private var confirmedAt = 0
+    /// The content's height, so the sheet is as tall as what it says.
+    @State private var contentHeight: CGFloat = 280
     @Environment(\.dismiss) private var dismiss
+    /// The inline navigation bar and the drag indicator above the content.
+    @ScaledMetric(relativeTo: .body) private var chrome: CGFloat = 60
 
     var body: some View {
         NavigationStack {
@@ -167,7 +171,7 @@ struct FleetConfirmSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.height(contentHeight + chrome)])
         .presentationCornerRadius(Radius.sheet)
         .presentationDragIndicator(.visible)
         .sensoryFeedback(.impact(weight: .light), trigger: confirmedAt)
@@ -197,7 +201,6 @@ struct FleetConfirmSheet: View {
                 .groupCard()
                 .padding(.top, 8)
             }
-            Spacer(minLength: 16)
             Button {
                 confirmedAt += 1
                 let cleanup = copy.cleanup != nil && cleanup
@@ -213,9 +216,11 @@ struct FleetConfirmSheet: View {
             .buttonStyle(.pressable)
             .disabled(targets.isEmpty)
             .opacity(targets.isEmpty ? 0.5 : 1)
+            .padding(.top, 16)
         }
         .padding(Layout.textEdge)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, alignment: .top)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
     }
 }
 
@@ -283,47 +288,44 @@ final class FleetToastCenter {
     }
 }
 
-/// "Paused 14 · 1 failed: Search (harness not responding)" as one footnote
-/// line on the bar material above the tab bar, a hairline on top. The count
-/// is semibold, the failure clause destructive, the error secondary.
+/// The fleet switches' outcome, floating above the tab bar on a glass card:
+/// the count in semibold ("Paused 14"), and under it, when anything failed,
+/// "1 failed: Search (harness not responding)" in the destructive tint. A
+/// whole-call failure is the one line in the destructive tint. Tap to dismiss.
 struct FleetToastLine: View {
     let notice: FleetNotice
     let dismiss: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            Hairline()
-            text
-                .font(.footnote)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-                .padding(.horizontal, Layout.textEdge)
-                .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+        VStack(alignment: .leading, spacing: 2) {
+            switch notice {
+            case .message(let message):
+                Text(message)
+                    .foregroundStyle(Tint.destructive)
+            case .batch(let toast):
+                Text(toast.headline)
+                    .fontWeight(.semibold)
+                if let failure = toast.failureLine {
+                    Text(failure)
+                        .foregroundStyle(Tint.destructive)
+                        .lineLimit(2)
+                }
+            }
         }
-        .background(.bar)
+        .font(.footnote)
+        .multilineTextAlignment(.leading)
+        .padding(.horizontal, Layout.textEdge)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .tcGlass(in: RoundedRectangle.sheetCorner)
+        .padding(.horizontal, ComposerBar.edge)
+        .padding(.bottom, 6)
         .contentShape(Rectangle())
         .onTapGesture { dismiss() }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel(notice.summary)
         .accessibilityHint("Dismiss")
-    }
-
-    private var text: Text {
-        switch notice {
-        case .message(let message):
-            return Text(message).foregroundStyle(Tint.destructive)
-        case .batch(let toast):
-            guard let first = toast.failed.first else {
-                return Text(toast.summary).fontWeight(.semibold)
-            }
-            let head = Text(toast.summary.components(separatedBy: " · ").first ?? toast.summary).fontWeight(.semibold)
-            let clause = Text(" · \(toast.failed.count) failed: ").foregroundStyle(Tint.destructive)
-            let title = Text(first.title).fontWeight(.semibold)
-            let rest = toast.failed.count - 1
-            let error = Text(" (\(first.error))\(rest > 0 ? " and \(rest) more" : "")").foregroundStyle(.secondary)
-            return Text("\(head)\(clause)\(title)\(error)")
-        }
     }
 }
 

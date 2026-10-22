@@ -275,11 +275,14 @@ private struct MasterBar: View {
                     .disabled(rows.isEmpty || block != nil)
                 if let block { Text(block.text(now: now)) }
             } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.body)
+                Image(systemName: "ellipsis")
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(Color.primary)
+                    .frame(width: 36, height: 36)
+                    .tcGlass(in: Circle(), interactive: true)
                     .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.pressableStatic)
             .accessibilityLabel("Batch actions")
             .accessibilityIdentifier("master-menu")
         }

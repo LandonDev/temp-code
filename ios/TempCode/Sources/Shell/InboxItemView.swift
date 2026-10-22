@@ -98,15 +98,12 @@ struct InboxItemView: View {
             Text(item.title)
                 .font(.title3.weight(.semibold))
                 .textSelection(.enabled)
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 Text(status?.text ?? (item.state == .open ? "Open" : item.state.rawValue.capitalized))
                     .foregroundStyle(status?.tone.color ?? (item.state == .open ? Tint.success : Color(.tertiaryLabel)))
                     .lineLimit(1)
                     .layoutPriority(1)
                 if isPullRequest, !head.isEmpty, !base.isEmpty {
-                    Text("·")
-                        .foregroundStyle(.tertiary)
-                        .accessibilityHidden(true)
                     Text("\(head) → \(base)")
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)

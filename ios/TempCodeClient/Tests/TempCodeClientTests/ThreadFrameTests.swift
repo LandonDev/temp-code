@@ -216,7 +216,7 @@ private let pendingApproval: [AgentEvent] = [
             #expect(line.parts == [.words("Queued")])
         case .stopped:
             #expect(line.mark == .stopped)
-            #expect(line.parts == [.words("Stopped · the harness is gone")])
+            #expect(line.parts == [.words("Stopped", detail: "The harness is gone")])
         case .idle, .done, .unknown:
             #expect(line.mark == .empty)
             #expect(line.parts == type)
@@ -237,10 +237,10 @@ private let pendingApproval: [AgentEvent] = [
         #expect(line(.stopped, host: "box").compact == [.words("Stopped")])
     }
 
-    @Test("queued takes the host's activity line when it starts with Queued") func queuedTakesTheHostSActivityLineWhenItStartsWithQueued() {
-        #expect(line(.queued, activity: "Queued · waiting for Add the billing export (paused)").parts == [.words("Queued · waiting for Add the billing export (paused)")])
+    @Test("queued takes the host's reason as its detail when the activity starts with Queued") func queuedTakesTheHostSActivityLineWhenItStartsWithQueued() {
+        #expect(line(.queued, activity: "Queued · waiting for Add the billing export (paused)").parts == [.words("Queued", detail: "Waiting for Add the billing export (paused)")])
         #expect(line(.queued, activity: "Reading files").parts == [.words("Queued")])
-        #expect(line(.queued, host: "box", activity: "Queued · waiting for X").parts == [.host("box"), .words("Queued · waiting for X")])
+        #expect(line(.queued, host: "box", activity: "Queued · waiting for X").parts == [.host("box"), .words("Queued", detail: "Waiting for X")])
     }
 
     @Test("a subagent names its role; a master says so before its type") func aSubagentNamesItsRoleAMasterSaysSoBeforeItsType() {

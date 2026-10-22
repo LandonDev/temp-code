@@ -123,16 +123,17 @@ public enum DeployWords {
         return "\(hostName) rebuilds master from GitHub, trials it and restarts the service; it rolls back if the trial fails."
     }
 
-    /// The line under a box's row (hostJobCard.ts `deployRowLine`).
+    /// The line under a box's row (hostJobCard.ts `deployRowLine`): "Runs
+    /// v1.0.270, deploying", "Runs v1.0.273, up to date with master".
     public static func rowLine(installed: Bool, version: String?, masterVersion: String?, connected: Bool, phase: HostJobPhase) -> String {
         if !connected { return "Not connected right now." }
         if !installed { return "Deploy from the app is not installed on this host." }
         let runs = versionText(version)
         let behind: Int? = if let a = releaseN(version), let b = releaseN(masterVersion) { b - a } else { nil }
-        if phase == .pending || phase == .running { return "Runs \(runs ?? "an unknown version") · deploying" }
+        if phase == .pending || phase == .running { return "Runs \(runs ?? "an unknown version"), deploying" }
         guard let behind else { return "Runs \(runs ?? "an unknown version")." }
-        if behind <= 0 { return "Runs \(runs ?? "an unknown version") · up to date with master" }
-        return "Runs \(runs ?? "an unknown version") · \(behind) \(behind == 1 ? "release" : "releases") behind master"
+        if behind <= 0 { return "Runs \(runs ?? "an unknown version"), up to date with master" }
+        return "Runs \(runs ?? "an unknown version"), \(behind) \(behind == 1 ? "release" : "releases") behind master"
     }
 }
 
@@ -219,7 +220,8 @@ public enum LogTail {
 
 // MARK: - Devices
 
-/// A device's state as a row says it: the dot's tone and the words.
+/// A device's state as a row says it: the dot's tone, what the device is
+/// doing (the row's second line) and what it is (after it, a step quieter).
 public struct DeviceState: Sendable, Hashable {
     public enum Tone: Sendable, Hashable {
         /// Booted, connected.
@@ -231,16 +233,24 @@ public struct DeviceState: Sendable, Hashable {
     }
 
     public var tone: Tone
-    public var text: String
+    /// "Booted, 34% CPU", "Shut down", "Connected over USB".
+    public var status: String
+    /// "iOS 26.0"; a phone's model first: "iPhone 16 Pro, iOS 26.0".
+    public var platform: String
 
-    public init(tone: Tone, text: String) {
+    public init(tone: Tone, status: String, platform: String) {
         self.tone = tone
-        self.text = text
+        self.status = status
+        self.platform = platform
     }
+
+    /// Both parts as one phrase, for VoiceOver: "Booted, 34% CPU, iOS 26.0".
+    public var spoken: String { "\(status), \(platform)" }
 }
 
 public enum DeviceWords {
-    /// "3 simulators, 1 booted · iPhone 16 Pro connected · load 2.1 / 10 cores" (contract-hostdevices.ts `devicesSummary`).
+    /// The footer's first line, in sentences: "3 simulators, 1 booted. iPhone
+    /// 16 Pro connected. Load 2.1 on 10 cores." (contract-hostdevices.ts `devicesSummary`).
     public static func summary(_ report: HostDevicesReport) -> String {
         var parts: [String] = []
         let sims = report.simulators.count
@@ -253,8 +263,8 @@ public enum DeviceWords {
         } else if !paired.isEmpty {
             parts.append("\(paired.count == 1 ? paired[0].model : "\(paired.count) iPhones") paired")
         }
-        parts.append("load \(String(format: "%.1f", report.load.oneMinute)) / \(report.load.cores) cores")
-        return parts.joined(separator: " · ")
+        parts.append("Load \(String(format: "%.1f", report.load.oneMinute)) on \(report.load.cores) cores")
+        return parts.map { "\($0)." }.joined(separator: " ")
     }
 
     /// "Home, running" (`holderText`).
@@ -270,31 +280,32 @@ public enum DeviceWords {
         return (title, "\(sim.name) (\(sim.runtime)) and its data are removed from this Mac.")
     }
 
-    /// "iOS 26.0 · Booted · 34% CPU", "iOS 26.0 · Shutdown", "iOS 26.0 · Booting".
+    /// "Booted, 34% CPU", "Shut down", "Booting"; the platform is the runtime.
     public static func simulatorState(_ sim: Simulator) -> DeviceState {
         switch sim.state {
         case .booted:
-            let cpu = sim.cpu.map { " · \(Int($0.rounded()))% CPU" } ?? ""
-            return DeviceState(tone: .on, text: "\(sim.runtime) · Booted\(cpu)")
+            let cpu = sim.cpu.map { ", \(Int($0.rounded()))% CPU" } ?? ""
+            return DeviceState(tone: .on, status: "Booted\(cpu)", platform: sim.runtime)
         case .shutdown:
-            return DeviceState(tone: .off, text: "\(sim.runtime) · Shutdown")
+            return DeviceState(tone: .off, status: "Shut down", platform: sim.runtime)
         case .other, .unknown:
             let word = sim.stateText.flatMap { $0.isEmpty ? nil : $0 } ?? "Changing"
-            return DeviceState(tone: .between, text: "\(sim.runtime) · \(word)")
+            return DeviceState(tone: .between, status: word, platform: sim.runtime)
         }
     }
 
-    /// "iPhone 16 Pro · iOS 26.0 · Connected · USB", "… · Paired", "… · Unavailable".
+    /// "Connected over USB", "Paired", "Unavailable"; the platform is
+    /// "iPhone 16 Pro, iOS 26.0".
     public static func phoneState(_ phone: Phone) -> DeviceState {
-        let head = "\(phone.model) · \(phone.os)"
+        let platform = "\(phone.model), \(phone.os)"
         switch phone.connection {
         case .connected:
-            let transport = phone.transport.map { " · \($0)" } ?? ""
-            return DeviceState(tone: .on, text: "\(head) · Connected\(transport)")
+            let transport = phone.transport.map { " over \($0)" } ?? ""
+            return DeviceState(tone: .on, status: "Connected\(transport)", platform: platform)
         case .paired:
-            return DeviceState(tone: .between, text: "\(head) · Paired")
+            return DeviceState(tone: .between, status: "Paired", platform: platform)
         case .unavailable, .unknown:
-            return DeviceState(tone: .off, text: "\(head) · Unavailable")
+            return DeviceState(tone: .off, status: "Unavailable", platform: platform)
         }
     }
 
@@ -326,12 +337,13 @@ public enum MacBridgeWords {
         n == n.rounded() ? String(Int(n)) : String(format: "%.1f", n)
     }
 
-    /// "Waiting for the Mac · load 12.3 of 8 · 3rd in line" (`heldLine`).
+    /// "3rd in line for the Mac (load 12.3 of 8)", "2nd in line for the Mac
+    /// (4 of 4 running)" (`heldLine`).
     public static func heldLine(_ held: MacBridgeHeld) -> String {
         let why = held.reason == .load
             ? "load \(String(format: "%.1f", held.load)) of \(trim(held.limit))"
             : "\(held.running) of \(held.maxRunning) running"
-        return "Waiting for the Mac · \(why) · \(ordinal(held.position)) in line"
+        return "\(ordinal(held.position)) in line for the Mac (\(why))"
     }
 
     /// A call's title: the command (or its argv joined) for a run; the path's
@@ -356,18 +368,19 @@ public enum MacBridgeWords {
         return parts.suffix(2).joined(separator: "/")
     }
 
-    /// "1 running · 2 waiting · 1 thread", else "Nothing running" (MacBridgeSettings.tsx `usageNow`).
+    /// "1 running, 2 waiting and 1 thread", else "Nothing running" (MacBridgeSettings.tsx `usageNow`).
     public static func usage(_ host: MacBridgeActivityHost) -> String {
         var parts: [String] = []
         if host.running > 0 { parts.append("\(host.running) running") }
         if host.held > 0 { parts.append("\(host.held) waiting") }
         if host.threads > 0 { parts.append("\(host.threads) \(host.threads == 1 ? "thread" : "threads")") }
-        return parts.isEmpty ? "Nothing running" : parts.joined(separator: " · ")
+        guard let last = parts.popLast() else { return "Nothing running" }
+        return parts.isEmpty ? last : "\(parts.joined(separator: ", ")) and \(last)"
     }
 
-    /// "Load 12.3 of 32 · 16 cores", and while busy ", holding new commands until under 24".
+    /// "Load 12.3 of 32 on 16 cores", and while busy ", holding new commands until under 24".
     public static func loadLine(_ load: MacBridgeLoad) -> String {
-        let base = "Load \(String(format: "%.1f", load.load)) of \(trim(load.limit)) · \(load.cores) cores"
+        let base = "Load \(String(format: "%.1f", load.load)) of \(trim(load.limit)) on \(load.cores) cores"
         return load.busy ? "\(base), holding new commands until under \(trim(load.resumeBelow))" : base
     }
 
@@ -404,7 +417,8 @@ public enum MacBridgeWords {
 // MARK: - Sync
 
 public enum SyncWords {
-    /// The harness line (harnessLine.ts): syncing, the error, never, or files and when.
+    /// The harness line (harnessLine.ts): syncing, the error, never, or files
+    /// and when. Whether the peer is connected is the row's to say, once.
     public static func harnessLine(_ env: HarnessEnvironmentStatus, now: Double) -> String {
         if env.running { return "Harness config: syncing…" }
         if let error = env.error, !error.isEmpty {
@@ -412,10 +426,10 @@ public enum SyncWords {
             return "Harness config: \(error)\(last)"
         }
         guard let syncedAt = env.syncedAt else {
-            return "Harness config: never synced\(env.connected ? "" : " · not connected")"
+            return "Harness config: never synced"
         }
         let files = env.files ?? 0
-        return "Harness config: \(files) \(files == 1 ? "file" : "files")\(setsLine(env.sets)), synced \(ago(Double(syncedAt), now: now))\(env.connected ? "" : " · not connected")"
+        return "Harness config: \(files) \(files == 1 ? "file" : "files")\(setsLine(env.sets)), synced \(ago(Double(syncedAt), now: now))"
     }
 
     /// " (Claude skills 80, Codex hooks 1)": the sets with files, in the sender's order; nothing for an older sender.
@@ -425,7 +439,7 @@ public enum SyncWords {
         return parts.isEmpty ? "" : " (\(parts.joined(separator: ", ")))"
     }
 
-    /// The memory line (memoryLine.ts).
+    /// The memory line (memoryLine.ts); like the harness line, it leaves the connection to the row.
     public static func memoryLine(_ env: MemoryEnvironmentStatus, now: Double) -> String {
         if env.running { return "Memory: syncing…" }
         if let error = env.error, !error.isEmpty {
@@ -433,11 +447,11 @@ public enum SyncWords {
             return "Memory: \(error)\(last)"
         }
         guard let syncedAt = env.syncedAt else {
-            return "Memory: never synced\(env.connected ? "" : " · not connected")"
+            return "Memory: never synced"
         }
         let files = env.files ?? 0
         let conflicts = env.conflicts > 0 ? ", \(env.conflicts) \(env.conflicts == 1 ? "conflict" : "conflicts")" : ""
-        return "Memory: \(files) \(files == 1 ? "file" : "files"), synced \(ago(Double(syncedAt), now: now))\(conflicts)\(env.connected ? "" : " · not connected")"
+        return "Memory: \(files) \(files == 1 ? "file" : "files"), synced \(ago(Double(syncedAt), now: now))\(conflicts)"
     }
 
     /// "box's copy, 2h ago".

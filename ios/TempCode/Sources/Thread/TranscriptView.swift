@@ -24,6 +24,7 @@ struct TranscriptView: View {
     /// Groups opened by the view itself (a search landing inside one, the
     /// proof's `group` hook); a tap toggles the row's own state.
     @State private var openGroups: Set<TranscriptRowID> = []
+    @Environment(\.scenePhase) private var scenePhase
 
     /// Rows a cold open shows, and one page back.
     static let page = 75
@@ -54,10 +55,6 @@ struct TranscriptView: View {
                     }
                     .id(row.id)
                     .accessibilityIdentifier("transcript-item")
-                    // Return flow (thread 14): the topmost row on screen while scrolled up is the anchor a relaunch lands on.
-                    .onScrollVisibilityChange(threshold: 0.5) { visible in
-                        if let seq = row.anchorSeq { scrollState.sawRow(seq, visible: visible, sessionId: sessionId) }
-                    }
                 }
                 .listRowInsets(rowInsets)
                 .listRowSeparator(.hidden)
@@ -91,7 +88,6 @@ struct TranscriptView: View {
                 geometry.contentSize.height <= geometry.containerSize.height || geometry.visibleRect.maxY >= geometry.contentSize.height - 64
             } action: { _, now in
                 scrollState.atBottom = now
-                if now { ScrollMemory.set(nil, for: sessionId) }
             }
             .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in
                 recorder?.noteOffset(y)
@@ -112,19 +108,26 @@ struct TranscriptView: View {
                 }
             }
             .onChange(of: thread.fold.lastSeq) { pinTail(proxy: proxy) }
+            // Leaving the app scrolled up puts the transcript back at the bottom before the
+            // system takes its snapshot, so the return shows the newest rows with no scroll.
+            .onChange(of: scenePhase) { _, phase in
+                if TranscriptLanding.snapsToBottom(enteringBackground: phase == .background, atBottom: scrollState.atBottom) {
+                    snapToBottom(proxy: proxy)
+                }
+                #if DEBUG
+                if phase == .active { TestHooks.recordTranscript(sessionId: sessionId, state: scrollState) }
+                #endif
+            }
             .onChange(of: rows.count, initial: true) {
                 if !rows.isEmpty, !initializedScroll, targetSeq == nil {
                     initializedScroll = true
                     Task { @MainActor in
                         await Task.yield()
-                        // Return flow (thread 14): a relaunch lands on the remembered row, with no motion.
-                        var transaction = Transaction()
-                        transaction.disablesAnimations = true
-                        if let anchor = ScrollMemory.anchor(for: sessionId), let id = TranscriptRows.rowID(containing: anchor, in: rows) {
-                            withTransaction(transaction) { proxy.scrollTo(id, anchor: .top) }
-                        } else {
-                            withTransaction(transaction) { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
-                        }
+                        // A thread always opens at its newest row, with no motion (TranscriptLanding).
+                        snapToBottom(proxy: proxy)
+                        #if DEBUG
+                        TestHooks.recordTranscript(sessionId: sessionId, state: scrollState)
+                        #endif
                     }
                 } else { pinTail(proxy: proxy) }
                 openFirstGroupForProof(rows: rows, proxy: proxy)
@@ -199,6 +202,19 @@ struct TranscriptView: View {
         self.recorder = nil
     }
 
+    /// The bottom, at once and with no motion: the window back to one page
+    /// (the rows above are dropped, not scrolled past) and the reader pinned
+    /// there as if they had never scrolled up.
+    private func snapToBottom(proxy: ScrollViewProxy) {
+        Motion.withoutAnimation {
+            window = Self.page
+            scrollState.atBottom = true
+        }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
+    }
+
     /// Pin on data changes, not on scroll geometry changes. Replacing the
     /// scroll view's size anchor at an edge forces a full layout pass.
     private func pinTail(proxy: ScrollViewProxy) {
@@ -239,6 +255,9 @@ struct TranscriptView: View {
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) { proxy.scrollTo(id, anchor: .center) }
+        #if DEBUG
+        TestHooks.recordTranscript(sessionId: sessionId, state: scrollState)
+        #endif
     }
 
     /// One page back: rows already held, then older ones from the cache or
@@ -273,15 +292,7 @@ struct TranscriptView: View {
 @MainActor @Observable
 final class TranscriptScrollState {
     var atBottom = true
-    /// The rows on screen, by item id; the smallest is the topmost. Not
-    /// observed by any body: the closure that writes it is the only reader.
-    @ObservationIgnored private var visible: Set<Int> = []
 
-    /// A row crossed the visibility threshold (return flow, thread 14).
-    func sawRow(_ id: Int, visible isVisible: Bool, sessionId: String) {
-        if isVisible { visible.insert(id) } else { visible.remove(id) }
-        if !atBottom { ScrollMemory.set(visible.min(), for: sessionId) }
-    }
 }
 
 /// Only this control reads the position flag in its body. The pill rises in
@@ -350,9 +361,7 @@ private struct EmptyTranscript: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             } else {
-                Text("No messages yet")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                ContentUnavailableView("No Messages Yet", systemImage: "bubble.left.and.bubble.right")
             }
             Spacer()
         }
@@ -360,9 +369,9 @@ private struct EmptyTranscript: View {
     }
 }
 
-/// The one floating control in the transcript: a raised capsule (36 pt:
-/// 10 + 8 + 8 + 10) over the rows, the arrow 2 pt closer to its edge than
-/// the text is to the other, so the pair reads centered.
+/// The one floating control in the transcript: a glass capsule (36 pt, its
+/// hit area 44) over the rows, the arrow 2 pt closer to its edge than the
+/// text is to the other, so the pair reads centered.
 private struct JumpPill: View {
     let jump: () -> Void
 
@@ -375,11 +384,14 @@ private struct JumpPill: View {
                 Text("Jump to latest")
                     .font(.footnote.weight(.medium))
             }
-            .padding(.leading, 10)
-            .padding(.trailing, 12)
+            .foregroundStyle(Color.primary)
+            .padding(.leading, 12)
+            .padding(.trailing, 14)
             .padding(.vertical, 8)
             .frame(minHeight: 36)
-            .raised(radius: 18)
+            .tcGlass(in: Capsule(), interactive: true)
+            .padding(.vertical, 4)
+            .contentShape(Capsule())
         }
         .buttonStyle(.pressable)
     }

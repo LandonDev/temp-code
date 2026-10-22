@@ -101,7 +101,7 @@ struct ProjectHeadRow: View {
 }
 
 /// A file line: a file glyph in the glyph column, the path with its line
-/// number dim and "· newer" after it when this copy won the cross-host fold,
+/// number dim and "Newer" after it when this copy won the cross-host fold,
 /// the line itself in mono with the match in weight. The phone has no
 /// editor, so the row is a fact, not a push.
 struct FileRow: View {
@@ -116,11 +116,18 @@ struct FileRow: View {
                 .frame(width: glyphWidth)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                (Text(file.relative) + Text(":\(file.line)").foregroundStyle(.tertiary) + Text(file.newer ? " · newer" : "").foregroundStyle(.tertiary))
-                    .textStep(.meta)
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .truncationMode(.head)
+                HStack(spacing: 8) {
+                    (Text(file.relative) + Text(":\(file.line)").foregroundStyle(.tertiary))
+                        .textStep(.meta)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                    if file.newer {
+                        Text("Newer")
+                            .textStep(.meta, tint: Color(.tertiaryLabel))
+                            .layoutPriority(1)
+                    }
+                }
                 Text(MatchEmphasis.attributed(file.preview, matches: file.matches, font: .caption.monospaced()))
                     .foregroundStyle(.primary)
                     .lineLimit(2)
@@ -193,7 +200,7 @@ struct MoreRow: View {
     }
 }
 
-/// What each host took, after the answer landed: "Mac 320 ms · box 1.2 s",
+/// What each host took, after the answer landed: "Mac 320 ms, box 1.2 s",
 /// an offline or failed host named as such. Only with several hosts.
 struct FootRow: View {
     let text: String

@@ -75,6 +75,7 @@ struct ToolChip: View {
                     .font(.subheadline)
                     .foregroundStyle(tool.status == .failed ? Tint.destructive : Color(.secondaryLabel))
                     .lineLimit(1)
+                    .fixedSize(horizontal: phrase.target != nil, vertical: false)
                     .layoutPriority(phrase.target == nil ? 1 : 0)
                 if let target = phrase.target {
                     Text(target)
@@ -347,7 +348,7 @@ extension ToolItem {
     var planLine: String {
         switch name {
         case "TodoWrite", "update_plan":
-            if let count = BoardState.todos(from: name, input: input)?.count { return "Updated the task list · \(count) \(count == 1 ? "task" : "tasks")" }
+            if let count = BoardState.todos(from: name, input: input)?.count { return "Updated the task list (\(count) \(count == 1 ? "task" : "tasks"))" }
             return "Updated the task list"
         case "TaskCreate":
             if let subject = input?["subject"]?.stringValue, !subject.isEmpty { return "New task: \(subject)" }

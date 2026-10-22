@@ -71,15 +71,24 @@ public struct BatchFailure: Sendable, Hashable {
 
 /// One line for the toast; the failed threads come back for the links.
 public struct BatchToast: Sendable, Hashable {
-    /// "Paused 14 · 1 failed: Search (harness not responding)"
-    public var summary: String
+    /// "Paused 14": the line's head, semibold.
+    public var headline: String
+    /// "1 failed: Search (harness not responding)", its own line under the
+    /// head in the destructive tint; nil when nothing failed.
+    public var failureLine: String?
     public var succeeded: Int
     public var failed: [BatchFailure]
 
-    public init(summary: String, succeeded: Int, failed: [BatchFailure]) {
-        self.summary = summary
+    public init(headline: String, failureLine: String? = nil, succeeded: Int, failed: [BatchFailure]) {
+        self.headline = headline
+        self.failureLine = failureLine
         self.succeeded = succeeded
         self.failed = failed
+    }
+
+    /// Both lines as sentences, for VoiceOver's announcement and label.
+    public var summary: String {
+        failureLine.map { "\(headline). \($0)" } ?? headline
     }
 }
 
@@ -260,15 +269,15 @@ public enum ThreadBatch {
         )
     }
 
-    /// "Paused 14 · 1 failed: Search (harness not responding) and 2 more".
+    /// "Paused 14", and under it "1 failed: Search (harness not responding)
+    /// and 2 more" when anything failed.
     public static func toast(_ action: BatchAction, succeeded: Int, failed: [BatchFailure]) -> BatchToast {
-        var summary = "\(verb(action).past) \(succeeded)"
+        var failureLine: String?
         if let first = failed.first {
             let rest = failed.count - 1
-            summary += " · \(failed.count) failed: \(first.title) (\(first.error))"
-            if rest > 0 { summary += " and \(rest) more" }
+            failureLine = "\(failed.count) failed: \(first.title) (\(first.error))" + (rest > 0 ? " and \(rest) more" : "")
         }
-        return BatchToast(summary: summary, succeeded: succeeded, failed: failed)
+        return BatchToast(headline: "\(verb(action).past) \(succeeded)", failureLine: failureLine, succeeded: succeeded, failed: failed)
     }
 }
 

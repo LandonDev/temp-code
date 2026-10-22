@@ -134,12 +134,12 @@ public struct PreambleDraft: Sendable, Hashable {
 
 /// The preamble rows' state words.
 public enum PreambleRow {
-    /// "212 words", "Off", "Workspace default · 80 words", "Workspace default · off", "None".
+    /// "212 words", "Off", "80 words from workspace", "Off in workspace", "None".
     public static func summary(project: ProjectMeta, workspace: WorkspaceMeta?) -> String {
         if project.preambleEnabled == false { return "Off" }
         if let own = Preamble.normalize(project.preamble) { return "\(Preamble.wordCount(own)) words" }
         if let workspace, let text = Preamble.normalize(workspace.preamble) {
-            return workspace.preambleEnabled == false ? "Workspace default · off" : "Workspace default · \(Preamble.wordCount(text)) words"
+            return workspace.preambleEnabled == false ? "Off in workspace" : "\(Preamble.wordCount(text)) words from workspace"
         }
         return "None"
     }
@@ -224,12 +224,13 @@ public enum Reviewers {
         catalog?[provider.rawValue]?.models.first { $0.id == model }?.label ?? model
     }
 
-    /// The desktop's reviewSummary: "Off", or "<model> · confirmed|any finding · N min".
+    /// The desktop's reviewSummary as a phrase: "Off", or "Sonnet 5.5 holds
+    /// on any finding, up to 10 min" ("on confirmed findings" when that is the bar).
     public static func summary(_ settings: ReviewSettings, catalog: Catalog?) -> String {
         guard settings.beforeMerge else { return "Off" }
         let model = modelLabel(provider: settings.provider, model: settings.model, catalog: catalog)
-        let hold = settings.blockOn == .any ? "any finding" : "confirmed"
-        return "\(model) · \(hold) · \(settings.maxMinutes) min"
+        let hold = settings.blockOn == .any ? "any finding" : "confirmed findings"
+        return "\(model) holds on \(hold), up to \(settings.maxMinutes) min"
     }
 }
 
@@ -417,11 +418,12 @@ public enum PlanBuild {
         return named + rest
     }
 
-    /// Every model of every provider, labelled "<Provider> · <Model>"; an
-    /// unknown current id is appended as itself.
+    /// Every model of every provider, labelled with the model's own label
+    /// (the provider is its own field, for a picker's section); an unknown
+    /// current id is appended as itself.
     public static func modelOptions(catalog: Catalog?, current: String) -> [ModelOption] {
         var options = providers(catalog).flatMap { provider in
-            provider.models.map { ModelOption(provider: provider.id, model: $0.id, label: "\(provider.label) · \($0.label)") }
+            provider.models.map { ModelOption(provider: provider.id, model: $0.id, label: $0.label) }
         }
         if !current.isEmpty, !options.contains(where: { $0.model == current }) {
             options.append(ModelOption(provider: .unknown(""), model: current, label: current))
@@ -450,18 +452,20 @@ public enum PlanBuild {
         return model
     }
 
-    /// The desktop's planSettingsSummary: "Auto-start" | "Start by hand",
-    /// then the fixed model, effort and context, joined with " · ".
+    /// The desktop's planSettingsSummary as a phrase: "Auto-start" | "Start
+    /// by hand", "with" the fixed model, then effort and context in
+    /// parentheses: "Start by hand with GPT-6.1 Sol (Extra high, 1M context)".
     public static func summary(_ settings: PlanSettings, catalog: Catalog?) -> String {
-        var parts = [settings.autoImplement ? "Auto-start" : "Start by hand"]
-        if !settings.implementModel.isEmpty { parts.append(modelLabel(settings.implementModel, catalog: catalog)) }
-        if let level = Reasoning(settings.implementReasoning) { parts.append(level.title) }
+        var text = settings.autoImplement ? "Auto-start" : "Start by hand"
+        if !settings.implementModel.isEmpty { text += " with \(modelLabel(settings.implementModel, catalog: catalog))" }
+        var fixed: [String] = []
+        if let level = Reasoning(settings.implementReasoning) { fixed.append(level.title) }
         switch settings.implementContext {
-        case ._1m: parts.append("1M")
-        case ._200k: parts.append("200k")
+        case ._1m: fixed.append("1M context")
+        case ._200k: fixed.append("200k context")
         case .none, .unknown: break
         }
-        return parts.joined(separator: " · ")
+        return fixed.isEmpty ? text : "\(text) (\(fixed.joined(separator: ", ")))"
     }
 }
 

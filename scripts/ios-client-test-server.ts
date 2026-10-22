@@ -149,6 +149,11 @@ const server = await startServer(dbPath, {
   devices: new MacDevices(fakeMacDevicesDeps(environmentId, { session: (id) => (id === 'ios-resources' ? { title: 'Clean up after the simulator run', status: 'idle' } : null) }))
 })
 if (!server.remote || server.remote.port === 0) throw new Error('the remote listener did not bind')
+// No pass of the scheduler until the registry stubs below are in: a pass during the seeds ran the
+// real startQueued on the queued seed, a real harness turn whose settle then woke the master into one.
+const scheduler = server.registry.scheduler
+const realSchedule = scheduler.schedule.bind(scheduler)
+scheduler.schedule = () => {}
 
 // ── the second host: the same project on another machine ───────────────
 // Module-level state in the server (setMediaHost, the media tokens, the log
@@ -401,7 +406,7 @@ server.registry.append('ios-waiting', { type: 'status', status: 'waiting', detai
 await make('ios-question', { projectId: project2.id, threadType: 'implementation', title: 'Fix the invoice totals' })
 server.registry.append('ios-question', { type: 'user-text', text: 'Invoices round the wrong way', newPass: true })
 server.registry.append('ios-question', { type: 'status', status: 'running' })
-server.registry.append('ios-question', { type: 'question-request', requestId: 'seed-question', questions: [{ question: 'Round half up or to even?', header: 'Rounding', options: [{ label: 'Half up' }, { label: 'To even' }] }] })
+server.registry.append('ios-question', { type: 'question-request', requestId: 'seed-question', questions: [{ question: 'Round half up or to even?', header: 'Rounding', options: [{ label: 'Half up', description: 'Round 2.5 to 3 and -2.5 to -3, the rule the billing ledger already uses for invoices' }, { label: 'To even' }] }] })
 server.registry.append('ios-question', { type: 'status', status: 'waiting', detail: 'awaiting an answer' })
 
 // A running implementation with tasks, and an orchestration fleet with a working explorer and a settled reviewer.
@@ -808,13 +813,16 @@ at(THREAD_ORCH, [
 // Research: a report with two angles.
 export const THREAD_RESEARCH = 'ios-research'
 const research = await makeTyped(THREAD_RESEARCH, 'research', 'SQLite on the phone: bun:sqlite or GRDB')
+// The person's turn first, then the angles spawn inside it, as a real research turn orders them.
+at(THREAD_RESEARCH, [
+  { type: 'user-text', text: 'Compare bun:sqlite and GRDB for the phone\'s cache: write speed, migrations, and Swift ergonomics.', newPass: true },
+  answer('r1', 'Two angles: the Bun side and the Swift side.')
+])
 for (const [id, title] of [['ios-research-a1', 'Angle: bun:sqlite'], ['ios-research-a2', 'Angle: GRDB']] as const) {
   await server.registry.create({ id, parentId: THREAD_RESEARCH, provider: 'claude', model: 'claude-sonnet-5-5', reasoning: 'low', agentType: 'explorer', permission: 'safe', projectId: project.id, title })
   at(id, [{ type: 'user-text', text: `Research ${title.slice(7)}` }, answer(`${id}s`, 'Findings written.'), { type: 'turn-complete' }, status('idle')])
 }
 at(THREAD_RESEARCH, [
-  { type: 'user-text', text: 'Compare bun:sqlite and GRDB for the phone\'s cache: write speed, migrations, and Swift ergonomics.', newPass: true },
-  answer('r1', 'Two angles: the Bun side and the Swift side.'),
   { type: 'research-source', callId: 'q1', query: 'bun sqlite write performance', agentId: 'ios-research-a1', agentLabel: 'Angle: bun:sqlite' },
   { type: 'research-source', callId: 's1', url: 'https://bun.sh/docs/api/sqlite', agentId: 'ios-research-a1', agentLabel: 'Angle: bun:sqlite', title: 'SQLite – Bun Docs' },
   { type: 'research-source', callId: 's1', url: 'https://bun.sh/docs/api/sqlite', agentId: 'ios-research-a1', agentLabel: 'Angle: bun:sqlite', claim: 'bun:sqlite ships built in and binds synchronously' },
@@ -1088,7 +1096,7 @@ server.registry.append(THREAD_MASTER, { type: 'status', status: 'watching' })
 await make('ios-master-impl-a', { projectId: project.id, threadType: 'implementation', title: 'Rebuild the rollup writer', masterId: THREAD_MASTER, startedBy: THREAD_MASTER })
 say('ios-master-impl-a', 'Rebuild the rollup writer.', 'Landed on master.')
 server.registry.append('ios-master-impl-a', { type: 'status', status: 'done' })
-await make('ios-master-impl-b', { projectId: project.id, threadType: 'implementation', title: 'Backfill the rollups', masterId: THREAD_MASTER, after: 'ios-master-impl-a', startedBy: THREAD_MASTER })
+await make('ios-master-impl-b', { projectId: project.id, threadType: 'implementation', title: 'Backfill the March rollups', masterId: THREAD_MASTER, after: 'ios-master-impl-a', startedBy: THREAD_MASTER })
 server.registry.append('ios-master-impl-b', { type: 'user-text', text: 'Backfill every rollup since March.', newPass: true })
 server.registry.append('ios-master-impl-b', { type: 'status', status: 'running' })
 await make('ios-master-plan', { projectId: project.id, threadType: 'planning', title: 'Plan the backfill', masterId: THREAD_MASTER, startedBy: THREAD_MASTER })
@@ -1322,6 +1330,9 @@ server.batches.stopStep = async (masterId, stepId) => {
   server.batches.seedRow(row)
   return { stopped: true }
 }
+// The stubs are in: the scheduler may run its passes again (a start now goes to the stub).
+scheduler.schedule = realSchedule
+scheduler.schedule()
 
 // ── a GitHub inbox for the simulator proof ──────────────────────────────
 // Two repositories' worth of pull requests and issues in every state the

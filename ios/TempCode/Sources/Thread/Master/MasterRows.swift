@@ -110,10 +110,16 @@ private struct MasterRowLabel: View {
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 3) {
                 titleLine
-                HStack(spacing: 8) {
+                if typeSize.isAccessibilitySize {
+                    // Stacked at accessibility sizes: side by side, the mark squeezed the activity to a word.
                     ActivityLine(line: Fleet.Line(what?.text ?? "", tone: what?.tone ?? .muted), live: live)
-                    Spacer(minLength: 8)
                     ModelMark(provider: row.provider, model: row.model, reasoning: reasoning, context1m: context1m, hostName: hostName)
+                } else {
+                    HStack(spacing: 8) {
+                        ActivityLine(line: Fleet.Line(what?.text ?? "", tone: what?.tone ?? .muted), live: live)
+                        Spacer(minLength: 8)
+                        ModelMark(provider: row.provider, model: row.model, reasoning: reasoning, context1m: context1m, hostName: hostName)
+                    }
                 }
                 if let agents {
                     AgentsLine(summary: agents, dim: dim)
@@ -128,21 +134,43 @@ private struct MasterRowLabel: View {
         .animation(reduceMotion ? nil : (open ? Motion.expand : Motion.collapse), value: open)
     }
 
+    @ViewBuilder
     private var titleLine: some View {
-        HStack(alignment: .firstTextBaseline, spacing: Layout.tagGap) {
-            Text(row.title.isEmpty ? "Untitled" : row.title)
-                .textStep(.title, weight: weight)
-                .foregroundStyle(dim ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
-                .lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
-            Text(MasterBoard.typeWord(row.threadType))
-                .textStep(.meta)
-                .lineLimit(1)
-                .fixedSize()
-            Spacer(minLength: 8)
-            if let tally {
-                TallyButton(tally: tally, foldable: foldable, open: open, action: onToggle)
+        if typeSize.isAccessibilitySize {
+            // Stacked at accessibility sizes: the type word and the tally beside it left the title two letters.
+            VStack(alignment: .leading, spacing: 3) {
+                title.lineLimit(3)
+                HStack(alignment: .firstTextBaseline, spacing: Layout.tagGap) {
+                    typeWord
+                    Spacer(minLength: 8)
+                    if let tally {
+                        TallyButton(tally: tally, foldable: foldable, open: open, action: onToggle)
+                    }
+                }
+            }
+        } else {
+            HStack(alignment: .firstTextBaseline, spacing: Layout.tagGap) {
+                title.lineLimit(1)
+                typeWord
+                Spacer(minLength: 8)
+                if let tally {
+                    TallyButton(tally: tally, foldable: foldable, open: open, action: onToggle)
+                }
             }
         }
+    }
+
+    private var title: some View {
+        Text(row.title.isEmpty ? "Untitled" : row.title)
+            .textStep(.title, weight: weight)
+            .foregroundStyle(dim ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+    }
+
+    private var typeWord: some View {
+        Text(MasterBoard.typeWord(row.threadType))
+            .textStep(.meta)
+            .lineLimit(1)
+            .fixedSize()
     }
 
     @ViewBuilder
@@ -172,7 +200,7 @@ private struct AgentsLine: View {
     var body: some View {
         summary.parts.enumerated().reduce(Text("")) { text, item in
             let part = Text(item.element.text).foregroundStyle(tone(item.element.tone))
-            return item.offset == 0 ? text + part : text + Text(" · ").foregroundStyle(.tertiary) + part
+            return item.offset == 0 ? text + part : text + Text(", ") + part
         }
         .textStep(.meta)
         .monospacedDigit()

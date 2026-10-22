@@ -118,8 +118,8 @@ private var utc: Calendar {
         #expect(MasterBoard.whatLine(status: .waiting, activity: nil, updatedAt: 0, line: question, landed: false) == MasterBoard.WhatLine(text: "has a question — scope?", tone: .warning))
         #expect(MasterBoard.whatLine(status: .waiting, activity: nil, updatedAt: 0, line: blank, landed: false) == nil)
         #expect(MasterBoard.whatLine(status: .paused, activity: "x", updatedAt: 0, line: blank, landed: false)?.text == "Paused")
-        #expect(MasterBoard.whatLine(status: .queued, activity: " Queued · waiting for Live strip ", updatedAt: 0, line: blank, landed: false)?.text == "Queued · waiting for Live strip")
-        #expect(MasterBoard.whatLine(status: .running, activity: nil, updatedAt: 0, line: Fleet.Line("Read · Strip.swift", tone: .muted), landed: false)?.text == "Read · Strip.swift")
+        #expect(MasterBoard.whatLine(status: .queued, activity: " Queued · waiting for Live strip ", updatedAt: 0, line: blank, landed: false)?.text == "Waiting for Live strip")
+        #expect(MasterBoard.whatLine(status: .running, activity: nil, updatedAt: 0, line: Fleet.Line("Read: Strip.swift", tone: .muted), landed: false)?.text == "Read: Strip.swift")
         #expect(MasterBoard.whatLine(status: .stopped, activity: nil, updatedAt: 0, line: blank, landed: false)?.text == "Stopped")
         #expect(MasterBoard.whatLine(status: .idle, activity: nil, updatedAt: 1_792_652_700_000, line: blank, landed: true, calendar: utc)?.text == "Landed 07:05")
         #expect(MasterBoard.whatLine(status: .idle, activity: nil, updatedAt: 0, line: blank, landed: false) == nil)
@@ -200,14 +200,14 @@ private var utc: Calendar {
         #expect(Set(MasterBoard.subtree(of: "c", index: index).map(\.id)) == ["a1", "a11", "a111", "a2", "kept"])
         let summary = MasterBoard.agentSummary(MasterBoard.subtree(of: "c", index: index))
         #expect(summary == MasterBoard.AgentSummary(total: 5, working: 1, waiting: 1, failed: 1))
-        #expect(summary?.text == "5 agents · 1 working · 1 needs approval · 1 failed")
+        #expect(summary?.text == "5 agents, 1 working, 1 needs approval, 1 failed")
         #expect(summary?.parts.map(\.tone) == [.muted, .muted, .warning, .danger])
     }
 
     @Test("only the nonzero live states are said; done ones are in the count; none is nil") func words() {
         #expect(MasterBoard.agentSummary([]) == nil)
         #expect(MasterBoard.agentSummary([meta("a", status: .done)])?.text == "1 agent")
-        #expect(MasterBoard.agentSummary([meta("a", status: .running), meta("b", status: .watching), meta("c", status: .idle)])?.text == "3 agents · 2 working")
+        #expect(MasterBoard.agentSummary([meta("a", status: .running), meta("b", status: .watching), meta("c", status: .idle)])?.text == "3 agents, 2 working")
     }
 
     @Test("a far child counts from its own host's sessions; a row with none is absent") func farHost() {
@@ -218,8 +218,8 @@ private var utc: Calendar {
         let here = [local, lonely, meta("a", parentId: "c", status: .running), meta("f1-clash", parentId: "f1", status: .running)]
         let box = [meta("b1", parentId: "f1", status: .waiting), meta("b11", parentId: "b1", status: .running)]
         let summaries = MasterBoard.agentSummaries(rows) { $0 == "env_box" ? box : here }
-        #expect(summaries["c"]?.text == "1 agent · 1 working")
+        #expect(summaries["c"]?.text == "1 agent, 1 working")
         #expect(summaries["d"] == nil)
-        #expect(summaries["env_box:f1"]?.text == "2 agents · 1 working · 1 needs approval")
+        #expect(summaries["env_box:f1"]?.text == "2 agents, 1 working, 1 needs approval")
     }
 }

@@ -66,7 +66,7 @@ private func snapshot(claude accounts: ProviderAccounts = claude(), updatedAt: I
         #expect(scope.inherited == nil)
         #expect(scope.current == work)
         #expect(scope.shown == work)
-        #expect(scope.sourceLine == "Auto · picked by model")
+        #expect(scope.sourceLine == "Auto, picked by model")
     }
 
     @Test func `a project pin wins over the workspace's and names the project`() throws {
@@ -130,7 +130,7 @@ private func snapshot(claude accounts: ProviderAccounts = claude(), updatedAt: I
         let look = look(throttled)
         #expect(look.fraction == 0)
         #expect(look.tone == .destructive)
-        #expect(look.stamp == "rate limited · 39m")
+        #expect(look.stamp == "rate limited for 39m")
         #expect(look.accessibility == "work: rate limited, picks again in 39 minutes")
     }
 

@@ -75,9 +75,9 @@ public struct AccountScope: Sendable, Hashable {
     /// The account to show: the current one, else the pin that will apply.
     public var shown: String? { current ?? inherited?.name }
 
-    /// "From project billing-page", "From workspace cosmic-web", "Auto · picked by model".
+    /// "From project billing-page", "From workspace cosmic-web", "Auto, picked by model".
     public var sourceLine: String {
-        guard let inherited else { return "Auto · picked by model" }
+        guard let inherited else { return "Auto, picked by model" }
         return "From \(inherited.level.rawValue) \(inherited.from)"
     }
 
@@ -144,7 +144,7 @@ public struct HeadroomLook: Sendable, Hashable {
     /// 0...1 of the bar.
     public let fraction: Double
     public let tone: Tone
-    /// "in 2h 14m", "rate limited · 39m", "no usage yet"; nil when nothing to say.
+    /// "in 2h 14m", "rate limited for 39m", "no usage yet"; nil when nothing to say.
     public let stamp: String?
     /// "work: 61 percent left, refills in 2 hours 14 minutes".
     public let accessibility: String
@@ -167,7 +167,7 @@ public struct HeadroomLook: Sendable, Hashable {
         let throttledUntil = headroom?.throttledUntil.flatMap { $0 > now ? $0 : nil }
         if throttledUntil != nil || report?.rateLimit != nil {
             let until = throttledUntil ?? report?.rateLimit?.until
-            let stamp = until.map { "rate limited · \(Self.until($0, now: now))" } ?? "rate limited"
+            let stamp = until.map { "rate limited for \(Self.until($0, now: now))" } ?? "rate limited"
             let spoken = until.map { "\(shortName): rate limited, picks again in \(Self.spoken($0, now: now))" } ?? "\(shortName): rate limited"
             return HeadroomLook(fraction: 0, tone: .destructive, stamp: stamp, accessibility: spoken)
         }

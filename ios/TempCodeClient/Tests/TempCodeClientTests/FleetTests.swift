@@ -53,11 +53,11 @@ import TempCodeContract
             item(toolItem(3, doneTs: 1, name: "Bash", input: ["command": .string("npm test\n--watch")])),
             item(textItem(4, "hmm", thinking: true))
         ]
-        #expect(Fleet.activityLine(items) == "Bash · npm test")
+        #expect(Fleet.activityLine(items) == "Bash: npm test")
         #expect(Fleet.activityLine(Array(items.prefix(2))) == "Sure, starting now.")
         #expect(Fleet.activityLine(items + [item(errorItem(5, "boom"))]) == "boom")
         #expect(Fleet.activityLine([]) == "")
-        #expect(Fleet.activityLine([item(toolItem(1, name: "Read", preview: ToolPreview(kind: .read, path: "src/a.ts", fileName: "a.ts")))]) == "Read · a.ts")
+        #expect(Fleet.activityLine([item(toolItem(1, name: "Read", preview: ToolPreview(kind: .read, path: "src/a.ts", fileName: "a.ts")))]) == "Read: a.ts")
         #expect(Fleet.lastAssistantLine(items) == "Sure, starting now.")
         #expect(Fleet.lastAssistantLine([item(textItem(1, "  "))]) == "")
         #expect(Fleet.taskTitle(items) == "Refactor the auth module")
@@ -74,7 +74,7 @@ import TempCodeContract
         #expect(Fleet.line(status: .error, items: [item(errorItem(1, "Rate limited"))]) == Fleet.Line("Rate limited", tone: .danger))
         #expect(Fleet.line(status: .error, items: []) == Fleet.Line("failed", tone: .danger))
         let tool = item(toolItem(2, name: "Grep", input: ["pattern": .string("foo")]))
-        #expect(Fleet.line(status: .running, items: [item(textItem(1, "hi")), tool]) == Fleet.Line("Grep · foo", tone: .muted))
+        #expect(Fleet.line(status: .running, items: [item(textItem(1, "hi")), tool]) == Fleet.Line("Grep: foo", tone: .muted))
         #expect(Fleet.line(status: .idle, items: [item(textItem(1, "Done.")), tool]) == Fleet.Line("Done.", tone: .muted))
         #expect(Fleet.line(status: .running, items: [tool], compacting: true) == Fleet.Line("compacting the context…", tone: .muted))
     }
@@ -160,13 +160,13 @@ import TempCodeContract
 
     @Test func `the line reads the host activity while queued and names a stopped or paused harness`() {
         let tool = item(toolItem(2, name: "Grep", input: ["pattern": .string("foo")]))
-        #expect(Fleet.line(status: .queued, items: [tool], activity: "Queued · waiting for Port module 3") == Fleet.Line("Queued · waiting for Port module 3", tone: .muted))
+        #expect(Fleet.line(status: .queued, items: [tool], activity: "Queued · waiting for Port module 3") == Fleet.Line("Waiting for Port module 3", tone: .muted), "the queued dot says queued: the reason alone")
         #expect(Fleet.line(status: .queued, items: [tool]) == Fleet.Line("Queued", tone: .muted))
         #expect(Fleet.line(status: .queued, items: [], activity: "  ") == Fleet.Line("Queued", tone: .muted))
-        #expect(Fleet.line(status: .stopped, items: [tool], activity: "ignored") == Fleet.Line("stopped · the harness is gone", tone: .muted))
+        #expect(Fleet.line(status: .stopped, items: [tool], activity: "ignored") == Fleet.Line("the harness is gone", tone: .muted))
         #expect(Fleet.line(status: .paused, items: [tool]) == Fleet.Line("paused", tone: .muted))
         // The activity argument changes nothing for the other states.
-        #expect(Fleet.line(status: .running, items: [tool], activity: "x") == Fleet.Line("Grep · foo", tone: .muted))
+        #expect(Fleet.line(status: .running, items: [tool], activity: "x") == Fleet.Line("Grep: foo", tone: .muted))
         #expect(Fleet.line(status: .idle, items: [item(textItem(1, "Done."))], activity: "x") == Fleet.Line("Done.", tone: .muted))
     }
 

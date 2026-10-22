@@ -185,8 +185,9 @@ public struct ThreadHeaderLine: Equatable, Sendable {
         case elapsed(since: Int)
         /// Paused: the frozen elapsed, in ms.
         case frozen(ms: Int)
-        /// "Queued · waiting for X", "Stopped · the harness is gone".
-        case words(String)
+        /// A state's word ("Queued", "Stopped"), and its reason drawn as a
+        /// quieter text beside it ("Waiting for X", "The harness is gone").
+        case words(String, detail: String? = nil)
     }
 
     public let mark: Mark
@@ -194,8 +195,6 @@ public struct ThreadHeaderLine: Equatable, Sendable {
     /// The line ticks (running, starting, watching).
     public let live: Bool
 
-    public static let stoppedWords = "Stopped · the harness is gone"
-    public static let queuedWords = "Queued"
 
     public init(session: SessionMeta, hostName: String?) {
         var parts: [Part] = []
@@ -228,11 +227,11 @@ public struct ThreadHeaderLine: Equatable, Sendable {
             if let frozen = session.frozenActiveElapsed { parts.append(.frozen(ms: frozen)) }
         case .queued:
             mark = .dot(.tertiary)
-            let activity = session.activity ?? ""
-            parts.append(.words(activity.hasPrefix(Self.queuedWords) ? activity : Self.queuedWords))
+            let queued = StripWords.queued(activity: session.activity)
+            parts.append(.words(queued.title, detail: queued.detail))
         case .stopped:
             mark = .stopped
-            parts.append(.words(Self.stoppedWords))
+            parts.append(.words(StripWords.stopped.title, detail: StripWords.stopped.detail))
         case .idle, .done, .unknown:
             // A settled root whose subagents still work shows the spinner, with no elapsed: the time is the child's.
             mark = session.treeHasLiveWork == true ? .spinner : .empty
@@ -248,10 +247,10 @@ public struct ThreadHeaderLine: Equatable, Sendable {
         parts.filter { if case .host = $0 { false } else { true } }
     }
 
-    /// The shortest form: the words alone ("Queued", "Stopped") or type · model.
+    /// The shortest form: the words alone ("Queued", "Stopped") or the type and the model.
     public var compact: [Part] {
-        if case .words(let words)? = parts.last {
-            return [.words(words == Self.stoppedWords ? "Stopped" : words.hasPrefix(Self.queuedWords) ? Self.queuedWords : words)]
+        if case .words(let words, _)? = parts.last {
+            return [.words(words)]
         }
         return withoutHost.filter {
             switch $0 {

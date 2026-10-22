@@ -42,7 +42,7 @@ public struct ActivityGroup: Hashable, Sendable {
     public var id: TranscriptRowID { TranscriptRowID(kind: .group, seq: entries[0].seq) }
 }
 
-/// A settled turn's closing line: "Worked for 12s · 3:04 PM".
+/// A settled turn's closing line: "Worked for 12s", and the clock time at its trailing edge.
 public struct TurnEnd: Hashable, Sendable {
     public var userSeq: Int
     /// The user turn's `completedTs` less its `ts`, never negative.

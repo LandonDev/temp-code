@@ -78,8 +78,7 @@ struct InboxView: View {
         .overlay {
             if entries.isEmpty, notices.isEmpty {
                 if Self.settled(clients, store: store) {
-                    Text("Nothing in the inbox.")
-                        .textStep(.meta)
+                    ContentUnavailableView("Nothing in the Inbox", systemImage: "tray")
                 } else {
                     ProgressView()
                 }
@@ -237,13 +236,12 @@ private struct InboxRowMeta: View {
         Group {
             if typeSize.isAccessibilitySize, status != nil || showHost {
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 5) { who }
-                    HStack(spacing: 5) { what }
+                    HStack(spacing: 4) { who }
+                    HStack(spacing: 8) { what }
                 }
             } else {
-                HStack(spacing: 5) {
-                    who
-                    if status != nil || showHost { dot }
+                HStack(spacing: 8) {
+                    HStack(spacing: 4) { who }
                     what
                 }
             }
@@ -257,10 +255,9 @@ private struct InboxRowMeta: View {
         MetaGlyph(isPr ? "arrow.triangle.pull" : "circle.circle", weight: weight, label: isPr ? "Pull request" : "Issue")
         if let author = item.author?.login, !author.isEmpty {
             Text(author)
-                .foregroundStyle(weight == .semibold ? .secondary : .tertiary)
+                .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .layoutPriority(1)
-            dot
         }
         Text("\(InboxRow.repoName(item.repo)) #\(item.number)")
             .foregroundStyle(.tertiary)
@@ -276,16 +273,12 @@ private struct InboxRowMeta: View {
                 .layoutPriority(1)
         }
         if showHost {
-            if status != nil { dot }
-            Text(entry.hostName)
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
+            HStack(spacing: 3) {
+                MetaGlyph("desktopcomputer", label: "Host")
+                Text(entry.hostName)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
         }
-    }
-
-    private var dot: some View {
-        Text("·")
-            .foregroundStyle(.tertiary)
-            .accessibilityHidden(true)
     }
 }

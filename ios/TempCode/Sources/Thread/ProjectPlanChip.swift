@@ -55,7 +55,7 @@ extension ThreadCaches {
     static let projectPlans = ProjectPlanStates()
 }
 
-/// The project header's plan chip on Home: "Plan", or "Plan · 3/7" once the
+/// The project header's plan chip on Home: "Plan", or the count "3/7" beside its flag once the
 /// plan is kept as the project's. Opens the thread that wrote the plan; a
 /// long press holds the options card's four options. Nothing until the
 /// state is loaded, and nothing for a project with no plan file and no plan

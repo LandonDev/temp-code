@@ -85,7 +85,8 @@ final class ActivityCoordinator {
                 let face = request.title.map { "\(request.toolName) — \($0)" } ?? request.toolName
                 return "Needs approval: \(face)"
             case .question(let question) where !question.resolved:
-                return "Asked: " + question.request.questions.map(\.question).joined(separator: " · ")
+                let asked = question.request.questions.map(\.question)
+                return "Asked: " + (asked.first ?? "") + (asked.count > 1 ? " and \(asked.count - 1) more" : "")
             default:
                 continue
             }

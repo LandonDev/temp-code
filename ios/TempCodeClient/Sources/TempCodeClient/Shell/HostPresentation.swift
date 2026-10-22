@@ -110,7 +110,8 @@ public enum HostFix: Sendable, Hashable {
     }
 }
 
-/// The host's version row in the detail: `1.0.273 · 5edeb5d`, or the
+/// The host's version row in the detail: `1.0.273 (5edeb5d)`, the way
+/// Apple's About rows put a build after its version, or the
 /// version alone when the hello carried no commit. `release` repeats the
 /// version and `platform` is the deploy line's, so neither is shown.
 public enum HostBuildLine {
@@ -121,7 +122,7 @@ public enum HostBuildLine {
     /// The same line from the fields alone (a relayed host's presence carries its build under another type).
     public static func text(version: String, sha: String?) -> String {
         guard let sha, !sha.isEmpty else { return version }
-        return "\(version) · \(sha.prefix(7))"
+        return "\(version) (\(sha.prefix(7)))"
     }
 }
 

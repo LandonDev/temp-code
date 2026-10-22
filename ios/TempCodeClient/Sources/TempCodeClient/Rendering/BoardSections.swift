@@ -99,8 +99,8 @@ extension Board {
 }
 
 /// The gate row's one line: the desktop's `gateLine` (src/shared/gate.ts).
-/// "Typecheck passed on feature", "Typecheck failed on feature · 3 errors",
-/// "Gate failed on master · at vitest", "Release failed on master".
+/// "Typecheck passed on feature", "Typecheck failed on feature with 3 errors",
+/// "Gate failed on master at vitest", "Release failed on master".
 public enum GateLine {
     public static func text(_ gate: GateNotice) -> String {
         let label = Self.label(gate.step)
@@ -108,9 +108,9 @@ public enum GateLine {
         switch gate.step {
         case .typecheck:
             let errors = errorCount(gate.log)
-            return errors > 0 ? "\(label) failed on \(gate.branch) · \(errors) \(errors == 1 ? "error" : "errors")" : "\(label) failed on \(gate.branch)"
+            return errors > 0 ? "\(label) failed on \(gate.branch) with \(errors) \(errors == 1 ? "error" : "errors")" : "\(label) failed on \(gate.branch)"
         case .gate:
-            if let step = failedStep(gate.log) { return "\(label) failed on \(gate.branch) · at \(step)" }
+            if let step = failedStep(gate.log) { return "\(label) failed on \(gate.branch) at \(step)" }
             return "\(label) failed on \(gate.branch)"
         case .release, .unknown:
             return "\(label) failed on \(gate.branch)"

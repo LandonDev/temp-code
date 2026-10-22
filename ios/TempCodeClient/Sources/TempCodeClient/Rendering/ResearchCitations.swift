@@ -48,7 +48,7 @@ extension ResearchBoard {
         return out
     }
 
-    /// The coverage line under the report pin: "3 sources · 2 searches · 1 of
+    /// The coverage line under the report pin: "3 sources, 2 searches, 1 of
     /// 2 angles done". Spawned angles count; the root's own research does not.
     /// Empty when nothing has happened yet.
     public static func coverage(sources: Int, searches: Int, angles: Int, done: Int) -> String {
@@ -56,7 +56,7 @@ extension ResearchBoard {
         if sources > 0 { parts.append("\(sources) source\(sources == 1 ? "" : "s")") }
         if searches > 0 { parts.append("\(searches) search\(searches == 1 ? "" : "es")") }
         if angles > 0 { parts.append("\(done) of \(angles) angle\(angles == 1 ? "" : "s") done") }
-        return parts.joined(separator: " · ")
+        return parts.joined(separator: ", ")
     }
 }
 

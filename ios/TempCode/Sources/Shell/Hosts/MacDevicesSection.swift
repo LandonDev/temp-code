@@ -130,14 +130,16 @@ struct MacDevicesSection: View {
 }
 
 /// A device: the dot (a spinner while an action is out for it), the name,
-/// the state line in the meta step, and who holds it trailing in the
-/// footnote's tertiary; a row whose holder is reachable pushes that thread.
+/// under it what the device is doing in the meta step with what it is after
+/// it in tertiary, and who holds it trailing in the footnote's tertiary; a
+/// row whose holder is reachable pushes that thread.
 struct DeviceRow: View {
     let name: String
     let state: DeviceState
     let busy: Bool
     let holder: DeviceHolder?
     let route: Route?
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         if let route {
@@ -159,21 +161,33 @@ struct DeviceRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(name)
                     .lineLimit(1)
-                Text(state.text)
-                    .textStep(.meta)
-                    .lineLimit(1)
-                    .numeric(state.text)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(state.status)
+                        .textStep(.meta)
+                        .numeric(state.status)
+                        .layoutPriority(1)
+                    Text(state.platform)
+                        .font(TextStep.meta.font)
+                        .foregroundStyle(.tertiary)
+                }
+                .lineLimit(1)
+                // Stacked at accessibility sizes: trailing, the holder was squeezed to a letter.
+                if typeSize.isAccessibilitySize { holderText }
             }
             .layoutPriority(1)
             Spacer(minLength: Layout.rowGap)
-            Text(holder.map(DeviceWords.holder) ?? "—")
-                .font(.footnote)
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-                .truncationMode(.tail)
+            if !typeSize.isAccessibilitySize { holderText }
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .combine)
-        .accessibilityValue(state.text)
+        .accessibilityValue(state.spoken)
+    }
+
+    private var holderText: some View {
+        Text(holder.map(DeviceWords.holder) ?? "—")
+            .font(.footnote)
+            .foregroundStyle(.tertiary)
+            .lineLimit(1)
+            .truncationMode(.tail)
     }
 }

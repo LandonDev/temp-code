@@ -27,6 +27,7 @@ struct SyncSection: View {
                         let now = context.date.timeIntervalSince1970 * 1000
                         SyncPeerRow(
                             name: peer.name,
+                            connected: peer.connected,
                             harness: peer.harness.map { SyncWords.harnessLine($0, now: now) },
                             memory: peer.memory.map { SyncWords.memoryLine($0, now: now) },
                             syncing: extras.sync.syncing.contains(peer.id) || peer.harness?.running == true || peer.memory?.running == true,
@@ -62,6 +63,8 @@ struct SyncSection: View {
         let name: String
         let harness: HarnessEnvironmentStatus?
         let memory: MemoryEnvironmentStatus?
+
+        var connected: Bool { harness?.connected ?? memory?.connected ?? false }
     }
 
     /// The harness list's peers, joined with the memory list by id, then any memory-only peer.
@@ -76,7 +79,7 @@ struct SyncSection: View {
     }
 
     private func canSync(_ peer: Peer, sync: HostExtras.SyncState) -> Bool {
-        let connected = peer.harness?.connected ?? peer.memory?.connected ?? false
+        let connected = peer.connected
         let enabled = sync.harness?.enabled == true || sync.memory?.enabled == true
         return client.status.transport == .open && connected && enabled
     }
@@ -103,10 +106,12 @@ struct SyncSection: View {
     }
 }
 
-/// One peer: its name, the two lines in the meta step, and Sync Now (reading
-/// Syncing… while either side runs).
+/// One peer: its name with "Not connected" beside it while the link is
+/// down, the two lines in the meta step, and Sync Now (reading Syncing…
+/// while either side runs).
 struct SyncPeerRow: View {
     let name: String
+    let connected: Bool
     let harness: String?
     let memory: String?
     let syncing: Bool
@@ -116,8 +121,15 @@ struct SyncPeerRow: View {
     var body: some View {
         HStack(alignment: .center, spacing: Layout.rowGap) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(name)
-                    .lineLimit(1)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(name)
+                        .lineLimit(1)
+                    if !connected {
+                        Text("Not connected")
+                            .textStep(.meta)
+                            .fixedSize()
+                    }
+                }
                 // The harness line names its sets and may wrap; SwapText holds one
                 // line, so these cross-fade in place and keep the "synced …" end.
                 if let harness { line(harness) }

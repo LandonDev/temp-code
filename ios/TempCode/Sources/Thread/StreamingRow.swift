@@ -135,6 +135,8 @@ struct LiveChipLabel: View {
                 .font(.subheadline)
                 .foregroundStyle(failed ? Tint.destructive : Color(.secondaryLabel))
                 .lineLimit(1)
+                // A verb with a target never gives way to it: the target is the one that truncates.
+                .fixedSize(horizontal: shownTarget != nil, vertical: false)
             ZStack(alignment: .leading) {
                 Text(" ")
                     .font(targetFont)

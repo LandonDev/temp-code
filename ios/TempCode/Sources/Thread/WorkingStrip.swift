@@ -2,15 +2,18 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// The desktop's working indicator in its permanently reserved row, 28 pt
-/// at the default text size and scaled once with it, never animated. Six
-/// states (WorkingPhase): nothing; Sending… bridging a send to the turn's
-/// start; the spinner, a flavour word turning every seven seconds and the
-/// elapsed in tabular digits; the paused row in the warning tint with Stop
-/// and Continue (and, on a master, how many batch threads paused with it);
-/// the stopped row with Resume when the harness is gone; the queued line
-/// naming the sibling it waits for, with Start now. Every line sits on the
-/// composer's text edge. Only opacity animates, in 120 ms.
+/// The chat bar's status line, above the capsule only while there is
+/// something to say (BottomDock decides). It sits on the capsule's text
+/// edge, one footnote line at 32 pt that scales with the text size, its
+/// actions as small glass buttons at the trailing edge. Five states
+/// (WorkingPhase): Sending… bridging a send to the turn's start; the
+/// spinner, a flavour word turning every seven seconds and the elapsed in
+/// tabular digits; Paused in the warning tint with the frozen elapsed (on a
+/// master, how many batch threads paused with it), Stop and Continue; Stopped
+/// when the harness is gone, with Resume; Queued with the host's reason and
+/// Start now. While idle, a locked relayed host's one line. The words are
+/// the client package's `StripWords`: a title, then a quieter detail as its
+/// own text, never joined with a dot. Only opacity animates between states.
 struct WorkingStripView: View {
     let client: EnvironmentClient
     let sessionId: String
@@ -18,7 +21,7 @@ struct WorkingStripView: View {
     let thread: ThreadState
     /// The strip action out on the wire, so only its control says so.
     @State private var acting: Acting?
-    @ScaledMetric(relativeTo: .footnote) private var height: CGFloat = 28
+    @ScaledMetric(relativeTo: .footnote) private var height: CGFloat = 32
 
     /// High frequency, so opacity alone and under 150 ms.
     static let fade: Animation = .easeOut(duration: 0.12)
@@ -40,10 +43,13 @@ struct WorkingStripView: View {
         ZStack {
             switch phase {
             case .idle:
-                // Thread 29: a locked relayed host's one line; `Color.clear` for any other host or state.
+                // Thread 29: a locked relayed host's one line.
                 RelayStripLine(client: client)
+                    .padding(.horizontal, ComposerBar.textInset - 4)
             case .sending:
                 line {
+                    ProgressView()
+                        .controlSize(.mini)
                     Text("Sending…")
                         .foregroundStyle(.secondary)
                     Spacer(minLength: 0)
@@ -69,126 +75,104 @@ struct WorkingStripView: View {
             case .stopped:
                 stoppedRow
             case .queued:
-                queuedLine
+                queuedRow
             }
         }
-        .frame(height: height)
+        .frame(minHeight: height)
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 12)
         .animation(Self.fade, value: phase)
         .accessibilityElement(children: .contain)
     }
 
-    /// The line sits on the composer's text edge (12 of bar, 12 of field).
+    /// A line on the capsule's text edge.
     private func line<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         HStack(spacing: 8, content: content)
             .font(.footnote)
-            .padding(.horizontal, 12)
+            .padding(.horizontal, ComposerBar.textInset)
             .frame(maxWidth: .infinity, alignment: .leading)
             .transition(.opacity)
     }
 
-    /// The warning row at composer width: glyph, Paused, the frozen elapsed,
-    /// the batch line on a master, then Stop and Continue.
-    private var pausedRow: some View {
-        let batch = session?.isMaster == true ? Self.batchPaused(of: sessionId, in: client.sessions) : 0
-        return HStack(spacing: 8) {
-            Image(systemName: "pause.fill")
-                .font(.caption)
-                .foregroundStyle(Tint.warning)
-            Text("Paused")
+    /// The words of a state: its glyph, the title at medium weight, an
+    /// optional stamp in tertiary tabular digits, the detail in secondary.
+    private func words(_ words: StripWords, symbol: String, tint: Color, stamp: String? = nil) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: symbol)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(tint)
+                .accessibilityHidden(true)
+            Text(words.title)
                 .font(.footnote.weight(.medium))
-            Text(TimeFormat.duration(ms: max(0, session?.frozenActiveElapsed ?? 0)))
-                .font(.caption)
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-            if batch > 0 {
-                Text("· and \(batch) batch \(batch == 1 ? "thread" : "threads") with it")
+            if let stamp {
+                Text(stamp)
+                    .font(.footnote)
+                    .monospacedDigit()
+                    .foregroundStyle(.tertiary)
+            }
+            if let detail = words.detail {
+                Text(detail)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
-            Spacer(minLength: 0)
-            StripCapsule("Stop", style: .quiet) {
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// Paused: the glyph in the warning tint, the frozen elapsed, the batch
+    /// on a master, then Stop and Continue.
+    private var pausedRow: some View {
+        let batch = session?.isMaster == true ? Self.batchPaused(of: sessionId, in: client.sessions) : 0
+        return row {
+            words(.paused(batch: batch), symbol: "pause.fill", tint: Tint.warning, stamp: TimeFormat.duration(ms: max(0, session?.frozenActiveElapsed ?? 0)))
+        } actions: {
+            StripButton("Stop", systemImage: "stop.fill") {
                 run(.stop) { try await client.stop(sessionId) }
             }
-            StripCapsule(acting == .resume ? "Continuing…" : "Continue", style: .tint(Tint.warning)) {
+            StripButton(acting == .resume ? "Continuing…" : "Continue", systemImage: "play.fill", tint: Tint.warning) {
                 run(.resume) { try await client.resume(sessionId) }
             }
         }
-        .padding(.leading, 12)
-        .padding(.trailing, 3)
-        .frame(height: height)
-        .background(Tint.warning.opacity(0.1), in: RoundedRectangle.rowCorner)
-        .hairlineBorder(RoundedRectangle.rowCorner, color: Tint.warning.opacity(0.2))
-        .disabled(acting != nil || client.operateBlock != nil)
-        .opacity(client.operateBlock == nil ? 1 : 0.6)
-        .transition(.opacity)
     }
 
-    /// The neutral row: the harness is gone and Resume brings it back on
-    /// the same transcript (the host's one resume path for a dead harness).
+    /// Stopped: the harness is gone and Resume brings it back on the same
+    /// transcript (the host's one resume path for a dead harness).
     private var stoppedRow: some View {
         let frozen = session?.frozenActiveElapsed ?? 0
-        return HStack(spacing: 8) {
-            Image(systemName: "stop.fill")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text("Stopped")
-                .font(.footnote.weight(.medium))
-            Text("· the harness is gone")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-            if frozen > 0 {
-                Text(TimeFormat.duration(ms: frozen))
-                    .font(.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 0)
-            StripCapsule(acting == .resume ? "Resuming…" : "Resume", style: .filled) {
+        return row {
+            words(.stopped, symbol: "stop.fill", tint: Color.secondary, stamp: frozen > 0 ? TimeFormat.duration(ms: frozen) : nil)
+        } actions: {
+            StripButton(acting == .resume ? "Resuming…" : "Resume", systemImage: "arrow.clockwise", tint: Color.accentColor) {
                 run(.resume) { try await client.resume(sessionId) }
             }
         }
-        .padding(.leading, 12)
-        .padding(.trailing, 3)
-        .frame(height: height)
-        .background(Color(.quaternarySystemFill), in: RoundedRectangle.rowCorner)
-        .hairlineBorder(RoundedRectangle.rowCorner)
-        .disabled(acting != nil || client.operateBlock != nil)
-        .opacity(client.operateBlock == nil ? 1 : 0.6)
-        .transition(.opacity)
     }
 
-    /// A queued batch thread: the host's line ("Queued · waiting for
-    /// <sibling>", with "(errored)", "(stopped)" or "(paused)" appended),
-    /// else "Queued"; Start now runs it ahead of the sibling.
-    private var queuedLine: some View {
-        HStack(spacing: 8) {
-            Text(queuedText)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-            Spacer(minLength: 0)
-            StripCapsule(acting == .start ? "Starting…" : "Start now", style: .quiet) {
+    /// Queued: the host's reason (the sibling it waits for, the running
+    /// cap, memory) after the word; Start now runs it ahead.
+    private var queuedRow: some View {
+        row {
+            words(.queued(activity: session?.activity), symbol: "clock", tint: Color.secondary)
+        } actions: {
+            StripButton(acting == .start ? "Starting…" : "Start now", systemImage: "play.fill") {
                 run(.start) { try await client.start(sessionId) }
             }
         }
-        .padding(.leading, 12)
-        .padding(.trailing, 3)
-        .frame(height: height)
+    }
+
+    /// The words on the text edge, the actions at the trailing edge; the
+    /// whole row dims and stops answering while the key cannot act.
+    private func row<Words: View, Actions: View>(@ViewBuilder _ words: () -> Words, @ViewBuilder actions: () -> Actions) -> some View {
+        HStack(spacing: 8) {
+            words()
+            Spacer(minLength: 0)
+            actions()
+        }
+        .padding(.leading, ComposerBar.textInset)
         .disabled(acting != nil || client.operateBlock != nil)
         .opacity(client.operateBlock == nil ? 1 : 0.6)
         .transition(.opacity)
-    }
-
-    private var queuedText: String {
-        if let activity = session?.activity, activity.hasPrefix("Queued") { return activity }
-        return "Queued"
     }
 
     /// A refused action re-enables the control and is otherwise silent: the
@@ -206,54 +190,42 @@ struct WorkingStripView: View {
     static func flavour(seed id: String, now: TimeInterval) -> String { Flavour.word(seed: id, now: now) }
 }
 
-/// A capsule in the strip's row: caption semibold, 22 pt tall, quiet on the
-/// fill step, filled with a tint and white text when it is the one thing to
-/// do, or in the label color on the background. The hit area is the row.
-private struct StripCapsule: View {
-    enum Style {
-        case quiet
-        case tint(Color)
-        case filled
-    }
-
+/// A small glass button in the status line: a glyph and a word on the
+/// system's glass at the small control size, filled in its tint when it is
+/// the one thing to do.
+private struct StripButton: View {
     let title: String
-    let style: Style
+    let systemImage: String
+    var tint: Color?
     let action: () -> Void
 
-    init(_ title: String, style: Style, action: @escaping () -> Void) {
+    init(_ title: String, systemImage: String, tint: Color? = nil, action: @escaping () -> Void) {
         self.title = title
-        self.style = style
+        self.systemImage = systemImage
+        self.tint = tint
         self.action = action
-    }
-
-    private var foreground: Color {
-        switch style {
-        case .quiet: Color.secondary
-        case .tint: Color.white
-        case .filled: Color(.systemBackground)
-        }
-    }
-
-    private var background: Color {
-        switch style {
-        case .quiet: Surface.fill
-        case .tint(let tint): tint
-        case .filled: Color(.label)
-        }
     }
 
     var body: some View {
         Button(action: action) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(foreground)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 3)
-                .frame(minHeight: 22)
-                .background(background, in: Capsule())
-                .frame(maxHeight: .infinity)
-                .contentShape(Rectangle())
+            Label(title, systemImage: systemImage)
+                .font(.footnote.weight(.semibold))
+                .labelStyle(StripLabelStyle())
         }
-        .buttonStyle(.pressable)
+        .tcGlassButton(prominent: tint != nil)
+        .tint(tint)
+        .buttonBorderShape(.capsule)
+        .controlSize(.small)
+    }
+}
+
+/// The glyph a size down beside the word, 4 pt apart.
+private struct StripLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 4) {
+            configuration.icon
+                .imageScale(.small)
+            configuration.title
+        }
     }
 }

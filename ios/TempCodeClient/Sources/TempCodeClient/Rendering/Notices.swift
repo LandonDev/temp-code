@@ -26,9 +26,10 @@ public enum GateText {
         "\(label(gate.step)) \(gate.ok ? "passed" : "failed")"
     }
 
-    /// The branch, and what the log says about the run: "feature · 3 errors",
-    /// "master · at vitest", "master · release-277", else the branch alone.
-    public static func detail(_ gate: GateNotice) -> String {
+    /// What the log says about the run, drawn after the branch as its own
+    /// text: "3 errors", "at vitest", "release-277"; nil when it says
+    /// nothing worth a word.
+    public static func tail(_ gate: GateNotice) -> String? {
         var tail: String?
         switch gate.step {
         case .typecheck where !gate.ok:
@@ -41,7 +42,7 @@ public enum GateText {
         default:
             break
         }
-        return tail.map { "\(gate.branch) · \($0)" } ?? gate.branch
+        return tail
     }
 
     /// tsc's count: its "Found N errors" line, else the `error TS` lines; 0 when neither.
@@ -89,7 +90,14 @@ public enum ReviewText {
         }
     }
 
+    /// The card's second line under the lead, as a sentence: "No blocking
+    /// findings, 2 minor", "2 blocking findings, merge held"; "" for none.
     public static func detail(_ review: ReviewNotice, resolved: Bool) -> String {
+        let words = detailWords(review, resolved: resolved)
+        return words.prefix(1).uppercased() + words.dropFirst()
+    }
+
+    private static func detailWords(_ review: ReviewNotice, resolved: Bool) -> String {
         let minor = review.minor.isEmpty ? nil : "\(review.minor.count) minor"
         switch review.outcome {
         case .pass:

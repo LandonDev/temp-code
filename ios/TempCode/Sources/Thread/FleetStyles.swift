@@ -150,7 +150,7 @@ struct AgentStatusMark: View {
                     .transition(.opacity)
             case .stopped:
                 // The harness is gone: a still square, the quiet opposite of the spinner.
-                RoundedRectangle(cornerRadius: 1, style: .continuous)
+                RoundedRectangle.corner(Radius.mark)
                     .fill(Tint.quiet)
                     .frame(width: dot - 1, height: dot - 1)
                     .transition(.opacity)
@@ -200,8 +200,9 @@ struct AgentStatusMark: View {
 // MARK: - lines
 
 /// Provider mark, role, model and effort, plus the worktree when the agent
-/// has one and the host when it is not the root's: one dim line, the
-/// desktop's "claude · implementer · Opus 5.5 · high".
+/// has one and the host when it is not the root's: one dim line in groups
+/// 8 pt apart, each led by its own glyph, the effort a step quieter after
+/// the model. No dots between them.
 struct AgentMetaLine: View {
     let agent: SessionMeta
     var branch: String?
@@ -209,18 +210,21 @@ struct AgentMetaLine: View {
     var environmentId: String?
 
     var body: some View {
-        HStack(spacing: 5) {
-            ProviderGlyph(provider: agent.provider)
-            MetaGlyph(agent.agentType.symbol, label: agent.agentType.label)
-            Text(ModelName.short(agent.model))
-            if !agent.reasoning.rawValue.isEmpty {
-                Separator()
-                Text(agent.reasoning.rawValue)
+        HStack(spacing: 8) {
+            HStack(spacing: 4) {
+                ProviderGlyph(provider: agent.provider)
+                MetaGlyph(agent.agentType.symbol, label: agent.agentType.label)
+                Text(ModelName.short(agent.model))
+                if !agent.reasoning.rawValue.isEmpty {
+                    Text(agent.reasoning.label)
+                        .foregroundStyle(.tertiary)
+                }
             }
             if let branch {
-                Separator()
-                MetaGlyph("arrow.triangle.branch", label: "Worktree")
-                Text(branch)
+                HStack(spacing: 3) {
+                    MetaGlyph("arrow.triangle.branch", label: "Worktree")
+                    Text(branch)
+                }
             }
             if let environmentId {
                 HostGlyph(environmentId: environmentId)
@@ -229,12 +233,6 @@ struct AgentMetaLine: View {
         .textStep(.meta)
         .lineLimit(1)
         .accessibilityElement(children: .combine)
-    }
-
-    private struct Separator: View {
-        var body: some View {
-            Text("·").foregroundStyle(.tertiary)
-        }
     }
 }
 
@@ -292,26 +290,31 @@ struct ActivityLine: View {
     }
 }
 
-/// "+12 −3 · 3/7 tasks · 42%", quiet and tabular (the desktop's
-/// AgentStatsLine); the context reading turns warning at 85 %.
+/// The diff, the tasks and the context reading, quiet and tabular (the
+/// desktop's AgentStatsLine): groups 8 pt apart, the tasks and the context
+/// each led by their glyph; the context reading turns warning at 85 %.
 struct AgentStatsLine: View {
     let stats: Fleet.Stats
 
     private var hasDiff: Bool { stats.adds > 0 || stats.dels > 0 }
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             if hasDiff {
                 ChangeStat(adds: stats.adds, dels: stats.dels)
             }
             if stats.tasksTotal > 0 {
-                if hasDiff { Dot() }
-                Text("\(stats.tasksDone)/\(stats.tasksTotal) tasks")
+                HStack(spacing: 3) {
+                    MetaGlyph("checklist", label: "Tasks")
+                    Text("\(stats.tasksDone)/\(stats.tasksTotal)")
+                }
             }
             if let pct = stats.contextPercent {
-                if hasDiff || stats.tasksTotal > 0 { Dot() }
-                Text("\(pct)%")
-                    .foregroundStyle(pct >= 85 ? Tint.warning : Color(.tertiaryLabel))
+                HStack(spacing: 3) {
+                    MetaGlyph("gauge.with.dots.needle.33percent", tint: pct >= 85 ? Tint.warning : nil, label: "Context")
+                    Text("\(pct)%")
+                        .foregroundStyle(pct >= 85 ? Tint.warning : Color(.tertiaryLabel))
+                }
             }
         }
         .font(.caption)
@@ -319,12 +322,6 @@ struct AgentStatsLine: View {
         .lineLimit(1)
         .numeric(stats)
         .accessibilityElement(children: .combine)
-    }
-
-    private struct Dot: View {
-        var body: some View {
-            Text("·").foregroundStyle(.quaternary)
-        }
     }
 }
 

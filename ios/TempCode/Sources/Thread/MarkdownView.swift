@@ -80,7 +80,7 @@ struct MarkdownBlocksView: View {
                         .padding(.leading, 12)
                         .padding(.vertical, 2)
                         .overlay(alignment: .leading) {
-                            RoundedRectangle(cornerRadius: 1)
+                            Capsule()
                                 .fill(TranscriptStyle.control)
                                 .frame(width: 2)
                         }
@@ -140,9 +140,10 @@ struct CodeBlock: View {
                         .textSelection(.enabled)
                         .fixedSize(horizontal: true, vertical: false)
                 }
-                .padding(.horizontal, 10)
                 .padding(.vertical, 8)
             }
+            // The first character rests on the block's inset at either end of a sideways scroll.
+            .contentMargins(.horizontal, 10, for: .scrollContent)
             if lines.count > maxLines {
                 Button {
                     withAnimation(expanded ? Motion.collapse : Motion.expand) { expanded.toggle() }
@@ -188,8 +189,8 @@ private struct MarkdownTable: View {
                     }
                 }
             }
-            .padding(.horizontal, 10)
         }
+        .contentMargins(.horizontal, 10, for: .scrollContent)
         .transcriptBlock()
     }
 }

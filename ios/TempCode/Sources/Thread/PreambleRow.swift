@@ -3,7 +3,7 @@ import TempCodeClient
 import TempCodeContract
 
 /// The project rules a thread's first message opened with, folded to one
-/// line above the brief: "Project rules · 212 words". Tap opens the text in
+/// line above the brief: "Project rules", then "212 words" quieter. Tap opens the text in
 /// place with a 150 ms cross-fade. A record, not an editor.
 struct PreambleRow: View {
     let stamp: PreambleStamp
@@ -23,7 +23,7 @@ struct PreambleRow: View {
                     Text("Project rules")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                    Text("· \(stamp.words) \(stamp.words == 1 ? "word" : "words")")
+                    Text("\(stamp.words) \(stamp.words == 1 ? "word" : "words")")
                         .font(.footnote)
                         .foregroundStyle(.tertiary)
                         .monospacedDigit()

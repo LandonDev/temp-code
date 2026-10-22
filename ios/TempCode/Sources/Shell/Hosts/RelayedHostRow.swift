@@ -3,7 +3,7 @@ import TempCodeClient
 import TempCodeContract
 
 /// A host reached through another, under its carrier's row in Settings →
-/// Hosts: the lane's dot in the mark column, the name, "through <carrier> ·
+/// Hosts: the lane's dot in the mark column, the name, "through <carrier>,
 /// <presence>" in the meta step, the abbreviated environment id trailing.
 /// Nothing here waits on the person: no swipe, no menu (there is nothing to
 /// pair again or forget; the carrier's Forget takes it along).
@@ -17,7 +17,7 @@ struct RelayedHostRow: View {
         let presence = client.presence
         let lockedSince = client.stateSince
         HStack(spacing: Layout.rowGap) {
-            ConnectionDot(status: status)
+            ConnectionDot(status: status, relay: client.relayState)
                 .frame(width: Layout.markWidth)
                 // The second line says the state; the dot's label would say it again.
                 .accessibilityHidden(true)
@@ -62,7 +62,7 @@ struct RelayedHostDetailView: View {
             // 1. Status: the lane, and the host's presence under it.
             Section {
                 HStack(alignment: .firstTextBaseline, spacing: Layout.rowGap) {
-                    ConnectionDot(status: status)
+                    ConnectionDot(status: status, relay: client.relayState)
                         .frame(width: Layout.markWidth)
                         .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
                         .accessibilityHidden(true)

@@ -258,6 +258,7 @@ struct RelayedHostsTests {
         lane.deliver(rig.helloJSON(environmentId: RelayRig.macId, via: RelayRig.carrierId, presence: presenceJSON(screen: "locked")))
         #expect(await rig.wait { rig.relayed.state(of: RelayRig.macId) == .locked })
         #expect(await rig.wait { rig.mac?.relayState == .locked })
+        // The lane flips its own state first; the registry stamps `since` a hop later.
         #expect(await rig.wait { rig.mac?.stateSince == 1_000 })
         // Locked keeps Send admitted: the socket and the key decide, not the presence.
         #expect(await rig.wait { rig.mac?.status.transport == .open })
@@ -272,6 +273,7 @@ struct RelayedHostsTests {
     @Test @MainActor func `a lane's hello presence reaches the lane itself, without a registry`() async throws {
         let sockets = FakeSocketFactory()
         let keys = InMemoryKeyStore()
+        // A lane rides the carrier's key (`keyOwner`).
         try keys.set("tc_K1.secret", for: RelayRig.carrierId)
         let api = RemoteAPI { request in
             (Data(#"{"ticket":"t","expiresIn":30}"#.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)

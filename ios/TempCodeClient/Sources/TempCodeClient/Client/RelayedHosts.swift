@@ -235,7 +235,7 @@ public enum RelayWords {
 
     /// The row's dim line, with no subject (the row's title is the host):
     /// nil when available; "locked since 9:14" (or "locked" before the phone
-    /// saw the move) · "asleep" · "unreachable since 9:14".
+    /// saw the move), "asleep" or "unreachable since 9:14".
     public static func rowLine(_ presence: HostPresence, lockedSince: Int?, now: Date, calendar: Calendar = .current, locale: Locale = .current) -> String? {
         switch RelayState(presence) {
         case .available:
@@ -251,11 +251,11 @@ public enum RelayWords {
     }
 
     /// Home's host header and the Hosts row's relation: "through box",
-    /// "through box · locked since 9:14".
+    /// "through box, locked since 9:14".
     public static func subline(_ presence: HostPresence, carrierName: String, lockedSince: Int?, now: Date, calendar: Calendar = .current, locale: Locale = .current) -> String {
         let through = "through \(carrierName)"
         guard let line = rowLine(presence, lockedSince: lockedSince, now: now, calendar: calendar, locale: locale) else { return through }
-        return "\(through) · \(line)"
+        return "\(through), \(line)"
     }
 
     /// The working strip's idle slot: only the state with no block has a line
@@ -307,8 +307,8 @@ public enum RelayWords {
 
 /// The typed line a relayed call came back with, parsed from the wire's
 /// words (contract-relay.ts `relayRefusal`, `linkDownText`):
-/// `unavailable: the Mac is locked` · `unavailable: the Mac is asleep` ·
-/// `unavailable: the Mac is unreachable since 09:14` ·
+/// `unavailable: the Mac is locked`, `unavailable: the Mac is asleep`,
+/// `unavailable: the Mac is unreachable since 09:14` or
 /// `linkDown: the Mac is unreachable since 09:14`.
 public struct RelayRefusal: Sendable, Hashable {
     public enum Kind: Sendable, Hashable {

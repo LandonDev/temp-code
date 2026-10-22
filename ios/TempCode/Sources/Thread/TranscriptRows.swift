@@ -66,7 +66,8 @@ private struct ItemRow: View {
 }
 
 /// A settled turn's closing line, the desktop's `TurnEnd`: "Worked for 12s"
-/// and the clock time, quiet, with Copy answer in the context menu. Nothing
+/// and, at the trailing edge, the clock time, quiet, with Copy answer in the
+/// context menu. Nothing
 /// while the turn runs; the working strip has the live timer.
 struct TurnEndRow: View {
     let end: TurnEnd
@@ -77,9 +78,7 @@ struct TurnEndRow: View {
                 .frame(width: 18)
                 .accessibilityHidden(true)
             Text(TranscriptRows.workedLabel(ms: end.durationMs))
-            Circle()
-                .frame(width: 3, height: 3)
-                .accessibilityHidden(true)
+            Spacer(minLength: 8)
             Text(TimeFormat.stamp(end.completedTs))
                 .monospacedDigit()
         }
@@ -377,6 +376,9 @@ struct ChangeStat: View {
         }
         .font(.footnote.weight(.semibold))
         .numeric([adds, dels])
+        .lineLimit(1)
+        // Never wraps: in the diff's bar, "+1,200 −600" broke into two lines of digits.
+        .fixedSize()
     }
 }
 
@@ -414,7 +416,7 @@ private enum ApprovalDetail {
         }()
         if let command, !command.isEmpty, ["bash", "shell", "local_shell", "exec"].contains(name) {
             let phrases = ToolPhrase.commandPhrases(command)
-            let doing = phrases.isEmpty ? "Run a command" : phrases.prefix(2).joined(separator: " · ")
+            let doing = phrases.isEmpty ? "Run a command" : ToolPhrase.sentence(phrases)
             return .shell(doing: doing.prefix(1).uppercased() + doing.dropFirst(), command: ToolPhrase.bareCommand(command))
         }
         if let path = input["file_path"]?.stringValue ?? input["notebook_path"]?.stringValue ?? input["path"]?.stringValue, !path.isEmpty {
@@ -700,7 +702,7 @@ nonisolated struct FlowLayout: SwiftUI.Layout {
         var rowHeight: CGFloat = 0
         var maxX: CGFloat = 0
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
+            let size = Self.size(of: subview, within: width)
             if x > 0, x + size.width > width {
                 x = 0
                 y += rowHeight + spacing
@@ -718,7 +720,7 @@ nonisolated struct FlowLayout: SwiftUI.Layout {
         var y = bounds.minY
         var rowHeight: CGFloat = 0
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
+            let size = Self.size(of: subview, within: bounds.width)
             if x > bounds.minX, x + size.width > bounds.maxX {
                 x = bounds.minX
                 y += rowHeight + spacing
@@ -728,6 +730,13 @@ nonisolated struct FlowLayout: SwiftUI.Layout {
             x += size.width + spacing
             rowHeight = max(rowHeight, size.height)
         }
+    }
+
+    /// A chip's own width, or the row's when it is wider: a long option wraps inside its chip instead of running past the card.
+    private static func size(of subview: LayoutSubview, within width: CGFloat) -> CGSize {
+        let ideal = subview.sizeThatFits(.unspecified)
+        guard width.isFinite, ideal.width > width else { return ideal }
+        return subview.sizeThatFits(ProposedViewSize(width: width, height: nil))
     }
 }
 
@@ -817,11 +826,11 @@ struct CompactionLine: View {
             .accessibilityElement(children: .combine)
         case .done, .unknown:
             LabeledDivider {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Text("Context compacted")
                         .foregroundStyle(.secondary)
-                    if !parts.isEmpty {
-                        Text(parts.joined(separator: " · "))
+                    ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
+                        Text(part)
                             .foregroundStyle(.tertiary)
                             .monospacedDigit()
                     }
@@ -868,7 +877,14 @@ struct SystemRow: View {
                         .font(.footnote)
                         .frame(width: 18)
                         .accessibilityHidden(true)
-                    Text("\(Text("Failed").fontWeight(.medium))\(line.text.isEmpty ? "" : " · \(Board.firstLine(line.text))")")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Failed")
+                            .fontWeight(.medium)
+                        if !line.text.isEmpty {
+                            Text(Board.firstLine(line.text))
+                                .opacity(0.8)
+                        }
+                    }
                 }
                 .font(.footnote)
                 .foregroundStyle(Tint.destructive)
@@ -884,7 +900,7 @@ struct SystemRow: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("Pass")
                     .frame(width: 18)
-                Text(line.text.replacingOccurrences(of: ", ", with: " · "))
+                Text(line.text)
                     .lineLimit(1)
             }
             .font(.footnote)
@@ -899,7 +915,7 @@ struct SystemRow: View {
         case .planHandoff:
             PlanHandoffRow(line: line, client: client)
         case .backgroundTask:
-            QuietLine(symbol: "clock", text: line.detail.map { "\(line.text) · \($0)" } ?? line.text)
+            QuietLine(symbol: "clock", text: line.detail.map { "\(line.text) (\($0))" } ?? line.text)
         case .goal:
             QuietLine(symbol: "target", text: line.detail.map { "Goal \($0): \(line.text)" } ?? line.text)
         case .status:
@@ -946,6 +962,7 @@ struct AgentSpawnRow: View {
             }
             Text(kind == .reported ? "Reported" : "Spawned")
                 .foregroundStyle(.secondary)
+                .fixedSize()
             Text(title)
                 .foregroundStyle(.primary)
                 .lineLimit(1)
@@ -957,6 +974,7 @@ struct AgentSpawnRow: View {
                     Text(status)
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
+                        .fixedSize()
                 }
                 .font(.footnote)
             }

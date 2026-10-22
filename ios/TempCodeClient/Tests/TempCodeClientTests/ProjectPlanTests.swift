@@ -128,14 +128,14 @@ private func fields(_ value: some Encodable) throws -> [String: JSONValue] {
         #expect(ProjectPlan.next(in: doc)?.index == 2)
         #expect(ProjectPlan.milestone(3, in: doc)?.title == "UI")
         #expect(ProjectPlan.milestone(9, in: doc) == nil)
-        #expect(ProjectPlan.summary(doc) == "Plan · 1 of 3 milestones done")
-        #expect(ProjectPlan.summary("# t\n## Milestones\n### [x] 1. Only\n") == "Plan · 1 of 1 milestone done")
+        #expect(ProjectPlan.summary(doc) == "1 of 3 milestones done")
+        #expect(ProjectPlan.summary("# t\n## Milestones\n### [x] 1. Only\n") == "1 of 1 milestone done")
         #expect(ProjectPlan.summary("# t\n## Milestones\n") == "Plan")
         #expect(ProjectPlan.summary(nil) == nil)
     }
 
     @Test func `the chip reads Plan until the plan is kept and has milestones`() {
-        #expect(ProjectPlan.chipText(done: 3, total: 7, pinned: true) == "Plan · 3/7")
+        #expect(ProjectPlan.chipText(done: 3, total: 7, pinned: true) == "3/7")
         #expect(ProjectPlan.chipText(done: 3, total: 7, pinned: false) == "Plan")
         #expect(ProjectPlan.chipText(done: 0, total: 0, pinned: true) == "Plan")
     }

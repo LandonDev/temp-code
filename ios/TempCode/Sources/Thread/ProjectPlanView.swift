@@ -658,8 +658,14 @@ struct MilestoneStartSheet: View {
                             .foregroundStyle(type.tint)
                             .frame(width: ProjectPlanType.glyphColumn)
                         VStack(alignment: .leading, spacing: ProjectPlanType.detailGap) {
-                            Text(ProjectPlan.threadTitle(milestone))
-                                .font(.body)
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Text("M\(milestone.index)")
+                                    .font(.footnote.weight(.medium))
+                                    .monospacedDigit()
+                                    .foregroundStyle(.tertiary)
+                                Text(milestone.title)
+                                    .font(.body)
+                            }
                             if let scope = milestone.scope {
                                 Text(scope)
                                     .font(.footnote)

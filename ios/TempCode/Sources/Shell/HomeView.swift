@@ -78,7 +78,7 @@ struct HomeView: View {
                     Menu {
                         hostMenu(client)
                     } label: {
-                        Image(systemName: "ellipsis.circle")
+                        Image(systemName: GlassMetrics.moreSymbol)
                     }
                     .accessibilityLabel(client.environment.name)
                 }
@@ -320,7 +320,7 @@ private struct HomeRowView: View {
                 if slots.hasProjectMenu {
                     HeaderMenu(systemImage: "ellipsis", label: "\(project.name) menu") {
                         if let workspace {
-                            Button("New thread") { newThread(client, workspace, project) }
+                            Button("New Thread", systemImage: "square.and.pencil") { newThread(client, workspace, project) }
                         }
                         if let settings = slots.projectSettings {
                             Divider()
@@ -422,7 +422,7 @@ private struct HostHeader: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            ConnectionDot(status: client.status)
+            ConnectionDot(status: client.status, relay: client.relayState)
             VStack(alignment: .leading, spacing: 1) {
                 Text(client.environment.name)
                     .textStep(.title, weight: .semibold)
@@ -468,7 +468,7 @@ private struct GroupHeaderRow<Icon: View>: View {
                 icon()
                 ForEach(members, id: \.environmentId) { member in
                     if let client = model.registry.client(member.environmentId) {
-                        ConnectionDot(status: client.status)
+                        ConnectionDot(status: client.status, relay: client.relayState)
                     }
                 }
             }
@@ -505,11 +505,11 @@ private struct NoHostsView: View {
 
     var body: some View {
         ContentUnavailableView {
-            Label("Nothing paired yet", systemImage: "desktopcomputer")
+            Label("Nothing Paired Yet", systemImage: "desktopcomputer")
         } description: {
             Text("Pair your Mac or the agent host to see its threads here.")
         } actions: {
-            Button("Pair a host", action: add)
+            Button("Pair a Host", action: add)
                 .buttonStyle(.borderedProminent)
         }
     }

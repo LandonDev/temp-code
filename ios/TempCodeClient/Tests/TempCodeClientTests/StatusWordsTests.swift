@@ -8,15 +8,15 @@ private func meta(_ id: String, parentId: String? = nil, status: SessionStatus =
 }
 
 @Suite struct StatusWordsTests {
-    @Test func `a queued root's line is the host's activity when it starts with Queued, else Queued`() {
-        #expect(StatusWords.queuedLine(meta("q", status: .queued, activity: "Queued · waiting for Backfill the rollups (paused)")) == "Queued · waiting for Backfill the rollups (paused)")
-        #expect(StatusWords.queuedLine(meta("q", status: .queued, activity: nil)) == "Queued")
-        #expect(StatusWords.queuedLine(meta("q", status: .queued, activity: "")) == "Queued")
-        #expect(StatusWords.queuedLine(meta("q", status: .queued, activity: "Thinking")) == "Queued", "a stale activity line never shows on a queued row")
+    @Test func `a queued root's words are Queued, with the host's reason as the detail when it gave one`() {
+        #expect(StatusWords.queuedLine(meta("q", status: .queued, activity: "Queued · waiting for Backfill the rollups (paused)")) == StripWords(title: "Queued", detail: "Waiting for Backfill the rollups (paused)"))
+        #expect(StatusWords.queuedLine(meta("q", status: .queued, activity: nil)) == StripWords(title: "Queued"))
+        #expect(StatusWords.queuedLine(meta("q", status: .queued, activity: "")) == StripWords(title: "Queued"))
+        #expect(StatusWords.queuedLine(meta("q", status: .queued, activity: "Thinking")) == StripWords(title: "Queued"), "a stale activity line never shows on a queued row")
     }
 
     @Test func `the stopped line`() {
-        #expect(StatusWords.stopped == "Stopped · the harness is gone")
+        #expect(StatusWords.stopped == StripWords(title: "Stopped", detail: "The harness is gone"))
         #expect(StatusWords.stoppedShort == "Stopped")
     }
 

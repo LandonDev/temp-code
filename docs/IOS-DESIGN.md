@@ -52,7 +52,10 @@ only in Settings and in a reconnecting status line. With several, Home groups
 workspaces under a host header with its connection dot, and Needs-you and
 Running merge every host. Pairing lives in Settings → Hosts, by link or key,
 as a sheet. An unauthorized or offline host shows one status row at the top
-of Home with the action (Retry, Pair again), never a blank screen.
+of Home with the action (Retry, Pair again), never a blank screen. A host
+reached through the box folds under the box's row while the box itself is
+in trouble: one card says the box is down, not one per host behind it
+(`HomeHostInput.via`).
 
 **Needs you** is the first section and the reason the app exists. One row per
 thread that has an undecided approval, an unanswered question, an error, or
@@ -128,7 +131,7 @@ set (review before plans) and is disabled until something changed; a
 failed save is one destructive line in the footer of the section that
 failed. **Preamble** has two rows that push the editor
 (`Shell/PreambleEditor.swift`): "Project rules" with its word count ("212
-words", "Off", "Workspace default · 80 words", "None") and "Workspace
+words", "Off", "80 words from workspace", "Off in workspace", "None") and "Workspace
 default". The editor is its own screen: Edit and Preview segments in the
 bar, the whole height for the text (the desktop's three placeholder lines
 while empty), the preview rendered with `{{project}}`, `{{host}}` and
@@ -150,8 +153,9 @@ read-only with the same line. The drafts and words are the client package's
 `Client/ProjectSettings.swift`, under Swift Testing.
 
 **Hosts on Home.** With one host there is no host header; its menu (the fleet
-switches), when a slot fills it, is an `ellipsis.circle` in the navigation
-bar before Settings. With several, each host's workspaces sit under a header
+switches), when a slot fills it, is the More glyph in the navigation
+bar (`GlassMetrics.moreSymbol`: the bare `ellipsis` on iOS 26, where the
+toolbar's glass draws the circle, `ellipsis.circle` before) before Settings. With several, each host's workspaces sit under a header
 with the connection dot, the name, a sibling's trailing mark (the deploy
 drift) and the menu. A host's one-off lines (the boot-resume note) are quiet
 rows under its header with the event motion and no action.
@@ -170,7 +174,7 @@ dot. Its words per state (`RelayWords`): nothing when the Mac is up and
 unlocked; "locked since 9:14" (the time the phone saw the lock, "locked"
 alone before it has); "asleep"; "unreachable since 9:14" (the box's time of
 the link's drop). On a row whose title is the host's name the line has no
-subject ("through box · locked since 9:14" under the host header on Home and
+subject ("through box, locked since 9:14" under the host header on Home and
 on the Settings row); on the thread screen the subject is "the Mac" for a
 darwin host and the host's name otherwise. Locked keeps Send: the relay
 forwards every method the phone uses on a locked Mac, so the working strip's
@@ -197,7 +201,7 @@ and `hostMenu` and `projectBatch` (the fleet switches and the boot-resume
 note), `projectSettings` (the project settings entry in the project header's
 menu, after New thread and before the batch entries), `hostTrailing` (the
 deploy-drift mark on the status row and the host header), `hostSubline` (the
-relayed host's "through box · locked since 9:14" under the header's name). Masters need no
+relayed host's "through box, locked since 9:14" under the header's name). Masters need no
 slot: a master's row carries its word from `ThreadRow`, its batch children are
 roots that Home lists through `HomeModel`, and whatever fills
 `ThreadItem.children` nests under its root as subagents do.
@@ -247,26 +251,28 @@ from disk.
 **The fleet switches** (ios/TempCode/Sources/Shell/FleetSwitches.swift over
 the client package's ThreadBatch.swift, the desktop's threadBatch.ts ported
 whole) are four rows beside Mark all read: Pause all, Resume all, Stop all,
-Archive done, in the host's menu (the `ellipsis.circle` in Home's bar with
+Archive done, in the host's menu (the More glyph in Home's bar with
 one host, on each host header with several) and in the project header's
 menu, and again in a thread's menu for its project. A row with nothing to
 act on is disabled, never hidden; a key that cannot act reads the reason as
-the menu's first line. Pause, Stop and Archive done confirm in a medium
-sheet whose title is the live count ("Pause 15 running threads on the
+the menu's first line. Pause, Stop and Archive done confirm in a sheet
+as tall as what it says (a height detent measured from its content) whose title is the live count ("Pause 15 running threads on the
 box?", the digits rolling as threads settle while it shows), with the
 resources clause and its switch when Archive done would release worktrees
 or simulators, and one full-width confirm at the foot (destructive tint for
 Stop and Archive done). Resume all runs at once. The outcome is one status
-line on the bar material above the tab bar, "Paused 14 · 1 failed: Search
-(harness not responding)": a clean result leaves after four seconds, a
+card on glass floating above the tab bar, "Paused 14" in semibold and,
+under it in the destructive tint, "1 failed: Search (harness not
+responding)": a clean result leaves after four seconds, a
 failure waits for a tap.
 
 **Queued, stopped, resources.** A queued root (created, waiting for its
-`after` sibling) reads the host's "Queued · waiting for X" line through its
-`activity`, never sits under Running, and offers Start now in its context
+`after` sibling) reads the host's reason ("Waiting for X", the host's
+"Queued · waiting for X" with the word the queued dot already says left
+off) through its `activity`, never sits under Running, and offers Start now in its context
 menu and in the working strip (`session.start`, past the `after`); a
-stopped root (its harness gone after a restart) reads "Stopped · the
-harness is gone" in the strip with Resume (`session.resume`, a fresh
+stopped root (its harness gone after a restart) reads "Stopped", then "The
+harness is gone" quieter, in the status line with Resume (`session.resume`, a fresh
 harness on the transcript). A paused master's strip says ", and 2 batch
 threads with it". A host that resumed threads after a restart shows "7
 threads resumed after restart" once per boot as one quiet line at the top
@@ -327,7 +333,7 @@ the path with its line number dim and tabular, and the line in mono with
 the match in weight; a file row, or a project row (a project matched by
 name, when the selector supplies one), is a fact, not a push. The host is
 a dim `.stamp` word trailing a head only when several hosts are paired,
-and then a foot line names what each host took ("Mac 320 ms · box 1.2 s",
+and then a foot line names what each host took ("Mac 320 ms, box 1.2 s",
 "box offline", "box failed"); "More matches than shown" closes a cut
 answer. Over the empty list one calm `.meta` line: "No host is
 connected.", "Every host is offline.", the hint ("Threads and project
@@ -349,8 +355,8 @@ projects by name. A thread's working notes are hits under its head (the
 rows (`NoteRow`: the glyph, the title, the snippet with the match in weight,
 the host trailing when several; a fact, not a button). The same file in two
 copies of a paired project (`ProjectPairs` over every host's workspaces,
-through `CrossHostSearch.pairLookup`) is one row on the newer copy, "· newer"
-after its line number, the other hosts in the accessibility label. `host:` (a name,
+through `CrossHostSearch.pairLookup`) is one row on the newer copy, "Newer"
+in the quiet step after its line number, the other hosts in the accessibility label. `host:` (a name,
 an id, or `mac`), `type:` (thread, file, note, project; it wins over the
 scope buttons) and `project:` are typed in the box; the foot names each host
 with its time, "…" while it is still answering, offline or failed.
@@ -364,19 +370,19 @@ label tinted (a subagent's role instead; "Master" first on a master), the
 model, and the elapsed ticking once a second in tabular digits while the
 thread is live. The host's name leads that line, in the tertiary step, only
 when more than one host is paired; the line drops the host, then compacts
-to type · model (or the one word "Queued" / "Stopped"), before the title
+to the type and the model (or the one word "Queued" / "Stopped"), before the title
 truncates. The mark and the words by status:
 
 | status | mark | after the host |
 | --- | --- | --- |
-| running, starting | spinner | type · model · elapsed |
-| watching | info dot, still live | type · model · elapsed |
-| waiting | warning dot | type · model |
-| error | destructive dot | type · model |
-| paused | pause mark | type · model · the frozen elapsed |
-| queued | quiet dot | the host's "Queued · waiting for X" line, else "Queued" |
-| stopped | the still square | "Stopped · the harness is gone" |
-| idle, done | none (the line stays centered) | type · model |
+| running, starting | spinner | type, model, elapsed |
+| watching | info dot, still live | type, model, elapsed |
+| waiting | warning dot | type, model |
+| error | destructive dot | type, model |
+| paused | pause mark | type, model, the frozen elapsed |
+| queued | quiet dot | "Queued", then the host's reason ("Waiting for X") quieter |
+| stopped | the still square | "Stopped", then "The harness is gone" quieter |
+| idle, done | none (the line stays centered) | type, model |
 
 An idle root whose subagents still work shows the spinner with no elapsed:
 the time is the child's. Long-press on the header, or Rename… in the menu,
@@ -405,37 +411,49 @@ turn's phase) and the header never carries the flavour word.
 
 ### The composer, the strip, the cards' actions, the sheets
 
-The composer is Messages' at its best (`Thread/Composer.swift`,
-`Thread/ComposerStyles.swift`): one 12 pt continuous field on the chrome
-step with a 1 px hairline, 36 pt for one line of `body`, growing with the
-text to five lines and scrolling past that, and never changing height on
-focus. The send button sits inside the field at the trailing edge, a 28 pt
-circle 4 pt from the field's edge, on the last line while the text grows.
-It fills in the accent only once there is text (the fill and glyph color
-cross-fade in 150 ms; empty it is the fill step with the arrow in the
-tertiary label) and becomes Stop, filled in the label color, while a turn
-runs and the box is empty: the glyphs trade places with the kit's icon
-swap (scale, opacity and blur on a 300 ms spring, a 150 ms fade under
-reduced motion) and the circle never moves. A watching master is not running
-(its button is Send), and a master mid-turn with text sends: the host
-whispers the text into the live turn as a steer, so the button is never
-Stop while there is text. The desktop's composer has no confirm on Stop,
-so neither does the phone. The field's placeholder is "Steer" for a root
-implementation or orchestration thread or a master of any type, "Message
-the agent" for a subagent, "Message" otherwise. On focus a chip row appears
-above the field (200 ms ease-out, the row's 8 pt of travel and fade; it
-leaves in 150 ms by fade alone): the model and, for a model with levels,
-the reasoning, each a 26 pt chip at the row radius on the fill step opening
-a menu over the host's catalog (`catalog.get`, the same list the desktop's
-picker shows, one section per provider with a check on the current model).
-A pick rides on the next send as `session.send`'s `provider`, `model` and
-`reasoning` (`TurnModel.override` sends nothing when the chips match the
-thread) and the chips follow the thread's model again once it lands. A read
-key, a halted host or a dropped link (after the desktop's 1.5 s grace) puts
-the reason in the field in place of the placeholder; the field is off and
-the button sits empty. A light impact on send and on a decision, never on
-typing; the field clears without animation. The list behind it dismisses
-the keyboard interactively.
+The chat bar is Messages' on iOS 26 (`Thread/Composer.swift`,
+`Thread/ComposerStyles.swift`; the user asked for it compact and on Liquid
+Glass, which overrides the earlier docked bar). It floats over the
+transcript: ThreadScreen hangs it with `.tcBottomBar` (Design/Glass.swift),
+`safeAreaBar` with the soft scroll edge effect on iOS 26, so the content
+scrolls under it, a soft edge (the thin material and the background step
+fading in from 24 pt above the bar) keeps passing text from reading through
+the glass, and no divider is drawn; before iOS 26 the same call is a
+`safeAreaInset` on the bar material. At rest the bar is two pieces of glass
+in one `GlassEffectContainer` and nothing else: a 40 pt circle and a capsule
+of the same height (both scale with the text size). Measured on an iPhone 17
+Pro simulator at the default text size, the resting bar is 52 pt tall, down
+from 74 pt, and 52 pt with the keyboard up, down from 108 pt (the proof's
+`glass` set writes it to `dock-*.json`). The capsule's corner is half its
+one-line height (`Radius.capsuleEnds`), so it is a capsule at one line and
+keeps its round ends as the text grows to five lines; past five it scrolls.
+The send button lives inside the capsule at the trailing end, a 30 pt
+circle concentric in the capsule's end (the end itself is the hit area), and
+shows only once there is text (the kit's icon swap brings it in); it is the
+accent with a white arrow. While a turn runs and the box is empty it is
+Stop, the label color with the stop square, and the glyphs trade places with
+the icon swap (scale, opacity and blur on a 300 ms spring, a 150 ms fade
+under reduced motion). A watching master is not running (its button is
+Send), and a master mid-turn with text sends: the host whispers the text
+into the live turn as a steer, so the button is never Stop while there is
+text. The desktop's composer has no confirm on Stop, so neither does the
+phone. The field's placeholder is "Steer" for a root implementation or
+orchestration thread or a master of any type, "Message the agent" for a
+subagent, "Message" otherwise. The circle is a menu (`plus`, glass that
+answers the touch): Photos, then a section with Model and Reasoning, each a
+submenu whose subtitle is the current value, over the host's catalog
+(`catalog.get`, the same list the desktop's picker shows, one section per
+provider with a check on the current model). A pick rides on the next send
+as `session.send`'s `provider`, `model` and `reasoning` (`TurnModel.override`
+sends nothing when the choice matches the thread); while a pick differs from
+the thread's model, one line above the capsule names it (the `cpu` glyph,
+the model at medium weight, the level in secondary, a clear button that
+hands the choice back to the thread), and it leaves once the turn has it. A
+read key, a halted host or a dropped link (after the desktop's 1.5 s grace)
+puts the reason in the field in place of the placeholder; the field is off,
+the circle leaves and there is no button. A light impact on send and on a
+decision, never on typing; the field clears without animation. The list
+behind it dismisses the keyboard interactively.
 
 Photos (`Thread/ComposerAttachments.swift`): a 28 pt plus circle on the
 fill step beside the field, for a key that operates, opens the system
@@ -450,24 +468,27 @@ destructive tint and Retry in its menu; Send waits until every photo is on
 the host or removed (Stop never waits). The turn names the committed
 photos, and a refused send gives the text and the photos back.
 
-The working strip (`Thread/WorkingStrip.swift`) keeps one height whatever
-it shows, 28 pt at the default text size and scaled once with it, never
-animated, and sits 24 pt in from the screen edge (12 of bar, 12 of line;
-the field's own text inset). Six phases, from the status and whether a
-send of this device's is out (`WorkingPhase` in the client package):
-nothing while idle, waiting, watching or done (the card, the segment dot
-and Home's needs-you row already say so); Sending… between a send and the
-turn's start; the mini spinner, the flavour word (turning every seven
-seconds in the 150 ms cross-fade) and the elapsed in tabular digits; the
-paused row in the warning tint at 10 % with the pause glyph, Paused, the
-frozen elapsed, on a master "· and N batch threads with it", then Stop (a
-quiet capsule on the fill step) and Continue (a warning capsule with a
-white label); the stopped row on the quaternary fill with the stop glyph,
-Stopped, "· the harness is gone", the frozen elapsed and Resume (a capsule
-in the label color); the queued line, the host's "Queued · waiting for
-<sibling>" in secondary with Start now (quiet). A refused strip action
-re-enables its control and says nothing more: the block is already in the
-composer field. Only opacity animates, in 120 ms.
+The status line (`Thread/WorkingStrip.swift`) rises above the capsule only
+while there is something to say, so the resting bar is as short as
+Messages' (BottomDock decides; it arrives with the row's 8 pt of travel and
+fade on a damping-1 spring, a fade under reduced motion). One footnote line,
+32 pt at the default text size, on the capsule's text edge, its actions as
+small glass capsules at the trailing edge (the `.glass` button style,
+`.glassProminent` in a tint for the one thing to do). Five states from the
+status and whether a send of this device's is out (`WorkingPhase` in the
+client package), worded by the client's `StripWords` as a title and a
+quieter detail, each its own text and never joined by a dot: Sending…
+between a send and the turn's start; the mini spinner, the flavour word
+(turning every seven seconds in the 150 ms cross-fade) and the elapsed in
+tertiary tabular digits; Paused, the pause glyph in the warning tint, the
+frozen elapsed, on a master "3 batch threads with it", then Stop and
+Continue (warning); Stopped, the stop square, "The harness is gone" and
+Resume (accent); Queued, the clock glyph, the host's reason ("Waiting for
+<sibling>", "120 of 120 running", split off the host's "Queued · …" line by
+`StripWords.queued`) and Start now. While idle, a locked relayed host's one
+line. A refused action re-enables its control and says nothing more: the
+block is already in the field. Between states only opacity animates, in
+120 ms.
 
 The live cards' actions (`Thread/CardActions.swift`; the cards' rendering
 stays in `Thread/TranscriptRows.swift`) are full-width 40 pt buttons at the
@@ -504,10 +525,13 @@ them. The control is bound to the pager: its raised pill sits at the pager's
 offset in pages (`SegmentRules.pillRect`), so it follows the finger during a
 swipe and settles with the drawer curve on a tap; each label's primary copy
 fades over its secondary one by the same offset (`SegmentRules.weight`),
-never a swap of two states. The track is the fill step at 9 pt radius, the
-pill 7 pt inside a 2 pt inset (concentric: `Radius.around(7, padding: 2)`),
-the raised step with a soft offset shadow in light and the step alone in
-dark. The segment chosen is remembered per thread. A warning dot beside the
+never a swap of two states. It is drawn the way iOS 26 draws its own
+segmented control: the track a glass capsule 36 pt tall (scaling with the
+labels), the selection a capsule 3 pt inside it (two capsules are always
+concentric), on the raised step with a soft offset shadow in light and the
+step alone in dark, a solid surface inside the glass, never glass on glass.
+The system control cannot follow a pager's offset, which is why this one is
+drawn. The segment chosen is remembered per thread. A warning dot beside the
 inactive segment's label marks a new needs-you card there: 6 pt, 4 pt off
 the label's trailing edge, both scaling with the label; it grows from a
 quarter of its size, fading and unblurring, on the expand spring, and leaves
@@ -551,8 +575,8 @@ Goal and State still shows the five-part outline; headings the thread
 invented come after. Edit swaps the page for a plain `.body` text editor of
 the whole file (autocorrection on, no mono), saved 800 ms after the last
 keystroke, on Done and on dismiss; the one quiet line under it reads "Not
-saved" after a failure, or "The thread updated the notes meanwhile · Load
-theirs" when a push passed the text the edit began from. A push while the
+saved" after a failure, or "The thread updated the notes meanwhile" with a Load
+theirs button when a push passed the text the edit began from. A push while the
 sheet is open replaces sections in place by heading: the reader's section
 stays anchored, a changed body cross-fades 150 ms, and nothing animates on
 first paint. A read key shows its reason where Edit would be. On Home, a
@@ -642,11 +666,11 @@ the package's `ToolPhrase` (tested). Row kinds and their mobile form:
   free text, then the steering thread's Answer (`CardActions.swift`);
   answered, the chosen chips stay on and the rest fall away.
 - **Compaction**: a pulsing violet dot and "Compacting context" with the
-  elapsed time while it runs; a labelled divider "Context compacted ·
-  142k → 38k · 2s · auto" once it lands; a destructive line when it fails.
-- **Errors and system**: "Failed · the harness's words" in destructive with
+  elapsed time while it runs; a labelled divider, "Context compacted"
+  and then "142k → 38k", "2s" and "auto" each its own quieter text, once it lands; a destructive line when it fails.
+- **Errors and system**: "Failed" at medium weight over the harness's words, in destructive with
   the alert glyph; the user's own Stop is a gray "Stopped"; a pass row reads
-  "Pass · what it did"; everything else is one quiet line, glyph and text.
+  "Pass" and what it did; everything else is one quiet line, glyph and text.
 - **A failed thread's row** (Home's Needs you, every list) reads the host's
   one-line verdict (`failure.summary`) on its second line; the error row's
   first line is the fallback for a host that sent none.
@@ -656,7 +680,8 @@ the package's `ToolPhrase` (tested). Row kinds and their mobile form:
 - **Failure**: the host's verdict on a failed turn as a card: the summary,
   the cause, a note naming what only the desktop can do (sign in, pick an
   account or a model), and the actions this key can take as full-width
-  buttons, Retry last; needs-you tint while live, chrome once the thread
+  buttons side by side while every label fits on one line, stacked when one
+  would wrap, Retry last; needs-you tint while live, chrome once the thread
   moves on. An error without a verdict, and a Stop, stay one quiet line.
 - **Review**: the merge review's outcome: lead and detail, held in
   destructive, merged in success, the rest secondary; blocking findings as
@@ -670,10 +695,10 @@ the package's `ToolPhrase` (tested). Row kinds and their mobile form:
   words.
 - **Plan handoff**: the build's row (status, glyph, title, model) when this
   host has it; tap pushes it.
-- **Preamble**: "Project rules · 212 words" folded inside the first user
+- **Preamble**: "Project rules", then "212 words" quieter, folded inside the first user
   field above the brief; tap opens the text on a 150 ms cross-fade.
-- **Turn end**: a settled turn closes with one quiet line, "Worked for 12s
-  · 3:04 PM" behind a check (the desktop's `TurnEnd`), Copy answer in the
+- **Turn end**: a settled turn closes with one quiet line, "Worked for 12s"
+  behind a check with the clock time at the trailing edge (the desktop's `TurnEnd`), Copy answer in the
   context menu (the turn's prose joined by blank lines). Nothing while the
   turn runs: the working strip has the live timer. The open turn and a
   pending turn have none.
@@ -681,8 +706,8 @@ the package's `ToolPhrase` (tested). Row kinds and their mobile form:
 Streaming: new text appends to the last assistant row without re-laying the
 rows above (rows compare by value and keep their identity by the row
 model's ids); the list stays pinned to the bottom while the user is at the
-bottom and shows a "Jump to latest" pill (one, raised, 150 ms opacity and
-8 pt of travel) once they scroll up. Turn completion adds the closing line
+bottom and shows a "Jump to latest" pill (one, a glass capsule that answers the
+touch, 36 pt with a 44 pt hit area, 150 ms opacity and 8 pt of travel) once they scroll up. Turn completion adds the closing line
 and nothing else. Nothing animates on first paint from cache. Images reach
 the phone through `fs.media` and the `/asset` GET; the host an image lives
 on is `MediaImage.hostOf(_:)` (the media-host thread's seam).
@@ -696,7 +721,7 @@ part) in `caption` medium secondary, or "Auto" one step dimmer with no dot
 when the host picks. A 44 pt hit area; press dims (`pressableStatic`), no
 scale in the dense bar. Tap opens the system sheet (16 pt, medium and large
 detents), titled "Account", with the source line under it ("From project
-billing-page", "From workspace cosmic-web", "Auto · picked by model").
+billing-page", "From workspace cosmic-web", "Auto, picked by model").
 
 Three scopes in a segmented row, only those the thread has: **This thread**
 reads the route (the account checked is the one it spends from; a "Route
@@ -716,7 +741,7 @@ Each account row carries a 3 pt capsule bar: the least room among the
 usage windows the thread's model spends (5h, the weekly one, and the
 Fable cap for a Fable model), success above a quarter, warning down
 to a twentieth, destructive below, and destructive at zero while the
-account is rate limited ("rate limited · 39m") or signed out ("sign in
+account is rate limited ("rate limited for 39m") or signed out ("sign in
 again"); the stamp beside the name is the tightest window's reset ("in 2h
 14m"), tabular. The sheet reads `accounts.list` once on open and the
 `accounts` push after; stamps tick every 30 s.
@@ -804,8 +829,8 @@ step, radius and motion value is the kit's (`Layout`, `TextStep`, `Radius`,
    a planning thread (`planThreadId`); tap pushes it; absent when the thread
    is unknown here.
 10. **Queued**: a build created behind a sibling (`after`) draws the goal
-    line and one row, the queued dot with the host's "Queued · waiting for
-    <sibling>" line; nothing else is drawn, never "No tasks yet".
+    line and one row, the queued dot with the host's reason ("Waiting for
+    <sibling>"); nothing else is drawn, never "No tasks yet".
 
 Chat is the mechanics transcript (thinking, reads, commands, prose), the same
 Chat body as above.
@@ -946,7 +971,7 @@ field landing changes that row's own lines.
   `ActionBlock.text`. Nothing is hidden.
 - **The Home chip** sits in the project header before the plus
   (`ProjectPlanChip.swift`, the `projectTrailing` slot): `flag.checkered`
-  violet at `caption2.semibold` and "Plan", or "Plan · 3/7" once kept, in a
+  violet at `caption2.semibold` and "Plan", or the count alone ("3/7") once kept, in a
   28 pt `Surface.fill` capsule inside a 44 pt hit area, the count rolling.
   It opens the plan thread; its context menu holds the four options (a read
   key's reason as the first, disabled line). The state (`projectPlan.get`)
@@ -982,8 +1007,8 @@ secondary` of the provider's own mark drawn as a path in the text color
 the agent works in one and the host's name when the agent lives on another
 host than its root; the activity line on the kit's sizer (a hidden one-line
 text fixes the height) swapping in place with the 150 ms cross-fade and
-2 pt blur (a queued agent's line is the host's "Queued · waiting for …", a
-stopped one's "stopped · the harness is gone"); the stats line when there
+2 pt blur (a queued agent's line is the host's reason, "Waiting for …", a
+stopped one's "the harness is gone": the dot says the state); the stats line when there
 is anything to say. Elapsed over cost on the right, `caption` tabular with
 `numericText`: one step above the stamp on purpose, because `caption2
 tertiary` fails the contrast floor on the needs-you tint. A live row's
@@ -1047,10 +1072,10 @@ Safari's reading list crossed with a research notebook
   `Radius.field`): the `doc.text` glyph in cyan at the title's semibold, the
   title step semibold in two lines, the state line (a `Layout.dotSize` dot,
   green "Complete"; the mini spinner "In progress" while the thread runs, or
-  "Complete · 2 angles still running"; a tertiary dot when stopped early;
+  "Complete, 2 angles still running"; a tertiary dot when stopped early;
   cross-fading on `Motion.crossFade`), the summary in two meta lines, a
   chevron. Tap opens the report full screen.
-- **The coverage line** under it in meta: "15 sources · 4 searches · 2 of 3
+- **The coverage line** under it in meta: "15 sources, 4 searches, 2 of 3
   angles done", digits rolling with `.numeric`; spawned angles count, the
   root's own research does not. Empty when nothing has happened.
 - **One section per angle** as a `SectionHeader`: the child's title (else
@@ -1074,7 +1099,7 @@ Safari's reading list crossed with a research notebook
 
 The report (`Sources/Thread/ResearchReportScreen.swift`) is a full-screen
 cover set as a document at a 640 pt measure: the title once, at `title` bold
-with −0.5 tracking, the state line and "· 3 sources", the summary at
+with −0.5 tracking, the state line and "3 sources" behind a link glyph, the summary at
 `callout` as the lede over a hairline; then the body through the transcript's
 `MarkdownBlocksView` after a pure citation pass (`ReportCitations.decorate`
 links every `[n]` or `[n, m]` by scheme, inline code left alone; the screen
@@ -1108,7 +1133,7 @@ package's `Rendering/Batch.swift` (`MasterBoard`, `BatchSteps`, `RulesEdit`,
   `activity`, the question, "Paused", "Stopped", "Landed 12:08") with the
   model mark at its right: provider glyph, short model name, effort and
   "1M" quieter. A plan and the build it started are one row under the
-  plan's title. A queued child reads "Queued · waiting for <sibling>". A
+  plan's title. A queued child reads the host's reason, "Waiting for <sibling>". A
   child on another host names the host in its model mark and reads "Out of
   reach on <host>" in red while that host is away. Waiting rows sit on the
   needs-you tint; separators start at the title. Settled rows drop to the
@@ -1187,7 +1212,9 @@ package's `Shell/HostPresentation.swift`, where they have tests.
   A theme flip snaps; nothing animates it.
 
 **Hosts.** One row per paired host: the connection dot leading in the mark
-column (`Layout.markWidth`), the name, a second line in the meta step (the
+column (`Layout.markWidth`; a host the box relays follows its relay state
+over an open lane: locked in the warning tint, asleep in the quiet gray,
+unreachable in destructive), the name, a second line in the meta step (the
 address while connected, else what is wrong in two words: "Connecting…",
 "Unreachable", "Reconnecting…", "Offline", "Different host", "Needs an
 update", "Key refused", "Paused"), and the environment id abbreviated
@@ -1217,7 +1244,7 @@ so the bar's title is the host's name on either path with no principal item.
    allows and a checkmark in the tint when the key has it; the footer says
    a new key on the host is how to change it.
 4. **Host**: Name (editable in place), Address, Environment id in mono
-   (selectable), Version as `1.0.N · <sha7>` from the hello's `build`
+   (selectable), Version as `1.0.N (<sha7>)` from the hello's `build`
    (`HostBuildLine`; the version alone without a commit; no row for a host
    that sent none), Contract from the last hello, Notifications for this
    host, the pairing date.
@@ -1225,7 +1252,7 @@ so the bar's title is the host's name on either path with no principal item.
 
 **Relayed hosts in Settings → Hosts.** A host reached through another sits
 under its carrier's row (`RelayedHostRow`): the lane's dot in the mark
-column, the name, "through <carrier> · <presence>" in the meta step (the
+column, the name, "through <carrier>, <presence>" in the meta step (the
 presence line's words above, nothing after the carrier's name when the host
 is up and unlocked), the abbreviated id trailing; no swipe and no menu,
 since nothing waits on the person. Its detail (`RelayedHostDetailView`) has
@@ -1275,8 +1302,8 @@ spinner, a check or a cross), footers of at most two lines.
   A deploy is never stoppable, so there is no Stop.
 - **Mac bridge** (a box's detail, from each paired Mac that serves it,
   headed "On <Mac>"): the box's calls past the prompt, running first, then
-  held with their standing ("Waiting for the Mac · load 12.3 of 8 · 3rd in
-  line", swapping in place), then paused on the box; the command in mono,
+  held with their standing ("3rd in line for the Mac (load 12.3 of 8)",
+  swapping in place), then paused on the box; the command in mono,
   the thread and its elapsed under it. Stop is a swipe (no destructive role:
   the row stays until the Mac answers) and a context-menu item, never on a
   paused row. Then Running and Threads against their caps and the Load row
@@ -1522,7 +1549,7 @@ it in its own area on these names.
 | Violet | `systemPurple` | planning and project-plan types | `Tint.violet` |
 | Cyan | `systemCyan` | research type | `Tint.cyan` |
 | Quiet | `systemGray2` | a state with no urgency: the queued dot, the stopped square | `Tint.quiet` |
-| Radius | 8 pt chips and rows, 12 pt fields and cards, 16 pt sheets | outer = inner + padding, always | `Radius.row / .field / .sheet`, `Radius.around(inner, padding:)`, `Radius.inside(outer, padding:)`, `.rowCorner / .fieldCorner / .sheetCorner` (continuous) |
+| Radius | the ladder: four chosen steps, 4 pt an inline token, 8 pt chips and rows, 12 pt fields and cards, 16 pt sheets; derived: 10 pt a transcript block (row + 2), 6 pt a wash or icon box inside one (block − 4), a quarter of the side for an icon tile, half the one-line height for the chat bar; a real `Capsule` for anything round at both ends; on iOS 26 the full-width buttons at a sheet's foot are concentric with the sheet (`ConcentricRectangle`, never tighter than 12 pt) | outer = inner + padding, always; no literal radius outside Tokens.swift | `Radius.inline / .row / .field / .sheet / .block / .inner / .mark`, `Radius.tile(side)`, `Radius.capsuleEnds(height)`, `Radius.around(inner, padding:)`, `Radius.inside(outer, padding:)`, `.rowCorner / .fieldCorner / .sheetCorner / .blockCorner / .inlineCorner` (continuous), `.concentric(minimum:)` |
 | Type | `subheadline` rows, `body` transcript, `footnote` meta, `caption2` timestamps; mono one step down | Dynamic Type honored up to accessibility sizes | `TextStep.title` (subheadline, label), `.meta` (footnote, secondary), `.stamp` (caption2, tertiary, tabular) |
 | Numbers | `monospacedDigit()` on every elapsed, count and cost | nothing jitters as it ticks | `.numeric(value)`, `CountText`, `ElapsedText`, `AgoText` |
 | Lengths | 16 pt text edge, 44 pt rows with 6 pt vertical padding, 10 pt gaps, 14 pt mark, 7 pt dot, 20 pt glyph, 16 pt subagent indent, 6 pt before a title's tag | rows, headers and separators meet on the same edges | `Layout.textEdge / .rowHeight / .rowVertical / .rowGap / .markWidth / .dotSize / .glyphWidth / .indent / .tagGap / .rowTextEdge / .rowInsets` |
@@ -1562,8 +1589,8 @@ unseen, `ThreadRowSecondLine`, `ThreadRowTime` trailing);
 says: after the title, one muted word (`tag`, "Master" for a pinned master,
 never truncated); the second line opens with `model` and then shows, in
 order of precedence, the host's `failure.summary` in destructive, the tasks
-("3/7 Writing tests"), the last activity (the host writes "Queued · waiting
-for X" there), or nothing at the same height. Two slots keep siblings out of
+("3/7 Writing tests"), the last activity (for a queued thread the host's
+reason alone, "Waiting for X"), or nothing at the same height. Two slots keep siblings out of
 the kit: `ThreadRow(row:) { accessory }` places a view between the second
 line and the pin (an account mark: thread 24), and `.threadRowActions(client:
 meta:) { menu }` places rows after Pin and before Archive (Start now, Resume:
@@ -1580,6 +1607,46 @@ card.
 No shadows except on floating layers (`.raised()` adds two in light mode,
 both with an offset). No glows. No badges with text; dots only, and only when
 they mean something. Nothing is shown twice.
+
+### Liquid Glass
+
+The functional layer that floats over content is Liquid Glass on iOS 26 and
+the thin material with a hairline before it, behind one availability check
+in `Design/Glass.swift`; no screen writes `#available(iOS 26.0, *)` itself.
+What is glass: the tab bar (the system `TabView`, glass on its own), the
+navigation bar and its buttons (the system's on iOS 26: `.tcNavigationBar()`
+stops forcing the opaque background there and keeps it before), the chat bar
+(the capsule and the attach circle in one `TCGlassContainer`, `.tcGlassID`
+so they morph as the circle comes and goes), the status line's buttons
+(`.tcGlassButton(prominent:)`, the system's `.glass` and `.glassProminent`),
+the segment switcher's track, the Jump to latest pill, a master board's
+batch menu circle and the fleet switches' outcome card. Never glass on glass
+(a selection or a filled button inside glass is a solid surface), never
+glass on a row or a card inside the content. The helpers: `.tcGlass(in:
+tint: interactive:)`, `.tcGlassButton(prominent:)`, `TCGlassContainer`,
+`.tcGlassID(_:in:)`, `.tcBottomBar { }`, `.tcNavigationBar(visible:)`,
+`GlassMetrics.moreSymbol`. The system glass follows Reduce Transparency and
+Increase Contrast; the fallback goes opaque on the chrome step under Reduce
+Transparency and draws its ring in the label color at half strength under
+Increase Contrast.
+
+### Text hierarchy, not dotted joins
+
+Facts are never joined with " · ". A line that says two things draws two
+texts told apart by their own weight and color (the title step, then
+secondary, then tertiary), a glyph before a value (`MetaGlyph`), a labelled
+value, a second line, or plain prose (a comma, "and", parentheses). The
+client package's word builders return parts for this (`StripWords`,
+`GateText.tail`, `BatchToast.headline` and `failureLine`, `DeviceState`'s
+`status` and `platform`), and a view never splits a string on a dot. Where a
+status mark already says the state (a queued dot, a stopped square), the
+text says only the reason. The one dotted form left is the milestone thread
+title "M2 · Billing export", the desktop's `milestoneThreadTitle`, which the
+host stores and every host shows; the phone's milestone list draws "M2" as a
+quiet stamp beside the title instead. Empty screens use the system's
+`ContentUnavailableView` with the symbol Apple would use (`tray` for the
+Inbox, the search view for no results, `checklist` for a board with no
+tasks, `bubble.left.and.bubble.right` for a thread with no messages).
 
 ## Motion
 
@@ -1652,8 +1719,15 @@ keyboard action. Every animated change has a static cue as well.
   call off a detached task; the UI reads the observable models only.
 - **Background.** Leaving: the socket closes after a 10 s grace (iOS usually
   freezes the process first, so the grace rarely runs). Coming back: the
-  screen the person left is still there, exactly as they left it, scrolled
-  to the same row, painted from what the app already held. Within the
+  screen the person left is still there, painted from what the app already
+  held, and a thread's transcript is at its bottom, pinned there as if the
+  person had never scrolled up (the user's rule: leaving a thread and coming
+  back shows the newest rows). The transcript snaps there with no motion when
+  the app goes to the background (`TranscriptLanding.snapsToBottom`, on the
+  scene phase), before the system takes its snapshot, so neither the app
+  switcher nor the return shows the old position or a scroll; the cached
+  tail paints and the catch-up below fills it. Home, Search, the board, the
+  plan page and the other lists keep their positions. Within the
   grace the live socket is probed and kept; past it the stale socket is
   replaced at once, never probed for five seconds. On the new session the
   thread on screen catches up first (`afterSeq` from its cursor), the other
@@ -1677,10 +1751,15 @@ keyboard action. Every animated change has a static cue as well.
   background's own `suspended` state never shows. Elapsed timers run from
   the host's `busySince`, so they are right on the first frame back and
   after a kill. The tab, each tab's stack, the thread's segment, the
-  new-thread and Start sheets (`SheetMemory`) and the row the person was
-  scrolled to (`ScrollMemory`, the item at the top while scrolled up) survive
-  a cold launch (`NavigationMemory`; the clients exist before the first
-  frame, so the restored thread paints from the cache at once). Once every
+  new-thread and Start sheets (`SheetMemory`) survive a cold launch
+  (`NavigationMemory`; the clients exist before the first frame, so the
+  restored thread paints from the cache at once). The transcript keeps no
+  scroll memory: a thread opens at its newest row, from Home, from a list or
+  restored by a cold launch (a restored route that once named a row opens
+  at the bottom: `LaunchRestore` marks the screens the launch rebuilt). Only
+  a launch or a tap that names a row (a search hit, a notification, any
+  `targetSeq`) lands on that row, and within a session the Jump to latest
+  pill still shows once the person scrolls up. Once every
   host has caught up, the Live Activities and the badge (Home's Needs you
   count) are brought in line with what the app shows; a queued thread ends
   its activity like a finished one. A host that restarted mid-turn says so

@@ -34,6 +34,46 @@ public enum WorkingPhase: Hashable, Sendable {
     }
 }
 
+/// The words the bar's status line shows for a phase that has any: a title
+/// in the label color and, when there is more to say, a quieter detail
+/// drawn as its own text beside it (never joined with a dot).
+public struct StripWords: Hashable, Sendable {
+    public let title: String
+    public let detail: String?
+
+    public init(title: String, detail: String? = nil) {
+        self.title = title
+        self.detail = detail
+    }
+
+    /// A stopped thread: the harness is gone, Resume brings it back.
+    public static let stopped = StripWords(title: "Stopped", detail: "The harness is gone")
+
+    /// A paused thread; on a master, how many of its batch threads paused with it.
+    public static func paused(batch: Int) -> StripWords {
+        StripWords(title: "Paused", detail: batch > 0 ? "\(batch) batch \(batch == 1 ? "thread" : "threads") with it" : nil)
+    }
+
+    /// A queued thread. The host writes its reason into the activity line as
+    /// "Queued · waiting for <sibling>", "Queued · 120 of 120 running" or
+    /// "Queued · waiting for memory"; the title is "Queued" and the reason,
+    /// with its first letter raised, is the detail.
+    public static func queued(activity: String?) -> StripWords {
+        guard let activity, activity.hasPrefix("Queued") else { return StripWords(title: "Queued") }
+        let rest = activity.dropFirst("Queued".count).drop { $0 == " " || $0 == "·" }
+        guard let first = rest.first else { return StripWords(title: "Queued") }
+        return StripWords(title: "Queued", detail: first.uppercased() + rest.dropFirst())
+    }
+
+    /// The host's activity line where a status mark beside it already says
+    /// queued: the reason alone ("Waiting for Backfill the rollups"), "Queued"
+    /// when the host gave none; any other activity unchanged.
+    public static func reason(fromActivity activity: String) -> String {
+        guard activity.hasPrefix("Queued") else { return activity }
+        return queued(activity: activity).detail ?? "Queued"
+    }
+}
+
 /// What the composer decides from the session: whether its button stops a
 /// turn or sends, and what the empty field says.
 public enum ComposerRules {

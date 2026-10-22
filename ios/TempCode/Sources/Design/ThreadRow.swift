@@ -79,34 +79,28 @@ extension ThreadRow where Accessory == EmptyView {
     }
 }
 
-/// The model, then the tasks or activity, or the host's verdict on a failed
-/// turn in destructive. The variable half cross-fades when it changes (2 pt
-/// of blur) and the line never changes height, so rows in one list share one.
+/// The model in the quiet step, then the tasks or activity in secondary, or
+/// the host's verdict on a failed turn in destructive: two texts told apart
+/// by their color and an 8 pt gap, never joined with a dot. The variable
+/// half cross-fades when it changes (2 pt of blur) and the line never
+/// changes height, so rows in one list share one.
 struct ThreadRowSecondLine: View {
     let line: ThreadRowModel.SecondLine
     let model: String
 
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 8) {
             Text(model)
-                .textStep(.meta)
+                .textStep(.meta, tint: Color(.tertiaryLabel))
                 .lineLimit(1)
                 .layoutPriority(1)
             switch line {
             case .failure(let summary):
-                separator
                 SwapText(summary, step: .meta, tint: Tint.destructive)
             case .detail(let detail):
-                if detail != nil { separator }
                 SwapText(detail, step: .meta)
             }
         }
-    }
-
-    private var separator: some View {
-        Text(" · ")
-            .textStep(.meta)
-            .layoutPriority(1)
     }
 }
 

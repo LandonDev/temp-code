@@ -101,12 +101,12 @@ struct DeployWordsTests {
     @Test func `the row line's five branches`() {
         #expect(DeployWords.rowLine(installed: true, version: "1.0.270", masterVersion: "1.0.273", connected: false, phase: .idle) == "Not connected right now.")
         #expect(DeployWords.rowLine(installed: false, version: "1.0.270", masterVersion: "1.0.273", connected: true, phase: .idle) == "Deploy from the app is not installed on this host.")
-        #expect(DeployWords.rowLine(installed: true, version: "1.0.270", masterVersion: "1.0.273", connected: true, phase: .running) == "Runs v1.0.270 · deploying")
+        #expect(DeployWords.rowLine(installed: true, version: "1.0.270", masterVersion: "1.0.273", connected: true, phase: .running) == "Runs v1.0.270, deploying")
         #expect(DeployWords.rowLine(installed: true, version: "1.0.270", masterVersion: nil, connected: true, phase: .idle) == "Runs v1.0.270.")
         #expect(DeployWords.rowLine(installed: true, version: nil, masterVersion: nil, connected: true, phase: .idle) == "Runs an unknown version.")
-        #expect(DeployWords.rowLine(installed: true, version: "1.0.273", masterVersion: "1.0.273", connected: true, phase: .done) == "Runs v1.0.273 · up to date with master")
-        #expect(DeployWords.rowLine(installed: true, version: "1.0.270", masterVersion: "1.0.273", connected: true, phase: .done) == "Runs v1.0.270 · 3 releases behind master")
-        #expect(DeployWords.rowLine(installed: true, version: "1.0.272", masterVersion: "1.0.273", connected: true, phase: .done) == "Runs v1.0.272 · 1 release behind master")
+        #expect(DeployWords.rowLine(installed: true, version: "1.0.273", masterVersion: "1.0.273", connected: true, phase: .done) == "Runs v1.0.273, up to date with master")
+        #expect(DeployWords.rowLine(installed: true, version: "1.0.270", masterVersion: "1.0.273", connected: true, phase: .done) == "Runs v1.0.270, 3 releases behind master")
+        #expect(DeployWords.rowLine(installed: true, version: "1.0.272", masterVersion: "1.0.273", connected: true, phase: .done) == "Runs v1.0.272, 1 release behind master")
     }
 }
 
@@ -183,11 +183,11 @@ struct LogTailTests {
 struct DeviceWordsTests {
     @Test func `summary: the desktop's three example reports`() {
         let a = report(sims: [simulator("A", state: .booted), simulator("B", state: .shutdown), simulator("C", state: .shutdown)], phones: [phone("iPhone 16 Pro", .connected, transport: "USB")])
-        #expect(DeviceWords.summary(a) == "3 simulators, 1 booted · iPhone 16 Pro connected · load 2.1 / 10 cores")
+        #expect(DeviceWords.summary(a) == "3 simulators, 1 booted. iPhone 16 Pro connected. Load 2.1 on 10 cores.")
         let b = report(sims: [], phones: [phone("iPhone 17 Pro Max", .paired), phone("iPad", .unavailable)], load: 44.97, cores: 16)
-        #expect(DeviceWords.summary(b) == "No simulators · 2 iPhones paired · load 45.0 / 16 cores")
+        #expect(DeviceWords.summary(b) == "No simulators. 2 iPhones paired. Load 45.0 on 16 cores.")
         let c = report(sims: [simulator("A", state: .shutdown)], phones: [phone("iPhone 17 Pro Max", .paired)])
-        #expect(DeviceWords.summary(c) == "1 simulator · iPhone 17 Pro Max paired · load 2.1 / 10 cores")
+        #expect(DeviceWords.summary(c) == "1 simulator. iPhone 17 Pro Max paired. Load 2.1 on 10 cores.")
     }
 
     @Test func `holder and the delete confirm`() {
@@ -202,13 +202,14 @@ struct DeviceWordsTests {
     }
 
     @Test func `simulator and phone states`() {
-        #expect(DeviceWords.simulatorState(simulator("A", state: .booted, cpu: 33.9)) == DeviceState(tone: .on, text: "iOS 26.0 · Booted · 34% CPU"))
-        #expect(DeviceWords.simulatorState(simulator("A", state: .booted)) == DeviceState(tone: .on, text: "iOS 26.0 · Booted"))
-        #expect(DeviceWords.simulatorState(simulator("A", state: .shutdown)) == DeviceState(tone: .off, text: "iOS 26.0 · Shutdown"))
-        #expect(DeviceWords.simulatorState(simulator("A", state: .other, stateText: "Shutting Down")) == DeviceState(tone: .between, text: "iOS 26.0 · Shutting Down"))
-        #expect(DeviceWords.phoneState(phone("iPhone 16 Pro", .connected, transport: "USB")) == DeviceState(tone: .on, text: "iPhone 16 Pro · iOS 26.0 · Connected · USB"))
-        #expect(DeviceWords.phoneState(phone("iPhone 16 Pro", .paired)) == DeviceState(tone: .between, text: "iPhone 16 Pro · iOS 26.0 · Paired"))
-        #expect(DeviceWords.phoneState(phone("iPad", .unavailable)) == DeviceState(tone: .off, text: "iPad · iOS 26.0 · Unavailable"))
+        #expect(DeviceWords.simulatorState(simulator("A", state: .booted, cpu: 33.9)) == DeviceState(tone: .on, status: "Booted, 34% CPU", platform: "iOS 26.0"))
+        #expect(DeviceWords.simulatorState(simulator("A", state: .booted)) == DeviceState(tone: .on, status: "Booted", platform: "iOS 26.0"))
+        #expect(DeviceWords.simulatorState(simulator("A", state: .shutdown)) == DeviceState(tone: .off, status: "Shut down", platform: "iOS 26.0"))
+        #expect(DeviceWords.simulatorState(simulator("A", state: .other, stateText: "Shutting Down")) == DeviceState(tone: .between, status: "Shutting Down", platform: "iOS 26.0"))
+        #expect(DeviceWords.phoneState(phone("iPhone 16 Pro", .connected, transport: "USB")) == DeviceState(tone: .on, status: "Connected over USB", platform: "iPhone 16 Pro, iOS 26.0"))
+        #expect(DeviceWords.phoneState(phone("iPhone 16 Pro", .paired)) == DeviceState(tone: .between, status: "Paired", platform: "iPhone 16 Pro, iOS 26.0"))
+        #expect(DeviceWords.phoneState(phone("iPad", .unavailable)) == DeviceState(tone: .off, status: "Unavailable", platform: "iPad, iOS 26.0"))
+        #expect(DeviceWords.simulatorState(simulator("A", state: .booted, cpu: 33.9)).spoken == "Booted, 34% CPU, iOS 26.0")
     }
 
     @Test func `the Xcode line names the Xcode alone`() {
@@ -226,8 +227,8 @@ struct MacBridgeWordsTests {
     }
 
     @Test func `heldLine for load and for the cap; trim`() {
-        #expect(MacBridgeWords.heldLine(held(reason: .load, position: 3)) == "Waiting for the Mac · load 12.3 of 8 · 3rd in line")
-        #expect(MacBridgeWords.heldLine(held(reason: .cap, position: 2)) == "Waiting for the Mac · 4 of 4 running · 2nd in line")
+        #expect(MacBridgeWords.heldLine(held(reason: .load, position: 3)) == "3rd in line for the Mac (load 12.3 of 8)")
+        #expect(MacBridgeWords.heldLine(held(reason: .cap, position: 2)) == "2nd in line for the Mac (4 of 4 running)")
         #expect(MacBridgeWords.trim(16) == "16")
         #expect(MacBridgeWords.trim(4.5) == "4.5")
     }
@@ -241,14 +242,18 @@ struct MacBridgeWordsTests {
 
     @Test func `usage, loadLine, loadValue and the pending footer`() {
         let busy = MacBridgeActivityHost(environmentId: "e", name: "box", policy: .full, registered: true, maxRunning: 4, maxThreads: 2, running: 1, held: 2, threads: 1, pending: 0)
-        #expect(MacBridgeWords.usage(busy) == "1 running · 2 waiting · 1 thread")
+        #expect(MacBridgeWords.usage(busy) == "1 running, 2 waiting and 1 thread")
+        let two = MacBridgeActivityHost(environmentId: "e", name: "box", policy: .full, registered: true, maxRunning: 4, maxThreads: 2, running: 1, held: 2, threads: 0, pending: 0)
+        #expect(MacBridgeWords.usage(two) == "1 running and 2 waiting")
+        let one = MacBridgeActivityHost(environmentId: "e", name: "box", policy: .full, registered: true, maxRunning: 4, maxThreads: 2, running: 3, held: 0, threads: 0, pending: 0)
+        #expect(MacBridgeWords.usage(one) == "3 running")
         let idle = MacBridgeActivityHost(environmentId: "e", name: "box", policy: .off, registered: false, maxRunning: 4, maxThreads: 2, running: 0, held: 0, threads: 0, pending: 0)
         #expect(MacBridgeWords.usage(idle) == "Nothing running")
         let load = MacBridgeLoad(load: 12.3, cores: 16, limit: 32, pinned: false, resumeBelow: 24, busy: false, sampledAt: 0)
-        #expect(MacBridgeWords.loadLine(load) == "Load 12.3 of 32 · 16 cores")
+        #expect(MacBridgeWords.loadLine(load) == "Load 12.3 of 32 on 16 cores")
         #expect(MacBridgeWords.loadValue(load) == "12.3 of 32")
         let hot = MacBridgeLoad(load: 40, cores: 16, limit: 32, pinned: false, resumeBelow: 24, busy: true, sampledAt: 0)
-        #expect(MacBridgeWords.loadLine(hot) == "Load 40.0 of 32 · 16 cores, holding new commands until under 24")
+        #expect(MacBridgeWords.loadLine(hot) == "Load 40.0 of 32 on 16 cores, holding new commands until under 24")
         #expect(MacBridgeWords.holdingLine(load) == nil)
         #expect(MacBridgeWords.holdingLine(hot) == "Holding new commands until under 24")
         #expect(MacBridgeWords.pendingFooter(pending: 0, macName: "Studio") == nil)
@@ -269,15 +274,15 @@ struct SyncWordsTests {
         #expect(SyncWords.harnessLine(harness(error: "link down"), now: now) == "Harness config: link down")
         #expect(SyncWords.harnessLine(harness(error: "link down", syncedAt: Int(now) - 120_000), now: now) == "Harness config: link down (last synced 2m ago)")
         #expect(SyncWords.harnessLine(harness(), now: now) == "Harness config: never synced")
-        #expect(SyncWords.harnessLine(harness(connected: false), now: now) == "Harness config: never synced · not connected")
+        #expect(SyncWords.harnessLine(harness(connected: false), now: now) == "Harness config: never synced")
         #expect(SyncWords.harnessLine(harness(syncedAt: Int(now) - 120_000, files: 143, sets: ["Claude skills": 80, "Codex hooks": 1, "Agents": 0]), now: now) == "Harness config: 143 files (Claude skills 80, Codex hooks 1), synced 2m ago")
-        #expect(SyncWords.harnessLine(harness(syncedAt: Int(now) - 10_000, files: 1, connected: false), now: now) == "Harness config: 1 file, synced just now · not connected")
+        #expect(SyncWords.harnessLine(harness(syncedAt: Int(now) - 10_000, files: 1, connected: false), now: now) == "Harness config: 1 file, synced just now")
     }
 
     @Test func `memoryLine: running, error, never, synced with conflicts`() {
         #expect(SyncWords.memoryLine(memory(running: true), now: now) == "Memory: syncing…")
         #expect(SyncWords.memoryLine(memory(error: "refused"), now: now) == "Memory: refused")
-        #expect(SyncWords.memoryLine(memory(connected: false), now: now) == "Memory: never synced · not connected")
+        #expect(SyncWords.memoryLine(memory(connected: false), now: now) == "Memory: never synced")
         #expect(SyncWords.memoryLine(memory(syncedAt: Int(now) - 120_000, files: 61, conflicts: 1), now: now) == "Memory: 61 files, synced 2m ago, 1 conflict")
         #expect(SyncWords.memoryLine(memory(syncedAt: Int(now) - 7_200_000, files: 61, conflicts: 3), now: now) == "Memory: 61 files, synced 2h ago, 3 conflicts")
     }

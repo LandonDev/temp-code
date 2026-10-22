@@ -16,7 +16,7 @@ struct WorkspaceIconView: View {
 
     var body: some View {
         let icon = client.icons[workspace.id]
-        let shape = RoundedRectangle.corner(size / 4)
+        let shape = RoundedRectangle.corner(Radius.tile(size))
         Group {
             if let image = icon?.dataUrl.flatMap(IconImages.shared.image(for:)) {
                 Image(uiImage: image)

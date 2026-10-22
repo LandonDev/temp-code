@@ -57,7 +57,10 @@ struct PillButton: View {
                 }
                 Text(title)
                     .font(.footnote.weight(.medium))
+                    .lineLimit(1)
             }
+            // A capsule never wraps: beside a row's text that holds layout priority it was squeezed to a letter a line.
+            .fixedSize(horizontal: true, vertical: false)
             .padding(.leading, systemImage == nil ? 12 : 10)
             .padding(.trailing, 12)
             .padding(.vertical, 6)
@@ -72,8 +75,9 @@ struct PillButton: View {
 }
 
 /// A row-sized control that fills its width: the action at the foot of a
-/// sheet or a card, on the fill step with field corners, or filled with the
-/// label color when it is the one thing to do.
+/// sheet or a card, on the fill step, or filled with the label color when it
+/// is the one thing to do. Its corners are concentric with the sheet's on
+/// iOS 26, never tighter than a field's.
 struct WideButton: View {
     let title: String
     var systemImage: String?
@@ -99,7 +103,7 @@ struct WideButton: View {
             }
             .frame(maxWidth: .infinity, minHeight: Layout.rowHeight)
             .foregroundStyle(prominent ? AnyShapeStyle(Color(.systemBackground)) : AnyShapeStyle(.primary))
-            .background(prominent ? Color(.label) : Surface.fill, in: RoundedRectangle.fieldCorner)
+            .background(prominent ? Color(.label) : Surface.fill, in: .concentric(minimum: Radius.field))
         }
         .buttonStyle(.pressable)
     }

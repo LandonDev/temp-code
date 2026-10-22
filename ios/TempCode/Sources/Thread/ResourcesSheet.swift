@@ -37,7 +37,7 @@ struct ResourcesSheet: View {
                             .padding(.horizontal, Layout.textEdge)
                     } else {
                         ForEach(groups(rows), id: \.environmentId) { group in
-                            GroupHeader(hostName(group.environmentId))
+                            GroupHeader(ResourceWords.hostHeading(group.environmentId, here: client.environment, paired: app.registry.ordered.map(\.environment)))
                             VStack(spacing: 0) {
                                 ForEach(Array(group.rows.enumerated()), id: \.element.id) { index, row in
                                     if index > 0 { Hairline(inset: Layout.textEdge) }

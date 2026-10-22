@@ -33,7 +33,7 @@ struct ResearchReportScreen: View {
             .background(Surface.background)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Surface.background, for: .navigationBar)
+            .tcNavigationBar(visible: false)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
@@ -65,18 +65,21 @@ private struct ReportLede: View {
     let sources: Int
 
     var body: some View {
-        let cited = sources > 0 ? "· \(sources) source\(sources == 1 ? "" : "s")" : nil
+        let cited = sources > 0 ? "\(sources) source\(sources == 1 ? "" : "s")" : nil
         VStack(alignment: .leading, spacing: 8) {
             Text(report.title ?? "Report")
                 .font(.title.weight(.bold))
                 .tracking(-0.5)
                 .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 6) {
+            HStack(spacing: 12) {
                 ReportState(mark: report.isComplete ? .dot(Tint.success) : running ? .spinner : .dot(Color(.tertiaryLabel)), text: report.isComplete ? "Complete" : "In progress")
                 if let cited {
-                    Text(cited)
-                        .textStep(.meta)
-                        .numeric(cited)
+                    HStack(spacing: 4) {
+                        MetaGlyph("link", label: "Sources")
+                        Text(cited)
+                            .textStep(.meta)
+                            .numeric(cited)
+                    }
                 }
             }
             if let summary = report.summary, !summary.isEmpty {

@@ -434,7 +434,7 @@ private func untilSettled(_ answers: inout AsyncStream<SearchAnswer>.AsyncIterat
             HostProgress(environmentId: "d", name: "D", state: .failed, detail: "boom")
         ])
         #expect(feet.map(\.state) == [.searching(ms: 300), .answered(ms: 1200), .offline, .failed])
-        #expect(SearchRows.footLine(feet) == "A … · B 1.2 s · C offline · D failed")
+        #expect(SearchRows.footLine(feet) == "A …, B 1.2 s, C offline, D failed")
     }
 }
 

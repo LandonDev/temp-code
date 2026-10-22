@@ -1,8 +1,10 @@
 import SwiftUI
 import TempCodeClient
 
-/// The segmented control under the header. The raised pill is bound to the
-/// pager: `progress` is the pager's offset in pages, so during a swipe the
+/// The segmented control under the header, drawn the way iOS 26 draws its
+/// own: a glass capsule track with the selection as a capsule inside it.
+/// The system control cannot follow a pager's offset, so this one does: the
+/// selection is bound to the pager: `progress` is the pager's offset in pages, so during a swipe the
 /// pill follows the finger and on a tap it settles with the drawer curve the
 /// screen animates the page with. Each label's color follows the same
 /// offset (a primary copy over a secondary one, weighted by how much of the
@@ -23,11 +25,11 @@ struct SegmentBar: View {
     @ScaledMetric(relativeTo: .subheadline) private var dotSize: CGFloat = 6
     @ScaledMetric(relativeTo: .subheadline) private var dotGap: CGFloat = 4
 
-    /// Concentric: the track's radius is the pill's plus the inset between them.
-    static let inset: CGFloat = 2
-    static let pillRadius: CGFloat = 7
-    static let trackRadius = Radius.around(pillRadius, padding: inset)
-    static let height: CGFloat = 32
+    /// Both ends are capsules, so the selection sits concentric in the
+    /// track at any height: its radius is the track's less this inset.
+    static let inset: CGFloat = 3
+    /// The track at the default text size; it grows with the labels.
+    @ScaledMetric(relativeTo: .subheadline) private var height: CGFloat = 36
 
     var body: some View {
         HStack(spacing: 0) {
@@ -36,7 +38,7 @@ struct SegmentBar: View {
                     onSelect(segment)
                 } label: {
                     label(segment, weight: SegmentRules.weight(of: index, progress: progress, count: segments.count))
-                        .frame(maxWidth: .infinity, minHeight: Self.height - 2 * Self.inset)
+                        .frame(maxWidth: .infinity, minHeight: height - 2 * Self.inset)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.pressable)
@@ -49,7 +51,7 @@ struct SegmentBar: View {
         .padding(Self.inset)
         .animation(reduceMotion ? Motion.crossFade : Motion.expand, value: dot)
         .background { pill }
-        .background(Surface.fill, in: RoundedRectangle.corner(Self.trackRadius))
+        .tcGlass(in: Capsule())
         .padding(.horizontal, Layout.textEdge)
         .padding(.vertical, 8)
         .accessibilityElement(children: .contain)
@@ -85,11 +87,13 @@ struct SegmentBar: View {
         }
     }
 
-    /// The raised pill: the raised step with a soft offset shadow in light, the step alone in dark.
+    /// The selection: a capsule on the raised step with a soft offset
+    /// shadow in light, the step alone in dark (a solid surface inside the
+    /// glass, never glass on glass).
     private var pill: some View {
         GeometryReader { geometry in
             let rect = SegmentRules.pillRect(progress: progress, count: segments.count, size: geometry.size, inset: Self.inset)
-            RoundedRectangle.corner(Self.pillRadius)
+            Capsule()
                 .fill(Surface.raised)
                 .shadow(color: .black.opacity(scheme == .dark ? 0 : 0.12), radius: 2, y: 1)
                 .frame(width: rect.width, height: rect.height)

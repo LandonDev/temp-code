@@ -36,7 +36,7 @@ struct PresenceLine: View {
 }
 
 /// Home's host header, under the name: "through box" and the presence for a
-/// relayed host ("through box · locked since 9:14"); nothing for a paired one.
+/// relayed host ("through box, locked since 9:14"); nothing for a paired one.
 struct HostSubline: View {
     let client: EnvironmentClient
     let carrierName: String?

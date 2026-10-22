@@ -110,8 +110,8 @@ private let plansOff = PlanSettings(autoImplement: false, archiveAfterStart: tru
     @Test func `the project row's five words`() {
         #expect(PreambleRow.summary(project: project(preamble: "one two three"), workspace: nil) == "3 words")
         #expect(PreambleRow.summary(project: project(preamble: "one", enabled: false), workspace: workspace(preamble: "ws")) == "Off")
-        #expect(PreambleRow.summary(project: project(), workspace: workspace(preamble: "a b")) == "Workspace default · 2 words")
-        #expect(PreambleRow.summary(project: project(), workspace: workspace(preamble: "a b", enabled: false)) == "Workspace default · off")
+        #expect(PreambleRow.summary(project: project(), workspace: workspace(preamble: "a b")) == "2 words from workspace")
+        #expect(PreambleRow.summary(project: project(), workspace: workspace(preamble: "a b", enabled: false)) == "Off in workspace")
         #expect(PreambleRow.summary(project: project(), workspace: workspace()) == "None")
     }
 
@@ -161,8 +161,10 @@ private let plansOff = PlanSettings(autoImplement: false, archiveAfterStart: tru
         #expect(Reviewers.minuteChoices(current: 20) == [5, 10, 15, 20, 30, 60, 120, 240])
         #expect(Reviewers.minuteChoices(current: 15) == Reviewers.minutePresets)
         #expect(Reviewers.summary(ReviewDraft.defaults, catalog: catalog) == "Off")
-        #expect(Reviewers.summary(review, catalog: catalog) == "Sonnet 5.5 · any finding · 10 min")
-        #expect(Reviewers.summary(review, catalog: nil) == "claude-sonnet-5-5 · any finding · 10 min")
+        #expect(Reviewers.summary(review, catalog: catalog) == "Sonnet 5.5 holds on any finding, up to 10 min")
+        #expect(Reviewers.summary(review, catalog: nil) == "claude-sonnet-5-5 holds on any finding, up to 10 min")
+        let confirmed = ReviewSettings(beforeMerge: true, provider: .claude, model: "claude-sonnet-5-5", reasoning: .medium, blockOn: .confirmed, maxMinutes: 15)
+        #expect(Reviewers.summary(confirmed, catalog: catalog) == "Sonnet 5.5 holds on confirmed findings, up to 15 min")
     }
 }
 
@@ -254,7 +256,8 @@ private let plansOff = PlanSettings(autoImplement: false, archiveAfterStart: tru
     @Test func `model options follow the desktop's provider order and keep an unknown current id`() {
         let options = PlanBuild.modelOptions(catalog: catalog, current: "gpt-9")
         #expect(options.map(\.model) == ["claude-fable-5-1", "claude-sonnet-5-5", "gpt-6.1-sol", "gpt-9"])
-        #expect(options[0].label == "Claude · Fable 5.1")
+        #expect(options[0].label == "Fable 5.1")
+        #expect(options[0].provider == .claude)
         #expect(options.last?.label == "gpt-9")
         #expect(PlanBuild.modelOptions(catalog: nil, current: "").isEmpty)
         #expect(PlanBuild.modelOptions(catalog: nil, current: "x").map(\.model) == ["x"])
@@ -270,10 +273,10 @@ private let plansOff = PlanSettings(autoImplement: false, archiveAfterStart: tru
     @Test func `the summary reads the desktop's`() {
         #expect(PlanBuild.summary(PlanDraft.defaults, catalog: catalog) == "Auto-start")
         let fixed = PlanSettings(autoImplement: false, archiveAfterStart: false, implementModel: "gpt-6.1-sol", implementReasoning: .xhigh, implementContext: ._1m)
-        #expect(PlanBuild.summary(fixed, catalog: catalog) == "Start by hand · GPT-6.1 Sol · Extra high · 1M")
-        #expect(PlanBuild.summary(fixed, catalog: nil) == "Start by hand · gpt-6.1-sol · Extra high · 1M")
+        #expect(PlanBuild.summary(fixed, catalog: catalog) == "Start by hand with GPT-6.1 Sol (Extra high, 1M context)")
+        #expect(PlanBuild.summary(fixed, catalog: nil) == "Start by hand with gpt-6.1-sol (Extra high, 1M context)")
         let short = PlanSettings(autoImplement: true, archiveAfterStart: true, implementModel: "", implementReasoning: .none, implementContext: ._200k)
-        #expect(PlanBuild.summary(short, catalog: catalog) == "Auto-start · 200k")
+        #expect(PlanBuild.summary(short, catalog: catalog) == "Auto-start (200k context)")
     }
 }
 

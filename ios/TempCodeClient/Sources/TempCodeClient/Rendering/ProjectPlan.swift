@@ -232,13 +232,14 @@ public enum ProjectPlan {
         guard let md else { return nil }
         let (done, total) = progress(md)
         if total == 0 { return "Plan" }
-        return "Plan · \(done) of \(total) milestone\(total == 1 ? "" : "s") done"
+        return "\(done) of \(total) milestone\(total == 1 ? "" : "s") done"
     }
 
-    /// The Home chip's text: "Plan" until the plan is kept and has milestones, then "Plan · 3/7".
+    /// The Home chip's text beside its flag: "Plan" until the plan is kept
+    /// and has milestones, then the count alone, "3/7".
     public static func chipText(done: Int, total: Int, pinned: Bool) -> String {
         guard pinned, total > 0 else { return "Plan" }
-        return "Plan · \(done)/\(total)"
+        return "\(done)/\(total)"
     }
 
     /// The dependency field as chips: "1, 2" and "milestone 1 and 2" are
@@ -292,7 +293,9 @@ public enum ProjectPlan {
         """
     }
 
-    /// The title a thread started for a milestone carries.
+    /// The title a thread started for a milestone carries: the desktop's
+    /// `milestoneThreadTitle` (src/shared/projectPlan.ts), stored by the
+    /// host and shown on every host, so it keeps the desktop's form.
     public static func threadTitle(_ m: Milestone) -> String {
         "M\(m.index) · \(m.title)"
     }

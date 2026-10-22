@@ -15,10 +15,10 @@ enum TranscriptStyle {
     /// Images carry a 1 px outline: pure black in light, pure white in dark, at 10 %.
     static let imageOutline = Color.primary.opacity(0.10)
     /// The desktop's 10 px block radius (code blocks, edit cards, chip bodies).
-    static let blockRadius: CGFloat = 10
+    static let blockRadius = Radius.block
     /// The icon box in an edit card: 20 pt square, 6 pt radius (10 − 4 of padding).
     static let iconBox: CGFloat = 20
-    static let iconBoxRadius: CGFloat = 6
+    static let iconBoxRadius = Radius.inner
 }
 
 /// A row-height wash button inside a chip or card (the desktop's `rounded-md
@@ -28,7 +28,7 @@ struct InlineWash: ViewModifier {
         content
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
-            .background(TranscriptStyle.wash, in: .corner(Radius.inside(Radius.row, padding: 2)))
+            .background(TranscriptStyle.wash, in: .corner(Radius.inner))
     }
 }
 
@@ -52,7 +52,7 @@ private struct TranscriptBlock: ViewModifier {
     }
 }
 
-/// A divider with words in it: "Context compacted · 142k → 38k · 2s", a
+/// A divider with words in it: "Context compacted", then "142k → 38k" and "2s" quieter, a
 /// handoff. Hairlines either side, the text in the quiet step.
 struct LabeledDivider<Content: View>: View {
     @ViewBuilder let content: Content

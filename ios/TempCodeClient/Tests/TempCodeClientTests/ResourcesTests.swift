@@ -52,6 +52,13 @@ private func paired(_ id: String, name: String) -> PairedEnvironment {
         #expect(ResourceWords.removalClause([], hostName: names) == "")
     }
 
+    @Test func `a host heading is capitalized, the unknown host too`() {
+        let here = paired("env_test", name: "box")
+        #expect(ResourceWords.hostHeading("env_test", here: here, paired: [here]) == "Box")
+        #expect(ResourceWords.hostHeading("env_gone", here: here, paired: [here]) == "The Mac")
+        #expect(ResourceWords.hostName("env_gone", here: here, paired: [here]) == "the Mac", "mid-sentence it stays lower case")
+    }
+
     @Test func `a row's state word`() {
         #expect(ResourceWords.rowState(row("a", removeRequestedAt: 1, removedAt: 2)) == "removed")
         #expect(ResourceWords.rowState(row("a", removeRequestedAt: 1, removedAt: 2, note: "branch ios/home kept: 2 commits ahead of its upstream")) == "branch ios/home kept: 2 commits ahead of its upstream")

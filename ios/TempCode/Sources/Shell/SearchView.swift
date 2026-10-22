@@ -130,7 +130,7 @@ struct SearchView: View {
                     .controlSize(.small)
                     .accessibilityLabel("Searching")
             } else if answer.query == trimmed, answer.scope == scope {
-                SearchStatusLine("No results for “\(answer.query)”")
+                ContentUnavailableView.search(text: answer.query)
             }
         }
     }

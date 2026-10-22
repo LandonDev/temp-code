@@ -161,7 +161,7 @@ private struct ReportPin: View {
 
     private var stateText: String {
         if report.isComplete {
-            return liveAngles > 0 ? "Complete · \(liveAngles) angle\(liveAngles == 1 ? "" : "s") still running" : "Complete"
+            return liveAngles > 0 ? "Complete, \(liveAngles) angle\(liveAngles == 1 ? "" : "s") still running" : "Complete"
         }
         return "In progress"
     }
@@ -413,7 +413,7 @@ struct SiteIcon: View {
     @ScaledMetric(relativeTo: .subheadline) private var size: CGFloat = Layout.glyphWidth
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: size / 4, style: .continuous)
+        let shape = RoundedRectangle.corner(Radius.tile(size))
         ZStack {
             if let image = FaviconCache.shared.image(for: host) {
                 Image(uiImage: image)

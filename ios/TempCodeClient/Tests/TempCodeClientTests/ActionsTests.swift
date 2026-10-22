@@ -470,7 +470,8 @@ final class ActingRig {
         if case .array(let ids)? = params["ids"] { #expect(Set(ids) == [.string("s1"), .string("s2")]) } else { Issue.record("no ids") }
         fake.answer(id: request.id, result: json(SessionBatchResult(attempted: ["s1", "s2"], succeeded: ["s2"], failed: [.init(sessionId: "s1", error: "harness not responding")])))
         let toast = try await batching.value
-        #expect(toast.summary == "Archived 1 · 1 failed: Search (harness not responding)")
+        #expect(toast.headline == "Archived 1")
+        #expect(toast.failureLine == "1 failed: Search (harness not responding)")
         #expect(toast.failed.map(\.sessionId) == ["s1"])
         // A whole-call refusal names every target.
         let refused = Task { try await rig.client.batch(.archiveDone, selection: selection) }
@@ -481,7 +482,8 @@ final class ActingRig {
         let whole = try await refused.value
         #expect(whole.succeeded == 0)
         #expect(whole.failed.count == 2)
-        #expect(whole.summary.hasPrefix("Archived 0 · 2 failed: "))
+        #expect(whole.headline == "Archived 0")
+        #expect(whole.failureLine?.hasPrefix("2 failed: ") == true)
         // Nothing qualifying never reaches the wire.
         let none = try await rig.client.batch(.pause, selection: selection)
         #expect(none.summary == "Paused 0")

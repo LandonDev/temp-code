@@ -198,7 +198,7 @@ public enum MasterBoard {
         }
 
         /// "4 agents", then each nonzero live state in the fleet header's
-        /// words and tones: 4 agents · 2 working · 1 needs approval · 1 failed.
+        /// words and tones, as one clause: 4 agents, 2 working, 1 needs approval, 1 failed.
         /// Done ones are in the count only.
         public var parts: [Fleet.Line] {
             var out = [Fleet.Line("\(total) \(total == 1 ? "agent" : "agents")", tone: .muted)]
@@ -208,7 +208,7 @@ public enum MasterBoard {
             return out
         }
 
-        public var text: String { parts.map(\.text).joined(separator: " · ") }
+        public var text: String { parts.map(\.text).joined(separator: ", ") }
     }
 
     /// Every unarchived session under `rootId` in `index` (children by parent
@@ -293,7 +293,7 @@ public enum MasterBoard {
             return WhatLine(text: "Paused", tone: .muted)
         case .queued, .starting, .running, .watching:
             let own = activity?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return WhatLine(text: own.isEmpty ? line.text : own, tone: .muted)
+            return WhatLine(text: own.isEmpty ? line.text : StripWords.reason(fromActivity: own), tone: .muted)
         case .stopped:
             return WhatLine(text: "Stopped", tone: .muted)
         default:

@@ -280,7 +280,9 @@ struct LiveServerTests {
         #expect(Set(seqs).count == seqs.count)
         #expect(seqs.last! - seqs.first! + 1 == seqs.count, "no gap in \(seqs)")
         #expect(Array(rows.prefix(before.count)) == before, "the rows that were there are the same rows")
-        #expect(quiet == quietBefore + 1, "the thread on screen caught up with its own motion; only the list, which nobody is looking at, republished quietly (the thread's meta moved)")
+        // At least the list republished quietly (the thread's meta moved); the seeded server's other
+        // threads can move their metas around the reconnect too, so more than one is not a failure.
+        #expect(quiet >= quietBefore + 1, "only the list, which nobody is looking at, republishes quietly")
         await client.stop()
     }
 
@@ -624,7 +626,7 @@ struct LiveHostExtrasTests {
         #expect(activity.hosts.contains { $0.environmentId == LiveServer.seedBoxId })
         #expect(MacBridgeWords.sorted(activity.calls).map(\.status) == [.running, .held])
         let held = try #require(activity.calls.first { $0.status == .held }?.held)
-        #expect(MacBridgeWords.heldLine(held) == "Waiting for the Mac · load 12.3 of 8 · 3rd in line")
+        #expect(MacBridgeWords.heldLine(held) == "3rd in line for the Mac (load 12.3 of 8)")
 
         let deploy = try await socket.request(Methods.HostDeployStatus.self, .init())
         #expect(deploy.phase == .done)

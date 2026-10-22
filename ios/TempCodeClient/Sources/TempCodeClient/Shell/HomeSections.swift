@@ -18,8 +18,12 @@ public struct HomeHostInput: Sendable, Hashable {
     public var seen: [String: SeenMark]
     /// The host's one-off lines (the boot-resume note); empty by default.
     public var notes: [HomeNote]
+    /// The carrier's environment id for a host reached through another (the
+    /// Mac through the box); nil for a host paired directly.
+    public var via: String?
 
-    public init(environmentId: String, name: String, troubled: Bool = false, hasShell: Bool = true, floor: Int = 0, workspaces: [WorkspaceMeta] = [], projects: [ProjectMeta] = [], sessions: [SessionMeta] = [], seen: [String: SeenMark] = [:], notes: [HomeNote] = []) {
+    public init(environmentId: String, name: String, troubled: Bool = false, hasShell: Bool = true, floor: Int = 0, workspaces: [WorkspaceMeta] = [], projects: [ProjectMeta] = [], sessions: [SessionMeta] = [], seen: [String: SeenMark] = [:], notes: [HomeNote] = [], via: String? = nil) {
+        self.via = via
         self.environmentId = environmentId
         self.name = name
         self.troubled = troubled
@@ -220,7 +224,12 @@ public enum HomeSections {
     public nonisolated static func build(hosts: [HomeHostInput], folded: Set<String>) -> [HomeSection] {
         var sections: [HomeSection] = []
 
-        let status = hosts.filter(\.troubled).map { HomeRow.status(environmentId: $0.environmentId) }
+        // A host the box relays folds under the box's own row while the box is in trouble:
+        // one card says the box is down, not one per host behind it.
+        let troubledIds = Set(hosts.filter(\.troubled).map(\.environmentId))
+        let status = hosts
+            .filter { $0.troubled && !($0.via.map(troubledIds.contains) ?? false) }
+            .map { HomeRow.status(environmentId: $0.environmentId) }
         if !status.isEmpty { sections.append(HomeSection(id: "status", header: .none, rows: status)) }
 
         let needs = hosts

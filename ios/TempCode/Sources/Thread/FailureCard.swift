@@ -47,20 +47,10 @@ struct FailureCard: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 } else {
-                    HStack(spacing: 8) {
-                        ForEach(actions) { action in
-                            if action.id == .retry {
-                                Button { act(action.id) } label: {
-                                    Text(label(action)).frame(maxWidth: .infinity)
-                                }
-                                .buttonStyle(.borderedProminent)
-                            } else {
-                                Button { act(action.id) } label: {
-                                    Text(label(action)).frame(maxWidth: .infinity)
-                                }
-                                .buttonStyle(.bordered)
-                            }
-                        }
+                    // Side by side while every label fits on one line, else stacked full width.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 8) { actionButtons(actions) }
+                        VStack(spacing: 8) { actionButtons(actions) }
                     }
                     .controlSize(.regular)
                     .disabled(busy || pending != nil || block != nil)
@@ -83,6 +73,23 @@ struct FailureCard: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(failure.summary)
+    }
+
+    @ViewBuilder
+    private func actionButtons(_ actions: [FailureAction]) -> some View {
+        ForEach(actions) { action in
+            if action.id == .retry {
+                Button { act(action.id) } label: {
+                    Text(label(action)).lineLimit(1).frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+            } else {
+                Button { act(action.id) } label: {
+                    Text(label(action)).lineLimit(1).frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
     }
 
     private func label(_ action: FailureAction) -> String {

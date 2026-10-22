@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The visual system of docs/IOS-DESIGN.md: system colors by meaning, three
-/// text steps, three radii, hairlines, and the few lengths every row shares.
+/// text steps, the radius ladder, hairlines, and the few lengths every row shares.
 /// Nothing else in the app names a color, a radius, a font step or a row
 /// inset; it names these.
 enum Tint {
@@ -35,16 +35,43 @@ enum Surface {
     static let fill = Color(.tertiarySystemFill)
 }
 
-/// Three radii, and the arithmetic that keeps nested corners concentric:
-/// the outer corner is the inner corner plus the padding between them,
-/// always. Pick the inner radius from the table and derive the outer one.
+/// The radius ladder, and the arithmetic that keeps nested corners
+/// concentric: the outer corner is the inner corner plus the padding between
+/// them, always. Four steps are chosen (4, 8, 12, 16); every other corner is
+/// derived from one of them with `around` or `inside`, and anything that is
+/// round at both ends is a real `Capsule` (a pill, the chat bar at one line,
+/// the segment switcher), never a large number. No screen writes a radius
+/// literal; it names a step here.
 enum Radius {
+    /// An inline token on a line of text: a file:line, a code span's wash.
+    static let inline: CGFloat = 4
     /// Chips and rows.
     static let row: CGFloat = 8
     /// Fields and cards: a row plus 4 pt of padding.
     static let field: CGFloat = 12
     /// Sheets.
     static let sheet: CGFloat = 16
+
+    /// A bordered block in the transcript (code, an edit card, a chip's
+    /// body): a row plus 2 pt, the desktop's 10 px.
+    static let block = around(row, padding: 2)
+    /// A wash or an icon box inside a block, 4 pt in from its edge.
+    static let inner = inside(block, padding: 4)
+
+    /// The stopped status mark: a 6 pt square whose corners only soften.
+    static let mark: CGFloat = 1
+
+    /// A square icon tile (a favicon, a workspace icon): a quarter of its side.
+    static func tile(_ side: CGFloat) -> CGFloat { side / 4 }
+
+    /// A field that is a capsule at its one-line `height` and keeps those
+    /// round ends as it grows taller (the chat bar, the way Messages does it).
+    static func capsuleEnds(_ height: CGFloat) -> CGFloat { height / 2 }
+
+    /// The system shapes the DEBUG activity gallery stands in for: the lock
+    /// screen's Live Activity card and the expanded Dynamic Island.
+    static let liveActivity: CGFloat = 24
+    static let island: CGFloat = 44
 
     /// The outer radius around a corner of `inner` with `padding` between them.
     static func around(_ inner: CGFloat, padding: CGFloat) -> CGFloat {
@@ -69,6 +96,10 @@ extension Shape where Self == RoundedRectangle {
     static var fieldCorner: RoundedRectangle { corner(Radius.field) }
     /// `Radius.sheet` corners.
     static var sheetCorner: RoundedRectangle { corner(Radius.sheet) }
+    /// `Radius.block` corners.
+    static var blockCorner: RoundedRectangle { corner(Radius.block) }
+    /// `Radius.inline` corners.
+    static var inlineCorner: RoundedRectangle { corner(Radius.inline) }
 }
 
 /// The three text steps and no more. A title is `subheadline` in `label`;
