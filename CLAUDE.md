@@ -1029,7 +1029,11 @@ routed to (aliax-core's `forward`). Two listeners:
   `BoardOutcomes.swift` (gate and review rows from `RoundData.outcomes`,
   the words from `BoardSections.swift`'s `GateLine` and `ReviewLine`);
   docs/IOS-DESIGN.md "Implementation: the board is the hero" is its spec.
-  The plan or report file is read with
+  The diff screen's model and parsers are the client package's
+  `Rendering/DiffDocument.swift` (`DiffDocument.from(edits:)`,
+  `from(patch:file:)`, `DiffLayout`) with their suite, and `DiffRoute`,
+  `LinesDiffRoute` and `PatchDiffRoute` are the three ways into
+  `DiffScreen`. The plan or report file is read with
   `file.read` (in the subset since L4), polled 1.5 s running / 8 s idle
   while the screen shows; the plan page parses it with the client package's
   `PlanDocument` (nested and task lists, tables, frontmatter, sections) and

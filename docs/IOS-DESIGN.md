@@ -673,15 +673,23 @@ a person learns why a control elsewhere is disabled.
 ### The diff screen
 
 One screen for every diff: an edit row in the transcript, a Changes row on
-the board, and a pull request's patch in the Inbox (`DiffScreen`, with
-`DiffRoute` for an edit and `PatchDiffRoute` for a patch). Unified, never
-side by side on a phone; the model and its measurements live in
-`Thread/DiffStyles.swift`.
+the board, and a pull request's files in the Inbox. Three ways in, one
+screen (`DiffScreen`): `DiffRoute` (an edit's card, read from the thread's
+own host with `session.rowBody`), `LinesDiffRoute` (lines already in hand
+with the host's counts) and `PatchDiffRoute(title:patch:file:adds:dels:)`
+(a unified patch; `file` keeps one file of a many-file patch, so the Inbox
+opens a pull request per file and names the file in the title). Unified,
+never side by side on a phone. The model and its parsers are the client
+package's `Rendering/DiffDocument.swift` (`DiffLine`, `DiffHunk`,
+`DiffDocument`, and `DiffLayout` for the column's geometry), with their
+Swift Testing suite; `Thread/DiffStyles.swift` keeps the UIKit
+measurements (`DiffMetrics`) and the palette.
 
 - **Header**: the path on one line in two steps, the directory `tertiary`
   and the file name in the title's color, `subheadline` semibold, head
-  truncated so the name always shows; `+n −m` trailing in success and
-  destructive (the host's count for an edit, the parsed count for a patch).
+  truncated so the name always shows, a long press copies the path; `+n −m`
+  trailing in success and destructive (the host's count when the route
+  carries one, the parsed count otherwise).
 - **Hunks**: a jump or a step back in the new-side numbering starts one, as
   the desktop's gap does, and every edit of a file starts one. Each hunk is
   a pinned section row on the one gray step: the line range ("Lines
@@ -695,20 +703,28 @@ side by side on a phone; the model and its measurements live in
   edge, context text at 70 %: the desktop's `DiffBody` values. No
   intra-line emphasis, as on the desktop.
 - **Sideways**: each hunk scrolls horizontally on its own, under the pinned
-  gutter, by a sideways drag on any of its rows; the finger's momentum
-  carries it, both ends rubber-band (Apple's `d·c·w / (d·c + w)`, c = 0.55)
-  and it settles with the row-expand spring. A hunk that fits never moves.
+  gutter, by a sideways drag on any of its rows; the first change decides
+  the axis for the gesture's life and a vertical start is the scroll
+  view's. The finger's momentum carries it, both ends rubber-band (Apple's
+  `d·c·w / (d·c + w)`, c = 0.55) and it settles with a bounce-0 spring
+  whose duration follows the travel: 0.35 s plus 0.4 ms per point, never
+  past 0.6 s. A hunk that fits never moves.
 - **Virtualized**: a lazy column of fixed-height rows; a 3,600-line diff
   opens and scrolls at 120 Hz with nothing built off screen.
 - **Toolbar**: a bottom bar with previous and next hunk and "n of m" in
   tabular digits between them, numeric transition; the position follows the
-  scroll from the fixed row heights. Hidden for a single hunk. Navigation
-  scrolls 250 ms ease-out; jumps under reduced motion.
+  scroll from the fixed row heights (`DiffLayout.hunkIndex`). Hidden for a
+  single hunk. Navigation is `ScrollPosition.scrollTo(y:)` on the header's
+  exact offset (`DiffLayout.hunkStarts`), 250 ms on the strong ease-out
+  curve `(0.23, 1, 0.32, 1)`; jumps under reduced motion.
 - **Context menu** on any line: Copy line, Copy hunk (unified, with signs).
 - **Loading**: the shimmer of the height the lines will take, from the line
   count the host left with the omitted body; rows cross-fade in over it in
-  150 ms. **Gone**: one line in destructive with Retry. **Nothing to show**:
-  one quiet line.
+  150 ms; a patch or lines route parses before the first frame and never
+  shows it. **Gone**: one line in destructive with Retry; part of an edit
+  gone shows the rest under the same line. **Nothing to show**: one quiet
+  line ("This edit left no lines to show."; for a patch, "No changes to
+  show.", which covers a binary or truncated file).
 
 ## Visual system
 
@@ -817,8 +833,8 @@ used.
 | Status dot to spinner | cross-fade 150 ms | `StatusDot` (`Motion.crossFade`) |
 | A glyph trading state (Send ↔ Stop, outline ↔ fill, pin ↔ unpin) | scale 0.25 → 1, opacity 0 → 1, blur 4 → 0, spring `duration 0.3, bounce 0`; reduced motion: opacity on `cubic-bezier(0.2, 0, 0, 1)` 150 ms | `.iconSwapTransition()` with `.id(symbol)` in a `ZStack` (`Motion.iconSwap(reduced:)`, `Motion.iconSwap`, `Motion.iconSwapScale`, `Motion.iconSwapBlur`, `Motion.iconFade`); `TypeGlyph(active:)` uses the symbol replace effect instead, since Glyphs builds without Motion |
 | Jump-to-latest pill | 150 ms opacity and 8 pt translateY, both directions | `.jumpTransition()` (`Motion.jump(reduced:)`) |
-| Diff hunk sideways | follows the finger, momentum from the release velocity, rubber band at both ends, settles with spring `duration 0.35, bounce 0`; next and previous hunk scroll 250 ms ease-out | `DiffBody` in Thread/DiffScreen.swift (`Motion.expand` for the settle) |
-| Diff lines landing | 150 ms cross-fade over the shimmer | `Motion.crossFade` |
+| Diff hunk sideways | follows the finger through an interactive spring, momentum from the release velocity, rubber band at both ends, settles with spring `duration min(0.6, 0.35 + travel × 0.0004), bounce 0`; next and previous hunk scroll 250 ms on `timingCurve(0.23, 1, 0.32, 1)` to the header's exact offset | `DiffBody.settle(travel:)` in Thread/DiffScreen.swift; `DiffLayout.hunkStarts` for the offsets |
+| Diff lines landing | 150 ms cross-fade over the shimmer; nothing when the lines were in hand | `Motion.crossFade`; the counter rolls with `Motion.numeric` |
 | Reduced motion | cross-fades replace every translate and spring | every `Motion.*(reduced:)` and the four transition modifiers read it themselves |
 
 Every transition carries its own timing, so an enclosing `withAnimation`

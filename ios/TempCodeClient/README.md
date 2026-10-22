@@ -21,7 +21,8 @@ Sources/TempCodeClient
   Cache/        Database (sqlite3), SessionCache
   Client/       Subscriptions, EnvironmentClient, ClientRegistry
   Rendering/    ThreadFold (rows → stamped items + BoardState), Transcript (item types), Board,
-                ResearchBoard, Fleet, PlanDoc, Inbox, MarkdownBlocks, MarkdownCache, PlanDocument,
+                ResearchBoard, Fleet, PlanDoc, Inbox, DiffDocument (the diff screen's lines,
+                hunks and column geometry), MarkdownBlocks, MarkdownCache, PlanDocument,
                 PlanPages
   Design/       TimeFormat, ModelName, CompactNumber, ThreadRowModel: the design kit's pure
                 logic, tested here; the app's Design/ holds the views
