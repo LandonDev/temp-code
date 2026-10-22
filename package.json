@@ -56,6 +56,7 @@
     "script:e2e-session-move": "bun scripts/e2e-session-move.ts",
     "script:e2e-mac-bridge": "bun scripts/e2e-mac-bridge.ts",
     "script:e2e-cross-host-threads": "bun scripts/e2e-cross-host-threads.ts",
+    "script:e2e-linked-projects": "bun scripts/e2e-linked-projects.ts",
     "script:e2e-mac-relay": "bun scripts/e2e-mac-relay.ts",
     "script:e2e-thread-batch": "bun scripts/e2e-thread-batch.ts",
     "script:e2e-cross-host-search": "bun scripts/e2e-cross-host-search.ts",
