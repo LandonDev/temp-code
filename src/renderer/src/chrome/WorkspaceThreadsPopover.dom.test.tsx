@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from "vitest";
-import { fireEvent } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent } from "@testing-library/react";
 import { mountProbe } from "../test/renderProbe";
 import { threadRow, type WorkspaceSessionGroups } from "../lib/workspaceSessions";
 import type { ProjectMeta, SessionMeta } from "../lib/tcserver/types";
 import { WorkspaceThreadsList, workspaceThreadSections } from "./WorkspaceThreadsPopover";
+
+// Every mount leaves with its test: a row's clock (useClock) stays subscribed
+// while it is mounted, and a tick after the environment is gone would reach React.
+afterEach(cleanup);
 
 const meta = (id: string, extra: Partial<SessionMeta> = {}): SessionMeta =>
   ({

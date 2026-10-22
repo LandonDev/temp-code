@@ -119,6 +119,35 @@ describe("aligned second hand", () => {
     }
   });
 
+  it("a listener that leaves and re-subscribes inside a tick leaves one chain, and the last unsubscribe stops it", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-18T12:00:00.000Z"));
+    try {
+      let ticks = 0;
+      let stop: () => void = () => {};
+      const listener = (): void => {
+        ticks++;
+        // A row re-rendering on the tick unsubscribes and subscribes again.
+        stop();
+        stop = clockForTest.subscribe(listener);
+      };
+      stop = clockForTest.subscribe(listener);
+      vi.advanceTimersByTime(1000);
+      expect(ticks).toBe(1);
+      expect(vi.getTimerCount()).toBe(1);
+      vi.advanceTimersByTime(3000);
+      expect(ticks).toBe(4);
+      expect(vi.getTimerCount()).toBe(1);
+      stop();
+      expect(clockForTest.listeners()).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+      vi.advanceTimersByTime(5000);
+      expect(ticks).toBe(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("the half-minute hand lands on :00 and :30", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-18T12:00:12.000Z"));
