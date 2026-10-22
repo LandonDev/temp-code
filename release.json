@@ -1,5 +1,5 @@
 {
-  "n": 293,
-  "notes": "Fix the splash hang: FocusSignal called queueMicrotask unbound, which threw Illegal invocation in initServerLink at boot",
-  "ts": 1792702469585
+  "n": 294,
+  "notes": "One project across hosts: link ids pair a workspace and project on the Mac and the box, one rail across hosts, project settings live on the box (seeded once from the Mac), far starts land in the linked project, @thread across hosts; dev servers on the box forwarded to the Mac; master board rows count subagents; phone fixes",
+  "ts": 1792711932407
 }
