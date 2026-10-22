@@ -74,6 +74,7 @@ import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import { subagentRows, subagentRowsOpen, useSubagentRows } from "../stores/subagentRows";
 import {
+  cardThreads,
   groupWorkspaceSessions,
   rowCache,
   type ProjectGroup,
@@ -341,7 +342,7 @@ function useRevealActive(activeSessionId: string | undefined) {
 }
 
 /** The subagent fold in a root row's tail: how many, whether they show, the flip. */
-type Fold = { count: number; open: boolean; onToggle: () => void };
+type Fold = { count: number; open: boolean; noun: "subagent" | "thread"; onToggle: () => void };
 
 /** Which host a row's thread lives on; shown only when the window talks to two or more. */
 function HostBadge({ environmentId }: { environmentId?: string }) {
@@ -458,7 +459,7 @@ const ChatRow = memo(function ChatRow({
             <button
               type="button"
               aria-expanded={fold.open}
-              aria-label={`${fold.open ? "Hide" : "Show"} ${fold.count} subagent${fold.count === 1 ? "" : "s"}`}
+              aria-label={`${fold.open ? "Hide" : "Show"} ${fold.count} ${fold.noun}${fold.count === 1 ? "" : "s"}`}
               onClick={(e) => {
                 e.stopPropagation();
                 fold.onToggle();
@@ -487,7 +488,9 @@ const ChatRow = memo(function ChatRow({
   );
 });
 
-/** A subagent under its root: one step in, status, role glyph, title, model. */
+/** A subagent under its root, or a batch thread under its master: one
+ *  step in, status, the role's or the type's glyph, title, then what it is
+ *  doing while it works, else its model. */
 const ChildRow = memo(function ChildRow({
   thread,
   actions,
@@ -496,7 +499,8 @@ const ChildRow = memo(function ChildRow({
   actions: RowActions;
 }) {
   const selected = thread.id === actions.activeSessionId;
-  const Glyph = thread.agentType ? AGENT_GLYPHS[thread.agentType] : null;
+  const Glyph = thread.agentType ? AGENT_GLYPHS[thread.agentType] : thread.threadType ? THREAD_GLYPHS[thread.threadType] : null;
+  const live = thread.running ? thread.activity?.trim() : "";
   return (
     <div
       role="button"
@@ -514,8 +518,12 @@ const ChildRow = memo(function ChildRow({
     >
       {thread.running ? <Spinner /> : <StatusDot status={thread.status} />}
       {Glyph ? <Glyph className="size-3 shrink-0 text-content/40" strokeWidth={1.75} /> : null}
-      <span className="min-w-0 flex-1 truncate">{thread.title || "Subagent"}</span>
-      {thread.provider && thread.model ? (
+      <span className="min-w-0 flex-1 truncate">{thread.title || (thread.masterId ? "Untitled" : "Subagent")}</span>
+      {live ? (
+        <span className="max-w-[45%] shrink-0 truncate text-[11px] text-content/40" data-activity>
+          {live}
+        </span>
+      ) : thread.provider && thread.model ? (
         <span className="shrink-0 text-[11px] text-content/40">
           {modelLabel(thread.provider, thread.model)}
         </span>
@@ -524,9 +532,10 @@ const ChildRow = memo(function ChildRow({
   );
 });
 
-/** A root row and its subagents beneath it. The subagents show while the
- *  root or one of them works, or while one is the open thread; otherwise
- *  the root's tail counts them and a click unfolds them (see subagentRows). */
+/** A root row and its subagents beneath it, or a master's batch threads
+ *  (`batchHome`). They show while the root or one of them works, or while
+ *  one is the open thread; otherwise the root's tail counts them and a
+ *  click unfolds them (see subagentRows). */
 const ThreadRows = memo(function ThreadRows({
   thread,
   actions,
@@ -540,12 +549,13 @@ const ThreadRows = memo(function ThreadRows({
     thread.running ||
     (kids?.some((c) => c.running || c.id === actions.activeSessionId) ?? false);
   const open = useSubagentRows((s) => count > 0 && subagentRowsOpen(s, thread.id, auto));
+  const noun = kids?.some((c) => c.masterId) ? "thread" : "subagent";
   const fold = useMemo<Fold | undefined>(
     () =>
       count > 0
-        ? { count, open, onToggle: () => subagentRows.toggle(thread.id, auto) }
+        ? { count, open, noun, onToggle: () => subagentRows.toggle(thread.id, auto) }
         : undefined,
-    [auto, count, open, thread.id],
+    [auto, count, noun, open, thread.id],
   );
   return (
     <>
@@ -827,7 +837,7 @@ const ProjectCard = memo(function ProjectCard({
   const onDelete = () => remove(project);
   const onMore = () => more(project.id);
   const [renaming, setRenaming] = useState(false);
-  const status = projectCardStatus(threads, rows.activeSessionId ?? null, lastSeen, seenFloor);
+  const status = projectCardStatus(cardThreads(threads), rows.activeSessionId ?? null, lastSeen, seenFloor);
   const runAction = projectRunAction(status);
   const stoppable = stoppableThreads(status);
   const teardown = project.mode === "worktree" && Boolean(project.branch);

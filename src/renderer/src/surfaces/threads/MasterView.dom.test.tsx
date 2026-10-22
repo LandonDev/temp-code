@@ -281,6 +281,39 @@ describe("the master view", () => {
     expect(screen.getByText("Plan")).toBeTruthy();
   });
 
+  it("a done implementation folds its task list behind the tally; the tally's chevron opens it without opening the thread", async () => {
+    seed([meta({ id: "c-fold", title: "Home screen", status: "running" }), meta({ id: "c-folded", title: "Foundations", status: "idle" })]);
+    const todos = [
+      { content: "Read the brief", status: "completed" },
+      { content: "Tests", status: "completed" },
+    ];
+    for (const id of ["c-fold", "c-folded"]) {
+      link.rows.set(id, rows(id, [{ type: "user-text", text: "go" }, { type: "tool-call", callId: "t1", name: "TodoWrite", input: { todos } }]));
+    }
+    render(<MasterView {...props} />);
+    await flush();
+    await flush();
+    const running = screen.getByRole("button", { name: /Home screen/ });
+    expect(running.getAttribute("data-tasks-open")).toBe("true");
+    expect(within(running).getAllByRole("listitem")).toHaveLength(2);
+    const done = screen.getByRole("button", { name: /Foundations/ });
+    expect(done.getAttribute("data-tasks-open")).toBe("false");
+    expect(within(done).getByText("2/2")).toBeTruthy();
+    expect(within(done).getByRole("progressbar").getAttribute("aria-valuenow")).toBe("2");
+    // Folded: the list is in the DOM but hidden from readers and the tab order.
+    expect(within(done).queryAllByRole("listitem")).toHaveLength(0);
+    expect(done.querySelector("[data-tasks]")?.getAttribute("aria-hidden")).toBe("true");
+    const toggle = within(done).getByRole("button", { name: "Show tasks" });
+    fireEvent.click(toggle);
+    expect(done.getAttribute("data-tasks-open")).toBe("true");
+    expect(within(done).getAllByRole("listitem")).toHaveLength(2);
+    expect(within(done).getByRole("button", { name: "Hide tasks" }).getAttribute("aria-expanded")).toBe("true");
+    // The toggle never opened the child's view.
+    expect(document.querySelector("[data-child-pane]")).toBeNull();
+    fireEvent.click(within(done).getByRole("button", { name: "Hide tasks" }));
+    expect(done.getAttribute("data-tasks-open")).toBe("false");
+  });
+
   it("research and orchestration rows carry a summary: the notes' State line, else the latest words", async () => {
     seed([
       meta({ id: "c-res", title: "Pricing survey", status: "running", threadType: "research" }),

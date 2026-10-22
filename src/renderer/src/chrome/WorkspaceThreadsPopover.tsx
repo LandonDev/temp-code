@@ -7,6 +7,7 @@ import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
 import { useSessionMetas } from "../lib/tcserver/store";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import {
+  cardThreads,
   groupWorkspaceSessions,
   rowCache,
   type ThreadRow,
@@ -61,7 +62,7 @@ export function workspaceThreadSections(groups: WorkspaceSessionGroups): Section
   return [
     ...groups.projects
       .filter((g) => g.threads.length > 0)
-      .map((g) => ({ key: g.project.id, label: g.project.name, threads: g.threads })),
+      .map((g) => ({ key: g.project.id, label: g.project.name, threads: cardThreads(g.threads) })),
     ...(groups.chats.length > 0
       ? [{ key: "chats", label: "Chats", threads: groups.chats }]
       : []),

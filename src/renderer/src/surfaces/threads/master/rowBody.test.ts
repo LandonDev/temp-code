@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Block, Session } from "../../../lib/session";
 import type { TodoItem } from "../../../lib/tcserver/todos";
-import { rowBody, summaryLine, taskTally, whatLine } from "./rowBody";
+import { rowBody, summaryLine, taskProgress, tasksOpenByDefault, taskTally, whatLine } from "./rowBody";
 
 const block = (role: Block["role"], text: string, id = `b${text.length}`): Block => ({ id, role, text }) as unknown as Block;
 const withTodos = (todos: TodoItem[]): Pick<Session, "thread" | "blocks"> =>
@@ -20,6 +20,13 @@ describe("what a row shows under its lines, by type", () => {
     expect(rowBody({ threadType: "implementation" }, withTodos([]), undefined)).toBeNull();
     expect(taskTally(todos)).toBe("1/3");
     expect(taskTally([])).toBeNull();
+    expect(taskProgress(todos)).toEqual({ done: 1, total: 3 });
+    expect(taskProgress([])).toBeNull();
+  });
+
+  it("the task list is open while the thread works or needs you, folded once it sits in Done", () => {
+    for (const status of ["running", "starting", "watching", "paused", "waiting", "error", "queued"] as const) expect(tasksOpenByDefault(status)).toBe(true);
+    for (const status of ["done", "idle", "stopped"] as const) expect(tasksOpenByDefault(status)).toBe(false);
   });
 
   it("research and orchestration show one summary: the notes' State line, else the latest words", () => {

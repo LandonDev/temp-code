@@ -1283,7 +1283,15 @@ this is the short one.
   `blocked` names it and the master is told once as a `<batch-report>`.
   Steps run in order on the host's `GateQueue`, a gate or release outcome a
   `gate` notice row on the master; a red step stops the rest and tells the
-  master; nothing landed skips every step after land; a child moving again
+  master; the steps after land run whenever the batch ends, on the project
+  checkout at the project branch's head, however the branches got there (a
+  child that fast-forwarded the branch itself never called merge_branch;
+  "nothing landed" is the land step's detail, never a reason to skip the
+  rest; only deploy without a release step before it is skipped, as "needs
+  a release"); the land step counts only threads with a branch to land
+  (`canLand`: implementation and orchestration, a chat or research thread
+  once it landed or holds one, a planner never); a planning child whose
+  plan is complete holds the batch open until its build exists; a child moving again
   or a new one arms the engine for the next all-done, and a landing after
   the end starts a new cycle. `batch_gate` stays the master's way to run
   the gate and release steps early, with children still out left out of
@@ -1368,6 +1376,15 @@ this is the short one.
   switches' rule. The phone draws a queued root with the label "Queued"
   (StatusDot.swift), never under Home's Running (`HomeModel.isLive`); no
   phone surface.
+- **The rail houses the batch under the master's row** the way subagents
+  sit under a root (`batchHome`, `railMasters` in lib/workspaceSessions.ts):
+  each unarchived root carrying the master's id is a child row one step in
+  (the type's glyph, the title, what it is doing while it works, else its
+  model), folded behind "N threads" by the subagent rows' rule; a plan whose
+  build has started takes no row (`startedPlan`: the build is the row), an
+  archived thread never does, and a batch whose master is archived or
+  unpinned shows as plain roots. The project card and the workspace popover
+  read the housed rows back beside the roots (`cardThreads`).
 - **Proofs and tests.** `bun run script:e2e-master-batch`
   (scripts/e2e-master-batch.ts: the whole flow in one process, a haiku
   master pinned with `session.setMaster` beside a second master of the same

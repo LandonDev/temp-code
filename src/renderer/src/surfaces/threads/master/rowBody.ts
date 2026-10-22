@@ -3,7 +3,7 @@ import type { Block, Session } from "../../../lib/session";
 import type { TodoItem } from "../../../lib/tcserver/todos";
 import type { SessionMeta } from "../../../lib/tcserver/types";
 import { lastAssistantLine, type AgentTone } from "../../../lib/threads/agents";
-import { clockTime } from "./useMasterModel";
+import { clockTime, groupOf } from "./useMasterModel";
 
 /**
  * What a row shows under its two lines, by the thread's type: an
@@ -53,10 +53,24 @@ export function rowBody(
   }
 }
 
+/** Whether a row's task list is open before the person touches it: open
+ *  while the thread works or needs them, folded once it sits in Done (done,
+ *  idle after a turn, stopped); the tally stays either way. */
+export function tasksOpenByDefault(status: SessionMeta["status"]): boolean {
+  return groupOf(status) !== "done";
+}
+
+/** Done of total once the thread has a task list; null before. The row
+ *  prints it as "3/7" with a thin bar filled to done/total. */
+export function taskProgress(tasks: readonly TodoItem[]): { done: number; total: number } | null {
+  if (tasks.length === 0) return null;
+  return { done: tasks.filter((t) => t.status === "completed").length, total: tasks.length };
+}
+
 /** "3/7" once the thread has a task list; null before. */
 export function taskTally(tasks: readonly TodoItem[]): string | null {
-  if (tasks.length === 0) return null;
-  return `${tasks.filter((t) => t.status === "completed").length}/${tasks.length}`;
+  const p = taskProgress(tasks);
+  return p ? `${p.done}/${p.total}` : null;
 }
 
 /** The row's second line: the scheduler's or the harness's `activity`

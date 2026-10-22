@@ -82,8 +82,10 @@ and host that carries the master's id (`sessions.master_id`,
 wait for a sibling, that sibling's id (`after_id`, `after`). They are not
 subagents: a subagent has a `parentId`, folds under its parent in the rail
 and reads its notes through the parent's digest. A batch thread has its
-own rail row, its own tab, its own view and its own notes, and outlives
-the master's turn. What the master gets is supervision by id:
+own row (housed under the master's in the rail, one step in like a
+subagent's: `batchHome` in lib/workspaceSessions.ts; a plan whose build
+has started takes no row, the build is the row), its own view and its own
+notes, and outlives the master's turn. What the master gets is supervision by id:
 `supervisedBy(caller, session)` is the one check every supervision tool
 runs, and it admits the caller's subagents plus, for a project's master,
 every root thread on this host that carries its id. The refusal reads "is
@@ -314,9 +316,21 @@ any end step ran reopens the steps after land. The gate and the release
 row the master with `gate` notice rows as `batch_gate` does; `batch_gate`
 stays the master's way to run the gate and release steps early, with
 children still out left out of the land step ("4 of 7 landed · 3 left
-out"), and is refused when the list names no gate. A batch where nothing
-landed (research threads) skips every step after land as "nothing
-landed". `batch.stopStep { masterId, stepId }` (operate) kills a running
+out"), and is refused when the list names no gate. The steps after land
+run whenever the batch ends: they run on the project checkout at the
+project branch's head, which does not depend on how the branches got
+there (Update 33's children fast-forwarded and pushed the branch
+themselves, never calling merge_branch, and the whole end was skipped as
+"nothing landed" in 45 ms, nothing for the foot to show). "nothing landed"
+is now the land step's detail when no thread had a branch to land; only a
+deploy with no release step before it is skipped, as "needs a release".
+The land step counts only threads with a branch to land (`canLand`:
+implementation and orchestration threads, a chat or research thread once
+it landed or holds one, a planning thread never), so "4 of 7 landed" never
+counts the planners among the seven. A planning child whose plan is
+complete (`planCompletedAt`) and whose build does not exist yet
+(`implementationId` unset) is not done: the build starts after the plan
+settles, and the batch must not end in that gap. `batch.stopStep { masterId, stepId }` (operate) kills a running
 shell step's process group (the step fails as "stopped after 12s") or
 stops the Mac's publish job; a gate or release step runs to its end.
 

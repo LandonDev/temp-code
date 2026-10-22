@@ -230,6 +230,26 @@ describe('ThreadRows fold', () => {
     kid.unmount()
   })
 
+  it("a master's batch threads sit under it the way subagents do: the type's glyph, what a running one does, its model otherwise", () => {
+    const master: ThreadRow = {
+      ...threadRow(meta('master', { isMaster: true }), {}),
+      children: [
+        threadRow(meta('b1', { masterId: 'master', threadType: 'implementation', status: 'running', busySince: 5, activity: 'Writing the view', provider: 'claude', model: 'claude-opus-5-5' }), {}),
+        threadRow(meta('b2', { masterId: 'master', threadType: 'planning', provider: 'claude', model: 'claude-opus-5-5' }), {})
+      ]
+    }
+    const probe = mountProbe(<ThreadList threads={[master]} actions={actions} className="" />)
+    expect(rowCount(probe.container)).toBe(3)
+    expect(foldButton(probe.container).getAttribute('aria-label')).toBe('Hide 2 threads')
+    const kids = Array.from(probe.container.querySelectorAll('[role="button"]')).slice(1)
+    expect(kids[0].querySelector('[data-activity]')?.textContent).toBe('Writing the view')
+    expect(kids[0].textContent).toContain('b1')
+    expect(kids[1].querySelector('[data-activity]')).toBeNull()
+    expect(kids[1].textContent).toContain('Claude Opus 5.5')
+    expect(kids[1].querySelector('svg')).not.toBeNull()
+    probe.unmount()
+  })
+
   it('the open subagent keeps its row on screen', () => {
     const probe = mountProbe(
       <ThreadList threads={[withKids()]} actions={{ ...actions, activeSessionId: 'kid2' }} className="" />

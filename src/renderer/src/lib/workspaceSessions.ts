@@ -37,8 +37,11 @@ export type ThreadRow = {
   /** What "Archive dormant threads" spares (see threadStripModel). */
   pinned?: boolean;
   planPath?: string | null;
-  /** Subagents of this root, ranked: waiting, failed, working, done. */
+  /** Subagents of this root, ranked: waiting, failed, working, done; under
+   *  a master, the roots of its batch too (`batchHome`). */
   children?: ThreadRow[];
+  /** A root of a master's batch: the master's id (CLAUDE.md "Master threads"). */
+  masterId?: string;
   /** The project the root belongs to; the rail's "Make master thread" needs it. */
   projectId?: string | null;
   /** Set on child rows; drives the row glyph. */
@@ -169,24 +172,67 @@ export function threadRow(
     environmentId: meta.environmentId,
     ...(meta.parentId
       ? { agentType: meta.agentType, provider: meta.provider, model: meta.model }
-      : {}),
+      : meta.masterId
+        ? { masterId: meta.masterId, provider: meta.provider, model: meta.model }
+        : {}),
   };
 }
 
-/** Child rows keyed by parent id, ranked. Archived children stay out. */
+/** The ids of the unarchived roots pinned as masters. */
+export function railMasters(metas: readonly SessionMeta[]): Set<string> {
+  const out = new Set<string>();
+  for (const m of metas) if (m.isMaster && !m.parentId && !m.archived) out.add(m.id);
+  return out;
+}
+
+/** The master a batch child belongs under in the rail, else null: a root
+ *  carrying the id of an unarchived master that is one. Such a thread is
+ *  never a root row; it is housed under the master, unless it is a plan
+ *  whose build has started (`startedPlan`: the build is the row).
+ *  An archived thread is neither. */
+export function batchHome(
+  meta: Pick<SessionMeta, "parentId" | "masterId" | "archived">,
+  masters: ReadonlySet<string>,
+): string | null {
+  if (meta.parentId || meta.archived || !meta.masterId || !masters.has(meta.masterId)) return null;
+  return meta.masterId;
+}
+
+/** A plan whose build has started: the build takes its place in the batch. */
+export const startedPlan = (meta: Pick<SessionMeta, "threadType" | "implementationId">): boolean =>
+  meta.threadType === "planning" && !!meta.implementationId;
+
+/** The roots a card or popover reads, with the batch children housed under
+ *  a master back beside it: a running or waiting batch thread is still the
+ *  project's, whichever row it sits under. */
+export function cardThreads(threads: readonly ThreadRow[]): ThreadRow[] {
+  return threads.flatMap((t) => [t, ...(t.children?.filter((c) => c.masterId) ?? [])]);
+}
+
+/** Child rows keyed by the row they sit under, ranked: subagents under
+ *  their parent, a master's batch under the master. Archived ones stay out. */
 export function childRows(
   metas: readonly SessionMeta[],
   lastSeen: Record<string, number>,
   floor = 0,
   cache?: RowCache,
   next?: Map<string, CachedRow>,
+  masters: ReadonlySet<string> = railMasters(metas),
 ): Map<string, ThreadRow[]> {
   const byParent = new Map<string, SessionMeta[]>();
-  for (const meta of metas) {
-    if (!meta.parentId || meta.archived) continue;
-    const list = byParent.get(meta.parentId);
+  const batch = new Map<string, SessionMeta[]>();
+  const add = (map: Map<string, SessionMeta[]>, key: string, meta: SessionMeta) => {
+    const list = map.get(key);
     if (list) list.push(meta);
-    else byParent.set(meta.parentId, [meta]);
+    else map.set(key, [meta]);
+  };
+  for (const meta of metas) {
+    if (meta.archived) continue;
+    if (meta.parentId) add(byParent, meta.parentId, meta);
+    else {
+      const home = batchHome(meta, masters);
+      if (home && !startedPlan(meta)) add(batch, home, meta);
+    }
   }
   const out = new Map<string, ThreadRow[]>();
   for (const [parentId, list] of byParent)
@@ -194,6 +240,12 @@ export function childRows(
       parentId,
       sortAgents(list).map((m) => cachedRow(cache, next, m, lastSeen, floor)),
     );
+  // A batch thread keeps its own subagents under it; under the master it
+  // ranks with the master's subagents, when it has any.
+  for (const [masterId, list] of batch) {
+    const rows = list.map((m) => cachedRow(cache, next, m, lastSeen, floor, out.get(m.id)));
+    out.set(masterId, sortAgents([...(out.get(masterId) ?? []), ...rows]));
+  }
   return out;
 }
 
@@ -215,10 +267,11 @@ export function groupWorkspaceSessions(
   const archivedCount = new Map<string, number>();
   const chats: ThreadRow[] = [];
   const nextRows = cache ? new Map<string, CachedRow>() : undefined;
-  const children = childRows(metas, lastSeen, floor, cache, nextRows);
+  const masters = railMasters(metas);
+  const children = childRows(metas, lastSeen, floor, cache, nextRows, masters);
 
   for (const meta of metas) {
-    if (meta.parentId) continue;
+    if (meta.parentId || batchHome(meta, masters)) continue;
     if (workspaceIdOf(meta, projects, workspaces) !== workspaceId) continue;
     const projectId =
       meta.projectId && ids.has(meta.projectId) ? meta.projectId : null;

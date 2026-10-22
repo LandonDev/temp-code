@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectMeta, SessionMeta, WorkspaceMeta } from "./tcserver/types";
 import {
+  batchHome,
+  cardThreads,
   groupWorkspaceSessions,
   rowCache,
+  startedPlan,
   summarizeThreads,
   threadRow,
   type RowCache,
@@ -112,6 +115,48 @@ describe("groupWorkspaceSessions", () => {
     expect(out.chats.map((t) => t.id)).toEqual(["loose"]);
     expect(out.chats[0].children?.map((c) => c.id)).toEqual(["c-loose"]);
     expect(out.chats[0].agentType).toBeUndefined();
+  });
+
+  it("houses a master's batch under the master: each unarchived root once, a plan whose build started not at all", () => {
+    const metas = [
+      meta("master", { projectId: "p1", cwd: "/wt/p1", isMaster: true, updatedAt: 50 }),
+      meta("b-run", { projectId: "p1", cwd: "/wt/p1", masterId: "master", threadType: "implementation", status: "running", provider: "claude", model: "claude-opus-5-5", activity: "Writing the view", createdAt: 2 }),
+      meta("b-plan", { projectId: "p1", cwd: "/wt/p1", masterId: "master", threadType: "planning", implementationId: "b-build", createdAt: 1 }),
+      meta("b-build", { projectId: "p1", cwd: "/wt/p1", masterId: "master", threadType: "implementation", planThreadId: "b-plan", status: "waiting", createdAt: 3 }),
+      meta("b-plan2", { projectId: "p1", cwd: "/wt/p1", masterId: "master", threadType: "planning", status: "running", createdAt: 4 }),
+      meta("b-gone", { projectId: "p1", cwd: "/wt/p1", masterId: "master", archived: true }),
+      meta("sub", { parentId: "b-run", projectId: "p1", agentType: "explorer" }),
+      meta("plain", { projectId: "p1", cwd: "/wt/p1", updatedAt: 200 }),
+    ];
+    const out = groupWorkspaceSessions(metas, projects, workspaces, "wa", {});
+    const threads = out.projects.find((g) => g.project.id === "p1")!.threads;
+    expect(threads.map((t) => t.id)).toEqual(["plain", "master"]);
+    const master = threads[1];
+    expect(master.children?.map((c) => c.id)).toEqual(["b-build", "b-run", "b-plan2"]);
+    expect(master.children?.[1]).toMatchObject({ masterId: "master", provider: "claude", model: "claude-opus-5-5", activity: "Writing the view", threadType: "implementation" });
+    expect(master.children?.[1].agentType).toBeUndefined();
+    // The batch child's own subagents sit under it, not the master.
+    expect(master.children?.[1].children?.map((c) => c.id)).toEqual(["sub"]);
+    expect(cardThreads(threads).map((t) => t.id)).toEqual(["plain", "master", "b-build", "b-run", "b-plan2"]);
+  });
+
+  it("a batch child whose master is archived, or no longer a master, is a root row of its own", () => {
+    const masters = new Set(["master"]);
+    expect(batchHome(meta("c", { masterId: "master" }), masters)).toBe("master");
+    expect(batchHome(meta("c", { masterId: "other" }), masters)).toBeNull();
+    expect(batchHome(meta("c", { masterId: "master", archived: true }), masters)).toBeNull();
+    expect(batchHome(meta("c", { masterId: "master", parentId: "x" }), masters)).toBeNull();
+    expect(startedPlan(meta("c", { threadType: "planning", implementationId: "b" }))).toBe(true);
+    expect(startedPlan(meta("c", { threadType: "planning" }))).toBe(false);
+    expect(startedPlan(meta("c", { threadType: "implementation", implementationId: "b" }))).toBe(false);
+    const metas = [
+      meta("master", { projectId: "p1", cwd: "/wt/p1", isMaster: true, archived: true }),
+      meta("ex", { projectId: "p1", cwd: "/wt/p1", isMaster: false }),
+      meta("b1", { projectId: "p1", cwd: "/wt/p1", masterId: "master" }),
+      meta("b2", { projectId: "p1", cwd: "/wt/p1", masterId: "ex" }),
+    ];
+    const out = groupWorkspaceSessions(metas, projects, workspaces, "wa", {});
+    expect(out.projects.find((g) => g.project.id === "p1")!.threads.map((t) => t.id).sort()).toEqual(["b1", "b2", "ex"]);
   });
 
   it("treats a thread whose project is unknown as a loose chat", () => {

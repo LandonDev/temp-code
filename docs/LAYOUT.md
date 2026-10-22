@@ -195,7 +195,7 @@ in the whole pane, with Back.
 │  ☷  Live Activity strip  Implementation                                │
 │  ●  has a question — Ad Hoc or Debug?        (hover: ✉ ⏸ ■ ✕ at right) │
 │ Running  3                                                             │
-│  ☷  Home: Needs you, Running, Workspaces  Implementation          3/7  │
+│  ☷  Home: Needs you, Running, Workspaces  Implementation  3/7 ▬▬▬░░░░ ›│
 │  ▦  Running ios:test:client           ✺ Claude Fable 5.1  high 1M      │
 │       ✓ Read docs/IOS-DESIGN.md and the home model                     │
 │       ▦ Workspaces list with the project headers                       │
@@ -203,7 +203,7 @@ in the whole pane, with Back.
 │  ⌕  Pricing survey  Research                                           │
 │  ▦  Reading the third source                  ◉ gpt-6.1-sol  xhigh     │
 │       Two of five pricing pages read; Stripe and Paddle left           │
-│  ☷  Search screen  Implementation                                 0/3  │
+│  ☷  Search screen  Implementation  0/3 ░░░░░░░ ›                       │
 │  ▦  Writing SearchScreen.swift        ✺ Claude Fable 5.1  medium 1M    │
 │       ▦ Results list on the search model                               │
 │ Queued  1                                                              │
@@ -245,8 +245,10 @@ in the whole pane, with Back.
 - **A row** (`master/MasterRow.tsx`, the rules in `master/rowBody.ts`) is two
   lines on a 16px glyph column, and nothing on it is separated by a dot.
   Line one: the type's glyph in its tint (`THREAD_GLYPHS`), the 13px medium
-  title, the type word, and at the right the task tally ("3/7") once the
-  thread has a list. Line two: the status glyph (the matrix spinner, an
+  title, the type word, then the task tally once the thread has a list:
+  "3/7" and a 2px bar filled to done of total (the foot's meter at row
+  scale, `taskProgress` in rowBody.ts), inline after the type word, never
+  pinned to the right. Line two: the status glyph (the matrix spinner, an
   amber or red dot, a dashed ring while queued, a pause mark, a check once
   done) beside what the thread is doing (its `activity` while queued or
   working, the question or failure in amber or red while it needs you,
@@ -255,7 +257,12 @@ in the whole pane, with Back.
   in a quieter gray (the host's name first when the thread runs elsewhere).
   Under the lines, by type: an implementation its task list from the fold's
   board state (`session.thread.todos`), a check once done, the spinner on
-  the one in hand, a hollow ring ahead; a research or orchestration thread
+  the one in hand, a hollow ring ahead. The list is open while the thread
+  works or needs you and folded once it sits in Done (`tasksOpenByDefault`);
+  the tally is its disclosure, a chevron at its end turning when open, its
+  click never reaching the row, and the person's own open or close holds
+  while the row is on screen. The fold is the foot's height tween
+  (`TweenHeight`, a snap under reduced motion); a research or orchestration thread
   one summary line, the first line under `## State` in its notes, else its
   latest words, never the line two already says. Chat and plan rows carry
   the two lines only. Done and queued rows are dimmed.

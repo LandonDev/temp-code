@@ -1,5 +1,6 @@
+import { useReducedMotion } from "motion/react";
 import { useState, type KeyboardEvent, type ReactNode } from "react";
-import { Check, Circle, MessageSquare, Pause, Play, Square, X } from "../../../chrome/icons";
+import { Check, ChevronRight, Circle, MessageSquare, Pause, Play, Square, X } from "../../../chrome/icons";
 import { HarnessIcon } from "../../../chrome/HarnessIcon";
 import { ArchiveThreadDialog } from "../../../chrome/ThreadResourcesDialog";
 import * as commands from "../../../lib/tcserver/commands";
@@ -10,20 +11,23 @@ import { hasRunningTurn } from "../../../lib/threadBatch";
 import { useThreadNotes } from "../../../lib/threadNotes";
 import { loadThreadResources, useThreadResources } from "../../../lib/threadResources";
 import { modelLabel, TONE_CLASS } from "../../../lib/threads/agents";
+import { TweenHeight } from "../../../motion";
 import { MatrixSpinner, THREAD_GLYPHS, THREAD_TINTS } from "../bits";
 import { StatusGlyph } from "../fleet/rowBits";
 import { useAgentModel } from "../fleet/useFleetModel";
-import { rowBody, taskList, taskTally, whatLine } from "./rowBody";
+import { rowBody, taskList, taskProgress, tasksOpenByDefault, whatLine } from "./rowBody";
 import { typeWord, type MasterRowModel } from "./useMasterModel";
 
 /**
  * One row of the batch (docs/LAYOUT.md "Master"). Two lines: the type's
  * glyph, the title and the task tally; then the status glyph beside what
  * the thread is doing, and at the right the provider's mark, the model,
- * its effort and context. Under an implementation its task list; under a
- * research or orchestration thread one summary line. A click opens the
- * thread's full view in the board's place; hover shows Message, Pause or
- * Resume, Stop and Remove. Nothing on the row is separated by a dot.
+ * its effort and context. Under an implementation its task list, open
+ * while it works and folded once it is done, the tally its disclosure;
+ * under a research or orchestration thread one summary line. A click
+ * opens the thread's full view in the board's place; hover shows Message,
+ * Pause or Resume, Stop and Remove. Nothing on the row is separated by a
+ * dot.
  */
 
 export function MasterRow({
@@ -52,7 +56,13 @@ export function MasterRow({
   );
   const what = whatLine(meta, line, landed);
   const body = rowBody(meta, session, notes?.text, what?.text);
-  const tally = taskTally(taskList(session));
+  const progress = taskProgress(taskList(session));
+  // The person's own open or close holds while the row is on screen; until
+  // then the list follows the thread (open while it works, folded once done).
+  const [expanded, setExpanded] = useState<boolean | null>(null);
+  const tasksOpen = expanded ?? tasksOpenByDefault(meta.status);
+  const foldable = body?.kind === "tasks";
+  const reduce = useReducedMotion();
   const queued = meta.status === "queued";
   const settled = !queued && !what && !landed && meta.status !== "waiting" && meta.status !== "error";
   const dim = queued || meta.status === "idle" || meta.status === "stopped" || meta.status === "done";
@@ -66,7 +76,7 @@ export function MasterRow({
     setArchiving(true);
   };
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === "Enter") {
+    if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       onOpen(meta.id);
     }
@@ -98,11 +108,13 @@ export function MasterRow({
       data-type={meta.threadType ?? undefined}
       data-plan={plan?.id}
     >
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => onOpen(meta.id)}
         onKeyDown={onKey}
-        className="grid w-full grid-cols-[16px_1fr] gap-x-2 rounded-lg px-3 py-2 text-left"
+        data-tasks-open={foldable ? tasksOpen : undefined}
+        className="grid w-full cursor-default grid-cols-[16px_1fr] gap-x-2 rounded-lg px-3 py-2 text-left"
       >
         {/* Line one: the type's glyph, the title, the tally. */}
         <span className="flex h-[18px] items-center justify-center">
@@ -111,11 +123,11 @@ export function MasterRow({
         <span className="flex min-w-0 items-baseline gap-2 leading-[18px]">
           <span className={`min-w-0 truncate text-[13px] font-medium ${dim ? "text-content/60" : "text-content"}`}>{title || "Untitled"}</span>
           <span className="shrink-0 text-xs text-content/40">{typeWord(meta)}</span>
-          <span className="flex-1" />
-          {tally ? (
-            <span className="shrink-0 text-xs tabular-nums text-content/50 transition-opacity duration-100 group-hover:opacity-0 group-focus-within:opacity-0" data-tally>
-              {tally}
-            </span>
+          {progress ? (
+            <Tally
+              progress={progress}
+              fold={foldable ? { open: tasksOpen, onToggle: () => setExpanded(!tasksOpen) } : null}
+            />
           ) : null}
         </span>
 
@@ -133,7 +145,9 @@ export function MasterRow({
         {body?.kind === "tasks" ? (
           <>
             <span />
-            <TaskList tasks={body.tasks} dim={dim} />
+            <TweenHeight open={tasksOpen} animate={!reduce}>
+              <TaskList tasks={body.tasks} dim={dim} open={tasksOpen} />
+            </TweenHeight>
           </>
         ) : body?.kind === "summary" ? (
           <>
@@ -143,7 +157,7 @@ export function MasterRow({
             </span>
           </>
         ) : null}
-      </button>
+      </div>
 
       <div
         data-actions
@@ -162,6 +176,58 @@ export function MasterRow({
         />
       ) : null}
     </div>
+  );
+}
+
+/** The task tally right after the type word: "3/7" and a thin bar filled
+ *  to done of total, the foot's own meter (BatchFoot) at row scale. With a
+ *  task list under the row it is the list's disclosure too, a chevron at
+ *  its end turning when open; its click never reaches the row. */
+function Tally({ progress, fold }: { progress: { done: number; total: number }; fold: { open: boolean; onToggle: () => void } | null }) {
+  const { done, total } = progress;
+  const meter = (
+    <>
+      <span>
+        {done}/{total}
+      </span>
+      <span
+        className="block h-0.5 w-8 overflow-hidden rounded-full bg-content/10"
+        role="progressbar"
+        aria-label={`${done} of ${total} tasks done`}
+        aria-valuenow={done}
+        aria-valuemin={0}
+        aria-valuemax={total}
+      >
+        <span
+          className="block h-full rounded-full bg-content/40"
+          style={{ transform: `scaleX(${total ? done / total : 0})`, transformOrigin: "left", transition: "transform 200ms linear" }}
+        />
+      </span>
+    </>
+  );
+  if (!fold) {
+    return (
+      <span className="flex shrink-0 items-center gap-1.5 text-xs tabular-nums text-content/50" data-tally>
+        {meter}
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      aria-expanded={fold.open}
+      aria-label={`${fold.open ? "Hide" : "Show"} tasks`}
+      onClick={(e) => {
+        e.stopPropagation();
+        fold.onToggle();
+      }}
+      onKeyDown={(e) => e.stopPropagation()}
+      className="pressable -mx-1 flex shrink-0 items-center gap-1.5 rounded px-1 text-xs tabular-nums text-content/50 hover:text-content/80"
+      data-tally
+    >
+      {meter}
+      <ChevronRight className={`size-3 transition-transform duration-150 ease-(--ease-out) ${fold.open ? "rotate-90" : ""}`} strokeWidth={1.75} />
+    </button>
   );
 }
 
@@ -185,9 +251,9 @@ function ModelMark({ meta, hostName }: { meta: SessionMeta; hostName: string | n
 /** The implementation's tasks as a checklist: a check once done, the
  *  spinner on the one in hand, a hollow ring ahead. Progress reads down
  *  the glyph column. */
-export function TaskList({ tasks, dim = false }: { tasks: readonly TodoItem[]; dim?: boolean }) {
+export function TaskList({ tasks, dim = false, open = true }: { tasks: readonly TodoItem[]; dim?: boolean; open?: boolean }) {
   return (
-    <ul className="mt-1.5 flex flex-col gap-[3px]" data-tasks>
+    <ul className="flex flex-col gap-[3px] pt-1.5" data-tasks inert={!open} aria-hidden={!open}>
       {tasks.map((task, i) => (
         <li key={i} className="grid grid-cols-[12px_1fr] items-start gap-x-2 text-xs leading-4" data-task-status={task.status}>
           <span className="flex h-4 items-center justify-center">

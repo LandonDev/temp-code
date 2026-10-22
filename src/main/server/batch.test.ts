@@ -10,7 +10,7 @@ import type { GateRunOptions, GateRunResult } from './gateRun'
 import type { Landed } from './mergeReview'
 
 const meta = (id: string, patch: Partial<SessionMeta> = {}): SessionMeta =>
-  ({ id, parentId: null, archived: false, createdAt: 1, status: 'idle', title: `T ${id}`, projectId: 'p1', ...patch }) as SessionMeta
+  ({ id, parentId: null, archived: false, createdAt: 1, status: 'idle', title: `T ${id}`, projectId: 'p1', threadType: 'implementation', ...patch }) as SessionMeta
 
 /** Step specs by kind, the default names. */
 const S = {
@@ -430,14 +430,65 @@ describe('Batches: the end of the batch', () => {
     expect(w.reports[0].text).toContain('The batch is done: 1 of 2 landed · 1 left out.')
   })
 
-  it('nothing landed (research only): gate, release and deploy are skipped as such', async () => {
-    const w = world({ children: [meta('m'), meta('r', { masterId: 'm', createdAt: 2 })] })
+  it('nothing landed (research only): the land step says so, and the steps after it still run on the project checkout', async () => {
+    const w = world({ children: [meta('m'), meta('r', { masterId: 'm', createdAt: 2, threadType: 'research' })] })
     const b = w.make()
-    b.setRules('m', { steps: [S.land, S.gate, S.release, S.deploy] })
+    b.setRules('m', { steps: [S.land, S.gate, S.release] })
+    await b.review('m')
+    expect(w.runs.map((r) => r.step)).toEqual(['gate', 'release'])
+    expect(steps(b.get('m'))).toEqual({ land: ['passed', 'nothing landed'], gate: ['passed', 'passed in 1m 12s'], release: ['passed', 'release-277 tagged'] })
+    expect(w.reports[0].text).toContain('The batch is done: nothing landed · gate passed in 1m 12s · release-277 tagged in 0s.')
+  })
+
+  it('children that landed on their own (never through merge_branch) still get the gate and the release; deploy without a release step before it is skipped as needing one', async () => {
+    const w = world()
+    const b = w.make()
+    b.setRules('m', { steps: [S.land, S.gate, S.deploy] })
+    w.set('b', { status: 'idle' })
+    await b.review('m')
+    expect(w.runs.map((r) => r.step)).toEqual(['gate'])
+    expect(steps(b.get('m'))).toMatchObject({ land: ['passed', '0 of 2 landed · 2 left out'], gate: ['passed', 'passed in 1m 12s'], deploy: ['skipped', 'needs a release'] })
+    expect(w.deploy.requested).toEqual([])
+  })
+
+  it('the land step counts only threads with a branch to land: planners never, a chat or research thread once it landed', async () => {
+    const w = world({
+      children: [
+        meta('m'),
+        meta('plan', { masterId: 'm', createdAt: 2, threadType: 'planning', status: 'done', planCompletedAt: 5, implementationId: 'a' }),
+        meta('a', { masterId: 'm', createdAt: 3, planThreadId: 'plan' }),
+        meta('impl', { masterId: 'm', createdAt: 4, status: 'done' }),
+        meta('chat', { masterId: 'm', createdAt: 5, threadType: 'chat', status: 'done' }),
+        meta('research', { masterId: 'm', createdAt: 6, threadType: 'research', status: 'done' })
+      ]
+    })
+    const b = w.make()
+    b.setRules('m', { steps: [S.land] })
+    b.landed(w.landed('a'))
+    expect(b.get('m').steps[0].detail).toBe('1 of 2 landed')
+    b.landed(w.landed('chat'))
+    await b.review('m')
+    expect(steps(b.get('m'))).toEqual({ land: ['passed', '2 of 3 landed · 1 left out'] })
+    expect(b.get('m').steps[0].progress).toEqual({ done: 2, total: 3 })
+  })
+
+  it("a planning child whose plan is complete holds the batch open until its build exists; the build then counts as a child", async () => {
+    const w = world({ children: [meta('m'), meta('plan', { masterId: 'm', createdAt: 2, threadType: 'planning', status: 'done', planCompletedAt: 5 })] })
+    const b = w.make()
+    b.setRules('m', { steps: [S.land, S.gate] })
     await b.review('m')
     expect(w.runs).toHaveLength(0)
-    expect(steps(b.get('m'))).toMatchObject({ land: ['passed', '0 of 1 landed · 1 left out'], gate: ['skipped', 'nothing landed'], release: ['skipped', 'nothing landed'], deploy: ['skipped', 'nothing landed'] })
-    expect(w.deploy.requested).toEqual([])
+    expect(b.open('m')).toBe(true)
+    w.set('plan', { implementationId: 'b' })
+    w.sessions.set('b', meta('b', { masterId: 'm', createdAt: 3, planThreadId: 'plan', status: 'running' }))
+    await b.review('m')
+    expect(w.runs).toHaveLength(0)
+    w.set('b', { status: 'idle' })
+    b.landed(w.landed('b'))
+    await b.review('m')
+    expect(w.runs.map((r) => r.step)).toEqual(['gate'])
+    expect(steps(b.get('m'))).toEqual({ land: ['passed', '1 of 1 landed'], gate: ['passed', 'passed in 1m 12s'] })
+    expect(b.open('m')).toBe(false)
   })
 
   it('all at once: the held branches merge in landing order at the end, then the rest runs; a refused merge fails land and tells the master', async () => {

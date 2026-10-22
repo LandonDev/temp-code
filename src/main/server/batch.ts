@@ -96,6 +96,13 @@ export function batchChildren(registry: Pick<SessionRegistry, 'list'>, masterId:
     .sort((a, b) => a.createdAt - b.createdAt)
 }
 
+/** Whether a thread of this type lands a branch of its own: the land step
+ *  counts these; a planning thread has no branch, and a chat or research
+ *  thread counts only once it landed or holds one. */
+export function canLand(s: Pick<SessionMeta, 'threadType'>): boolean {
+  return s.threadType === 'implementation' || s.threadType === 'orchestration'
+}
+
 /** A branch merge_branch held under all-at-once: what the engine merges at the end. */
 export interface HeldLanding {
   sessionId: string
@@ -615,9 +622,21 @@ export class Batches {
     this.touch(row)
   }
 
+  /** The children with a branch to land: implementation and orchestration
+   *  threads, and any other that landed or holds a branch. A planning
+   *  thread has none, so the land step never counts it. */
+  private landers(row: StoredBatch, children = batchChildren(this.deps.registry, row.masterId)): SessionMeta[] {
+    return children.filter((s) => canLand(s) || row.landed.includes(s.id) || row.held.includes(s.id))
+  }
+
+  private leftOut(row: StoredBatch, children?: SessionMeta[]): number {
+    return this.landers(row, children).filter((s) => !row.landed.includes(s.id)).length
+  }
+
   private landDetail(row: StoredBatch, leftOut = 0): string {
-    const total = batchChildren(this.deps.registry, row.masterId).length
+    const total = this.landers(row).length
     const n = row.landed.length
+    if (n === 0 && total === 0) return 'nothing landed'
     return `${n} of ${Math.max(total, n)} landed${leftOut ? ` · ${leftOut} left out` : ''}`
   }
 
@@ -713,7 +732,11 @@ export class Batches {
 
   // ── the end of the batch ─────────────────────────────────────────────
 
+  /** A planning thread whose plan is complete is done only once its build
+   *  exists: the build starts after the plan settles (planFlow.ts), and in
+   *  that gap the batch must not end on the plan alone. */
   private done(s: SessionMeta): boolean {
+    if (s.threadType === 'planning' && s.planCompletedAt && !s.implementationId) return false
     if (DONE.has(s.status)) return true
     return s.status === 'idle' && (this.deps.registry.hasCompletedTurn?.(s.id) ?? true)
   }
@@ -797,8 +820,8 @@ export class Batches {
         this.deps.registry.append(id, { type: 'notice', kind: 'batch', message: `Merged by the batch: ${h.branch} → ${h.target} at ${result.sha.slice(0, 10)}${result.pushed ? ', pushed' : ''}` })
         this.save(row)
       }
-      row.leftOut = children.filter((s) => !row.landed.includes(s.id)).length
-      this.progress(row, land, { done: row.landed.length, total: Math.max(children.length, row.landed.length) })
+      row.leftOut = this.leftOut(row, children)
+      this.progress(row, land, { done: row.landed.length, total: Math.max(this.landers(row, children).length, row.landed.length) })
       this.end(row, land, 'passed', this.landDetail(row, row.leftOut))
       this.save(row)
       const outcome = await this.runSteps(master, row, project, target, 0)
@@ -831,18 +854,18 @@ export class Batches {
     from: number
   ): Promise<StepsOutcome> {
     const specs = this.specs(row)
-    const nothing = row.landed.length === 0
     const skip = (id: string, why: string): void => {
       this.end(row, id, 'skipped', why)
       this.save(row)
     }
+    // The steps run on the project checkout at the project branch's head,
+    // which does not depend on how the branches got there: a child that
+    // fast-forwarded the branch itself never called merge_branch, and
+    // "nothing landed" is a detail on the land step, never a reason to
+    // skip the rest.
     for (let i = from; i < specs.length; i++) {
       const spec = specs[i]
       if (spec.kind === 'land' || spec.when === 'each-landing') continue
-      if (nothing) {
-        skip(spec.id, 'nothing landed')
-        continue
-      }
       switch (spec.kind) {
         case 'gate': {
           if (!target || (await this.branchOf(project.cwd)) !== target) {
@@ -1113,7 +1136,7 @@ export class Batches {
         return `refused: the project checkout at ${project.cwd} is on ${onBranch ?? 'a detached HEAD'}, not ${target ?? 'the project branch'}`
       }
       // Children still unlanded are left out: the land step says so.
-      const left = batchChildren(this.deps.registry, master.id).filter((s) => !row.landed.includes(s.id)).length
+      const left = this.leftOut(row)
       row.leftOut = left
       this.end(row, this.landId(row), 'passed', this.landDetail(row, left))
       const gate = await this.runStep(master, row, gateSpec, { cwd: project.cwd, branch: target })
