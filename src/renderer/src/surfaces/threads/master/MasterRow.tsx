@@ -14,12 +14,14 @@ import { modelLabel, TONE_CLASS } from "../../../lib/threads/agents";
 import { TweenHeight } from "../../../motion";
 import { MatrixSpinner, THREAD_GLYPHS, THREAD_TINTS } from "../bits";
 import { StatusGlyph } from "../fleet/rowBits";
+import { agentSummaryParts, useAgentSummary, type AgentSummary } from "./agentSummary";
 import { rowBody, taskList, taskProgress, tasksOpenByDefault, whatLine } from "./rowBody";
 import { digestLine, typeWord, useBoardDigest, useRowMeta, type BoardRowRef, type RowHost } from "./useMasterModel";
 
 /**
  * One row of the batch (docs/LAYOUT.md "Master"). Two lines: the type's
- * glyph, the title and the task tally; then the status glyph beside what
+ * glyph, the title, the task tally and the thread's subagents (their
+ * count and the live ones by state, in the fleet header's words); then the status glyph beside what
  * the thread is doing, and at the right the host's dot and name when the
  * thread runs on another host than the master, the provider's mark, the
  * model, its effort and context. Under an implementation its task list,
@@ -29,10 +31,10 @@ import { digestLine, typeWord, useBoardDigest, useRowMeta, type BoardRowRef, typ
  * the thread's full view in the board's place; hover shows Message, Pause
  * or Resume, Stop and Remove. Every action goes to the row's own host (the
  * commands route by the thread's id). Nothing on the row is separated by
- * a dot.
+ * a dot but the agents line.
  *
- * The row reads its own meta, its plan's and its digest (the host's
- * `batch.board`), and takes nothing else that changes: one child's
+ * The row reads its own meta, its plan's, its digest (the host's
+ * `batch.board`) and its agents' summary, and takes nothing else that changes: one child's
  * activity re-renders this row alone, and nothing here loads a
  * transcript, polls a context or reads notes.
  */
@@ -54,14 +56,16 @@ export const MasterRow = memo(function MasterRow({
   const meta = useRowMeta(rowRef);
   const plan = useSessionMeta(rowRef.planId);
   const digest = useBoardDigest(rowRef.id);
+  const agents = useAgentSummary(rowRef.id);
   if (!meta) return null;
-  return <RowBodyView meta={meta} plan={plan} digest={digest} landed={landed} host={host} onOpen={onOpen} />;
+  return <RowBodyView meta={meta} plan={plan} digest={digest} agents={agents} landed={landed} host={host} onOpen={onOpen} />;
 });
 
 function RowBodyView({
   meta,
   plan,
   digest,
+  agents,
   landed,
   host,
   onOpen,
@@ -69,6 +73,7 @@ function RowBodyView({
   meta: SessionMeta;
   plan: SessionMeta | null;
   digest: ReturnType<typeof useBoardDigest>;
+  agents: AgentSummary | null;
   landed: boolean;
   host: RowHost | null;
   onOpen: (id: string, focus?: boolean) => void;
@@ -138,7 +143,7 @@ function RowBodyView({
         data-tasks-open={foldable ? tasksOpen : undefined}
         className="grid w-full cursor-default grid-cols-[16px_1fr] gap-x-2 rounded-lg px-3 py-2 text-left"
       >
-        {/* Line one: the type's glyph, the title, the tally. */}
+        {/* Line one: the type's glyph, the title, the tally, the agents. */}
         <span className="flex h-[18px] items-center justify-center">
           {Glyph ? <Glyph className={`size-3.5 ${dim ? "text-content/40" : tint}`} strokeWidth={1.75} /> : null}
         </span>
@@ -151,6 +156,7 @@ function RowBodyView({
               fold={foldable ? { open: tasksOpen, onToggle: () => setExpanded(!tasksOpen) } : null}
             />
           ) : null}
+          {agents ? <Agents summary={agents} dim={dim} /> : null}
         </span>
 
         {/* Line two: the status glyph beside the activity; the model at the right. */}
@@ -198,6 +204,22 @@ function RowBodyView({
         />
       ) : null}
     </div>
+  );
+}
+
+/** The thread's subagents, its whole tree: "4 agents · 2 working · 1 needs
+ *  approval", only the live states that have any, waiting and failed in
+ *  their tones (agentSummary.ts). */
+function Agents({ summary, dim }: { summary: AgentSummary; dim: boolean }) {
+  return (
+    <span className="min-w-0 truncate text-xs tabular-nums text-content/40" data-agents>
+      {agentSummaryParts(summary).map((part, i) => (
+        <span key={i} className={dim ? undefined : part.tone}>
+          {i > 0 ? <span className="mx-1.5 text-content/20">·</span> : null}
+          {part.text}
+        </span>
+      ))}
+    </span>
   );
 }
 

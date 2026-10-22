@@ -941,6 +941,54 @@ describe("a fleet of 300", () => {
   });
 });
 
+describe("a row's subagents", () => {
+  const agent = (id: string, parentId: string, status: SessionMeta["status"], over: Partial<SessionMeta> = {}) =>
+    meta({ id, parentId, masterId: null as unknown as string, status, threadType: null as unknown as SessionMeta["threadType"], ...over });
+  const agentsOf = (title: RegExp): string | null =>
+    screen.getByRole("button", { name: title }).querySelector("[data-agents]")?.textContent ?? null;
+
+  it("counts the whole tree, archived ones out, and says only the live states; a row with none says nothing", async () => {
+    seed([
+      meta({ id: "c-impl", title: "Home screen", status: "running" }),
+      meta({ id: "c-chat", title: "A question", status: "running", threadType: "chat", createdAt: 2 }),
+      agent("a1", "c-impl", "running"),
+      agent("a11", "a1", "waiting"),
+      agent("a111", "a11", "error"),
+      agent("a2", "c-impl", "idle"),
+      agent("a3", "c-impl", "running", { archived: true }),
+    ]);
+    render(<MasterView {...props} />);
+    await flush();
+    expect(agentsOf(/Home screen/)).toBe("4 agents·1 working·1 needs approval·1 failed");
+    const parts = [...screen.getByRole("button", { name: /Home screen/ }).querySelectorAll("[data-agents] > span")];
+    expect(parts.map((p) => p.className)).toEqual(["", "", "text-warning", "text-danger"]);
+    expect(agentsOf(/A question/)).toBeNull();
+    // Agents are not rows of the board.
+    expect(document.querySelectorAll("[data-status]")).toHaveLength(2);
+  });
+
+  it("follows the agents live and renders only the row whose summary changed", async () => {
+    seed([
+      meta({ id: "c-impl", title: "Home screen", status: "running" }),
+      meta({ id: "c-other", title: "Search", status: "running", createdAt: 2 }),
+      agent("a1", "c-impl", "running"),
+    ]);
+    render(<MasterView {...props} />);
+    await flush();
+    expect(agentsOf(/Home screen/)).toBe("1 agent·1 working");
+    rowReads.length = 0;
+    const { environmentId: _e, ...wire } = agent("a1", "c-impl", "idle");
+    act(() => link.push({ push: "session", session: wire } as unknown as ServerPush));
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(agentsOf(/Home screen/)).toBe("1 agent");
+    expect(rowReads.filter((id) => id === "c-other")).toEqual([]);
+    const { environmentId: _f, ...spawned } = agent("a2", "c-other", "starting", { createdAt: 9 });
+    act(() => link.push({ push: "session", session: spawned } as unknown as ServerPush));
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(agentsOf(/Search/)).toBe("1 agent·1 working");
+  });
+});
+
 describe("the batch across hosts", () => {
   it("a child on another host carries that host's glyph, under the offline tint while the host is out of reach", async () => {
     seed([meta({ id: "c-home", title: "Home", status: "running" })]);
@@ -971,6 +1019,22 @@ describe("the batch across hosts", () => {
     expect(again.getAttribute("data-host-offline")).toBeNull();
     expect(again.className).not.toContain("opacity-50");
     expect(again.querySelector("[data-model] [data-host-glyph]")?.getAttribute("title")).toBe("The box");
+  });
+
+  it("a child on another host counts its subagents from that host's rows", async () => {
+    seed([meta({ id: "c-home", title: "Home", status: "running" })]);
+    seedBox(
+      [
+        boxMeta({ id: "c-box", title: "Inbox", status: "running" }),
+        boxMeta({ id: "b1", parentId: "c-box", masterId: null as unknown as string, status: "running" }),
+        boxMeta({ id: "b11", parentId: "b1", masterId: null as unknown as string, status: "waiting" }),
+      ],
+      true,
+    );
+    render(<MasterView {...props} />);
+    await flush();
+    expect(screen.getByRole("button", { name: /Inbox/ }).querySelector("[data-agents]")?.textContent).toBe("2 agents·1 working·1 needs approval");
+    expect(screen.getByRole("button", { name: /Home/ }).querySelector("[data-agents]")).toBeNull();
   });
 
   it("a row of another host reads its digest from that host's batch.board, and an offline host is not asked", async () => {

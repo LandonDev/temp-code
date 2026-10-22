@@ -56,6 +56,20 @@ export function fleetCounts(agents: { status: SessionStatus }[]): FleetCounts {
   return out;
 }
 
+/** The words and tones a fleet count is said in (the fleet header, the
+ *  master board's agents line). */
+export const FLEET_WORDS: Record<keyof FleetCounts, string> = {
+  working: "working",
+  waiting: "needs approval",
+  failed: "failed",
+  done: "done",
+};
+
+export const FLEET_TONES: Partial<Record<keyof FleetCounts, string>> = {
+  waiting: "text-warning",
+  failed: "text-danger",
+};
+
 /** The catalog name for a server (provider, native model) pair. */
 export function modelLabel(provider: string, model: string): string {
   return findModel(pickerModelId(asHarness(provider), model))?.name ?? model;

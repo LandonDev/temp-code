@@ -4,7 +4,9 @@ import TempCodeContract
 
 /// One child of the batch on the board: the status mark in the mark column,
 /// the type glyph, the title with its type word and the task tally, then the
-/// activity line with the model mark at its right, then the body its type
+/// activity line with the model mark at its right, then the thread's
+/// subagents when it has any ("4 agents · 2 working · 1 needs approval", the
+/// whole tree, `MasterBoard.agentSummaries`), then the body its type
 /// carries (an implementation's tasks, a research or orchestration thread's
 /// one summary line). A plan and the build it started are one row under the
 /// plan's title. A child on another host names its host in the model mark
@@ -18,6 +20,8 @@ struct MasterRowView: View {
     let client: EnvironmentClient?
     let landed: Bool
     let hostName: String?
+    /// The thread's subagents; nil with none.
+    let agents: MasterBoard.AgentSummary?
     @Binding var tasksOpen: [String: Bool]
     let fleetSize: Int
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -36,7 +40,7 @@ struct MasterRowView: View {
         let tally = MasterBoard.tally(todos: todos, tasks: meta?.tasks)
         let dim = row.status == .queued || row.status == .idle || row.status == .stopped || row.status == .done
         let open = tasksOpen[row.key] ?? MasterBoard.tasksOpenByDefault(row.status)
-        let label = MasterRowLabel(row: row, what: what, extra: extra, tally: tally, foldable: foldable, open: open, dim: dim, live: live, hostName: hostName, reasoning: meta?.reasoning.rawValue ?? "", context1m: meta?.context1m ?? false) { toggle(open) }
+        let label = MasterRowLabel(row: row, what: what, agents: agents, extra: extra, tally: tally, foldable: foldable, open: open, dim: dim, live: live, hostName: hostName, reasoning: meta?.reasoning.rawValue ?? "", context1m: meta?.context1m ?? false) { toggle(open) }
 
         linked(label)
             .opacity(row.linkDown ? 0.6 : 1)
@@ -81,6 +85,7 @@ struct MasterRowView: View {
 private struct MasterRowLabel: View {
     let row: MasterBoard.Row
     let what: MasterBoard.WhatLine?
+    let agents: MasterBoard.AgentSummary?
     let extra: MasterBoard.Body?
     let tally: MasterBoard.Tally?
     let foldable: Bool
@@ -109,6 +114,9 @@ private struct MasterRowLabel: View {
                     ActivityLine(line: Fleet.Line(what?.text ?? "", tone: what?.tone ?? .muted), live: live)
                     Spacer(minLength: 8)
                     ModelMark(provider: row.provider, model: row.model, reasoning: reasoning, context1m: context1m, hostName: hostName)
+                }
+                if let agents {
+                    AgentsLine(summary: agents, dim: dim)
                 }
                 bodyView
             }
@@ -150,6 +158,34 @@ private struct MasterRowLabel: View {
                 .padding(.top, 2)
         default:
             EmptyView()
+        }
+    }
+}
+
+/// The thread's subagents in one meta line: the count, then each live state
+/// it has, needs approval in warning and failed in destructive (the fleet's
+/// tones); a dimmed row keeps them all secondary.
+private struct AgentsLine: View {
+    let summary: MasterBoard.AgentSummary
+    let dim: Bool
+
+    var body: some View {
+        summary.parts.enumerated().reduce(Text("")) { text, item in
+            let part = Text(item.element.text).foregroundStyle(tone(item.element.tone))
+            return item.offset == 0 ? text + part : text + Text(" · ").foregroundStyle(.tertiary) + part
+        }
+        .textStep(.meta)
+        .monospacedDigit()
+        .lineLimit(1)
+        .accessibilityLabel(summary.text)
+    }
+
+    private func tone(_ tone: Fleet.Tone) -> Color {
+        if dim { return Color(.secondaryLabel) }
+        return switch tone {
+        case .warning: Tint.warning
+        case .danger: Tint.destructive
+        case .muted: Color(.secondaryLabel)
         }
     }
 }

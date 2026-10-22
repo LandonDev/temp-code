@@ -20,6 +20,7 @@ import { BatchFoot } from "./master/BatchFoot";
 import { addMenuItems, adoptCandidates, boardMenuItems, doneRows, pairedProjectIds, pausableRows, pausedRows, type ArchiveWhich } from "./master/boardActions";
 import { ChildPane } from "./master/ChildPane";
 import { MasterRow } from "./master/MasterRow";
+import { AgentSummaryContext } from "./master/agentSummary";
 import {
   adoptThreads,
   archiveBatch,
@@ -103,7 +104,7 @@ export function MasterView(props: ThreadViewProps) {
   const { session } = props;
   const meta = useMetaById(session.id);
   const model = useMasterModel(session);
-  const { layout, batch, digests, loaded, landed, openId, setOpenId } = model;
+  const { layout, batch, digests, summaries, loaded, landed, openId, setOpenId } = model;
   const environments = useEnvironments();
   const statuses = useEnvironmentStatuses();
   const hostNames = useMemo(() => new Map(environments.map((e) => [e.id, e.name])), [environments]);
@@ -252,33 +253,35 @@ export function MasterView(props: ThreadViewProps) {
         </button>
       </div>
       <BoardDigestContext.Provider value={digests}>
-        <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-2.5 pt-1 pb-3" data-board-scroller>
-          <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
-            {virtualizer.getVirtualItems().map((v) => {
-              const item = items[v.index];
-              if (!item) return null;
-              return (
-                <div
-                  key={v.key}
-                  data-index={v.index}
-                  data-group={item.kind === "row" ? item.row.group : undefined}
-                  ref={virtualizer.measureElement}
-                  className="absolute top-0 left-0 w-full"
-                  style={{ transform: `translateY(${v.start}px)` }}
-                >
-                  {item.kind === "header" ? (
-                    <h3 className="flex items-baseline gap-2 px-3 pt-4 pb-1.5 text-xs font-normal text-content/40" data-group-header={item.group.id}>
-                      {item.group.label}
-                      <span className="tabular-nums text-content/30">{item.group.rows.length}</span>
-                    </h3>
-                  ) : (
-                    <MasterRow rowRef={item.row} landed={landed.has(item.row.id)} host={hostOf(item.row.environmentId)} onOpen={open} />
-                  )}
-                </div>
-              );
-            })}
+        <AgentSummaryContext.Provider value={summaries}>
+          <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-2.5 pt-1 pb-3" data-board-scroller>
+            <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+              {virtualizer.getVirtualItems().map((v) => {
+                const item = items[v.index];
+                if (!item) return null;
+                return (
+                  <div
+                    key={v.key}
+                    data-index={v.index}
+                    data-group={item.kind === "row" ? item.row.group : undefined}
+                    ref={virtualizer.measureElement}
+                    className="absolute top-0 left-0 w-full"
+                    style={{ transform: `translateY(${v.start}px)` }}
+                  >
+                    {item.kind === "header" ? (
+                      <h3 className="flex items-baseline gap-2 px-3 pt-4 pb-1.5 text-xs font-normal text-content/40" data-group-header={item.group.id}>
+                        {item.group.label}
+                        <span className="tabular-nums text-content/30">{item.group.rows.length}</span>
+                      </h3>
+                    ) : (
+                      <MasterRow rowRef={item.row} landed={landed.has(item.row.id)} host={hostOf(item.row.environmentId)} onOpen={open} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        </AgentSummaryContext.Provider>
       </BoardDigestContext.Provider>
       {loaded ? (
         <BatchFoot

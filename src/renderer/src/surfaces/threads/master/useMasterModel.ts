@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   BATCH_STEP_LOG_LINES,
   DEFAULT_BATCH_RULES,
@@ -10,6 +10,7 @@ import {
 } from "@server/shared/contract-batch";
 import { batchThreadId, remoteArchivePlan, type ArchiveWhich } from "./boardActions";
 import { stepsOf } from "./steps";
+import { AgentSummaries } from "./agentSummary";
 import { registry } from "../../../lib/connection";
 import { useEnvironmentStatuses } from "../../../lib/connection/status";
 import * as commands from "../../../lib/tcserver/commands";
@@ -730,12 +731,27 @@ export function rowModels(layout: BoardLayout): MasterRowModel[] {
   return out;
 }
 
+/** The rows' subagent summaries: rebuilt from the store's metas on every
+ *  meta change and every new layout, waking only the rows whose own changed. */
+export function useAgentSummaries(masterId: string, layout: BoardLayout): AgentSummaries {
+  const summaries = useMemo(() => new AgentSummaries(), [masterId]);
+  useLayoutEffect(() => {
+    const ids = layout.rows.map((r) => r.id);
+    const run = () => summaries.update(ids, sessionStore.metas());
+    run();
+    return sessionStore.onMetaChange(run);
+  }, [layout, summaries]);
+  return summaries;
+}
+
 // ── the model ───────────────────────────────────────────────────────────
 
 export type MasterModel = {
   layout: BoardLayout;
   batch: BatchState;
   digests: BoardDigests;
+  /** Each row's subagents, from one index of the store per meta change. */
+  summaries: AgentSummaries;
   /** The first `batch.board` answer is in. */
   loaded: boolean;
   landed: ReadonlySet<string>;
@@ -756,11 +772,12 @@ export function useMasterModel(master: Pick<SessionMeta, "id" | "environmentId">
     [layout, master.environmentId, live],
   );
   useFarDigests(master.id, farHosts, board.digests);
+  const summaries = useAgentSummaries(master.id, layout);
   const landed = useMemo(() => new Set(board.state.landed), [board.state.landed]);
   const [openId, setOpenId] = useState<string | null>(null);
   // A child that left the batch (archived, removed) closes its view.
   useEffect(() => {
     if (openId && !layout.rows.some((r) => r.id === openId)) setOpenId(null);
   }, [layout, openId]);
-  return { layout, batch: board.state, digests: board.digests, loaded: board.loaded, landed, openId, setOpenId };
+  return { layout, batch: board.state, digests: board.digests, summaries, loaded: board.loaded, landed, openId, setOpenId };
 }

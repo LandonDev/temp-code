@@ -179,6 +179,77 @@ public enum MasterBoard {
         return out
     }
 
+    // MARK: agents
+
+    /// A row's subagents: the count of every unarchived session under the
+    /// child by the parentId chain (subagents of subagents too) and the live
+    /// ones in the fleet's buckets (the desktop's master/agentSummary.ts).
+    public struct AgentSummary: Hashable, Sendable {
+        public let total: Int
+        public let working: Int
+        public let waiting: Int
+        public let failed: Int
+
+        public init(total: Int, working: Int, waiting: Int, failed: Int) {
+            self.total = total
+            self.working = working
+            self.waiting = waiting
+            self.failed = failed
+        }
+
+        /// "4 agents", then each nonzero live state in the fleet header's
+        /// words and tones: 4 agents · 2 working · 1 needs approval · 1 failed.
+        /// Done ones are in the count only.
+        public var parts: [Fleet.Line] {
+            var out = [Fleet.Line("\(total) \(total == 1 ? "agent" : "agents")", tone: .muted)]
+            if working > 0 { out.append(Fleet.Line("\(working) working", tone: .muted)) }
+            if waiting > 0 { out.append(Fleet.Line("\(waiting) needs approval", tone: .warning)) }
+            if failed > 0 { out.append(Fleet.Line("\(failed) failed", tone: .danger)) }
+            return out
+        }
+
+        public var text: String { parts.map(\.text).joined(separator: " · ") }
+    }
+
+    /// Every unarchived session under `rootId` in `index` (children by parent
+    /// id, archived ones included so their own children still count).
+    public static func subtree(of rootId: String, index: [String: [SessionMeta]]) -> [SessionMeta] {
+        var out: [SessionMeta] = []
+        var seen: Set<String> = [rootId]
+        var stack = [rootId]
+        while let id = stack.popLast() {
+            for meta in index[id] ?? [] where seen.insert(meta.id).inserted {
+                stack.append(meta.id)
+                if !meta.archived { out.append(meta) }
+            }
+        }
+        return out
+    }
+
+    /// The count and the live states; nil with no agents.
+    public static func agentSummary(_ agents: [SessionMeta]) -> AgentSummary? {
+        guard !agents.isEmpty else { return nil }
+        let c = Fleet.counts(agents.map(\.status))
+        return AgentSummary(total: agents.count, working: c.working, waiting: c.waiting, failed: c.failed)
+    }
+
+    /// Each row's summary by row key, from one parent index per host: a far
+    /// row counts from its own host's sessions (`sessionsOf(environmentId)`,
+    /// nil = this host); a row with no agents is absent.
+    public static func agentSummaries(_ rows: [Row], sessionsOf: (String?) -> [SessionMeta]) -> [String: AgentSummary] {
+        var indexes: [String: [String: [SessionMeta]]] = [:]
+        var out: [String: AgentSummary] = [:]
+        for row in rows {
+            let host = row.environmentId ?? ""
+            if indexes[host] == nil {
+                indexes[host] = Dictionary(grouping: sessionsOf(row.environmentId).filter { $0.parentId != nil }, by: { $0.parentId ?? "" })
+            }
+            let index = indexes[host] ?? [:]
+            if let summary = agentSummary(subtree(of: row.sessionId, index: index)) { out[row.key] = summary }
+        }
+        return out
+    }
+
     // MARK: words
 
     /// "Implementation", "Plan", "Project plan", "Orchestration", "Research", "Chat"; "" for nil/unknown.

@@ -1932,7 +1932,14 @@ this is the short one.
   sends one, overrides a row's host and status, `mergeBatchChildren`); a
   row on another host than the master's carries that host's dot and name
   in its model mark (`rowHost`, the chip's `hostTone`) and sits under the
-  offline tint while that host's link is not open. A row's click puts the
+  offline tint while that host's link is not open. A row whose thread has
+  subagents says so after its tally, "4 agents · 2 working · 1 needs
+  approval": the whole tree by the parentId chain, archived ones out, a far
+  child's from its host's rows, in the fleet header's words
+  (`master/agentSummary.ts`: one parent index per meta change, a row
+  re-rendered only when its own summary changed; the phone's
+  `MasterBoard.agentSummaries` the same, as a meta line under the
+  activity). A row's click puts the
   child's full view in the whole pane with one Back control
   (`master/ChildPane.tsx`, given the row's host; Escape and ⌘↩ go back;
   the board keeps its scroll). The title bar's ⋯ menu is the batch's
