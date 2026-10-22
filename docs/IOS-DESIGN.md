@@ -292,54 +292,84 @@ Segments: **Board** (default) and **Chat**.
 The board is the desktop's `ImplementationView` in one column, Reminders
 meets a build log: progress visible at a glance, the current task impossible
 to miss, nothing shouting. Its pieces live in
-`ios/TempCode/Sources/Thread/ImplementationBoardView.swift` and
-`BoardStyles.swift`; the pure selectors in the client package's
-`Rendering/Board.swift` and `Rendering/BoardSections.swift`.
+`ios/TempCode/Sources/Thread/ImplementationBoardView.swift`,
+`BoardStyles.swift` (the board's metrics on `Layout`, the pass wheel's
+`PassTint`, the progress line, the status glyph) and `BoardOutcomes.swift`
+(the landing rows); the pure selectors in the client package's
+`Rendering/Board.swift` and `Rendering/BoardSections.swift`. Every length,
+step, radius and motion value is the kit's (`Layout`, `TextStep`, `Radius`,
+`Motion`); the board names none of its own.
 
 1. **Goal line** from the plan file when seeded, `subheadline`, dim. Under
    it the **progress line**: a 3 pt capsule track (`quaternarySystemFill`),
    the done share in the success tint, the task under way reaching one step
-   further at the same tint at 35 %, and `2 of 5` in `caption` tabular
-   digits beside it (success once complete). Never a percentage. The fill
-   moves with the row-expand spring; the count ticks with `numericText`.
+   further at the same tint at 35 %, and `2 of 5` in the stamp step beside
+   it (success once complete). Never a percentage. The fill moves with the
+   row-expand spring; the count rolls with `numericText` on `Motion.numeric`.
    The line reads the newest pass that had tasks.
 2. **Passes**: once two passes have earned a row, a header per pass on the
-   chrome step: a 7 pt dot in the desktop's pass colour (green, sky, violet,
-   amber, rose, cyan, lime, fuchsia, by pass number), `Pass n` semibold
-   secondary, the user's request for that round (first line, tertiary; the
-   first pass leaves it to the goal line), and a settled pass's `done/total`
-   trailing. The current pass leaves its count to the progress line. A
-   single pass has no header.
-3. **Todos**: a row per todo, 44 pt minimum, the status glyph in a 20 pt
-   column (`circle` tertiary pending, the spinner tinted success while the
-   thread works on it, `circle.dotted` when in progress but not running,
-   `checkmark.circle.fill` success when done; stroke follows the regular
-   text weight), the content, the duration in `caption` tabular digits once
-   done. The **running row** is the bright one: `label`, medium, on a field
-   in the success tint at 6 % (radius 12, inset 8 from the edge with 8 of
-   padding so the glyph column still starts at 16). Done rows step to
-   `secondaryLabel`, pending to `tertiaryLabel`. A glyph changing state
-   swaps with scale 0.25→1, opacity 0→1, blur 4→0, `spring(0.3, bounce 0)`;
-   opacity alone under reduced motion. A row with a trace carries a
-   `chevron.right` (caption2 semibold, tertiary) that turns 90° on the
-   expand spring. Tap a row to expand its trace: the tool chips (the
-   transcript's `ToolChip`, as it is) and quiet notes that landed while it
-   was in progress, mapped by the harness's todo state as on the desktop
+   chrome step: a `Layout.dotSize` dot in the desktop's pass colour (green,
+   sky, violet, amber, rose, cyan, lime, fuchsia, by pass number; `PassTint`),
+   `Pass n` meta semibold, the user's request for that round (first line,
+   tertiary; the first pass leaves it to the goal line), and a settled
+   pass's `done/total` trailing. The current pass leaves its count to the
+   progress line. A single pass has no header.
+3. **Todos**: a row per todo, `Layout.rowHeight` minimum, the status glyph in
+   the `Layout.glyphWidth` column (`circle` tertiary pending, the spinner
+   tinted success while the thread works on it, `circle.dotted` when in
+   progress but not running, `checkmark.circle.fill` success when done; the
+   stroke follows the text's weight, medium on the live row), the content,
+   the duration in the stamp step once done (the live row's ticks each
+   second). The **running row** is the bright one: `label`, medium, on a
+   field in the success tint at 6 % (`Radius.field`, inset 8 from the edge
+   with 8 of padding so the glyph column still starts at `Layout.textEdge`).
+   Done rows step to `secondaryLabel`, pending to `tertiaryLabel`; the colour
+   change rides `Motion.crossFade`, the weight change snaps. A glyph changing
+   state swaps with the kit's icon swap (scale 0.25→1, opacity 0→1, blur
+   4→0, `Motion.iconSwap`; a cross-fade under reduced motion). A row with a
+   trace carries a `chevron.right` (caption2 semibold, tertiary) that turns
+   90° on the expand spring. Tap a row to expand its trace: the tool chips
+   (the transcript's `ToolChip`, as it is) and quiet notes that landed while
+   it was in progress, mapped by the harness's todo state as on the desktop
    (`groupByTodo`), inset to the text column. Exactly one row expands at a
    time; the running row is open by default, and follows the harness when
-   it moves to the next todo. Expand is `spring(0.35, bounce 0)` with the
-   content fading in 150 ms after the height starts; collapse 200 ms
-   ease-out.
-4. **Changes**: a `Changes` section header whose count ticks with
-   `numericText`, then file rows as edits land, `+n −m`, grouped by todo
-   (the group label `caption` tertiary at 16, setup first; no labels when
-   the pass has one todo), tap opens the diff.
-5. **Needs you** cards inline in order, with the row-appear transition.
+   it moves to the next todo. Expand is `Motion.expand` with the content
+   fading in on `Motion.expandContent`; collapse is `Motion.collapse`.
+4. **Changes**: a `Changes` section header whose count rolls (`CountText`),
+   then file rows as edits land, `+n −m`, grouped by todo (the group label
+   meta at `Layout.textEdge`, setup first; no labels when the pass has one
+   todo), tap opens the diff.
+5. **Needs you** cards inline in order, each with the row-appear transition
+   inside a container that animates the list on `Motion.rowAppear`.
 6. **Closing report**: a `Report` section header, then the agent's final
    markdown once all todos are complete, or the answer when a follow-up
    produced no todos.
 7. **Fleet**: when the thread spawned subagents, an `Agents` header with
    the count and their rows under the plan, pushing to the agent's detail.
+8. **Landing**: after Changes, the host's own lines in the order they landed
+   (`OutcomeRows`; the fold keeps every notice's payload on
+   `SystemLine.notice`, `Board.isOutcome` picks the ones with a gate or a
+   review, `RoundData.outcomes` files them per pass). A **gate row**
+   (`GateLine`, the desktop's `gateLine`): "Typecheck passed on <branch>"
+   behind `checkmark.circle` in success; a failed one in the destructive
+   tint with its error count or failed step, and the log's last 20 lines
+   (mono caption2 on the chrome step, `Radius.row`) behind a tap on
+   `Motion.expand`. A **review row** (`ReviewLine`, the desktop ReviewCard's
+   lead and summary): "Reviewed by GPT-6.1 Sol" in the title step with "no
+   blocking findings, 1 minor" under it, `AgoText` trailing. A held review
+   sits on the needs-you field (`Radius.field`, padding 12) with the lead
+   medium, its findings as plain rows under it (`file:line` mono, the
+   summary meta, the failure scenario caption2 tertiary; minor ones a step
+   dimmer, or folded into "and N minor" past five findings) and a Reviewer
+   pill pushing to the reviewer thread. No Merge anyway on the phone: the
+   override needs the approve capability and stays on the desktop.
+9. **Plan line**: under the goal, "Planned in <plan title>" (`map` glyph,
+   violet, meta; 30 pt in the header, a 44 pt hit area) when the host linked
+   a planning thread (`planThreadId`); tap pushes it; absent when the thread
+   is unknown here.
+10. **Queued**: a build created behind a sibling (`after`) draws the goal
+    line and one row, the queued dot with the host's "Queued · waiting for
+    <sibling>" line; nothing else is drawn, never "No tasks yet".
 
 Chat is the mechanics transcript (thinking, reads, commands, prose), the same
 Chat body as above.

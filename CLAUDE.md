@@ -1019,11 +1019,17 @@ routed to (aliax-core's `forward`). Two listeners:
   the shell routes to is `ThreadScreen(client:sessionId:targetSeq:)`, one
   screen for every type and for a subagent's detail. The models they read
   are the client package's `Rendering/`: `ThreadFold` (the desktop's fold
-  with round, todo and pass stamps and the `BoardState` of todos.ts), the
+  with round, todo and pass stamps and the `BoardState` of todos.ts; a
+  `notice` row keeps its whole payload on `SystemLine.notice`), the
   `Board`, `ResearchBoard`, `Fleet`, `PlanDoc` and `Inbox` selectors (the
   Inbox's sort, status words, seen marks and the patch split by file), and
   the `MarkdownCache` that parses rows off the main actor; `threads[id].fold`
-  stays current incrementally. The plan or report file is read with
+  stays current incrementally. The implementation board is
+  `Thread/ImplementationBoardView.swift` with `BoardStyles.swift` and
+  `BoardOutcomes.swift` (gate and review rows from `RoundData.outcomes`,
+  the words from `BoardSections.swift`'s `GateLine` and `ReviewLine`);
+  docs/IOS-DESIGN.md "Implementation: the board is the hero" is its spec.
+  The plan or report file is read with
   `file.read` (in the subset since L4), polled 1.5 s running / 8 s idle
   while the screen shows; the plan page parses it with the client package's
   `PlanDocument` (nested and task lists, tables, frontmatter, sections) and

@@ -144,6 +144,7 @@ private struct GoalHeader: View {
 
 /// "Planned in <title>": where the build came from; tap pushes the planning
 /// thread. Drawn only for a thread this host knows, never a bare "a thread".
+/// The line takes 30 pt of the header; its hit area is the full 44.
 private struct PlanLine: View {
     let plan: SessionMeta
 
@@ -158,10 +159,11 @@ private struct PlanLine: View {
                     .textStep(.meta)
                     .lineLimit(1)
             }
-            .frame(minHeight: 28, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: Layout.rowHeight, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.pressable)
+        .padding(.vertical, (30 - Layout.rowHeight) / 2)
         .accessibilityLabel("Planned in \(title)")
         .accessibilityHint("Opens the planning thread")
     }

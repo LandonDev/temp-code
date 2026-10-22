@@ -257,6 +257,9 @@ at(THREAD_IMPL, [
   todos('t4', [['Add the dark palette to Theme.ts', 'completed'], ['Wire the toggle in SettingsView', 'completed'], ['Run the settings tests', 'completed']]),
   answer('i3', 'Dark mode is in.\n\n- `Theme.ts` exports a `dark` palette and `theme(mode)`\n- `SettingsView` shows the toggle under **Appearance**\n- the four settings tests pass\n\nNothing else changed.'),
   { type: 'turn-complete', costUsd: 0.42, inputTokens: 18_400, outputTokens: 2_100 },
+  // The pass landed through merge_branch: the gate run and the review verdict, the board's landing rows.
+  { type: 'notice', kind: 'gate', message: 'Typecheck passed on ios/dark-mode', gate: { step: 'typecheck', branch: 'ios/dark-mode', ok: true, log: '$ bun run typecheck\n✓ typecheck 14s', at: Date.now() - 90_000 } },
+  { type: 'notice', kind: 'review', message: 'Reviewed by GPT-6.1 Sol: no blocking findings (1 minor)', review: { runId: 'r1', reviewerId: 'ios-impl-review', provider: 'codex', model: 'gpt-6.1-sol', outcome: 'pass', branch: 'ios/dark-mode', target: 'master', blocking: [], minor: [{ file: 'src/settings/Theme.ts', line: 3, summary: 'The mode parameter is untyped at the call site', failure_scenario: 'A caller passes "Dark" and gets the light theme', verdict: 'PLAUSIBLE' }], merged: true, pushed: true, minutes: 2.4 } },
   status('idle'),
   { type: 'user-text', text: 'Also add a "System" option that follows the OS.', newPass: true },
   todos('t5', [['Add the system option to the theme hook', 'in_progress'], ['Cover it in the settings tests', 'pending']]),
@@ -267,6 +270,47 @@ at(THREAD_IMPL, [
   ]),
   { type: 'approval-request', requestId: 'ap1', toolName: 'Bash', title: 'bun run build', input: { command: 'bun run build' } },
   status('waiting')
+])
+
+// The reviewer the review notice names, a settled child; the Reviewer pill pushes to it.
+await make('ios-impl-review', { parentId: THREAD_IMPL, projectId: project.id, agentType: 'reviewer', provider: 'codex', model: 'gpt-6.1-sol', title: 'Review: ios/dark-mode → master' })
+say('ios-impl-review', 'Review the diff of ios/dark-mode against master.', 'One minor finding, nothing blocking.')
+
+// An implementation whose landing was held: a failed typecheck gate, then a
+// review with one blocking finding, so the board shoots both failure rows.
+export const THREAD_HELD = 'ios-held'
+await makeTyped(THREAD_HELD, 'implementation', 'Rename the export flag')
+at(THREAD_HELD, [
+  { type: 'user-text', text: 'Rename the --csv flag to --export everywhere it is read.', newPass: true },
+  todos('h1', [['Rename the flag in the parser', 'in_progress'], ['Update the two call sites', 'pending']]),
+  ...edit('he1', 'src/cli/flags.ts', 2, 2, [
+    { kind: 'del', number: 8, text: "  csv: { type: 'boolean' }," },
+    { kind: 'add', number: 8, text: "  export: { type: 'boolean' }," }
+  ]),
+  todos('h2', [['Rename the flag in the parser', 'completed'], ['Update the two call sites', 'in_progress']]),
+  ...edit('he2', 'src/cli/run.ts', 1, 1, [
+    { kind: 'del', number: 40, text: '  if (flags.csv) exportCsv()' },
+    { kind: 'add', number: 40, text: '  if (flags.export) exportCsv()' }
+  ]),
+  todos('h3', [['Rename the flag in the parser', 'completed'], ['Update the two call sites', 'completed']]),
+  answer('h4', 'The flag is `--export` now; both call sites follow.'),
+  { type: 'turn-complete', costUsd: 0.11, inputTokens: 6_200, outputTokens: 800 },
+  { type: 'notice', kind: 'gate', message: 'Typecheck failed on ios/export-flag · 2 errors', gate: { step: 'typecheck', branch: 'ios/export-flag', ok: false, log: "$ bun run typecheck\nsrc/cli/report.ts(12,15): error TS2339: Property 'csv' does not exist on type 'Flags'.\nsrc/cli/report.test.ts(30,22): error TS2339: Property 'csv' does not exist on type 'Flags'.\n\nFound 2 errors in 2 files.\n", at: Date.now() - 300_000 } },
+  { type: 'notice', kind: 'review', message: 'Reviewed by GPT-6.1 Sol: 1 blocking finding, merge held', review: { runId: 'r2', reviewerId: 'ios-held-review', provider: 'codex', model: 'gpt-6.1-sol', outcome: 'held', branch: 'ios/export-flag', target: 'master', blocking: [{ file: 'src/cli/report.ts', line: 12, summary: 'report.ts still reads flags.csv, so the report never exports', failure_scenario: 'Run with --export: the report step sees csv undefined and skips the write', verdict: 'CONFIRMED' }], minor: [{ file: 'docs/cli.md', line: 44, summary: 'The docs still name --csv', failure_scenario: 'A reader follows the docs and the flag is unknown' }], merged: false, pushed: false, minutes: 3.1 } },
+  status('idle')
+])
+await make('ios-held-review', { parentId: THREAD_HELD, projectId: project.id, agentType: 'reviewer', provider: 'codex', model: 'gpt-6.1-sol', title: 'Review: ios/export-flag → master' })
+say('ios-held-review', 'Review the diff of ios/export-flag against master.', 'One blocking finding: report.ts still reads flags.csv.')
+
+// A build queued behind the running one (`after`): created, never booted,
+// so the board draws the goal and the host's line alone. The status row is
+// what the scheduler appends when it holds a first message (sessions.ts);
+// the scheduler's tick writes its "Queued · waiting for …" activity line.
+export const THREAD_QUEUED = 'ios-queued'
+await makeTyped(THREAD_QUEUED, 'implementation', 'Add the CSV import', { after: 'ios-running' })
+at(THREAD_QUEUED, [
+  { type: 'user-text', text: 'Add a CSV import beside the export on the billing page.', newPass: true },
+  { type: 'status', status: 'queued' }
 ])
 
 // Planning: a plan file on disk.
@@ -877,7 +921,7 @@ process.stdout.write(
     threadB: THREAD_B,
     localPort: server.port,
     shot,
-    threads: { implementation: THREAD_IMPL, planning: THREAD_PLAN, orchestration: THREAD_ORCH, research: THREAD_RESEARCH, chat: THREAD_CHAT, long: THREAD_LONG },
+    threads: { implementation: THREAD_IMPL, planning: THREAD_PLAN, orchestration: THREAD_ORCH, research: THREAD_RESEARCH, chat: THREAD_CHAT, long: THREAD_LONG, held: THREAD_HELD, queued: THREAD_QUEUED },
     projectId: project.id,
     workspaceId: workspace.id
   }) + '\n'
