@@ -744,7 +744,8 @@ describe('the APNs payloads match the shared fixtures', () => {
   it('validates the new keys on the routes: hostName as a short string, unit as tasks or threads, the batch and stopped kinds, the stopped phase', async () => {
     const { env: hubEnv } = await apnsEnv()
     const auth = await register()
-    await registerDevice(hubEnv, auth)
+    // The batch and stopped notices below ride the `failed` event, so this device asks for it.
+    await registerDevice(hubEnv, auth, { events: ['needs_you', 'finished', 'failed'] })
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(''))
     expect((await callWith(hubEnv, '/v1/notify', 'POST', { ...apnsNotice, hostName: 'x'.repeat(81) }, auth)).status).toBe(400)
     expect((await callWith(hubEnv, '/v1/notify', 'POST', { ...apnsNotice, hostName: 42 }, auth)).status).toBe(400)
