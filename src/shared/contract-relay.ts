@@ -212,8 +212,33 @@ export const RELAY_METHODS: Partial<Record<ClientRequest['method'], 'link' | 'sc
   'host.devices.unwatch': 'link',
   'host.simulator.shutdown': 'link',
   'host.simulator.delete': 'link',
-  'host.device.openXcode': 'screen'
+  'host.device.openXcode': 'screen',
+  // steering a Mac thread's batch, plan, review, resources and routing (both hosts gate the caps)
+  'session.reroute': 'link',
+  'session.setMaster': 'link',
+  'session.batch': 'link',
+  'review.override': 'link',
+  'resources.remove': 'link',
+  'batch.setRules': 'link',
+  'batch.stopStep': 'link',
+  'batch.adopt': 'link',
+  'batch.archive': 'link',
+  'projectPlan.pin': 'link',
+  'projectPlan.tick': 'link',
+  'projectPlan.link': 'link',
+  'macBridge.thread.get': 'link',
+  // the Mac's project and workspace settings, as the phone's settings sheet edits them (admin on both hosts)
+  'accounts.list': 'link',
+  'project.setAccounts': 'link',
+  'workspace.setAccounts': 'link',
+  'project.setPreamble': 'link',
+  'workspace.setPreamble': 'link',
+  'plans.set': 'link',
+  'review.set': 'link'
 }
+
+/** Methods the phone speaks that never cross, by design: the box's own deploy trigger means nothing under another host's id. */
+export const RELAY_NOT_CARRIED: readonly ClientRequest['method'][] = ['host.deployStatus', 'host.deploy', 'host.log']
 
 /** Methods a relayed lane answers on the box itself (the key's own rows). */
 export const RELAY_BOX_LOCAL: readonly ClientRequest['method'][] = [

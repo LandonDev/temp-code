@@ -6,6 +6,7 @@ import { ClientRequestSchema } from './contract'
 import {
   RELAY_BOX_LOCAL,
   RELAY_METHODS,
+  RELAY_NOT_CARRIED,
   linkDownText,
   relayForbidden,
   relayRefusal,
@@ -105,7 +106,8 @@ describe('RELAY_METHODS', () => {
     const source = readFileSync(resolve(__dirname, '../../scripts/gen-swift-contract.ts'), 'utf8')
     const spoken = [...source.matchAll(/^\s*method\('([^']+)'/gm)].map((m) => m[1])
     expect(spoken.length).toBeGreaterThan(20)
-    const relayed = new Set<string>([...Object.keys(RELAY_METHODS), ...RELAY_BOX_LOCAL])
+    const relayed = new Set<string>([...Object.keys(RELAY_METHODS), ...RELAY_BOX_LOCAL, ...RELAY_NOT_CARRIED])
+    for (const m of RELAY_NOT_CARRIED) expect(RELAY_METHODS[m as keyof typeof RELAY_METHODS], m).toBeUndefined()
     // The key's own management rows (remote.*) are the box's business and never cross; everything else must.
     const missing = spoken.filter((m) => !relayed.has(m) && !m.startsWith('remote.'))
     expect(missing).toEqual([])
