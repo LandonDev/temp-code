@@ -69,6 +69,23 @@ describe("childrenOf", () => {
     );
     expect(list.map((m) => m.id)).toEqual(["x"]);
   });
+
+  it("lists a child spawned on another host under its parent, with its host on the row", () => {
+    const box = `env_${"b".repeat(22)}`;
+    const list = childrenOf(
+      [
+        meta("p"),
+        meta("here", { parentId: "p", createdAt: 1 }),
+        meta("far", { parentId: "p", environmentId: box, status: "running", createdAt: 2 }),
+        meta("other", { parentId: "q", environmentId: box }),
+      ],
+      "p",
+    );
+    expect(list.map((m) => [m.id, m.environmentId])).toEqual([
+      ["far", box],
+      ["here", "local"],
+    ]);
+  });
 });
 
 describe("fleetCounts", () => {

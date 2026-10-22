@@ -35,7 +35,10 @@ export function sortAgents<T extends { status: SessionStatus; createdAt: number 
   );
 }
 
-/** Unarchived children of `parentId`, ranked. */
+/** Unarchived children of `parentId`, ranked, from every host's rows: the
+ *  store holds every connected host's sessions, and a child spawned on
+ *  another host carries the parent's bare id as its `parentId`. Each row's
+ *  `environmentId` names the host it lives on. */
 export function childrenOf(metas: SessionMeta[], parentId: string): SessionMeta[] {
   return sortAgents(metas.filter((m) => m.parentId === parentId && !m.archived));
 }

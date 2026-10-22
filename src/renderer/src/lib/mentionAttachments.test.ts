@@ -24,6 +24,13 @@ describe("mentionAttachments", () => {
     ]);
   });
 
+  it("a token naming another host carries that host on the attachment", () => {
+    const box = `env_${"b".repeat(22)}`;
+    expect(mentionAttachments(`cf @thread:${box}:abcdef123456`, [], titleOf)).toEqual([
+      { kind: "thread", path: "thread:abcdef123456", name: "Auth rewrite", sessionId: "abcdef123456", environmentId: box },
+    ]);
+  });
+
   it("skips directories, unknown paths, and notes", () => {
     expect(mentionAttachments("see @src and @nope.ts and @note/todo", files, titleOf)).toEqual([]);
     expect(mentionAttachments("@thread:abcdef123456", [], titleOf)).toHaveLength(1);

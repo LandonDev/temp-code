@@ -103,6 +103,7 @@ import { ThreadTypeChip } from './ThreadTypeChip'
 import { useSlashCommands } from '../lib/tcserver/slashCommands'
 import { readCopiedMessage } from '../lib/copyMessage'
 import { sessionStore, useSessionMeta, useSessionMetasWhen } from '../lib/tcserver/store'
+import { threadToken } from '../lib/threadMentions'
 import { tune as tuneSession } from '../lib/tcserver/commands'
 import { nativeModelId } from '../lib/models'
 import type { ThreadType } from '../lib/tcserver/types'
@@ -621,7 +622,11 @@ export function Composer({
     } else {
       const m = matches.rows[index]
       if (!m) return
-      const inserted = m.kind === 'thread' ? `@thread:${m.session.id}` : `@${m.file.relative}`
+      // A thread on another host than this draft's names its host (`env_…`), so the draft's host reads it there.
+      const inserted =
+        m.kind === 'thread'
+          ? threadToken(m.session.id, sessionStore.hostIdOf(m.session.environmentId), sessionStore.hostIdOf(environmentId))
+          : `@${m.file.relative}`
       el.replaceRange(live.start, caret, { text: `${inserted} ` })
     }
     setTrigger(null)

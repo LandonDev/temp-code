@@ -1716,8 +1716,9 @@ say, and a socket that never registered is refused. The methods:
 `thread.events` (at most 500 rows, each text field cut to 4,000 characters,
 plus the files under the thread's attachments directory), `thread.check`,
 `thread.wait`, `thread.interrupt`, `thread.answer`, `thread.pause`,
-`thread.resume`, `thread.archive` and `thread.adopt`, every one with the
-calling thread as `caller` (its id, title and permission). One
+`thread.resume`, `thread.archive`, `thread.adopt` and `thread.read` (an
+`@thread:` reference's digest; "One project across hosts: threads see each
+other" below), every one with the calling thread as `caller` (its id, title and permission). One
 `thread.wait` is at most 60 s; the caller loops windows until the thread
 settles or the tool's timeout passes, so a link that drops mid-wait is seen
 within a window and the call answers the last state it saw with
@@ -2833,3 +2834,34 @@ changes nothing; a host with no checkout answers `cwd: null` and the note
 pickers show on a disabled host. Tests: projectLinks.test.ts (the order,
 dryRun, and a real worktree in a scratch repo), crossHostThreads.test.ts,
 crossHostAgents.test.ts, apptools.test.ts.
+
+## One project across hosts: threads see each other
+
+A message may name a thread on another host. The composer's `@` picker
+lists every host's threads; for a thread on another host than the one the
+draft runs on, it inserts `@thread:<host>:<id>`, the host's own id
+(`env_…`), never the window's slot name (`threadToken` in
+src/renderer/src/lib/threadMentions.ts). The thread attachment then carries
+`environmentId` (lib/mentionAttachments.ts). Chips, links and titles read
+the bare id, as the session store keys every host's rows by it.
+
+On send, the host of the message asks the thread's host for it with
+`thread.read` (contract-crosshost.ts; `CrossHostAgents.readThread`, served
+in remote/crossHostThreads.ts). Unlike `thread.events`, it reads any thread
+there, not only one the caller started: the person picked it. The answer is
+the same digest a local reference gets (`cappedThreadDigest` in mirror.ts),
+and it lands in the same `.temp-code/refs/<id>.md` file, or inline for a
+thread with no project. A host out of reach, or one that does not know the
+thread, leaves one line in its place: `thread "<title>" on <host> is
+unreachable (<why>)`. A token naming the host itself reads the thread
+there. The call gives up after 15 s.
+
+The fleet panel's rows (`childrenOf`, `useAgents` in
+lib/threads/agents.ts) come from every host's rows: a child spawned on
+another host has the parent's bare id as its `parentId`, so it shows under
+its parent, and its `environmentId` names the host it lives on.
+
+Proof: sessions-mentions.test.ts (a far digest in the refs file, inline,
+unreachable, a token naming this host), crossHostAgents.test.ts and
+crossHostThreads.test.ts (`thread.read`), threadMentions.test.ts,
+mentionAttachments.test.ts and agents.test.ts.

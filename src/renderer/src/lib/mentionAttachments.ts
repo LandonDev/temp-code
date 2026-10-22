@@ -3,12 +3,13 @@ import { buildMentionIndex, fileMentionsInText } from "./fileMentions";
 import type { ProjectFile } from "./fs";
 import { looksLikeProject } from "./recents";
 import type { ServerAttachment } from "./tcserver/types";
-import { storeTitleOf, threadMentionsInText, type TitleOf } from "./threadMentions";
+import { storeTitleOf, threadRefsInText, type TitleOf } from "./threadMentions";
 
 /**
  * What a turn's `@` tokens mean to the server: every `@path` that names a
  * project file rides as a file attachment, every `@thread:<id>` as a
- * thread attachment. The text itself stays as typed, and the visible turn
+ * thread attachment (with the host when the token names one:
+ * `@thread:<host>:<id>`). The text itself stays as typed, and the visible turn
  * shows only what the user attached by hand — these are implied by the
  * tokens.
  */
@@ -25,8 +26,14 @@ export function mentionAttachments(
       out.push({ kind: "file", path: hit.file.path, name: hit.file.name });
     }
   }
-  for (const id of threadMentionsInText(text)) {
-    out.push({ kind: "thread", path: `thread:${id}`, name: titleOf(id) ?? id, sessionId: id });
+  for (const { sessionId, hostId } of threadRefsInText(text)) {
+    out.push({
+      kind: "thread",
+      path: `thread:${sessionId}`,
+      name: titleOf(sessionId) ?? sessionId,
+      sessionId,
+      ...(hostId ? { environmentId: hostId } : {}),
+    });
   }
   return out;
 }
