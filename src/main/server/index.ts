@@ -130,6 +130,8 @@ import {
 } from './apptools'
 import { ProjectPlans, handleProjectPlan } from './projectPlan'
 import { Batches, handleBatch, setBatches } from './batch'
+import { MacPublish, macPublishOffers } from './remote/macPublish'
+import { PeerPublish } from './remote/peerPublish'
 import { DEFAULT_RULES } from '@shared/rules'
 import { DEFAULT_THREAD_DEFAULTS } from '@shared/defaults'
 import { DEFAULT_PLAN_SETTINGS } from '@shared/plans'
@@ -440,6 +442,7 @@ export async function startServer(
       onPush: (from, push) => {
         if (hostDevices.onPeerPush(from, push)) return
         if (crossHostThreads.onPeerPush(from, push)) return
+        if (macPublish.onPeerPush(from, push)) return
         if (memorySync.onPeerPush(from, push)) return
         if (!macBridge.onPeerPush(from, push)) accountSync.onPeerPush(from, push)
       }
@@ -509,7 +512,7 @@ export async function startServer(
       const link = peers.get(id)
       return link?.connected ? (method, params, opts) => link.request(method, params, opts) : null
     },
-    offers: () => [...crossHostOffers(), ...hostDevicesOffers()],
+    offers: () => [...crossHostOffers(), ...hostDevicesOffers(), ...macPublishOffers()],
     // The thread cap counts the threads a host started here that are live (crossHostThreads below).
     liveThreads: (envId) => crossHostThreads.liveThreadsOf(envId)
   })
@@ -527,6 +530,17 @@ export async function startServer(
     pathMap: () => harnessSync.pathMap(),
     workRoot: () => workRoot(store).root,
     admit: (envId) => macBridge.admitThread(envId)
+  })
+  // A batch's publish step, served on this Mac for the box (remote/macPublish.ts):
+  // the box cut and pushed the release; the Mac pulls it and runs release:publish.
+  const macPublish = new MacPublish({
+    environmentId,
+    environments: () => listEnvironments(store).map((e) => ({ id: e.id, name: e.name })),
+    link: (id) => {
+      const link = peers.get(id)
+      return link?.connected ? (method, params, opts) => link.request(method, params, opts) : null
+    },
+    publisher: hostJobs.publish
   })
   const peerCalls = new PeerCalls(environmentId)
   // Devices on a Mac (devices/hostDevices.ts, docs/box.md "Devices on the Mac"):
@@ -624,7 +638,8 @@ export async function startServer(
   // A master's batch (batch.ts): the steps its children never run; merge_branch
   // tells it what landed. Review before merge (mergeReview.ts): merge_branch's
   // engine, one per host, the gate out of the children inside it.
-  const batchRuns = new Batches({ registry, store, deploy: hostJobs.deploy })
+  const peerPublish = new PeerPublish({ environmentId, calls: peerCalls, macPeerOf: (id) => macTools.macPeerOf(id).macPeer })
+  const batchRuns = new Batches({ registry, store, deploy: hostJobs.deploy, publish: peerPublish })
   batchRuns.attach()
   setBatches(batchRuns)
   setMergeReviews(new MergeReviews({ registry, store, onLanded: (l) => batchRuns.landed(l), hold: (s, l) => batchRuns.hold(s, l) }))

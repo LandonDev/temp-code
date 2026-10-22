@@ -195,8 +195,8 @@ streams over `peer.progress`, the call returns the exit and a one-line
 outcome, and Stop kills the Publisher's process group. Only a saved host
 whose caller id matches the link may ask. The box picks the thread's live
 bridge peer with the offer, else the sole registered publisher; a dropped
-link fails the call. These modules await the server's construction, push
-hook and offer wiring in `index.ts`.
+link fails the call. The batch engine (batch.ts) drives it as the
+`publish` step; `batch.stopStep` stops it.
 
 Never build into or swap /Applications/TempCode.app yourself: the installed
 app replaces itself from the feed, and only from the feed.

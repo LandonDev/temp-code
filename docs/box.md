@@ -2179,8 +2179,8 @@ release" button is the other half (CLAUDE.md "Releases").
 
 The publish peer modules (`src/main/server/remote/peerPublish.ts` on the box,
 `macPublish.ts` on the Mac) publish a release the box has already cut and
-pushed. They await construction, the push hook and offer registration in
-`index.ts`. The Mac advertises `publish`; `publish.start` carries the box
+pushed, as the `publish` step of a master's batch (docs/master-threads.md).
+The Mac advertises `publish`; `publish.start` carries the box
 thread's caller, the 40-character commit SHA, branch, `1.0.N` version and
 notes. Only a saved host may call, and its caller id must match the link.
 
