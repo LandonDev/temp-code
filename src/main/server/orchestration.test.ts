@@ -50,6 +50,10 @@ const stub = {
   get: (id: string) => (id === parent.id ? parent : (sessions[id] ?? null)),
   childrenOf: (id: string) => (id === parent.id ? children : []),
   list: () => Object.values(sessions),
+  batchChildren: (masterId: string) =>
+    Object.values(sessions)
+      .filter((s) => !s.archived && !s.parentId && s.masterId === masterId)
+      .sort((a, b) => a.createdAt - b.createdAt),
   getProject: (id: string) => projects[id] ?? null,
   getOrchestrationRules: () => rules,
   eventsAfter: () => [],

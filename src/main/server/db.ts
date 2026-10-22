@@ -516,6 +516,13 @@ export function tailStart(
 }
 
 /** One row of resume_after_boot: a thread cut mid-turn by a shutdown. */
+/** A sessions-table write as the registry's index hears it
+ *  (Store.observeSessionRows): the row as it now stands, null once deleted;
+ *  or a context reading, the one column that changes per API message. */
+export type SessionRowChange =
+  | { id: string; row: SessionMeta | null }
+  | { id: string; context: { tokens: number; window: number | null } | null }
+
 export interface ResumeAfterBootRow {
   sessionId: string
   recordedAt: number
@@ -574,8 +581,30 @@ export class Store {
     return this.coldIds.has(sessionId) ? 'cold.events' : 'events'
   }
 
-  /** Bumped by every sessions-table write; the registry's index cache keys on it. */
+  /** Bumped by a sessions-table write the store cannot describe as a row
+   *  (a move's raw SQL through forgetSessions); the registry's index cache
+   *  keys on it and reads the table again. Every other write reaches the
+   *  index as the row it left (observeSessionRows), with no reread. */
   sessionsVersion = 0
+  private rowObservers = new Set<(change: SessionRowChange) => void>()
+
+  /** Follow every sessions-table write the store can describe: the row as
+   *  it now stands (null once deleted), or a new context reading. */
+  observeSessionRows(observer: (change: SessionRowChange) => void): () => void {
+    this.rowObservers.add(observer)
+    return () => this.rowObservers.delete(observer)
+  }
+
+  private rowChanged(change: SessionRowChange): void {
+    for (const observer of this.rowObservers) observer(change)
+  }
+
+  /** The row as stored now, told to the observers. */
+  private rowWritten(id: string): SessionMeta | null {
+    const row = this.getSession(id)
+    if (row) this.rowChanged({ id, row })
+    return row
+  }
   /** Next seq per session, seeded from MAX(seq) on first use. The log is
    *  append-only through this class, so the counter is the truth; a delete
    *  drops it and a PRIMARY KEY conflict re-seeds it. */
@@ -640,11 +669,10 @@ export class Store {
 
   setSessionWorkspace(id: string, workspaceId: string): void {
     this.stmt('UPDATE sessions SET workspace_id = ? WHERE id = ?').run(workspaceId, id)
-    this.sessionsVersion += 1
+    this.rowWritten(id)
   }
 
   insertSession(meta: SessionMeta): void {
-    this.sessionsVersion += 1
     this.turnIndex.markReady(meta.id)
     this
       .stmt(
@@ -687,6 +715,7 @@ export class Store {
         meta.createdAt,
         meta.updatedAt
       )
+    this.rowWritten(meta.id)
   }
 
   updateSession(
@@ -731,7 +760,6 @@ export class Store {
     // `undefined ? 1 : 0` below would zero the other.
     const defined = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined))
     const next = { ...cur, ...defined, updatedAt: Date.now() }
-    this.sessionsVersion += 1
     this
       .stmt(
         `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, pinned = ?, provider = ?, model = ?, reasoning = ?, permission = ?, fast = ?, ultrafast = ?, context_1m = ?, busy_since = ?, paused_at = ?, frozen_active_elapsed = ?, thread_type = ?, plan_path = ?, agent_type = ?, thread_rules = ?, account_current = ?, plan_completed_at = ?, implementation_id = ?, plan_thread_id = ?, started_by = ?, is_master = ?, master_id = ?, after_id = ?, updated_at = ? WHERE id = ?`
@@ -771,6 +799,7 @@ export class Store {
     // first: every path that unarchives (the archive toggle, a message into
     // an archived thread) goes through here.
     if (cur.archived && !next.archived) this.moveToHot(id)
+    this.rowChanged({ id, row: next })
     return next
   }
 
@@ -778,8 +807,7 @@ export class Store {
    *  an edit: updated_at stays put so the list keeps its order. */
   setSessionAccount(id: string, account: string | null): SessionMeta | null {
     this.stmt(`UPDATE sessions SET account_current = ? WHERE id = ?`).run(account, id)
-    this.sessionsVersion += 1
-    return this.getSession(id)
+    return this.rowWritten(id)
   }
 
   /** The last context reading off the harness stream, kept so a relaunch
@@ -787,12 +815,12 @@ export class Store {
    *  left. Its own statement: a reading is not an edit, so updated_at
    *  stays put and the list keeps its order. */
   setSessionContext(id: string, context: { tokens: number; window: number | null } | null): void {
-    this.sessionsVersion += 1
     this.stmt(`UPDATE sessions SET context_tokens = ?, context_window = ? WHERE id = ?`).run(
       context?.tokens ?? null,
       context?.window ?? null,
       id
     )
+    this.rowChanged({ id, context })
   }
 
   // ── thread notes (threadNotes.ts): the mirror of notes.md ──────────
@@ -844,9 +872,9 @@ export class Store {
     return !!r?.retyped
   }
 
+  /** Not part of SessionMeta: the index never sees it. */
   setRetyped(id: string, on: boolean): void {
     this.stmt(`UPDATE sessions SET retyped = ? WHERE id = ?`).run(on ? 1 : 0, id)
-    this.sessionsVersion += 1
   }
 
   /** Delete a session and all of its descendants (log included). */
@@ -861,7 +889,6 @@ export class Store {
       for (const k of kids) collect(k.id)
     }
     collect(id)
-    this.sessionsVersion += 1
     const del = this.stmt(`DELETE FROM sessions WHERE id = ?`)
     const delEvents = this.stmt(`DELETE FROM events WHERE session_id = ?`)
     const delCold = this.stmt(`DELETE FROM cold.events WHERE session_id = ?`)
@@ -878,6 +905,7 @@ export class Store {
       if (this.moving === sid) this.moving = null
     }
     this.turnIndex.forget(ids)
+    for (const sid of ids) this.rowChanged({ id: sid, row: null })
     return ids
   }
 

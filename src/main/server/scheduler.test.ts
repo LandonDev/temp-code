@@ -113,6 +113,20 @@ describe('no running cap', () => {
 })
 
 describe('after', () => {
+  it('a pass reads the queued roots off the index: a burst of meta changes never lists the table', async () => {
+    const sibling = await registry.create({ cwd: root, provider: 'claude', title: 'Sibling' })
+    const waiter = await queued('wait', { after: sibling.id })
+    const lists = vi.spyOn(store, 'listSessions')
+    await registry.send(sibling.id, 'go')
+    for (let i = 0; i < 200; i++) registry.append(sibling.id, { type: 'context', tokens: 100 + i, window: 1000 })
+    await settle()
+    expect(status(waiter)).toBe('queued')
+    idle(sibling.id)
+    await settle()
+    expect(status(waiter)).toBe('running')
+    expect(lists).not.toHaveBeenCalled()
+  })
+
   it('holds until the sibling is idle after a turn, then starts', async () => {
     const sibling = await registry.create({ cwd: root, provider: 'claude', title: 'Sibling' })
     const waiter = await queued('wait', { after: sibling.id })

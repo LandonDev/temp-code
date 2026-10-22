@@ -388,11 +388,7 @@ export function supervisedBy(caller: SessionMeta, session: SessionMeta): boolean
 
 /** The root threads of a master's batch, oldest first. */
 const batchOf = (master: SessionMeta): SessionMeta[] =>
-  isMasterSession(master)
-    ? (registry?.list({ archived: false }) ?? [])
-        .filter((s) => s.masterId === master.id && !s.parentId)
-        .sort((a, b) => a.createdAt - b.createdAt)
-    : []
+  isMasterSession(master) ? (registry?.batchChildren(master.id) ?? []) : []
 
 /** Every agentId-taking op works only on what the caller supervises. */
 const childOf = (parent: SessionMeta, agentId: string): SessionMeta | null => {

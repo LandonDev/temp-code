@@ -27,10 +27,8 @@ import {
   foldContinuableError,
   foldFailure,
   foldGoal,
-  indexByParent,
   summarizeRootTree,
-  type GoalState,
-  type ParentIndex
+  type GoalState
 } from '@shared/session-lifecycle'
 import { isRoutedProvider, type AccountPins, type AccountProvider, type AccountRoute } from '@shared/accounts'
 import { resolvePin, type ResolvedPin, type RouteOptions } from './accountRouting'
@@ -115,6 +113,7 @@ import { batches } from './batch'
 import { foldTodo, newTodoFold, tallyOf, type TaskTally, type TodoFold } from './todos'
 import { liveDiffOnStatus } from './livediff'
 import { timed } from './stalls'
+import { applyRowChange, buildSessionIndex, type SessionIndex } from './sessionIndex'
 import {
   appendJournal,
   INLINE_DIGEST_MAX_CHARS,
@@ -138,8 +137,6 @@ const THREAD_TITLES = {
 
 type SessionListener = (row: EventRow) => void
 type MetaListener = (session: SessionMeta) => void
-/** Lookups decorate() needs — built once per list(), never per session. */
-type SessionIndex = { byId: Map<string, SessionMeta>; byParent: ParentIndex }
 
 /** Cap for the transcript handoff sent to a new harness on provider switch. */
 const HANDOFF_MAX_CHARS = 24_000
@@ -547,9 +544,16 @@ export class SessionRegistry {
       if (source === 'tool') this.turnNoted.add(sessionId)
     })
     for (const fold of store.listFolds()) this.folds.set(fold.sessionId, fold)
-    for (const s of store.listSessions()) if (s.context) this.liveContexts.set(s.id, s.context)
+    // The index follows every row the store writes (sessionIndex.ts); a
+    // stale one (a version bump) is read again on its next use.
+    store.observeSessionRows((change) => {
+      const cache = this.indexCache
+      if (cache && cache.version === this.store.sessionsVersion) applyRowChange(cache.index, change)
+    })
+    for (const s of this.indexOf().byId.values()) if (s.context) this.liveContexts.set(s.id, s.context)
     this.scheduler = new ThreadScheduler({
-      listSessions: () => this.store.listSessions(),
+      session: (id) => this.indexOf().byId.get(id) ?? null,
+      queuedRoots: () => [...this.indexOf().queued.values()],
       hasUserText: (id) => this.store.hasUserText(id),
       startQueued: (id) => this.startQueued(id),
       setQueuedLine: (id, line) => {
@@ -837,7 +841,9 @@ export class SessionRegistry {
   /** One pass of the liveness sweep; returns the threads it flipped to stopped. */
   sweepLiveness(graceMs = HARNESS_GONE_GRACE_MS, now = Date.now()): string[] {
     const flipped: string[] = []
-    for (const s of this.store.listSessions({ archived: false })) {
+    // The index, copied: markStopped writes rows while this walks.
+    for (const s of [...this.indexOf().byId.values()]) {
+      if (s.archived) continue
       const candidate =
         (s.status === 'running' || s.status === 'starting') &&
         !this.starting.has(s.id) &&
@@ -945,19 +951,29 @@ export class SessionRegistry {
     return this.store.childrenOf(parentId).map((s) => this.decorate(s, index))
   }
 
-  /** The two lookups decorate() needs, built once per sessions-table
-   *  version. notifyMeta, get() and childrenOf() used to re-read and
-   *  re-index every row per call: 3-4 ms on a 3k-session table, tens of
-   *  times a second under a running fleet, all on the loop the sidebar's
-   *  open round trips wait on. */
+  /** The lookups decorate(), the scheduler, the liveness sweep and the
+   *  batch read (sessionIndex.ts): built once, then kept current by every
+   *  row the store writes, so a context tick or a status change patches one
+   *  row instead of re-reading the table (3-4 ms on a 3k-session table, and
+   *  a running fleet changed rows 175 times a second). Built again only
+   *  when the store bumps its version (a move's raw writes). */
   private indexCache: { version: number; index: SessionIndex } | null = null
   private indexOf(sessions?: SessionMeta[]): SessionIndex {
     const version = this.store.sessionsVersion
     if (this.indexCache?.version === version) return this.indexCache.index
-    const rows = sessions ?? this.store.listSessions()
-    const index = { byId: new Map(rows.map((s) => [s.id, s])), byParent: indexByParent(rows) }
+    const index = buildSessionIndex(sessions ?? this.store.listSessions())
     this.indexCache = { version, index }
     return index
+  }
+
+  /** The unarchived root threads of a master, decorated, oldest first
+   *  (batch.ts batchChildren): read off the index's byMaster, never the table. */
+  batchChildren(masterId: string): SessionMeta[] {
+    const index = this.indexOf()
+    return (index.byMaster.get(masterId) ?? [])
+      .filter((s) => !s.archived)
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .map((s) => this.decorate(s, index))
   }
 
   /** Was this session running a disk-writing tool at ts (with grace for

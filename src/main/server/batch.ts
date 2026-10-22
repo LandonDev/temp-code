@@ -90,12 +90,10 @@ import type { SessionRegistry } from './sessions'
  * master stays).
  */
 
-/** The unarchived root threads of a master, oldest first. */
-export function batchChildren(registry: Pick<SessionRegistry, 'list'>, masterId: string): SessionMeta[] {
-  return registry
-    .list({ archived: false })
-    .filter((s) => s.masterId === masterId && !s.parentId)
-    .sort((a, b) => a.createdAt - b.createdAt)
+/** The unarchived root threads of a master, oldest first: the registry's
+ *  index by master (sessions.ts), never a decorated list of every thread. */
+export function batchChildren(registry: Pick<SessionRegistry, 'batchChildren'>, masterId: string): SessionMeta[] {
+  return registry.batchChildren(masterId)
 }
 
 /** Whether a thread of this type lands a branch of its own: the land step
@@ -208,7 +206,7 @@ export interface ShellRun {
 export interface BatchesDeps {
   /** this host's environment id, stamped on the local children of `batch.get` */
   environmentId?: string
-  registry: Pick<SessionRegistry, 'list' | 'get' | 'getProject' | 'append'> & {
+  registry: Pick<SessionRegistry, 'batchChildren' | 'get' | 'getProject' | 'append'> & {
     /** has the thread finished a turn: an idle child counts as done only then (a fresh thread between its first row and its first turn is idle too) */
     hasCompletedTurn?(sessionId: string): boolean
     setArchived?(sessionId: string, archived: boolean): Promise<void>
@@ -1561,7 +1559,7 @@ function ordinal(n: number): string {
 export async function handleBatch(
   req: ClientRequest,
   batches: Pick<Batches, 'get' | 'setRules' | 'stopStep' | 'adoptAll' | 'archive'>,
-  registry: Pick<SessionRegistry, 'list'>
+  registry: Pick<SessionRegistry, 'batchChildren'>
 ): Promise<{ handled: true; result: unknown } | { handled: false }> {
   switch (req.method) {
     case 'batch.get':

@@ -24,8 +24,10 @@ import type { SessionMeta } from '@shared/events'
  */
 
 export interface SchedulerRegistry {
-  /** Every stored row, raw (not decorated), archived ones included. */
-  listSessions(): SessionMeta[]
+  /** One stored row, raw (not decorated), archived ones included; null when gone. */
+  session(sessionId: string): SessionMeta | null
+  /** The unarchived queued root threads, raw: a pass reads only these, never the whole table. */
+  queuedRoots(): SessionMeta[]
   /** Has the thread sent at least one user message (a turn happened or is held)? */
   hasUserText(sessionId: string): boolean
   /** Boot a queued thread and send its stored first message. */
@@ -77,9 +79,9 @@ export class ThreadScheduler {
   }
 
   /** The sibling a thread waits for, as it stands. */
-  afterState(session: Pick<SessionMeta, 'after'>, sessions = this.reg.listSessions()): AfterState {
+  afterState(session: Pick<SessionMeta, 'after'>): AfterState {
     if (!session.after) return { met: true }
-    const sibling = sessions.find((s) => s.id === session.after)
+    const sibling = this.reg.session(session.after)
     // Gone or archived: nothing left to wait for.
     if (!sibling || sibling.archived) return { met: true }
     if (sibling.status === 'done') return { met: true }
@@ -136,9 +138,8 @@ export class ThreadScheduler {
   }
 
   private async pass(): Promise<void> {
-    const sessions = this.reg.listSessions()
-    const queued = sessions
-      .filter((s) => s.status === 'queued' && !s.parentId && !s.archived)
+    const queued = this.reg
+      .queuedRoots()
       .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
     for (const id of this.inFlight) {
       if (!queued.some((s) => s.id === id)) this.inFlight.delete(id)
@@ -147,7 +148,7 @@ export class ThreadScheduler {
     const lines = new Map<string, string>()
     for (const s of queued) {
       if (this.inFlight.has(s.id)) continue
-      const after = this.afterState(s, sessions)
+      const after = this.afterState(s)
       if (!after.met) {
         lines.set(s.id, waitingLine(after))
         continue

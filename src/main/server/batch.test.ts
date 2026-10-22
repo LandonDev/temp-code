@@ -112,7 +112,8 @@ function world(opts: { master?: string | null; branch?: string | null; children?
   const metaListeners = new Set<(s: SessionMeta) => void>()
   const spoke = new Set<string>(['a', 'b', 'r'])
   const registry: BatchesDeps['registry'] = {
-    list: () => [...sessions.values()].filter((s) => !s.archived),
+    batchChildren: (masterId) =>
+      [...sessions.values()].filter((s) => !s.archived && !s.parentId && s.masterId === masterId).sort((a, b) => a.createdAt - b.createdAt),
     get: (id) => sessions.get(id) ?? null,
     getProject: () => ({ id: 'p1', workspaceId: 'w1', name: 'p', mode: 'local', branch: 'master', cwd: '/repo', archived: false, createdAt: 1 }),
     append: (id, e) => void (rows[id] ??= []).push(e),
@@ -292,6 +293,24 @@ describe('Batches: the rows and the rules', () => {
     const stop = await handleBatch({ id: '4', method: 'batch.stopStep', params: { masterId: 'm', stepId: 'gate' } } as never, b, w.registry)
     expect(stop.handled && stop.result).toEqual({ stopped: false })
     expect(await handleBatch({ id: '5', method: 'session.list', params: {} } as never, b, w.registry)).toEqual({ handled: false })
+  })
+
+  it("a child's meta change reviews its batch through the registry's index by master alone", async () => {
+    const w = world()
+    const b = w.make()
+    b.attach()
+    const asked: string[] = []
+    const own = w.registry.batchChildren
+    w.registry.batchChildren = (masterId) => {
+      asked.push(masterId)
+      return own(masterId)
+    }
+    w.set('a', { status: 'running' })
+    w.set('other', { status: 'running' })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(asked.length).toBeGreaterThan(0)
+    expect(new Set(asked)).toEqual(new Set(['m']))
   })
 
   it('a row from before the telemetry reads back: done is passed, a missing log is empty', () => {
