@@ -140,6 +140,26 @@ private func settled(_ pages: PlanPages, _ key: String, _ text: String) async ->
         #expect(pages.parses == 2)
     }
 
+    @MainActor @Test func `a short text after a long one in flight wins, and so does the text the page holds`() async throws {
+        let scratch = Scratch()
+        defer { scratch.remove() }
+        let pages = scratch.pages()
+        let slow = long("slow")
+        #expect(pages.document("k", text: slow) == nil)
+        // The short text parses now; the long parse landing later must not replace it.
+        let short = pages.document("k", text: "# S\n")
+        #expect(short?.textHash == "# S\n".hashValue)
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(pages.document("k", text: "# S\n") == short)
+        // A page back on the text it holds drops the parse of the one between.
+        let settledShort = await settled(pages, "k", "# S\n")
+        #expect(settledShort == short)
+        _ = pages.document("k", text: long("between"))
+        #expect(pages.document("k", text: "# S\n") == short)
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(pages.document("k", text: "# S\n") == short)
+    }
+
     @MainActor @Test func `the last document is kept while a new version parses`() async {
         let scratch = Scratch()
         defer { scratch.remove() }

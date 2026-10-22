@@ -135,7 +135,7 @@ public struct PlanDocument: Sendable, Hashable {
 /// with `---` is a rule.
 private enum Frontmatter {
     static func split(_ md: String) -> (fields: [String: String], body: String) {
-        let lines = md.split(separator: "\n", omittingEmptySubsequences: false)
+        let lines = md.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
         guard lines.count >= 2, lines[0].trimmingCharacters(in: .whitespaces) == "---" else { return ([:], md) }
         var fields: [String: String] = [:]
         var index = 1
@@ -145,16 +145,16 @@ private enum Frontmatter {
                 let body = lines[(index + 1)...].joined(separator: "\n")
                 return (fields, body)
             }
-            if !line.isEmpty {
-                guard let colon = line.firstIndex(of: ":"), colon > line.startIndex else { return ([:], md) }
-                let key = String(line[..<colon])
-                guard key.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" }) else { return ([:], md) }
-                var value = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
-                if value.count >= 2, let first = value.first, let last = value.last, first == last, first == "\"" || first == "'" {
-                    value = String(value.dropFirst().dropLast())
-                }
-                fields[key] = value
+            // A blank line, or a line that is not `key: value`, makes the
+            // leading `---` a rule.
+            guard !line.isEmpty, let colon = line.firstIndex(of: ":"), colon > line.startIndex else { return ([:], md) }
+            let key = String(line[..<colon])
+            guard key.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" }) else { return ([:], md) }
+            var value = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+            if value.count >= 2, let first = value.first, let last = value.last, first == last, first == "\"" || first == "'" {
+                value = String(value.dropFirst().dropLast())
             }
+            fields[key] = value
             index += 1
         }
         // No closing line: a rule, and whatever follows it.
@@ -171,7 +171,7 @@ private struct PlanDocumentParser {
     private var list = ListBuilder()
 
     init(_ md: String) {
-        lines = md.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        lines = md.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).map(String.init)
     }
 
     mutating func run() -> [PlanBlock] {

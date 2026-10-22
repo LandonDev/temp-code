@@ -75,9 +75,18 @@ public final class PlanPages {
     public func document(_ key: String, text: String) -> PlanDocument? {
         let hash = text.hashValue
         let slot = slot(key)
-        if let document = slot.document, document.textHash == hash { return document }
-        if let document = ready[key], document.textHash == hash { return document }
+        if let document = slot.document, document.textHash == hash {
+            // The current text is what the page holds: a parse of an older
+            // text still in flight must not replace it.
+            inflight[key] = nil
+            return document
+        }
+        if let document = ready[key], document.textHash == hash {
+            inflight[key] = nil
+            return document
+        }
         if slot.document == nil, ready[key] == nil, text.utf8.count <= Self.syncLimit {
+            inflight[key] = nil
             parses += 1
             let document = PlanDocument.parse(text)
             ready[key] = document

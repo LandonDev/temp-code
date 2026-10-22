@@ -173,6 +173,14 @@ private func plain(_ text: AttributedString) -> String { String(text.characters)
             return
         }
         #expect(plain(text) == "not a field")
+        // A blank line inside the fence is prose, not a header.
+        let spaced = PlanDocument.parse("---\n\nGoal: ship it\n\n---\n")
+        #expect(spaced.frontmatter.isEmpty)
+        #expect(spaced.blocks.count == 3 && spaced.blocks[0] == .rule && spaced.blocks[2] == .rule)
+        // CRLF files split into lines like LF ones.
+        let crlf = PlanDocument.parse("---\r\nstatus: complete\r\n---\r\n# A\r\n\r\n- [ ] b\r\n")
+        #expect(crlf.frontmatter == ["status": "complete"])
+        #expect(crlf.blocks.count == 2)
     }
 
     @Test func `sections cut the project plan at its second-level headings`() {

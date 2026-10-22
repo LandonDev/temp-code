@@ -38,7 +38,6 @@ struct PlanView<Status: View, Action: View>: View {
             if hasHeader {
                 PlanPageHeader(status: status, action: action)
                     .rowAppearTransition()
-                    .animation(Motion.rowAppear, value: hasHeader)
             }
             PlanDocumentView(document: document)
         }
@@ -122,9 +121,10 @@ struct PlanPage<Content: View>: View {
                 } else if let document {
                     content(document)
                 } else if let text {
-                    // A long plan on its first paint: plain text at the same
-                    // size until the parse lands, so only the styling changes.
-                    Text(text)
+                    // A long plan on its first paint: its head as plain text
+                    // at the same size until the parse lands a moment later,
+                    // so only the styling changes under the reader.
+                    Text(String(text.prefix(PlanPages.syncLimit)))
                         .font(.body)
                         .lineSpacing(PlanType.lineSpacing)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -136,7 +136,9 @@ struct PlanPage<Content: View>: View {
             .padding(.top, PlanType.pageTop)
             .padding(.bottom, PlanType.pageBottom)
             .textSelection(.enabled)
-            .transaction { $0.animation = nil }
+            // A poll landing never animates; the code fold's own
+            // withAnimation still reaches every block below it.
+            .transaction(value: text) { $0.animation = nil }
         }
         .scrollPosition($position, anchor: .top)
         .onChange(of: text, initial: true) { _, now in
@@ -256,7 +258,7 @@ struct PlanCodeView: View {
     @State private var expanded = false
 
     var body: some View {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        let lines = text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
         let folds = lines.count > PlanType.codeFold
         let shown = folds && !expanded ? Array(lines.prefix(PlanType.codeFold)) : Array(lines)
         VStack(alignment: .leading, spacing: 0) {
@@ -270,7 +272,7 @@ struct PlanCodeView: View {
             .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             if folds {
                 Button(expanded ? "Show less" : "Show all \(lines.count) lines") {
-                    expanded.toggle()
+                    withAnimation(expanded ? Motion.collapse : Motion.expand) { expanded.toggle() }
                 }
                 .font(.footnote.weight(.medium))
                 .foregroundStyle(.secondary)
@@ -281,7 +283,6 @@ struct PlanCodeView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Surface.fill.opacity(0.5), in: RoundedRectangle.corner(Radius.row))
-        .animation(expanded ? Motion.expand : Motion.collapse, value: expanded)
         .contextMenu {
             Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = text }
         }
@@ -299,7 +300,9 @@ private struct PlanListView: View {
         VStack(alignment: .leading, spacing: PlanType.itemGap) {
             ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                 HStack(alignment: .firstTextBaseline, spacing: 0) {
+                    // A wide ordinal ("10.") hangs out to the left; the text edge stays.
                     marker(item)
+                        .fixedSize()
                         .padding(.trailing, 8)
                         .frame(width: column, alignment: .trailing)
                     Text(item.text.inlineStyled())

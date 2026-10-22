@@ -30,8 +30,9 @@ enum PlanType {
         }
     }
 
-    /// Large headings tighten by −0.02 em of their point size: title (28 pt)
-    /// −0.5, title2 (22 pt) −0.4, title3 (20 pt) −0.3; headline and body 0.
+    /// Large headings tighten by about −0.02 em of their point size: title
+    /// (28 pt) −0.5, title2 (22 pt) −0.4, title3 (20 pt) −0.3 (a touch under
+    /// the rule, next to body); headline and body 0.
     static func tracking(_ level: Int) -> CGFloat {
         switch level {
         case 1: -0.5
