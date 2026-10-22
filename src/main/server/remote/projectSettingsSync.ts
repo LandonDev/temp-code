@@ -13,8 +13,9 @@ import type { Peers } from './peers'
  *  - follows: on link-up, on the peer's `projects` push and every 5 minutes
  *    (debounced per peer), it reads the peer's catalog and, for each local
  *    copy whose home's stamp is newer than its own, pulls the home's bundle
- *    and writes it here under the local id with the home's stamp. One
- *    direction only: it never writes toward the home.
+ *    and writes it here under the local id with the home's stamp. A home that
+ *    never stamped a setting takes this copy's bundle once instead (its
+ *    own name and archive kept); otherwise it never writes toward the home.
  *  - routes writes (`forward`, the one rule the RPC handlers ask): a write
  *    to such a project goes to the home's copy over the link, then the
  *    home's bundle is written here, so the next pull has nothing to do. A
@@ -44,6 +45,7 @@ export interface ProjectSettingsSyncDeps {
   registry: {
     listProjects(): ProjectMeta[]
     getProject(projectId: string): ProjectMeta | null
+    getProjectSettings(projectId: string): ProjectSettingsBundle
     setProjectSettings(projectId: string, bundle: ProjectSettingsBundle, at?: number): void
   }
   store: { getSetting(key: string): string | null; setSetting(key: string, value: string | null): void }
@@ -148,9 +150,13 @@ export class ProjectSettingsSync {
       const peer = local.linkId ? byLink.get(local.linkId) : undefined
       if (!peer || this.homeOf(local.linkId!) !== id) continue
       const theirStamp = peer.settingsUpdatedAt ?? null
-      // A home that never changed a setting has nothing to follow; this
-      // copy keeps what it had before the link.
-      if (theirStamp === null) continue
+      // A home that never changed a setting has nothing to follow: it takes
+      // this copy's settings once (the ones it had before the link), so a
+      // forwarded write later never swaps them for the home's blanks.
+      if (theirStamp === null) {
+        await this.seed(link, local.id, peer)
+        continue
+      }
       if (local.settingsUpdatedAt != null && theirStamp <= local.settingsUpdatedAt) continue
       await this.apply(link, local.id, peer.id)
     }
@@ -161,6 +167,19 @@ export class ProjectSettingsSync {
     const bundle = ProjectSettingsBundleSchema.parse(await link.request('project.settings.get', { projectId: peerProjectId }))
     this.deps.registry.setProjectSettings(localId, bundle, bundle.updatedAt ?? this.now())
     this.log(`${link.env.name}: followed ${bundle.name}`)
+  }
+
+  /** This copy's settings, written on a home that never stamped one; its name and archive stay the home's. */
+  private async seed(link: Link, localId: string, peer: ProjectMeta): Promise<void> {
+    const mine = this.deps.registry.getProjectSettings(localId)
+    const { preamble, accountPins, review, plans, build, turnPass } = mine
+    if (preamble === null && !Object.values(accountPins).some(Boolean) && !review && !plans && !build && !turnPass) return
+    await link.request('project.settings.set', {
+      projectId: peer.id,
+      bundle: { ...mine, name: peer.name, archived: peer.archived }
+    })
+    await this.apply(link, localId, peer.id)
+    this.log(`${link.env.name}: seeded ${peer.name}`)
   }
 
   // ── the settings home ───────────────────────────────────────────────

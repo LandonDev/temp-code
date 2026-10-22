@@ -2776,9 +2776,11 @@ On link-up, on the box's `projects` push and every 5 minutes, debounced per
 host, it reads the box's `project.list`; for each linked copy whose home is
 the box and whose stamp there is newer than the Mac's, it pulls the bundle
 and writes it under the Mac's id with the box's stamp. A home that never
-stamped a setting leaves the Mac's copy as it was. It never writes toward
-the box. So a rename or an archive on the box reaches the Mac's row, and a
-Mac thread of the project opens with the box's preamble.
+stamped a setting takes the Mac's bundle once instead (`project.settings.set`
+there, the box's own name and archive kept), so what the Mac had before the
+link reaches the box and a later forwarded write never swaps it for the
+box's blanks; past that seed it never writes toward the box. So a rename
+or an archive on the box reaches the Mac's row, and a Mac thread of the project opens with the box's preamble.
 
 A settings write on the Mac for such a project (`project.rename`,
 `project.archive`, `project.setPreamble`, `project.setAccounts`,

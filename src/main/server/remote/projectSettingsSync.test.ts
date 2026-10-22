@@ -55,6 +55,9 @@ function world(opts: { macLinked?: boolean } = {}): World {
           return b.listProjects() as T
         case 'project.settings.get':
           return b.getProjectSettings(p.projectId) as T
+        case 'project.settings.set':
+          b.setProjectSettings(p.projectId, p.bundle)
+          return null as T
         case 'project.setPreamble':
           b.setProjectPreamble(p.projectId, p.preamble, p.enabled)
           return null as T
@@ -116,10 +119,27 @@ describe('the follower', () => {
     expect(w.link.calls).not.toContain('project.settings.get')
   })
 
-  it('a home that never stamped leaves the copy as it was', async () => {
+  it('a home that never stamped takes this copy once, keeping its own name', async () => {
     w.mac.setProjectPreamble('p-mac', 'MINE', true)
+    w.mac.renameProject('p-mac', 'Rail here')
     await w.sync.syncWith(BOX)
+    expect(w.box.getProjectSettings('p-box').preamble).toBe('MINE')
+    expect(w.box.getProject('p-box')?.name).toBe('Rail')
+    const stamp = w.box.getProject('p-box')?.settingsUpdatedAt
+    expect(stamp).not.toBeNull()
+    expect(w.mac.getProject('p-mac')?.settingsUpdatedAt).toBe(stamp)
+    // a forwarded write keeps the seeded preamble
+    await w.sync.forward('p-mac', 'build.set', { projectId: 'p-mac', workspaceId: 'w-env_mac', config: null })
     expect(w.mac.getProjectSettings('p-mac').preamble).toBe('MINE')
+    w.link.calls.length = 0
+    await w.sync.syncWith(BOX)
+    expect(w.link.calls).toEqual(['project.list'])
+  })
+
+  it('a copy with nothing set seeds nothing', async () => {
+    await w.sync.syncWith(BOX)
+    expect(w.link.calls).toEqual(['project.list'])
+    expect(w.box.getProject('p-box')?.settingsUpdatedAt).toBeNull()
   })
 
   it('a rename on the home follows on its projects push', async () => {
@@ -143,7 +163,8 @@ describe('the follower', () => {
     expect(w.link.calls.filter((m) => m === 'project.list')).toHaveLength(1)
   })
 
-  it('never writes toward the home', async () => {
+  it('never writes toward a home that has stamped', async () => {
+    w.box.setProjectSettings('p-box', bundle(w.box, { preamble: 'BOX' }), 5_000)
     w.mac.setProjectSettings('p-mac', { ...w.mac.getProjectSettings('p-mac'), preamble: 'MAC' }, 9_000)
     await w.sync.syncWith(BOX)
     expect(w.link.calls).toEqual(['project.list'])
