@@ -68,18 +68,22 @@ struct ToolChip: View {
                 .frame(width: 18)
                 .accessibilityHidden(true)
             // The verb sits in the dim step and the target reads loud, as on the desktop.
-            Text(phrase.verb)
-                .font(.subheadline)
-                .foregroundStyle(tool.status == .failed ? Tint.destructive : Color(.secondaryLabel))
-                .lineLimit(1)
-                .layoutPriority(phrase.target == nil ? 1 : 0)
-            if let target = phrase.target {
-                Text(target)
-                    .font(phrase.isFile ? .system(.footnote, design: .monospaced) : .subheadline)
-                    .foregroundStyle(tool.status == .failed ? Tint.destructive : .primary)
+            if tool.partial || tool.status == .running {
+                LiveChipLabel(verb: phrase.verb, target: phrase.target, isFile: phrase.isFile, failed: tool.status == .failed)
+            } else {
+                Text(phrase.verb)
+                    .font(.subheadline)
+                    .foregroundStyle(tool.status == .failed ? Tint.destructive : Color(.secondaryLabel))
                     .lineLimit(1)
-                    .truncationMode(phrase.isFile ? .middle : .tail)
-                    .layoutPriority(1)
+                    .layoutPriority(phrase.target == nil ? 1 : 0)
+                if let target = phrase.target {
+                    Text(target)
+                        .font(phrase.isFile ? .system(.footnote, design: .monospaced) : .subheadline)
+                        .foregroundStyle(tool.status == .failed ? Tint.destructive : .primary)
+                        .lineLimit(1)
+                        .truncationMode(phrase.isFile ? .middle : .tail)
+                        .layoutPriority(1)
+                }
             }
             Spacer(minLength: 8)
             switch tool.status {

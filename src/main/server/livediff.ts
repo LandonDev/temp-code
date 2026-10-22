@@ -97,6 +97,8 @@ export function onLiveEdit(listener: (p: LiveEditPush) => void): () => void {
 const emit = (p: LiveEditPush): void => {
   for (const l of listeners) l(p)
 }
+/** The iOS test server's seam (scripts/ios-client-test-server.ts): a scripted live edit, as if the watcher saw it. */
+export const emitLiveEdit = emit
 
 
 /** Copy current content as a baseline, within the caps. */

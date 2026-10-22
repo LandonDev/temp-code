@@ -270,6 +270,13 @@ public struct ThreadFold: Sendable, Hashable {
     private var questionIndex: [String: Int] = [:]  // requestId → items index
     private var approvalIndex: [String: Int] = [:]
     private var openCompaction: Int?
+    /// Files the thread is changing right now, from the `live-edits` push, by
+    /// path; `liveEditOrder` is oldest first, so the cap drops the oldest.
+    public private(set) var liveEdits: [String: LiveEditState] = [:]
+    private var liveEditOrder: [String] = []
+    /// The next id for a tool item born from a partial call: below every
+    /// persisted seq and above the pending turns' -100_000 - index.
+    private var nextProvisional = -1_000
 
     public init() {}
 
@@ -312,14 +319,29 @@ public struct ThreadFold: Sendable, Hashable {
             // everything after it belong to the newly in-progress todo.
             if event.parentCallId == nil { _ = board.applyTodoCall(event) }
             if let index = toolIndex[event.callId], case .tool(var tool) = items[index].item {
+                // A partial landing after the final call is stale: it would
+                // overwrite the input the persisted row holds.
+                if event.partial == true, tool.seq > 0 { break }
                 tool.input = event.input ?? tool.input
                 tool.partial = event.partial ?? false
                 tool.preview = event.preview ?? tool.preview
                 tool.display = event.display ?? tool.display
                 tool.inputOmitted = tool.inputOmitted || Transcript.containsOmitted(event.input)
+                // The final row of a call born as a partial stamps the real seq.
+                if event.partial != true, row.ephemeral != true, tool.seq < 0 {
+                    tool.seq = row.seq
+                    tool.ts = row.ts
+                }
+                if tool.live == nil, let path = Board.editPath(tool) { tool.live = liveEdit(matching: path) }
                 items[index].item = .tool(tool)
             } else {
-                append(.tool(ToolItem(seq: row.seq, ts: row.ts, callId: event.callId, name: event.name, display: event.display, input: event.input, partial: event.partial ?? false, preview: event.preview, parentCallId: event.parentCallId, inputOmitted: Transcript.containsOmitted(event.input), output: .none, status: .running, reauth: nil)))
+                // A call born from a partial takes a provisional id of its own;
+                // its final row stamps the real seq above.
+                let provisional = event.partial == true
+                var tool = ToolItem(seq: provisional ? nextProvisional : row.seq, ts: row.ts, callId: event.callId, name: event.name, display: event.display, input: event.input, partial: provisional, preview: event.preview, parentCallId: event.parentCallId, inputOmitted: Transcript.containsOmitted(event.input), output: .none, status: .running, reauth: nil)
+                if provisional { nextProvisional -= 1 }
+                if let path = Board.editPath(tool) { tool.live = liveEdit(matching: path) }
+                append(.tool(tool))
                 toolIndex[event.callId] = items.count - 1
             }
         case .toolResult(let event):
@@ -500,6 +522,43 @@ public struct ThreadFold: Sendable, Hashable {
         let block = TextBlock(seq: row.seq, ts: row.ts, text: text, streaming: delta, parentCallId: parentCallId, doneTs: delta ? nil : row.ts)
         append(wrap(block))
         if let key { textIndex[key] = items.count - 1 }
+    }
+
+    /// Keeps a live edit by path (the newest 500, `LiveEdits.max`) and stamps
+    /// it on the last running edit tool whose path matches, so that row's
+    /// counts and diff move without a new row. True when an item changed.
+    @discardableResult
+    mutating func stamp(_ state: LiveEditState) -> Bool {
+        if liveEdits[state.path] == nil {
+            liveEditOrder.append(state.path)
+            if liveEditOrder.count > LiveEdits.max { liveEdits[liveEditOrder.removeFirst()] = nil }
+        }
+        liveEdits[state.path] = state
+        for index in items.indices.reversed() {
+            guard case .tool(var tool) = items[index].item, tool.status == .running,
+                  let path = Board.editPath(tool), LiveEdits.matches(state.path, path) else { continue }
+            tool.live = state
+            items[index].item = .tool(tool)
+            return true
+        }
+        return false
+    }
+
+    /// A fold rebuilt from rows starts with no live edits; the ones the
+    /// previous fold held carry over (the host keeps them in memory only).
+    mutating func carryLiveEdits(from previous: ThreadFold) {
+        for path in previous.liveEditOrder {
+            if let state = previous.liveEdits[path] { stamp(state) }
+        }
+    }
+
+    /// The live edit for a tool's path, newest first.
+    private func liveEdit(matching toolPath: String) -> LiveEditState? {
+        if let exact = liveEdits[toolPath] { return exact }
+        for path in liveEditOrder.reversed() where LiveEdits.matches(path, toolPath) {
+            return liveEdits[path]
+        }
+        return nil
     }
 
     private mutating func rebuildIndexes() {

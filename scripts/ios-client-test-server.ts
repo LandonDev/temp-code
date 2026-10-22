@@ -17,7 +17,9 @@
  *   GET  /actions               → { actions: [{ kind, sessionId, at, … }] } the sends, stops, approvals,
  *                                 answers, creates, renames, archives and pins the stubs recorded
  *   POST /actions/clear         → forgets them
- *   POST /finish { sessionId, text? }  → ends a simulated turn: the reply, turn-complete, idle
+ *   POST /finish { sessionId, text? }  → ends a simulated turn: the reply, turn-complete, idle (and stops a /stream)
+ *   POST /stream { sessionId?, cps?, seconds?, seed? }  → plays a bursty streaming turn with a growing Edit and
+ *                                 live edits into ios-streaming; 409 while one runs
  *   POST /ask { sessionId, kind: 'approval' | 'question' }  → a fresh card on a thread, which waits
  *   POST /quit                  → closes everything
  */
@@ -29,6 +31,7 @@ import { dirname, join } from 'node:path'
 import { deflateSync } from 'node:zlib'
 import { configure } from 'aliax-core'
 import { startServer } from '../src/main/server/index'
+import { emitLiveEdit } from '../src/main/server/livediff'
 import { serveMedia } from '../src/main/server/media'
 import type { AccountsSnapshot } from '../src/shared/accounts'
 import type { AgentEvent, FailureKind } from '../src/shared/events'
@@ -887,6 +890,32 @@ at(THREAD_HANDOFF, [
   status('idle')
 ])
 
+// A chat for the streaming proof (POST /stream plays a turn into it): one
+// settled turn of about 1,400 words, so `TC_TEST_SEGMENT=chat` opens on prose.
+export const THREAD_STREAM = 'ios-streaming'
+await makeTyped(THREAD_STREAM, 'chat', 'Streaming on the phone')
+const streamParagraph = (n: number): string =>
+  Array.from({ length: 6 }, (_, i) => `Sentence ${i + 1} of paragraph ${n} explains how the gateway forwards a request, swaps in the routed account and records the limit headers the answer carries.`).join(' ')
+const streamSeedAnswer = [
+  'The gateway sits between every harness and the provider. ' + streamParagraph(1),
+  streamParagraph(2),
+  streamParagraph(3),
+  '- the plain-http port carries the thread scope on its path\n- one https port per codex thread keeps the origin\n- every answer feeds the headroom store',
+  '```ts\nconst route = await gateway.scopedCodexUrl(threadId)\nconst answer = await forward(route, request)\n```',
+  streamParagraph(4),
+  streamParagraph(5),
+  streamParagraph(6),
+  streamParagraph(7),
+  streamParagraph(8)
+].join('\n\n')
+at(THREAD_STREAM, [
+  { type: 'user-text', text: 'Explain the gateway.', model: 'claude-sonnet-5-5', reasoning: 'medium', newPass: true },
+  ...think('st0', 'The gateway has two listeners and a headroom store; three paragraphs each.'),
+  answer('st0a', streamSeedAnswer),
+  { type: 'turn-complete', costUsd: 0.12, inputTokens: 4_000, outputTokens: 1_900 },
+  status('idle')
+])
+
 // Keep board tasks, rounds and sources outside a cold tail for the phone's
 // history proof. A single merged block keeps the board itself readable.
 for (const id of [THREAD_IMPL, THREAD_RESEARCH]) {
@@ -1230,6 +1259,107 @@ writeFileSync(
 )
 process.env.TEMP_CODE_GH_BIN = ghScript
 
+// ── a bursty streaming turn (POST /stream) ──────────────────────────────
+// Plays a scripted turn on timers: 1.5 s of thinking deltas, then an answer
+// at `cps` chars/s as a bursty stream (a delta every 7 ms of 1–5 chars, a
+// 250 ms stall every 2 s, one 400 ms stall at 6 s: the shape of the desktop
+// smoothText tests), a partial Edit call from 4 s whose new_string grows 12
+// lines every 100 ms to 420 lines (the first three partials carry a
+// truncated file_path, so the chip's target types in), a live edit for the
+// same file every 100 ms (the coalescer's previews lane), then the final
+// call and result, the whole answer, turn-complete and idle. The same LCG
+// as smoothText.test.ts, seeded, so a run repeats.
+const sleep = (ms: number): Promise<void> => new Promise((ok) => setTimeout(ok, ms))
+let streamRun: { sessionId: string; stopped: boolean } | null = null
+const streamAnswer = (length: number): string => {
+  const parts = [
+    'The gateway forwards every request a harness makes and swaps in the account the thread is routed to. ' + streamParagraph(1),
+    '- the plain-http port carries the thread scope\n- one https port per codex thread\n- every answer feeds the headroom store',
+    '```ts\nconst url = await gateway.scopedCodexUrl(threadId)\n```',
+    streamParagraph(2),
+    streamParagraph(3)
+  ]
+  let text = ''
+  for (let i = 0; text.length < length; i++) text += (i === 0 ? '' : '\n\n') + parts[i % parts.length]
+  return text.slice(0, length)
+}
+async function playStream(sessionId: string, cps: number, seconds: number, seed: number): Promise<void> {
+  const run = { sessionId, stopped: false }
+  streamRun = run
+  const live = (): boolean => !run.stopped
+  let s = seed >>> 0
+  const rand = (): number => {
+    s = (s * 1664525 + 1013904223) >>> 0
+    return s / 2 ** 32
+  }
+  const cwd = repo
+  const path = 'src/gateway/route.ts'
+  const answer = streamAnswer(Math.round(cps * seconds))
+  try {
+    registry.append(sessionId, { type: 'user-text', text: 'Explain the gateway in detail' })
+    registry.append(sessionId, { type: 'status', status: 'running' })
+    // 1. thinking for 1.5 s
+    const thought = 'Two listeners, one headroom store, and the warm harness in front: describe each, then the routing.'
+    for (let i = 0; i < 10 && live(); i++) {
+      registry.append(sessionId, { type: 'thinking', text: thought.slice(Math.floor((i * thought.length) / 10), Math.floor(((i + 1) * thought.length) / 10)), delta: true, msgId: 'st-think', blockIndex: 0 })
+      await sleep(150)
+    }
+    if (!live()) return
+    registry.append(sessionId, { type: 'thinking', text: thought, delta: false, msgId: 'st-think', blockIndex: 0 })
+    const started = Date.now()
+    // 2. the answer, bursty
+    const answerLoop = async (): Promise<void> => {
+      let at = 0
+      let owed = 0
+      let nextStall = 2_000
+      let longStalled = false
+      while (at < answer.length && live()) {
+        const elapsed = Date.now() - started
+        if (!longStalled && elapsed >= 6_000) {
+          longStalled = true
+          await sleep(400)
+        } else if (elapsed >= nextStall) {
+          nextStall += 2_000
+          await sleep(250)
+        }
+        owed += (cps * 7) / 1000
+        const chars = Math.min(5, Math.max(1, Math.round(owed * (0.5 + rand()))))
+        owed -= chars
+        registry.append(sessionId, { type: 'assistant-text', text: answer.slice(at, at + chars), delta: true, msgId: 'st-answer', blockIndex: 0 })
+        at += chars
+        await sleep(7)
+      }
+    }
+    // 3 + 4. the growing edit and its live diff, from 4 s
+    const editLoop = async (): Promise<void> => {
+      await sleep(Math.max(0, 4_000 - (Date.now() - started)))
+      const oldString = 'export const route = (req: Request) => forward(req)'
+      const lines: string[] = []
+      let diff = ''
+      for (let push = 0; push < 35 && live(); push++) {
+        for (let i = 0; i < 12; i++) lines.push(`  const step${lines.length + 1} = await forward(req, { hop: ${lines.length + 1} })`)
+        diff = `@@ -1,1 +1,${lines.length + 1} @@\n-${oldString}\n+export const route = async (req: Request) => {\n${lines.map((l) => '+' + l).join('\n')}\n`
+        const filePath = push === 0 ? 'src/ga' : push === 1 ? 'src/gateway/ro' : path
+        registry.append(sessionId, { type: 'tool-call', callId: 'st-edit', name: 'Edit', input: { file_path: filePath, old_string: oldString, new_string: `export const route = async (req: Request) => {\n${lines.join('\n')}` }, partial: true })
+        emitLiveEdit({ push: 'live-edit', cwd, sessionIds: [sessionId], edit: { path, kind: 'changed', adds: lines.length, dels: 3, diff, settled: push === 34 || undefined, ts: Date.now() } })
+        await sleep(100)
+      }
+      if (!live()) return
+      const previewLines = [{ kind: 'del' as const, number: 1, text: oldString }, { kind: 'add' as const, number: 1, text: 'export const route = async (req: Request) => {' }, ...lines.map((text, i) => ({ kind: 'add' as const, number: i + 2, text }))]
+      registry.append(sessionId, { type: 'tool-call', callId: 'st-edit', name: 'Edit', input: { file_path: path, old_string: oldString, new_string: `export const route = async (req: Request) => {\n${lines.join('\n')}` }, preview: { kind: 'write', path, fileName: 'route.ts', additions: 420, deletions: 3, lines: previewLines } })
+      registry.append(sessionId, { type: 'tool-result', callId: 'st-edit', output: `The file ${path} has been updated.`, isError: false })
+    }
+    await Promise.all([answerLoop(), editLoop()])
+    if (!live()) return
+    // 5. the final row, turn-complete, idle
+    registry.append(sessionId, { type: 'assistant-text', text: answer, delta: false, msgId: 'st-answer', blockIndex: 0 })
+    registry.append(sessionId, { type: 'turn-complete', costUsd: 0.2, inputTokens: 6_000, outputTokens: 1_200 })
+    registry.append(sessionId, { type: 'status', status: 'idle' })
+  } finally {
+    if (streamRun === run) streamRun = null
+  }
+}
+
 // ── control ─────────────────────────────────────────────────────────────
 const readJson = (req: import('node:http').IncomingMessage): Promise<Record<string, unknown>> =>
   new Promise((resolve) => {
@@ -1299,6 +1429,7 @@ const control = createServer((req, res) => {
       case '/finish': {
         // Ends a simulated turn the way a real one ends: the reply, turn-complete, idle.
         const sessionId = String(body.sessionId ?? THREAD_A)
+        if (streamRun?.sessionId === sessionId) streamRun.stopped = true
         appended++
         registry.append(sessionId, { type: 'assistant-text', text: String(body.text ?? 'Done.'), delta: false, msgId: `f${appended}`, blockIndex: 0 })
         registry.append(sessionId, { type: 'turn-complete' })
@@ -1321,6 +1452,13 @@ const control = createServer((req, res) => {
         return answer(200, { clockOffsetMs })
       case '/revoke':
         return answer(200, { ok: server.remoteAuth.revokeKey(String(body.keyId ?? '')) })
+      case '/stream': {
+        // A bursty streaming turn into a thread; one at a time.
+        if (streamRun) return answer(409, { error: `a stream is running on ${streamRun.sessionId}` })
+        const sessionId = String(body.sessionId ?? THREAD_STREAM)
+        void playStream(sessionId, Number(body.cps ?? 300), Number(body.seconds ?? 12), Number(body.seed ?? 1)).catch((err) => console.error('[stream]', err))
+        return answer(200, { started: sessionId })
+      }
       case '/quit':
         answer(200, { ok: true })
         setTimeout(() => void shutdown(), 50)
@@ -1382,7 +1520,7 @@ process.stdout.write(
     second,
     localPort: server.port,
     shot,
-    threads: { implementation: THREAD_IMPL, planning: THREAD_PLAN, projectPlan: THREAD_PROJECT_PLAN, m3Build: THREAD_M3_BUILD, orchestration: THREAD_ORCH, research: THREAD_RESEARCH, chat: THREAD_CHAT, long: THREAD_LONG, held: THREAD_HELD, queued: THREAD_QUEUED, stopped: 'ios-stopped', notices: THREAD_NOTICES, failures: THREAD_FAILURES, preamble: THREAD_PREAMBLE, handoff: THREAD_HANDOFF },
+    threads: { implementation: THREAD_IMPL, planning: THREAD_PLAN, projectPlan: THREAD_PROJECT_PLAN, m3Build: THREAD_M3_BUILD, orchestration: THREAD_ORCH, research: THREAD_RESEARCH, chat: THREAD_CHAT, long: THREAD_LONG, held: THREAD_HELD, queued: THREAD_QUEUED, stopped: 'ios-stopped', notices: THREAD_NOTICES, failures: THREAD_FAILURES, preamble: THREAD_PREAMBLE, handoff: THREAD_HANDOFF, streaming: THREAD_STREAM },
     projectId: project.id,
     workspaceId: workspace.id
   }) + '\n'

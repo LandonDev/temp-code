@@ -41,6 +41,80 @@ public struct ThreadState: Sendable, Hashable {
 
     /// The last persisted seq held; a streaming preview at the tail never moves it.
     public var cursor: Int { rows.last(where: { $0.ephemeral != true })?.seq ?? 0 }
+
+    /// Whole refolds run so far (`ThreadFold.fold` over every row held); a test seam.
+    internal var refolds = 0
+
+    /// Adds rows after the fold, never a seq twice; a replayed row with a
+    /// known seq replaces the one held. A streaming preview (a partial tool
+    /// call, seq -1, ephemeral) carries the whole input so far: one row per
+    /// call, replaced in place wherever it sits and retired by its final
+    /// call row; both fold incrementally, since the fold updates the call's
+    /// item by callId. Rows that extend the tail fold incrementally too;
+    /// a replayed replacement, an out-of-order page or a trim folds again.
+    /// Called through the dictionary's modify accessor, so neither `rows`
+    /// nor the fold's items are copied per push.
+    mutating func append(_ incoming: [EventRow], trim: Bool) {
+        revision += 1
+        var incremental = true
+        var needsSort = false
+        for row in incoming {
+            if let callId = Self.partialCallId(row) {
+                if let at = rows.lastIndex(where: { Self.partialCallId($0) == callId }) {
+                    rows[at] = row
+                } else if rows.contains(where: { Self.persistedCallId($0) == callId }) {
+                    // A partial behind its own final row: stale, never held.
+                    continue
+                } else {
+                    rows.append(row)
+                }
+                if incremental { fold.apply(row) }
+                continue
+            }
+            if let at = rows.firstIndex(where: { $0.ephemeral != true && $0.seq == row.seq }) {
+                rows[at] = row
+                incremental = false
+                continue
+            }
+            if case .toolCall(let call) = row.event, let at = rows.lastIndex(where: { Self.partialCallId($0) == call.callId }) {
+                rows.remove(at: at)
+            }
+            if let last = rows.last(where: { $0.ephemeral != true }), row.seq < last.seq {
+                needsSort = true
+                incremental = false
+            }
+            rows.append(row)
+            if incremental { fold.apply(row) }
+        }
+        if needsSort {
+            // Persisted rows by seq; a streaming preview stays at the tail.
+            rows.sort { ($0.ephemeral == true ? Int.max : $0.seq) < ($1.ephemeral == true ? Int.max : $1.seq) }
+        }
+        if trim, rows.count > threadRowsInMemory {
+            rows.removeFirst(rows.count - threadRowsInMemory)
+            moreBefore = true
+            incremental = false
+        }
+        if !incremental { refold() }
+    }
+
+    /// The fold rebuilt from every row held; the live edits carry over.
+    mutating func refold() {
+        var rebuilt = ThreadFold.fold(rows)
+        rebuilt.carryLiveEdits(from: fold)
+        fold = rebuilt
+        refolds += 1
+    }
+
+    static func partialCallId(_ row: EventRow) -> String? {
+        guard row.ephemeral == true, case .toolCall(let call) = row.event else { return nil }
+        return call.callId
+    }
+
+    static func persistedCallId(_ row: EventRow) -> String? {
+        guard row.ephemeral != true, case .toolCall(let call) = row.event else { return nil }
+        return call.callId
+    }
 }
 
 /// Tail retained after live appends for transcript-only threads. Board
@@ -394,7 +468,9 @@ public final class EnvironmentClient {
                     guard self.historyTokens[id] == token, var latest = self.threads[id] else { return }
                     if latest.revision != revision { continue }
                     latest.rows = complete.rows
-                    latest.fold = complete.fold
+                    var fold = complete.fold
+                    fold.carryLiveEdits(from: latest.fold)
+                    latest.fold = fold
                     latest.moreBefore = false
                     latest.revision += 1
                     self.threads[id] = latest
@@ -618,7 +694,15 @@ public final class EnvironmentClient {
             applyNotes(value) // iOS 18: the thread's notes (Client/NotesState.swift)
         case .accounts(let value):
             accounts.apply(value.snapshot, now: Int(Date().timeIntervalSince1970 * 1000))
-        case .queue, .liveEdits, .builds, .unknown:
+        case .liveEdits(let value):
+            // The host's live diff of a file a thread is changing: into that
+            // thread's fold, onto its running edit row; memory only, as on the desktop.
+            for item in value.items {
+                for sessionId in item.sessionIds where threads[sessionId] != nil {
+                    threads[sessionId]!.fold.applyLiveEdit(item.edit)
+                }
+            }
+        case .queue, .builds, .unknown:
             break
         }
     }
@@ -690,7 +774,7 @@ public final class EnvironmentClient {
             state.historyError = nil
             state.rows = page.rows
             state.moreBefore = page.moreBefore
-            state.fold = ThreadFold.fold(page.rows)
+            state.refold()
             Self.settle(&state, rows: page.rows)
             state.isLoading = false
             state.isLive = true
@@ -713,56 +797,16 @@ public final class EnvironmentClient {
         loadBoardHistory(id)
     }
 
-    /// Adds rows after the fold, never a seq twice; a replayed row with a
-    /// known seq replaces the one held. A streaming preview (a partial tool
-    /// call, seq -1, ephemeral) carries the whole input so far: one row per
-    /// call, replaced in place and retired by its final call row. Rows that
-    /// only extend the tail fold incrementally; anything else (a
-    /// replacement, an out-of-order page, a trim) folds again.
+    /// A batch of rows into one thread: one write to `threads[id]` through
+    /// the subscript's modify accessor (`ThreadState.append`), so the row
+    /// array and the fold's items stay unique and are mutated in place.
     private func append(_ id: String, rows: [EventRow]) {
-        guard var state = threads[id], !rows.isEmpty else { return }
-        state.revision += 1
-        var incremental = true
-        var needsSort = false
-        for row in rows {
-            if let callId = Self.partialCallId(row) {
-                if let at = state.rows.lastIndex(where: { Self.partialCallId($0) == callId }) {
-                    state.rows[at] = row
-                    if incremental, at == state.rows.count - 1 { state.fold.apply(row) } else { incremental = false }
-                } else {
-                    state.rows.append(row)
-                    if incremental { state.fold.apply(row) }
-                }
-                continue
-            }
-            if let at = state.rows.firstIndex(where: { $0.ephemeral != true && $0.seq == row.seq }) {
-                state.rows[at] = row
-                incremental = false
-                continue
-            }
-            if case .toolCall(let call) = row.event, let at = state.rows.lastIndex(where: { Self.partialCallId($0) == call.callId }) {
-                state.rows.remove(at: at)
-                incremental = false
-            }
-            if let last = state.rows.last(where: { $0.ephemeral != true }), row.seq < last.seq {
-                needsSort = true
-                incremental = false
-            }
-            state.rows.append(row)
-            if incremental { state.fold.apply(row) }
+        guard threads[id] != nil, !rows.isEmpty else { return }
+        let trim = !needsBoardHistory(id)
+        publish(thread: id) {
+            threads[id]!.append(rows, trim: trim)
+            Self.settle(&threads[id]!, rows: rows)
         }
-        if needsSort {
-            // Persisted rows by seq; a streaming preview stays at the tail.
-            state.rows.sort { ($0.ephemeral == true ? Int.max : $0.seq) < ($1.ephemeral == true ? Int.max : $1.seq) }
-        }
-        if state.rows.count > threadRowsInMemory && !needsBoardHistory(id) {
-            state.rows.removeFirst(state.rows.count - threadRowsInMemory)
-            state.moreBefore = true
-            incremental = false
-        }
-        if !incremental { state.fold = ThreadFold.fold(state.rows) }
-        Self.settle(&state, rows: rows)
-        publish(thread: id) { threads[id] = state }
     }
 
     /// What this device did optimistically, confirmed by the host's rows: the
@@ -784,18 +828,13 @@ public final class EnvironmentClient {
         }
     }
 
-    private static func partialCallId(_ row: EventRow) -> String? {
-        guard row.ephemeral == true, case .toolCall(let call) = row.event else { return nil }
-        return call.callId
-    }
-
     private func prepend(_ id: String, rows: [EventRow], moreBefore: Bool?) {
         guard var state = threads[id] else { return }
         state.revision += 1
         let known = Set(state.rows.map(\.seq))
         let fresh = rows.filter { !known.contains($0.seq) }
         state.rows = (fresh + state.rows).sorted { ($0.ephemeral == true ? Int.max : $0.seq) < ($1.ephemeral == true ? Int.max : $1.seq) }
-        state.fold = ThreadFold.fold(state.rows)
+        state.refold()
         if let moreBefore {
             state.moreBefore = moreBefore
         } else if fresh.isEmpty {

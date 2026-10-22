@@ -1090,6 +1090,15 @@ routed to (aliax-core's `forward`). Two listeners:
   for the proof only; an action runs once, on the screen the launch route
   opened, through the same calls the buttons make. The test server's
   `TC_TEST_FLEET=large` seeds a twelve-agent fleet in all four groups.
+- Streaming (27): `Rendering/SmoothText.swift` is the desktop's jitter
+  buffer in Swift (`Pacer`, `SmoothTextReveal` on a display link, 33 ms
+  paints, UTF-8 positions); the fold gives a partial-born tool item a
+  provisional id and the final row's seq, folds `live-edits` into the
+  running edit tool by path (`ToolItem.live`, `ThreadFold.liveEdits`), and
+  `EnvironmentClient.append` applies a batch in place;
+  `Thread/StreamingRow.swift` holds the streaming assistant row, the
+  thinking tail line and the live chip label. The test server's
+  `POST /stream` plays a bursty turn with a growing Edit and live edits.
 - Settings (thread 5): `ios/TempCode/Sources/Shell/{SettingsView,HostsView,
   AddEnvironmentSheet,SettingsStyles}.swift` are the SwiftUI alone; every
   word they say (`ConnectionWord`, `HostFix`, `HostBuildLine`,
