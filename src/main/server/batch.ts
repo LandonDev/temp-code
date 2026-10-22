@@ -1588,15 +1588,15 @@ export async function handleBatch(
   req: ClientRequest,
   batches: Pick<Batches, 'get' | 'setRules' | 'stopStep' | 'adoptAll' | 'archive'>,
   registry: Pick<SessionRegistry, 'batchChildren'>,
-  board?: { board(masterId: string, state: BatchState): Promise<BatchBoard> }
+  board?: { board(masterId: string, state: () => BatchState): Promise<BatchBoard> }
 ): Promise<{ handled: true; result: unknown } | { handled: false }> {
   switch (req.method) {
     case 'batch.get':
       return { handled: true, result: batches.get(req.params.masterId) }
     case 'batch.board': {
-      const state = batches.get(req.params.masterId)
-      if (board) return { handled: true, result: await board.board(req.params.masterId, state) }
-      return { handled: true, result: { children: batchChildren(registry, req.params.masterId), digests: {}, state } satisfies BatchBoard }
+      const masterId = req.params.masterId
+      if (board) return { handled: true, result: await board.board(masterId, () => batches.get(masterId)) }
+      return { handled: true, result: { children: batchChildren(registry, masterId), digests: {}, state: batches.get(masterId) } satisfies BatchBoard }
     }
     case 'batch.children':
       return { handled: true, result: { children: batchChildren(registry, req.params.masterId) } }

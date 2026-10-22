@@ -318,7 +318,7 @@ check('no child left queued', childrenOf().every((k) => k.status !== 'queued'), 
 
 // ── the board in one answer (batch.board), read as the host serves it ───
 const boardDigests = hostBoardDigests(registry, store, () => true)
-const board = await boardDigests.board(master.id, batches.get(master.id))
+const board = await boardDigests.board(master.id, () => batches.get(master.id))
 check('batch.board answers the four children here with the state', board.children.length === 4 && [a, r, p, b].every((k) => board.children.some((c) => c.id === k.id)) && board.state.masterId === master.id, board.children.map((c) => c.title).join(', '))
 check("batch.board's digests carry each child's last words from its own rows", /research done:\s*blue/i.test(board.digests[r.id]?.last ?? '') && /b done/i.test(board.digests[b.id]?.last ?? ''), JSON.stringify({ r: board.digests[r.id], b: board.digests[b.id] }))
 

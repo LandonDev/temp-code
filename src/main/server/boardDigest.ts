@@ -140,14 +140,15 @@ export class BoardDigests {
     return this.detach
   }
 
-  /** The board: the children here, their digests, the batch's state. */
-  async board(masterId: string, state: BatchState): Promise<BatchBoard> {
+  /** The board: the children here, their digests, the batch's state, all
+   *  read once the first tail reads are in (a push sent meanwhile is never
+   *  newer than the answer). */
+  async board(masterId: string, state: () => BatchState): Promise<BatchBoard> {
     await Promise.all(this.deps.children(masterId).map((c) => this.ensureLines(c.id)))
-    // Read again after the reads: a child may have joined, left or moved meanwhile.
     const children = this.deps.children(masterId)
     const digests: Record<string, BoardDigest> = {}
     for (const child of children) digests[child.id] = this.digest(child)
-    return { children, digests, state }
+    return { children, digests, state: state() }
   }
 
   /** One child's digest as the board shows it now. */

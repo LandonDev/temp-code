@@ -1406,7 +1406,7 @@ describe('the board: batch.board, digests and their watchers', () => {
 
   it("answers the master's children here with a digest each from the host's own folds, and the state", async () => {
     const h = board()
-    const answer = await h.digests.board('m', state('m'))
+    const answer = await h.digests.board('m', () => state('m'))
     expect(answer.children.map((c) => c.id)).toEqual(['a', 'r', 'x'])
     expect(answer.state.masterId).toBe('m')
     expect(answer.digests).toEqual({
@@ -1422,7 +1422,7 @@ describe('the board: batch.board, digests and their watchers', () => {
     })
     // Each child's tail was read once; a second board reads nothing.
     expect(h.tailReads.sort()).toEqual(['a', 'r', 'x'])
-    await h.digests.board('m', state('m'))
+    await h.digests.board('m', () => state('m'))
     expect(h.tailReads).toHaveLength(3)
   })
 
@@ -1442,7 +1442,7 @@ describe('the board: batch.board, digests and their watchers', () => {
   it("one child's moves inside the window become one push of its new digest; an unchanged digest is never sent", async () => {
     vi.useFakeTimers()
     const h = board()
-    await h.digests.board('m', state('m'))
+    await h.digests.board('m', () => state('m'))
     // Three rows and a meta push for a, inside 250 ms.
     h.todos.set('a', [{ status: 'completed', name: 'Read the brief' }, { status: 'completed', name: 'Write the view' }])
     h.append(h.row('a', 5, { type: 'tool-call', callId: 't2', name: 'TodoWrite', input: {} } as AgentEvent))
@@ -1500,7 +1500,7 @@ describe('the board: batch.board, digests and their watchers', () => {
     slow.attach()
     const got: BoardPush[] = []
     slow.onPush((p) => got.push(p))
-    const answer = slow.board('m', state('m'))
+    const answer = slow.board('m', () => state('m'))
     // The row arrives through the registry's listener while the tail read waits.
     for (const l of appended) l(h.row('a', 9, { type: 'assistant-text', text: 'Mid-read.', delta: false, msgId: 'm9', blockIndex: 0 } as AgentEvent))
     release()
@@ -1513,13 +1513,13 @@ describe('the board: batch.board, digests and their watchers', () => {
     vi.useFakeTimers()
     let watching = false
     const h = board({ watched: () => watching })
-    await h.digests.board('m', state('m'))
+    await h.digests.board('m', () => state('m'))
     h.append(h.row('a', 5, { type: 'assistant-text', text: 'Unseen.', delta: false, msgId: 'm2', blockIndex: 0 } as AgentEvent))
     vi.advanceTimersByTime(1_000)
     expect(h.pushes).toHaveLength(0)
     // The lines still fold, so a watcher that comes back reads them.
     watching = true
-    expect((await h.digests.board('m', state('m'))).digests.a.last).toBe('Unseen.')
+    expect((await h.digests.board('m', () => state('m'))).digests.a.last).toBe('Unseen.')
   })
 
   it("a socket watches a master for a minute after its batch.board, or while it has the master on screen; never another master's", () => {
