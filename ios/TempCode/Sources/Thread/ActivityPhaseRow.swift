@@ -277,18 +277,20 @@ struct PhaseGlyph: View {
 /// quarter-round branch to the step's first line. The last step is where
 /// the spine leaves off. One path, stroked once, so the branch never doubles
 /// the spine's alpha where the two run together.
-struct PhaseRail: Shape {
+nonisolated struct PhaseRail: Shape {
     let last: Bool
 
     static let color = Color.primary.opacity(0.14)
     /// The glyph column's centre: the 8 pt inset and half of 18.
     private static let spine: CGFloat = 17
     private static let radius: CGFloat = 8
+    /// `ActivityStep.lineHeight`: the branch meets the middle of a step's first line.
+    private static let lineHeight: CGFloat = 32
 
     func path(in rect: CGRect) -> Path {
         let x = Self.spine
         let r = Self.radius
-        let y = ActivityStep.lineHeight / 2
+        let y = Self.lineHeight / 2
         var path = Path()
         path.move(to: CGPoint(x: x, y: 0))
         path.addLine(to: CGPoint(x: x, y: last ? y - r : rect.maxY))
