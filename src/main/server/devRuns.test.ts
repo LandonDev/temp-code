@@ -53,7 +53,6 @@ describe('DevRuns', () => {
   it('runs a target, streams its log, finds its port under its tree, offers it, and stops the group', async () => {
     const run = await runs.start('p1', 'serve')
     expect(run).toMatchObject({ status: 'running', name: 'site', script: 'serve', cwd: dir })
-    expect((await runs.start('p1', 'serve')).id).toBe(run.id)
     await until(() => runs.offers().length === 1)
     const port = runs.offers()[0].port
     expect(runs.offers()[0]).toMatchObject({ id: forwardIdOf(run.id, port), label: `http://localhost:${port}`, runId: run.id, sessionId: null })

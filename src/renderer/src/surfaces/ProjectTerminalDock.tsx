@@ -32,6 +32,7 @@ import { SurfaceSkeleton } from "./SurfaceSkeleton";
 
 // xterm lives in the terminal chunk (surfaces/chunks.ts); the first dock tab pulls it in.
 const TerminalView = terminalChunk.surface("TerminalView", <SurfaceSkeleton kind="terminal" label="Loading terminal" />);
+const DevLogView = terminalChunk.surface("DevLogView", <SurfaceSkeleton kind="terminal" label="Loading console" />);
 
 type Props = {
   dock: ProjectTerminalDock;
@@ -253,12 +254,19 @@ export function ProjectTerminalDock({
                 : "hidden"
             }
           >
+            {file.devLog ? (
+              <DevLogView
+                source={file.devLog}
+                active={focused && file.id === dock.pane.activeFileId}
+              />
+            ) : (
             <TerminalView
               id={file.id}
               cwd={file.cwd}
               active={focused && file.id === dock.pane.activeFileId}
               onMetaChange={(patch) => onTerminalMetaChange?.(file.id, patch)}
             />
+            )}
           </div>
         ))}
       </div>

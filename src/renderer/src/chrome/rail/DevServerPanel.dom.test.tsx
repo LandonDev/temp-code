@@ -73,32 +73,6 @@ describe('DevServerPanel', () => {
     for (let i = 0; i < 5; i++) await probe!.act(async () => {})
   }
 
-  it('runs the target on the chosen host and streams its console, with the forward to open', async () => {
-    probe = mountProbe(<DevServerPanel projectId="p1" />)
-    await flush()
-    const root = probe.container
-    // Two hosts with a copy: the choice shows; this Mac has one target, so the menu reads as a label.
-    const radios = [...root.querySelectorAll('[role="radio"]')]
-    expect(radios.map((r) => r.textContent)).toEqual(['This Mac', 'box'])
-    expect((root.querySelector('[aria-label="Dev server target"]') as HTMLButtonElement).disabled).toBe(true)
-    await probe.act(async () => (radios[1] as HTMLButtonElement).click())
-    await flush()
-    expect((root.querySelector('[aria-label="Dev server target"]') as HTMLButtonElement).disabled).toBe(false)
-    expect(root.textContent).toContain('bun run dev')
-
-    const runButton = [...root.querySelectorAll('button')].find((b) => b.textContent?.trim().startsWith('Run')) as HTMLButtonElement
-    await probe.act(async () => runButton.click())
-    await flush()
-    expect(requests.find((r) => r[1] === 'devServer.start')).toEqual(['env_box', 'devServer.start', { projectId: 'p2', targetId: 'apps/web#dev' }])
-
-    probe.act(() => applyDevRunPush('env_box', { push: 'dev-run', projectId: 'p2', run: run(), lines: ['  ➜  Local:   http://localhost:5173/'] }))
-    expect(root.querySelector('[data-dev-console]')?.textContent).toContain('Local:   http://localhost:5173/')
-    const open = root.querySelector('[data-dev-port]') as HTMLButtonElement
-    expect(open.textContent).toBe('Open on the Mac:5174')
-    expect(open.title).toBe('http://localhost:5174 · 5173 is taken here')
-    expect([...root.querySelectorAll('button')].some((b) => b.textContent?.trim().startsWith('Stop'))).toBe(true)
-  })
-
   it('says when there is nothing to serve, and shows no host choice for a project on one host', async () => {
     hosts = [{ environmentId: 'env_mac', name: 'This Mac', projectId: 'p1' }]
     vi.spyOn(registry, 'linkOf').mockImplementation(() => ({ request: async () => ({ targets: [], runs: [] }) }) as never)
@@ -108,12 +82,4 @@ describe('DevServerPanel', () => {
     expect(probe.container.textContent).toContain('No dev script, Expo app or Xcode project here')
   })
 
-  it('ends a finished run with its outcome', async () => {
-    probe = mountProbe(<DevServerPanel projectId="p1" />)
-    await flush()
-    probe.act(() =>
-      applyDevRunPush('env_mac', { push: 'dev-run', projectId: 'p1', run: run({ projectId: 'p1', status: 'failed', exitCode: 1, endedAt: Date.now(), ports: [] }), lines: ['boom'] })
-    )
-    expect(probe.container.textContent).toContain('Exited with 1')
-  })
 })

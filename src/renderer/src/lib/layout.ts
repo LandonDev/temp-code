@@ -42,6 +42,8 @@ export type FilePaneTab = {
   /** review base ref (a merge base from the Branch rail); HEAD when unset */
   diffBase?: string;
   terminal?: boolean;
+  /** A dev server's console in the terminal dock (read-only), not a shell. */
+  devLog?: DevLogSource;
   /** Which editor renders a file; absent means CodeMirror. */
   editor?: "monaco";
   /** The debugger pane for `path` (the launched file), docked like a terminal. */
@@ -52,6 +54,13 @@ export type FilePaneTab = {
   readOnly?: true;
   /** The line above the file saying why it is shown here rather than in the editor. */
   note?: FileNote;
+};
+
+/** Whose console a dev-server tab shows: a Dev Server button's run, or a port a thread opened. */
+export type DevLogSource = {
+  environmentId: string;
+  runId?: string;
+  resourceId?: string;
 };
 
 /** What the preview's header says, with at most one action beside it. */

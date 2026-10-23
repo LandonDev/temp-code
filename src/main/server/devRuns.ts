@@ -10,8 +10,8 @@ import type { SharedScanner } from './threadPorts'
 import { announcedPorts, byPort, descendants, validPort } from './threadPortsParse'
 
 /**
- * The Dev Server button's engine (docs/box.md "Dev servers on the box"): one
- * run per target, in the project checkout through the login shell, in its own
+ * The Dev Server button's engine (docs/box.md "Dev servers on the box"): runs
+ * side by side (a target may run twice, each on its own port), in the project checkout through the login shell, in its own
  * process group so Stop takes the whole tree (SIGTERM, SIGKILL after 5 s). The
  * log streams to every client in ~100 ms batches with a ring buffer for the
  * console's replay, like the Build rail. A run's ports are the listeners under
@@ -47,6 +47,8 @@ export interface DevRunsDeps {
 interface Slot {
   run: DevRun
   lines: string[]
+  /** Every line the run wrote: a replay plus later pushes never write a line twice. */
+  total: number
   pending: string[]
   timer: NodeJS.Timeout | null
   child: ChildProcess | null
@@ -107,15 +109,13 @@ export class DevRuns {
     return { ...s.run, ports: s.run.ports.map((p) => ({ ...p, forwards: this.deps.forwardsOf(forwardIdOf(s.run.id, p.port)) })) }
   }
 
-  history(runId: string): { run: DevRun; lines: string[] } {
+  history(runId: string): { run: DevRun; lines: string[]; end: number } {
     const s = this.slot(runId)
-    return { run: this.view(s), lines: s.lines.slice() }
+    return { run: this.view(s), lines: s.lines.slice(), end: s.total }
   }
 
   async start(projectId: string, targetId: string): Promise<DevRun> {
     const p = this.must(projectId)
-    const live = [...this.slots.values()].find((s) => s.run.projectId === projectId && s.run.targetId === targetId && s.run.status === 'running')
-    if (live) return this.view(live)
     const target = (await (this.deps.detect ?? detectDevTargets)(p.cwd, p.name)).find((t) => t.id === targetId)
     if (!target) throw new Error(`no such dev target in ${p.name}: ${targetId}`)
     if (target.macOnly && (this.deps.platform ?? process.platform) !== 'darwin') throw new Error(`${target.name} runs on a Mac: an iOS app needs Xcode and a simulator`)
@@ -140,6 +140,7 @@ export class DevRuns {
         ports: []
       },
       lines: [],
+      total: 0,
       pending: [],
       timer: null,
       child: null,
@@ -152,7 +153,7 @@ export class DevRuns {
     }
     this.prune(projectId, targetId)
     this.slots.set(s.run.id, s)
-    const env = { ...(this.deps.env ? await this.deps.env() : process.env), BROWSER: 'none', FORCE_COLOR: '0' }
+    const env = { ...(this.deps.env ? await this.deps.env() : process.env), BROWSER: 'none', FORCE_COLOR: '1' }
     const child = trackChild(spawn(loginShell(), ['-lc', target.command], { cwd, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] }))
     s.child = child
     s.run.pid = child.pid ?? null
@@ -215,8 +216,10 @@ export class DevRuns {
   }
 
   private lines(s: Slot, raw: string[]): void {
-    const lines = raw.map((l) => l.replace(ANSI, '').replace(/\r$/, ''))
-    for (const a of announcedPorts(lines.join('\n'))) if (!s.announced.has(a.port)) s.announced.set(a.port, a.url)
+    // The console keeps the colours; only the port parser reads plain text.
+    const lines = raw.map((l) => l.replace(/\r$/, ''))
+    for (const a of announcedPorts(lines.join('\n').replace(ANSI, ''))) if (!s.announced.has(a.port)) s.announced.set(a.port, a.url)
+    s.total += lines.length
     s.lines.push(...lines)
     if (s.lines.length > LOG_CAP) s.lines.splice(0, s.lines.length - LOG_CAP)
     s.pending.push(...lines)
@@ -276,7 +279,7 @@ export class DevRuns {
   }
 
   private emit(s: Slot, lines: string[]): void {
-    const push: DevRunPush = { push: 'dev-run', projectId: s.run.projectId, run: this.view(s), lines }
+    const push: DevRunPush = { push: 'dev-run', projectId: s.run.projectId, run: this.view(s), lines, end: s.total - s.pending.length }
     for (const l of this.listeners) l(push)
   }
 

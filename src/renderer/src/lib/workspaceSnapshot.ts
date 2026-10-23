@@ -420,9 +420,19 @@ function sanitizeFile(raw: unknown): FilePaneTab | null {
     ...(releaseNotes ? { releaseNotes } : {}),
     ...(value.review === true ? { review: true } : {}),
     ...(value.terminal === true ? { terminal: true } : {}),
+    ...(value.terminal === true && sanitizeDevLog(value.devLog) ? { devLog: sanitizeDevLog(value.devLog) } : {}),
     ...(value.editor === "monaco" ? { editor: "monaco" as const } : {}),
     ...(value.debug === true ? { debug: true as const } : {}),
   };
+}
+
+function sanitizeDevLog(raw: unknown): FilePaneTab["devLog"] | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const v = raw as Record<string, unknown>;
+  if (typeof v.environmentId !== "string") return undefined;
+  if (typeof v.runId === "string") return { environmentId: v.environmentId, runId: v.runId };
+  if (typeof v.resourceId === "string") return { environmentId: v.environmentId, resourceId: v.resourceId };
+  return undefined;
 }
 
 function sanitizeReleaseNotes(

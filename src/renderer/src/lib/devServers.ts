@@ -2,6 +2,15 @@ import { useEffect, useMemo } from 'react'
 import { useStore } from 'zustand'
 import { createStore } from 'zustand/vanilla'
 import type { DevRun, DevRunPush, DevTarget } from '@server/shared/contract-devservers'
+import type { ThreadResource } from '@server/shared/contract-resources'
+import { currentDockCwd } from '../stores/project'
+import { currentDock, terminals } from '../stores/terminals'
+import { focus } from '../stores/focus'
+import type { DevLogSource, FilePaneTab } from './layout'
+import { selectDockTerminal, withDockOpen } from './projectTerminal'
+import { looksLikeProject } from './recents'
+import { sessionStore, useServerSessions } from './tcserver/store'
+import { threadResourcesStore } from './threadResources'
 import { registry } from './connection/registry'
 import type { EnvLink } from './connection/link'
 import { useEnvironments, useEnvironmentStatuses } from './connection/status'
@@ -194,4 +203,58 @@ export function useDevServable(project: Pick<ProjectMeta, 'id' | 'environmentId'
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig])
   return useStore(store, (s) => keys.some((k) => (s.targets[k]?.length ?? 0) > 0))
+}
+
+/** A dev server a thread's agent opened: a live `port` row on its host's ledger. */
+export interface AgentServer {
+  row: ThreadResource
+  /** The host the thread runs on (the link that serves its log). */
+  environmentId: string
+  /** The thread's title. */
+  title: string
+}
+
+/** Every live port the project's threads opened, on every host with a copy of it, newest first. */
+export function useAgentServers(hosts: readonly DevHost[]): AgentServer[] {
+  const bySession = useStore(threadResourcesStore, (s) => s.bySession)
+  const sessions = useServerSessions()
+  return useMemo(() => {
+    const copies = new Set(hosts.flatMap((h) => (h.projectId ? [keyOf(h.environmentId, h.projectId)] : [])))
+    const out: AgentServer[] = []
+    for (const session of sessions) {
+      const environmentId = sessionStore.environmentOf(session.id)
+      if (!environmentId || !session.projectId || !copies.has(keyOf(environmentId, session.projectId))) continue
+      for (const row of bySession[session.id] ?? [])
+        if (row.kind === 'port' && !row.removedAt && !row.removeRequestedAt) out.push({ row, environmentId, title: session.title })
+    }
+    return out.sort((a, b) => b.row.createdAt - a.row.createdAt)
+  }, [hosts, bySession, sessions])
+}
+
+/** Every run of the project on every host with a copy, newest first. */
+export function useAllDevRuns(hosts: readonly DevHost[]): (DevRun & { environmentId: string })[] {
+  const runs = useStore(store, (s) => s.runs)
+  return useMemo(
+    () =>
+      hosts
+        .flatMap((h) => (h.projectId ? (runs[keyOf(h.environmentId, h.projectId)] ?? EMPTY_RUNS).map((r) => ({ ...r, environmentId: h.environmentId })) : []))
+        .sort((a, b) => b.startedAt - a.startedAt),
+    [hosts, runs]
+  )
+}
+
+const sameSource = (a: DevLogSource, b: DevLogSource): boolean =>
+  a.environmentId === b.environmentId && a.runId === b.runId && a.resourceId === b.resourceId
+
+/** Show a dev server's console as a tab in the project's terminal dock, reusing its tab when one is open. */
+export function openDevLog(source: DevLogSource, title: string): void {
+  const projectPath = currentDockCwd()
+  if (!looksLikeProject(projectPath)) return
+  const existing = currentDock(projectPath)?.pane.files.find((f) => f.devLog && sameSource(f.devLog, source))
+  if (existing) terminals.updateDock(projectPath, (dock) => withDockOpen(selectDockTerminal(dock, existing.id), true))
+  else {
+    const file: FilePaneTab = { id: crypto.randomUUID(), path: title, cwd: projectPath, terminal: true, devLog: source }
+    terminals.openTerminal(projectPath, file)
+  }
+  focus.enterProjectTerminal()
 }

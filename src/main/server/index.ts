@@ -59,6 +59,7 @@ import { OfflineError, ThreadResources } from './threadResources'
 import { SharedScanner, ThreadPorts } from './threadPorts'
 import { PortTail } from './portTail'
 import { DevRuns } from './devRuns'
+import { PortLogs } from './portLog'
 import { PortForwardHost } from './remote/portForward'
 import { MacPortForwards, forwardSettingKey } from './remote/macPorts'
 import { PORTS_OFFER, type ForwardedPort } from '@shared/contract-ports'
@@ -834,6 +835,24 @@ export async function startServer(
     env: () => harnessEnv()
   })
   devPortOffers.current = () => devRuns.offers()
+  // An agent's dev server's console (portLog.ts): its output file, else the call's output.
+  const callOutputs = new Map<string, { output: string | null; at: number }>()
+  const portLogs = new PortLogs({
+    row: (id) => resources.get(id),
+    scanner: listenerScanner,
+    callOutput: (row) => {
+      if (!row.callId) return null
+      const known = callOutputs.get(row.callId)
+      if (known && (known.output !== null || Date.now() - known.at < 5_000)) return known.output
+      const sessionId = threadPorts.sessionOfCall(row.callId) ?? row.sessionId
+      let output: string | null = null
+      for (const r of registry.lastEvents(sessionId, 5_000))
+        if (r.event.type === 'tool-result' && r.event.callId === row.callId) output = r.event.output
+      callOutputs.set(row.callId, { output, at: Date.now() })
+      if (callOutputs.size > 256) callOutputs.delete(callOutputs.keys().next().value as string)
+      return output
+    }
+  })
   devPortOffers.bound = (ids) => devRuns.bound(ids)
   resources.decorate = (r) => (r.kind === 'port' && r.environmentId === environmentId ? { ...r, forwards: portHost.forwardsOf(r.id) } : r)
   resources.onChange(() => portHost.refresh())
@@ -2074,6 +2093,9 @@ export async function startServer(
             break
           case 'devServer.log':
             sendFrame({ id: req.id, ok: true, result: devRuns.history(req.params.runId) })
+            break
+          case 'devServer.portLog':
+            sendFrame({ id: req.id, ok: true, result: await portLogs.read(req.params.resourceId, req.params.from) })
             break
           case 'build.detect':
             sendFrame({ id: req.id, ok: true, result: await detectBuild(req.params.path) })

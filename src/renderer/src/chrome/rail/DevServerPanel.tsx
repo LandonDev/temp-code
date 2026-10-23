@@ -1,27 +1,28 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useStore } from "zustand";
-import { devRunWord, type DevRun, type DevTarget } from "@server/shared/contract-devservers";
+import type { DevRun, DevTarget } from "@server/shared/contract-devservers";
+import type { PortForwardInfo } from "@server/shared/contract-ports";
 import { cn } from "../../motion/cn";
 import { StatefulButton } from "../../motion/StatefulButton";
-import { duration } from "../../lib/format";
-import { useClock } from "../../lib/turnClock";
 import { macBridgeStore } from "../../lib/macBridge";
 import { openUrl, portOpen } from "../../lib/devPorts";
 import {
-  loadDevLog,
+  openDevLog,
   restartDevServer,
   startDevServer,
   stopDevServer,
   targetLabel,
+  useAgentServers,
+  useAllDevRuns,
   useDevHosts,
-  useDevLog,
-  useDevRuns,
   useDevTargets,
+  type AgentServer,
   type DevHost,
 } from "../../lib/devServers";
+import { removeThreadResources } from "../../lib/threadResources";
 import { useProjects } from "../../lib/tcserver/workspaces";
 import { Spinner } from "../../surfaces/threads/bits";
-import { RefreshCw } from "../icons";
+import { RefreshCw, Square } from "../icons";
 import { RailSelect } from "./RailSelect";
 
 const targetKey = (projectId: string): string => `dev-target:${projectId}`;
@@ -29,11 +30,12 @@ const hostKey = (projectId: string): string => `dev-host:${projectId}`;
 
 /**
  * The rail's Dev tab (docs/box.md "Dev servers on the box"): what the project
- * can serve, on which host, and the run's console. The target menu reads as a
- * label until there is more than one; the host choice shows only when the
- * project has a copy on another linked host. Run starts the target on that
- * host, the log streams underneath, the server's ports open from here (the
- * box's through their forward), and Stop takes the whole process tree.
+ * can serve, on which host, and the short list of what runs now: the Dev
+ * Server button's runs and the ports the project's threads opened, on every
+ * host with a copy. Run starts another run of the target (several may run at
+ * once, each on its own port) and opens its console in the terminal dock; a
+ * row opens its console there, its port opens in the browser (the box's
+ * through its forward), Stop takes the process down.
  */
 export function DevServerPanel({ projectId }: { projectId: string }) {
   const project = useProjects().find((p) => p.id === projectId);
@@ -43,21 +45,12 @@ export function DevServerPanel({ projectId }: { projectId: string }) {
   const envId = host?.environmentId ?? null;
   const copyId = host?.projectId ?? null;
   const targets = useDevTargets(envId, copyId);
-  const runs = useDevRuns(envId, copyId);
+  const runs = useAllDevRuns(hosts).filter((r) => r.status === "running");
+  const agents = useAgentServers(hosts);
   const [targetPick, setTargetPick] = useState<string | null>(() => localStorage.getItem(targetKey(projectId)));
   const target: DevTarget | undefined = targets?.find((t) => t.id === targetPick) ?? targets?.[0];
-  const run: DevRun | undefined = target ? runs.find((r) => r.targetId === target.id) : undefined;
-  const running = run?.status === "running";
-  const lines = useDevLog(run?.id ?? null);
-  const [busy, setBusy] = useState<"start" | "stop" | "restart" | null>(null);
+  const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const now = useClock(running);
-
-  // A run this window did not watch start: fetch its buffered log once.
-  const runId = run?.id;
-  useEffect(() => {
-    if (envId && runId) void loadDevLog(envId, runId).catch(() => undefined);
-  }, [envId, runId]);
 
   const pickHost = (id: string): void => {
     localStorage.setItem(hostKey(projectId), id);
@@ -70,24 +63,25 @@ export function DevServerPanel({ projectId }: { projectId: string }) {
     setError(null);
   };
 
-  const act = async (kind: "start" | "stop" | "restart"): Promise<void> => {
+  const run = async (): Promise<void> => {
     if (!envId || !copyId || !target) return;
-    setBusy(kind);
+    setStarting(true);
     setError(null);
     try {
-      if (kind === "start") await startDevServer(envId, copyId, target.id);
-      else if (run) await (kind === "stop" ? stopDevServer(envId, run.id) : restartDevServer(envId, run.id));
+      const started = await startDevServer(envId, copyId, target.id);
+      openDevLog({ environmentId: envId, runId: started.id }, targetLabel(target));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setBusy(null);
+      setStarting(false);
     }
   };
 
   const items = (targets ?? []).map((t) => {
-    const live = runs.some((r) => r.targetId === t.id && r.status === "running");
-    return { value: t.id, label: `${targetLabel(t)}${live ? " · running" : ""}`, title: t.dir || undefined };
+    const live = runs.filter((r) => r.environmentId === envId && r.targetId === t.id).length;
+    return { value: t.id, label: `${targetLabel(t)}${live ? ` · ${live} running` : ""}`, title: t.dir || undefined };
   });
+  const empty = runs.length === 0 && agents.length === 0;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -101,30 +95,15 @@ export function DevServerPanel({ projectId }: { projectId: string }) {
           title={target?.dir || undefined}
           onChange={pickTarget}
         />
-        {running && run ? (
-          <span className="shrink-0 text-[11px] tabular-nums text-content/50">{duration(now - run.startedAt)}</span>
-        ) : null}
-        {running ? (
-          <button
-            type="button"
-            aria-label="Restart"
-            title="Restart"
-            disabled={busy !== null}
-            onClick={() => void act("restart")}
-            className="pressable flex size-6 shrink-0 items-center justify-center rounded-md text-content/50 hover:bg-content/8 hover:text-content disabled:opacity-40"
-          >
-            <RefreshCw className={cn("size-3.5", busy === "restart" && "motion-safe:animate-spin")} strokeWidth={1.75} />
-          </button>
-        ) : null}
         <StatefulButton
           size="sm"
-          variant={running ? "secondary" : "primary"}
-          state={busy === "start" || busy === "stop" ? "loading" : "idle"}
-          disabled={!target || !copyId || busy !== null}
-          onClick={() => void act(running ? "stop" : "start")}
+          variant="primary"
+          state={starting ? "loading" : "idle"}
+          disabled={!target || !copyId || starting}
+          onClick={() => void run()}
           className="shrink-0"
         >
-          {running ? "Stop" : "Run"}
+          Run
         </StatefulButton>
       </div>
       {hosts.length > 1 ? <HostChoice hosts={hosts} value={envId} onChange={pickHost} /> : null}
@@ -142,12 +121,133 @@ export function DevServerPanel({ projectId }: { projectId: string }) {
         ) : (
           <span className="text-content/50">No dev script, Expo app or Xcode project here</span>
         )}
-        {running && run && envId ? <RunPorts run={run} environmentId={envId} /> : null}
       </div>
       {error ? <p className="shrink-0 break-words px-3 pb-2 text-[11px] leading-snug text-danger">{error}</p> : null}
-      <Console lines={lines} runId={run?.id ?? null} />
-      {run && run.status !== "running" ? <RunEnd run={run} /> : null}
+      <div className="min-h-0 flex-1 overflow-y-auto border-t border-content/10 py-1">
+        {empty ? <p className="px-3 py-1.5 text-[12px] text-content/50">Nothing running</p> : null}
+        {runs.map((r) => (
+          <RunRow key={r.id} run={r} />
+        ))}
+        {agents.map((a) => (
+          <AgentRow key={a.row.id} server={a} />
+        ))}
+      </div>
     </div>
+  );
+}
+
+/** One running server: its name opens the console in the dock, its ports open in the browser, Stop ends it. */
+function ServerRow({
+  name,
+  title,
+  onOpen,
+  ports,
+  onRestart,
+  onStop,
+}: {
+  name: string;
+  title?: string;
+  onOpen: () => void;
+  ports: ReactNode;
+  onRestart?: () => Promise<unknown>;
+  onStop: () => Promise<unknown>;
+}) {
+  const [busy, setBusy] = useState<"stop" | "restart" | null>(null);
+  const act = (kind: "stop" | "restart", fn: () => Promise<unknown>) => {
+    setBusy(kind);
+    void fn()
+      .catch(() => undefined)
+      .finally(() => setBusy(null));
+  };
+  return (
+    <div className="group flex h-7 items-center gap-1.5 px-2 text-[12px]">
+      <button
+        type="button"
+        title={title}
+        onClick={onOpen}
+        className="pressable flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-content/80 hover:bg-content/5 hover:text-content"
+      >
+        <span className="size-1.5 shrink-0 rounded-full bg-success" aria-hidden />
+        <span className="truncate">{name}</span>
+      </button>
+      {ports}
+      {onRestart ? (
+        <button
+          type="button"
+          aria-label="Restart"
+          title="Restart"
+          disabled={busy !== null}
+          onClick={() => act("restart", onRestart)}
+          className="pressable flex size-6 shrink-0 items-center justify-center rounded-md text-content/50 hover:bg-content/8 hover:text-content disabled:opacity-40"
+        >
+          <RefreshCw className={cn("size-3.5", busy === "restart" && "motion-safe:animate-spin")} strokeWidth={1.75} />
+        </button>
+      ) : null}
+      <button
+        type="button"
+        aria-label="Stop"
+        title="Stop"
+        disabled={busy !== null}
+        onClick={() => act("stop", onStop)}
+        className="pressable flex size-6 shrink-0 items-center justify-center rounded-md text-content/50 hover:bg-content/8 hover:text-content disabled:opacity-40"
+      >
+        {busy === "stop" ? <Spinner className="size-3" /> : <Square className="size-3" strokeWidth={2} />}
+      </button>
+    </div>
+  );
+}
+
+function RunRow({ run }: { run: DevRun & { environmentId: string } }) {
+  const name = `${run.name} · ${run.script}`;
+  return (
+    <ServerRow
+      name={name}
+      title={run.command}
+      onOpen={() => openDevLog({ environmentId: run.environmentId, runId: run.id }, name)}
+      ports={run.ports.map((p) => (
+        <PortLink key={p.port} port={p.port} environmentId={run.environmentId} forwards={p.forwards} />
+      ))}
+      onRestart={() =>
+        restartDevServer(run.environmentId, run.id).then((next) => openDevLog({ environmentId: run.environmentId, runId: next.id }, name))
+      }
+      onStop={() => stopDevServer(run.environmentId, run.id)}
+    />
+  );
+}
+
+function AgentRow({ server }: { server: AgentServer }) {
+  const { row, environmentId, title } = server;
+  return (
+    <ServerRow
+      name={title}
+      title={row.label}
+      onOpen={() => openDevLog({ environmentId, resourceId: row.id }, `${title} :${row.identifier}`)}
+      ports={<PortLink port={Number(row.identifier)} environmentId={row.environmentId} forwards={row.forwards} />}
+      onStop={() => removeThreadResources(row.sessionId, [row.id])}
+    />
+  );
+}
+
+/** The port as it opens here: ":5174" (the Mac's number for a box server), muted when it cannot. */
+function PortLink({ port, environmentId, forwards }: { port: number; environmentId: string; forwards: PortForwardInfo[] | undefined }) {
+  const localId = useStore(macBridgeStore, (s) => s.localId);
+  const open = portOpen(port, environmentId, forwards, localId);
+  if (!open)
+    return (
+      <span className="shrink-0 tabular-nums text-[11px] text-content/40" title="Not forwarded here">
+        :{port}
+      </span>
+    );
+  return (
+    <button
+      type="button"
+      data-dev-port={open.port}
+      title={open.movedFrom ? `${open.url} · ${open.movedFrom} is taken here` : open.url}
+      onClick={() => openUrl(open.url)}
+      className="pressable shrink-0 rounded-[5px] px-1 text-[11px] tabular-nums text-content/60 hover:bg-content/8 hover:text-content"
+    >
+      :{open.port}
+    </button>
   );
 }
 
@@ -176,80 +276,3 @@ function HostChoice({ hosts, value, onChange }: { hosts: DevHost[]; value: strin
   );
 }
 
-/** Where the run's servers open from here: "Open on the Mac :5174" per port. */
-function RunPorts({ run, environmentId }: { run: DevRun; environmentId: string }) {
-  const localId = useStore(macBridgeStore, (s) => s.localId);
-  if (!run.ports.length) return null;
-  return (
-    <div className="mt-1 flex flex-wrap gap-x-2">
-      {run.ports.map((p) => {
-        const open = portOpen(p.port, environmentId, p.forwards, localId);
-        if (!open) return (
-          <span key={p.port} className="tabular-nums text-content/40">
-            :{p.port} not forwarded here
-          </span>
-        );
-        return (
-          <button
-            key={p.port}
-            type="button"
-            data-dev-port={open.port}
-            title={open.movedFrom ? `${open.url} · ${open.movedFrom} is taken here` : open.url}
-            onClick={() => openUrl(open.url)}
-            className="pressable -mx-1 rounded-[5px] px-1 text-content/70 hover:bg-content/8 hover:text-content"
-          >
-            {open.label}
-            <span className="ml-1 tabular-nums text-content/40">:{open.port}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-/** The run's output, following while the reader sits at the bottom (the Build log's rule). */
-function Console({ lines, runId }: { lines: string[]; runId: string | null }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const stick = useRef(true);
-  useLayoutEffect(() => {
-    if (stick.current) ref.current?.scrollTo({ top: ref.current.scrollHeight });
-  }, [lines.length, runId]);
-  return (
-    <div
-      ref={ref}
-      data-dev-console={runId ?? ""}
-      onScroll={() => {
-        const el = ref.current;
-        if (el) stick.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 12;
-      }}
-      className={cn(
-        "min-h-0 flex-1 overflow-y-auto border-t border-content/10 font-mono text-[11px] leading-relaxed text-content/50",
-        (lines.length > 0 || runId) && "px-3 py-2",
-      )}
-    >
-      {lines.length === 0 && !runId ? (
-        <p className="px-3 py-2 font-sans text-[12px] text-content/50">Not running</p>
-      ) : (
-        lines.map((line, i) => (
-          <div key={i} className="whitespace-pre-wrap break-words">
-            {line}
-          </div>
-        ))
-      )}
-    </div>
-  );
-}
-
-function RunEnd({ run }: { run: DevRun }) {
-  const took = duration((run.endedAt ?? Date.now()) - run.startedAt);
-  return (
-    <p
-      className={cn(
-        "shrink-0 border-t border-content/10 px-3 py-2 text-[11px] tabular-nums",
-        run.status === "failed" ? "text-danger" : "text-content/50",
-      )}
-    >
-      {devRunWord(run)} · {took}
-    </p>
-  );
-}

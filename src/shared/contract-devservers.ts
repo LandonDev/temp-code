@@ -64,18 +64,33 @@ const id = z.string().min(1).max(300)
 export const DevServerRequestSchemas = [
   /** → { targets: DevTarget[], runs: DevRun[] }: what the project can serve here, and its runs (newest first). */
   request('devServer.targets', z.object({ projectId: id })),
-  /** → { run: DevRun }: start a target (one run per target; a running one is answered as is). */
+  /** → { run: DevRun }: start a target; a target may run several times at once (each run picks its own port). */
   request('devServer.start', z.object({ projectId: id, targetId: id })),
   /** → { run: DevRun }: SIGTERM the run's process group, SIGKILL after 5 s. */
   request('devServer.stop', z.object({ runId: id })),
   /** → { run: DevRun }: stop it, then start the same target again (a new run id). */
   request('devServer.restart', z.object({ runId: id })),
-  /** → { run: DevRun, lines: string[] }: the run and its buffered log, for the console's replay. */
-  request('devServer.log', z.object({ runId: id }))
+  /** → { run: DevRun, lines: string[], end: number }: the run and its buffered log, for the console's replay; `end` counts every line the run wrote. */
+  request('devServer.log', z.object({ runId: id })),
+  /**
+   * → DevPortLog: what a dev server a thread opened (a `port` row on the ledger)
+   * wrote since `from`: its stdout file when it has one (Claude's background
+   * shell writes one), else the shell call's output from the transcript.
+   */
+  request('devServer.portLog', z.object({ resourceId: id, from: z.number().int().min(0).optional() }))
 ] as const
 
-/** A run's state and any new log lines (batched ~100 ms). A new run id means a fresh log. */
-export type DevRunPush = { push: 'dev-run'; projectId: string; run: DevRun; lines: string[] }
+/** A run's state and any new log lines (batched ~100 ms). A new run id means a fresh log. `end` counts every line the run wrote, these included. */
+export type DevRunPush = { push: 'dev-run'; projectId: string; run: DevRun; lines: string[]; end?: number }
+
+/** An agent's dev server's output from `from` on: raw text with its colours, and the offset to ask from next. */
+export interface DevPortLog {
+  /** file: the process's stdout/stderr file; transcript: the shell call's output; none: nothing to show yet. */
+  source: 'file' | 'transcript' | 'none'
+  path: string | null
+  data: string
+  next: number
+}
 
 /** The short word for a run's state in the button and the console. */
 export function devRunWord(run: Pick<DevRun, 'status' | 'exitCode'>): string {

@@ -24,6 +24,9 @@ import {
 import { IS_MAC } from "../lib/platform";
 import "@xterm/xterm/css/xterm.css";
 
+// A dev server's read-only console rides the same chunk as the shell.
+export { DevLogView } from "./DevLogView";
+
 type Props = {
   id: string;
   cwd: string;
@@ -79,7 +82,7 @@ const ANSI_LIGHT = {
   brightWhite: "#ffffff",
 };
 
-function terminalTheme(light: boolean) {
+export function terminalTheme(light: boolean) {
   return {
     background: "#00000000",
     foreground: cssColor("var(--color-content)", light ? "#2e2e2e" : "#e8eef2"),
@@ -95,7 +98,7 @@ function terminalTheme(light: boolean) {
   };
 }
 
-function monoFont(): string {
+export function monoFont(): string {
   const fromCss = getComputedStyle(document.documentElement)
     .getPropertyValue("--font-mono")
     .trim();

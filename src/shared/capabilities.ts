@@ -376,6 +376,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   // The Dev Server button (contract-devservers.ts): ids only; the command comes from the host's own detection.
   'devServer.targets': 'read',
   'devServer.log': 'read',
+  'devServer.portLog': 'read',
   'devServer.start': 'operate',
   'devServer.stop': 'operate',
   'devServer.restart': 'operate',
