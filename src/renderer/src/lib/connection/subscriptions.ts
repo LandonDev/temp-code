@@ -49,8 +49,8 @@ export class Subscriptions {
   private handlers = new Map<string, SubscriptionHandlers>();
   /** Session ids subscribed on the CURRENT socket. */
   private live = new Set<string>();
-  /** The fetch on its way per session, with the owner it was made for. */
-  private inFlight = new Map<string, { handlers: SubscriptionHandlers; tail: boolean; run: Promise<EventsPage> }>();
+  // The fetch on its way per session, with the owner it was made for.
+  private inFlight = new Map<string, { owner: SubscriptionHandlers; run: Promise<EventsPage> }>();
   private detach: (() => void)[];
 
   constructor(
@@ -109,22 +109,19 @@ export class Subscriptions {
   /**
    * Subscribe on the current socket if not yet, then fetch what follows the
    * owner's cursor (`tail` for a cold open). The page is handed to the owner
-   * and returned; a second call while one is in flight joins it when it was
-   * made for the same owner and shape. A fetch made for an owner that has
-   * since left (an unloaded transcript opened again) is waited out, never
-   * joined: its page goes to nobody, and the new owner would finish its load
-   * with nothing folded, an empty thread on screen.
+   * and returned; a second call while one is in flight joins it.
    */
   resume(sessionId: string, options: { tail?: number } = {}): Promise<EventsPage> {
     const handlers = this.handlers.get(sessionId);
     if (!handlers) return Promise.reject(new Error(`not subscribed: ${sessionId}`));
     const pending = this.inFlight.get(sessionId);
+    // Joined only by the owner it was made for: a fetch for an owner that has
+    // since left (an unloaded transcript opened again) hands its page to
+    // nobody, and the new owner would finish its load with nothing folded,
+    // an empty thread on screen. It is waited out.
     if (pending) {
-      if (pending.handlers === handlers && (pending.tail || options.tail === undefined)) return pending.run;
-      return pending.run.then(
-        () => this.resume(sessionId, options),
-        () => this.resume(sessionId, options),
-      );
+      if (pending.owner === handlers) return pending.run;
+      return pending.run.catch(() => undefined).then(() => this.resume(sessionId, options));
     }
     const run = (async (): Promise<EventsPage> => {
       handlers.begin?.();
@@ -168,10 +165,9 @@ export class Subscriptions {
         if (this.handlers.get(sessionId) === handlers) handlers.page(page);
         if (together) {
           if (page.subscribed) {
+            this.live.add(sessionId);
             // An owner that left while this was on its way has nobody to fold the pushes.
-            if (this.handlers.has(sessionId)) this.live.add(sessionId);
-            else if (this.link.connected)
-              void this.link.request("session.unsubscribe", { sessionId }).catch(() => undefined);
+            if (!this.handlers.has(sessionId)) this.remove(sessionId);
           } else {
             // A host that predates the flag read the page unsubscribed:
             // subscribe now and fold what landed between the two.
@@ -191,7 +187,7 @@ export class Subscriptions {
     })().finally(() => {
       if (this.inFlight.get(sessionId)?.run === run) this.inFlight.delete(sessionId);
     });
-    this.inFlight.set(sessionId, { handlers, tail: options.tail !== undefined, run });
+    this.inFlight.set(sessionId, { owner: handlers, run });
     return run;
   }
 

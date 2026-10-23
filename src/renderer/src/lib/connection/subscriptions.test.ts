@@ -308,22 +308,4 @@ describe("Subscriptions", () => {
     expect(subs.isLive("s1")).toBe(false);
     expect(link.pendingOf("session.unsubscribe")).toEqual([{ sessionId: "s1" }]);
   });
-
-  it("a cold open does not join a gap fetch of the same owner: it waits and asks for its tail", async () => {
-    const link = new FakeLink();
-    const subs = new Subscriptions(link);
-    const a = owner(0);
-    subs.add("s1", a.handlers);
-    void subs.resume("s1");
-    await flush();
-    link.answer("session.subscribe", {});
-    await flush();
-    const cold = subs.resume("s1", { tail: 300 });
-    link.answer("session.events", []);
-    await flush();
-    expect(link.pendingOf("session.events")).toEqual([{ sessionId: "s1", afterSeq: 0, tail: 300 }]);
-    link.answer("session.events", [row(3)]);
-    await cold;
-    expect(a.log.at(-2)).toBe("page reset=false rows=3");
-  });
 });
