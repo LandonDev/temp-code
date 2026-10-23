@@ -271,4 +271,59 @@ describe("Subscriptions", () => {
     expect(a).toBe(b);
     await expect(subs.resume("nope")).rejects.toThrow("not subscribed");
   });
+
+  it("a fetch made for an owner that left is waited out, not joined: the new owner gets a page of its own", async () => {
+    const link = new FakeLink("remote");
+    const subs = new Subscriptions(link);
+    const old = owner(40);
+    subs.add("s1", old.handlers);
+    const stale = subs.resume("s1");
+    await flush();
+    // The transcript unloads and opens again while the gap fetch is out.
+    subs.remove("s1");
+    const fresh = owner(0);
+    subs.add("s1", fresh.handlers);
+    const opened = subs.resume("s1", { tail: 300 });
+    expect(opened).not.toBe(stale);
+    link.answer("session.events", { rows: [row(41)], moreBefore: false, moreAfter: false, reset: false, subscribed: true });
+    await stale;
+    await flush();
+    expect(old.log).toEqual(["begin", "end"]);
+    expect(link.pendingOf("session.events")).toEqual([{ sessionId: "s1", afterSeq: 0, tail: 300 }]);
+    link.answer("session.events", { rows: [row(40), row(41)], moreBefore: true, moreAfter: false, reset: false });
+    await opened;
+    expect(fresh.log).toEqual(["begin", "page reset=false rows=40,41", "end"]);
+    expect(subs.isLive("s1")).toBe(true);
+  });
+
+  it("an answer that subscribed an owner who left tells the host to drop it", async () => {
+    const link = new FakeLink("remote");
+    const subs = new Subscriptions(link);
+    subs.add("s1", owner(0).handlers);
+    const p = subs.resume("s1", { tail: 300 });
+    await flush();
+    subs.remove("s1");
+    link.answer("session.events", { rows: [row(1)], moreBefore: false, moreAfter: false, reset: false, subscribed: true });
+    await p;
+    expect(subs.isLive("s1")).toBe(false);
+    expect(link.pendingOf("session.unsubscribe")).toEqual([{ sessionId: "s1" }]);
+  });
+
+  it("a cold open does not join a gap fetch of the same owner: it waits and asks for its tail", async () => {
+    const link = new FakeLink();
+    const subs = new Subscriptions(link);
+    const a = owner(0);
+    subs.add("s1", a.handlers);
+    void subs.resume("s1");
+    await flush();
+    link.answer("session.subscribe", {});
+    await flush();
+    const cold = subs.resume("s1", { tail: 300 });
+    link.answer("session.events", []);
+    await flush();
+    expect(link.pendingOf("session.events")).toEqual([{ sessionId: "s1", afterSeq: 0, tail: 300 }]);
+    link.answer("session.events", [row(3)]);
+    await cold;
+    expect(a.log.at(-2)).toBe("page reset=false rows=3");
+  });
 });

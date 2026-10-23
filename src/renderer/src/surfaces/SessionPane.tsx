@@ -79,10 +79,12 @@ export const SessionPane = memo(function SessionPane({
     preloadWhenIdle(threadViewsChunk);
   }, []);
 
-  // A thread with no rows is empty only once its transcript has answered;
-  // until then the rows area is a skeleton (and a line when it is slow or failed).
+  // A thread is empty only when its host answered with no rows (a draft has
+  // none by definition); until then the rows area is a skeleton (and a line
+  // when it is slow or failed). Rows that fold to no blocks (a master woken
+  // only by reports) still open the thread's own view.
   const loadPhase = session.load?.phase ?? "loaded";
-  const isEmpty = session.blocks.length === 0 && loadPhase === "loaded";
+  const isEmpty = session.blocks.length === 0 && loadPhase === "loaded" && session.load?.empty !== false;
   const waiting = session.blocks.length === 0 && loadPhase !== "loaded";
   // First rows later than half a second after the pane opened: one stall line.
   useFirstPaintReport(session.id, session.environmentId, session.blocks.length > 0);

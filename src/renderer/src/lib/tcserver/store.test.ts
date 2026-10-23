@@ -1003,7 +1003,7 @@ describe("the load phase", () => {
     expect(sessionStore.get("s1")?.load).toMatchObject({ phase: "failed", attempt: 3, retryAt: Date.now() + 4_000 });
     await vi.advanceTimersByTimeAsync(4_000);
     expect(link.method("session.events")).toBe(4);
-    expect(sessionStore.get("s1")?.load).toEqual({ phase: "loaded", since, attempt: 0 });
+    expect(sessionStore.get("s1")?.load).toEqual({ phase: "loaded", since, attempt: 0, empty: false });
     expect(sessionStore.get("s1")?.blocks.map((b) => b.text)).toEqual(["hi"]);
     // No reconnect was needed: the list ran once.
     expect(link.method("session.list")).toBe(1);

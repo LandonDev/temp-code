@@ -77,11 +77,21 @@ class RemoteLink implements Link {
   resume: EventsPage | null = null;
   /** Rows per tail or older page. */
   pageRows = 4;
+  /** While set, every session.events answer waits here until released. */
+  holdEvents: (() => void)[] | null = null;
   private pushListeners = new Set<(push: ServerPush) => void>();
   private openListeners = new Set<() => void>();
 
   request<T>(method: string, params?: unknown): Promise<T> {
     this.calls.push({ method, params });
+    const hold = this.holdEvents;
+    if (method === "session.events" && hold) {
+      const answer = this.answer<T>(method, params);
+      return new Promise<T>((resolve) => hold.push(() => resolve(answer)));
+    }
+    return this.answer<T>(method, params);
+  }
+  private answer<T>(method: string, params?: unknown): Promise<T> {
     if (method === "session.list") {
       const p = (params ?? {}) as { cursor?: string; archived?: boolean };
       if (p.archived) return Promise.resolve({ sessions: [], cursor: null } as T);
@@ -434,7 +444,7 @@ describe("remote profile: the load phase", () => {
     link.connected = true;
     link.open();
     await vi.advanceTimersByTimeAsync(0);
-    expect(sessionStore.get("s1")?.load).toEqual({ phase: "loaded", since, attempt: 0 });
+    expect(sessionStore.get("s1")?.load).toEqual({ phase: "loaded", since, attempt: 0, empty: false });
     expect(sessionStore.get("s1")?.blocks.length).toBeGreaterThan(0);
   });
 
@@ -461,5 +471,84 @@ describe("remote profile: the load phase", () => {
     expect(sessionStore.get("s1")?.load).toMatchObject({ phase: "failed", attempt: 4, retryAt: Date.now() + 8_000 });
     await vi.advanceTimersByTimeAsync(8_000);
     expect(sessionStore.get("s1")?.load?.phase).toBe("loaded");
+  });
+});
+
+/** A master's log: it is woken by its batch's reports, never by the person,
+ *  so the newest turns carry no user-text row. */
+function masterLog(sessionId: string, turns = 3): EventRow[] {
+  const out: EventRow[] = [];
+  let seq = 1;
+  for (let t = 1; t <= turns; t++) {
+    out.push(row(sessionId, seq++, { type: "agent-report", agentId: `c${t}`, title: `child ${t}`, status: "idle" } as never));
+    out.push(row(sessionId, seq++, { type: "thinking", text: `weighing ${t}`, delta: false, msgId: `m${t}`, blockIndex: 0 } as never));
+    out.push(row(sessionId, seq++, { type: "assistant-text", text: `landed ${t}`, delta: false, msgId: `m${t}`, blockIndex: 1 } as never));
+    out.push(row(sessionId, seq++, { type: "turn-complete" } as never));
+  }
+  return out;
+}
+
+describe("remote profile: a master woken only by reports", () => {
+  it("its first page folds to blocks", async () => {
+    link.pages = [[wireMeta({ id: "m", isMaster: true, status: "watching" })]];
+    link.events.set("m", masterLog("m"));
+    await boot(link);
+    await sessionStore.ensureLoaded("m");
+    const s = sessionStore.get("m")!;
+    expect(s.blocks.length).toBeGreaterThan(0);
+    expect(s.blocks.some((b) => b.text === "landed 3")).toBe(true);
+    expect(s.load).toMatchObject({ phase: "loaded", empty: false });
+    expect(sessionStore.hasOlderHistory("m")).toBe(true);
+    expect(await sessionStore.loadOlder("m")).toBe(true);
+    expect(sessionStore.get("m")!.blocks.some((b) => b.text === "landed 2")).toBe(true);
+  });
+
+  it("reopened while a reconnect's resume for its unloaded transcript is still out: the reopen paints its own page", async () => {
+    link.pages = [[wireMeta({ id: "m", isMaster: true, status: "watching" })]];
+    link.events.set("m", masterLog("m"));
+    link.pageRows = 50;
+    await boot(link);
+    await sessionStore.ensureLoaded("m");
+    expect(sessionStore.get("m")!.blocks.length).toBeGreaterThan(0);
+    // The host restarts: the socket comes back and the kept transcript
+    // replays its gap, which the host is slow to answer.
+    link.holdEvents = [];
+    link.open();
+    await new Promise((r) => setTimeout(r, 0));
+    const held = link.holdEvents;
+    expect(held).toHaveLength(1);
+    // Its tab leaves the kept set and the transcript unloads, the resume still out.
+    sessionStore.setMounted([]);
+    (sessionStore as unknown as { unloadOutsideMounted(): void }).unloadOutsideMounted();
+    expect(sessionStore.get("m")!.blocks).toEqual([]);
+    // The person opens it again.
+    const opened = sessionStore.ensureLoaded("m");
+    link.holdEvents = null;
+    for (const release of held) release();
+    await opened;
+    const s = sessionStore.get("m")!;
+    expect(s.blocks.some((b) => b.text === "landed 3")).toBe(true);
+    expect(s.load).toMatchObject({ phase: "loaded", empty: false });
+  });
+
+  it("a load that ends with no page for it tries again instead of reading as an empty thread", async () => {
+    link.pages = [[wireMeta({ id: "m", isMaster: true, status: "watching" })]];
+    link.events.set("m", masterLog("m"));
+    await boot(link);
+    const store = sessionStore as unknown as { replayGap(): Promise<void> };
+    vi.spyOn(store, "replayGap").mockResolvedValueOnce(undefined);
+    await expect(sessionStore.ensureLoaded("m")).rejects.toThrow("no answer yet");
+    expect(sessionStore.get("m")!.load).toMatchObject({ phase: "failed", error: "no answer yet" });
+    expect(sessionStore.get("m")!.load?.retryAt).toBeGreaterThan(0);
+    sessionStore.retryLoad("m");
+    await sessionStore.ensureLoaded("m");
+    expect(sessionStore.get("m")!.blocks.length).toBeGreaterThan(0);
+  });
+
+  it("a thread the host has no rows for reads empty", async () => {
+    link.pages = [[wireMeta({ id: "new" })]];
+    await boot(link);
+    await sessionStore.ensureLoaded("new");
+    expect(sessionStore.get("new")!.load).toMatchObject({ phase: "loaded", empty: true });
   });
 });

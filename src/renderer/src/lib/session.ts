@@ -348,10 +348,18 @@ export type Session = {
  * A transcript's fetch: `loading` until the first answer, `slow` once
  * SLOW_MS pass without one, `failed` with the error while a retry waits
  * (`retryAt`), `loaded` once the rows are in. `since` is when this load
- * began; `attempt` counts the failed tries so far.
+ * began; `attempt` counts the failed tries so far. `empty` on a loaded
+ * transcript is the host's word that the thread has no rows yet.
  */
 export type LoadPhase = "loading" | "loaded" | "slow" | "failed";
-export type LoadState = { phase: LoadPhase; since: number; attempt: number; error?: string; retryAt?: number };
+export type LoadState = {
+  phase: LoadPhase;
+  since: number;
+  attempt: number;
+  error?: string;
+  retryAt?: number;
+  empty?: boolean;
+};
 
 export type PendingHarnessSwitch = {
   from: HarnessId;

@@ -161,6 +161,9 @@ type Entry = {
   retryTimer: ReturnType<typeof setTimeout> | null;
   /** The next resume is a cold open: a tail, with history behind it. */
   coldOpen: boolean;
+  /** A page reached this entry during the current load. A load that ends
+   *  without one tries again: it never reads as a thread with no rows. */
+  answered: boolean;
   /** Pushes held back while a history fetch is in flight; they fold after
    *  it so a live row never lands ahead of the older rows it follows. */
   held: EventRow[] | null;
@@ -183,6 +186,14 @@ type Head = {
 };
 
 type EventsResult = EventRow[] | EventsPage;
+
+/** A first load whose fetch never handed this transcript a page. */
+class UnansweredError extends Error {
+  constructor() {
+    super("no answer yet");
+    this.name = "UnansweredError";
+  }
+}
 
 /** One shape for both profiles: a local socket answers the rows and the
  *  renderer reads the head off their seqs; a remote one says itself. */
@@ -1179,24 +1190,25 @@ class SessionStore {
     }
     this.markLoading(entry, fresh);
     const id = entry.session.id;
+    const fail = (e: unknown): never => {
+      if (this.entries.get(id) === entry) {
+        // A failed first load starts over as one: a subscription left
+        // live would fold pushes into the empty transcript, and the
+        // retry would then ask only for what follows them.
+        this.subsOf(entry)?.remove(id);
+        entry.held = null;
+        this.resetFold(entry);
+        if (entry.wanted) this.failLoad(entry, e);
+      }
+      throw e;
+    };
+    entry.answered = false;
     const tracked: Promise<void> = this.replayGap(entry, why)
-      .then(
-        () => {
-          if (this.entries.get(id) === entry) this.finishLoad(entry);
-        },
-        (e: unknown) => {
-          if (this.entries.get(id) === entry) {
-            // A failed first load starts over as one: a subscription left
-            // live would fold pushes into the empty transcript, and the
-            // retry would then ask only for what follows them.
-            this.subsOf(entry)?.remove(id);
-            entry.held = null;
-            this.resetFold(entry);
-            if (entry.wanted) this.failLoad(entry, e);
-          }
-          throw e;
-        },
-      )
+      .then(() => {
+        if (this.entries.get(id) !== entry) return;
+        if (!entry.answered) fail(new UnansweredError());
+        this.finishLoad(entry);
+      }, fail)
       .finally(() => {
         if (entry.loading === tracked) entry.loading = null;
       });
@@ -1229,7 +1241,8 @@ class SessionStore {
     this.stopTimers(entry);
     entry.loaded = true;
     entry.wanted = false;
-    entry.load = { phase: "loaded", since: entry.load.since, attempt: 0 };
+    // The host answered: no persisted row folded means it has none.
+    entry.load = { phase: "loaded", since: entry.load.since, attempt: 0, empty: entry.lastSeq === 0 };
     entry.session = { ...entry.session, loaded: true, load: entry.load };
     this.bump();
   }
@@ -1240,7 +1253,7 @@ class SessionStore {
     this.stopTimers(entry);
     const attempt = entry.load.attempt + 1;
     const failed: LoadState = { phase: "failed", since: entry.load.since, attempt, error: shortError(e) };
-    if (!isConnectionFailure(e)) {
+    if (!isConnectionFailure(e) && !(e instanceof UnansweredError)) {
       this.setLoad(entry, failed);
       return;
     }
@@ -1351,6 +1364,7 @@ class SessionStore {
       },
       page: (page: EventsPage) => {
         if (this.entries.get(id) !== entry) return;
+        entry.answered = true;
         const coldOpen = entry.coldOpen;
         entry.coldOpen = false;
         // A remote resume whose gap outgrew the budget comes back as a fresh
@@ -1770,6 +1784,7 @@ class SessionStore {
         slowTimer: null,
         retryTimer: null,
         coldOpen: false,
+        answered: false,
         held: null,
         head: null,
         rows: null,
@@ -1919,6 +1934,7 @@ class SessionStore {
           slowTimer: null,
           retryTimer: null,
           coldOpen: false,
+        answered: false,
           held: null,
           head: null,
           rows: null,

@@ -368,6 +368,31 @@ describe("the master view", () => {
     expect(screen.queryByRole("button", { name: /Thread/ })).toBeNull();
   });
 
+  it("a master woken only by its batch's reports (no user-text in its log) loads as a thread with rows and draws its board", async () => {
+    seed([meta({ id: "c-run", title: "Home screen", status: "running" })]);
+    link.rows.set(
+      "m",
+      rows("m", [
+        { type: "agent-report", agentId: "c-run", title: "Home screen", status: "idle" },
+        { type: "assistant-text", text: "Home landed; waiting on the rest.", delta: false, msgId: "a1", blockIndex: 0 },
+        { type: "turn-complete" },
+      ] as AgentEvent[]),
+    );
+    await sessionStore.ready();
+    await sessionStore.ensureLoaded("m");
+    const loaded = sessionStore.get("m")!;
+    expect(loaded.blocks.length).toBeGreaterThan(0);
+    expect(loaded.load).toMatchObject({ phase: "loaded", empty: false });
+    render(
+      <SessionActionsContext.Provider value={actions}>
+        <MasterView {...props} session={loaded} />
+      </SessionActionsContext.Provider>,
+    );
+    await flush();
+    expect(document.querySelector("[data-board]")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Home screen/ })).toBeTruthy();
+  });
+
   it("groups the rows into the non-empty sections with their counts, nothing in the title bar", async () => {
     seed([
       meta({ id: "c-wait", title: "Live Activity strip", status: "waiting", createdAt: 3 }),

@@ -109,6 +109,18 @@ event rows in 13–17 ms (box CPU).
   pushes. A reconnect replays their gaps with the mounted panes', the same
   bounded set, so nothing acts on a stale copy. Older ones unload as
   before.
+- **A fetch belongs to its owner.** `Subscriptions.resume` joins a fetch in
+  flight only when it was made for the same handlers and asked for at
+  least as much (a tail covers a gap, not the other way round); otherwise
+  it waits that fetch out and sends its own. A transcript unloaded while a
+  reconnect's gap fetch was still out (a slow host after a restart) once
+  joined that fetch on its next open: the page went to the handlers that
+  had left, nothing folded, and the load still finished `loaded`, so the
+  pane showed the new-thread page over a master with 4,194 rows. Now a
+  first load that ends with no page for its transcript fails into a retry
+  ("no answer yet"), and the pane shows EmptySession only when the host
+  answered with no rows (`load.empty`, set at `finishLoad` from the
+  cursor); rows that fold to no blocks open the thread's own view.
 - **Hover warms.** A tab or rail row hovered for 150 ms fetches its
   transcript (lib/hoverPrefetch.ts), which with a round trip of 200 ms is
   usually most of the way there by the click.

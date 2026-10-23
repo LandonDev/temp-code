@@ -733,6 +733,23 @@ describe("block ids from persisted rows", () => {
   });
 });
 
+describe("a page that starts after the person's last message", () => {
+  it("a master's tail, woken by reports and never by a user-text, folds every row it holds", () => {
+    const page = rows([
+      { type: "thinking", text: "", delta: true, msgId: "m1", blockIndex: 0 },
+      { type: "thinking", text: "Two threads landed.", delta: false, msgId: "m1", blockIndex: 0 },
+      { type: "assistant-text", text: "Waiting on the rest.", delta: false, msgId: "m1", blockIndex: 1 },
+      { type: "turn-complete" },
+      { type: "agent-report", agentId: "c1", title: "Home", status: "idle" },
+      { type: "assistant-text", text: "Home landed.", delta: false, msgId: "m2", blockIndex: 0 },
+      { type: "turn-complete" },
+    ] as AgentEvent[]).map((r) => ({ ...r, seq: r.seq + 3761 }));
+    const state = foldAll(page, CWD);
+    expect(state.blocks.map((b) => b.role)).toEqual(["reasoning", "assistant", "system", "assistant"]);
+    expect(state.lastSeq).toBe(3768);
+  });
+});
+
 describe("plan-handoff", () => {
   it("folds the plan's build into a system row that links to the thread", () => {
     const s = foldAll(

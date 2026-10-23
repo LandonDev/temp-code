@@ -112,6 +112,17 @@ describe("the pane while a transcript loads", () => {
     expect(skeleton()).toBeNull();
   });
 
+  it("loaded with rows that fold to no blocks: the thread's own view, never the empty state", () => {
+    pane(session({ phase: "loaded", since: NOW, attempt: 0, empty: false }));
+    expect(screen.getByTestId("thread-view")).toBeTruthy();
+    expect(screen.queryByTestId("empty-session")).toBeNull();
+  });
+
+  it("loaded and the host says it has no rows: the empty state", () => {
+    pane(session({ phase: "loaded", since: NOW, attempt: 0, empty: true }));
+    expect(screen.getByTestId("empty-session")).toBeTruthy();
+  });
+
   it("rows on screen win over any phase", () => {
     pane(session({ phase: "slow", since: NOW, attempt: 0 }, [{ id: "b1", role: "user", text: "hi" } as Session["blocks"][number]]));
     expect(screen.getByTestId("thread-view")).toBeTruthy();

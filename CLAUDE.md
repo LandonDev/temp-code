@@ -1239,7 +1239,10 @@ proof and the sizing rules; the pieces, by name:
   take a sessionId only.
 - A thread's pane tells `loading`, `slow` and `failed` from empty (the
   store's `load` phase, request deadlines and retries in
-  lib/connection/transport.ts and link.ts).
+  lib/connection/transport.ts and link.ts); empty is the host's word
+  (`load.empty`: loaded with no persisted row), never a page that folded to
+  nothing, and a fetch in flight is joined only by the owner it was made
+  for (docs/TRANSCRIPT.md "A fetch belongs to its owner").
 - `batch.board { masterId }` (read): the master board's one answer;
   "Master threads" above.
 - The gateway's byte path runs in a utility process ("Provider traffic"
