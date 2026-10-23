@@ -57,7 +57,7 @@ export function fleetCounts(agents: { status: SessionStatus }[]): FleetCounts {
 }
 
 /** The words and tones a fleet count is said in (the fleet header, the
- *  master board's agents line). */
+ *  sidebar's agent counts). */
 export const FLEET_WORDS: Record<keyof FleetCounts, string> = {
   working: "working",
   waiting: "needs approval",
