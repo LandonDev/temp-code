@@ -324,7 +324,8 @@ export const EventsPageSchema = z.object({
   rows: z.array(EventRowSchema),
   moreBefore: z.boolean(),
   moreAfter: z.boolean(),
-  reset: z.boolean()
+  reset: z.boolean(),
+  subscribed: z.boolean().optional()
 })
 export type WireEventsPage = Flat<Omit<EventsPage, 'rows'> & { rows: WireEventRow[] }>
 

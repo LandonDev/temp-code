@@ -718,7 +718,11 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       tail: z.number().int().positive().optional(),
       // At most this many rows from afterSeq on: the renderer walks a long
       // head in slices so no one call reads a 40k-row log in one go.
-      limit: z.number().int().positive().optional()
+      limit: z.number().int().positive().optional(),
+      // Subscribe this socket first, in the same request: a cold open over
+      // a remote link costs one round trip instead of two. The page says
+      // `subscribed: true`; an older host ignores the flag.
+      subscribe: z.boolean().optional()
     })
   }),
   // One persisted row whole, bodies and all: what a remote connection asks

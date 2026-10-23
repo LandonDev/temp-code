@@ -51,6 +51,7 @@ describe("markdown parse worker client", () => {
     const a = prepareMarkdown(text);
     const b = prepareMarkdown(text);
     expect(b).toBe(a);
+    await Promise.resolve();
     expect(posted.length).toBe(1);
     await a;
     expect(markdownReady(text)).toBe(true);
@@ -64,9 +65,19 @@ describe("markdown parse worker client", () => {
     expect(posted.length).toBe(1);
   });
 
+  it("texts asked for in one task go to the worker the last asked first: the rows on screen before the overscan above", async () => {
+    const texts = ["oldest, above the screen", "middle", "newest, at the bottom"];
+    const all = Promise.all(texts.map((t) => prepareMarkdown(t)));
+    expect(posted).toEqual([]);
+    await Promise.resolve();
+    expect(posted.map((m) => m.text)).toEqual([...texts].reverse());
+    await all;
+    for (const t of texts) expect(markdownReady(t)).toBe(true);
+  });
+
   it("different texts are different requests; the same text is one", async () => {
     await Promise.all([prepareMarkdown("alpha"), prepareMarkdown("beta"), prepareMarkdown("alpha")]);
-    expect(posted.map((m) => m.text)).toEqual(["alpha", "beta"]);
+    expect(posted.map((m) => m.text).sort()).toEqual(["alpha", "beta"]);
     expect(digestOf("alpha")).not.toBe(digestOf("beta"));
     expect(digestOf("alpha")).toBe(digestOf("alpha"));
   });

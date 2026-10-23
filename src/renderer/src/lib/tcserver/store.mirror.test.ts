@@ -74,7 +74,8 @@ class FakeLink implements Link {
       return Promise.reject(new Error("bad request: unknown method"));
     }
     if (method === "session.list") return Promise.resolve({ sessions: this.list, cursor: null } as T);
-    if (method === "session.events") return Promise.resolve({ rows: [], moreBefore: false, moreAfter: false, reset: false } as T);
+    if (method === "session.events")
+      return Promise.resolve({ rows: [], moreBefore: false, moreAfter: false, reset: false, subscribed: true } as T);
     return Promise.resolve(null as T);
   }
   onPush(l: (push: ServerPush) => void): () => void {

@@ -201,6 +201,11 @@ const HEAD_CHUNK = 2000;
 const HEAD_FETCH = 4000;
 /** A transcript whose tab left the warm set is dropped after this long. */
 const UNLOAD_MS = 3000;
+/** Transcripts kept loaded after their pane left, the most recently shown
+ *  first: still subscribed, so a switch back paints at once and is current
+ *  (a reconnect replays their gap like a mounted pane's). From the Mac a
+ *  box thread's first load is a round trip of about 200 ms. */
+export const KEEP_RECENT = 6;
 /** Rows fetched whole for their bodies that stay cached (remote profile). */
 const ROW_BODY_CACHE = 200;
 /** Transcript loads in one window above this many report a burst line. */
@@ -586,6 +591,7 @@ class SessionStore {
     this.archivedScopes.clear();
     this.archivedLoads.clear();
     this.mounted = null;
+    this.recent = [];
     this.rowBodies.clear();
     this.rowBodyLoads.clear();
     if (this.unloadTimer) clearTimeout(this.unloadTimer);
@@ -972,8 +978,9 @@ class SessionStore {
     // Only the transcripts on screen replay their gap; a loaded one whose
     // tab is no longer mounted is dropped and fetched again if it comes
     // back. A reconnect once replayed every transcript ever opened — 2,560
-    // session.events in ninety seconds, 2.9 GB of main-process RSS.
-    const keep = this.mountedClosure();
+    // session.events in ninety seconds, 2.9 GB of main-process RSS; the
+    // recently shown are KEEP_RECENT at most.
+    const keep = this.keptLoaded();
     const replay: Entry[] = [];
     for (const entry of this.entries.values()) {
       if (!entry.loaded || !entry.meta || entry.meta.environmentId !== environmentId) continue;
@@ -996,12 +1003,20 @@ class SessionStore {
    *  the shell has said, when every loaded transcript counts as mounted. */
   private mounted: Set<string> | null = null;
   private unloadTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Sessions whose panes left the mounted set, the latest first, at most KEEP_RECENT. */
+  private recent: string[] = [];
 
   /** The shell tells the store which sessions have panes on the page; a
    *  transcript outside that set (and its subagents, which the pane's
    *  board shows) unloads after a grace period. */
   setMounted(ids: Iterable<string>): void {
-    this.mounted = new Set(ids);
+    const before = this.mounted;
+    const now = new Set(ids);
+    this.mounted = now;
+    const left = before ? [...before].filter((id) => !now.has(id)) : [];
+    this.recent = [...left, ...this.recent.filter((id) => !now.has(id) && !left.includes(id))]
+      .filter((id) => this.entries.has(id))
+      .slice(0, KEEP_RECENT);
     if (this.unloadTimer) clearTimeout(this.unloadTimer);
     this.unloadTimer = setTimeout(() => {
       this.unloadTimer = null;
@@ -1026,8 +1041,15 @@ class SessionStore {
     return keep;
   }
 
-  private unloadOutsideMounted(): void {
+  /** What stays loaded: the mounted closure and the recently shown. */
+  private keptLoaded(): Set<string> | null {
     const keep = this.mountedClosure();
+    if (keep) for (const id of this.recent) keep.add(id);
+    return keep;
+  }
+
+  private unloadOutsideMounted(): void {
+    const keep = this.keptLoaded();
     if (!keep) return;
     let dropped = 0;
     for (const entry of this.entries.values()) {

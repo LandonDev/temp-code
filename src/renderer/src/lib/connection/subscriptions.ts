@@ -117,28 +117,58 @@ export class Subscriptions {
     if (!handlers) return Promise.reject(new Error(`not subscribed: ${sessionId}`));
     const run = (async (): Promise<EventsPage> => {
       handlers.begin?.();
-      try {
-        if (!this.live.has(sessionId)) {
-          try {
-            await this.link.request("session.subscribe", { sessionId });
-          } catch (err) {
-            if (this.handlers.get(sessionId) === handlers)
-              handlers.gone?.(err instanceof Error ? err.message : String(err));
-            throw err;
-          }
-          this.live.add(sessionId);
+      const subscribe = async (): Promise<void> => {
+        try {
+          await this.link.request("session.subscribe", { sessionId });
+        } catch (err) {
+          if (this.handlers.get(sessionId) === handlers)
+            handlers.gone?.(err instanceof Error ? err.message : String(err));
+          throw err;
         }
+        this.live.add(sessionId);
+      };
+      try {
+        // Over a remote link the subscription rides the history request:
+        // one round trip to the host instead of two (about 200 ms each
+        // from the Mac to the box). A local socket answers in microseconds
+        // and keeps the two plain requests.
+        const together = !this.live.has(sessionId) && this.link.profile === "remote";
+        if (!this.live.has(sessionId) && !together) await subscribe();
         const afterSeq = handlers.cursor();
         const tailFirst = options.tail !== undefined && afterSeq === 0;
         // The owner retries a failed resume itself (the store's load, the
         // next replacement session), so the link does not ask again here.
-        const result = await this.link.request<EventRow[] | EventsPage>(
-          "session.events",
-          { sessionId, afterSeq, ...(tailFirst ? { tail: options.tail } : {}) },
-          { retry: false },
-        );
+        let result: EventRow[] | EventsPage;
+        try {
+          result = await this.link.request<EventRow[] | EventsPage>(
+            "session.events",
+            { sessionId, afterSeq, ...(tailFirst ? { tail: options.tail } : {}), ...(together ? { subscribe: true } : {}) },
+            { retry: false },
+          );
+        } catch (err) {
+          // The host may have subscribed before the answer was lost: a live
+          // subscription the set does not know would fold pushes into a
+          // transcript that is starting over.
+          if (together && this.link.connected)
+            void this.link.request("session.unsubscribe", { sessionId }).catch(() => undefined);
+          throw err;
+        }
         const page = asPage(result, tailFirst);
         if (this.handlers.get(sessionId) === handlers) handlers.page(page);
+        if (together) {
+          if (page.subscribed) this.live.add(sessionId);
+          else {
+            // A host that predates the flag read the page unsubscribed:
+            // subscribe now and fold what landed between the two.
+            await subscribe();
+            const gap = await this.link.request<EventRow[] | EventsPage>(
+              "session.events",
+              { sessionId, afterSeq: handlers.cursor() },
+              { retry: false },
+            );
+            if (this.handlers.get(sessionId) === handlers) handlers.page(asPage(gap, false));
+          }
+        }
         return page;
       } finally {
         handlers.end?.();

@@ -15,6 +15,8 @@ let worker: Worker | null = null;
 let nextId = 1;
 const pending = new Map<number, (blocks: ParsedBlock[]) => void>();
 const inflight = new Map<string, Promise<void>>();
+/** Texts asked for in this task, posted together at its end. */
+let queued: { id: number; text: string }[] = [];
 const ready = new Set<string>();
 /** The worker failed to load, threw, or never answered: the main thread
  *  parses from here on, and every row waiting on it renders at once. */
@@ -66,6 +68,19 @@ function getWorker(): Worker {
   return worker;
 }
 
+/**
+ * Post what this task asked for, the last asked first. Rows ask in mount
+ * order, top to bottom, and a thread opens at its bottom: the newest rows,
+ * the ones on screen, parse before the screen of overscan above them.
+ */
+function flushQueued(): void {
+  const batch = queued;
+  queued = [];
+  if (broken) return;
+  const target = getWorker();
+  for (let i = batch.length - 1; i >= 0; i--) target.postMessage(batch[i]);
+}
+
 /** Whether a text's tree is in the cache from the worker, or needs no worker. */
 export function markdownReady(text: string): boolean {
   return !hasParseWorker() || ready.has(digestOf(text));
@@ -91,7 +106,8 @@ export function prepareMarkdown(text: string): Promise<void> {
       inflight.delete(key);
       resolve();
     });
-    getWorker().postMessage({ id, text });
+    if (queued.length === 0) queueMicrotask(flushQueued);
+    queued.push({ id, text });
   });
   inflight.set(key, promise);
   return promise;
@@ -102,6 +118,7 @@ export function resetMarkdownParse(): void {
   ready.clear();
   inflight.clear();
   pending.clear();
+  queued = [];
   parseWorkerStats.requested = 0;
   parseWorkerStats.answered = 0;
   parseWorkerStats.failures = 0;

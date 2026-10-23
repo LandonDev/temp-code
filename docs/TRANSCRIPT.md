@@ -66,7 +66,10 @@ the phone's rules in docs/IOS-DESIGN.md "Performance".
   mounts the cached tree with no parse on this thread. Until the answer
   the row holds its place with the text, unseen, in the same measure;
   nothing fades, since a row scrolling in is not an event. Requests are
-  shared by row digest; the worker keeps its answers by digest too.
+  shared by row digest; the worker keeps its answers by digest too. The
+  texts one commit asks for go to the worker together, the last asked
+  first: rows ask top to bottom and a thread opens at its bottom, so the
+  rows on screen parse before the screen of overscan above them.
   Streaming rows keep the incremental main-thread path, parsing the last
   block only. With no `Worker` (tests, node), or a worker that fails to
   load, throws, or gives no first answer within 8 s, every text is ready at
@@ -80,6 +83,54 @@ the phone's rules in docs/IOS-DESIGN.md "Performance".
   fades in once, on its first mount; one that leaves the window and comes
   back is history. The fade is 150 ms of opacity, off under reduced
   motion. Jumps glide the scroll offset; under reduced motion they land.
+
+## Opening a thread on another host
+
+The time from a click to rows on screen for a box thread is round trips,
+not bytes: from the Mac a request on the box's socket takes about 200 ms
+(130–340 ms), the Mac's download runs at 3.5–5.9 MB/s, and a 300-row tail
+of a long agent thread is 874 KiB to 1 MiB before deflate, about 150 KiB
+after. The box answers it in 25–40 ms and the renderer folds its 4,000
+event rows in 13–17 ms (box CPU).
+
+- **One round trip.** Over a remote link a cold open sends
+  `session.events { tail, subscribe: true }` (lib/connection/
+  subscriptions.ts): the host puts the socket's listener on before the
+  read, so a row appended after it is pushed and one before it is in the
+  page, and answers `subscribed: true`. A local socket keeps the two plain
+  requests. A host that predates the flag answers without it; the client
+  then subscribes and folds the gap since the page's last row. A cold open
+  that fails sends `session.unsubscribe`, since the host may have
+  subscribed before the answer was lost.
+- **The recently shown stay.** The store keeps the last `KEEP_RECENT` (6)
+  transcripts whose panes left the mounted set loaded and subscribed
+  (tcserver/store.ts `keptLoaded`), on top of the warm tabs; a switch back
+  paints from memory with no request, and the rows it missed came as
+  pushes. A reconnect replays their gaps with the mounted panes', the same
+  bounded set, so nothing acts on a stale copy. Older ones unload as
+  before.
+- **Hover warms.** A tab or rail row hovered for 150 ms fetches its
+  transcript (lib/hoverPrefetch.ts), which with a round trip of 200 ms is
+  usually most of the way there by the click.
+- A smaller first page was tried and dropped: from the Mac a 60-row tail
+  (238 KiB) was no faster than the 300-row one (874 KiB) within the link's
+  noise, and it would add a second request and a refold.
+
+Measured 2026-10-22 from the Mac over the tunnel, three box threads of
+3,400 to 4,200 rows in their tail, two opens each, medians of each run:
+
+| | Before | After |
+| --- | --- | --- |
+| Socket round trip (`queue.list`) | 203 ms | 203 ms |
+| Cold open: requests in series | 2 | 1 |
+| Cold open: click to page (ms) | 333 and 272 | 215 and 175 |
+| Switch back to one of the last six shown | a cold open | no request |
+| On-screen markdown ready after the rows land (ms, box CPU) | 7–9 | 1–2 |
+
+The after column's cold open is subscribe and events sent back to back
+(one round trip, which is what the flag makes of them) against the box's
+current build; the markdown row is the parse of the visible screen's texts
+with and without the screen above them first.
 
 ## Budget
 

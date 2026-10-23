@@ -7,8 +7,9 @@ import { flush } from "./testing";
 class FakeLink implements Link {
   environmentId = "env_a";
   connected = true;
-  profile = "remote" as const;
   calls: { method: string; params: unknown; resolve: (v: unknown) => void; reject: (e: Error) => void }[] = [];
+  /** A local socket keeps subscribe and fetch apart; a remote one asks for both at once. */
+  constructor(readonly profile: "local" | "remote" = "local") {}
   private openListeners = new Set<() => void>();
   private closeListeners = new Set<() => void>();
   request<T>(method: string, params?: unknown): Promise<T> {
@@ -206,6 +207,58 @@ describe("Subscriptions", () => {
     link.refuse("session.subscribe", "no such session");
     await expect(p).rejects.toThrow("no such session");
     expect(a.log).toEqual(["begin", "gone no such session", "end"]);
+    expect(subs.isLive("s1")).toBe(false);
+  });
+
+  it("over a remote link a cold open subscribes inside the history request: one round trip", async () => {
+    const link = new FakeLink("remote");
+    const subs = new Subscriptions(link);
+    const a = owner(0);
+    subs.add("s1", a.handlers);
+    const p = subs.resume("s1", { tail: 300 });
+    await flush();
+    expect(link.pendingOf("session.subscribe")).toEqual([]);
+    expect(link.pendingOf("session.events")).toEqual([{ sessionId: "s1", afterSeq: 0, tail: 300, subscribe: true }]);
+    link.answer("session.events", { rows: [row(5), row(6)], moreBefore: true, moreAfter: false, reset: false, subscribed: true });
+    await p;
+    expect(a.log).toEqual(["begin", "page reset=false rows=5,6", "end"]);
+    expect(subs.isLive("s1")).toBe(true);
+    // Live now: a resume only fetches, without the flag.
+    void subs.resume("s1");
+    await flush();
+    expect(link.pendingOf("session.events")).toEqual([{ sessionId: "s1", afterSeq: 6 }]);
+  });
+
+  it("a remote host that predates the flag: subscribe after the page, then fold the gap, pushes held throughout", async () => {
+    const link = new FakeLink("remote");
+    const subs = new Subscriptions(link);
+    const a = owner(0);
+    subs.add("s1", a.handlers);
+    const p = subs.resume("s1", { tail: 300 });
+    await flush();
+    link.answer("session.events", { rows: [row(5), row(6)], moreBefore: true, moreAfter: false, reset: false });
+    await flush();
+    expect(subs.isLive("s1")).toBe(false);
+    expect(link.pendingOf("session.subscribe")).toEqual([{ sessionId: "s1" }]);
+    link.answer("session.subscribe", {});
+    await flush();
+    expect(link.pendingOf("session.events")).toEqual([{ sessionId: "s1", afterSeq: 6 }]);
+    link.answer("session.events", { rows: [row(7)], moreBefore: false, moreAfter: false, reset: false });
+    const page = await p;
+    expect(page.rows.map((r) => r.seq)).toEqual([5, 6]);
+    expect(a.log).toEqual(["begin", "page reset=false rows=5,6", "page reset=false rows=7", "end"]);
+    expect(subs.isLive("s1")).toBe(true);
+  });
+
+  it("a remote cold open that fails tells the host to drop the subscription it may have made", async () => {
+    const link = new FakeLink("remote");
+    const subs = new Subscriptions(link);
+    subs.add("s1", owner(0).handlers);
+    const p = subs.resume("s1", { tail: 300 });
+    await flush();
+    link.refuse("session.events", "timed out");
+    await expect(p).rejects.toThrow("timed out");
+    expect(link.pendingOf("session.unsubscribe")).toEqual([{ sessionId: "s1" }]);
     expect(subs.isLive("s1")).toBe(false);
   });
 

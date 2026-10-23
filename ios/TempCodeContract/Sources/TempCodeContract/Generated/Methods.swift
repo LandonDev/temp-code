@@ -136,13 +136,15 @@ public enum Methods {
             public let beforeSeq: Int?
             public let tail: Int?
             public let limit: Int?
+            public let subscribe: Bool?
 
-            public init(sessionId: String, afterSeq: Int? = nil, beforeSeq: Int? = nil, tail: Int? = nil, limit: Int? = nil) {
+            public init(sessionId: String, afterSeq: Int? = nil, beforeSeq: Int? = nil, tail: Int? = nil, limit: Int? = nil, subscribe: Bool? = nil) {
                 self.sessionId = sessionId
                 self.afterSeq = afterSeq
                 self.beforeSeq = beforeSeq
                 self.tail = tail
                 self.limit = limit
+                self.subscribe = subscribe
             }
         }
 

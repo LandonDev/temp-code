@@ -787,6 +787,39 @@ describe('live edits', () => {
   })
 })
 
+describe('session.events with subscribe', () => {
+  it('one request answers the tail and subscribes the socket: the next row arrives as a push, nothing between', async () => {
+    const id = 'one-trip'
+    server.store.insertSession({
+      id, parentId: null, projectId: null, workspaceId: null, threadType: 'chat', planPath: null, provider: 'claude',
+      model: 'm', reasoning: 'medium', agentType: 'implementer', title: id, cwd: root, status: 'idle', pinned: false,
+      archived: false, fast: false, ultrafast: false, context1m: false, busySince: null, pausedAt: null,
+      frozenActiveElapsed: null, threadRules: null, permission: 'edits', nativeId: null, createdAt: 1, updatedAt: 1
+    })
+    for (let i = 0; i < 3; i++) server.registry.append(id, { type: 'user-text', text: `turn ${i}` } as never)
+    const remote = await open(`ws://127.0.0.1:${server.port}/?profile=remote`)
+    const page = await remote.request('session.events', { sessionId: id, afterSeq: 0, tail: 300, subscribe: true })
+    expect(page.ok).toBe(true)
+    expect(page.result.subscribed).toBe(true)
+    expect(page.result.rows.map((r: { seq: number }) => r.seq)).toEqual([1, 2, 3])
+    server.registry.append(id, { type: 'user-text', text: 'after' } as never)
+    const pushed = (): number[] =>
+      remote.frames.flatMap((f) =>
+        f.push === 'events' && f.sessionId === id ? f.rows.map((r: { seq: number }) => r.seq) : f.push === 'event' && f.row.sessionId === id ? [f.row.seq] : []
+      )
+    for (let i = 0; i < 80 && pushed().length === 0; i++) await sleep(25)
+    expect(pushed()).toEqual([4])
+    // Without the flag the page says nothing, and the socket hears nothing new.
+    const plain = await open(`ws://127.0.0.1:${server.port}/?profile=remote`)
+    const unsubscribed = await plain.request('session.events', { sessionId: id, afterSeq: 0, tail: 300 })
+    expect(unsubscribed.result.subscribed).toBeUndefined()
+    server.registry.append(id, { type: 'user-text', text: 'later' } as never)
+    await sleep(400)
+    expect(plain.frames.some((f) => (f.push === 'events' || f.push === 'event') && (f.sessionId === id || f.row?.sessionId === id))).toBe(false)
+    for (const sock of [remote, plain]) sock.ws.close()
+  })
+})
+
 // Last: it stops the listener every other test talks to.
 describe('remote.settings.set', () => {
   it('enabled off closes the port; on brings it back', async () => {

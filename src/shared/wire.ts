@@ -45,6 +45,11 @@ export interface EventsPage {
   /** the gap after `afterSeq` was larger than the resume budget: `rows`
    *  is a fresh tail of the log, so drop what you hold and fold these */
   reset: boolean
+  /** the request asked `subscribe: true` and this socket now carries the
+   *  session's pushes: the listener went on before the read, so no row
+   *  falls between the page and the first push. Absent from a host that
+   *  predates the flag; the client then subscribes and replays the gap. */
+  subscribed?: boolean
 }
 
 /** `session.changes`: what the list did since the client's cursor

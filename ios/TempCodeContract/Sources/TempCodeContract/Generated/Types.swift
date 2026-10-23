@@ -440,12 +440,14 @@ public struct EventsPage: Codable, Hashable, Sendable {
     public let moreBefore: Bool
     public let moreAfter: Bool
     public let reset: Bool
+    public let subscribed: Bool?
 
-    public init(rows: [EventRow], moreBefore: Bool, moreAfter: Bool, reset: Bool) {
+    public init(rows: [EventRow], moreBefore: Bool, moreAfter: Bool, reset: Bool, subscribed: Bool? = nil) {
         self.rows = rows
         self.moreBefore = moreBefore
         self.moreAfter = moreAfter
         self.reset = reset
+        self.subscribed = subscribed
     }
 }
 

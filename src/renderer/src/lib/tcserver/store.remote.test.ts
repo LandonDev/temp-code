@@ -93,12 +93,15 @@ class RemoteLink implements Link {
       return Promise.resolve(page as T);
     }
     if (method === "session.events") {
-      const { sessionId, afterSeq = 0, beforeSeq, tail } = params as {
+      const { sessionId, afterSeq = 0, beforeSeq, tail, subscribe } = params as {
         sessionId: string;
         afterSeq?: number;
         beforeSeq?: number;
         tail?: number;
+        subscribe?: boolean;
       };
+      // A current host subscribes inside the request and says so.
+      const said = subscribe ? { subscribed: true } : {};
       const all = this.events.get(sessionId) ?? [];
       if (tail) {
         const range = all.filter((r) => r.seq > afterSeq && (beforeSeq === undefined || r.seq < beforeSeq));
@@ -108,16 +111,17 @@ class RemoteLink implements Link {
           moreBefore: rows.length > 0 && rows[0].seq > afterSeq + 1,
           moreAfter: false,
           reset: false,
+          ...said,
         };
         return Promise.resolve(page as T);
       }
-      if (this.resume) return Promise.resolve(this.resume as T);
+      if (this.resume) return Promise.resolve({ ...this.resume, ...said } as T);
       // A resume without a tail answers the oldest rows after the cursor,
       // capped at a page, and says when more follow (the wire's pager caps
       // the oldest page this way; from a cursor it answers whole or resets).
       const range = all.filter((r) => r.seq > afterSeq);
       const rows = range.slice(0, this.pageRows);
-      return Promise.resolve({ rows, moreBefore: false, moreAfter: rows.length < range.length, reset: false } as T);
+      return Promise.resolve({ rows, moreBefore: false, moreAfter: rows.length < range.length, reset: false, ...said } as T);
     }
     if (method === "session.rowBody") {
       const { sessionId, seq } = params as { sessionId: string; seq: number };

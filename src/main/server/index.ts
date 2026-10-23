@@ -1293,6 +1293,19 @@ export async function startServer(
   const attach = (ws: WebSocket, principal: Principal, profile: WireProfile = profileFor({ principal })): void => {
     const connection = ++connections
     const unsubs = new Map<string, () => void>()
+    /** This socket carries `sessionId`'s rows from now on (once per socket). */
+    const subscribeSocket = (sessionId: string): void => {
+      // Opening a thread: its shown account is the one its next send uses.
+      registry.refreshAccount(sessionId)
+      if (unsubs.has(sessionId)) return
+      unsubs.set(
+        sessionId,
+        registry.subscribe(sessionId, (row) => {
+          countPush('event')
+          emitPush({ push: 'event', row })
+        })
+      )
+    }
     let unsubscribeAccounts: (() => void) | null = null
     // The Mac bridge's prompts go to this Mac's own sockets only, never a key's.
     const offMacBridge = principal.kind === 'local' ? macBridge.subscribe((push) => sendFrame(push)) : null
@@ -2219,16 +2232,17 @@ export async function startServer(
             sendFrame({ id: req.id, ok: true, result })
             break
           }
-          case 'session.events':
-            sendFrame({
-              id: req.id,
-              ok: true,
-              result:
-                profile === 'remote'
-                  ? eventsPage(registry, req.params)
-                  : registry.events(req.params.sessionId, req.params)
-            })
+          case 'session.events': {
+            // The listener goes on before the read: a row appended after it
+            // is pushed, one before it is in the page (the client drops a
+            // seq it already folded).
+            if (req.params.subscribe) subscribeSocket(req.params.sessionId)
+            if (profile === 'remote') {
+              const page = eventsPage(registry, req.params)
+              sendFrame({ id: req.id, ok: true, result: req.params.subscribe ? { ...page, subscribed: true } : page })
+            } else sendFrame({ id: req.id, ok: true, result: registry.events(req.params.sessionId, req.params) })
             break
+          }
           case 'session.rowBody': {
             const row = registry.eventAt(req.params.sessionId, req.params.seq)
             if (row) sendFrame({ id: req.id, ok: true, result: { row } })
@@ -2314,22 +2328,10 @@ export async function startServer(
               })
             })
             break
-          case 'session.subscribe': {
-            const { sessionId } = req.params
-            // Opening a thread: its shown account is the one its next send uses.
-            registry.refreshAccount(sessionId)
-            if (!unsubs.has(sessionId)) {
-              unsubs.set(
-                sessionId,
-                registry.subscribe(sessionId, (row) => {
-                  countPush('event')
-                  emitPush({ push: 'event', row })
-                })
-              )
-            }
+          case 'session.subscribe':
+            subscribeSocket(req.params.sessionId)
             sendFrame({ id: req.id, ok: true, result: null })
             break
-          }
           case 'session.unsubscribe':
             unsubs.get(req.params.sessionId)?.()
             unsubs.delete(req.params.sessionId)

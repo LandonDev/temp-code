@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { newSession } from "../session";
-import { applyMeta, sessionFromMeta, sessionStore, type Link } from "./store";
+import { KEEP_RECENT, applyMeta, sessionFromMeta, sessionStore, type Link } from "./store";
 import { ConnectionLostError, TimeoutError } from "../connection";
 import type { EventRow, ServerPush, SessionMeta } from "./types";
 
@@ -872,6 +872,49 @@ describe("the mounted set", () => {
     expect(sessionStore.get("b")?.loaded).toBe(false);
     expect(sessionStore.get("busy")?.loaded).toBe(true);
     expect(link.calls.filter((c) => c.method === "session.unsubscribe").map((c) => (c.params as { sessionId: string }).sessionId)).toEqual(["b"]);
+  });
+
+  it("the recently shown stay loaded and subscribed after their pane leaves, the latest KEEP_RECENT; a switch back fetches nothing", async () => {
+    const ids = Array.from({ length: KEEP_RECENT + 2 }, (_, i) => `r${i}`);
+    link.metas = [...ids, "never"].map((id) => wireMeta({ id }));
+    for (const id of [...ids, "never"]) link.events.set(id, rowsFor(id, 2));
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    await sessionStore.ensureLoaded("never", "test");
+    vi.useFakeTimers();
+    try {
+      // One pane, switched through every thread in turn.
+      for (const id of ids) {
+        sessionStore.setMounted([id]);
+        await sessionStore.ensureLoaded(id, "test");
+      }
+      await vi.advanceTimersByTimeAsync(3100);
+    } finally {
+      vi.useRealTimers();
+    }
+    const shown = ids.at(-1)!;
+    const kept = ids.slice(-1 - KEEP_RECENT, -1);
+    const dropped = ids.slice(0, ids.length - 1 - KEEP_RECENT);
+    expect(sessionStore.get(shown)?.loaded).toBe(true);
+    for (const id of kept) expect(sessionStore.get(id)?.loaded).toBe(true);
+    for (const id of [...dropped, "never"]) expect(sessionStore.get(id)?.loaded).toBe(false);
+    const unsubscribed = link.calls.filter((c) => c.method === "session.unsubscribe").map((c) => (c.params as { sessionId: string }).sessionId);
+    expect(unsubscribed.sort()).toEqual([...dropped, "never"].sort());
+    // Back to a kept one: loaded already, no request.
+    link.calls.length = 0;
+    sessionStore.setMounted([kept[0]]);
+    await sessionStore.ensureLoaded(kept[0], "test");
+    expect(link.calls.filter((c) => c.method === "session.events")).toEqual([]);
+    // A row pushed to a kept thread while it was off screen is already folded.
+    link.push({ push: "event", row: row(kept[1], 5, { type: "user-text", text: "while away" }) });
+    expect(sessionStore.get(kept[1])?.blocks.at(-1)?.text).toBe("while away");
+    // A reconnect replays the kept ones' gaps with the mounted one's.
+    link.calls.length = 0;
+    link.reopen();
+    await tick();
+    await tick();
+    const replayed = link.calls.filter((c) => c.method === "session.events").map((c) => (c.params as { sessionId: string }).sessionId);
+    expect(replayed.sort()).toEqual([shown, ...kept].sort());
   });
 
   it("a burst of loads reports itself once, naming the callers", async () => {

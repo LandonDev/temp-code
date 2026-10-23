@@ -1163,6 +1163,14 @@ names the far child).
   once and the main thread parses as before. The renderer aliases
   `decode-named-character-reference` to its plain build (the DOM build has
   no document in a worker); keep that alias when touching the vite config.
+- Opening a box thread is round trips (about 200 ms each from the Mac),
+  not bytes: over a remote link a cold open is ONE request,
+  `session.events { tail, subscribe: true }`, answered `subscribed: true`
+  (an older host omits it and the client subscribes and folds the gap);
+  the store keeps the last `KEEP_RECENT` (6) transcripts whose panes left
+  loaded and subscribed, so a switch back sends nothing; the markdown
+  worker parses one commit's texts newest first. docs/TRANSCRIPT.md
+  "Opening a thread on another host" has the numbers.
 - Measure with `bun run script:measure-transcript-seed` once, then
   `TEMP_CODE_PROFILE=1 electron-vite build` and
   `bun scripts/measure-transcript.ts --label <name>` (an isolated instance
