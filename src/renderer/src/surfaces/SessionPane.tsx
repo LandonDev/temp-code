@@ -23,6 +23,7 @@ import { preloadWhenIdle } from "../lib/lazyChunk";
 import { EmptySession } from "./EmptySession";
 import { SurfaceSkeleton } from "./SurfaceSkeleton";
 import { ThreadView } from "./threads/ThreadView";
+import { isMasterThread } from "../lib/masterThread";
 import { useSessionActions, useThreadChat } from "./threadChat";
 import * as serverCommands from "../lib/tcserver/commands";
 import { askPreconnect, idleForPreconnect } from "../lib/preconnect";
@@ -83,9 +84,12 @@ export const SessionPane = memo(function SessionPane({
   // none by definition); until then the rows area is a skeleton (and a line
   // when it is slow or failed). Rows that fold to no blocks (a master woken
   // only by reports) still open the thread's own view.
+  // A master always opens on its board: the board is its own answer, and the
+  // chat beside it fills in when its rows land.
   const loadPhase = session.load?.phase ?? "loaded";
-  const isEmpty = session.blocks.length === 0 && loadPhase === "loaded" && session.load?.empty !== false;
-  const waiting = session.blocks.length === 0 && loadPhase !== "loaded";
+  const master = isMasterThread(session);
+  const isEmpty = !master && session.blocks.length === 0 && loadPhase === "loaded" && session.load?.empty !== false;
+  const waiting = !master && session.blocks.length === 0 && loadPhase !== "loaded";
   // First rows later than half a second after the pane opened: one stall line.
   useFirstPaintReport(session.id, session.environmentId, session.blocks.length > 0);
   const retryLoad = useCallback(() => sessionStore.retryLoad(session.id), [session.id]);

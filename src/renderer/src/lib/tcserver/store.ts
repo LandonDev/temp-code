@@ -1801,6 +1801,17 @@ class SessionStore {
         null,
         meta,
       );
+      // A stub already settled as a new thread (its host listed without it,
+      // then named it: a tab whose row left the list and came back) has
+      // never fetched the thread: it loads like any other, never reads as
+      // empty. One still loading is loaded by the replay after the list.
+      if (!entry.loading && entry.load.phase === "loaded" && entry.session.blocks.length === 0) {
+        this.stopTimers(entry);
+        entry.loaded = false;
+        entry.wanted = false;
+        entry.load = loadingState();
+        entry.session = { ...entry.session, loaded: false, load: entry.load };
+      }
     } else {
       // The same thread, now answered by another host (it moved there):
       // follow it before the old host's removal arrives.
