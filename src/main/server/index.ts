@@ -626,7 +626,9 @@ export async function startServer(
       pathMap: () => harnessSync.pathMap(),
       claudeDir: claudeConfigDir,
       codexDir: codexHomeDir,
-      forget: (ids) => store.forgetSessions(ids)
+      forget: (ids) => store.forgetSessions(ids),
+      projectLink: (projectId) => registry.projectLinkFacts(projectId),
+      ensureLinked: (args) => ensureLinked(linkedCopies, args)
     },
     registry,
     peers,

@@ -30,26 +30,34 @@ export function isBatchChild(thread: Pick<StripThread, "parentId" | "masterId">)
   return !thread.parentId && !!thread.masterId;
 }
 
-/** Root, unarchived threads of `projectId`, freshest first. No project → nothing:
- *  loose chats never sit on the strip, and a batch child never does. */
+/** A project id, or every copy of a linked project (CLAUDE.md "One project across hosts"). */
+export type ProjectScope = string | ReadonlySet<string> | null;
+
+export function inProjectScope(projectId: string | null | undefined, scope: ProjectScope): boolean {
+  if (!projectId || !scope) return false;
+  return typeof scope === "string" ? projectId === scope : scope.has(projectId);
+}
+
+/** Root, unarchived threads of `projectId` (or of every copy in the set), freshest first.
+ *  No project → nothing: loose chats never sit on the strip, and a batch child never does. */
 export function projectRootThreads<T extends StripThread>(
   threads: readonly T[],
-  projectId: string | null,
+  projectId: ProjectScope,
 ): T[] {
   if (!projectId) return [];
   return threads
-    .filter((t) => t.projectId === projectId && !t.parentId && !t.archived && !isBatchChild(t))
+    .filter((t) => inProjectScope(t.projectId, projectId) && !t.parentId && !t.archived && !isBatchChild(t))
     .sort(freshestFirst);
 }
 
 /** Archived roots of `projectId`, freshest first, for the shelf. */
 export function archivedRootThreads<T extends StripThread>(
   threads: readonly T[],
-  projectId: string | null,
+  projectId: ProjectScope,
 ): T[] {
   if (!projectId) return [];
   return threads
-    .filter((t) => t.projectId === projectId && !t.parentId && t.archived && !isBatchChild(t))
+    .filter((t) => inProjectScope(t.projectId, projectId) && !t.parentId && t.archived && !isBatchChild(t))
     .sort(freshestFirst);
 }
 

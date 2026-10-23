@@ -36,7 +36,7 @@ describe("threadBlocker", () => {
   it("only a settled root with nothing queued moves", () => {
     expect(threadBlocker(idle)).toBeNull()
     expect(threadBlocker({ ...idle, status: "error" })).toBeNull();
-    expect(threadBlocker({ ...idle, draft: true })).toMatch(/first message/);
+    expect(threadBlocker({ ...idle, draft: true })).toBeNull();
     expect(threadBlocker({ ...idle, parentId: "p" })).toMatch(/subagent/);
     expect(threadBlocker({ ...idle, status: "paused" })).toMatch(/paused/);
     expect(threadBlocker({ ...idle, treeHasLiveWork: true })).toMatch(/working/);

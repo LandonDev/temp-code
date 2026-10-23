@@ -46,7 +46,8 @@ import {
   headerOrder,
   type HeaderTab,
 } from "../lib/threadHeaderModel";
-import { projectRootThreads, runningRoots } from "../lib/threadStripModel";
+import { inProjectScope, projectRootThreads, runningRoots } from "../lib/threadStripModel";
+import { copiesOf } from "../lib/projectHostChoice";
 import { usePlanReady } from "../hooks/usePlanReady";
 import { turnStartOf } from "../surfaces/threads/WorkingStrip";
 import type { TabThread } from "./TabIndicator";
@@ -112,6 +113,12 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
   const sidebarOpen = useShell((s) => s.sidebarOpen);
   const sidebarTab = useShell((s) => s.sidebarTab);
   const railOpen = useRightRailOpen();
+  // A linked project's copies are one project here: the strip and its tabs hold every copy's threads.
+  const projectScope = useMemo(() => {
+    const selected = selectedProjectId ? catalog.projects.find((p) => p.id === selectedProjectId) : undefined;
+    const copies = copiesOf(catalog.projects, selected?.linkId);
+    return copies.length > 1 ? new Set([selectedProjectId!, ...copies.map((p) => p.id)]) : selectedProjectId;
+  }, [catalog.projects, selectedProjectId]);
   const dockCwd = dockCwdOf({ projectCwd, selectedProjectId }, catalog.projects);
   const dock = useTerminals((s) => findProjectTerminal(s.docks, dockCwd));
   const projectTerminalActive = deckLayout && !!dock && dock.pane.files.length > 0;
@@ -130,13 +137,13 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
   // on the home the chats outside every workspace.
   const deckTabs = useMemo(() => {
     if (!deckLayout) return tabs;
-    const open = filterTabsForProjectId(tabs, shells, selectedProjectId).filter(
+    const open = filterTabsForProjectId(tabs, shells, projectScope).filter(
       (tab) => !tabArchived(tab, shells),
     );
     return selectedProjectId || !catalog.loaded
       ? open
       : filterTabsForWorkspace(open, shells, catalog, headerWorkspaceId);
-  }, [catalog, deckLayout, headerWorkspaceId, tabs, shells, selectedProjectId]);
+  }, [catalog, deckLayout, headerWorkspaceId, tabs, shells, selectedProjectId, projectScope]);
   const sessionMetas = useSessionMetas();
   const sessions = useTitleSessions(sessionMetas);
   const planReady = usePlanReady(sessions);
@@ -193,13 +200,13 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
       buildHeaderModel({
         threads: chipThreads,
         tabs: headerTabs,
-        selectedProjectId: deckLayout ? selectedProjectId : null,
+        selectedProjectId: deckLayout ? projectScope : null,
         activeTabId,
         lastSeen,
         seenFloor,
         planReady,
       }),
-    [activeTabId, chipThreads, deckLayout, headerTabs, lastSeen, seenFloor, planReady, selectedProjectId],
+    [activeTabId, chipThreads, deckLayout, headerTabs, lastSeen, seenFloor, planReady, projectScope],
   );
   const stripTabs = useMemo(() => {
     if (!deckLayout) return nextTitleTabs.map((tab) => tab.id);
@@ -218,15 +225,17 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
   // The live list leaves archived threads out; the shelf asks for the
   // selected project's own when it is shown.
   useEffect(() => {
-    if (deckLayout && selectedProjectId) void sessionStore.ensureArchived(selectedProjectId);
-  }, [deckLayout, selectedProjectId]);
+    if (!deckLayout || !projectScope) return;
+    for (const p of catalog.projects)
+      if (inProjectScope(p.id, projectScope)) void sessionStore.ensureArchived(p.environmentId, p.id);
+  }, [catalog.projects, deckLayout, projectScope]);
   /** The selected project's archived roots, freshest first, for the shelf. */
   const archivedThreads = useMemo<ArchivedThread[]>(() => {
-    if (!deckLayout || !selectedProjectId) return [];
+    if (!deckLayout || !projectScope) return [];
     return sessionMetas
       .filter(
         (meta) =>
-          meta.archived && !meta.parentId && meta.projectId === selectedProjectId,
+          meta.archived && !meta.parentId && inProjectScope(meta.projectId, projectScope),
       )
       .map((meta) => ({
         id: meta.id,
@@ -235,12 +244,12 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
         updatedAt: meta.updatedAt,
       }))
       .sort((a, b) => b.updatedAt - a.updatedAt);
-  }, [deckLayout, selectedProjectId, sessionMetas]);
+  }, [deckLayout, projectScope, sessionMetas]);
 
   const cost = sessions.find((session) => session.id === activeSessionId)?.thread?.cost ?? null;
   const running = useMemo(
-    () => runningRoots(projectRootThreads(chipThreads, selectedProjectId)).length,
-    [chipThreads, selectedProjectId],
+    () => runningRoots(projectRootThreads(chipThreads, projectScope)).length,
+    [chipThreads, projectScope],
   );
   const headerProps = useMemo<ThreadHeaderProps | undefined>(
     () =>

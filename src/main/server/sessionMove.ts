@@ -29,6 +29,8 @@ import {
   type SessionMovePart,
   type SessionMoveRowState
 } from '@shared/contract-session-move'
+import type { EnsureLinkedArgs, ProjectLinkFacts } from '@shared/projectLinks'
+import type { EnsureLinkedResult } from '@shared/wireSchemas'
 import { stripSlash, type HistoryMapping } from './pathMap'
 import { BlobLanding, landBranch, planBranchLanding, runGit, undoBranchLanding, type GitRunner, type PreparedBranch } from './sessionMoveBranch'
 
@@ -84,6 +86,10 @@ export interface MoveHost {
   forget?(ids: readonly string[]): void
   /** Runs git for the branch step (a test seam; the default is spawnBudget's). */
   git?: GitRunner
+  /** The project's link facts, its link ids minted when missing (registry.projectLinkFacts). */
+  projectLink?(projectId: string): ProjectLinkFacts | null
+  /** This host's copy of a linked project (project.ensureLinked). */
+  ensureLinked?(args: EnsureLinkedArgs): Promise<EnsureLinkedResult>
   /** A worktree the branch step made for the thread (the thread_resources ledger, when this host keeps one). */
   recordResource?(sessionId: string, resource: { kind: 'worktree'; path: string; branch: string | null; repo: string }): void
 }
@@ -111,6 +117,13 @@ export function subtreeIds(db: DatabaseSync, rootId: string): string[] {
   }
   if (db.prepare(`SELECT 1 FROM sessions WHERE id = ?`).get(rootId)) walk(rootId)
   return out
+}
+
+/** Whether any of these sessions holds a user message, in either tier. */
+export function hasUserText(db: DatabaseSync, ids: readonly string[]): boolean {
+  const q = db.prepare(`SELECT 1 FROM main.events WHERE session_id = ?1 AND payload LIKE '%"user-text"%'
+    UNION ALL SELECT 1 FROM cold.events WHERE session_id = ?1 AND payload LIKE '%"user-text"%' LIMIT 1`)
+  return ids.some((id) => !!q.get(id))
 }
 
 interface MoveCols {
@@ -387,7 +400,12 @@ export class MoveExport {
     })
 
     // With a branch the dirty list is the branch step's (what the patch carries); else `git status` as before.
-    const dirtyAll = branch ? branch.inspection.dirty : await (host.gitDirty ?? defaultGitDirty)(String(root.cwd)).catch(() => [] as string[])
+    // An empty thread carries no changes, so it has none to say stayed behind.
+    const dirtyAll = branch
+      ? branch.inspection.dirty
+      : hasUserText(db, ids)
+        ? await (host.gitDirty ?? defaultGitDirty)(String(root.cwd)).catch(() => [] as string[])
+        : []
     const checkpoints = ids.some((id) => existsSync(join(host.dataDir, 'checkpoints', id)))
     const manifest: SessionMoveManifest = {
       moveId,
@@ -400,6 +418,7 @@ export class MoveExport {
       folds,
       project,
       workspace,
+      projectLink: project ? (host.projectLink?.(project.id) ?? null) : null,
       events,
       files,
       transcriptMissing,
@@ -577,6 +596,35 @@ export class MoveImports {
     return join(this.host.dataDir, 'session-move', moveId.replace(/[^A-Za-z0-9_-]/g, '_'))
   }
 
+  /**
+   * This host's copy of the sender's linked project: an existing one only (by
+   * link id, else a same-named unlinked project in the linked workspace, which
+   * gets stamped). A move never creates a project; null falls back to the path.
+   */
+  private async linkedCopy(facts: ProjectLinkFacts | null, senderWorkRoot: string): Promise<{ id: string; workspaceId: string; cwd: string } | null> {
+    if (!facts || !this.host.ensureLinked) return null
+    const args: EnsureLinkedArgs = {
+      projectLinkId: facts.linkId,
+      workspaceLinkId: facts.workspaceLinkId,
+      name: facts.name,
+      branch: facts.branch,
+      mode: facts.mode,
+      callerWorkspacePath: facts.workspacePath,
+      callerProjectCwd: facts.cwd,
+      callerWorkRoot: senderWorkRoot,
+      ...(facts.workspaceGithubRepo ? { workspaceGithubRepo: facts.workspaceGithubRepo } : {})
+    }
+    try {
+      const probe = await this.host.ensureLinked({ ...args, dryRun: true })
+      if (!probe.project) return null
+      // Found one: the real call returns the same copy, stamping a same-named one with the link.
+      const copy = await this.host.ensureLinked(args)
+      return copy.project ? { id: copy.project.id, workspaceId: copy.project.workspaceId, cwd: stripSlash(copy.project.cwd) } : null
+    } catch {
+      return null
+    }
+  }
+
   /** Check, remap and resolve; land the rows hidden. Throws MoveRefused with the reason. */
   async begin(manifest: SessionMoveManifest): Promise<SessionImportBeginAnswer> {
     const db = this.host.db
@@ -613,14 +661,18 @@ export class MoveImports {
       const plan = repo ? await planBranchLanding(repo, manifest.branch, this.git) : null
       if (repo && plan) branch = { plan, repo, blobs: {}, previousBranch: null, landing: null }
     }
-    const rootCwd = branch ? branch.plan.cwd : land(String(root.cwd))
+    // The project: this host's linked copy when the sender's is linked (a folder can hold two projects).
+    const linked = await this.linkedCopy(manifest.projectLink ?? null, manifest.workRoot)
+    let rootCwd = branch ? branch.plan.cwd : land(String(root.cwd))
+    // No branch to carry (an empty thread, or no checkout): a folder missing here is the linked copy's.
+    if (!branch && !this.exists(rootCwd) && linked && this.exists(linked.cwd)) rootCwd = linked.cwd
     if (!branch && !this.exists(rootCwd)) throw new MoveRefused(`${rootCwd} does not exist on this host`)
 
-    // The workspace: the one at the remapped workspace path, else the deepest one holding the cwd.
+    // The workspace: the linked copy's, else the one at the remapped workspace path, else the deepest one holding the cwd.
     const workspaces = db.prepare(`SELECT id, path FROM workspaces`).all() as { id: string; path: string }[]
     const byPath = new Map(workspaces.map((w) => [stripSlash(w.path), w.id]))
-    let workspaceId: string | null = null
-    if (manifest.workspace) {
+    let workspaceId: string | null = linked?.workspaceId ?? null
+    if (!workspaceId && manifest.workspace) {
       for (const c of landingCandidates(manifest.workspace.path, ctx)) {
         const hit = byPath.get(stripSlash(c))
         if (hit) {
@@ -639,7 +691,7 @@ export class MoveImports {
 
     const projects = db.prepare(`SELECT id, cwd FROM projects WHERE workspace_id = ?`).all(workspaceId) as { id: string; cwd: string }[]
     const projectAt = (cwd: string): string | null => projects.find((p) => stripSlash(p.cwd) === stripSlash(cwd))?.id ?? null
-    const rootProject = manifest.project ? projectAt(land(manifest.project.cwd)) ?? projectAt(rootCwd) : projectAt(rootCwd)
+    const rootProject = linked?.id ?? (manifest.project ? (projectAt(land(manifest.project.cwd)) ?? projectAt(rootCwd)) : projectAt(rootCwd))
 
     const missing = new Set(manifest.transcriptMissing)
     const cols = tableColumns(db, 'sessions')

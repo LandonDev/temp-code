@@ -24,7 +24,7 @@ export type MovableThread = {
   busy?: boolean;
   treeHasLiveWork?: boolean;
   treeHasPaused?: boolean;
-  /** Unsent: a draft the server has not created. */
+  /** Unsent: a draft the server has not created (it switches host, no move). */
   draft?: boolean;
   queued?: number;
 };
@@ -33,7 +33,6 @@ const AT_REST = new Set(["idle", "error", "done"]);
 
 /** Whether the thread itself can move now; the reason when not. */
 export function threadBlocker(t: MovableThread): string | null {
-  if (t.draft) return "send a first message before moving it";
   if (t.parentId) return "a subagent moves with its thread";
   if (t.status === "paused" || t.treeHasPaused) return "the thread is paused; stop it first";
   if (t.busy || t.treeHasLiveWork || (t.status && !AT_REST.has(t.status))) return "the thread is working; stop it or wait for it to finish";

@@ -16,6 +16,7 @@ import { sameProjectPath } from "./recents";
 import type { Catalog } from "./projectContext";
 import type { Session } from "./session";
 import { workspaceIdOf } from "./tcserver/workspaces";
+import { inProjectScope, type ProjectScope } from "./threadStripModel";
 
 export function workspaceTabCwd(
   tab: WorkspaceTab,
@@ -82,9 +83,10 @@ export function tabProjectKey(
 export function filterTabsForProjectId(
   tabs: WorkspaceTab[],
   sessions: readonly Pick<Session, "id" | "projectId">[],
-  projectId: string | null,
+  projectId: ProjectScope,
 ): WorkspaceTab[] {
-  return tabs.filter((tab) => tabProjectKey(tab, sessions) === projectId);
+  if (projectId === null || typeof projectId === "string") return tabs.filter((tab) => tabProjectKey(tab, sessions) === projectId);
+  return tabs.filter((tab) => inProjectScope(tabProjectKey(tab, sessions), projectId));
 }
 
 /**

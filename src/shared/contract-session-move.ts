@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { ProjectLinkFactsSchema } from './projectLinks'
 
 // Moving one thread between hosts (docs/box.md "Moving a thread between
 // hosts"). Only the desktop's own server starts a move (`session.move`,
@@ -137,6 +138,8 @@ export const SessionMoveManifestSchema = z.object({
   /** The source project and workspace, for resolving their counterparts by path. */
   project: z.object({ id: ID, cwd: z.string(), workspaceId: z.string() }).nullable(),
   workspace: z.object({ id: ID, path: z.string(), name: z.string() }).nullable(),
+  /** The source project's link facts: the receiver lands the thread in its linked copy (project.ensureLinked), never by folder alone. */
+  projectLink: ProjectLinkFactsSchema.nullable().optional(),
   /** Event rows per session id. */
   events: z.record(z.string(), z.number().int().min(0)),
   files: z.array(SessionMoveFileSchema).max(100_000),

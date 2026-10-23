@@ -4,7 +4,10 @@ import type { SessionMovePreview } from "@server/shared/contract-session-move";
 import { useProjectBranches } from "../hooks/useProjectBranches";
 import { registry, useEnvironments, useEnvironmentStatuses } from "../lib/connection";
 import { LAYER } from "../lib/layers";
-import { useQueue, useSession, useSessionMeta } from "../lib/tcserver/store";
+import { copiesOf, ensureLinkedArgs, ensureLinkedOn, rememberLinkHost } from "../lib/projectHostChoice";
+import { sessionStore, useQueue, useSession, useSessionMeta } from "../lib/tcserver/store";
+import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
+import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import {
   dismissMoveNotice,
   hostTone,
@@ -18,6 +21,7 @@ import {
   type MoveNotice,
 } from "../lib/threadMove";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { retargetDraft } from "./DraftHostPicker";
 import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
 import { HostGlyph } from "./HostGlyph";
 
@@ -26,8 +30,11 @@ import { HostGlyph } from "./HostGlyph";
  * glyph (idle or running alike) and the branch its folder is on, and the
  * menu that moves it to the other one ("Move to box…"). Each target is
  * disabled with its reason when the thread is busy, a link is down or the
- * key there is not admin. The confirm says what the move carries (the branch
- * and its uncommitted changes); a running move shows on the chip.
+ * key there is not admin. An unsent draft just switches to the other host's
+ * copy of its project, and a thread nobody wrote to yet moves at once; only
+ * a thread with messages asks first, the confirm saying what the move
+ * carries (the branch and its uncommitted changes). A running move shows on
+ * the chip.
  */
 export function ThreadHostChip({ sessionId }: { sessionId: string }): JSX.Element | null {
   const session = useSession(sessionId);
@@ -36,6 +43,7 @@ export function ThreadHostChip({ sessionId }: { sessionId: string }): JSX.Elemen
   const statuses = useEnvironmentStatuses();
   const queue = useQueue(sessionId);
   const moving = useMoving();
+  const { projects, workspaces } = useWorkspaceCatalog();
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [confirm, setConfirm] = useState<{ to: string; name: string } | null>(null);
   const [preview, setPreview] = useState<SessionMovePreview | null | "error">(null);
@@ -114,6 +122,15 @@ export function ThreadHostChip({ sessionId }: { sessionId: string }): JSX.Elemen
             setMenu(null);
             if (!id.startsWith("move:")) return;
             const to = id.slice("move:".length);
+            if (!meta) {
+              void retargetDraftTo(sessionId, to, projects, workspaces).catch(() => undefined);
+              return;
+            }
+            // Nothing written yet: nothing to carry, nothing to confirm.
+            if (session.loaded && !session.blocks.some((b) => b.role === "user")) {
+              void moveThread(sessionId, to).catch(() => undefined);
+              return;
+            }
             setConfirm({ to, name: registry.environment(to)?.name ?? to });
           }}
           onClose={() => setMenu(null)}
@@ -136,6 +153,28 @@ export function ThreadHostChip({ sessionId }: { sessionId: string }): JSX.Elemen
       ) : null}
     </>
   );
+}
+
+/** An unsent draft onto `to`'s copy of its project, made there when missing (DraftHostPicker's pick). */
+async function retargetDraftTo(
+  sessionId: string,
+  to: string,
+  projects: readonly ProjectMeta[],
+  workspaces: readonly WorkspaceMeta[],
+): Promise<void> {
+  const draft = sessionStore.get(sessionId);
+  const project = draft?.projectId ? projects.find((p) => p.id === draft.projectId && p.environmentId === draft.environmentId) : undefined;
+  if (!project?.linkId) throw new Error("the draft's project is not linked to that host");
+  const copy =
+    copiesOf(projects, project.linkId).find((c) => c.environmentId === to) ??
+    (await (async () => {
+      const ws = workspaces.find((w) => w.id === project.workspaceId && w.environmentId === project.environmentId);
+      const args = ensureLinkedArgs(project, ws);
+      return args ? (await ensureLinkedOn(to, args)).project : null;
+    })());
+  if (!copy) throw new Error("no copy of the project on that host");
+  retargetDraft(sessionId, copy);
+  rememberLinkHost(project.linkId, to);
 }
 
 const NOTICE_MS = 12_000;

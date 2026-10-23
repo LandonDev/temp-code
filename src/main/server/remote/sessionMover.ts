@@ -22,6 +22,7 @@ import {
   frozenIds,
   moveStatus,
   setMovingTo,
+  hasUserText,
   subtreeIds,
   tombstone,
   type MoveHost
@@ -172,10 +173,11 @@ export class SessionMover {
     }
   }
 
-  /** The source's branch step: inspect the root's cwd, push to origin, write the patch. Null when the cwd is not a checkout. */
+  /** The source's branch step: inspect the root's cwd, push to origin, write the patch. Null when the cwd is not a checkout or the thread is empty. */
   private async prepare(rootId: string, moveId: string): Promise<PreparedBranch | null> {
     const row = this.deps.host.db.prepare(`SELECT cwd FROM sessions WHERE id = ?`).get(rootId) as { cwd: string } | undefined
-    if (!row) return null
+    // A thread nobody wrote to yet carries nothing: no push, bundle or patch; it lands in the project copy there.
+    if (!row || !hasUserText(this.deps.host.db, subtreeIds(this.deps.host.db, rootId))) return null
     const staging = join(this.deps.host.dataDir, 'session-move', `${moveId.replace(/[^A-Za-z0-9_-]/g, '_')}-out`)
     return prepareBranch(row.cwd, staging, { git: this.deps.host.git ?? runGit })
   }

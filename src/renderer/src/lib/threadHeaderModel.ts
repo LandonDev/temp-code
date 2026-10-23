@@ -7,6 +7,7 @@ import {
   type ChipTone,
   type ReadyMap,
   type SeenMap,
+  type ProjectScope,
   type StripThread,
 } from "./threadStripModel";
 import type { SessionStatus } from "./tcserver/types";
@@ -48,7 +49,7 @@ export type HeaderModel<T extends StripThread = StripThread> = {
 export function buildHeaderModel<T extends StripThread>(input: {
   threads: readonly T[];
   tabs: readonly HeaderTab[];
-  selectedProjectId: string | null;
+  selectedProjectId: ProjectScope;
   activeTabId: string | null;
   lastSeen: SeenMap;
   /** Threads with no lastSeen entry count as seen up to this time. */
