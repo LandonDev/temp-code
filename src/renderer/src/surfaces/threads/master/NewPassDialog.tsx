@@ -41,7 +41,7 @@ export function NewPassDialog({ sessionId, landed, onClose }: { sessionId: strin
           </span>
           <span className={`min-w-0 truncate ${line.tone === "muted" ? "text-content/50" : TONE_CLASS[line.tone]}`}>{line.text}</span>
         </p>
-        <div className="px-2.5 pt-3 pb-1">
+        <div className="px-2.5 pt-3 pb-2.5">
           {session && actions ? (
             <ThreadComposer
               session={session}
