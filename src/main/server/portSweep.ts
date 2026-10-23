@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { readFile, readlink } from 'node:fs/promises'
-import { notDevServer } from '@shared/devServerRules'
+import { NOT_DEV_RUNNER, notDevServer } from '@shared/devServerRules'
 import type { EventRow } from '@shared/events'
 import type { ThreadResources } from './threadResources'
 import { shellOf } from './threadResourcesParse'
@@ -111,7 +111,10 @@ const inside = (dir: string, folder: string): boolean => dir === folder || dir.s
 export function skipReason(l: Listener, chain: readonly ProcInfo[], ownPid: number): string | null {
   if (!validPort(l.port)) return 'a system port'
   if (l.pid === ownPid) return "the app's own"
-  return notDevServer(l.port, l.command ?? baseName(chain[0]?.args ?? null), chain[0]?.args ?? null)
+  const own = notDevServer(l.port, l.command ?? baseName(chain[0]?.args ?? null), chain[0]?.args ?? null)
+  if (own) return own
+  // A test worker sits under its runner: the gate, vitest, a typecheck.
+  return chain.some((p) => p.args && NOT_DEV_RUNNER.test(p.args)) ? 'a test run or the gate' : null
 }
 
 /** Which thread a listener is, by the rules above; `chain` starts at the listener's process and goes up. */

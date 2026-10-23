@@ -71,6 +71,15 @@ describe('ThreadPorts', () => {
     expect(rows.map((r) => [r.identifier, r.pid, r.callId, r.label])).toEqual([['3000', 300, 'c1', 'bun run serve']])
   })
 
+  it('never files a test run’s worker as a dev server', async () => {
+    call('root', 'c1', 'NODE_ENV=test bunx vitest run src/x.test.ts')
+    await flush()
+    spawnServer(41234, 300)
+    now += 2_000
+    await ports.tick()
+    expect(ledger.listAll({ kind: 'port' })).toEqual([])
+  })
+
   it('keeps polling for the grace period after the last call, then stops', async () => {
     call('root', 'c1', 'nohup bun run dev &')
     await flush()

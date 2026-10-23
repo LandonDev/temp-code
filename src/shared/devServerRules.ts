@@ -19,10 +19,15 @@ export const NOT_DEV_NAMES =
 export const NOT_DEV_COMMAND =
   /modelcontextprotocol|\bmcp[-_](?:server|proxy|remote)\b|[-_]mcp\b(?![/.-])|^(?:\S*\/)?(?:nginx|caddy|haproxy|envoy|traefik|mitmproxy|mitmdump|socat)\b|--remote-debugging-port/i
 
+/** A test run, a typecheck or the release gate: their workers listen on throwaway ports while they run. */
+export const NOT_DEV_RUNNER =
+  /\bscripts\/gate\.ts\b|\/node_modules\/(?:\.bin\/)?(?:vitest|jest|mocha|@playwright\/test)\b|(?:^|[\s;&|(])(?:bunx\s+|npx\s+|pnpm\s+(?:exec\s+)?|yarn\s+)?(?:vitest|jest|mocha|tsc)(?=\s|$)|\bplaywright\s+test\b|\bbun\s+test\b|\b(?:bun|npm|pnpm|yarn)\s+(?:run\s+)?(?:test|typecheck|gate)(?=[\s:]|$)/
+
 /** Why a listener is not a dev server, null when it may be one. */
 export function notDevServer(port: number, name: string | null, command: string | null): string | null {
   if (NOT_DEV_PORTS.has(port)) return 'a database or debugger port'
   if (name && NOT_DEV_NAMES.test(name)) return `infrastructure (${name})`
   if (command && NOT_DEV_COMMAND.test(command)) return 'an MCP server, proxy or debugger'
+  if (command && NOT_DEV_RUNNER.test(command)) return 'a test run or the gate'
   return null
 }

@@ -124,6 +124,7 @@ describe('the live dev servers', () => {
             port({ id: 'mcp', identifier: '3333', label: 'npx -y chrome-devtools-mcp@latest' }),
             port({ id: 'proxy', identifier: '8080', label: 'caddy reverse-proxy --to :3000' }),
             port({ id: 'wt', kind: 'worktree', identifier: '/srv/x' }),
+            port({ id: 'gate', identifier: '44575', label: '/srv/agents/home/.bun/bin/bun scripts/gate.ts --tier commit --since ee6c899' }),
             port({ id: 'web', identifier: '3002', label: 'python3 -m http.server 3002' })
           ]
         }

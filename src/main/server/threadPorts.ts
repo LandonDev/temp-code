@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import type { ThreadResource } from '@shared/contract-resources'
+import { notDevServer } from '@shared/devServerRules'
 import type { EventRow } from '@shared/events'
 import type { ThreadResources } from './threadResources'
 import { shellOf } from './threadResourcesParse'
@@ -207,11 +208,13 @@ export class ThreadPorts {
       const running = [...a.calls.entries()].at(-1)
       const by = callId ? { callId, command: command ?? '' } : running ? { callId: running[0], command: running[1] } : a.last
       if (!by) continue
-      this.record(sessionId, l.port, l.pid, by.callId, portLabel(l.port, { command: by.command, process: l.command }))
+      this.record(sessionId, l.port, l.pid, by.callId, portLabel(l.port, { command: by.command, process: l.command }), l.command)
     }
   }
 
-  private record(sessionId: string, port: number, pid: number, callId: string, label: string): void {
+  /** A database, an MCP server or a test run's worker is never filed (src/shared/devServerRules.ts). */
+  private record(sessionId: string, port: number, pid: number, callId: string, label: string, name: string | null = null): void {
+    if (notDevServer(port, name, label)) return
     const made = this.deps.resources.record(sessionId, this.deps.environmentId, {
       created: [{ kind: 'port', identifier: String(port), label, branch: null, pid, callId }],
       removed: []

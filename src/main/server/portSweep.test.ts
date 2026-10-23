@@ -64,6 +64,17 @@ describe('skipReason', () => {
     expect(skipReason(listener(5173, 10), args('node /srv/agents/work/temp-code-mcp/node_modules/.bin/vite'), 7)).toBeNull()
     expect(skipReason(listener(3000, 10), args('python3 -m http.server 3000'), 7)).toBeNull()
   })
+
+  it('skips a test run, a typecheck and the gate, by any process above the listener', () => {
+    const chain = (...a: string[]) => a.map((x, i) => proc(10 + i, { args: x }))
+    const gate = 'a test run or the gate'
+    expect(skipReason(listener(44575, 10), chain('node /srv/x/node_modules/vitest/dist/workers/forks.js', '/srv/agents/home/.bun/bin/bun scripts/gate.ts --tier commit --since ee6c899'), 7)).toBe(gate)
+    expect(skipReason(listener(40879, 10), chain('node worker.js', 'NODE_ENV=test bunx vitest run src/a.test.ts'), 7)).toBe(gate)
+    expect(skipReason(listener(37631, 10), chain('bun test'), 7)).toBe(gate)
+    expect(skipReason(listener(43401, 10), chain('npm run typecheck'), 7)).toBe(gate)
+    expect(skipReason(listener(5173, 10), chain('node node_modules/.bin/vite', 'bun run dev'), 7)).toBeNull()
+    expect(skipReason(listener(5174, 10), chain('cd apps/vitest-demo && bun run dev'), 7)).toBeNull()
+  })
 })
 
 describe('attribute', () => {

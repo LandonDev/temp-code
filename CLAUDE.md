@@ -808,8 +808,9 @@ routed to (aliax-core's `forward`). Two listeners:
   credits a background shell's server, reparented to init, by ancestry, the
   `~t=` scope or CLAUDE_PID in its environment, the output file a call
   named, or the thread folder holding its cwd, and skips databases,
-  infrastructure, proxies, MCP servers (src/shared/devServerRules.ts, which
-  the renderer applies too) and ports bound before a thread worked there
+  infrastructure, proxies, MCP servers, test runs and the gate's workers
+  (src/shared/devServerRules.ts, which threadPorts.ts and the renderer apply
+  too) and ports bound before a thread worked there
   (`bun scripts/port-sweep-dry-run.ts` prints its verdicts live); it leaves
   the ledger when nothing listens, and removal SIGTERMs then SIGKILLs the
   pid. The box sends its live ports (the ledger's and the Dev

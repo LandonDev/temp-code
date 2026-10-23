@@ -1629,7 +1629,10 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
   proxies by process name (postgres, redis, docker-proxy, sshd, cloudflared,
   ngrok, nginx, caddy, socat, electron, claude, codex…), a command line
   naming an MCP server or a proxy (`@modelcontextprotocol/…`,
-  `chrome-devtools-mcp`, `mcp-server…`), all in src/shared/devServerRules.ts,
+  `chrome-devtools-mcp`, `mcp-server…`), a test run, typecheck or the gate
+  anywhere above the listener (`scripts/gate.ts`, vitest, jest, `bun test`,
+  their workers), all in src/shared/devServerRules.ts, which the shell-call
+  detector applies too,
   the app's own process, the Dev Server button's runs,
   anything the harness started within 15 s of itself that no tool call
   started (an MCP server), and a port bound before any thread worked in its
