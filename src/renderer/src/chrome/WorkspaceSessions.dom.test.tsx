@@ -241,15 +241,18 @@ describe('ThreadRows fold', () => {
   it("a master's batch threads sit under it the way subagents do: the type's glyph, what a running one does, its model otherwise", () => {
     const master: ThreadRow = {
       ...threadRow(meta('master', { isMaster: true }), {}),
-      children: [
+      children: [threadRow(meta('own', { parentId: 'master', status: 'running' }), {})],
+      batch: [
         threadRow(meta('b1', { masterId: 'master', threadType: 'implementation', status: 'running', busySince: 5, activity: 'Writing the view', provider: 'claude', model: 'claude-opus-5-5' }), {}),
         threadRow(meta('b2', { masterId: 'master', threadType: 'planning', provider: 'claude', model: 'claude-opus-5-5' }), {})
       ]
     }
     const probe = mountProbe(<ThreadList threads={[master]} actions={actions} className="" />)
-    expect(rowCount(probe.container)).toBe(3)
-    expect(foldButton(probe.container).getAttribute('aria-label')).toBe('Hide 2 threads')
+    expect(rowCount(probe.container)).toBe(4)
+    expect(foldButton(probe.container).getAttribute('aria-label')).toBe('Hide 3 threads')
     const kids = Array.from(probe.container.querySelectorAll('[role="button"]')).slice(1)
+    // The batch first, the master's own subagent apart after it.
+    expect(kids[2].textContent).toContain('own')
     expect(kids[0].querySelector('[data-activity]')?.textContent).toBe('Writing the view')
     expect(kids[0].textContent).toContain('b1')
     expect(kids[1].querySelector('[data-activity]')).toBeNull()
@@ -275,7 +278,7 @@ describe('ThreadRows fold', () => {
     }))
     const master: ThreadRow = {
       ...threadRow(meta('master', { isMaster: true }), {}),
-      children: [threadRow(meta('far', { masterId: 'master', environmentId: 'env_box', status: 'running', busySince: 5 }), {})]
+      batch: [threadRow(meta('far', { masterId: 'master', environmentId: 'env_box', status: 'running', busySince: 5 }), {})]
     }
     const probe = mountProbe(<ThreadList threads={[master]} actions={actions} className="" />)
     const dim = Array.from(probe.container.querySelectorAll('[data-host-offline]'))

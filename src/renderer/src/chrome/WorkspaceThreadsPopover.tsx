@@ -4,6 +4,7 @@ import { LiveLines, RowShell, TaskLine, ThreadGlyph } from "./WorkspaceSessions"
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { blockedThreads, cardTasks, projectCardStatus } from "../lib/projectCardModel";
 import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
+import { liveLines, masterBlocks } from "../lib/sidebarRows";
 import { useSessionMetas } from "../lib/tcserver/store";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import {
@@ -17,7 +18,9 @@ import {
 const POPOVER_WIDTH = 300;
 const POPOVER_MAX_HEIGHT = 360;
 
-type Section = { key: string; label: string; threads: ThreadRow[] };
+/** `threads` is what the tallies read (`cardThreads`), `roots` what the
+ *  lines print (a master with its batch under it). */
+type Section = { key: string; label: string; threads: ThreadRow[]; roots: ThreadRow[] };
 
 /** `LiveLines` only prints running/paused/unread — a waiting or failed
  *  thread is a count there, not a row. This popover's whole point is to
@@ -62,9 +65,9 @@ export function workspaceThreadSections(groups: WorkspaceSessionGroups): Section
   return [
     ...groups.projects
       .filter((g) => g.threads.length > 0)
-      .map((g) => ({ key: g.project.id, label: g.project.name, threads: cardThreads(g.threads) })),
+      .map((g) => ({ key: g.project.id, label: g.project.name, threads: cardThreads(g.threads), roots: g.threads })),
     ...(groups.chats.length > 0
-      ? [{ key: "chats", label: "Chats", threads: groups.chats }]
+      ? [{ key: "chats", label: "Chats", threads: groups.chats, roots: groups.chats }]
       : []),
   ];
 }
@@ -87,19 +90,23 @@ export function WorkspaceThreadsList({
   onSelectThread: (sessionId: string) => void;
 }) {
   const sections = workspaceThreadSections(groups)
-    .map((section) => ({
-      ...section,
-      blocked: blockedThreads(section.threads),
-      status: projectCardStatus(section.threads, activeSessionId, lastSeen, seenFloor),
-    }))
+    .map((section) => {
+      const status = projectCardStatus(section.threads, activeSessionId, lastSeen, seenFloor);
+      // A blocked thread inside a master, or a blocked master, says so in
+      // its master's block below; the rows here are everyone else's.
+      const inBlock = new Set(masterBlocks(section.roots, status).map((b) => b.master.id));
+      return {
+        ...section,
+        status,
+        lines: liveLines(status, section.roots).length,
+        blocked: blockedThreads(section.threads.filter((t) => !t.housed && !inBlock.has(t.id))),
+      };
+    })
     // A project with only dormant, long-seen threads has nothing to show
     // here; skip its section rather than print an empty label.
     .filter(
       (section) =>
-        section.blocked.length > 0 ||
-        section.status.running.length > 0 ||
-        section.status.paused.length > 0 ||
-        section.status.unread.length > 0,
+        section.blocked.length > 0 || section.lines > 0,
     );
   return (
     <div className="flex flex-col gap-2 p-1">
@@ -120,7 +127,12 @@ export function WorkspaceThreadsList({
               ))}
             </div>
           ) : null}
-          <LiveLines status={section.status} activeId={activeSessionId} onSelectThread={onSelectThread} />
+          <LiveLines
+            status={section.status}
+            roots={section.roots}
+            activeId={activeSessionId}
+            onSelectThread={onSelectThread}
+          />
         </div>
       ))}
     </div>

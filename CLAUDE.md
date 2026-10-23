@@ -2010,13 +2010,23 @@ this is the short one.
   client" below).
 - **The rail houses the batch under the master's row** the way subagents
   sit under a root (`batchHome`, `railMasters` in lib/workspaceSessions.ts):
-  each unarchived root carrying the master's id is a child row one step in
-  (the type's glyph, the title, what it is doing while it works, else its
-  model), folded behind "N threads" by the subagent rows' rule; a plan whose
-  build has started takes no row (`startedPlan`: the build is the row), an
-  archived thread never does, and a batch whose master is archived or
-  unpinned shows as plain roots. The project card and the workspace popover
-  read the housed rows back beside the roots (`cardThreads`).
+  each unarchived root carrying the master's id is a `batch` row (apart
+  from the master's own subagents in `children`; a list row shows the batch
+  first, then the subagents, folded behind "N threads"), each with its own
+  subagents under it; a plan whose build has started takes no row
+  (`startedPlan`), an archived thread never does, and a batch whose master
+  is archived or unpinned shows as plain roots. On the project card and the
+  workspace popover a master is one block (`masterBlock` in
+  lib/sidebarRows.ts, `MasterLines` in chrome/WorkspaceSessions.tsx): the
+  master's line with the batch's done tally (`3/7`), its own working
+  subagents under its title in the fleet's words, then each batch thread
+  that works, waits, failed, paused or stopped one step in, loudest first
+  (Needs you and Failed in words), its working subagents under it, and the
+  queued ones as one "N queued" line; settled ones are the tally. Nothing
+  inside a master is unread (`housedIds`: the batch and every subagent of
+  the master or of its batch): no dot, no bold, and no count in the card,
+  the workspace chip, the popover or Mark all read; the master keeps its
+  own. They still count as working and needing you (`cardThreads`).
 - **Proofs and tests.** `bun run script:e2e-master-batch`
   (scripts/e2e-master-batch.ts: the whole flow in one process, a haiku
   master pinned with `session.setMaster` beside a second master of the same

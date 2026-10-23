@@ -60,7 +60,7 @@ ambient chrome; it earns its place because agents run in background threads
 | Frame | custom flex column on `bg-sidebar` | 232px, resizable later |
 | Top actions | New Thread, Search rows | 13px ghost rows, lucide 15px icons, `text-muted-foreground` → `text-foreground` on hover |
 | Workspace group | custom collapsible (motion `height: auto` + `SPRING_LAYOUT`, chevron rotates) | header row: folder icon + name, 12px medium, muted; multi-open (not accordion) |
-| Project row | custom row; BUI *Sidebar Nav* is the composition reference | name 13px; below/right: `git-branch` glyph + branch or `tc/<tag>` worktree tag, 11px muted; relative time right-aligned; status dot when a thread runs (emerald pulse / amber waiting / red error) |
+| Project row | custom row; BUI *Sidebar Nav* is the composition reference | name 13px; below/right: `git-branch` glyph + branch or `tc/<tag>` worktree tag, 11px muted; relative time right-aligned; status dot when a thread runs (emerald pulse / amber waiting / red error); a master and its batch print as one nested block ("Master" below), and nothing inside a master is unread |
 | Selection | shared-layout pill behind active row (BeUI *Shared Layout Background* recipe, `SPRING_LAYOUT`) | `bg-accent`, `rounded-md`; glides between rows |
 | Row menu | BeUI *Animated Context Menu* (pointer-origin morph) | rename, change branch, archive, delete (delete → ReUI dialog confirm) |
 | Workspace list | `chrome/ProjectRail.tsx` on `lib/linkedRail.ts` | one "Workspaces" section for every host, no host headers; a workspace linked across hosts (one `linkId`) is one row led by this machine's copy, its threads, status chip, Mark all read, pin and drag spanning every copy; order, pins, recents, labels, colours and mascots keep their keys, the other copies alias to the leader's (`aliasKeys`) |
@@ -433,6 +433,29 @@ in the whole pane, with Back.
   strip with one quiet Start now; only the strip and its shelf leave it out.
   Under the master's rail row a child on a host whose link is not open
   sits under the same offline tint as on the board (`data-host-offline`).
+- **On the project card** (and the workspace popover) a master with a batch
+  is one block between the hairlines, three steps deep, each step's mark
+  in a 12px box under the step above's glyph:
+  ```
+  ◌ ▤ iOS batch 2                     3/7
+        2 agents · 1 working
+     ⠿ ⌗ Home like the sidebar        4m
+           1 agent · 1 needs approval
+     ● ⌗ Live Activity          Needs you
+     • 2 queued
+  ```
+  The master's line ends with the batch's done tally (green when all are
+  done); its own working subagents sit under its title, apart from the
+  batch. Each batch thread that works, waits, failed, paused or stopped
+  is a line, loudest first (Needs you and Failed in words, a running one's
+  task tally or elapsed), its working subagents under its title; queued
+  ones are one quiet count and settled ones are the tally. A master
+  settled and seen over a finished batch prints nothing, like any dormant
+  thread. Nothing inside a master is ever unread (`housedIds`): the
+  master reads them, so they carry no dot or bold and no unread count
+  anywhere; a waiting one still lights the card's "need you" and the
+  workspace chip. In a thread list (Chats, archived) a master's fold
+  holds its batch first, then its own subagents.
 
 ## ADE ambitions (later — but the frame reserves room now)
 

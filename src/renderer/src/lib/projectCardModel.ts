@@ -6,7 +6,7 @@ import type { SessionMeta } from "./tcserver/types";
  * paused (its own or a descendant's), running (live work anywhere in the
  * tree, unless it is waiting on you or needs recovery), waiting, failed
  * (a recoverable failure the tree has not moved past), unread (settled,
- * unseen, not the open thread), else dormant.
+ * unseen, not the open thread, not inside a master), else dormant.
  */
 
 export type CardThread = Pick<
@@ -24,7 +24,10 @@ export type CardThread = Pick<
       | "treeCanContinue"
       | "treeFrozenActiveElapsed"
     >
-  >;
+  > & {
+    /** Inside a master (lib/workspaceSessions.ts `housedIds`): never unread. */
+    housed?: boolean;
+  };
 
 export type ProjectCardStatus<T extends CardThread = CardThread> = {
   paused: T[];
@@ -63,6 +66,7 @@ export function projectCardStatus<T extends CardThread>(
   ).length;
   const unread = threads.filter(
     (t) =>
+      !t.housed &&
       (t.status === "idle" || t.status === "done") &&
       !t.treeCanContinue &&
       !t.treeHasLiveWork &&

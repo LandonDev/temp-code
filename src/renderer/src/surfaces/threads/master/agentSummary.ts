@@ -1,6 +1,8 @@
 import { createContext, useContext, useSyncExternalStore } from "react";
-import { FLEET_TONES, FLEET_WORDS, fleetCounts } from "../../../lib/threads/agents";
+import { agentSummary, agentSummaryParts, type AgentSummary } from "../../../lib/threads/agents";
 import type { SessionMeta } from "../../../lib/tcserver/types";
+
+export { agentSummary, agentSummaryParts };
 
 /**
  * A board row's subagents (docs/LAYOUT.md "Master"): every unarchived
@@ -11,7 +13,7 @@ import type { SessionMeta } from "../../../lib/tcserver/types";
  * reads its own summary, the same object until it says something else.
  */
 
-export type AgentSummary = { total: number; working: number; waiting: number; failed: number };
+export type { AgentSummary };
 
 /** Children by parent id, archived ones included (their own children still count). */
 export function parentIndex(metas: readonly SessionMeta[]): Map<string, SessionMeta[]> {
@@ -37,24 +39,6 @@ export function subtreeOf(index: ReadonlyMap<string, readonly SessionMeta[]>, ro
     }
   }
   return out;
-}
-
-/** The count and the live states in the fleet's buckets; null with no agents. */
-export function agentSummary(agents: readonly Pick<SessionMeta, "status">[]): AgentSummary | null {
-  if (agents.length === 0) return null;
-  const c = fleetCounts([...agents]);
-  return { total: agents.length, working: c.working, waiting: c.waiting, failed: c.failed };
-}
-
-/** "4 agents", then each nonzero live state in the fleet header's words
- *  and tones: 4 agents · 2 working · 1 needs approval. Done ones are in
- *  the count only. */
-export function agentSummaryParts(s: AgentSummary): { text: string; tone?: string }[] {
-  const parts: { text: string; tone?: string }[] = [{ text: `${s.total} ${s.total === 1 ? "agent" : "agents"}` }];
-  for (const k of ["working", "waiting", "failed"] as const) {
-    if (s[k] > 0) parts.push({ text: `${s[k]} ${FLEET_WORDS[k]}`, tone: FLEET_TONES[k] });
-  }
-  return parts;
 }
 
 export function agentSummaryText(s: AgentSummary | null): string {

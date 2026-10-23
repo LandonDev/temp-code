@@ -38,9 +38,16 @@ export type ThreadRow = {
   /** What "Archive dormant threads" spares (see threadStripModel). */
   pinned?: boolean;
   planPath?: string | null;
-  /** Subagents of this root, ranked: waiting, failed, working, done; under
-   *  a master, the roots of its batch too (`batchHome`). */
+  /** Subagents of this root (or of a batch thread), ranked: waiting,
+   *  failed, working, done. A master's own subagents only. */
   children?: ThreadRow[];
+  /** A master's batch: the roots carrying its id (`batchHome`), ranked the
+   *  same way, each with its own subagents under it. */
+  batch?: ThreadRow[];
+  /** Inside a master (`housedIds`): a batch thread, or a subagent of the
+   *  master or of one of its threads. The master reads these; they are
+   *  never unread and never count toward an unread sum. */
+  housed?: boolean;
   /** A root of a master's batch: the master's id (CLAUDE.md "Master threads"). */
   masterId?: string;
   /** The project the root belongs to; the rail's "Make master thread" needs it. */
@@ -78,7 +85,9 @@ type CachedRow = {
   meta: SessionMeta;
   seen: number | undefined;
   floor: number;
+  housed: boolean;
   kids: ThreadRow[] | undefined;
+  batch: ThreadRow[] | undefined;
   row: ThreadRow;
 };
 
@@ -111,7 +120,9 @@ function cachedRow(
   meta: SessionMeta,
   lastSeen: Record<string, number>,
   floor: number,
+  housed: boolean,
   kids?: ThreadRow[],
+  batch?: ThreadRow[],
 ): ThreadRow {
   const seen = lastSeen[meta.id];
   const hit = cache?.rows.get(meta.id);
@@ -120,14 +131,16 @@ function cachedRow(
     hit.meta === meta &&
     hit.seen === seen &&
     hit.floor === floor &&
-    sameList(hit.kids, kids)
+    hit.housed === housed &&
+    sameList(hit.kids, kids) &&
+    sameList(hit.batch, batch)
   ) {
     next?.set(meta.id, hit);
     return hit.row;
   }
-  const base = threadRow(meta, lastSeen, floor);
-  const row = kids ? { ...base, children: kids } : base;
-  next?.set(meta.id, { meta, seen, floor, kids, row });
+  const base = threadRow(meta, lastSeen, floor, housed);
+  const row = kids || batch ? { ...base, ...(kids ? { children: kids } : {}), ...(batch ? { batch } : {}) } : base;
+  next?.set(meta.id, { meta, seen, floor, housed, kids, batch, row });
   return row;
 }
 
@@ -140,11 +153,13 @@ export type ThreadSummary = {
   unread: number;
 };
 
-/** `floor`: threads with no lastSeen entry count as seen up to this time. */
+/** `floor`: threads with no lastSeen entry count as seen up to this time.
+ *  `housed`: the thread sits inside a master (`housedIds`), never unread. */
 export function threadRow(
   meta: SessionMeta,
   lastSeen: Record<string, number>,
   floor = 0,
+  housed = false,
 ): ThreadRow {
   const running = meta.status === "starting" || meta.status === "running";
   const settled = meta.status === "idle" || meta.status === "done";
@@ -159,7 +174,8 @@ export function threadRow(
     failed: meta.status === "error",
     failure: meta.failure?.summary ?? null,
     needsYou: meta.status === "waiting",
-    unread: settled && !running && meta.updatedAt > (lastSeen[meta.id] ?? floor),
+    unread: !housed && settled && !running && meta.updatedAt > (lastSeen[meta.id] ?? floor),
+    ...(housed ? { housed: true } : {}),
     busySince: meta.busySince ?? null,
     threadType: meta.threadType,
     frozenActiveElapsed: meta.frozenActiveElapsed ?? null,
@@ -207,15 +223,57 @@ export function batchHome(
 export const startedPlan = (meta: Pick<SessionMeta, "threadType" | "implementationId">): boolean =>
   meta.threadType === "planning" && !!meta.implementationId;
 
-/** The roots a card or popover reads, with the batch children housed under
- *  a master back beside it: a running or waiting batch thread is still the
- *  project's, whichever row it sits under. */
-export function cardThreads(threads: readonly ThreadRow[]): ThreadRow[] {
-  return threads.flatMap((t) => [t, ...(t.children?.filter((c) => c.masterId) ?? [])]);
+/**
+ * Every session inside a master: the roots of its batch (`batchHome`, a
+ * plan whose build started included) and every subagent, at any depth, of
+ * the master or of one of those roots. The person reads the master; the
+ * master reads these, so none of them is ever unread, and none counts
+ * toward a project's, workspace's or host's unread sum or Mark all read.
+ * The master itself is not in the set.
+ */
+export function housedIds(
+  metas: readonly SessionMeta[],
+  masters: ReadonlySet<string> = railMasters(metas),
+): Set<string> {
+  const out = new Set<string>();
+  if (masters.size === 0) return out;
+  const kids = new Map<string, string[]>();
+  const stack: string[] = [...masters];
+  for (const m of metas) {
+    if (m.parentId) (kids.get(m.parentId) ?? kids.set(m.parentId, []).get(m.parentId)!).push(m.id);
+    else if (batchHome(m, masters)) {
+      out.add(m.id);
+      stack.push(m.id);
+    }
+  }
+  while (stack.length) {
+    for (const id of kids.get(stack.pop()!) ?? []) {
+      if (out.has(id)) continue;
+      out.add(id);
+      stack.push(id);
+    }
+  }
+  return out;
 }
 
+/** The roots a card or popover reads, with each master's batch back beside
+ *  it: a running or waiting batch thread is still the project's, whichever
+ *  row it sits under. Its rows are `housed`, so they count toward the
+ *  card's working and needs-you tallies and never toward its unread. */
+export function cardThreads(threads: readonly ThreadRow[]): ThreadRow[] {
+  return threads.flatMap((t) => (t.batch ? [t, ...t.batch] : [t]));
+}
+
+export type ChildRows = {
+  /** Subagent rows keyed by their parent. */
+  agents: Map<string, ThreadRow[]>;
+  /** Batch rows keyed by their master. */
+  batch: Map<string, ThreadRow[]>;
+};
+
 /** Child rows keyed by the row they sit under, ranked: subagents under
- *  their parent, a master's batch under the master. Archived ones stay out. */
+ *  their parent, a master's batch under the master, apart from the
+ *  master's own subagents. Archived ones stay out. */
 export function childRows(
   metas: readonly SessionMeta[],
   lastSeen: Record<string, number>,
@@ -223,7 +281,8 @@ export function childRows(
   cache?: RowCache,
   next?: Map<string, CachedRow>,
   masters: ReadonlySet<string> = railMasters(metas),
-): Map<string, ThreadRow[]> {
+  housed: ReadonlySet<string> = housedIds(metas, masters),
+): ChildRows {
   const byParent = new Map<string, SessionMeta[]>();
   const batch = new Map<string, SessionMeta[]>();
   const add = (map: Map<string, SessionMeta[]>, key: string, meta: SessionMeta) => {
@@ -239,19 +298,20 @@ export function childRows(
       if (home && !startedPlan(meta)) add(batch, home, meta);
     }
   }
-  const out = new Map<string, ThreadRow[]>();
+  const agents = new Map<string, ThreadRow[]>();
   for (const [parentId, list] of byParent)
-    out.set(
+    agents.set(
       parentId,
-      sortAgents(list).map((m) => cachedRow(cache, next, m, lastSeen, floor)),
+      sortAgents(list).map((m) => cachedRow(cache, next, m, lastSeen, floor, housed.has(m.id))),
     );
-  // A batch thread keeps its own subagents under it; under the master it
-  // ranks with the master's subagents, when it has any.
-  for (const [masterId, list] of batch) {
-    const rows = list.map((m) => cachedRow(cache, next, m, lastSeen, floor, out.get(m.id)));
-    out.set(masterId, sortAgents([...(out.get(masterId) ?? []), ...rows]));
-  }
-  return out;
+  // A batch thread keeps its own subagents under it.
+  const batchRows = new Map<string, ThreadRow[]>();
+  for (const [masterId, list] of batch)
+    batchRows.set(
+      masterId,
+      sortAgents(list).map((m) => cachedRow(cache, next, m, lastSeen, floor, true, agents.get(m.id))),
+    );
+  return { agents, batch: batchRows };
 }
 
 const newestFirst = (a: ThreadRow, b: ThreadRow) => b.updatedAt - a.updatedAt;
@@ -299,7 +359,8 @@ export function groupWorkspaceSessions(
   const chats: ThreadRow[] = [];
   const nextRows = cache ? new Map<string, CachedRow>() : undefined;
   const masters = railMasters(metas);
-  const children = childRows(metas, lastSeen, floor, cache, nextRows, masters);
+  const housed = housedIds(metas, masters);
+  const children = childRows(metas, lastSeen, floor, cache, nextRows, masters, housed);
 
   for (const meta of metas) {
     if (meta.parentId || batchHome(meta, masters)) continue;
@@ -311,7 +372,16 @@ export function groupWorkspaceSessions(
         archivedCount.set(projectId, (archivedCount.get(projectId) ?? 0) + 1);
       continue;
     }
-    const row = cachedRow(cache, nextRows, meta, lastSeen, floor, children.get(meta.id));
+    const row = cachedRow(
+      cache,
+      nextRows,
+      meta,
+      lastSeen,
+      floor,
+      false,
+      children.agents.get(meta.id),
+      children.batch.get(meta.id),
+    );
     if (!projectId) {
       chats.push(row);
       continue;

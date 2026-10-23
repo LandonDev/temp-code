@@ -31,7 +31,7 @@ import {
   ProjectTeardownDialog,
 } from "./ProjectDialogs";
 import { duration, timeAgo } from "../lib/format";
-import { modelLabel } from "../lib/threads/agents";
+import { agentSummaryParts, modelLabel, type AgentSummary } from "../lib/threads/agents";
 import {
   AGENT_GLYPHS,
   MatrixSpinner,
@@ -53,6 +53,9 @@ import { SESSION_LIST_PAGE } from "../lib/sessionListWindow";
 import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
 import {
   liveLines,
+  type BatchLine,
+  type LineState,
+  type MasterBlock,
   nextPage,
   sessionItemIndex,
   sidebarItems,
@@ -537,13 +540,17 @@ const ThreadRows = memo(function ThreadRows({
   thread: ThreadRow;
   actions: RowActions;
 }) {
-  const kids = thread.children;
+  // A master's batch first, then its own subagents, never interleaved.
+  const kids = useMemo(
+    () => (thread.batch ? [...thread.batch, ...(thread.children ?? [])] : thread.children),
+    [thread.batch, thread.children],
+  );
   const count = kids?.length ?? 0;
   const auto =
     thread.running ||
     (kids?.some((c) => c.running || c.id === actions.activeSessionId) ?? false);
   const open = useSubagentRows((s) => count > 0 && subagentRowsOpen(s, thread.id, auto));
-  const noun = kids?.some((c) => c.masterId) ? "thread" : "subagent";
+  const noun = thread.batch?.length ? "thread" : "subagent";
   const fold = useMemo<Fold | undefined>(
     () =>
       count > 0
@@ -740,6 +747,156 @@ function UnreadLine({
   );
 }
 
+/** A line's lead mark in a 12px box, so titles one level down share one
+ *  column whatever the mark: the spinner while it works (the watching
+ *  master's muted pulse while its batch does), the pause, the needs-you and
+ *  failed dots, the stop square, the queued dot, the unread dot. */
+function LineMark({ state, thread, unread }: { state: LineState; thread: ThreadRow; unread?: boolean }) {
+  return (
+    <span className="grid size-3 shrink-0 place-items-center">
+      {state === "running" ? (
+        thread.status === "watching" ? (
+          <StatusDot status="watching" />
+        ) : (
+          <MatrixSpinner cell={1.8} tint={thread.activityKind} />
+        )
+      ) : state === "paused" ? (
+        <Pause className="size-3 fill-current text-warning" strokeWidth={1.75} />
+      ) : state === "waiting" ? (
+        <StatusDot status="waiting" />
+      ) : state === "failed" ? (
+        <StatusDot status="error" />
+      ) : state === "stopped" || state === "queued" ? (
+        <StatusDot status={state} />
+      ) : unread ? (
+        <span className="size-1.5 rounded-full bg-info" />
+      ) : null}
+    </span>
+  );
+}
+
+/** A thread's working subagents, one quiet line aligned with its title, in
+ *  the fleet's words and tones (2 agents · 1 working · 1 needs approval). */
+function AgentsLine({ summary, indent }: { summary: AgentSummary; indent: string }) {
+  return (
+    <div className={`flex min-w-0 items-center gap-1 py-0.5 ${indent} text-[11px] leading-4 text-content/40`}>
+      {agentSummaryParts(summary).map((part, i) => (
+        <span key={part.text} className={`shrink-0 truncate ${part.tone ?? ""}`}>
+          {i > 0 ? "· " : ""}
+          {part.text}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** A batch thread one step under its master: its mark under the master's
+ *  glyph, title, then what it waits on (Needs you, Failed) or, while it
+ *  works, its task tally or elapsed; its working subagents under its title. */
+function BatchThreadLine({
+  line: { thread: t, state, agents },
+  now,
+  onSelect,
+}: {
+  line: BatchLine;
+  now: number;
+  onSelect?: (id: string) => void;
+}) {
+  const tasks = cardTasks(t);
+  const ms = runningElapsed(t, now);
+  return (
+    <>
+      <RowShell
+        className="flex w-full items-center gap-1.5 py-0.5 pl-[18px] text-[11px] leading-4"
+        title={state === "failed" ? (t.failure ?? undefined) : (t.activity ?? undefined)}
+        onSelect={onSelect ? () => onSelect(t.id) : undefined}
+      >
+        <LineMark state={state} thread={t} />
+        <ThreadGlyph thread={t} />
+        <span
+          className={`min-w-0 flex-1 truncate ${state === "paused" ? "text-warning" : state === "stopped" ? "text-content/40" : "text-content/60"}`}
+        >
+          {t.title || "Untitled"}
+        </span>
+        <HostGlyph environmentId={t.environmentId} />
+        {state === "waiting" ? (
+          <span className="shrink-0 font-medium text-warning">Needs you</span>
+        ) : state === "failed" ? (
+          <span className="shrink-0 font-medium text-danger">Failed</span>
+        ) : state === "running" && tasks ? (
+          <span className="shrink-0 tabular-nums text-content/40" title={`${tasks.done} of ${tasks.total} tasks done`}>
+            {tasks.done}/{tasks.total}
+          </span>
+        ) : state === "running" ? (
+          <span className={`shrink-0 whitespace-nowrap tabular-nums text-content/40 ${ms < 3000 ? "opacity-0" : ""}`}>
+            {duration(ms)}
+          </span>
+        ) : null}
+      </RowShell>
+      {agents ? <AgentsLine summary={agents} indent="pl-[54px]" /> : null}
+    </>
+  );
+}
+
+/** A master and its batch as one line of the card: the master's own line
+ *  with the batch's done tally, its own working subagents under its title,
+ *  then each batch thread with something to say one step in, loudest
+ *  first, and the queued ones as one quiet count. Settled batch threads
+ *  are the tally; nothing inside a master is ever unread. */
+function MasterLines({
+  block,
+  now,
+  onSelect,
+}: {
+  block: MasterBlock;
+  now: number;
+  onSelect?: (id: string) => void;
+}) {
+  const { master, state, unread, done, total } = block;
+  return (
+    <div className="flex w-full flex-col py-0.5">
+      <RowShell
+        className="flex w-full items-center gap-1.5 py-0.5 text-[11px] leading-4"
+        title={master.activity ?? undefined}
+        onSelect={onSelect ? () => onSelect(master.id) : undefined}
+      >
+        <LineMark state={state} thread={master} unread={unread} />
+        <ThreadGlyph thread={master} />
+        <span
+          className={`min-w-0 flex-1 truncate ${
+            unread ? "font-medium text-content" : state === "paused" ? "text-warning" : "text-content/70"
+          }`}
+        >
+          {master.title || "Untitled"}
+        </span>
+        {state === "waiting" ? (
+          <span className="shrink-0 font-medium text-warning">Needs you</span>
+        ) : state === "failed" ? (
+          <span className="shrink-0 font-medium text-danger">Failed</span>
+        ) : null}
+        <span
+          className={`shrink-0 tabular-nums ${done === total ? "text-success" : "text-content/40"}`}
+          title={`${done} of ${total} ${total === 1 ? "thread" : "threads"} done`}
+        >
+          {done}/{total}
+        </span>
+      </RowShell>
+      {block.agents ? <AgentsLine summary={block.agents} indent="pl-9" /> : null}
+      {block.lines.map((line) => (
+        <BatchThreadLine key={line.thread.id} line={line} now={now} onSelect={onSelect} />
+      ))}
+      {block.queued > 0 ? (
+        <div className="flex items-center gap-1.5 py-0.5 pl-[18px] text-[11px] leading-4 text-content/40">
+          <span className="grid size-3 shrink-0 place-items-center">
+            <StatusDot status="queued" />
+          </span>
+          {block.queued} queued
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /** One line per live-or-unseen thread, status leading the eye: tinted
  *  spinner (or the blue unread dot) up front, title, elapsed at the end.
  *  A paused line freezes its elapsed where the pause left it. Only a card
@@ -749,29 +906,35 @@ function UnreadLine({
  *  click (the Sessions tab's own card leaves this unset by design). */
 export function LiveLines({
   status,
+  roots,
   activeId,
   requested = SESSION_LIST_PAGE,
   onMore,
   onSelectThread,
 }: {
   status: LiveStatus;
+  /** The card's root rows: a master among them prints as a block with its
+   *  batch under it (`MasterLines`). */
+  roots?: readonly ThreadRow[];
   activeId: string | null;
   requested?: number;
   onMore?: () => void;
   onSelectThread?: (id: string) => void;
 }) {
   const now = useClock(status.running.length > 0);
-  const { shown, hidden } = windowRows(liveLines(status), requested, activeId);
+  const { shown, hidden } = windowRows(liveLines(status, roots), requested, activeId);
   if (!shown.length) return null;
   return (
     <div className="w-full divide-y divide-content/10 border-y border-content/10">
-      {shown.map(({ kind, thread }) =>
-        kind === "running" ? (
-          <RunningLine key={thread.id} thread={thread} now={now} onSelect={onSelectThread} />
-        ) : kind === "paused" ? (
-          <PausedLine key={thread.id} thread={thread} onSelect={onSelectThread} />
+      {shown.map((line) =>
+        line.kind === "master" ? (
+          <MasterLines key={line.id} block={line.block} now={now} onSelect={onSelectThread} />
+        ) : line.kind === "running" ? (
+          <RunningLine key={line.id} thread={line.thread} now={now} onSelect={onSelectThread} />
+        ) : line.kind === "paused" ? (
+          <PausedLine key={line.id} thread={line.thread} onSelect={onSelectThread} />
         ) : (
-          <UnreadLine key={thread.id} thread={thread} onSelect={onSelectThread} />
+          <UnreadLine key={line.id} thread={line.thread} onSelect={onSelectThread} />
         ),
       )}
       {hidden > 0 && onMore ? (
@@ -968,6 +1131,7 @@ const ProjectCard = memo(function ProjectCard({
 
         <LiveLines
           status={status}
+          roots={threads}
           activeId={rows.activeSessionId ?? null}
           requested={requested}
           onMore={onMore}

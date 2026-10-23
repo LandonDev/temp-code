@@ -4,6 +4,7 @@ import {
   batchHome,
   cardThreads,
   groupWorkspaceSessions,
+  housedIds,
   rowCache,
   startedPlan,
   summarizeThreads,
@@ -11,6 +12,9 @@ import {
   type RowCache,
   type WorkspaceSessionGroups,
 } from "./workspaceSessions";
+import { projectCardStatus } from "./projectCardModel";
+import { threadsToMarkRead, threadsToMarkReadOnHost } from "./markRead";
+import { workspaceRailStatuses } from "../hooks/useProjectSignals";
 
 const ws = (id: string, path: string): WorkspaceMeta => ({
   environmentId: "local",
@@ -132,12 +136,66 @@ describe("groupWorkspaceSessions", () => {
     const threads = out.projects.find((g) => g.project.id === "p1")!.threads;
     expect(threads.map((t) => t.id)).toEqual(["plain", "master"]);
     const master = threads[1];
-    expect(master.children?.map((c) => c.id)).toEqual(["b-build", "b-run", "b-plan2"]);
-    expect(master.children?.[1]).toMatchObject({ masterId: "master", provider: "claude", model: "claude-opus-5-5", activity: "Writing the view", threadType: "implementation" });
-    expect(master.children?.[1].agentType).toBeUndefined();
+    expect(master.batch?.map((c) => c.id)).toEqual(["b-build", "b-run", "b-plan2"]);
+    expect(master.batch?.[1]).toMatchObject({ masterId: "master", provider: "claude", model: "claude-opus-5-5", activity: "Writing the view", threadType: "implementation" });
+    expect(master.batch?.[1].agentType).toBeUndefined();
     // The batch child's own subagents sit under it, not the master.
-    expect(master.children?.[1].children?.map((c) => c.id)).toEqual(["sub"]);
+    expect(master.batch?.[1].children?.map((c) => c.id)).toEqual(["sub"]);
+    expect(master.children).toBeUndefined();
     expect(cardThreads(threads).map((t) => t.id)).toEqual(["plain", "master", "b-build", "b-run", "b-plan2"]);
+  });
+
+  it("keeps the master's own subagents apart from its batch", () => {
+    const metas = [
+      meta("master", { projectId: "p1", cwd: "/wt/p1", isMaster: true }),
+      meta("own", { parentId: "master", agentType: "explorer" }),
+      meta("b1", { projectId: "p1", cwd: "/wt/p1", masterId: "master" }),
+    ];
+    const master = groupWorkspaceSessions(metas, projects, workspaces, "wa", {}).projects[0].threads[0];
+    expect(master.children?.map((c) => c.id)).toEqual(["own"]);
+    expect(master.batch?.map((c) => c.id)).toEqual(["b1"]);
+  });
+
+  it("nothing inside a master is unread or counts toward an unread sum; the master keeps its own", () => {
+    const metas = [
+      meta("master", { projectId: "p1", cwd: "/wt/p1", isMaster: true, updatedAt: 100 }),
+      meta("own", { parentId: "master", updatedAt: 100 }),
+      meta("b1", { projectId: "p1", cwd: "/wt/p1", masterId: "master", updatedAt: 100 }),
+      meta("b1-sub", { parentId: "b1", updatedAt: 100 }),
+      meta("b1-sub-sub", { parentId: "b1-sub", updatedAt: 100 }),
+      meta("b-plan", { projectId: "p1", cwd: "/wt/p1", masterId: "master", threadType: "planning", implementationId: "b1", updatedAt: 100 }),
+      meta("plain", { projectId: "p1", cwd: "/wt/p1", updatedAt: 100 }),
+      // A master that is archived houses nothing: its batch reads as plain roots.
+      meta("old-master", { projectId: "p1", cwd: "/wt/p1", isMaster: true, archived: true }),
+      meta("orphan", { projectId: "p1", cwd: "/wt/p1", masterId: "old-master", updatedAt: 100 }),
+    ];
+    expect([...housedIds(metas)].sort()).toEqual(["b-plan", "b1", "b1-sub", "b1-sub-sub", "own"]);
+
+    const threads = groupWorkspaceSessions(metas, projects, workspaces, "wa", {}).projects[0].threads;
+    const master = threads.find((t) => t.id === "master")!;
+    expect(master.unread).toBe(true);
+    expect(master.children?.[0]).toMatchObject({ unread: false, housed: true });
+    expect(master.batch?.[0]).toMatchObject({ id: "b1", unread: false, housed: true });
+    expect(master.batch?.[0].children?.[0]).toMatchObject({ unread: false, housed: true });
+    expect(threads.find((t) => t.id === "orphan")?.unread).toBe(true);
+    const status = projectCardStatus(cardThreads(threads), null, {});
+    expect(status.unread.map((t) => t.id).sort()).toEqual(["master", "orphan", "plain"]);
+
+    const catalog = { workspaces, projects };
+    const rail = workspaceRailStatuses(metas, catalog, {});
+    expect(rail.get("/repo/a")).toMatchObject({ kind: "unread", count: 3 });
+    // Mark all read neither marks nor counts what the master reads.
+    expect(threadsToMarkRead(metas, catalog, "/repo/a").ids.sort()).toEqual(["master", "orphan", "plain"]);
+    expect(threadsToMarkReadOnHost(metas, "local").ids.sort()).toEqual(["master", "orphan", "plain"]);
+  });
+
+  it("a waiting thread inside a master still reads as needing you", () => {
+    const metas = [
+      meta("master", { projectId: "p1", cwd: "/wt/p1", isMaster: true, status: "watching" }),
+      meta("b1", { projectId: "p1", cwd: "/wt/p1", masterId: "master", status: "waiting" }),
+    ];
+    const rail = workspaceRailStatuses(metas, { workspaces, projects }, {});
+    expect(rail.get("/repo/a")).toMatchObject({ kind: "needsYou", count: 1 });
   });
 
   it("a batch child whose master is archived, or no longer a master, is a root row of its own", () => {

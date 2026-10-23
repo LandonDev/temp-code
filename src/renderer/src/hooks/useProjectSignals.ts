@@ -8,6 +8,7 @@ import { sessionStore, useSessionMetas } from "../lib/tcserver/store";
 import type { SessionMeta } from "../lib/tcserver/types";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import { aliasKeys } from "../lib/linkedRail";
+import { housedIds } from "../lib/workspaceSessions";
 
 export interface ProjectSignals {
   /** Folders with a turn in flight. */
@@ -103,7 +104,8 @@ const RAIL_STATUS_NONE: WorkspaceRailStatus = { kind: null, count: 0 };
  * the rail's own thread popover use — so the chip and what it opens never
  * disagree about a workspace's state. `keyOf` folds a workspace's copies on
  * other hosts into its leader's path (lib/linkedRail.ts `aliasKeys`), so a
- * linked row counts every copy's threads as one workspace.
+ * linked row counts every copy's threads as one workspace. A thread inside
+ * a master (`housedIds`) counts as working or needing you, never as unread.
  */
 export function workspaceRailStatuses(
   metas: readonly SessionMeta[],
@@ -115,8 +117,10 @@ export function workspaceRailStatuses(
   const archivedProjects = new Set(
     catalog.projects.filter((p) => p.archived).map((p) => p.id),
   );
-  const byPath = new Map<string, SessionMeta[]>();
-  for (const meta of metas) {
+  const housed = housedIds(metas);
+  const byPath = new Map<string, (SessionMeta & { housed?: boolean })[]>();
+  for (const m of metas) {
+    const meta = housed.has(m.id) ? { ...m, housed: true } : m;
     if (meta.parentId || meta.archived) continue;
     // An archived project's threads never enter the workspace's own project
     // list (`groupWorkspaceSessions`); a stuck thread inside one is not

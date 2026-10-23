@@ -70,6 +70,27 @@ export const FLEET_TONES: Partial<Record<keyof FleetCounts, string>> = {
   failed: "text-danger",
 };
 
+/** A row's subagents: the count and the live states in the fleet's buckets. */
+export type AgentSummary = { total: number; working: number; waiting: number; failed: number };
+
+/** The count and the live states in the fleet's buckets; null with no agents. */
+export function agentSummary(agents: readonly { status: SessionStatus }[]): AgentSummary | null {
+  if (agents.length === 0) return null;
+  const c = fleetCounts([...agents]);
+  return { total: agents.length, working: c.working, waiting: c.waiting, failed: c.failed };
+}
+
+/** "4 agents", then each nonzero live state in the fleet header's words
+ *  and tones: 4 agents · 2 working · 1 needs approval. Done ones are in
+ *  the count only. */
+export function agentSummaryParts(s: AgentSummary): { text: string; tone?: string }[] {
+  const parts: { text: string; tone?: string }[] = [{ text: `${s.total} ${s.total === 1 ? "agent" : "agents"}` }];
+  for (const k of ["working", "waiting", "failed"] as const) {
+    if (s[k] > 0) parts.push({ text: `${s[k]} ${FLEET_WORDS[k]}`, tone: FLEET_TONES[k] });
+  }
+  return parts;
+}
+
 /** The catalog name for a server (provider, native model) pair. */
 export function modelLabel(provider: string, model: string): string {
   return findModel(pickerModelId(asHarness(provider), model))?.name ?? model;

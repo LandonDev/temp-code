@@ -71,7 +71,7 @@ describe("workspaceThreadSections", () => {
       chats: [threadRow(meta("t1"), {})],
     };
     const sections = workspaceThreadSections(withChats);
-    expect(sections).toEqual([{ key: "chats", label: "Chats", threads: withChats.chats }]);
+    expect(sections).toEqual([{ key: "chats", label: "Chats", threads: withChats.chats, roots: withChats.chats }]);
   });
 
   it("labels a project section with the project's name", () => {
@@ -88,7 +88,7 @@ describe("workspaceThreadSections", () => {
       chats: [],
     };
     expect(workspaceThreadSections(groups)).toEqual([
-      { key: "p1", label: "Alpha", threads: groups.projects[0]!.threads },
+      { key: "p1", label: "Alpha", threads: groups.projects[0]!.threads, roots: groups.projects[0]!.threads },
     ]);
   });
 });
@@ -241,6 +241,42 @@ describe("WorkspaceThreadsList", () => {
     );
     expect(probe.container.textContent).toContain("Approve this diff");
     expect(probe.container.textContent).toContain("Needs you");
+  });
+
+  it("a master prints its batch under it: a waiting batch thread once, inside the block, with the done tally", () => {
+    const b = (id: string, extra: Parameters<typeof meta>[1]) =>
+      threadRow(meta(id, { masterId: "m", ...extra }), {}, 0, true);
+    const groups: WorkspaceSessionGroups = {
+      projects: [
+        {
+          project: project("p1", { name: "Alpha" }),
+          threads: [
+            {
+              ...threadRow(meta("m", { title: "Batch", isMaster: true, status: "watching" }), {}),
+              batch: [
+                b("w", { title: "Approve this diff", status: "waiting" }),
+                b("d1", { title: "Finished one" }),
+                b("q", { title: "Later", status: "queued" }),
+              ],
+            },
+          ],
+          latest: 100,
+          archivedCount: 0,
+        },
+      ],
+      archived: [],
+      chats: [],
+    };
+    const probe = mountProbe(
+      <WorkspaceThreadsList groups={groups} activeSessionId={null} lastSeen={{}} seenFloor={0} onSelectThread={() => {}} />,
+    );
+    const text = probe.container.textContent ?? "";
+    expect(text.split("Approve this diff").length - 1).toBe(1);
+    expect(text).toContain("Needs you");
+    expect(text).toContain("1/3");
+    expect(text).toContain("1 queued");
+    // A settled batch thread is the tally, not a line, and never unread.
+    expect(text).not.toContain("Finished one");
   });
 
   it("shows a failed thread as its own row and jumps to it on click", () => {
