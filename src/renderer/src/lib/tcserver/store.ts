@@ -187,13 +187,8 @@ type Head = {
 
 type EventsResult = EventRow[] | EventsPage;
 
-/** A first load whose fetch never handed this transcript a page. */
-class UnansweredError extends Error {
-  constructor() {
-    super("no answer yet");
-    this.name = "UnansweredError";
-  }
-}
+/** A first load whose fetch never handed this transcript a page: retried, never a failure. */
+const UNANSWERED = new Error("no answer yet");
 
 /** One shape for both profiles: a local socket answers the rows and the
  *  renderer reads the head off their seqs; a remote one says itself. */
@@ -1206,7 +1201,7 @@ class SessionStore {
     const tracked: Promise<void> = this.replayGap(entry, why)
       .then(() => {
         if (this.entries.get(id) !== entry) return;
-        if (!entry.answered) fail(new UnansweredError());
+        if (!entry.answered) fail(UNANSWERED);
         this.finishLoad(entry);
       }, fail)
       .finally(() => {
@@ -1253,7 +1248,7 @@ class SessionStore {
     this.stopTimers(entry);
     const attempt = entry.load.attempt + 1;
     const failed: LoadState = { phase: "failed", since: entry.load.since, attempt, error: shortError(e) };
-    if (!isConnectionFailure(e) && !(e instanceof UnansweredError)) {
+    if (!isConnectionFailure(e) && e !== UNANSWERED) {
       this.setLoad(entry, failed);
       return;
     }

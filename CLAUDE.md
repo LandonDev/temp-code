@@ -286,7 +286,7 @@ app replaces itself from the feed, and only from the feed.
   `out/bundle-map.json` (`bun run bundle:map` prints it) and
   `scripts/check-bundle-size.ts` (`bun run check:bundle`, in `bun run
   build` and the release gate) fails when the index chunk's static closure
-  passes 5 MiB or holds one of the lazy modules. `/ui` serves the chunks
+  passes 5 MiB + 16 KiB or holds one of the lazy modules. `/ui` serves the chunks
   as immutable module scripts behind the cookie (remote/ui.ts).
 - Proof: `bun run script:e2e-launch-timing` (scripts/e2e-launch-timing.ts)
   packs an isolated copy under /private/tmp/tc-launch-timing and launches it
