@@ -7,7 +7,9 @@ import { StatefulButton } from "../../motion/StatefulButton";
 import { macBridgeStore } from "../../lib/macBridge";
 import { openUrl, portOpen } from "../../lib/devPorts";
 import {
+  agentLogTitle,
   openDevLog,
+  runLogTitle,
   restartDevServer,
   startDevServer,
   stopDevServer,
@@ -198,7 +200,7 @@ function ServerRow({
 }
 
 function RunRow({ run }: { run: DevRun & { environmentId: string } }) {
-  const name = `${run.name} · ${run.script}`;
+  const name = runLogTitle(run);
   return (
     <ServerRow
       name={name}
@@ -221,7 +223,7 @@ function AgentRow({ server }: { server: AgentServer }) {
     <ServerRow
       name={title}
       title={row.label}
-      onOpen={() => openDevLog({ environmentId, resourceId: row.id }, `${title} :${row.identifier}`)}
+      onOpen={() => openDevLog({ environmentId, resourceId: row.id }, agentLogTitle(server))}
       ports={<PortLink port={Number(row.identifier)} environmentId={row.environmentId} forwards={row.forwards} />}
       onStop={() => removeThreadResources(row.sessionId, [row.id])}
     />

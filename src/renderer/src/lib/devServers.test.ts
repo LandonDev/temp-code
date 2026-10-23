@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { DevRun } from '@server/shared/contract-devservers'
-import { applyDevRunPush, devHosts, devServerStore, targetLabel } from './devServers'
+import { applyDevRunPush, devHosts, devLogKey, devServerStore, dueToOpen, openDevLog, openedDevLogs, resetOpenedDevLogs, targetLabel } from './devServers'
+import { projectStore } from '../stores/project'
+import { currentDock, terminals } from '../stores/terminals'
 import { pairWorkspaces } from './projectPairs'
 
 const run = (over: Partial<DevRun> = {}): DevRun => ({
@@ -61,5 +63,50 @@ describe('devServers', () => {
   it('labels a target by its package and script, an iOS one by its scheme', () => {
     expect(targetLabel({ name: 'web', script: 'dev', framework: 'vite', kind: 'web' })).toBe('web · dev')
     expect(targetLabel({ name: 'TempCode', script: 'TempCode', framework: 'xcode', kind: 'ios' })).toBe('TempCode · iOS')
+  })
+})
+
+describe('the console opening on its own', () => {
+  const PROJECT = '/srv/agents/work/site'
+  const source = (resourceId: string) => ({ environmentId: 'env_box', resourceId })
+  const dock = () => currentDock(PROJECT)
+  beforeEach(() => {
+    resetOpenedDevLogs()
+    projectStore.setState({ projectCwd: PROJECT, selectedProjectId: null })
+    terminals.setDocks([])
+  })
+
+  it('opens each server once, ever: a closed tab stays closed', () => {
+    const servers = [{ source: source('r1') }, { source: source('r2') }]
+    expect(dueToOpen(servers, openedDevLogs())).toEqual(servers)
+    openDevLog(source('r1'), 'web :3001', { quiet: true })
+    expect(dueToOpen(servers, openedDevLogs())).toEqual([servers[1]])
+    // Closing the tab forgets nothing.
+    terminals.setDocks([])
+    expect(dueToOpen(servers, openedDevLogs()).map((s) => devLogKey(s.source))).toEqual(['env_box/r2'])
+  })
+
+  it('opens a closed dock on the new tab, and leaves the tab an open dock shows selected', () => {
+    openDevLog(source('r1'), 'web :3001', { quiet: true })
+    expect(dock()?.open).toBe(true)
+    const first = dock()?.pane.activeFileId
+    expect(dock()?.pane.files.find((f) => f.id === first)?.devLog).toEqual(source('r1'))
+    openDevLog(source('r2'), 'expo :8081', { quiet: true })
+    expect(dock()?.pane.files).toHaveLength(2)
+    expect(dock()?.pane.activeFileId).toBe(first)
+    // Asked again quietly, an existing tab is left alone; asked by a click, it is shown.
+    openDevLog(source('r2'), 'expo :8081', { quiet: true })
+    expect(dock()?.pane.files).toHaveLength(2)
+    expect(dock()?.pane.activeFileId).toBe(first)
+    openDevLog(source('r2'), 'expo :8081')
+    expect(dock()?.pane.files.find((f) => f.id === dock()?.pane.activeFileId)?.devLog).toEqual(source('r2'))
+  })
+
+  it('selects the new tab when the dock was closed', () => {
+    openDevLog(source('r1'), 'web :3001', { quiet: true })
+    terminals.updateDock(PROJECT, (d) => ({ ...d, open: false }))
+    openDevLog(source('r2'), 'expo :8081', { quiet: true })
+    expect(dock()?.open).toBe(true)
+    expect(dock()?.pane.files.find((f) => f.id === dock()?.pane.activeFileId)?.devLog).toEqual(source('r2'))
   })
 })

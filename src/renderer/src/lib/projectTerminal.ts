@@ -106,6 +106,23 @@ export function addTerminalToDock(
   };
 }
 
+/** A terminal joins without taking over: the dock opens, and a tab an open dock already shows stays selected. */
+export function addTerminalQuietly(
+  dock: ProjectTerminalDock,
+  file: FilePaneTab,
+): ProjectTerminalDock {
+  const shown = dock.open && dock.pane.files.some((f) => f.id === dock.pane.activeFileId);
+  return {
+    ...dock,
+    open: true,
+    pane: {
+      ...dock.pane,
+      files: [...dock.pane.files, file],
+      activeFileId: shown ? dock.pane.activeFileId : file.id,
+    },
+  };
+}
+
 export function nextDockTerminalTitle(
   dock: ProjectTerminalDock,
   cwd: string,

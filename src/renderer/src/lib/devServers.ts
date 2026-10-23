@@ -3,11 +3,11 @@ import { useStore } from 'zustand'
 import { createStore } from 'zustand/vanilla'
 import type { DevRun, DevRunPush, DevTarget } from '@server/shared/contract-devservers'
 import type { ThreadResource } from '@server/shared/contract-resources'
-import { currentDockCwd } from '../stores/project'
+import { currentDockCwd, useProject } from '../stores/project'
 import { currentDock, terminals } from '../stores/terminals'
 import { focus } from '../stores/focus'
 import type { DevLogSource, FilePaneTab } from './layout'
-import { selectDockTerminal, withDockOpen } from './projectTerminal'
+import { addTerminalQuietly, selectDockTerminal, withDockOpen } from './projectTerminal'
 import { looksLikeProject } from './recents'
 import { sessionStore, useServerSessions } from './tcserver/store'
 import { threadResourcesStore } from './threadResources'
@@ -246,15 +246,97 @@ export function useAllDevRuns(hosts: readonly DevHost[]): (DevRun & { environmen
 const sameSource = (a: DevLogSource, b: DevLogSource): boolean =>
   a.environmentId === b.environmentId && a.runId === b.runId && a.resourceId === b.resourceId
 
-/** Show a dev server's console as a tab in the project's terminal dock, reusing its tab when one is open. */
-export function openDevLog(source: DevLogSource, title: string): void {
+/** One key per server across windows and launches: its host and its run or ledger row. */
+export const devLogKey = (s: DevLogSource): string => `${s.environmentId}/${s.runId ?? s.resourceId ?? ''}`
+
+/** The console tab's title: a run by its target, an agent's server by its thread and port. */
+export const runLogTitle = (run: Pick<DevRun, 'name' | 'script'>): string => `${run.name} · ${run.script}`
+export const agentLogTitle = (server: AgentServer): string => `${server.title} :${server.row.identifier}`
+
+const OPENED_KEY = 'dev-log-opened'
+const OPENED_CAP = 300
+let opened: string[] | null = null
+export function openedDevLogs(): string[] {
+  if (opened) return opened
+  try {
+    const raw: unknown = JSON.parse(localStorage.getItem(OPENED_KEY) ?? '[]')
+    opened = Array.isArray(raw) ? raw.filter((k): k is string => typeof k === 'string') : []
+  } catch {
+    opened = []
+  }
+  return opened
+}
+function markOpened(key: string): void {
+  const keys = openedDevLogs()
+  if (keys.includes(key)) return
+  opened = [...keys, key].slice(-OPENED_CAP)
+  try {
+    localStorage.setItem(OPENED_KEY, JSON.stringify(opened))
+  } catch {
+    /* storage full or off: this window still remembers */
+  }
+}
+/** Tests start from nothing. */
+export function resetOpenedDevLogs(): void {
+  opened = null
+  try {
+    localStorage.removeItem(OPENED_KEY)
+  } catch {
+    /* no storage */
+  }
+}
+
+/** The servers that open on their own: each once, ever; a tab the person closed stays closed. */
+export function dueToOpen<T extends { source: DevLogSource }>(servers: readonly T[], openedBefore: readonly string[]): T[] {
+  const seen = new Set(openedBefore)
+  return servers.filter((s) => !seen.has(devLogKey(s.source)))
+}
+
+/**
+ * Show a dev server's console as a tab in the project's terminal dock, reusing
+ * its tab when one is open. `quiet` (a server that appeared on its own): the
+ * dock opens if it is closed, but focus stays where it is, a tab the open dock
+ * already shows stays selected, and an existing tab is left alone.
+ */
+export function openDevLog(source: DevLogSource, title: string, opts: { quiet?: boolean } = {}): void {
   const projectPath = currentDockCwd()
   if (!looksLikeProject(projectPath)) return
-  const existing = currentDock(projectPath)?.pane.files.find((f) => f.devLog && sameSource(f.devLog, source))
-  if (existing) terminals.updateDock(projectPath, (dock) => withDockOpen(selectDockTerminal(dock, existing.id), true))
-  else {
+  markOpened(devLogKey(source))
+  const dock = currentDock(projectPath)
+  const existing = dock?.pane.files.find((f) => f.devLog && sameSource(f.devLog, source))
+  if (existing) {
+    if (opts.quiet) return
+    terminals.updateDock(projectPath, (d) => withDockOpen(selectDockTerminal(d, existing.id), true))
+  } else {
     const file: FilePaneTab = { id: crypto.randomUUID(), path: title, cwd: projectPath, terminal: true, devLog: source }
-    terminals.openTerminal(projectPath, file)
+    if (opts.quiet && dock) terminals.updateDock(projectPath, (d) => addTerminalQuietly(d, file))
+    else terminals.openTerminal(projectPath, file)
   }
-  focus.enterProjectTerminal()
+  if (!opts.quiet) focus.enterProjectTerminal()
+}
+
+/**
+ * A dev server that appears for the project on screen (an agent's, or a Dev
+ * Server run started elsewhere) opens its console in the dock on its own,
+ * quietly and once.
+ */
+export function useAutoOpenDevLogs(project: Pick<ProjectMeta, 'id' | 'environmentId' | 'cwd'> | undefined): void {
+  const hosts = useDevHosts(project)
+  const selected = useProject((s) => s.selectedProjectId)
+  const onScreen = selected !== null && hosts.some((h) => h.projectId === selected)
+  const agents = useAgentServers(hosts)
+  const runs = useAllDevRuns(hosts)
+  const servers = useMemo(
+    () => [
+      ...runs.filter((r) => r.status === 'running').map((r) => ({ source: { environmentId: r.environmentId, runId: r.id }, title: runLogTitle(r) })),
+      ...agents.map((a) => ({ source: { environmentId: a.environmentId, resourceId: a.row.id }, title: agentLogTitle(a) }))
+    ],
+    [runs, agents]
+  )
+  const sig = servers.map((s) => devLogKey(s.source)).join('|')
+  useEffect(() => {
+    if (!onScreen) return
+    for (const s of dueToOpen(servers, openedDevLogs())) openDevLog(s.source, s.title, { quiet: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onScreen, sig])
 }

@@ -24,7 +24,8 @@ const dim = (text: string) => `\x1b[2m${text}\x1b[0m\r\n`;
  * server's own colours. A Dev Server button's run replays its buffered log
  * (`devServer.log`) and follows the `dev-run` pushes by line count; a port a
  * thread opened tails its output file, or shows the shell call's output,
- * through `devServer.portLog` from the offset it last read.
+ * through `devServer.portLog` from the offset it last read, until the host
+ * says the server ended (one "— Exited" line, then no more reads).
  */
 export function DevLogView({ source, active }: { source: DevLogSource; active: boolean }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -125,6 +126,7 @@ export function DevLogView({ source, active }: { source: DevLogSource; active: b
       const resourceId = source.resourceId;
       let from: number | undefined;
       let shown: DevPortLog["source"] | null = null;
+      let atLineStart = true;
       let timer: ReturnType<typeof setTimeout> | null = null;
       const poll = async () => {
         try {
@@ -136,10 +138,18 @@ export function DevLogView({ source, active }: { source: DevLogSource; active: b
             from = undefined;
           } else {
             if (shown === null && log.source === "file" && log.path) term.write(dim(log.path));
-            if (log.data) term.write(log.data);
+            if (log.data) {
+              term.write(log.data);
+              atLineStart = log.data.endsWith("\n");
+            }
             from = log.next;
           }
           shown = log.source;
+          // The server stopped: the tab stays with its last lines and says so.
+          if (log.endedAt !== undefined && from !== undefined) {
+            term.write(`${atLineStart ? "" : "\r\n"}${dim("— Exited")}`);
+            return;
+          }
         } catch (err) {
           if (closed) return;
           term.write(dim(err instanceof Error ? err.message : String(err)));

@@ -1,4 +1,4 @@
-import { useDevRunning, useDevServable } from "../lib/devServers";
+import { useAutoOpenDevLogs, useDevRunning, useDevServable } from "../lib/devServers";
 import { showDevRail } from "../lib/railPanel";
 import { useSyncExternalStore } from "react";
 import { sessionStore } from "../lib/tcserver/store";
@@ -9,7 +9,9 @@ import { useProjects } from "../lib/tcserver/workspaces";
  * shown only when a host can serve the thread's project (a dev script, an
  * Expo app, an Xcode project), with a dot while one of its servers runs.
  * It opens the rail's Dev tab, where the target, the host and the console
- * live; the button itself never starts anything.
+ * live; the button itself never starts anything. It also carries the
+ * auto-open: a server that appears for the project on screen opens its
+ * console in the dock, quietly and once (lib/devServers.ts).
  */
 export function DevServerButton({ sessionId }: { sessionId: string }) {
   // The thread's project and host only: a streaming turn must not re-render the header.
@@ -21,6 +23,7 @@ export function DevServerButton({ sessionId }: { sessionId: string }) {
   const project = useProjects().find((p) => p.id === projectId && p.environmentId === environmentId);
   const servable = useDevServable(project);
   const running = useDevRunning(project?.id);
+  useAutoOpenDevLogs(project);
   if (!project || (!servable && !running)) return null;
   return (
     <button
