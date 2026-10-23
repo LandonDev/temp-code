@@ -141,7 +141,10 @@ private let plansOff = PlanSettings(autoImplement: false, archiveAfterStart: tru
 
 @Suite struct ReviewersTests {
     @Test func `options are the catalog filtered by the rules, with the set's model kept first`() {
-        let set = rules(["claude:claude-fable-5-1": ModelPolicy(approved: .string("orchestrators"))])
+        let set = rules([
+            "claude:claude-fable-5-1": ModelPolicy(approved: .string("orchestrators")),
+            "claude:claude-sonnet-5-5": ModelPolicy(approved: .bool(true))
+        ])
         let claude = Reviewers.options(provider: .claude, catalog: catalog, rules: set, current: "claude-sonnet-5-5")
         #expect(claude.map(\.model) == ["claude-sonnet-5-5"])
         #expect(claude.allSatisfy { $0.approved })
