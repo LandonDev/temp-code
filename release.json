@@ -1,5 +1,5 @@
 {
-  "n": 299,
-  "notes": "Master board: a thread opened from the board has the full composer a tab has, and a right-click on a row or subagent line gives New pass… with the composer in a dialog",
-  "ts": 1792731091502
+  "n": 300,
+  "notes": "Fix: a box thread reopened while the box restarted opened as the empty new-thread page (master boards vanished); the transcript now loads its own page and retries",
+  "ts": 1792733573395
 }
