@@ -146,6 +146,7 @@ export function ThreadComposer({
         onReorder={(order) => void serverCommands.queueReorder(id, order).catch(() => undefined)}
       />
     ) : null;
+  const bound = useMemo(() => boundTo(actions, id), [actions, id]);
   const submit = (text: string, attachments: Attachment[], intent: ComposerIntent) => {
     actions.onSubmit(id, text, attachments, { ...(newPass ? { newPass: true } : {}), intent });
     onSent?.();
@@ -174,20 +175,10 @@ export function ThreadComposer({
       noteCard={session.noteCard}
       handoffCard={session.handoffCard}
       onQuoteRequestConsumed={onQuoteRequestConsumed}
-      onInboxCardDismiss={() => actions.onInboxCardDismiss?.(id)}
-      onNoteCardDismiss={() => actions.onNoteCardDismiss?.(id)}
-      onHandoffCardDismiss={() => actions.onHandoffCardDismiss?.(id)}
       onFocus={onFocus}
-      onCwdChange={(cwd) => actions.onCwdChange(id, cwd)}
-      onBranchChange={() => actions.onBranchChange(id)}
-      onNewTerminal={() => actions.onNewTerminal(id)}
-      onModelChange={(harness, model) => actions.onModelChange(id, harness, model)}
-      onModelSettingsChange={(settings) => actions.onModelSettingsChange(id, settings)}
-      onRuntimeModeChange={(mode) => actions.onRuntimeModeChange(id, mode)}
+      {...bound}
       threadType={session.parentId ? null : (session.threadType ?? "chat")}
-      onThreadTypeChange={(type) => actions.onThreadTypeChange(id, type)}
       onSubmit={submit}
-      onPause={() => void serverCommands.pause(id).catch(() => undefined)}
       busy={!!session.busy}
       paused={paused}
       goal={session.goal}
@@ -205,6 +196,23 @@ export function ThreadComposer({
       <SessionReview sessionId={id} cwd={workCwd} enabled={visible} busy={!!session.busy} onOpenDiff={onOpenDiff} />
     </Composer>
   );
+}
+
+/** App's handlers bound to one thread, under the composer's own names. */
+function boundTo(actions: SessionActions, id: string) {
+  return {
+    onInboxCardDismiss: () => actions.onInboxCardDismiss?.(id),
+    onNoteCardDismiss: () => actions.onNoteCardDismiss?.(id),
+    onHandoffCardDismiss: () => actions.onHandoffCardDismiss?.(id),
+    onCwdChange: (cwd: string) => actions.onCwdChange(id, cwd),
+    onBranchChange: () => actions.onBranchChange(id),
+    onNewTerminal: () => actions.onNewTerminal(id),
+    onModelChange: (harness: HarnessId, model: string) => actions.onModelChange(id, harness, model),
+    onModelSettingsChange: (settings: Record<string, string>) => actions.onModelSettingsChange(id, settings),
+    onRuntimeModeChange: (mode: RuntimeMode) => actions.onRuntimeModeChange(id, mode),
+    onThreadTypeChange: (type: ThreadType) => actions.onThreadTypeChange(id, type),
+    onPause: () => void serverCommands.pause(id).catch(() => undefined),
+  };
 }
 
 type ThreadChatArgs = {
