@@ -2123,6 +2123,9 @@ export async function startServer(
           case 'devServer.targets':
             sendFrame({ id: req.id, ok: true, result: await devRuns.targets(req.params.projectId) })
             break
+          case 'devServer.runs':
+            sendFrame({ id: req.id, ok: true, result: { runs: devRuns.running() } })
+            break
           case 'devServer.start':
             sendFrame({ id: req.id, ok: true, result: { run: await devRuns.start(req.params.projectId, req.params.targetId) } })
             break

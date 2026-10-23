@@ -293,6 +293,28 @@ describe("hydrateWorkspaceSnapshot", () => {
   });
 });
 
+describe("dev server console tabs from before the Dev servers pane", () => {
+  it("drops them on load, and a dock that held only them", () => {
+    const shell = newTerminalFile("/tmp/a");
+    const devLog = (id: string) => ({ ...newTerminalFile("/tmp/a"), id, path: "web :3001", devLog: { environmentId: "env_box", resourceId: id } });
+    const raw = (files: unknown[], activeFileId: string, projectPath: string) => ({
+      projectPath,
+      pane: { id: `pane-${projectPath}`, files, activeFileId },
+      side: "bottom",
+      size: 220,
+      open: true,
+    });
+    const parsed = parseWorkspaceSnapshot({
+      tabs: [{ ...newTab("s1"), id: "t1" }],
+      activeTabId: "t1",
+      projectTerminals: [raw([devLog("r1"), shell, devLog("r2")], "r1", "/tmp/a"), raw([devLog("r3")], "r3", "/tmp/b")],
+    });
+    expect(parsed?.projectTerminals.map((d) => d.projectPath)).toEqual(["/tmp/a"]);
+    expect(parsed?.projectTerminals[0]?.pane.files.map((f) => f.id)).toEqual([shell.id]);
+    expect(parsed?.projectTerminals[0]?.pane.activeFileId).toBe(shell.id);
+  });
+});
+
 describe("the host of a saved pane", () => {
   it("keeps the host a pane was on through a save and a reopen", () => {
     const remote = chat("r1", "/srv/work");

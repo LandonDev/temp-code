@@ -85,6 +85,15 @@ describe('DevRuns', () => {
     expect(list.map((r) => r.id)).toEqual([second.id])
   }, 20_000)
 
+  it('lists only the running runs, any project, for the Dev servers pane', async () => {
+    const live = await runs.start('p1', 'serve')
+    const dead = await runs.start('p1', 'boom')
+    await until(() => runs.history(dead.id).run.status !== 'running')
+    expect(runs.running().map((r) => r.id)).toEqual([live.id])
+    await runs.stop(live.id)
+    expect(runs.running()).toEqual([])
+  }, 20_000)
+
   it('offers an iOS target only on a Mac', async () => {
     expect((await runs.targets('p1')).targets.map((t) => t.id)).toEqual(['serve', 'boom'])
   })

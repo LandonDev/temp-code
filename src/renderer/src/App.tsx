@@ -307,12 +307,14 @@ import {
 import { PaneTree } from "./surfaces/PaneTree";
 import { SessionActionsContext, type SessionActions } from "./surfaces/threadChat";
 import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
-import { aliaxChunk, diffChunk, settingsChunk } from "./surfaces/chunks";
+import { aliaxChunk, diffChunk, settingsChunk, terminalChunk } from "./surfaces/chunks";
+import { devPane, devPaneStore, useDevPane } from "./lib/devPane";
 import { SurfaceSkeleton } from "./surfaces/SurfaceSkeleton";
 import { SearchView } from "./surfaces/SearchView";
 import { InboxView, InboxDetailPane } from "./surfaces/InboxView";
 import { NotesView, focusNote } from "./surfaces/NotesView";
 // Lazy surfaces (surfaces/chunks.ts): none of these is on the first-paint path.
+const DevServersPane = terminalChunk.surface("DevServersPane", <SurfaceSkeleton kind="terminal" label="Loading dev servers" />);
 const DiffPane = diffChunk.surface("DiffPane", <SurfaceSkeleton kind="diff" label="Loading changes" />);
 const SettingsView = settingsChunk.surface("SettingsView", <SurfaceSkeleton kind="page" label="Loading settings" />);
 const AliaxPagesView = aliaxChunk.surface("AliaxPagesView", <SurfaceSkeleton kind="page" label="Loading accounts" />);
@@ -440,7 +442,10 @@ export default function App() {
   const currentProjectDock = deckLayout
     ? findProjectTerminal(projectTerminals, dockCwd)
     : undefined;
-  const dockVisible = !!currentProjectDock?.open;
+  // The Dev servers pane takes the dock's place while it is open; the terminal dock keeps its own open flag.
+  const devPaneOpen = useDevPane((s) => s.open);
+  const devPaneSize = useDevPane((s) => s.size);
+  const dockVisible = !!currentProjectDock?.open && !devPaneOpen;
   const sidebarTab = useShell((s) => s.sidebarTab);
   const classicInbox = !deckLayout && sidebarTab === "inbox";
   const searchViewOpen = useShell((s) => s.searchViewOpen);
@@ -943,7 +948,11 @@ export default function App() {
     ],
   );
 
-  const focusProjectTerminal = focus.enterProjectTerminal;
+  // Showing the terminal puts the Dev servers pane away: they share the dock.
+  const focusProjectTerminal = useCallback(() => {
+    devPane.close();
+    focus.enterProjectTerminal();
+  }, []);
 
   const openProjectTerminal = useCallback(
     (cwd: string) => {
@@ -1051,6 +1060,11 @@ export default function App() {
   const onToggleProjectTerminal = useCallback(() => {
     if (!deckLayout || !looksLikeProject(dockCwd)) return;
     const dock = currentDock(dockCwd);
+    if (devPaneStore.getState().open && dock) {
+      terminals.updateDock(dockCwd, (entry) => withDockOpen(entry, true));
+      focusProjectTerminal();
+      return;
+    }
     if (!dock) {
       openProjectTerminal(active?.cwd ?? dockCwd);
       return;
@@ -3631,6 +3645,12 @@ export default function App() {
     dockDragSize.current = size;
     applyDockGridStyle(el, dock.side, size);
   }, []);
+  const paintDevPaneSize = useCallback((size: number) => {
+    const el = dockGridRef.current;
+    if (!el) return;
+    dockDragSize.current = size;
+    applyDockGridStyle(el, "bottom", size);
+  }, []);
   const commitDockSize = useCallback((size: number) => {
     dockDragSize.current = null;
     onProjectTerminalSize(size);
@@ -3639,12 +3659,14 @@ export default function App() {
     if (dockDragSize.current != null) return;
     const el = dockGridRef.current;
     if (!el) return;
-    applyDockGridStyle(
-      el,
-      dockVisible && currentProjectDock ? currentProjectDock.side : null,
-      currentProjectDock?.size ?? 0,
-    );
-  }, [currentProjectDock, dockVisible]);
+    if (devPaneOpen) applyDockGridStyle(el, "bottom", devPaneSize);
+    else
+      applyDockGridStyle(
+        el,
+        dockVisible && currentProjectDock ? currentProjectDock.side : null,
+        currentProjectDock?.size ?? 0,
+      );
+  }, [currentProjectDock, dockVisible, devPaneOpen, devPaneSize]);
 
   const sessionActions = useMemo<SessionActions>(
     () => ({
@@ -3794,6 +3816,7 @@ export default function App() {
               const show =
                 deckLayout &&
                 dock.open &&
+                !devPaneOpen &&
                 sameProjectPath(dock.projectPath, projectCwd);
               return (
                 <div
@@ -3825,6 +3848,21 @@ export default function App() {
                 </div>
               );
             })}
+            {devPaneOpen ? (
+              <div
+                className="h-full min-h-0 min-w-0 w-full overflow-hidden"
+                style={{ gridArea: "dock" }}
+              >
+                <DevServersPane
+                  onSizePaint={paintDevPaneSize}
+                  onSizeCommit={(size: number) => {
+                    dockDragSize.current = null;
+                    devPane.size(size);
+                  }}
+                  onShowTerminal={onShowProjectTerminal}
+                />
+              </div>
+            ) : null}
             <div
               className="relative flex min-h-0 min-w-0 flex-row [contain:layout_style]"
               style={{ gridArea: "main" }}

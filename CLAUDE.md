@@ -808,7 +808,8 @@ routed to (aliax-core's `forward`). Two listeners:
   credits a background shell's server, reparented to init, by ancestry, the
   `~t=` scope or CLAUDE_PID in its environment, the output file a call
   named, or the thread folder holding its cwd, and skips databases,
-  infrastructure, MCP servers and ports bound before a thread worked there
+  infrastructure, proxies, MCP servers (src/shared/devServerRules.ts, which
+  the renderer applies too) and ports bound before a thread worked there
   (`bun scripts/port-sweep-dry-run.ts` prints its verdicts live); it leaves
   the ledger when nothing listens, and removal SIGTERMs then SIGKILLs the
   pid. The box sends its live ports (the ledger's and the Dev
@@ -823,17 +824,23 @@ routed to (aliax-core's `forward`). Two listeners:
   http://localhost:5174 on the Mac (5173 is taken there)" in the shell
   call's result (claude's PostToolUse hook; a whispered `<dev-server>` line
   otherwise, portTail.ts); the call's transcript row ends with "Open on the
-  Mac :5174", the Resources panel has Open and Stop. The Dev Server button
-  (thread header → the rail's Dev tab, chrome/rail/DevServerPanel.tsx): the
-  host detects targets (devTargets.ts: package.json dev scripts at the root
-  and in workspaces with the lockfile's runner, Expo apps, Xcode/XcodeGen
-  apps as Mac-only), runs one in its own process group (devRuns.ts,
-  `devServer.*`, `dev-run` pushes) on this Mac or the box's copy of the
-  project, console streamed, Stop/Restart. A server that appears for the
-  project on screen (an agent's or a run) opens its console in the terminal
-  dock on its own, once ever, without taking focus or an open dock's
-  selected tab (`useAutoOpenDevLogs`, lib/devServers.ts); a stopped one's
-  tab stays with "— Exited". docs/box.md "Dev servers on the box"; proof `bun run script:e2e-port-forward` (seam
+  Mac :5174", the Resources panel has Open and Stop. The rail's Dev tab
+  (chrome/rail/DevServerPanel.tsx) starts one: the host detects targets
+  (devTargets.ts: package.json dev scripts at the root and in workspaces
+  with the lockfile's runner, Expo apps, Xcode/XcodeGen apps as Mac-only)
+  and runs one in its own process group (devRuns.ts, `devServer.*`,
+  `dev-run` pushes, `devServer.runs` for every running run) on this Mac or
+  the box's copy of the project. What runs lives in ONE Dev servers pane in
+  the bottom dock (surfaces/DevServersPane.tsx on chrome/DockFrame.tsx, the
+  terminal dock's shell; rules `liveServers` in lib/devServers.ts, state
+  lib/devPane.ts): every server live on a connected host now (a running run,
+  or a ledger `port` row still listening that passes the shared rules), with
+  its console, "Open on the Mac :5174" and Stop; a row leaves the moment its
+  host drops it. Closed by default and never opened on its own (the thread
+  header's Dev server button toggles it, the terminal dock's Dev Servers
+  button and a Run open it); while open it takes the terminal dock's place.
+  Dev server consoles are never terminal tabs; old saved `devLog` tabs are
+  dropped on load. docs/box.md "Dev servers on the box"; proof `bun run script:e2e-port-forward` (seam
   `session.proofShellCall`, `TEMP_CODE_E2E_STATUS=1`). The subdomain proxy
   for the phone is not built yet.
 - Pause and Stop reach the Mac

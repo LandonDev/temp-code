@@ -90,6 +90,14 @@ export class DevRuns {
       .sort((a, b) => b.startedAt - a.startedAt)
   }
 
+  /** Every running run on this host, any project, newest first. */
+  running(): DevRun[] {
+    return [...this.slots.values()]
+      .filter((s) => s.run.status === 'running')
+      .map((s) => this.view(s))
+      .sort((a, b) => b.startedAt - a.startedAt)
+  }
+
   async targets(projectId: string): Promise<{ targets: DevTarget[]; runs: DevRun[] }> {
     const p = this.must(projectId)
     // An iOS app is offered only by a Mac; the person picks the Mac's copy to run it.

@@ -41,14 +41,28 @@ const ctx = (threads: SweepThread[], files: Record<string, { sessionId: string; 
 describe('skipReason', () => {
   it('skips system ports, databases, infrastructure and the app itself', () => {
     expect(skipReason(listener(80, 10), [], 7)).toBe('a system port')
-    expect(skipReason(listener(5432, 10), [], 7)).toBe('a database port')
-    expect(skipReason(listener(6379, 10, 'redis-server'), [], 7)).toBe('a database port')
+    expect(skipReason(listener(5432, 10), [], 7)).toBe('a database or debugger port')
+    expect(skipReason(listener(6379, 10, 'redis-server'), [], 7)).toBe('a database or debugger port')
     expect(skipReason(listener(4040, 10, 'ngrok'), [], 7)).toBe('infrastructure (ngrok)')
     expect(skipReason(listener(8080, 10, 'docker-proxy'), [], 7)).toBe('infrastructure (docker-proxy)')
     expect(skipReason(listener(20241, 10, 'cloudflared'), [], 7)).toBe('infrastructure (cloudflared)')
     expect(skipReason(listener(46525, 7, 'electron'), [], 7)).toBe("the app's own")
     expect(skipReason(listener(38591, 8, 'electron'), [], 7)).toBe('infrastructure (electron)')
     expect(skipReason(listener(3001, 10, 'next-server (v1'), [], 7)).toBeNull()
+  })
+
+  it('skips MCP servers, proxies and debuggers by name, command or port', () => {
+    const args = (a: string) => [proc(10, { args: a })]
+    expect(skipReason(listener(9229, 10), [], 7)).toBe('a database or debugger port')
+    expect(skipReason(listener(8443, 10, 'nginx'), [], 7)).toBe('infrastructure (nginx)')
+    expect(skipReason(listener(8081, 10, 'caddy'), [], 7)).toBe('infrastructure (caddy)')
+    expect(skipReason(listener(3333, 10), args('node /usr/lib/node_modules/@modelcontextprotocol/server-filesystem/dist/index.js'), 7)).toBe('an MCP server, proxy or debugger')
+    expect(skipReason(listener(3334, 10), args('npx -y chrome-devtools-mcp@latest --port 3334'), 7)).toBe('an MCP server, proxy or debugger')
+    expect(skipReason(listener(3335, 10), args('node dist/mcp-server.js'), 7)).toBe('an MCP server, proxy or debugger')
+    expect(skipReason(listener(4000, 10), args('node --inspect server.js'), 7)).toBeNull()
+    // A project folder with mcp in its name still serves real dev servers.
+    expect(skipReason(listener(5173, 10), args('node /srv/agents/work/temp-code-mcp/node_modules/.bin/vite'), 7)).toBeNull()
+    expect(skipReason(listener(3000, 10), args('python3 -m http.server 3000'), 7)).toBeNull()
   })
 })
 
@@ -233,7 +247,7 @@ describe('PortSweep', () => {
     const dry = await sweep.sweep({ dryRun: true })
     expect(dry.find((r) => r.port === 5173)?.verdict).toEqual({ skip: 'a Dev Server run', final: true })
     expect(dry.find((r) => r.port === 4000)?.verdict).toMatchObject({ credit: { sessionId: 'a' } })
-    expect(dry.find((r) => r.port === 5432)?.verdict).toEqual({ skip: 'a database port', final: true })
+    expect(dry.find((r) => r.port === 5432)?.verdict).toEqual({ skip: 'a database or debugger port', final: true })
     expect(ledger.live(ME, 'port', '4000')).toBeNull()
     await sweep.sweep()
     expect(ledger.live(ME, 'port', '5173')).toBeNull()

@@ -11,7 +11,7 @@ const EXPECTED: Record<keyof typeof allChunks, string[]> = {
   aliaxChunk: ["AliaxPagesView"],
   diffChunk: ["DiffPane", "DiffBody"],
   editorChunk: ["FileEditor", "handleEditorFindKey", "openFindInActiveEditor"],
-  terminalChunk: ["TerminalView"],
+  terminalChunk: ["TerminalView", "DevServersPane"],
   threadViewsChunk: ["ImplementationView", "OrchestrationView", "PlanView", "ResearchView"],
   htmlRenderChunk: ["HtmlRenderRow", "HtmlRenderDocument"],
   mediaChunk: ["MediaGate", "MediaReview"],

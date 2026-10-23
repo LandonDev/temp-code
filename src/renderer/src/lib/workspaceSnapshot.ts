@@ -404,6 +404,8 @@ function sanitizeFile(raw: unknown): FilePaneTab | null {
   if (typeof value.id !== "string" || !value.id) return null;
   if (typeof value.path !== "string" || !value.path) return null;
   if (typeof value.cwd !== "string" || !value.cwd) return null;
+  // A dev server's console tab from before the Dev servers pane: dropped, never reopened as a shell.
+  if ("devLog" in value) return null;
   const hasReleaseNotes = "releaseNotes" in value;
   const releaseNotes = sanitizeReleaseNotes(value.releaseNotes);
   if (hasReleaseNotes && !releaseNotes) return null;
@@ -420,19 +422,9 @@ function sanitizeFile(raw: unknown): FilePaneTab | null {
     ...(releaseNotes ? { releaseNotes } : {}),
     ...(value.review === true ? { review: true } : {}),
     ...(value.terminal === true ? { terminal: true } : {}),
-    ...(value.terminal === true && sanitizeDevLog(value.devLog) ? { devLog: sanitizeDevLog(value.devLog) } : {}),
     ...(value.editor === "monaco" ? { editor: "monaco" as const } : {}),
     ...(value.debug === true ? { debug: true as const } : {}),
   };
-}
-
-function sanitizeDevLog(raw: unknown): FilePaneTab["devLog"] | undefined {
-  if (!raw || typeof raw !== "object") return undefined;
-  const v = raw as Record<string, unknown>;
-  if (typeof v.environmentId !== "string") return undefined;
-  if (typeof v.runId === "string") return { environmentId: v.environmentId, runId: v.runId };
-  if (typeof v.resourceId === "string") return { environmentId: v.environmentId, resourceId: v.resourceId };
-  return undefined;
 }
 
 function sanitizeReleaseNotes(

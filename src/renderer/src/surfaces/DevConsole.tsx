@@ -1,14 +1,8 @@
 import { Terminal } from "@xterm/xterm";
 import { useEffect, useRef } from "react";
-import {
-  devRunWord,
-  type DevPortLog,
-  type DevRun,
-  type DevRunPush,
-} from "@server/shared/contract-devservers";
+import type { DevPortLog, DevRun, DevRunPush } from "@server/shared/contract-devservers";
 import type { ServerPush } from "@server/shared/contract";
 import { registry } from "../lib/connection/registry";
-import type { DevLogSource } from "../lib/layout";
 import { isLightScheme, SCHEME_CHANGE_EVENT } from "../lib/appearance";
 import { fitTerminal } from "../lib/terminalLayout";
 import { monoFont, terminalTheme } from "./TerminalView";
@@ -19,15 +13,23 @@ const POLL_MS = 1_000;
 
 const dim = (text: string) => `\x1b[2m${text}\x1b[0m\r\n`;
 
+/** Which server a console reads: a Dev Server run, or a `port` row on a thread's ledger, on the host that serves its log. */
+export interface DevConsoleSource {
+  environmentId: string;
+  runId?: string;
+  resourceId?: string;
+}
+
 /**
- * A dev server's console in the terminal dock: xterm, read-only, with the
- * server's own colours. A Dev Server button's run replays its buffered log
+ * A live dev server's console in the Dev servers pane: xterm, read-only, with
+ * the server's own colours. A Dev Server run replays its buffered log
  * (`devServer.log`) and follows the `dev-run` pushes by line count; a port a
  * thread opened tails its output file, or shows the shell call's output,
- * through `devServer.portLog` from the offset it last read, until the host
- * says the server ended (one "— Exited" line, then no more reads).
+ * through `devServer.portLog` from the offset it last read. When the host
+ * drops the server its row leaves the pane and this console with it, so it
+ * never writes an ending of its own; it just stops reading.
  */
-export function DevLogView({ source, active }: { source: DevLogSource; active: boolean }) {
+export function DevConsole({ source, active }: { source: DevConsoleSource; active: boolean }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<() => void>(() => {});
@@ -88,19 +90,12 @@ export function DevLogView({ source, active }: { source: DevLogSource; active: b
       const runId = source.runId;
       // Lines through `written` are on screen; a push names the count its lines end at.
       let written = -1;
-      let status: DevRun["status"] | null = null;
       const queued: DevRunPush[] = [];
-      const ended = (run: DevRun) => {
-        if (run.status === status) return;
-        status = run.status;
-        if (run.status !== "running") term.write(dim(`— ${devRunWord(run)}`));
-      };
       const take = (push: DevRunPush) => {
         const start = (push.end ?? written + push.lines.length) - push.lines.length;
         const fresh = push.lines.slice(Math.max(0, written - start));
         if (fresh.length) term.write(fresh.join("\n") + "\n");
         written = Math.max(written, start + push.lines.length);
-        ended(push.run);
       };
       stop.push(
         link.onPush((push: ServerPush) => {
@@ -116,7 +111,6 @@ export function DevLogView({ source, active }: { source: DevLogSource; active: b
           term.write(dim(`$ ${run.command.split("\n")[0]}`));
           if (lines.length) term.write(lines.join("\n") + "\n");
           written = end ?? lines.length;
-          ended(run);
           for (const p of queued.splice(0)) take(p);
         })
         .catch((err: unknown) => {
@@ -126,7 +120,6 @@ export function DevLogView({ source, active }: { source: DevLogSource; active: b
       const resourceId = source.resourceId;
       let from: number | undefined;
       let shown: DevPortLog["source"] | null = null;
-      let atLineStart = true;
       let timer: ReturnType<typeof setTimeout> | null = null;
       const poll = async () => {
         try {
@@ -138,18 +131,12 @@ export function DevLogView({ source, active }: { source: DevLogSource; active: b
             from = undefined;
           } else {
             if (shown === null && log.source === "file" && log.path) term.write(dim(log.path));
-            if (log.data) {
-              term.write(log.data);
-              atLineStart = log.data.endsWith("\n");
-            }
+            if (log.data) term.write(log.data);
             from = log.next;
           }
           shown = log.source;
-          // The server stopped: the tab stays with its last lines and says so.
-          if (log.endedAt !== undefined && from !== undefined) {
-            term.write(`${atLineStart ? "" : "\r\n"}${dim("— Exited")}`);
-            return;
-          }
+          // The server stopped: its row is leaving the pane; nothing more to read.
+          if (log.endedAt !== undefined && from !== undefined) return;
         } catch (err) {
           if (closed) return;
           term.write(dim(err instanceof Error ? err.message : String(err)));

@@ -3,14 +3,10 @@ import { useStore } from 'zustand'
 import { createStore } from 'zustand/vanilla'
 import type { DevRun, DevRunPush, DevTarget } from '@server/shared/contract-devservers'
 import type { ThreadResource } from '@server/shared/contract-resources'
-import { currentDockCwd, useProject } from '../stores/project'
-import { currentDock, terminals } from '../stores/terminals'
-import { focus } from '../stores/focus'
-import type { DevLogSource, FilePaneTab } from './layout'
-import { addTerminalQuietly, selectDockTerminal, withDockOpen } from './projectTerminal'
-import { looksLikeProject } from './recents'
+import type { PortForwardInfo } from '@server/shared/contract-ports'
+import { notDevServer } from '@server/shared/devServerRules'
 import { sessionStore, useServerSessions } from './tcserver/store'
-import { threadResourcesStore } from './threadResources'
+import { removeThreadResources, startThreadResources, threadResourcesStore } from './threadResources'
 import { registry } from './connection/registry'
 import type { EnvLink } from './connection/link'
 import { useEnvironments, useEnvironmentStatuses } from './connection/status'
@@ -59,6 +55,29 @@ export function applyDevRunPush(environmentId: string, push: DevRunPush): void {
   })
 }
 
+/** A host's `devServer.runs` answer: its running runs are these, any project; finished ones stay for their logs. */
+export function applyHostRuns(environmentId: string, live: readonly DevRun[]): void {
+  store.setState((s) => {
+    const runs: State['runs'] = {}
+    for (const [key, list] of Object.entries(s.runs))
+      runs[key] = key.startsWith(`${environmentId}/`) ? list.filter((r) => r.status !== 'running' || live.some((l) => l.id === r.id)) : list
+    for (const run of live) {
+      const key = keyOf(environmentId, run.projectId)
+      runs[key] = upsert(runs[key] ?? [], run)
+    }
+    return { runs }
+  })
+}
+
+async function loadHostRuns(link: EnvLink): Promise<void> {
+  try {
+    const { runs } = await link.request<{ runs: DevRun[] }>('devServer.runs', {})
+    applyHostRuns(link.environmentId, runs)
+  } catch {
+    /* an older host without the method: its runs arrive as pushes and per-project reads */
+  }
+}
+
 const attached = new WeakSet<EnvLink>()
 function attach(link: EnvLink): void {
   if (attached.has(link)) return
@@ -66,10 +85,13 @@ function attach(link: EnvLink): void {
   link.onPush((push) => {
     if (push.push === 'dev-run') applyDevRunPush(link.environmentId, push)
   })
+  link.onOpen(() => void loadHostRuns(link))
+  if (link.connected) void loadHostRuns(link)
 }
 
 let started = false
-function start(): void {
+/** Hear every host's `dev-run` push and read its running runs once per link-up; idempotent. */
+export function startDevServers(): void {
   if (started) return
   started = true
   for (const link of registry.links()) attach(link)
@@ -79,7 +101,7 @@ function start(): void {
 }
 
 export async function loadDevTargets(environmentId: string, projectId: string): Promise<void> {
-  start()
+  startDevServers()
   const key = keyOf(environmentId, projectId)
   try {
     const { targets, runs } = await registry.linkOf(environmentId).request<{ targets: DevTarget[]; runs: DevRun[] }>('devServer.targets', { projectId })
@@ -97,7 +119,7 @@ export async function loadDevLog(environmentId: string, runId: string): Promise<
 }
 
 async function act(environmentId: string, method: 'devServer.start' | 'devServer.stop' | 'devServer.restart', params: object): Promise<DevRun> {
-  start()
+  startDevServers()
   const { run } = await registry.linkOf(environmentId).request<{ run: DevRun }>(method, params)
   applyDevRunPush(environmentId, { push: 'dev-run', projectId: run.projectId, run, lines: [] })
   return run
@@ -178,7 +200,7 @@ export function useDevHosts(project: Pick<ProjectMeta, 'id' | 'environmentId' | 
 }
 
 /** The line a target reads as in the menu: "web · dev", the framework after it when it names one. */
-export function targetLabel(t: Pick<DevTarget, 'name' | 'script' | 'framework' | 'kind'>): string {
+export function targetLabel(t: Pick<DevTarget, 'name' | 'script' | 'kind'>): string {
   if (t.kind === 'ios') return `${t.name} · iOS`
   return `${t.name} · ${t.script}`
 }
@@ -205,138 +227,110 @@ export function useDevServable(project: Pick<ProjectMeta, 'id' | 'environmentId'
   return useStore(store, (s) => keys.some((k) => (s.targets[k]?.length ?? 0) > 0))
 }
 
-/** A dev server a thread's agent opened: a live `port` row on its host's ledger. */
-export interface AgentServer {
-  row: ThreadResource
-  /** The host the thread runs on (the link that serves its log). */
+/**
+ * One dev server live on a host, as the Dev servers pane lists it: a running
+ * Dev Server run, or a `port` row on a thread's ledger that still listens and
+ * passes the shared rules (src/shared/devServerRules.ts). The host drops a row
+ * the moment nothing listens; so does this list.
+ */
+export interface LiveServer {
+  /** `<host>/<run or ledger row id>`: stable across windows. */
+  key: string
+  /** The host whose link serves the log and takes the Stop. */
   environmentId: string
-  /** The thread's title. */
   title: string
+  /** The thread that opened it (a ledger row), for the title's hover. */
+  thread: string | null
+  /** The port, and the host it lives on (a Mac bridge row lives on the Mac), with its forwards. */
+  port: { number: number; environmentId: string; forwards: PortForwardInfo[] | undefined } | null
+  runId: string | null
+  resource: { id: string; sessionId: string } | null
+  startedAt: number
 }
 
-/** Every live port the project's threads opened, on every host with a copy of it, newest first. */
-export function useAgentServers(hosts: readonly DevHost[]): AgentServer[] {
-  const bySession = useStore(threadResourcesStore, (s) => s.bySession)
-  const sessions = useServerSessions()
-  return useMemo(() => {
-    const copies = new Set(hosts.flatMap((h) => (h.projectId ? [keyOf(h.environmentId, h.projectId)] : [])))
-    const out: AgentServer[] = []
-    for (const session of sessions) {
-      const environmentId = sessionStore.environmentOf(session.id)
-      if (!environmentId || !session.projectId || !copies.has(keyOf(environmentId, session.projectId))) continue
-      for (const row of bySession[session.id] ?? [])
-        if (row.kind === 'port' && !row.removedAt && !row.removeRequestedAt) out.push({ row, environmentId, title: session.title })
+export interface LiveServerSources {
+  runs: Record<string, DevRun[]>
+  resources: Record<string, ThreadResource[]>
+  /** A thread's host, project and title; null for a thread this window does not know. */
+  thread: (sessionId: string) => { environmentId: string; projectId: string | null; title: string } | null
+  projectName: (environmentId: string, projectId: string) => string | null
+}
+
+/** Every live dev server across the hosts, newest first. */
+export function liveServers(src: LiveServerSources): LiveServer[] {
+  const out: LiveServer[] = []
+  for (const [key, list] of Object.entries(src.runs)) {
+    const environmentId = key.slice(0, key.indexOf('/'))
+    for (const run of list) {
+      if (run.status !== 'running') continue
+      const p = run.ports[0]
+      out.push({
+        key: `${environmentId}/${run.id}`,
+        environmentId,
+        title: targetLabel(run),
+        thread: null,
+        port: p ? { number: p.port, environmentId, forwards: p.forwards } : null,
+        runId: run.id,
+        resource: null,
+        startedAt: run.startedAt
+      })
     }
-    return out.sort((a, b) => b.row.createdAt - a.row.createdAt)
-  }, [hosts, bySession, sessions])
-}
-
-/** Every run of the project on every host with a copy, newest first. */
-export function useAllDevRuns(hosts: readonly DevHost[]): (DevRun & { environmentId: string })[] {
-  const runs = useStore(store, (s) => s.runs)
-  return useMemo(
-    () =>
-      hosts
-        .flatMap((h) => (h.projectId ? (runs[keyOf(h.environmentId, h.projectId)] ?? EMPTY_RUNS).map((r) => ({ ...r, environmentId: h.environmentId })) : []))
-        .sort((a, b) => b.startedAt - a.startedAt),
-    [hosts, runs]
-  )
-}
-
-const sameSource = (a: DevLogSource, b: DevLogSource): boolean =>
-  a.environmentId === b.environmentId && a.runId === b.runId && a.resourceId === b.resourceId
-
-/** One key per server across windows and launches: its host and its run or ledger row. */
-export const devLogKey = (s: DevLogSource): string => `${s.environmentId}/${s.runId ?? s.resourceId ?? ''}`
-
-/** The console tab's title: a run by its target, an agent's server by its thread and port. */
-export const runLogTitle = (run: Pick<DevRun, 'name' | 'script'>): string => `${run.name} · ${run.script}`
-export const agentLogTitle = (server: AgentServer): string => `${server.title} :${server.row.identifier}`
-
-const OPENED_KEY = 'dev-log-opened'
-const OPENED_CAP = 300
-let opened: string[] | null = null
-export function openedDevLogs(): string[] {
-  if (opened) return opened
-  try {
-    const raw: unknown = JSON.parse(localStorage.getItem(OPENED_KEY) ?? '[]')
-    opened = Array.isArray(raw) ? raw.filter((k): k is string => typeof k === 'string') : []
-  } catch {
-    opened = []
   }
-  return opened
-}
-function markOpened(key: string): void {
-  const keys = openedDevLogs()
-  if (keys.includes(key)) return
-  opened = [...keys, key].slice(-OPENED_CAP)
-  try {
-    localStorage.setItem(OPENED_KEY, JSON.stringify(opened))
-  } catch {
-    /* storage full or off: this window still remembers */
+  for (const [sessionId, rows] of Object.entries(src.resources)) {
+    const thread = src.thread(sessionId)
+    if (!thread) continue
+    for (const row of rows) {
+      if (row.kind !== 'port' || row.removedAt || row.removeRequestedAt) continue
+      const number = Number(row.identifier)
+      if (notDevServer(number, null, row.label)) continue
+      const project = thread.projectId ? src.projectName(thread.environmentId, thread.projectId) : null
+      out.push({
+        key: `${thread.environmentId}/${row.id}`,
+        environmentId: thread.environmentId,
+        title: `${project ?? thread.title} :${number}`,
+        thread: thread.title,
+        port: { number, environmentId: row.environmentId, forwards: row.forwards },
+        runId: null,
+        resource: { id: row.id, sessionId },
+        startedAt: row.createdAt
+      })
+    }
   }
-}
-/** Tests start from nothing. */
-export function resetOpenedDevLogs(): void {
-  opened = null
-  try {
-    localStorage.removeItem(OPENED_KEY)
-  } catch {
-    /* no storage */
-  }
+  return out.sort((a, b) => b.startedAt - a.startedAt)
 }
 
-/** The servers that open on their own: each once, ever; a tab the person closed stays closed. */
-export function dueToOpen<T extends { source: DevLogSource }>(servers: readonly T[], openedBefore: readonly string[]): T[] {
-  const seen = new Set(openedBefore)
-  return servers.filter((s) => !seen.has(devLogKey(s.source)))
+/** The row the pane shows: the one picked while it is still live, else the newest. */
+export function shownServer(servers: readonly LiveServer[], picked: string | null): LiveServer | null {
+  return servers.find((s) => s.key === picked) ?? servers[0] ?? null
 }
 
-/**
- * Show a dev server's console as a tab in the project's terminal dock, reusing
- * its tab when one is open. `quiet` (a server that appeared on its own): the
- * dock opens if it is closed, but focus stays where it is, a tab the open dock
- * already shows stays selected, and an existing tab is left alone.
- */
-export function openDevLog(source: DevLogSource, title: string, opts: { quiet?: boolean } = {}): void {
-  const projectPath = currentDockCwd()
-  if (!looksLikeProject(projectPath)) return
-  markOpened(devLogKey(source))
-  const dock = currentDock(projectPath)
-  const existing = dock?.pane.files.find((f) => f.devLog && sameSource(f.devLog, source))
-  if (existing) {
-    if (opts.quiet) return
-    terminals.updateDock(projectPath, (d) => withDockOpen(selectDockTerminal(d, existing.id), true))
-  } else {
-    const file: FilePaneTab = { id: crypto.randomUUID(), path: title, cwd: projectPath, terminal: true, devLog: source }
-    if (opts.quiet && dock) terminals.updateDock(projectPath, (d) => addTerminalQuietly(d, file))
-    else terminals.openTerminal(projectPath, file)
-  }
-  if (!opts.quiet) focus.enterProjectTerminal()
-}
-
-/**
- * A dev server that appears for the project on screen (an agent's, or a Dev
- * Server run started elsewhere) opens its console in the dock on its own,
- * quietly and once.
- */
-export function useAutoOpenDevLogs(project: Pick<ProjectMeta, 'id' | 'environmentId' | 'cwd'> | undefined): void {
-  const hosts = useDevHosts(project)
-  const selected = useProject((s) => s.selectedProjectId)
-  const onScreen = selected !== null && hosts.some((h) => h.projectId === selected)
-  const agents = useAgentServers(hosts)
-  const runs = useAllDevRuns(hosts)
-  const servers = useMemo(
-    () => [
-      ...runs.filter((r) => r.status === 'running').map((r) => ({ source: { environmentId: r.environmentId, runId: r.id }, title: runLogTitle(r) })),
-      ...agents.map((a) => ({ source: { environmentId: a.environmentId, resourceId: a.row.id }, title: agentLogTitle(a) }))
-    ],
-    [runs, agents]
-  )
-  const sig = servers.map((s) => devLogKey(s.source)).join('|')
+/** The live dev servers, kept current by the hosts' pushes. */
+export function useLiveDevServers(): LiveServer[] {
   useEffect(() => {
-    if (!onScreen) return
-    for (const s of dueToOpen(servers, openedDevLogs())) openDevLog(s.source, s.title, { quiet: true })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onScreen, sig])
+    startDevServers()
+    startThreadResources()
+  }, [])
+  const runs = useStore(store, (s) => s.runs)
+  const resources = useStore(threadResourcesStore, (s) => s.bySession)
+  const sessions = useServerSessions()
+  const projects = useProjects()
+  return useMemo(() => {
+    const byId = new Map(sessions.map((s) => [s.id, s]))
+    return liveServers({
+      runs,
+      resources,
+      thread: (id) => {
+        const s = byId.get(id)
+        const environmentId = s ? sessionStore.environmentOf(id) : null
+        return s && environmentId ? { environmentId, projectId: s.projectId ?? null, title: s.title } : null
+      },
+      projectName: (environmentId, projectId) => projects.find((p) => p.id === projectId && p.environmentId === environmentId)?.name ?? null
+    })
+  }, [runs, resources, sessions, projects])
+}
+
+/** Stop a live server on its host: a run's process group, or the ledger row's process. */
+export async function stopLiveServer(server: LiveServer): Promise<void> {
+  if (server.runId) await stopDevServer(server.environmentId, server.runId)
+  else if (server.resource) await removeThreadResources(server.resource.sessionId, [server.resource.id])
 }

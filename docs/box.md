@@ -1624,10 +1624,13 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
   its working directory (or an ancestor's) inside a thread's cwd, the
   deepest folder first, then a live thread, then the most recently active,
   only a thread that existed before the process started and was live or
-  active since. Skipped: ports under 1024, database and queue ports (5432,
-  3306, 6379, 27017 and the like), infrastructure by process name
-  (postgres, redis, docker-proxy, sshd, cloudflared, ngrok, electron,
-  claude, codex…), the app's own process, the Dev Server button's runs,
+  active since. Skipped: ports under 1024, database, queue and debugger
+  ports (5432, 3306, 6379, 27017, 9229 and the like), infrastructure and
+  proxies by process name (postgres, redis, docker-proxy, sshd, cloudflared,
+  ngrok, nginx, caddy, socat, electron, claude, codex…), a command line
+  naming an MCP server or a proxy (`@modelcontextprotocol/…`,
+  `chrome-devtools-mcp`, `mcp-server…`), all in src/shared/devServerRules.ts,
+  the app's own process, the Dev Server button's runs,
   anything the harness started within 15 s of itself that no tool call
   started (an MCP server), and a port bound before any thread worked in its
   folder. A listener no thread claims is looked at again after 5 minutes.
@@ -1635,12 +1638,31 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
   server's own top process ("bun run dev"). `bun scripts/port-sweep-dry-
   run.ts` on the box prints every listener with its verdict and records
   nothing.
-- **The console.** The rail's Dev tab and the dock read an agent's server's
-  log from the file its process writes (portLog.ts: fd 1 or 2 of the
-  listener or the shell above it; a file Claude already deleted is still
-  read through the fd; else the file the call named; else the call's output
-  in the transcript). When the row leaves the ledger the console ends with
-  "— Exited" and the tab stays.
+- **The Dev servers pane** (src/renderer/src/surfaces/DevServersPane.tsx,
+  rules in lib/devServers.ts `liveServers`, state in lib/devPane.ts). One
+  pane in the bottom dock, in the terminal's type and density but not a
+  terminal tab: a "Dev servers" header with Start a Dev Server (the rail's
+  Dev tab), Terminal and Hide; a list of the servers live on every
+  connected host right now, newest first; the picked one's console beside
+  it (surfaces/DevConsole.tsx). A row is a running Dev Server run (each
+  host's `devServer.runs` at link-up, then its `dev-run` pushes) or a `port`
+  row on a thread's ledger that is not removed and still passes the shared
+  rules, titled by the run's target ("web · dev") or the thread's project and
+  port ("cosmicweb :3007"), with the host glyph when two hosts are paired,
+  "Open on the Mac :5174" when it opens here, and Stop. The host dropping a
+  server takes its row out at once: no "Exited" rows, no history. The pane
+  is closed until the person opens it (the thread header's Dev server
+  button toggles it, the terminal dock has a Dev Servers button, a Run in
+  the rail's Dev tab opens it on that run); nothing opens it on its own. It
+  takes the dock's place while open (the terminal dock keeps its own open
+  flag and comes back when the pane hides or the terminal is asked for),
+  and remembers open and its height in localStorage `monocode.devPane`.
+  The console reads an agent's server's log from the file its process
+  writes (portLog.ts: fd 1 or 2 of the listener or the shell above it; a
+  file Claude already deleted is still read through the fd; else the file
+  the call named; else the call's output in the transcript), and a run's
+  from `devServer.log` and its pushes. Dev server tabs saved in an older
+  layout are dropped on load (workspaceSnapshot.ts).
 - **The forward** (src/shared/contract-ports.ts). The box sends its live
   ports, the ledger's and the Dev Server button's, as one list down every
   registered Mac's link (`{ push: 'ports' }`, again on every change and
@@ -1671,21 +1693,14 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
   Mac (5173 is taken there)"), other harnesses as a `<dev-server>` line
   whispered into the turn once the Mac bound it (src/main/server/
   portTail.ts). A thread can hand that URL to a Mac child or a computer-use
-  run. A server that appears for the project on screen (an agent's, or a
-  Dev Server run started elsewhere) opens its console as a tab in the
-  project's terminal dock on its own (`useAutoOpenDevLogs` in
-  lib/devServers.ts, carried by the header's Dev Server button): the dock
-  opens if it is closed, the composer keeps focus, a tab an open dock
-  already shows stays selected, and each server opens once ever (the keys
-  in localStorage `dev-log-opened`), so a tab the person closed stays
-  closed.
+  run. The Dev servers pane lists it while it listens.
 - **The Dev Server button.** The thread header shows "Dev server" when a
   host can serve the thread's project, with a dot while one runs; it opens
-  the rail's Dev tab (chrome/rail/DevServerPanel.tsx): the target (a menu
-  when there are several), the host (this Mac or the box's copy of the
-  project: the linked copy, else one paired by repo or folder name), Run,
-  Stop and Restart, where the
-  server opens, and the live console. The host detects the targets itself
+  and closes the Dev servers pane. The rail's Dev tab
+  (chrome/rail/DevServerPanel.tsx) starts one: the target (a menu when
+  there are several), the host (this Mac or the box's copy of the project:
+  the linked copy, else one paired by repo or folder name) and Run, which
+  opens the pane on the new run. The host detects the targets itself
   (src/main/server/devTargets.ts): the `dev`, `start`, `serve`, `preview`,
   `web` and `storybook` scripts of the root package.json and of its
   workspaces (package.json `workspaces`, pnpm-workspace.yaml, else apps/*
@@ -1694,7 +1709,7 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
   folders down at most, outside an Expo app) as a Mac-only target that
   builds for the simulator, installs on the booted one and streams its
   console. An Electron app's script is left out. A client names a target id,
-  never a command (`devServer.targets`, `.log` read; `.start`, `.stop`,
+  never a command (`devServer.targets`, `.runs`, `.log` read; `.start`, `.stop`,
   `.restart` operate). A run (src/main/server/devRuns.ts) is the login shell
   in its own process group, the log batched to every client as `dev-run`
   pushes with a 3,000-line replay; its ports are the listeners under its
@@ -1708,7 +1723,9 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
   the switch, and the link dropping. Unit tests: threadPortsParse, threadPorts,
   portSweep (every credit rule and the skip list), portLog, portTail, devTargets, devRuns, remote/portForward (the stream framing,
   backpressure, allocation, the switch, a link drop, a 3 MiB body), and the
-  renderer's devPorts, devServers, DevServerPanel and ThreadResourcesDialog.
+  renderer's devPorts, devServers (the pane's rules: which rows show, removal
+  on drop, nothing opens it), DevServersPane, DevServerPanel,
+  workspaceSnapshot (old tabs dropped) and ThreadResourcesDialog.
 - Not built yet: the host-based subdomain proxy behind the cookie, the
   phone's road to a box dev server.
 

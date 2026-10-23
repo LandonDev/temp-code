@@ -3,28 +3,20 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  Globe,
   PanelBottom,
   PanelLeft,
   PanelRight,
   PanelTop,
   Plus,
 } from "../chrome/icons";
-import {
-  useEffect,
-  useRef,
-  useState,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+import { useRef, useState } from "react";
+import { DockFrame } from "../chrome/DockFrame";
 import { ExplorerMenu } from "../chrome/ExplorerMenu";
 import { SurfaceTabs } from "../chrome/SurfaceTabs";
 import { IconButton } from "../chrome/TitleBar";
-import {
-  clampDockSize,
-  defaultDockSize,
-  isVerticalDock,
-  type DockSide,
-  type ProjectTerminalDock,
-} from "../lib/projectTerminal";
+import { devPane } from "../lib/devPane";
+import type { DockSide, ProjectTerminalDock } from "../lib/projectTerminal";
 import { MOD } from "../lib/platform";
 import type { TerminalMetaPatch } from "../lib/terminalTab";
 import { terminalChunk } from "./chunks";
@@ -32,7 +24,6 @@ import { SurfaceSkeleton } from "./SurfaceSkeleton";
 
 // xterm lives in the terminal chunk (surfaces/chunks.ts); the first dock tab pulls it in.
 const TerminalView = terminalChunk.surface("TerminalView", <SurfaceSkeleton kind="terminal" label="Loading terminal" />);
-const DevLogView = terminalChunk.surface("DevLogView", <SurfaceSkeleton kind="terminal" label="Loading console" />);
 
 type Props = {
   dock: ProjectTerminalDock;
@@ -84,127 +75,22 @@ export function ProjectTerminalDock({
   onReorderTerminals,
   onTerminalMetaChange,
 }: Props) {
-  const vertical = isVerticalDock(dock.side);
-  const [dragging, setDragging] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const sideButton = useRef<HTMLDivElement>(null);
-  const drag = useRef<{ start: number; size: number } | null>(null);
-  const sizeRef = useRef(dock.size);
-  sizeRef.current = dock.size;
-  const pending = useRef(dock.size);
-  const frame = useRef<number | null>(null);
   const SideIcon = sideIcon(dock.side);
   const HideIcon = hideIcon(dock.side);
 
-  useEffect(() => {
-    if (!dragging) return;
-    const previous = document.body.style.cursor;
-    document.body.style.cursor = vertical ? "row-resize" : "col-resize";
-    return () => {
-      document.body.style.cursor = previous;
-    };
-  }, [dragging, vertical]);
-
-  useEffect(
-    () => () => {
-      if (frame.current != null) cancelAnimationFrame(frame.current);
-    },
-    [],
-  );
-
-  const viewport = () => ({
-    width: window.innerWidth,
-    height: window.innerHeight,
-  });
-
-  const paint = (next: number) => {
-    pending.current = next;
-    if (frame.current != null) return;
-    frame.current = requestAnimationFrame(() => {
-      frame.current = null;
-      onSizePaint(pending.current);
-    });
-  };
-
-  const commit = () => {
-    if (frame.current != null) {
-      cancelAnimationFrame(frame.current);
-      frame.current = null;
-    }
-    onSizeCommit(pending.current);
-  };
-
-  const onResizePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    drag.current = {
-      start: vertical ? event.clientY : event.clientX,
-      size: sizeRef.current,
-    };
-    pending.current = sizeRef.current;
-    setDragging(true);
-  };
-
-  const onResizePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!drag.current) return;
-    const point = vertical ? event.clientY : event.clientX;
-    const delta = point - drag.current.start;
-    const signed =
-      dock.side === "bottom" || dock.side === "right" ? -delta : delta;
-    paint(clampDockSize(dock.side, drag.current.size + signed, viewport()));
-  };
-
-  const onResizePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!drag.current) return;
-    drag.current = null;
-    commit();
-    setDragging(false);
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-  };
-
-  const sash =
-    dock.side === "top"
-      ? "absolute inset-x-0 -bottom-px z-10 h-1.5 cursor-row-resize touch-none"
-      : dock.side === "bottom"
-        ? "absolute inset-x-0 -top-px z-10 h-1.5 cursor-row-resize touch-none"
-        : dock.side === "left"
-          ? "absolute inset-y-0 -right-px z-10 w-1.5 cursor-col-resize touch-none"
-          : "absolute inset-y-0 -left-px z-10 w-1.5 cursor-col-resize touch-none";
-
   return (
-    <section
+    <DockFrame
       data-project-terminal-dock=""
-      className={`relative flex h-full min-h-0 min-w-0 flex-col ${
-        focused ? "bg-content/5" : ""
-      } ${
-        dock.side === "top"
-          ? "border-b"
-          : dock.side === "bottom"
-            ? "border-t"
-            : dock.side === "left"
-              ? "border-r"
-              : "border-l"
-      } border-content/10`}
-      onMouseDown={onFocus}
+      side={dock.side}
+      size={dock.size}
+      focused={focused}
+      label="Resize terminal"
+      onFocus={onFocus}
+      onSizePaint={onSizePaint}
+      onSizeCommit={onSizeCommit}
     >
-      <div
-        role="separator"
-        aria-orientation={vertical ? "horizontal" : "vertical"}
-        aria-label="Resize terminal"
-        aria-valuenow={dock.size}
-        className={`${sash} ${dragging ? "bg-content/15" : "hover:bg-content/10"}`}
-        onPointerDown={onResizePointerDown}
-        onPointerMove={onResizePointerMove}
-        onPointerUp={onResizePointerUp}
-        onPointerCancel={onResizePointerUp}
-        onDoubleClick={() => {
-          pending.current = defaultDockSize(dock.side);
-          commit();
-        }}
-      />
       <SurfaceTabs
         files={dock.pane.files}
         activeFileId={dock.pane.activeFileId}
@@ -221,6 +107,9 @@ export function ProjectTerminalDock({
               onClick={onAddTerminal}
             >
               <Plus className="size-3.5" strokeWidth={1.75} />
+            </IconButton>
+            <IconButton label="Dev Servers" onClick={() => devPane.open()}>
+              <Globe className="size-3.5" strokeWidth={1.75} />
             </IconButton>
             <div ref={sideButton}>
             <IconButton
@@ -254,19 +143,12 @@ export function ProjectTerminalDock({
                 : "hidden"
             }
           >
-            {file.devLog ? (
-              <DevLogView
-                source={file.devLog}
-                active={focused && file.id === dock.pane.activeFileId}
-              />
-            ) : (
             <TerminalView
               id={file.id}
               cwd={file.cwd}
               active={focused && file.id === dock.pane.activeFileId}
               onMetaChange={(patch) => onTerminalMetaChange?.(file.id, patch)}
             />
-            )}
           </div>
         ))}
       </div>
@@ -290,7 +172,7 @@ export function ProjectTerminalDock({
           onClose={() => setMenu(null)}
         />
       ) : null}
-    </section>
+    </DockFrame>
   );
 }
 

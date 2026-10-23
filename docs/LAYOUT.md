@@ -121,6 +121,31 @@ The chip leaves once the first message goes out. The default host is the
 one of the thread on screen when it is in the project, else the one last
 used for it, else this machine (lib/projectHostChoice.ts).
 
+### Bottom dock: terminals, or the Dev servers pane
+
+One dock slot sits beside the main view (bottom by default; the terminal
+dock can move to any side). It holds one of two things at a time, both in
+the same shell (chrome/DockFrame.tsx: the hairline facing the content, the
+sash, double-click for the default size):
+
+- **The terminal dock** (surfaces/ProjectTerminalDock.tsx): one per project,
+  a strip of shell tabs, then New Terminal, Dev Servers, Move and Hide.
+- **The Dev servers pane** (surfaces/DevServersPane.tsx), always at the
+  bottom: a "Dev servers" header (Start a Dev Server, Terminal, Hide), a
+  288px list of the dev servers live on the hosts right now, and the picked
+  one's console filling the rest in the terminal's mono type. A row is its
+  title, the host glyph with two hosts, and on hover or when picked "Open on
+  the Mac :5174" and Stop. It lists only what a host still lists; a row the
+  host drops leaves at once, nothing animates in or out. With nothing live
+  it is one muted line, "No dev servers running". Closed until opened (the
+  thread header's Dev server button, the terminal dock's Dev Servers
+  button, Run in the rail's Dev tab); open and its height persist.
+
+While the pane is open the terminal dock is hidden, its own open flag
+untouched; asking for a terminal (⌘J, the titlebar's Terminal, New
+Terminal, the pane's Terminal button) puts the pane away. Dev server
+consoles are never terminal tabs.
+
 ## Thread views
 
 ### Chat

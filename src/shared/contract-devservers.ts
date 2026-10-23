@@ -64,6 +64,8 @@ const id = z.string().min(1).max(300)
 export const DevServerRequestSchemas = [
   /** → { targets: DevTarget[], runs: DevRun[] }: what the project can serve here, and its runs (newest first). */
   request('devServer.targets', z.object({ projectId: id })),
+  /** → { runs: DevRun[] }: every running run on this host, any project (the Dev servers pane's list). */
+  request('devServer.runs', z.object({})),
   /** → { run: DevRun }: start a target; a target may run several times at once (each run picks its own port). */
   request('devServer.start', z.object({ projectId: id, targetId: id })),
   /** → { run: DevRun }: SIGTERM the run's process group, SIGKILL after 5 s. */

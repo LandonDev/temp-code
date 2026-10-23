@@ -1,5 +1,5 @@
-import { useAutoOpenDevLogs, useDevRunning, useDevServable } from "../lib/devServers";
-import { showDevRail } from "../lib/railPanel";
+import { devPane } from "../lib/devPane";
+import { useDevRunning, useDevServable } from "../lib/devServers";
 import { useSyncExternalStore } from "react";
 import { sessionStore } from "../lib/tcserver/store";
 import { useProjects } from "../lib/tcserver/workspaces";
@@ -8,10 +8,8 @@ import { useProjects } from "../lib/tcserver/workspaces";
  * "Dev server" in the thread header (docs/box.md "Dev servers on the box"):
  * shown only when a host can serve the thread's project (a dev script, an
  * Expo app, an Xcode project), with a dot while one of its servers runs.
- * It opens the rail's Dev tab, where the target, the host and the console
- * live; the button itself never starts anything. It also carries the
- * auto-open: a server that appears for the project on screen opens its
- * console in the dock, quietly and once (lib/devServers.ts).
+ * It opens and closes the Dev servers pane in the bottom dock; the button
+ * itself never starts anything, and nothing opens the pane on its own.
  */
 export function DevServerButton({ sessionId }: { sessionId: string }) {
   // The thread's project and host only: a streaming turn must not re-render the header.
@@ -23,14 +21,13 @@ export function DevServerButton({ sessionId }: { sessionId: string }) {
   const project = useProjects().find((p) => p.id === projectId && p.environmentId === environmentId);
   const servable = useDevServable(project);
   const running = useDevRunning(project?.id);
-  useAutoOpenDevLogs(project);
   if (!project || (!servable && !running)) return null;
   return (
     <button
       type="button"
       data-tauri-drag-region="false"
       data-dev-server-button={running ? "running" : "idle"}
-      onClick={showDevRail}
+      onClick={devPane.toggle}
       className="pressable flex h-6 items-center gap-1.5 rounded-md px-2 text-[12px] text-content/50 hover:bg-content/5 hover:text-content"
     >
       {running ? <span className="size-1.5 rounded-full bg-success" aria-label="Running" /> : null}

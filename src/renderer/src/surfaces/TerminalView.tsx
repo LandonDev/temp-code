@@ -24,8 +24,8 @@ import {
 import { IS_MAC } from "../lib/platform";
 import "@xterm/xterm/css/xterm.css";
 
-// A dev server's read-only console rides the same chunk as the shell.
-export { DevLogView } from "./DevLogView";
+// The Dev servers pane and its read-only console ride the same chunk as the shell (xterm).
+export { DevServersPane } from "./DevServersPane";
 
 type Props = {
   id: string;

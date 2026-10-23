@@ -3,7 +3,8 @@ import type { DevRun, DevTarget } from '@server/shared/contract-devservers'
 import { mountProbe } from '../../test/renderProbe'
 import { registry } from '../../lib/connection/registry'
 import { macBridgeStore } from '../../lib/macBridge'
-import { applyDevRunPush, devServerStore, type DevHost } from '../../lib/devServers'
+import { devServerStore, type DevHost } from '../../lib/devServers'
+import { devPaneStore, resetDevPane } from '../../lib/devPane'
 import { DevServerPanel } from './DevServerPanel'
 
 const project = { id: 'p1', environmentId: 'env_mac', cwd: '/Users/l/site', workspaceId: 'w', name: 'site' }
@@ -40,6 +41,7 @@ describe('DevServerPanel', () => {
     // jsdom has no scrolling; the console follows its tail through scrollTo.
     Element.prototype.scrollTo = () => {}
     localStorage.clear()
+    resetDevPane()
     devServerStore.setState({ targets: {}, runs: {}, logs: {} })
     macBridgeStore.setState({ localId: 'env_mac' })
     hosts = [
@@ -80,6 +82,17 @@ describe('DevServerPanel', () => {
     await flush()
     expect(probe.container.querySelector('[role="radiogroup"]')).toBeNull()
     expect(probe.container.textContent).toContain('No dev script, Expo app or Xcode project here')
+  })
+
+  it('starts the target and shows the run in the Dev servers pane, listing nothing itself', async () => {
+    probe = mountProbe(<DevServerPanel projectId="p1" />)
+    await flush()
+    const button = [...probe.container.querySelectorAll('button')].find((b) => b.textContent?.trim().startsWith('Run')) as HTMLElement
+    await probe.act(async () => button.click())
+    await flush()
+    expect(requests).toContainEqual(['env_mac', 'devServer.start', { projectId: 'p1', targetId: 'apps/web#dev' }])
+    expect(devPaneStore.getState()).toMatchObject({ open: true, picked: 'env_mac/run1' })
+    expect(probe.container.querySelector('[aria-label="Stop"]')).toBeNull()
   })
 
 })

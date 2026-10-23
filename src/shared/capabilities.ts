@@ -375,6 +375,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'ports.setForwarding': 'local',
   // The Dev Server button (contract-devservers.ts): ids only; the command comes from the host's own detection.
   'devServer.targets': 'read',
+  'devServer.runs': 'read',
   'devServer.log': 'read',
   'devServer.portLog': 'read',
   'devServer.start': 'operate',

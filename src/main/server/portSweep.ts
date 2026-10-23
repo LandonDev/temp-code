@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import { readFile, readlink } from 'node:fs/promises'
+import { notDevServer } from '@shared/devServerRules'
 import type { EventRow } from '@shared/events'
 import type { ThreadResources } from './threadResources'
 import { shellOf } from './threadResourcesParse'
@@ -29,7 +30,7 @@ import { byPort, portLabel, validPort, type Listener } from './threadPortsParse'
  *    and was live or active since.
  *
  * What is clearly not a dev server is skipped: the app's own listeners,
- * databases and infrastructure (SKIP_PORTS, SKIP_NAMES), a process the harness
+ * databases, proxies, MCP servers and debuggers (src/shared/devServerRules.ts), a process the harness
  * started with itself (an MCP server: within HARNESS_BOOT_MS of the harness
  * and not from a tool call), the Dev Server button's runs, and a port bound
  * before any thread worked in its folder.
@@ -44,14 +45,6 @@ export const HARNESS_BOOT_MS = 15_000
 export const RETRY_MS = 5 * 60_000
 /** How far up from the listener the chain is read. */
 const CHAIN_DEPTH = 8
-
-/** Databases, queues and caches: never a dev server. */
-export const SKIP_PORTS = new Set([
-  1433, 2181, 3306, 4222, 5432, 5433, 5672, 5984, 6379, 6380, 7687, 8086, 8123, 8529, 9042, 9092, 9200, 9300, 11211, 15672, 26257, 27017, 27018, 33060
-])
-/** Process names (as ss and lsof print them, 15 characters on Linux) of infrastructure and of the app itself. */
-export const SKIP_NAMES =
-  /^(?:postgres|postmaster|mysqld|mariadbd|redis-server|valkey-server|mongod|mongos|clickhouse(?:-server)?|memcached|beam\.smp|docker-proxy|dockerd|containerd|sshd|cloudflared|ngrok|tailscaled|systemd.*|dnsmasq|electron|chrome|chromium|headless_shell|claude|codex|.*\bhelper\b.*)$/i
 
 export interface ProcInfo {
   pid: number
@@ -117,11 +110,8 @@ const inside = (dir: string, folder: string): boolean => dir === folder || dir.s
 /** Why a listener is not a dev server, null when it may be one. `chain` starts at the listener's process. */
 export function skipReason(l: Listener, chain: readonly ProcInfo[], ownPid: number): string | null {
   if (!validPort(l.port)) return 'a system port'
-  if (SKIP_PORTS.has(l.port)) return 'a database port'
   if (l.pid === ownPid) return "the app's own"
-  const name = l.command ?? baseName(chain[0]?.args ?? null)
-  if (name && SKIP_NAMES.test(name)) return `infrastructure (${name})`
-  return null
+  return notDevServer(l.port, l.command ?? baseName(chain[0]?.args ?? null), chain[0]?.args ?? null)
 }
 
 /** Which thread a listener is, by the rules above; `chain` starts at the listener's process and goes up. */
