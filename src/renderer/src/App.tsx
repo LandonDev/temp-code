@@ -3858,26 +3858,11 @@ export default function App() {
                       onFileDirtyChange={onFileDirtyChange}
                       onFileErrorCountChange={onFileErrorCountChange}
                       onRatio={onRatio}
-                      onCwdChange={onCwdChange}
-                      onBranchChange={onBranchChange}
-                      onModelChange={onModelChange}
-                      onModelSettingsChange={onModelSettingsChange}
-                      onRuntimeModeChange={onRuntimeModeChange}
-                      onThreadTypeChange={onThreadTypeChange}
-                      onSubmit={onSubmit}
-                      onStop={onStop}
-                      onInboxCardDismiss={onInboxCardDismiss}
-                      onNoteCardDismiss={onNoteCardDismiss}
-                      onHandoffCardDismiss={onHandoffCardDismiss}
-                      onApproval={onApproval}
                       onOpenFile={onOpenFile}
                       onOpenDiff={onOpenDiff}
                       onShowSourceControl={onToggleChanges}
                       onOpenSession={onOpenSessionById}
-                      onSecondOpinion={onSecondOpinion}
-                      onHandoff={onHandoff}
                       onMovePane={onMovePane}
-                      onNewTerminal={onNewTerminalInSession}
                       onTerminalMetaChange={onTerminalMetaChange}
                     />
                   </div>

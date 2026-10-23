@@ -29,6 +29,7 @@ vi.mock("../lib/notes", () => ({ createNote: () => {}, noteTitle: () => "" }));
 vi.mock("../lib/settings", () => ({ loadNotesEnabled: () => true, subscribeNotesEnabled: () => () => {} }));
 
 import { SessionPane, loadLineText } from "./SessionPane";
+import { SessionActionsContext } from "./threadChat";
 
 const NOW = 1_000_000;
 
@@ -50,30 +51,34 @@ function session(load: LoadState | undefined, blocks: Session["blocks"] = []): S
 }
 
 const noop = () => {};
+const actions = {
+  onCwdChange: noop,
+  onBranchChange: noop,
+  onModelChange: noop,
+  onModelSettingsChange: noop,
+  onRuntimeModeChange: noop,
+  onThreadTypeChange: noop,
+  onSubmit: noop,
+  onStop: noop,
+  onApproval: noop,
+  onNewTerminal: noop,
+};
 function pane(s: Session) {
   return render(
-    <SessionPane
-      session={s}
-      visible
-      focused
-      inSplit={false}
-      composerFocused={false}
-      recents={[]}
-      onFocus={noop}
-      onClose={noop}
-      onCwdChange={noop}
-      onBranchChange={noop}
-      onModelChange={noop}
-      onModelSettingsChange={noop}
-      onRuntimeModeChange={noop}
-      onThreadTypeChange={noop}
-      onSubmit={noop}
-      onStop={noop}
-      onApproval={noop}
-      onOpenFile={noop}
-      onOpenDiff={noop}
-      onNewTerminal={noop}
-    />,
+    <SessionActionsContext.Provider value={actions}>
+      <SessionPane
+        session={s}
+        visible
+        focused
+        inSplit={false}
+        composerFocused={false}
+        recents={[]}
+        onFocus={noop}
+        onClose={noop}
+        onOpenFile={noop}
+        onOpenDiff={noop}
+      />
+    </SessionActionsContext.Provider>,
   );
 }
 

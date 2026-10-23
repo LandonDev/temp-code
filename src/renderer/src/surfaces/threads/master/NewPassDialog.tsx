@@ -23,7 +23,7 @@ export function NewPassDialog({ sessionId, landed, onClose }: { sessionId: strin
   const body = useRef<HTMLDivElement>(null);
 
   // The panel lands focus on its close button; the caret belongs in the field.
-  const ready = !!session && !!actions;
+  const ready = !!session;
   useEffect(() => {
     if (!ready) return;
     const id = requestAnimationFrame(() => body.current?.querySelector<HTMLElement>("[data-composer-input]")?.focus());
@@ -42,7 +42,7 @@ export function NewPassDialog({ sessionId, landed, onClose }: { sessionId: strin
           <span className={`min-w-0 truncate ${line.tone === "muted" ? "text-content/50" : TONE_CLASS[line.tone]}`}>{line.text}</span>
         </p>
         <div className="px-2.5 pt-3 pb-2.5">
-          {session && actions ? (
+          {session ? (
             <ThreadComposer
               session={session}
               actions={actions}

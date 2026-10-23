@@ -47,9 +47,8 @@ import { WorkingStrip } from "./threads/WorkingStrip";
  * A thread's chat column, wherever it is drawn: the pane (SessionPane), a
  * master board's child pane and its New pass dialog. Every send, model
  * pick and approval goes through App's handlers, which act on the store by
- * session id and so reach the thread's own host; App hands them down as
- * props to the panes and through `SessionActionsContext` to anything a
- * view mounts on its own.
+ * session id and so reach the thread's own host; App hands them to every
+ * chat through `SessionActionsContext`.
  */
 
 /** What a thread's chat asks App to do, keyed by session id. */
@@ -78,9 +77,11 @@ export type SessionActions = {
 
 export const SessionActionsContext = createContext<SessionActions | null>(null);
 
-/** App's handlers, for a view that mounts a thread's chat outside a pane. */
-export function useSessionActions(): SessionActions | null {
-  return useContext(SessionActionsContext);
+/** App's handlers, for the panes and any view that mounts a thread's chat. */
+export function useSessionActions(): SessionActions {
+  const actions = useContext(SessionActionsContext);
+  if (!actions) throw new Error("useSessionActions: no SessionActionsContext above this chat");
+  return actions;
 }
 
 type ThreadComposerProps = {

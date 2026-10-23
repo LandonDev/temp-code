@@ -5,7 +5,6 @@ import {
   memo,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -16,26 +15,15 @@ import { noteActiveSession } from "../lib/appshots";
 import { useFirstPaintReport } from "../lib/firstPaint";
 import { motion, useReducedMotion } from "motion/react";
 import { ENTER } from "../lib/ease";
-import type { ComposerIntent } from "../lib/composerAction";
 import { sessionStore } from "../lib/tcserver/store";
-import type { ApprovalDecision } from "../lib/harness";
 import { looksLikeProject, type RecentProject } from "../lib/recents";
-import {
-  sessionDisplayTitle,
-  type Attachment,
-  type Block,
-  type HarnessId,
-  type LoadState,
-  type RuntimeMode,
-  type Session,
-} from "../lib/session";
-import type { ThreadType } from "../lib/tcserver/types";
+import { sessionDisplayTitle, type LoadState, type Session } from "../lib/session";
 import { diffChunk, threadViewsChunk } from "./chunks";
 import { preloadWhenIdle } from "../lib/lazyChunk";
 import { EmptySession } from "./EmptySession";
 import { SurfaceSkeleton } from "./SurfaceSkeleton";
 import { ThreadView } from "./threads/ThreadView";
-import { useThreadChat, type SessionActions } from "./threadChat";
+import { useSessionActions, useThreadChat } from "./threadChat";
 import * as serverCommands from "../lib/tcserver/commands";
 import { askPreconnect, idleForPreconnect } from "../lib/preconnect";
 import { MOD } from "../lib/platform";
@@ -51,47 +39,10 @@ type Props = {
   hideProjectPicker?: boolean;
   onFocus: (sessionId: string) => void;
   onClose: (sessionId: string) => void;
-  onCwdChange: (sessionId: string, cwd: string) => void;
-  onBranchChange: (sessionId: string) => void;
-  onModelChange: (sessionId: string, harness: HarnessId, model: string) => void;
-  onModelSettingsChange: (
-    sessionId: string,
-    settings: Record<string, string>,
-  ) => void;
-  onRuntimeModeChange: (sessionId: string, mode: RuntimeMode) => void;
-  onThreadTypeChange: (sessionId: string, type: ThreadType) => void;
-  onSubmit: (
-    sessionId: string,
-    text: string,
-    attachments: Attachment[],
-    options?: { newPass?: boolean; intent?: ComposerIntent },
-  ) => void;
-  onStop: (sessionId: string) => void;
-  onInboxCardDismiss?: (sessionId: string) => void;
-  onNoteCardDismiss?: (sessionId: string) => void;
-  onHandoffCardDismiss?: (sessionId: string) => void;
-  onApproval: (
-    sessionId: string,
-    requestId: string | number,
-    decision: ApprovalDecision,
-  ) => void;
   onOpenFile: OpenFileFn;
   onOpenDiff: (path?: string) => void;
   onShowSourceControl?: () => void;
   onOpenSession?: (sessionId: string) => void;
-  onSecondOpinion?: (
-    sessionId: string,
-    harness: HarnessId,
-    turn: Block[],
-    model: string,
-  ) => void;
-  onHandoff?: (
-    sessionId: string,
-    harness: HarnessId,
-    turn: Block[],
-    model: string,
-  ) => void;
-  onNewTerminal: (sessionId: string) => void;
   onPaneDragStart?: (event: ReactPointerEvent<HTMLElement>) => void;
 };
 
@@ -105,65 +56,17 @@ export const SessionPane = memo(function SessionPane({
   hideProjectPicker,
   onFocus,
   onClose,
-  onCwdChange,
-  onBranchChange,
-  onModelChange,
-  onModelSettingsChange,
-  onRuntimeModeChange,
-  onThreadTypeChange,
-  onSubmit,
-  onStop,
-  onInboxCardDismiss,
-  onNoteCardDismiss,
-  onHandoffCardDismiss,
-  onApproval,
   onOpenFile,
   onOpenDiff,
   onShowSourceControl,
   onOpenSession,
-  onSecondOpinion,
-  onHandoff,
-  onNewTerminal,
   onPaneDragStart,
 }: Props) {
   const reduceMotion = useReducedMotion();
   const title = sessionDisplayTitle(session.title, session.harness);
-  const actions = useMemo<SessionActions>(
-    () => ({
-      onSubmit,
-      onStop,
-      onApproval,
-      onCwdChange,
-      onBranchChange,
-      onModelChange,
-      onModelSettingsChange,
-      onRuntimeModeChange,
-      onThreadTypeChange,
-      onNewTerminal,
-      onInboxCardDismiss,
-      onNoteCardDismiss,
-      onHandoffCardDismiss,
-      onSecondOpinion,
-      onHandoff,
-    }),
-    [
-      onSubmit,
-      onStop,
-      onApproval,
-      onCwdChange,
-      onBranchChange,
-      onModelChange,
-      onModelSettingsChange,
-      onRuntimeModeChange,
-      onThreadTypeChange,
-      onNewTerminal,
-      onInboxCardDismiss,
-      onNoteCardDismiss,
-      onHandoffCardDismiss,
-      onSecondOpinion,
-      onHandoff,
-    ],
-  );
+  // App's handlers for every thread's chat, one route for the panes and
+  // the views that mount a chat of their own (threadChat.tsx).
+  const actions = useSessionActions();
 
   useLayoutEffect(() => {
     perfMark("pane-commit", session.id);
@@ -307,7 +210,7 @@ export const SessionPane = memo(function SessionPane({
               composer={dockComposer ? undefined : composerOf()}
               threadType={session.threadType ?? "chat"}
               onThreadTypeChange={
-                session.parentId ? undefined : (type) => onThreadTypeChange(session.id, type)
+                session.parentId ? undefined : (type) => actions.onThreadTypeChange(session.id, type)
               }
             />
           </div>

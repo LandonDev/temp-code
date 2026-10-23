@@ -1,4 +1,3 @@
-import type { ComposerIntent } from "../lib/composerAction";
 import {
   memo,
   useCallback,
@@ -14,7 +13,6 @@ import {
   paneDropFromPoint,
   useExternalPaneDrop,
 } from "../lib/paneDrop";
-import type { ApprovalDecision } from "../lib/harness";
 import { PaneVisibilityContext } from "../hooks/paneVisibility";
 import { useSidebarLayout } from "../hooks/useSidebarLayout";
 import {
@@ -34,15 +32,8 @@ import { useEditors } from "../stores/editors";
 import { useFocus } from "../stores/focus";
 import { useProject } from "../stores/project";
 import { useWorkspaceTabs } from "../stores/workspace";
-import type {
-  Attachment,
-  Block,
-  HarnessId,
-  RuntimeMode,
-  Session,
-} from "../lib/session";
+import type { Session } from "../lib/session";
 import { sessionStore, useSession } from "../lib/tcserver/store";
-import type { ThreadType } from "../lib/tcserver/types";
 import { FilePane } from "./FilePane";
 import { holdWhileHidden, paneTreePropsEqual } from "./paneTreeProps";
 import { SessionPane } from "./SessionPane";
@@ -58,48 +49,11 @@ type Props = {
   onFileDirtyChange: (fileId: string, dirty: boolean) => void;
   onFileErrorCountChange: (fileId: string, count: number) => void;
   onRatio: (tabId: string, splitId: string, index: number, ratio: number) => void;
-  onCwdChange: (sessionId: string, cwd: string) => void;
-  onBranchChange: (sessionId: string) => void;
-  onModelChange: (sessionId: string, harness: HarnessId, model: string) => void;
-  onModelSettingsChange: (
-    sessionId: string,
-    settings: Record<string, string>,
-  ) => void;
-  onRuntimeModeChange: (sessionId: string, mode: RuntimeMode) => void;
-  onThreadTypeChange: (sessionId: string, type: ThreadType) => void;
-  onSubmit: (
-    sessionId: string,
-    text: string,
-    attachments: Attachment[],
-    options?: { newPass?: boolean; intent?: ComposerIntent },
-  ) => void;
-  onStop: (sessionId: string) => void;
-  onInboxCardDismiss?: (sessionId: string) => void;
-  onNoteCardDismiss?: (sessionId: string) => void;
-  onHandoffCardDismiss?: (sessionId: string) => void;
-  onApproval: (
-    sessionId: string,
-    requestId: string | number,
-    decision: ApprovalDecision,
-  ) => void;
   onOpenFile: OpenFileFn;
   onOpenDiff: (path?: string) => void;
   onShowSourceControl?: () => void;
   onOpenSession?: (sessionId: string) => void;
-  onSecondOpinion?: (
-    sessionId: string,
-    harness: HarnessId,
-    turn: Block[],
-    model: string,
-  ) => void;
-  onHandoff?: (
-    sessionId: string,
-    harness: HarnessId,
-    turn: Block[],
-    model: string,
-  ) => void;
   onMovePane: (fromId: string, toId: string, edge: PaneEdge) => void;
-  onNewTerminal: (sessionId: string) => void;
   onTerminalMetaChange?: (fileId: string, patch: TerminalMetaPatch) => void;
 };
 
@@ -169,26 +123,11 @@ function PaneTreeComponent({
   onFileDirtyChange,
   onFileErrorCountChange,
   onRatio,
-  onCwdChange,
-  onBranchChange,
-  onModelChange,
-  onModelSettingsChange,
-  onRuntimeModeChange,
-  onThreadTypeChange,
-  onSubmit,
-  onStop,
-  onInboxCardDismiss,
-  onNoteCardDismiss,
-  onHandoffCardDismiss,
-  onApproval,
   onOpenFile,
   onOpenDiff,
   onShowSourceControl,
   onOpenSession,
-  onSecondOpinion,
-  onHandoff,
   onMovePane,
-  onNewTerminal,
   onTerminalMetaChange,
 }: Props) {
   // The tab record and the editors' state come off the stores, so App's
@@ -373,25 +312,10 @@ function PaneTreeComponent({
                 hideProjectPicker={hideProjectPicker}
                 onFocus={onFocus}
                 onClose={onClose}
-                onCwdChange={onCwdChange}
-                onBranchChange={onBranchChange}
-                onModelChange={onModelChange}
-                onModelSettingsChange={onModelSettingsChange}
-                onRuntimeModeChange={onRuntimeModeChange}
-                onThreadTypeChange={onThreadTypeChange}
-                onSubmit={onSubmit}
-                onStop={onStop}
-                onInboxCardDismiss={onInboxCardDismiss}
-                onNoteCardDismiss={onNoteCardDismiss}
-                onHandoffCardDismiss={onHandoffCardDismiss}
-                onApproval={onApproval}
                 onOpenFile={onOpenFile}
                 onOpenDiff={onOpenDiff}
                 onShowSourceControl={onShowSourceControl}
                 onOpenSession={onOpenSession}
-                onSecondOpinion={onSecondOpinion}
-                onHandoff={onHandoff}
-                onNewTerminal={onNewTerminal}
                 onPaneDragStart={onPaneDragStart}
               />
             )}

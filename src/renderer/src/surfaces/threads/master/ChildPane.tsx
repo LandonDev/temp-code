@@ -58,7 +58,7 @@ export function ChildPane({
     onBack();
   };
 
-  if (!meta || !session || !actions || meta.environmentId !== environmentId) return null;
+  if (!meta || !session || meta.environmentId !== environmentId) return null;
 
   return (
     <div ref={paneRef} tabIndex={-1} onKeyDown={onKey} className="flex min-h-0 min-w-0 flex-1 flex-col outline-none" data-child-pane={sessionId} data-child-host={environmentId}>
