@@ -1,5 +1,5 @@
 {
-  "n": 297,
-  "notes": "Thread moves: an empty or unsent thread moves instantly and a moved thread lands in its linked project; dev servers the agent opened are listed with links and logs, several run at once, consoles in the terminal dock; orchestration rules live on the box and unlisted models are off; the sidebar houses a master's batch with no unread inside it; master board rows list their live subagents; Cmd − zooms out again; opening a box thread takes one round trip and the last six shown switch back instantly",
-  "ts": 1792717363079
+  "n": 298,
+  "notes": "Dev servers an agent starts in the background are found (a host-wide sweep credits them to their thread) and each opens its console in the terminal dock on its own, once, without taking focus; a stopped one's tab ends with Exited",
+  "ts": 1792721804454
 }
