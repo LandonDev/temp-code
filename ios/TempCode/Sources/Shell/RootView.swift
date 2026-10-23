@@ -102,14 +102,16 @@ struct RootView: View {
             homePath.append(route)
             router.pending = nil
         }
-        .onOpenURL { url in
-            if let target = PushTarget(url: url) {
-                router.open(target)
-            } else if url.host == "home" {
-                // A group Live Activity's card: Home, where every thread it lists is.
-                tab = .home
-                homePath = NavigationPath()
-            }
+        .onOpenURL(perform: open)
+    }
+
+    /// A notification's or Live Activity's link: the thread it names, or Home for a group activity's card.
+    private func open(_ url: URL) {
+        if let target = PushTarget(url: url) {
+            router.open(target)
+        } else if url.host == "home" {
+            tab = .home
+            homePath = NavigationPath()
         }
     }
 
