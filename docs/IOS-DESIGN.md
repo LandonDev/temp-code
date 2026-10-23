@@ -709,9 +709,10 @@ the package's `ToolPhrase` (tested). Row kinds and their mobile form:
   bytes come from the host's `/asset/page/<sid>/<pid>.html` with the key,
   one copy per launch for the row and the screen (`HtmlPages`). Tap (the
   pressed dim, no scale) pushes it full screen: the page scrolls under the
-  title on the transcript's 16 pt text edges, links open in Safari, Share hands out `<title>.html`; a spinner
-  while it loads, "Couldn't load the page" with Try Again when it fails;
-  the row's failure is one quiet line naming the page.
+  title on the transcript's 16 pt text edges, links open in Safari, Share
+  hands out `<title>.html`; a spinner while it loads, "Couldn't load the
+  page" with Try Again when it fails; the row's failure is one quiet line
+  naming the page.
 - **Approval** and **question** cards: the only raised surfaces in the
   transcript, hairline border and warning tint at 8 % while undecided, the
   gray step once decided. An approval says what the agent wants in plain
