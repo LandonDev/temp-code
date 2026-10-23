@@ -114,6 +114,7 @@
 		CCE4F6B807350528BF385F86 /* ThreadScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDA46DA4DA2674032B09E9D9 /* ThreadScreen.swift */; };
 		CD231FE7A0DA2FDE505ACF76 /* AddThreadSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AE9B93108E6DEA8082B6475 /* AddThreadSheet.swift */; };
 		CEA16927C6E7A58FC70AC5E5 /* ArchiveBatchSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 985EEA459AFD5430EB39D3AB /* ArchiveBatchSheet.swift */; };
+		CF4256BCDCB08A140819A288 /* ActivityPhaseRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA8381F81776CD2B52BC0687 /* ActivityPhaseRow.swift */; };
 		D03705BD050A5406B1CECBEF /* NeedsYouNotes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E87EC3DF336E9F9C38A9188 /* NeedsYouNotes.swift */; };
 		D05AE2AB15DC533D0C27C491 /* MasterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7535142EC1534693C9291DF9 /* MasterView.swift */; };
 		D50ECD1D4DDDCDAF26C3501D /* SubagentListScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1313199058F50B8FC0E193B /* SubagentListScreen.swift */; };
@@ -282,6 +283,7 @@
 		C6ED639777D36DA63BABC9CD /* TempCodeActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TempCodeActivity.swift; sourceTree = "<group>"; };
 		C7B04777942D936944D56B89 /* ProofTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProofTests.swift; sourceTree = "<group>"; };
 		CA7288D142EB56BF61D77BE3 /* InboxStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxStore.swift; sourceTree = "<group>"; };
+		CA8381F81776CD2B52BC0687 /* ActivityPhaseRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityPhaseRow.swift; sourceTree = "<group>"; };
 		CBB9F435A8B815A14D9C6855 /* Navigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Navigation.swift; sourceTree = "<group>"; };
 		CD04E4D90D38F1E0C5AD715D /* StreamingRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingRow.swift; sourceTree = "<group>"; };
 		CD66D288B479FE8640C9F870 /* SegmentBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SegmentBar.swift; sourceTree = "<group>"; };
@@ -465,6 +467,7 @@
 			children = (
 				EF5C21DE9EDFAD8644D4D3BD /* AccountChip.swift */,
 				5C358254B666145347F305AA /* AccountMenu.swift */,
+				CA8381F81776CD2B52BC0687 /* ActivityPhaseRow.swift */,
 				5205F9177D20AB027FD7DFB0 /* AgentDetailScreen.swift */,
 				728030024F26E8BF8E4FE9CF /* BoardOutcomes.swift */,
 				EB3C0093C73C91C73DE65042 /* BoardStyles.swift */,
@@ -756,6 +759,7 @@
 				E59F34661230DFB6F9AF889E /* AccountMenu.swift in Sources */,
 				223FC5CC35CD814B2FBC0E89 /* ActivityCoordinator.swift in Sources */,
 				30716B542A0CA8C64F072801 /* ActivityGallery.swift in Sources */,
+				CF4256BCDCB08A140819A288 /* ActivityPhaseRow.swift in Sources */,
 				2AD4C0EEE3EDB9E757479616 /* AddEnvironmentSheet.swift in Sources */,
 				CD231FE7A0DA2FDE505ACF76 /* AddThreadSheet.swift in Sources */,
 				9E7F274FE896575C2806AD66 /* AdoptThreadSheet.swift in Sources */,
