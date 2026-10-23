@@ -1,5 +1,5 @@
 {
-  "n": 298,
-  "notes": "Dev servers an agent starts in the background are found (a host-wide sweep credits them to their thread) and each opens its console in the terminal dock on its own, once, without taking focus; a stopped one's tab ends with Exited",
-  "ts": 1792721804454
+  "n": 299,
+  "notes": "Master board: a thread opened from the board has the full composer a tab has, and a right-click on a row or subagent line gives New pass… with the composer in a dialog",
+  "ts": 1792731091502
 }
