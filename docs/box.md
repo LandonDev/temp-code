@@ -1607,6 +1607,40 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
   moves the row to the new pid. Removal (Stop in the panel, or archiving
   the thread with its resources) sends SIGTERM to the pid only while it
   still holds the port, waits 3 s and sends SIGKILL.
+- **The sweep.** Agents mostly start a dev server with a background shell
+  (Claude's `run_in_background`, `&`, nohup): the call returns at once, the
+  output goes to a file and the server is reparented to init, so neither
+  detector above sees it. A third one (src/main/server/portSweep.ts) reads
+  every TCP listener on the host 3 s after a shell call settles and every
+  15 s while any harness runs, and looks only at a port and pid it has not
+  decided yet: with nothing new, a sweep is one `ss` (or `lsof`) and one
+  `ps` and no per-process read. A new listener is credited to a thread by,
+  in order: its ancestry (a harness pid above it); its environment on
+  Linux (the `~t=<thread>` scope in the inherited ANTHROPIC_BASE_URL, else
+  CLAUDE_PID, the harness pid every Claude tool call inherits; both survive
+  the reparenting); the output file on its stdout or stderr that a shell
+  call named (Claude's "Output is being written to: …/tasks/<id>.output",
+  or the command's own `> /tmp/web.log`), which also names the call; and
+  its working directory (or an ancestor's) inside a thread's cwd, the
+  deepest folder first, then a live thread, then the most recently active,
+  only a thread that existed before the process started and was live or
+  active since. Skipped: ports under 1024, database and queue ports (5432,
+  3306, 6379, 27017 and the like), infrastructure by process name
+  (postgres, redis, docker-proxy, sshd, cloudflared, ngrok, electron,
+  claude, codex…), the app's own process, the Dev Server button's runs,
+  anything the harness started within 15 s of itself that no tool call
+  started (an MCP server), and a port bound before any thread worked in its
+  folder. A listener no thread claims is looked at again after 5 minutes.
+  The row's label is the command of the call that named its port, else the
+  server's own top process ("bun run dev"). `bun scripts/port-sweep-dry-
+  run.ts` on the box prints every listener with its verdict and records
+  nothing.
+- **The console.** The rail's Dev tab and the dock read an agent's server's
+  log from the file its process writes (portLog.ts: fd 1 or 2 of the
+  listener or the shell above it; a file Claude already deleted is still
+  read through the fd; else the file the call named; else the call's output
+  in the transcript). When the row leaves the ledger the console ends with
+  "— Exited" and the tab stays.
 - **The forward** (src/shared/contract-ports.ts). The box sends its live
   ports, the ledger's and the Dev Server button's, as one list down every
   registered Mac's link (`{ push: 'ports' }`, again on every change and
@@ -1637,7 +1671,14 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
   Mac (5173 is taken there)"), other harnesses as a `<dev-server>` line
   whispered into the turn once the Mac bound it (src/main/server/
   portTail.ts). A thread can hand that URL to a Mac child or a computer-use
-  run.
+  run. A server that appears for the project on screen (an agent's, or a
+  Dev Server run started elsewhere) opens its console as a tab in the
+  project's terminal dock on its own (`useAutoOpenDevLogs` in
+  lib/devServers.ts, carried by the header's Dev Server button): the dock
+  opens if it is closed, the composer keeps focus, a tab an open dock
+  already shows stays selected, and each server opens once ever (the keys
+  in localStorage `dev-log-opened`), so a tab the person closed stays
+  closed.
 - **The Dev Server button.** The thread header shows "Dev server" when a
   host can serve the thread's project, with a dot while one runs; it opens
   the rail's Dev tab (chrome/rail/DevServerPanel.tsx): the target (a menu
@@ -1665,7 +1706,7 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
   `session.proofShellCall` (`TEMP_CODE_E2E_STATUS=1`: a shell call's rows
   with no harness; the ledger row, the forward, archive kills the server),
   the switch, and the link dropping. Unit tests: threadPortsParse, threadPorts,
-  portTail, devTargets, devRuns, remote/portForward (the stream framing,
+  portSweep (every credit rule and the skip list), portLog, portTail, devTargets, devRuns, remote/portForward (the stream framing,
   backpressure, allocation, the switch, a link drop, a 3 MiB body), and the
   renderer's devPorts, devServers, DevServerPanel and ThreadResourcesDialog.
 - Not built yet: the host-based subdomain proxy behind the cookie, the

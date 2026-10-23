@@ -7,7 +7,8 @@ import { announcedPorts, byPort, descendants, parseLsof, parsePs, parseSs, parse
 
 /**
  * Dev servers a thread starts, filed in the ledger as `port` rows (docs/box.md
- * "Dev servers on the box"). Two detectors, both conservative:
+ * "Dev servers on the box"). Two per-call detectors, both conservative (a
+ * background shell's server, reparented to init, is portSweep.ts's):
  *
  *  - the server's own announcement in a shell call's output ("Local:
  *    http://localhost:5173"), recorded only when something listens on that

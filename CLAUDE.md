@@ -801,10 +801,17 @@ routed to (aliax-core's `forward`). Two listeners:
 - Dev servers on the box reach the Mac's browser over the Mac's peer link.
   A dev server a thread opens is a `port` row on the ledger (pid, the call
   that opened it; src/main/server/threadPorts.ts): the server's own
-  "Local: http://localhost:5173" line with a listener behind it, or a
-  listener new under the harness tree (`ss`/`lsof` + `ps`) while a shell call
-  runs; it leaves the ledger when nothing listens, and removal SIGTERMs then
-  SIGKILLs the pid. The box sends its live ports (the ledger's and the Dev
+  "Local: http://localhost:5173" line with a listener behind it, a listener
+  new under the harness tree (`ss`/`lsof` + `ps`) while a shell call runs,
+  or the host-wide sweep (portSweep.ts: 3 s after a shell call settles and
+  every 15 s while a harness runs, only listeners not yet decided) that
+  credits a background shell's server, reparented to init, by ancestry, the
+  `~t=` scope or CLAUDE_PID in its environment, the output file a call
+  named, or the thread folder holding its cwd, and skips databases,
+  infrastructure, MCP servers and ports bound before a thread worked there
+  (`bun scripts/port-sweep-dry-run.ts` prints its verdicts live); it leaves
+  the ledger when nothing listens, and removal SIGTERMs then SIGKILLs the
+  pid. The box sends its live ports (the ledger's and the Dev
   Server button's runs) to every registered Mac (`push: 'ports'`,
   remote/portForward.ts); the Mac binds 127.0.0.1 on the same number, else
   the next free one above (its own dev instance keeps 5173), answers
@@ -822,8 +829,11 @@ routed to (aliax-core's `forward`). Two listeners:
   and in workspaces with the lockfile's runner, Expo apps, Xcode/XcodeGen
   apps as Mac-only), runs one in its own process group (devRuns.ts,
   `devServer.*`, `dev-run` pushes) on this Mac or the box's copy of the
-  project, console streamed, Stop/Restart. docs/box.md "Dev servers on the
-  box"; proof `bun run script:e2e-port-forward` (seam
+  project, console streamed, Stop/Restart. A server that appears for the
+  project on screen (an agent's or a run) opens its console in the terminal
+  dock on its own, once ever, without taking focus or an open dock's
+  selected tab (`useAutoOpenDevLogs`, lib/devServers.ts); a stopped one's
+  tab stays with "— Exited". docs/box.md "Dev servers on the box"; proof `bun run script:e2e-port-forward` (seam
   `session.proofShellCall`, `TEMP_CODE_E2E_STATUS=1`). The subdomain proxy
   for the phone is not built yet.
 - Pause and Stop reach the Mac
