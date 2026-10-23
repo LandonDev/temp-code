@@ -84,6 +84,19 @@ the phone's rules in docs/IOS-DESIGN.md "Performance".
   back is history. The fade is 150 ms of opacity, off under reduced
   motion. Jumps glide the scroll offset; under reduced motion they land.
 
+## A restored tab is the store's thread
+
+At boot the layout restores its tabs before any remote socket is open. The
+active pane's first load fails then (`startLoad` rejects "not connected");
+`loadSession` still answers the store's session (hydrated from the launch
+mirror, with its `isMaster`, `status` and the rest) and the pane retries the
+load when the socket opens. A layout stub (`newSession`, which sets no
+`status`) handed to `sessionStore.mutate` for a thread the host has named
+takes the meta's fields instead of replacing the view: later metas patch
+only what changed, so a stub that once overwrote a listed master's view
+left it without `isMaster` and the pane drew a plain chat with no board
+(1.0.299–1.0.301, the Main v2 master after every update).
+
 ## Opening a thread on another host
 
 The time from a click to rows on screen for a box thread is round trips,

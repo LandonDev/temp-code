@@ -200,6 +200,24 @@ describe("sessionFromMeta / applyMeta", () => {
     expect(sessionStore.get(draft.id)?.planPath).toBe("/repo/.temp-code/plan-x.md");
   });
 
+  it("a layout stub for a thread the host has listed takes the meta's fields, so a restored master keeps its board", async () => {
+    link.metas = [wireMeta({ id: "m2", title: "Master", isMaster: true, status: "watching", threadType: "chat" })];
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    expect(sessionStore.get("m2")?.isMaster).toBe(true);
+    // The active tab's load failed at boot (the socket was not open), so the
+    // layout restored the pane on a stub: the view stays the host's thread.
+    const stub = { ...newSession("local", "claude", "/srv/work"), id: "m2", title: "Master" };
+    sessionStore.mutate([stub]);
+    const view = sessionStore.get("m2");
+    expect(view?.isMaster).toBe(true);
+    expect(view?.status).toBe("watching");
+    expect(view?.threadType).toBe("chat");
+    // A later meta that changes nothing else never has to re-send the flag.
+    link.push({ push: "session", session: wireMeta({ id: "m2", title: "Master", isMaster: true, status: "watching", threadType: "chat", updatedAt: 10 }) } as ServerPush);
+    expect(sessionStore.get("m2")?.isMaster).toBe(true);
+  });
+
   it("a layout stub follows the host whose list adopts it", async () => {
     sessionStore.attach(link);
     await sessionStore.ready();

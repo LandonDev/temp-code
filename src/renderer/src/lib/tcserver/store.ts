@@ -1949,7 +1949,12 @@ class SessionStore {
         if (load.phase === "loading") this.armSlow(draft);
       } else if (entry.session !== session) {
         // The load phase is the store's: an updater never sets it.
-        entry.session = session.load === entry.load ? session : { ...session, load: entry.load };
+        const view = session.load === entry.load ? session : { ...session, load: entry.load };
+        // A layout stub (born of newSession, so it carries no status) for a
+        // thread the host has named takes the meta's fields: the stub
+        // overwriting a listed master's view once hid its board, since
+        // later metas patch only what changed.
+        entry.session = entry.meta && view.status === undefined ? applyMeta(view, null, entry.meta) : view;
       }
     }
     this.openOrder = order;

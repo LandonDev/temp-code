@@ -1242,7 +1242,15 @@ proof and the sizing rules; the pieces, by name:
   lib/connection/transport.ts and link.ts); empty is the host's word
   (`load.empty`: loaded with no persisted row), never a page that folded to
   nothing, and a fetch in flight is joined only by the owner it was made
-  for (docs/TRANSCRIPT.md "A fetch belongs to its owner").
+  for (docs/TRANSCRIPT.md "A fetch belongs to its owner"). A tab restored
+  at boot is the store's thread, never a layout stub's: `loadSession`
+  answers the store's session when the active pane's first load fails
+  (the host's socket not open yet) and the pane retries, and
+  `sessionStore.mutate` gives a stub (born of `newSession`, no `status`)
+  for a thread the host has named the meta's fields, so a restored master
+  keeps `isMaster` and opens on its board (store.test.ts "a layout stub
+  for a thread the host has listed", sessionStore.test.ts "loadSession
+  when the host is not connected yet").
 - `batch.board { masterId }` (read): the master board's one answer;
   "Master threads" above.
 - The gateway's byte path runs in a utility process ("Provider traffic"

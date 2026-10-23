@@ -214,7 +214,9 @@ export async function loadSession(sessionId: string): Promise<Session | null> {
   await sessionStore.ready();
   if (!sessionStore.get(sessionId)) await sessionStore.ensureMeta(sessionId);
   if (sessionStore.isDraft(sessionId)) return sessionStore.get(sessionId) ?? null;
-  await sessionStore.ensureLoaded(sessionId, "load");
+  // A load that fails (the host's socket not open yet at boot) is the pane's
+  // to retry; the thread is still the store's, never a layout stub's.
+  await sessionStore.ensureLoaded(sessionId, "load").catch(() => undefined);
   return sessionStore.get(sessionId) ?? null;
 }
 

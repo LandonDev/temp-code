@@ -175,6 +175,20 @@ describe("loadSession", () => {
   });
 });
 
+describe("loadSession when the host is not connected yet", () => {
+  it("answers the store's thread, flags and all, when the load fails (the pane retries)", async () => {
+    link.metas = [wireMeta({ id: "m", title: "Master", isMaster: true, status: "watching" })];
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    link.connected = false;
+    const session = await loadSession("m");
+    expect(session?.id).toBe("m");
+    expect(session?.isMaster).toBe(true);
+    expect(session?.status).toBe("watching");
+    expect(session?.load?.phase).toBe("loading");
+  });
+});
+
 describe("openableSession", () => {
   const rows = (id: string): EventRow[] => [{ sessionId: id, seq: 1, ts: 1, event: { type: "user-text", text: "hi" } }];
 
