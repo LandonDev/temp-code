@@ -61,15 +61,10 @@ struct RootView: View {
         .fleetSwitchHost()
         .onChange(of: model.registry.ordered.map { $0.bootResume }) { BootResumeNotes.shared.observe(model.registry.ordered) }
         .environment(projectSettings)
-        .environment(newThread)
-        .sheet(item: $newThread.target) { target in
-            NewThreadSheet(client: target.client, workspace: target.workspace, project: target.project) { created in
-                tab = .home
-                homePath.append(Route.thread(environmentId: target.client.environment.id, sessionId: created.id, seq: nil))
-            }
-        }
-        // Return flow (thread 14): the sheet survives a kill; HomeView reopens it.
-        .onChange(of: newThread.target?.id) { NavigationMemory.rememberSheet(newThread.target.map { .newThread(environmentId: $0.client.environment.id, workspaceId: $0.workspace.id, projectId: $0.project?.id) }) }
+        .modifier(NewThreadSheetHost(presenter: newThread) { created in
+            tab = .home
+            homePath.append(created)
+        })
         .sheet(item: $projectSettings.target) { target in
             if let client = model.registry.client(target.home.environmentId) {
                 ProjectSettingsSheet(client: client, target: target)
@@ -231,5 +226,26 @@ struct RootView: View {
         default:
             break
         }
+    }
+}
+
+/// The new-thread sheet over every tab, opened from any screen of the Home
+/// stack through `NewThreadPresenter`; a created thread opens on Home.
+private struct NewThreadSheetHost: ViewModifier {
+    @Bindable var presenter: NewThreadPresenter
+    let open: (Route) -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .environment(presenter)
+            .sheet(item: $presenter.target) { target in
+                NewThreadSheet(client: target.client, workspace: target.workspace, project: target.project) { created in
+                    open(Route.thread(environmentId: target.client.environment.id, sessionId: created.id, seq: nil))
+                }
+            }
+            // Return flow (thread 14): the sheet survives a kill; HomeView reopens it.
+            .onChange(of: presenter.target?.id) {
+                NavigationMemory.rememberSheet(presenter.target.map { .newThread(environmentId: $0.client.environment.id, workspaceId: $0.workspace.id, projectId: $0.project?.id) })
+            }
     }
 }
