@@ -13,6 +13,8 @@ import { useProjects, useWorkspaces } from "../../lib/tcserver/workspaces";
 import { useMetaById } from "../../lib/threads/agents";
 import { PaneHeader } from "./bits";
 import { chatOf } from "./chatSlots";
+import { FleetPulseLine } from "./fleet/FleetPanel";
+import { FleetSlot } from "./FleetSlot";
 import { AddThreadDialog } from "./master/AddThreadDialog";
 import { AdoptThreadDialog } from "./master/AdoptThreadDialog";
 import { ArchiveBatchDialog } from "./master/ArchiveBatchDialog";
@@ -54,6 +56,10 @@ import type { ThreadViewProps } from "./ThreadView";
  * sections as their own header rows, each row memoized on its own data.
  * Its first complete paint is reported once per open as
  * `board-paint master=<id> n=<rows> ms=<since mount>` (stall.report).
+ *
+ * The master's own subagents (spawn_agent, not its batch) sit where every
+ * thread's do: the fleet panel at the right edge and the pulse line above
+ * the composer. They are never board rows.
  */
 
 const QUIET_ICON =
@@ -185,8 +191,24 @@ export function MasterView(props: ThreadViewProps) {
   };
   const open = useCallback((id: string, focus?: boolean) => openRef.current(id, focus), []);
 
+  const fleet = (
+    <FleetSlot
+      sessionId={session.id}
+      parentCwd={session.cwd}
+      onOpenSession={props.onOpenSession}
+      onOpenFile={props.onOpenFile}
+      onOpenDiff={props.onOpenDiff}
+    />
+  );
+  const chatOpts = { topSlot: <FleetPulseLine sessionId={session.id} /> };
+
   if (!hasBoard) {
-    return <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">{chatOf(props)}</div>;
+    return (
+      <div className="relative flex min-h-0 flex-1">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col [contain:layout_style]">{chatOf(props, chatOpts)}</div>
+        {fleet}
+      </div>
+    );
   }
 
   const byHost = (list: readonly { meta: SessionMeta }[], action: "pause" | "resume") => {
@@ -307,7 +329,7 @@ export function MasterView(props: ThreadViewProps) {
           <ChevronRight className="size-3.5" strokeWidth={1.75} />
         </button>
       </PaneHeader>
-      {chatOf(props)}
+      {chatOf(props, chatOpts)}
     </>
   );
 
@@ -322,6 +344,7 @@ export function MasterView(props: ThreadViewProps) {
         status={meta?.status ?? session.status}
         edgeTitle="Show conversation"
       />
+      {fleet}
       {menu ? (
         <ExplorerMenu
           x={menu.x}
