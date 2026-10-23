@@ -65,7 +65,8 @@ export function spawnCatalog(catalog: Partial<Record<string, ProviderInfo>>): Ru
   return out;
 }
 
-/** A policy back at its default (approved, unbounded) leaves the record. */
+/** A policy back at its default (off, unbounded) leaves the record: a model
+ *  the rules do not mention is off for subagents. */
 export function patchModelPolicy(
   rules: OrchestrationRules,
   provider: ProviderId,
@@ -73,10 +74,10 @@ export function patchModelPolicy(
   patch: Partial<ModelPolicy>,
 ): OrchestrationRules {
   const key = modelKey(provider, modelId);
-  const prev: ModelPolicy = rules.models[key] ?? { approved: true };
+  const prev: ModelPolicy = rules.models[key] ?? { approved: false };
   const next: ModelPolicy = { ...prev, ...patch };
   const models = { ...rules.models };
-  if (next.approved === true && !next.minReasoning && !next.maxReasoning) delete models[key];
+  if (next.approved === false && !next.minReasoning && !next.maxReasoning) delete models[key];
   else models[key] = next;
   return { ...rules, models };
 }

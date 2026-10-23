@@ -155,11 +155,13 @@ public enum PreambleRow {
 // MARK: - The orchestration rules' model policy (src/shared/rules.ts)
 
 /// `modelApproved` over the generated rules: the policy under
-/// "provider:model"; absent is approved; `orchestrators` approves only an
-/// orchestrator role; anything else the host may say is not approved.
+/// "provider:model"; absent is off (rules not loaded yet approve all);
+/// `orchestrators` approves only an orchestrator role; anything else the
+/// host may say is not approved.
 public enum RulesPolicy {
     public static func approves(_ rules: OrchestrationRules?, provider: ProviderId, model: String, orchestrator: Bool = false) -> Bool {
-        guard let policy = rules?.models["\(provider.rawValue):\(model)"] else { return true }
+        guard let rules else { return true }
+        guard let policy = rules.models["\(provider.rawValue):\(model)"] else { return false }
         switch policy.approved {
         case .bool(let approved): return approved
         case .string(let word): return word == "orchestrators" && orchestrator

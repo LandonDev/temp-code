@@ -499,7 +499,7 @@ export class MacBridge {
       reason:
         max === 0
           ? `the Mac takes no threads from this host (threads 0 in the Mac's Settings → Remote access → Mac bridge)`
-          : `the Mac already runs ${live} ${live === 1 ? 'thread' : 'threads'} from this host, its cap of ${max}: wait for one to finish, or raise "threads" in the Mac's Settings → Remote access → Mac bridge`
+          : `the Mac already runs ${live} ${live === 1 ? 'thread' : 'threads'} from this host, its cap of ${max}: wait for one to finish and retry (never start the work on the box instead), or ask the person to raise "threads" in the Mac's Settings → Remote access → Mac bridge`
     }
   }
 

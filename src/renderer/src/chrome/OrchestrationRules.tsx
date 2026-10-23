@@ -336,7 +336,7 @@ function ModelRow({
 }) {
   // Everyone / Orchestrators only / Off (CLAUDE.md "Master threads"): an
   // orchestrators-only model keeps its effort bounds, it is approved for someone.
-  const policy = rules.models[modelKey(provider, model.id)]?.approved ?? true;
+  const policy = rules.models[modelKey(provider, model.id)]?.approved ?? false;
   const approved = policy !== false;
   const range = approvedLadder(rules, provider, model.id);
   const ladder = model.reasoning;

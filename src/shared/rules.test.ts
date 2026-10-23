@@ -59,12 +59,12 @@ describe('model policy by role', () => {
     expect(modelApproved(DEFAULT_RULES, 'codex', 'gpt-6.1-sol', 'thread')).toBe(true)
   })
 
-  it('a saved rules object keeps its own model map; the defaults never overlay it', () => {
+  it('a saved rules object keeps its own model map; a model it does not mention is off', () => {
     const saved = parseRules(JSON.stringify({ ...DEFAULT_RULES, models: {} }))!
     expect(saved.models).toEqual({})
-    expect(modelApproved(saved, 'claude', 'claude-fable-5-1', 'thread')).toBe(true)
+    expect(modelApproved(saved, 'claude', 'claude-fable-5-1', 'orchestrator')).toBe(false)
     const own = parseRules(JSON.stringify({ ...DEFAULT_RULES, models: { 'claude:claude-fable-5-1': { approved: true } } }))!
     expect(modelApproved(own, 'claude', 'claude-fable-5-1', 'thread')).toBe(true)
-    expect(modelApproved(own, 'claude', 'claude-fable-5', 'thread')).toBe(true)
+    expect(modelApproved(own, 'claude', 'claude-fable-5', 'thread')).toBe(false)
   })
 })

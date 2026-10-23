@@ -42,6 +42,7 @@ import { DeployTrigger, Publisher, handleHost, type HostJobs } from './hostJobs'
 import { MemorySync, handleMemory } from './remote/memorySync'
 import { ProjectLinker } from './remote/projectLinks'
 import { ProjectSettingsSync } from './remote/projectSettingsSync'
+import { RulesSync } from './remote/rulesSync'
 import { SessionMover, handleSessionMove } from './remote/sessionMover'
 import { claudeConfigDir, codexHomeDir } from './sessionMove'
 import { PeerCalls, handlePeerRequest, type LinkRequest } from './remote/peerCalls'
@@ -540,6 +541,7 @@ export async function startServer(
         void memorySync.syncWith(id, 'link-up')
         projectLinker.linkUp(id)
         projectSettings.linkUp(id)
+        rulesSync.linkUp(id)
         void sessionMover.settleWith(id)
         relayServer.linkUp(id)
         void macBridge.linkUp(id)
@@ -555,6 +557,7 @@ export async function startServer(
       onPush: (from, push) => {
         projectLinker.onPeerPush(from, push)
         projectSettings.onPeerPush(from, push)
+        rulesSync.onPeerPush(from, push)
         // A linked host's dev servers, forwarded here (remote/macPorts.ts).
         if (push.push === 'ports') return void macPorts.onPorts(from, push.ports)
         if (push.push === 'ports.data') return macPorts.onData(from, push.streamId, push.seq, push.data)
@@ -610,6 +613,10 @@ export async function startServer(
   // sends every settings write of such a project there.
   const projectSettings = new ProjectSettingsSync({ environmentId, platform: hostPlatform(), registry, store, peers })
   projectSettings.start()
+  // Orchestration rules and thread defaults: one copy, on the same home
+  // (remote/rulesSync.ts).
+  const rulesSync = new RulesSync({ environmentId, platform: hostPlatform(), registry, store, peers })
+  rulesSync.start()
   // Moving one thread between this host and a peer (remote/sessionMover.ts).
   const sessionMover = new SessionMover({
     host: {
@@ -1959,7 +1966,8 @@ export async function startServer(
             break
           }
           case 'rules.set':
-            registry.setOrchestrationRules(req.params.workspaceId, req.params.rules)
+            if (!(await rulesSync.forward(req.method, req.params.workspaceId, req.params.rules)))
+              registry.setOrchestrationRules(req.params.workspaceId, req.params.rules)
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'defaults.get': {
@@ -1978,7 +1986,8 @@ export async function startServer(
             break
           }
           case 'defaults.set':
-            registry.setThreadDefaults(req.params.workspaceId, req.params.defaults)
+            if (!(await rulesSync.forward(req.method, req.params.workspaceId, req.params.defaults)))
+              registry.setThreadDefaults(req.params.workspaceId, req.params.defaults)
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'plans.get': {
@@ -2872,6 +2881,7 @@ export async function startServer(
       memorySync.close()
       projectLinker.close()
       projectSettings.close()
+      rulesSync.close()
       uploads.close()
       sessionMover.close()
       relayServer.close()

@@ -1772,8 +1772,15 @@ this is the short one.
 - **A thread is the person's choice; the model policy is for subagents.**
   The orchestration rules (src/shared/rules.ts `modelApproved`,
   `approvedDefault`, `fitReasoning`; Settings → Orchestration's Everyone /
-  Orchestrators only / Off, Fable orchestrators-only by default) govern
-  `spawn_agent` alone. `app_start_thread`, the cross-host `thread.start`
+  Orchestrators only / Off, Fable orchestrators-only by default, and a
+  model the saved rules do not list is Off: a copy saved before that rule
+  is written out once with every catalog model it lacked as Everyone,
+  `explicitModels`) govern `spawn_agent` alone. The rules and the thread
+  defaults have one copy, on the box: `remote/rulesSync.ts` on the Mac
+  seeds each shared scope (global, and every workspace by `linkId`) from the
+  Mac once, then follows the box on link-up, its `workspaces` push and
+  every 5 minutes, and sends `rules.set`/`defaults.set` there (refused while
+  it is offline). `app_start_thread`, the cross-host `thread.start`
   and `session.create` check the catalog only: the model exists for some
   provider, the effort is on its ladder (else refused, never clamped),
   `context1m` where offered. `spawn_agent`'s refusal of an

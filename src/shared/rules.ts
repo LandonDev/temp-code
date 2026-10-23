@@ -13,7 +13,8 @@ import { CATALOG, modelInfo, type ProviderId, type Reasoning } from './catalog'
 const ReasoningEnum = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
 
 /** Per-model spawn policy, keyed `provider:modelId` in rules.models.
- *  A missing entry means approved with the model's full effort ladder.
+ *  A missing entry means OFF: a model the person never allowed is not
+ *  spawned (a new catalog model waits for them to turn it on).
  *  `approved`: `true` for every thread, `'orchestrators'` only when an
  *  orchestration thread or an orchestrator agent (a master, from wave 1)
  *  spawns, `false` for none (CLAUDE.md "Master threads"). */
@@ -56,7 +57,7 @@ export const OrchestrationRulesSchema = z.object({
     /** total subagents per thread; 0 = unlimited (enforced in spawn_agent) */
     maxAgents: z.number().int().min(0).max(200).default(0)
   }),
-  /** subagent model policies by `provider:modelId`; {} = all approved */
+  /** subagent model policies by `provider:modelId`; {} = none approved */
   models: z.record(z.string(), ModelPolicySchema).default({}),
   routing: z.array(RoutingRuleSchema)
 })
@@ -78,14 +79,17 @@ export const DEFAULT_RULES: OrchestrationRules = {
     maxParallel: 4,
     maxAgents: 0
   },
-  // Fable is for orchestrators and masters only (CLAUDE.md "Master
-  // threads"): a chat or implementation thread may not start or spawn it.
-  // A saved rules object replaces this whole map (parseRules), so a
-  // database with its own entries keeps them.
-  models: {
-    'claude:claude-fable-5-1': { approved: 'orchestrators' },
-    'claude:claude-fable-5': { approved: 'orchestrators' }
-  },
+  // Every catalog model approved, Fable for orchestrators and masters only
+  // (CLAUDE.md "Master threads"). A saved rules object replaces this whole
+  // map (parseRules), so a database with its own entries keeps them.
+  models: Object.fromEntries(
+    (Object.keys(CATALOG) as ProviderId[]).flatMap((p) =>
+      CATALOG[p].models.map((m): [string, ModelPolicy] => [
+        `${p}:${m.id}`,
+        { approved: p === 'claude' && m.id.startsWith('claude-fable') ? 'orchestrators' : true }
+      ])
+    )
+  ),
   routing: [
     {
       id: 'trivial',
@@ -224,13 +228,27 @@ export function policyRoleOf(
     : 'thread'
 }
 
+/**
+ * Rules saved while a missing entry meant approved: every catalog model
+ * without an entry written out as approved, so the switch to "missing = off"
+ * changes nothing the person saw. Run once per stored copy
+ * (SessionRegistry.getOrchestrationRules).
+ */
+export function explicitModels(rules: OrchestrationRules): OrchestrationRules {
+  const models = { ...rules.models }
+  for (const p of Object.keys(CATALOG) as ProviderId[]) {
+    for (const m of CATALOG[p].models) models[modelKey(p, m.id)] ??= { approved: true }
+  }
+  return { ...rules, models }
+}
+
 export function modelApproved(
   rules: OrchestrationRules,
   provider: ProviderId,
   modelId: string,
   role: PolicyRole = 'thread'
 ): boolean {
-  const approved = rules.models[modelKey(provider, modelId)]?.approved ?? true
+  const approved = rules.models[modelKey(provider, modelId)]?.approved ?? false
   if (approved === 'orchestrators') return role === 'orchestrator'
   return approved
 }

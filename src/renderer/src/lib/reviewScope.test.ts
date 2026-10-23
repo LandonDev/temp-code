@@ -28,9 +28,11 @@ describe("review scope", () => {
   it("lists only the models the rules approve, keyed by the id the server stores", () => {
     const all = reviewerModelOptions("claude", "env", undefined);
     expect(all.some((o) => o.value === "claude-haiku-5-5")).toBe(true);
-    const noHaiku = { ...DEFAULT_RULES, models: { "claude:claude-haiku-5-5": { approved: false } } };
+    const noHaiku = { ...DEFAULT_RULES, models: { ...DEFAULT_RULES.models, "claude:claude-haiku-5-5": { approved: false } } };
     const left = reviewerModelOptions("claude", "env", noHaiku);
     expect(left.some((o) => o.value === "claude-haiku-5-5")).toBe(false);
-    expect(left.length).toBe(all.length - 1);
+    expect(left.map((o) => o.value)).toEqual(
+      all.map((o) => o.value).filter((v) => noHaiku.models[`claude:${v}`]?.approved === true),
+    );
   });
 });

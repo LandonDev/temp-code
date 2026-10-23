@@ -333,7 +333,7 @@ export class CrossHostThreads {
     const live = this.liveThreadsOf(envId)
     if (live < max) return { ok: true }
     const name = this.deps.environments().find((e) => e.id === envId)?.name ?? envId
-    return { ok: false, reason: `this host runs ${live} of at most ${max} threads for ${name} already (crossHost.maxThreads.${envId}); wait for one to finish` }
+    return { ok: false, reason: `this host runs ${live} of at most ${max} threads for ${name} already (crossHost.maxThreads.${envId}); wait for one to finish and retry, never start the work on your own host instead` }
   }
 
   private admitted(caller: CrossHostCaller): void {

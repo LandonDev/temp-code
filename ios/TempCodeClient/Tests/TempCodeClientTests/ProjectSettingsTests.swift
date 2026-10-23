@@ -123,14 +123,14 @@ private let plansOff = PlanSettings(autoImplement: false, archiveAfterStart: tru
 }
 
 @Suite struct RulesPolicyTests {
-    @Test func `absent is approved, false is not, orchestrators only for an orchestrator`() {
+    @Test func `absent is off, false is not, orchestrators only for an orchestrator`() {
         let set = rules([
             "claude:claude-fable-5-1": ModelPolicy(approved: .string("orchestrators")),
             "codex:gpt-6.1-sol": ModelPolicy(approved: .bool(false)),
             "claude:claude-sonnet-5-5": ModelPolicy(approved: .bool(true))
         ])
         #expect(RulesPolicy.approves(nil, provider: .claude, model: "anything"))
-        #expect(RulesPolicy.approves(set, provider: .claude, model: "claude-opus-5-5"))
+        #expect(!RulesPolicy.approves(set, provider: .claude, model: "claude-opus-5-5"))
         #expect(RulesPolicy.approves(set, provider: .claude, model: "claude-sonnet-5-5"))
         #expect(!RulesPolicy.approves(set, provider: .codex, model: "gpt-6.1-sol"))
         #expect(!RulesPolicy.approves(set, provider: .claude, model: "claude-fable-5-1"))

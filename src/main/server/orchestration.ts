@@ -1026,7 +1026,7 @@ const spawnSpecShape = {
     )
 }
 /** The host field a single spawn (not a batch entry) and app_start_thread take. */
-export const HOST_PARAM_DESCRIPTION = "Which host runs it: omit for this machine; `mac` for this thread's Mac (or the only Mac linked here), `box` for the one host linked from here, or a host's environment id. Use the Mac for anything that needs Xcode, the iOS simulator, a Mac app, computer use, or files that live on the Mac; use the box for its checkouts and services. The thread runs there as an ordinary thread of that host, and its agent id comes back as `<host>:<id>` so every later call reaches it."
+export const HOST_PARAM_DESCRIPTION = "Which host runs it: omit for this machine; `mac` for this thread's Mac (or the only Mac linked here), `box` for the one host linked from here, or a host's environment id. Use the Mac for anything that needs Xcode, the iOS simulator, a Mac app, computer use, or files that live on the Mac; use the box for its checkouts and services. The thread runs there as an ordinary thread of that host, and its agent id comes back as `<host>:<id>` so every later call reaches it. Work meant for the Mac is a child ON the Mac (`environmentId: \"mac\"`), never a child here that reaches the Mac through mac_* tools. If the Mac refuses at its thread cap, wait for one of its threads to finish and retry; never start the work on this host instead."
 
 /** The description with the hosts reachable right now appended: "Reachable now: mac = Landon Mac (env_…)". */
 export function hostParamDescription(): string {
@@ -1165,6 +1165,11 @@ on the Mac — the agent runs there as an ordinary thread the Mac app shows
 under This Mac, its id comes back as \`<host>:<id>\`, and every supervision
 tool routes by that id. If the link drops mid-wait the result says
 \`linkDown\` with the last state seen; wait again once the Mac is back.
+Work meant for the Mac is \`spawn_agent\` with \`environmentId: "mac"\`:
+the child runs on the Mac as a Mac thread. Never spawn a child here for it
+in the hope it reaches the Mac through mac_* tools. When the Mac refuses at
+its thread cap, wait for one of its threads to finish and retry; do not
+spawn the work on this host instead.
 
 Give each agent a complete, self-contained task prompt — it cannot see this
 conversation. Parallelize independent work; sequence dependent work. A
@@ -1260,7 +1265,9 @@ export const MASTER_MECHANICS = `## You are a master thread
 
 Your batch is the ROOT threads you start with app_start_thread: each one
 its own type, model, effort, context window and host (a thread is the
-person's choice: any catalog model, no model policy), and \`after\` names
+person's choice: any catalog model, no model policy; work meant for the
+Mac is a thread there, \`environmentId: "mac"\`, and a refusal at the
+Mac's thread cap means wait and retry, never start it here), and \`after\` names
 a sibling it waits for. They carry your id, so the supervision tools
 (check_agent, wait_for_agent, send_to_agent, interrupt_agent, answer_agent,
 list_agents) work on them by id; list_agents marks each row \`thread\`

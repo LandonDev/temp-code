@@ -39,7 +39,8 @@ describe("pure helpers", () => {
 
   it("drops a model policy once it is back at its default", () => {
     const denied = patchModelPolicy(DEFAULT_RULES, "claude", "claude-opus-5", { approved: false });
-    expect(denied.models["claude:claude-opus-5"]).toEqual({ approved: false });
+    // Off is the default: the record goes, and absence reads as off.
+    expect(denied.models["claude:claude-opus-5"]).toBeUndefined();
     const bounded = patchModelPolicy(denied, "claude", "claude-opus-5", {
       approved: true,
       maxReasoning: "high",
@@ -51,14 +52,10 @@ describe("pure helpers", () => {
     const orchestrators = patchModelPolicy(DEFAULT_RULES, "claude", "claude-opus-5", { approved: "orchestrators" });
     expect(orchestrators.models["claude:claude-opus-5"]).toEqual({ approved: "orchestrators" });
     expect(patchModelPolicy(orchestrators, "claude", "claude-opus-5", { approved: true }).models).toEqual(DEFAULT_RULES.models);
-    // Fable ships orchestrators-only; Everyone drops its row, and the saved map replaces the defaults whole.
-    expect(DEFAULT_RULES.models).toEqual({
-      "claude:claude-fable-5-1": { approved: "orchestrators" },
-      "claude:claude-fable-5": { approved: "orchestrators" },
-    });
-    expect(patchModelPolicy(DEFAULT_RULES, "claude", "claude-fable-5-1", { approved: true }).models).toEqual({
-      "claude:claude-fable-5": { approved: "orchestrators" },
-    });
+    // The defaults list every catalog model, Fable orchestrators-only; Off drops a row.
+    expect(DEFAULT_RULES.models["claude:claude-fable-5-1"]).toEqual({ approved: "orchestrators" });
+    expect(DEFAULT_RULES.models["claude:claude-sonnet-5-5"]).toEqual({ approved: true });
+    expect(patchModelPolicy(DEFAULT_RULES, "claude", "claude-fable-5-1", { approved: false }).models["claude:claude-fable-5-1"]).toBeUndefined();
   });
 
   it("upserts, removes and reorders routing rules without touching the input", () => {

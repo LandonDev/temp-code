@@ -72,7 +72,7 @@ import {
 } from './git'
 import { gitConfigMtime, githubRepoFromRemote, originRemoteUrl } from './gitRemote'
 import { stopProjectLsp } from './lsp'
-import { parseRules, type OrchestrationRules } from '@shared/rules'
+import { explicitModels, parseRules, type OrchestrationRules } from '@shared/rules'
 import { DEFAULT_THREAD_DEFAULTS, parseDefaults, type ThreadDefaults } from '@shared/defaults'
 import type { PlanSettings } from '@shared/plans'
 import {
@@ -1961,7 +1961,14 @@ export class SessionRegistry {
    *  the global rules). */
   getOrchestrationRules(workspaceId: string | null): OrchestrationRules | null {
     const key = workspaceId ? `orchestration-rules:${workspaceId}` : 'orchestration-rules'
-    return parseRules(this.store.getSetting(key))
+    const rules = parseRules(this.store.getSetting(key))
+    // A copy saved while a missing model meant approved is written out
+    // whole once (`explicitModels`); from then on a missing model is off.
+    if (!rules || this.store.getSetting(`${key}:explicit`)) return rules
+    const upgraded = explicitModels(rules)
+    this.store.setSetting(key, JSON.stringify(upgraded))
+    this.store.setSetting(`${key}:explicit`, '1')
+    return upgraded
   }
 
   /** null clears: global reverts to defaults, an override goes away.
@@ -1969,7 +1976,8 @@ export class SessionRegistry {
    *  running ones on the old prompt until they idle out). */
   setOrchestrationRules(workspaceId: string | null, rules: OrchestrationRules | null): void {
     const key = workspaceId ? `orchestration-rules:${workspaceId}` : 'orchestration-rules'
-    this.store.setSetting(key, rules ? JSON.stringify(rules) : null)
+    this.store.setSetting(`${key}:explicit`, rules ? '1' : null)
+    this.setSyncedSetting(key, rules ? JSON.stringify(rules) : null)
   }
 
   /** Thread defaults for a scope; null = not set there. */
@@ -1980,7 +1988,15 @@ export class SessionRegistry {
 
   setThreadDefaults(workspaceId: string | null, defaults: ThreadDefaults | null): void {
     const key = workspaceId ? `thread-defaults:${workspaceId}` : 'thread-defaults'
-    this.store.setSetting(key, defaults ? JSON.stringify(defaults) : null)
+    this.setSyncedSetting(key, defaults ? JSON.stringify(defaults) : null)
+  }
+
+  /** Rules and defaults have one copy across hosts (remote/rulesSync.ts):
+   *  a change re-sends the workspaces push, which a linked Mac follows. */
+  private setSyncedSetting(key: string, value: string | null): void {
+    if (this.store.getSetting(key) === value) return
+    this.store.setSetting(key, value)
+    this.notifyCatalog('workspaces')
   }
 
   // ── plans: what happens when a plan is complete (planFlow.ts) ────────
