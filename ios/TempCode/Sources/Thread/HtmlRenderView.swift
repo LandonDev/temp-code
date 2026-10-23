@@ -63,8 +63,8 @@ struct HtmlRenderRow: View {
     }
 }
 
-/// The page full screen: it scrolls, its links open in Safari, Share hands
-/// out the file the host stored.
+/// The page full screen, on the transcript's text edges: it scrolls, its
+/// links open in Safari, Share hands out the file the host stored.
 struct HtmlRenderScreen: View {
     let render: HtmlRender
     let client: EnvironmentClient
@@ -87,6 +87,8 @@ struct HtmlRenderScreen: View {
                     withAnimation(Motion.crossFade) { painted = true }
                 }, onLink: { link = WebPage(url: $0) })
                 .opacity(painted ? 1 : 0)
+                // A page brings no side padding of its own (the transcript column gives it one).
+                .padding(.horizontal, Layout.textEdge)
                 .ignoresSafeArea(edges: .bottom)
             }
             if failed {

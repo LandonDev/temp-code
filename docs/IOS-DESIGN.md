@@ -693,6 +693,25 @@ the package's `ToolPhrase` (tested). Row kinds and their mobile form:
   in success and destructive, semibold and tabular; deleted and failed say
   so. Tap opens the diff full screen (unified, mono, line numbers dim; no
   side-by-side on a phone).
+- **Agent pages** (`html_render`, the desktop's `HtmlRenderRow`;
+  `Thread/HtmlRenderView.swift` over the client package's
+  `Rendering/HtmlRender.swift`): a completed call that names a page is a
+  row of its own, never a step in a phase. The page itself on the
+  transcript, borderless, as wide as the reply, 4 pt above and below, in a
+  WKWebView of its own (no shared storage, an origin no host answers) that
+  takes no touches, so the list scrolls over it. Its height is the host's
+  measurement at the row's width until the page reports its own
+  (`HtmlRender.frameHeight`, the desktop's rule); a shimmer of that height
+  holds the place and the page cross-fades in over 150 ms. It is themed
+  from the phone's colours (system background, label, the system tints) as
+  the desktop's variables, in the fragment the page's bootstrap reads
+  before first paint and in a message when the appearance changes. The
+  bytes come from the host's `/asset/page/<sid>/<pid>.html` with the key,
+  one copy per launch for the row and the screen (`HtmlPages`). Tap (the
+  pressed dim, no scale) pushes it full screen: the page scrolls under the
+  title on the transcript's 16 pt text edges, links open in Safari, Share hands out `<title>.html`; a spinner
+  while it loads, "Couldn't load the page" with Try Again when it fails;
+  the row's failure is one quiet line naming the page.
 - **Approval** and **question** cards: the only raised surfaces in the
   transcript, hairline border and warning tint at 8 % while undecided, the
   gray step once decided. An approval says what the agent wants in plain

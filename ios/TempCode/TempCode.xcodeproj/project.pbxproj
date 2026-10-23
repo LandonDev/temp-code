@@ -62,6 +62,7 @@
 		6314676328C74CBBC9E337DA /* Pressable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 458CA933FF6A32D8B310B3D6 /* Pressable.swift */; };
 		63ABADD874B39B4D39F8B39F /* MarkdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CECDD2123E55285B3360307E /* MarkdownView.swift */; };
 		6644FBAE199DA17E78D508A1 /* ThreadHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EC3174295FD32F442072288 /* ThreadHeader.swift */; };
+		694B7EF60722777344918C25 /* HtmlRenderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4263565C8F709660A270F3C /* HtmlRenderView.swift */; };
 		6A6C387ED4631DDA31979076 /* FleetSwitches.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EE83DE45CD4E7D370BB1E46 /* FleetSwitches.swift */; };
 		6A7000A002D9899A1D1A6B75 /* ProjectSettingsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 709C36838327A4F049A08ECF /* ProjectSettingsSheet.swift */; };
 		6ED229D56C1DF4A839C6DE22 /* ThreadToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0127E7DF4D6B47C5BCD88BD /* ThreadToolbar.swift */; };
@@ -269,6 +270,7 @@
 		AE78AA69F7DB6914EAA1DE17 /* Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Formatting.swift; sourceTree = "<group>"; };
 		AEC75CE0966D46F74C89225D /* CardActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardActions.swift; sourceTree = "<group>"; };
 		B0C1523A89C267EB42E7E5DD /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		B4263565C8F709660A270F3C /* HtmlRenderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HtmlRenderView.swift; sourceTree = "<group>"; };
 		B455EA664C6E5B789FF91ACE /* ImplementationBoardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImplementationBoardView.swift; sourceTree = "<group>"; };
 		B749BB519961CCE1AFC4DE30 /* NotesStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesStyles.swift; sourceTree = "<group>"; };
 		B759C9E25487411A1A8FFD00 /* NoticeRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoticeRows.swift; sourceTree = "<group>"; };
@@ -481,6 +483,7 @@
 				97A3930E0CEF933EAC509B6D /* FleetStyles.swift */,
 				A18E40BEDD04A1A41663DEAC /* FleetView.swift */,
 				D0C37EA8A82BD49ED74E5BB2 /* HostChip.swift */,
+				B4263565C8F709660A270F3C /* HtmlRenderView.swift */,
 				B455EA664C6E5B789FF91ACE /* ImplementationBoardView.swift */,
 				CECDD2123E55285B3360307E /* MarkdownView.swift */,
 				3E0F7543C59BDFAF1793E3F8 /* NotesSheet.swift */,
@@ -798,6 +801,7 @@
 				543FDAEDA322180686DCB929 /* HostMark.swift in Sources */,
 				2ECF11DFFABEC343CB42F137 /* HostStatusRow.swift in Sources */,
 				5D62FBF443D0B087E72109F0 /* HostsView.swift in Sources */,
+				694B7EF60722777344918C25 /* HtmlRenderView.swift in Sources */,
 				8379BC703BA7710F88CA4F0A /* ImplementationBoardView.swift in Sources */,
 				DEFC730734F960DF8538B34E /* InboxItemView.swift in Sources */,
 				380CD9B79D786017B8802496 /* InboxStore.swift in Sources */,

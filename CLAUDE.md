@@ -1343,6 +1343,13 @@ proof and the sizing rules; the pieces, by name:
   `BoardOutcomes.swift` (gate and review rows from `RoundData.outcomes`,
   the words from `BoardSections.swift`'s `GateLine` and `ReviewLine`);
   docs/IOS-DESIGN.md "Implementation: the board is the hero" is its spec.
+  An agent's `html_render` page is its own transcript row
+  (`Thread/HtmlRenderView.swift`: `HtmlRenderRow`, a touchless WKWebView
+  sized by the client package's `Rendering/HtmlRender.swift`
+  `frameHeight`, themed from the phone's colours; a tap pushes
+  `HtmlRenderScreen` with Share and links in Safari), fetched from the
+  host's `/asset/page/…` with the key (`HtmlPages`); the test server seeds
+  one in "Why is the build slow?" and `TC_PROOF_SET=page` shoots it.
   The diff screen's model and parsers are the client package's
   `Rendering/DiffDocument.swift` (`DiffDocument.from(edits:)`,
   `from(patch:file:)`, `DiffLayout`) with their suite, and `DiffRoute`,
@@ -1361,7 +1368,7 @@ proof and the sizing rules; the pieces, by name:
   `AgentDetailRoute`), `SubagentListScreen(client:rootSessionId:)` and
   `AgentDetailScreen(client:agentId:parentCwd:hostName:)`
   (docs/IOS-DESIGN.md "Orchestration"). DEBUG launch hooks (`TC_TEST_SEGMENT`,
-  `TC_TEST_OPEN=chip|group|diff|agent|agents|rename|agent-detail|report|source|item|item-diff|account`,
+  `TC_TEST_OPEN=chip|group|diff|page|agent|agents|rename|agent-detail|report|source|item|item-diff|account`,
   `TC_TEST_SCROLL=1`, the Search tab's `TC_TEST_SEARCH=<query>` and
   `TC_TEST_SEARCH_SCOPE=files`, and L5's
   `TC_TEST_ACTION=send:<text>|stop|approve|deny|answer:<label>|start-build|
