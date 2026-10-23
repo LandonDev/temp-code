@@ -71,6 +71,7 @@ describe('skipReason', () => {
     expect(skipReason(listener(44575, 10), chain('node /srv/x/node_modules/vitest/dist/workers/forks.js', '/srv/agents/home/.bun/bin/bun scripts/gate.ts --tier commit --since ee6c899'), 7)).toBe(gate)
     expect(skipReason(listener(40879, 10), chain('node worker.js', 'NODE_ENV=test bunx vitest run src/a.test.ts'), 7)).toBe(gate)
     expect(skipReason(listener(37631, 10), chain('bun test'), 7)).toBe(gate)
+    expect(skipReason(listener(46449, 10), chain('node (vitest 11)'), 7)).toBe(gate)
     expect(skipReason(listener(43401, 10), chain('npm run typecheck'), 7)).toBe(gate)
     expect(skipReason(listener(5173, 10), chain('node node_modules/.bin/vite', 'bun run dev'), 7)).toBeNull()
     expect(skipReason(listener(5174, 10), chain('cd apps/vitest-demo && bun run dev'), 7)).toBeNull()
