@@ -1,7 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import type { SessionMeta } from '@shared/events'
 import { PUSH_EVENTS, type PushEnvironment, type PushEvent, type PushStatus } from '@shared/contract-remote'
-import type { HubActivityState, HubClient } from '../hub'
+import type { HubActivityRow, HubActivityState, HubClient } from '../hub'
 import type { ApnsSender } from './apns'
 import { ACTIVITY_DISMISS_S, ALERT_TTL_S, activityPayload, notificationPayload, type ApnsNotice } from './apnsPayload'
 
@@ -76,6 +76,17 @@ export interface PushOptions {
 }
 
 export type PushDelivery = { delivered: number; failed: number }
+
+/** One phone's activity token: what a push is addressed to. */
+export interface ActivityTarget {
+  keyId: string
+  token: string
+}
+
+/** A token and every thread it covers; two or more make a group activity. */
+export interface ActivityGroup extends ActivityTarget {
+  sessionIds: string[]
+}
 
 const NOT_REGISTERED: PushStatus = { registered: false, relay: 'none', error: null, events: [], updatedAt: null }
 
@@ -209,9 +220,32 @@ export class PushRegistry {
     return (this.db.prepare(`SELECT 1 FROM remote_push_activities WHERE session_id = ? LIMIT 1`).get(sessionId) ?? null) !== null
   }
 
-  /** The thread settled: every activity on it is over (the hub drops its own at the `end` push). */
+  /**
+   * Every activity token covering a thread, with all the threads that token
+   * covers. A phone keeps one activity per host and registers its token for
+   * each thread it follows, so a token on two or more threads is a group.
+   */
+  activityGroups(sessionId: string): ActivityGroup[] {
+    const pairs = this.db.prepare(`SELECT DISTINCT key_id, token FROM remote_push_activities WHERE session_id = ?`).all(sessionId) as unknown as { key_id: string; token: string }[]
+    const members = this.db.prepare(`SELECT session_id FROM remote_push_activities WHERE key_id = ? AND token = ? ORDER BY session_id`)
+    return pairs.map((p) => ({ keyId: p.key_id, token: p.token, sessionIds: (members.all(p.key_id, p.token) as unknown as { session_id: string }[]).map((m) => m.session_id) }))
+  }
+
+  /** The thread settled: every single-thread activity on it is over (the hub drops its own at the `end` push). A group's rows stay until the group ends. */
   endActivities(sessionId: string): void {
-    this.db.prepare(`DELETE FROM remote_push_activities WHERE session_id = ?`).run(sessionId)
+    this.db
+      .prepare(
+        `DELETE FROM remote_push_activities WHERE session_id = ? AND NOT EXISTS (
+           SELECT 1 FROM remote_push_activities other WHERE other.key_id = remote_push_activities.key_id AND other.token = remote_push_activities.token AND other.session_id != remote_push_activities.session_id)`
+      )
+      .run(sessionId)
+  }
+
+  /** A group activity ended: its rows go, every thread it covered with them. Answers those threads. */
+  endGroup(keyId: string, token: string): string[] {
+    const ids = (this.db.prepare(`SELECT session_id FROM remote_push_activities WHERE key_id = ? AND token = ?`).all(keyId, token) as unknown as { session_id: string }[]).map((r) => r.session_id)
+    this.db.prepare(`DELETE FROM remote_push_activities WHERE key_id = ? AND token = ?`).run(keyId, token)
+    return ids
   }
 
   /** At boot: a row the hub never acknowledged is offered again; a host that now sends itself takes its devices back from the hub. */
@@ -275,14 +309,24 @@ export class PushRegistry {
     return { delivered, failed }
   }
 
-  /** A Live Activity state to every phone holding a token for the thread, from this host's own sender. */
-  async deliverActivity(update: { threadId: string; event: 'update' | 'end'; state: HubActivityState; ts: number; priority?: 5 | 10 }): Promise<PushDelivery> {
+  /**
+   * A Live Activity state from this host's own sender: to the `targets`
+   * tokens when named (a group's, or a thread's single-thread ones), else to
+   * every phone holding a token for the thread.
+   */
+  async deliverActivity(update: { threadId: string; event: 'update' | 'end'; state: HubActivityState; ts: number; priority?: 5 | 10; targets?: ActivityTarget[] }): Promise<PushDelivery> {
     const apns = this.apns
     if (!apns) return { delivered: 0, failed: 0 }
     const payload = activityPayload(update, update.ts)
+    const wanted = update.targets ? new Set(update.targets.map((t) => `${t.keyId}\u0000${t.token}`)) : null
+    const rows = wanted
+      ? (this.db.prepare(`SELECT * FROM remote_push_activities`).all() as unknown as ActivityRow[])
+          .filter((r) => wanted.delete(`${r.key_id}\u0000${r.token}`))
+          .map((r) => ({ keyId: r.key_id, token: r.token, bundleId: r.bundle_id, environment: r.environment }))
+      : this.activityTokens(update.threadId)
     let delivered = 0
     let failed = 0
-    for (const row of this.activityTokens(update.threadId)) {
+    for (const row of rows) {
       const result = await apns.send({
         token: row.token,
         topic: `${row.bundleId}.push-type.liveactivity`,
@@ -296,7 +340,7 @@ export class PushRegistry {
       if (result.ok) delivered += 1
       else {
         failed += 1
-        if (result.gone) this.db.prepare(`DELETE FROM remote_push_activities WHERE key_id = ? AND session_id = ?`).run(row.keyId, update.threadId)
+        if (result.gone) this.db.prepare(`DELETE FROM remote_push_activities WHERE key_id = ? AND token = ?`).run(row.keyId, row.token)
         this.log(`activity push to key ${row.keyId} failed: ${result.error}`)
       }
     }
@@ -316,8 +360,8 @@ export interface ActivityRegistry {
 
 export interface ActivityFeedOptions {
   registry: ActivityRegistry
-  push: Pick<PushRegistry, 'hasActivities' | 'endActivities' | 'deliverActivity'>
-  hub: () => Pick<PushHub, 'pushActivity'> | null
+  push: Pick<PushRegistry, 'hasActivities' | 'endActivities' | 'deliverActivity' | 'activityGroups' | 'endGroup'>
+  hub: () => Pick<PushHub, 'pushActivity' | 'removeActivity'> | null
   /** The host sends the activity states itself when this answers true. */
   local?: () => boolean
   /** A master's batch: children done of total and the running step's name (null when the thread has no batch). */
@@ -344,6 +388,16 @@ export const ACTIVITY_COALESCE_MS = 20_000
 export const ACTIVITY_REASON_WAIT_MS = 2_500
 const TASK_CHARS = 120
 const REASON_CHARS = 160
+/** A group's rows ride one content state, so each says less than a single thread's card. */
+const ROW_TITLE_CHARS = 60
+const ROW_TASK_CHARS = 80
+const ROW_REASON_CHARS = 100
+/** At most this many threads ride a group's state; the rest are `more`. */
+export const ACTIVITY_GROUP_ROWS = 6
+/** A thread that settled stays on a group's card this long, then leaves it. */
+export const ACTIVITY_SETTLE_MS = 60_000
+/** ActivityKit refuses a content state over 4 KB: rows give way before that. */
+const GROUP_BYTES = 3_500
 const oneLine = (text: string): string => text.replace(/\s+/g, ' ').trim()
 const cut = (text: string, max: number): string => (text.length <= max ? text : `${text.slice(0, max - 1)}…`)
 
@@ -405,29 +459,121 @@ export function activityState(meta: SessionMeta, now: number, reason: string | n
   return state
 }
 
-interface Tracked {
+/** The order of a group's rows: what needs the person, then what works, then what is held or over. */
+const PHASE_RANK: Record<HubActivityState['phase'], number> = { waiting: 0, working: 1, paused: 2, failed: 3, stopped: 4, finished: 5 }
+const isSettled = (phase: HubActivityState['phase']): boolean => phase === 'finished' || phase === 'failed' || phase === 'stopped'
+const isLive = (phase: HubActivityState['phase']): boolean => phase === 'working' || phase === 'paused'
+
+/** One thread of a group: its meta, the notifier's reason while it waits, a master's batch. */
+export interface ActivityGroupEntry {
+  meta: SessionMeta
+  reason?: string | null
+  batch?: BatchTally | null
+}
+
+/** A thread's row on a group card: the single state, cut shorter, with its id, type and the time its clock froze. Null when queued. */
+export function activityRow(entry: ActivityGroupEntry, now: number): HubActivityRow | null {
+  const state = activityState(entry.meta, now, entry.reason ?? null, entry.batch ?? null)
+  if (!state) return null
+  const row: HubActivityRow = { id: entry.meta.id, phase: state.phase, since: state.since }
+  if (entry.meta.threadType) row.type = entry.meta.threadType
+  if (state.phase !== 'working') row.ts = entry.meta.updatedAt
+  if (state.title) row.title = cut(state.title, ROW_TITLE_CHARS)
+  if (state.task) row.task = cut(state.task, ROW_TASK_CHARS)
+  if (state.total !== undefined) {
+    row.done = state.done
+    row.total = state.total
+  }
+  if (state.unit) row.unit = state.unit
+  if (state.reason) row.reason = cut(state.reason, ROW_REASON_CHARS)
+  return row
+}
+
+/**
+ * The content state of a group activity: one row per thread it covers
+ * (queued ones left out), needs-you first, then working, paused, failed,
+ * stopped and finished, each kind oldest first; a settled row leaves after
+ * `ACTIVITY_SETTLE_MS`; at most `ACTIVITY_GROUP_ROWS` rows and never more
+ * than ActivityKit's 4 KB, the rest counted in `more`. The group is live
+ * while any thread works or is paused (its clock the longest-running
+ * one's); once none is, the phase is the lead row's and the push is the
+ * end. The top-level fields name the lead thread, so a phone that predates
+ * groups still draws one card. Null when no thread has a row.
+ */
+export function activityGroupState(entries: ActivityGroupEntry[], now: number): HubActivityState | null {
+  const rows = entries.map((e) => activityRow(e, now)).filter((r): r is HubActivityRow => r !== null)
+  if (!rows.length) return null
+  rows.sort((a, b) => PHASE_RANK[a.phase] - PHASE_RANK[b.phase] || a.since - b.since || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+  const fresh = rows.filter((r) => !isSettled(r.phase) || now - (r.ts ?? now) < ACTIVITY_SETTLE_MS)
+  const shown = fresh.length ? fresh : rows
+  const working = rows.filter((r) => r.phase === 'working')
+  const live = rows.some((r) => isLive(r.phase))
+  const lead = (live ? shown.find((r) => isLive(r.phase)) : undefined) ?? shown[0]
+  const state: HubActivityState = { phase: live ? (working.length ? 'working' : 'paused') : lead.phase, since: working.length ? Math.min(...working.map((r) => r.since)) : lead.since, ts: now }
+  if (lead.title) state.title = lead.title
+  if (lead.task) state.task = lead.task
+  if (state.phase === 'waiting' && lead.reason) state.reason = lead.reason
+  const threads = shown.slice(0, ACTIVITY_GROUP_ROWS)
+  state.threads = threads
+  let more = shown.length - threads.length
+  while (threads.length > 2 && Buffer.byteLength(JSON.stringify(state)) > GROUP_BYTES) {
+    threads.pop()
+    more += 1
+  }
+  if (more > 0) state.more = more
+  return state
+}
+
+/** What one push goes to: a thread's single-thread tokens, or one group's token. */
+interface Bucket {
+  id: string
+  group: boolean
+  sessionIds: string[]
+  targets: ActivityTarget[]
+}
+
+interface Sent {
   /** The last state pushed, without its clock. */
   sent: Omit<HubActivityState, 'ts'> | null
   sentAt: number
   /** A task-line change waiting for the window to pass. */
   soft: ReturnType<typeof setTimeout> | null
+  /** A group: the moment its oldest settled row leaves. */
+  settle: ReturnType<typeof setTimeout> | null
+  /** A group: the thread whose change it last pushed, for a push the feed makes on its own clock. */
+  trigger: string
+}
+
+interface ThreadTrack {
+  /** The phase last seen, so a waiting thread holds for its reason once. */
+  phase: HubActivityState['phase'] | null
   /** A waiting end holding out for the notifier's reason. */
   hold: ReturnType<typeof setTimeout> | null
   reason: string | null
 }
 
+/** A state with its task lines blanked: two states equal here differ only in what the threads are doing right now. */
+const withoutTasks = (state: Omit<HubActivityState, 'ts'>): string =>
+  JSON.stringify({ ...state, task: undefined, threads: state.threads?.map((r) => ({ ...r, task: undefined })) })
+
 /**
  * Root threads with a registered activity: every change of what the card
- * shows becomes one `liveactivity` push. A change of phase, tally, title or
- * reason goes at once at priority 10; a change of the task line alone is
- * coalesced to one push per window at priority 5, the latest line winning.
- * A settled phase is the `end` that shows the final state briefly, after
- * which the activity rows are gone; a waiting end holds briefly for the
- * notifier's needs-you line so the card can say what the thread wants.
- * A queued thread is skipped whole: no push, no tracking.
+ * shows becomes one `liveactivity` push. A thread's single-thread tokens
+ * share one push; a phone's group token (one activity covering several
+ * threads of this host, `activityGroupState`) gets its own, recomputed
+ * whenever any thread it covers moves. A change of phase, tally, title,
+ * reason or the rows goes at once at priority 10; a change of task lines
+ * alone is coalesced to one push per window at priority 5, the latest
+ * lines winning; a settled row leaving a group goes at priority 5. A
+ * settled single thread, or a group with nothing working or paused, is the
+ * `end` that shows the final state briefly, after which the rows are gone;
+ * a waiting thread holds briefly for the notifier's needs-you line so the
+ * card can say what it wants. A queued thread is skipped whole: no push,
+ * no row.
  */
 export class ActivityFeed {
-  private readonly threads = new Map<string, Tracked>()
+  private readonly threads = new Map<string, ThreadTrack>()
+  private readonly buckets = new Map<string, Sent>()
   private readonly queues = new Map<string, Promise<void>>()
   private off: (() => void) | null = null
   private readonly now: () => number
@@ -449,11 +595,10 @@ export class ActivityFeed {
   stop(): void {
     this.off?.()
     this.off = null
-    for (const t of this.threads.values()) {
-      if (t.soft) clearTimeout(t.soft)
-      if (t.hold) clearTimeout(t.hold)
-    }
+    for (const t of this.threads.values()) if (t.hold) clearTimeout(t.hold)
+    for (const b of this.buckets.values()) this.clearTimers(b)
     this.threads.clear()
+    this.buckets.clear()
   }
 
   /** The notifier decided what a thread needs: the waiting state carries it. */
@@ -481,13 +626,30 @@ export class ActivityFeed {
     return this.options.batch(meta.id)
   }
 
-  private track(id: string): Tracked {
+  private track(id: string): ThreadTrack {
     let t = this.threads.get(id)
     if (!t) {
-      t = { sent: null, sentAt: 0, soft: null, hold: null, reason: null }
+      t = { phase: null, hold: null, reason: null }
       this.threads.set(id, t)
     }
     return t
+  }
+
+  private sentOf(id: string, trigger: string): Sent {
+    let b = this.buckets.get(id)
+    if (!b) {
+      b = { sent: null, sentAt: 0, soft: null, settle: null, trigger }
+      this.buckets.set(id, b)
+    }
+    b.trigger = trigger
+    return b
+  }
+
+  private clearTimers(b: Sent): void {
+    if (b.soft) clearTimeout(b.soft)
+    if (b.settle) clearTimeout(b.settle)
+    b.soft = null
+    b.settle = null
   }
 
   private onMeta(meta: SessionMeta): void {
@@ -499,6 +661,8 @@ export class ActivityFeed {
     const phase = activityPhase(meta.status, meta.archived)
     if (phase === null) return
     const t = this.track(meta.id)
+    const before = t.phase
+    t.phase = phase
     if (phase !== 'waiting') {
       t.reason = null
       if (t.hold) {
@@ -507,8 +671,8 @@ export class ActivityFeed {
         t.hold = null
       }
     }
-    if (phase === 'waiting' && !t.reason && !t.hold && t.sent?.phase !== 'waiting') {
-      // The notifier's line lands within its debounce; the end shows it when it does.
+    if (phase === 'waiting' && !t.reason && !t.hold && before !== 'waiting') {
+      // The notifier's line lands within its debounce; the state shows it when it does.
       t.hold = setTimeout(() => {
         t.hold = null
         const live = this.options.registry.get?.(meta.id) ?? meta
@@ -522,70 +686,129 @@ export class ActivityFeed {
 
   private forget(id: string): void {
     const t = this.threads.get(id)
-    if (!t) return
-    if (t.soft) clearTimeout(t.soft)
-    if (t.hold) clearTimeout(t.hold)
+    if (t?.hold) clearTimeout(t.hold)
     this.threads.delete(id)
+    const solo = this.buckets.get(`t:${id}`)
+    if (solo) this.clearTimers(solo)
+    this.buckets.delete(`t:${id}`)
   }
 
-  /** Decides now or later; pushes settle in order per thread, so an `end` never lands before the update it follows. */
-  private enqueue(meta: SessionMeta, opts: { urgent?: boolean }): void {
-    const next = activityState(meta, this.now(), this.threads.get(meta.id)?.reason ?? null, this.batchOf(meta))
+  /** Where a thread's change goes: one push for its single-thread tokens, one per group token covering it. */
+  private bucketsOf(threadId: string): Bucket[] {
+    const groups = this.options.push.activityGroups(threadId)
+    const solo = groups.filter((g) => g.sessionIds.length < 2)
+    const out: Bucket[] = []
+    if (solo.length) out.push({ id: `t:${threadId}`, group: false, sessionIds: [threadId], targets: solo.map(({ keyId, token }) => ({ keyId, token })) })
+    for (const g of groups) {
+      if (g.sessionIds.length >= 2) out.push({ id: `g:${g.keyId}:${g.token}`, group: true, sessionIds: g.sessionIds, targets: [{ keyId: g.keyId, token: g.token }] })
+    }
+    return out
+  }
+
+  private enqueue(meta: SessionMeta, opts: { urgent?: boolean; quiet?: boolean }): void {
+    for (const bucket of this.bucketsOf(meta.id)) this.enqueueBucket(bucket, meta, opts)
+  }
+
+  private stateOf(bucket: Bucket, meta: SessionMeta): HubActivityState | null {
+    if (!bucket.group) return activityState(meta, this.now(), this.threads.get(meta.id)?.reason ?? null, this.batchOf(meta))
+    const entries: ActivityGroupEntry[] = []
+    for (const id of bucket.sessionIds) {
+      const m = id === meta.id ? meta : (this.options.registry.get?.(id) ?? null)
+      if (m && !m.parentId) entries.push({ meta: m, reason: this.threads.get(id)?.reason ?? null, batch: this.batchOf(m) })
+    }
+    return activityGroupState(entries, this.now())
+  }
+
+  /** Decides now or later; pushes settle in order per bucket, so an `end` never lands before the update it follows. */
+  private enqueueBucket(bucket: Bucket, meta: SessionMeta, opts: { urgent?: boolean; quiet?: boolean }): void {
+    const next = this.stateOf(bucket, meta)
     if (!next) return
-    const t = this.track(meta.id)
+    const b = this.sentOf(bucket.id, meta.id)
     const { ts: _ts, ...bare } = next
-    const live = next.phase === 'working' || next.phase === 'paused'
-    const sent = t.sent
-    const softOnly = sent !== null && live && sent.phase === next.phase && sent.title === next.title && sent.done === next.done && sent.total === next.total && sent.unit === next.unit && sent.reason === next.reason && sent.task !== next.task
+    const live = isLive(next.phase)
+    const sent = b.sent
     const same = sent !== null && JSON.stringify(sent) === JSON.stringify(bare)
+    const softOnly = sent !== null && live && !same && sent.phase === next.phase && withoutTasks(sent) === withoutTasks(bare)
     if (same && live) return
     if (same && !live && !opts.urgent) return
     if (softOnly && !opts.urgent) {
-      const due = t.sentAt + this.coalesceMs - this.now()
+      const due = b.sentAt + this.coalesceMs - this.now()
       if (due > 0) {
-        if (!t.soft) {
-          t.soft = setTimeout(() => {
-            t.soft = null
-            const current = this.options.registry.get?.(meta.id) ?? meta
-            this.enqueue(current, { urgent: true })
+        if (!b.soft) {
+          b.soft = setTimeout(() => {
+            b.soft = null
+            const current = this.options.registry.get?.(b.trigger) ?? meta
+            const again = this.bucketsOf(current.id).find((x) => x.id === bucket.id)
+            if (again) this.enqueueBucket(again, current, { urgent: true })
           }, due)
-          t.soft.unref?.()
+          b.soft.unref?.()
         }
         return
       }
     }
-    if (t.soft) {
-      clearTimeout(t.soft)
-      t.soft = null
+    if (b.soft) {
+      clearTimeout(b.soft)
+      b.soft = null
     }
-    const priority: 5 | 10 = softOnly ? 5 : 10
+    const priority: 5 | 10 = softOnly || opts.quiet ? 5 : 10
     // Decided now, so a meta that follows at once compares against this state, not the one before it.
-    t.sent = bare
-    t.sentAt = this.now()
-    const run = (this.queues.get(meta.id) ?? Promise.resolve())
-      .then(() => this.push(meta.id, next, live, priority, meta.threadType))
-      .catch((err: unknown) => this.log(`activity push failed for ${meta.id}: ${err instanceof Error ? err.message : String(err)}`))
-    this.queues.set(meta.id, run)
+    b.sent = bare
+    b.sentAt = this.now()
+    if (bucket.group && live) this.armSettle(bucket, b, next)
+    const run = (this.queues.get(bucket.id) ?? Promise.resolve())
+      .then(() => this.push(bucket, meta, next, live, priority))
+      .catch((err: unknown) => this.log(`activity push failed for ${bucket.id}: ${err instanceof Error ? err.message : String(err)}`))
+    this.queues.set(bucket.id, run)
     void run.then(() => {
-      if (this.queues.get(meta.id) === run) this.queues.delete(meta.id)
+      if (this.queues.get(bucket.id) === run) this.queues.delete(bucket.id)
     })
   }
 
-  private async push(id: string, state: HubActivityState, live: boolean, priority: 5 | 10, threadType: SessionMeta['threadType']): Promise<void> {
-    if (!this.options.push.hasActivities(id)) {
-      this.forget(id)
+  /** A live group showing a settled row: recompute when the oldest one is due to leave. */
+  private armSettle(bucket: Bucket, b: Sent, state: HubActivityState): void {
+    if (b.settle) clearTimeout(b.settle)
+    b.settle = null
+    const due = (state.threads ?? []).filter((r) => isSettled(r.phase)).map((r) => (r.ts ?? 0) + ACTIVITY_SETTLE_MS - this.now())
+    if (!due.length) return
+    b.settle = setTimeout(
+      () => {
+        b.settle = null
+        const current = this.options.registry.get?.(b.trigger) ?? null
+        const again = current ? this.bucketsOf(current.id).find((x) => x.id === bucket.id) : undefined
+        if (current && again) this.enqueueBucket(again, current, { quiet: true })
+      },
+      Math.max(0, Math.min(...due)) + 50
+    )
+    b.settle.unref?.()
+  }
+
+  private async push(bucket: Bucket, meta: SessionMeta, state: HubActivityState, live: boolean, priority: 5 | 10): Promise<void> {
+    if (!this.options.push.hasActivities(meta.id)) {
+      this.forget(meta.id)
       return
     }
     const event = live ? 'update' : 'end'
+    const hub = this.options.local?.() ? null : this.options.hub()
     if (this.options.local?.()) {
-      await this.options.push.deliverActivity({ threadId: id, event, state, ts: this.now(), priority })
-    } else {
-      const hub = this.options.hub()
-      if (hub) await hub.pushActivity({ threadId: id, event, state, title: state.title, ...(threadType ? { threadType } : {}), priority })
+      await this.options.push.deliverActivity({ threadId: meta.id, event, state, ts: this.now(), priority, targets: bucket.targets })
+    } else if (hub) {
+      // The hub fans a thread's state out to every token on it, a group token among them.
+      await hub.pushActivity({ threadId: meta.id, event, state, title: state.title, ...(meta.threadType ? { threadType: meta.threadType } : {}), priority })
     }
-    if (!live) {
-      this.options.push.endActivities(id)
-      this.forget(id)
+    if (live) return
+    const b = this.buckets.get(bucket.id)
+    if (b) this.clearTimers(b)
+    this.buckets.delete(bucket.id)
+    if (!bucket.group) {
+      this.options.push.endActivities(meta.id)
+      if (!this.options.push.hasActivities(meta.id)) this.forget(meta.id)
+      return
+    }
+    for (const target of bucket.targets) {
+      for (const id of this.options.push.endGroup(target.keyId, target.token)) {
+        if (hub) void hub.removeActivity(target.keyId, id)
+        if (!this.options.push.hasActivities(id)) this.forget(id)
+      }
     }
   }
 }

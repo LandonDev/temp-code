@@ -76,6 +76,24 @@ export interface ActivityState {
   total?: number
   unit?: ActivityUnit
   reason?: string
+  /** A group activity: one row per thread one phone's card covers; the fields above name the lead thread. */
+  threads?: ActivityRow[]
+  /** Threads past the rows' cap. */
+  more?: number
+}
+/** One thread of a group activity, as temp-code's `HubActivityRow` (src/main/server/hub.ts). */
+export interface ActivityRow {
+  id: string
+  type?: string
+  phase: ActivityPhase
+  since: number
+  ts?: number
+  title?: string
+  task?: string
+  done?: number
+  total?: number
+  unit?: ActivityUnit
+  reason?: string
 }
 /** `POST /v1/activity`: one state for every device watching the thread. */
 export interface ActivityUpdate {

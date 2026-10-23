@@ -21,6 +21,7 @@ describe('the APNs payloads match the shared fixtures', () => {
     expect(fixtures.map((f) => f.file.replace(/\.json$/, ''))).toEqual([
       'activity-failed',
       'activity-finished',
+      'activity-group',
       'activity-paused',
       'activity-stopped',
       'activity-waiting',

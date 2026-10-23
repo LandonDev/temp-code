@@ -1,5 +1,5 @@
 import { guardTarget } from './target'
-import { activityPhases, activityUnits, events, pushEnvironments, type ActivityUpdate, type ApnsDevice, type Heartbeat, type Notice, noticeKinds, type NoticeKind } from './types'
+import { activityPhases, activityUnits, events, pushEnvironments, type ActivityRow, type ActivityUpdate, type ApnsDevice, type Heartbeat, type Notice, noticeKinds, type NoticeKind } from './types'
 export class Invalid extends Error {}
 export function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -134,7 +134,9 @@ export function activity(value: unknown): ActivityUpdate {
       ...(state.done === undefined ? {} : { done: count(state.done, 'done') }),
       ...(state.total === undefined ? {} : { total: count(state.total, 'total') }),
       ...(state.unit === undefined ? {} : { unit: unit(state.unit) }),
-      ...(state.reason === undefined ? {} : { reason: str(state.reason, 'reason', 200) })
+      ...(state.reason === undefined ? {} : { reason: str(state.reason, 'reason', 200) }),
+      ...(state.threads === undefined ? {} : { threads: activityRows(state.threads) }),
+      ...(state.more === undefined ? {} : { more: count(state.more, 'more') })
     },
     ts: timestamp(v.ts),
     ...(v.environmentId === undefined ? {} : { environmentId: str(v.environmentId, 'environmentId') }),
@@ -142,6 +144,27 @@ export function activity(value: unknown): ActivityUpdate {
     ...(v.threadType === undefined ? {} : { threadType: str(v.threadType, 'threadType', 40) }),
     ...(v.priority === undefined ? {} : { priority: v.priority === 5 ? 5 : v.priority === 10 ? 10 : invalidPriority() })
   }
+}
+/** A group's rows: at most 12, each the single state's fields with the thread's id and type. */
+function activityRows(value: unknown): ActivityRow[] {
+  if (!Array.isArray(value) || value.length > 12) throw new Invalid('Invalid threads')
+  return value.map((raw) => {
+    const row = object(raw)
+    if (!activityPhases.includes(row.phase as never)) throw new Invalid('Invalid phase')
+    return {
+      id: id(row.id),
+      ...(row.type === undefined ? {} : { type: str(row.type, 'type', 40) }),
+      phase: row.phase as ActivityRow['phase'],
+      since: timestamp(row.since),
+      ...(row.ts === undefined ? {} : { ts: timestamp(row.ts) }),
+      ...(row.title === undefined ? {} : { title: str(row.title, 'title', 200) }),
+      ...(row.task === undefined ? {} : { task: str(row.task, 'task', 200) }),
+      ...(row.done === undefined ? {} : { done: count(row.done, 'done') }),
+      ...(row.total === undefined ? {} : { total: count(row.total, 'total') }),
+      ...(row.unit === undefined ? {} : { unit: unit(row.unit) }),
+      ...(row.reason === undefined ? {} : { reason: str(row.reason, 'reason', 200) })
+    }
+  })
 }
 function unit(value: unknown): ActivityUpdate['state']['unit'] {
   if (!activityUnits.includes(value as never)) throw new Invalid('Invalid unit')

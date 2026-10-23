@@ -203,8 +203,8 @@ describe('ActivityFeed', () => {
     feed.poke('m')
     await new Promise((r) => setTimeout(r, 5))
     expect(pushes()).toHaveLength(2)
-    // A thread that is not a master keeps its own list, unit absent.
-    await push.setActivity('k1', { sessionId: 't1', token: TOKEN, bundleId: 'b', environment: 'sandbox' })
+    // A thread that is not a master keeps its own list, unit absent (its own activity: one token on both would be a group).
+    await push.setActivity('k1', { sessionId: 't1', token: 'cd'.repeat(32), bundleId: 'b', environment: 'sandbox' })
     emit(meta({ tasks: { done: 2, total: 5, current: 'Write the endpoint' } }))
     await new Promise((r) => setTimeout(r, 5))
     expect(pushes()[2].state).toMatchObject({ task: 'Write the endpoint', done: 2, total: 5 })

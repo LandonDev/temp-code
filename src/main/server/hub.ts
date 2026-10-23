@@ -53,6 +53,31 @@ export interface HubActivityState {
   unit?: 'tasks' | 'threads'
   /** Why the thread waits: the needs-you line. */
   reason?: string
+  /**
+   * A group activity (one phone's card for several threads of this host):
+   * every thread it covers, needs-you first, then working, paused and the
+   * ones that settled in the last minute. The top-level fields above
+   * describe the lead thread, so an older phone still draws one thread.
+   */
+  threads?: HubActivityRow[]
+  /** Threads past the rows' cap, for "and N more". */
+  more?: number
+}
+/** One thread of a group activity: the single state's fields, cut shorter, with the thread's id and type. */
+export interface HubActivityRow {
+  id: string
+  /** The thread type, for the glyph. */
+  type?: string
+  phase: HubActivityState['phase']
+  since: number
+  /** Where a paused, waiting or settled row's clock froze (the meta's updatedAt); absent while it works. */
+  ts?: number
+  title?: string
+  task?: string
+  done?: number
+  total?: number
+  unit?: 'tasks' | 'threads'
+  reason?: string
 }
 export type HubAck = { ok: true } | { ok: false; error: string }
 export interface HubOptions {

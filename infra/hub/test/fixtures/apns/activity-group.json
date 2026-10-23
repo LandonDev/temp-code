@@ -1,0 +1,92 @@
+{
+  "input": {
+    "hostId": "box",
+    "environmentId": "env_box",
+    "threadId": "thread-1",
+    "event": "update",
+    "state": {
+      "phase": "working",
+      "since": 1759999000000,
+      "ts": 1760000000000,
+      "title": "Add the billing export",
+      "task": "Write the export endpoint",
+      "threads": [
+        {
+          "id": "thread-2",
+          "phase": "waiting",
+          "since": 1759999500000,
+          "type": "chat",
+          "ts": 1759999900000,
+          "title": "Fix the flaky login test",
+          "reason": "Needs approval: Bash — bun test"
+        },
+        {
+          "id": "thread-1",
+          "phase": "working",
+          "since": 1759999000000,
+          "type": "implementation",
+          "title": "Add the billing export",
+          "task": "Write the export endpoint",
+          "done": 1,
+          "total": 3
+        },
+        {
+          "id": "thread-3",
+          "phase": "finished",
+          "since": 1759998000000,
+          "type": "research",
+          "ts": 1759999980000,
+          "title": "Compare the queue libraries"
+        }
+      ],
+      "more": 2
+    },
+    "title": "Add the billing export",
+    "threadType": "implementation",
+    "ts": 1760000000000
+  },
+  "payload": {
+    "aps": {
+      "timestamp": 1760000000,
+      "event": "update",
+      "content-state": {
+        "phase": "working",
+        "since": 1759999000000,
+        "ts": 1760000000000,
+        "title": "Add the billing export",
+        "task": "Write the export endpoint",
+        "threads": [
+          {
+            "id": "thread-2",
+            "phase": "waiting",
+            "since": 1759999500000,
+            "type": "chat",
+            "ts": 1759999900000,
+            "title": "Fix the flaky login test",
+            "reason": "Needs approval: Bash — bun test"
+          },
+          {
+            "id": "thread-1",
+            "phase": "working",
+            "since": 1759999000000,
+            "type": "implementation",
+            "title": "Add the billing export",
+            "task": "Write the export endpoint",
+            "done": 1,
+            "total": 3
+          },
+          {
+            "id": "thread-3",
+            "phase": "finished",
+            "since": 1759998000000,
+            "type": "research",
+            "ts": 1759999980000,
+            "title": "Compare the queue libraries"
+          }
+        ],
+        "more": 2
+      },
+      "relevance-score": 50
+    }
+  }
+}
