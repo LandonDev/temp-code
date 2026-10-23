@@ -2,7 +2,7 @@ import SwiftUI
 import TempCodeClient
 
 /// The host a thread runs on, in the header's subtitle: a dot in the host's
-/// tone and its name, on the fill step with row corners. Shown only with more
+/// tone, the host's glyph and its name, on the fill step with row corners. Shown only with more
 /// than one host paired (the header's rule). Tap shows the host's state line.
 /// The phone offers no move: `session.move` is the Mac's own local RPC, which
 /// no remote key can call.
@@ -18,6 +18,8 @@ struct HostChip: View {
             } label: {
                 HStack(alignment: .center, spacing: 5) {
                     HostDot(status: client.status, size: 6)
+                    HostGlyph(environmentId: environmentId)
+                        .accessibilityHidden(true)
                     Text(client.environment.name)
                         .textStep(.meta)
                         .lineLimit(1)

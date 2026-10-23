@@ -19,14 +19,15 @@ import {
 } from "../lib/threadMove";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
+import { HostGlyph } from "./HostGlyph";
 
 /**
- * Which host the active thread lives on, with a status dot and the branch
- * its folder is on, and the menu that moves it to the other one ("Move to
- * box…"). Each target is disabled with its reason when the thread is busy,
- * a link is down or the key there is not admin. The confirm says what the
- * move carries (the branch and its uncommitted changes); a running move
- * shows on the chip.
+ * Which host the active thread lives on, with a status dot, the host's
+ * glyph (idle or running alike) and the branch its folder is on, and the
+ * menu that moves it to the other one ("Move to box…"). Each target is
+ * disabled with its reason when the thread is busy, a link is down or the
+ * key there is not admin. The confirm says what the move carries (the branch
+ * and its uncommitted changes); a running move shows on the chip.
  */
 export function ThreadHostChip({ sessionId }: { sessionId: string }): JSX.Element | null {
   const session = useSession(sessionId);
@@ -95,6 +96,7 @@ export function ThreadHostChip({ sessionId }: { sessionId: string }): JSX.Elemen
         className="flex h-6 max-w-64 items-center gap-1.5 rounded-md px-2 text-[12px] text-content/60 hover:bg-content/5 hover:text-content"
       >
         <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${movingTo ? "animate-pulse bg-warning" : hostTone(statuses.get(env.id))}`} />
+        <HostGlyph environmentId={session.environmentId} title={`This thread runs on ${env.name}`} />
         <span className="truncate">{movingName ? `Moving to ${movingName}…` : env.name}</span>
         {!movingName && branch ? (
           <span data-thread-branch={branch} className="min-w-0 truncate text-content/40">
