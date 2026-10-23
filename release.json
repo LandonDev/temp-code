@@ -1,5 +1,5 @@
 {
-  "n": 302,
-  "notes": "Fix: the Main v2 master opened as a plain chat with no board after every update; a tab restored at boot keeps the store's thread and its master flag",
-  "ts": 1792736920880
+  "n": 303,
+  "notes": "Dev servers live in one pane in the bottom dock instead of a terminal tab each: only servers a host still lists, closed until opened, never opened on its own; test runs, MCP servers and proxies are never dev servers",
+  "ts": 1792744364127
 }
