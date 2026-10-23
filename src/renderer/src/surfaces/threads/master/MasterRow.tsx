@@ -29,7 +29,8 @@ import { digestLine, typeWord, useBoardDigest, useRowMeta, type BoardRowRef, typ
  * disclosure; under a research or orchestration thread one summary line.
  * A row of a host out of reach is under the offline tint. A click opens
  * the thread's full view in the board's place; hover shows Message, Pause
- * or Resume, Stop and Remove. Every action goes to the row's own host (the
+ * or Resume, Stop and Remove; a right-click on the row or one of its agent
+ * lines asks the board for that thread's menu (New pass…, rowMenu.ts). Every action goes to the row's own host (the
  * commands route by the thread's id).
  *
  * The row reads its own meta, its plan's, its digest (the host's
@@ -43,6 +44,7 @@ export const MasterRow = memo(function MasterRow({
   landed,
   host,
   onOpen,
+  onMenu,
 }: {
   rowRef: BoardRowRef;
   /** The batch marked this row's branch landed. */
@@ -51,14 +53,18 @@ export const MasterRow = memo(function MasterRow({
   host: RowHost | null;
   /** Open the thread's full view; `focus` lands in its composer. */
   onOpen: (id: string, focus?: boolean) => void;
+  /** The thread's right-click menu at the pointer. */
+  onMenu: OnRowMenu;
 }) {
   const meta = useRowMeta(rowRef);
   const plan = useSessionMeta(rowRef.planId);
   const digest = useBoardDigest(rowRef.id);
   const agents = useRowAgents(rowRef.id);
   if (!meta) return null;
-  return <RowBodyView meta={meta} plan={plan} digest={digest} agents={agents} landed={landed} host={host} onOpen={onOpen} />;
+  return <RowBodyView meta={meta} plan={plan} digest={digest} agents={agents} landed={landed} host={host} onOpen={onOpen} onMenu={onMenu} />;
 });
+
+export type OnRowMenu = (id: string, at: { x: number; y: number }) => void;
 
 function RowBodyView({
   meta,
@@ -68,6 +74,7 @@ function RowBodyView({
   landed,
   host,
   onOpen,
+  onMenu,
 }: {
   meta: SessionMeta;
   plan: SessionMeta | null;
@@ -76,6 +83,7 @@ function RowBodyView({
   landed: boolean;
   host: RowHost | null;
   onOpen: (id: string, focus?: boolean) => void;
+  onMenu: OnRowMenu;
 }) {
   const title = plan?.title || meta.title;
   const what = whatLine(meta, digestLine(meta, digest), landed);
@@ -133,6 +141,10 @@ function RowBodyView({
       data-plan={plan?.id}
       data-host={host?.id}
       data-host-offline={host?.offline || undefined}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onMenu(meta.id, { x: e.clientX, y: e.clientY });
+      }}
     >
       <div
         role="button"
@@ -171,7 +183,7 @@ function RowBodyView({
         {agents ? (
           <>
             <span />
-            <AgentLines agents={agents} onOpen={onOpen} />
+            <AgentLines agents={agents} onOpen={onOpen} onMenu={onMenu} />
           </>
         ) : null}
 
@@ -218,12 +230,12 @@ function RowBodyView({
  * for the ones past the cap and the settled ones. A line opens its agent
  * in the board's place, where its approval or question is answered; its
  * click never reaches the row. */
-function AgentLines({ agents, onOpen }: { agents: RowAgents; onOpen: (id: string) => void }) {
+function AgentLines({ agents, onOpen, onMenu }: { agents: RowAgents; onOpen: (id: string) => void; onMenu: OnRowMenu }) {
   const tail = agentTail(agents);
   return (
     <ul className="flex flex-col pt-1" data-agents>
       {agents.lines.map((line) => (
-        <AgentLineRow key={line.id} line={line} onOpen={onOpen} />
+        <AgentLineRow key={line.id} line={line} onOpen={onOpen} onMenu={onMenu} />
       ))}
       {tail ? (
         <li className={`pl-[18px] text-xs leading-5 tabular-nums ${tail.waiting ? "text-warning" : "text-content/35"}`} data-agents-tail>
@@ -234,7 +246,7 @@ function AgentLines({ agents, onOpen }: { agents: RowAgents; onOpen: (id: string
   );
 }
 
-function AgentLineRow({ line, onOpen }: { line: AgentLine; onOpen: (id: string) => void }) {
+function AgentLineRow({ line, onOpen, onMenu }: { line: AgentLine; onOpen: (id: string) => void; onMenu: OnRowMenu }) {
   const Glyph = line.agentType ? AGENT_GLYPHS[line.agentType] : line.threadType ? THREAD_GLYPHS[line.threadType] : null;
   const what = line.what?.text ? line.what : null;
   return (
@@ -246,6 +258,11 @@ function AgentLineRow({ line, onOpen }: { line: AgentLine; onOpen: (id: string) 
           onOpen(line.id);
         }}
         onKeyDown={(e) => e.stopPropagation()}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onMenu(line.id, { x: e.clientX, y: e.clientY });
+        }}
         className="-mx-1 flex h-5 w-[calc(100%+8px)] min-w-0 cursor-default items-center gap-1.5 rounded px-1 text-left text-xs hover:bg-content/5"
         data-agent={line.id}
         data-agent-status={line.status}

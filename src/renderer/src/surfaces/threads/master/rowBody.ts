@@ -2,7 +2,7 @@ import type { BoardDigest } from "@server/shared/contract-batch";
 import type { TodoItem } from "../../../lib/tcserver/todos";
 import type { SessionMeta } from "../../../lib/tcserver/types";
 import type { AgentTone } from "../../../lib/threads/agents";
-import { clockTime, groupOf } from "./useMasterModel";
+import { clockTime, digestLine, groupOf } from "./useMasterModel";
 
 /**
  * What a row shows under its two lines, by the thread's type, from its
@@ -91,4 +91,16 @@ export function whatLine(
     default:
       return landed ? { text: `Landed ${clockTime(meta.updatedAt)}`, tone: "muted" } : null;
   }
+}
+
+/** The New pass dialog's one line under the title: what the thread is
+ *  doing now, the board row's own second line, else its last words. */
+export function passLine(
+  meta: Pick<SessionMeta, "status" | "activity" | "failure" | "updatedAt">,
+  digest: BoardDigest,
+  landed: boolean,
+): { text: string; tone: AgentTone } {
+  const what = whatLine(meta, digestLine(meta, digest), landed);
+  if (what?.text) return what;
+  return { text: digest.last ?? "", tone: "muted" };
 }

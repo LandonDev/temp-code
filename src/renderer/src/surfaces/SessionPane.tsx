@@ -1,6 +1,4 @@
-import { ChevronDown, GripVertical, X } from "../chrome/icons";
-import { MacBridgeThreadCards } from "../chrome/MacBridgeCards";
-import { useMacBridgeRequests } from "../lib/macBridge";
+import { GripVertical, X } from "../chrome/icons";
 import type { OpenFileFn } from "../lib/search";
 import { perfMark } from "../lib/perfMarks";
 import {
@@ -10,26 +8,20 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type PointerEvent as ReactPointerEvent,
   useLayoutEffect,
 } from "react";
-import { Composer } from "../chrome/Composer";
-import { ConnectionLine, useEnvironmentBlock } from "../chrome/ConnectionLine";
-import { AppshotFlyIn } from "../chrome/AppshotFlyIn";
+import { useEnvironmentBlock } from "../chrome/ConnectionLine";
 import { noteActiveSession } from "../lib/appshots";
 import { useFirstPaintReport } from "../lib/firstPaint";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ENTER, EASE_OUT, SPRING_PRESS } from "../lib/ease";
-import { MessageQueue } from "../chrome/MessageQueue";
+import { motion, useReducedMotion } from "motion/react";
+import { ENTER } from "../lib/ease";
 import type { ComposerIntent } from "../lib/composerAction";
-import { sessionStore, useQueue } from "../lib/tcserver/store";
-import { SessionReview } from "../chrome/SessionReview";
+import { sessionStore } from "../lib/tcserver/store";
 import type { ApprovalDecision } from "../lib/harness";
 import { looksLikeProject, type RecentProject } from "../lib/recents";
 import {
   sessionDisplayTitle,
-  sessionWorkCwd,
   type Attachment,
   type Block,
   type HarnessId,
@@ -38,24 +30,16 @@ import {
   type Session,
 } from "../lib/session";
 import type { ThreadType } from "../lib/tcserver/types";
-import { AgentTranscript } from "./AgentTranscript";
-import { DeferredMount } from "./DeferredMount";
 import { diffChunk, threadViewsChunk } from "./chunks";
 import { preloadWhenIdle } from "../lib/lazyChunk";
 import { EmptySession } from "./EmptySession";
 import { SurfaceSkeleton } from "./SurfaceSkeleton";
-import { ThreadView, type ChatOpts } from "./threads/ThreadView";
-import { ChatColumn, type ChatSlots } from "./threads/chatSlots";
-import { WorkingStrip } from "./threads/WorkingStrip";
+import { ThreadView } from "./threads/ThreadView";
+import { useThreadChat, type SessionActions } from "./threadChat";
 import * as serverCommands from "../lib/tcserver/commands";
 import { askPreconnect, idleForPreconnect } from "../lib/preconnect";
 import { MOD } from "../lib/platform";
-import { acknowledgeQuoteRequest, ADD_TO_CHAT_EVENT, type AddToChatRequest, type QuoteRequest } from "../lib/quoteDraft";
-import { createNote, noteTitle } from "../lib/notes";
-import {
-  loadNotesEnabled,
-  subscribeNotesEnabled,
-} from "../lib/settings";
+import { ADD_TO_CHAT_EVENT, type AddToChatRequest } from "../lib/quoteDraft";
 
 type Props = {
   session: Session;
@@ -144,44 +128,41 @@ export const SessionPane = memo(function SessionPane({
 }: Props) {
   const reduceMotion = useReducedMotion();
   const title = sessionDisplayTitle(session.title, session.harness);
-  const approve = useCallback(
-    (requestId: string | number, decision: ApprovalDecision) =>
-      onApproval(session.id, requestId, decision),
-    [onApproval, session.id],
-  );
-  const jumpToBottomRef = useRef<(() => void) | null>(null);
-  const quoteRequestId = useRef(0);
-  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
-  const [quoteRequest, setQuoteRequest] = useState<QuoteRequest>();
-  const onJumpToBottomReady = useCallback((jump: () => void) => {
-    jumpToBottomRef.current = jump;
-  }, []);
-  const addSelectionToChat = useCallback((text: string, mode?: QuoteRequest["mode"]) => {
-    quoteRequestId.current += 1;
-    setQuoteRequest({ id: quoteRequestId.current, text, mode });
-  }, []);
-  const acknowledgeQuote = useCallback((handledId: number) => {
-    setQuoteRequest((current) => acknowledgeQuoteRequest(current, handledId));
-  }, []);
-  const notesEnabled = useSyncExternalStore(
-    subscribeNotesEnabled,
-    loadNotesEnabled,
-    () => true,
-  );
-  const saveNote = useCallback(
-    (text: string) => {
-      const sessionTitle = sessionDisplayTitle(session.title, session.harness);
-      void createNote(session.environmentId, {
-        title:
-          sessionTitle && sessionTitle !== "New session"
-            ? sessionTitle
-            : noteTitle(text),
-        body: text,
-        sourceSessionId: session.id,
-        sourceCwd: session.cwd,
-      });
-    },
-    [session.environmentId, session.cwd, session.harness, session.id, session.title],
+  const actions = useMemo<SessionActions>(
+    () => ({
+      onSubmit,
+      onStop,
+      onApproval,
+      onCwdChange,
+      onBranchChange,
+      onModelChange,
+      onModelSettingsChange,
+      onRuntimeModeChange,
+      onThreadTypeChange,
+      onNewTerminal,
+      onInboxCardDismiss,
+      onNoteCardDismiss,
+      onHandoffCardDismiss,
+      onSecondOpinion,
+      onHandoff,
+    }),
+    [
+      onSubmit,
+      onStop,
+      onApproval,
+      onCwdChange,
+      onBranchChange,
+      onModelChange,
+      onModelSettingsChange,
+      onRuntimeModeChange,
+      onThreadTypeChange,
+      onNewTerminal,
+      onInboxCardDismiss,
+      onNoteCardDismiss,
+      onHandoffCardDismiss,
+      onSecondOpinion,
+      onHandoff,
+    ],
   );
 
   useLayoutEffect(() => {
@@ -195,36 +176,6 @@ export const SessionPane = memo(function SessionPane({
     preloadWhenIdle(threadViewsChunk);
   }, []);
 
-  useEffect(() => {
-    if (!focused) return;
-    const onAdd = (event: Event) => {
-      const detail = (event as CustomEvent<AddToChatRequest>).detail;
-      if (!detail?.text) return;
-      addSelectionToChat(detail.text, detail.mode);
-    };
-    window.addEventListener(ADD_TO_CHAT_EVENT, onAdd);
-    return () => window.removeEventListener(ADD_TO_CHAT_EVENT, onAdd);
-  }, [addSelectionToChat, focused]);
-  const workCwd = sessionWorkCwd(session);
-  // Stable per session so the transcript's memoised turn list holds across
-  // pane re-renders (a tab switch, a composer keystroke).
-  const sessionId = session.id;
-  const onTurnSecondOpinion = useMemo(
-    () =>
-      onSecondOpinion
-        ? (harness: HarnessId, turn: Block[], model: string) =>
-            onSecondOpinion(sessionId, harness, turn, model)
-        : undefined,
-    [onSecondOpinion, sessionId],
-  );
-  const onTurnHandoff = useMemo(
-    () =>
-      onHandoff
-        ? (harness: HarnessId, turn: Block[], model: string) =>
-            onHandoff(sessionId, harness, turn, model)
-        : undefined,
-    [onHandoff, sessionId],
-  );
   // A thread with no rows is empty only once its transcript has answered;
   // until then the rows area is a skeleton (and a line when it is slow or failed).
   const loadPhase = session.load?.phase ?? "loaded";
@@ -236,17 +187,6 @@ export const SessionPane = memo(function SessionPane({
   const showDeckProjectPicker = isEmpty && !looksLikeProject(session.cwd);
   const dockComposer = !isEmpty || inSplit;
   const rootRef = useRef<HTMLDivElement>(null);
-  // "Start pass N+1" on the implementation board: the next send opens a new
-  // round, and the board steps aside for the composer until it goes.
-  const [newPassArmed, setNewPassArmed] = useState(false);
-  const armNewPass = useCallback((armed: boolean) => {
-    setNewPassArmed(armed);
-    if (armed) {
-      requestAnimationFrame(() => {
-        rootRef.current?.querySelector<HTMLElement>("[data-composer-box] [data-composer-input]")?.focus();
-      });
-    }
-  }, []);
   // The focused, visible pane is where an "automatic" appshot lands, and
   // the thread its host serves first (session.focus).
   useEffect(() => {
@@ -259,42 +199,6 @@ export const SessionPane = memo(function SessionPane({
     };
   }, [focused, session.environmentId, session.id, visible]);
 
-  const submit = useCallback(
-    (text: string, attachments: Attachment[], intent: ComposerIntent) => {
-      onSubmit(session.id, text, attachments, {
-        ...(newPassArmed ? { newPass: true } : {}),
-        intent,
-      });
-      setNewPassArmed(false);
-    },
-    [newPassArmed, onSubmit, session.id],
-  );
-  const pause = useCallback(
-    () => serverCommands.pause(session.id).catch(() => undefined),
-    [session.id],
-  );
-  const paused = session.status === "paused";
-  const queue = useQueue(session.id);
-  const queueStrip =
-    queue.length > 0 ? (
-      <MessageQueue
-        items={queue}
-        sessionId={session.id}
-        paused={paused}
-        onSteer={(id) => void serverCommands.queueSteer(session.id, id).catch(() => undefined)}
-        onRemove={(id) => void serverCommands.queueRemove(session.id, id).catch(() => undefined)}
-        onUpdate={(id, text) =>
-          void serverCommands.queueUpdate(session.id, id, text).catch(() => undefined)
-        }
-        onReorder={(order) =>
-          void serverCommands.queueReorder(session.id, order).catch(() => undefined)
-        }
-      />
-    ) : null;
-  const resume = useCallback(
-    () => serverCommands.resume(session.id).catch(() => undefined),
-    [session.id],
-  );
   // A click inside the pane that already owns focus and the composer asks
   // App for nothing; the action would be a no-op and the render a waste.
   const focusPane = useCallback(() => {
@@ -307,144 +211,32 @@ export const SessionPane = memo(function SessionPane({
   }, [composerFocused, focused, onFocus, session.id, session.status]);
   // The thread's host, when it is not reachable: rows stay, sending waits.
   const block = useEnvironmentBlock(session.environmentId);
-  // The Mac bridge's requests for this (box) thread, answered on this Mac (MacBridgeCards).
-  const macRequests = useMacBridgeRequests(session.environmentId, session.id);
-  const composerOf = (opts?: ChatOpts) => (
-    <>
-      <AppshotFlyIn sessionId={session.id} active={focused && visible} />
-      <Composer
-      enabled={visible}
-      blocked={block.text}
-      focused={focused && composerFocused}
-      hotkeys={focused}
-      shell={!dockComposer}
-      harness={session.harness}
-      model={session.model}
-      modelSettings={session.modelSettings}
-      runtimeMode={session.runtimeMode}
-      cwd={session.cwd}
-      executionCwd={workCwd}
-      sessionId={session.id}
-      projectId={session.projectId ?? null}
-      recents={recents}
-      hideProjectPicker={hideProjectPicker ? !showDeckProjectPicker : false}
-      context={session.context}
-      quoteRequest={quoteRequest}
-      initialDraft={
-        session.inboxCard || session.noteCard || session.handoffCard
-          ? undefined
-          : session.composerSeed
-      }
-      inboxCard={session.inboxCard}
-      noteCard={session.noteCard}
-      handoffCard={session.handoffCard}
-      onQuoteRequestConsumed={acknowledgeQuote}
-      onInboxCardDismiss={() => onInboxCardDismiss?.(session.id)}
-      onNoteCardDismiss={() => onNoteCardDismiss?.(session.id)}
-      onHandoffCardDismiss={() => onHandoffCardDismiss?.(session.id)}
-      onFocus={focusPane}
-      onCwdChange={(cwd) => onCwdChange(session.id, cwd)}
-      onBranchChange={() => onBranchChange(session.id)}
-      onNewTerminal={() => onNewTerminal(session.id)}
-      onModelChange={(harness, model) =>
-        onModelChange(session.id, harness, model)
-      }
-      onModelSettingsChange={(settings) =>
-        onModelSettingsChange(session.id, settings)
-      }
-      onRuntimeModeChange={(mode) => onRuntimeModeChange(session.id, mode)}
-      threadType={session.parentId ? null : (session.threadType ?? "chat")}
-      onThreadTypeChange={(type) => onThreadTypeChange(session.id, type)}
-      onSubmit={submit}
-      onPause={pause}
-      busy={!!session.busy}
-      paused={paused}
-      goal={session.goal}
-      topSlot={
-        opts?.topSlot || queueStrip || block.degraded || macRequests.length > 0 ? (
-          <>
-            {macRequests.length > 0 ? <MacBridgeThreadCards environmentId={session.environmentId} sessionId={session.id} /> : null}
-            {opts?.topSlot}
-            {queueStrip}
-            {block.degraded ? <ConnectionLine environmentId={session.environmentId} /> : null}
-          </>
-        ) : undefined
-      }
-    >
-      <SessionReview
-        sessionId={session.id}
-        cwd={workCwd}
-        enabled={visible}
-        busy={!!session.busy}
-        onOpenDiff={onOpenDiff}
-      />
-    </Composer>
-    </>
-  );
-  // The column as parts so a view can seat the transcript apart from the
-  // composer; `renderChat` stacks them the way the pane always has.
-  const renderSlots = (opts?: ChatOpts): ChatSlots => ({
-    transcript: (
-      <div className="relative min-h-0 flex-1">
-        {/* The header and composer commit with the click; the transcript,
-            the heavy render, mounts in the deferred pass behind them. */}
-        <DeferredMount key={session.id} markId={session.id}>
-        <AgentTranscript
-          sessionId={session.id}
-          turn={session}
-          blocks={session.blocks}
-          busy={!!session.busy}
-          visible={visible}
-          cwd={workCwd}
-          harness={session.harness}
-          onApproval={approve}
-          onAddToChat={addSelectionToChat}
-          onSaveNote={notesEnabled ? saveNote : undefined}
-          onOpenFile={onOpenFile}
-          onOpenDiff={onOpenDiff}
-          onSelectSession={onOpenSession}
-          onSecondOpinion={onTurnSecondOpinion}
-          onHandoff={onTurnHandoff}
-          onJumpToBottomChange={setShowJumpToBottom}
-          onJumpToBottomReady={onJumpToBottomReady}
-        />
-        </DeferredMount>
-        <AnimatePresence>
-          {showJumpToBottom ? (
-            <motion.div
-              key="jump"
-              className="pointer-events-none absolute inset-x-0 bottom-2 z-30 flex justify-center"
-              initial={reduceMotion ? false : { opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1, transition: SPRING_PRESS }}
-              exit={{ opacity: 0, transition: { duration: 0.12, ease: EASE_OUT } }}
-            >
-              <button
-                type="button"
-                title="Jump to latest"
-                aria-label="Jump to latest"
-                data-jump-to-bottom
-                onClick={() => jumpToBottomRef.current?.()}
-                className="pressable pointer-events-auto grid size-6 place-items-center rounded-md border border-content/10 bg-content/10 text-content shadow-md glass-surface glass-surface--md hover:bg-content/20"
-              >
-                <ChevronDown className="size-3.5" strokeWidth={1.75} />
-              </button>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
-      </div>
-    ),
-    strip:
-      session.threadType !== "orchestration" ? (
-        <WorkingStrip
-          session={session}
-          onStop={() => onStop(session.id)}
-          onResume={resume}
-          onStart={() => serverCommands.startNow(session.id).catch(() => undefined)}
-        />
-      ) : null,
-    composer: composerOf(opts),
+  const { composerOf, renderSlots, renderChat, newPassArmed, armNewPass, addSelectionToChat } = useThreadChat({
+    session,
+    actions,
+    visible,
+    focused,
+    composerFocused,
+    shell: !dockComposer,
+    recents,
+    hideProjectPicker: hideProjectPicker ? !showDeckProjectPicker : false,
+    rootRef,
+    onFocusPane: focusPane,
+    onOpenFile,
+    onOpenDiff,
+    onOpenSession,
   });
-  const renderChat = (opts?: ChatOpts) => <ChatColumn slots={renderSlots(opts)} />;
+
+  useEffect(() => {
+    if (!focused) return;
+    const onAdd = (event: Event) => {
+      const detail = (event as CustomEvent<AddToChatRequest>).detail;
+      if (!detail?.text) return;
+      addSelectionToChat(detail.text, detail.mode);
+    };
+    window.addEventListener(ADD_TO_CHAT_EVENT, onAdd);
+    return () => window.removeEventListener(ADD_TO_CHAT_EVENT, onAdd);
+  }, [addSelectionToChat, focused]);
 
   // Keyed remount per session; the brief fade bridges the swap without
   // delaying it (no exit animation).

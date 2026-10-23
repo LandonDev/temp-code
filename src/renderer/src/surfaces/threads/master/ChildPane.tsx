@@ -1,11 +1,9 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { ArrowUp, ChevronLeft, Square } from "../../../chrome/icons";
-import { respondHarnessApproval } from "../../../lib/harness/registry";
+import { useEffect, useRef, type KeyboardEvent } from "react";
+import { ChevronLeft } from "../../../chrome/icons";
 import type { OpenFileFn } from "../../../lib/search";
-import * as commands from "../../../lib/tcserver/commands";
-import { asHarness } from "../../../lib/tcserver/store";
-import { isLiveStatus, useMetaById, useSessionById } from "../../../lib/threads/agents";
-import { AgentTranscript } from "../../AgentTranscript";
+import type { Session } from "../../../lib/session";
+import { useMetaById, useSessionById } from "../../../lib/threads/agents";
+import { useSessionActions, useThreadChat, type SessionActions } from "../../threadChat";
 import { ThreadView } from "../ThreadView";
 import { typeWord } from "./useMasterModel";
 
@@ -13,12 +11,14 @@ import { typeWord } from "./useMasterModel";
  * A child of the batch opened from the board (docs/LAYOUT.md "Master"):
  * the whole master view becomes the thread's own view, the one its type
  * would get as a tab (the implementation board, the plan document, the
- * fleet), over its transcript and a composer line that sends when it is
- * idle and steers while it runs. The thread lives on `environmentId`,
- * the master's host or another: the store holds every host's rows by id,
- * so the view, the transcript and the composer's sends reach that host
- * the way a rail row of another host opens. The header is one Back
- * control to the board; Escape and ⌘↩ anywhere in the view go back too.
+ * fleet), over its transcript, working strip and the same composer a tab
+ * has (threadChat.tsx: model and reasoning, permission, attachments, `@`
+ * and `/`, the queue, steer, the draft kept per thread). The thread lives
+ * on `environmentId`, the master's host or another: the store holds every
+ * host's rows by id, so the view, the transcript and every send reach that
+ * host the way a rail row of another host opens. The header is one Back
+ * control to the board; Escape and ⌘↩ outside the composer go back too
+ * (inside it ⌘↩ is the composer's own).
  */
 
 export function ChildPane({
@@ -42,45 +42,23 @@ export function ChildPane({
 }) {
   const meta = useMetaById(sessionId);
   const session = useSessionById(sessionId);
-  const live = isLiveStatus(meta?.status);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const actions = useSessionActions();
   const paneRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (focusComposer) inputRef.current?.focus();
-    else paneRef.current?.focus();
+    if (!focusComposer) paneRef.current?.focus();
   }, [sessionId, focusComposer]);
 
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === "Escape" || (e.key === "Enter" && e.metaKey)) {
-      e.preventDefault();
-      e.stopPropagation();
-      onBack();
-    }
+    if (e.defaultPrevented || !paneRef.current?.contains(e.target as Node)) return;
+    const back = e.key === "Escape" || (e.key === "Enter" && e.metaKey && !(e.target as HTMLElement).closest?.("[data-composer-box]"));
+    if (!back) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onBack();
   };
 
-  if (!meta || !session || meta.environmentId !== environmentId) return null;
-  const harness = asHarness(meta.provider);
-
-  const chat: ReactNode = (
-    <>
-      <div className="relative min-h-0 flex-1">
-        <AgentTranscript
-          sessionId={sessionId}
-          blocks={session.blocks}
-          busy={!!session.busy}
-          visible
-          cwd={meta.cwd}
-          harness={harness}
-          onApproval={(requestId, decision) => respondHarnessApproval(harness, sessionId, requestId, decision)}
-          onOpenFile={onOpenFile}
-          onOpenDiff={onOpenDiff}
-          onSelectSession={onOpenSession}
-        />
-      </div>
-      <ComposerLine inputRef={inputRef} session={session} live={live} />
-    </>
-  );
+  if (!meta || !session || !actions || meta.environmentId !== environmentId) return null;
 
   return (
     <div ref={paneRef} tabIndex={-1} onKeyDown={onKey} className="flex min-h-0 min-w-0 flex-1 flex-col outline-none" data-child-pane={sessionId} data-child-host={environmentId}>
@@ -97,11 +75,11 @@ export function ChildPane({
         <span className="min-w-0 truncate pl-1 text-[13px] font-medium text-content">{meta.title || "Untitled"}</span>
         <span className="shrink-0 text-xs text-content/40">{typeWord(meta)}</span>
       </div>
-      <ThreadView
+      <ChildThread
         session={session}
-        renderChat={() => chat}
-        composing={false}
-        onArmNewPass={() => {}}
+        actions={actions}
+        focusComposer={focusComposer}
+        rootRef={paneRef}
         onOpenFile={onOpenFile}
         onOpenDiff={onOpenDiff}
         onOpenSession={onOpenSession}
@@ -110,65 +88,50 @@ export function ChildPane({
   );
 }
 
-function ComposerLine({
-  inputRef,
+/** The thread's own view over the chat a tab would build for it. */
+function ChildThread({
   session,
-  live,
+  actions,
+  focusComposer,
+  rootRef,
+  onOpenFile,
+  onOpenDiff,
+  onOpenSession,
 }: {
-  inputRef: React.RefObject<HTMLInputElement | null>;
-  session: NonNullable<ReturnType<typeof useSessionById>>;
-  live: boolean;
+  session: Session;
+  actions: SessionActions;
+  focusComposer: boolean;
+  rootRef: React.RefObject<HTMLDivElement | null>;
+  onOpenFile: OpenFileFn;
+  onOpenDiff: (path?: string) => void;
+  onOpenSession?: (sessionId: string) => void;
 }) {
-  const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
-  const submit = async () => {
-    const body = text.trim();
-    if (!body || sending) return;
-    setSending(true);
-    setText("");
-    try {
-      if (live) await commands.steer(session, body);
-      else await commands.send(session, body);
-    } finally {
-      setSending(false);
-      inputRef.current?.focus();
-    }
-  };
+  const chat = useThreadChat({
+    session,
+    actions,
+    visible: true,
+    // The master's own composer is not on screen while the child shows:
+    // this one owns the model picker's shortcuts.
+    focused: true,
+    composerFocused: focusComposer,
+    rootRef,
+    onFocusPane: NOOP,
+    onOpenFile,
+    onOpenDiff,
+    onOpenSession,
+  });
   return (
-    <form
-      className="mx-3 mb-3 flex h-8 shrink-0 items-center gap-2 rounded-lg border border-content/10 pr-1 pl-3"
-      onSubmit={(e) => {
-        e.preventDefault();
-        void submit();
-      }}
-    >
-      <input
-        ref={inputRef}
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder={live ? "Steer this thread…" : "Message this thread…"}
-        aria-label="Message this thread"
-        className="h-full min-w-0 flex-1 bg-transparent text-xs text-content outline-none placeholder:text-content/40"
-      />
-      {live ? (
-        <button
-          type="button"
-          onClick={() => void commands.interrupt(session.id)}
-          title="Stop"
-          aria-label="Stop"
-          className="pressable grid size-6 shrink-0 place-items-center rounded-md text-content/50 hover:bg-content/8 hover:text-content"
-        >
-          <Square className="size-3" strokeWidth={1.75} />
-        </button>
-      ) : null}
-      <button
-        type="submit"
-        disabled={!text.trim() || sending}
-        aria-label="Send"
-        className="pressable grid size-6 shrink-0 place-items-center rounded-md bg-content text-background-base disabled:opacity-30"
-      >
-        <ArrowUp className="size-3" strokeWidth={2} />
-      </button>
-    </form>
+    <ThreadView
+      session={session}
+      renderChat={chat.renderChat}
+      renderSlots={chat.renderSlots}
+      composing={chat.newPassArmed}
+      onArmNewPass={chat.armNewPass}
+      onOpenFile={onOpenFile}
+      onOpenDiff={onOpenDiff}
+      onOpenSession={onOpenSession}
+    />
   );
 }
+
+const NOOP = () => {};

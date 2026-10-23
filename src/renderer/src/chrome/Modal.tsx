@@ -4,17 +4,25 @@ import { createPortal } from "react-dom";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { LAYER, LayerContext } from "../lib/layers";
 
-export type ModalSize = "sm" | "md";
+export type ModalSize = "sm" | "md" | "lg";
 
 const WIDTH: Record<ModalSize, string> = {
   sm: "w-[min(420px,calc(100vw-24px))]",
   md: "w-[min(560px,calc(100vw-24px))]",
+  lg: "w-[min(720px,calc(100vw-24px))]",
 };
 
 const TOP: Record<ModalSize, string> = {
   sm: "top-[22%]",
   md: "top-[10%]",
+  lg: "top-[18%]",
 };
+
+/** A popover or the composer's `@` and `/` list is open above the dialog:
+ *  Escape is that layer's, and the dialog stays. */
+export function escapeOwnedAbove(): boolean {
+  return document.querySelector("[data-popover-side], [data-command-popover]") !== null;
+}
 
 type Props = {
   onClose: () => void;
@@ -77,6 +85,7 @@ export function ModalPanel({
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (escapeOwnedAbove()) return;
         event.preventDefault();
         event.stopPropagation();
         if (!busyRef.current) onClose();

@@ -305,6 +305,7 @@ import {
   turnUserRequest,
 } from "./lib/secondOpinion";
 import { PaneTree } from "./surfaces/PaneTree";
+import { SessionActionsContext, type SessionActions } from "./surfaces/threadChat";
 import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
 import { aliaxChunk, diffChunk, settingsChunk } from "./surfaces/chunks";
 import { SurfaceSkeleton } from "./surfaces/SurfaceSkeleton";
@@ -3645,7 +3646,47 @@ export default function App() {
     );
   }, [currentProjectDock, dockVisible]);
 
+  const sessionActions = useMemo<SessionActions>(
+    () => ({
+      onSubmit,
+      onStop,
+      onApproval,
+      onCwdChange,
+      onBranchChange,
+      onModelChange,
+      onModelSettingsChange,
+      onRuntimeModeChange,
+      onThreadTypeChange,
+      onNewTerminal: onNewTerminalInSession,
+      onInboxCardDismiss,
+      onNoteCardDismiss,
+      onHandoffCardDismiss,
+      onSecondOpinion,
+      onHandoff,
+    }),
+    [
+      onSubmit,
+      onStop,
+      onApproval,
+      onCwdChange,
+      onBranchChange,
+      onModelChange,
+      onModelSettingsChange,
+      onRuntimeModeChange,
+      onThreadTypeChange,
+      onNewTerminalInSession,
+      onInboxCardDismiss,
+      onNoteCardDismiss,
+      onHandoffCardDismiss,
+      onSecondOpinion,
+      onHandoff,
+    ],
+  );
+
+  // A thread's chat mounted outside a pane (a master board's child pane and
+  // its New pass dialog) reaches the same handlers through the context.
   return (
+    <SessionActionsContext.Provider value={sessionActions}>
     <div
       className="app-shell flex h-full bg-background-base text-content">
       <Sidebar
@@ -3988,6 +4029,7 @@ export default function App() {
         />
       ) : null}
     </div>
+    </SessionActionsContext.Provider>
   );
 }
 

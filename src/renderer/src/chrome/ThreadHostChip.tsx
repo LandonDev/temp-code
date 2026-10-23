@@ -46,21 +46,8 @@ export function ThreadHostChip({ sessionId }: { sessionId: string }): JSX.Elemen
   const { projects, workspaces } = useWorkspaceCatalog();
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [confirm, setConfirm] = useState<{ to: string; name: string } | null>(null);
-  const [preview, setPreview] = useState<SessionMovePreview | null | "error">(null);
   const cwd = session?.cwd ?? "";
   const branches = useProjectBranches(cwd, !!session && environments.length >= 2);
-  useEffect(() => {
-    if (!confirm) return;
-    let live = true;
-    setPreview(null);
-    previewMove(sessionId).then(
-      (p) => live && setPreview(p),
-      () => live && setPreview("error"),
-    );
-    return () => {
-      live = false;
-    };
-  }, [confirm, sessionId]);
   if (!session) return null;
   const env = environments.find((e) => e.id === session.environmentId);
   // A window with one host has nothing to say here.
@@ -136,22 +123,49 @@ export function ThreadHostChip({ sessionId }: { sessionId: string }): JSX.Elemen
           onClose={() => setMenu(null)}
         />
       ) : null}
-      {confirm ? (
-        <ConfirmDialog
-          title={`Move this thread to ${confirm.name}?`}
-          body={`The thread, its subagents, its transcript and its agent pages move to ${confirm.name} and run there from now on. The undo history stays on ${env.name}.`}
-          note={movePreviewLine(preview)}
-          confirmLabel="Move thread"
-          onCancel={() => setConfirm(null)}
-          onConfirm={() => {
-            const to = confirm.to;
-            setConfirm(null);
-            // The result (or the refusal) arrives as a toast; the chip shows the move meanwhile.
-            void moveThread(sessionId, to).catch(() => undefined);
-          }}
-        />
-      ) : null}
+      {confirm ? <MoveThreadConfirm sessionId={sessionId} to={confirm.to} toName={confirm.name} fromName={env.name} onClose={() => setConfirm(null)} /> : null}
     </>
+  );
+}
+
+/** The confirm before a thread with messages moves, saying what travels
+ *  (`session.move.preview`). The result, or the refusal, arrives as a toast. */
+export function MoveThreadConfirm({
+  sessionId,
+  to,
+  toName,
+  fromName,
+  onClose,
+}: {
+  sessionId: string;
+  to: string;
+  toName: string;
+  fromName: string;
+  onClose: () => void;
+}): JSX.Element {
+  const [preview, setPreview] = useState<SessionMovePreview | null | "error">(null);
+  useEffect(() => {
+    let live = true;
+    previewMove(sessionId).then(
+      (p) => live && setPreview(p),
+      () => live && setPreview("error"),
+    );
+    return () => {
+      live = false;
+    };
+  }, [sessionId]);
+  return (
+    <ConfirmDialog
+      title={`Move this thread to ${toName}?`}
+      body={`The thread, its subagents, its transcript and its agent pages move to ${toName} and run there from now on. The undo history stays on ${fromName}.`}
+      note={movePreviewLine(preview)}
+      confirmLabel="Move thread"
+      onCancel={onClose}
+      onConfirm={() => {
+        onClose();
+        void moveThread(sessionId, to).catch(() => undefined);
+      }}
+    />
   );
 }
 
