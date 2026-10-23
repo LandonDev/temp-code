@@ -141,6 +141,38 @@ vi.mock("../../lib/tcserver/commands", async (importOriginal) => ({
   startThread: (...args: unknown[]) => startThread(...(args as [])),
 }));
 vi.mock("../../chrome/ModelPicker", () => ({ ModelPicker: () => <span data-model-picker /> }));
+// The composer a tab has (threadChat.tsx), as a field that hands its text
+// to the thread the way the real one does: the intent from busy, the
+// session it was mounted for, the caret when it is focused.
+vi.mock("../../chrome/Composer", () => ({
+  Composer: ({
+    sessionId,
+    busy,
+    focused,
+    onSubmit,
+  }: {
+    sessionId?: string;
+    busy?: boolean;
+    focused: boolean;
+    onSubmit: (text: string, attachments: unknown[], intent: string) => void;
+  }) => (
+    <form
+      data-composer-box
+      data-composer-session={sessionId}
+      onSubmit={(e) => {
+        e.preventDefault();
+        const field = e.currentTarget.querySelector("textarea")!;
+        onSubmit(field.value, [], busy ? "steer" : "send");
+        field.value = "";
+      }}
+    >
+      <textarea data-composer-input aria-label="Message" autoFocus={focused} />
+    </form>
+  ),
+}));
+vi.mock("../../chrome/AppshotFlyIn", () => ({ AppshotFlyIn: () => null }));
+vi.mock("../../chrome/ConnectionLine", () => ({ useEnvironmentBlock: () => ({ text: null, degraded: false, name: "" }), ConnectionLine: () => null }));
+vi.mock("../../chrome/SessionReview", () => ({ SessionReview: () => null }));
 vi.mock("../AgentTranscript", () => ({
   AgentTranscript: ({ sessionId }: { sessionId: string }) => <div data-transcript={sessionId} />,
 }));
@@ -160,8 +192,10 @@ vi.mock("./SplitShell", () => ({
   ),
 }));
 
+import * as commands from "../../lib/tcserver/commands";
 import { sessionStore } from "../../lib/tcserver/store";
 import { resetNotesStore } from "../../lib/threadNotes";
+import { SessionActionsContext, type SessionActions } from "../threadChat";
 import { MasterView } from "./MasterView";
 
 const meta = (over: Partial<SessionMeta>): SessionMeta =>
@@ -214,6 +248,32 @@ const props = {
   onOpenSession: vi.fn(),
 };
 
+/** App's handlers as the panes get them: a send or a steer on the thread's own link. */
+const sent: { id: string; text: string; intent?: string }[] = [];
+const actions = {
+  onSubmit: (id: string, text: string, _attachments: unknown[], options?: { intent?: string }) => {
+    sent.push({ id, text, intent: options?.intent });
+    const session = sessionStore.get(id)!;
+    void (options?.intent === "steer" ? commands.steer(session, text) : commands.send(session, text)).catch(() => undefined);
+  },
+  onStop: () => {},
+  onApproval: () => {},
+  onCwdChange: () => {},
+  onBranchChange: () => {},
+  onModelChange: () => {},
+  onModelSettingsChange: () => {},
+  onRuntimeModeChange: () => {},
+  onThreadTypeChange: () => {},
+  onNewTerminal: () => {},
+} as unknown as SessionActions;
+
+const renderView = () =>
+  render(
+    <SessionActionsContext.Provider value={actions}>
+      <MasterView {...props} />
+    </SessionActionsContext.Provider>,
+  );
+
 const flush = (): Promise<void> => act(() => new Promise((r) => setTimeout(r, 0)));
 
 const rows = (sessionId: string, events: AgentEvent[]): EventRow[] =>
@@ -253,6 +313,7 @@ beforeEach(() => {
     l.boardChildren = [];
   }
   rowReads.length = 0;
+  sent.length = 0;
   hosts.environments = [{ id: "local", name: "This Mac" }];
   hosts.statuses = new Map([["local", { transport: "open", fresh: true }]]);
   catalog.workspaces = [];
@@ -300,7 +361,7 @@ const boxMeta = (over: Partial<SessionMeta>): SessionMeta => meta({ environmentI
 describe("the master view", () => {
   it("paints the chat alone until the first child", async () => {
     seed([]);
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     expect(screen.getByTestId("chat")).toBeTruthy();
     expect(screen.queryByText("Needs you")).toBeNull();
@@ -314,7 +375,7 @@ describe("the master view", () => {
       meta({ id: "c-queued", title: "Inbox swipe", status: "queued", createdAt: 4, activity: "Queued · waiting for Home", after: "c-run" }),
       meta({ id: "c-done", title: "Design foundations", status: "idle", createdAt: 2, updatedAt: new Date(2026, 9, 21, 12, 8).getTime() }),
     ]);
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     expect(headers().map((h) => h.getAttribute("data-group-header"))).toEqual(["needsYou", "running", "queued", "done"]);
     expect(header("running").textContent).toBe("Running1");
@@ -335,7 +396,7 @@ describe("the master view", () => {
 
   it("draws no section that is empty", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     expect(headers().map((h) => h.getAttribute("data-group-header"))).toEqual(["running"]);
   });
@@ -352,7 +413,7 @@ describe("the master view", () => {
       { content: "Tests", status: "pending" },
     ];
     for (const id of ["c-impl", "c-chat", "c-plan"]) link.digests.set(id, { todos });
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     await flush();
     const impl = screen.getByRole("button", { name: /Home screen/ });
@@ -376,7 +437,7 @@ describe("the master view", () => {
       { content: "Tests", status: "completed" },
     ];
     for (const id of ["c-fold", "c-folded"]) link.digests.set(id, { todos });
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     await flush();
     const running = screen.getByRole("button", { name: /Home screen/ });
@@ -407,7 +468,7 @@ describe("the master view", () => {
     ]);
     link.digests.set("c-res", { state: "Three sources read, two to go", last: "Reading the fourth." });
     link.digests.set("c-orc", { last: "Spawned three implementers." });
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     await flush();
     expect(within(screen.getByRole("button", { name: /Pricing survey/ })).getByText("Three sources read, two to go")).toBeTruthy();
@@ -425,7 +486,7 @@ describe("the master view", () => {
     ]);
     link.digests.set("c-ask", { question: "Ad Hoc or Debug?" });
     link.digests.set("c-err", { failure: "Rate limited until 14:00" });
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     expect(within(screen.getByRole("button", { name: /Live Activity/ })).getByText("has a question — Ad Hoc or Debug?")).toBeTruthy();
     expect(within(screen.getByRole("button", { name: /Inbox/ })).getByText("Rate limited until 14:00")).toBeTruthy();
@@ -435,7 +496,7 @@ describe("the master view", () => {
     seed([meta({ id: "c-run", title: "Home", status: "running", createdAt: 1 })]);
     const { environmentId: _e, ...wire } = meta({ id: "c-new", title: "Just started", status: "starting", createdAt: 2 });
     link.boardChildren = [wire];
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     expect(screen.getByRole("button", { name: /Just started/ })).toBeTruthy();
     act(() => link.push({ push: "session-removed", sessionIds: ["c-new"] } as ServerPush));
@@ -447,7 +508,7 @@ describe("the master view", () => {
   it("a board push changes that one row's digest", async () => {
     seed([meta({ id: "c-impl", title: "Home screen", status: "running", createdAt: 1 }), meta({ id: "c-two", title: "Inbox", status: "running", createdAt: 2 })]);
     link.digests.set("c-impl", { todos: [{ content: "Write the view", status: "in_progress" }] });
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     const impl = () => screen.getByRole("button", { name: /Home screen/ });
     expect(within(impl()).getByText("0/1")).toBeTruthy();
@@ -468,7 +529,7 @@ describe("the master view", () => {
       meta({ id: "c-build", title: "Search: the results screen", status: "running", planThreadId: "c-plan", createdAt: 5 }),
       meta({ id: "c-other", title: "Inbox", status: "running", createdAt: 3 }),
     ]);
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     const titles = screen.getAllByRole("button", { name: /Search|Inbox/ }).map((b) => b.textContent?.split(/Implementation/)[0]);
     expect(titles).toEqual(["Search screen", "Inbox"]);
@@ -480,7 +541,7 @@ describe("the master view", () => {
 
   it("a row opens its thread's full view in the board's place, and Back or Escape returns to the board where it was", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" }), meta({ id: "c-two", title: "Inbox", status: "running" })]);
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     expect(screen.getByTestId("chat")).toBeTruthy();
     const scroller = document.querySelector("[data-board-scroller]") as HTMLElement;
@@ -518,7 +579,7 @@ describe("the master view", () => {
       meta({ id: "c-done2", title: "Done two", status: "done" }),
       meta({ id: "c-stop", title: "Stopped", status: "stopped" }),
     ]);
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "Batch actions" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Archive done…" }));
@@ -548,7 +609,7 @@ describe("the master view", () => {
       ].map(({ environmentId: _e, ...wire }) => wire),
     );
     sessionStore.attach(link);
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     fireEvent.click(screen.getByRole("button", { name: /Thread/ }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Add existing thread…" }));
@@ -562,23 +623,81 @@ describe("the master view", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("the child pane's line sends into the thread, and Message lands in it", async () => {
+  it("the child pane has the thread's own composer: Message lands in it, a send goes to the thread, and ⌘↩ in it is the composer's", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "idle" })]);
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "Message" }));
     await flush();
-    const field = screen.getByLabelText("Message this thread");
+    const pane = document.querySelector("[data-child-pane='c-run']")!;
+    const box = pane.querySelector("[data-composer-box]")!;
+    expect(box.getAttribute("data-composer-session")).toBe("c-run");
+    const field = within(pane as HTMLElement).getByLabelText("Message") as HTMLTextAreaElement;
     expect(document.activeElement).toBe(field);
-    fireEvent.change(field, { target: { value: "Ship it" } });
+    // ⌘↩ inside the composer never leaves the pane.
+    fireEvent.keyDown(field, { key: "Enter", metaKey: true });
+    expect(document.querySelector("[data-child-pane='c-run']")).toBeTruthy();
+    field.value = "Ship it";
+    fireEvent.submit(box);
+    await flush();
+    expect(sent).toEqual([{ id: "c-run", text: "Ship it", intent: "send" }]);
+    expect(link.calls.some((c) => c.method === "session.send" && (c.params as { text: string }).text === "Ship it")).toBe(true);
+  });
+
+  it("a row's right-click menu leads with New pass…, and its dialog sends into that thread on its own host and closes", async () => {
+    seed([meta({ id: "c-home", title: "Home", status: "running" })]);
+    seedBox([boxMeta({ id: "c-box", title: "Inbox", status: "idle" })], true);
+    renderView();
+    await flush();
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Inbox/ }));
+    const menu = screen.getByRole("menu", { name: "Thread actions" });
+    const labels = within(menu).getAllByRole("menuitem").map((i) => i.textContent);
+    expect(labels.slice(0, 2)).toEqual(["New pass…", "Open"]);
+    expect(labels).toContain("Rename");
+    expect(labels).toContain("Archive");
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "New pass…" }));
+    await flush();
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Inbox")).toBeTruthy();
+    const pass = dialog.querySelector("[data-new-pass='c-box']")!;
+    expect(pass.getAttribute("data-new-pass-host")).toBe("box");
+    expect(pass.querySelector("[data-composer-box]")?.getAttribute("data-composer-session")).toBe("c-box");
+    const field = within(dialog).getByLabelText("Message") as HTMLTextAreaElement;
+    field.value = "Second pass: the empty state";
     fireEvent.submit(field.closest("form")!);
     await flush();
-    expect(link.calls.some((c) => c.method === "session.send" && (c.params as { text: string }).text === "Ship it")).toBe(true);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(sent).toEqual([{ id: "c-box", text: "Second pass: the empty state", intent: "send" }]);
+    // The turn went to the box, never to the master's host.
+    expect(boxLink.calls.some((c) => c.method === "session.send" && (c.params as { sessionId: string }).sessionId === "c-box")).toBe(true);
+    expect(link.calls.some((c) => c.method === "session.send")).toBe(false);
+  });
+
+  it("New pass on a running thread steers it, and Escape closes the dialog", async () => {
+    seed([meta({ id: "c-run", title: "Home", status: "running" })]);
+    sessionStore.patch("c-run", { busy: true });
+    renderView();
+    await flush();
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Home/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "New pass…" }));
+    await flush();
+    let field = within(screen.getByRole("dialog")).getByLabelText("Message") as HTMLTextAreaElement;
+    field.value = "Also the footer";
+    fireEvent.submit(field.closest("form")!);
+    await flush();
+    expect(sent.at(-1)).toEqual({ id: "c-run", text: "Also the footer", intent: "steer" });
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Home/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "New pass…" }));
+    await flush();
+    field = within(screen.getByRole("dialog")).getByLabelText("Message") as HTMLTextAreaElement;
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(sent).toHaveLength(1);
   });
 
   it("reads batch.board into the foot: the rules sentence first, then the console of the running step", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     expect(link.calls.some((c) => c.method === "batch.board" && (c.params as { masterId: string }).masterId === "m")).toBe(true);
     expect(link.calls.some((c) => c.method === "batch.get")).toBe(false);
@@ -601,7 +720,7 @@ describe("the master view", () => {
     try {
       vi.setSystemTime(batch.steps[1].startedAt! + 65_000);
       seed([meta({ id: "c-run", title: "Home", status: "running" })]);
-      render(<MasterView {...props} />);
+      renderView();
       await act(async () => {
         await Promise.resolve();
         await Promise.resolve();
@@ -623,7 +742,7 @@ describe("the master view", () => {
 
   it("the console follows new lines until the person scrolls up, and Stop writes batch.stopStep with the step's id", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     const log = document.querySelector("[data-log]") as HTMLPreElement;
     // jsdom has no layout: give the scroller a size and watch where it lands.
@@ -664,7 +783,7 @@ describe("the master view", () => {
 
   it("the foot grows to the console when a step starts and shrinks back to the row when every step is done", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     const foot = () => document.querySelector("[data-batch-foot]")!;
     const pushSteps = (steps: unknown[]) =>
@@ -701,7 +820,7 @@ describe("the master view", () => {
 
   it("the steps are the master's list in order: a shell step reads by its name idle, and runs in the same console with its command", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     const rules = {
       land: "as-they-finish",
@@ -751,7 +870,7 @@ describe("the master view", () => {
 
   it("a failed step stays open with its last lines and the failure in red until Hide", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     const t = batch.steps[1].startedAt!;
     act(() => {
@@ -782,7 +901,7 @@ describe("the master view", () => {
 
   it("Edit opens the rules: the steps reorder, a built-in and a shell step are added, one is removed, and Save writes the list", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     const dialog = screen.getByRole("dialog");
@@ -834,7 +953,7 @@ describe("the master view", () => {
 
   it("Save stays off while a step has no name", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     const dialog = screen.getByRole("dialog");
@@ -844,7 +963,7 @@ describe("the master view", () => {
 
   it("the add sheet creates the thread under the master with the brief as its first message", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     fireEvent.click(screen.getByRole("button", { name: /Thread/ }));
     fireEvent.click(screen.getByRole("menuitem", { name: "New thread…" }));
@@ -878,7 +997,7 @@ describe("the master view", () => {
 
   it("a queued row offers Start now and Remove from queue in place of the live actions", async () => {
     seed([meta({ id: "c-q", title: "Inbox", status: "queued", activity: "Queued · waiting for Home", after: "c-run" })]);
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "Start now" }));
     await flush();
@@ -894,7 +1013,7 @@ describe("the master view", () => {
 describe("the board's first paint", () => {
   it("is reported once per open as board-paint with the row count, a trip into a child and back not counting", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running", createdAt: 1 }), meta({ id: "c-two", title: "Inbox", status: "running", createdAt: 2 })]);
-    render(<MasterView {...props} />);
+    renderView();
     await act(() => new Promise((r) => setTimeout(r, 50)));
     const reports = () => link.calls.filter((c) => c.method === "stall.report").map((c) => (c.params as { line: string }).line);
     expect(reports()).toHaveLength(1);
@@ -913,7 +1032,7 @@ describe("a fleet of 300", () => {
 
   it("mounts only the rows on screen, from one answer and nothing per row", async () => {
     seed(fleet());
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     const mounted = document.querySelectorAll("[data-status]");
     expect(mounted.length).toBeGreaterThan(5);
@@ -928,7 +1047,7 @@ describe("a fleet of 300", () => {
 
   it("one child's meta change renders that row again and no other", async () => {
     seed(fleet());
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     rowReads.length = 0;
     const { environmentId: _e, ...wire } = meta({ id: "f2", title: "Thread 2", status: "running", createdAt: 3, activity: "Running lint" });
@@ -959,7 +1078,7 @@ describe("a row's subagents", () => {
       agent("a2", "c-impl", "idle", { title: "Old" }),
       agent("a3", "c-impl", "running", { archived: true, title: "Gone" }),
     ]);
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     expect(linesOf(/Home screen/)).toEqual([
       "waiting Testswaiting for approval — Bash",
@@ -980,7 +1099,7 @@ describe("a row's subagents", () => {
       meta({ id: "c-impl", title: "Home screen", status: "running" }),
       ...[1, 2, 3, 4, 5].map((i) => agent(`a${i}`, "c-impl", "running", { title: `Agent ${i}`, createdAt: i })),
     ]);
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     expect(linesOf(/Home screen/)).toHaveLength(3);
     expect(tailOf(/Home screen/)).toBe("and 2 more");
@@ -988,7 +1107,7 @@ describe("a row's subagents", () => {
 
   it("a line opens its agent in the board's place, never the row", async () => {
     seed([meta({ id: "c-impl", title: "Home screen", status: "running" }), agent("a1", "c-impl", "waiting", { title: "Tests" })]);
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     fireEvent.click(document.querySelector("[data-agent='a1']")!);
     await flush();
@@ -1005,7 +1124,7 @@ describe("a row's subagents", () => {
       meta({ id: "c-other", title: "Search", status: "running", createdAt: 2 }),
       agent("a1", "c-impl", "running", { title: "Rail", activity: "Reading a.ts" }),
     ]);
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     expect(linesOf(/Home screen/)).toEqual(["running RailReading a.ts"]);
     rowReads.length = 0;
@@ -1029,7 +1148,7 @@ describe("the batch across hosts", () => {
   it("a child on another host carries that host's glyph, under the offline tint while the host is out of reach", async () => {
     seed([meta({ id: "c-home", title: "Home", status: "running" })]);
     seedBox([boxMeta({ id: "c-box", title: "Inbox", status: "running", model: "gpt-6.1-sol", provider: "codex" })]);
-    const { rerender } = render(<MasterView {...props} />);
+    const { rerender } = renderView();
     await flush();
     expect(rowsIn("running").map((r) => r.textContent?.split("Implementation")[0])).toEqual(["Home", "Inbox"]);
     const home = screen.getByRole("button", { name: /Home/ }).closest("[data-status]")!;
@@ -1050,7 +1169,11 @@ describe("the batch across hosts", () => {
       ["local", { transport: "open", fresh: true }],
       ["box", { transport: "open", fresh: true }],
     ]);
-    rerender(<MasterView {...props} />);
+    rerender(
+      <SessionActionsContext.Provider value={actions}>
+        <MasterView {...props} />
+      </SessionActionsContext.Provider>,
+    );
     const again = screen.getByRole("button", { name: /Inbox/ }).closest("[data-status]")!;
     expect(again.getAttribute("data-host-offline")).toBeNull();
     expect(again.className).not.toContain("opacity-50");
@@ -1067,7 +1190,7 @@ describe("the batch across hosts", () => {
       ],
       true,
     );
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     const inbox = screen.getByRole("button", { name: /^Inbox/ });
     expect([...inbox.querySelectorAll("[data-agent]")].map((l) => l.getAttribute("data-agent"))).toEqual(["b11", "b1"]);
@@ -1079,7 +1202,7 @@ describe("the batch across hosts", () => {
     seed([meta({ id: "c-home", title: "Home", status: "running" })]);
     seedBox([boxMeta({ id: "c-box", title: "Inbox", status: "running" })], true);
     boxLink.digests.set("c-box", { todos: [{ content: "Swipe", status: "in_progress" }, { content: "Tests", status: "pending" }] });
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     const box = screen.getByRole("button", { name: /Inbox/ });
     expect(within(box).getByText("0/2")).toBeTruthy();
@@ -1095,7 +1218,7 @@ describe("the batch across hosts", () => {
       ["local", { transport: "open", fresh: true }],
       ["box", { transport: "offline", fresh: false }],
     ]);
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     expect(boxLink.calls.some((c) => c.method === "batch.board")).toBe(false);
   });
@@ -1103,7 +1226,7 @@ describe("the batch across hosts", () => {
   it("a row of another host opens its view on that host", async () => {
     seed([meta({ id: "c-home", title: "Home", status: "running" })]);
     seedBox([boxMeta({ id: "c-box", title: "Inbox", status: "running" })], true);
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     fireEvent.click(screen.getByRole("button", { name: /Inbox/ }));
     await flush();
@@ -1118,7 +1241,7 @@ describe("the batch across hosts", () => {
   it("the add sheet offers the linked hosts, the master's first, and starts the thread on the chosen one with the master as its starter", async () => {
     seed([meta({ id: "c-home", title: "Home", status: "running" })]);
     seedBox([], true);
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     fireEvent.click(screen.getByRole("button", { name: /Thread/ }));
     fireEvent.click(screen.getByRole("menuitem", { name: "New thread…" }));
@@ -1138,7 +1261,7 @@ describe("the batch across hosts", () => {
   it("the add sheet hides the host row while the other host is offline", async () => {
     seed([meta({ id: "c-home", title: "Home", status: "running" })]);
     seedBox([]);
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     fireEvent.click(screen.getByRole("button", { name: /Thread/ }));
     fireEvent.click(screen.getByRole("menuitem", { name: "New thread…" }));
@@ -1150,7 +1273,7 @@ describe("the batch across hosts", () => {
     link.metas.push(...[meta({ id: "free", title: "A stray chat", threadType: "chat", masterId: null as unknown as string, createdAt: 9 })].map(({ environmentId: _e, ...wire }) => wire));
     sessionStore.attach(link);
     seedBox([boxMeta({ id: "free-box", title: "Box stray", masterId: null as unknown as string, createdAt: 10 })], true);
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     fireEvent.click(screen.getByRole("button", { name: /Thread/ }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Add existing thread…" }));
@@ -1179,7 +1302,7 @@ describe("the batch across hosts", () => {
       ],
       true,
     );
-    render(<MasterView {...props} />);
+    renderView();
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "Batch actions" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Pause all" }));

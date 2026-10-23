@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TodoItem } from "../../../lib/tcserver/todos";
-import { rowBody, summaryLine, taskProgress, tasksOpenByDefault, taskTally, whatLine } from "./rowBody";
+import type { BoardDigest } from "@server/shared/contract-batch";
+import { passLine, rowBody, summaryLine, taskProgress, tasksOpenByDefault, taskTally, whatLine } from "./rowBody";
 
 describe("what a row shows under its lines, by type", () => {
   it("an implementation shows its task list; nothing before the first list", () => {
@@ -55,5 +56,16 @@ describe("the second line", () => {
     expect(whatLine({ status: "paused", activity: null, updatedAt: at }, line, false)?.text).toBe("Paused");
     expect(whatLine({ status: "idle", activity: null, updatedAt: at }, line, true)?.text).toBe("Landed 12:08");
     expect(whatLine({ status: "idle", activity: null, updatedAt: at }, line, false)).toBeNull();
+  });
+});
+
+describe("the New pass dialog's line", () => {
+  const digest = { last: "Wrote the empty state." } as BoardDigest;
+  it("reads what the thread does now while it works, its question while it waits", () => {
+    expect(passLine({ status: "running", activity: "Running tests", failure: null, updatedAt: 0 } as never, digest, false)).toEqual({ text: "Running tests", tone: "muted" });
+    expect(passLine({ status: "waiting", activity: null, failure: null, updatedAt: 0 } as never, { question: "Which icon?" } as BoardDigest, false).tone).toBe("warning");
+  });
+  it("reads its last words once it is idle", () => {
+    expect(passLine({ status: "idle", activity: null, failure: null, updatedAt: 0 } as never, digest, false)).toEqual({ text: "Wrote the empty state.", tone: "muted" });
   });
 });

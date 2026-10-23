@@ -370,15 +370,33 @@ in the whole pane, with Back.
   (`master/ChildPane.tsx`, given the row's `environmentId`): the whole
   pane, board and master chat gone, becomes the thread's own view, the one
   its type gets as a tab (the implementation board, the plan document, the
-  fleet), over its transcript and a one-line composer that sends while it
-  is idle and steers while it runs, with Stop beside Send; a child on
-  another host opens against that host the way a rail row of that host
-  does (the store holds every host's rows by id, `data-child-host` names
-  it). The header is one Back control on the same
-  40px bar as the board's title; Escape or ⌘↩ anywhere in the view goes
-  back, and the board returns at the scroll it was left at. Nothing opens a
-  tab; the strip never lists a child (`isBatchChild` in
+  fleet), over its transcript, working strip and the composer a tab has
+  (`surfaces/threadChat.tsx`, shared with SessionPane: model and reasoning,
+  Fast and 1M, permission, the account chip, attachments and paste, `@`
+  references, `/` skills, the queue, steer while it runs, the draft kept
+  per thread, the approval and question cards in its transcript); App's
+  handlers reach it through `SessionActionsContext`. A child on another
+  host opens against that host the way a rail row of that host does (the
+  store holds every host's rows by id, `data-child-host` names it). The
+  header is one Back control on the same 40px bar as the board's title;
+  Escape, or ⌘↩ outside the composer (inside it ⌘↩ is the composer's
+  own), goes back, and the board returns at the scroll it was left at.
+  Nothing opens a tab; the strip never lists a child (`isBatchChild` in
   lib/threadStripModel.ts).
+- **Right-click** on a row, or on a subagent line under it, opens that
+  thread's menu (`master/rowMenu.ts`): New pass… first, Open, then the
+  tab's own thread actions (`chipMenuItems`: Rename, Continue or Pause,
+  Compact, Stop, the master pin, Archive) with the thread chip's host
+  moves before Archive; the tab's type options, Mac bridge, resources and
+  delete stay on the tab. New pass… is a dialog (`master/NewPassDialog.tsx`,
+  the Modal at `lg`): the thread's title, one quiet line with its status
+  glyph and the board row's own words for what it does now, else its last
+  words (`passLine`), and the same composer for that thread on its host.
+  Send does what the composer would there (a turn when idle, steer or queue
+  while it runs) and closes the dialog; the row follows from the store.
+  Escape or a click outside closes it and the draft stays with the thread.
+  A popover or the composer's `@`/`/` list open above any Modal takes
+  Escape first (`escapeOwnedAbove`).
 - **The foot** (`master/BatchFoot.tsx`, the step rules in `master/steps.ts`)
   stays put under the scrolling list: "When the threads are done", the
   master's summary line when it wrote one, the rules as one sentence

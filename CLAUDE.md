@@ -2014,8 +2014,17 @@ this is the short one.
   `MasterBoard.rowAgentLines` the same, each line a link to the agent's
   thread screen, the tail "and 2 more, 3 done"). A row's click puts the
   child's full view in the whole pane with one Back control
-  (`master/ChildPane.tsx`, given the row's host; Escape and ⌘↩ go back;
-  the board keeps its scroll). The title bar's ⋯ menu is the batch's
+  (`master/ChildPane.tsx`, given the row's host; Escape and ⌘↩ outside
+  the composer go back; the board keeps its scroll), over the same
+  transcript, strip and composer a tab has (`surfaces/threadChat.tsx`:
+  `ThreadComposer` and `useThreadChat`, shared with SessionPane; App's
+  handlers through `SessionActionsContext`). A right-click on a row or a
+  subagent line is that thread's menu (`master/rowMenu.ts`: New pass…,
+  Open, then the tab's `chipMenuItems` the board answers and the host
+  moves); New pass… is a Modal (`master/NewPassDialog.tsx`) with the
+  thread's title, its status and activity or last words on one line
+  (`passLine`) and that composer, closing on send; the draft stays per
+  thread. The title bar's ⋯ menu is the batch's
   fleet switches over every host (Pause all and Resume all through each
   row's host's `session.batch`; Archive done… and Archive all… with the
   live count and the resources checkbox: `batch.archive` on the master's
