@@ -1803,6 +1803,43 @@ else; the host sends what that row needs and the clock ticks on the device.
 | In the background | an alert and the activity's end for the same settle both show: the alert is the persistent record, the activity leaves after two minutes, and the shared collapse id folds repeats |
 | The clock | runs on the device from `since` while working; paused and every end freeze it at the state's time, so the final card reads the work time as it was. A waiting end shows the work time, not the time spent waiting: that count belongs to the app's Needs-you row |
 
+### Several threads: one activity per host
+
+A second thread the person follows on the same host joins the activity
+already running instead of stacking a second one. From then on its content
+state carries `threads` (a row per thread: `id`, `type`, `phase`, `since`,
+`ts` where a non-working row's clock froze, `title`, `task`, `done`/`total`/
+`unit`, `reason`) and `more`; the top-level fields name the lead thread, so a
+build that predates groups still draws one card. With one row left (the
+others settled and gone) the single card draws that row's thread.
+
+Where the aggregation lives, and why: on the host, per activity token. The
+phone registers the activity's one push token for every thread it covers
+(`remote.push.activity`, unchanged), so the host sees a token on two or more
+threads and `ActivityFeed` pushes that group's state
+(remote/push.ts `activityGroupState`) whenever any of them moves, with the
+same coalescing as one thread (rows, phase or reason at once at priority 10;
+task lines alone once per 20 s at priority 5). Only the host can update the
+card while the phone sleeps, and a host knows only its own threads, so the
+activity is per host: the box's threads on one card, the Mac's on another
+(the Mac relayed through the box gets no pushes of its own: the box answers
+its `remote.push.activity` and the phone updates that card while its socket
+is up). The phone applies the same rules to the metas it holds
+(`ThreadActivityGroup` in ThreadActivityText.swift) while the socket is up.
+No wire change beyond the two optional keys; the hub validates and passes
+them.
+
+| Rule | Value |
+| --- | --- |
+| Order | needs-you (waiting), working, paused, failed, stopped, finished; each kind oldest first |
+| Settled rows | stay one minute (`ACTIVITY_SETTLE_MS`), then leave at priority 5 |
+| Cap | six rows, the rest in `more`; rows give way before the state passes 3.5 KB of ActivityKit's 4 KB; a row's title cuts at 60, task 80, reason 100 |
+| Live | while any thread works or is paused; once none does, the push is the `end` with the lead row's phase, and every thread's token row goes |
+| Lock screen card | a row per thread: glyph, title `footnote` semibold, clock `caption2` tertiary; under it the single card's status line (mark, word, task or reason). Three rows fit 160 pt; past three, two rows and "and N more" `caption` secondary at the title's edge. Each row opens its thread, the card opens Home (`tempcode://home`) |
+| Island compact | leading: the spinner and the count working (the pause mark and the count held when none works; the final mark once settled); trailing: the raised hand and the count waiting in the needs-you color whenever one waits, else the longest-running clock |
+| Island minimal | the raised hand while one waits, else the count at work in the lead thread's tint; the final mark once settled |
+| Island expanded | "3 threads" leading, the longest-running clock trailing; below, a line per thread (mark, title `footnote` semibold, then the task, the reason or the word) for three, "and N more" under them; each line opens its thread; keyline the needs-you color while one waits, else the lead thread's type |
+
 Motion: WidgetKit animates a Live Activity's content changes itself and
 ignores view-level `.animation`, so the widget carries none; the line
 cross-fades with `contentTransition(.opacity)`, the tally rolls with

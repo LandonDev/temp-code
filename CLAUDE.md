@@ -1500,6 +1500,15 @@ proof and the sizing rules; the pieces, by name:
   when the thread goes idle, waiting, errored or stopped. A queued thread is
   not live: the feed skips it whole and the phone never starts an activity
   for it (a turn sent into one starts the activity when the host boots it).
+  One activity per host: a second thread followed on that host joins it
+  (the phone registers the same token for each thread it covers), the host
+  sees one token on several threads and pushes a group state
+  (`activityGroupState`: `threads` rows needs-you first, settled rows leave
+  after a minute, six rows and 3.5 KB at most, `more` for the rest; the top
+  level names the lead thread for older builds), the card lists the threads
+  and the island counts them (docs/IOS-DESIGN.md "Several threads"; fixture
+  `activity-group.json`). The group ends when nothing it covers works or is
+  paused, and only then do its token rows go.
   Settings has one row: the Notifications switch with its state beside it.
   What the phone shows: the Live Activity's content state is the desktop's
   running row (`HubActivityState` in src/main/server/hub.ts: `phase`
