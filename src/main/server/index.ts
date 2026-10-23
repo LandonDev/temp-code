@@ -59,6 +59,7 @@ import { MacThreadTokens, MacTools, macToolsHooks, rebootWhenSettled } from './m
 import { OfflineError, ThreadResources } from './threadResources'
 import { SharedScanner, ThreadPorts } from './threadPorts'
 import { PortTail } from './portTail'
+import { PortSweep } from './portSweep'
 import { DevRuns } from './devRuns'
 import { PortLogs } from './portLog'
 import { PortForwardHost } from './remote/portForward'
@@ -842,11 +843,29 @@ export async function startServer(
     env: () => harnessEnv()
   })
   devPortOffers.current = () => devRuns.offers()
+  // The host-wide sweep (portSweep.ts): servers a background shell started, reparented to init.
+  const portSweep = new PortSweep({
+    resources,
+    environmentId,
+    scanner: listenerScanner,
+    threads: () =>
+      registry.list({ archived: false }).map((m) => {
+        const harnessPid = registry.harnessPid(m.id)
+        return { id: m.id, cwd: m.cwd, harnessPid, live: harnessPid !== null || LIVE_STATUSES.has(m.status), createdAt: m.createdAt, activeAt: m.updatedAt }
+      }),
+    anyLive: () => registry.harnessPids().length > 0,
+    claimed: (port) => devRuns.offers().some((o) => o.port === port),
+    recorded: () => threadPorts.arm()
+  })
+  registry.onEvent((row) => portSweep.observeEvent(row))
+  threadPorts.onCallEnd(() => portSweep.callEnded())
+  portSweep.start()
   // An agent's dev server's console (portLog.ts): its output file, else the call's output.
   const callOutputs = new Map<string, { output: string | null; at: number }>()
   const portLogs = new PortLogs({
     row: (id) => resources.get(id),
     scanner: listenerScanner,
+    callFile: (row) => (row.callId ? portSweep.fileOfCall(row.callId) : null),
     callOutput: (row) => {
       if (!row.callId) return null
       const known = callOutputs.get(row.callId)
@@ -2892,6 +2911,7 @@ export async function startServer(
       macPorts.shutdown()
       portHost.shutdown()
       threadPorts.close()
+      portSweep.close()
       crossHostThreads.close()
       hostDevices.close()
       peerCalls.close()

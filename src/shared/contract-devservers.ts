@@ -90,6 +90,9 @@ export interface DevPortLog {
   path: string | null
   data: string
   next: number
+  /** Set once the server stopped (the row left the ledger): when, and the ledger's note ("stopped listening"). */
+  endedAt?: number
+  note?: string | null
 }
 
 /** The short word for a run's state in the button and the console. */

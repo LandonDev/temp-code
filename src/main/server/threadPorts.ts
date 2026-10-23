@@ -3,7 +3,7 @@ import type { ThreadResource } from '@shared/contract-resources'
 import type { EventRow } from '@shared/events'
 import type { ThreadResources } from './threadResources'
 import { shellOf } from './threadResourcesParse'
-import { announcedPorts, byPort, descendants, parseLsof, parsePs, parseSs, portLabel, validPort, type Listener } from './threadPortsParse'
+import { announcedPorts, byPort, descendants, parseLsof, parsePs, parseSs, parseStarts, portLabel, validPort, type Listener } from './threadPortsParse'
 
 /**
  * Dev servers a thread starts, filed in the ledger as `port` rows (docs/box.md
@@ -26,6 +26,8 @@ export interface Scan {
   listeners: Listener[]
   /** pid → parent pid. */
   parents: Map<number, number>
+  /** pid → when it started (epoch ms); absent from a scan that did not read it. */
+  started?: Map<number, number>
 }
 
 const run = (cmd: string, args: string[]): Promise<string> =>
@@ -37,9 +39,9 @@ const run = (cmd: string, args: string[]): Promise<string> =>
 export async function scanHost(platform: NodeJS.Platform = process.platform): Promise<Scan> {
   const [listen, ps] = await Promise.all([
     platform === 'linux' ? run('ss', ['-ltnpH']).then(parseSs) : run('lsof', ['-nP', '-iTCP', '-sTCP:LISTEN']).then(parseLsof),
-    run('ps', ['-A', '-o', 'pid=,ppid=']).then(parsePs)
+    run('ps', ['-A', '-o', 'pid=,ppid=,etime='])
   ])
-  return { listeners: listen, parents: ps }
+  return { listeners: listen, parents: parsePs(ps), started: parseStarts(ps, Date.now()) }
 }
 
 /** One scan shared by everyone who asks within `maxAgeMs` (the watcher and the dev runs). */
@@ -216,7 +218,8 @@ export class ThreadPorts {
     if (made.length) this.log(`thread=${sessionId} port ${port} pid ${pid}`)
   }
 
-  private arm(): void {
+  /** Follow the live rows (a row the host-wide sweep recorded, portSweep.ts). */
+  arm(): void {
     if (this.timer) return
     if (!this.active.size && !this.deps.resources.listAll({ kind: 'port', environmentId: this.deps.environmentId }).length) return
     this.timer = setTimeout(() => {

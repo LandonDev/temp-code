@@ -10,8 +10,10 @@ import type { SharedScanner } from './threadPorts'
  * background shell sends stdout and stderr to a file, so the listener (or the
  * shell above it) has fd 1 or 2 on a regular file, read on Linux through
  * /proc/<pid>/fd and on macOS through lsof. That file is tailed from an
- * offset the caller keeps. Without one, the shell call's output in the
- * transcript is the log.
+ * offset the caller keeps; a file Claude deleted is still read through the
+ * process's fd, and a file the call named (portSweep.ts) once the process is
+ * gone. Without one, the shell call's output in the transcript is the log. A
+ * row that ended says when and why, so the console can close with it.
  */
 
 /** The first read of a file starts this far from its end. */
@@ -23,6 +25,8 @@ const ANCESTORS = 3
 
 export interface PortLogDeps {
   row: (resourceId: string) => ThreadResource | null
+  /** The output file the row's shell call named (portSweep.ts), read when the process no longer points at one. */
+  callFile?: (row: ThreadResource) => string | null
   /** The shell call's output from the transcript, null when it has none yet. */
   callOutput: (row: ThreadResource) => string | null
   scanner: SharedScanner
@@ -39,11 +43,12 @@ function lsofFiles(pid: number): Promise<string[]> {
   })
 }
 
+/** fd 1 and 2's files; a deleted one (Claude removes its task file) is still read through the fd itself. */
 async function linuxFiles(pid: number): Promise<string[]> {
   const out: string[] = []
   for (const fd of [1, 2]) {
     const target = await readlink(`/proc/${pid}/fd/${fd}`).catch(() => null)
-    if (target) out.push(target)
+    if (target) out.push(target.endsWith(' (deleted)') && target.startsWith('/') ? `/proc/${pid}/fd/${fd}` : target)
   }
   return out
 }
@@ -71,31 +76,37 @@ export class PortLogs {
       }
       pid = parents.get(pid)
     }
+    const named = this.deps.callFile?.(row)
+    if (named && (await stat(named).catch(() => null))?.isFile()) {
+      this.paths.set(row.id, named)
+      return named
+    }
     return null
   }
 
   async read(resourceId: string, from: number | undefined): Promise<DevPortLog> {
     const row = this.deps.row(resourceId)
     if (!row || row.kind !== 'port') throw new Error(`unknown dev server: ${resourceId}`)
-    const path = await this.fileOf(row)
+    const ended = row.removedAt === null ? {} : { endedAt: row.removedAt, note: row.note }
+    const path = await this.fileOf(row).catch(() => null)
     if (path) {
       const size = (await stat(path).catch(() => null))?.size ?? 0
       // A file that shrank was truncated or replaced: start it over.
       const start = from === undefined || from > size ? Math.max(0, size - FIRST_BYTES) : from
       const end = Math.min(size, start + READ_BYTES)
-      if (end <= start) return { source: 'file', path, data: '', next: start }
+      if (end <= start) return { source: 'file', path, data: '', next: start, ...ended }
       const fh = await open(path, 'r')
       try {
         const buf = Buffer.alloc(end - start)
         const { bytesRead } = await fh.read(buf, 0, buf.length, start)
-        return { source: 'file', path, data: buf.subarray(0, bytesRead).toString('utf8'), next: start + bytesRead }
+        return { source: 'file', path, data: buf.subarray(0, bytesRead).toString('utf8'), next: start + bytesRead, ...ended }
       } finally {
         await fh.close()
       }
     }
     const output = this.deps.callOutput(row)
-    if (output === null) return { source: 'none', path: null, data: '', next: 0 }
+    if (output === null) return { source: 'none', path: null, data: '', next: 0, ...ended }
     const at = from === undefined || from > output.length ? 0 : from
-    return { source: 'transcript', path: null, data: output.slice(at), next: output.length }
+    return { source: 'transcript', path: null, data: output.slice(at), next: output.length, ...ended }
   }
 }

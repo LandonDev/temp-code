@@ -109,14 +109,33 @@ export function parseLsof(text: string): Listener[] {
   return out
 }
 
-/** `ps -A -o pid=,ppid=` → pid → parent pid. */
+/** `ps -A -o pid=,ppid=` → pid → parent pid (a third `etime` column is allowed: parseStarts reads it). */
 export function parsePs(text: string): Map<number, number> {
   const parents = new Map<number, number>()
   for (const line of text.split('\n')) {
-    const m = /^\s*(\d+)\s+(\d+)\s*$/.exec(line)
+    const m = /^\s*(\d+)\s+(\d+)(?:\s+[\d:-]+)?\s*$/.exec(line)
     if (m) parents.set(Number(m[1]), Number(m[2]))
   }
   return parents
+}
+
+/** ps's `etime`, `[[dd-]hh:]mm:ss`, in milliseconds; null when it is not one. */
+export function parseEtime(text: string): number | null {
+  const m = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)$/.exec(text.trim())
+  if (!m) return null
+  const [d, h, min, sec] = [m[1], m[2], m[3], m[4]].map((x) => Number(x ?? 0))
+  return (((d * 24 + h) * 60 + min) * 60 + sec) * 1000
+}
+
+/** `ps -A -o pid=,ppid=,etime=` → pid → when it started (epoch ms, to the second). */
+export function parseStarts(text: string, now: number): Map<number, number> {
+  const started = new Map<number, number>()
+  for (const line of text.split('\n')) {
+    const m = /^\s*(\d+)\s+\d+\s+([\d:-]+)\s*$/.exec(line)
+    const age = m ? parseEtime(m[2]) : null
+    if (m && age !== null) started.set(Number(m[1]), now - age)
+  }
+  return started
 }
 
 /** The roots and every process below them. */
