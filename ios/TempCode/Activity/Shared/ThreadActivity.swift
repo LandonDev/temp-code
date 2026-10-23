@@ -2,9 +2,11 @@ import ActivityKit
 import Foundation
 import TempCodeContract
 
-/// The Live Activity for a running thread: what the desktop's running row
+/// The Live Activity for a host's running threads: for one thread, what the desktop's running row
 /// shows (the type glyph, the title, the task in progress, the tally and the
-/// elapsed time) on the lock screen and in the Dynamic Island. The app
+/// elapsed time) on the lock screen and in the Dynamic Island; for two or
+/// more, a row per thread (`ContentState.threads`). The attributes name the
+/// thread that started it; a group's rows name their own. The app
 /// starts it; the host updates it by push (`liveactivity`, through its own
 /// APNs sender or the hub) and ends it when the thread settles; while the
 /// socket is up the app updates it from the session metas itself. Compiled
@@ -25,13 +27,27 @@ nonisolated struct ThreadActivityAttributes: ActivityAttributes {
 
     /// `tempcode://thread/<environment>/<session>?seq=<n>`: the app routes a tap
     /// the way a notification tap routes, to the thread and its card.
-    func url(seq: Int?) -> URL? {
+    func url(seq: Int?) -> URL? { url(sessionId: sessionId, seq: seq) }
+
+    /// Another thread on the same host: a group card's row.
+    func url(sessionId: String, seq: Int? = nil) -> URL? {
         var parts = URLComponents()
         parts.scheme = "tempcode"
         parts.host = "thread"
         parts.path = "/\(environmentId)/\(sessionId)"
         if let seq { parts.queryItems = [URLQueryItem(name: "seq", value: String(seq))] }
         return parts.url
+    }
+
+    /// A group card's own tap: Home, where every thread it lists is.
+    static let homeURL = URL(string: "tempcode://home")
+
+    /// What a single-thread presentation draws: the attributes' own thread, or the one row a group has left
+    /// (another thread than the one that started the activity, with its own type, title and link).
+    func single(_ state: ContentState) -> (attributes: ThreadActivityAttributes, state: ContentState) {
+        guard let row = state.soloRow else { return (self, state) }
+        let attributes = ThreadActivityAttributes(environmentId: environmentId, sessionId: row.id, title: row.title ?? title, threadType: row.type.map(ThreadType.init(rawValue:)) ?? threadType)
+        return (attributes, state.state(of: row))
     }
 }
 

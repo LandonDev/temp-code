@@ -49,6 +49,12 @@ enum ActivityMetrics {
     static let lineHeight: CGFloat = 18
     /// The compact trailing clock's room: `1:02:33` fits, shrinking a little before it would clip.
     static let compactClockWidth: CGFloat = 60
+    /// The status mark's frame.
+    static let markWidth: CGFloat = 14
+    /// A group card's rows: three fit the lock screen's 160 pt; past three, two and "and N more".
+    static let cardRows = 3
+    /// The expanded island's rows.
+    static let islandRows = 3
 }
 
 /// Glyph, title and the clock, on one baseline.
@@ -168,7 +174,7 @@ struct PhaseMark: View {
                     .frame(width: 6, height: 6)
             }
         }
-        .frame(width: 14, height: 14)
+        .frame(width: ActivityMetrics.markWidth, height: ActivityMetrics.markWidth)
     }
 }
 
@@ -266,6 +272,270 @@ struct ActivityExpandedBottom: View {
         }
         .padding(.horizontal, 4)
         .padding(.bottom, 2)
+    }
+}
+
+// MARK: - several threads
+
+/// The lock screen for any state: one thread's card, or the group card once
+/// two or more threads share the activity. One thread links to itself and
+/// its row; the group card links to Home and each row to its thread.
+struct ThreadActivityLockScreen: View {
+    let attributes: ThreadActivityAttributes
+    let state: ThreadActivityAttributes.ContentState
+
+    var body: some View {
+        if state.isGroup {
+            ThreadActivityGroupCard(attributes: attributes, state: state)
+                .widgetURL(ThreadActivityAttributes.homeURL)
+        } else {
+            let single = attributes.single(state)
+            ThreadActivityCard(attributes: single.attributes, state: single.state)
+                .widgetURL(single.attributes.url(seq: single.state.seq))
+        }
+    }
+}
+
+/// Several threads: a row per thread in the card's own two lines (glyph,
+/// title and clock; the status mark with the task or the reason under the
+/// title), needs-you first. Three rows fit the lock screen's height; past
+/// three, two rows and "and N more", so the card never grows past it.
+struct ThreadActivityGroupCard: View {
+    let attributes: ThreadActivityAttributes
+    let state: ThreadActivityAttributes.ContentState
+    @ScaledMetric(relativeTo: .subheadline) private var indent = ActivityMetrics.indent
+
+    var body: some View {
+        let rows = state.threads ?? []
+        let total = rows.count + (state.more ?? 0)
+        let shown = Array(rows.prefix(total > ActivityMetrics.cardRows ? ActivityMetrics.cardRows - 1 : ActivityMetrics.cardRows))
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(shown) { row in
+                if let url = attributes.url(sessionId: row.id) {
+                    Link(destination: url) { ActivityGroupCardRow(row: row, state: state.state(of: row), indent: indent) }
+                } else {
+                    ActivityGroupCardRow(row: row, state: state.state(of: row), indent: indent)
+                }
+            }
+            if total > shown.count {
+                Text(ThreadActivityText.more(total - shown.count))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, indent)
+                    .contentTransition(.numericText())
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .activityBackgroundTint(nil)
+        .activitySystemActionForegroundColor(state.groupTint)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(ThreadActivityText.groupLabel(state.counts, total: total))
+    }
+}
+
+/// One thread on the group card: the single card's first two rows, one step smaller in the title.
+struct ActivityGroupCardRow: View {
+    let row: ThreadActivityRow
+    let state: ThreadActivityAttributes.ContentState
+    let indent: CGFloat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                TypeGlyph(type: row.threadType, weight: .semibold)
+                Text(row.title ?? "")
+                    .font(.footnote.weight(.semibold))
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                ActivityElapsedText(state: state)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            ActivityStatusLine(type: row.threadType, state: state)
+                .padding(.leading, indent)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Compact leading for a group: what is at work and how many. The spinner
+/// and the count of working threads; with none working, the pause mark and
+/// the held count; once nothing runs, the mark of the final state.
+struct ActivityGroupLeading: View {
+    let state: ThreadActivityAttributes.ContentState
+
+    var body: some View {
+        let counts = state.counts
+        HStack(spacing: 4) {
+            if counts.working > 0 {
+                PhaseMark(phase: .working, type: state.leadType)
+                Text("\(counts.working)")
+            } else if counts.paused > 0 {
+                PhaseMark(phase: .paused, type: state.leadType)
+                Text("\(counts.paused)")
+            } else {
+                PhaseMark(phase: state.phase, type: state.leadType)
+            }
+        }
+        .font(.caption2.weight(.semibold))
+        .monospacedDigit()
+        .contentTransition(.numericText())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(ThreadActivityText.groupLabel(counts, total: (state.threads?.count ?? 0) + (state.more ?? 0)))
+    }
+}
+
+/// Compact trailing for a group: how many threads need the person, in the
+/// needs-you color with the raised hand, whenever one does; otherwise the
+/// longest-running thread's clock.
+struct ActivityGroupTrailing: View {
+    let state: ThreadActivityAttributes.ContentState
+
+    var body: some View {
+        let waiting = state.counts.waiting
+        Group {
+            if waiting > 0 {
+                HStack(spacing: 3) {
+                    Image(systemName: "hand.raised.fill")
+                    Text("\(waiting)")
+                        .contentTransition(.numericText())
+                }
+                .foregroundStyle(Tint.warning)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(waiting) \(waiting == 1 ? "needs" : "need") you")
+            } else {
+                ActivityElapsedText(state: state.longestRunning)
+                    .frame(maxWidth: ActivityMetrics.compactClockWidth)
+                    .minimumScaleFactor(0.8)
+                    .foregroundStyle(state.phase.wordStyle)
+            }
+        }
+        .font(.caption2.weight(.medium))
+        .monospacedDigit()
+        .lineLimit(1)
+    }
+}
+
+/// Minimal for a group: the raised hand while anyone needs the person, else
+/// the count of threads at work in the lead thread's tint; once nothing
+/// runs, the final state's mark.
+struct ActivityGroupMinimal: View {
+    let state: ThreadActivityAttributes.ContentState
+
+    var body: some View {
+        let counts = state.counts
+        Group {
+            if counts.waiting > 0 {
+                Image(systemName: "hand.raised.fill")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Tint.warning)
+            } else if state.phase.isLive {
+                Text("\(counts.working + counts.paused)")
+                    .font(.caption.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(counts.working > 0 ? state.leadType.tint : Tint.warning)
+                    .contentTransition(.numericText())
+            } else {
+                PhaseMark(phase: state.phase, type: state.leadType)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(ThreadActivityText.groupLabel(counts, total: (state.threads?.count ?? 0) + (state.more ?? 0)))
+    }
+}
+
+/// Expanded leading for a group: how many threads the card covers, beside the camera.
+struct ActivityGroupHeadline: View {
+    let state: ThreadActivityAttributes.ContentState
+
+    var body: some View {
+        let total = (state.threads?.count ?? 0) + (state.more ?? 0)
+        Text("\(total) threads")
+            .font(.subheadline.weight(.semibold))
+            .monospacedDigit()
+            .lineLimit(1)
+            .contentTransition(.numericText())
+            .accessibilityLabel(ThreadActivityText.groupLabel(state.counts, total: total))
+    }
+}
+
+/// Expanded bottom for a group: one line per thread (the status mark, the
+/// title, then what it is doing, what it needs, or how it ended), three at
+/// most, "and N more" under them. Each row opens its thread.
+struct ActivityGroupExpandedBottom: View {
+    let attributes: ThreadActivityAttributes
+    let state: ThreadActivityAttributes.ContentState
+
+    var body: some View {
+        let rows = state.threads ?? []
+        let total = rows.count + (state.more ?? 0)
+        let shown = Array(rows.prefix(ActivityMetrics.islandRows))
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(shown) { row in
+                if let url = attributes.url(sessionId: row.id) {
+                    Link(destination: url) { ActivityGroupIslandRow(row: row) }
+                } else {
+                    ActivityGroupIslandRow(row: row)
+                }
+            }
+            if total > shown.count {
+                Text(ThreadActivityText.more(total - shown.count))
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .padding(.leading, ActivityMetrics.markWidth + 6)
+            }
+        }
+        .padding(.horizontal, 4)
+        .padding(.bottom, 2)
+    }
+}
+
+struct ActivityGroupIslandRow: View {
+    let row: ThreadActivityRow
+
+    var body: some View {
+        HStack(spacing: 6) {
+            PhaseMark(phase: row.phase, type: row.threadType)
+            Text(row.title ?? "")
+                .font(.footnote.weight(.semibold))
+                .lineLimit(1)
+                .layoutPriority(1)
+            Spacer(minLength: 8)
+            if let detail = ThreadActivityText.rowDetail(phase: row.phase, task: row.task, reason: row.reason) {
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(row.phase == .working ? AnyShapeStyle(.secondary) : row.phase.wordStyle)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .contentTransition(.opacity)
+            }
+        }
+        .frame(height: ActivityMetrics.lineHeight)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(row.title ?? ""), \(ThreadActivityText.statusLabel(phase: row.phase, task: row.task, reason: row.reason))")
+    }
+}
+
+extension ThreadActivityRow {
+    var threadType: ThreadType { type.map(ThreadType.init(rawValue:)) ?? .chat }
+}
+
+extension ThreadActivityAttributes.ContentState {
+    /// The type of the thread the group's marks take their tint from: the first working one, else the first row.
+    var leadType: ThreadType {
+        let rows = threads ?? []
+        return (rows.first(where: { $0.phase == .working }) ?? rows.first)?.threadType ?? .chat
+    }
+
+    /// The keyline and the system action color: needs-you while anyone waits, else the lead thread's type.
+    var groupTint: Color { counts.waiting > 0 ? Tint.warning : leadType.tint }
+
+    /// The longest-running thread's clock as a state ActivityElapsedText reads.
+    var longestRunning: Self {
+        var clock = self
+        clock.since = longestSince
+        return clock
     }
 }
 

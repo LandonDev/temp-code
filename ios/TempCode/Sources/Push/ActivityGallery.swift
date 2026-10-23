@@ -47,6 +47,23 @@ enum ActivityGallery {
         }
     }
 
+    /// A group card: four threads of one host, one waiting on the person; `settled` ends it with every row done or failed.
+    static func groupSample(settled: Bool = false, now: Date = .now) -> ThreadActivityAttributes.ContentState {
+        let ms = Int(now.timeIntervalSince1970 * 1000)
+        let rows: [ThreadActivityRow] = settled
+            ? [
+                ThreadActivityRow(id: "ios-running", type: "implementation", phase: .failed, since: ms - 14 * 60_000, ts: ms - 30_000, title: attributes.title, task: "Write the export endpoint"),
+                ThreadActivityRow(id: "ios-chat", type: "chat", phase: .finished, since: ms - 6 * 60_000, ts: ms - 50_000, title: "Fix the flaky login test"),
+              ]
+            : [
+                ThreadActivityRow(id: "ios-chat", type: "chat", phase: .waiting, since: ms - 6 * 60_000, ts: ms - 40_000, title: "Fix the flaky login test", reason: "Needs approval: Bash — bun test"),
+                ThreadActivityRow(id: "ios-running", type: "implementation", phase: .working, since: ms - 14 * 60_000, title: attributes.title, task: "Write the export endpoint", done: 1, total: 3),
+                ThreadActivityRow(id: "ios-research", type: "research", phase: .working, since: ms - 3 * 60_000, title: "Compare the queue libraries", task: "Reading the BullMQ docs"),
+                ThreadActivityRow(id: "ios-plan", type: "planning", phase: .finished, since: ms - 20 * 60_000, ts: ms - 20_000, title: "Plan the billing page"),
+              ]
+        return ThreadActivityGroup.state(rows: rows, now: ms) ?? sample(phase: .working, tasks: true, now: now)
+    }
+
     private static var window: UIWindow?
 
     /// Opens the gallery over whatever the app shows, in its own window.
@@ -77,7 +94,11 @@ struct ActivityGalleryView: View {
              state: ActivityGallery.sample(phase: phase, tasks: tasks, threads: threads))
         }
         guard !threads, phases.count > 1 else { return own }
-        return own + [(label: "working, threads", attributes: ActivityGallery.masterAttributes, state: ActivityGallery.sample(phase: .working, tasks: true, threads: true))]
+        return own + [
+            (label: "working, threads", attributes: ActivityGallery.masterAttributes, state: ActivityGallery.sample(phase: .working, tasks: true, threads: true)),
+            (label: "group", attributes: ActivityGallery.attributes, state: ActivityGallery.groupSample()),
+            (label: "group, settled", attributes: ActivityGallery.attributes, state: ActivityGallery.groupSample(settled: true)),
+        ]
     }
 
     var body: some View {
@@ -90,7 +111,7 @@ struct ActivityGalleryView: View {
                             .foregroundStyle(.tertiary)
                             .textCase(.uppercase)
                         LockScreenFrame {
-                            ThreadActivityCard(attributes: sample.attributes, state: sample.state)
+                            ThreadActivityLockScreen(attributes: sample.attributes, state: sample.state)
                         }
                         IslandExpandedFrame(attributes: sample.attributes, state: sample.state)
                         HStack(spacing: 12) {
@@ -125,6 +146,26 @@ private struct IslandExpandedFrame: View {
     let state: ThreadActivityAttributes.ContentState
 
     var body: some View {
+        if state.isGroup {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    ActivityGroupHeadline(state: state)
+                        .padding(.leading, 4)
+                    Spacer(minLength: 8)
+                    ActivityElapsedText(state: state.longestRunning)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding(.trailing, 4)
+                }
+                ActivityGroupExpandedBottom(attributes: attributes, state: state)
+            }
+            .islandExpanded()
+        } else {
+            single
+        }
+    }
+
+    private var single: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 TypeGlyph(type: attributes.threadType, weight: .semibold)
@@ -140,12 +181,19 @@ private struct IslandExpandedFrame: View {
             }
             ActivityExpandedBottom(type: attributes.threadType, state: state)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 14)
-        .padding(.bottom, 16)
-        .frame(width: 371)
-        .background(Color.black, in: RoundedRectangle.corner(Radius.island))
-        .environment(\.colorScheme, .dark)
+        .islandExpanded()
+    }
+}
+
+private extension View {
+    /// The expanded island's black and its insets.
+    func islandExpanded() -> some View {
+        padding(.horizontal, 16)
+            .padding(.top, 14)
+            .padding(.bottom, 16)
+            .frame(width: 371)
+            .background(Color.black, in: RoundedRectangle.corner(Radius.island))
+            .environment(\.colorScheme, .dark)
     }
 }
 
@@ -155,11 +203,15 @@ private struct IslandCompactFrame: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            ActivityCompactLeading(type: attributes.threadType, state: state)
-                .padding(.leading, 10)
+            Group {
+                if state.isGroup { ActivityGroupLeading(state: state) } else { ActivityCompactLeading(type: attributes.threadType, state: state) }
+            }
+            .padding(.leading, 10)
             Spacer(minLength: 0)
-            ActivityCompactTrailing(type: attributes.threadType, state: state)
-                .padding(.trailing, 14)
+            Group {
+                if state.isGroup { ActivityGroupTrailing(state: state) } else { ActivityCompactTrailing(type: attributes.threadType, state: state) }
+            }
+            .padding(.trailing, 14)
         }
         .frame(width: 236, height: 37)
         .background(Color.black, in: Capsule())
@@ -172,7 +224,9 @@ private struct IslandMinimalFrame: View {
     let state: ThreadActivityAttributes.ContentState
 
     var body: some View {
-        ActivityMinimal(type: attributes.threadType, state: state)
+        Group {
+            if state.isGroup { ActivityGroupMinimal(state: state) } else { ActivityMinimal(type: attributes.threadType, state: state) }
+        }
             .frame(width: 37, height: 37)
             .background(Color.black, in: Capsule())
             .environment(\.colorScheme, .dark)

@@ -103,7 +103,13 @@ struct RootView: View {
             router.pending = nil
         }
         .onOpenURL { url in
-            if let target = PushTarget(url: url) { router.open(target) }
+            if let target = PushTarget(url: url) {
+                router.open(target)
+            } else if url.host == "home" {
+                // A group Live Activity's card: Home, where every thread it lists is.
+                tab = .home
+                homePath = NavigationPath()
+            }
         }
     }
 
