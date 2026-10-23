@@ -1,5 +1,5 @@
 {
-  "n": 300,
-  "notes": "Fix: a box thread reopened while the box restarted opened as the empty new-thread page (master boards vanished); the transcript now loads its own page and retries",
-  "ts": 1792733573395
+  "n": 301,
+  "notes": "Fix: the Main v2 master opened as the empty new-thread page after the update; a master always opens on its board and a restored tab loads its rows",
+  "ts": 1792734338752
 }
