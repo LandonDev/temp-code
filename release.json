@@ -1,5 +1,5 @@
 {
-  "n": 296,
-  "notes": "Host glyph on the thread header's host chip, idle and running; a master's own subagents in the fleet panel and the working line; one project across hosts (linked projects, one rail, host glyphs); master board rows count their subagents",
-  "ts": 1792714340982
+  "n": 297,
+  "notes": "Thread moves: an empty or unsent thread moves instantly and a moved thread lands in its linked project; dev servers the agent opened are listed with links and logs, several run at once, consoles in the terminal dock; orchestration rules live on the box and unlisted models are off; the sidebar houses a master's batch with no unread inside it; master board rows list their live subagents; Cmd − zooms out again; opening a box thread takes one round trip and the last six shown switch back instantly",
+  "ts": 1792717363079
 }
