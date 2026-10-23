@@ -51,7 +51,7 @@
  */
 import { createServer } from 'node:http'
 import { execFileSync, spawn } from 'node:child_process'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { deflateSync } from 'node:zlib'
@@ -62,6 +62,7 @@ import { MacDevices } from '../src/main/server/devices/hostDevices'
 import { loadEnvironmentId } from '../src/main/server/remote/environment'
 import { mediaUrl, serveMedia } from '../src/main/server/media'
 import { projectPlanPathFor } from '../src/shared/projectPlan'
+import { injectHtmlRenderBootstrap } from '../src/shared/htmlRender'
 import type { AccountsSnapshot } from '../src/shared/accounts'
 import {
   batchRowMidRun,
@@ -90,9 +91,20 @@ configure({
   appName: 'temp-code-e2e'
 })
 // The `/asset/file/*` mirror the phone loads attachments through: the media
-// server alone (the Electron asset handler has no place under plain node).
-const assets = async (request: Request): Promise<Response> =>
-  new URL(request.url).host === 'file' ? serveMedia(request) : new Response('not found', { status: 404 })
+// server alone (the Electron asset handler has no place under plain node),
+// and `/asset/page/<sid>/<pid>.html`, the agent pages seeded under pagesDir.
+const pagesDir = join(root, 'html-renders')
+const assets = async (request: Request): Promise<Response> => {
+  const url = new URL(request.url)
+  if (url.host === 'file') return serveMedia(request)
+  const page = url.host === 'page' ? /^\/([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)\.html$/.exec(url.pathname) : null
+  if (!page) return new Response('not found', { status: 404 })
+  try {
+    return new Response(readFileSync(join(pagesDir, page[1]!, `${page[2]}.html`)), { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+  } catch {
+    return new Response('not found', { status: 404 })
+  }
+}
 // ── a host's activity (iOS thread 21): what the host detail reads ───────
 // A saved host "box" (admin caps, a route nobody answers: "not connected"
 // on the sync lines, and the host the seeded Mac bridge calls belong to),
@@ -456,6 +468,26 @@ say('ios-chat-agents-reviewer', 'Check the index plan', 'The composite index cov
 // Chats: one in the workspace with no project, one outside every workspace; a thread in the archived project.
 await make('ios-chat-workspace', { workspaceId: workspace.id, threadType: 'chat', title: 'Why is the build slow?' })
 say('ios-chat-workspace', 'Why is the build slow today?', 'The cache was cold.')
+// An agent page (html_render) in the transcript: a small bar chart on the theme's variables.
+{
+  const pageId = 'buildtimes0001'
+  mkdirSync(join(pagesDir, 'ios-chat-workspace'), { recursive: true })
+  const bars = [['Mon', 212], ['Tue', 198], ['Wed', 431], ['Thu', 205], ['Fri', 189]] as const
+  const html = `<!doctype html><html><head><style>
+.chart{display:grid;gap:10px}.row{display:grid;grid-template-columns:36px 1fr 48px;align-items:center;gap:10px;font-size:13px}
+.bar{height:14px;border-radius:4px;background:var(--chart-1)}.slow{background:var(--warning)}.label{color:var(--muted-foreground)}
+.value{text-align:right;font-variant-numeric:tabular-nums}h2{font-size:15px;font-weight:600;margin:0 0 12px}
+</style></head><body><h2>Build time this week</h2><div class="chart">${bars
+    .map(([day, s]) => `<div class="row"><span class="label">${day}</span><div class="bar${s > 300 ? ' slow' : ''}" style="width:${Math.round((s / 431) * 100)}%"></div><span class="value">${s}s</span></div>`)
+    .join('')}</div></body></html>`
+  writeFileSync(join(pagesDir, 'ios-chat-workspace', `${pageId}.html`), injectHtmlRenderBootstrap(html))
+  const htmlRender = { sessionId: 'ios-chat-workspace', pageId, title: 'Build time this week', height: 220, heights: [[320, 220], [400, 208], [864, 196]] }
+  server.registry.append('ios-chat-workspace', { type: 'user-text', text: 'Chart the build times this week' })
+  server.registry.append('ios-chat-workspace', { type: 'tool-call', callId: 'h1', name: 'mcp__app__html_render', input: { title: htmlRender.title, height: 220 } })
+  server.registry.append('ios-chat-workspace', { type: 'tool-result', callId: 'h1', output: JSON.stringify({ htmlRender, message: 'Shown to the reader above your reply.' }), isError: false })
+  server.registry.append('ios-chat-workspace', { type: 'assistant-text', text: 'Wednesday ran cold after the lockfile change.', delta: false, msgId: 'ios-chat-workspace-m2', blockIndex: 0 })
+  server.registry.append('ios-chat-workspace', { type: 'turn-complete' })
+}
 await make('ios-chat-loose', { cwd: tmpdir(), threadType: 'chat', title: 'Regex for ISO dates' })
 say('ios-chat-loose', 'A regex for ISO dates?', 'Use a date parser instead.')
 await make('ios-retired', { projectId: retired.id, threadType: 'chat', title: 'Old migration notes' })
@@ -1841,6 +1873,7 @@ process.stdout.write(
       held: THREAD_HELD,
       queued: THREAD_QUEUED,
       stopped: 'ios-stopped',
+      page: 'ios-chat-workspace',
       notices: THREAD_NOTICES,
       failures: THREAD_FAILURES,
       preamble: THREAD_PREAMBLE,

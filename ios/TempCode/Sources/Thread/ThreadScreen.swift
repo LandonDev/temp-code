@@ -134,6 +134,7 @@ struct ThreadScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .tcNavigationBar()
         .navigationDestination(for: DiffRoute.self) { route in DiffScreen(client: client, route: route) }
+        .navigationDestination(for: HtmlRenderRoute.self) { route in HtmlRenderScreen(render: route.render, client: client) }
         .navigationDestination(for: ReportRoute.self) { route in
             ReportScreen(route: route)
                 .environment(\.markdownScope, MarkdownScope(environmentId: client.environment.id, sessionId: route.sessionId))
@@ -142,6 +143,7 @@ struct ThreadScreen: View {
         .navigationDestination(item: $launchPush) { push in
             switch push {
             case .diff(let route): DiffScreen(client: client, route: route)
+            case .page(let route): HtmlRenderScreen(render: route.render, client: client)
             case .agent(let route): ThreadScreen(client: client, sessionId: route.sessionId, targetSeq: route.targetSeq)
             }
         }
@@ -152,6 +154,11 @@ struct ThreadScreen: View {
                 return Board.wholeChange(path: path, edits: [tool])
             }).first {
                 launchPush = .diff(DiffRoute(sessionId: sessionId, card: edit))
+            } else if open == "page", let page = thread.fold.items.lazy.compactMap({ entry -> HtmlRender? in
+                guard case .tool(let tool) = entry.item else { return nil }
+                return tool.htmlRender
+            }).first {
+                launchPush = .page(HtmlRenderRoute(render: page))
             } else if open == "agent", let child = children.first {
                 launchPush = .agent(ThreadScreenRoute(sessionId: child.id))
             } else if open == "agents", !children.isEmpty, !showAgents {
@@ -388,6 +395,7 @@ struct ThreadScreen: View {
 /// What the proof opens on launch (DEBUG, `TC_TEST_OPEN`).
 enum LaunchPush: Hashable, Identifiable {
     case diff(DiffRoute)
+    case page(HtmlRenderRoute)
     case agent(ThreadScreenRoute)
 
     var id: Self { self }

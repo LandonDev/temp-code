@@ -18,7 +18,8 @@ enum TestHooks {
     /// pushes the subagent list from the toolbar button once the thread has
     /// children, `rename` opens the inline title field once the thread is
     /// loaded (the proof types nothing), `report` opens the research report,
-    /// `source` the first source's page, `account` opens the header's
+    /// `source` the first source's page, `page` pushes the first agent page
+    /// (html_render) full screen, `account` opens the header's
     /// account menu sheet, `composer` focuses the chat field (the keyboard
     /// up; an operate key). On a master's board, `rules`, `add-thread`,
     /// `adopt` and `archive-done` open that sheet once the batch has landed.

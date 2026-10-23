@@ -6,7 +6,8 @@ import TempCodeContract
 /// by row: the user's words in a bordered field, the agent's answer as the
 /// page, the work between answers as phases (thinking, tool calls and edits
 /// under one human line, `ActivityPhaseRow`), cards for what needs the
-/// user, quiet lines and labelled dividers for the rest, a live turn's
+/// user, an agent's published page as the page itself (`HtmlRenderRow`),
+/// quiet lines and labelled dividers for the rest, a live turn's
 /// thinking tail and a settled turn's closing line.
 struct TranscriptRow: View, Equatable {
     let row: TranscriptRowModel
@@ -53,6 +54,8 @@ private struct ItemRow: View {
                 EditRow(sessionId: sessionId, card: Board.wholeChange(path: path, edits: [tool]), running: tool.status == .running, failed: tool.status == .failed)
             } else if tool.isPlanTool {
                 QuietLine(symbol: "checklist", text: tool.planLine)
+            } else if let render = tool.htmlRender {
+                HtmlRenderRow(render: render, client: client)
             } else {
                 ToolChip(tool: tool, client: client, sessionId: sessionId)
             }

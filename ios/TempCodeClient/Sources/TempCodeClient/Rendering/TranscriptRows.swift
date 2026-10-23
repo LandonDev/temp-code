@@ -120,12 +120,13 @@ public enum TranscriptRowModel: Identifiable, Hashable, Sendable {
 public enum TranscriptRows {
     /// An entry that joins a run of activity, `isActivityBlock` in zen: a
     /// thought with words in it, or a tool call that is not a plan tool (a
-    /// quiet line of its own). Edits join too; a closed phase keeps them in
-    /// view. Questions, approvals, prose and every host row break the run.
+    /// quiet line of its own) or a published page (a row of its own, the
+    /// page). Edits join too; a closed phase keeps them in view. Questions,
+    /// approvals, prose and every host row break the run.
     public static func folds(_ entry: ThreadEntry) -> Bool {
         switch entry.item {
         case .thinking(let block): return hasWords(block.text)
-        case .tool(let tool): return !tool.isPlanTool
+        case .tool(let tool): return !tool.isPlanTool && tool.htmlRender == nil
         default: return false
         }
     }
