@@ -62,10 +62,9 @@ export class PortLogs {
   private async fileOf(row: ThreadResource): Promise<string | null> {
     const known = this.paths.get(row.id)
     if (known) return known
-    if (!row.pid) return null
     const linux = (this.deps.platform ?? process.platform) === 'linux'
-    const { parents } = await this.deps.scanner.get(2_000)
-    let pid: number | undefined = row.pid
+    const { parents } = row.pid ? await this.deps.scanner.get(2_000) : { parents: new Map<number, number>() }
+    let pid: number | undefined = row.pid ?? undefined
     for (let i = 0; pid && pid > 1 && i <= ANCESTORS; i++) {
       for (const p of await (linux ? linuxFiles(pid) : lsofFiles(pid))) {
         if (!isLogPath(p)) continue
