@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_BATCH_RULES, type BatchState, type BoardDigest } from "@server/shared/contract-batch";
 import type { AgentEvent, EventRow } from "@server/shared/events";
@@ -554,7 +554,8 @@ describe("the master view", () => {
     expect(screen.queryByTestId("chat")).toBeNull();
     expect(document.querySelector("[data-board]")).toBeNull();
     expect(document.querySelector("[data-child-view='c-run']")).toBeTruthy();
-    expect(document.querySelector("[data-transcript='c-run']")).toBeTruthy();
+    // The transcript mounts in the pane's deferred pass, a frame after the header.
+    await waitFor(() => expect(document.querySelector("[data-transcript='c-run']")).toBeTruthy());
     expect(screen.getByRole("button", { name: /Back/ }).getAttribute("title")).toBe("Back to the board (Esc)");
     // Nothing opened a tab.
     expect(props.onOpenSession).not.toHaveBeenCalled();
@@ -1232,7 +1233,8 @@ describe("the batch across hosts", () => {
     await flush();
     const pane = document.querySelector("[data-child-pane='c-box']")!;
     expect(pane.getAttribute("data-child-host")).toBe("box");
-    expect(document.querySelector("[data-transcript='c-box']")).toBeTruthy();
+    // The transcript mounts in the pane's deferred pass, a frame after the header.
+    await waitFor(() => expect(document.querySelector("[data-transcript='c-box']")).toBeTruthy());
     // Its transcript was asked of the box, not the master's host.
     expect(boxLink.calls.some((c) => c.method === "session.events" && (c.params as { sessionId: string }).sessionId === "c-box")).toBe(true);
     expect(link.calls.some((c) => c.method === "session.events" && (c.params as { sessionId: string }).sessionId === "c-box")).toBe(false);
