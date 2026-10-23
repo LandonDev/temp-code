@@ -113,96 +113,97 @@ public struct HomeProject: Sendable, Hashable, Identifiable {
     public var threadCount: Int { members.reduce(0) { $0 + $1.group.threads.count } }
 }
 
-/// One row of Home. Rows carry ids and metas, never a client; the view
-/// resolves the host from `environmentId`. Every id names the host: a thread
-/// moved between hosts can sit in the old host's cache while it lists on the
-/// new one, and two rows must never share an id.
-public enum HomeRow: Sendable, Hashable, Identifiable {
-    case status(environmentId: String)
-    case hostNote(environmentId: String, HomeNote)
-    case needsYou(environmentId: String, NeedsYouItem)
-    case running(environmentId: String, SessionMeta)
-    /// Nothing needs you and nothing runs: one calm line and the way to start a thread.
-    case calm(environmentId: String, WorkspaceMeta)
-    /// One row for every host's copy of a project; `environmentId` is the lead copy's host.
-    case project(environmentId: String, HomeProject)
-    case thread(environmentId: String, ThreadItem)
-    case moreAgents(environmentId: String, root: SessionMeta, hidden: Int)
-    case archivedThreads(environmentId: String, ProjectGroup)
-    case archivedProjects(environmentId: String, WorkspaceMeta, count: Int)
-    /// An expanded workspace with no thread in it yet.
-    case emptyWorkspace(environmentId: String, WorkspaceMeta)
-    /// A host with no workspace and no chat: a spinner until `listed`, then the fact and where to fix it.
-    case nothing(environmentId: String, name: String, listed: Bool)
+/// A session with the host it lives on.
+public struct HostedSession: Sendable, Hashable, Identifiable {
+    public var environmentId: String
+    public var meta: SessionMeta
+
+    public init(environmentId: String, meta: SessionMeta) {
+        self.environmentId = environmentId
+        self.meta = meta
+    }
+
+    public var id: String { "\(environmentId):\(meta.id)" }
+}
+
+/// The desktop rail's one mark per workspace (or project), loudest first:
+/// paused, needs you (waiting on an answer, or failed), working, unread,
+/// else none. The rules are useProjectSignals.ts `workspaceRailStatuses`
+/// over projectCardModel.ts `projectCardStatus`, so the phone and the
+/// desktop never disagree about a workspace.
+public enum RailStatus: Sendable, Hashable {
+    case paused(count: Int)
+    case needsYou(count: Int)
+    /// The working roots, newest first: the row names the first.
+    case busy(running: [HostedSession])
+    case unread(count: Int)
+
+    /// Threads in the dominant bucket.
+    public var count: Int {
+        switch self {
+        case .paused(let count), .needsYou(let count), .unread(let count): count
+        case .busy(let running): running.count
+        }
+    }
+
+    /// The dominant bucket over a set of roots; nil when nothing is going on.
+    /// `seen` and `floor` give each root's host's seen marks and pairing time.
+    public static func of(_ roots: [HostedSession], seen: (String) -> [String: SeenMark], floor: (String) -> Int) -> RailStatus? {
+        var paused = 0, waiting = 0, failed = 0, unread = 0
+        var running: [HostedSession] = []
+        for root in roots {
+            let meta = root.meta
+            let canContinue = meta.treeCanContinue == true
+            let liveWork = meta.treeHasLiveWork == true
+            if meta.status == .paused || meta.treeHasPaused == true {
+                paused += 1
+                continue
+            }
+            if meta.status != .waiting, !canContinue, meta.status == .running || meta.status == .starting || liveWork {
+                running.append(root)
+            }
+            if !canContinue, meta.status == .waiting { waiting += 1 }
+            if !liveWork, meta.status == .error || canContinue { failed += 1 }
+            if !canContinue, !liveWork, ThreadGroups.isUnseen(meta, seen: seen(root.environmentId), floor: floor(root.environmentId)) { unread += 1 }
+        }
+        if paused > 0 { return .paused(count: paused) }
+        if waiting + failed > 0 { return .needsYou(count: waiting + failed) }
+        if !running.isEmpty { return .busy(running: running.sorted { ($0.meta.updatedAt, $0.id) > ($1.meta.updatedAt, $1.id) }) }
+        if unread > 0 { return .unread(count: unread) }
+        return nil
+    }
+}
+
+/// One row of a thread list: a thread at its depth (0 a root, 1 a subagent
+/// or a master's batch thread, 2 a batch thread's subagent), or the dim
+/// "n more" row for the settled children left out.
+public enum ShellRow: Sendable, Hashable, Identifiable {
+    case thread(environmentId: String, ThreadItem, depth: Int)
+    case more(environmentId: String, root: SessionMeta, hidden: Int)
 
     public var id: String {
         switch self {
-        case .status(let env): "status:\(env)"
-        case .hostNote(let env, let note): "note:\(env):\(note.id)"
-        case .needsYou(let env, let item): "needs:\(env):\(item.id)"
-        case .running(let env, let meta): "running:\(env):\(meta.id)"
-        case .calm(let env, _): "calm:\(env)"
-        case .project(_, let project): "project:\(project.id)"
-        case .thread(let env, let item): "thread:\(env):\(item.id)"
-        case .moreAgents(let env, let root, _): "more:\(env):\(root.id)"
-        case .archivedThreads(let env, let group): "archived:\(env):\(group.id)"
-        case .archivedProjects(let env, let workspace, _): "archived-projects:\(env):\(workspace.id)"
-        case .emptyWorkspace(let env, let workspace): "empty:\(env):\(workspace.id)"
-        case .nothing(let env, _, _): "nothing:\(env)"
+        case .thread(let env, let item, _): "thread:\(env):\(item.id)"
+        case .more(let env, let root, _): "more:\(env):\(root.id)"
         }
     }
 
-    /// The host the row belongs to.
     public var environmentId: String {
         switch self {
-        case .status(let env), .hostNote(let env, _), .needsYou(let env, _), .running(let env, _), .calm(let env, _),
-             .project(let env, _), .thread(let env, _), .moreAgents(let env, _, _), .archivedThreads(let env, _),
-             .archivedProjects(let env, _, _), .emptyWorkspace(let env, _), .nothing(let env, _, _):
-            env
-        }
-    }
-
-    /// Rows that come and go because of an event (a host dropping, a thread
-    /// needing you, a note after a restart) and so arrive with the row motion.
-    /// A thread starting is routine: running rows change without one.
-    public var isEvent: Bool {
-        switch self {
-        case .status, .hostNote, .needsYou: true
-        default: false
+        case .thread(let env, _, _), .more(let env, _, _): env
         }
     }
 }
 
-/// A section of Home: its header and its rows, with a stable id.
-public struct HomeSection: Sendable, Hashable, Identifiable {
-    public enum Header: Sendable, Hashable {
-        case none
-        /// "Needs you", "Running".
-        case title(String)
-        /// With several hosts, the host's name and connection dot over its workspaces.
-        case host(environmentId: String, name: String)
-        /// The host's loose chats: a workspace-level group with no fold.
-        case chats(environmentId: String)
-        /// A workspace: logo, name, repo; the fold, and the count while folded.
-        case workspace(HomeWorkspace, collapsed: Bool, threads: Int)
-    }
-
-    public var id: String
-    public var header: Header
-    public var rows: [HomeRow]
-
-    public init(id: String, header: Header, rows: [HomeRow]) {
-        self.id = id
-        self.header = header
-        self.rows = rows
-    }
-}
-
-/// Home's sections from every host's shell and the remembered folds. Pure
-/// over value inputs, so the view's body is one ForEach over stable ids and
-/// the tests run anywhere.
+/// Home's three levels, shaped like the desktop's sidebar: the workspaces
+/// with their state (the far-left column), one workspace's projects with
+/// their active threads and its stray chats (the middle sidebar), and one
+/// project's every thread. Pure over value inputs, so each screen's body is
+/// one ForEach over stable ids.
 public enum HomeSections {
-    /// Settled subagents shown under a root before the "n more" row.
+    /// The key of the "Chats" entry: the threads outside every workspace.
+    public static let chatsKey = "chats"
+    /// Settled children shown under a row before the "n more" row.
     public static let settledShown = 3
 
     /// A host that gets a status row: refused, offline, between retries, or
@@ -215,80 +216,244 @@ public enum HomeSections {
         }
     }
 
-    /// What `folded` remembers a workspace by: its fold key, so folding a
-    /// linked workspace folds every copy.
-    public nonisolated static func foldKey(_ workspace: HomeWorkspace) -> String {
-        workspace.id
+    // MARK: Level 1, Home: the workspaces
+
+    /// One row of Home: a workspace (every linked copy as one), or the Chats entry.
+    public struct Entry: Sendable, Hashable, Identifiable {
+        public enum Kind: Sendable, Hashable {
+            case workspace(HomeWorkspace)
+            case chats
+        }
+
+        /// The workspace's key (`ProjectPairs.key`), or `chatsKey`.
+        public var id: String
+        public var kind: Kind
+        public var status: RailStatus?
+        /// The hosts the entry spans, for the offline tint.
+        public var environmentIds: [String]
     }
 
-    public nonisolated static func build(hosts: [HomeHostInput], folded: Set<String>) -> [HomeSection] {
-        var sections: [HomeSection] = []
+    /// A host's own lines on Home: its status row while in trouble, its
+    /// one-off notes, and the empty state when it lists nothing.
+    public struct HostLines: Sendable, Hashable, Identifiable {
+        public var environmentId: String
+        public var name: String
+        public var status: Bool
+        public var notes: [HomeNote]
+        /// No workspace and no chat: a spinner until `listed`, then the fact.
+        public var nothing: Bool
+        public var listed: Bool
 
+        public var id: String { environmentId }
+    }
+
+    public struct Home: Sendable, Hashable {
+        public var entries: [Entry]
+        public var hosts: [HostLines]
+    }
+
+    public nonisolated static func home(hosts: [HomeHostInput]) -> Home {
         // A host the box relays folds under the box's own row while the box is in trouble:
         // one card says the box is down, not one per host behind it.
         let troubledIds = Set(hosts.filter(\.troubled).map(\.environmentId))
-        let status = hosts
-            .filter { $0.troubled && !($0.via.map(troubledIds.contains) ?? false) }
-            .map { HomeRow.status(environmentId: $0.environmentId) }
-        if !status.isEmpty { sections.append(HomeSection(id: "status", header: .none, rows: status)) }
-
-        let needs = hosts
-            .flatMap { host in HomeModel.needsYou(host.sessions).map { (host.environmentId, $0) } }
-            .sorted { ($0.1.since, $0.1.id) < ($1.1.since, $1.1.id) }
-        if !needs.isEmpty {
-            sections.append(HomeSection(id: "needs", header: .title("Needs you"), rows: needs.map { .needsYou(environmentId: $0.0, $0.1) }))
+        let lines = hosts.map { host in
+            let loose = host.sessions.contains { $0.parentId == nil && !$0.archived && ThreadGroups.workspaceId(of: $0, projects: host.projects, workspaces: host.workspaces) == nil }
+            return HostLines(
+                environmentId: host.environmentId,
+                name: host.name,
+                status: host.troubled && !(host.via.map(troubledIds.contains) ?? false),
+                notes: host.notes,
+                nothing: host.workspaces.isEmpty && !loose,
+                listed: host.hasShell
+            )
         }
 
-        let running = hosts
-            .flatMap { host in HomeModel.running(host.sessions).map { (host.environmentId, $0) } }
-            .sorted { ($0.1.updatedAt, $0.1.id) > ($1.1.updatedAt, $1.1.id) }
-        if !running.isEmpty {
-            sections.append(HomeSection(id: "running", header: .title("Running"), rows: running.map { .running(environmentId: $0.0, $0.1) }))
+        var entries: [Entry] = []
+        let chats = hosts.flatMap { host in roots(host, workspaceId: nil) }
+        if !chats.isEmpty {
+            entries.append(Entry(id: chatsKey, kind: .chats, status: status(chats, hosts: hosts), environmentIds: Array(Set(chats.map(\.environmentId))).sorted()))
         }
-
-        // Quiet is a state too: say so once, with the one thing to do from here.
-        if needs.isEmpty, running.isEmpty, let calm = hosts.first(where: { $0.hasShell && !$0.workspaces.isEmpty }), let workspace = calm.workspaces.first {
-            sections.append(HomeSection(id: "calm", header: .none, rows: [.calm(environmentId: calm.environmentId, workspace)]))
+        for workspace in workspaces(of: hosts) {
+            let threads = workspace.members.flatMap { member in
+                hosts.first { $0.environmentId == member.environmentId }.map { roots($0, workspaceId: member.workspace.id) } ?? []
+            }
+            entries.append(Entry(id: workspace.id, kind: .workspace(workspace), status: status(threads, hosts: hosts), environmentIds: workspace.members.map(\.environmentId)))
         }
+        return Home(entries: entries, hosts: lines)
+    }
 
-        // Workspaces keyed by their link; a link on more than one host is one
-        // workspace, listed before any host so it is never under one host's name.
-        let (paired, unpaired) = workspaces(of: hosts)
-        for workspace in paired {
-            sections.append(workspaceSection(workspace, hosts: hosts, folded: folded))
+    // MARK: Level 2, a workspace: projects with their active threads, then the stray chats
+
+    /// A project row on the workspace screen: the project and the rows of its
+    /// active threads nested under it (their own marks are its state).
+    public struct ProjectEntry: Sendable, Hashable, Identifiable {
+        public var project: HomeProject
+        public var rows: [ShellRow]
+
+        public var id: String { project.id }
+    }
+
+    /// The "n archived projects" row of one host's copy.
+    public struct ArchivedProjects: Sendable, Hashable, Identifiable {
+        public var environmentId: String
+        public var workspace: WorkspaceMeta
+        public var count: Int
+
+        public var id: String { "\(environmentId):\(workspace.id)" }
+    }
+
+    public struct WorkspaceScreen: Sendable, Hashable {
+        /// Nil for the Chats entry.
+        public var workspace: HomeWorkspace?
+        public var projects: [ProjectEntry]
+        /// The threads with no project, every one of them, newest first.
+        public var chats: [ShellRow]
+        public var archivedProjects: [ArchivedProjects]
+
+        public var isEmpty: Bool { projects.isEmpty && chats.isEmpty && archivedProjects.isEmpty }
+    }
+
+    /// The workspace screen for an entry's key; nil when no host lists it.
+    public nonisolated static func workspace(_ key: String, hosts: [HomeHostInput]) -> WorkspaceScreen? {
+        if key == chatsKey {
+            let chats = hosts.map { host in
+                (host.environmentId, ThreadGroups.group(host.sessions, projects: host.projects, workspaces: host.workspaces, workspaceId: nil, seen: host.seen, floor: host.floor).chats)
+            }
+            return WorkspaceScreen(workspace: nil, projects: [], chats: rows(mixed(chats)), archivedProjects: [])
         }
+        guard let workspace = workspaces(of: hosts).first(where: { $0.id == key }) else { return nil }
+        var chats: [(String, [ThreadItem])] = []
+        var projects: [(String, ProjectGroup)] = []
+        var archived: [ArchivedProjects] = []
+        for member in workspace.members {
+            guard let host = hosts.first(where: { $0.environmentId == member.environmentId }) else { continue }
+            let groups = ThreadGroups.group(host.sessions, projects: host.projects, workspaces: host.workspaces, workspaceId: member.workspace.id, seen: host.seen, floor: host.floor)
+            chats.append((host.environmentId, groups.chats))
+            projects += groups.projects.map { (host.environmentId, $0) }
+            if !groups.archived.isEmpty { archived.append(ArchivedProjects(environmentId: host.environmentId, workspace: member.workspace, count: groups.archived.count)) }
+        }
+        let linked = fold(projects, key: { ProjectPairs.key($0, $1.project) }, own: { "\($0):\($1.project.id)" }) { key, members in
+            HomeProject(id: key, members: members.map { HomeProject.Member(environmentId: $0.0, group: $0.1) })
+        }
+        .sorted { ($0.latest, $0.id) > ($1.latest, $1.id) }
+        let entries = linked.map { project in
+            ProjectEntry(project: project, rows: rows(project.threads.filter { isActive($0.item) }))
+        }
+        return WorkspaceScreen(workspace: workspace, projects: entries, chats: rows(mixed(chats)), archivedProjects: archived)
+    }
 
+    // MARK: Level 3, a project: every thread
+
+    /// The "n archived" row of one host's copy.
+    public struct ArchivedThreads: Sendable, Hashable, Identifiable {
+        public var environmentId: String
+        public var projectId: String
+        public var count: Int
+
+        public var id: String { "\(environmentId):\(projectId)" }
+    }
+
+    public struct ProjectScreen: Sendable, Hashable {
+        public var project: HomeProject
+        /// The threads the workspace screen shows under the project.
+        public var active: [ShellRow]
+        /// Settled and seen: the rest, newest first.
+        public var dormant: [ShellRow]
+        public var archived: [ArchivedThreads]
+
+        public var isEmpty: Bool { active.isEmpty && dormant.isEmpty && archived.isEmpty }
+    }
+
+    /// The project screen for a project row's key (`HomeProject.id`); nil when no host lists it.
+    public nonisolated static func project(_ key: String, hosts: [HomeHostInput]) -> ProjectScreen? {
+        var members: [HomeProject.Member] = []
         for host in hosts {
             let env = host.environmentId
-            let notes = host.notes.map { HomeRow.hostNote(environmentId: env, $0) }
-            if hosts.count > 1 {
-                sections.append(HomeSection(id: "host:\(env)", header: .host(environmentId: env, name: host.name), rows: notes))
-            } else if !notes.isEmpty {
-                sections.append(HomeSection(id: "notes:\(env)", header: .none, rows: notes))
-            }
-            let loose = ThreadGroups.group(host.sessions, projects: host.projects, workspaces: host.workspaces, workspaceId: nil, seen: host.seen, floor: host.floor).chats
-            if !loose.isEmpty {
-                sections.append(HomeSection(id: "chats:\(env)", header: .chats(environmentId: env), rows: threadRows(env, loose)))
-            }
-            if host.workspaces.isEmpty, loose.isEmpty {
-                sections.append(HomeSection(id: "nothing:\(env)", header: .none, rows: [.nothing(environmentId: env, name: host.name, listed: host.hasShell)]))
-                continue
-            }
-            for workspace in unpaired where workspace.members.first?.environmentId == env {
-                sections.append(workspaceSection(workspace, hosts: hosts, folded: folded))
+            guard let project = host.projects.first(where: { ProjectPairs.key(env, $0) == key }) ?? host.projects.first(where: { "\(env):\($0.id)" == key }) else { continue }
+            let groups = ThreadGroups.group(host.sessions, projects: host.projects, workspaces: host.workspaces, workspaceId: project.workspaceId, seen: host.seen, floor: host.floor)
+            if let group = (groups.projects + groups.archived).first(where: { $0.id == project.id }) {
+                members.append(HomeProject.Member(environmentId: env, group: group))
             }
         }
-        return sections
+        guard !members.isEmpty else { return nil }
+        let project = HomeProject(id: key, members: members)
+        let threads = project.threads
+        return ProjectScreen(
+            project: project,
+            active: rows(threads.filter { isActive($0.item) }),
+            dormant: rows(threads.filter { !isActive($0.item) }),
+            archived: members.filter { $0.group.archivedCount > 0 }.map { ArchivedThreads(environmentId: $0.environmentId, projectId: $0.group.id, count: $0.group.archivedCount) }
+        )
+    }
+
+    // MARK: The rules
+
+    /// What the middle sidebar keeps in view (threadStripModel.ts
+    /// `isLiveThread`, and pinned, which "Archive dormant" spares): anything
+    /// not settled and seen, or with live, paused or failed work in its tree.
+    public nonisolated static func isActive(_ item: ThreadItem) -> Bool {
+        let meta = item.meta
+        return meta.pinned
+            || (meta.status != .idle && meta.status != .done)
+            || meta.treeHasLiveWork == true
+            || meta.treeHasPaused == true
+            || meta.treeCanContinue == true
+            || item.unseen
+    }
+
+    /// Roots of several hosts in the order given, each with what is housed
+    /// under it (subagents, a master's batch) one step in per level: every
+    /// live or needs-you child, a few settled ones, and one dim row for the rest.
+    public nonisolated static func rows(_ items: [(environmentId: String, item: ThreadItem)]) -> [ShellRow] {
+        var out: [ShellRow] = []
+        for entry in items { append(entry.item, environmentId: entry.environmentId, depth: 0, into: &out) }
+        return out
+    }
+
+    private nonisolated static func append(_ item: ThreadItem, environmentId: String, depth: Int, into rows: inout [ShellRow]) {
+        rows.append(.thread(environmentId: environmentId, item, depth: depth))
+        var settled = 0
+        var hidden = 0
+        for child in item.children {
+            if ThreadGroups.rank(child.meta.status) < 3 {
+                append(child, environmentId: environmentId, depth: depth + 1, into: &rows)
+            } else if settled < settledShown {
+                settled += 1
+                append(child, environmentId: environmentId, depth: depth + 1, into: &rows)
+            } else {
+                hidden += 1
+            }
+        }
+        if hidden > 0 { rows.append(.more(environmentId: environmentId, root: item.meta, hidden: hidden)) }
+    }
+
+    /// One host's unarchived roots in a workspace (nil: outside every
+    /// workspace), leaving out the threads of archived projects, as the
+    /// desktop's status fold does.
+    nonisolated static func roots(_ host: HomeHostInput, workspaceId: String?) -> [HostedSession] {
+        let archivedProjects = Set(host.projects.filter(\.archived).map(\.id))
+        return host.sessions.compactMap { meta in
+            guard meta.parentId == nil, !meta.archived, !(meta.projectId.map(archivedProjects.contains) ?? false),
+                  ThreadGroups.workspaceId(of: meta, projects: host.projects, workspaces: host.workspaces) == workspaceId else { return nil }
+            return HostedSession(environmentId: host.environmentId, meta: meta)
+        }
+    }
+
+    nonisolated static func status(_ roots: [HostedSession], hosts: [HomeHostInput]) -> RailStatus? {
+        RailStatus.of(
+            roots,
+            seen: { env in hosts.first { $0.environmentId == env }?.seen ?? [:] },
+            floor: { env in hosts.first { $0.environmentId == env }?.floor ?? 0 }
+        )
     }
 
     /// Every workspace keyed by its link (`ProjectPairs.key`), in first-seen
-    /// order: the linked ones (members on more than one host) and the rest,
-    /// one member each.
-    nonisolated static func workspaces(of hosts: [HomeHostInput]) -> (paired: [HomeWorkspace], unpaired: [HomeWorkspace]) {
-        let all = fold(hosts.flatMap { host in host.workspaces.map { (host.environmentId, $0) } }, key: { ProjectPairs.key($0, $1) }, own: { "\($0):\($1.id)" }) { key, members in
+    /// order across the hosts in registry order: a link on several hosts is
+    /// one workspace with a member per host.
+    public nonisolated static func workspaces(of hosts: [HomeHostInput]) -> [HomeWorkspace] {
+        fold(hosts.flatMap { host in host.workspaces.map { (host.environmentId, $0) } }, key: { ProjectPairs.key($0, $1) }, own: { "\($0):\($1.id)" }) { key, members in
             HomeWorkspace(id: key, name: members[0].1.name, repo: members.lazy.compactMap { $0.1.githubRepo }.first, members: members.map { HomeWorkspace.Member(environmentId: $0.0, workspace: $0.1) })
         }
-        return (all.filter(\.isPaired), all.filter { !$0.isPaired })
     }
 
     /// Folds rows of several hosts by `key`, in first-seen order, one member
@@ -314,73 +479,5 @@ public enum HomeSections {
                 if $0.item.meta.pinned != $1.item.meta.pinned { return $0.item.meta.pinned }
                 return ($0.item.meta.updatedAt, $0.item.meta.id, $0.environmentId) > ($1.item.meta.updatedAt, $1.item.meta.id, $1.environmentId)
             }
-    }
-
-    /// A workspace's section: the fold row as its header, and under it (when
-    /// open) its chats from every copy mixed by recency, then one row per
-    /// project (every copy's threads under it, mixed by recency), then each
-    /// copy's archived rows.
-    nonisolated static func workspaceSection(_ workspace: HomeWorkspace, hosts: [HomeHostInput], folded: Set<String>) -> HomeSection {
-        let collapsed = folded.contains(foldKey(workspace))
-        var chats: [(String, [ThreadItem])] = []
-        var projects: [(String, ProjectGroup)] = []
-        var archived: [(String, WorkspaceMeta, Int)] = []
-        for member in workspace.members {
-            guard let host = hosts.first(where: { $0.environmentId == member.environmentId }) else { continue }
-            let groups = ThreadGroups.group(host.sessions, projects: host.projects, workspaces: host.workspaces, workspaceId: member.workspace.id, seen: host.seen, floor: host.floor)
-            chats.append((host.environmentId, groups.chats))
-            projects += groups.projects.map { (host.environmentId, $0) }
-            if !groups.archived.isEmpty { archived.append((host.environmentId, member.workspace, groups.archived.count)) }
-        }
-        let linked = fold(projects, key: { ProjectPairs.key($0, $1.project) }, own: { "\($0):\($1.project.id)" }) { key, members in
-            HomeProject(id: key, members: members.map { HomeProject.Member(environmentId: $0.0, group: $0.1) })
-        }
-        .sorted { ($0.latest, $0.id) > ($1.latest, $1.id) }
-        let threads = chats.reduce(0) { $0 + $1.1.count } + linked.reduce(0) { $0 + $1.threadCount }
-
-        var rows: [HomeRow] = []
-        if !collapsed {
-            rows += threadRows(mixed(chats))
-            for project in linked {
-                rows.append(.project(environmentId: project.environmentId, project))
-                rows += threadRows(project.threads)
-                for member in project.members where member.group.archivedCount > 0 {
-                    rows.append(.archivedThreads(environmentId: member.environmentId, member.group))
-                }
-            }
-            rows += archived.map { .archivedProjects(environmentId: $0.0, $0.1, count: $0.2) }
-            if rows.isEmpty, let first = workspace.members.first {
-                rows.append(.emptyWorkspace(environmentId: first.environmentId, first.workspace))
-            }
-        }
-        return HomeSection(id: "workspace:\(workspace.id)", header: .workspace(workspace, collapsed: collapsed, threads: threads), rows: rows)
-    }
-
-    /// Roots of several hosts in the order given, each with its subagents.
-    public nonisolated static func threadRows(_ items: [(environmentId: String, item: ThreadItem)]) -> [HomeRow] {
-        items.flatMap { threadRows($0.environmentId, [$0.item]) }
-    }
-
-    /// A root, then whatever fills its `children`, nested one step in: every
-    /// live or needs-you one, a few settled ones, and one dim row for the rest.
-    public nonisolated static func threadRows(_ environmentId: String, _ items: [ThreadItem]) -> [HomeRow] {
-        var rows: [HomeRow] = []
-        for item in items {
-            rows.append(.thread(environmentId: environmentId, item))
-            var settled = 0
-            var hidden = 0
-            for child in item.children {
-                if ThreadGroups.rank(child.meta.status) < 3 {
-                    rows.append(.thread(environmentId: environmentId, child))
-                } else if settled < settledShown {
-                    settled += 1
-                    rows.append(.thread(environmentId: environmentId, child))
-                } else {
-                    hidden += 1
-                }
-            }
-            if hidden > 0 { rows.append(.moreAgents(environmentId: environmentId, root: item.meta, hidden: hidden)) }
-        }
-        return rows
     }
 }

@@ -64,10 +64,10 @@ struct ThreadRow<Accessory: View>: View {
                 ThreadRowTime(row: row)
             }
         }
-        .padding(.leading, row.agent == nil ? 0 : Layout.indent)
+        .padding(.leading, CGFloat(row.indent) * Layout.indent)
         .padding(.vertical, Layout.rowVertical)
         .frame(minHeight: Layout.rowHeight)
-        .separatorAtTextEdge(textEdge + (row.agent == nil ? 0 : Layout.indent))
+        .separatorAtTextEdge(textEdge + CGFloat(row.indent) * Layout.indent)
         .accessibilityElement(children: .combine)
     }
 }

@@ -99,16 +99,47 @@ public enum ThreadGroups {
         return meta.updatedAt > (seen[meta.id]?.at ?? floor)
     }
 
-    /// Live subagents keyed by parent id, ranked. Archived children stay out.
+    /// The ids of the unarchived roots pinned as masters (workspaceSessions.ts `railMasters`).
+    public static func masters(_ metas: [SessionMeta]) -> Set<String> {
+        Set(metas.lazy.filter { $0.isMaster == true && $0.parentId == nil && !$0.archived }.map(\.id))
+    }
+
+    /// The master a batch root is housed under, else nil (`batchHome`): a
+    /// root carrying the id of an unarchived master. Such a thread is never
+    /// a root row of its own.
+    public static func batchHome(_ meta: SessionMeta, masters: Set<String>) -> String? {
+        guard meta.parentId == nil, !meta.archived, let masterId = meta.masterId, masters.contains(masterId) else { return nil }
+        return masterId
+    }
+
+    /// A plan whose build has started: the build takes its place in the batch (`startedPlan`).
+    public static func startedPlan(_ meta: SessionMeta) -> Bool {
+        meta.threadType == .planning && meta.implementationId != nil
+    }
+
+    /// The rows housed under a row, keyed by that row's id, ranked: live
+    /// subagents under their parent, and a master's batch under the master
+    /// (each batch thread with its own subagents under it), as the desktop's
+    /// `childRows` builds them. Archived ones stay out.
     public static func children(of metas: [SessionMeta], seen: [String: SeenMark], floor: Int) -> [String: [ThreadItem]] {
         var byParent: [String: [SessionMeta]] = [:]
-        for meta in metas {
-            guard let parentId = meta.parentId, !meta.archived else { continue }
-            byParent[parentId, default: []].append(meta)
+        var batch: [String: [SessionMeta]] = [:]
+        let masterIds = masters(metas)
+        for meta in metas where !meta.archived {
+            if let parentId = meta.parentId {
+                byParent[parentId, default: []].append(meta)
+            } else if let home = batchHome(meta, masters: masterIds), !startedPlan(meta) {
+                batch[home, default: []].append(meta)
+            }
         }
-        return byParent.mapValues { list in
+        var out = byParent.mapValues { list in
             sortAgents(list).map { ThreadItem(meta: $0, unseen: isUnseen($0, seen: seen, floor: floor)) }
         }
+        for (masterId, list) in batch {
+            let rows = list.map { ThreadItem(meta: $0, unseen: isUnseen($0, seen: seen, floor: floor), children: out[$0.id] ?? []) }
+            out[masterId] = ((out[masterId] ?? []) + rows).sorted { (rank($0.meta.status), $0.meta.createdAt) < (rank($1.meta.status), $1.meta.createdAt) }
+        }
+        return out
     }
 
     /// Pinned first, then newest first.
@@ -123,11 +154,13 @@ public enum ThreadGroups {
         let here = projects.filter { $0.workspaceId == workspaceId }
         let ids = Set(here.map(\.id))
         let kids = children(of: metas, seen: seen, floor: floor)
+        let masterIds = masters(metas)
         var byProject: [String: [ThreadItem]] = [:]
         var archivedCount: [String: Int] = [:]
         var chats: [ThreadItem] = []
 
-        for meta in metas where meta.parentId == nil {
+        // A batch thread sits under its master, never as a root of its own.
+        for meta in metas where meta.parentId == nil && batchHome(meta, masters: masterIds) == nil {
             guard self.workspaceId(of: meta, projects: projects, workspaces: workspaces) == workspaceId else { continue }
             let projectId = meta.projectId.flatMap { ids.contains($0) ? $0 : nil }
             if meta.archived {

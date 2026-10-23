@@ -407,12 +407,11 @@ struct LiveServerTests {
 
         // Home: one workspace, one project row, the second host's thread under it beside the primary's.
         let inputs = [primary, second].map { HomeHostInput(environmentId: $0.environment.id, name: $0.environment.name, workspaces: $0.workspaces, projects: $0.projects, sessions: $0.sessions) }
-        let section = try #require(HomeSections.build(hosts: inputs, folded: []).first { $0.id == "workspace:link:\(LiveServer.workspaceLinkId)" })
-        let rows = section.rows.map(\.id)
-        let projectRow = try #require(rows.firstIndex(of: "project:link:\(LiveServer.projectLinkId)"))
-        let secondRow = try #require(rows.firstIndex(of: "thread:\(second.environment.id):\(LiveServer.secondThread)"))
-        #expect(secondRow > projectRow)
-        #expect(rows[projectRow...].contains { $0.hasPrefix("thread:\(primary.environment.id):") })
+        let screen = try #require(HomeSections.project("link:\(LiveServer.projectLinkId)", hosts: inputs))
+        #expect(screen.project.isLinked)
+        let rows = (screen.active + screen.dormant).map(\.id)
+        #expect(rows.contains("thread:\(second.environment.id):\(LiveServer.secondThread)"))
+        #expect(rows.contains { $0.hasPrefix("thread:\(primary.environment.id):") })
 
         // The settings home is one of the two copies, read off the hellos' platforms.
         let project = try #require(primary.projects.first { $0.linkId == LiveServer.projectLinkId })

@@ -28,6 +28,9 @@ public struct ThreadRowModel: Hashable, Sendable {
     public var pinned = false
     /// A subagent under its root: one step in, the agent glyph instead of the type.
     public var agent: AgentType?
+    /// How far the row sits under the row that houses it: a master's batch
+    /// thread is a root (no agent glyph) one step in; its subagents two.
+    public var depth = 0
 
     public init(
         title: String,
@@ -100,6 +103,9 @@ public struct ThreadRowModel: Hashable, Sendable {
     public var secondLine: SecondLine {
         failure.map { .failure($0) } ?? .detail(detail)
     }
+
+    /// Indent steps: the depth, and at least one for a subagent.
+    public var indent: Int { max(depth, agent == nil ? 0 : 1) }
 
     /// The title, the glyphs and the pause mark go semibold together.
     public var emphasized: Bool { unseen }

@@ -6,6 +6,10 @@ import TempCodeContract
 enum Route: Hashable, Codable {
     /// `seq`: a row to land on (a search hit); L4 scrolls to it.
     case thread(environmentId: String, sessionId: String, seq: Int?)
+    /// A workspace's projects and chats; `key` is `HomeSections.Entry.id`.
+    case workspace(key: String)
+    /// A project's every thread; `key` is `HomeProject.id`.
+    case project(key: String)
     case archivedThreads(environmentId: String, projectId: String)
     case archivedProjects(environmentId: String, workspaceId: String)
     case inboxItem(environmentId: String, item: GithubInboxItem)

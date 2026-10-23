@@ -26,12 +26,14 @@ struct RootView: View {
     }
     /// Project settings present from the root: a sheet on a menu item never shows.
     @State private var projectSettings = ProjectSettingsPresenter()
+    /// The new-thread sheet, opened from any screen of the Home stack.
+    @State private var newThread = NewThreadPresenter()
 
     var body: some View {
         TabView(selection: $tab) {
             Tab("Home", systemImage: "house", value: AppTab.home) {
                 NavigationStack(path: $homePath) {
-                    HomeView(path: $homePath, slots: FleetSwitches.homeSlots(homeSlots))
+                    HomeView(path: $homePath, slots: shellSlots)
                         .fleetToastInset()
                         .navigationDestination(for: Route.self) { destination($0, path: $homePath) }
                         // At the stack's root, not on Hosts: a push made while Hosts itself was still
@@ -59,6 +61,15 @@ struct RootView: View {
         .fleetSwitchHost()
         .onChange(of: model.registry.ordered.map { $0.bootResume }) { BootResumeNotes.shared.observe(model.registry.ordered) }
         .environment(projectSettings)
+        .environment(newThread)
+        .sheet(item: $newThread.target) { target in
+            NewThreadSheet(client: target.client, workspace: target.workspace, project: target.project) { created in
+                tab = .home
+                homePath.append(Route.thread(environmentId: target.client.environment.id, sessionId: created.id, seq: nil))
+            }
+        }
+        // Return flow (thread 14): the sheet survives a kill; HomeView reopens it.
+        .onChange(of: newThread.target?.id) { NavigationMemory.rememberSheet(newThread.target.map { .newThread(environmentId: $0.client.environment.id, workspaceId: $0.workspace.id, projectId: $0.project?.id) }) }
         .sheet(item: $projectSettings.target) { target in
             if let client = model.registry.client(target.home.environmentId) {
                 ProjectSettingsSheet(client: client, target: target)
@@ -84,6 +95,7 @@ struct RootView: View {
         .onChange(of: inboxPath) { remember() }
         .onChange(of: searchPath) { remember() }
         .onChange(of: router.visible) { reportVisibility() }
+        .onChange(of: router.lists) { reportVisibility() }
         .onChange(of: scenePhase) { reportVisibility() }
         // A notification or Live Activity tap: the Home stack becomes the thread, on its card.
         .onChange(of: router.pending) { _, route in
@@ -111,8 +123,11 @@ struct RootView: View {
     /// its root; the thread the thread screen reported. Off screen, nothing.
     private func reportVisibility() {
         let active = scenePhase == .active
-        model.setVisible(thread: active ? router.visible : nil, listVisible: active && tab == .home && homePath.isEmpty)
+        model.setVisible(thread: active ? router.visible : nil, listVisible: active && tab == .home && !router.lists.isEmpty)
     }
+
+    /// Home's slots with the fleet switches: what every screen of the Home stack reads.
+    private var shellSlots: HomeSlots { FleetSwitches.homeSlots(homeSlots) }
 
     /// What sibling features plug into Home; every slot optional.
     private var homeSlots: HomeSlots {
@@ -136,6 +151,10 @@ struct RootView: View {
             if let client = model.registry.client(environmentId) {
                 ThreadScreen(client: client, sessionId: sessionId, targetSeq: seq)
             }
+        case .workspace(let key):
+            WorkspaceScreen(key: key, path: path, slots: shellSlots)
+        case .project(let key):
+            ProjectScreen(key: key, path: path, slots: shellSlots)
         case .archivedThreads(let environmentId, let projectId):
             if let client = model.registry.client(environmentId) {
                 ArchivedThreadsView(client: client, projectId: projectId, path: path)
