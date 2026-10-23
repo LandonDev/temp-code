@@ -57,53 +57,6 @@ struct StreamingAssistantRow: View {
     }
 }
 
-/// The thinking fold's one line while it streams: "Thinking", then the last
-/// line of the thought so far, head-truncated, revealed through the same
-/// pacer. One line, a fixed height; the reader sees the thought moving
-/// without opening the fold.
-struct StreamingThinkingLine: View {
-    let block: TextBlock
-    @State private var reveal: SmoothTextReveal
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.scenePhase) private var scenePhase
-
-    init(block: TextBlock) {
-        self.block = block
-        _reveal = State(initialValue: SmoothTextReveal(text: block.text, streaming: block.streaming, paced: !UIAccessibility.isReduceMotionEnabled))
-    }
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            ShimmerText(text: "Thinking")
-            if let line = Self.lastLine(reveal.revealed) {
-                Text(line)
-                    .font(.footnote)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .truncationMode(.head)
-                    .layoutPriority(-1)
-            }
-        }
-        .onChange(of: block.text) { reveal.update(text: block.text, streaming: block.streaming) }
-        .onChange(of: block.streaming) { reveal.update(text: block.text, streaming: block.streaming) }
-        .onChange(of: reduceMotion) {
-            reveal.paced = !reduceMotion
-            reveal.update(text: block.text, streaming: block.streaming)
-        }
-        .onChange(of: scenePhase) { if scenePhase != .active { reveal.snap() } }
-        .onDisappear { reveal.snap() }
-    }
-
-    /// The last non-empty line of the revealed prefix, trimmed.
-    static func lastLine(_ text: Substring) -> String? {
-        for line in text.split(separator: "\n", omittingEmptySubsequences: true).reversed() {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if !trimmed.isEmpty { return trimmed }
-        }
-        return nil
-    }
-}
-
 /// A chip's verb and target while the call streams: the target types in as
 /// the arguments grow (a prefix growing is set without a transaction) and
 /// cross-fades, 150 ms with 2 pt of blur, when a new value replaces the old

@@ -22,40 +22,39 @@ import TempCodeContract
             case .item(let entry): "item \(entry.seq)"
             case .group(let group): "group \(group.entries.map(\.seq))\(group.live ? " live" : "")"
             case .turnEnd(let end): "end \(end.userSeq)"
+            case .thinkingTail(let seq): "tail \(seq)"
             }
         }
     }
 
-    @Test func `two reads fold into one group with the second as latest`() {
+    @Test func `two reads fold into one research phase`() {
         let rows = TranscriptRows.rows([userEntry(1), read(2), read(3)], turnOpen: false)
         #expect(kinds(rows) == ["item 1", "group [2, 3]"])
         guard case .group(let group) = rows[1] else { return }
-        #expect(group.latest.seq == 3)
-        #expect(group.hidden.map(\.seq) == [2])
+        #expect(group.kind == .research)
         #expect(group.id == TranscriptRowID(kind: .group, seq: 2))
     }
 
-    @Test func `one read is an item`() {
+    @Test func `one read is a phase of one`() {
         let rows = TranscriptRows.rows([userEntry(1), read(2), item(textItem(3, ts: 1_003, "done"))], turnOpen: false)
-        #expect(kinds(rows) == ["item 1", "item 2", "item 3"])
+        #expect(kinds(rows) == ["item 1", "group [2]", "item 3"])
     }
 
-    @Test func `an edit, a plan tool, an approval and thinking each break the run`() {
+    @Test func `a plan tool and an approval break the run, a stray edit and thinking join it`() {
         let plan = item(toolItem(6, ts: 1_006, doneTs: 1_106, name: "TodoWrite"))
         let approval = item(.approval(ApprovalItem(seq: 8, ts: 1_008, request: ApprovalRequestEvent(requestId: "r", toolName: "Bash"), allowed: true, auto: false)))
         let thought = item(textItem(11, ts: 1_011, "hmm", thinking: true))
         let rows = TranscriptRows.rows([userEntry(1), read(2), read(3), edit(4), read(5), plan, read(7), approval, read(9), read(10), thought, read(12)], turnOpen: false)
-        #expect(kinds(rows) == ["item 1", "group [2, 3]", "item 4", "item 5", "item 6", "item 7", "item 8", "group [9, 10]", "item 11", "item 12"])
+        #expect(kinds(rows) == ["item 1", "group [2, 3, 4, 5]", "item 6", "group [7]", "item 8", "group [9, 10, 11, 12]"])
     }
 
-    @Test func `a group keeps its first seq when a third chip appends`() {
+    @Test func `a group keeps its first seq when a third step appends`() {
         let before = TranscriptRows.rows([userEntry(1), read(2), read(3)], turnOpen: true)
         let after = TranscriptRows.rows([userEntry(1), read(2), read(3), read(4)], turnOpen: true)
         #expect(before[1].id == after[1].id)
         #expect(after[1].id == TranscriptRowID(kind: .group, seq: 2))
         guard case .group(let group) = after[1] else { return }
-        #expect(group.latest.seq == 4)
-        #expect(group.hidden.count == 2)
+        #expect(group.entries.count == 3)
     }
 
     @Test func `live is the last group of the open last turn and nothing else`() {
@@ -81,7 +80,7 @@ import TempCodeContract
             item(textItem(6, ts: 20_001, "streaming", streaming: true)),
             item(.user(UserTurn(seq: -100_000, ts: 30_000, text: "queued", attachments: [], model: nil, reasoning: nil, completedTs: nil, costUsd: nil))),
         ], turnOpen: true)
-        #expect(kinds(rows) == ["item 1", "item 2", "item 3", "item 4", "end 1", "item 5", "item 6", "item -100000"])
+        #expect(kinds(rows) == ["item 1", "item 2", "group [3]", "item 4", "end 1", "item 5", "item 6", "item -100000"])
         guard case .turnEnd(let end) = rows[4] else { return }
         #expect(end.durationMs == 12_400)
         #expect(end.completedTs == 13_400)
@@ -106,8 +105,6 @@ import TempCodeContract
     }
 
     @Test func `the labels read as on the desktop`() {
-        #expect(TranscriptRows.previousLabel(1) == "+1 previous tool call")
-        #expect(TranscriptRows.previousLabel(3) == "+3 previous tool calls")
         #expect(TranscriptRows.workedLabel(ms: 800) == "Worked for 1s")
         #expect(TranscriptRows.workedLabel(ms: 12_000) == "Worked for 12s")
         #expect(TranscriptRows.workedLabel(ms: 125_000) == "Worked for 2m 5s")

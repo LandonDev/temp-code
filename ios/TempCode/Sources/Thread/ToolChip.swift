@@ -17,14 +17,18 @@ struct ToolChip: View {
     let tool: ToolItem
     let client: EnvironmentClient
     let sessionId: String
+    /// A step on a phase's rail: the rail is the bullet, so no glyph.
+    var bare = false
+    @Environment(\.transcriptCwd) private var cwd
     @State private var open: Bool
     @State private var whole: EventRow?
     @State private var loading = false
 
-    init(tool: ToolItem, client: EnvironmentClient, sessionId: String) {
+    init(tool: ToolItem, client: EnvironmentClient, sessionId: String, bare: Bool = false) {
         self.tool = tool
         self.client = client
         self.sessionId = sessionId
+        self.bare = bare
         _open = State(initialValue: TestHooks.open == "chip" && tool.output.isOmitted)
     }
 
@@ -60,13 +64,15 @@ struct ToolChip: View {
     }
 
     private var line: some View {
-        let phrase = tool.phrase
+        let phrase = ToolPhrase.of(tool, cwd: cwd)
         return HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: tool.status == .failed ? "xmark" : tool.chipGlyph)
-                .font(.footnote.weight(tool.status == .failed ? .semibold : .regular))
-                .foregroundStyle(tool.status == .failed ? Tint.destructive : Color(.tertiaryLabel))
-                .frame(width: 18)
-                .accessibilityHidden(true)
+            if !bare {
+                Image(systemName: tool.status == .failed ? "xmark" : tool.chipGlyph)
+                    .font(.footnote.weight(tool.status == .failed ? .semibold : .regular))
+                    .foregroundStyle(tool.status == .failed ? Tint.destructive : Color(.tertiaryLabel))
+                    .frame(width: 18)
+                    .accessibilityHidden(true)
+            }
             // The verb sits in the dim step and the target reads loud, as on the desktop.
             if tool.partial || tool.status == .running {
                 LiveChipLabel(verb: phrase.verb, target: phrase.target, isFile: phrase.isFile, failed: tool.status == .failed)
@@ -100,6 +106,13 @@ struct ToolChip: View {
                         .foregroundStyle(.tertiary)
                 }
             }
+            if bare, tool.status == .failed {
+                // The rail took the glyph; failure stays marked at the trailing edge.
+                Image(systemName: "xmark")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Tint.destructive)
+                    .accessibilityHidden(true)
+            }
             if open {
                 Image(systemName: "chevron.right")
                     .font(.caption2.weight(.semibold))
@@ -109,93 +122,12 @@ struct ToolChip: View {
             }
         }
         .padding(.horizontal, 8)
-        .frame(minHeight: 36)
+        .frame(minHeight: bare ? ActivityStep.lineHeight : 36)
         .background(TranscriptStyle.control.opacity(open ? 1 : 0), in: .rowCorner)
         .contentShape(.rowCorner)
         .animation(Motion.crossFade, value: tool.status)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(phrase.line)
-    }
-}
-
-/// A run of tool chips, the desktop's `ActivityGroup`: the newest
-/// chip always shows; the rest sit behind "+N previous tool calls", a
-/// disclosure line that turns its chevron and reads "Hide previous" while
-/// open. The group the agent is in (`live`) opens by itself; once the turn
-/// settles it folds, unless the person opened it by hand. That settle-close
-/// animates only while the reader is at the bottom, where the fold is the
-/// newest thing on screen; anywhere else it closes without animation so
-/// nothing above the reader moves. The transcript opens a group itself for
-/// a search landing inside it (`forceOpen`) and for the proof's `group` hook.
-struct ActivityGroupRow: View {
-    let group: ActivityGroup
-    let client: EnvironmentClient
-    let sessionId: String
-    var forceOpen = false
-    @State private var open: Bool
-    /// The person toggled it: the live rule no longer decides.
-    @State private var byHand = false
-    @Environment(TranscriptScrollState.self) private var scroll: TranscriptScrollState?
-
-    init(group: ActivityGroup, client: EnvironmentClient, sessionId: String, forceOpen: Bool = false) {
-        self.group = group
-        self.client = client
-        self.sessionId = sessionId
-        self.forceOpen = forceOpen
-        _open = State(initialValue: forceOpen || group.live)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Button {
-                byHand = true
-                withAnimation(open ? Motion.collapse : Motion.expand) { open.toggle() }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "chevron.right")
-                        .font(.caption2.weight(.semibold))
-                        .frame(width: 18)
-                        .rotationEffect(.degrees(open ? 90 : 0))
-                        .accessibilityHidden(true)
-                    Text(open ? "Hide previous" : TranscriptRows.previousLabel(group.hidden.count))
-                        .monospacedDigit()
-                    Spacer(minLength: 0)
-                }
-                .font(.footnote)
-                .foregroundStyle(.tertiary)
-                .padding(.horizontal, 8)
-                .frame(minHeight: 28)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.pressable)
-            .accessibilityLabel(TranscriptRows.previousLabel(group.hidden.count))
-            .accessibilityValue(open ? "Expanded" : "Collapsed")
-            if open {
-                ForEach(group.hidden) { entry in
-                    if case .tool(let tool) = entry.item {
-                        ToolChip(tool: tool, client: client, sessionId: sessionId)
-                    }
-                }
-                // The content fades in 150 ms after the height starts; it leaves with
-                // the height alone, so a close that must not animate does not.
-                .transition(.asymmetric(insertion: .opacity.animation(Motion.expandContent), removal: .identity))
-            }
-            if case .tool(let tool) = group.latest.item {
-                ToolChip(tool: tool, client: client, sessionId: sessionId)
-            }
-        }
-        .onChange(of: group.live) { _, live in
-            guard !byHand else { return }
-            if live {
-                Motion.withoutAnimation { open = true }
-            } else if open {
-                // Read once, here: the flag is not a dependency of the body.
-                withAnimation(scroll?.atBottom == true ? Motion.collapse : nil) { open = false }
-            }
-        }
-        .onChange(of: forceOpen) { _, now in
-            if now, !open { Motion.withoutAnimation { open = true } }
-        }
     }
 }
 

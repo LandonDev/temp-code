@@ -4,10 +4,10 @@ import TempCodeContract
 
 /// Every row kind in its mobile form, the desktop's `AgentTranscript` row
 /// by row: the user's words in a bordered field, the agent's answer as the
-/// page, thinking folded, tools as one-line chips with runs of them folded
-/// behind "+N previous tool calls", edits as bordered cards with their
-/// diffstat, cards for what needs the user, quiet lines and labelled
-/// dividers for the rest, and a settled turn's closing line.
+/// page, the work between answers as phases (thinking, tool calls and edits
+/// under one human line, `ActivityPhaseRow`), cards for what needs the
+/// user, quiet lines and labelled dividers for the rest, a live turn's
+/// thinking tail and a settled turn's closing line.
 struct TranscriptRow: View, Equatable {
     let row: TranscriptRowModel
     let client: EnvironmentClient
@@ -24,9 +24,11 @@ struct TranscriptRow: View, Equatable {
         case .item(let entry):
             ItemRow(entry: entry, client: client, sessionId: sessionId)
         case .group(let group):
-            ActivityGroupRow(group: group, client: client, sessionId: sessionId, forceOpen: forceOpen)
+            ActivityPhaseRow(group: group, client: client, sessionId: sessionId, forceOpen: forceOpen)
         case .turnEnd(let end):
             TurnEndRow(end: end)
+        case .thinkingTail:
+            ThinkingTailRow()
         }
     }
 }
@@ -44,7 +46,8 @@ private struct ItemRow: View {
         case .assistant(let block):
             AssistantRow(block: block)
         case .thinking(let block):
-            ThinkingRow(block: block)
+            // Thinking rides in a phase; this is only ever a stray.
+            ThinkingStep(block: block)
         case .tool(let tool):
             if let path = Board.editPath(tool) {
                 EditRow(sessionId: sessionId, card: Board.wholeChange(path: path, edits: [tool]), running: tool.status == .running, failed: tool.status == .failed)
@@ -209,58 +212,6 @@ struct AssistantRow: View {
         } else {
             // One identity across the final row, so the reveal drains before the markdown settles.
             StreamingAssistantRow(block: block)
-        }
-    }
-}
-
-// MARK: - thinking
-
-/// One folded line: "Thought" with "for 2s" in the dim half, "Thinking"
-/// shimmering while it streams; tap opens the thought in place, in the
-/// secondary step, with the expand spring. Reasoning is read on purpose.
-struct ThinkingRow: View {
-    let block: TextBlock
-    @State private var open = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                withAnimation(open ? Motion.collapse : Motion.expand) { open.toggle() }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "chevron.right")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                        .frame(width: 18)
-                        .rotationEffect(.degrees(open ? 90 : 0))
-                        .accessibilityHidden(true)
-                    if block.streaming {
-                        StreamingThinkingLine(block: block)
-                    } else {
-                        Text("Thought")
-                            .foregroundStyle(.secondary)
-                        if let ms = block.durationMs, ms >= 1_000 {
-                            Text("for \(TimeFormat.duration(ms: ms))")
-                                .foregroundStyle(.tertiary)
-                                .monospacedDigit()
-                        }
-                    }
-                    Spacer(minLength: 0)
-                }
-                .font(.subheadline)
-                .frame(minHeight: 32)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.pressable)
-            .accessibilityLabel(block.streaming ? "Thinking" : "Thought")
-            .accessibilityValue(open ? "Expanded" : "Collapsed")
-            if open {
-                MarkdownView(seq: block.seq, text: block.text, dim: true)
-                    .textSelection(.enabled)
-                    .padding(.leading, 26)
-                    .padding(.bottom, 8)
-                    .transition(.asymmetric(insertion: .opacity.animation(Motion.expandContent), removal: .opacity.animation(Motion.collapse)))
-            }
         }
     }
 }

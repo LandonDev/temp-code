@@ -25,20 +25,22 @@ public struct ToolPhrase: Hashable, Sendable {
 
     public enum Kind: Sendable { case run, read, write, edit, patch, search, glob, fetch, web, todo, question, skill, mcp, tool }
 
-    public static func of(_ tool: ToolItem) -> ToolPhrase {
-        let live = tool.status == .running
+    /// `live` overrides the call's own status (a live phase's title is in the
+    /// present tense throughout); `cwd` shortens paths under the project.
+    public static func of(_ tool: ToolItem, live: Bool? = nil, cwd: String? = nil) -> ToolPhrase {
+        let live = live ?? (tool.status == .running)
         switch kind(of: tool) {
         case .run:
             return runPhrase(tool, live: live)
         case .read:
-            return ToolPhrase(verb: live ? "Reading" : "Read", target: fileWord(tool), isFile: true)
+            return ToolPhrase(verb: live ? "Reading" : "Read", target: fileWord(tool, cwd: cwd), isFile: true)
         case .write:
-            return ToolPhrase(verb: live ? "Writing" : "Wrote", target: fileWord(tool), isFile: true)
+            return ToolPhrase(verb: live ? "Writing" : "Wrote", target: fileWord(tool, cwd: cwd), isFile: true)
         case .edit:
-            return ToolPhrase(verb: live ? "Editing" : "Edited", target: fileWord(tool), isFile: true)
+            return ToolPhrase(verb: live ? "Editing" : "Edited", target: fileWord(tool, cwd: cwd), isFile: true)
         case .patch:
             let paths = patchPaths(tool)
-            let what = paths.count == 0 ? "files" : paths.count == 1 ? displayPath(paths[0]) : "\(paths.count) files"
+            let what = paths.count == 0 ? "files" : paths.count == 1 ? displayPath(paths[0], cwd: cwd) : "\(paths.count) files"
             return ToolPhrase(verb: live ? "Patching" : "Patched", target: what, isFile: paths.count == 1)
         case .search, .glob:
             let q = queryOf(tool)
@@ -153,9 +155,9 @@ public struct ToolPhrase: Hashable, Sendable {
         return title.replacing(/^(bash|shell|run(?:ning)?(?:\s+command)?)\b[:\s]*/.ignoresCase(), with: "")
     }
 
-    private static func fileWord(_ tool: ToolItem) -> String {
+    private static func fileWord(_ tool: ToolItem, cwd: String?) -> String {
         let p = pathOf(tool)
-        return p.isEmpty ? "a file" : displayPath(p)
+        return p.isEmpty ? "a file" : displayPath(p, cwd: cwd)
     }
 
     private static func patchPaths(_ tool: ToolItem) -> [String] {
@@ -169,9 +171,15 @@ public struct ToolPhrase: Hashable, Sendable {
         return p.isEmpty ? [] : [p]
     }
 
-    /// Home directories read as `~`; the phone has no cwd to strip.
-    public static func displayPath(_ path: String) -> String {
-        path.replacing(/\/Users\/[^\/\s'"]+/, with: "~")
+    /// A path under `cwd` reads relative to it (the cwd itself as its last
+    /// folder), the desktop's `displayPath`; home directories read as `~`.
+    public static func displayPath(_ path: String, cwd: String? = nil) -> String {
+        if let cwd, case let base = cwd.trimmingSuffix("/"), !base.isEmpty, base != "~" {
+            let normalized = path.trimmingSuffix("/")
+            if normalized == base { return base.split(separator: "/").last.map(String.init) ?? normalized }
+            if normalized.hasPrefix(base + "/") { return String(normalized.dropFirst(base.count + 1)) }
+        }
+        return path.replacing(/\/Users\/[^\/\s'"]+/, with: "~")
     }
 
     public static func trim(_ s: String, _ n: Int = 40) -> String {
@@ -231,6 +239,95 @@ public struct ToolPhrase: Hashable, Sendable {
         let phrases = commandPhrases(commandOf(tool)).map { tense($0, live: live) }
         if phrases.isEmpty { return ToolPhrase(verb: live ? "Running a command" : "Ran a command", target: nil, isFile: false) }
         return ToolPhrase(verb: cap(sentence(phrases)), target: nil, isFile: false)
+    }
+
+    /// One line for a phase's calls, the desktop's `groupPhrase`: consecutive
+    /// reads fold into "Read 3 files in src/lib" (or "Read temp-code files"
+    /// across the project), edits into "Edited 2 files", and the first two
+    /// distinct phrases lead as one clause, "Read 3 files in src/lib and
+    /// searched for tokens", the rest counted ("… and 2 more"); a failure
+    /// count closes it. Present tense throughout while `live`.
+    public static func group(_ tools: [ToolItem], cwd: String? = nil, live: Bool) -> String {
+        guard !tools.isEmpty else { return "" }
+        /// A phrase, and whether it opens on a name that keeps its capital (a connector's app).
+        var phrases: [(text: String, proper: Bool)] = []
+        func push(_ text: String, proper: Bool = false) {
+            if !text.isEmpty, !phrases.contains(where: { $0.text == text }) { phrases.append((text, proper)) }
+        }
+        var reads: [String] = []
+        var edits: [String] = []
+        func flushReads() {
+            var seen = Set<String>()
+            let unique = reads.filter { seen.insert($0).inserted }
+            if !unique.isEmpty { push(readsPhrase(unique, cwd: cwd, live: live)) }
+            reads = []
+        }
+        func flushEdits() {
+            var seen = Set<String>()
+            let unique = edits.filter { seen.insert($0).inserted }
+            let verb = live ? "Editing" : "Edited"
+            if unique.count == 1 { push("\(verb) \(displayPath(unique[0], cwd: cwd))") }
+            else if unique.count > 1 { push("\(verb) \(unique.count) files") }
+            edits = []
+        }
+        for tool in tools {
+            let toolKind = Self.kind(of: tool)
+            let path = pathOf(tool)
+            if toolKind == .read, !path.isEmpty {
+                flushEdits()
+                reads.append(path)
+                continue
+            }
+            if [.edit, .write, .patch].contains(toolKind), !path.isEmpty {
+                flushReads()
+                edits.append(path)
+                continue
+            }
+            flushReads()
+            flushEdits()
+            let phrase = of(tool, live: live, cwd: cwd)
+            push(phrase.line, proper: phrase.verb == tool.display?.app)
+        }
+        flushReads()
+        flushEdits()
+        let failed = tools.filter { $0.status == .failed }.count
+        let lead = phrases.prefix(2).enumerated().map { index, phrase in
+            let text = trim(phrase.text, 48)
+            return index == 0 || phrase.proper ? text : text.prefix(1).lowercased() + text.dropFirst()
+        }
+        var line: String
+        switch phrases.count {
+        case 0: line = live ? "Working" : "Ran \(tools.count) \(tools.count == 1 ? "tool" : "tools")"
+        case 1: line = lead[0]
+        case 2: line = "\(lead[0]) and \(lead[1])"
+        default: line = "\(lead[0]), \(lead[1]) and \(phrases.count - 2) more"
+        }
+        if failed > 0 { line += " (\(failed) failed)" }
+        return line
+    }
+
+    /// "Read src/a.ts", "Read 3 files in src/lib", "Read temp-code files", "Read 3 files".
+    private static func readsPhrase(_ paths: [String], cwd: String?, live: Bool) -> String {
+        let verb = live ? "Reading" : "Read"
+        let rel = paths.map { displayPath($0, cwd: cwd) }
+        if rel.count == 1 { return "\(verb) \(rel[0])" }
+        guard let cwd, rel.allSatisfy({ !$0.hasPrefix("/") && !$0.hasPrefix("~") }) else { return "\(verb) \(rel.count) files" }
+        let dir = commonDir(rel)
+        if !dir.isEmpty { return "\(verb) \(rel.count) files in \(dir)" }
+        let project = cwd.trimmingSuffix("/").split(separator: "/").last.map(String.init) ?? "~"
+        return "\(verb) \(project) files"
+    }
+
+    /// The folder a set of relative paths share, "" at the project root.
+    private static func commonDir(_ paths: [String]) -> String {
+        let dirs = paths.map { $0.split(separator: "/").dropLast().map(String.init) }
+        var shared = dirs.first ?? []
+        for dir in dirs.dropFirst() {
+            var n = 0
+            while n < shared.count, n < dir.count, shared[n] == dir[n] { n += 1 }
+            shared = Array(shared.prefix(n))
+        }
+        return shared.joined(separator: "/")
     }
 
     /// A command's phrases as one clause of prose: "check git status",
@@ -414,4 +511,13 @@ public struct ToolPhrase: Hashable, Sendable {
 extension ToolItem {
     /// The call in plain words.
     public var phrase: ToolPhrase { ToolPhrase.of(self) }
+}
+
+extension String {
+    /// The string without trailing copies of `suffix`.
+    func trimmingSuffix(_ suffix: Character) -> String {
+        var s = Substring(self)
+        while s.last == suffix { s = s.dropLast() }
+        return String(s)
+    }
 }

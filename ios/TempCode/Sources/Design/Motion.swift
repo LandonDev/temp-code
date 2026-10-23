@@ -35,6 +35,8 @@ enum Motion {
     static let expand: Animation = .spring(duration: 0.35, bounce: 0)
     static let expandContent: Animation = out(0.15).delay(0.05)
     static let collapse: Animation = out(0.2)
+    /// A step landing in a live phase: 150 ms of opacity where it lands, no travel.
+    static let stepIn: Animation = out(0.15)
 
     // MARK: Rows and lines
 

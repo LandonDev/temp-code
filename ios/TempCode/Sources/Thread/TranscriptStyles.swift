@@ -70,30 +70,42 @@ struct LabeledDivider<Content: View>: View {
     }
 }
 
-/// The desktop's `Shimmer` word: a label sweeping light while something runs.
+/// The desktop's `Shimmer` (`.shimmer-text` in index.css): the words at 40 %
+/// of the text colour with a band of full colour sweeping left to right
+/// through them, 1.4 s a pass, linear, without a pause. The band's half
+/// width is 2 pt per character, as the desktop's `--spread`. The sweep is a
+/// gradient's offset under the text's own mask, read off a `TimelineView`,
+/// so a frame moves one layer and lays nothing out; it stops while the row
+/// is off screen. Reduce Motion holds the words still in the dim step.
 struct ShimmerText: View {
     let text: String
-    @State private var phase: CGFloat = -1
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    private static let period: TimeInterval = 1.4
+
     var body: some View {
-        Text(text)
-            .foregroundStyle(.secondary)
-            .overlay {
-                if !reduceMotion {
+        if reduceMotion {
+            Text(text).foregroundStyle(.secondary)
+        } else {
+            Text(text)
+                .foregroundStyle(Color.primary.opacity(0.4))
+                .overlay {
                     GeometryReader { proxy in
-                        LinearGradient(colors: [.clear, Color.primary.opacity(0.55), .clear], startPoint: .leading, endPoint: .trailing)
-                            .frame(width: proxy.size.width * 0.7)
-                            .offset(x: phase * proxy.size.width)
-                            // The sweep rides on the gradient alone, never on the row's layout.
-                            .animation(.linear(duration: 1.4).repeatForever(autoreverses: false), value: phase)
+                        let width = proxy.size.width
+                        let spread = min(CGFloat(text.count) * 2, width)
+                        TimelineView(.animation) { context in
+                            let phase = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: Self.period) / Self.period
+                            // The band's centre runs from a quarter width before the words to a quarter past them.
+                            let centre = (CGFloat(phase) * 1.5 - 0.25) * width
+                            LinearGradient(colors: [.primary.opacity(0), .primary, .primary.opacity(0)], startPoint: .leading, endPoint: .trailing)
+                                .frame(width: spread * 2)
+                                .offset(x: centre - spread)
+                        }
                     }
                     .mask { Text(text) }
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
                 }
-            }
-            .onAppear {
-                guard !reduceMotion else { return }
-                phase = 1
-            }
+        }
     }
 }

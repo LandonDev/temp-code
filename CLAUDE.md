@@ -1312,9 +1312,11 @@ proof and the sizing rules; the pieces, by name:
   Inbox's sort, status words, seen marks and the patch split by file), the
   `MarkdownCache` that parses rows off the main actor (and a streaming
   row's changed block only, on it: `streamingDocument`), `TranscriptRows`
-  (entries → the list's rows: an item, an activity group of two or more
-  chips with the live rule, a settled turn's closing line; stable ids) and
-  `ToolPhrase` (the desktop's toolPhrase.ts, tested); `threads[id].fold`
+  (entries → the list's rows: an item, a phase of thinking and tool calls
+  under one line with the live rule (the desktop's zen activity view), a
+  live turn's thinking tail, a settled turn's closing line; stable ids) and
+  `ToolPhrase` (the desktop's toolPhrase.ts with `group`, its `groupPhrase`,
+  tested); `threads[id].fold`
   stays current incrementally. The transcript's two seams for sibling
   threads: `StreamingAssistantRow` (`Thread/StreamingRow.swift`, the
   streaming reveal) and `MediaImage.hostOf(_:)` (the host of an `fs.media`
@@ -1355,8 +1357,10 @@ proof and the sizing rules; the pieces, by name:
   provisional id and the final row's seq, folds `live-edits` into the
   running edit tool by path (`ToolItem.live`, `ThreadFold.liveEdits`), and
   `EnvironmentClient.append` applies a batch in place;
-  `Thread/StreamingRow.swift` holds the streaming assistant row, the
-  thinking tail line and the live chip label. The test server's
+  `Thread/StreamingRow.swift` holds the streaming assistant row and the
+  live chip label; `Thread/ActivityPhaseRow.swift` the phases, their rail,
+  the thinking steps and the thinking tail; `ShimmerText`
+  (TranscriptStyles.swift) is the desktop's shimmer. The test server's
   `POST /stream` plays a bursty turn with a growing Edit and live edits.
 - Settings (thread 5): `ios/TempCode/Sources/Shell/{SettingsView,HostsView,
   AddEnvironmentSheet,SettingsStyles}.swift` are the SwiftUI alone; every

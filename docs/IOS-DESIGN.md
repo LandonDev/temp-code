@@ -598,10 +598,11 @@ row (`Sources/Thread/TranscriptView.swift`, `TranscriptRows.swift`,
 `ToolChip.swift`, `MarkdownView.swift`; the shared ingredients in
 `TranscriptStyles.swift`). What the list shows is the client package's row
 model (`Rendering/TranscriptRows.swift`, the desktop's `transcriptRows.ts`
-and `transcriptActivity.ts`): an entry on its own, a fold of settled tool
-chips, or a settled turn's closing line, each with a stable id (an item's
-seq, a group's first seq, the turn's user seq), so the list, a search
-landing and the scroll proof all speak rows. The plain-words tool lines are
+and `transcriptActivity.ts` with zen on, the desktop's default): an entry
+on its own, a phase of the agent's work, a live turn's thinking tail, or a
+settled turn's closing line, each with a stable id (an item's seq, a
+phase's first seq, the turn's user seq), so the list, a search landing and
+the scroll proof all speak rows. The plain-words tool lines are
 the package's `ToolPhrase` (tested). Row kinds and their mobile form:
 
 - **User turn**: bordered field, 12 pt radius, hairline border, 12 pt
@@ -619,17 +620,17 @@ the package's `ToolPhrase` (tested). Row kinds and their mobile form:
   line numbers in the dim step, mono one step down, horizontal scroll,
   never wrapped, a fold past 40 lines, Copy in the context menu. Pipe
   tables are a bordered grid that scrolls sideways. Inline code is mono one
-  step down on the fill step. An empty streaming block draws nothing; the
-  working strip says Thinking. A streaming block mounts
+  step down on the fill step. A block with no words yet is no row. A streaming block mounts
   `StreamingAssistantRow` (`Thread/StreamingRow.swift`, the streaming
   thread's seam), whose markdown parses incrementally on the main actor:
   only the block that changed (normally the last) is parsed again
   (`MarkdownCache.streamingDocument`), so the earlier blocks keep their
   render and nothing flickers between plain and styled; a paragraph past
   8 KiB stays plain until the next block boundary.
-- **Thinking**: one folded line, "Thought" with "for 2s" in the dim half,
-  "Thinking" shimmering while it streams; tap opens the thought in place
-  (the expand spring), the text in `secondary`.
+- **Thinking**: a step inside a phase (below), never a row of its own.
+  While a live turn has nothing to show yet (after the prompt, behind a
+  thought or an answer with no words) it ends on one shimmering "Thinking"
+  line, the desktop's thinking tail; the next content takes its slot.
 - **Tool**: the one-line chip in the desktop's grammar: the kind's glyph
   in the quiet step at the verb's weight, the verb in the dim step ("Read",
   "Searched for", "Counted to one hundred"), the target loud (a file in
@@ -644,20 +645,49 @@ the package's `ToolPhrase` (tested). Row kinds and their mobile form:
   "… N more lines" past the fold. An omitted body is fetched on open behind
   a shimmer of its final height and fades in 150 ms after the height starts.
   Plan-tool calls are one quiet line.
-- **Activity group**: a run of two or more chips between two other rows
-  folds behind one disclosure line, "+N previous tool calls" (a
-  chevron that turns, "Hide previous" while open), with the newest chip
-  always showing: the desktop's `ActivityGroup`. The rule
-  (`TranscriptRows.rows`): a tool call that is neither an edit nor a plan
-  tool joins the run; everything else (prose, thinking, an edit card, a
-  quiet line, a card, a compaction, a system line) breaks it; a run of one
-  is a plain chip. The group the agent is in (the last row of the open
-  turn) is live and opens by itself; once the turn settles it folds, unless
-  the person opened it by hand. That settle-close animates (200 ms
-  ease-out) only while the reader is at the bottom, where the fold is the
-  newest thing on screen; anywhere else it closes without animation so
-  nothing above the reader moves. A search hit inside a group opens the
-  group before the list scrolls to it.
+- **Phases**: the work between two answers, the desktop's zen activity
+  view (`ActivityPhaseRow.swift` over `TranscriptRows.phases`). The run
+  rule: thinking with words and every tool call but a plan tool join;
+  prose, a question, an approval, a quiet line, a compaction and a system
+  line break it; a thought the next paragraph repeats word for word is
+  dropped. The run splits into phases by what the calls were for: reads and
+  searches (research), edits, commands (run), anything else; a group that
+  opened on a thought takes the kind of the work after it, the thinking a
+  phase ends on moves into the phase it introduced, and a single call of
+  another kind folds back into the phase before it (the kind with the most
+  calls wins, edits on a tie). A phase is one line: the kind's glyph
+  (magnifier, pencil, terminal, sparkles, wrench) in the chip's 18 pt
+  column and what the calls add up to (`ToolPhrase.group`, the desktop's
+  `groupPhrase`): consecutive reads fold into "Read 3 files in src/lib"
+  (or "Read temp-code files" across the project, paths relative to the
+  thread's cwd), edits into "Edited 2 files", the first two phrases lead
+  as one clause, "Read 3 files in src/lib and searched for tokens", the
+  rest counted ("… and 2 more"), then "(1 failed)"; a phase that only
+  thought reads "Thought". The phase the agent is in (the last phase of
+  the open turn, nothing after it) says it in the present tense ("Reading
+  …", "Thinking") under the shimmer, and opens by itself on its second
+  step; its steps hang off a rail (a 1 pt spine down the glyph column at
+  14 % of the text colour, a quarter-round branch to each step's first
+  line), each new one fading in over 150 ms, the newest nine in a window
+  280 pt tall pinned to the newest, older ones leaving under a short fade.
+  A step is a thought's first paragraph as one plain line in `secondary`,
+  breathing (opacity 0.35 to 0.9, 1.8 s a leg, stepped) while it streams,
+  tap for the whole thought; a call's chip without its glyph (the rail is
+  the bullet; a failure keeps an ✕ at the trailing edge); an edit's card.
+  Once the agent moves on the phase folds to its line, dimmed, unless the
+  person opened it by hand; that settle-close animates (200 ms ease-out)
+  only while the reader is at the bottom, anywhere else it closes without
+  animation so nothing above the reader moves. A closed phase still shows
+  its edit cards under the line. A lone step is not a group: the glyph and
+  the step, no header repeating it. A search hit inside a phase opens it
+  before the list scrolls to it.
+- **The shimmer** (`ShimmerText`, the desktop's `.shimmer-text`): the words
+  at 40 % of the text colour, a band of full colour 2 pt per character
+  each side of its centre sweeping left to right, 1.4 s a pass, linear, no
+  pause; a gradient's offset under the text's own mask, read off a
+  `TimelineView`, so a frame lays nothing out and it stops off screen.
+  Reduce Motion holds the words still in `secondary` and the thought's
+  breathing stops.
 - **Edits**: the desktop's bordered card: the icon in a 20 pt box, the file
   name medium, the directory dim, a live verb while the call runs, `+n −m`
   in success and destructive, semibold and tabular; deleted and failed say

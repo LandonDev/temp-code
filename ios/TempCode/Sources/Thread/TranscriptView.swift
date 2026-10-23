@@ -24,6 +24,8 @@ struct TranscriptView: View {
     /// Groups opened by the view itself (a search landing inside one, the
     /// proof's `group` hook); a tap toggles the row's own state.
     @State private var openGroups: Set<TranscriptRowID> = []
+    /// The thread's working directory, read once: phase lines read paths relative to it.
+    @State private var cwd: String?
     @Environment(\.scenePhase) private var scenePhase
 
     /// Rows a cold open shows, and one page back.
@@ -75,6 +77,8 @@ struct TranscriptView: View {
             .scrollContentBackground(.hidden)
             .environment(\.defaultMinListRowHeight, 0)
             .environment(scrollState)
+            .environment(\.transcriptCwd, cwd)
+            .task(id: sessionId) { cwd = client.session(sessionId)?.cwd }
             .contentMargins(.vertical, 8, for: .scrollContent)
             .navigationLinkIndicatorVisibility(.hidden)
             .buttonStyle(.plain)
@@ -326,7 +330,7 @@ extension TranscriptRowModel {
         switch self {
         case .item(let entry): entry.seq
         case .group(let group): group.entries[0].seq
-        case .turnEnd: nil
+        case .turnEnd, .thinkingTail: nil
         }
     }
 }
