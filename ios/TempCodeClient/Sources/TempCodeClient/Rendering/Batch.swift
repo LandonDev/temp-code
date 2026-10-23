@@ -242,27 +242,37 @@ public enum MasterBoard {
         }
     }
 
+    /// The desktop's digestLine with no digest: an agent's line from its
+    /// meta alone, its activity and its failure.
+    static func metaLine(_ m: SessionMeta) -> Fleet.Line {
+        switch m.status {
+        case .error:
+            return Fleet.Line(m.failure?.summary ?? "failed", tone: .danger)
+        case .waiting:
+            guard let activity = m.activity, !activity.isEmpty else { return Fleet.Line("waiting for approval", tone: .warning) }
+            return Fleet.Line("waiting for approval — \(activity)", tone: .warning)
+        default:
+            return Fleet.line(status: m.status, items: [], activity: m.activity)
+        }
+    }
+
     /// The live agents as lines (oldest first within a rank), capped; nil
     /// when none is live, so a row whose agents all settled shows nothing.
     public static func rowAgents(_ agents: [SessionMeta], environmentId: String? = nil, cap: Int = agentLineCap) -> RowAgents? {
-        let live = agents.compactMap { m in agentLineRank(m.status).map { (m, $0) } }
-            .sorted { $0.1 != $1.1 ? $0.1 < $1.1 : $0.0.createdAt < $1.0.createdAt }
-            .map(\.0)
-        guard !live.isEmpty else { return nil }
-        let rest = live.dropFirst(cap)
-        let lines = live.prefix(cap).map { m in
-            // The desktop's digestLine with no digest: the meta's activity and failure.
-            let line: Fleet.Line = switch m.status {
-            case .error: Fleet.Line(m.failure?.summary ?? "failed", tone: .danger)
-            case .waiting: Fleet.Line(m.activity.map { "waiting for approval — \($0)" } ?? "waiting for approval", tone: .warning)
-            default: Fleet.line(status: m.status, items: [], activity: m.activity)
-            }
-            return AgentLine(
-                id: m.id, environmentId: environmentId, title: m.title, status: m.status, agentType: m.agentType,
-                what: whatLine(status: m.status, activity: m.activity, updatedAt: m.updatedAt, line: line, landed: false)
-            )
+        var ranked: [(meta: SessionMeta, rank: Int)] = []
+        for m in agents {
+            if let rank = agentLineRank(m.status) { ranked.append((m, rank)) }
         }
-        return RowAgents(lines: Array(lines), more: rest.count, moreWaiting: rest.filter { $0.status == .waiting }.count, done: agents.count - live.count)
+        guard !ranked.isEmpty else { return nil }
+        ranked.sort { (a, b) -> Bool in a.rank != b.rank ? a.rank < b.rank : a.meta.createdAt < b.meta.createdAt }
+        let live: [SessionMeta] = ranked.map(\.meta)
+        let rest: ArraySlice<SessionMeta> = live.dropFirst(cap)
+        let moreWaiting = rest.filter { (m: SessionMeta) -> Bool in m.status == .waiting }.count
+        let lines: [AgentLine] = live.prefix(cap).map { (m: SessionMeta) -> AgentLine in
+            let what = whatLine(status: m.status, activity: m.activity, updatedAt: m.updatedAt, line: metaLine(m), landed: false)
+            return AgentLine(id: m.id, environmentId: environmentId, title: m.title, status: m.status, agentType: m.agentType, what: what)
+        }
+        return RowAgents(lines: lines, more: rest.count, moreWaiting: moreWaiting, done: agents.count - live.count)
     }
 
     /// Every unarchived session under `rootId` in `index` (children by parent
