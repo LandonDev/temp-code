@@ -31,14 +31,14 @@ no workspace, no thread type, no status, generic chevrons.
 
 ```
 Home                      Inbox                 Search
-├ Needs you  (approvals, questions, errors, paused)        ← across all hosts
-├ Running    (live threads, elapsed, current task)
-└ Workspaces (per host when more than one host)
-   └ Workspace
+├ Chats (threads outside every workspace)               ← across all hosts
+└ Workspace rows (logo, name, the rail's one status mark)
+   └ Workspace (pushed): the desktop's middle sidebar
+      ├ Project row ▸ its active threads nested under it
+      │   └ Project (pushed): every thread, active then dormant,
+      │     "n archived" at the end
       ├ Chats (threads with no project)
-      ├ Project ▸ threads (active)
-      │   └ "n archived" row at the end of each project
-      └ "n archived projects" row at the end
+      └ "n archived projects" at the end
 Thread (one screen, five shapes by type; subagents push from their root)
 Settings (hosts, notifications, appearance) from the Home header
 ```
@@ -46,83 +46,91 @@ Settings (hosts, notifications, appearance) from the Home header
 Tab bar with three tabs: Home, Inbox, Search. Settings is a button in the
 Home navigation bar, as in Apple's own apps. No fourth tab for hosts.
 
-**Hosts.** One host is the common case and must never cost a tap. With one
-paired host, Home shows its workspaces directly and the host's name appears
-only in Settings and in a reconnecting status line. With several, Home groups
-workspaces under a host header with its connection dot, and Needs-you and
-Running merge every host. Pairing lives in Settings → Hosts, by link or key,
-as a sheet. An unauthorized or offline host shows one status row at the top
-of Home with the action (Retry, Pair again), never a blank screen. A host
-reached through the box folds under the box's row while the box itself is
-in trouble: one card says the box is down, not one per host behind it
-(`HomeHostInput.via`).
+Home is the desktop's sidebar in three pushed levels of one
+NavigationStack: Home is the far-left workspace column, a workspace is the
+middle sidebar, a project is the whole list of its threads. Each level is
+a plain `List` under a large title; the rules are the client package's
+`HomeSections` (Shell/HomeSections.swift: `home`, `workspace`, `project`),
+ported from the desktop's, so the phone and the desktop never disagree
+about what is active or what a workspace's state is.
 
-**Needs you** is the first section and the reason the app exists. One row per
-thread that has an undecided approval, an unanswered question, an error, or
-is paused: tinted warning background at 8 % like the desktop's waiting rows,
-the thread title, what it needs in one line ("Approve: run bun test",
-"Question: which email?"), elapsed since it started waiting. Tap opens the
-thread scrolled to that card. The section is absent when empty, not an
-empty state.
+**Home: the workspaces.** One row per workspace across every paired host;
+copies linked across hosts (one `linkId`) are one row. The row is the
+workspace's mark at 28 pt (the repo icon in a continuous `size / 4`
+corner with a hairline outline, else the git host's mark, else a folder),
+the name in the title step at medium, and the desktop column's one status,
+loudest first (useProjectSignals.ts `workspaceRailStatuses`): paused (the
+pause glyph in warning), needs you (a warning dot: waiting on an answer,
+failed, or recoverable), working, unread (an info dot), else nothing. A
+working workspace has no mark: the line under its name says what runs,
+the spinner, the newest working thread's title and "+2" for the others.
+Threads outside every workspace lead as one "Chats" row. The whole row
+pushes; a long press offers New Thread. There is no Needs you or Running
+section: the marks say where to look, one tap away.
 
-**Running** lists live threads: spinner, title, the current task from
-`tasks.current` or `activity`, running elapsed in tabular digits. Absent
-when empty.
+**Hosts.** One host is the common case and must never cost a tap: its
+menu (the fleet switches) sits in Home's navigation bar and its name
+appears only in Settings and a status line. With two or more, each host
+is one row at Home's foot, as the desktop's host rows sit above Settings:
+its glyph, its name in the meta step with the relay line under it, its
+connection dot, the deploy drift mark; a tap opens its menu. A row whose
+every host is down sits at 50 % opacity. An unauthorized or offline host
+shows one status row at the top of Home with the action (Retry, Pair
+again), never a blank screen; a host reached through the box folds under
+the box's row while the box is in trouble (`HomeHostInput.via`). A host's
+one-off notes ("3 threads resumed after restart") are quiet lines at the
+top. Pairing lives in Settings → Hosts.
 
-**Workspaces** is the desktop sidebar flattened. A workspace header row
-(logo from `/asset`, name, branch dim) collapses or expands, remembered.
-Under it projects as section headers (name, branch dim, worktree glyph when
-`mode == worktree`) with their active threads newest first, then one dim
-row "3 archived" that pushes the archived list. Chats without a project sit
-first under the workspace. Archived projects collapse into one dim row at
-the end of the workspace. Pinned threads sort first within their project.
+**Workspace: projects and their active threads.** The title is the
+workspace's name, New Thread (`square.and.pencil`) in the bar. Each
+project is a section whose first row is the project: the name semibold
+with the worktree mark, the branch as a stamp under it, then the plan
+chip, the plus and the project's menu (New Thread, settings, the fleet
+switches per host copy); the name half pushes the project. Under it, its
+ACTIVE threads (threadStripModel.ts `isLiveThread`, and pinned): not
+settled, or unread, or with live, paused or failed work in its tree;
+pinned first, then newest first, every linked copy's mixed. Under each
+thread, what the desktop rail houses under it, one step in per level:
+its subagents, and for a pinned master its batch (the roots carrying its
+id, each with its own subagents; a plan whose build started gives its row
+to the build), every live or needs-you child, three settled ones, then a
+dim "2 more". Projects order by latest activity. Then the workspace's
+chats (no project), all of them, under a "Chats" header; then one dim
+"n archived projects" row per host copy. A project row carries no mark of
+its own: its threads' dots are its state.
 
-**Home's furniture** (Shell/HomeView.swift, HomeRows.swift, HomeStyles.swift,
-HomeSlots.swift, HomeRowModels.swift; the rules in the client package's
-Shell/HomeSections.swift, under Swift Testing). Home is one plain `List` of
-native `Section`s under a large title that collapses; no painted header
-bands. "Needs you" and "Running" are the system's prominent section headers
-(`headerProminence(.increased)`, no hand-set font), 10 pt between sections.
-Every row is on the kit's names: `Layout.textEdge` on both sides, `Layout.
-rowHeight`, the three text steps, the motion table. A needs-you row is the
-one `ThreadRow`, built by `ThreadRowModel.needsYou(item:cue:)`: the status
-dot (warning, destructive or the pause mark), the type glyph, the title, the
-cue as the second line ("Approve: run bun test", "Question: which email?",
-"Paused", cross-fading in place), and how long it has waited as the trailing
-time; the row sits on the warning tint at 8 %. Each workspace is a section
-whose sticky header is the fold row: the mark at 22 pt (the repo icon in a
-continuous `size / 4` corner with a hairline outline, pure black or pure
-white at 10 %, else the host mark, else a folder), the name semibold, the
-GitHub repo as a stamp under it, and while folded the thread count rolling
-its digits; the plus trails in a 44 pt target. Tapping the row folds it (no
-chevron); the rows leave on the collapse curve and return on the expand
-spring, cross-fades under reduced motion. A host's loose chats are the same
-header row with a `bubble.left` glyph, no fold and no plus. Projects are
-sub-header rows in the flow (`meta` semibold, the worktree mark at the same
-stroke, the branch tertiary truncated in the middle, the plus, and a menu
-only when a slot fills it), never bands. A troubled host is one field on the
-chrome step at the top (dot, name, what is happening, the Retry or Pair again
-capsule), stacked at accessibility sizes. Empty states are one calm sentence
-with one tinted action in a 44 pt row: "Nothing needs you right now." with
-New thread when neither Needs you nor Running has a row; "No threads here
-yet." with New thread in an expanded empty workspace; "No workspaces on
-<host> yet…" with Hosts for a host that lists nothing (the system spinner in
-a plain row until it has listed); "Nothing paired yet" with Pair a host as the
-first run. Status, needs-you and host-note rows are the only rows with an
-entrance (`Motion.appear`: 200 ms ease-out with 8 pt of travel in, 150 ms
-out); a thread starting is routine and slides nothing; nothing animates in
-the first 300 ms after the cached paint. The archived lists share the same
-project sub-headers and rows, without the plus or the menu.
+**Project: every thread.** The title is the project's name; the bar holds
+the plan chip, New Thread and the project's menu. The active threads
+first, then the dormant ones under "Dormant", each nested as on the
+workspace screen, then one dim "n archived" row per host copy that pushes
+the archived list.
 
-**Linked workspaces.** Two hosts' copies of one workspace (the same
-`linkId`, "Two hosts" below) are one workspace row, listed before any host's
-section so it is never under one host's name: one connection dot per member
-host beside the logo, the count summed, and one fold for every copy (the
-fold key is `link:<linkId>`). Under it, each linked project is one project
-row with every copy's threads mixed by recency, each thread with its host's
-glyph.
+**Rows.** Every thread row is the one `ThreadRow` (status dot or spinner,
+type glyph, title with the "Master" tag, the model and the tasks or
+activity, the time), with the host glyph when two or more hosts are paired
+and `ThreadRowModel.depth` for the indent. A thread that waits, failed or
+paused reads its cue as the second line ("Approve: run bun test",
+"Question: which email?", "Paused") and a waiting one sits on the warning
+tint at 8 %; tap opens the thread on that card. Swipe to pin and archive,
+the context menu with rename, Start now and Resume, and the master pin
+(Design/ThreadRowActions.swift) on every level. Empty states are one calm
+sentence with one tinted action: "No threads here yet." with New thread,
+"No workspaces on <host> yet…" with Hosts (the system spinner until it
+has listed), "Nothing paired yet" with Pair a host. Status and note rows
+are the only rows with an entrance (`Motion.appear`), and nothing animates
+in the first 300 ms after the cached paint. The archived lists share the
+project rows' type and the thread rows.
 
-**Project settings.** The project header's menu opens the sheet
+**Furniture** (ios/TempCode/Sources/Shell/): HomeView.swift (level 1),
+WorkspaceScreen.swift, ProjectScreen.swift, ShellRows.swift (the rail
+mark, the working line, the thread and project rows, the project menu, the
+cue loader, `NewThreadPresenter`: the new-thread sheet presents from the
+root so any level can open it), HomeRows.swift (the clients as
+`HomeHostInput` values), HomeSlots.swift (what sibling features plug in).
+The routes are `Route.workspace(key:)` and `Route.project(key:)`, keys the
+`ProjectPairs` fold keys.
+
+**Project settings.** The project's menu opens the sheet
 (`Shell/ProjectSettingsSheet.swift`, presented from the root through
 `ProjectSettingsPresenter`, since a sheet on a menu item never shows) at the
 large detent with the sheet radius: an inset grouped list, three sections,
@@ -269,7 +277,7 @@ failure waits for a tap.
 **Queued, stopped, resources.** A queued root (created, waiting for its
 `after` sibling) reads the host's reason ("Waiting for X", the host's
 "Queued · waiting for X" with the word the queued dot already says left
-off) through its `activity`, never sits under Running, and offers Start now in its context
+off) through its `activity`, never counts as working on its workspace row, and offers Start now in its context
 menu and in the working strip (`session.start`, past the `after`); a
 stopped root (its harness gone after a restart) reads "Stopped", then "The
 harness is gone" quieter, in the status line with Resume (`session.resume`, a fresh
@@ -671,7 +679,7 @@ the package's `ToolPhrase` (tested). Row kinds and their mobile form:
 - **Errors and system**: "Failed" at medium weight over the harness's words, in destructive with
   the alert glyph; the user's own Stop is a gray "Stopped"; a pass row reads
   "Pass" and what it did; everything else is one quiet line, glyph and text.
-- **A failed thread's row** (Home's Needs you, every list) reads the host's
+- **A failed thread's row** (every list) reads the host's
   one-line verdict (`failure.summary`) on its second line; the error row's
   first line is the fallback for a host that sent none.
 - **Subagent spawn and report**: a row under a rail: the agent's glyph,
@@ -1760,7 +1768,7 @@ keyboard action. Every animated change has a static cue as well.
   a launch or a tap that names a row (a search hit, a notification, any
   `targetSeq`) lands on that row, and within a session the Jump to latest
   pill still shows once the person scrolls up. Once every
-  host has caught up, the Live Activities and the badge (Home's Needs you
+  host has caught up, the Live Activities and the badge (the needs-you
   count) are brought in line with what the app shows; a queued thread ends
   its activity like a finished one. A host that restarted mid-turn says so
   once per boot (`bootResume`, deduped by the boot's time in the cache).

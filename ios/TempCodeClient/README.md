@@ -279,7 +279,8 @@ order, `pair(of:on:in:)` (the deepest member folder wins), `relative`,
 `partners`; `showsHost(hostCount:)` is the one rule for drawing a host on a
 row. Home folds with the same keys (`HomeSections.workspaces(of:)`, a
 `HomeProject` per linked project with every copy's threads mixed by
-recency through `HomeSections.mixed`).
+recency through `HomeSections.mixed`); `Route.workspace(key:)` and
+`Route.project(key:)` carry those keys.
 
 **ProjectLinks** (Shell/ProjectLinks.swift): `settingsHome(_:platformOf:)`
 is src/shared/projectLinks.ts `settingsHomeOf` (the copy off `darwin`; two of
