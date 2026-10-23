@@ -1175,14 +1175,17 @@ package's `Rendering/Batch.swift` (`MasterBoard`, `BatchSteps`, `RulesEdit`,
   child on another host names the host in its model mark and reads "Out of
   reach on <host>" in red while that host is away. Waiting rows sit on the
   needs-you tint; separators start at the title. Settled rows drop to the
-  regular weight and secondary text. A row whose thread has subagents adds
-  one meta line under the activity line: the count of its whole tree by the
-  parentId chain, archived ones left out, then each live state it has in
-  the desktop fleet's words, "4 agents · 2 working · 1 needs approval ·
-  1 failed" (needs approval in warning, failed in destructive; a dimmed row
-  keeps them secondary). A far child counts from its own host's sessions.
-  The client package's `MasterBoard.agentSummaries` builds every row's
-  from one parent index per host each render; a row with none has no line.
+  regular weight and secondary text. A row whose thread has live
+  subagents lists them under the activity line, one 28 pt line each: the
+  agent status mark, the role's glyph (`MetaGlyph`), the title in
+  secondary, what it is doing in tertiary (waiting in warning, failed in
+  destructive) and the host's glyph; the person's first, at most three,
+  then one tertiary line "and 2 more, 3 done" (warning when one past the
+  cap waits). Each line pushes the agent's thread screen (on its host for a
+  far child). A far child's agents come from its own host's sessions; a
+  thread whose agents all settled has no lines. The client package's
+  `MasterBoard.rowAgentLines` builds every row's from one parent index per
+  host each render.
 - **The body** under a row: an implementation's tasks (check, spinner,
   open ring), open while it works or needs you, folded once it is done; a
   research or orchestration thread's one summary line (its notes' State,

@@ -294,20 +294,12 @@ in the whole pane, with Back.
   bodies (`mergeBatchChildren`; a child the store has no row for becomes
   a plain row with the list's title and type).
 - **A row** (`master/MasterRow.tsx`, the rules in `master/rowBody.ts`) is two
-  lines on a 16px glyph column, and nothing on it is separated by a dot but
-  its agents. Line one: the type's glyph in its tint (`THREAD_GLYPHS`), the
+  lines on a 16px glyph column, and nothing on it is separated by a dot.
+  Line one: the type's glyph in its tint (`THREAD_GLYPHS`), the
   13px medium title, the type word, then the task tally once the thread has
   a list: "3/7" and a 2px bar filled to done of total (the foot's meter at
   row scale, `taskProgress` in rowBody.ts), inline after the type word,
-  never pinned to the right; then, when the thread has subagents, their
-  summary in the fleet header's words and tones: "4 agents · 2 working ·
-  1 needs approval · 1 failed", the count of its whole tree by the parentId
-  chain (archived ones left out, a far child's from that host's rows in
-  the store) and only the live states it has, done ones in the count alone
-  (`master/agentSummary.ts`). The board builds one parent index of the
-  store per meta change and one summary per row (`AgentSummaries`,
-  `useAgentSummaries`); a row reads its own (`useAgentSummary`) and
-  re-renders only when it changed. The title bar carries no batch total:
+  never pinned to the right. The title bar carries no batch total:
   the rows say it. Line two: the status glyph (the matrix spinner, an
   amber or red dot, a dashed ring while queued, a pause mark, a check once
   done) beside what the thread is doing (its `activity` while queued or
@@ -320,7 +312,23 @@ in the whole pane, with Back.
   nothing on a row at home). A row of a host whose link is not open sits
   under the offline tint (`opacity-50`, `data-host-offline`): its row is
   the launch mirror's and lifts when the host is back.
-  Under the lines, by type: an implementation its task list from its digest
+  Under the lines, the thread's live subagents, one 20px line each in the
+  text column: the status glyph (`StatusGlyph`), the role's glyph
+  (`AGENT_GLYPHS`, muted), the title, what it is doing in the board row's
+  words and tones (`whatLine` over `digestLine` from the meta: the
+  activity, "waiting for approval — Bash" in amber, the failure in red,
+  "Paused") and the host's glyph. Its whole tree by the parentId chain
+  (archived ones left out, a far child's from that host's rows in the
+  store), the person's first (waiting, failed, working, then paused or
+  queued, oldest first within each), at most three (`AGENT_LINES`), then
+  one quiet line, "and 2 more · 3 done", amber when one past the cap
+  waits; a thread whose agents all settled shows nothing. A line opens
+  the agent in the board's place as a row opens its thread, and its click
+  never reaches the row (`master/agentSummary.ts`). The board builds one
+  parent index of the store per meta change and one entry per row
+  (`AgentSummaries`, `useAgentSummaries`); a row reads its own
+  (`useRowAgents`) and re-renders only when its lines changed.
+  Under them, by type: an implementation its task list from its digest
   (the host's task fold, `batch.board`), a check once done, the spinner on
   the one in hand, a hollow ring ahead. The list is open while the thread
   works or needs you and folded once it sits in Done (`tasksOpenByDefault`);

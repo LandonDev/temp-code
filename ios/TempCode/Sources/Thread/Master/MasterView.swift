@@ -34,7 +34,7 @@ struct MasterView: View {
         let remote = MasterBoard.remoteChildren(state, localHost: client.environment.id) { env, id in paired["\(env):\(id)"] }
         let rows = MasterBoard.foldRows(children: MasterBoard.children(of: sessionId, in: client.sessions), all: client.sessions, masterId: sessionId, remote: remote)
         let sections = MasterBoard.sections(rows)
-        let agents = MasterBoard.agentSummaries(rows) { env in env.map { app.registry.client($0)?.sessions ?? [] } ?? client.sessions }
+        let agents = MasterBoard.rowAgentLines(rows) { env in env.map { app.registry.client($0)?.sessions ?? [] } ?? client.sessions }
         let landed = Set(state.landed)
         let steps = BatchSteps.liveSteps(state)
         let titleOf = { (id: String) -> String? in

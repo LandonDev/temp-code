@@ -744,6 +744,18 @@ export function useAgentSummaries(masterId: string, layout: BoardLayout): AgentS
   return summaries;
 }
 
+/** Whether `id` is a row of the board or a subagent under one, by the
+ *  store's parentId chain (a far child's agents carry its bare id). */
+export function underRow(id: string, rows: readonly Pick<BoardRowRef, "id">[]): boolean {
+  const ids = new Set(rows.map((r) => r.id));
+  const seen = new Set<string>();
+  for (let at: string | null | undefined = id; at && !seen.has(at); at = sessionStore.metaOf(at)?.parentId) {
+    if (ids.has(at)) return true;
+    seen.add(at);
+  }
+  return false;
+}
+
 // ── the model ───────────────────────────────────────────────────────────
 
 export type MasterModel = {
@@ -775,9 +787,10 @@ export function useMasterModel(master: Pick<SessionMeta, "id" | "environmentId">
   const summaries = useAgentSummaries(master.id, layout);
   const landed = useMemo(() => new Set(board.state.landed), [board.state.landed]);
   const [openId, setOpenId] = useState<string | null>(null);
-  // A child that left the batch (archived, removed) closes its view.
+  // A child that left the batch (archived, removed) closes its view, and
+  // so does an agent of one (a row's agent lines open in the same place).
   useEffect(() => {
-    if (openId && !layout.rows.some((r) => r.id === openId)) setOpenId(null);
+    if (openId && !underRow(openId, layout.rows)) setOpenId(null);
   }, [layout, openId]);
   return { layout, batch: board.state, digests: board.digests, summaries, loaded: board.loaded, landed, openId, setOpenId };
 }

@@ -111,6 +111,7 @@ export function MasterView(props: ThreadViewProps) {
   const meta = useMetaById(session.id);
   const model = useMasterModel(session);
   const { layout, batch, digests, summaries, loaded, landed, openId, setOpenId } = model;
+  const openMeta = useMetaById(openId);
   const environments = useEnvironments();
   const statuses = useEnvironmentStatuses();
   const hostNames = useMemo(() => new Map(environments.map((e) => [e.id, e.name])), [environments]);
@@ -227,14 +228,15 @@ export function MasterView(props: ThreadViewProps) {
     else if (id === "adopt") setAdopting(true);
   };
 
-  const openRow = openId ? layout.rows.find((r) => r.id === openId) : undefined;
-  if (openId && openRow) {
+  // A row, or a subagent opened from a row's agent lines (it lives on its own host).
+  const openHost = openId ? (layout.rows.find((r) => r.id === openId)?.environmentId ?? openMeta?.environmentId) : undefined;
+  if (openId && openHost) {
     return (
       <div className="relative flex min-h-0 min-w-0 flex-1">
         <ChildPane
           key={openId}
           sessionId={openId}
-          environmentId={openRow.environmentId}
+          environmentId={openHost}
           focusComposer={focusComposer}
           onBack={() => setOpenId(null)}
           onOpenFile={props.onOpenFile}

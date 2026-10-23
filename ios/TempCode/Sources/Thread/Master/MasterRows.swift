@@ -4,9 +4,9 @@ import TempCodeContract
 
 /// One child of the batch on the board: the status mark in the mark column,
 /// the type glyph, the title with its type word and the task tally, then the
-/// activity line with the model mark at its right, then the thread's
-/// subagents when it has any ("4 agents · 2 working · 1 needs approval", the
-/// whole tree, `MasterBoard.agentSummaries`), then the body its type
+/// activity line with the model mark at its right, then the thread's live
+/// subagents one line each (the whole tree, `MasterBoard.rowAgentLines`),
+/// then the body its type
 /// carries (an implementation's tasks, a research or orchestration thread's
 /// one summary line). A plan and the build it started are one row under the
 /// plan's title. A child on another host names its host in the model mark
@@ -20,8 +20,8 @@ struct MasterRowView: View {
     let client: EnvironmentClient?
     let landed: Bool
     let hostName: String?
-    /// The thread's subagents; nil with none.
-    let agents: MasterBoard.AgentSummary?
+    /// The thread's live subagents; nil with none.
+    let agents: MasterBoard.RowAgents?
     @Binding var tasksOpen: [String: Bool]
     let fleetSize: Int
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -40,7 +40,7 @@ struct MasterRowView: View {
         let tally = MasterBoard.tally(todos: todos, tasks: meta?.tasks)
         let dim = row.status == .queued || row.status == .idle || row.status == .stopped || row.status == .done
         let open = tasksOpen[row.key] ?? MasterBoard.tasksOpenByDefault(row.status)
-        let label = MasterRowLabel(row: row, what: what, agents: agents, extra: extra, tally: tally, foldable: foldable, open: open, dim: dim, live: live, hostName: hostName, reasoning: meta?.reasoning.rawValue ?? "", context1m: meta?.context1m ?? false) { toggle(open) }
+        let label = MasterRowLabel(row: row, what: what, agents: agents, agentsLinked: row.environmentId == nil || client != nil, agentsHost: client?.environment.id, extra: extra, tally: tally, foldable: foldable, open: open, dim: dim, live: live, hostName: hostName, reasoning: meta?.reasoning.rawValue ?? "", context1m: meta?.context1m ?? false) { toggle(open) }
 
         linked(label)
             .opacity(row.linkDown ? 0.6 : 1)
@@ -85,7 +85,11 @@ struct MasterRowView: View {
 private struct MasterRowLabel: View {
     let row: MasterBoard.Row
     let what: MasterBoard.WhatLine?
-    let agents: MasterBoard.AgentSummary?
+    let agents: MasterBoard.RowAgents?
+    /// The agents' threads can be opened (this host, or a paired far one).
+    let agentsLinked: Bool
+    /// The row's host, for the agents' host glyph.
+    let agentsHost: String?
     let extra: MasterBoard.Body?
     let tally: MasterBoard.Tally?
     let foldable: Bool
@@ -122,7 +126,7 @@ private struct MasterRowLabel: View {
                     }
                 }
                 if let agents {
-                    AgentsLine(summary: agents, dim: dim)
+                    AgentLines(agents: agents, linked: agentsLinked, host: agentsHost)
                 }
                 bodyView
             }
@@ -190,30 +194,81 @@ private struct MasterRowLabel: View {
     }
 }
 
-/// The thread's subagents in one meta line: the count, then each live state
-/// it has, needs approval in warning and failed in destructive (the fleet's
-/// tones); a dimmed row keeps them all secondary.
-private struct AgentsLine: View {
-    let summary: MasterBoard.AgentSummary
-    let dim: Bool
+/// The thread's live subagents under its activity line
+/// (`MasterBoard.rowAgents`): per agent the status mark, the role's glyph,
+/// the title and what it is doing in the fleet's tones, then the host's
+/// glyph; one quiet line for the ones past the cap and the settled ones.
+/// A line opens the agent's own thread screen, where its approval or
+/// question is answered.
+private struct AgentLines: View {
+    let agents: MasterBoard.RowAgents
+    let linked: Bool
+    let host: String?
 
     var body: some View {
-        summary.parts.enumerated().reduce(Text("")) { text, item in
-            let part = Text(item.element.text).foregroundStyle(tone(item.element.tone))
-            return item.offset == 0 ? text + part : text + Text(", ") + part
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(agents.lines) { line in
+                link(line)
+            }
+            if let tail = agents.tail {
+                Text(tail)
+                    .textStep(.meta)
+                    .monospacedDigit()
+                    .foregroundStyle(agents.moreWaiting > 0 ? AnyShapeStyle(Tint.warning) : AnyShapeStyle(.tertiary))
+                    .lineLimit(1)
+                    .frame(minHeight: 24)
+            }
         }
-        .textStep(.meta)
-        .monospacedDigit()
-        .lineLimit(1)
-        .accessibilityLabel(summary.text)
+        .padding(.top, 2)
     }
 
-    private func tone(_ tone: Fleet.Tone) -> Color {
-        if dim { return Color(.secondaryLabel) }
-        return switch tone {
-        case .warning: Tint.warning
-        case .danger: Tint.destructive
-        case .muted: Color(.secondaryLabel)
+    /// The row's own way in: a local agent pushes the thread screen, a far
+    /// one the thread on its host; a far host not paired here is read only.
+    @ViewBuilder
+    private func link(_ line: MasterBoard.AgentLine) -> some View {
+        let label = AgentLineLabel(line: line, host: line.environmentId ?? host)
+        if !linked {
+            label
+        } else if let env = line.environmentId {
+            NavigationLink(value: Route.thread(environmentId: env, sessionId: line.id, seq: nil)) { label }
+                .buttonStyle(.pressableStatic)
+        } else {
+            NavigationLink(value: ThreadScreenRoute(sessionId: line.id)) { label }
+                .buttonStyle(.pressableStatic)
+        }
+    }
+}
+
+private struct AgentLineLabel: View {
+    let line: MasterBoard.AgentLine
+    let host: String?
+
+    var body: some View {
+        HStack(spacing: 6) {
+            AgentStatusMark(status: line.status)
+            MetaGlyph(line.agentType.symbol, label: line.agentType.label)
+            Text(line.title.isEmpty ? "Subagent" : line.title)
+                .textStep(.meta)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            if let what = line.what, !what.text.isEmpty {
+                Text(what.text)
+                    .textStep(.meta)
+                    .foregroundStyle(tone(what.tone))
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            if let host { HostGlyph(environmentId: host) }
+        }
+        .frame(minHeight: 28)
+        .contentShape(Rectangle())
+    }
+
+    private func tone(_ tone: Fleet.Tone) -> AnyShapeStyle {
+        switch tone {
+        case .warning: AnyShapeStyle(Tint.warning)
+        case .danger: AnyShapeStyle(Tint.destructive)
+        case .muted: AnyShapeStyle(.tertiary)
         }
     }
 }

@@ -1975,13 +1975,19 @@ this is the short one.
   row on another host than the master's carries that host's dot and name
   in its model mark (`rowHost`, the chip's `hostTone`) and sits under the
   offline tint while that host's link is not open. A row whose thread has
-  subagents says so after its tally, "4 agents · 2 working · 1 needs
-  approval": the whole tree by the parentId chain, archived ones out, a far
-  child's from its host's rows, in the fleet header's words
+  live subagents lists them under its two lines, one line each: the status
+  glyph, the role's glyph, the title, what it is doing in the board row's
+  own words (`whatLine` over `digestLine`: the activity, "waiting for
+  approval — …" in amber, the failure in red) and the host's glyph; the
+  whole tree by the parentId chain, archived ones out, a far child's from
+  its host's rows, the person's first (waiting, failed, working, then
+  paused or queued), at most three, then one quiet "and 2 more · 3 done";
+  agents that all settled show nothing. A line opens the agent in the
+  board's place like a row (`underRow` keeps it open)
   (`master/agentSummary.ts`: one parent index per meta change, a row
-  re-rendered only when its own summary changed; the phone's
-  `MasterBoard.agentSummaries` the same, as a meta line under the
-  activity). A row's click puts the
+  re-rendered only when its own lines changed; the phone's
+  `MasterBoard.rowAgentLines` the same, each line a link to the agent's
+  thread screen, the tail "and 2 more, 3 done"). A row's click puts the
   child's full view in the whole pane with one Back control
   (`master/ChildPane.tsx`, given the row's host; Escape and ⌘↩ go back;
   the board keeps its scroll). The title bar's ⋯ menu is the batch's

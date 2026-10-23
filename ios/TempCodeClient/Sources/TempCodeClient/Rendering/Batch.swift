@@ -181,34 +181,88 @@ public enum MasterBoard {
 
     // MARK: agents
 
-    /// A row's subagents: the count of every unarchived session under the
-    /// child by the parentId chain (subagents of subagents too) and the live
-    /// ones in the fleet's buckets (the desktop's master/agentSummary.ts).
-    public struct AgentSummary: Hashable, Sendable {
-        public let total: Int
-        public let working: Int
-        public let waiting: Int
-        public let failed: Int
+    /// One subagent under a board row (the desktop's master/agentSummary.ts):
+    /// what it is and what it is doing, in the row's own words (`whatLine`
+    /// over `Fleet.line`, from its meta alone). `environmentId` is the row's
+    /// host, nil for this one.
+    public struct AgentLine: Hashable, Sendable, Identifiable {
+        public let id: String
+        public let environmentId: String?
+        public let title: String
+        public let status: SessionStatus
+        public let agentType: AgentType
+        public let what: WhatLine?
 
-        public init(total: Int, working: Int, waiting: Int, failed: Int) {
-            self.total = total
-            self.working = working
-            self.waiting = waiting
-            self.failed = failed
+        public init(id: String, environmentId: String?, title: String, status: SessionStatus, agentType: AgentType, what: WhatLine?) {
+            self.id = id
+            self.environmentId = environmentId
+            self.title = title
+            self.status = status
+            self.agentType = agentType
+            self.what = what
+        }
+    }
+
+    /// A row's live subagents as lines, the person's first and capped at
+    /// `agentLineCap`; the live ones past the cap and the settled ones are
+    /// counted in one quiet line.
+    public struct RowAgents: Hashable, Sendable {
+        public let lines: [AgentLine]
+        public let more: Int
+        /// How many of the ones past the cap wait on the person.
+        public let moreWaiting: Int
+        public let done: Int
+
+        public init(lines: [AgentLine], more: Int, moreWaiting: Int, done: Int) {
+            self.lines = lines
+            self.more = more
+            self.moreWaiting = moreWaiting
+            self.done = done
         }
 
-        /// "4 agents", then each nonzero live state in the fleet header's
-        /// words and tones, as one clause: 4 agents, 2 working, 1 needs approval, 1 failed.
-        /// Done ones are in the count only.
-        public var parts: [Fleet.Line] {
-            var out = [Fleet.Line("\(total) \(total == 1 ? "agent" : "agents")", tone: .muted)]
-            if working > 0 { out.append(Fleet.Line("\(working) working", tone: .muted)) }
-            if waiting > 0 { out.append(Fleet.Line("\(waiting) needs approval", tone: .warning)) }
-            if failed > 0 { out.append(Fleet.Line("\(failed) failed", tone: .danger)) }
-            return out
+        /// "and 2 more, 3 done"; nil when every agent has a line.
+        public var tail: String? {
+            let parts = [more > 0 ? "and \(more) more" : nil, done > 0 ? "\(done) done" : nil].compactMap { $0 }
+            return parts.isEmpty ? nil : parts.joined(separator: ", ")
         }
+    }
 
-        public var text: String { parts.map(\.text).joined(separator: ", ") }
+    /// The most lines a row lists.
+    public static let agentLineCap = 3
+
+    /// Waiting, failed, working (watching too), then paused and queued; the
+    /// rest (idle, done, stopped) are settled.
+    static func agentLineRank(_ status: SessionStatus) -> Int? {
+        switch status {
+        case .waiting: 0
+        case .error: 1
+        case .starting, .running, .watching: 2
+        case .paused, .queued: 3
+        default: nil
+        }
+    }
+
+    /// The live agents as lines (oldest first within a rank), capped; nil
+    /// when none is live, so a row whose agents all settled shows nothing.
+    public static func rowAgents(_ agents: [SessionMeta], environmentId: String? = nil, cap: Int = agentLineCap) -> RowAgents? {
+        let live = agents.compactMap { m in agentLineRank(m.status).map { (m, $0) } }
+            .sorted { $0.1 != $1.1 ? $0.1 < $1.1 : $0.0.createdAt < $1.0.createdAt }
+            .map(\.0)
+        guard !live.isEmpty else { return nil }
+        let rest = live.dropFirst(cap)
+        let lines = live.prefix(cap).map { m in
+            // The desktop's digestLine with no digest: the meta's activity and failure.
+            let line: Fleet.Line = switch m.status {
+            case .error: Fleet.Line(m.failure?.summary ?? "failed", tone: .danger)
+            case .waiting: Fleet.Line(m.activity.map { "waiting for approval — \($0)" } ?? "waiting for approval", tone: .warning)
+            default: Fleet.line(status: m.status, items: [], activity: m.activity)
+            }
+            return AgentLine(
+                id: m.id, environmentId: environmentId, title: m.title, status: m.status, agentType: m.agentType,
+                what: whatLine(status: m.status, activity: m.activity, updatedAt: m.updatedAt, line: line, landed: false)
+            )
+        }
+        return RowAgents(lines: Array(lines), more: rest.count, moreWaiting: rest.filter { $0.status == .waiting }.count, done: agents.count - live.count)
     }
 
     /// Every unarchived session under `rootId` in `index` (children by parent
@@ -226,26 +280,19 @@ public enum MasterBoard {
         return out
     }
 
-    /// The count and the live states; nil with no agents.
-    public static func agentSummary(_ agents: [SessionMeta]) -> AgentSummary? {
-        guard !agents.isEmpty else { return nil }
-        let c = Fleet.counts(agents.map(\.status))
-        return AgentSummary(total: agents.count, working: c.working, waiting: c.waiting, failed: c.failed)
-    }
-
-    /// Each row's summary by row key, from one parent index per host: a far
-    /// row counts from its own host's sessions (`sessionsOf(environmentId)`,
-    /// nil = this host); a row with no agents is absent.
-    public static func agentSummaries(_ rows: [Row], sessionsOf: (String?) -> [SessionMeta]) -> [String: AgentSummary] {
+    /// Each row's live agents by row key, from one parent index per host: a
+    /// far row reads its own host's sessions (`sessionsOf(environmentId)`,
+    /// nil = this host); a row with no live agents is absent.
+    public static func rowAgentLines(_ rows: [Row], sessionsOf: (String?) -> [SessionMeta]) -> [String: RowAgents] {
         var indexes: [String: [String: [SessionMeta]]] = [:]
-        var out: [String: AgentSummary] = [:]
+        var out: [String: RowAgents] = [:]
         for row in rows {
             let host = row.environmentId ?? ""
             if indexes[host] == nil {
                 indexes[host] = Dictionary(grouping: sessionsOf(row.environmentId).filter { $0.parentId != nil }, by: { $0.parentId ?? "" })
             }
             let index = indexes[host] ?? [:]
-            if let summary = agentSummary(subtree(of: row.sessionId, index: index)) { out[row.key] = summary }
+            if let agents = rowAgents(subtree(of: row.sessionId, index: index), environmentId: row.environmentId) { out[row.key] = agents }
         }
         return out
     }

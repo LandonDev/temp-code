@@ -12,29 +12,28 @@ import { hasRunningTurn } from "../../../lib/threadBatch";
 import { loadThreadResources, useThreadResources } from "../../../lib/threadResources";
 import { modelLabel, TONE_CLASS } from "../../../lib/threads/agents";
 import { TweenHeight } from "../../../motion";
-import { MatrixSpinner, THREAD_GLYPHS, THREAD_TINTS } from "../bits";
+import { AGENT_GLYPHS, MatrixSpinner, THREAD_GLYPHS, THREAD_TINTS } from "../bits";
 import { StatusGlyph } from "../fleet/rowBits";
-import { agentSummaryParts, useAgentSummary, type AgentSummary } from "./agentSummary";
+import { agentTail, useRowAgents, type AgentLine, type RowAgents } from "./agentSummary";
 import { rowBody, taskList, taskProgress, tasksOpenByDefault, whatLine } from "./rowBody";
 import { digestLine, typeWord, useBoardDigest, useRowMeta, type BoardRowRef, type RowHost } from "./useMasterModel";
 
 /**
  * One row of the batch (docs/LAYOUT.md "Master"). Two lines: the type's
- * glyph, the title, the task tally and the thread's subagents (their
- * count and the live ones by state, in the fleet header's words); then the status glyph beside what
+ * glyph, the title and the task tally; then the status glyph beside what
  * the thread is doing, and at the right the host's dot and name when the
  * thread runs on another host than the master, the provider's mark, the
- * model, its effort and context. Under an implementation its task list,
+ * model, its effort and context. Under them the thread's live subagents,
+ * one line each (AgentLines). Under an implementation its task list,
  * open while it works and folded once it is done, the tally its
  * disclosure; under a research or orchestration thread one summary line.
  * A row of a host out of reach is under the offline tint. A click opens
  * the thread's full view in the board's place; hover shows Message, Pause
  * or Resume, Stop and Remove. Every action goes to the row's own host (the
- * commands route by the thread's id). Nothing on the row is separated by
- * a dot but the agents line.
+ * commands route by the thread's id).
  *
  * The row reads its own meta, its plan's, its digest (the host's
- * `batch.board`) and its agents' summary, and takes nothing else that changes: one child's
+ * `batch.board`) and its agents' lines, and takes nothing else that changes: one child's
  * activity re-renders this row alone, and nothing here loads a
  * transcript, polls a context or reads notes.
  */
@@ -56,7 +55,7 @@ export const MasterRow = memo(function MasterRow({
   const meta = useRowMeta(rowRef);
   const plan = useSessionMeta(rowRef.planId);
   const digest = useBoardDigest(rowRef.id);
-  const agents = useAgentSummary(rowRef.id);
+  const agents = useRowAgents(rowRef.id);
   if (!meta) return null;
   return <RowBodyView meta={meta} plan={plan} digest={digest} agents={agents} landed={landed} host={host} onOpen={onOpen} />;
 });
@@ -73,7 +72,7 @@ function RowBodyView({
   meta: SessionMeta;
   plan: SessionMeta | null;
   digest: ReturnType<typeof useBoardDigest>;
-  agents: AgentSummary | null;
+  agents: RowAgents | null;
   landed: boolean;
   host: RowHost | null;
   onOpen: (id: string, focus?: boolean) => void;
@@ -143,7 +142,7 @@ function RowBodyView({
         data-tasks-open={foldable ? tasksOpen : undefined}
         className="grid w-full cursor-default grid-cols-[16px_1fr] gap-x-2 rounded-lg px-3 py-2 text-left"
       >
-        {/* Line one: the type's glyph, the title, the tally, the agents. */}
+        {/* Line one: the type's glyph, the title, the tally. */}
         <span className="flex h-[18px] items-center justify-center">
           {Glyph ? <Glyph className={`size-3.5 ${dim ? "text-content/40" : tint}`} strokeWidth={1.75} /> : null}
         </span>
@@ -156,7 +155,6 @@ function RowBodyView({
               fold={foldable ? { open: tasksOpen, onToggle: () => setExpanded(!tasksOpen) } : null}
             />
           ) : null}
-          {agents ? <Agents summary={agents} dim={dim} /> : null}
         </span>
 
         {/* Line two: the status glyph beside the activity; the model at the right. */}
@@ -169,6 +167,13 @@ function RowBodyView({
           </span>
           <ModelMark meta={meta} host={host} />
         </span>
+
+        {agents ? (
+          <>
+            <span />
+            <AgentLines agents={agents} onOpen={onOpen} />
+          </>
+        ) : null}
 
         {body?.kind === "tasks" ? (
           <>
@@ -207,19 +212,55 @@ function RowBodyView({
   );
 }
 
-/** The thread's subagents, its whole tree: "4 agents · 2 working · 1 needs
- *  approval", only the live states that have any, waiting and failed in
- *  their tones (agentSummary.ts). */
-function Agents({ summary, dim }: { summary: AgentSummary; dim: boolean }) {
+/** The thread's live subagents under its two lines (agentSummary.ts): per
+ * agent its status mark, its role's glyph, its title and what it is doing,
+ * waiting and failed in their tones, then the host's glyph; one quiet line
+ * for the ones past the cap and the settled ones. A line opens its agent
+ * in the board's place, where its approval or question is answered; its
+ * click never reaches the row. */
+function AgentLines({ agents, onOpen }: { agents: RowAgents; onOpen: (id: string) => void }) {
+  const tail = agentTail(agents);
   return (
-    <span className="min-w-0 truncate text-xs tabular-nums text-content/40" data-agents>
-      {agentSummaryParts(summary).map((part, i) => (
-        <span key={i} className={dim ? undefined : part.tone}>
-          {i > 0 ? <span className="mx-1.5 text-content/20">·</span> : null}
-          {part.text}
-        </span>
+    <ul className="flex flex-col pt-1" data-agents>
+      {agents.lines.map((line) => (
+        <AgentLineRow key={line.id} line={line} onOpen={onOpen} />
       ))}
-    </span>
+      {tail ? (
+        <li className={`pl-[18px] text-xs leading-5 tabular-nums ${tail.waiting ? "text-warning" : "text-content/35"}`} data-agents-tail>
+          {tail.text}
+        </li>
+      ) : null}
+    </ul>
+  );
+}
+
+function AgentLineRow({ line, onOpen }: { line: AgentLine; onOpen: (id: string) => void }) {
+  const Glyph = line.agentType ? AGENT_GLYPHS[line.agentType] : line.threadType ? THREAD_GLYPHS[line.threadType] : null;
+  const what = line.what?.text ? line.what : null;
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpen(line.id);
+        }}
+        onKeyDown={(e) => e.stopPropagation()}
+        className="-mx-1 flex h-5 w-[calc(100%+8px)] min-w-0 cursor-default items-center gap-1.5 rounded px-1 text-left text-xs hover:bg-content/5"
+        data-agent={line.id}
+        data-agent-status={line.status}
+      >
+        <span className="flex size-3 shrink-0 items-center justify-center">
+          <StatusGlyph status={line.status} />
+        </span>
+        {Glyph ? <Glyph className="size-3 shrink-0 text-content/40" strokeWidth={1.75} /> : null}
+        <span className="max-w-[45%] min-w-0 truncate text-content/70">{line.title || "Subagent"}</span>
+        <span className={`min-w-0 flex-1 truncate ${what && what.tone !== "muted" ? TONE_CLASS[what.tone] : "text-content/40"}`} data-agent-what>
+          {what?.text}
+        </span>
+        <HostGlyph environmentId={line.environmentId} className="shrink-0" />
+      </button>
+    </li>
   );
 }
 

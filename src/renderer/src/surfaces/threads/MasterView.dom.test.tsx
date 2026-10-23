@@ -944,48 +944,84 @@ describe("a fleet of 300", () => {
 describe("a row's subagents", () => {
   const agent = (id: string, parentId: string, status: SessionMeta["status"], over: Partial<SessionMeta> = {}) =>
     meta({ id, parentId, masterId: null as unknown as string, status, threadType: null as unknown as SessionMeta["threadType"], ...over });
-  const agentsOf = (title: RegExp): string | null =>
-    screen.getByRole("button", { name: title }).querySelector("[data-agents]")?.textContent ?? null;
+  const rowOf = (title: RegExp): HTMLElement => screen.getAllByRole("button", { name: title })[0]!.closest("[data-status]") as HTMLElement;
+  const linesOf = (title: RegExp): string[] =>
+    [...rowOf(title).querySelectorAll("[data-agent]")].map((l) => `${l.getAttribute("data-agent-status")} ${l.textContent}`);
+  const tailOf = (title: RegExp): string | null => rowOf(title).querySelector("[data-agents-tail]")?.textContent ?? null;
 
-  it("counts the whole tree, archived ones out, and says only the live states; a row with none says nothing", async () => {
+  it("lists the whole tree's live agents under the row, the person's first, archived ones out and settled ones counted; a row with none shows nothing", async () => {
     seed([
       meta({ id: "c-impl", title: "Home screen", status: "running" }),
       meta({ id: "c-chat", title: "A question", status: "running", threadType: "chat", createdAt: 2 }),
-      agent("a1", "c-impl", "running"),
-      agent("a11", "a1", "waiting"),
-      agent("a111", "a11", "error"),
-      agent("a2", "c-impl", "idle"),
-      agent("a3", "c-impl", "running", { archived: true }),
+      agent("a1", "c-impl", "running", { title: "Rail rows", activity: "Editing Rail.tsx", createdAt: 3 }),
+      agent("a11", "a1", "waiting", { title: "Tests", activity: "Bash", createdAt: 4 }),
+      agent("a111", "a11", "error", { title: "Lint", failure: { summary: "Usage cap" } as SessionMeta["failure"], createdAt: 5 }),
+      agent("a2", "c-impl", "idle", { title: "Old" }),
+      agent("a3", "c-impl", "running", { archived: true, title: "Gone" }),
     ]);
     render(<MasterView {...props} />);
     await flush();
-    expect(agentsOf(/Home screen/)).toBe("4 agents·1 working·1 needs approval·1 failed");
-    const parts = [...screen.getByRole("button", { name: /Home screen/ }).querySelectorAll("[data-agents] > span")];
-    expect(parts.map((p) => p.className)).toEqual(["", "", "text-warning", "text-danger"]);
-    expect(agentsOf(/A question/)).toBeNull();
+    expect(linesOf(/Home screen/)).toEqual([
+      "waiting Testswaiting for approval — Bash",
+      "error LintUsage cap",
+      "running Rail rowsEditing Rail.tsx",
+    ]);
+    const waiting = rowOf(/Home screen/).querySelector("[data-agent='a11'] [data-agent-what]")!;
+    expect(waiting.className).toContain("text-warning");
+    expect(rowOf(/Home screen/).querySelector("[data-agent='a111'] [data-agent-what]")!.className).toContain("text-danger");
+    expect(tailOf(/Home screen/)).toBe("1 done");
+    expect(rowOf(/A question/).querySelector("[data-agents]")).toBeNull();
     // Agents are not rows of the board.
     expect(document.querySelectorAll("[data-status]")).toHaveLength(2);
   });
 
-  it("follows the agents live and renders only the row whose summary changed", async () => {
+  it("caps the lines at three and counts the rest", async () => {
     seed([
       meta({ id: "c-impl", title: "Home screen", status: "running" }),
-      meta({ id: "c-other", title: "Search", status: "running", createdAt: 2 }),
-      agent("a1", "c-impl", "running"),
+      ...[1, 2, 3, 4, 5].map((i) => agent(`a${i}`, "c-impl", "running", { title: `Agent ${i}`, createdAt: i })),
     ]);
     render(<MasterView {...props} />);
     await flush();
-    expect(agentsOf(/Home screen/)).toBe("1 agent·1 working");
+    expect(linesOf(/Home screen/)).toHaveLength(3);
+    expect(tailOf(/Home screen/)).toBe("and 2 more");
+  });
+
+  it("a line opens its agent in the board's place, never the row", async () => {
+    seed([meta({ id: "c-impl", title: "Home screen", status: "running" }), agent("a1", "c-impl", "waiting", { title: "Tests" })]);
+    render(<MasterView {...props} />);
+    await flush();
+    fireEvent.click(document.querySelector("[data-agent='a1']")!);
+    await flush();
+    expect(document.querySelector("[data-child-pane='a1']")).toBeTruthy();
+    expect(document.querySelector("[data-child-pane='c-impl']")).toBeNull();
+    expect(props.onOpenSession).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /Back/ }));
+    expect(screen.getByTestId("chat")).toBeTruthy();
+  });
+
+  it("follows the agents live and renders only the row whose agents changed", async () => {
+    seed([
+      meta({ id: "c-impl", title: "Home screen", status: "running" }),
+      meta({ id: "c-other", title: "Search", status: "running", createdAt: 2 }),
+      agent("a1", "c-impl", "running", { title: "Rail", activity: "Reading a.ts" }),
+    ]);
+    render(<MasterView {...props} />);
+    await flush();
+    expect(linesOf(/Home screen/)).toEqual(["running RailReading a.ts"]);
     rowReads.length = 0;
-    const { environmentId: _e, ...wire } = agent("a1", "c-impl", "idle");
+    const { environmentId: _e, ...wire } = agent("a1", "c-impl", "running", { title: "Rail", activity: "Editing a.ts" });
     act(() => link.push({ push: "session", session: wire } as unknown as ServerPush));
     await act(() => new Promise((r) => setTimeout(r, 50)));
-    expect(agentsOf(/Home screen/)).toBe("1 agent");
+    expect(linesOf(/Home screen/)).toEqual(["running RailEditing a.ts"]);
     expect(rowReads.filter((id) => id === "c-other")).toEqual([]);
+    const { environmentId: _g, ...settled } = agent("a1", "c-impl", "idle", { title: "Rail" });
+    act(() => link.push({ push: "session", session: settled } as unknown as ServerPush));
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(rowOf(/Home screen/).querySelector("[data-agents]")).toBeNull();
     const { environmentId: _f, ...spawned } = agent("a2", "c-other", "starting", { createdAt: 9 });
     act(() => link.push({ push: "session", session: spawned } as unknown as ServerPush));
     await act(() => new Promise((r) => setTimeout(r, 50)));
-    expect(agentsOf(/Search/)).toBe("1 agent·1 working");
+    expect(linesOf(/Search/)).toEqual(["starting Subagent"]);
   });
 });
 
@@ -1021,7 +1057,7 @@ describe("the batch across hosts", () => {
     expect(again.querySelector("[data-model] [data-host-glyph]")?.getAttribute("title")).toBe("The box");
   });
 
-  it("a child on another host counts its subagents from that host's rows", async () => {
+  it("a child on another host lists its subagents from that host's rows, with the host's glyph", async () => {
     seed([meta({ id: "c-home", title: "Home", status: "running" })]);
     seedBox(
       [
@@ -1033,8 +1069,10 @@ describe("the batch across hosts", () => {
     );
     render(<MasterView {...props} />);
     await flush();
-    expect(screen.getByRole("button", { name: /Inbox/ }).querySelector("[data-agents]")?.textContent).toBe("2 agents·1 working·1 needs approval");
-    expect(screen.getByRole("button", { name: /Home/ }).querySelector("[data-agents]")).toBeNull();
+    const inbox = screen.getByRole("button", { name: /^Inbox/ });
+    expect([...inbox.querySelectorAll("[data-agent]")].map((l) => l.getAttribute("data-agent"))).toEqual(["b11", "b1"]);
+    expect(inbox.querySelector("[data-agent='b1'] [data-host-glyph]")?.getAttribute("data-host-glyph")).toBe("box");
+    expect(screen.getByRole("button", { name: /^Home/ }).querySelector("[data-agents]")).toBeNull();
   });
 
   it("a row of another host reads its digest from that host's batch.board, and an offline host is not asked", async () => {

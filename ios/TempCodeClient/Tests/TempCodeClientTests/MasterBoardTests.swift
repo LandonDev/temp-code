@@ -185,12 +185,12 @@ private var utc: Calendar {
 }
 
 @Suite struct MasterBoardAgentsTests {
-    @Test("a row counts its whole tree by the parentId chain, archived agents left out, their own children kept") func nestedAndArchived() {
+    @Test("a row takes its whole tree by the parentId chain, archived agents left out, their own children kept") func nestedAndArchived() {
         let metas = [
             meta("c", createdAt: 1, masterId: "m"),
-            meta("a1", parentId: "c", status: .running),
-            meta("a11", parentId: "a1", status: .waiting),
-            meta("a111", parentId: "a11", status: .error),
+            meta("a1", parentId: "c", status: .running, createdAt: 2, title: "Rail rows", activity: "Editing Rail.tsx", agentType: .implementer),
+            meta("a11", parentId: "a1", status: .waiting, createdAt: 3, title: "Tests", activity: "Bash", agentType: .reviewer),
+            meta("a111", parentId: "a11", status: .error, createdAt: 4),
             meta("a2", parentId: "c", status: .idle),
             meta("gone", parentId: "c", status: .running, archived: true),
             meta("kept", parentId: "gone", status: .done),
@@ -198,28 +198,44 @@ private var utc: Calendar {
         ]
         let index = Dictionary(grouping: metas.filter { $0.parentId != nil }, by: { $0.parentId ?? "" })
         #expect(Set(MasterBoard.subtree(of: "c", index: index).map(\.id)) == ["a1", "a11", "a111", "a2", "kept"])
-        let summary = MasterBoard.agentSummary(MasterBoard.subtree(of: "c", index: index))
-        #expect(summary == MasterBoard.AgentSummary(total: 5, working: 1, waiting: 1, failed: 1))
-        #expect(summary?.text == "5 agents, 1 working, 1 needs approval, 1 failed")
-        #expect(summary?.parts.map(\.tone) == [.muted, .muted, .warning, .danger])
+        let agents = MasterBoard.rowAgents(MasterBoard.subtree(of: "c", index: index))
+        // The person's first: waiting, failed, working.
+        #expect(agents?.lines.map(\.id) == ["a11", "a111", "a1"])
+        #expect(agents?.lines.map(\.what) == [
+            MasterBoard.WhatLine(text: "waiting for approval — Bash", tone: .warning),
+            MasterBoard.WhatLine(text: "failed", tone: .danger),
+            MasterBoard.WhatLine(text: "Editing Rail.tsx", tone: .muted)
+        ])
+        #expect(agents?.lines.first?.agentType == .reviewer)
+        #expect(agents?.lines.last?.title == "Rail rows")
+        #expect(agents?.tail == "2 done")
     }
 
-    @Test("only the nonzero live states are said; done ones are in the count; none is nil") func words() {
-        #expect(MasterBoard.agentSummary([]) == nil)
-        #expect(MasterBoard.agentSummary([meta("a", status: .done)])?.text == "1 agent")
-        #expect(MasterBoard.agentSummary([meta("a", status: .running), meta("b", status: .watching), meta("c", status: .idle)])?.text == "3 agents, 2 working")
+    @Test("settled agents alone show nothing; past the cap the rest are counted") func capAndSettled() {
+        #expect(MasterBoard.rowAgents([]) == nil)
+        #expect(MasterBoard.rowAgents([meta("a", status: .done), meta("b", status: .idle), meta("s", status: .stopped)]) == nil)
+        let five = (1...5).map { meta("w\($0)", status: $0 == 5 ? .waiting : .running, createdAt: $0) }
+        let agents = MasterBoard.rowAgents(five + [meta("d", status: .done)])
+        #expect(agents?.lines.map(\.id) == ["w5", "w1", "w2"])
+        #expect(agents?.more == 2)
+        #expect(agents?.moreWaiting == 0)
+        #expect(agents?.tail == "and 2 more, 1 done")
+        #expect(MasterBoard.rowAgents([meta("p", status: .paused)])?.lines.first?.what == MasterBoard.WhatLine(text: "Paused", tone: .muted))
+        #expect(MasterBoard.rowAgents([meta("p", status: .running)])?.tail == nil)
     }
 
-    @Test("a far child counts from its own host's sessions; a row with none is absent") func farHost() {
+    @Test("a far child lists from its own host's sessions and names that host; a row with none is absent") func farHost() {
         let local = meta("c", createdAt: 1, masterId: "m")
         let lonely = meta("d", createdAt: 2, masterId: "m")
         let far = MasterBoard.RemoteChild(child: child("f1", environmentId: "env_box", seenAt: 3), meta: nil)
         let rows = MasterBoard.foldRows(children: [local, lonely], all: [local, lonely], masterId: "m", remote: [far])
         let here = [local, lonely, meta("a", parentId: "c", status: .running), meta("f1-clash", parentId: "f1", status: .running)]
         let box = [meta("b1", parentId: "f1", status: .waiting), meta("b11", parentId: "b1", status: .running)]
-        let summaries = MasterBoard.agentSummaries(rows) { $0 == "env_box" ? box : here }
-        #expect(summaries["c"]?.text == "1 agent, 1 working")
-        #expect(summaries["d"] == nil)
-        #expect(summaries["env_box:f1"]?.text == "2 agents, 1 working, 1 needs approval")
+        let lines = MasterBoard.rowAgentLines(rows) { $0 == "env_box" ? box : here }
+        #expect(lines["c"]?.lines.map(\.id) == ["a"])
+        #expect(lines["c"]?.lines.first?.environmentId == nil)
+        #expect(lines["d"] == nil)
+        #expect(lines["env_box:f1"]?.lines.map(\.id) == ["b1", "b11"])
+        #expect(lines["env_box:f1"]?.lines.first?.environmentId == "env_box")
     }
 }
