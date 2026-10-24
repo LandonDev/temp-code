@@ -672,6 +672,13 @@ routed to (aliax-core's `forward`). Two listeners:
   (`HARNESS_SET` in `harnessSet.ts`), the exclusions and the status line
   (each set with its file count) are in docs/box.md "Harness config: synced
   from the Mac". Proof: `bun run script:e2e-harness-sync`.
+- Mobbin MCP (`mobbin`, `https://api.mobbin.com/mcp`) is set up globally
+  for Claude Code and Codex on the Mac and box. Harness sync carries the
+  server entries; each CLI on each host keeps its own OAuth grant, outside
+  provider account sync. All four loaded Mobbin's eight tools on
+  2026-10-24. Sign-in and SSH callback steps: docs/box.md "Mobbin MCP:
+  Claude Code and Codex on both hosts". New sessions load the server;
+  existing sessions may need an MCP reconnect.
 - Memory goes both ways (`src/main/server/remote/{memorySet,memoryMerge,
   memorySync}.ts`, `memory.*` RPCs, admin): Claude Code's per-project memory
   (`.claude/projects/<encoded cwd>/memory/`, the encoded dir translated

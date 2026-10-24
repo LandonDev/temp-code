@@ -859,6 +859,44 @@ Copying from the Mac: `COPYFILE_DISABLE=1 tar -cf - <paths> | ssh box 'cd
 agents and chmod 600. Without `COPYFILE_DISABLE` bsdtar adds a `._<name>`
 AppleDouble file beside each one; delete them.
 
+#### Mobbin MCP: Claude Code and Codex on both hosts
+
+Mobbin uses its official HTTP endpoint, `https://api.mobbin.com/mcp`, as
+the global server `mobbin` in both CLIs. Register it on the Mac:
+
+```sh
+claude mcp add mobbin --scope user --transport http https://api.mobbin.com/mcp
+codex mcp add mobbin --url https://api.mobbin.com/mcp
+```
+
+Harness sync carries Claude's `~/.claude.json` server entry and Codex's
+`~/.codex/config.toml` entry to the agents user on the box. OAuth grants
+stay in each CLI's own credential store. Sign in once per CLI per host;
+do not copy refresh tokens between them. Provider account sync does not
+handle these MCP grants.
+
+To sign in again on the Mac, run `claude mcp login mobbin` or
+`codex mcp login mobbin --scopes openid,offline_access`. On the box, run
+the same login as agents (`runuser -l agents -c '…'` from root), using
+`/srv/agents/home/.npm-global/bin/codex` for Codex. Claude's
+`--no-browser` flag prints the sign-in URL and accepts the redirect URL;
+use `ssh -t` so its prompt has a terminal. For a browser callback to the
+box, forward the port printed in the authorization URL with
+`ssh -N -L <port>:127.0.0.1:<port> box` before opening that URL on the
+Mac. Close the tunnel when login finishes. Both clients use the
+`openid` and `offline_access` scopes.
+
+Verified on 2026-10-24: all four clients connected and loaded the same
+eight tools: screen, section and flow search; list and read collections;
+create a collection; save content; add a comment. Claude's
+`claude mcp get mobbin` reports Connected on both hosts; Codex's
+`codex mcp list` reports OAuth. Native client tool discovery also passed
+for all four, without a model turn. New sessions load the server; an
+existing session may need to reconnect its MCP servers.
+
+Setup references: [Mobbin's Claude Code guide](https://docs.mobbin.com/mcp/clients/claude-code-cli)
+and [OpenAI's MCP guide](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+
 ### Attachments on a remote thread
 
 A file attached on the Mac (picked, dropped, pasted, an appshot) lives on
