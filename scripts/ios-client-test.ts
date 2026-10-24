@@ -10,7 +10,6 @@
  *   bun scripts/ios-client-test.ts --filter LiveServerTests
  */
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const repo = resolve(import.meta.dir, '..')
@@ -57,7 +56,7 @@ const ready = await new Promise<Ready>((resolveReady, reject) => {
 })
 console.log(`ios:test:client: server on ${ready.baseUrl}, control on ${ready.controlUrl}, environment ${ready.environmentId}`)
 
-// The CLT's swift-package is broken on this Mac (see scripts/ios-test.sh): use the newest Xcode.
+// The CLT's swift-package is broken on this Mac (see scripts/ios-test.sh): use the Xcode scripts/ios-xcode.sh picks.
 const env: NodeJS.ProcessEnv = {
   ...process.env,
   TC_TEST_BASE_URL: ready.baseUrl,
@@ -105,13 +104,12 @@ if (ready.second && ready.threadCrossHost) {
 }
 if (!env.DEVELOPER_DIR) {
   const selected = spawnSync('xcode-select', ['-p'], { encoding: 'utf8' }).stdout.trim()
-  if (selected.includes('CommandLineTools') && existsSync('/Applications')) {
-    const xcodes = readdirSync('/Applications')
-      .filter((n) => /^Xcode.*\.app$/.test(n))
-      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
-    if (xcodes.length) {
-      env.DEVELOPER_DIR = `/Applications/${xcodes[xcodes.length - 1]}/Contents/Developer`
-      console.log(`ios:test:client: using ${xcodes[xcodes.length - 1]}`)
+  if (selected.includes('CommandLineTools')) {
+    // scripts/ios-xcode.sh picks the highest-versioned Xcode; the package builds on any, so no minimum.
+    const picked = spawnSync('sh', [resolve(repo, 'scripts/ios-xcode.sh')], { encoding: 'utf8', env: { ...env, TC_XCODE_MIN: '0' } })
+    if (picked.status === 0 && picked.stdout.trim()) {
+      env.DEVELOPER_DIR = picked.stdout.trim()
+      console.log(`ios:test:client: using ${env.DEVELOPER_DIR}`)
     }
   }
 }

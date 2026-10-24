@@ -3,14 +3,15 @@
 #
 # The Command Line Tools' swift-package on this Mac cannot load
 # BuildServerProtocol.framework, so when the selected developer directory
-# is the CLT and an Xcode is installed, the newest Xcode's toolchain runs
-# the build instead. `xcode-select -s` on an Xcode makes this moot.
+# is the CLT and an Xcode is installed, the Xcode scripts/ios-xcode.sh picks
+# (the highest version) runs the build instead. `xcode-select -s` on an Xcode makes this moot.
 set -e
-cd "$(dirname "$0")/../ios/TempCodeContract"
+here=$(cd "$(dirname "$0")" && pwd)
+cd "$here/../ios/TempCodeContract"
 if [ -z "$DEVELOPER_DIR" ] && case "$(xcode-select -p 2>/dev/null)" in *CommandLineTools*) true;; *) false;; esac; then
-  xcode=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
-  if [ -n "$xcode" ]; then
-    export DEVELOPER_DIR="$xcode/Contents/Developer"
+  # scripts/ios-xcode.sh picks the highest-versioned Xcode; the package builds on any, so no minimum.
+  if xcode=$(TC_XCODE_MIN=0 "$here/ios-xcode.sh"); then
+    export DEVELOPER_DIR="$xcode"
     echo "ios:test: using $xcode"
   fi
 fi

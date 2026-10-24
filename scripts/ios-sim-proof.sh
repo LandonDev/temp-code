@@ -78,11 +78,11 @@
 # simulator's service hub (ios/TempCode/UITests holds the XCUITest version
 # for a Mac with an Xcode selected). Nothing here prints the link or a key.
 set -euo pipefail
-cd "$(dirname "$0")/../ios/TempCode"
-if [ -z "${DEVELOPER_DIR:-}" ]; then
-  xcode=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
-  [ -n "$xcode" ] && export DEVELOPER_DIR="$xcode/Contents/Developer"
-fi
+here=$(cd "$(dirname "$0")" && pwd)
+cd "$here/../ios/TempCode"
+# The Xcode: scripts/ios-xcode.sh (DEVELOPER_DIR passes through; else the highest-versioned bundle, 27.1 at least).
+DEVELOPER_DIR=$("$here/ios-xcode.sh")
+export DEVELOPER_DIR
 SIM=${TC_SIM:-iPhone 17 Pro}
 OUT=${TC_PROOF_DIR:-/tmp/tc-ios-proof}
 SETTLE=${TC_PROOF_SETTLE:-10}

@@ -25,11 +25,11 @@
 # Privacy & Security; `idevicedevmodectl reveal` from libimobiledevice makes
 # the item appear when it is hidden).
 set -euo pipefail
-cd "$(dirname "$0")/../ios/TempCode"
-if [ -z "${DEVELOPER_DIR:-}" ]; then
-  xcode=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
-  [ -n "$xcode" ] && export DEVELOPER_DIR="$xcode/Contents/Developer"
-fi
+here=$(cd "$(dirname "$0")" && pwd)
+cd "$here/../ios/TempCode"
+# The Xcode: scripts/ios-xcode.sh (DEVELOPER_DIR passes through; else the highest-versioned bundle, 27.1 at least).
+DEVELOPER_DIR=$("$here/ios-xcode.sh")
+export DEVELOPER_DIR
 TEAM=${TEMP_CODE_APPLE_TEAM:-}
 if [ -z "$TEAM" ] && [ -f Local.xcconfig ]; then
   TEAM=$(sed -n -E 's/^[[:space:]]*DEVELOPMENT_TEAM[[:space:]]*=[[:space:]]*([A-Z0-9]+).*/\1/p' Local.xcconfig | head -n 1)
