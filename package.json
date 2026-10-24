@@ -18,6 +18,7 @@
     "ios:test": "./scripts/ios-test.sh",
     "ios:test:client": "bun scripts/ios-client-test.ts",
     "ios:device": "./scripts/ios-device.sh",
+    "ios:device:duo": "TC_DEVICE_MODEL=iPhone19,4 TC_DEVICE_METHOD=ad-hoc ./scripts/ios-device.sh",
     "ios:xcode": "./scripts/ios-xcode.sh",
     "ios:duo:check": "./scripts/ios-duo-check.sh",
     "start": "electron-vite preview",

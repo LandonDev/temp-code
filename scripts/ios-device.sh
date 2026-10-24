@@ -17,13 +17,26 @@
 # holds a production APNs token (aps-environment production), which the
 # owner's Production-only APNs key needs; a Release build has no DEBUG hooks,
 # and a pairing from an earlier Debug install carries over in the keychain.
-# The toolchain is the newest Xcode's through DEVELOPER_DIR; xcode-select is
-# never changed. The device is TC_DEVICE_UDID, else the first connected or
-# Wi-Fi-paired iPhone devicectl lists, and the build targets it so the
-# profiles carry it; TC_DEVICE_SKIP_INSTALL=1 builds for the generic device
-# and installs nothing. The phone needs Developer Mode on (Settings →
-# Privacy & Security; `idevicedevmodectl reveal` from libimobiledevice makes
-# the item appear when it is hidden).
+# The toolchain is the Xcode scripts/ios-xcode.sh picks (the highest version
+# installed, 27.1 at least) through DEVELOPER_DIR; xcode-select is never
+# changed. The device is TC_DEVICE_UDID, else the first physical iPhone
+# devicectl lists that is connected (over one merely paired), narrowed by
+# TC_DEVICE_MODEL=<product type> when set (both of the owner's phones are
+# "Landon's iPhone"; `bun run ios:device:duo` is TC_DEVICE_MODEL=iPhone19,4
+# with the Ad Hoc method), and the build targets it so the profiles carry
+# it; TC_DEVICE_SKIP_INSTALL=1 builds for the generic device and installs
+# nothing. The phone needs Developer Mode on (Settings → Privacy & Security;
+# `idevicedevmodectl reveal` from libimobiledevice makes the item appear
+# when it is hidden).
+#
+# A phone whose iOS is newer than the Xcode's SDK (the Duo on 27.2 under
+# Xcode 27.1): the app installs and runs, it cannot call the newer OS's API,
+# and devicectl needs Developer Mode on and a Developer Disk Image the phone
+# accepts. The script prints the device's OS and the Xcode's build before
+# building; `xcrun devicectl device info ddiServices --device <id>` is the
+# one command that says whether the pair works (`contentIsCompatible`), and
+# `bun run ios:duo:check -- --device` asks it. When it refuses, install the
+# newer Xcode beside the others: the picker takes it by version.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 cd "$here/../ios/TempCode"
@@ -46,30 +59,32 @@ if [ -n "${TC_AUTH_KEY_PATH:-}" ]; then
   auth=(-authenticationKeyPath "$TC_AUTH_KEY_PATH" -authenticationKeyID "${TC_AUTH_KEY_ID:?}" -authenticationKeyIssuerID "${TC_AUTH_ISSUER_ID:?}")
 fi
 
-# The device: TC_DEVICE_UDID, else the first iPhone devicectl lists as paired
-# or reachable. Found before the build, because the build must target it:
+# The device: TC_DEVICE_UDID, else scripts/lib/pick-device.py's choice from
+# devicectl's list (physical iPhones, TC_DEVICE_MODEL, connected over paired).
+# Found before the build, because the build must target it:
 # -allowProvisioningDeviceRegistration registers the destination device in
 # the profiles, and a generic build registers nothing.
+LISTING=""
+device_listing() {
+  if [ -z "$LISTING" ]; then
+    LISTING=$(mktemp)
+    xcrun devicectl list devices --json-output "$LISTING" >/dev/null 2>&1 || true
+  fi
+  echo "$LISTING"
+}
 find_device() {
   [ -n "${TC_DEVICE_UDID:-}" ] && { echo "$TC_DEVICE_UDID"; return; }
-  local listing
-  listing=$(mktemp)
-  xcrun devicectl list devices --json-output "$listing" >/dev/null 2>&1 || true
-  python3 -c '
-import json, sys
-try:
-    rows = json.load(open(sys.argv[1]))["result"]["devices"]
-except Exception:
-    rows = []
-phones = [r for r in rows if r.get("hardwareProperties", {}).get("deviceType") == "iPhone"]
-ready = [r for r in phones if "available" in r.get("connectionProperties", {}).get("tunnelState", "") or r.get("connectionProperties", {}).get("pairingState") == "paired"]
-rows = ready or phones
-print(rows[0]["identifier"] if rows else "")' "$listing"
-  rm -f "$listing"
+  python3 "$here/lib/pick-device.py" "$(device_listing)" --model "${TC_DEVICE_MODEL:-}"
 }
 UDID=""
 [ "${TC_DEVICE_SKIP_INSTALL:-}" = 1 ] || UDID=$(find_device)
 if [ -n "$UDID" ]; then destination="id=$UDID"; else destination="generic/platform=iOS"; fi
+xcode_line="$(basename "$(dirname "$(dirname "$DEVELOPER_DIR")")") $(python3 -c 'import plistlib,sys; p=plistlib.load(open(sys.argv[1],"rb")); print(p.get("CFBundleShortVersionString",""), p.get("ProductBuildVersion",""))' "$(dirname "$(dirname "$DEVELOPER_DIR")")/Contents/version.plist" 2>/dev/null)"
+if [ -n "$UDID" ] && [ -z "${TC_DEVICE_UDID:-}" ]; then
+  echo "ios-device: device $(python3 "$here/lib/pick-device.py" "$(device_listing)" --model "${TC_DEVICE_MODEL:-}" --describe) · $UDID"
+fi
+echo "ios-device: xcode $xcode_line"
+[ -z "$LISTING" ] || rm -f "$LISTING"
 
 xcodegen generate --quiet
 if [ "${TC_DEVICE_METHOD:-}" = ad-hoc ]; then
