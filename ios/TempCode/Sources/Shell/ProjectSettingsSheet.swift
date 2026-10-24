@@ -113,6 +113,8 @@ struct ProjectSettingsSheet: View {
     let target: SettingsTarget
     @Environment(\.dismiss) private var dismiss
     @State private var model = ProjectSettingsModel()
+    /// The pushes inside the sheet (the preamble editor); the proof pushes one.
+    @State private var path = NavigationPath()
 
     private var projectId: String { target.home.projectId }
     private var project: ProjectMeta? { client.projects.first { $0.id == projectId } }
@@ -123,7 +125,7 @@ struct ProjectSettingsSheet: View {
     private var readBlock: ActionBlock? { Actions.block(status: client.status, environment: client.environment, needs: .read) }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             content
                 .navigationTitle(project?.name ?? "Project")
                 .navigationBarTitleDisplayMode(.inline)
@@ -144,10 +146,10 @@ struct ProjectSettingsSheet: View {
                             .disabled(!model.dirty || readOnly)
                         }
                     }
+                    .highVisibility()
                 }
         }
-        .presentationDetents([.large])
-        .presentationCornerRadius(Radius.sheet)
+        .tcSheet(.editor)
         .interactiveDismissDisabled(model.saving)
         // Loads once the home's link is up; a reconnect after the load keeps the drafts.
         .task(id: readBlock == nil) {
@@ -155,6 +157,11 @@ struct ProjectSettingsSheet: View {
             await model.load(client: client, projectId: projectId)
         }
         .accessibilityIdentifier("project-settings")
+        .onChange(of: project?.id, initial: true) { _, id in
+            // DEBUG proof: `TC_TEST_SHEET=preamble` pushes the editor once the project is known.
+            guard TestHooks.sheet == "preamble", path.isEmpty, let project, id != nil else { return }
+            path.append(PreambleScope.project(projectId: project.id, workspaceId: project.workspaceId))
+        }
     }
 
     @ViewBuilder

@@ -137,6 +137,7 @@ struct AddEnvironmentSheet: View {
                     }
                     .animation(Motion.crossFade, value: busy)
                 }
+                .highVisibility()
             }
             .interactiveDismissDisabled(busy)
             .onChange(of: method) { _, _ in
@@ -147,9 +148,7 @@ struct AddEnvironmentSheet: View {
             .onChange(of: key) { _, _ in clearErrorIfTyping() }
             .onChange(of: origin) { _, _ in clearErrorIfTyping() }
         }
-        .presentationDetents([.medium, .large])
-        .presentationCornerRadius(Radius.sheet)
-        .presentationDragIndicator(.visible)
+        .tcSheet(.form)
         .sensoryFeedback(.success, trigger: successes)
         .sensoryFeedback(.error, trigger: refusals)
         .task {

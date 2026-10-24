@@ -27,6 +27,8 @@ struct SearchView: View {
     /// Where a head's title starts past the text edge: the glyph column and
     /// its gap, scaled with the glyph. Hits and separators start here.
     @ScaledMetric(relativeTo: .subheadline) private var glyphEdge = Layout.glyphWidth + Layout.rowGap
+    /// Unfolded, the rows sit in a reading measure (`Layout.listMeasure`) instead of running across 951 pt.
+    @Environment(\.windowClasses) private var window
 
     private var trimmed: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
     /// Every paired host in rail order, open or not.
@@ -93,6 +95,8 @@ struct SearchView: View {
             }
         }
         .listStyle(.plain)
+        .frame(maxWidth: window.horizontal == .regular ? Layout.listMeasure : .infinity)
+        .frame(maxWidth: .infinity)
         .modifier(SearchField(query: $query, prompt: offersFiles ? "Threads and files" : "Threads"))
         .searchPresentationToolbarBehavior(.avoidHidingContent)
         .modifier(SearchScopes(scope: $scope, offered: offersFiles))
@@ -194,6 +198,9 @@ struct SearchView: View {
 
 /// The system field, placed by version: on iOS 26 `.automatic` keeps the
 /// search-role tab's own field; before it the navigation drawer, always shown.
+/// On the iPhone Duo the system places the field per pose; the decided
+/// fallback, if a pose ever moves or drops it, is the drawer always shown in
+/// every pose (the one line below), never a custom field.
 private struct SearchField: ViewModifier {
     @Binding var query: String
     let prompt: String
@@ -201,6 +208,7 @@ private struct SearchField: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         if #available(iOS 26, *) {
+            // Fallback: content.searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: prompt)
             content.searchable(text: $query, placement: .automatic, prompt: prompt)
         } else {
             content.searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: prompt)

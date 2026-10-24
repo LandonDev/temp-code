@@ -23,6 +23,7 @@ struct ProjectPlanView: View {
     @State private var pushed: ThreadScreenRoute?
     @State private var sheet: MilestoneStartTarget?
     @State private var revising = false
+    @State private var hooked = false
 
     private var key: String { ThreadCaches.planKey(scope.environmentId, sessionId) }
     private var text: String? { document ?? ThreadCaches.plans.cached(key) }
@@ -49,6 +50,12 @@ struct ProjectPlanView: View {
             .animation(Motion.rowAppear, value: model.plan.isComplete)
         }
         .onChange(of: text, initial: true) { _, now in model.update(text: now) }
+        // DEBUG proof: `TC_TEST_SHEET=milestone` opens Plan the milestone for the first undone one.
+        .onChange(of: model.next, initial: true) { _, next in
+            guard TestHooks.sheet == "milestone", !hooked, let next else { return }
+            hooked = true
+            sheet = MilestoneStartTarget(kind: .planning, milestone: next)
+        }
         .task(id: projectId) {
             guard let projectId else { return }
             if let cached = ThreadCaches.projectPlans.state(scope.environmentId, projectId) { model.adopt(cached) }
@@ -703,11 +710,11 @@ struct MilestoneStartSheet: View {
                             .disabled(choice.catalog == nil && choice.loading)
                     }
                 }
+                .highVisibility()
             }
             .interactiveDismissDisabled(busy)
         }
-        .presentationDetents([.medium, .large])
-        .presentationCornerRadius(Radius.sheet)
+        .tcSheet(.form)
     }
 
     private func start() async {

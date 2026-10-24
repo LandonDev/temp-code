@@ -191,12 +191,11 @@ struct StartBuildSheet: View {
                             .disabled(choice.model == nil)
                     }
                 }
+                .highVisibility()
             }
             .interactiveDismissDisabled(busy)
         }
-        .presentationDetents([.medium, .large])
-        .presentationCornerRadius(Radius.sheet)
-        .presentationDragIndicator(.visible)
+        .tcSheet(.form)
     }
 
     private func start() async {
@@ -304,12 +303,11 @@ struct NewThreadSheet: View {
                             .disabled(choice.model == nil)
                     }
                 }
+                .highVisibility()
             }
             .interactiveDismissDisabled(busy)
         }
-        .presentationDetents([.medium, .large])
-        .presentationCornerRadius(Radius.sheet)
-        .presentationDragIndicator(.visible)
+        .tcSheet(.form)
     }
 
     private func create() async {
@@ -380,13 +378,12 @@ struct RenameSheet: View {
                             .disabled(!valid)
                     }
                 }
+                .highVisibility()
             }
             .interactiveDismissDisabled(busy)
             .onAppear { focused = true }
         }
-        .presentationDetents([.medium])
-        .presentationCornerRadius(Radius.sheet)
-        .presentationDragIndicator(.visible)
+        .tcSheet(.field)
     }
 
     private func save() async {

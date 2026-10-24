@@ -69,10 +69,19 @@ struct ProjectScreen: View {
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
             if let screen, let lead = lead(screen) {
-                ToolbarItemGroup(placement: .primaryAction) {
-                    slots.projectTrailing?(lead.client, screen.project.project)
+                // Three items, not a group: the chip is the first to overflow, New Thread and the menu stay.
+                if let trailing = slots.projectTrailing {
+                    ToolbarItem(placement: .primaryAction) {
+                        trailing(lead.client, screen.project.project)
+                            .environment(\.inBar, true)
+                    }
+                }
+                ToolbarItem(placement: .primaryAction) {
                     Button("New Thread", systemImage: "square.and.pencil") { presenter.compose(lead.client, lead.workspace, screen.project.project) }
-                    if slots.hasProjectMenu {
+                }
+                .highVisibility()
+                if slots.hasProjectMenu {
+                    ToolbarItem(placement: .primaryAction) {
                         Menu {
                             ProjectMenuContent(project: screen.project, slots: slots, newThread: presenter.compose)
                         } label: {
@@ -80,6 +89,7 @@ struct ProjectScreen: View {
                         }
                         .accessibilityLabel("\(screen.project.project.name) menu")
                     }
+                    .highVisibility()
                 }
             }
         }

@@ -63,7 +63,7 @@ struct SourcesView: View {
             .animation(settled ? Motion.rowAppear : nil, value: ArrivalKey(sources: thread.fold.board.sources.count, agents: agents.count, live: liveAngles, report: report != nil))
         }
         .safariCover($page)
-        .fullScreenCover(isPresented: $readingReport) {
+        .sheet(isPresented: $readingReport) {
             ResearchReportScreen(sessionId: sessionId, document: document ?? "", board: board, running: running)
         }
         .onAppear {

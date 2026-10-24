@@ -39,6 +39,8 @@ struct NotesButton: View {
         .accessibilityIdentifier("thread-notes")
         .task(id: sessionId) { _ = await client.loadNotes(sessionId) }
         .sheet(isPresented: $showing) { NotesSheet(client: client, sessionId: sessionId) }
+        // DEBUG proof: `TC_TEST_SHEET=notes` opens the sheet.
+        .onAppear { if TestHooks.sheet == "notes" { showing = true } }
     }
 }
 
@@ -130,10 +132,10 @@ struct NotesSheet: View {
                         .disabled(doc == nil)
                     }
                 }
+                .highVisibility()
             }
         }
-        .presentationDetents([.large])
-        .presentationCornerRadius(Radius.sheet)
+        .tcSheet(.document)
         .sensoryFeedback(.impact(weight: .light), trigger: copied)
         .task { _ = await client.loadNotes(sessionId, refresh: true) }
         // Read as it lands, the sheet being open.

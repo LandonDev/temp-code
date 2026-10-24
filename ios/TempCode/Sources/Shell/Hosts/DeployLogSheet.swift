@@ -55,10 +55,17 @@ struct DeployLogSheet: View {
                     }
                     // The first offset only: once the reader scrolls up, an append must not pull them back.
                     .defaultScrollAnchor(.bottom, for: .initialOffset)
-                    .onScrollGeometryChange(for: Bool.self) { geometry in
-                        geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - 8
-                    } action: { _, atBottom in
-                        following = atBottom
+                    // A resize (a fold, a detent change) moves the bottom under a following reader: the
+                    // tail is re-asserted from the new geometry instead of reading as a scroll away from it.
+                    .onScrollGeometryChange(for: TailGeometry.self) { geometry in
+                        TailGeometry(atBottom: geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - 8, container: geometry.containerSize)
+                    } action: { before, now in
+                        if before.container != now.container {
+                            guard following else { return }
+                            Motion.withoutAnimation { proxy.scrollTo(Self.tail, anchor: .bottom) }
+                        } else {
+                            following = now.atBottom
+                        }
                     }
                     .onChange(of: extras.log.text) {
                         guard following else { return }
@@ -72,13 +79,17 @@ struct DeployLogSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
+                .highVisibility()
             }
         }
-        .presentationDetents([.medium, .large])
-        .presentationCornerRadius(Radius.sheet)
-        .presentationDragIndicator(.visible)
+        .tcSheet(.document)
         .accessibilityIdentifier("deploy-log")
     }
 
     private static let tail = "tail"
+
+    private struct TailGeometry: Equatable {
+        var atBottom: Bool
+        var container: CGSize
+    }
 }

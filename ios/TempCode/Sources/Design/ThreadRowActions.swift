@@ -72,6 +72,8 @@ struct ThreadRowActions<Rows: View>: ViewModifier {
             }
             .sheet(isPresented: $renaming) { RenameSheet(client: client, session: meta) }
             .sheet(item: $archiving) { ArchiveWithResourcesSheet(target: $0) }
+            // DEBUG proof: `TC_TEST_SHEET=rename` opens the sheet on the first row that appears.
+            .onAppear { if TestHooks.sheet == "rename", TestHooks.once("rename") { renaming = true } }
             .alert("Couldn't do that", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: {

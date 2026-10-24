@@ -46,9 +46,6 @@ struct AccountChip: View {
             }
             .sheet(isPresented: $open) {
                 AccountMenu(client: client, session: session)
-                    .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
-                    .presentationCornerRadius(Radius.sheet)
             }
         }
     }

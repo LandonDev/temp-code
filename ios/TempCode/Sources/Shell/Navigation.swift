@@ -12,7 +12,6 @@ enum Route: Hashable, Codable {
     case project(key: String)
     case archivedThreads(environmentId: String, projectId: String)
     case archivedProjects(environmentId: String, workspaceId: String)
-    case inboxItem(environmentId: String, item: GithubInboxItem)
     case settings
     case hosts
 }
@@ -35,6 +34,8 @@ enum NavigationMemory {
     struct Snapshot: Codable {
         var tab: AppTab = .home
         var home: NavigationPath.CodableRepresentation?
+        /// The Inbox's typed path, the item alone (InboxRoute.remembered); `inbox` is the key an older build wrote.
+        var inboxRoutes: [InboxRoute]?
         var inbox: NavigationPath.CodableRepresentation?
         var search: NavigationPath.CodableRepresentation?
         /// A sheet that was up, restored by the view that owns it.

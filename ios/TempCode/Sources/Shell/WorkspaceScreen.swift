@@ -79,6 +79,7 @@ struct WorkspaceScreen: View {
                 ToolbarItem(placement: .primaryAction) {
                     Button("New Thread", systemImage: "square.and.pencil") { presenter.compose(lead.client, lead.workspace, nil) }
                 }
+                .highVisibility()
             }
         }
         .listOnScreen("workspace:\(key)")

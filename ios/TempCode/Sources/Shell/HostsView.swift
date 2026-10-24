@@ -178,6 +178,8 @@ struct HostDetailView: View {
                     .lineLimit(1)
                     .accessibilityAddTraits(.isHeader)
             }
+            // A title has no vertical form: the Duo's rail never stands it up.
+            .horizontalOnly()
         }
     }
 

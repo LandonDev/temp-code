@@ -125,6 +125,8 @@ struct FleetToastInset: ViewModifier {
                 if let notice = center.notice {
                     FleetToastLine(notice: notice) { center.dismiss() }
                         .transition(.opacity.animation(Motion.crossFade))
+                        // A notice never rides a keyboard, real or the zero-height one UIKit reports around a fold.
+                        .ignoresSafeArea(.keyboard, edges: .bottom)
                 }
             }
             .animation(Motion.crossFade, value: center.notice)
@@ -171,9 +173,7 @@ struct FleetConfirmSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
         }
-        .presentationDetents([.height(contentHeight + chrome)])
-        .presentationCornerRadius(Radius.sheet)
-        .presentationDragIndicator(.visible)
+        .tcSheet(.confirm, fitted: contentHeight + chrome)
         .sensoryFeedback(.impact(weight: .light), trigger: confirmedAt)
     }
 
@@ -319,6 +319,9 @@ struct FleetToastLine: View {
         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         .tcGlass(in: RoundedRectangle.sheetCorner)
         .padding(.horizontal, ComposerBar.edge)
+        // Full width to 440 pt, then centered: a glass line across the unfolded display reads as a bar.
+        .frame(maxWidth: ToastMeasure.maxWidth)
+        .frame(maxWidth: .infinity)
         .padding(.bottom, 6)
         .contentShape(Rectangle())
         .onTapGesture { dismiss() }

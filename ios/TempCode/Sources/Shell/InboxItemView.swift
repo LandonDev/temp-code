@@ -11,6 +11,8 @@ import TempCodeContract
 struct InboxItemView: View {
     let client: EnvironmentClient
     let item: GithubInboxItem
+    /// The Inbox tab's path: a file row pushes its diff onto it (InboxScreen resolves the route).
+    @Binding var path: [InboxRoute]
     private let store = InboxStore.shared
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -18,8 +20,7 @@ struct InboxItemView: View {
     @State private var diffFailed = false
     /// Bumped by Retry; the load task keys on it.
     @State private var attempt = 0
-    /// DEBUG: the diff the proof pushes once the patch is in.
-    @State private var proofRoute: PatchDiffRoute?
+    /// DEBUG: the proof pushed the first file's diff.
     @State private var proofPushed = false
     @ScaledMetric(relativeTo: .subheadline) private var avatarSize: CGFloat = 32
 
@@ -63,10 +64,8 @@ struct InboxItemView: View {
                     Label("Open on GitHub", systemImage: "safari")
                 }
             }
+            .highVisibility()
         }
-        // The hand-off to the diff thread's screen: a file row's value, and the proof's push.
-        .navigationDestination(for: PatchDiffRoute.self) { route in DiffScreen(route: route) }
-        .navigationDestination(item: $proofRoute) { route in DiffScreen(route: route) }
         .task(id: "\(key)|\(cwd ?? "")|\(attempt)") { await load() }
     }
 
@@ -205,7 +204,7 @@ struct InboxItemView: View {
         guard TestHooks.open == "item-diff", !proofPushed, let diff = store.diffs[key] else { return }
         guard let change = InboxPatch.changes(diff).first(where: { $0.patch != nil }), let patch = change.patch else { return }
         proofPushed = true
-        proofRoute = PatchDiffRoute(title: change.path, patch: patch)
+        path.append(.diff(PatchDiffRoute(title: change.path, patch: patch)))
     }
 }
 
@@ -448,7 +447,7 @@ private struct InboxChangeRow<Label: View, Trailing: View>: View {
         .frame(minHeight: Layout.rowHeight)
         .contentShape(Rectangle())
         if let route, enabled {
-            NavigationLink(value: route) { content }
+            NavigationLink(value: InboxRoute.diff(route)) { content }
                 .buttonStyle(.pressable)
         } else {
             content

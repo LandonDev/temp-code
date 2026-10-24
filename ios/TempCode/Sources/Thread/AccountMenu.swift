@@ -45,8 +45,10 @@ struct AccountMenu: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
+                .highVisibility()
             }
         }
+        .tcSheet(.picker)
         .task { appeared = true }
         .task(id: pending) {
             // A second pick cancels this sleep; only an uncancelled wait clears.

@@ -82,6 +82,7 @@ struct ResourcesSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
+                .highVisibility()
             }
             .confirmationDialog(confirming.map { "Remove \(ResourceWords.kindLabel($0.kind)) \($0.label)?" } ?? "", isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } }), titleVisibility: .visible) {
                 Button("Remove", role: .destructive) {
@@ -94,9 +95,7 @@ struct ResourcesSheet: View {
                 Button("Cancel", role: .cancel) {}
             }
         }
-        .presentationDetents([.medium, .large])
-        .presentationCornerRadius(Radius.sheet)
-        .presentationDragIndicator(.visible)
+        .tcSheet(.picker)
         .task {
             // The first load lands before any animation is keyed; rows that leave later fade.
             await client.resources.load(client, sessionId: sessionId)
@@ -230,6 +229,10 @@ struct ArchiveWithResourcesSheet: View {
     @State private var busy = false
     @State private var failure: String?
     @State private var confirmedAt = 0
+    /// The content's height, so the sheet is as tall as what it says (the fleet confirm's rule).
+    @State private var contentHeight: CGFloat = 280
+    /// The inline navigation bar and the drag indicator above the content.
+    @ScaledMetric(relativeTo: .body) private var chrome: CGFloat = 60
 
     var body: some View {
         let client = target.client
@@ -265,12 +268,13 @@ struct ArchiveWithResourcesSheet: View {
                         .font(.footnote)
                         .foregroundStyle(Tint.destructive)
                 }
-                Spacer(minLength: 16)
                 WideButton(busy ? "Archiving…" : "Archive", prominent: true) { archive() }
                     .disabled(busy || client.operateBlock != nil)
+                    .padding(.top, 16)
             }
             .padding(Layout.textEdge)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .frame(maxWidth: .infinity, alignment: .top)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -279,9 +283,8 @@ struct ArchiveWithResourcesSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
         }
-        .presentationDetents([.medium])
-        .presentationCornerRadius(Radius.sheet)
-        .presentationDragIndicator(.visible)
+        .tcSheet(.confirm, fitted: contentHeight + chrome)
+        .interactiveDismissDisabled(busy)
         .sensoryFeedback(.impact(weight: .light), trigger: confirmedAt)
     }
 

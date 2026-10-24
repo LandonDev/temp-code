@@ -11,7 +11,8 @@ struct RootView: View {
     @AppStorage("appearance") private var appearance = Appearance.system
     @State private var tab: AppTab
     @State private var homePath: NavigationPath
-    @State private var inboxPath: NavigationPath
+    /// The Inbox's typed path: InboxScreen reads its first element as the split's selection.
+    @State private var inboxPath: [InboxRoute]
     @State private var searchPath: NavigationPath
     @State private var routed = false
     @State private var restoredSheet: SheetMemory?
@@ -20,7 +21,7 @@ struct RootView: View {
         let memory = NavigationMemory.restore()
         _tab = State(initialValue: memory?.tab ?? .home)
         _homePath = State(initialValue: NavigationMemory.path(memory?.home))
-        _inboxPath = State(initialValue: NavigationMemory.path(memory?.inbox))
+        _inboxPath = State(initialValue: memory?.inboxRoutes ?? [])
         _searchPath = State(initialValue: NavigationMemory.path(memory?.search))
         _restoredSheet = State(initialValue: memory?.sheet)
     }
@@ -42,11 +43,7 @@ struct RootView: View {
                 }
             }
             Tab("Inbox", systemImage: "tray", value: AppTab.inbox) {
-                NavigationStack(path: $inboxPath) {
-                    InboxView(path: $inboxPath)
-                        .fleetToastInset()
-                        .navigationDestination(for: Route.self) { destination($0, path: $inboxPath) }
-                }
+                InboxScreen(path: $inboxPath)
             }
             Tab(value: AppTab.search, role: .search) {
                 NavigationStack(path: $searchPath) {
@@ -56,6 +53,8 @@ struct RootView: View {
                 }
             }
         }
+        // The window's size classes for every sheet (Design/SheetShape.swift); a sheet never reads its own.
+        .publishesWindowClasses()
         .preferredColorScheme(appearance.scheme)
         // The fleet switches' confirm sheet, shared by every menu; the outcome line sits on each tab (thread iOS 20).
         .fleetSwitchHost()
@@ -118,7 +117,7 @@ struct RootView: View {
     /// Every change of where the person is, written at once: the write is one
     /// small defaults key, and the background has no reliable last moment.
     private func remember() {
-        NavigationMemory.save(.init(tab: tab, home: homePath.codable, inbox: inboxPath.codable, search: searchPath.codable))
+        NavigationMemory.save(.init(tab: tab, home: homePath.codable, inboxRoutes: InboxRoute.remembered(inboxPath), search: searchPath.codable))
         reportVisibility()
     }
 
@@ -165,10 +164,6 @@ struct RootView: View {
         case .archivedProjects(let environmentId, let workspaceId):
             if let client = model.registry.client(environmentId) {
                 ArchivedProjectsView(client: client, workspaceId: workspaceId, path: path)
-            }
-        case .inboxItem(let environmentId, let item):
-            if let client = model.registry.client(environmentId) {
-                InboxItemView(client: client, item: item)
             }
         case .settings:
             SettingsView()

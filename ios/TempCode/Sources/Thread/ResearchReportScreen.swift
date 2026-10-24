@@ -1,7 +1,7 @@
 import SwiftUI
 import TempCodeClient
 
-/// The report, full screen, set as a document: the title, its state and
+/// The report as a document sheet (a page sheet unfolded, never a full-screen cover): the title, its state and
 /// summary as the lede, the body at reading measure through the phone's one
 /// markdown renderer with `[n]` citations as tappable superscripts, and the
 /// sources list as reading-list rows. A citation or a link opens its page in
@@ -39,6 +39,7 @@ struct ResearchReportScreen: View {
                     Button("Done") { dismiss() }
                         .font(.subheadline.weight(.semibold))
                 }
+                .highVisibility()
             }
             .environment(\.openURL, OpenURLAction { url in
                 if url.scheme == ReportCitations.scheme, let number = Int(url.host() ?? ""), let cited = citations[number], let target = URL(string: cited.url) {
@@ -53,6 +54,7 @@ struct ResearchReportScreen: View {
             })
             .safariCover($page)
         }
+        .tcSheet(.document)
     }
 }
 

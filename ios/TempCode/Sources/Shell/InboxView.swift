@@ -12,7 +12,10 @@ import TempCodeContract
 struct InboxView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
-    @Binding var path: NavigationPath
+    /// The tab's path; in the split the first element is the selection (InboxScreen).
+    @Binding var path: [InboxRoute]
+    /// The sidebar of the unfolded split: a tap selects instead of pushing, and the row reads selected.
+    let split: Bool
     private let store = InboxStore.shared
     /// A refresh answered forbidden, so the key reads but cannot refresh.
     @State private var refreshRefused = false
@@ -22,7 +25,7 @@ struct InboxView: View {
         let clients = model.registry.ordered
         let entries = store.entries(clients: clients)
         let notices = InboxModel.notices(hosts: store.hosts(clients), refreshDenied: refreshDenied(clients))
-        List {
+        List(selection: selection) {
             ForEach(notices, id: \.self) { notice in
                 Text(notice)
                     .textStep(.meta)
@@ -35,6 +38,7 @@ struct InboxView: View {
                 Button { open(entry) } label: {
                     InboxRow(entry: entry, unread: unread, status: InboxModel.status(of: entry.item, viewer: store.snapshot(for: entry.environmentId)?.viewer), showHost: clients.count > 1)
                 }
+                .tag(InboxModel.key(environmentId: entry.environmentId, item: entry.item))
                 .buttonStyle(.pressable)
                 .listRowInsets(Layout.rowInsets)
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
@@ -88,9 +92,26 @@ struct InboxView: View {
         .task(id: openKey(clients)) { await load(clients) }
     }
 
+    /// The sidebar's selection, read off the path; a pick clears the detail column.
+    private var selection: Binding<String?> {
+        Binding(
+            get: { split ? InboxColumns.split(path).selected?.key : nil },
+            set: { key in
+                guard split, let key, key != InboxColumns.split(path).selected?.key,
+                      let entry = store.entries(clients: model.registry.ordered).first(where: { InboxModel.key(environmentId: $0.environmentId, item: $0.item) == key }) else { return }
+                open(entry)
+            }
+        )
+    }
+
     private func open(_ entry: InboxEntry) {
         store.markRead(entry)
-        path.append(Route.inboxItem(environmentId: entry.environmentId, item: entry.item))
+        let route = InboxRoute.item(environmentId: entry.environmentId, item: entry.item)
+        if split {
+            path = InboxColumns.path(selected: route, detail: [])
+        } else {
+            path.append(route)
+        }
     }
 
     private func openOnGitHub(_ entry: InboxEntry) {

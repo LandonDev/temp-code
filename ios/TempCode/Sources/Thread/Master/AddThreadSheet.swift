@@ -87,13 +87,12 @@ struct AddThreadSheet: View {
                             .disabled(trimmed.isEmpty || choice.model == nil || block != nil)
                     }
                 }
+                .highVisibility()
             }
             .interactiveDismissDisabled(busy)
             .onAppear { focused = true }
         }
-        .presentationDetents([.large])
-        .presentationCornerRadius(Radius.sheet)
-        .presentationDragIndicator(.visible)
+        .tcSheet(.editor)
     }
 
     private func add() async {

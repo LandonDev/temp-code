@@ -15,6 +15,7 @@ struct HomeView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(NavigationRouter.self) private var router
     @Environment(NewThreadPresenter.self) private var presenter
+    @Environment(ProjectSettingsPresenter.self) private var projectSettings
     @Binding var path: NavigationPath
     var slots = HomeSlots()
     @State private var adding = false
@@ -66,9 +67,9 @@ struct HomeView: View {
         .navigationTitle("Home")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                // With one host there is no host row at the foot, so its menu sits here.
-                if clients.count == 1, let client = clients.first, let hostMenu = slots.hostMenu {
+            // With one host there is no host row at the foot, so its menu sits here.
+            if clients.count == 1, let client = clients.first, let hostMenu = slots.hostMenu {
+                ToolbarItem(placement: .primaryAction) {
                     Menu {
                         hostMenu(client)
                     } label: {
@@ -76,8 +77,11 @@ struct HomeView: View {
                     }
                     .accessibilityLabel(client.environment.name)
                 }
+            }
+            ToolbarItem(placement: .primaryAction) {
                 Button("Settings", systemImage: "gearshape") { path.append(Route.settings) }
             }
+            .highVisibility()
         }
         .listOnScreen("home")
         .sheet(isPresented: $adding) { AddEnvironmentSheet() }
@@ -134,7 +138,13 @@ struct HomeView: View {
     /// creates a chat in the first workspace and opens it.
     private func performLaunch(_ clients: [EnvironmentClient]) async {
         guard let client = clients.first, client.hasShell, let workspace = client.workspaces.first else { return }
-        if TestHooks.sheet == "new", presenter.target == nil {
+        if (TestHooks.sheet == "project-settings" || TestHooks.sheet == "preamble"), !launched, let project = client.projects.first(where: { !$0.archived }) {
+            // Project settings for the first project (the Duo set); `preamble` pushes the editor inside it.
+            launched = true
+            let registry = model.registry
+            let hosts = registry.ordered.map { (environmentId: $0.environment.id, projects: $0.projects) }
+            projectSettings.target = ProjectLinks.target(for: project, on: client.environment.id, hosts: hosts) { registry.platform($0) }
+        } else         if TestHooks.sheet == "new", presenter.target == nil {
             presenter.compose(client, workspace, nil)
         } else if let sheet = TestHooks.sheet, sheet.hasPrefix("fleet:"), let action = TestHooks.batchAction(String(sheet.dropFirst(6))), !launched {
             // The fleet confirm for the shot, host scope (thread iOS 20).

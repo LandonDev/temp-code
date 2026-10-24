@@ -148,12 +148,11 @@ struct RulesSheet: View {
                             .disabled(!RulesEdit.stepsValid(steps) || block != nil)
                     }
                 }
+                .highVisibility()
             }
             .interactiveDismissDisabled(busy)
         }
-        .presentationDetents([.large])
-        .presentationCornerRadius(Radius.sheet)
-        .presentationDragIndicator(.visible)
+        .tcSheet(.editor)
     }
 
     /// A field of the shell draft; writes land only while the draft is open.

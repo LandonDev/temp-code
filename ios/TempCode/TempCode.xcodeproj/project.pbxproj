@@ -90,6 +90,7 @@
 		9B4E14B4A110774EED19F313 /* RulesSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19B8C0F88BE12F9DE4E49481 /* RulesSheet.swift */; };
 		9DAB0C369F90C3AE63DE0A1F /* ProjectScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31AE3B91688F10E1A04FDB82 /* ProjectScreen.swift */; };
 		9E7F274FE896575C2806AD66 /* AdoptThreadSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D1868806E113836F296A8C6 /* AdoptThreadSheet.swift */; };
+		A119638C21691438F8EAC5C2 /* BarItems.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41927B06E30F61600E79676A /* BarItems.swift */; };
 		A11DD08A3B1135C82F6F1D78 /* ComposerStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69317F13ABC0E0662B2E960E /* ComposerStyles.swift */; };
 		A21764429AA3AF04E3B7992A /* MasterStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = A28320A9F04411931B518C64 /* MasterStyles.swift */; };
 		A251F8807CE6CE1FD9E5EF50 /* NotesSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E0F7543C59BDFAF1793E3F8 /* NotesSheet.swift */; };
@@ -98,6 +99,7 @@
 		A4D3C3D646BDB8FCD062324D /* PreambleEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E49A4F9DB3744F026BF627CC /* PreambleEditor.swift */; };
 		A556DA576836A86B8B54F96C /* FleetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E40BEDD04A1A41663DEAC /* FleetView.swift */; };
 		A76370D399F6482431407EF9 /* SyncLines.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1EE98A1E13DBB032B3AC8D6 /* SyncLines.swift */; };
+		AB4A560EDF0F16855CC07728 /* SheetShape.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6626376700A972AE19C02CA /* SheetShape.swift */; };
 		ABE8A480B719413FE7E8060D /* CardActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEC75CE0966D46F74C89225D /* CardActions.swift */; };
 		AC36760D31F43952A102CAD5 /* StatusDot.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7BDB2F2EDCBB6066FB98164 /* StatusDot.swift */; };
 		AC8347C7FD000D5AA0B80548 /* Tokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9929B736C3C28B124C2DB5D1 /* Tokens.swift */; };
@@ -130,6 +132,7 @@
 		DEFC730734F960DF8538B34E /* InboxItemView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD74513256F138AE5DE679B3 /* InboxItemView.swift */; };
 		E4E46368771534E29632D3E1 /* TempCodeActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6ED639777D36DA63BABC9CD /* TempCodeActivity.swift */; };
 		E59F34661230DFB6F9AF889E /* AccountMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C358254B666145347F305AA /* AccountMenu.swift */; };
+		E90BD8473502D7E0EC4F1FAF /* InboxScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFDB7AC9309717C07EABDB37 /* InboxScreen.swift */; };
 		EC96C9DFAC6EABD68408E2AB /* PlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA468614B495BE8F5F2C9223 /* PlanView.swift */; };
 		EFFE7512408C0161A6092B96 /* ThreadActivityViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF1E10EC23A743EAD9AFEB3D /* ThreadActivityViews.swift */; };
 		F0AA1E81A6C34F6010913756 /* ComposerAttachments.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23C576CE99A5E45548F2435C /* ComposerAttachments.swift */; };
@@ -216,6 +219,7 @@
 		3E0F7543C59BDFAF1793E3F8 /* NotesSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesSheet.swift; sourceTree = "<group>"; };
 		3E87EC3DF336E9F9C38A9188 /* NeedsYouNotes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeedsYouNotes.swift; sourceTree = "<group>"; };
 		3EC3174295FD32F442072288 /* ThreadHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadHeader.swift; sourceTree = "<group>"; };
+		41927B06E30F61600E79676A /* BarItems.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarItems.swift; sourceTree = "<group>"; };
 		458CA933FF6A32D8B310B3D6 /* Pressable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pressable.swift; sourceTree = "<group>"; };
 		4A445C153D49BF2624BA6CFA /* StatusLine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusLine.swift; sourceTree = "<group>"; };
 		4AA9BBB868F0F7D8F8A33E08 /* ThreadSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadSheets.swift; sourceTree = "<group>"; };
@@ -296,10 +300,12 @@
 		D8FDFFD73D3829024F06B44D /* ToolChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolChip.swift; sourceTree = "<group>"; };
 		DBFB5E8F9B4F132135F62388 /* PresenceLine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresenceLine.swift; sourceTree = "<group>"; };
 		DC3C0B2E870A25CE9A0FFF91 /* ProjectPlanStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectPlanStyles.swift; sourceTree = "<group>"; };
+		DFDB7AC9309717C07EABDB37 /* InboxScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxScreen.swift; sourceTree = "<group>"; };
 		E1EE98A1E13DBB032B3AC8D6 /* SyncLines.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncLines.swift; sourceTree = "<group>"; };
 		E36EC9E0F01E8828FCDA4BCB /* ProjectSettingsStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectSettingsStyles.swift; sourceTree = "<group>"; };
 		E49A4F9DB3744F026BF627CC /* PreambleEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreambleEditor.swift; sourceTree = "<group>"; };
 		E4D9CB957A67E09F05DE3CD2 /* ShellRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellRows.swift; sourceTree = "<group>"; };
+		E6626376700A972AE19C02CA /* SheetShape.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SheetShape.swift; sourceTree = "<group>"; };
 		E98C99A06F537E21F3C0D93C /* HostsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostsView.swift; sourceTree = "<group>"; };
 		EA468614B495BE8F5F2C9223 /* PlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanView.swift; sourceTree = "<group>"; };
 		EB3C0093C73C91C73DE65042 /* BoardStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardStyles.swift; sourceTree = "<group>"; };
@@ -378,6 +384,7 @@
 		316A60D00C7FF13082F442B6 /* Design */ = {
 			isa = PBXGroup;
 			children = (
+				41927B06E30F61600E79676A /* BarItems.swift */,
 				70755BDC0AE581F0B20CD960 /* Glass.swift */,
 				71FD17E331D1A7892718F0B3 /* Glyphs.swift */,
 				641553FAFC34373347B4887C /* HostMark.swift */,
@@ -385,6 +392,7 @@
 				002DFE88A99F9FF59FF9A750 /* Motion.swift */,
 				458CA933FF6A32D8B310B3D6 /* Pressable.swift */,
 				2129548FC89473DA37D3322A /* SectionHeader.swift */,
+				E6626376700A972AE19C02CA /* SheetShape.swift */,
 				B7BDB2F2EDCBB6066FB98164 /* StatusDot.swift */,
 				C16775FDA7BDE46AF518AD0D /* ThreadRow.swift */,
 				0C9121A31A1E408C0C11CD59 /* ThreadRowActions.swift */,
@@ -541,6 +549,7 @@
 				1FC14E0BFDC3A2916F0E7CAF /* HostStatusRow.swift */,
 				E98C99A06F537E21F3C0D93C /* HostsView.swift */,
 				BD74513256F138AE5DE679B3 /* InboxItemView.swift */,
+				DFDB7AC9309717C07EABDB37 /* InboxScreen.swift */,
 				CA7288D142EB56BF61D77BE3 /* InboxStore.swift */,
 				D852F6F965128E5708F8E991 /* InboxView.swift */,
 				CBB9F435A8B815A14D9C6855 /* Navigation.swift */,
@@ -770,6 +779,7 @@
 				0E1E99641BDC5DF10E6B7133 /* AppModel.swift in Sources */,
 				CEA16927C6E7A58FC70AC5E5 /* ArchiveBatchSheet.swift in Sources */,
 				FB079AEF0FD1CC9C96A437DB /* ArchivedViews.swift in Sources */,
+				A119638C21691438F8EAC5C2 /* BarItems.swift in Sources */,
 				7B0B0117D929F3ED42CC2B6F /* BatchFoot.swift in Sources */,
 				7D6432F20DEB4F489AC97CA9 /* BoardOutcomes.swift in Sources */,
 				7D2599C1E29B66B56F911080 /* BoardStyles.swift in Sources */,
@@ -804,6 +814,7 @@
 				694B7EF60722777344918C25 /* HtmlRenderView.swift in Sources */,
 				8379BC703BA7710F88CA4F0A /* ImplementationBoardView.swift in Sources */,
 				DEFC730734F960DF8538B34E /* InboxItemView.swift in Sources */,
+				E90BD8473502D7E0EC4F1FAF /* InboxScreen.swift in Sources */,
 				380CD9B79D786017B8802496 /* InboxStore.swift in Sources */,
 				10B04AD6410CA80C6A34113D /* InboxView.swift in Sources */,
 				8A1EC209985F3CA16F1171D5 /* LiveText.swift in Sources */,
@@ -850,6 +861,7 @@
 				8D1B4118DABDD309FF348FB3 /* SegmentBar.swift in Sources */,
 				BE7F26241B9F5C0AD87DC743 /* SettingsStyles.swift in Sources */,
 				58A6A7CD69991BBBE9726AA8 /* SettingsView.swift in Sources */,
+				AB4A560EDF0F16855CC07728 /* SheetShape.swift in Sources */,
 				DDAFE26DE8CA0CACF325F782 /* ShellRows.swift in Sources */,
 				889157797D642DC007187D38 /* SourcesView.swift in Sources */,
 				AC36760D31F43952A102CAD5 /* StatusDot.swift in Sources */,

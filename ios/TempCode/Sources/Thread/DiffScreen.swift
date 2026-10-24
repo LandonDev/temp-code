@@ -22,7 +22,7 @@ struct LinesDiffRoute: Hashable {
 
 /// A unified patch (`diff --git`, `@@`), one file or many: the Inbox's pull
 /// request. `file` keeps one file of a many-file patch.
-struct PatchDiffRoute: Hashable {
+struct PatchDiffRoute: Hashable, Codable {
     /// The file path, or the PR title for the whole patch.
     let title: String
     /// `GitHubPrDiff.patch`.

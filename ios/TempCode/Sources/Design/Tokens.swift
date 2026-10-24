@@ -178,6 +178,9 @@ enum Layout {
     static let tagGap: CGFloat = 6
     /// A list row's insets: the text edge on both sides, nothing vertical.
     static let rowInsets = EdgeInsets(top: 0, leading: textEdge, bottom: 0, trailing: textEdge)
+    /// A reading measure for a list of hits at regular width (Search): a 951 pt
+    /// row would run a snippet across the whole display.
+    static let listMeasure: CGFloat = 720
 }
 
 /// A one-pixel rule in `separator`, inset from the leading edge to the text edge.

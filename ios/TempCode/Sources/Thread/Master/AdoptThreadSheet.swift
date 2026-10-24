@@ -80,12 +80,11 @@ struct AdoptThreadSheet: View {
                             .disabled(selected.isEmpty || block != nil)
                     }
                 }
+                .highVisibility()
             }
             .interactiveDismissDisabled(busy)
         }
-        .presentationDetents([.medium, .large])
-        .presentationCornerRadius(Radius.sheet)
-        .presentationDragIndicator(.visible)
+        .tcSheet(.picker)
     }
 
     private func toggle(_ id: String) {

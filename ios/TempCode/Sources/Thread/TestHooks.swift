@@ -38,6 +38,9 @@ enum TestHooks {
     /// A sheet to open for the shot: `start` on a planning thread, `new` on Home,
     /// `fleet:pause|fleet:stop|fleet:archive` (the fleet confirm on Home),
     /// `resources` (the Resources sheet on a thread), `archive` (the archive prompt on a thread with resources).
+    /// For the iPhone Duo set: `rename` (the first thread row on screen), `notes` (a root thread's notes),
+    /// `project-settings` (the first project), `preamble` (project settings with the editor pushed),
+    /// `milestone` (Plan the milestone for a project plan's first undone one).
     /// Actions, in the list above: `batch:pause|batch:resume|batch:stop|batch:archive` on Home run the host-scope
     /// batch without the sheet; `archive-remove` and `remove-resources` on a thread.
     static let sheet = env["TC_TEST_SHEET"].flatMap { $0.isEmpty ? nil : $0 }
@@ -53,6 +56,21 @@ enum TestHooks {
     static let sheet: String? = nil
     static let notification: String? = nil
     #endif
+    /// True once per key: a hook that several rows read fires on the first.
+    static func once(_ key: String) -> Bool {
+        #if DEBUG
+        guard !fired.contains(key) else { return false }
+        fired.insert(key)
+        return true
+        #else
+        return false
+        #endif
+    }
+
+    #if DEBUG
+    @MainActor private static var fired: Set<String> = []
+    #endif
+
     /// `pause`, `resume`, `stop` or `archive` as the fleet's action.
     static func batchAction(_ name: String) -> BatchAction? {
         switch name {

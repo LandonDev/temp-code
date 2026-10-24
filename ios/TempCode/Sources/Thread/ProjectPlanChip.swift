@@ -71,6 +71,8 @@ struct ProjectPlanChip: View {
     /// A refusal from the menu's actions; the chip has no footer, so it alerts.
     @State private var failure: String?
     @ScaledMetric(relativeTo: .caption2) private var height: CGFloat = 28
+    /// In the project screen's bar the system draws the label; in the row it is the capsule.
+    @Environment(\.inBar) private var inBar
 
     private var states: ProjectPlanStates { ThreadCaches.projectPlans }
     private var state: ProjectPlanState? { states.state(client.environment.id, project.id) ?? nil }
@@ -125,26 +127,37 @@ struct ProjectPlanChip: View {
         let done = state.milestones.filter(\.done).count
         let total = state.milestones.count
         let text = ProjectPlan.chipText(done: done, total: total, pinned: state.pinned)
-        let label = HStack(spacing: 4) {
-            Image(systemName: "flag.checkered")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(Tint.violet)
-            Text(text)
-                .textStep(.stamp)
-                .numeric(done)
+        let accessibility = total > 0 ? "Project plan, \(done) of \(total) milestones done" : "Project plan"
+        let label = Group {
+            if inBar {
+                // A bar item with a symbol: the vertical rail leaves a title-only item out.
+                Label(text, systemImage: "flag.checkered")
+                    .numeric(done)
+            } else {
+                HStack(spacing: 4) {
+                    Image(systemName: "flag.checkered")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Tint.violet)
+                    Text(text)
+                        .textStep(.stamp)
+                        .numeric(done)
+                }
+                .padding(.horizontal, 8)
+                .frame(height: height)
+                .background(Surface.fill, in: Capsule())
+                .frame(minHeight: Layout.rowHeight)
+                .contentShape(Rectangle())
+            }
         }
-        .padding(.horizontal, 8)
-        .frame(height: height)
-        .background(Surface.fill, in: Capsule())
-        .frame(minHeight: Layout.rowHeight)
-        .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(total > 0 ? "Project plan, \(done) of \(total) milestones done" : "Project plan")
+        .accessibilityLabel(accessibility)
 
         // A Button through the router, not a NavigationLink: a link inside a
         // List row turns the row into a link cell and takes its other buttons' taps.
         Group {
-            if let sessionId = state.sessionId {
+            if let sessionId = state.sessionId, inBar {
+                Button { open(sessionId) } label: { label }
+            } else if let sessionId = state.sessionId {
                 Button { open(sessionId) } label: { label }
                     .buttonStyle(.pressable)
             } else {
