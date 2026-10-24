@@ -1421,6 +1421,18 @@ proof and the sizing rules; the pieces, by name:
   client package's `Shell/HostPresentation.swift` with their tests; the
   `settings` proof set shoots them with `TC_TEST_OPEN=host` (pushed through
   the stack's path) and `TC_TEST_SHEET=pair|pair-error`.
+- iPhone Duo (plan 3): every sheet is shaped by the client package's
+  `SheetRules.shape(kind, in: window)` (`Shell/DuoLayout.swift`: form,
+  editor, picker, field, confirm, document) through `tcSheet(kind)`
+  (`Design/SheetShape.swift`, which also publishes `\.windowClasses` from
+  RootView's outermost modifier); `InboxColumns` splits the Inbox tab's one
+  typed path (`InboxRoute`, `Shell/InboxScreen.swift`: a split at regular
+  width, the stack otherwise); `ToastMeasure` caps the fleet toast at 440 pt;
+  `highVisibility()` and `horizontalOnly()` (`Design/BarItems.swift`) are the
+  bar items' 27.x rules. Hooks for the `duo` set:
+  `TC_TEST_SHEET=rename|notes|project-settings|preamble|milestone` (rename on
+  the first thread row on screen, so launch with `TC_TEST_ROUTE=archived`).
+  docs/IOS-DESIGN.md "iPhone Duo".
 - Relayed hosts (thread 29, the phone side of the box's relay): a host the
   box relays is a client of its own in `ClientRegistry` on the box's
   `/ws?host=<id>` lane with the box's key (`PairedEnvironment.via`,

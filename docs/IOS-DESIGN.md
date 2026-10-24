@@ -1132,7 +1132,7 @@ Safari's reading list crossed with a research notebook
   green "Complete"; the mini spinner "In progress" while the thread runs, or
   "Complete, 2 angles still running"; a tertiary dot when stopped early;
   cross-fading on `Motion.crossFade`), the summary in two meta lines, a
-  chevron. Tap opens the report full screen.
+  chevron. Tap opens the report as a document sheet (a page sheet unfolded).
 - **The coverage line** under it in meta: "15 sources, 4 searches, 2 of 3
   angles done", digits rolling with `.numeric`; spawned angles count, the
   root's own research does not. Empty when nothing has happened.
@@ -1402,8 +1402,9 @@ detail ends them all and sends the unwatch. The words are the client
 package's `Client/HostExtrasText.swift`, ported from the desktop's; the
 stores are `Client/HostExtras.swift`.
 
-**Pairing** (Add a Host, Pair Again) is a medium sheet, 16 pt radius
-(`Radius.sheet`), with the large detent for the keyboard: a segmented
+**Pairing** (Add a Host, Pair Again) is a form sheet (`tcSheet(.form)`: medium
+with the large detent for the keyboard on the phone, centered unfolded; see
+"iPhone Duo"): a segmented
 Pairing Link / Key, the field with a paste button at its trailing edge while
 empty (a pasted link that reads cleanly is redeemed at once; a typed one is
 recognised, the footer naming the host it pairs with, and submitted with
@@ -1721,7 +1722,7 @@ used.
 | --- | --- | --- |
 | Press on any row or button | scale `0.96`, 160 ms, ease-out, from pointer-down; no hover states on touch; reduced motion dims to 60 % instead | `.buttonStyle(.pressable)` (`Motion.press`, `Motion.pressScale`, `Motion.pressDim`); `.pressableStatic` dims without scaling where a scale would fight a swipe |
 | Push and pop | the system navigation transition, untouched | |
-| Sheets | the system sheet, 16 pt radius, detents medium and large | `Radius.sheet` |
+| Sheets | the system sheet, 16 pt radius, detents and sizing by `SheetRules` ("iPhone Duo") | `Radius.sheet`, `tcSheet` |
 | Segment swipe | interactive, follows the finger, settles with the drawer curve `cubic-bezier(0.32, 0.72, 0, 1)` | `Motion.drawer` |
 | Row expand (todo trace, tool body) | spring `duration 0.35, bounce 0`; content fades in 150 ms after the height starts; collapse 200 ms ease-out | `Motion.expand`, `Motion.expandContent`, `Motion.collapse` |
 | Preamble fold | 150 ms cross-fade, no height spring | `Motion.crossFade` |
@@ -1900,6 +1901,85 @@ cross-fades with `contentTransition(.opacity)`, the tally rolls with
 Every change has a static cue (word, color, mark); nothing depends on
 motion, and the first state is a plain render. Flavour words stay inside
 the app's working strip.
+
+## iPhone Duo
+
+The four poses are pairs of size classes, never an idiom, an orientation or
+a screen: folded portrait is compact × regular (today's phone), folded
+landscape compact × compact, unfolded regular × regular either way up. On
+the Duo the system lays a navigation stack's and the tab bar's bars out in a
+vertical rail (on the outer display too), leaves a title-only item out of
+it, and reports zero-height keyboards around a fold. This section is the
+sheets, the bars, Settings, the Inbox, Search, pairing, the fleet switches
+and push; the shell's shape and the thread screen have their own.
+
+**Sheets.** Every sheet is shaped by one rule, `SheetRules.shape(kind, in:
+window)` in the client package (`Shell/DuoLayout.swift`), applied by
+`tcSheet(kind)` in Design/SheetShape.swift; no sheet writes a detent, a
+radius or a sizing itself. The rule reads the window's size classes
+(`\.windowClasses`, published once by the outermost modifier of RootView,
+so the sheets the root presents read it too), never the sheet's own, because
+a form sheet's own width is compact on every display. Folded portrait keeps
+today's detents (medium and large for a form or a picker, medium for the
+rename field, large for an editor or a document, a confirm as tall as its
+content). Folded landscape takes the large detent for everything that is not
+sized by its content: a medium sheet in 466 pt of height is under a Form's
+third row. Unfolded, a form, a picker, a field or a confirm is a centered
+form sheet (`.presentationSizing(.form)`, a confirm fitted to its content)
+and a document (Notes, the research report, the deploy log) a page sheet;
+nothing in the app is a full-screen cover on the inner display except
+Safari. One `PresentationSizing` adapter carries every case, so a fold never
+gives the sheet a new identity: a sheet that is up stays up across a fold
+and takes the new shape with its draft. Every sheet opts into horizontal
+bars (`.toolbarVerticalBehavior(.disabled)` on its stack, iOS 27.1): Cancel,
+Save and Done stay text at the top as Apple's own form sheets do, and the
+confirm asks for `.visibilityPriority(.high)` (`highVisibility()` in
+Design/BarItems.swift). `SheetMemory` is the same in every shape.
+
+**Bars.** A toolbar item on a screen of a navigation stack carries an SF
+Symbol (`Button("Title", systemImage:)` or an `Image`), since the vertical
+rail leaves a title-only item out; the host detail's principal title is
+`.axisBehavior(.horizontalOnly)`. Home's Settings, a workspace's and a
+project's New Thread, the project menu and the Inbox item's Open on GitHub
+ask for high visibility; the project plan chip is a `Label` in the bar (the
+capsule stays in the row) and the first to overflow. Inside a sheet, text
+items are allowed. Nothing hand-builds a bar; the confirm sheets' titles and
+full-width buttons are content. Alerts, confirmation dialogs, swipe actions
+and context menus are the system's and keep clear of the fold.
+
+**Settings.** The pushed inset-grouped stack at every width, in whatever
+column Home's pushes land; no settings split. Three top-level rows do not
+earn one.
+
+**Inbox.** At regular width the Inbox is Mail's shape inside its tab
+(`InboxScreen`): the list in a 320 to 420 pt column, the item beside it, a
+Changes row pushing the diff into the item's column. Both shapes read the
+tab's one typed path (`[InboxRoute]`, `InboxColumns.split`): the first
+element is the selection, the rest the detail column's pushes, so a fold
+keeps the item and an unfold shows it beside the list. The launch memory
+keeps the item alone, never a patch.
+
+**Search.** The system field on the search-role tab, placed by the system in
+every pose (unfolded it sits at the bar's trailing end); a fold keeps the
+text and the rows. Results at regular width sit in a 720 pt measure
+(`Layout.listMeasure`). The decided fallback, if a pose ever moves the
+field, is the navigation drawer always shown in every pose, the commented
+line in `SearchField`; never a custom field.
+
+**Pairing, the fleet confirm, the toast.** Pairing is a form sheet; the
+first field takes the keyboard after 350 ms in every pose, and nothing reads
+the keyboard's height. The fleet confirm, Archive with resources and Archive
+batch are as tall as what they say in every pose (one measured height, the
+same chrome allowance), centered fitted form sheets unfolded, each with
+Cancel in its horizontal bar. The toast stays a bottom safe-area inset on
+each tab's root (the Inbox's on `InboxScreen`), above the floating tab bar
+wherever the system puts it, 440 pt wide at most (`ToastMeasure`), and
+ignores the keyboard.
+
+**Notifications and the Live Activity.** Unchanged: nothing in them reads
+a display size, a size class or a cutout. The card's widths are flexible and
+its row heights fixed; Apple documents a Dynamic Island on both of the Duo's
+displays, so every presentation can show.
 
 ## Threads from here
 

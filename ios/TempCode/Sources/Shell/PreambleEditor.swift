@@ -113,6 +113,7 @@ struct PreambleEditor: View {
                         .disabled(!draft.dirty || readOnly)
                 }
             }
+            .highVisibility()
         }
         .environment(\.markdownScope, MarkdownScope(environmentId: client.environment.id, sessionId: "preamble:\(scopeKey)"))
         .task {

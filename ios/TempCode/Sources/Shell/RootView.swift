@@ -53,8 +53,6 @@ struct RootView: View {
                 }
             }
         }
-        // The window's size classes for every sheet (Design/SheetShape.swift); a sheet never reads its own.
-        .publishesWindowClasses()
         .preferredColorScheme(appearance.scheme)
         // The fleet switches' confirm sheet, shared by every menu; the outcome line sits on each tab (thread iOS 20).
         .fleetSwitchHost()
@@ -102,6 +100,9 @@ struct RootView: View {
             router.pending = nil
         }
         .onOpenURL(perform: open)
+        // Outermost, so the sheets the root presents (new thread, project settings, the fleet confirm) read
+        // the window's size classes too (Design/SheetShape.swift); a sheet never reads its own.
+        .publishesWindowClasses()
     }
 
     /// A notification's or Live Activity's link: the thread it names, or Home for a group activity's card.
