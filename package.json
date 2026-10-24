@@ -19,6 +19,7 @@
     "ios:test:client": "bun scripts/ios-client-test.ts",
     "ios:device": "./scripts/ios-device.sh",
     "ios:xcode": "./scripts/ios-xcode.sh",
+    "ios:duo:check": "./scripts/ios-duo-check.sh",
     "start": "electron-vite preview",
     "gate": "bun scripts/gate.ts",
     "release": "bun scripts/release.ts",
