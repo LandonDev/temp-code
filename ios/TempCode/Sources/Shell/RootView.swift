@@ -83,6 +83,7 @@ struct RootView: View {
         .onChange(of: pose, initial: true) { for navigator in navigators { navigator.pose = pose } }
         .onChange(of: size.width, initial: true) { for navigator in navigators { navigator.windowWidth = size.width } }
         .preferredColorScheme(appearance.scheme)
+        .modifier(layoutProbe) // DEBUG: the layout report the Duo proof reads (LayoutProbe.swift)
         // The fleet switches' confirm sheet, shared by every menu; the outcome line sits on each tab (thread iOS 20).
         .fleetSwitchHost()
         .onChange(of: model.registry.ordered.map { $0.bootResume }) { BootResumeNotes.shared.observe(model.registry.ordered) }
@@ -101,6 +102,9 @@ struct RootView: View {
         .task(id: model.ready) {
             // The restored stacks are built by now; anything pushed from here keeps the row it names.
             LaunchRestore.end()
+            #if DEBUG
+            LayoutProbe.route(tab: tab.rawValue, depth: focusedPath.count)
+            #endif
             await followLaunchRoute()
         }
         .task { await MasterReleaseWatcher.shared.run() } // master's release for the drift marks (Shell/Hosts, iOS 21)
@@ -156,7 +160,25 @@ struct RootView: View {
     private func remember() {
         NavigationMemory.save(snapshot, inbox: InboxRoute.remembered(inboxPath))
         reportVisibility()
+        #if DEBUG
+        LayoutProbe.route(tab: tab.rawValue, depth: focusedPath.count)
+        #endif
     }
+
+    /// The stack under the selected tab.
+    private var focusedPath: NavigationPath {
+        switch tab {
+        case .home: homePath
+        case .inbox: inboxPath
+        case .search: searchPath
+        }
+    }
+
+    #if DEBUG
+    private var layoutProbe: some ViewModifier { LayoutProbeModifier() }
+    #else
+    private var layoutProbe: some ViewModifier { EmptyModifier() }
+    #endif
 
     /// What is on screen, for the clients: Home's lists when the Home tab shows
     /// its root; the thread the thread screen reported. Off screen, nothing.

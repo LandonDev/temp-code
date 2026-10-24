@@ -215,6 +215,9 @@ struct ThreadScreen: View {
         }
         .onDisappear {
             model.visible = false
+            #if DEBUG
+            LayoutProbe.route(thread: nil, segment: nil)
+            #endif
             if router.visible == ThreadKey(environmentId: client.environment.id, sessionId: sessionId) { router.visible = nil }
             client.markSeen(sessionId)
             client.closeThread(sessionId)
@@ -233,6 +236,9 @@ struct ThreadScreen: View {
         }
         .onChange(of: segment, initial: true) { _, now in
             model.saw(now, thread: thread)
+            #if DEBUG
+            LayoutProbe.route(thread: sessionId, segment: now.rawValue)
+            #endif
             let fresh = pagedSegments != segments
             pagedSegments = segments
             guard page != now else { return }

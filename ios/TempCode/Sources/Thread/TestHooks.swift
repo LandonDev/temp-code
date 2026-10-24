@@ -112,6 +112,8 @@ enum TestHooks {
     /// `TC_TEST_TRANSCRIPT_REPORT=1` for a plain launch that restores a thread.
     @MainActor static func recordTranscript(sessionId: String, state: TranscriptScrollState) {
         #if DEBUG
+        // The layout report reads the position live at each of its writes (the fold cycle's B, C, D).
+        LayoutProbe.transcript { state.atBottom }
         guard env["TC_TEST_ROUTE"] == "thread" || env["TC_TEST_TRANSCRIPT_REPORT"] == "1" else { return }
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(1))
@@ -199,6 +201,7 @@ enum TestHooks {
 /// came more than 8 ms late, and the worst one.
 final class FrameRecorder: NSObject {
     private var link: CADisplayLink?
+    private var maxFramesPerSecond = 60
     private var last: CFTimeInterval?
     private var intervals: [Double] = []
     private var expected: Double = 1 / 60
@@ -260,6 +263,8 @@ final class FrameRecorder: NSObject {
 
     func start(sourceRows: Int, items: Int, scrollView: UIScrollView) {
         self.scrollView = scrollView
+        // The panel the scroll view sits on (the Duo's inner panel is ProMotion, the outer is not); UIScreen.main is deprecated.
+        maxFramesPerSecond = scrollView.window?.screen.maximumFramesPerSecond ?? 60
         initialOffset = scrollView.contentOffset.y
         self.sourceRows = sourceRows
         self.items = items
@@ -305,7 +310,7 @@ final class FrameRecorder: NSObject {
         let worst = intervals.max() ?? 0
         let mean = intervals.isEmpty ? 0 : intervals.reduce(0, +) / Double(intervals.count)
         let travel = offsetSamples > 0 ? maxOffset - minOffset : 0
-        let report = Report(driver: "native-list-offset", initialOffset: initialOffset, curve: "linear", scrollFrames: movingIntervals.count, scrollHitches: movingIntervals.count { $0 - expectedMs > 8 }, scrollWorstMs: movingIntervals.max() ?? 0, lateFrames: lateFrames, sourceRows: sourceRows, items: items, frames: intervals.count, maxFramesPerSecond: UIScreen.main.maximumFramesPerSecond, expectedMs: expectedMs, hitches: hitches, worstMs: worst, meanMs: mean, over16Ms: intervals.count { $0 > 16.7 }, offsetSamples: offsetSamples, travelPt: travel, hitchAtS: hitchTimes.map { ($0 * 10).rounded() / 10 })
+        let report = Report(driver: "native-list-offset", initialOffset: initialOffset, curve: "linear", scrollFrames: movingIntervals.count, scrollHitches: movingIntervals.count { $0 - expectedMs > 8 }, scrollWorstMs: movingIntervals.max() ?? 0, lateFrames: lateFrames, sourceRows: sourceRows, items: items, frames: intervals.count, maxFramesPerSecond: maxFramesPerSecond, expectedMs: expectedMs, hitches: hitches, worstMs: worst, meanMs: mean, over16Ms: intervals.count { $0 > 16.7 }, offsetSamples: offsetSamples, travelPt: travel, hitchAtS: hitchTimes.map { ($0 * 10).rounded() / 10 })
         log.notice("scroll frames=\(report.frames) hitches=\(report.hitches) worst=\(report.worstMs, format: .fixed(precision: 1))ms mean=\(report.meanMs, format: .fixed(precision: 2))ms travel=\(travel, format: .fixed(precision: 0))pt")
         if let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first, let data = try? JSONEncoder().encode(report) {
             try? data.write(to: documents.appending(path: "scroll-report.json"))
