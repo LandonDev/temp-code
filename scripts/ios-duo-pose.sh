@@ -31,11 +31,13 @@
 # the first `hinge` call after a brew install takes about 2.5 s (it compiles
 # its in-guest helper into ~/.cache/hinge), then close/open 0.45 s, orient
 # 1.0 s, posture 0.4 s; devicectl displays 0.3 s. A pose change end to end
-# is 2-4 s including the settle second. Seen once on 2026-10-24: after a
-# run of rapid angle changes the guest stopped switching panels (angle 0,
-# LCD-1 still active, through every path, for minutes); every pose then
-# fails to settle with "on LCD-1". `simctl shutdown` + `boot` of the
-# simulator cleared it; nothing short of that did.
+# is 2-4 s including the settle second. Seen twice on 2026-10-24: the guest
+# stopped switching panels (angle 0, LCD-1 still active, through every path,
+# for minutes), both times after a close while the device was turned; every
+# pose then fails to settle with "on LCD-1". `simctl shutdown` + `boot`
+# cleared it and nothing short of that did; the proof's `fold` does that
+# once between shots. Turning to portrait before the angle moves avoided it
+# in every run since.
 #
 # Fakes for the vitest (scripts/ios-duo-pose.test.ts) go on PATH as `hinge`
 # and `xcrun`; TC_DUO_SETTLE_BUDGET=<s> shortens the wait.
@@ -44,6 +46,12 @@ UDID=${1:-}
 WHAT=${2:-}
 [ -n "$UDID" ] && [ -n "$WHAT" ] || { echo "usage: ios-duo-pose.sh <udid> <pose>|lit|state" >&2; exit 2; }
 BUDGET=${TC_DUO_SETTLE_BUDGET:-10}
+
+# One hinge call that changes the device: a 5 s confirm window (hinge's own 2 s
+# default ran out once closing from unfolded-portrait under load) and one retry.
+move() {
+  hinge -d "$UDID" -t 5 "$@" >/dev/null 2>&1 || hinge -d "$UDID" -t 5 "$@" >/dev/null
+}
 
 # The table: tag → "angle orientation panel". Aliases map to the long tag.
 canonical() {
@@ -109,13 +117,19 @@ esac
 
 pose=$(canonical "$WHAT") || { echo "ios-duo-pose: unknown pose $WHAT (folded|fp, folded-landscape|fl, unfolded|ul, unfolded-portrait|up, half-open|ho)" >&2; exit 2; }
 read -r angle orientation panel <<<"$(row "$pose")"
-# The angle. half-open goes through closed first: above ~100° the lit panel depends on the way in.
+# The angle, always from portrait: closing while the device is turned (unfolded-portrait → folded)
+# twice left the guest at 0° with the inner panel still lit. half-open goes through closed first:
+# above ~100° the lit panel depends on the way in.
+read -r now_angle now_orientation <<<"$(posture)"
+if [ "$now_angle" != "$angle" ] && [ -n "$now_orientation" ] && [ "$now_orientation" != portrait ]; then
+  move orient portrait
+fi
 case "$angle" in
-  0) hinge -d "$UDID" close >/dev/null ;;
-  180) hinge -d "$UDID" open >/dev/null ;;
-  *) hinge -d "$UDID" close >/dev/null; hinge -d "$UDID" "$angle" >/dev/null ;;
+  0) move close ;;
+  180) move open ;;
+  *) move close; move "$angle" ;;
 esac
-hinge -d "$UDID" orient "$orientation" >/dev/null
+move orient "$orientation"
 
 # Settle: hinge agrees on the angle and orientation, devicectl on the panel.
 deadline=$(( $(date +%s) + BUDGET ))

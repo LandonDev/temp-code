@@ -23,7 +23,9 @@ function rig(): { bin: string; state: string; log: string } {
   writeFileSync(join(dir, 'orientation'), 'portrait')
   writeFileSync(join(dir, 'hinge'), `#!/bin/bash
 echo "hinge $*" >> "${log}"
-shift 2  # -d <udid>
+# Drop -d <udid> and -t <seconds>; the log keeps the whole call.
+while [ "\${1:-}" = -d ] || [ "\${1:-}" = -t ]; do shift 2; done
+[ -f "${dir}/fail-once" ] && [ "$1" != posture ] && { rm -f "${dir}/fail-once"; echo "hinge_helper: the hinge angle did not reach it" >&2; exit 1; }
 case "$1" in
   close) echo 0 > "${dir}/angle" ;;
   open) echo 180 > "${dir}/angle" ;;
@@ -61,28 +63,47 @@ describe('scripts/ios-duo-pose.sh', () => {
   it('folded: close, portrait, the outer panel lit', () => {
     const { bin, log } = rig()
     expect(run(bin, ['U', 'folded'])).toMatchObject({ status: 0, out: 'LCD' })
-    expect(calls(log)).toEqual(['hinge -d U close', 'hinge -d U orient portrait'])
+    expect(calls(log)).toEqual(['hinge -d U -t 5 close', 'hinge -d U -t 5 orient portrait'])
   })
 
   it('aliases are the same poses: fl is folded-landscape, up is unfolded-portrait', () => {
     const { bin, log } = rig()
     expect(run(bin, ['U', 'fl']).out).toBe('LCD')
-    expect(calls(log)).toEqual(['hinge -d U close', 'hinge -d U orient landscape-left'])
+    expect(calls(log)).toEqual(['hinge -d U -t 5 close', 'hinge -d U -t 5 orient landscape-left'])
     const second = rig()
     expect(run(second.bin, ['U', 'up']).out).toBe('LCD-1')
-    expect(calls(second.log)).toEqual(['hinge -d U open', 'hinge -d U orient landscape-left'])
+    expect(calls(second.log)).toEqual(['hinge -d U -t 5 open', 'hinge -d U -t 5 orient landscape-left'])
   })
 
   it('unfolded opens and lights the inner panel', () => {
     const { bin, log } = rig()
     expect(run(bin, ['U', 'ul']).out).toBe('LCD-1')
-    expect(calls(log)).toEqual(['hinge -d U open', 'hinge -d U orient portrait'])
+    expect(calls(log)).toEqual(['hinge -d U -t 5 open', 'hinge -d U -t 5 orient portrait'])
   })
 
   it('half-open closes first, then 130: the lit panel is path-dependent above 100°', () => {
     const { bin, log } = rig()
     expect(run(bin, ['U', 'half-open']).out).toBe('LCD-1')
-    expect(calls(log)).toEqual(['hinge -d U close', 'hinge -d U 130', 'hinge -d U orient portrait'])
+    expect(calls(log)).toEqual(['hinge -d U -t 5 close', 'hinge -d U -t 5 130', 'hinge -d U -t 5 orient portrait'])
+  })
+
+  it('a turned device goes back to portrait before the angle moves: up, then fl', () => {
+    const { bin, log } = rig()
+    run(bin, ['U', 'up'])
+    writeFileSync(log, '')
+    expect(run(bin, ['U', 'fl']).out).toBe('LCD')
+    expect(calls(log)).toEqual(['hinge -d U -t 5 orient portrait', 'hinge -d U -t 5 close', 'hinge -d U -t 5 orient landscape-left'])
+    // Only the orientation changes: no detour through portrait.
+    writeFileSync(log, '')
+    run(bin, ['U', 'folded'])
+    expect(calls(log)).toEqual(['hinge -d U -t 5 close', 'hinge -d U -t 5 orient portrait'])
+  })
+
+  it('a hinge call that times out is tried once more', () => {
+    const { bin, log } = rig()
+    writeFileSync(join(bin, 'fail-once'), '')
+    expect(run(bin, ['U', 'folded'])).toMatchObject({ status: 0, out: 'LCD' })
+    expect(calls(log)).toEqual(['hinge -d U -t 5 close', 'hinge -d U -t 5 close', 'hinge -d U -t 5 orient portrait'])
   })
 
   it('a pose whose panel never lights fails after the budget, naming what it read', () => {
