@@ -26,7 +26,7 @@ function pick(dir: string, env: Record<string, string> = {}) {
   return { status: r.status, out: r.stdout.trim(), err: r.stderr.trim() }
 }
 
-describe('scripts/ios-xcode.sh', () => {
+describe('scripts/ios-xcode.sh', { timeout: 60_000 }, () => {
   it('picks the highest version, not the last file name: 27.1 release over the 27.0 beta', () => {
     const dir = apps({ 'Xcode-beta.app': '27.0', 'Xcode.app': '27.1' })
     expect(pick(dir)).toEqual({ status: 0, out: join(dir, 'Xcode.app', 'Contents', 'Developer'), err: '' })

@@ -81,7 +81,8 @@ function run(w: World, args: string[] = []) {
   return { status: r.status, lines: r.stdout.trim().split('\n'), err: r.stderr.trim() }
 }
 
-describe('scripts/ios-duo-check.sh', () => {
+// Each case runs the script, which spawns python several times: generous under a loaded gate.
+describe('scripts/ios-duo-check.sh', { timeout: 60_000 }, () => {
   it('every item present: six ok lines, exit 0', () => {
     const r = run({})
     expect(r.status).toBe(0)
@@ -120,13 +121,23 @@ describe('scripts/ios-duo-check.sh', () => {
     expect(run({ sim: false, runtime: '' }, ['--create']).lines.some((l) => l.startsWith('created'))).toBe(false)
   })
 
-  it('--device: the physical Duo, connected, with a compatible DDI; the simulator never counts', () => {
-    expect(run({ phone: 'connected' }, ['--device'])).toMatchObject({ status: 0 })
-    expect(run({ phone: 'connected' }, ['--device']).lines[6]).toContain('Duo PHONE-1 connected, iOS 27.2, DDI compatible')
+  it('--device: the physical Duo, connected, with a compatible DDI', () => {
+    const r = run({ phone: 'connected' }, ['--device'])
+    expect(r.status).toBe(0)
+    expect(r.lines[6]).toContain('Duo PHONE-1 connected, iOS 27.2, DDI compatible')
+  })
+
+  it('--device: the simulator never counts; no phone is exit 2', () => {
     const none = run({ phone: 'none' }, ['--device'])
     expect(none.status).toBe(2)
     expect(none.lines[6]).toContain('no iPhone19,4')
+  })
+
+  it('--device: a phone that is only paired is named with its state', () => {
     expect(run({ phone: 'disconnected' }, ['--device']).lines[6]).toContain('PHONE-1 is disconnected (iOS 27.2)')
+  })
+
+  it('--device: a DDI the phone refuses, or no answer, names the fix', () => {
     expect(run({ phone: 'connected', ddi: 'bad' }, ['--device']).lines[6]).toContain('DDI is not compatible')
     expect(run({ phone: 'connected', ddi: 'none' }, ['--device']).lines[6]).toContain('ddiServices did not answer')
   })

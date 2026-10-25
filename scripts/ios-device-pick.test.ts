@@ -29,7 +29,7 @@ const proMax: Row = { id: 'PRO-MAX', model: 'iPhone18,2', os: '27.2' }
 const sim: Row = { id: 'SIM', model: 'iPhone19,4', reality: 'simulated', tunnel: 'connected', os: '27.1' }
 const tv: Row = { id: 'TV', model: 'AppleTV14,1', type: 'appleTV' }
 
-describe('scripts/lib/pick-device.py', () => {
+describe('scripts/lib/pick-device.py', { timeout: 60_000 }, () => {
   it('the first paired iPhone when nothing narrows it; never a simulator or an Apple TV', () => {
     expect(pick([tv, sim, proMax, duo])).toBe('PRO-MAX')
   })

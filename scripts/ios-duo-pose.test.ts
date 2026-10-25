@@ -59,7 +59,7 @@ function run(bin: string, args: string[], env: Record<string, string> = {}) {
 }
 const calls = (log: string) => readFileSync(log, 'utf8').split('\n').filter((l) => l.startsWith('hinge ') && !l.includes('posture'))
 
-describe('scripts/ios-duo-pose.sh', () => {
+describe('scripts/ios-duo-pose.sh', { timeout: 60_000 }, () => {
   it('folded: close, portrait, the outer panel lit', () => {
     const { bin, log } = rig()
     expect(run(bin, ['U', 'folded'])).toMatchObject({ status: 0, out: 'LCD' })
