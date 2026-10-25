@@ -1337,7 +1337,16 @@ proof and the sizing rules; the pieces, by name:
   new-thread sheet presents from the root), and `HomeSlots`
   (Shell/HomeSlots.swift) is where sibling features plug in (host notes,
   host and project menus, project settings, the plan chip, the host's
-  trailing mark).
+  trailing mark). On the iPhone Duo (plan 1) Home and Search are each one
+  `NavigationSplitView` on a `ShellNavigator` (Shell/ShellSplit.swift,
+  ShellNavigator.swift: the sidebar's routes, the detail's root and stack,
+  `open(route)` placing a route by `ShellPaths.column(of:)`), the pose is the
+  client package's `ShellPose` published as `\.shellPose` (read it, never
+  `horizontalSizeClass`, for a shell decision), the thread strip
+  (Shell/ThreadStrip.swift over the package's `ThreadStrip`) sits above
+  Home's detail in the split, and the place is remembered under
+  `navigation.memory.v2` (`NavigationSnapshot`; the Inbox's path has its own
+  key); docs/IOS-DESIGN.md "Information architecture" and "iPhone Duo".
 - The thread screens (L4) live in `ios/TempCode/Sources/Thread/`; the entry
   the shell routes to is `ThreadScreen(client:sessionId:targetSeq:)`, one
   screen for every type and for a subagent's detail. Its frame (the header

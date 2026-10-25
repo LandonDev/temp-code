@@ -28,6 +28,8 @@ Sources/TempCodeClient
                 children, the host of a path), TranscriptRows (entries → the list's rows:
                 items, activity groups, turn ends), ToolPhrase (the desktop's toolPhrase.ts),
                 Batch (MasterBoard, BatchSteps, RulesEdit, BoardActions: the master board)
+  Shell/        HomeSections, ThreadGroups, HomeModel, HostPresentation, ProjectLinks, FailureCue,
+                DuoLayout, and the shell's shape: Routes, ShellPose, ShellPaths, ThreadStrip
   Design/       TimeFormat, ModelName, CompactNumber, ThreadRowModel: the design kit's pure
                 logic, tested here; the app's Design/ holds the views
   Support/      SocketClock (SystemClock, ManualClock)
@@ -281,6 +283,21 @@ row. Home folds with the same keys (`HomeSections.workspaces(of:)`, a
 `HomeProject` per linked project with every copy's threads mixed by
 recency through `HomeSections.mixed`); `Route.workspace(key:)` and
 `Route.project(key:)` carry those keys.
+
+**The shell's shape** (Shell/Routes.swift, ShellPose.swift, ShellPaths.swift,
+ThreadStrip.swift): `Route` and `AppTab` are the app's routes, here so the
+memory is a pure value. `ShellPose.of(horizontal:vertical:size:)` is the
+layout rule (compact width `.stack(short:)`, regular width
+`.split(sidebar:)` tiled when wider than tall, overlay when taller;
+`titleDisplay` is inline only on the short stack). `ShellPaths.column(of:)`
+puts each route in the sidebar or the detail; `ColumnMemory` and
+`NavigationSnapshot` (key `navigation.memory.v2`) are what the app writes per
+tab. `ThreadStrip.scope(for:hosts:)` is the open thread's project (linked
+copies mixed), else its workspace's chats, else its host's loose chats, with
+the lead copy for `+`; `chips(scope:open:)` lists the live roots freshest
+first and keeps the open one. `ThreadGroups.isLive` is the one live rule,
+shared with `HomeSections.isActive`. Suites: ShellPoseTests,
+ShellPathsTests, ThreadStripTests.
 
 **ProjectLinks** (Shell/ProjectLinks.swift): `settingsHome(_:platformOf:)`
 is src/shared/projectLinks.ts `settingsHomeOf` (the copy off `darwin`; two of

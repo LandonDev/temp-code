@@ -121,14 +121,69 @@ are the only rows with an entrance (`Motion.appear`), and nothing animates
 in the first 300 ms after the cached paint. The archived lists share the
 project rows' type and the thread rows.
 
+**Unfolded: the split.** Home and Search are each one `NavigationSplitView`
+in every pose (Shell/ShellSplit.swift), collapsed to the stacks above in
+compact width and expanded beside the detail in regular width, so a fold
+changes a size and nothing else. Each runs on a `ShellNavigator`
+(Shell/ShellNavigator.swift): the sidebar's routes, the route at the
+detail's root, and what the detail pushed over it. Every tap in a list goes
+through `open(route)`, which places the route by its column
+(`ShellPaths.column(of:)` in the client package): a workspace, a project and
+the archived lists push in the sidebar; a thread, Settings and Hosts replace
+the detail's root and clear its stack. Collapsed, the detail sits on top of
+the sidebar's stack and Back from it clears it. The Inbox keeps its own
+split over one typed path (`InboxScreen`, "iPhone Duo" below).
+
+The pose is the client package's `ShellPose`, decided once at RootView from
+the window's size classes and its own bounds and published as `\.shellPose`:
+compact width is `.stack(short:)` (short when the height is compact too, the
+folded landscape pose, where every list title is inline); regular width is
+`.split(sidebar:)`, the sidebar tiled beside the detail when the window is
+wider than tall and over it behind the system toggle when taller. A screen
+reads `\.shellPose`, never `horizontalSizeClass`, for a shell decision; the
+detail column's own size class is the system's and is not promised.
+`columnVisibility` always carries the expanded preference (the remembered
+toggle), so the sidebar arrives with the expansion. In the overlay pose a
+pick hides the sidebar, as Mail's does. While the hinge is half open
+(`UIHingeInteraction`, iOS 27.1) the sidebar's ideal width is the window's
+centre line, so the seam sits on the fold.
+
+The sidebar is Home's three levels unchanged; at the workspace level the
+title is a menu (`toolbarTitleMenu`) of every Home entry with the current
+one checked, left out when there is one, and a pick swaps the sidebar's path
+and leaves the detail alone. Its chevron shows on the inline title. In the
+split the row whose thread is the detail's root sits on `Surface.fill`.
+The detail reads "No Thread Selected" (Home) or "No Result Selected"
+(Search) when nothing is open, a title alone. Above Home's detail, in the
+split poses only, the thread strip (Shell/ThreadStrip.swift over the client
+package's `ThreadStrip`) is one 40 pt row of chips: the open thread's
+project's live roots (`ThreadGroups.isLive`, pinned included), every linked
+copy mixed, freshest first, the open thread kept when dormant, then `+` for a
+new thread in that project; a chat with no project lists its workspace's
+chats, a loose chat its host's. A chip is the type glyph, the title
+(semibold while unseen), the host glyph with two or more hosts and the
+spinner while running, on the fill when selected; its long press is the
+row's menu. The thread screen keeps its tab bar in the split (hiding it
+would hide the vertical rail for every tab) and hides it in compact as
+before.
+
+Memory is `navigation.memory.v2` (`NavigationSnapshot` in the client
+package): per tab the sidebar's routes, the detail's root and its stack,
+plus the overlay toggle; the Inbox's path has its own key. One snapshot
+opens the same place folded or unfolded. The outer display allows portrait
+and both landscapes; the inner display ignores the key.
+
 **Furniture** (ios/TempCode/Sources/Shell/): HomeView.swift (level 1),
 WorkspaceScreen.swift, ProjectScreen.swift, ShellRows.swift (the rail
 mark, the working line, the thread and project rows, the project menu, the
 cue loader, `NewThreadPresenter`: the new-thread sheet presents from the
 root so any level can open it), HomeRows.swift (the clients as
-`HomeHostInput` values), HomeSlots.swift (what sibling features plug in).
-The routes are `Route.workspace(key:)` and `Route.project(key:)`, keys the
-`ProjectPairs` fold keys.
+`HomeHostInput` values), HomeSlots.swift (what sibling features plug in),
+ShellSplit.swift, ShellNavigator.swift, ShellPoseEnvironment.swift and
+ThreadStrip.swift (the split, its navigator, the pose seam, the strip).
+`Route` and `AppTab` live in the client package (Shell/Routes.swift) beside
+`ShellPose`, `ShellPaths` and `ThreadStrip`; `Route.workspace(key:)` and
+`Route.project(key:)` carry the `ProjectPairs` fold keys.
 
 **Project settings.** The project's menu opens the sheet
 (`Shell/ProjectSettingsSheet.swift`, presented from the root through
@@ -1911,7 +1966,39 @@ the Duo the system lays a navigation stack's and the tab bar's bars out in a
 vertical rail (on the outer display too), leaves a title-only item out of
 it, and reports zero-height keyboards around a fold. This section is the
 sheets, the bars, Settings, the Inbox, Search, pairing, the fleet switches
-and push; the shell's shape and the thread screen have their own.
+and push; the thread screen has its own.
+
+**The shell by size class.** The phone chooses its shape from the window's
+size classes and its own bounds, never from the idiom, the orientation or
+`UIScreen.main`: compact width is the three stacks (the outer display; short
+titles when the height is compact too, the folded landscape pose); regular
+width is a split per tab, the sidebar tiled beside the detail when the
+window is wider than tall (unfolded landscape) and overlaid behind the
+system toggle when taller than wide (unfolded portrait). The rule is the
+client package's `ShellPose`; the shell publishes it as `\.shellPose` and
+every screen reads that, never `horizontalSizeClass`, for a shell decision.
+
+**One split, both shapes.** Home and Search are each one
+`NavigationSplitView` that collapses and expands on its own, so a fold is a
+size change and nothing else: the paths, the open thread and everything it
+holds (a typed draft, a rename, the segment) are the same values before and
+after. `columnVisibility` always carries the expanded preference, so the
+sidebar arrives with the expansion and never flickers in. The sidebar is
+Home's three levels; at the workspace level its title is a menu of the
+workspaces. The detail holds the thread or Settings, and reads "No Thread
+Selected" when nothing is open.
+
+**The thread strip.** Unfolded, one row of chips above the thread lists the
+open thread's project's live roots, freshest first, the open thread kept
+even when dormant, then `+`: the desktop's strip, which is the project's
+threads and not a set of open tabs. Folded there is no strip.
+
+**Memory.** `navigation.memory.v2` keeps, per tab, the sidebar path, the
+detail root and the detail stack, plus the overlay toggle; one snapshot
+opens the same place folded or unfolded.
+
+**Orientation.** The outer display allows portrait and both landscapes; the
+inner display ignores the key.
 
 **Sheets.** Every sheet is shaped by one rule, `SheetRules.shape(kind, in:
 window)` in the client package (`Shell/DuoLayout.swift`), applied by
