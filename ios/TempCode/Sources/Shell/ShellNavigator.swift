@@ -45,6 +45,9 @@ final class ShellNavigator {
     }
 
     /// Back to the tab's root with nothing open.
+    /// The sidebar's routes, the detail's root and the detail's stack, counted.
+    var depth: Int { sidebarPath.count + (detailRoot == nil ? 0 : 1) + detailStack.count }
+
     func popToRoot() {
         sidebarPath = []
         detailRoot = nil

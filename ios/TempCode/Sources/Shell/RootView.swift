@@ -103,7 +103,7 @@ struct RootView: View {
             // The restored stacks are built by now; anything pushed from here keeps the row it names.
             LaunchRestore.end()
             #if DEBUG
-            LayoutProbe.route(tab: tab.rawValue, depth: focusedPath.count)
+            LayoutProbe.route(tab: tab.rawValue, depth: focusedDepth)
             #endif
             await followLaunchRoute()
         }
@@ -161,16 +161,17 @@ struct RootView: View {
         NavigationMemory.save(snapshot, inbox: InboxRoute.remembered(inboxPath))
         reportVisibility()
         #if DEBUG
-        LayoutProbe.route(tab: tab.rawValue, depth: focusedPath.count)
+        LayoutProbe.route(tab: tab.rawValue, depth: focusedDepth)
         #endif
     }
 
-    /// The stack under the selected tab.
-    private var focusedPath: NavigationPath {
+    /// How deep the selected tab is: the sidebar's routes, the detail's root and its stack
+    /// (the same values in every pose, so a fold never changes it).
+    private var focusedDepth: Int {
         switch tab {
-        case .home: homePath
-        case .inbox: inboxPath
-        case .search: searchPath
+        case .home: home.depth
+        case .inbox: inboxPath.count
+        case .search: search.depth
         }
     }
 

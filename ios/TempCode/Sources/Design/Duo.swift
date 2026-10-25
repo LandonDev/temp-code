@@ -3,14 +3,13 @@ import UIKit
 
 // The iPhone Duo's reads, shared by the shell, the thread screen and the
 // sheets: where the fold's division band lies, whether a toolbar is drawn
-// vertically, and where a floating bar would sit. Everything that needs the
-// iOS 27.1 SDK is behind ONE compile gate (the 27.1 SDK's UIKit is module
-// version 9127.0.85; 27.0's is 9127.0.66) plus `if #available(iOS 27.1, *)`
-// at the call, so the tree builds on a 27.0 Xcode and the helpers answer
-// nil or false there. Below the gate this file has no behaviour, which is
-// why it has no tests: the rules it feeds (`ThreadPose.columns`) take the
-// band as a plain `CGRect?` and are tested in the client package. Once the
-// toolchain picker requires 27.1 (plan 4) the compile gate can go.
+// vertically, and where a floating bar would sit. Every 27.1 symbol sits
+// under a runtime `if #available(iOS 27.1, *)` and nothing else: the app
+// target needs Xcode 27.1, which scripts/ios-xcode.sh enforces, so there is
+// no compile-time SDK gate. Before 27.1 the helpers answer nil or false and
+// this file has no behaviour, which is why it has no tests: the rules it
+// feeds (`ThreadPose.columns`) take the band as a plain `CGRect?` and are
+// tested in the client package.
 //
 // Nothing here reads the device, its orientation or `UIScreen.main`: the
 // band comes from the view's own geometry proxy, the bar edge from the
@@ -23,11 +22,9 @@ enum Duo {
     /// in points from the leading edge). Nil below 27.1 and nil with no
     /// active band.
     static func divisionBand(_ proxy: GeometryProxy) -> CGRect? {
-        #if canImport(UIKit, _version: 9127.0.85)
         if #available(iOS 27.1, *) {
             return proxy.reservedRegions(kind: .division, layoutDirectionBehavior: .fixed).first { $0.isActive }?.frame
         }
-        #endif
         return nil
     }
 
@@ -36,11 +33,9 @@ enum Duo {
     /// `toolbarVerticalEdge` on 27.1, false before. Meaningful inside a
     /// toolbar item's content, where the system sets the value.
     static func inVerticalBar(_ environment: EnvironmentValues) -> Bool {
-        #if canImport(UIKit, _version: 9127.0.85)
         if #available(iOS 27.1, *) {
             return environment.toolbarVerticalEdge != nil
         }
-        #endif
         return false
     }
 
@@ -74,15 +69,11 @@ extension View {
     /// only, per Apple: here a counter the geometry re-reads the band on.
     @ViewBuilder
     func onDuoHingeChange(_ action: @escaping () -> Void) -> some View {
-        #if canImport(UIKit, _version: 9127.0.85)
         if #available(iOS 27.1, *) {
             onHingeChange { _, _ in action() }
         } else {
             self
         }
-        #else
-        self
-        #endif
     }
 }
 
@@ -139,11 +130,9 @@ struct BarRegionProbe: UIViewRepresentable {
         func measure() {
             guard let window else { return }
             var region: CGFloat = 0
-            #if canImport(UIKit, _version: 9127.0.85)
             if #available(iOS 27.1, *) {
                 region = window.edgeInsets(for: .bar(onEdge: UIRectEdge.bottom, extent: Duo.barExtent)).bottom
             }
-            #endif
             let safeArea = window.safeAreaInsets.bottom
             guard region != lastRegion || safeArea != lastSafeArea else { return }
             lastRegion = region

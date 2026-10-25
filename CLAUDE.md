@@ -1361,7 +1361,7 @@ proof and the sizing rules; the pieces, by name:
   `Rendering/ThreadPose.swift` (`ThreadPose`, `TwoPaneColumns`,
   `ReadingMeasure`, `TranscriptReflow`, tested in ThreadPoseTests), and the
   27.1 reads (`Duo.divisionBand`, `\.tcVerticalBar`, `BarRegionProbe`) are
-  `Design/Duo.swift` behind the SDK gate (docs/IOS-DESIGN.md "The thread
+  `Design/Duo.swift` behind a runtime `#available` (docs/IOS-DESIGN.md "The thread
   screen on the iPhone Duo"). The models they read
   are the client package's `Rendering/`: `ThreadFold` (the desktop's fold
   with round, todo and pass stamps and the `BoardState` of todos.ts; a

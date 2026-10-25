@@ -481,7 +481,7 @@ than the window). The rules are the client package's
 `Rendering/ThreadPose.swift` (`ThreadPose`, `TwoPaneColumns`,
 `ReadingMeasure`, `TranscriptReflow`; `ThreadPoseTests`); the 27.1 reads
 (the division band, the vertical bar, the bar region) are
-`Design/Duo.swift` behind the SDK gate. The four poses:
+`Design/Duo.swift` behind a runtime `#available(iOS 27.1, *)`. The four poses:
 
 | Pose | Window | The screen's own column | What it does |
 | --- | --- | --- | --- |
