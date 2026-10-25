@@ -70,8 +70,29 @@
 #           for 60 s and brought back, then killed and cold-launched plainly
 #           so it restores that thread from its saved stack. Each step's
 #           transcript-report.json (atBottom) lands in return-*.json.
+#   duo     The iPhone Duo in every pose (docs/IOS-DESIGN.md "iPhone Duo"): for
+#           folded, unfolded, unfolded-portrait and folded-landscape, light Home,
+#           the thread (TC_TEST_THREAD, chat), Inbox, Search and Settings, dark
+#           Home and the thread, then what plans 1-3 add in duo_shots_shell,
+#           duo_shots_thread and duo_shots_sheets; half-open: the thread; then
+#           duo_fold_cycle (one launch of the 2,000-row chat folded and unfolded
+#           twice with the app running, four shots, a .mov of the unfold, the
+#           layout events asserted). Every shot's layout report must match the
+#           pose's row (pose_check); the set fails on the first that does not.
 #   all     shell, threads, scroll, actions and push (the default).
 # TC_SIM="TempCode L3" picks a device by name (default iPhone 17 Pro); TC_SIM_UDID one by id.
+# TC_DUO_POSE=<pose> is the iPhone Duo axis for ANY set: the device defaults to
+# "TempCode Duo" (bun run ios:duo:check -- --create makes it; the proof never
+# does), the check runs first, the simulator is put in that pose before the
+# first shot (folded|fp, folded-landscape|fl, unfolded|ul, unfolded-portrait|up,
+# half-open|ho; scripts/ios-duo-pose.sh), every shot captures the LIT panel
+# (`simctl io … --display=`: the default capture is the dark inner panel when
+# folded, a valid black PNG), shots land in $OUT/shots/<pose>/, each shot's
+# layout-report.json in $OUT/layout/<pose>/<name>.json, and pose_check holds
+# the report and the PNG to the pose's row. `fold <pose>` inside a set moves
+# the device with the app running. scripts/ios-sim-proof-local.ts passes the
+# environment through unchanged, so `TC_DUO_POSE=unfolded TC_PROOF_SET=features
+# bun scripts/ios-sim-proof-local.ts` is the whole invocation.
 #
 # simctl drives it rather than XCUITest: with the Command Line Tools selected
 # as the developer directory, xcodebuild's test runner cannot reach the
@@ -83,7 +104,23 @@ cd "$here/../ios/TempCode"
 # The Xcode: scripts/ios-xcode.sh (DEVELOPER_DIR passes through; else the highest-versioned bundle, 27.1 at least).
 DEVELOPER_DIR=$("$here/ios-xcode.sh")
 export DEVELOPER_DIR
-SIM=${TC_SIM:-iPhone 17 Pro}
+# The iPhone Duo axis (TC_DUO_POSE): the Duo simulator, the prerequisite check, the pose table.
+POSE=""; LIT=""
+duo_canonical() {
+  case "$1" in
+    folded|fp) echo folded ;; folded-landscape|fl) echo folded-landscape ;;
+    unfolded|ul) echo unfolded ;; unfolded-portrait|up) echo unfolded-portrait ;;
+    half-open|ho) echo half-open ;; *) return 1 ;;
+  esac
+}
+# The duo set is the axis itself: it starts unfolded unless told otherwise.
+[ "${TC_PROOF_SET:-all}" = duo ] && TC_DUO_POSE=${TC_DUO_POSE:-unfolded}
+if [ -n "${TC_DUO_POSE:-}" ]; then
+  POSE=$(duo_canonical "$TC_DUO_POSE") || { echo "ios-sim-proof: unknown TC_DUO_POSE $TC_DUO_POSE (folded|fp, folded-landscape|fl, unfolded|ul, unfolded-portrait|up, half-open|ho)" >&2; exit 2; }
+  "$here/ios-duo-check.sh" || { echo "ios-sim-proof: the Duo check failed; fix the MISSING lines above" >&2; exit 2; }
+fi
+SIM=${TC_SIM:-${POSE:+TempCode Duo}}
+SIM=${SIM:-iPhone 17 Pro}
 OUT=${TC_PROOF_DIR:-/tmp/tc-ios-proof}
 SETTLE=${TC_PROOF_SETTLE:-10}
 A11Y_SIZE=${TC_PROOF_A11Y_SIZE:-accessibility-large}
@@ -92,7 +129,7 @@ DERIVED=${TC_PROOF_DERIVED_DATA:-$OUT/DerivedData}
 BUNDLE=dev.landon.tempcode.ios
 mkdir -p "$OUT"
 # Rebuild incrementally, but never carry a report or screenshot into a new pass.
-rm -rf "$OUT/shots"
+rm -rf "$OUT/shots" "$OUT/layout" "$OUT"/*.mov
 rm -f "$OUT"/*.json "$OUT/scroll-sample.txt"
 mkdir -p "$OUT/shots"
 scrub() { sed -E -e 's#pair\#[A-Za-z0-9-]+#pair\#<code>#g' -e 's#tc_[A-Za-z0-9]+\.[A-Za-z0-9_-]+#tc_<key>#g'; }
@@ -138,11 +175,83 @@ restore() {
 }
 trap restore EXIT
 
+# The Duo axis. `fold <pose>` puts the simulator in a pose (before a launch or
+# with the app running) and remembers the pose and its lit panel; `snap <name>`
+# captures the lit panel and the app's layout report without a launch and
+# checks both against the pose's row; `duo_shot` is `shot` under the axis, the
+# one helper plans 1-3 add lines to (the directory is the pose, so one name in
+# two poses never collides).
+# A pose that never settles is the guest's panel switch stuck (scripts/ios-duo-pose.sh's
+# header): between shots `fold` reboots the simulator once and tries again; with the app
+# running (`fold <pose> live`, the fold cycle) a reboot would void the run, so it fails.
+fold() {
+  POSE=$(duo_canonical "$1") || { echo "ios-sim-proof: unknown pose $1" >&2; exit 2; }
+  if ! LIT=$("$here/ios-duo-pose.sh" "$TC_SIM_UDID" "$POSE"); then
+    [ "${2:-}" = live ] && { echo "ios-sim-proof: $POSE did not settle with the app running" >&2; exit 1; }
+    echo "ios-sim-proof: $POSE did not settle; rebooting the simulator once" >&2
+    xcrun simctl shutdown "$TC_SIM_UDID" >/dev/null 2>&1 || true
+    xcrun simctl boot "$TC_SIM_UDID" && xcrun simctl bootstatus "$TC_SIM_UDID" -b >/dev/null
+    sleep 8
+    xcrun simctl status_bar "$TC_SIM_UDID" override --time "9:41" --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3 >/dev/null 2>&1 || true
+    LIT=$("$here/ios-duo-pose.sh" "$TC_SIM_UDID" "$POSE")
+  fi
+  echo "ios-sim-proof: fold $POSE ($LIT lit)"
+}
+# The report's window, size classes and classified pose must be the row for $POSE, and the
+# PNG the window times the scale (± 1 px: the inner panel's one-pixel axis difference).
+pose_check() {
+  local png=$1 report=$2 label=$3
+  python3 - "$png" "$report" "$POSE" "$label" <<'CHECK'
+import json, struct, sys
+png, report, pose, label = sys.argv[1:5]
+rows = {
+    'folded': (466, 678, 'compact', 'regular'),
+    'folded-landscape': (678, 466, 'compact', 'compact'),
+    'unfolded': (951, 669, 'regular', 'regular'),
+    'unfolded-portrait': (669, 951, 'regular', 'regular'),
+    'half-open': (951, 669, 'regular', 'regular'),
+}
+w, h, hs, vs = rows[pose]
+try:
+    r = json.load(open(report))
+except Exception as e:
+    print(f'ios-sim-proof: {pose}/{label}: no layout report ({e})', file=sys.stderr); sys.exit(1)
+with open(png, 'rb') as f:
+    f.seek(16); pw, ph = struct.unpack('>II', f.read(8))
+got = (r.get('window', {}).get('w'), r.get('window', {}).get('h'), r.get('hSize'), r.get('vSize'))
+ok = got == (w, h, hs, vs) and r.get('classified') == pose and abs(pw - w * 3) <= 1 and abs(ph - h * 3) <= 1
+line = f"{pose}/{label} {got[0]}×{got[1]} {got[2]}×{got[3]} png {pw}×{ph} classified {r.get('classified')} hinge {(r.get('hinge') or {}).get('state')}"
+if not ok:
+    print(f'ios-sim-proof: POSE MISMATCH {line}', file=sys.stderr)
+    print(f'ios-sim-proof: expected {pose} {w}×{h} {hs}×{vs} png {w*3}×{h*3}', file=sys.stderr)
+    print(json.dumps(r, indent=1, sort_keys=True), file=sys.stderr)
+    sys.exit(1)
+print(f'ios-sim-proof: {line} ok')
+CHECK
+}
+# A capture with no launch: the shot and the report go under the pose's directories.
+snap() {
+  local name=$1
+  if [ -n "$POSE" ]; then
+    mkdir -p "$OUT/shots/$POSE" "$OUT/layout/$POSE"
+    xcrun simctl io "$TC_SIM_UDID" screenshot --display="$LIT" --type png "$OUT/shots/$POSE/$name.png" >/dev/null 2>&1
+    local container
+    container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data 2>/dev/null || true)
+    [ -n "$container" ] && cp "$container/Documents/layout-report.json" "$OUT/layout/$POSE/$name.json" 2>/dev/null || true
+    pose_check "$OUT/shots/$POSE/$name.png" "$OUT/layout/$POSE/$name.json" "$name"
+  else
+    xcrun simctl io "$TC_SIM_UDID" screenshot --type png "$OUT/shots/$name.png" >/dev/null 2>&1
+    echo "ios-sim-proof: $name"
+  fi
+}
+duo_shot() { shot "$@"; }
+
 # One launch per shot. The pairing happens on the first; the key then sits in
 # the simulator's keychain and the app routes itself to the asked screen.
 #   shot <name> <route> [thread part] [segment] [open] [settle]
 shot() {
   local name=$1 route=$2 thread=${3:-${TC_TEST_THREAD:-}} segment=${4:-} open=${5:-} settle=${6:-$SETTLE}
+  SIMCTL_CHILD_TC_DUO_POSE="$POSE" \
   SIMCTL_CHILD_TC_TEST_PAIR_LINK="${TC_TEST_PAIR_LINK:-}" \
   SIMCTL_CHILD_TC_TEST_PAIR_NAME="${TC_TEST_PAIR_NAME:-}" \
   SIMCTL_CHILD_TC_TEST_PAIR_LINK_SECOND="${TC_PAIR_SECOND:-}" \
@@ -168,10 +277,12 @@ shot() {
     fi
   fi
   sleep "$settle"
-  xcrun simctl io "$TC_SIM_UDID" screenshot --type png "$OUT/shots/$name.png" >/dev/null 2>&1
-  echo "ios-sim-proof: $name"
+  snap "$name"
 }
 appearance() { xcrun simctl ui "$TC_SIM_UDID" appearance "$1" >/dev/null 2>&1 || true; }
+
+# Under the Duo axis the device takes the asked pose before the first launch.
+[ -n "$POSE" ] && fold "$POSE"
 
 # The first launch pairs. The app logs the outcome under its subsystem (never
 # the code or a key); read it back, try once more if nothing landed, and stop
@@ -197,7 +308,7 @@ pair() {
 }
 if [ -n "${TC_TEST_PAIR_LINK:-}" ]; then
   pair || { echo "ios-sim-proof: the app did not pair" >&2; exit 3; }
-  rm -f "$OUT/shots/00-pairing.png"
+  rm -f "$OUT/shots/00-pairing.png" "$OUT/shots/$POSE/00-pairing.png" "$OUT/layout/$POSE/00-pairing.json"
 fi
 
 shell_set() {
@@ -664,7 +775,98 @@ return_set() {
   transcript_report return-cold
 }
 
+# The iPhone Duo set. Plans 1-3 add their shots inside the three functions
+# (called once per pose with the pose in $POSE); the seed list is this file's.
+duo_shots_shell() { :; }   # plan 1: the shell in every pose
+duo_shots_thread() { :; }  # plan 2: the thread screen in every pose
+duo_shots_sheets() { :; }  # plan 3: sheets, Settings, Inbox, Search and the bars
+duo_set() {
+  xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
+  local pose
+  for pose in folded unfolded unfolded-portrait folded-landscape; do
+    fold "$pose"
+    appearance light
+    duo_shot home-light home
+    duo_shot thread-light thread "" chat
+    duo_shot inbox-light inbox
+    duo_shot search-light search
+    duo_shot settings-light settings
+    appearance dark
+    duo_shot home-dark home
+    duo_shot thread-dark thread "" chat
+    appearance light
+    duo_shots_shell
+    duo_shots_thread
+    duo_shots_sheets
+  done
+  fold half-open
+  duo_shot thread-light thread "" chat
+  duo_shots_thread
+  duo_fold_cycle
+  echo "ios-sim-proof: duo set PASS ($(find "$OUT/layout" -name '*.json' | wc -l | tr -d ' ') pose checks); shots in $OUT/shots/<pose>/, reports in $OUT/layout/<pose>/"
+}
+
+# The fold cycle: one launch of the 2,000-row chat, folded and unfolded twice
+# with the app running, four shots, the unfold recorded, the layout events
+# asserted. The draft step (TC_TEST_ACTION=draft:<text>) is plan 2's: until
+# it lands the cycle runs with an empty composer and says so.
+duo_fold_cycle() {
+  appearance light
+  fold ul
+  echo "ios-sim-proof: fold cycle (draft step: not yet, plan 2's draft: action)"
+  shot cycle-1-unfolded thread "2,000 rows" chat
+  local container
+  container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data)
+  fold fp live; sleep 3; snap cycle-2-folded
+  xcrun simctl io "$TC_SIM_UDID" recordVideo --display=LCD-1 --codec h264 --force "$OUT/cycle-unfold.mov" >/dev/null 2>"$OUT/record.err" &
+  local recorder=$!
+  sleep 1
+  fold ul live; sleep 3; snap cycle-3-unfolded
+  kill -INT "$recorder" 2>/dev/null; wait "$recorder" 2>/dev/null || true
+  rm -f "$OUT/record.err"
+  fold fp live; sleep 3; snap cycle-4-folded
+  cp "$container/Documents/layout-events.json" "$OUT/layout/cycle-events.json"
+  python3 - "$OUT/layout" <<'CHECK'
+import json, pathlib, sys
+out = pathlib.Path(sys.argv[1])
+A = json.loads((out / 'unfolded' / 'cycle-1-unfolded.json').read_text())
+B = json.loads((out / 'folded' / 'cycle-2-folded.json').read_text())
+C = json.loads((out / 'unfolded' / 'cycle-3-unfolded.json').read_text())
+D = json.loads((out / 'folded' / 'cycle-4-folded.json').read_text())
+events = json.loads((out / 'cycle-events.json').read_text())
+# The stack and the thread survived every change.
+routes = [r['route'] for r in (A, B, C, D)]
+assert all(r == routes[0] for r in routes), routes
+assert routes[0].get('thread') and routes[0].get('segment') == 'chat', routes[0]
+# A thread comes back at its bottom; a width change is a come-back.
+for name, r in (('B', B), ('C', C), ('D', D)):
+    assert r.get('transcriptAtBottom') == 1, (name, r.get('transcriptAtBottom'))
+# The draft survives (plan 2 writes notes.draftChars).
+drafts = {r.get('notes', {}).get('draftChars') for r in (A, B, C, D)}
+assert len(drafts) == 1, drafts
+# Each step is exactly one hSize flip and one window change; a second flip inside a step is the flicker.
+steps = [(A['t'], B['t'], 'regular', 'compact', '466x678'), (B['t'], C['t'], 'compact', 'regular', '951x669'), (C['t'], D['t'], 'regular', 'compact', '466x678')]
+for start, end, frm, to, window in steps:
+    inside = [e for e in events if start < e['t'] <= end]
+    flips = [e for e in inside if e['key'] == 'hSize']
+    assert len(flips) == 1 and flips[0]['from'] == frm and flips[0]['to'] == to, (start, end, flips)
+    windows = [e for e in inside if e['key'] == 'window']
+    assert len(windows) == 1 and windows[0]['to'] == window, (start, end, windows)
+# The sidebar (plan 1 writes notes.sidebar): never a frame without it.
+sidebar = [e for e in events if e['key'] == 'sidebar']
+if sidebar:
+    for start, end, frm, to in ((A['t'], B['t'], 'visible', 'hidden'), (B['t'], C['t'], 'hidden', 'visible'), (C['t'], D['t'], 'visible', 'hidden')):
+        inside = [e for e in sidebar if start < e['t'] <= end]
+        assert len(inside) == 1 and inside[0]['from'] == frm and inside[0]['to'] == to, (start, end, inside)
+    print('ios-sim-proof: fold cycle PASS (route kept, at bottom after every fold, one flip per step, sidebar once per step)')
+else:
+    print('ios-sim-proof: fold cycle PASS (route kept, at bottom after every fold, one flip per step; sidebar: not reported)')
+CHECK
+  echo "ios-sim-proof: the unfold is recorded in $OUT/cycle-unfold.mov"
+}
+
 case "$SET" in
+  duo) duo_set ;;
   f4) f4_set ;;
   settings) settings_set ;;
   diff) diff_set ;;
