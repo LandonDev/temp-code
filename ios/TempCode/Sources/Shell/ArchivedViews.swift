@@ -7,7 +7,6 @@ import TempCodeContract
 struct ArchivedThreadsView: View {
     let client: EnvironmentClient
     let projectId: String
-    @Binding var path: NavigationPath
 
     var body: some View {
         let project = client.projects.first { $0.id == projectId }
@@ -15,7 +14,7 @@ struct ArchivedThreadsView: View {
         List {
             Section {
                 ForEach(threads, id: \.id) { meta in
-                    ThreadButton(client: client, sessionId: meta.id, model: ThreadRowModel(session: meta), path: $path)
+                    ThreadButton(client: client, sessionId: meta.id, model: ThreadRowModel(session: meta))
                 }
             } header: {
                 if let project {
@@ -43,9 +42,9 @@ struct ArchivedThreadsView: View {
 
 /// A workspace's archived projects, each with the threads it still holds.
 struct ArchivedProjectsView: View {
+    @Environment(ShellNavigator.self) private var navigator
     let client: EnvironmentClient
     let workspaceId: String
-    @Binding var path: NavigationPath
 
     var body: some View {
         let groups = ThreadGroups.group(client.sessions, projects: client.projects, workspaces: client.workspaces, workspaceId: workspaceId, seen: client.seen, floor: Int(client.environment.addedAt)).archived
@@ -53,10 +52,10 @@ struct ArchivedProjectsView: View {
             ForEach(groups) { group in
                 Section {
                     ForEach(group.threads) { item in
-                        ThreadButton(client: client, sessionId: item.id, model: ThreadRowModel(session: item.meta, unseen: item.unseen), path: $path)
+                        ThreadButton(client: client, sessionId: item.id, model: ThreadRowModel(session: item.meta, unseen: item.unseen))
                     }
                     if group.archivedCount > 0 {
-                        Button { path.append(Route.archivedThreads(environmentId: client.environment.id, projectId: group.id)) } label: {
+                        Button { navigator.open(.archivedThreads(environmentId: client.environment.id, projectId: group.id)) } label: {
                             DimRow(group.archivedCount == 1 ? "1 archived" : "\(group.archivedCount) archived")
                         }
                         .buttonStyle(.pressable)
@@ -92,14 +91,14 @@ struct ArchivedProjectsView: View {
 
 /// A thread row that pushes its thread.
 struct ThreadButton: View {
+    @Environment(ShellNavigator.self) private var navigator
     let client: EnvironmentClient
     let sessionId: String
     let model: ThreadRowModel
-    @Binding var path: NavigationPath
     var seq: Int? = nil
 
     var body: some View {
-        Button { path.append(Route.thread(environmentId: client.environment.id, sessionId: sessionId, seq: seq)) } label: {
+        Button { navigator.open(.thread(environmentId: client.environment.id, sessionId: sessionId, seq: seq)) } label: {
             ThreadRow(row: model)
         }
         .buttonStyle(.pressable)

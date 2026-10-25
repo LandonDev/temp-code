@@ -11,8 +11,8 @@ import TempCodeContract
 struct ProjectScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(NewThreadPresenter.self) private var presenter
+    @Environment(ShellNavigator.self) private var navigator
     let key: String
-    @Binding var path: NavigationPath
     var slots = HomeSlots()
     @State private var cues: [String: HomeModel.Cue] = [:]
 
@@ -22,13 +22,13 @@ struct ProjectScreen: View {
             if let screen {
                 Section {
                     ForEach(screen.active) { row in
-                        ShellRowView(row: row, cue: ShellCues.cue(for: row, in: cues), path: $path)
+                        ShellRowView(row: row, cue: ShellCues.cue(for: row, in: cues))
                     }
                 }
                 if !screen.dormant.isEmpty {
                     Section {
                         ForEach(screen.dormant) { row in
-                            ShellRowView(row: row, cue: ShellCues.cue(for: row, in: cues), path: $path)
+                            ShellRowView(row: row, cue: ShellCues.cue(for: row, in: cues))
                         }
                     } header: {
                         if !screen.active.isEmpty {
@@ -41,7 +41,7 @@ struct ProjectScreen: View {
                 if !screen.archived.isEmpty {
                     Section {
                         ForEach(screen.archived) { archived in
-                            Button { path.append(Route.archivedThreads(environmentId: archived.environmentId, projectId: archived.projectId)) } label: {
+                            Button { navigator.open(.archivedThreads(environmentId: archived.environmentId, projectId: archived.projectId)) } label: {
                                 HStack(spacing: 6) {
                                     DimRow(archived.count == 1 ? "1 archived" : "\(archived.count) archived")
                                     HostGlyph(environmentId: archived.environmentId)
@@ -66,7 +66,7 @@ struct ProjectScreen: View {
         }
         .needsYouCues((screen?.active ?? []) + (screen?.dormant ?? []), into: $cues)
         .navigationTitle(screen?.project.project.name ?? "")
-        .navigationBarTitleDisplayMode(.large)
+        .shellTitleDisplay()
         .toolbar {
             if let screen, let lead = lead(screen) {
                 // Three items, not a group: the chip is the first to overflow, New Thread and the menu stay.

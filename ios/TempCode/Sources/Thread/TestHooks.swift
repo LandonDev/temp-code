@@ -21,7 +21,8 @@ enum TestHooks {
     /// `source` the first source's page, `page` pushes the first agent page
     /// (html_render) full screen, `account` opens the header's
     /// account menu sheet, `composer` focuses the chat field (the keyboard
-    /// up; an operate key). On a master's board, `rules`, `add-thread`,
+    /// up; an operate key). With `TC_TEST_ROUTE=thread` in the unfolded
+    /// portrait pose, `sidebar` shows the overlay sidebar over the thread. On a master's board, `rules`, `add-thread`,
     /// `adopt` and `archive-done` open that sheet once the batch has landed.
     static let open = env["TC_TEST_OPEN"].flatMap { $0.isEmpty ? nil : $0 }
     /// Scrolls the whole transcript top and back while a display link

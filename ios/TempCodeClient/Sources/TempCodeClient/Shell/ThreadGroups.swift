@@ -142,6 +142,21 @@ public enum ThreadGroups {
         return out
     }
 
+    /// What the middle sidebar and the thread strip keep in view
+    /// (threadStripModel.ts `isLiveThread`, and pinned, which "Archive
+    /// dormant" spares): anything not settled and seen, or with live, paused
+    /// or failed work in its tree. The one live rule; `HomeSections.isActive`
+    /// is this.
+    public static func isLive(_ item: ThreadItem) -> Bool {
+        let meta = item.meta
+        return meta.pinned
+            || (meta.status != .idle && meta.status != .done)
+            || meta.treeHasLiveWork == true
+            || meta.treeHasPaused == true
+            || meta.treeCanContinue == true
+            || item.unseen
+    }
+
     /// Pinned first, then newest first.
     static func order(_ items: [ThreadItem]) -> [ThreadItem] {
         items.sorted {

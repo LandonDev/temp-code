@@ -73,27 +73,28 @@ struct WorkingLine: View {
 /// ("Approve: run bun test") and a waiting one sits on the warning tint.
 struct ShellRowView: View {
     @Environment(AppModel.self) private var model
+    @Environment(ShellNavigator.self) private var navigator
+    @Environment(\.shellPose) private var pose
     let row: ShellRow
     let cue: HomeModel.Cue?
-    @Binding var path: NavigationPath
 
     var body: some View {
         if let client = model.registry.client(row.environmentId) {
             switch row {
             case .thread(let env, let item, let depth):
-                Button { path.append(Route.thread(environmentId: env, sessionId: item.id, seq: cue?.seq)) } label: {
+                Button { navigator.open(.thread(environmentId: env, sessionId: item.id, seq: cue?.seq)) } label: {
                     ThreadRow(row: rowModel(item, depth: depth)) { HostGlyph(environmentId: env) }
                 }
                 .buttonStyle(.pressable)
                 .listRowInsets(Layout.rowInsets)
-                .listRowBackground(item.meta.status == .waiting ? Surface.needsYou : nil)
+                .listRowBackground(background(env, item))
                 // Start now on a queued root, Resume on a stopped one (thread iOS 20).
                 .threadRowActions(client: client, meta: item.meta) {
                     RowStateActions(client: client, meta: item.meta)
                     MasterPinButton(client: client, session: item.meta)
                 }
             case .more(let env, let root, let hidden):
-                Button { path.append(Route.thread(environmentId: env, sessionId: root.id, seq: nil)) } label: {
+                Button { navigator.open(.thread(environmentId: env, sessionId: root.id, seq: nil)) } label: {
                     DimRow(hidden == 1 ? "1 more" : "\(hidden) more")
                         .padding(.leading, Layout.rowTextEdge + Layout.indent)
                 }
@@ -101,6 +102,14 @@ struct ShellRowView: View {
                 .listRowInsets(Layout.rowInsets)
             }
         }
+    }
+
+    /// In the split, the row whose thread is the detail root sits on the fill,
+    /// so the sidebar says what the detail shows; a waiting thread keeps the
+    /// needs-you tint. Nothing in compact: there is no beside.
+    private func background(_ environmentId: String, _ item: ThreadItem) -> Color? {
+        if pose.isSplit, navigator.isOpen(environmentId: environmentId, sessionId: item.id) { return Surface.fill }
+        return item.meta.status == .waiting ? Surface.needsYou : nil
     }
 
     private func rowModel(_ item: ThreadItem, depth: Int) -> ThreadRowModel {
@@ -187,9 +196,9 @@ private struct ListOnScreen: ViewModifier {
 /// plan chip, the plus and the menu. One row for every host's copy.
 struct ProjectEntryRow: View {
     @Environment(AppModel.self) private var model
+    @Environment(ShellNavigator.self) private var navigator
     let project: HomeProject
     let slots: HomeSlots
-    @Binding var path: NavigationPath
     let newThread: (EnvironmentClient, WorkspaceMeta, ProjectMeta?) -> Void
 
     var body: some View {
@@ -197,7 +206,7 @@ struct ProjectEntryRow: View {
         if let client = model.registry.client(project.environmentId) {
             let workspace = client.workspaces.first { $0.id == meta.workspaceId }
             HStack(spacing: 0) {
-                Button { path.append(Route.project(key: project.id)) } label: {
+                Button { navigator.open(.project(key: project.id)) } label: {
                     VStack(alignment: .leading, spacing: 1) {
                         HStack(spacing: 6) {
                             Text(meta.name)

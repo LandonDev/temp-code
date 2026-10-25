@@ -89,6 +89,7 @@ struct InboxView: View {
             }
         }
         .navigationTitle("Inbox")
+        .shellTitleDisplay()
         .task(id: openKey(clients)) { await load(clients) }
     }
 

@@ -6,9 +6,9 @@ import TempCodeContract
 /// id, each row pushing its detail. Adding one is a sheet; pairing again and
 /// forgetting are on the detail, and also a swipe and a long press here.
 struct HostsView: View {
-    /// The stack's path: rows push `HostDetailRoute` through it, and so does
-    /// the proof's hook, so the detail is one screen however it is reached.
-    @Binding var path: NavigationPath
+    /// The detail stack: rows push `HostDetailRoute` onto it, and so does the
+    /// proof's hook, so the detail is one screen however it is reached.
+    @Environment(ShellNavigator.self) private var navigator
     @Environment(AppModel.self) private var model
     @State private var adding = false
     @State private var pairingAgain: PairedEnvironment?
@@ -83,7 +83,7 @@ struct HostsView: View {
             if TestHooks.sheet == "pair" || TestHooks.sheet == "pair-error" { adding = true }
             if TestHooks.open == "host", let first = clients.first {
                 // The same push a row's tap makes.
-                path.append(HostDetailRoute(environmentId: first.environment.id))
+                navigator.detailStack.append(HostDetailRoute(environmentId: first.environment.id))
             }
             #endif
         }

@@ -16,6 +16,7 @@ struct ThreadScreen: View {
     var performsLaunchAction = true
     @Environment(NavigationRouter.self) private var router
     @Environment(AppModel.self) private var app
+    @Environment(\.shellPose) private var pose
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var model: ThreadScreenModel
     /// The row this screen opens on (`TranscriptLanding`), else nil for the bottom.
@@ -128,9 +129,10 @@ struct ThreadScreen: View {
             router.restoredSheet = nil
             starting = true
         }
-        // The composer docks where the tab bar would float: the tabs wait behind the back button.
         .environment(\.markdownScope, MarkdownScope(environmentId: client.environment.id, sessionId: sessionId))
-        .toolbar(.hidden, for: .tabBar)
+        // Compact: the composer docks where the tab bar would float, the tabs wait behind the back
+        // button. Split: the bar stays, since hiding it would hide the vertical rail for every tab.
+        .toolbar(pose.isSplit ? .automatic : .hidden, for: .tabBar)
         .navigationBarTitleDisplayMode(.inline)
         .tcNavigationBar()
         .navigationDestination(for: DiffRoute.self) { route in DiffScreen(client: client, route: route) }
@@ -345,6 +347,10 @@ struct ThreadScreen: View {
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $page)
         .scrollIndicators(.hidden)
+        // A scroll view shows its content under the safe area: in the Duo's split the next page peeked
+        // into the trailing column beside the detail. Clip the sides only; the transcript still runs
+        // under the bars above and below.
+        .mask { Rectangle().padding(.vertical, -4000) }
         // The segment bar's pill rides on this: the offset in pages, every frame of a swipe.
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
             geometry.containerSize.width > 0 ? geometry.contentOffset.x / geometry.containerSize.width : 0

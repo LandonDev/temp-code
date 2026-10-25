@@ -16,7 +16,7 @@ struct HomeView: View {
     @Environment(NavigationRouter.self) private var router
     @Environment(NewThreadPresenter.self) private var presenter
     @Environment(ProjectSettingsPresenter.self) private var projectSettings
-    @Binding var path: NavigationPath
+    @Environment(ShellNavigator.self) private var navigator
     var slots = HomeSlots()
     @State private var adding = false
     @State private var pairingAgain: PairedEnvironment?
@@ -37,11 +37,11 @@ struct HomeView: View {
                     hostLines(home.hosts)
                     Section {
                         ForEach(home.entries) { entry in
-                            WorkspaceEntryRow(entry: entry, offline: offline(entry, hosts: clients.count), path: $path)
+                            WorkspaceEntryRow(entry: entry, offline: offline(entry, hosts: clients.count))
                         }
                         if home.entries.isEmpty {
                             ForEach(home.hosts.filter(\.nothing)) { host in
-                                NothingRow(host: host, path: $path)
+                                NothingRow(host: host)
                             }
                         }
                     }
@@ -65,7 +65,7 @@ struct HomeView: View {
             }
         }
         .navigationTitle("Home")
-        .navigationBarTitleDisplayMode(.large)
+        .shellTitleDisplay()
         .toolbar {
             // With one host there is no host row at the foot, so its menu sits here.
             if clients.count == 1, let client = clients.first, let hostMenu = slots.hostMenu {
@@ -79,7 +79,7 @@ struct HomeView: View {
                 }
             }
             ToolbarItem(placement: .primaryAction) {
-                Button("Settings", systemImage: "gearshape") { path.append(Route.settings) }
+                Button("Settings", systemImage: "gearshape") { navigator.open(.settings) }
             }
             .highVisibility()
         }
@@ -158,7 +158,7 @@ struct HomeView: View {
             guard let catalog = await client.loadCatalog(), let provider = CatalogChoice.providerOrder.compactMap({ catalog[$0.rawValue] }).first else { return }
             let draft = ThreadDraft.thread(type: .chat, workspaceId: workspace.id, projectId: nil, provider: provider.id, model: provider.defaultModel, reasoning: nil, permission: nil)
             if let created = try? await client.createThread(draft) {
-                path.append(Route.thread(environmentId: client.environment.id, sessionId: created.id, seq: nil))
+                navigator.open(.thread(environmentId: client.environment.id, sessionId: created.id, seq: nil))
             }
         }
     }
@@ -171,13 +171,13 @@ struct HomeView: View {
 private struct WorkspaceEntryRow: View {
     @Environment(AppModel.self) private var model
     @Environment(NewThreadPresenter.self) private var presenter
+    @Environment(ShellNavigator.self) private var navigator
     let entry: HomeSections.Entry
     let offline: Bool
-    @Binding var path: NavigationPath
     @ScaledMetric(relativeTo: .subheadline) private var icon: CGFloat = 28
 
     var body: some View {
-        Button { path.append(Route.workspace(key: entry.id)) } label: {
+        Button { navigator.open(.workspace(key: entry.id)) } label: {
             HStack(spacing: Layout.rowGap + 2) {
                 mark
                     .frame(width: icon, height: icon)
@@ -245,13 +245,13 @@ extension RailStatus {
 /// A host that lists nothing, while Home has no workspace at all: the
 /// system's spinner until it has listed, then the fact and where to fix it.
 private struct NothingRow: View {
+    @Environment(ShellNavigator.self) private var navigator
     let host: HomeSections.HostLines
-    @Binding var path: NavigationPath
 
     var body: some View {
         Group {
             if host.listed {
-                QuietNote(text: "No workspaces on \(host.name) yet. Open a folder there and it appears here.", action: ("Hosts", { path.append(Route.hosts) }))
+                QuietNote(text: "No workspaces on \(host.name) yet. Open a folder there and it appears here.", action: ("Hosts", { navigator.open(.hosts) }))
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity, minHeight: Layout.rowHeight)

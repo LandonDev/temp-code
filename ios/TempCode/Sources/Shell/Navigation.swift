@@ -1,66 +1,49 @@
 import Foundation
 import SwiftUI
-import TempCodeContract
-
-/// Where a tap goes. Each tab's stack resolves these in `RootView`.
-enum Route: Hashable, Codable {
-    /// `seq`: a row to land on (a search hit); L4 scrolls to it.
-    case thread(environmentId: String, sessionId: String, seq: Int?)
-    /// A workspace's projects and chats; `key` is `HomeSections.Entry.id`.
-    case workspace(key: String)
-    /// A project's every thread; `key` is `HomeProject.id`.
-    case project(key: String)
-    case archivedThreads(environmentId: String, projectId: String)
-    case archivedProjects(environmentId: String, workspaceId: String)
-    case settings
-    case hosts
-}
-
-enum AppTab: String, Hashable, Codable {
-    case home
-    case inbox
-    case search
-}
+import TempCodeClient
 
 /// The row insets every content row shares: the text edge at 16 pt.
 let rowInsets = EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16)
 
-/// Where the person was: the tab and each tab's stack, written on every
-/// change and read back before the first frame of a cold launch, so the app
-/// opens on the screen it was killed on (the thread's segment is remembered
-/// by the thread screen itself, per thread). The proof's launch routes
-/// (`TC_TEST_ROUTE`) start clean instead.
+/// Where the person was: the tab and, per tab, the sidebar's routes, the
+/// detail's root and what it pushed, plus the overlay pose's toggle
+/// (`NavigationSnapshot`, the client package's). Written on every change and
+/// read back before the first frame of a cold launch, so the app opens on
+/// the screen it was killed on, folded or unfolded: one snapshot opens a
+/// thread on top of the Project list in compact and in the detail beside it
+/// in the split (the thread's segment is remembered by the thread screen
+/// itself, per thread). The old `navigation.memory` key is ignored, not
+/// migrated. The proof's launch routes (`TC_TEST_ROUTE`) start clean instead.
 enum NavigationMemory {
-    struct Snapshot: Codable {
-        var tab: AppTab = .home
-        var home: NavigationPath.CodableRepresentation?
-        /// The Inbox's typed path, the item alone (InboxRoute.remembered); `inbox` is the key an older build wrote.
-        var inboxRoutes: [InboxRoute]?
-        var inbox: NavigationPath.CodableRepresentation?
-        var search: NavigationPath.CodableRepresentation?
+    struct Restored {
+        var snapshot: NavigationSnapshot
+        /// The Inbox's typed path, the item alone (InboxRoute.remembered): the
+        /// Inbox keeps its own split (InboxScreen), so its place has its own key.
+        var inbox: [InboxRoute]?
         /// A sheet that was up, restored by the view that owns it.
         var sheet: SheetMemory?
     }
 
-    static let key = "navigation.memory"
     /// The sheet's own key: the stacks and the sheet are written by different
     /// views at different moments, so neither write can drop the other's.
     static let sheetKey = "navigation.sheet"
+    static let inboxKey = "navigation.inbox.v2"
 
     /// What to restore at launch, if anything.
-    static func restore(defaults: UserDefaults = .standard) -> Snapshot? {
+    static func restore(defaults: UserDefaults = .standard) -> Restored? {
         #if DEBUG
         if let route = ProcessInfo.processInfo.environment["TC_TEST_ROUTE"], !route.isEmpty { return nil }
         #endif
-        guard let data = defaults.data(forKey: key) else { return nil }
-        guard var snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) else { return nil }
-        snapshot.sheet = defaults.data(forKey: sheetKey).flatMap { try? JSONDecoder().decode(SheetMemory.self, from: $0) }
-        return snapshot
+        guard let data = defaults.data(forKey: NavigationSnapshot.key),
+              let snapshot = try? JSONDecoder().decode(NavigationSnapshot.self, from: data) else { return nil }
+        let sheet = defaults.data(forKey: sheetKey).flatMap { try? JSONDecoder().decode(SheetMemory.self, from: $0) }
+        let inbox = defaults.data(forKey: inboxKey).flatMap { try? JSONDecoder().decode([InboxRoute].self, from: $0) }
+        return Restored(snapshot: snapshot, inbox: inbox, sheet: sheet)
     }
 
-    static func save(_ snapshot: Snapshot, defaults: UserDefaults = .standard) {
-        guard let data = try? JSONEncoder().encode(snapshot) else { return }
-        defaults.set(data, forKey: key)
+    static func save(_ snapshot: NavigationSnapshot, inbox: [InboxRoute], defaults: UserDefaults = .standard) {
+        if let data = try? JSONEncoder().encode(snapshot) { defaults.set(data, forKey: NavigationSnapshot.key) }
+        if let data = try? JSONEncoder().encode(inbox) { defaults.set(data, forKey: inboxKey) }
     }
 
     /// The view that owns a sheet says it is up (or, with nil, down).
@@ -76,8 +59,15 @@ enum NavigationMemory {
         rememberSheet(nil, defaults: defaults)
     }
 
-    static func path(_ representation: NavigationPath.CodableRepresentation?) -> NavigationPath {
-        representation.map { NavigationPath($0) } ?? NavigationPath()
+    /// A detail stack as the snapshot carries it: its codable form as JSON,
+    /// nil when a pushed value is not codable.
+    static func encode(_ path: NavigationPath) -> Data? {
+        path.codable.flatMap { try? JSONEncoder().encode($0) }
+    }
+
+    static func path(_ data: Data?) -> NavigationPath {
+        guard let data, let representation = try? JSONDecoder().decode(NavigationPath.CodableRepresentation.self, from: data) else { return NavigationPath() }
+        return NavigationPath(representation)
     }
 }
 

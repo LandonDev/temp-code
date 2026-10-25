@@ -11,8 +11,8 @@ import TempCodeContract
 struct WorkspaceScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(NewThreadPresenter.self) private var presenter
+    @Environment(ShellNavigator.self) private var navigator
     let key: String
-    @Binding var path: NavigationPath
     var slots = HomeSlots()
     @State private var cues: [String: HomeModel.Cue] = [:]
 
@@ -23,16 +23,16 @@ struct WorkspaceScreen: View {
             if let screen {
                 ForEach(screen.projects) { entry in
                     Section {
-                        ProjectEntryRow(project: entry.project, slots: slots, path: $path, newThread: presenter.compose)
+                        ProjectEntryRow(project: entry.project, slots: slots, newThread: presenter.compose)
                         ForEach(entry.rows) { row in
-                            ShellRowView(row: row, cue: ShellCues.cue(for: row, in: cues), path: $path)
+                            ShellRowView(row: row, cue: ShellCues.cue(for: row, in: cues))
                         }
                     }
                 }
                 if !screen.chats.isEmpty {
                     Section {
                         ForEach(screen.chats) { row in
-                            ShellRowView(row: row, cue: ShellCues.cue(for: row, in: cues), path: $path)
+                            ShellRowView(row: row, cue: ShellCues.cue(for: row, in: cues))
                         }
                     } header: {
                         // The Chats entry is chats alone: its title already says so.
@@ -46,7 +46,7 @@ struct WorkspaceScreen: View {
                 if !screen.archivedProjects.isEmpty {
                     Section {
                         ForEach(screen.archivedProjects) { archived in
-                            Button { path.append(Route.archivedProjects(environmentId: archived.environmentId, workspaceId: archived.workspace.id)) } label: {
+                            Button { navigator.open(.archivedProjects(environmentId: archived.environmentId, workspaceId: archived.workspace.id)) } label: {
                                 HStack(spacing: 6) {
                                     DimRow(archived.count == 1 ? "1 archived project" : "\(archived.count) archived projects")
                                     HostGlyph(environmentId: archived.environmentId)
@@ -73,7 +73,11 @@ struct WorkspaceScreen: View {
         }
         .needsYouCues(rows, into: $cues)
         .navigationTitle(title(screen))
-        .navigationBarTitleDisplayMode(.large)
+        .shellTitleDisplay()
+        // The desktop's breadcrumb popover: the title is a menu of every workspace and the Chats
+        // entry, the current one checked, in both shapes (one tap to switch a workspace folded too).
+        // Omitted with one entry: a menu of one is a dead chevron.
+        .modifier(WorkspaceTitleMenu(key: key, entries: HomeSections.home(hosts: HomeRows.inputs(model.registry.ordered)).entries))
         .toolbar {
             if let lead {
                 ToolbarItem(placement: .primaryAction) {
@@ -96,5 +100,43 @@ struct WorkspaceScreen: View {
     private func title(_ screen: HomeSections.WorkspaceScreen?) -> String {
         if key == HomeSections.chatsKey { return "Chats" }
         return screen?.workspace?.name ?? ""
+    }
+}
+
+/// `toolbarTitleMenu` listing Home's entries; a pick replaces the sidebar's
+/// path with that workspace and leaves the detail alone: the open thread
+/// stays, and the strip follows the thread, not the sidebar.
+private struct WorkspaceTitleMenu: ViewModifier {
+    @Environment(ShellNavigator.self) private var navigator
+    let key: String
+    let entries: [HomeSections.Entry]
+    @State private var opened = false
+
+    func body(content: Content) -> some View {
+        if entries.count > 1 {
+            content
+                .toolbarTitleMenu {
+                    ForEach(entries) { entry in
+                        Button {
+                            navigator.sidebarPath = [.workspace(key: entry.id)]
+                        } label: {
+                            if entry.id == key {
+                                Label(name(entry), systemImage: "checkmark")
+                            } else {
+                                Text(name(entry))
+                            }
+                        }
+                    }
+                }
+        } else {
+            content
+        }
+    }
+
+    private func name(_ entry: HomeSections.Entry) -> String {
+        switch entry.kind {
+        case .workspace(let workspace): workspace.name
+        case .chats: "Chats"
+        }
     }
 }

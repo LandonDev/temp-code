@@ -2,27 +2,37 @@ import SwiftUI
 import TempCodeClient
 
 /// Three tabs: Home, Inbox, Search. Settings is a button in the Home bar.
-/// The tab and the three stacks come back from `NavigationMemory` before the
-/// first frame, so a cold launch opens on the screen the app was killed on.
+/// Home and Search are each one `ShellSplit` on its own `ShellNavigator`
+/// (the Inbox is `InboxScreen`, its own split over one typed path): the stacks of
+/// the phone in compact width, a sidebar beside (or over) the detail in
+/// regular width, the same values under both. The pose (`ShellPose`) is
+/// decided here from the window's size classes and the root's own bounds
+/// and published as `\.shellPose`. The tab, the navigators and the Inbox's path come
+/// back from `NavigationMemory` before the first frame, so a cold launch
+/// opens on the screen the app was killed on.
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(NavigationRouter.self) private var router
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @AppStorage("appearance") private var appearance = Appearance.system
     @State private var tab: AppTab
-    @State private var homePath: NavigationPath
+    @State private var home: ShellNavigator
     /// The Inbox's typed path: InboxScreen reads its first element as the split's selection.
     @State private var inboxPath: [InboxRoute]
-    @State private var searchPath: NavigationPath
+    @State private var search: ShellNavigator
+    @State private var size = CGSize.zero
     @State private var routed = false
     @State private var restoredSheet: SheetMemory?
 
     init() {
         let memory = NavigationMemory.restore()
-        _tab = State(initialValue: memory?.tab ?? .home)
-        _homePath = State(initialValue: NavigationMemory.path(memory?.home))
-        _inboxPath = State(initialValue: memory?.inboxRoutes ?? [])
-        _searchPath = State(initialValue: NavigationMemory.path(memory?.search))
+        let snapshot = memory?.snapshot ?? NavigationSnapshot()
+        _tab = State(initialValue: snapshot.tab)
+        _home = State(initialValue: ShellNavigator(tab: .home, memory: snapshot[.home], sidebarShown: snapshot.sidebarShown))
+        _inboxPath = State(initialValue: memory?.inbox ?? [])
+        _search = State(initialValue: ShellNavigator(tab: .search, memory: snapshot[.search], sidebarShown: snapshot.sidebarShown))
         _restoredSheet = State(initialValue: memory?.sheet)
     }
     /// Project settings present from the root: a sheet on a menu item never shows.
@@ -30,29 +40,48 @@ struct RootView: View {
     /// The new-thread sheet, opened from any screen of the Home stack.
     @State private var newThread = NewThreadPresenter()
 
+    private var pose: ShellPose {
+        ShellPose.of(horizontal: SizeClass(horizontalSizeClass), vertical: SizeClass(verticalSizeClass), size: size)
+    }
+
+    /// Home and Search ride the shell split; the Inbox keeps its own (InboxScreen).
+    private var navigators: [ShellNavigator] { [home, search] }
+
     var body: some View {
         TabView(selection: $tab) {
             Tab("Home", systemImage: "house", value: AppTab.home) {
-                NavigationStack(path: $homePath) {
-                    HomeView(path: $homePath, slots: shellSlots)
+                ShellSplit(navigator: home) {
+                    HomeView(slots: shellSlots)
                         .fleetToastInset()
-                        .navigationDestination(for: Route.self) { destination($0, path: $homePath) }
-                        // At the stack's root, not on Hosts: a push made while Hosts itself was still
-                        // arriving (the proof's hook) found no destination and drew the warning glyph.
-                        .navigationDestination(for: HostDetailRoute.self) { HostDetailView(environmentId: $0.environmentId) }
-                }
+                } detailTop: { route in
+                    if pose.isSplit {
+                        ThreadStripView(route: route)
+                    }
+                } placeholder: {
+                    DetailPlaceholder(title: "No Thread Selected", symbol: "bubble.left.and.bubble.right")
+                } destination: { destination($0) }
+                .environment(home)
             }
             Tab("Inbox", systemImage: "tray", value: AppTab.inbox) {
+                // The Inbox keeps its own split over one typed path (InboxScreen, plan 3).
                 InboxScreen(path: $inboxPath)
             }
             Tab(value: AppTab.search, role: .search) {
-                NavigationStack(path: $searchPath) {
-                    SearchView(path: $searchPath, initialQuery: model.launchSearch)
+                ShellSplit(navigator: search) {
+                    SearchView(initialQuery: model.launchSearch)
                         .fleetToastInset()
-                        .navigationDestination(for: Route.self) { destination($0, path: $searchPath) }
-                }
+                } detailTop: { _ in
+                } placeholder: {
+                    DetailPlaceholder(title: "No Result Selected", symbol: "magnifyingglass")
+                } destination: { destination($0) }
+                .environment(search)
             }
         }
+        .environment(\.shellPose, pose)
+        // The root's own bounds, never the orientation: with the size classes, the one layout input.
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
+        .onChange(of: pose, initial: true) { for navigator in navigators { navigator.pose = pose } }
+        .onChange(of: size.width, initial: true) { for navigator in navigators { navigator.windowWidth = size.width } }
         .preferredColorScheme(appearance.scheme)
         // The fleet switches' confirm sheet, shared by every menu; the outcome line sits on each tab (thread iOS 20).
         .fleetSwitchHost()
@@ -60,7 +89,7 @@ struct RootView: View {
         .environment(projectSettings)
         .modifier(NewThreadSheetHost(presenter: newThread) { created in
             tab = .home
-            homePath.append(created)
+            home.open(created)
         })
         .sheet(item: $projectSettings.target) { target in
             if let client = model.registry.client(target.home.environmentId) {
@@ -83,20 +112,18 @@ struct RootView: View {
             router.restoredSheet = sheet
         }
         .onChange(of: tab) { remember() }
-        .onChange(of: homePath) { remember() }
-        .onChange(of: inboxPath) { remember() }
-        .onChange(of: searchPath) { remember() }
+        .onChange(of: memoryKey) { remember() }
         .onChange(of: router.visible) { reportVisibility() }
         .onChange(of: router.lists) { reportVisibility() }
         .onChange(of: scenePhase) { reportVisibility() }
-        // A notification or Live Activity tap: the Home stack becomes the thread, on its card.
+        // A notification or Live Activity tap: Home's sidebar at its root, the thread in the detail, on its card.
         .onChange(of: router.pending) { _, route in
             guard let route else { return }
             // A tap names its card: it lands there even this early in a cold launch.
             LaunchRestore.end()
             tab = .home
-            homePath = NavigationPath()
-            homePath.append(route)
+            home.sidebarPath = []
+            home.open(route)
             router.pending = nil
         }
         .onOpenURL(perform: open)
@@ -111,14 +138,23 @@ struct RootView: View {
             router.open(target)
         } else if url.host == "home" {
             tab = .home
-            homePath = NavigationPath()
+            home.popToRoot()
         }
+    }
+
+    /// Every field of every navigator the memory keeps, as one value to watch.
+    private var memoryKey: NavigationSnapshot { snapshot }
+
+    private var snapshot: NavigationSnapshot {
+        var snapshot = NavigationSnapshot(tab: tab, sidebarShown: home.sidebarShown)
+        for navigator in navigators { snapshot[navigator.tab] = navigator.memory }
+        return snapshot
     }
 
     /// Every change of where the person is, written at once: the write is one
     /// small defaults key, and the background has no reliable last moment.
     private func remember() {
-        NavigationMemory.save(.init(tab: tab, home: homePath.codable, inboxRoutes: InboxRoute.remembered(inboxPath), search: searchPath.codable))
+        NavigationMemory.save(snapshot, inbox: InboxRoute.remembered(inboxPath))
         reportVisibility()
     }
 
@@ -147,29 +183,30 @@ struct RootView: View {
         return slots
     }
 
+    /// Every route's screen, in whichever column `ShellPaths.column(of:)` placed it.
     @ViewBuilder
-    private func destination(_ route: Route, path: Binding<NavigationPath>) -> some View {
+    private func destination(_ route: Route) -> some View {
         switch route {
         case .thread(let environmentId, let sessionId, let seq):
             if let client = model.registry.client(environmentId) {
                 ThreadScreen(client: client, sessionId: sessionId, targetSeq: seq)
             }
         case .workspace(let key):
-            WorkspaceScreen(key: key, path: path, slots: shellSlots)
+            WorkspaceScreen(key: key, slots: shellSlots)
         case .project(let key):
-            ProjectScreen(key: key, path: path, slots: shellSlots)
+            ProjectScreen(key: key, slots: shellSlots)
         case .archivedThreads(let environmentId, let projectId):
             if let client = model.registry.client(environmentId) {
-                ArchivedThreadsView(client: client, projectId: projectId, path: path)
+                ArchivedThreadsView(client: client, projectId: projectId)
             }
         case .archivedProjects(let environmentId, let workspaceId):
             if let client = model.registry.client(environmentId) {
-                ArchivedProjectsView(client: client, workspaceId: workspaceId, path: path)
+                ArchivedProjectsView(client: client, workspaceId: workspaceId)
             }
         case .settings:
             SettingsView()
         case .hosts:
-            HostsView(path: path)
+            HostsView()
         }
     }
 
@@ -192,15 +229,15 @@ struct RootView: View {
         case "search":
             tab = .search
         case "settings":
-            homePath.append(Route.settings)
+            home.open(.settings)
         case "hosts":
-            homePath.append(Route.settings)
-            homePath.append(Route.hosts)
+            home.open(.settings)
+            home.detailStack.append(Route.hosts)
         case "archived":
             for workspace in client.workspaces {
                 let groups = ThreadGroups.group(client.sessions, projects: client.projects, workspaces: client.workspaces, workspaceId: workspace.id)
                 if let group = groups.projects.first(where: { $0.archivedCount > 0 }) {
-                    homePath.append(Route.archivedThreads(environmentId: environmentId, projectId: group.id))
+                    home.open(.archivedThreads(environmentId: environmentId, projectId: group.id))
                     return
                 }
             }
@@ -208,7 +245,7 @@ struct RootView: View {
             for workspace in client.workspaces {
                 let groups = ThreadGroups.group(client.sessions, projects: client.projects, workspaces: client.workspaces, workspaceId: workspace.id)
                 if !groups.archived.isEmpty {
-                    homePath.append(Route.archivedProjects(environmentId: environmentId, workspaceId: workspace.id))
+                    home.open(.archivedProjects(environmentId: environmentId, workspaceId: workspace.id))
                     return
                 }
             }
@@ -216,7 +253,24 @@ struct RootView: View {
             let candidates = client.sessions.filter { $0.parentId == nil }
             let wanted = model.launchThread.map { needle in candidates.filter { $0.title.localizedCaseInsensitiveContains(needle) } } ?? candidates
             if let session = wanted.first ?? candidates.first {
-                homePath.append(Route.thread(environmentId: environmentId, sessionId: session.id, seq: TestHooks.targetSeq))
+                home.open(.thread(environmentId: environmentId, sessionId: session.id, seq: TestHooks.targetSeq))
+                // The sidebar over the detail in the overlay pose, for the shot; `open` just hid it.
+                if TestHooks.open == "sidebar" { home.sidebarShown = true }
+            }
+        case "thread-in-project":
+            // The thread in the detail with its project open in the sidebar: the split's selected row.
+            let candidates = client.sessions.filter { $0.parentId == nil && $0.projectId != nil }
+            let wanted = model.launchThread.map { needle in candidates.filter { $0.title.localizedCaseInsensitiveContains(needle) } } ?? candidates
+            guard let session = wanted.first ?? candidates.first,
+                  let project = client.projects.first(where: { $0.id == session.projectId }),
+                  let workspace = client.workspaces.first(where: { $0.id == project.workspaceId }) else { return }
+            home.open(.workspace(key: ProjectPairs.key(environmentId, workspace)))
+            home.open(.project(key: ProjectPairs.key(environmentId, project)))
+            home.open(.thread(environmentId: environmentId, sessionId: session.id, seq: nil))
+        case "workspace":
+            // The sidebar at the Workspace level with nothing open: the split's empty detail.
+            if let entry = HomeSections.home(hosts: HomeRows.inputs([client])).entries.first {
+                home.open(.workspace(key: entry.id))
             }
         case "notification":
             // The proof's tap: a payload shaped like the hub's, through the delegate's one route.

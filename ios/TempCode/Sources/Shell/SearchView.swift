@@ -18,7 +18,7 @@ import TempCodeContract
 /// model's seam, and the view draws whatever it emits.
 struct SearchView: View {
     @Environment(AppModel.self) private var model
-    @Binding var path: NavigationPath
+    @Environment(ShellNavigator.self) private var navigator
     var initialQuery: String?
     @State private var query = ""
     @State private var scope = SearchScope.threads
@@ -140,7 +140,7 @@ struct SearchView: View {
     }
 
     private func open(_ environmentId: String, _ sessionId: String, seq: Int?) {
-        path.append(Route.thread(environmentId: environmentId, sessionId: sessionId, seq: seq))
+        navigator.open(.thread(environmentId: environmentId, sessionId: sessionId, seq: seq))
     }
 
     private func run() async {

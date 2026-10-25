@@ -388,17 +388,9 @@ public enum HomeSections {
 
     // MARK: The rules
 
-    /// What the middle sidebar keeps in view (threadStripModel.ts
-    /// `isLiveThread`, and pinned, which "Archive dormant" spares): anything
-    /// not settled and seen, or with live, paused or failed work in its tree.
+    /// `ThreadGroups.isLive`: what the middle sidebar keeps in view.
     public nonisolated static func isActive(_ item: ThreadItem) -> Bool {
-        let meta = item.meta
-        return meta.pinned
-            || (meta.status != .idle && meta.status != .done)
-            || meta.treeHasLiveWork == true
-            || meta.treeHasPaused == true
-            || meta.treeCanContinue == true
-            || item.unseen
+        ThreadGroups.isLive(item)
     }
 
     /// Roots of several hosts in the order given, each with what is housed
