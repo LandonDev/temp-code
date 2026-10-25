@@ -2080,14 +2080,55 @@ the app's working strip.
 
 ## iPhone Duo
 
-The four poses are pairs of size classes, never an idiom, an orientation or
-a screen: folded portrait is compact × regular (today's phone), folded
-landscape compact × compact, unfolded regular × regular either way up. On
-the Duo the system lays a navigation stack's and the tab bar's bars out in a
-vertical rail (on the outer display too), leaves a title-only item out of
-it, and reports zero-height keyboards around a fold. This section is the
-sheets, the bars, Settings, the Inbox, Search, pairing, the fleet switches
-and push; the thread screen has its own.
+The iPhone Duo (iPhone19,4, iOS 27.1) is a `.phone` idiom device whose app
+window changes size and size class as it folds. **Lay out by the size class
+of the view's own container, never by idiom, orientation or screen**:
+`UIScreen.main` keeps reporting 466 × 678 while the app sits on the inner
+panel, `UIDevice.orientation` tracks the device and not the panel, and the
+idiom is `.phone` in every pose.
+
+### The poses
+
+Window metrics for an app linked against the iOS 27.1 SDK, in points; the
+proof asserts them on every shot (`DuoPose` in the client package is the
+table as code; its aliases are the shot vocabulary).
+
+| `TC_DUO_POSE` (alias) | hinge | device orientation | window (pt) | horizontal × vertical | lit panel (`--display`) | capture (px) |
+| --- | --- | --- | --- | --- | --- | --- |
+| `folded` (`fp`) | 0° | portrait | 466 × 678 | compact × regular | `LCD` (1) | 1398 × 2034 |
+| `folded-landscape` (`fl`) | 0° | landscape-left | 678 × 466 | compact × compact | `LCD` (1) | 2034 × 1398 |
+| `unfolded` (`ul`) | 180° | portrait | 951 × 669 | regular × regular | `LCD-1` (3) | 2853 × 2007 |
+| `unfolded-portrait` (`up`) | 180° | landscape-left | 669 × 951 | regular × regular | `LCD-1` (3) | 2007 × 2853 |
+| `half-open` (`ho`) | 130°, from 0° | portrait | 951 × 669 | regular × regular; `hinge.state` partiallyOpen | `LCD-1` (3) | 2853 × 2007 |
+
+The inner panel's native orientation is a quarter turn from the outer's, so
+a device held portrait shows a landscape window when open; "unfolded
+portrait" is the device turned. An app linked against 27.0 loses an 80 pt
+rail in every pose (386 × 678 closed, 871 × 669 open): the toolchain's 27.1
+minimum is what keeps these numbers true. The outer display has a vertical
+Dynamic Island on its side and so does the inner; Touch ID is in the side
+button; there is no Face ID.
+
+### The toolchain
+
+Xcode 27.1 (27A9275) builds the simulator app, the device app and both
+packages; its Developer Disk Image is compatible with an iOS 27.2 phone, so
+the 27.2 RC is not needed. Every iOS script asks `scripts/ios-xcode.sh`
+(`bun run ios:xcode`): `DEVELOPER_DIR` passes through, else `TC_XCODE`,
+else the `/Applications/Xcode*.app` with the highest version (a tie to the
+one without "beta"), refused below `TC_XCODE_MIN` (27.1 for the app; the
+package runners pass 0). 27.1-only symbols (`DeviceHinge`, `onHingeChange`,
+`toolbarVerticalBehavior`, …) live in the app target alone, always under a
+runtime `if #available(iOS 27.1, *)`, never in the packages, whose tests run
+on macOS; there is no compile-time SDK gate, because the picker's minimum is
+the gate and a second one would let a 27.0 build pass with the 80 pt rail.
+scripts/ios-project.test.ts pins project.yml's orientations (plan 1's,
+below), the 18.0 target and the iPhone family. `bun run ios:duo:check` says what a Duo pass
+needs on this Mac (the Xcode, the 27.1 runtime, the device type, the
+"TempCode Duo" simulator with `--create`, `hinge`, `xcodegen`, and with
+`--device` the connected Duo with a compatible DDI).
+
+### The shell in every pose (plan 1)
 
 **The shell by size class.** The phone chooses its shape from the window's
 size classes and its own bounds, never from the idiom, the orientation or
@@ -2120,6 +2161,20 @@ opens the same place folded or unfolded.
 
 **Orientation.** The outer display allows portrait and both landscapes; the
 inner display ignores the key.
+
+### The thread screen in every pose (plan 2)
+
+"The thread screen on the iPhone Duo", under "The thread screen", is the
+account: the pager or two panes by the screen's own size class and width,
+the columns from the fold's division band, the 640 pt measure, the
+transcript's reflow, the one-line header and the vertical bar in compact
+height.
+
+### Sheets, Settings, Inbox, Search and the bars (plan 3)
+
+On the Duo the system lays a navigation stack's and the tab bar's bars out in a
+vertical rail (on the outer display too), leaves a title-only item out of
+it, and reports zero-height keyboards around a fold.
 
 **Sheets.** Every sheet is shaped by one rule, `SheetRules.shape(kind, in:
 window)` in the client package (`Shell/DuoLayout.swift`), applied by
@@ -2189,6 +2244,72 @@ a display size, a size class or a cutout. The card's widths are flexible and
 its row heights fixed; Apple documents a Dynamic Island on both of the Duo's
 displays, so every presentation can show.
 
+### The proof
+
+The simulator is "TempCode Duo" (iPhone Duo on the iOS 27.1 runtime),
+posed by `scripts/ios-duo-pose.sh <udid> <pose>|lit|state` over `hinge`
+(brew `artemnovichkov/tap/hinge`: the Device Hub's HID event for the angle
+and the orientation, verified in the guest; `devicectl device motion` does
+not exist in Xcode 27.1, so agent-device cannot verify there), the lit panel
+read from `xcrun devicectl device info displays`, never inferred from the
+angle (it is path-dependent around 100°, which is why half-open closes
+first). `TC_DUO_POSE=<pose>` is an axis on every set of
+scripts/ios-sim-proof.sh: the device defaults to the Duo, the check runs
+first, the pose is set before the first shot, every shot captures the lit
+panel (`--display=`; the default capture is the dark inner panel when
+folded, a valid black PNG), shots land in `shots/<pose>/`, each shot's
+`layout-report.json` in `layout/<pose>/<name>.json`, and `pose_check` holds
+the report's window, size classes and `classified` and the PNG's size to the
+pose's row. `fold <pose>` inside a set moves the device with the app
+running; `duo_shot` is `shot` under the axis, the one helper the plans add
+lines to (`duo_shots_shell`, `duo_shots_thread`, `duo_shots_sheets`, called
+once per pose). `TC_PROOF_SET=duo bun scripts/ios-sim-proof-local.ts` is
+every pose's seed shots and the fold cycle; `TC_DUO_POSE=unfolded
+TC_PROOF_SET=features …` is any existing set in a pose.
+
+The layout report is `LayoutProbe` (ios/TempCode/Sources/Shell/LayoutProbe.swift,
+DEBUG only, on RootView's root): `Documents/layout-report.json` 250 ms after
+a change settles, with `window`, `screen`, `scale`, `fps`, `hSize`, `vSize`,
+`idiom`, `orientation`, `hinge { state, angle }` (null before 27.1), `safeArea`,
+`route { tab, depth, thread, segment }`, `transcriptAtBottom`, `notes`,
+`classified` (the pose `DuoPose.classify` reads off the window) and `pose`
+(the `TC_DUO_POSE` the app was launched with); `Documents/layout-events.json`
+is the log of every change of `window`, `hSize`, `vSize`, `orientation`,
+`hinge.state` and each notes key (`{ t, key, from, to }`, 500 at most,
+cleared at launch). Any view says `LayoutProbe.note("sidebar", "visible")`;
+a repeated value is not an event.
+
+The fold cycle (`duo_fold_cycle`, the `duo` set's last step) launches the
+2,000-row chat unfolded, folds, unfolds (recorded to `cycle-unfold.mov`) and
+folds again with the app running, four shots, and asserts from the reports
+and the events: the route identical in all four, `transcriptAtBottom` 1
+after every fold, the draft the same in all four (`notes.draftChars`, plan
+2's), exactly one `hSize` flip and one `window` change per step (a second
+flip inside a step is the flicker), and `notes.sidebar` once per step when
+plan 1 reports it. Rotation is the device's (`hinge orient`), never an
+app-side hook: the app must follow the device as it does for a person.
+
+### On the device
+
+What the simulator cannot show, walked by hand on the Duo (`bun run
+ios:device:duo` installs the Ad Hoc build; the phone pairs once with the box
+through the Add host sheet, since the key is a ThisDeviceOnly Keychain item
+and nothing carries over from another phone):
+
+1. The real fold mid-thread, both ways, with a draft typed: the thread, the
+   scroll end and the draft survive; no blank frame.
+2. Fold with the keyboard up (folded landscape compact × compact, then open).
+3. The outer display's shape: the vertical Dynamic Island column, bars on the
+   side, the status bar's place; Touch ID on the side button for an approval
+   tap's unlock (`tc.approval` → `session.approve`), open and closed.
+4. The Live Activity in the vertical island on the outer and inner displays,
+   on the outer Lock Screen and on Always On; the compact and minimal
+   presentations under `isDynamicIslandLimitedInWidth`.
+5. ProMotion on the inner display: the 2,000-row scroll at 120 Hz with no
+   frame over 8 ms in `unfolded` and `unfolded-portrait`; `fps` in the layout
+   report says what the panel offers.
+6. A notification tap while folded lands on the card; the same while open.
+
 ## Threads from here
 
 | Thread | Scope | After |
@@ -2197,6 +2318,10 @@ displays, so every presentation can show.
 | L4 thread screens | the header, segments, Chat transcript rules, Implementation board, Plan document, Fleet, Sources, diff screen; the cache paint, markdown cache and 120 Hz proof; read-only | now, in parallel with L3 |
 | L5 actions | composer and working strip, send and stop, approve and answer, start a build from a plan, new thread sheet, send-to-agent, swipe archive and pin, rename, pairing | L3 and L4 |
 | L6 push | APNs through the hub (the phone's token registered with every host, the host's `apns` subscription, the hub's token-auth delivery), Live Activity for a running thread (the running row on the lock screen and in the Dynamic Island, pushed by the host, ended when the thread settles), notification taps landing on the card, Approve and Deny on an approval notice, one Notifications row in Settings, the device build | landed 2026-10-20; the row's content state, the island and the notification format on 2026-10-21; the live pass needs the team id and the APNs key from the developer account |
+| Duo 1 shell | the shell in every pose: the split layout, the sidebar, the thread strip, the fold transitions | landed 2026-10-24 |
+| Duo 2 thread screen | the thread screen in every pose: the header, the hero views, the composer, the bars, compact × compact | landed 2026-10-24 |
+| Duo 3 sheets and bars | every sheet by `SheetRules`, Settings, the Inbox split, Search, pairing, the fleet confirm, push, the bars audit | landed 2026-10-24 |
+| Duo 4 toolchain and proof | Xcode 27.1 and the picker, the Duo simulator's poses under `hinge`, `TC_DUO_POSE` and the `duo` set, `LayoutProbe`, the device build, this section's frame | landed 2026-10-24 |
 
 L3 owns `ios/TempCode/Sources/Design/` and `Sources/Shell/`; L4 owns
 `Sources/Thread/` and the rendering models in `TempCodeClient`. L3 commits

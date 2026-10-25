@@ -1437,6 +1437,34 @@ proof and the sizing rules; the pieces, by name:
   client package's `Shell/HostPresentation.swift` with their tests; the
   `settings` proof set shoots them with `TC_TEST_OPEN=host` (pushed through
   the stack's path) and `TC_TEST_SHEET=pair|pair-error`.
+- iPhone Duo (plan 4, the toolchain and the proof): every iOS script picks
+  its Xcode through scripts/ios-xcode.sh (`bun run ios:xcode`: DEVELOPER_DIR
+  passes through, else TC_XCODE, else the highest-versioned
+  /Applications/Xcode*.app with a tie to the non-beta, refused below
+  TC_XCODE_MIN, 27.1 for the app and 0 for the packages; never `sort -V` on
+  file names, which chose the 27.0 beta over the 27.1 release). `bun run
+  ios:duo:check` (scripts/ios-duo-check.sh; `-- --create` makes the
+  simulator, `-- --device` wants the phone) names what a Duo pass needs;
+  scripts/ios-duo-pose.sh `<udid> <pose>|lit|state` poses the "TempCode Duo"
+  simulator over `hinge` (brew artemnovichkov/tap/hinge) and reads the lit
+  panel from `devicectl device info displays`. The poses are `folded|fp`,
+  `folded-landscape|fl`, `unfolded|ul`, `unfolded-portrait|up`, `half-open|ho`
+  (`DuoPose` in the client package is the table). `TC_DUO_POSE=<pose>` is an
+  axis on every proof set (the Duo by default, the lit panel captured, shots
+  in `shots/<pose>/`, each shot's layout report in `layout/<pose>/` checked
+  against the pose's row by `pose_check`; `fold <pose>` with the app running;
+  `duo_shot` is the helper plans 1-3 add lines to in `duo_shots_shell|thread|
+  sheets`); `TC_PROOF_SET=duo` is every pose's seed shots and the fold cycle
+  (`duo_fold_cycle`, four shots, a .mov, the events asserted). The app writes
+  `Documents/layout-report.json` and `layout-events.json` from
+  `LayoutProbe` (ios/TempCode/Sources/Shell/LayoutProbe.swift, DEBUG, on
+  RootView's root; `LayoutProbe.note(key, value)` from any view;
+  `LayoutProbe.route` from RootView and ThreadScreen). project.yml allows
+  portrait and both landscapes (scripts/ios-project.test.ts pins it); 27.1
+  symbols live in the app target under a runtime `#available` only. `bun run
+  ios:device:duo` is the Ad Hoc build on the Duo (TC_DEVICE_MODEL=iPhone19,4;
+  scripts/lib/pick-device.py picks connected over paired, never a simulator).
+  docs/IOS-DESIGN.md "iPhone Duo" has the pose table and the on-device list.
 - iPhone Duo (plan 3): every sheet is shaped by the client package's
   `SheetRules.shape(kind, in: window)` (`Shell/DuoLayout.swift`: form,
   editor, picker, field, confirm, document) through `tcSheet(kind)`
@@ -1655,8 +1683,8 @@ proof and the sizing rules; the pieces, by name:
   card and island over the app, `TC_TEST_ACTIVITY_THREADS=1` as a master
   (the simulator has no lock screen or island a script can drive on a Mac
   without a device window). Device build:
-  `bun run ios:device` (scripts/ios-device.sh) builds with the newest
-  Xcode's toolchain through DEVELOPER_DIR, automatic signing and
+  `bun run ios:device` (scripts/ios-device.sh) builds with the Xcode
+  scripts/ios-xcode.sh picks through DEVELOPER_DIR, automatic signing and
   `-allowProvisioningUpdates` with the team id from `TEMP_CODE_APPLE_TEAM`
   or the gitignored `ios/TempCode/Local.xcconfig` (`DEVELOPMENT_TEAM = …`),
   and installs on the connected or paired iPhone with `xcrun devicectl`;

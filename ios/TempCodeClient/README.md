@@ -353,6 +353,26 @@ bun scripts/ios-sim-proof-local.ts     # the simulator proof against that local 
 TC_TEST_PAIR_LINK=… TC_TEST_PAIR_NAME=… scripts/ios-sim-proof.sh   # the proof against a real host
 ```
 
+The iPhone Duo (docs/IOS-DESIGN.md "iPhone Duo" has the pose table):
+
+```sh
+bun run ios:duo:check                                   # what a Duo pass needs; -- --create makes "TempCode Duo"
+TC_PROOF_SET=duo bun scripts/ios-sim-proof-local.ts     # every pose's seed shots, then the fold cycle
+TC_DUO_POSE=unfolded TC_PROOF_SET=features bun scripts/ios-sim-proof-local.ts   # any set in a pose
+```
+
+| pose (alias) | window (pt) | size classes | shots and reports |
+| --- | --- | --- | --- |
+| `folded` (`fp`) | 466 × 678 | compact × regular | `shots/folded/`, `layout/folded/` |
+| `folded-landscape` (`fl`) | 678 × 466 | compact × compact | `shots/folded-landscape/`, `layout/folded-landscape/` |
+| `unfolded` (`ul`) | 951 × 669 | regular × regular | `shots/unfolded/`, `layout/unfolded/` |
+| `unfolded-portrait` (`up`) | 669 × 951 | regular × regular | `shots/unfolded-portrait/`, `layout/unfolded-portrait/` |
+| `half-open` (`ho`) | 951 × 669 | regular × regular, hinge partially open | `shots/half-open/`, `layout/half-open/` |
+
+`DuoPose` (`Shell/DuoPose.swift`, tested in `DuoPoseTests`) is the table as
+code; the app's DEBUG `LayoutProbe` writes the report each shot is checked
+against.
+
 The server also boots a second host (`TC_IOS_SECOND_HOST=1`, a child
 process of the same script on its own temp root: `ios-workspace` and
 `ios-project` with the same link ids as the primary's copies, an
