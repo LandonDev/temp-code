@@ -472,6 +472,127 @@ with Stop and Continue. The strip never changes height. The header's elapsed
 and the strip's answer different questions (the thread, still live; this
 turn's phase) and the header never carries the flavour word.
 
+### The thread screen on the iPhone Duo
+
+The screen reads its own size class and its own width, never the device,
+its orientation or the idiom (the Duo is a `.phone` with regular size
+classes inside, and the shell's split can hand the screen a column narrower
+than the window). The rules are the client package's
+`Rendering/ThreadPose.swift` (`ThreadPose`, `TwoPaneColumns`,
+`ReadingMeasure`, `TranscriptReflow`; `ThreadPoseTests`); the 27.1 reads
+(the division band, the vertical bar, the bar region) are
+`Design/Duo.swift` behind the SDK gate. The four poses:
+
+| Pose | Window | The screen's own column | What it does |
+| --- | --- | --- | --- |
+| Folded portrait | 466×678, compact×regular | 466 | The phone's screen, unchanged |
+| Folded landscape | 678×466, compact×compact | 678 | The pager; the header is one line; the segment bar leaves while the field has focus |
+| Unfolded landscape | 951×669, regular×regular | 951, or about 631 beside the shell's sidebar | Hero and chat side by side, equal halves |
+| Unfolded portrait | 669×951, regular×regular | 669 with the sidebar hidden, about 350 with it shown | Side by side at 669; the pager beside the sidebar |
+
+**Two panes** when the column is regular width and at least 600 pt
+(`ThreadPose.twoPaneMinWidth`: two 300 pt panes, the narrowest a chat
+column with body text reads at), else the pager; size class first, so a
+678 pt folded-landscape column is never two-pane. The hero is left, the
+chat right, equal halves (`ThreadPose.columns`), one vertical hairline
+between them (`Hairline(axis: .vertical)`), no sash and no collapse; no
+pane titles (the board, plan, fleet or sources read as themselves and the
+composer names the chat). The composer and the working strip sit under the
+chat column only, with the soft edge under them; the hero runs to the
+screen's bottom like a desktop board and ignores the keyboard. Per type:
+Board | Chat (implementation, master), Plan | Chat (planning, project
+plan), Sources | Chat (research), Fleet | Log (orchestration); a chat, a
+subagent and an unknown type are one transcript. The segment bar is gone
+and the needs-you dot has nothing to mark (`SegmentRules.dot` answers nil;
+everything that lands is seen on both). The remembered segment is kept
+untouched through two-pane, so folding back lands the pager on it.
+
+**The measure.** A lone transcript at regular width (a chat, a subagent, the
+agent detail) reads at most 640 pt wide, centred (`ReadingMeasure.cap`),
+with the dock matched to the same column plus its 16 pt edges; the scroll
+indicators stay at the screen's edge. The plan page and the research report
+cap at 640 already; the board, fleet, sources and master lists are rows and
+take the column. An agent page in the transcript is 640 wide in a lone
+transcript and re-measures on a fold; its full screen takes the column. The
+diff stays unified at every width.
+
+**The fold keeps the reader's place.** A width change (a fold, an unfold,
+the sidebar toggling, the pager becoming two panes) keeps the transcript's
+end when the reader is there and the row at the top edge otherwise
+(`TranscriptReflow.anchor`): the anchor is captured once, `atBottom` is
+held while the geometry flickers, and the anchor is restored with no
+animation at 0, 250 and 600 ms after each width step, each new step
+restarting the run. A size change is not an open: `TranscriptLanding` is
+untouched. A reader inside a long reply lands at that reply's top (the
+`List` exposes no finer offset). What else a fold keeps, and by what:
+
+| State | Kept by |
+| --- | --- |
+| Transcript end or reader's row | the reflow above |
+| Streaming reveal | `StreamingAssistantRow`'s `@State` pacer, same row identity |
+| Live cards' decisions and refusal line | `@State` in the card actions, same identity |
+| Composer draft, photos, focus, keyboard | the dock never moves in the tree (one `tcBottomBar` in every mode) |
+| The working strip | the same |
+| The pager's segment | the page re-asserted on a width change; the remembered choice untouched |
+| The Notes sheet | the system keeps a presented sheet through a size change |
+| The diff and page screens | pushed screens with their own geometry |
+
+One view tree serves the pager and the two panes: the same horizontal scroll
+view and the same `ForEach` with the same ids, the pages given explicit
+widths from the pose and the scroll disabled in two-pane, so a fold changes
+frames and never a view's place.
+
+**Folded landscape** (678×466, compact×compact) is the pager with three
+changes: the header is one line, the mark leading the title and no words
+(`ThreadHeaderLine.compactHeight`); the segment bar leaves while the
+composer has focus and returns on dismiss, out on `Motion.collapse` and
+back the way a row appears (`Motion.appear(reduced:)`), so the newest rows
+and the field are what the 150 pt body shows with the keyboard up; a swipe
+still switches segments while the bar is away. Focus, not a keyboard frame,
+is the signal: UIKit reports zero-height keyboards around a fold.
+
+**The vertical bar** (the inner display in landscape, the outer display) is
+accepted as the system draws it: every trailing item has a symbol, so none
+is dropped; the agents button, a custom view the system never shows
+vertically, draws its glyph alone under `\.tcVerticalBar` (the count stays
+in its accessibility value and the fleet rows); the title stays.
+
+**The bottom line.** The dock's bottom is the safe area, which already
+holds a bar the system owns. When a bar floats inside the window's bar
+region (`UIView.LayoutRegion.bar`, read by `BarRegionProbe`), the dock adds
+the region's bottom less the safe area's less a 6 pt gutter
+(`Duo.barInset`), so the capsule's bottom meets the bar's line; otherwise
+nothing. Keyboard avoidance is the system's; nothing reads a keyboard
+frame.
+
+**The division region** is never under static chrome. While the device is
+partly open the fold's band (`Duo.divisionBand`, the first active
+`.division` region in the body's own coordinates) is the gap between the
+panes when it is vertical and leaves 280 pt on each side: the hero ends at
+its leading edge, the chat starts at its trailing edge, and no hairline is
+drawn (the fold divides). A horizontal band changes no column: that pose is
+the pager, whose chrome is at the top and the bottom. A hinge move bumps a
+counter the geometry re-reads the band on.
+
+**Proof shots** for the Duo runner (light and dark each; `TC_TEST_OPEN` /
+`TC_TEST_ACTION` as today, the pose set by the runner): folded-portrait ×
+chat, implementation, planning, project plan, orchestration, research,
+master, subagent; folded-landscape × chat, implementation, orchestration,
+plus chat and implementation with `draft:` (keyboard up, the segment bar
+away); unfolded-landscape × all eight types plus the diff, the page, Notes,
+chat with `draft:` (keyboard up, the hero still) and the account menu;
+unfolded-landscape with the sidebar shown × implementation and chat
+(two-pane at about 631); unfolded-portrait × chat, implementation and
+planning with the sidebar hidden (two-pane at 669) and shown (the pager);
+and the transition run on a streaming implementation thread with a draft
+and an undecided approval, folded-portrait → unfolded-landscape →
+folded-portrait → unfolded-portrait → folded-portrait, a shot and the
+`pose-<sessionId>.json` + transcript report at each stop, asserting
+`revealedUnits` never decreases, the draft is unchanged, the approval's
+buttons are present, `reflowAnchor` is the end when started at the bottom
+and the same `topRow` when started scrolled up; the same run partly folded
+at unfolded-landscape asserting `columns.gap` equals the band's width.
+
 ### The composer, the strip, the cards' actions, the sheets
 
 The chat bar is Messages' on iOS 26 (`Thread/Composer.swift`,
@@ -1657,7 +1778,7 @@ it in its own area on these names.
 | Chrome step | `secondarySystemBackground` | section headers, fields, the composer bar | `Surface.chrome` |
 | Raised | `tertiarySystemBackground`; in light mode two soft shadows with an offset (black 6 % r 1 y 1, black 8 % r 12 y 4), in dark the ring only | sheets and cards that float | `Surface.raised`, `.raised(radius:)` |
 | Fill | `tertiarySystemFill` | what a chip or pill sits on | `Surface.fill` |
-| Hairline | `separator` at 1 px, inset to the text edge | rows, fields, chips | `Hairline(inset:)`, `.hairlineBorder(shape)`, `.separatorAtTextEdge()` |
+| Hairline | `separator` at 1 px, inset to the text edge; vertical between two panes | rows, fields, chips, the two-pane seam | `Hairline(inset:)`, `Hairline(axis: .vertical)`, `.hairlineBorder(shape)`, `.separatorAtTextEdge()` |
 | Text | `label`, `secondaryLabel`, `tertiaryLabel` | three steps and no more; a tint replaces the color alone | `.textStep(.title / .meta / .stamp, weight:, tint:)` |
 | Info | `systemBlue` | chat type, starting and watching dots | `Tint.info` |
 | Success | `systemGreen` | implementation type, `+n`, completed, a host link that is open (50 % until re-listed) | `Tint.success` |

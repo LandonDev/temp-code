@@ -9,7 +9,10 @@ import TempCodeContract
 /// leads that line only when more than one is paired, and only when it
 /// fits; the line drops the host, then compacts, before the title does.
 /// Long-press (or Rename… in the menu) swaps the title for a field in
-/// place; Done or losing focus commits.
+/// place; Done or losing focus commits. In compact height (folded
+/// landscape) the bar is 32 pt and has no room for the line: the mark leads
+/// the title on one line and the words go (`ThreadHeaderLine.compactHeight`);
+/// the switch between the two forms animates nothing.
 struct ThreadHeader: View {
     let client: EnvironmentClient
     let session: SessionMeta?
@@ -24,27 +27,32 @@ struct ThreadHeader: View {
     /// Long-press and the accessibility action; the screen checks `operateBlock` first.
     let onBeginRename: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+
+    private var compactHeight: Bool { verticalSizeClass == .compact }
 
     var body: some View {
         VStack(spacing: 1) {
             if renaming {
                 InlineTitleField(draft: $draft, original: session?.title ?? "", onCommit: onCommit, onCancel: { renaming = false })
-            } else {
-                ZStack {
-                    Text(title)
-                        .font(.headline)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .id(title)
-                        .transition(Motion.swap(reduced: reduceMotion))
+            } else if compactHeight {
+                // One line: the mark says the state, the words wait for the tall pose.
+                HStack(spacing: 6) {
+                    if let session, case let line = ThreadHeaderLine(session: session, hostName: hostName), line.mark != .empty {
+                        HeaderMark(status: session.status, spinning: line.mark == .spinner)
+                    }
+                    titleText
                 }
-                .animation(Motion.crossFade, value: title)
                 .contentShape(Rectangle())
-                // On the title only: inside the field the long-press is the cursor's.
                 .onLongPressGesture(minimumDuration: 0.4) { if session != nil { onBeginRename() } }
-            }
-            if let session {
-                Subtitle(client: client, line: ThreadHeaderLine(session: session, hostName: hostName), session: session)
+            } else {
+                titleText
+                    .contentShape(Rectangle())
+                    // On the title only: inside the field the long-press is the cursor's.
+                    .onLongPressGesture(minimumDuration: 0.4) { if session != nil { onBeginRename() } }
+                if let session {
+                    Subtitle(client: client, line: ThreadHeaderLine(session: session, hostName: hostName), session: session)
+                }
             }
         }
         .frame(maxWidth: .infinity)
@@ -53,6 +61,19 @@ struct ThreadHeader: View {
         .accessibilityElement(children: renaming ? .contain : .combine)
         .accessibilityAddTraits(.isHeader)
         .accessibilityAction(named: "Rename") { onBeginRename() }
+    }
+
+    /// The title, cross-fading when it changes.
+    private var titleText: some View {
+        ZStack {
+            Text(title)
+                .font(.headline)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .id(title)
+                .transition(Motion.swap(reduced: reduceMotion))
+        }
+        .animation(Motion.crossFade, value: title)
     }
 
     private var title: String {

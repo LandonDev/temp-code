@@ -10,12 +10,18 @@ import TempCodeContract
 /// and nothing else; a status line rises above them only while there is
 /// something to say (sending, working, paused, stopped, queued, a locked
 /// relayed host), and the photos of the next turn and a picked model sit
-/// above the capsule while there are any.
+/// above the capsule while there are any. The soft edge under the bar
+/// (`BottomEdgeFade`) is the dock's own background, so in two-pane it spans
+/// the chat column the dock sits under and nothing else. The screen owns
+/// the composer's focus (`focused`) for the segment bar rule, and `draft`
+/// is the proof's `draft:` text, typed into the field once.
 struct BottomDock: View {
     let client: EnvironmentClient
     let sessionId: String
     let session: SessionMeta?
     let thread: ThreadState
+    let focused: FocusState<Bool>.Binding
+    var draft: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var phase: WorkingPhase { WorkingPhase(status: session?.status, sending: thread.sending) }
@@ -34,11 +40,12 @@ struct BottomDock: View {
                 WorkingStripView(client: client, sessionId: sessionId, session: session, thread: thread)
                     .transition(Motion.appear(reduced: reduceMotion))
             }
-            ComposerBar(client: client, sessionId: sessionId, session: session, thread: thread)
+            ComposerBar(client: client, sessionId: sessionId, session: session, thread: thread, focused: focused, draft: draft)
         }
         .padding(.horizontal, ComposerBar.edge)
         .padding(.top, 6)
         .padding(.bottom, 6)
+        .background(alignment: .top) { BottomEdgeFade() }
         .animation(reduceMotion ? Motion.crossFade : Motion.expand, value: statusShown)
     }
 }
@@ -63,8 +70,11 @@ struct ComposerBar: View {
     let sessionId: String
     let session: SessionMeta?
     let thread: ThreadState
+    /// The screen's focus state: it reads it for the segment bar rule in compact height.
+    let focused: FocusState<Bool>.Binding
+    /// DEBUG proof: text to type into the field and focus, once, without sending.
+    var draft: String?
     @State private var text = ""
-    @FocusState private var focused: Bool
     @State private var busy = false
     /// The host's refusal, shown above the capsule until the next edit.
     @State private var failure: String?
@@ -167,7 +177,13 @@ struct ComposerBar: View {
         .task {
             guard TestHooks.open == "composer", block == nil else { return }
             try? await Task.sleep(for: .seconds(2))
-            focused = true
+            focused.wrappedValue = true
+        }
+        .onChange(of: draft, initial: true) {
+            // The proof's `draft:`: the text lands as if typed and the keyboard comes up; nothing sends.
+            guard let draft, block == nil else { return }
+            text = draft
+            focused.wrappedValue = true
         }
         #endif
         .task(id: session.map { "\($0.provider.rawValue)/\($0.model)/\($0.reasoning.rawValue)" }) {
@@ -268,7 +284,7 @@ struct ComposerBar: View {
             TextField(placeholder, text: $text, axis: .vertical)
                 .font(.body)
                 .lineLimit(1...5)
-                .focused($focused)
+                .focused(focused)
                 .disabled(block != nil)
                 .padding(.leading, Self.textInset)
                 .padding(.trailing, actionShown ? 0 : Self.textInset)
@@ -286,7 +302,7 @@ struct ComposerBar: View {
         .animation(Motion.iconSwap, value: actionShown)
         .tcGlass(in: RoundedRectangle.corner(Radius.capsuleEnds(fieldHeight)))
         .contentShape(RoundedRectangle.corner(Radius.capsuleEnds(fieldHeight)))
-        .onTapGesture { if block == nil { focused = true } }
+        .onTapGesture { if block == nil { focused.wrappedValue = true } }
     }
 
     private var placeholder: String {

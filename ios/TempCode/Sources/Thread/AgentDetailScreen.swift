@@ -25,11 +25,15 @@ struct AgentDetailScreen: View {
             if let session {
                 AgentIdentity(agent: session, thread: thread, parentCwd: parentCwd, environmentId: client.environment.id)
             }
-            TranscriptView(client: client, sessionId: agentId, thread: thread)
+            // A lone transcript: the reading measure (640 pt, centred) at any width, and the reader's place kept through a size change.
+            TranscriptView(client: client, sessionId: agentId, thread: thread, measured: true)
         }
         .background(Surface.background)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             AgentSendBar(client: client, agentId: agentId, session: session)
+                .frame(maxWidth: ReadingMeasure.cap + 2 * ReadingMeasure.edge)
+                .frame(maxWidth: .infinity)
+                .background(.bar)
         }
         .toolbar {
             ToolbarItem(placement: .principal) {
@@ -232,7 +236,6 @@ private struct AgentSendBar: View {
         .padding(.horizontal, 12)
         .padding(.top, 6)
         .padding(.bottom, 8)
-        .background(.bar)
         .animation(Motion.crossFade, value: failure)
         .sensoryFeedback(.impact(weight: .light), trigger: sentCount)
         .task(id: client.operateBlock) { await settleBlock() }

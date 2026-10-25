@@ -127,10 +127,11 @@ public enum SegmentRules {
     }
 
     /// The inactive transcript segment holding an undecided card the user
-    /// has not looked at; nil when a board is present (its cards are inline).
-    /// `seen` is the last seq the user saw on each segment.
-    public static func dot(in segments: [ThreadSegment], phase: ThreadPhase, shown: ThreadSegment, seen: [ThreadSegment: Int]) -> ThreadSegment? {
-        guard let card = phase.undecidedSeq, !segments.contains(.board) else { return nil }
+    /// has not looked at; nil when a board is present (its cards are inline),
+    /// and nil in two-pane (both segments are on screen, so nothing is
+    /// inactive). `seen` is the last seq the user saw on each segment.
+    public static func dot(in segments: [ThreadSegment], phase: ThreadPhase, shown: ThreadSegment, seen: [ThreadSegment: Int], mode: ThreadLayoutMode = .pager) -> ThreadSegment? {
+        guard mode != .twoPane, let card = phase.undecidedSeq, !segments.contains(.board) else { return nil }
         let home: ThreadSegment = segments.contains(.log) ? .log : .chat
         guard segments.contains(home), shown != home else { return nil }
         return card > (seen[home] ?? 0) ? home : nil
@@ -246,6 +247,13 @@ public struct ThreadHeaderLine: Equatable, Sendable {
     public var withoutHost: [Part] {
         parts.filter { if case .host = $0 { false } else { true } }
     }
+
+    /// Compact height (folded landscape): a 32 pt bar has no room for a line
+    /// under the title, so the header draws the mark leading the title on one
+    /// line and no words. The mark says the state; the type, the model and
+    /// the account are in the composer's menu and the row the person came
+    /// from, and the strip still shows the elapsed.
+    public var compactHeight: [Part] { [] }
 
     /// The shortest form: the words alone ("Queued", "Stopped") or the type and the model.
     public var compact: [Part] {

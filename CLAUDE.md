@@ -1355,7 +1355,14 @@ proof and the sizing rules; the pieces, by name:
   gone line) is `Sources/Thread/Frame/`, drawing the client package's
   `Rendering/ThreadFrame.swift` (`ThreadKind`, `ThreadSegment`,
   `ThreadPhase`, `SegmentRules`, `ThreadHeaderLine`: pure, tested in
-  ThreadFrameTests). The models they read
+  ThreadFrameTests). The screen's pose on the iPhone Duo (the pager or two
+  panes by its own size class and width, the columns from the fold's
+  division band, the 640 pt measure, the transcript's reflow) is
+  `Rendering/ThreadPose.swift` (`ThreadPose`, `TwoPaneColumns`,
+  `ReadingMeasure`, `TranscriptReflow`, tested in ThreadPoseTests), and the
+  27.1 reads (`Duo.divisionBand`, `\.tcVerticalBar`, `BarRegionProbe`) are
+  `Design/Duo.swift` behind the SDK gate (docs/IOS-DESIGN.md "The thread
+  screen on the iPhone Duo"). The models they read
   are the client package's `Rendering/`: `ThreadFold` (the desktop's fold
   with round, todo and pass stamps and the `BoardState` of todos.ts; a
   `notice` row keeps its whole payload on `SystemLine.notice`, an error

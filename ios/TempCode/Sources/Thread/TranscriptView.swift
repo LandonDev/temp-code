@@ -13,11 +13,21 @@ import TempCodeContract
 /// and nothing above it is laid out again. Nothing animates on first paint:
 /// every scroll the view makes on its own runs in a transaction with
 /// animations off, and the only animated changes are the ones a tap starts.
+///
+/// A width change (a fold, an unfold, the shell's sidebar, the pager
+/// becoming two panes) keeps the end when the reader is there and the row
+/// at the top edge otherwise (`TranscriptReflow`): the anchor is captured
+/// once, `atBottom` is held at that value while the geometry flickers, and
+/// the anchor is restored without animation at each of the reflow's delays,
+/// each new width step restarting the run. With `measured` the rows read at
+/// the measure (`ReadingMeasure`: 640 pt, centred; a lone transcript).
 struct TranscriptView: View {
     let client: EnvironmentClient
     let sessionId: String
     let thread: ThreadState
     var targetSeq: Int?
+    /// The reading measure applies: a chat, a subagent, the agent detail.
+    var measured = false
     @State private var window = TranscriptView.page
     @State private var scrollState = TranscriptScrollState()
     @State private var targetStatus: String?
@@ -80,6 +90,14 @@ struct TranscriptView: View {
             .environment(\.transcriptCwd, cwd)
             .task(id: sessionId) { cwd = client.session(sessionId)?.cwd }
             .contentMargins(.vertical, 8, for: .scrollContent)
+            // The measure: the inset past the 16 pt row inset that centres a column no wider than the cap.
+            .contentMargins(.horizontal, measured ? ReadingMeasure.sideInset(width: listWidth) - ReadingMeasure.edge : 0, for: .scrollContent)
+            // Read only, never assigned: the row at the top edge, for the reflow's anchor.
+            .scrollPosition(id: Binding(get: { scrollState.topRow }, set: { scrollState.topRow = $0 }), anchor: .top)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { was, now in
+                listWidth = now
+                if TranscriptReflow.widthChanged(was, now) { reflow(proxy: proxy) }
+            }
             .navigationLinkIndicatorVisibility(.hidden)
             .buttonStyle(.plain)
             .scrollBounceBehavior(.basedOnSize)
@@ -91,6 +109,8 @@ struct TranscriptView: View {
                 // Content shorter than the screen is "at the bottom" too.
                 geometry.contentSize.height <= geometry.containerSize.height || geometry.visibleRect.maxY >= geometry.contentSize.height - 64
             } action: { _, now in
+                // Held at the captured value while a reflow is open: the geometry flickers mid-fold.
+                guard !scrollState.reflowHeld else { return }
                 scrollState.atBottom = now
             }
             .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in
@@ -156,6 +176,59 @@ struct TranscriptView: View {
     @State private var scrollRan = false
     @State private var recorder: FrameRecorder?
     @State private var proofGroupOpened = false
+    /// The list's own width, for the measure.
+    @State private var listWidth: CGFloat = 0
+    /// The reflow's restore run; a new width step cancels and restarts it.
+    @State private var reflowTask: Task<Void, Never>?
+    /// An `extend` in flight: no reflow runs over it.
+    @State private var extending = false
+
+    /// The width changed: capture the anchor once (or keep the one a step
+    /// already captured), hold `atBottom`, and restore at each delay with
+    /// no animation. Nothing runs while a landing or an extend is in flight.
+    private func reflow(proxy: ScrollViewProxy) {
+        guard targetStatus == nil, !extending else { return }
+        let anchor: TranscriptReflow.Anchor
+        if scrollState.reflowHeld, let held = scrollState.reflowAnchor {
+            anchor = held
+        } else {
+            guard let fresh = TranscriptReflow.anchor(atBottom: scrollState.atBottom, topRow: scrollState.topRow) else { return }
+            anchor = fresh
+            scrollState.reflowAnchor = fresh
+            #if DEBUG
+            TestHooks.recordTranscript(sessionId: sessionId, state: scrollState)
+            #endif
+        }
+        reflowTask?.cancel()
+        scrollState.reflowHeld = true
+        reflowTask = Task { @MainActor in
+            var elapsed = 0
+            for delay in TranscriptReflow.restoreDelaysMs {
+                if delay > elapsed {
+                    try? await Task.sleep(for: .milliseconds(delay - elapsed))
+                    elapsed = delay
+                }
+                guard !Task.isCancelled else { return }
+                restore(anchor, proxy: proxy)
+            }
+            scrollState.reflowHeld = false
+            reflowTask = nil
+            #if DEBUG
+            TestHooks.recordTranscript(sessionId: sessionId, state: scrollState)
+            #endif
+        }
+    }
+
+    private func restore(_ anchor: TranscriptReflow.Anchor, proxy: ScrollViewProxy) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            switch anchor {
+            case .end: proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom)
+            case .row(let id): proxy.scrollTo(id, anchor: .top)
+            }
+        }
+    }
 
     /// DEBUG only: `TC_TEST_OPEN=group` opens the first group and lands on it, once.
     private func openFirstGroupForProof(rows: [TranscriptRowModel], proxy: ScrollViewProxy) {
@@ -270,6 +343,8 @@ struct TranscriptView: View {
     /// the top changes that group's id.
     private func extend(proxy: ScrollViewProxy, rows: [TranscriptRowModel], shown: [TranscriptRowModel]) async {
         guard let top = shown.first else { return }
+        extending = true
+        defer { extending = false }
         let anchorSeq = top.anchorSeq ?? top.id.seq
         if rows.count > window {
             window += Self.page
@@ -296,7 +371,12 @@ struct TranscriptView: View {
 @MainActor @Observable
 final class TranscriptScrollState {
     var atBottom = true
-
+    /// The row at the top edge, as the list reports it; never assigned by the view.
+    var topRow: TranscriptRowID?
+    /// A reflow is open: `atBottom` holds its captured value.
+    var reflowHeld = false
+    /// The anchor the last reflow restored (the proof reads it).
+    var reflowAnchor: TranscriptReflow.Anchor?
 }
 
 /// Only this control reads the position flag in its body. The pill rises in

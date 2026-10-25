@@ -45,6 +45,7 @@
 		4B09811F9A81080EAED4CCCA /* MediaImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35121C37D3AE725035034343 /* MediaImage.swift */; };
 		4C53ED21E713D2DDEB5371E3 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07A5769872F8578077A26B85 /* NotificationService.swift */; };
 		4C8D2012819B42B645174034 /* RelayedHostRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F5108B96E192F6491699A20 /* RelayedHostRow.swift */; };
+		4F0A3913A1469EF6EF90A1D0 /* Duo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7443D2F5EA079F041A1EE511 /* Duo.swift */; };
 		543FDAEDA322180686DCB929 /* HostMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 641553FAFC34373347B4887C /* HostMark.swift */; };
 		556E28E92FEE0140D7A8D26A /* ShellPoseEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C5F2B1DD8AF2E1ACB419B5B /* ShellPoseEnvironment.swift */; };
 		58A6A7CD69991BBBE9726AA8 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0C1523A89C267EB42E7E5DD /* SettingsView.swift */; };
@@ -256,6 +257,7 @@
 		709C36838327A4F049A08ECF /* ProjectSettingsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectSettingsSheet.swift; sourceTree = "<group>"; };
 		71FD17E331D1A7892718F0B3 /* Glyphs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glyphs.swift; sourceTree = "<group>"; };
 		728030024F26E8BF8E4FE9CF /* BoardOutcomes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardOutcomes.swift; sourceTree = "<group>"; };
+		7443D2F5EA079F041A1EE511 /* Duo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Duo.swift; sourceTree = "<group>"; };
 		7535142EC1534693C9291DF9 /* MasterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MasterView.swift; sourceTree = "<group>"; };
 		776798E4452947B1F6C08838 /* ProjectPlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectPlanView.swift; sourceTree = "<group>"; };
 		7BBB53D44FB85BE6A24DDD1F /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
@@ -393,6 +395,7 @@
 			isa = PBXGroup;
 			children = (
 				41927B06E30F61600E79676A /* BarItems.swift */,
+				7443D2F5EA079F041A1EE511 /* Duo.swift */,
 				70755BDC0AE581F0B20CD960 /* Glass.swift */,
 				71FD17E331D1A7892718F0B3 /* Glyphs.swift */,
 				641553FAFC34373347B4887C /* HostMark.swift */,
@@ -802,6 +805,7 @@
 				0DBCCA842B8C531ACF33700E /* DeployLogSheet.swift in Sources */,
 				23614D8185C5D979DC52454E /* DiffScreen.swift in Sources */,
 				A44F3587E973ECC49621FB39 /* DiffStyles.swift in Sources */,
+				4F0A3913A1469EF6EF90A1D0 /* Duo.swift in Sources */,
 				5E3A480A8EBD0785FB21484A /* FailureCard.swift in Sources */,
 				AD45C192E9C90A4CD74AE390 /* FleetStyles.swift in Sources */,
 				6A6C387ED4631DDA31979076 /* FleetSwitches.swift in Sources */,

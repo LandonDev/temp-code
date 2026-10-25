@@ -7,25 +7,29 @@ import TempCodeContract
 /// has children and no Fleet segment lists them already
 /// (`SegmentRules.showsAgents`); nothing running shows the glyph alone.
 /// The glyph's stroke matches the count's weight; the press dims, a scale
-/// on a 17 pt glyph in a dense bar would distract.
+/// on a 17 pt glyph in a dense bar would distract. In a vertical bar
+/// (`\.tcVerticalBar`, the Duo's inner display in landscape) the glyph
+/// stands alone: the system shows no custom view vertically, and the count
+/// stays in the accessibility value and the fleet rows.
 struct AgentsButton: View {
     let running: Int
     let total: Int
     let action: () -> Void
+    @Environment(\.tcVerticalBar) private var verticalBar
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 3) {
                 Image(systemName: "person.2")
                     .font(.body.weight(.regular))
-                if running > 0 {
+                if running > 0, !verticalBar {
                     Text("\(running)")
                         .font(.footnote)
                         .numeric(running)
                         .transition(.opacity)
                 }
             }
-            .animation(Motion.crossFade, value: running > 0)
+            .animation(Motion.crossFade, value: running > 0 && !verticalBar)
             .frame(minWidth: 44, minHeight: 44)
         }
         .buttonStyle(.pressableStatic)

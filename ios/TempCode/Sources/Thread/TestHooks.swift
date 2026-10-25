@@ -7,6 +7,15 @@ import os
 /// DEBUG-only hooks the simulator proof drives through the process
 /// environment: which segment to open, what to open inside it, and the
 /// scroll run that measures frames. Release builds read nothing.
+///
+/// Reports land in the app's Documents as `<name>.json`, each written once
+/// its value settles: `dock-report` / `dock-report-focused` (the dock's
+/// height), `transcript-report` (atBottom, the top row and the reflow
+/// anchor), `navigation-report`, `board-history-report`, `scroll-report`,
+/// and `pose-<sessionId>` (the thread screen's pose: mode, width,
+/// regularWidth, compactHeight, columns, division, segmentBarShown,
+/// dockWidth, barInset; rewritten on every change, so the Duo runner reads
+/// it at each stop of a fold run).
 enum TestHooks {
     #if DEBUG
     private static let env = ProcessInfo.processInfo.environment
@@ -34,7 +43,9 @@ enum TestHooks {
     /// same calls the buttons make: `send:<text>`, `stop`, `approve`, `deny`,
     /// `answer:<label>`, `start-build`, `rename:<title>`, `pin`, `archive`,
     /// `start-now` (a queued thread), `resume` (a stopped or paused one),
-    /// `stop-step` (a master's running step), `set-master` (toggles the pin; an admin key).
+    /// `stop-step` (a master's running step), `set-master` (toggles the pin; an admin key),
+    /// `draft:<text>` (types the text into the composer and focuses it, sending nothing, so a
+    /// fold shot proves the draft and the keyboard survive).
     static let action = env["TC_TEST_ACTION"].flatMap { $0.isEmpty ? nil : $0 }
     /// A sheet to open for the shot: `start` on a planning thread, `new` on Home,
     /// `fleet:pause|fleet:stop|fleet:archive` (the fleet confirm on Home),
@@ -93,18 +104,69 @@ enum TestHooks {
         #endif
     }
 
-    /// Whether the transcript is at its bottom one second after it landed or
-    /// the app came back to the foreground (transcript-report.json: atBottom
-    /// 1 or 0). Written under a launch route, or with
+    /// Whether the transcript is at its bottom one second after it landed,
+    /// the app came back to the foreground, or its width changed
+    /// (transcript-report.json: atBottom 1 or 0, topRow the seq of the row at
+    /// the top edge or -1, reflowAnchor 1 for the end, 2 for a row, 0 for
+    /// none). Written under a launch route, or with
     /// `TC_TEST_TRANSCRIPT_REPORT=1` for a plain launch that restores a thread.
     @MainActor static func recordTranscript(sessionId: String, state: TranscriptScrollState) {
         #if DEBUG
         guard env["TC_TEST_ROUTE"] == "thread" || env["TC_TEST_TRANSCRIPT_REPORT"] == "1" else { return }
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(1))
-            writeReport("transcript-report", ["atBottom": state.atBottom ? 1 : 0])
+            let anchor: Int = switch state.reflowAnchor {
+            case .end?: 1
+            case .row?: 2
+            case nil: 0
+            }
+            writeReport("transcript-report", ["atBottom": state.atBottom ? 1 : 0, "topRow": state.topRow?.seq ?? -1, "reflowAnchor": anchor])
         }
         #endif
+    }
+
+    /// The thread screen's pose as the rules decided it, `pose-<sessionId>.json`,
+    /// rewritten on every change (a fold run reads it at each stop).
+    static func recordPose(sessionId: String, _ pose: PoseRecord) {
+        #if DEBUG
+        guard env["TC_TEST_ROUTE"] == "thread" || env["TC_TEST_POSE_REPORT"] == "1",
+              let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
+              let data = try? JSONEncoder().encode(pose) else { return }
+        try? data.write(to: documents.appending(path: "pose-\(sessionId).json"), options: .atomic)
+        #endif
+    }
+
+    /// What `recordPose` writes. Lengths in points, rounded to tenths.
+    struct PoseRecord: Codable, Equatable {
+        struct Columns: Codable, Equatable {
+            var hero: Double
+            var gap: Double
+            var chat: Double
+        }
+
+        struct Band: Codable, Equatable {
+            var x: Double
+            var y: Double
+            var width: Double
+            var height: Double
+        }
+
+        var mode: String
+        var width: Double
+        var regularWidth: Bool
+        var compactHeight: Bool
+        var columns: Columns?
+        var division: Band?
+        var segmentBarShown: Bool
+        var dockWidth: Double
+        var barInset: Double
+        /// The pager's scroll container, which must equal `width` (a scroll view that extends under a side bar would page wrong).
+        var pagerContainer: Double
+        /// The pager's leading content inset and offset: both zero on Board, the inset zero on every page.
+        var pagerInset: Double = 0
+        var pagerOffset: Double = 0
+
+        static func tenths(_ value: CGFloat) -> Double { (Double(value) * 10).rounded() / 10 }
     }
 
     static func recordNavigation(target: Int, item: Int?, oldest: Int?) {

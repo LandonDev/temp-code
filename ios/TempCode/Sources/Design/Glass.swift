@@ -55,12 +55,13 @@ extension View {
     /// behind the soft scroll edge effect and no divider is drawn, with the
     /// app's own soft edge under it (`BottomEdgeFade`) so text passing
     /// beneath the glass never competes with the field; before iOS 26 a
-    /// `safeAreaInset` on the bar material.
+    /// `safeAreaInset` on the bar material. `fade: false` for a bar that
+    /// draws the edge itself (the thread's dock, under its chat column only).
     @ViewBuilder
-    func tcBottomBar<Bar: View>(@ViewBuilder _ bar: () -> Bar) -> some View {
+    func tcBottomBar<Bar: View>(fade: Bool = true, @ViewBuilder _ bar: () -> Bar) -> some View {
         if #available(iOS 26.0, *) {
             safeAreaBar(edge: .bottom, spacing: 0) {
-                bar().background(alignment: .top) { BottomEdgeFade() }
+                bar().background(alignment: .top) { if fade { BottomEdgeFade() } }
             }
             .scrollEdgeEffectStyle(.soft, for: .bottom)
         } else {
@@ -123,8 +124,10 @@ struct TCGlassContainer<Content: View>: View {
 /// from nothing 24 pt above the bar, and the background step fading in under
 /// it, down to the screen's edge. Content that scrolls beneath blurs and
 /// recedes instead of reading through the glass. Under Reduce Transparency
-/// the material is the system's opaque one.
-private struct BottomEdgeFade: View {
+/// the material is the system's opaque one. The thread's dock draws it as
+/// its own background (`tcBottomBar(fade: false)`), so it spans the column
+/// the dock sits under.
+struct BottomEdgeFade: View {
     static let lead: CGFloat = 24
 
     var body: some View {

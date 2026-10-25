@@ -183,15 +183,28 @@ enum Layout {
     static let listMeasure: CGFloat = 720
 }
 
-/// A one-pixel rule in `separator`, inset from the leading edge to the text edge.
+/// A one-pixel rule in `separator`: horizontal, inset from the leading edge
+/// to the text edge; or vertical (`axis: .vertical`), the full height, between
+/// two panes side by side.
 struct Hairline: View {
     var inset: CGFloat = 0
+    var axis: Axis = .horizontal
     @Environment(\.displayScale) private var scale
 
+    /// The rule's thickness: one device pixel.
+    static func thickness(scale: CGFloat) -> CGFloat { 1 / scale }
+
     var body: some View {
-        Surface.hairline
-            .frame(height: 1 / scale)
-            .padding(.leading, inset)
+        switch axis {
+        case .horizontal:
+            Surface.hairline
+                .frame(height: Self.thickness(scale: scale))
+                .padding(.leading, inset)
+        case .vertical:
+            Surface.hairline
+                .frame(width: Self.thickness(scale: scale))
+                .padding(.top, inset)
+        }
     }
 }
 

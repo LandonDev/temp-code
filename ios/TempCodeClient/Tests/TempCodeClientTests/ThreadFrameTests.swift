@@ -141,6 +141,10 @@ private let pendingApproval: [AgentEvent] = [
         #expect(SegmentRules.dot(in: [.board, .chat], phase: waiting, shown: .board, seen: [:]) == nil)
         #expect(SegmentRules.dot(in: [.fleet, .log], phase: waiting, shown: .fleet, seen: [:]) == .log)
         #expect(SegmentRules.dot(in: segments, phase: phase(.research), shown: .plan, seen: [:]) == nil)
+        // Two-pane: both segments are on screen, so no dot, whatever is unseen.
+        #expect(SegmentRules.dot(in: segments, phase: waiting, shown: .plan, seen: [:], mode: .twoPane) == nil)
+        #expect(SegmentRules.dot(in: [.fleet, .log], phase: waiting, shown: .fleet, seen: [:], mode: .twoPane) == nil)
+        #expect(SegmentRules.dot(in: segments, phase: waiting, shown: .plan, seen: [:], mode: .pager) == .chat)
     }
 
     @Test("weight follows the pill and clamps at the ends") func weightFollowsThePillAndClampsAtTheEnds() {
@@ -230,6 +234,13 @@ private let pendingApproval: [AgentEvent] = [
         #expect(with.withoutHost == type + [.elapsed(since: 500)])
         #expect(line(.running).parts.first == .type(.implementation))
         #expect(with.compact == identity)
+    }
+
+    @Test("compact height has no words under the title, whatever the status") func compactHeightHasNoWordsUnderTheTitle() {
+        for status in [SessionStatus.running, .idle, .queued, .stopped, .paused, .waiting] {
+            #expect(line(status, host: "box", frozen: 4_000).compactHeight.isEmpty)
+        }
+        #expect(line(.running, host: "box").mark == .spinner, "the mark still says the state")
     }
 
     @Test("compact is the words alone for queued and stopped") func compactIsTheWordsAloneForQueuedAndStopped() {
