@@ -62,6 +62,10 @@ bun run gate [--tier commit|publish|all] [--since <ref>] [--full]
   only when typecheck itself passed.
 - **vitest** keeps its cache in `node_modules/.vite/vitest`; the gate never
   passes `--no-cache` or clears it.
+- **The Xcode** for `ios` and `ios-client` is scripts/ios-xcode.sh's pick
+  (the highest-versioned `/Applications/Xcode*.app`, `TC_XCODE_MIN=0` for
+  the packages; `DEVELOPER_DIR` passes through), the same picker the
+  simulator proof and the device build use with a 27.1 minimum.
 - **SwiftPM** keeps each package's `.build` (gitignored); `ios:test` runs
   `swift build` then `swift test` incrementally, and the gate never cleans
   them.

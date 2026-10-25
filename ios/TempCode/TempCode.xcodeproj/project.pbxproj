@@ -114,6 +114,7 @@
 		B2A6EEFB8C59EC5AB3A7EE59 /* ThreadActivityText.swift in Sources */ = {isa = PBXBuildFile; fileRef = F178447D123AA2791D58D854 /* ThreadActivityText.swift */; };
 		B699A65B99A5636451EF8703 /* Motion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002DFE88A99F9FF59FF9A750 /* Motion.swift */; };
 		B6CF86E3310704ACE4BE86E7 /* ThreadRowActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C9121A31A1E408C0C11CD59 /* ThreadRowActions.swift */; };
+		BAA13CB6B01BC86A33123E34 /* LayoutProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793A843C291F830634F37C73 /* LayoutProbe.swift */; };
 		BE7F26241B9F5C0AD87DC743 /* SettingsStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58D166A7F8BA1C8BE69233DA /* SettingsStyles.swift */; };
 		C054528FD7118216F3817183 /* ThreadRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C16775FDA7BDE46AF518AD0D /* ThreadRow.swift */; };
 		C86B27E2BA346505A4A65F12 /* ResourcesSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A8BF53FD7B051E088E2F94 /* ResourcesSheet.swift */; };
@@ -260,6 +261,7 @@
 		7443D2F5EA079F041A1EE511 /* Duo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Duo.swift; sourceTree = "<group>"; };
 		7535142EC1534693C9291DF9 /* MasterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MasterView.swift; sourceTree = "<group>"; };
 		776798E4452947B1F6C08838 /* ProjectPlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectPlanView.swift; sourceTree = "<group>"; };
+		793A843C291F830634F37C73 /* LayoutProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutProbe.swift; sourceTree = "<group>"; };
 		7BBB53D44FB85BE6A24DDD1F /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		7E7AE044D6CB90B7ED7BB42D /* BatchFoot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatchFoot.swift; sourceTree = "<group>"; };
 		864CD2924E00F07F3B3495DC /* TestHooks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHooks.swift; sourceTree = "<group>"; };
@@ -563,6 +565,7 @@
 				DFDB7AC9309717C07EABDB37 /* InboxScreen.swift */,
 				CA7288D142EB56BF61D77BE3 /* InboxStore.swift */,
 				D852F6F965128E5708F8E991 /* InboxView.swift */,
+				793A843C291F830634F37C73 /* LayoutProbe.swift */,
 				CBB9F435A8B815A14D9C6855 /* Navigation.swift */,
 				3E87EC3DF336E9F9C38A9188 /* NeedsYouNotes.swift */,
 				2EF16AEF19CC66CBDF931211 /* PlanSettings.swift */,
@@ -833,6 +836,7 @@
 				E90BD8473502D7E0EC4F1FAF /* InboxScreen.swift in Sources */,
 				380CD9B79D786017B8802496 /* InboxStore.swift in Sources */,
 				10B04AD6410CA80C6A34113D /* InboxView.swift in Sources */,
+				BAA13CB6B01BC86A33123E34 /* LayoutProbe.swift in Sources */,
 				8A1EC209985F3CA16F1171D5 /* LiveText.swift in Sources */,
 				2E0B5C7F69476698594FCD4B /* MacBridgeRows.swift in Sources */,
 				AF490DAE7016CD0573402789 /* MacDevicesSection.swift in Sources */,
