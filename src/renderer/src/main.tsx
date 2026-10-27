@@ -44,7 +44,10 @@ accountsStore.connect(registry);
 // Before environment zero and before the first render: every host's rows as
 // the launch mirror last saw them, so the rail is whole on its first frame
 // and a host that answers late (or not at all) still has its section.
+performance.mark("tc:launch-mirror:start");
 hydrateFromLaunchMirror();
+performance.mark("tc:launch-mirror");
+performance.measure("tc:launch-mirror", "tc:launch-mirror:start", "tc:launch-mirror");
 initServerLink();
 installLaunchMirror();
 updateStore.start();

@@ -362,7 +362,10 @@ app replaces itself from the feed, and only from the feed.
   of the seen map (`stores/subscriptions.ts`) waits `BOOT_SETTLE_MS` (2 s)
   for the lists and then takes the mirror's rows for a host that has not
   answered; its rows show under that host's existing offline tint. A saved
-  host with neither a list nor a mirror still holds the prune.
+  host with neither a list nor a mirror still holds the prune. The main
+  process logs the one synchronous read as `[boot] launch-mirror read <ms>
+  hosts=<n> bytes=<b>`, and the renderer measures the hydrate as
+  `tc:launch-mirror` (performance marks around it).
 - The writer (`installLaunchMirrorWriter`) follows `onMetaChange` and the
   workspace catalog, diffs each LISTED host's rows against what it last
   wrote (object identity), and sends the difference over

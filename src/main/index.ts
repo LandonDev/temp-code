@@ -198,6 +198,7 @@ app.whenReady().then(async () => {
   // The launch mirror (src/main/server/launchMirror.ts): the renderer paints
   // the rail from it before any socket is up, so the read is synchronous.
   ipcMain.on('launch-mirror:read', (e) => {
+    const t0 = Date.now()
     const environments = listEnvironments(store).map((row) => ({
       id: row.id,
       name: row.name,
@@ -206,7 +207,10 @@ app.whenReady().then(async () => {
       ...(row.platform ? { platform: row.platform } : {})
     }))
     const hosts = server!.launchMirror.read(['local', ...environments.map((row) => row.id)])
-    e.returnValue = { environments, hosts } satisfies LaunchMirrorSnapshot
+    const snapshot = { environments, hosts } satisfies LaunchMirrorSnapshot
+    e.returnValue = snapshot
+    // The one synchronous read the renderer's first frame waits on: its cost, in the boot log.
+    console.log(`[boot] launch-mirror read ${Date.now() - t0}ms hosts=${hosts.length} bytes=${JSON.stringify(snapshot).length}`)
   })
   ipcMain.on('launch-mirror:write', async (_e, write: MirrorWrite) => {
     try {

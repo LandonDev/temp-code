@@ -1,5 +1,6 @@
 import { Terminal } from "@xterm/xterm";
 import { useEffect, useRef } from "react";
+import { frameLoopAllowed, usePaneVisible } from "../hooks/paneVisibility";
 import {
   getPtyStatus,
   killPty,
@@ -160,6 +161,11 @@ export function TerminalView(props: Props) {
       </Empty>
     );
   return <ShellTerminal {...props} />;
+}
+
+/** The status poll runs only for the shown terminal of a shown pane while the document is visible. */
+export function statusPollAllowed(active: boolean, paneVisible: boolean, documentHidden: boolean): boolean {
+  return active && frameLoopAllowed(paneVisible, documentHidden);
 }
 
 function ShellTerminal({ id, cwd, active, onMetaChange }: Props) {
@@ -373,6 +379,10 @@ function ShellTerminal({ id, cwd, active, onMetaChange }: Props) {
   // prop itself would tear down and re-arm the poll — and re-fork `ps` — on
   // every parent render.
   const wantsMeta = !!onMetaChange;
+  // The status poll forks `ps` on the host: only the shown terminal of a
+  // shown pane polls; a parked warm one, or another tab's, polls nothing and
+  // reads once when it comes back.
+  const paneVisible = usePaneVisible();
 
   useEffect(() => {
     if (!wantsMeta) return;
@@ -381,7 +391,7 @@ function ShellTerminal({ id, cwd, active, onMetaChange }: Props) {
     const refresh = () => {
       if (!spawned.current) return;
       // Each status read forks `ps`; an off-screen window has no title to paint.
-      if (document.hidden) return;
+      if (!statusPollAllowed(active, paneVisible, document.hidden)) return;
       if (inFlight) return;
       inFlight = true;
       void getPtyStatus(id)
@@ -402,13 +412,15 @@ function ShellTerminal({ id, cwd, active, onMetaChange }: Props) {
         });
     };
     refresh();
+    // A parked pane or tab arms no interval at all; it reads once on return.
+    if (!statusPollAllowed(active, paneVisible, document.hidden)) return;
     const interval = setInterval(refresh, 1000);
     document.addEventListener("visibilitychange", refresh);
     return () => {
       clearInterval(interval);
       document.removeEventListener("visibilitychange", refresh);
     };
-  }, [id, cwd, wantsMeta]);
+  }, [id, cwd, wantsMeta, active, paneVisible]);
 
   useEffect(() => {
     if (!active) return;

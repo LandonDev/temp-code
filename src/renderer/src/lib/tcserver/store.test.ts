@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { newSession } from "../session";
-import { KEEP_RECENT, applyMeta, sessionFromMeta, sessionStore, type Link } from "./store";
+import { KEEP_RECENT, RECENT_ROW_BUDGET, applyMeta, metaEqual, sessionFromMeta, sessionStore, type Link } from "./store";
 import { ConnectionLostError, TimeoutError } from "../connection";
 import type { EventRow, ServerPush, SessionMeta } from "./types";
 
@@ -997,6 +997,35 @@ describe("the mounted set", () => {
     expect(replayed.sort()).toEqual([shown, ...kept].sort());
   });
 
+  it("the recently shown stay under a budget of folded rows: the oldest departed go first", async () => {
+    const big = ["a", "b", "c"];
+    link.metas = [...big, "d"].map((id) => wireMeta({ id }));
+    for (const id of big) {
+      const rows: EventRow[] = [];
+      for (let i = 0; i < 9000; i++) rows.push(row(id, i + 1, { type: "user-text", text: `q${i}` }));
+      // A settled thread: an open one (its last row a prompt) is busy and never unloads.
+      rows.push(row(id, 9001, { type: "turn-complete" }));
+      link.events.set(id, rows);
+    }
+    link.events.set("d", rowsFor("d", 2));
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    for (const id of [...big, "d"]) {
+      sessionStore.setMounted([id]);
+      await sessionStore.ensureLoaded(id, "test");
+      await sessionStore.ensureComplete(id);
+    }
+    expect(sessionStore.get("a")?.blocks.length).toBeGreaterThanOrEqual(9000);
+    expect(sessionStore.get("a")?.busy).toBe(false);
+    await new Promise((r) => setTimeout(r, 3100));
+    // d shows; c and b (18,000 rows between them) fit the budget, a would pass it.
+    expect(RECENT_ROW_BUDGET).toBe(20_000);
+    expect(sessionStore.get("d")?.loaded).toBe(true);
+    expect(sessionStore.get("c")?.loaded).toBe(true);
+    expect(sessionStore.get("b")?.loaded).toBe(true);
+    expect(sessionStore.get("a")?.loaded).toBe(false);
+  }, 20_000);
+
   it("a burst of loads reports itself once, naming the callers", async () => {
     link.metas = Array.from({ length: 30 }, (_, i) => wireMeta({ id: `s${i}` }));
     sessionStore.attach(link);
@@ -1037,6 +1066,46 @@ describe("the mounted set", () => {
     const head = link.calls.filter((c) => c.method === "session.events").slice(1).map((c) => c.params as Record<string, unknown>);
     expect(head.map((c) => c.afterSeq)).toEqual([0, 1500, 3000, 4500, 6000, 7500]);
     expect(sessionStore.get("s1")?.blocks).toHaveLength(9000);
+  });
+
+  it("a batch of 1,000 metas builds one snapshot and notifies once per frame", async () => {
+    link.metas = [wireMeta({ id: "s1" })];
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    await tick();
+    const builds = vi.spyOn(sessionStore as unknown as { buildSnapshot: () => unknown }, "buildSnapshot");
+    const listener = vi.fn();
+    const off = sessionStore.subscribe(listener);
+    link.push({ push: "sessions", sessions: Array.from({ length: 1000 }, (_, i) => wireMeta({ id: `b${i}` })) });
+    sessionStore.getSnapshot();
+    sessionStore.getSnapshot();
+    expect(builds).toHaveBeenCalledTimes(1);
+    await tick();
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(sessionStore.metas()).toHaveLength(1001);
+    off();
+    builds.mockRestore();
+  });
+
+  it("an unchanged meta pushes no new metas array to the meta listeners and keeps the view", async () => {
+    const same = wireMeta({ id: "s1", title: "one" });
+    link.metas = [same];
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    await tick();
+    const metas = sessionStore.metas();
+    const view = sessionStore.get("s1");
+    link.push({ push: "session", session: { ...same } });
+    await tick();
+    expect(sessionStore.metas()).toBe(metas);
+    expect(sessionStore.get("s1")).toBe(view);
+    link.push({ push: "session", session: { ...same, title: "two" } });
+    await tick();
+    expect(sessionStore.metas()).not.toBe(metas);
+    expect(sessionStore.metas().find((m) => m.id === "s1")?.title).toBe("two");
+    expect(metaEqual({ a: [1, { b: null }] }, { a: [1, { b: null }] })).toBe(true);
+    expect(metaEqual({ a: [1, { b: null }] }, { a: [1, { b: 0 }] })).toBe(false);
+    expect(metaEqual({ a: 1 }, { a: 1, b: undefined })).toBe(true);
   });
 });
 

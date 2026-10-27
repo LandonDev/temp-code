@@ -67,6 +67,23 @@ describe('SessionReview status fetches', () => {
     probe.unmount()
   })
 
+  it("a burst of git-changed signals in the thread's checkout costs one status call", async () => {
+    const { notifyGitChanged } = await vi.importActual<typeof import('../lib/gitChanged')>('../lib/gitChanged')
+    status.mockImplementation(() => Promise.resolve({ files: [{ path: '/w/one/a.ts', relative: 'a.ts', status: 'M', additions: 1, deletions: 0 }] }))
+    const probe = mountProbe(strip(false))
+    await probe.act(() => vi.advanceTimersByTimeAsync(STATUS_DEBOUNCE_MS))
+    expect(status).toHaveBeenCalledTimes(1)
+    for (let i = 0; i < 5; i++) {
+      probe.act(() => notifyGitChanged('/w/one'))
+      await probe.act(() => vi.advanceTimersByTimeAsync(STATUS_DEBOUNCE_MS / 4))
+    }
+    expect(status).toHaveBeenCalledTimes(1)
+    await probe.act(() => vi.advanceTimersByTimeAsync(STATUS_DEBOUNCE_MS))
+    expect(status).toHaveBeenCalledTimes(2)
+    status.mockImplementation(() => Promise.resolve({ files: [] }))
+    probe.unmount()
+  })
+
   it('a push for this thread reads the status again; one for another does not', async () => {
     const probe = mountProbe(strip(false))
     await probe.act(() => vi.advanceTimersByTimeAsync(STATUS_DEBOUNCE_MS))

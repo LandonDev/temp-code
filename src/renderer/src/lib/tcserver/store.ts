@@ -216,6 +216,8 @@ const UNLOAD_MS = 3000;
  *  (a reconnect replays their gap like a mounted pane's). From the Mac a
  *  box thread's first load is a round trip of about 200 ms. */
 export const KEEP_RECENT = 6;
+/** Folded rows the recently shown transcripts may hold between them: past it, the oldest departed go first. */
+export const RECENT_ROW_BUDGET = 20_000;
 /** Rows fetched whole for their bodies that stay cached (remote profile). */
 const ROW_BODY_CACHE = 200;
 /** Transcript loads in one window above this many report a burst line. */
@@ -622,7 +624,7 @@ class SessionStore {
   };
 
   /** The open sessions, in the order App last set. Stable until a change. */
-  getSnapshot = (): Session[] => this.snapshot;
+  getSnapshot = (): Session[] => this.currentSnapshot();
 
   /** Open session ids in order. Same array until a session opens, closes or moves. */
   getIds = (): readonly string[] => this.ids;
@@ -1138,10 +1140,19 @@ class SessionStore {
     return keep;
   }
 
-  /** What stays loaded: the mounted closure and the recently shown. */
+  /** What stays loaded: the mounted closure and the recently shown, the
+   *  latter under RECENT_ROW_BUDGET folded rows between them (a 40k-row
+   *  transcript held for a switch back is the memory the budget guards). */
   private keptLoaded(): Set<string> | null {
     const keep = this.mountedClosure();
-    if (keep) for (const id of this.recent) keep.add(id);
+    if (!keep) return keep;
+    let rows = 0;
+    for (const id of this.recent) {
+      const held = this.entries.get(id)?.session.blocks.length ?? 0;
+      if (rows + held > RECENT_ROW_BUDGET) break;
+      rows += held;
+      keep.add(id);
+    }
     return keep;
   }
 
@@ -1775,7 +1786,19 @@ class SessionStore {
         break;
       }
       case "sessions": {
-        for (const session of push.sessions) this.onPush({ push: "session", session }, environmentId);
+        // A list push (a reconcile, a fleet switch) merges every row, then
+        // schedules once: one snapshot, one notify, whatever the batch's size.
+        const fresh: SessionMeta[] = [];
+        for (const session of push.sessions) {
+          this.pushed.session += 1;
+          const meta: SessionMeta = { ...session, environmentId };
+          const isFresh = !this.entries.has(meta.id);
+          this.mergeMeta(meta);
+          if (isFresh) fresh.push(meta);
+        }
+        this.bumpSoon();
+        this.bumpMetaSoon();
+        for (const meta of fresh) this.noteAdded(meta);
         break;
       }
       case "events": {
@@ -1870,8 +1893,11 @@ class SessionStore {
   }
 
   private mergeMeta(meta: SessionMeta): void {
-    this.metasSnapshot = null;
     const entry = this.entries.get(meta.id);
+    // The same facts again (a list reconcile, a reconnect's replay): the
+    // metas array and the view stay the objects they are.
+    if (entry?.meta && !entry.provisional && metaEqual(entry.meta, meta)) return;
+    this.metasSnapshot = null;
     if (!entry) {
       const load = loadingState();
       this.entries.set(meta.id, {
@@ -2030,7 +2056,7 @@ class SessionStore {
    * their first send), edited ones replace their entry's view.
    */
   mutate = (updater: Session[] | ((prev: Session[]) => Session[])): void => {
-    const prev = this.snapshot;
+    const prev = this.currentSnapshot();
     const next = typeof updater === "function" ? updater(prev) : updater;
     if (next === prev) return;
     const order: string[] = [];
@@ -2144,7 +2170,10 @@ class SessionStore {
    */
   private bumpSoon(): void {
     this.version += 1;
-    this.snapshot = this.buildSnapshot();
+    // The open-session snapshot is built once, by the first read or the
+    // flush, however many merges land before it: a 1,000-row list push is
+    // one build, not a thousand.
+    this.snapshotDirty = true;
     if (this.notifyPending != null) return;
     const flush = () => {
       if (this.notifyPending == null) return;
@@ -2164,7 +2193,7 @@ class SessionStore {
    * once a shell differs, copied from the first change on.
    */
   private refreshProjections(): void {
-    const sessions = this.snapshot;
+    const sessions = this.currentSnapshot();
     const sameIds =
       sessions.length === this.ids.length && sessions.every((s, i) => s.id === this.ids[i]);
     if (!sameIds) this.ids = sessions.map((s) => s.id);
@@ -2188,6 +2217,18 @@ class SessionStore {
     return next;
   }
 
+  /** True while a merge has not been built into `snapshot` yet. */
+  private snapshotDirty = false;
+
+  /** The open sessions as of the last merge: built on demand, once per batch of merges. */
+  private currentSnapshot(): Session[] {
+    if (this.snapshotDirty) {
+      this.snapshotDirty = false;
+      this.snapshot = this.buildSnapshot();
+    }
+    return this.snapshot;
+  }
+
   private bump(): void {
     if (this.notifyPending != null) {
       // A sync bump supersedes the scheduled one; the flush sees null and skips.
@@ -2196,7 +2237,7 @@ class SessionStore {
       this.notifyPending = null;
     }
     this.version += 1;
-    this.snapshot = this.buildSnapshot();
+    this.snapshotDirty = true;
     this.refreshProjections();
     for (const listener of this.listeners) listener();
     if (this.metaPending) this.bumpMeta();
@@ -2208,6 +2249,22 @@ class SessionStore {
       }
     }
   }
+}
+
+/** The same facts: a deep compare of two wire metas (small, JSON-shaped values). */
+export function metaEqual(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a)) {
+    const other = b as unknown[];
+    return a.length === other.length && a.every((v, i) => metaEqual(v, other[i]));
+  }
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  for (const key of keys) if (!metaEqual(left[key], right[key])) return false;
+  return true;
 }
 
 export const sessionStore = new SessionStore();

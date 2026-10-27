@@ -393,3 +393,42 @@ export function runnerTrack(box: Rect, review: Rect | null): RunnerTrack {
     width: reviewWidth,
   };
 }
+
+/** A frame loop that schedules its next frame only while `allowed()` says it may paint; `wake()` restarts it once it may again. */
+export interface FrameLoop {
+  start(): void
+  wake(): void
+  stop(): void
+  running(): boolean
+}
+
+export function frameLoop(opts: {
+  allowed: () => boolean
+  tick: (now: number) => void
+  request?: (cb: (now: number) => void) => number
+  cancel?: (handle: number) => void
+}): FrameLoop {
+  const request = opts.request ?? ((cb) => requestAnimationFrame(cb))
+  const cancel = opts.cancel ?? ((h) => cancelAnimationFrame(h))
+  let handle = 0
+  let stopped = false
+  const step = (now: number): void => {
+    handle = 0
+    opts.tick(now)
+    if (!stopped && opts.allowed()) handle = request(step)
+  }
+  const start = (): void => {
+    if (stopped || handle !== 0 || !opts.allowed()) return
+    handle = request(step)
+  }
+  return {
+    start,
+    wake: start,
+    stop: () => {
+      stopped = true
+      if (handle !== 0) cancel(handle)
+      handle = 0
+    },
+    running: () => handle !== 0
+  }
+}

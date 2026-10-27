@@ -1,39 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  COIN_FIRST_MAX_MS,
-  COIN_FIRST_MIN_MS,
-  COIN_GAP_MAX_MS,
-  COIN_GAP_MIN_MS,
-  COIN_HOVER,
-  CRASH_RECOIL_MS,
-  CRASH_RECOIL_PX,
-  CRASH_SHAKE_MS,
-  CRASH_STUN_MS,
-  EXIT_PEAK,
-  EXIT_SINK,
-  JUMP_LEAD,
-  RUNNER_INSET,
-  RUNNER_SIZE,
-  STAR_COUNT,
-  coinCollected,
-  exitJumpY,
-  hitsChevron,
-  jumpHeight,
-  nextCoinDelay,
-  obstacleFromRects,
-  pickCoinX,
-  pingPong,
-  poseAt,
-  recoilAlong,
-  runnerPose,
-  runnerTrack,
-  scaleTrackX,
-  spriteClipBottom,
-  stepAlong,
-  stunDone,
-  stunShake,
-  stunStars,
-} from "./composerRunner";
+import { COIN_FIRST_MAX_MS, COIN_FIRST_MIN_MS, COIN_GAP_MAX_MS, COIN_GAP_MIN_MS, COIN_HOVER, CRASH_RECOIL_MS, CRASH_RECOIL_PX, CRASH_SHAKE_MS, CRASH_STUN_MS, EXIT_PEAK, EXIT_SINK, JUMP_LEAD, RUNNER_INSET, RUNNER_SIZE, STAR_COUNT, coinCollected, exitJumpY, hitsChevron, jumpHeight, nextCoinDelay, obstacleFromRects, pickCoinX, pingPong, poseAt, recoilAlong, runnerPose, runnerTrack, scaleTrackX, spriteClipBottom, stepAlong, stunDone, stunShake, stunStars, frameLoop } from "./composerRunner";
 
 const BOX = { left: 100, right: 500, top: 200, bottom: 320, width: 400 };
 
@@ -254,5 +220,49 @@ describe("composerRunner", () => {
     expect(pose.x).toBe(RUNNER_INSET + 50);
     expect(pose.facing).toBe(1);
     expect(pose.y).toBe(0);
+  });
+});
+
+describe("frameLoop", () => {
+  it("schedules a frame only while it may paint, stops scheduling when it may not, and wakes once it may again", () => {
+    let allowed = true;
+    let handles = 0;
+    const queued: ((now: number) => void)[] = [];
+    const cancelled: number[] = [];
+    const ticks: number[] = [];
+    const loop = frameLoop({
+      allowed: () => allowed,
+      tick: (now) => ticks.push(now),
+      request: (cb) => {
+        queued.push(cb);
+        return ++handles;
+      },
+      cancel: (h) => cancelled.push(h),
+    });
+    loop.start();
+    expect(loop.running()).toBe(true);
+    expect(queued).toHaveLength(1);
+    queued.shift()!(16);
+    expect(ticks).toEqual([16]);
+    expect(queued).toHaveLength(1);
+    // The pane parks: the frame paints once more and schedules nothing.
+    allowed = false;
+    queued.shift()!(32);
+    expect(ticks).toEqual([16, 32]);
+    expect(queued).toHaveLength(0);
+    expect(loop.running()).toBe(false);
+    loop.wake();
+    expect(queued).toHaveLength(0);
+    // Back on screen: one frame scheduled, never two.
+    allowed = true;
+    loop.wake();
+    loop.wake();
+    expect(queued).toHaveLength(1);
+    expect(loop.running()).toBe(true);
+    loop.stop();
+    expect(cancelled).toEqual([3]);
+    expect(loop.running()).toBe(false);
+    loop.wake();
+    expect(queued).toHaveLength(1);
   });
 });

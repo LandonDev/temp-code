@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { hexOf, oscColors, terminalTheme } from './TerminalView'
+import { hexOf, oscColors, statusPollAllowed, terminalTheme } from './TerminalView'
 
 // What the tokens compute to in each scheme (index.css), keyed by the expression the probe asks for.
 const TOKENS = {
@@ -34,5 +34,16 @@ describe('the terminal chrome reads the tokens', () => {
     expect(hexOf('rgb(10, 119, 235)', '#000000')).toBe('#0a77eb')
     expect(hexOf('#ABCDEF', '#000000')).toBe('#abcdef')
     expect(hexOf('', '#123456')).toBe('#123456')
+  })
+})
+
+describe('the status poll', () => {
+  it('polls only for the shown terminal of a shown pane while the document is visible', () => {
+    expect(statusPollAllowed(true, true, false)).toBe(true)
+    // A parked warm pane is not hidden from the browser: it polls nothing.
+    expect(statusPollAllowed(true, false, false)).toBe(false)
+    // Another terminal tab of the dock, or a hidden window, polls nothing.
+    expect(statusPollAllowed(false, true, false)).toBe(false)
+    expect(statusPollAllowed(true, true, true)).toBe(false)
   })
 })

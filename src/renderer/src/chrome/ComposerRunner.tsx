@@ -1,38 +1,7 @@
-import { useLayoutEffect, useMemo, useRef, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import {
-  COIN_EDGE_PATH,
-  COIN_FACE_PATH,
-  COIN_HOVER,
-  COIN_SIZE,
-  COLLECT_POP_MS,
-  COLLECT_POP_PX,
-  EXIT_MS,
-  EXIT_SINK,
-  STAR_COUNT,
-  STAR_EDGE_PATH,
-  STAR_FACE_PATH,
-  STAR_SIZE,
-  coinCollected,
-  exitJumpY,
-  hitsChevron,
-  jumpHeight,
-  nextCoinDelay,
-  obstacleFromRects,
-  pickCoinX,
-  RUNNER_INSET,
-  RUNNER_SIZE,
-  poseAt,
-  recoilAlong,
-  scaleTrackX,
-  stepAlong,
-  runnerTrack,
-  spriteClipBottom,
-  stunDone,
-  stunShake,
-  stunStars,
-  type Coin,
-} from "../lib/composerRunner";
+import { COIN_EDGE_PATH, COIN_FACE_PATH, COIN_HOVER, COIN_SIZE, COLLECT_POP_MS, COLLECT_POP_PX, EXIT_MS, EXIT_SINK, STAR_COUNT, STAR_EDGE_PATH, STAR_FACE_PATH, STAR_SIZE, coinCollected, exitJumpY, hitsChevron, jumpHeight, nextCoinDelay, obstacleFromRects, pickCoinX, RUNNER_INSET, RUNNER_SIZE, poseAt, recoilAlong, scaleTrackX, stepAlong, runnerTrack, spriteClipBottom, stunDone, stunShake, stunStars, type Coin, frameLoop } from "../lib/composerRunner";
+import { frameLoopAllowed, usePaneVisible } from "../hooks/paneVisibility";
 import { projectName } from "../lib/paths";
 import {
   loadTabGroupColors,
@@ -77,6 +46,15 @@ export function ComposerRunner({
   busyRef.current = busy;
   enabledRef.current = enabled;
   onExitedRef.current = onExited;
+  // The loop runs only while this pane shows and the document is visible
+  // (a parked warm pane is not hidden from the browser); it wakes when either returns.
+  const paneVisible = usePaneVisible();
+  const paneVisibleRef = useRef(paneVisible);
+  paneVisibleRef.current = paneVisible;
+  const loopRef = useRef<{ wake(): void } | null>(null);
+  useEffect(() => {
+    if (paneVisible) loopRef.current?.wake();
+  }, [paneVisible]);
 
   const project = projectName(cwd);
   const appearance = useMemo(() => {
@@ -101,7 +79,6 @@ export function ComposerRunner({
     let facing: 1 | -1 = 1;
     let prevWidth = 0;
     let last = performance.now();
-    let raf = 0;
     let coinId = 0;
     let nextCoinAt = last + nextCoinDelay(true);
     let exiting = false;
@@ -424,13 +401,18 @@ export function ComposerRunner({
     };
 
     apply(last);
-    const tick = (now: number) => {
-      apply(now);
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
+    const loop = frameLoop({
+      allowed: () => frameLoopAllowed(paneVisibleRef.current, document.hidden),
+      tick: apply,
+    });
+    loopRef.current = loop;
+    loop.start();
+    const onVisible = () => loop.wake();
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
-      cancelAnimationFrame(raf);
+      document.removeEventListener("visibilitychange", onVisible);
+      loopRef.current = null;
+      loop.stop();
       clearCoins();
       showLayer(false);
     };
