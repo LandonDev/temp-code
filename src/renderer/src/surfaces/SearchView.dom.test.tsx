@@ -251,7 +251,7 @@ describe("SearchView across hosts", () => {
     view.unmount();
   });
 
-  it("with one host there is no host mark, no host: hint and the footer still times it", async () => {
+  it("with one host there is no host mark, no host: hint and no footer", async () => {
     h.environments = h.envs.one;
     h.workspaces = [h.workspaces[0]];
     const p = props();
@@ -261,7 +261,7 @@ describe("SearchView across hosts", () => {
     expect(view.container.querySelector("[data-host-mark]")).toBeNull();
     const menu = await openFilters(view);
     expect(menuLabels(menu)).toEqual(["Type", "Project"]);
-    expect(view.getByLabelText("Hosts searched").textContent).toMatch(/^This Mac: \d+ ms$/);
+    expect(view.queryByLabelText("Hosts searched")).toBeNull();
     view.unmount();
   });
 

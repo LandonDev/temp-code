@@ -72,8 +72,8 @@ import { useWorkspaces } from "../lib/tcserver/workspaces";
  * Search over every connected host at once. The field takes the words and
  * three filters beside them (`host:`, `type:`, `project:`), typed, or ticked
  * in the field's filter menu, which writes the same tokens. Each host answers in parallel and its
- * rows land as they come; the footer says how long each took, or that it
- * was skipped. Rows carry the host's mark when more than one host is
+ * rows land as they come; with two or more hosts paired the footer says how
+ * long each took, or that it was skipped. Rows carry the host's mark when more than one host is
  * paired. Enter opens a row where it lives; ⌘↩ opens it in a new pane.
  * The list never animates: it is read tens of times a day.
  */
@@ -509,7 +509,7 @@ export function SearchView({
         )}
       </div>
 
-      {!empty && progress.length > 0 ? <HostFooter progress={progress} /> : null}
+      {multiHost && !empty && progress.length > 0 ? <HostFooter progress={progress} /> : null}
     </div>
   );
 }
