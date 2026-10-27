@@ -5,7 +5,6 @@ import { PageRow, PageSection } from "../../components/page";
 import { Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { Input } from "../../components/ui/input";
-import { Kbd, KbdGroup } from "../../components/ui/kbd";
 import { Progress } from "../../components/ui/progress";
 import { Spinner } from "../../components/ui/spinner";
 import { SettingSwitch } from "../../components/setting-switch";
@@ -47,12 +46,12 @@ import {
 } from "../../lib/settings";
 import { loadSoundsEnabled, saveSoundsEnabled } from "../../lib/sounds";
 import { registry } from "../../lib/connection";
-import { EditorRow } from "../EditorRow";
 import { PlanSettingsEditor } from "../../chrome/PlanSettingsFields";
 import { updateStore, useUpdateSnapshot } from "../../lib/updateStore";
 import { MANUAL_DOWNLOAD_URL, canRetry } from "../../lib/updater";
 import { openUrl } from "../../lib/native";
 import { releaseNotesChunk } from "../chunks";
+import { Keys } from "./keys";
 
 /** A stored boolean setting with its own state; every flip saves. */
 function useStoredFlag(load: () => boolean, save: (on: boolean) => void): [boolean, (on: boolean) => void] {
@@ -82,19 +81,6 @@ function SwitchRow({
     <PageRow title={title} description={description}>
       <SettingSwitch label={title} on={on} onChange={onChange} />
     </PageRow>
-  );
-}
-
-/** Keys as caps: "⌘ ↩" on macOS, "Ctrl Enter" elsewhere. */
-export function Keys({ keys }: { keys: string[] }) {
-  return (
-    <KbdGroup className="mx-0.5 align-[-2px]">
-      {keys.map((key) => (
-        <Kbd key={key} size="sm">
-          {key}
-        </Kbd>
-      ))}
-    </KbdGroup>
   );
 }
 
@@ -156,7 +142,7 @@ export function GeneralPage({
           title="Enter while a turn runs"
           description={
             <>
-              Queue waits for the turn, Steer sends into it.
+              Queue waits for the turn, Steer sends into it;
               <Keys keys={MOD_ENTER} />
               does the other.
             </>
@@ -216,7 +202,6 @@ export function GeneralPage({
           on={claudeHooks}
           onChange={setClaudeHooks}
         />
-        <EditorRow />
       </PageSection>
 
       <PageSection title="About">

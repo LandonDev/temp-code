@@ -1,10 +1,5 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-import { MOD } from "../../lib/platform";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { EDITOR_IDS, EDITOR_LABELS, type EditorChoice } from "@shared/editor";
 import { useProjects } from "../../lib/tcserver/workspaces";
 import type { LspStatusRow } from "@shared/domain";
 import {
@@ -18,10 +13,16 @@ import {
 } from "../../lib/settings";
 import { registry } from "../../lib/connection";
 import { retryBlockedEnsures } from "../../lib/monaco/lspGate";
+import { chooseEditorSetting, useEditorConfig } from "../../lib/editorConfig";
 import { Modal } from "../../chrome/Modal";
-import { Row, SecondaryButton, Toggle } from "../settingsBits";
 import { GHOST, PRIMARY } from "../../chrome/ConfirmDialog";
+import { ChoiceSelect } from "../../components/choice-select";
+import { PageRow, PageSection } from "../../components/page";
+import { SettingSwitch } from "../../components/setting-switch";
+import { Button } from "../../components/ui/button";
+import { Skeleton } from "../../components/ui/skeleton";
 import { MatrixSpinner } from "../threads/bits";
+import { Keys, MOD_CAP } from "./keys";
 
 type IdeaEngine = { dist: boolean; accepted: boolean; build: string };
 
@@ -45,19 +46,20 @@ function fmtBytes(bytes: number): string {
   return `${Math.round(bytes / 1024 ** 2)} MB`;
 }
 
-function lspRowStatus(row: LspStatusRow): string {
+/** A server's figures for the row's end: memory and idle time, or its state. */
+export function lspFigures(row: LspStatusRow): string[] {
   if (row.state === "running") {
-    const parts = [row.memoryBytes != null ? fmtBytes(row.memoryBytes) : "running"];
-    if (row.idleMs > 60_000) parts.push(`idle ${Math.round(row.idleMs / 60_000)}m`);
-    return parts.join(" · ");
+    const figures = [row.memoryBytes != null ? fmtBytes(row.memoryBytes) : "Running"];
+    if (row.idleMs > 60_000) figures.push(`idle ${Math.round(row.idleMs / 60_000)}m`);
+    return figures;
   }
-  if (row.state === "error") return row.error ?? "error";
-  return `${row.state}…`;
+  if (row.state === "error") return [];
+  return [`${row.state[0].toUpperCase()}${row.state.slice(1)}…`];
 }
 
 /** Live language-server rows, polled while the page is open. M7a's push
  *  of readiness changes can replace the poll once it lands. */
-function LanguageServersRow() {
+function LanguageServers() {
   const [rows, setRows] = useState<LspStatusRow[] | null>(null);
   const projects = useProjects();
   const projectNames = useMemo(
@@ -83,35 +85,73 @@ function LanguageServersRow() {
     };
   }, []);
   return (
-    <Row
-      label="Language servers"
-      description={
-        rows === null ? (
-          <MatrixSpinner cell={1.5} />
-        ) : rows.length === 0 ? (
-          "None running."
-        ) : undefined
-      }
-    >
-      {rows && rows.length > 0 ? (
-        <div className="flex flex-col items-end gap-1 text-[12px]">
-          {rows.map((row) => (
-            <span key={row.serverId} className="flex items-center gap-2">
-              <span className="text-content">{LSP_LABEL[row.lang]}</span>
-              <span className="text-content/40">
-                {projectNames.get(row.projectId) ?? row.projectId}
-              </span>
-              <span
-                className={`tabular-nums ${row.state === "error" ? "text-danger" : "text-content/40"}`}
-              >
-                {lspRowStatus(row)}
-              </span>
-            </span>
+    <PageSection title="Language servers">
+      {rows === null ? (
+        <div aria-busy="true" aria-label="Loading">
+          {[0, 1].map((i) => (
+            <div key={i} className="flex flex-col gap-1.5 py-3">
+              <Skeleton className="h-3.5 w-24" />
+              <Skeleton className="h-3 w-40" />
+            </div>
           ))}
         </div>
-      ) : null}
-    </Row>
+      ) : rows.length === 0 ? (
+        <p className="py-3 text-xs text-muted-foreground">None running</p>
+      ) : (
+        rows.map((row) => {
+          const project = projectNames.get(row.projectId) ?? row.projectId;
+          return (
+            <PageRow
+              key={row.serverId}
+              title={LSP_LABEL[row.lang]}
+              description={project}
+              error={row.state === "error" ? (row.error ?? "Failed") : undefined}
+            >
+              {lspFigures(row).map((figure) => (
+                <span key={figure} className="text-xs text-muted-foreground tabular-nums">
+                  {figure}
+                </span>
+              ))}
+            </PageRow>
+          );
+        })
+      )}
+    </PageSection>
   );
+}
+
+/** Which editor "Open in …" and "Open on the Mac" hand a file to. Auto takes
+ *  the first of IDEA, VS Code and Xcode installed; a Swift file under ios/
+ *  goes to Xcode when Xcode is chosen or IDEA is absent. Absent in web mode
+ *  and on a headless host, where no editor runs. */
+function OpenFilesIn() {
+  const config = useEditorConfig();
+  if (!config) return null;
+  const found = EDITOR_IDS.filter((id) => config.installed[id]).map((id) => EDITOR_LABELS[id]);
+  const description =
+    found.length === 0
+      ? "No editor found. Install IntelliJ IDEA, VS Code or Xcode."
+      : config.editor === "auto" && config.effective
+        ? `Found ${listOf(found)}; Auto opens ${EDITOR_LABELS[config.effective]}.`
+        : config.editor !== "auto" && !config.installed[config.editor]
+          ? `${EDITOR_LABELS[config.editor]} is not installed; ${config.effective ? `${EDITOR_LABELS[config.effective]} opens instead` : "nothing opens"}.`
+          : `Found ${listOf(found)}.`;
+  const options: { value: EditorChoice; label: string }[] = [
+    { value: "auto", label: "Auto" },
+    ...EDITOR_IDS.map((id) => ({ value: id, label: EDITOR_LABELS[id] })),
+  ];
+  return (
+    <PageSection title="Open files in">
+      <PageRow title="External editor" description={description}>
+        <ChoiceSelect label="External editor" value={config.editor} options={options} onChange={(choice) => void chooseEditorSetting(choice)} />
+      </PageRow>
+    </PageSection>
+  );
+}
+
+function listOf(names: string[]): string {
+  if (names.length <= 1) return names.join("");
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
 export function EditorPage() {
@@ -186,8 +226,8 @@ export function EditorPage() {
       : !java || !java.found
         ? (java?.error ?? "No JDK found. Install JDK 21 or newer for Java.")
         : java.error
-          ? `JDK ${java.version} — needs 21+`
-          : `JDK ${java.version} · ${java.jdtls ? "jdtls ready" : "jdtls downloads on first use"}`;
+          ? `JDK ${java.version} needs 21 or newer`
+          : `JDK ${java.version}, ${java.jdtls ? "jdtls ready" : "jdtls downloads on first use"}`;
 
   const engineState =
     engine === undefined
@@ -195,64 +235,82 @@ export function EditorPage() {
       : !engine || !engine.dist
         ? "Not downloaded"
         : engine.accepted
-          ? `Ready · build ${engine.build}`
+          ? `Ready, build ${engine.build}`
           : "Needs the EULA";
+
+  const loading = <Skeleton className="mt-1 h-3 w-40" />;
 
   return (
     <>
-      <Row label="Auto save" description={`Write 800 ms after the last keystroke (${MOD}S writes at once).`}>
-        <Toggle
-          label="Auto save"
-          on={autoSave}
-          onChange={(on) => {
-            saveAutoSave(on);
-            setAutoSave(on);
-          }}
+      <PageSection title="Saving">
+        <PageRow
+          title="Auto save"
+          description={
+            <>
+              Writes 800 ms after the last keystroke;
+              <Keys keys={[MOD_CAP, "S"]} />
+              writes at once.
+            </>
+          }
+        >
+          <SettingSwitch
+            label="Auto save"
+            on={autoSave}
+            onChange={(on) => {
+              saveAutoSave(on);
+              setAutoSave(on);
+            }}
+          />
+        </PageRow>
+        <PageRow title="Format Java on save">
+          <SettingSwitch label="Format Java on save" on={formatOnSave.java} onChange={(on) => onFormat({ java: on })} />
+        </PageRow>
+        <PageRow title="Format TypeScript and JavaScript on save">
+          <SettingSwitch
+            label="Format TypeScript and JavaScript on save"
+            on={formatOnSave.web}
+            onChange={(on) => onFormat({ web: on })}
+          />
+        </PageRow>
+      </PageSection>
+
+      <PageSection title="Completions">
+        <PageRow title="Ghost text" description="Inline completions from Claude on your existing login.">
+          <SettingSwitch
+            label="Ghost text"
+            on={ghostText}
+            onChange={(on) => {
+              saveGhostText(on);
+              setGhostText(on);
+            }}
+          />
+        </PageRow>
+      </PageSection>
+
+      <OpenFilesIn />
+
+      <PageSection title="Java">
+        <PageRow
+          title="JDK"
+          description={
+            jdkState === null ? (
+              loading
+            ) : (
+              <>
+                <span className={java?.error ? "block text-warning" : "block"}>{jdkState}</span>
+                {java?.path ? <span className="block truncate font-mono text-[11px]">{java.path}</span> : null}
+              </>
+            )
+          }
         />
-      </Row>
-      <Row label="Format on save">
-        <span className="flex items-center gap-2">
-          <span className="text-[12px] text-content/50">Java</span>
-          <Toggle label="Format Java on save" on={formatOnSave.java} onChange={(on) => onFormat({ java: on })} />
-        </span>
-        <span className="ml-2 flex items-center gap-2">
-          <span className="text-[12px] text-content/50">Web</span>
-          <Toggle label="Format TypeScript and JavaScript on save" on={formatOnSave.web} onChange={(on) => onFormat({ web: on })} />
-        </span>
-      </Row>
-      <Row label="Ghost text" description="Inline completions from Claude on your existing login.">
-        <Toggle
-          label="Ghost text"
-          on={ghostText}
-          onChange={(on) => {
-            saveGhostText(on);
-            setGhostText(on);
-          }}
-        />
-      </Row>
-      <Row
-        label="JDK"
-        description={
-          <>
-            <span className={`block ${java && java.error ? "text-warning" : ""}`}>
-              {jdkState ?? <MatrixSpinner cell={1.5} />}
-            </span>
-            {java?.path ? (
-              <span className="block truncate font-mono text-[11px] text-content/40">
-                {java.path}
-              </span>
-            ) : null}
-          </>
-        }
-      />
-      <Row label="IntelliJ engine" description={note ?? engineState ?? <MatrixSpinner cell={1.5} />}>
-        {engine?.accepted ? (
-          <SecondaryButton onClick={checkUpdate}>Check for update</SecondaryButton>
-        ) : (
-          <SecondaryButton onClick={openGate}>Accept EULA</SecondaryButton>
-        )}
-      </Row>
-      <LanguageServersRow />
+        <PageRow title="IntelliJ engine" description={note ?? engineState ?? loading}>
+          <Button variant="secondary" size="sm" onClick={engine?.accepted ? checkUpdate : openGate}>
+            {engine?.accepted ? "Check for update" : "Accept EULA"}
+          </Button>
+        </PageRow>
+      </PageSection>
+
+      <LanguageServers />
       {gateOpen ? (
         <Modal
           onClose={() => setGateOpen(false)}

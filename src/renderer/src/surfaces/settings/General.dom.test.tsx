@@ -26,7 +26,6 @@ vi.mock("../../lib/updateStore", () => ({
 }));
 vi.mock("../../lib/sounds", () => ({ loadSoundsEnabled: () => true, saveSoundsEnabled: vi.fn(), playCue: vi.fn() }));
 vi.mock("../../chrome/PlanSettingsFields", () => ({ PlanSettingsEditor: () => null }));
-vi.mock("../EditorRow", () => ({ EditorRow: () => null }));
 vi.mock("../chunks", () => ({ releaseNotesChunk: { intent: {} } }));
 
 const { GeneralPage, updateActionLabel } = await import("./General");
