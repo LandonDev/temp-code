@@ -2,14 +2,6 @@ import { useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
 import {
-  ContextMenuCheckboxItem,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuSub,
-  ContextMenuSubContent,
-  ContextMenuSubTrigger,
-} from "../components/ui/context-menu";
-import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
@@ -29,7 +21,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/toolti
 import { MOD } from "../lib/platform";
 import { THREAD_GLYPHS } from "../surfaces/threads/threadTypes";
 import { timeAgo } from "../lib/duration";
-import type { ExplorerMenuItem } from "./ExplorerMenu";
+import { MenuRows } from "./menuBody";
+import type { MenuRow } from "./menuRows";
 import { HostGlyph } from "./HostGlyph";
 import { ArchiveRestore, MoreHorizontal, PanelRight } from "./icons";
 import { chipTitle, type ArchivedThread, type StripChip } from "./ThreadHeaderStrip";
@@ -42,80 +35,6 @@ import { chipTitle, type ArchivedThread, type StripChip } from "./ThreadHeaderSt
  * the project's items: Pause all, Dev server, Terminal, Recent threads and
  * Archived threads.
  */
-
-export type MenuRowsKind = "dropdown" | "context";
-
-/** A thread's row: an item, a separator, or a submenu of items (Type). */
-export type ThreadMenuItem =
-  | ExplorerMenuItem
-  | { kind: "sub"; id: string; label: string; items: ExplorerMenuItem[]; disabled?: boolean };
-
-/** The one renderer for a thread's rows, in the ⋯ menu and the chip's
- *  right-click alike, so the two never drift. */
-export function MenuRows({
-  items,
-  onPick,
-  kind,
-}: {
-  items: readonly ThreadMenuItem[];
-  onPick: (id: string) => void;
-  kind: MenuRowsKind;
-}) {
-  const Row = kind === "dropdown" ? DropdownMenuItem : ContextMenuItem;
-  const Check = kind === "dropdown" ? DropdownMenuCheckboxItem : ContextMenuCheckboxItem;
-  const Sep = kind === "dropdown" ? DropdownMenuSeparator : ContextMenuSeparator;
-  const Sub = kind === "dropdown" ? DropdownMenuSub : ContextMenuSub;
-  const SubTrigger = kind === "dropdown" ? DropdownMenuSubTrigger : ContextMenuSubTrigger;
-  const SubContent = kind === "dropdown" ? DropdownMenuSubContent : ContextMenuSubContent;
-  return (
-    <>
-      {items.map((item, index) => {
-        if (item.kind === "sep") return <Sep key={`sep-${index}`} />;
-        if (item.kind === "sub") {
-          return (
-            <Sub key={item.id}>
-              <SubTrigger disabled={item.disabled}>{item.label}</SubTrigger>
-              <SubContent>
-                <MenuRows items={item.items} onPick={onPick} kind={kind} />
-              </SubContent>
-            </Sub>
-          );
-        }
-        const label = item.description ? (
-          <span className="flex min-w-0 flex-col gap-0.5">
-            <span>{item.label}</span>
-            <span className="text-[12px] text-muted-foreground">{item.description}</span>
-          </span>
-        ) : (
-          item.label
-        );
-        if (item.checked !== undefined) {
-          return (
-            <Check
-              key={item.id}
-              checked={item.checked}
-              disabled={item.disabled}
-              closeOnClick
-              onCheckedChange={() => onPick(item.id)}
-            >
-              {label}
-            </Check>
-          );
-        }
-        return (
-          <Row
-            key={item.id}
-            disabled={item.disabled}
-            variant={item.danger ? "destructive" : "default"}
-            onClick={() => onPick(item.id)}
-          >
-            {label}
-          </Row>
-        );
-      })}
-    </>
-  );
-}
 
 /** Groups with nothing in them drop out, and no separator is left hanging. */
 function groups(...parts: ReactNode[][]): ReactNode[] {
@@ -134,7 +53,7 @@ export type ThreadMenuProps = {
   /** The active thread's cost in dollars, when known. */
   cost: number | null;
   /** The active thread's rows (chipMenuItems plus its host moves); empty without one. */
-  rows: readonly ThreadMenuItem[];
+  rows: readonly MenuRow[];
   onPick: (id: string) => void;
   /** The menu opened: load what the thread's rows need (bridge, resources). */
   onOpen?: () => void;

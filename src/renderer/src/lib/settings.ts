@@ -261,13 +261,15 @@ const CMD = IS_MAC ? "⌘" : "Ctrl";
 const OPT = IS_MAC ? "⌥" : "Alt";
 const SHF = IS_MAC ? "⇧" : "Shift";
 const CTL = IS_MAC ? "⌃" : "Ctrl";
+const DEL = IS_MAC ? "⌫" : "Delete";
+const RET = IS_MAC ? "⏎" : "Enter";
 
 export type Keybinding = {
   name: string;
   /** Each entry is one chord as caps; a second entry is an alternative. */
   keys: string[][];
   /** Where the binding holds, when not everywhere. */
-  scope?: "editor" | "outside-editor";
+  scope?: "editor" | "outside-editor" | "files";
 };
 
 export type KeybindingGroup = { title: string; bindings: Keybinding[] };
@@ -334,6 +336,17 @@ export const KEYBINDING_GROUPS: KeybindingGroup[] = [
     ],
   },
   {
+    title: "Files",
+    bindings: [
+      { name: "Cut", keys: [[CMD, "X"]], scope: "files" },
+      { name: "Copy", keys: [[CMD, "C"]], scope: "files" },
+      { name: "Paste", keys: [[CMD, "V"]], scope: "files" },
+      { name: "Rename", keys: [["F2"]], scope: "files" },
+      { name: "Delete", keys: [[DEL]], scope: "files" },
+      { name: "Open in Editor", keys: [[OPT, RET]], scope: "files" },
+    ],
+  },
+  {
     title: "Editor",
     bindings: [
       { name: "Find", keys: [[CMD, "F"]], scope: "editor" },
@@ -342,9 +355,19 @@ export const KEYBINDING_GROUPS: KeybindingGroup[] = [
   },
 ];
 
+/** The first chord of a binding as one key cap's text ("⌘W" on macOS,
+ *  "Ctrl+W" elsewhere): the only source of a shortcut a menu row or a `Tip`
+ *  shows, so a hint never names a key the app does not handle
+ *  (lib/menuShortcuts.test.ts holds every call to a real binding). */
+export function shortcutFor(group: string, name: string): string | undefined {
+  const chord = KEYBINDING_GROUPS.find((g) => g.title === group)?.bindings.find((b) => b.name === name)?.keys[0];
+  return chord?.join(IS_MAC ? "" : "+");
+}
+
 export const KEYBINDING_SCOPE_LABEL: Record<NonNullable<Keybinding["scope"]>, string> = {
   editor: "In the editor",
   "outside-editor": "Outside the editor",
+  files: "In the file tree",
 };
 
 /** The groups with only the bindings whose name, group or keys match;

@@ -39,6 +39,9 @@ export const notesChunk = defineChunk("notes", () => import("./NotesView"));
 /** The options select every dialog and settings page uses (ChoiceSelect on the Base UI select). */
 export const selectChunk = defineChunk("select", () => import("../components/choice-select-body"));
 
+/** Every menu, context menu and popover's body (chrome/menuBody.tsx); chrome/menuRows.tsx swaps them in. */
+export const menuChunk = defineChunk("menus", () => import("../chrome/menuBody"));
+
 /** Every chunk, for the tests and the idle warm-up. */
 export const allChunks = {
   settingsChunk,
@@ -56,4 +59,5 @@ export const allChunks = {
   inboxChunk,
   notesChunk,
   selectChunk,
+  menuChunk,
 };

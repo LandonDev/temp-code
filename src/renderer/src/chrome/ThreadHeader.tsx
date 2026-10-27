@@ -7,12 +7,13 @@ import type { ThreadType } from "../lib/tcserver/types";
 import type { HeaderModel } from "../lib/threadHeaderModel";
 import type { ReadyMap } from "../lib/threadStripModel";
 import { THREAD_LABELS, THREAD_TYPES } from "../surfaces/threads/threadTypes";
-import type { ExplorerMenuItem } from "./ExplorerMenu";
 import { NewThreadChooser } from "./NewThreadChooser";
 import { ProjectPlanChip } from "./ProjectPlanChip";
 import { ConfirmDialog } from "./ProjectDialogs";
 import { ThreadHeaderStrip, chipTitle, type ArchivedThread, type ChipThread, type StripChip } from "./ThreadHeaderStrip";
-import { MenuRows, ThreadMenu, type ThreadMenuItem } from "./ThreadMenu";
+import { MenuRows } from "./menuBody";
+import type { MenuRow } from "./menuRows";
+import { ThreadMenu } from "./ThreadMenu";
 import { goalDialog } from "./GoalDialog";
 import { TuneDialog } from "./ThreadTune";
 import { MacBridgeRulesDialog } from "./MacBridgeRulesDialog";
@@ -72,13 +73,13 @@ export function chipMenuItems(
   resources = 0,
   master = false,
   /** The thread's "Move to <host>…" rows (useThreadHost), before Archive. */
-  moves: readonly ExplorerMenuItem[] = [],
+  moves: readonly MenuRow[] = [],
   /** The thread's goal when its composer is on screen to open the dialog;
    *  absent leaves Goal… out. Checked while a goal runs. */
   goal?: { running: boolean },
-): ThreadMenuItem[] {
+): MenuRow[] {
   const t = chip.thread;
-  const items: ThreadMenuItem[] = [{ kind: "item", id: "rename", label: "Rename" }];
+  const items: MenuRow[] = [{ kind: "item", id: "rename", label: "Rename" }];
   if (t.threadType && TUNABLE.has(t.threadType))
     items.push({ kind: "item", id: "tune", label: `${THREAD_LABELS[t.threadType]} options…` });
   // The goal (chrome/GoalDialog.tsx): a root thread whose harness takes one.
@@ -208,7 +209,7 @@ export function ThreadHeader({
   const activeChip = model.live.find((c) => c.id === model.activeId) ?? null;
 
   /** The one list for a thread: its chip's right-click and the ⋯ menu alike. */
-  const rowsFor = (chip: StripChip): ThreadMenuItem[] => {
+  const rowsFor = (chip: StripChip): MenuRow[] => {
     const own = chip.id === target;
     const bridge: ChipBridge | undefined =
       own && targetEnv && bridgeableEnvironment(targetEnv) ? { state: bridgeState } : undefined;

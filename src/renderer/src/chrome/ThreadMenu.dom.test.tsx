@@ -6,7 +6,8 @@ import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../componen
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
 import { chipMenuItems } from "./ThreadHeader";
 import type { ChipThread, StripChip } from "./ThreadHeaderStrip";
-import { MenuRows, ThreadMenu } from "./ThreadMenu";
+import { MenuRows } from "./menuBody";
+import { ThreadMenu } from "./ThreadMenu";
 
 vi.mock("./HostGlyph", () => ({ HostGlyph: () => <span data-host-glyph /> }));
 
