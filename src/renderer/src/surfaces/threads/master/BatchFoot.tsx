@@ -31,6 +31,7 @@ export function BatchFoot({
   batch,
   loaded = true,
   titleOf,
+  hostName,
   onSave,
   onStop,
 }: {
@@ -39,6 +40,8 @@ export function BatchFoot({
   loaded?: boolean;
   /** A child's title by id, for the blocked line. */
   titleOf: (id: string) => string | undefined;
+  /** A host's name by id, for a blocked child out of reach on it. */
+  hostName?: (environmentId: string) => string | undefined;
   onSave: (rules: Rules) => Promise<void>;
   onStop: (stepId: string) => Promise<void>;
 }) {
@@ -51,7 +54,7 @@ export function BatchFoot({
   // A step that runs again after a fold unfolds it.
   if (running && folded.size > 0) setFolded(new Set());
   const now = useNow(running);
-  const blocked = blockedLine(batch, titleOf);
+  const blocked = blockedLine(batch, titleOf, hostName);
 
   if (!loaded) return <FootSkeleton />;
 

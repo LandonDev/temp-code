@@ -32,6 +32,7 @@ import type {
   SessionStatus
 } from '@shared/events'
 import { watchSubject } from '@shared/watch'
+import { blockedWords } from '@shared/batchWords'
 import { classifyFailure, type GatewayRefusal } from './failureKind'
 import {
   LIVE_STATUSES,
@@ -4485,8 +4486,7 @@ export class SessionRegistry {
     try {
       const state = engine.get(session.id)
       if (state.blocked) {
-        const who = this.store.getSession(state.blocked.sessionId)?.title ?? state.blocked.sessionId
-        return `Blocked: ${who} ${state.blocked.why}`
+        return blockedWords(state.blocked, this.store.getSession(state.blocked.sessionId)?.title)
       }
       const running = state.steps.find((s) => s.status === 'running')
       if (running) {

@@ -10,6 +10,7 @@ import {
 } from "@server/shared/contract-batch";
 import { batchThreadId, remoteArchivePlan, type ArchiveWhich } from "./boardActions";
 import { stepsOf } from "./steps";
+import { blockedWords } from "@shared/batchWords";
 import { AgentSummaries } from "./agentSummary";
 import { registry } from "../../../lib/connection";
 import { useEnvironmentStatuses } from "../../../lib/connection/status";
@@ -285,9 +286,15 @@ function listWords(parts: string[]): string {
 }
 
 /** What blocks the batch's end, as the foot says it: "Blocked: <title> errored". */
-export function blockedLine(batch: Pick<BatchState, "blocked">, titleOf: (id: string) => string | undefined): string | null {
-  if (!batch.blocked) return null;
-  return `Blocked: ${titleOf(batch.blocked.sessionId) || "a thread"} ${batch.blocked.why}`;
+export function blockedLine(
+  batch: Pick<BatchState, "blocked">,
+  titleOf: (id: string) => string | undefined,
+  hostName?: (environmentId: string) => string | undefined,
+): string | null {
+  const { blocked } = batch;
+  if (!blocked) return null;
+  const host = blocked.environmentId ? hostName?.(blocked.environmentId) : undefined;
+  return blockedWords(blocked, titleOf(blocked.sessionId), host);
 }
 
 export async function setBatchRules(environmentId: string, masterId: string, rules: Rules): Promise<void> {

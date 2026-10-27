@@ -256,6 +256,11 @@ describe('the watching master', () => {
     await settle(120)
     expect(batches.get(master).blocked).toEqual({ sessionId: a, why: 'no-turn' })
     expect(sends.get(master)!.slice(before).filter((t) => t.includes('ended its turn without completing'))).toHaveLength(1)
+    if (status(master) === 'running') {
+      idle(master)
+      await settle(80)
+    }
+    expect(registry.get(master)?.activity).toBe('Blocked: A ended its turn without completing')
   })
 
   it('P10 a planning child whose plan is complete and whose build never starts holds the batch open, unblocked (documented)', async () => {

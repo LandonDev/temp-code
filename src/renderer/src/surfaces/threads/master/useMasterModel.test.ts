@@ -219,6 +219,14 @@ describe("the rules sentence", () => {
     expect(blockedLine({ blocked: { sessionId: "c9", why: "errored" } }, titleOf)).toBe("Blocked: Inbox errored");
     expect(blockedLine({ blocked: { sessionId: "zz", why: "stopped" } }, titleOf)).toBe("Blocked: a thread stopped");
     expect(blockedLine({ blocked: null }, titleOf)).toBeNull();
+    expect(blockedLine({ blocked: { sessionId: "c9", why: "no-turn" } }, titleOf)).toBe(
+      "Blocked: Inbox ended its turn without completing",
+    );
+    expect(
+      blockedLine({ blocked: { sessionId: "c9", why: "unreachable", environmentId: "env_box" } }, titleOf, (id) =>
+        id === "env_box" ? "box" : undefined,
+      ),
+    ).toBe("Blocked: Inbox is out of reach on box");
   });
 });
 

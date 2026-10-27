@@ -329,6 +329,7 @@ export function MasterView(props: ThreadViewProps) {
           batch={batch}
           loaded={loaded}
           titleOf={(id) => rowModels(layout).find((r) => r.meta.id === id)?.title}
+          hostName={(id) => hostNames.get(id)}
           onSave={(next) => setBatchRules(session.environmentId, session.id, next)}
           onStop={(stepId) => stopBatchStep(session.environmentId, session.id, stepId)}
         />
