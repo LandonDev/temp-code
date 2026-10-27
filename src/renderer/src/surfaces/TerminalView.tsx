@@ -84,11 +84,18 @@ const ANSI_LIGHT = {
   brightWhite: "#ffffff",
 };
 
+// The chrome's colours are the tokens'; these are their values for a page without the stylesheet.
+const FALLBACK = {
+  dark: { foreground: "#e7e8ea", background: "#141516", accent: "#459bf7" },
+  light: { foreground: "#151618", background: "#ffffff", accent: "#0a77eb" },
+};
+
 export function terminalTheme(light: boolean) {
+  const fallback = light ? FALLBACK.light : FALLBACK.dark;
   return {
     background: "#00000000",
-    foreground: cssColor("var(--color-content)", light ? "#2e2e2e" : "#e8eef2"),
-    cursor: cssColor("var(--color-accent)", light ? "#4078f2" : "#4da3f5"),
+    foreground: cssColor("var(--color-foreground)", fallback.foreground),
+    cursor: cssColor("var(--color-accent)", fallback.accent),
     cursorAccent: light ? "#ffffff" : "#000000",
     selectionBackground: light
       ? "rgba(0,0,0,0.18)"
@@ -107,12 +114,40 @@ export function monoFont(): string {
   return fromCss || "ui-monospace, SFMono-Regular, Menlo, Monaco, monospace";
 }
 
-// OSC 10/11/12 replies so CLIs (vim, tmux, …) pick matching colors.
-const OSC_DARK = { fg: "#e8eef2", bg: "#141b1f", cursor: "#4da3f5" };
-const OSC_LIGHT = { fg: "#383a42", bg: "#fafafa", cursor: "#4078f2" };
+let canvas: CanvasRenderingContext2D | null | undefined;
 
-function oscColors() {
-  return isLightScheme() ? OSC_LIGHT : OSC_DARK;
+/** A computed CSS colour as `#rrggbb`, what an OSC reply carries; an oklch value resolves through a 1px canvas. */
+export function hexOf(color: string, fallback: string): string {
+  if (/^#[0-9a-f]{6}$/i.test(color)) return color.toLowerCase();
+  const hex = (channels: ArrayLike<number>) =>
+    `#${Array.from(channels, (n) => Math.round(Number(n)).toString(16).padStart(2, "0")).join("")}`;
+  const rgb = /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/.exec(color);
+  if (rgb) return hex(rgb.slice(1, 4).map(Number));
+  if (canvas === undefined) {
+    try {
+      const el = document.createElement("canvas");
+      el.width = el.height = 1;
+      canvas = el.getContext("2d", { willReadFrequently: true });
+    } catch {
+      canvas = null;
+    }
+  }
+  if (!canvas || !color) return fallback;
+  canvas.clearRect(0, 0, 1, 1);
+  canvas.fillStyle = color;
+  canvas.fillRect(0, 0, 1, 1);
+  return hex(canvas.getImageData(0, 0, 1, 1).data.slice(0, 3));
+}
+
+/** OSC 10/11/12 replies, so CLIs (vim, tmux, …) see the colours on screen: the theme's text and cursor, the content background. */
+export function oscColors(light = isLightScheme()) {
+  const theme = terminalTheme(light);
+  const fallback = light ? FALLBACK.light : FALLBACK.dark;
+  return {
+    fg: hexOf(theme.foreground, fallback.foreground),
+    bg: hexOf(cssColor("var(--color-background)", fallback.background), fallback.background),
+    cursor: hexOf(theme.cursor, fallback.accent),
+  };
 }
 
 /** A terminal tab. The page at /ui has no shell to spawn (a tab restored
