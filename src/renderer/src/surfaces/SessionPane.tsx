@@ -123,10 +123,8 @@ export const SessionPane = memo(function SessionPane({
   // is not mounted) and while an editor or the dock holds the focus.
   useEffect(() => {
     if (!visible) return;
-    if (!rightPanel.focused()) rightPanel.focus(session.id);
-    return () => {
-      if (rightPanel.focused() === session.id) rightPanel.focus(null);
-    };
+    rightPanel.visible(session.id, true);
+    return () => rightPanel.visible(session.id, false);
   }, [session.id, visible]);
 
   // A click inside the pane that already owns focus and the composer asks

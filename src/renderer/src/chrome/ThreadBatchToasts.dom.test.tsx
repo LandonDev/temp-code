@@ -82,6 +82,11 @@ describe("ThreadBatchToasts", () => {
     expect(second.description).toBe("link down");
     second.action!.onClick();
     expect(onOpen).toHaveBeenLastCalledWith("c", "local");
+    // A dismissed secondary stays dismissed when the list syncs again.
+    second.onDismiss();
+    vi.mocked(toast.error).mockClear();
+    await act(() => runThreadBatch("stop", sel));
+    expect(vi.mocked(toast.error).mock.calls.map((c) => options(c).id)).not.toContain(`${opts.id}:c`);
     opts.onDismiss();
     expect(toast.dismiss).toHaveBeenCalledWith(`${opts.id}:c`);
   });

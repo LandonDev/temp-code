@@ -13,6 +13,10 @@ const VERB: Record<BatchNotice["action"], string> = { pause: "Paused", resume: "
 /** One sonner toast per batch: "Paused 14", and under a failure "1 failed:
  *  Search (harness not responding)" with Open for that thread. A clean
  *  result leaves on its own; one with a failure waits to be read. */
+/** Secondary failure toasts the person dismissed: the list syncs again on
+ *  every change, and a dismissed one must not come back. */
+const dismissedRest = new Set<string>();
+
 export function ThreadBatchToasts({ onOpen }: Props): null {
   useToastSync(
     useBatchNotices(),
@@ -29,6 +33,7 @@ export function ThreadBatchToasts({ onOpen }: Props): null {
       // each remaining failure is its own toast under it with its error and
       // Open; dismissing the lead takes the rest with it.
       const restIds = rest.map((f) => `${id}:${f.sessionId}`);
+      const readRest = (restId: string) => !dismissedRest.has(restId);
       toast.error(title, {
         id,
         description: `${notice.failed.length} failed: ${first.title} (${first.error})`,
@@ -40,10 +45,13 @@ export function ThreadBatchToasts({ onOpen }: Props): null {
         action: { label: "Open", onClick: () => onOpen(first.sessionId, first.environmentId) },
       });
       rest.forEach((f, index) => {
+        const restId = restIds[index];
+        if (!readRest(restId)) return;
         toast.error(f.title, {
-          id: restIds[index],
+          id: restId,
           description: f.error,
           duration: Infinity,
+          onDismiss: () => dismissedRest.add(restId),
           action: { label: "Open", onClick: () => onOpen(f.sessionId, f.environmentId) },
         });
       });

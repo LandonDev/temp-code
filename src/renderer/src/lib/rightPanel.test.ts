@@ -80,6 +80,17 @@ describe("the store", () => {
     expect(rightPanel.get("t2").debug).toBe(false);
   });
 
+  it("a visible thread takes the target when none is set, and hands it on when it leaves", () => {
+    rightPanel.visible("a", true);
+    rightPanel.visible("b", true);
+    expect(rightPanel.focused()).toBe("a");
+    rightPanel.focus("a");
+    rightPanel.visible("a", false);
+    expect(rightPanel.focused()).toBe("b");
+    rightPanel.visible("b", false);
+    expect(rightPanel.focused()).toBeNull();
+  });
+
   it("persists the width, clamped, and a new thread inherits the last one", () => {
     rightPanel.setWidth("t1", 1000);
     expect(rightPanel.get("t1").width).toBe(PANEL_MAX);

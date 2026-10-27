@@ -115,6 +115,7 @@ let data: Persisted = load();
 const cache = new Map<string, PanelState>();
 const listeners = new Set<() => void>();
 let focusedId: string | null = null;
+const visibleIds = new Set<string>();
 
 function save(): void {
   const ids = Object.keys(data.threads);
@@ -177,6 +178,18 @@ export const rightPanel = {
   focus(id: string | null): void {
     focusedId = id;
   },
+  /** A thread's pane came on screen or left it. The target is the focused
+   *  visible thread; when it leaves, another visible thread takes over, so
+   *  an editor or the dock holding focus never leaves the shortcuts dead. */
+  visible(id: string, on: boolean): void {
+    if (on) {
+      visibleIds.add(id);
+      if (!focusedId) focusedId = id;
+      return;
+    }
+    visibleIds.delete(id);
+    if (focusedId === id) focusedId = visibleIds.values().next().value ?? null;
+  },
   /** Open a section on the thread on screen (⌃D's Debug, the Dev Server button). */
   show(section: Section, id: string | null = focusedId): void {
     if (id) write(id, { open: true, section, ...(section === "debug" ? { debug: true } : {}) });
@@ -189,6 +202,7 @@ export const rightPanel = {
     data = { width: PANEL_WIDTH, threads: {} };
     cache.clear();
     focusedId = null;
+    visibleIds.clear();
     try {
       localStorage.removeItem(KEY);
     } catch {
