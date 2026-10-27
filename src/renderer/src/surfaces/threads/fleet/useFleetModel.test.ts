@@ -9,9 +9,10 @@ const thread = (extra: Record<string, unknown> = {}) =>
 
 describe("fleetActive", () => {
   it("a child working or waiting, not failed or done", () => {
-    expect(fleetActive({ working: 1, waiting: 0, failed: 0, done: 0 })).toBe(true);
-    expect(fleetActive({ working: 0, waiting: 1, failed: 0, done: 0 })).toBe(true);
-    expect(fleetActive({ working: 0, waiting: 0, failed: 2, done: 3 })).toBe(false);
+    expect(fleetActive({ working: 1, watching: 0, waiting: 0, failed: 0, done: 0 })).toBe(true);
+    expect(fleetActive({ working: 0, watching: 0, waiting: 1, failed: 0, done: 0 })).toBe(true);
+    expect(fleetActive({ working: 0, watching: 0, waiting: 0, failed: 2, done: 3 })).toBe(false);
+    expect(fleetActive({ working: 0, watching: 1, waiting: 0, failed: 0, done: 1 })).toBe(true);
   });
 });
 

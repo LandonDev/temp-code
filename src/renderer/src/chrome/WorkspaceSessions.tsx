@@ -242,6 +242,7 @@ export function rowMark(row: ThreadRow): { state: ThreadState; label: string } {
     activity: row.activity,
     tasks: row.tasks,
     failure: row.failure,
+    background: row.background,
   });
   const same = status.state === state;
   return {

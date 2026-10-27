@@ -168,6 +168,14 @@ describe("rowState", () => {
     expect(rowState({ status: "stopped" })).toBe("stopped");
   });
 
+  it("reads a settled root with live subagents as watching", () => {
+    const background = { tasks: [], agents: ["a"] };
+    expect(rowState({ status: "idle", treeHasLiveWork: true, background })).toBe("watching");
+    expect(rowState({ status: "done", background })).toBe("watching");
+    expect(rowState({ status: "idle", treeHasPaused: true, background })).toBe("paused");
+    expect(rowState({ status: "idle", background: { tasks: [], agents: [] } })).toBe("idle");
+  });
+
   it("leaves a settled row unmarked", () => {
     expect(rowState({ status: "idle" })).toBe("idle");
     expect(rowState({ status: "done" })).toBe("done");

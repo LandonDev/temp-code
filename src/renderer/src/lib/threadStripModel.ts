@@ -255,7 +255,9 @@ export function threadStatus(input: ThreadStatusInput): ThreadStatus {
   // The host clears treeCanContinue while the tree has live work.
   if (input.treeCanContinue)
     return { state: "failed", detail: lowerFirst(input.failure), tally: null };
-  const state = threadStateOf(status, { planReady: input.planReady });
+  const own = threadStateOf(status, { planReady: input.planReady });
+  // A settled parent whose subagents still work is watching them, whatever each one does.
+  const state = settledWithAgents(own, input.background) ? "watching" : own;
   const none = { state, detail: null, tally: null };
   switch (state) {
     case "working": {
@@ -281,6 +283,11 @@ export function threadStatus(input: ThreadStatusInput): ThreadStatus {
     default:
       return none;
   }
+}
+
+/** Idle or done (never paused, failed or plan-ready) with live subagents under it. */
+export function settledWithAgents(state: ThreadState, background: BackgroundWork | null | undefined): boolean {
+  return (state === "idle" || state === "done") && !!background?.agents.length;
 }
 
 /** The host's line past its leading word ("Queued · 3rd in line" → "3rd in line"); null when it says nothing more. */

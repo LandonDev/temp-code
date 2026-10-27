@@ -101,7 +101,7 @@ describe("fleetCounts", () => {
         { status: "paused" },
         { status: "watching" },
       ]),
-    ).toEqual({ working: 3, waiting: 1, failed: 1, done: 2 });
+    ).toEqual({ working: 2, watching: 1, waiting: 1, failed: 1, done: 2 });
   });
 });
 
@@ -178,12 +178,12 @@ describe("leadStripped", () => {
 
 describe("the vocabulary is the one map", () => {
   it("counts are said in StatusMark's words and tones, and a line's tone is the state's", () => {
-    const parts = fleetSentence({ working: 1, waiting: 1, failed: 1, done: 1 });
+    const parts = fleetSentence({ working: 1, watching: 1, waiting: 1, failed: 1, done: 1 });
     expect(parts.map((p) => p.text)).toEqual(
-      (["working", "waiting", "failed", "done"] as const).map((s) => `1 ${STATUS_WORD[s].toLowerCase()}`),
+      (["working", "watching", "waiting", "failed", "done"] as const).map((s) => `1 ${STATUS_WORD[s].toLowerCase()}`),
     );
-    expect(parts[1].tone).toBe(statusToneClass("waiting"));
-    expect(parts[2].tone).toBe(statusToneClass("failed"));
+    expect(parts[2].tone).toBe(statusToneClass("waiting"));
+    expect(parts[3].tone).toBe(statusToneClass("failed"));
     expect(TONE_CLASS).toEqual({
       warning: statusToneClass("waiting"),
       danger: statusToneClass("failed"),
@@ -191,26 +191,30 @@ describe("the vocabulary is the one map", () => {
     });
   });
 
-  it("ranks and counts by threadStateOf: starting works, watching counts as working, the quiet states as done", () => {
+  it("ranks and counts by threadStateOf: starting works, watching counts on its own, the quiet states as done", () => {
     expect(agentRank("starting")).toBe(agentRank("running"));
     expect(agentRank("queued")).toBe(agentRank("idle"));
     expect(
       fleetCounts([{ status: "starting" }, { status: "watching" }, { status: "queued" }, { status: "stopped" }, { status: "paused" }]),
-    ).toEqual({ working: 2, waiting: 0, failed: 0, done: 3 });
+    ).toEqual({ working: 1, watching: 1, waiting: 0, failed: 0, done: 3 });
   });
 });
 
 describe("fleetSentence", () => {
   it("says the nonzero counts in order, with the tones that mean something", () => {
-    expect(fleetSentence({ working: 2, waiting: 1, failed: 0, done: 3 })).toEqual([
+    expect(fleetSentence({ working: 2, watching: 0, waiting: 1, failed: 0, done: 3 })).toEqual([
       { text: "2 working", tone: undefined },
       { text: "1 needs you", tone: "text-warning" },
       { text: "3 done", tone: undefined },
     ]);
-    expect(fleetSentence({ working: 0, waiting: 0, failed: 1, done: 0 })).toEqual([
+    expect(fleetSentence({ working: 0, watching: 1, waiting: 0, failed: 0, done: 1 })).toEqual([
+      { text: "1 watching", tone: undefined },
+      { text: "1 done", tone: undefined },
+    ]);
+    expect(fleetSentence({ working: 0, watching: 0, waiting: 0, failed: 1, done: 0 })).toEqual([
       { text: "1 failed", tone: "text-destructive" },
     ]);
-    expect(fleetSentence({ working: 0, waiting: 0, failed: 0, done: 0 })).toEqual([]);
+    expect(fleetSentence({ working: 0, watching: 0, waiting: 0, failed: 0, done: 0 })).toEqual([]);
   });
 });
 

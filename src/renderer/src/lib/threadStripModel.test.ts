@@ -175,6 +175,20 @@ describe("threadStatus", () => {
     expect(threadStatus({ status: "watching", background: lone }).detail).toBe("sleep 45 seconds in the background");
   });
 
+  it("reads a settled parent with live subagents as watching them", () => {
+    expect(threadStatus({ status: "idle", background: bg({ agents: ["a"] }) })).toEqual({
+      state: "watching",
+      detail: "a subagent",
+      tally: null,
+    });
+    expect(threadStatus({ status: "done", background: bg({ agents: ["a", "b"] }) }).detail).toBe("2 subagents");
+    // The tree's overrides and a ready plan still win; no subagents, still idle.
+    expect(threadStatus({ status: "idle", treeHasPaused: true, background: bg({ agents: ["a"] }) }).state).toBe("paused");
+    expect(threadStatus({ status: "idle", treeCanContinue: true, background: bg({ agents: ["a"] }) }).state).toBe("failed");
+    expect(threadStatus({ status: "idle", planReady: true, background: bg({ agents: ["a"] }) }).state).toBe("plan-ready");
+    expect(threadStatus({ status: "idle", background: bg() }).state).toBe("idle");
+  });
+
   it("gives a queued thread the host's reason past the word", () => {
     expect(threadStatus({ status: "queued", activity: "Queued · 120 of 120 running" }).detail).toBe("120 of 120 running");
     expect(threadStatus({ status: "queued", activity: "Queued · waiting for Plan A19" }).detail).toBe("waiting for Plan A19");

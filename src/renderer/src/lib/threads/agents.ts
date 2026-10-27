@@ -40,17 +40,17 @@ export function childrenOf(metas: SessionMeta[], parentId: string): SessionMeta[
   return sortAgents(metas.filter((m) => m.parentId === parentId && !m.archived));
 }
 
-export type FleetCounts = { working: number; waiting: number; failed: number; done: number };
+export type FleetCounts = { working: number; watching: number; waiting: number; failed: number; done: number };
 
 export function fleetCounts(agents: { status: SessionStatus }[]): FleetCounts {
-  const out: FleetCounts = { working: 0, waiting: 0, failed: 0, done: 0 };
+  const out: FleetCounts = { working: 0, watching: 0, waiting: 0, failed: 0, done: 0 };
   for (const a of agents) out[countOf(threadStateOf(a.status))]++;
   return out;
 }
 
-/** The count a state falls in: watching works, every other quiet state is done. */
+/** The count a state falls in: working, watching, waiting and failed their own, every other quiet state done. */
 function countOf(state: ThreadState): keyof FleetCounts {
-  if (state === "working" || state === "watching") return "working";
+  if (state === "working" || state === "watching") return state;
   return state === "waiting" || state === "failed" ? state : "done";
 }
 
@@ -61,9 +61,9 @@ function countPart(k: keyof FleetCounts, n: number): { text: string; tone?: stri
 }
 
 /** The fleet's counts as one sentence, nonzero parts in order working,
- *  needs you, failed, done; the renderer joins them with ", ". */
+ *  watching, needs you, failed, done; the renderer joins them with ", ". */
 export function fleetSentence(c: FleetCounts): { text: string; tone?: string }[] {
-  return (["working", "waiting", "failed", "done"] as const)
+  return (["working", "watching", "waiting", "failed", "done"] as const)
     .filter((k) => c[k] > 0)
     .map((k) => countPart(k, c[k]));
 }

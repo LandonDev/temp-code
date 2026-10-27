@@ -151,6 +151,19 @@ describe('WorkingStrip: a watching thread', () => {
     probe.unmount()
   })
 
+  it('reads an idle parent with a live subagent as watching it, with no age', () => {
+    const parent = session({ status: 'idle', background: { tasks: [], agents: ['c1'], watchingSince: null } })
+    const probe = mountProbe(
+      <Probe id="strip">
+        <WorkingStrip session={parent} onStop={() => {}} onResume={() => {}} />
+      </Probe>,
+    )
+    expect(probe.container.textContent).toContain('Watching')
+    expect(probe.container.textContent).toContain('a subagent')
+    expect(probe.container.textContent).not.toMatch(/NaN|\d+s/)
+    probe.unmount()
+  })
+
   it("names a master's batch steps once every batch thread is done", () => {
     const master = session({
       status: 'watching',

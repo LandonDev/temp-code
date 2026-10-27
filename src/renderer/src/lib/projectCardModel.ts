@@ -23,6 +23,7 @@ export type CardThread = Pick<
       | "treeHasPaused"
       | "treeCanContinue"
       | "treeFrozenActiveElapsed"
+      | "background"
     >
   > & {
     /** Inside a master (lib/workspaceSessions.ts `housedIds`): never unread. */

@@ -23,9 +23,9 @@ import { readingPercent, type ContextReading } from "./contextCache";
 
 // ── the fleet's state ───────────────────────────────────────────────────
 
-/** A child works or waits on the user. */
+/** A child works, watches its own work or waits on the user. */
 export function fleetActive(counts: FleetCounts): boolean {
-  return counts.working > 0 || counts.waiting > 0;
+  return counts.working > 0 || counts.watching > 0 || counts.waiting > 0;
 }
 
 // ── row stats ───────────────────────────────────────────────────────────
