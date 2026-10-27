@@ -37,6 +37,7 @@ import {
 } from "./implementationBoard";
 import { SplitShell } from "./SplitShell";
 import type { ThreadViewProps } from "./ThreadView";
+import { useChatFold } from "../../lib/chatFold";
 
 /**
  * Implementation thread: the TASKS and the CHANGES are the view. The board
@@ -141,13 +142,13 @@ export function ImplementationView(props: ThreadViewProps) {
   // replayed, so a first mount before hydration never folds.
   const settled = !running && !waiting && allDone && !stopped;
   const loaded = session.loaded === true;
-  const [chatOpen, setChatOpen] = useState(!(loaded && settled));
+  const [chatOpen, setChatOpen] = useChatFold(session.id, !(loaded && settled));
   const [sawLoaded, setSawLoaded] = useState(loaded);
   if (loaded !== sawLoaded) {
     setSawLoaded(loaded);
     if (loaded && settled) setChatOpen(false);
   }
-  const [sawWaiting, setSawWaiting] = useState(waiting);
+  const [sawWaiting, setSawWaiting] = useState(false); // false: a remount while waiting still opens the chat
   if (waiting !== sawWaiting) {
     setSawWaiting(waiting);
     if (waiting) setChatOpen(true);

@@ -549,7 +549,11 @@ right. The board has one 36px header: a short title, one muted state line in
 actions, and last the conversation `Toggle` (`ChatToggle`, pressed while
 the chat shows). Folding is a toggle, not a tween: the board takes the full
 width at once, the chat stays mounted (`inert`, parked at its last width)
-and fades back in over `--dur-fast` when shown again. Each view's document
+and fades back in over `--dur-fast` when shown again. The fold is
+remembered per thread for the app's run (`useChatFold`, lib/chatFold.ts),
+so a tab switch that unmounts a parked view keeps it; a relaunch starts on
+the view's phase default, and a question waiting at a remount still opens
+the chat. Each view's document
 is one column, `max-w-2xl`, at 15px/1.6. A view without a board is the chat
 alone, with no header.
 

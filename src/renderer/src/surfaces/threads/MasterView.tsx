@@ -38,6 +38,7 @@ import {
 } from "./master/useMasterModel";
 import { SplitShell } from "./SplitShell";
 import type { ThreadViewProps } from "./ThreadView";
+import { useChatFold } from "../../lib/chatFold";
 
 /**
  * A master thread (CLAUDE.md "Master threads", docs/LAYOUT.md "Master"):
@@ -118,7 +119,7 @@ export function MasterView(props: ThreadViewProps) {
       return cache.get(environmentId) ?? null;
     };
   }, [environments, statuses, masterHost]);
-  const [chatOpen, setChatOpen] = useState(true);
+  const [chatOpen, setChatOpen] = useChatFold(session.id, true);
   // The open title-bar menu: the rows' metas are read only while one is.
   const [menu, setMenu] = useState<"board" | "add" | null>(null);
   const [adding, setAdding] = useState(false);

@@ -33,6 +33,7 @@ vi.mock("./SplitShell", () => ({
   ),
 }));
 
+import { resetChatFolds } from "../../lib/chatFold";
 import { ImplementationView } from "./ImplementationView";
 
 beforeAll(() => {
@@ -42,7 +43,10 @@ beforeAll(() => {
     disconnect() {}
   } as unknown as typeof ResizeObserver;
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetChatFolds();
+});
 
 const todo = (content: string, status: TodoItem["status"]): TodoItem => ({ content, status });
 const edit = (id: string, path: string, todoIx: number, round = 0): Block =>
@@ -103,6 +107,29 @@ describe("the implementation board", () => {
       expect(el.style.background).toBe("");
       expect(el.style.backgroundColor).toBe("");
     }
+  });
+
+  it("the chat's fold survives the view unmounting, as a tab switch does", () => {
+    const running = session({ status: "running", blocks: [first], todos: [todo("Write a", "in_progress")] });
+    view(running);
+    fireEvent.click(screen.getByRole("button", { name: "fold" }));
+    cleanup();
+    view(running);
+    expect(document.querySelector("[data-collapsed]")?.getAttribute("data-collapsed")).toBe("true");
+  });
+
+  it("a remembered fold still opens for a question waiting at the remount", () => {
+    view(session({ status: "running", blocks: [first], todos: [todo("Clean", "in_progress")] }));
+    fireEvent.click(screen.getByRole("button", { name: "fold" }));
+    cleanup();
+    view(
+      session({
+        status: "waiting",
+        blocks: [first, { id: "ap", role: "tool", text: "", round: 0, tool: { title: "Bash: rm -rf dist" }, approval: { requestId: 1 } } as unknown as Block],
+        todos: [todo("Clean", "in_progress")],
+      }),
+    );
+    expect(document.querySelector("[data-collapsed]")?.getAttribute("data-collapsed")).toBe("false");
   });
 
   it("a needs-you line opens the chat", () => {

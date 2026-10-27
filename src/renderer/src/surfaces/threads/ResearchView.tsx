@@ -24,6 +24,7 @@ import { AgentDetail } from "./fleet/AgentDetail";
 import { OpenAgentDetailContext } from "../agentDetailContext";
 import { SplitShell } from "./SplitShell";
 import type { ThreadViewProps } from "./ThreadView";
+import { useChatFold } from "../../lib/chatFold";
 
 /**
  * Research thread: the SOURCES are the view. It opens as a normal chat;
@@ -119,9 +120,9 @@ export function ResearchView(props: ThreadViewProps) {
   // run starting reopens it, and the run that COMPLETES the report folds
   // it — that run's deliverable is the report. Later runs are answer-first
   // follow-ups whose deliverable is the chat answer, so they stay open.
-  const [chatOpen, setChatOpen] = useState(true);
+  const [chatOpen, setChatOpen] = useChatFold(session.id, true);
   const completeAtRunStart = useRef(complete);
-  const [sawWaiting, setSawWaiting] = useState(waiting);
+  const [sawWaiting, setSawWaiting] = useState(false); // false: a remount while waiting still opens the chat
   if (waiting !== sawWaiting) {
     setSawWaiting(waiting);
     if (waiting) setChatOpen(true);

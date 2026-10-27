@@ -15,6 +15,7 @@ import { THREAD_LABELS } from "./threadTypes";
 import { SplitShell } from "./SplitShell";
 import { StartBuildDialog } from "./StartBuildDialog";
 import type { ThreadViewProps } from "./ThreadView";
+import { useChatFold } from "../../lib/chatFold";
 
 /**
  * Planning thread, in three phases. It opens as a normal chat while the
@@ -124,13 +125,13 @@ export function PlanView(props: ThreadViewProps) {
   // answers live in the chat. All are render-time adjusts (the prevLen
   // pattern above), not effects, so a manual toggle wins until the next
   // phase change.
-  const [chatOpen, setChatOpen] = useState(true);
+  const [chatOpen, setChatOpen] = useChatFold(session.id, true);
   const [sawSpawned, setSawSpawned] = useState(!!spawned);
   if (!!spawned !== sawSpawned) {
     setSawSpawned(!!spawned);
     if (spawned) setChatOpen(false);
   }
-  const [sawWaiting, setSawWaiting] = useState(waiting);
+  const [sawWaiting, setSawWaiting] = useState(false); // false: a remount while waiting still opens the chat
   if (waiting !== sawWaiting) {
     setSawWaiting(waiting);
     if (waiting) setChatOpen(true);
