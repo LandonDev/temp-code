@@ -628,6 +628,11 @@ function ResultList({
                 {row.meta}
               </span>
             ) : null}
+            {(hit.kind === "file" || hit.kind === "content") && hit.more ? (
+              <span data-more className="shrink-0 text-[12px] text-muted-foreground tabular-nums">
+                +{hit.more} more
+              </span>
+            ) : null}
             {showHost && hit.host ? (
               <HostMark
                 environmentId={hit.host}
@@ -686,10 +691,13 @@ function rowCopy(hit: AppSearchHit, query: string): RowCopy {
     };
   }
   if (hit.kind === "file") {
+    const slash = hit.relative.lastIndexOf("/");
+    const folder = slash > 0 ? hit.relative.slice(0, slash) : "";
+    const meta = hit.line === undefined ? folder : folder ? `${folder}:${hit.line}` : `line ${hit.line}`;
     return {
       icon: <FileTypeIcon name={hit.name} isDir={false} size={16} />,
       title: <MatchText text={hit.name} positions={namePositions(hit)} />,
-      meta: hit.relative,
+      meta,
       mono: true,
     };
   }

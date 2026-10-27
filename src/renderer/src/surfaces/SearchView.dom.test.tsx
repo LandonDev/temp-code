@@ -60,7 +60,10 @@ vi.mock("../lib/search", async (importOriginal) => ({
 vi.mock("../lib/fs", () => ({ listProjectFiles: (...args: unknown[]) => h.listProjectFiles(...args) }));
 vi.mock("../lib/fileIndex", async (importOriginal) => {
   const real = await importOriginal<typeof import("../lib/fileIndex")>();
-  const files = [{ name: "gateway.ts", path: "/Users/me/app/src/gateway.ts", relative: "src/gateway.ts" }];
+  const files = [
+    { name: "gateway.ts", path: "/Users/me/app/src/gateway.ts", relative: "src/gateway.ts" },
+    { name: "README.md", path: "/Users/me/app/README.md", relative: "README.md" },
+  ];
   return { ...real, peekProjectFiles: () => files, loadProjectFiles: () => Promise.resolve(files), recentOpenedFiles: () => [] };
 });
 vi.mock("../lib/settings", () => ({ loadNotesEnabled: () => true }));
@@ -292,6 +295,47 @@ describe("SearchView across hosts", () => {
       fireEvent.click(menuItem(menu, "app"));
     });
     expect(input.value).toBe("gateway type:thread,note,project project:app ");
+    view.unmount();
+  });
+
+  it("names a file once: its folder beside the name, nothing for a root file", async () => {
+    h.environments = h.envs.one;
+    const view = render(<SearchView open cwd="/Users/me/app" recents={recents} {...props()} />);
+    await search(view, "readme type:file");
+    const [readme] = rows(view);
+    expect(readme.textContent).toBe("README.md");
+    await search(view, "gateway.ts type:file");
+    expect(rows(view)[0].textContent).toBe("gateway.tssrc");
+    view.unmount();
+  });
+
+  it("folds a file's matching lines into one row with +N more, and a name row opens at its first line", async () => {
+    h.environments = h.envs.one;
+    h.searchProject.mockImplementation((_env: string, options: { cwd: string }) =>
+      Promise.resolve({
+        matches: [
+          { path: `${options.cwd}/src/app.ts`, relative: "src/app.ts", line: 7, column: 1, preview: "app.listen()" },
+          { path: `${options.cwd}/src/app.ts`, relative: "src/app.ts", line: 3, column: 1, preview: "const app = make()" },
+          { path: `${options.cwd}/src/gateway.ts`, relative: "src/gateway.ts", line: 9, column: 4, preview: "app gateway" },
+          { path: `${options.cwd}/src/gateway.ts`, relative: "src/gateway.ts", line: 2, column: 2, preview: "app gate" },
+        ],
+        truncated: false,
+      }),
+    );
+    const p = props();
+    const view = render(<SearchView open cwd="/Users/me/app" recents={recents} {...p} />);
+    await search(view, "app type:file");
+    const content = rows(view).filter((row) => row.dataset.kind === "content");
+    expect(content.map((row) => row.textContent)).toEqual([
+      "const app = make()src/app.ts:3+1 more",
+      "app gatesrc/gateway.ts:2+1 more",
+    ]);
+    await search(view, "gateway type:file");
+    const [name] = rows(view);
+    expect(name.dataset.kind).toBe("file");
+    expect(name.textContent).toBe("gateway.tssrc:2+1 more");
+    fireEvent.keyDown(view.container.querySelector("input") as HTMLInputElement, { key: "Enter" });
+    expect(p.onOpenFile).toHaveBeenCalledWith("/Users/me/app/src/gateway.ts", { line: 2, column: 2 });
     view.unmount();
   });
 
