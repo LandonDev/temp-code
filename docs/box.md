@@ -1250,24 +1250,20 @@ group, the folders in its Mac bridge settings dialog.
   always-ask floor and the deny list included. The per-box policy still
   rules: `off` refuses, `read` refuses commands and writes. An older box
   sends no permission and its threads ask as before.
-- What reaches the screen (`runPresentation` in macBridge.ts; presentation
-  only, nothing about what is admitted). A command or job admitted without
-  a prompt (remembered, or from a full-access thread) shows on the Mac as a
-  running card with Stop only while the host's **Show running commands**
-  (`macBridge.showRunning.<envId>`, a switch in the host's Mac bridge
-  settings on Settings → Hosts) is on: off by default under `full`, on
-  otherwise, and pinned either way once toggled. Off, the request is
-  `quiet`: no card, no toast, nothing opens; the only trace is the running
-  list under that host's row in the pane ("n commands running on this Mac
-  from <host>", Stop per command and Stop all) and the thread's "Mac
-  approvals…" dialog. A request that waits on the person is never quiet.
+- What reaches the screen. A card is only ever a decision: a request that
+  waits on the person. A command or job that runs, prompted or not, is a
+  row of the thread's Activity section in its right panel and of the host's
+  Mac bridge list on Settings → Hosts ("n commands running on this Mac from
+  <host>", Stop per command and Stop all), and of the thread's "Mac
+  approvals…" dialog; it is never a card or a toast. The server still marks
+  a call admitted without a prompt `quiet` while
+  `macBridge.showRunning.<envId>` is off (`runPresentation`, off by default
+  under `full`); the desktop no longer reads that flag or offers the switch.
   Reads and writes that are admitted never made a request at all.
 - The cards never fill the screen (`queueOf` in the renderer's
   lib/macBridge.ts): above a thread's composer, and in the stack for
   threads off screen, at most one waiting card per host, the oldest, with
-  "and N more"; the next shows once it is decided. The running commands of
-  a host fold into one line (the command when it is one, "n commands
-  running from <host>" past that) with one Stop all.
+  "and N more"; the next shows once it is decided.
 - The load guard (`src/main/server/remote/macLoadGuard.ts`). Fifteen box
   threads once drove the Mac to a load average of 810 and nothing stopped
   them. Now, between the decision and the spawn of every command and job

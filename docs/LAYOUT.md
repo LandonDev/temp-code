@@ -102,7 +102,7 @@ attachment limit; Clients (Pair a device, New key; pairings, keys, browser
 sessions); Release (desktop); Running threads and Load limit; Sync;
 Remembered approvals; Devices. A paired host: Deploy with its log, Running
 threads, Sync with Sync now, and the Mac bridge (Access, the running and held
-calls, the forwarded ports, Settings… for the caps, show-running, forwarding
+calls, the forwarded ports, Settings… for the caps, forwarding
 and shared folders). Facts on one line are `Facts` spans, never dots; numbers
 are `CommitField`s; logs and conflict copies are `Collapsible`s under their
 row. Add host sits at the page's foot (desktop only).

@@ -787,14 +787,14 @@ routed to (aliax-core's `forward`). Two listeners:
   Codex calls carry a per-thread token (`macTools.ts`). A thread in full
   access on its box (permission `auto`) is never prompted: the box sends its
   permission with every call and the Mac treats every call the policy admits
-  as remembered. A command admitted without a prompt (remembered, or such a
-  thread) shows on the Mac as a running card only while the host's "Show
-  running commands" (`macBridge.showRunning.<envId>`, off by default under
-  `full`, on otherwise) is on; otherwise the request is `quiet`
-  (`runPresentation`): no card, listed with Stop under the host's Mac
-  bridge on Settings → Hosts. The cards are capped (`queueOf` in the renderer's
-  lib/macBridge.ts): one waiting card per host with "and N more", the running
-  ones one line per host with Stop all. The load guard
+  as remembered. A card (above the thread's composer, a sonner toast for a
+  thread off screen) is only ever a decision: a call that runs is a row of
+  the thread's Activity section and of the host's Mac bridge list on
+  Settings → Hosts, each with Stop, never a card. The cards are capped
+  (`queueOf` in the renderer's lib/macBridge.ts): one waiting card per host
+  with "and N more". The server still marks a call admitted without a prompt
+  `quiet` while its `macBridge.showRunning.<envId>` is off
+  (`runPresentation`); the desktop no longer reads or sets it. The load guard
   (`remote/macLoadGuard.ts`) sits between the decision and the spawn of
   every command and job, never a read: `macBridge.maxRunning.<envId>`
   (default 4) caps a host's concurrent commands plus jobs, and the load watch
@@ -810,7 +810,7 @@ routed to (aliax-core's `forward`). Two listeners:
   before every `thread.start` and `thread.spawn`. On Settings → Hosts a
   host's Mac bridge group holds its policy (a Select), its running and held
   calls with Stop and its forwarded ports; its caps with the live counts,
-  "Show running commands", forwarding and the shared folders are in the
+  forwarding and the shared folders are in the
   host's Mac bridge settings dialog (surfaces/settings/hosts/
   MacBridgeHostDialog.tsx); This Mac's section has the load with its limit. docs/box.md "The Mac bridge: what a box thread may touch on the
   Mac"; proof `bun run script:e2e-mac-bridge`.

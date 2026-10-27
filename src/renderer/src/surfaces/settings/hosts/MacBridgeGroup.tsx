@@ -18,8 +18,8 @@ import { MacBridgeHostDialog } from "./MacBridgeHostDialog";
 /**
  * A host's Mac bridge on this Mac (docs/box.md "The Mac bridge"): what its
  * threads may do here, what runs or waits for it now (with Stop), and its
- * dev servers forwarded to this Mac's loopback. The caps, the show-running
- * switch, forwarding and the shared folders are its Settings… dialog.
+ * dev servers forwarded to this Mac's loopback. The caps,
+ * forwarding and the shared folders are its Settings… dialog.
  */
 
 export const POLICIES: { value: MacBridgePolicy; label: string }[] = [
