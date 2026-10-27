@@ -1,3 +1,7 @@
+import { createElement } from "react";
+import { flushSync } from "react-dom";
+import { createRoot, type Root } from "react-dom/client";
+import { HunkBar } from "./HunkBar";
 import { Chunk } from "@codemirror/merge";
 import {
   EditorState,
@@ -715,7 +719,7 @@ const gitOverview = ViewPlugin.fromClass(
     constructor(readonly view: EditorView) {
       this.dom = document.createElement("div");
       this.dom.className = "cm-gitOverview";
-      this.dom.title = "Changes";
+      this.dom.setAttribute("aria-label", "Changes");
       this.dom.addEventListener("mousedown", (event) => {
         this.onMouseDown(event);
       });
@@ -796,8 +800,9 @@ const gitOverview = ViewPlugin.fromClass(
 const gitHunkActions = ViewPlugin.fromClass(
   class {
     readonly bar: HTMLDivElement;
-    readonly revertButton: HTMLButtonElement;
-    readonly stageButton: HTMLButtonElement;
+    readonly root: Root;
+    stageable: boolean;
+    disposed = false;
     hover = -1;
     busy = false;
 
@@ -805,16 +810,10 @@ const gitHunkActions = ViewPlugin.fromClass(
       this.bar = document.createElement("div");
       this.bar.className = "cm-gitHunkBar";
       this.bar.hidden = true;
-      this.revertButton = hunkButton("Revert change", UNDO_SVG);
-      this.stageButton = hunkButton("Stage change", PLUS_SVG);
-      this.bar.append(this.revertButton, this.stageButton);
-      this.revertButton.addEventListener("mousedown", (event) => {
-        this.onAction(event, "revert");
-      });
-      this.stageButton.addEventListener("mousedown", (event) => {
-        this.onAction(event, "stage");
-      });
-      this.stageButton.hidden = view.state.facet(gitStageFacet) == null;
+      this.stageable = view.state.facet(gitStageFacet) != null;
+      this.root = createRoot(this.bar);
+      // Positioning reads the bar's size as soon as it mounts.
+      flushSync(() => this.render());
       view.dom.appendChild(this.bar);
       view.dom.addEventListener("mousemove", this.onMove);
       view.dom.addEventListener("mouseleave", this.onLeave);
@@ -837,14 +836,21 @@ const gitHunkActions = ViewPlugin.fromClass(
       ) {
         this.sync();
       }
-      this.stageButton.hidden = update.state.facet(gitStageFacet) == null;
+      const stageable = update.state.facet(gitStageFacet) != null;
+      if (stageable !== this.stageable) {
+        this.stageable = stageable;
+        this.render();
+      }
     }
 
     destroy() {
       this.view.dom.removeEventListener("mousemove", this.onMove);
       this.view.dom.removeEventListener("mouseleave", this.onLeave);
       this.view.scrollDOM.removeEventListener("scroll", this.onScroll);
+      this.disposed = true;
       this.bar.remove();
+      // CodeMirror may destroy us during a React commit.
+      queueMicrotask(() => this.root.unmount());
     }
 
     onMove = (event: MouseEvent) => {
@@ -873,9 +879,15 @@ const gitHunkActions = ViewPlugin.fromClass(
       this.sync();
     };
 
-    onAction(event: MouseEvent, action: "revert" | "stage") {
-      event.preventDefault();
-      event.stopPropagation();
+    render() {
+      this.root.render(createElement(HunkBar, {
+        onRevert: () => this.onAction("revert"),
+        onStage: this.stageable ? () => this.onAction("stage") : undefined,
+        busy: this.busy,
+      }));
+    }
+
+    onAction(action: "revert" | "stage") {
       const chunk = this.view.state.field(chunksField)[this.hover];
       if (!chunk || this.busy) return;
       const pos = widgetPos(this.view.state.doc, chunk);
@@ -884,8 +896,11 @@ const gitHunkActions = ViewPlugin.fromClass(
         return;
       }
       this.busy = true;
+      this.render();
       void stageChunkAt(this.view, pos).finally(() => {
+        if (this.disposed) return;
         this.busy = false;
+        this.render();
         this.sync();
       });
     }
@@ -910,7 +925,6 @@ const gitHunkActions = ViewPlugin.fromClass(
       const editor = this.view.dom.getBoundingClientRect();
       const gutterRect = gutter.getBoundingClientRect();
       this.bar.hidden = false;
-      this.stageButton.hidden = this.view.state.facet(gitStageFacet) == null;
       const height = this.bar.offsetHeight;
       const width = this.bar.offsetWidth;
       const mid = (bounds.top + bounds.bottom) / 2;
@@ -919,16 +933,6 @@ const gitHunkActions = ViewPlugin.fromClass(
     }
   },
 );
-
-function hunkButton(label: string, svg: string) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "cm-gitHunkBtn";
-  button.title = label;
-  button.setAttribute("aria-label", label);
-  button.innerHTML = svg;
-  return button;
-}
 
 function hunkIndexAt(view: EditorView, clientY: number): number {
   const chunks = view.state.field(chunksField);
@@ -1042,30 +1046,7 @@ export const gitThemeSpec = {
     background: "var(--color-popover)",
     boxShadow: "0 0 0 1px var(--color-border), var(--shadow-overlay)",
   },
-  ".cm-gitHunkBtn": {
-    display: "grid",
-    placeItems: "center",
-    width: "18px",
-    height: "18px",
-    padding: "0",
-    border: "none",
-    color: "inherit",
-    background: "transparent",
-    cursor: "pointer",
-  },
-  ".cm-gitHunkBtn:hover": {
-    backgroundColor: tint("--color-foreground", 7),
-  },
-  ".cm-gitHunkBtn:focus-visible": {
-    outline: "1px solid var(--color-accent)",
-    outlineOffset: "-1px",
-  },
+
 };
 
 const gitTheme = EditorView.theme(gitThemeSpec);
-
-const UNDO_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>';
-
-const PLUS_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>';
