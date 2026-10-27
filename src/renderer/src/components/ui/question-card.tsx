@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import { cn } from "@renderer/lib/cn";
 import { Button } from "./button";
 import { Kbd, KbdGroup } from "./kbd";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
 
 /**
  * A question an agent needs answered before it continues: one question at
@@ -221,13 +222,17 @@ export function QuestionCard({
           <span className="sr-only" aria-live="polite">
             {answeredCount} of {questions.length} answered
           </span>
-          <button
-            type="button"
-            aria-label="Reset the answers"
-            title="Reset"
-            data-turning={turning || undefined}
-            onClick={reset}
-            className="group/reset relative grid size-4 shrink-0 place-items-center rounded-full outline-none transition-[scale] duration-(--dur-base) ease-(--ease-out) after:absolute after:-inset-3 after:content-[''] focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100"
+          <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                aria-label="Reset the answers"
+                data-turning={turning || undefined}
+                onClick={reset}
+                className="group/reset relative grid size-4 shrink-0 place-items-center rounded-full outline-none transition-[scale] duration-(--dur-base) ease-(--ease-out) after:absolute after:-inset-3 after:content-[''] focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100"
+              />
+            }
           >
             <span className={cn(MARK_SWAP, "grid group-hover/reset:scale-90 group-hover/reset:opacity-0 group-hover/reset:blur-[2px] group-focus-visible/reset:scale-90 group-focus-visible/reset:opacity-0 group-data-turning/reset:scale-90 group-data-turning/reset:opacity-0")}>
               <ProgressDonut done={answeredCount} total={questions.length} />
@@ -237,7 +242,9 @@ export function QuestionCard({
                 <RefreshCw className="size-4" />
               </motion.span>
             </span>
-          </button>
+          </TooltipTrigger>
+          <TooltipContent>Reset</TooltipContent>
+          </Tooltip>
         </span>
       </div>
 

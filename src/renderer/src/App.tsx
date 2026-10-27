@@ -2612,6 +2612,7 @@ export default function App() {
   );
 
   /** Pause / Continue / Stop from a tab's context menu, on its focused thread. */
+  // Leaves with chrome/Popover.tsx: area A12's thread menu handles these actions itself (its plan, slice 2).
   const onTabThreadAction = useCallback((tabId: string, action: TabThreadAction) => {
     const tab = workspaceTabsStore.getState().tabs.find((entry) => entry.id === tabId);
     if (!tab) return;
@@ -3097,6 +3098,7 @@ export default function App() {
     },
     [appendTab, createSessionHere],
   );
+  // Leaves with chrome/Popover.tsx: area A12's thread menu handles these actions itself (its plan, slice 2).
   const onHeaderAction = useCallback((sessionId: string, action: ThreadAction) => {
     const run =
       action === "pause"

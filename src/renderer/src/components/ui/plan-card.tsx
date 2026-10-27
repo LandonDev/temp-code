@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@renderer/lib/cn";
 import { Button } from "./button";
 import { Kbd, KbdGroup } from "./kbd";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
 
 /**
  * A plan an agent asks to run: a title, a line of description, the to-dos
@@ -69,15 +70,21 @@ function CountdownRing({ left, total, onCancel }: { left: number; total: number;
   );
   if (!onCancel) return <span className="grid shrink-0">{ring}</span>;
   return (
-    <button
-      type="button"
-      aria-label="Cancel auto approval"
-      title="Cancel"
-      onClick={onCancel}
-      className="relative grid size-[18px] shrink-0 place-items-center rounded-full outline-none transition-[scale] duration-(--dur-base) ease-(--ease-out) after:absolute after:-inset-[11px] after:content-[''] hover:opacity-70 focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.96] motion-reduce:transition-none"
-    >
-      {ring}
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            aria-label="Cancel auto approval"
+            onClick={onCancel}
+            className="relative grid size-[18px] shrink-0 place-items-center rounded-full outline-none transition-[scale] duration-(--dur-base) ease-(--ease-out) after:absolute after:-inset-[11px] after:content-[''] hover:opacity-70 focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.96] motion-reduce:transition-none"
+          />
+        }
+      >
+        {ring}
+      </TooltipTrigger>
+      <TooltipContent>Cancel</TooltipContent>
+    </Tooltip>
   );
 }
 

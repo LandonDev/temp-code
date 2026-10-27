@@ -22,7 +22,13 @@ import { entryChunk, loadBundleMap, staticClosure } from './bundle-map'
  *  in the first paint (about 10%), not for a chunk-sized regression: xterm
  *  alone is 0.3 MiB, CodeMirror 0.8, recharts 0.9. */
 // 16 KiB of headroom over 5 MiB (2026-10-23): the empty-transcript fix landed at 5120.7 kB; move a surface out of the entry to win it back.
-export const BUDGET_BYTES = 5 * 1024 * 1024 + 16 * 1024
+// 5.75 MiB (2026-10-27): the UI standard (docs/DESIGN.md) puts Kobra on Base UI in
+// the first paint: the dialog every Modal rides, the menus, select and tooltip the
+// transcript rows and the search field use. Measured 5,643.9 kB with the shell and
+// the first areas landed; @base-ui/react is 515 kB of it, floating-ui 70 kB. The
+// headroom is for the remaining areas' primitives (popover, sheet, context menu),
+// not for a surface: sonner and the right panel ride their own chunks.
+export const BUDGET_BYTES = Math.round(5.75 * 1024 * 1024) + 16 * 1024
 
 /** Module ids (suffixes, matched against the end of the id) that must never
  *  be in the entry chunk's static closure. */

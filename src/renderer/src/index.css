@@ -725,6 +725,7 @@ header[data-tauri-drag-region] button {
    WebKit composites `backdrop-filter` on its own layer, so a short opacity
    ramp over the glass is nearly invisible. Still brief — a menu that takes its
    time reads as lag rather than polish. */
+/* popover-open and its side rules leave with chrome/Popover.tsx (area A12, menus). */
 @keyframes popover-open {
   from {
     opacity: 0;

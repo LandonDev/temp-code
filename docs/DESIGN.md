@@ -287,4 +287,5 @@ render through `html_preview` (render the component with
 `react-dom/server`'s `renderToStaticMarkup` against `out/renderer`'s CSS,
 or a hand-written HTML sketch of the same tokens). The one electron-vite
 build per branch is for `bun run check:bundle`; the index chunk stays under
-5 MiB + 16 KiB and imports no lazy surface statically.
+5.75 MiB + 16 KiB (the Base UI primitives the first paint needs are 0.5 MiB of it)
+and imports no lazy surface statically.
