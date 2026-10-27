@@ -5,7 +5,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import { clampDockSize, defaultDockSize } from "../lib/projectTerminal";
+import { clampDockSize, DOCK_SIZE_DEFAULT } from "../lib/projectTerminal";
 
 /**
  * The bottom dock's shell: the hairline on its top edge, the focus tint,
@@ -85,7 +85,7 @@ export function DockFrame({
     if (!drag.current) return;
     const delta = drag.current.start - event.clientY;
     paint(
-      clampDockSize("bottom", drag.current.size + delta, {
+      clampDockSize(drag.current.size + delta, {
         width: window.innerWidth,
         height: window.innerHeight,
       }),
@@ -121,7 +121,7 @@ export function DockFrame({
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         onDoubleClick={() => {
-          pending.current = defaultDockSize("bottom");
+          pending.current = DOCK_SIZE_DEFAULT;
           commit();
         }}
       />

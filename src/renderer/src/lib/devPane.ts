@@ -1,6 +1,6 @@
 import { useStore } from 'zustand'
 import { createStore } from 'zustand/vanilla'
-import { clampDockSize, defaultDockSize } from './projectTerminal'
+import { clampDockSize, DOCK_SIZE_DEFAULT } from './projectTerminal'
 
 /**
  * The Dev servers pane (docs/box.md "Dev servers on the box"): one pane in
@@ -23,12 +23,12 @@ function load(): DevPaneState {
     const raw: unknown = JSON.parse(localStorage.getItem(KEY) ?? 'null')
     if (raw && typeof raw === 'object') {
       const { open, size } = raw as { open?: unknown; size?: unknown }
-      return { open: open === true, size: typeof size === 'number' ? clampDockSize('bottom', size) : defaultDockSize('bottom'), picked: null }
+      return { open: open === true, size: typeof size === 'number' ? clampDockSize(size) : DOCK_SIZE_DEFAULT, picked: null }
     }
   } catch {
     /* no storage, or not JSON */
   }
-  return { open: false, size: defaultDockSize('bottom'), picked: null }
+  return { open: false, size: DOCK_SIZE_DEFAULT, picked: null }
 }
 
 export const devPaneStore = createStore<DevPaneState>(load)
@@ -49,7 +49,7 @@ export const devPane = {
   toggle: () => devPaneStore.setState((s) => ({ open: !s.open })),
   pick: (key: string) => devPaneStore.setState({ picked: key }),
   size: (size: number) =>
-    devPaneStore.setState({ size: clampDockSize('bottom', size, typeof window === 'undefined' ? undefined : { width: window.innerWidth, height: window.innerHeight }) })
+    devPaneStore.setState({ size: clampDockSize(size, typeof window === 'undefined' ? undefined : { width: window.innerWidth, height: window.innerHeight }) })
 }
 
 export function useDevPane<T>(selector: (s: DevPaneState) => T): T {

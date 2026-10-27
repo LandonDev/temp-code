@@ -3,7 +3,7 @@ import type { DevTarget } from "@server/shared/contract-devservers";
 import { DEV_TAB, DockBar } from "../chrome/DockBar";
 import { DevServerRow } from "../chrome/DevServerRow";
 import { DockFrame } from "../chrome/DockFrame";
-import { DevStarter, useDevStarter } from "../chrome/rail/DevServerPanel";
+import { DevStarter, useDevStarter } from "./DevStarter";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { ItemGroup } from "../components/ui/item";
 import { ScrollArea } from "../components/ui/scroll-area";

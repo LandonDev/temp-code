@@ -950,7 +950,7 @@ routed to (aliax-core's `forward`). Two listeners:
   call's result (claude's PostToolUse hook; a whispered `<dev-server>` line
   otherwise, portTail.ts); the call's transcript row ends with "Open on the
   Mac :5174", the Resources panel has Open and Stop. The bottom dock's
-  Dev servers tab starts one (its starter, chrome/rail/DevServerPanel.tsx):
+  Dev servers tab starts one (its starter, surfaces/DevStarter.tsx):
   the host detects targets, only what a person would pick
   (devTargets.ts: the root's dev script with the lockfile's runner, then
   each workspace app by name, one script each; Expo and Xcode/XcodeGen apps

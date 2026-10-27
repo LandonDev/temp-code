@@ -3214,13 +3214,13 @@ export default function App() {
     const el = dockGridRef.current;
     if (!dock || !el) return;
     dockDragSize.current = size;
-    applyDockGridStyle(el, dock.side, size);
+    applyDockGridStyle(el, size);
   }, []);
   const paintDevPaneSize = useCallback((size: number) => {
     const el = dockGridRef.current;
     if (!el) return;
     dockDragSize.current = size;
-    applyDockGridStyle(el, "bottom", size);
+    applyDockGridStyle(el, size);
   }, []);
   const commitDockSize = useCallback((size: number) => {
     dockDragSize.current = null;
@@ -3230,13 +3230,8 @@ export default function App() {
     if (dockDragSize.current != null) return;
     const el = dockGridRef.current;
     if (!el) return;
-    if (devPaneOpen) applyDockGridStyle(el, "bottom", devPaneSize);
-    else
-      applyDockGridStyle(
-        el,
-        dockVisible && currentProjectDock ? currentProjectDock.side : null,
-        currentProjectDock?.size ?? 0,
-      );
+    if (devPaneOpen) applyDockGridStyle(el, devPaneSize);
+    else applyDockGridStyle(el, dockVisible && currentProjectDock ? currentProjectDock.size : null);
   }, [currentProjectDock, dockVisible, devPaneOpen, devPaneSize]);
 
   const sessionActions = useMemo<SessionActions>(

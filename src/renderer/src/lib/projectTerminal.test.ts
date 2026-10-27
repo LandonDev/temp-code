@@ -6,7 +6,6 @@ import {
   clampDockSize,
   closeTerminalInDock,
   createProjectTerminal,
-  dockGridStyle,
   findProjectTerminal,
   mapProjectTerminal,
   nextDockTerminalTitle,
@@ -15,7 +14,6 @@ import {
   selectDockTerminal,
   splitProjectTerminalsForMove,
   withDockOpen,
-  withDockSide,
 } from "./projectTerminal";
 import type { Session } from "./session";
 
@@ -39,7 +37,7 @@ describe("createProjectTerminal", () => {
     const file = newTerminalFile("/tmp/a");
     const dock = createProjectTerminal("/tmp/a/", file);
     expect(dock.projectPath).toBe("/tmp/a");
-    expect(dock.side).toBe("bottom");
+    expect(dock.size).toBe(220);
     expect(dock.open).toBe(true);
     expect(dock.pane.files).toEqual([file]);
     expect(dock.pane.activeFileId).toBe(file.id);
@@ -142,37 +140,21 @@ describe("patchProjectTerminals", () => {
 });
 
 describe("clampDockSize", () => {
-  it("clamps to the axis min and 70% of the viewport", () => {
-    expect(clampDockSize("bottom", 10, { width: 1000, height: 400 })).toBe(88);
-    expect(clampDockSize("left", 900, { width: 1000, height: 400 })).toBe(700);
+  it("clamps a height to the minimum and 70% of the viewport's", () => {
+    expect(clampDockSize(10, { width: 1000, height: 400 })).toBe(88);
+    expect(clampDockSize(900, { width: 1000, height: 400 })).toBe(280);
+    expect(clampDockSize(Number.NaN)).toBe(220);
   });
 });
 
-describe("withDockSide", () => {
-  it("keeps size when the axis stays the same", () => {
-    const dock = { ...createProjectTerminal("/tmp/a", newTerminalFile("/tmp/a")), size: 200 };
-    expect(withDockSide(dock, "top").size).toBe(200);
-    expect(withDockSide(dock, "top").side).toBe("top");
-  });
-});
-
-describe("dockGridStyle", () => {
-  it("collapses to a single main area when hidden", () => {
-    expect(dockGridStyle(null, 220).gridTemplateAreas).toBe('"main"');
-  });
-
-  it("places the dock on the requested edge", () => {
-    expect(dockGridStyle("bottom", 220).gridTemplateAreas).toBe('"main" "dock"');
-    expect(dockGridStyle("top", 220).gridTemplateAreas).toBe('"dock" "main"');
-    expect(dockGridStyle("left", 360).gridTemplateAreas).toBe('"dock main"');
-    expect(dockGridStyle("right", 360).gridTemplateAreas).toBe('"main dock"');
-  });
-
-  it("writes the same template onto an element", () => {
+describe("applyDockGridStyle", () => {
+  it("lays the main area alone, or over the dock", () => {
     const el = { style: {} } as unknown as HTMLElement;
-    applyDockGridStyle(el, "left", 300);
-    expect(el.style.gridTemplateAreas).toBe('"dock main"');
-    expect(el.style.gridTemplateColumns).toBe("300px minmax(0, 1fr)");
+    applyDockGridStyle(el, null);
+    expect(el.style.gridTemplateAreas).toBe('"main"');
+    applyDockGridStyle(el, 300);
+    expect(el.style.gridTemplateAreas).toBe('"main" "dock"');
+    expect(el.style.gridTemplateRows).toBe("minmax(0, 1fr) 300px");
   });
 });
 

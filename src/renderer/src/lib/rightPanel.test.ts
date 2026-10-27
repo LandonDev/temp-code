@@ -24,16 +24,16 @@ describe("sectionsFor", () => {
 
   it("a project thread adds the checkout sections, changes first; debug only for a dev build or the setting", () => {
     expect(sectionsFor({ ...quiet, project: true })).toEqual({
-      sections: ["changes", "notes", "files", "build", "dev"],
+      sections: ["changes", "notes", "files", "build"],
       defaultSection: "changes",
     });
-    expect(sectionsFor({ ...quiet, project: true, debug: true }).sections).toEqual(["changes", "notes", "files", "build", "dev", "debug"]);
+    expect(sectionsFor({ ...quiet, project: true, debug: true }).sections).toEqual(["changes", "notes", "files", "build", "debug"]);
     expect(sectionsFor({ ...quiet, debug: true }).sections).toEqual(["notes"]);
   });
 
   it("subagents add agents and take the default, live or done; live ones add activity and win it", () => {
     expect(sectionsFor({ ...quiet, project: true, agents: 2 })).toEqual({
-      sections: ["agents", "changes", "notes", "files", "build", "dev"],
+      sections: ["agents", "changes", "notes", "files", "build"],
       defaultSection: "agents",
     });
     expect(sectionsFor({ ...quiet, agents: 2, liveAgents: 1 }).sections).toEqual(["activity", "agents", "notes"]);

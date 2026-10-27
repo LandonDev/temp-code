@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { newTerminalFile } from "../lib/layout";
-import { createProjectTerminal, defaultDockSize, withDockOpen } from "../lib/projectTerminal";
+import { createProjectTerminal, withDockOpen } from "../lib/projectTerminal";
 import {
   currentDock,
   initialTerminalsState,
@@ -11,7 +11,6 @@ import {
   setDocks,
   terminals,
   terminalsStore,
-  toBottom,
   updateDock,
 } from "./terminals";
 
@@ -76,20 +75,9 @@ describe("terminal reducers", () => {
   });
 });
 
-describe("the dock is bottom only", () => {
-  it("a dock saved on the right restores at the bottom at the default height", () => {
-    const right = { ...dock("/repo"), side: "right" as const, size: 480 };
-    const [restored] = initialTerminalsState([right]).docks;
-    expect(restored.side).toBe("bottom");
-    expect(restored.size).toBe(defaultDockSize("bottom"));
-    expect(restored.pane).toBe(right.pane);
-    const moved = setDocks(initialTerminalsState(), [{ ...right, side: "top" }]);
-    expect(moved.docks[0].side).toBe("bottom");
-  });
-
-  it("a bottom dock keeps its object, and setDocks of bottom docks keeps the state", () => {
+describe("setDocks", () => {
+  it("keeps the state when the docks are the same", () => {
     const bottom = { ...dock("/repo"), size: 300 };
-    expect(toBottom(bottom)).toBe(bottom);
     const s = initialTerminalsState([bottom]);
     expect(s.docks[0]).toBe(bottom);
     expect(setDocks(s, [bottom])).toBe(s);

@@ -1,31 +1,36 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DevRun, DevTarget } from '@server/shared/contract-devservers'
-import { mountProbe } from '../../test/renderProbe'
-import { registry } from '../../lib/connection/registry'
-import { macBridgeStore } from '../../lib/macBridge'
-import { applyDevRunPush, devServerStore, type DevHost } from '../../lib/devServers'
-import { sessionStore } from '../../lib/tcserver/store'
-import { devPaneStore, resetDevPane } from '../../lib/devPane'
-import { selectChunk } from '../../surfaces/chunks'
-import { DevServerPanel } from './DevServerPanel'
+import { mountProbe } from '../test/renderProbe'
+import { registry } from '../lib/connection/registry'
+import { macBridgeStore } from '../lib/macBridge'
+import { applyDevRunPush, devServerStore, type DevHost } from '../lib/devServers'
+import { sessionStore } from '../lib/tcserver/store'
+import { devPaneStore, resetDevPane } from '../lib/devPane'
+import { selectChunk } from './chunks'
+import { DevStarter, useDevStarter } from './DevStarter'
+
+/** The starter for one project, as the Dev servers pane mounts it. */
+function DevServerPanel({ projectId }: { projectId: string }) {
+  return <DevStarter starter={useDevStarter(projectId)} />
+}
 
 const project = { id: 'p1', environmentId: 'env_mac', cwd: '/Users/l/site', workspaceId: 'w', name: 'site' }
 let hosts: DevHost[] = []
-vi.mock('../../lib/tcserver/workspaces', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../lib/tcserver/workspaces')>()),
+vi.mock('../lib/tcserver/workspaces', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/tcserver/workspaces')>()),
   useProjects: () => [project],
   useWorkspaces: () => []
 }))
-vi.mock('../../stores/project', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../stores/project')>()),
+vi.mock('../stores/project', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../stores/project')>()),
   useActivePane: () => ({ activeTab: undefined, active: { id: 't1', parentId: null } })
 }))
-vi.mock('../../lib/tcserver/store', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../lib/tcserver/store')>()),
+vi.mock('../lib/tcserver/store', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/tcserver/store')>()),
   useServerSessions: () => [{ id: 't1', projectId: 'p1', title: 'Coins page', parentId: null }]
 }))
-vi.mock('../../lib/devServers', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../lib/devServers')>()),
+vi.mock('../lib/devServers', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/devServers')>()),
   useDevHosts: () => hosts
 }))
 
@@ -48,7 +53,7 @@ const run = (over: Partial<DevRun> = {}): DevRun => ({
   ...over
 })
 
-describe('DevServerPanel', () => {
+describe('DevStarter', () => {
   let probe: ReturnType<typeof mountProbe> | null = null
   const requests: [string, string, unknown][] = []
   /** What the fake host answers `devServer.start` with when set (the one-per-thread question). */
@@ -188,7 +193,7 @@ describe('DevServerPanel', () => {
 
   it('does not start the new server when the old one did not stop, and says why', async () => {
     vi.spyOn(sessionStore, 'environmentOf').mockReturnValue('env_mac')
-    const { threadResourcesStore } = await import('../../lib/threadResources')
+    const { threadResourcesStore } = await import('../lib/threadResources')
     threadResourcesStore.setState({
       bySession: {
         t1: [{ id: 'res1', sessionId: 't1', environmentId: 'env_mac', kind: 'port', identifier: '3007', label: 'npx vite', branch: null, createdAt: 5, removeRequestedAt: null, removedAt: null, note: null }]

@@ -6,7 +6,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui
 import { X } from "../chrome/icons";
 import { BuildPanel } from "../chrome/rail/BuildPanel";
 import { ChangesPanel } from "../chrome/rail/ChangesPanel";
-import { DevServerPanel } from "../chrome/rail/DevServerPanel";
 import { FileTree } from "../chrome/FileTree";
 import { useDragResize } from "../hooks/useDragResize";
 import { useGitFileStatuses } from "../hooks/useGitFileStatuses";
@@ -207,8 +206,6 @@ function SectionBody({
       );
     case "build":
       return project ? <BuildPanel projectId={project.id} /> : null;
-    case "dev":
-      return project ? <DevServerPanel projectId={project.id} /> : null;
     case "debug":
       return (
         <Suspense

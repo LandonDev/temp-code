@@ -73,7 +73,6 @@ describe("collectWorkspaceSnapshot", () => {
     expect(snapshot.projectTerminals).toEqual([
       expect.objectContaining({
         projectPath: "/tmp/a",
-        side: "bottom",
         open: true,
       }),
     ]);
@@ -264,7 +263,6 @@ describe("hydrateWorkspaceSnapshot", () => {
     const term = { ...newTerminalFile("/tmp/a"), foreground: "vite" };
     const dock = {
       ...createProjectTerminal("/tmp/a", term),
-      side: "left" as const,
       size: 300,
       open: false,
     };
@@ -279,7 +277,6 @@ describe("hydrateWorkspaceSnapshot", () => {
     expect(workspace?.projectTerminals).toEqual([
       expect.objectContaining({
         projectPath: "/tmp/a",
-        side: "left",
         size: 300,
         open: false,
       }),
@@ -290,6 +287,25 @@ describe("hydrateWorkspaceSnapshot", () => {
     expect(
       workspace?.projectTerminals?.[0]?.pane.files[0]?.foreground,
     ).toBeUndefined();
+  });
+});
+
+describe("a dock saved with a side", () => {
+  it("still parses: a bottom dock keeps its height, another side's width becomes the default height", () => {
+    const pane = (path: string) => {
+      const term = newTerminalFile(path);
+      return { id: `pane-${path}`, files: [term], activeFileId: term.id };
+    };
+    const parsed = parseWorkspaceSnapshot({
+      tabs: [{ ...newTab("s1"), id: "t1" }],
+      activeTabId: "t1",
+      projectTerminals: [
+        { projectPath: "/tmp/a", pane: pane("/tmp/a"), side: "bottom", size: 300, open: true },
+        { projectPath: "/tmp/b", pane: pane("/tmp/b"), side: "right", size: 480, open: true },
+      ],
+    });
+    expect(parsed?.projectTerminals?.map((dock) => dock.size)).toEqual([300, 220]);
+    expect(parsed?.projectTerminals?.every((dock) => !("side" in dock))).toBe(true);
   });
 });
 

@@ -5,7 +5,6 @@ import { newTerminalFile, type FilePaneTab } from "../lib/layout";
 import {
   addTerminalToDock,
   createProjectTerminal,
-  defaultDockSize,
   findProjectTerminal,
   mapProjectTerminal,
   nextDockTerminalTitle,
@@ -17,31 +16,18 @@ import type { TerminalMetaPatch } from "../lib/terminalTab";
 
 /**
  * The project terminal docks: one per project folder, each a pane of
- * terminals with a height and whether it is open. The dock is bottom only:
- * a dock saved on another side comes back at the bottom at the default
- * height (`toBottom`, wherever docks enter). Every reducer that
+ * terminals with a height and whether it is open. Every reducer that
  * can be a no-op hands back the same `state` then, so a write that does
  * nothing notifies nobody.
  */
 export type TerminalsState = { docks: ProjectTerminalDock[] };
 
-/** A dock saved on another side, at the bottom at the default height; a bottom dock as it is. */
-export function toBottom(dock: ProjectTerminalDock): ProjectTerminalDock {
-  return dock.side === "bottom" ? dock : { ...dock, side: "bottom", size: defaultDockSize("bottom") };
-}
-
-function allBottom(docks: ProjectTerminalDock[]): ProjectTerminalDock[] {
-  const next = docks.map(toBottom);
-  return sameDocks(next, docks) ? docks : next;
-}
-
 export function initialTerminalsState(docks: ProjectTerminalDock[] = []): TerminalsState {
-  return { docks: allBottom(docks) };
+  return { docks };
 }
 
 export function setDocks(state: TerminalsState, docks: ProjectTerminalDock[]): TerminalsState {
-  const next = allBottom(docks);
-  return sameDocks(next, state.docks) ? state : { docks: next };
+  return sameDocks(docks, state.docks) ? state : { docks };
 }
 
 /** Update the dock at `projectPath`; null from `update` removes it. */

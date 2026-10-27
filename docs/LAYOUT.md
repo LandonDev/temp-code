@@ -184,8 +184,8 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   watching master's wait or a running dev server exist; Agents when the
   thread has subagents of its own (a master's batch lives on its board,
   never here); Changes when its cwd is a project
-  checkout; Notes for every root; Files, Build and Dev for a
-  project thread, and Debug for one on a dev build or once "Debug this
+  checkout; Notes for every root; Files and Build for a
+  project thread (dev servers live in the bottom dock's tab), and Debug for one on a dev build or once "Debug this
   file" asked for it on the thread. The default is Activity if it exists, else Agents when
   the thread has subagents (live or done), else Changes, else Notes; a remembered section that no
   longer exists falls back to the default.
@@ -193,7 +193,7 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   its left edge, on `bg-sidebar` with the `border-border` hairline; a 36px
   header of `Tabs variant="line"` and a close button; the section's body
   below (`ActivitySection`, `FleetList`, `NotesBody`, `ChangesPanel`,
-  `FileTree`, `BuildPanel`, `DevServerPanel`, `DebugPanel`). It toggles, never tweens its width; the body fades in
+  `FileTree`, `BuildPanel`, `DebugPanel`). It toggles, never tweens its width; the body fades in
   over `--dur-fast`. Closed is closed: the thread header's button, ⌘⇧R and
   View › Show Panel reopen it on its last section. An agent's
   detail (`fleet.detailId`, surfaces/threads/fleet/AgentDetail.tsx) is a

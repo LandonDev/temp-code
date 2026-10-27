@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import type { DevTarget } from "@server/shared/contract-devservers";
-import { ChoiceSelect } from "../../components/choice-select";
-import { Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
-import { Spinner } from "../../components/ui/spinner";
-import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
-import { devPane } from "../../lib/devPane";
+import { ChoiceSelect } from "../components/choice-select";
+import { Button } from "../components/ui/button";
+import { Skeleton } from "../components/ui/skeleton";
+import { Spinner } from "../components/ui/spinner";
+import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
+import { devPane } from "../lib/devPane";
 import {
   runChoice,
   startDevServer,
@@ -17,10 +17,10 @@ import {
   useDevTargets,
   useLiveDevServers,
   type DevHost,
-} from "../../lib/devServers";
-import { useServerSessions } from "../../lib/tcserver/store";
-import { useProjects } from "../../lib/tcserver/workspaces";
-import { useActivePane } from "../../stores/project";
+} from "../lib/devServers";
+import { useServerSessions } from "../lib/tcserver/store";
+import { useProjects } from "../lib/tcserver/workspaces";
+import { useActivePane } from "../stores/project";
 
 const targetKey = (projectId: string): string => `dev-target:${projectId}`;
 const hostKey = (projectId: string): string => `dev-host:${projectId}`;
@@ -168,11 +168,6 @@ export function DevStarter({ starter }: { starter: DevStarterState }) {
       {error ? <p className="break-words px-3 pb-2 text-xs text-destructive">{error}</p> : null}
     </div>
   );
-}
-
-/** The starter alone for a project, where something other than the pane mounts it. */
-export function DevServerPanel({ projectId }: { projectId: string }) {
-  return <DevStarter starter={useDevStarter(projectId)} />;
 }
 
 const NO_TARGETS = [{ value: "", label: "No targets" }];

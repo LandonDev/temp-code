@@ -1710,7 +1710,7 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
   line tabs, with the live count beside it, then New terminal and Hide);
   the tab shows only when a host can serve the project, a server runs or
   the pane is open (`devTabOf`). Its body is a 288px column, the starter
-  (chrome/rail/DevServerPanel.tsx: the target, Run, and with two or more
+  (surfaces/DevStarter.tsx: the target, Run, and with two or more
   hosts the host to run on) above the servers live on every connected host
   right now, grouped under the thread each belongs to (`serverGroups`), the
   picked one's console beside it (surfaces/DevConsole.tsx). The starter
@@ -1789,7 +1789,7 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
 - **The Dev Server button.** The thread header shows "Dev server" when a
   host can serve the thread's project, with a dot while one runs; it opens
   and closes the Dev servers pane. The rail's Dev tab
-  (chrome/rail/DevServerPanel.tsx) starts one: the target (a menu when
+  (surfaces/DevStarter.tsx) starts one: the target (a menu when
   there are several), the host (this Mac or the box's copy of the project:
   the linked copy, else one paired by repo or folder name) and Run, which
   opens the pane on the new run. The host detects the targets itself
@@ -1816,7 +1816,7 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
   portSweep (every credit rule and the skip list), portLog, portTail, devTargets, devRuns, remote/portForward (the stream framing,
   backpressure, allocation, the switch, a link drop, a 3 MiB body), and the
   renderer's devPorts, devServers (the pane's rules: which rows show, removal
-  on drop, nothing opens it), DevServersPane, DevServerPanel,
+  on drop, nothing opens it), DevServersPane, DevStarter,
   workspaceSnapshot (old tabs dropped) and ThreadResourcesDialog.
 - Not built yet: the host-based subdomain proxy behind the cookie, the
   phone's road to a box dev server.

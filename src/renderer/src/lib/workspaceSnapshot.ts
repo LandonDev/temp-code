@@ -13,7 +13,7 @@ import {
 import type { ReleaseNotesTabSource } from "./releaseNotes";
 import {
   clampDockSize,
-  isDockSide,
+  DOCK_SIZE_DEFAULT,
   type ProjectTerminalDock,
 } from "./projectTerminal";
 import { normalizeProjectPath } from "./recents";
@@ -440,7 +440,6 @@ function sanitizeProjectTerminal(raw: unknown): ProjectTerminalDock | null {
   if (typeof value.projectPath !== "string" || !value.projectPath.trim()) {
     return null;
   }
-  if (!isDockSide(value.side)) return null;
   const pane = sanitizePane(value.pane);
   if (!pane) return null;
   const files = pane.files.filter(isTerminalTab);
@@ -451,8 +450,8 @@ function sanitizeProjectTerminal(raw: unknown): ProjectTerminalDock | null {
   return {
     projectPath: normalizeProjectPath(value.projectPath),
     pane: { ...pane, files, activeFileId },
-    side: value.side,
-    size: clampDockSize(value.side, Number(value.size)),
+    // A dock saved on a side before the dock was bottom only kept a width there.
+    size: value.side === undefined || value.side === "bottom" ? clampDockSize(Number(value.size)) : DOCK_SIZE_DEFAULT,
     open: value.open !== false,
   };
 }

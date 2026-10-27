@@ -1,4 +1,3 @@
-import type { CSSProperties } from "react";
 import {
   newEditorPane,
   nextTerminalTitleFromFiles,
@@ -17,57 +16,29 @@ import {
 } from "./terminalTab";
 import { workspaceTabCwd } from "./workspaceTabGroups";
 
-export type DockSide = "top" | "bottom" | "left" | "right";
-
 export type ProjectTerminalDock = {
   projectPath: string;
   pane: EditorPane;
-  side: DockSide;
+  /** The dock's height in px: it is bottom only. */
   size: number;
   open: boolean;
 };
 
-export const DOCK_SIZE_DEFAULT = {
-  top: 220,
-  bottom: 220,
-  left: 360,
-  right: 360,
-} as const;
+export const DOCK_SIZE_DEFAULT = 220;
 
-const VERTICAL_MIN = 88;
-const HORIZONTAL_MIN = 180;
+const DOCK_SIZE_MIN = 88;
 
-export function isDockSide(value: unknown): value is DockSide {
-  return (
-    value === "top" ||
-    value === "bottom" ||
-    value === "left" ||
-    value === "right"
-  );
-}
-
-export function isVerticalDock(side: DockSide): boolean {
-  return side === "top" || side === "bottom";
-}
-
-export function defaultDockSize(side: DockSide): number {
-  return DOCK_SIZE_DEFAULT[side];
-}
-
+/** A height between the minimum and 70% of the viewport's. */
 export function clampDockSize(
-  side: DockSide,
   value: number,
   viewport: { width: number; height: number } = {
     width: 1280,
     height: 800,
   },
 ): number {
-  const vertical = isVerticalDock(side);
-  const min = vertical ? VERTICAL_MIN : HORIZONTAL_MIN;
-  const span = vertical ? viewport.height : viewport.width;
-  const max = Math.max(min, Math.floor(span * 0.7));
-  if (!Number.isFinite(value)) return defaultDockSize(side);
-  return Math.min(max, Math.max(min, Math.round(value)));
+  const max = Math.max(DOCK_SIZE_MIN, Math.floor(viewport.height * 0.7));
+  if (!Number.isFinite(value)) return DOCK_SIZE_DEFAULT;
+  return Math.min(max, Math.max(DOCK_SIZE_MIN, Math.round(value)));
 }
 
 export function findProjectTerminal(
@@ -80,13 +51,11 @@ export function findProjectTerminal(
 export function createProjectTerminal(
   projectPath: string,
   file: FilePaneTab,
-  side: DockSide = "bottom",
 ): ProjectTerminalDock {
   return {
     projectPath: normalizeProjectPath(projectPath),
     pane: newEditorPane(file),
-    side,
-    size: defaultDockSize(side),
+    size: DOCK_SIZE_DEFAULT,
     open: true,
   };
 }
@@ -221,25 +190,12 @@ export function withDockOpen(
   return dock.open === open ? dock : { ...dock, open };
 }
 
-export function withDockSide(
-  dock: ProjectTerminalDock,
-  side: DockSide,
-  viewport?: { width: number; height: number },
-): ProjectTerminalDock {
-  if (dock.side === side) return dock;
-  return {
-    ...dock,
-    side,
-    size: clampDockSize(side, dock.size, viewport),
-  };
-}
-
 export function withDockSize(
   dock: ProjectTerminalDock,
   size: number,
   viewport?: { width: number; height: number },
 ): ProjectTerminalDock {
-  const next = clampDockSize(dock.side, size, viewport);
+  const next = clampDockSize(size, viewport);
   return next === dock.size ? dock : { ...dock, size: next };
 }
 
@@ -255,55 +211,11 @@ export function projectTerminalFileIds(
   return ids;
 }
 
-export function dockGridStyle(
-  side: DockSide | null,
-  size: number,
-): CSSProperties {
-  if (!side) {
-    return {
-      gridTemplateRows: "minmax(0, 1fr)",
-      gridTemplateColumns: "minmax(0, 1fr)",
-      gridTemplateAreas: '"main"',
-    };
-  }
-  const px = `${Math.max(1, Math.round(size))}px`;
-  if (side === "top") {
-    return {
-      gridTemplateRows: `${px} minmax(0, 1fr)`,
-      gridTemplateColumns: "minmax(0, 1fr)",
-      gridTemplateAreas: '"dock" "main"',
-    };
-  }
-  if (side === "bottom") {
-    return {
-      gridTemplateRows: `minmax(0, 1fr) ${px}`,
-      gridTemplateColumns: "minmax(0, 1fr)",
-      gridTemplateAreas: '"main" "dock"',
-    };
-  }
-  if (side === "left") {
-    return {
-      gridTemplateRows: "minmax(0, 1fr)",
-      gridTemplateColumns: `${px} minmax(0, 1fr)`,
-      gridTemplateAreas: '"dock main"',
-    };
-  }
-  return {
-    gridTemplateRows: "minmax(0, 1fr)",
-    gridTemplateColumns: `minmax(0, 1fr) ${px}`,
-    gridTemplateAreas: '"main dock"',
-  };
-}
-
-export function applyDockGridStyle(
-  el: HTMLElement,
-  side: DockSide | null,
-  size: number,
-): void {
-  const style = dockGridStyle(side, size);
-  el.style.gridTemplateRows = String(style.gridTemplateRows ?? "");
-  el.style.gridTemplateColumns = String(style.gridTemplateColumns ?? "");
-  el.style.gridTemplateAreas = String(style.gridTemplateAreas ?? "");
+/** The dock grid: the main area alone, or over a dock `size` px tall. */
+export function applyDockGridStyle(el: HTMLElement, size: number | null): void {
+  el.style.gridTemplateRows = size == null ? "minmax(0, 1fr)" : `minmax(0, 1fr) ${Math.max(1, Math.round(size))}px`;
+  el.style.gridTemplateColumns = "minmax(0, 1fr)";
+  el.style.gridTemplateAreas = size == null ? '"main"' : '"main" "dock"';
 }
 
 /**
