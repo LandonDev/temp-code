@@ -2,6 +2,9 @@ import { Check, ChevronRight } from "@renderer/chrome/icons";
 import { useEffect, useState, type ComponentProps } from "react";
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import { cn } from "@renderer/lib/cn";
+import { MENU_ROW } from "./menu-row";
+
+export { MENU_ROW };
 
 /**
  * The one menu opened from a trigger, in one size (DESIGN.md "Spacing"):
@@ -11,8 +14,8 @@ import { cn } from "@renderer/lib/cn";
  */
 const PANEL = "min-w-44 rounded-xl p-1.5";
 const SIZE = {
-  row: "min-h-7 gap-2 rounded-lg px-3 py-1 text-[13px]",
-  check: "min-h-7 gap-2 rounded-lg py-1 ps-3 pe-8 text-[13px]",
+  row: `${MENU_ROW} rounded-lg`,
+  check: `${MENU_ROW} rounded-lg pe-8`,
   mark: "end-3",
   inset: "data-inset:ps-8.5",
   icon: "[&_svg:not([class*='size-'])]:size-3.5",

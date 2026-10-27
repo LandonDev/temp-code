@@ -3,12 +3,12 @@ import type { ComponentProps } from "react";
 import { ContextMenu as ContextMenuPrimitive } from "@base-ui/react/context-menu";
 import { cn } from "@renderer/lib/cn";
 import { KbdGroup } from "./kbd";
+import { MENU_ROW } from "./menu-row";
 
 /** The right-click menu: the dropdown's one row (28px, 12px padding, 8px
  *  glyph gap), opened at the pointer with a plain fade (nothing to scale
  *  from). A row with a description line grows past 28px. */
-const ROW =
-  "flex min-h-7 cursor-default select-none items-center gap-2 rounded-lg px-3 py-1 text-[13px] outline-hidden focus:bg-muted data-highlighted:bg-muted data-disabled:pointer-events-none data-disabled:opacity-50 data-inset:ps-8.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-muted-foreground [&_svg:not([class*='size-'])]:size-3.5";
+const ROW = `${MENU_ROW} flex cursor-default select-none items-center rounded-lg outline-hidden focus:bg-muted data-highlighted:bg-muted data-disabled:pointer-events-none data-disabled:opacity-50 data-inset:ps-8.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-muted-foreground [&_svg:not([class*='size-'])]:size-3.5`;
 
 function ContextMenu({ ...props }: ContextMenuPrimitive.Root.Props) {
   return <ContextMenuPrimitive.Root data-slot="context-menu" {...props} />;

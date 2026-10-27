@@ -2,6 +2,7 @@ import { Check, ChevronDown, ChevronUp } from "@renderer/chrome/icons";
 import type { ComponentProps } from "react";
 import { Select as SelectPrimitive } from "@base-ui/react/select";
 import { cn } from "@renderer/lib/cn";
+import { MENU_ROW } from "./menu-row";
 
 /** The one option picker: a bordered 32px (`default`) or 28px (`sm`)
  *  trigger, the list opens aligned on the chosen item. */
@@ -64,7 +65,7 @@ function SelectContent({
 }
 
 function SelectLabel({ className, ...props }: SelectPrimitive.GroupLabel.Props) {
-  return <SelectPrimitive.GroupLabel data-slot="select-label" className={cn("px-1.5 py-1 text-[11px] font-medium text-muted-foreground", className)} {...props} />;
+  return <SelectPrimitive.GroupLabel data-slot="select-label" className={cn("px-3 py-1 text-[11px] font-medium text-muted-foreground", className)} {...props} />;
 }
 
 function SelectItem({ className, children, ...props }: SelectPrimitive.Item.Props) {
@@ -72,7 +73,8 @@ function SelectItem({ className, children, ...props }: SelectPrimitive.Item.Prop
     <SelectPrimitive.Item
       data-slot="select-item"
       className={cn(
-        "relative flex w-full cursor-default select-none items-center gap-1.5 rounded-md py-1 ps-1.5 pe-8 text-[13px] outline-hidden focus:bg-muted data-highlighted:bg-muted data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        MENU_ROW,
+        "relative flex w-full cursor-default select-none items-center rounded-md pe-8 outline-hidden focus:bg-muted data-highlighted:bg-muted data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className,
       )}
       {...props}

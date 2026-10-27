@@ -4,7 +4,7 @@ import { useState } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Tip, TruncateTip } from "../components/tip";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/ui/context-menu";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, MENU_ROW } from "../components/ui/dropdown-menu";
 import { tooltipChunk, warmTooltips } from "../components/ui/tooltip";
 import { Archive, Pause, Trash2 } from "./icons";
 import { MenuRows } from "./menuBody";
@@ -72,7 +72,7 @@ describe("MenuRows", () => {
     for (const c of rowClasses) expect(pause.className.split(/\s+/)).toContain(c);
     expect(list.getAttribute("data-size")).toBeNull();
     const check = within(list).getByRole("menuitemcheckbox", { name: "Mac bridge" });
-    expect(check.className.split(/\s+/)).toEqual(expect.arrayContaining(["min-h-7", "ps-3", "pe-8"]));
+    expect(check.className.split(/\s+/)).toEqual(expect.arrayContaining(["min-h-7", "px-3", "pe-8"]));
     cleanup();
     render(
       <ContextMenu defaultOpen>
@@ -101,6 +101,36 @@ describe("MenuRows", () => {
       </ContextMenu>,
     );
     expect(labels(await screen.findByRole("menu", { name: "context" }))).toEqual(dropdown);
+  });
+});
+
+describe("the menu row rule", () => {
+  /** Plain, checkbox and submenu rows of both menus take MENU_ROW whole; a check row adds its end padding. */
+  const expectRule = (root: HTMLElement) => {
+    const rows = [
+      within(root).getByRole("menuitem", { name: /Pause/ }),
+      within(root).getByRole("menuitemcheckbox", { name: "Mac bridge" }),
+      within(root).getByRole("menuitem", { name: /Type/ }),
+    ];
+    for (const row of rows) expect(row.className.split(/\s+/)).toEqual(expect.arrayContaining(MENU_ROW.split(" ")));
+    expect(rows[1].className.split(/\s+/)).toContain("pe-8");
+  };
+
+  it("holds in a RowsMenu", async () => {
+    const { list } = await openDropdown(ROWS);
+    expectRule(list);
+  });
+
+  it("holds in the context menu", async () => {
+    render(
+      <ContextMenu defaultOpen>
+        <ContextMenuTrigger>open</ContextMenuTrigger>
+        <ContextMenuContent aria-label="context">
+          <MenuRows kind="context" items={ROWS} onPick={() => {}} />
+        </ContextMenuContent>
+      </ContextMenu>,
+    );
+    expectRule(await screen.findByRole("menu", { name: "context" }));
   });
 });
 
