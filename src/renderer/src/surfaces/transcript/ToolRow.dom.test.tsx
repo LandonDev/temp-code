@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Block } from "../../lib/session";
 import { SelectSessionContext } from "../AgentMarkdown";
+import { AgentSpawnRow } from "../AgentSpawnRow";
 import { ActionRow } from "./ActionRow";
 import { ActivityRow } from "./ActivityRow";
 
@@ -179,5 +180,19 @@ describe("ActionRow", () => {
     expect(container.textContent).toContain("Editing");
     expect(container.querySelector('[data-glyph] [data-state="waiting"]')).not.toBeNull();
     expect(getAllByRole("button", { name: "Allow" })).toHaveLength(1);
+  });
+
+  it("a spawn row opens its agent and says where it stands", () => {
+    const onSelect = vi.fn();
+    const block = { id: "sp", role: "system", text: "", agent: { id: "a1", title: "Port the view", status: "error" } } as Block;
+    const { getByRole, getByText } = render(
+      <SelectSessionContext.Provider value={onSelect}>
+        <AgentSpawnRow block={block} />
+      </SelectSessionContext.Provider>,
+    );
+    expect(getByText("Reported").className).toContain("text-muted-foreground");
+    expect(getByText("Failed")).toBeTruthy();
+    fireEvent.click(getByRole("button", { name: "Reported Port the view" }));
+    expect(onSelect).toHaveBeenCalledWith("a1");
   });
 });
