@@ -8,13 +8,16 @@ import {
   useMacBridgeRules,
   type RunRememberChoice
 } from '../lib/macBridgeRules'
+import { Button } from '../components/ui/button'
+import { Item, ItemActions, ItemContent, ItemTitle } from '../components/ui/item'
+import { DANGER_GHOST, Group } from '../surfaces/settings/hosts/Group'
 import { errorText } from './ConfirmDialog'
 
 /**
  * The Mac bridge's remember controls (docs/box.md "Remembered approvals"):
  * the select on a run card (MacBridgeCards), and the list of one thread's
  * remembered approvals with Remove and Forget all (the thread menu's
- * "Mac approvals…" and Settings → Remote access → Mac bridge).
+ * "Mac approvals…" and Settings → Hosts).
  */
 
 export function RunRememberSelect({
@@ -50,7 +53,7 @@ export function RunRememberSelect({
   )
 }
 
-/** One thread's remembered approvals, with Remove per rule and Forget all. */
+/** One thread's remembered approvals as rows, each with Remove, and Forget all. */
 export function MacBridgeRuleList({ sessionId, empty }: { sessionId: string; empty?: string }) {
   const rules = useMacBridgeRules(sessionId)
   const [error, setError] = useState<string | null>(null)
@@ -63,42 +66,38 @@ export function MacBridgeRuleList({ sessionId, empty }: { sessionId: string; emp
     }
   }
   if (rules.length === 0)
-    return empty ? <p className="text-[12px] text-content/40">{empty}</p> : null
+    return empty ? <p className="text-xs text-muted-foreground">{empty}</p> : null
   return (
-    <div className="flex flex-col gap-1.5" data-mac-bridge-rules={sessionId}>
+    <div className="flex flex-col" data-mac-bridge-rules={sessionId}>
       {rules.map((rule) => {
         const { what, detail } = ruleText(rule)
         return (
-          <div key={rule.id} className="flex items-center gap-3">
-            <span className="min-w-0 flex-1 truncate text-[12px] text-content/80" title={detail}>
-              {what} <span className="font-mono text-content/90">{detail}</span>
-              {rule.uses ? <span className="text-content/40"> · used {rule.uses}×</span> : null}
-            </span>
-            <button
-              type="button"
-              className="pressable shrink-0 rounded-md border border-content/10 px-2 py-0.5 text-[11px] text-danger hover:border-danger/40 hover:bg-danger/10"
-              onClick={() => void forget(rule.id)}
-            >
-              Remove
-            </button>
-          </div>
+          <Item key={rule.id} size="xs" className="px-0" data-mac-bridge-rule={rule.id}>
+            <ItemContent className="min-w-0">
+              <ItemTitle className="block max-w-full truncate text-xs font-normal text-muted-foreground">
+                {what} <span className="font-mono text-foreground">{detail}</span>
+              </ItemTitle>
+            </ItemContent>
+            <ItemActions className="shrink-0">
+              {rule.uses ? <span className="text-xs tabular-nums text-muted-foreground">used {rule.uses}×</span> : null}
+              <Button variant="ghost" size="xs" className={DANGER_GHOST} onClick={() => void forget(rule.id)}>
+                Remove
+              </Button>
+            </ItemActions>
+          </Item>
         )
       })}
-      <div className="flex justify-end pt-1">
-        <button
-          type="button"
-          className="pressable rounded-md px-2 py-0.5 text-[11px] text-danger hover:bg-danger/10"
-          onClick={() => void forget()}
-        >
+      <div className="flex justify-end">
+        <Button variant="ghost" size="xs" className={DANGER_GHOST} onClick={() => void forget()}>
           Forget all
-        </button>
+        </Button>
       </div>
-      {error ? <p className="text-[11px] text-danger">{error}</p> : null}
+      {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </div>
   )
 }
 
-/** Settings → Remote access → Mac bridge: every thread's remembered approvals, by thread. */
+/** Settings → Hosts, this Mac's section: every thread's remembered approvals, by thread, until the app quits. */
 export function MacBridgeRememberedSection() {
   const rules = useMacBridgeRules()
   useEffect(() => {
@@ -109,18 +108,16 @@ export function MacBridgeRememberedSection() {
   const threads = [...new Map(rules.map((r) => [r.sessionId, r])).values()]
   if (threads.length === 0) return null
   return (
-    <div className="flex flex-col gap-3 pt-3">
-      <div className="text-[12px] text-content/60">
-        Remembered for threads (until the app quits)
-      </div>
+    <Group title="Remembered approvals" data-mac-bridge-remembered={threads.length}>
       {threads.map((r) => (
-        <div key={r.sessionId} className="flex flex-col gap-1.5 pl-1">
-          <div className="text-[12px] text-content/70">
-            {r.threadTitle || r.sessionId} <span className="text-content/40">on {r.hostName}</span>
+        <div key={r.sessionId} className="flex flex-col pt-1.5">
+          <div className="flex items-center gap-2 text-xs">
+            <span className="min-w-0 truncate font-medium text-foreground">{r.threadTitle || r.sessionId}</span>
+            <span className="shrink-0 text-muted-foreground">{r.hostName}</span>
           </div>
           <MacBridgeRuleList sessionId={r.sessionId} />
         </div>
       ))}
-    </div>
+    </Group>
   )
 }

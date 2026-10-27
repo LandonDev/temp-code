@@ -64,7 +64,9 @@ vi.mock("../../../chrome/DeployDrift", () => ({
 vi.mock("../../../stores/environment", () => ({ environment: { forget: () => {} } }));
 vi.mock("./Deploy", () => ({ HostDeploy: () => null, LocalRelease: () => null, useJobPolling: () => {} }));
 vi.mock("./Admission", () => ({ HostAdmission: () => null }));
-vi.mock("../../MacBridgeSettings", () => ({ MacBridgeSettings: () => null }));
+vi.mock("../../../chrome/MacBridgeRemember", () => ({ MacBridgeRememberedSection: () => null }));
+vi.mock("../../MacDevices", () => ({ MacDevicesSection: () => null }));
+vi.mock("./MacBridgeGroup", () => ({ MacBridgeGroup: () => null, LoadLimitRow: () => null, useMacBridgePolling: () => {} }));
 
 const { HostsPage } = await import("./HostsPage");
 const { connectionWord } = await import("./HostSection");

@@ -2,17 +2,22 @@ import { useEffect, useState } from 'react'
 import type { MacBridgeRequest } from '@server/shared/contract-macbridge'
 import { heldLine, startMacBridge, stopMacBridgeAll, useMacBridgeRunning } from '../lib/macBridge'
 import { requestCode } from './MacBridgeCards'
+import { Button } from '../components/ui/button'
+import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from '../components/ui/item'
+import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip'
+import { Facts, splitFacts } from '../surfaces/settings/hosts/Facts'
+import { DANGER_GHOST } from '../surfaces/settings/hosts/Group'
 import { Pause } from './icons'
 
 /**
  * Every command running on this Mac for a host or a thread, quiet ones
- * included, each with Stop: the quiet trace in Settings → Remote access →
- * Mac bridge and in a thread's "Mac approvals…" dialog. A command the load
- * guard holds (docs/box.md "The load guard") is a row here too, after the
- * running ones, with its place instead of a thread name; its Stop takes it
- * out of the line. A call a paused thread holds on its host (status
- * `paused`) is a row after those, with "Paused" where Stop would be: nothing
- * runs for it here. Nothing here opens by itself.
+ * included, each a row with Stop: the quiet trace on Settings → Hosts under
+ * the host's Mac bridge, and in a thread's "Mac approvals…" dialog. A
+ * command the load guard holds (docs/box.md "The load guard") is a row
+ * after the running ones, its place in line at the end instead of a thread
+ * name; its Stop takes it out of the line. A call a paused thread holds on
+ * its host (status `paused`) is a row after those, "Paused" where Stop would
+ * be: nothing runs for it here. Nothing here opens by itself.
  */
 export function MacBridgeRunningList({
   environmentId,
@@ -43,65 +48,61 @@ export function MacBridgeRunningList({
   const stoppable = inFlight.filter((r) => r.status !== 'paused')
   return (
     <div
-      className="flex flex-col gap-1.5"
+      className="flex flex-col"
       data-mac-bridge-running-list={inFlight.length}
       data-mac-bridge-paused-count={paused}
     >
-      <div className="flex items-center gap-3 text-[12px] text-content/60">
-        <span className="min-w-0 flex-1 tabular-nums">{countLine(running, waiting, hostName, paused)}</span>
+      <div className="flex min-h-7 items-center gap-3 text-xs text-muted-foreground" data-mac-bridge-count>
+        <Facts parts={countParts(running, waiting, hostName, paused)} className="min-w-0 flex-1" />
         {stoppable.length > 1 ? (
-          <button
-            type="button"
-            className="pressable shrink-0 rounded-md px-2 py-0.5 text-[11px] text-danger hover:bg-danger/10"
-            onClick={() => void stop(stoppable)}
-          >
+          <Button variant="ghost" size="xs" className={DANGER_GHOST} onClick={() => void stop(stoppable)}>
             Stop all
-          </button>
+          </Button>
         ) : null}
       </div>
       {inFlight.map((r) => (
-        <div
+        <Item
           key={r.id}
-          className="flex items-center gap-3"
+          size="xs"
+          className="px-0"
           data-mac-bridge-running-row={r.id}
           data-mac-bridge-held={r.status === 'held' ? r.held?.position : undefined}
           data-mac-bridge-row-status={r.status}
         >
-          <span
-            className={`min-w-0 flex-1 truncate font-mono text-[12px] ${r.status === 'paused' ? 'text-content/50' : 'text-content/80'}`}
-            title={`${requestCode(r)} · in ${r.cwd ?? ''}`}
-          >
-            {requestCode(r)}
+          <ItemContent className="min-w-0">
+            <ItemTitle
+              className={`block max-w-full truncate font-mono text-xs font-normal ${r.status === 'paused' ? 'text-muted-foreground' : 'text-foreground'}`}
+            >
+              {requestCode(r)}
+            </ItemTitle>
             {sessionId === undefined && r.threadTitle ? (
-              <span className="font-sans text-content/40"> · {r.threadTitle}</span>
+              <ItemDescription className="truncate">{r.threadTitle}</ItemDescription>
             ) : null}
-          </span>
-          {r.status === 'held' && r.held ? (
-            <span className="shrink-0 text-[11px] tabular-nums text-content/40">
-              {heldLine(r.held)}
-            </span>
-          ) : null}
-          {r.status === 'paused' ? (
-            // Held on its host while the thread is paused: the same slot as Stop, as a fact rather than a control.
-            <span
-              className="flex h-[22px] shrink-0 items-center gap-1 px-2 text-[11px] text-content/45"
-              title="Held on its host until the thread continues; nothing is running on this Mac"
-            >
-              <Pause className="size-3" strokeWidth={1.75} aria-hidden="true" />
-              Paused
-            </span>
-          ) : (
-            <button
-              type="button"
-              className="pressable h-[22px] shrink-0 rounded-md border border-content/10 px-2 text-[11px] text-danger hover:border-danger/40 hover:bg-danger/10"
-              onClick={() => void stop([r])}
-            >
-              Stop
-            </button>
-          )}
-        </div>
+          </ItemContent>
+          <ItemActions className="shrink-0">
+            {r.status === 'held' && r.held ? (
+              <Facts parts={splitFacts(heldLine(r.held))} className="text-xs text-muted-foreground" />
+            ) : null}
+            {r.status === 'paused' ? (
+              // Held on its host while the thread is paused: the same slot as Stop, as a fact rather than a control.
+              <Tooltip>
+                <TooltipTrigger
+                  render={<span className="flex h-6 cursor-default items-center gap-1 px-2 text-xs text-muted-foreground" />}
+                >
+                  <Pause className="size-3" strokeWidth={1.75} aria-hidden="true" />
+                  Paused
+                </TooltipTrigger>
+                <TooltipContent>Held on its host until the thread continues; nothing runs on this Mac</TooltipContent>
+              </Tooltip>
+            ) : (
+              <Button variant="ghost" size="xs" className={DANGER_GHOST} onClick={() => void stop([r])}>
+                Stop
+              </Button>
+            )}
+          </ItemActions>
+        </Item>
       ))}
-      {error ? <p className="text-[11px] text-danger">{error}</p> : null}
+      {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </div>
   )
 }

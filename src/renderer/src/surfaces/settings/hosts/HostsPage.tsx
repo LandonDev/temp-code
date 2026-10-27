@@ -13,7 +13,8 @@ import { useMacBridgeHosts } from "../../../lib/macBridge";
 import { isWebMode } from "../../../lib/nativeWeb";
 import { loadSavedEnvironments } from "../../../lib/tcserver/link";
 import { environment as environmentSelection } from "../../../stores/environment";
-import { MacBridgeSettings } from "../../MacBridgeSettings";
+import { MacBridgeRememberedSection } from "../../../chrome/MacBridgeRemember";
+import { MacDevicesSection } from "../../MacDevices";
 import { HostAdmission } from "./Admission";
 import { Clients } from "./Clients";
 import { HostDeploy, LocalRelease, useJobPolling } from "./Deploy";
@@ -23,6 +24,7 @@ import { PairDialog } from "./dialogs/PairDialog";
 import { RenameHostDialog } from "./dialogs/RenameHostDialog";
 import { RoutesDialog } from "./dialogs/RoutesDialog";
 import { hostSections } from "./hostSections";
+import { LoadLimitRow, MacBridgeGroup, useMacBridgePolling } from "./MacBridgeGroup";
 import { HostSection, type HostMenuAction } from "./HostSection";
 import { rpc } from "./rpc";
 import { Group } from "./Group";
@@ -144,6 +146,7 @@ export function HostsPage({ onOpenSession }: { onOpenSession?: (sessionId: strin
     hosts.saved.map((h) => h.id),
     !web,
   );
+  useMacBridgePolling(!web);
 
   if (!remote.data) return <PageSkeleton error={remote.error} />;
   const { status, keys, pairings, sessions, harness, memory, attachments } = remote.data;
@@ -189,9 +192,11 @@ export function HostsPage({ onOpenSession }: { onOpenSession?: (sessionId: strin
                 {web ? null : <LocalRelease />}
                 <Group>
                   <HostAdmission environmentId={section.id} />
+                  {web ? null : <LoadLimitRow />}
                 </Group>
                 {harness ? <LocalSync harness={harness} memory={memory} onAct={(method, params) => void remote.act(method, params)} /> : null}
-                <MacBridgeSettings onOpenSession={onOpenSession} />
+                {web ? null : <MacBridgeRememberedSection />}
+                <MacDevicesSection onOpenSession={onOpenSession} />
               </>
             ) : (
               <>
@@ -204,6 +209,7 @@ export function HostsPage({ onOpenSession }: { onOpenSession?: (sessionId: strin
                 {harness && section.saved ? (
                   <HostSync environmentId={section.id} harness={harness} memory={memory} onSync={(id, h, m) => void remote.sync(id, h, m)} />
                 ) : null}
+                {section.bridge ? <MacBridgeGroup host={section.bridge} /> : null}
               </>
             )}
           </HostSection>

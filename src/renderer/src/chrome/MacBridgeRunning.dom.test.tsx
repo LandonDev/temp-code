@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { MacBridgeRequest } from '@server/shared/contract-macbridge'
 import { mountProbe } from '../test/renderProbe'
 import { macBridgeStore } from '../lib/macBridge'
-import { MacBridgeRunningList, countLine } from './MacBridgeRunning'
+import { MacBridgeRunningList, countLine, countParts } from './MacBridgeRunning'
+
+const facts = (el: Element) => [...(el.querySelector('[data-slot=facts]')?.children ?? [])].map((c) => c.textContent)
+const count = (root: Element) => facts(root.querySelector('[data-mac-bridge-count]')!)
 
 /**
  * The running list with the load guard's held rows (docs/box.md "The load
@@ -78,9 +81,10 @@ describe('MacBridgeRunningList', () => {
       'h2'
     ])
     expect(rows.map((r) => r.getAttribute('data-mac-bridge-held'))).toEqual([null, '1', '2'])
-    expect(root.textContent).toContain('1 command running on this Mac from box · 2 waiting')
-    expect(rows[1].textContent).toContain('Waiting for the Mac · 1 of 1 running · 1st in line')
-    expect(rows[2].textContent).toContain('Waiting for the Mac · load 12.3 of 8 · 2nd in line')
+    expect(count(root)).toEqual(['1 command running on this Mac from box', '2 waiting'])
+    expect(facts(rows[1])).toEqual(['Waiting for the Mac', '1 of 1 running', '1st in line'])
+    expect(facts(rows[2])).toEqual(['Waiting for the Mac', 'load 12.3 of 8', '2nd in line'])
+    expect(root.textContent).not.toContain('·')
     expect(rows[0].textContent).not.toContain('Waiting')
     // Every row has Stop; the list has Stop all.
     expect(rows.every((r) => r.querySelector('button')?.textContent === 'Stop')).toBe(true)
@@ -111,7 +115,7 @@ describe('MacBridgeRunningList', () => {
     probe = mountProbe(<MacBridgeRunningList environmentId="env_box" sessionId="s1" />)
     const root = probe.container
     expect(root.querySelectorAll('[data-mac-bridge-running-row]')).toHaveLength(1)
-    expect(root.textContent).toContain('1 command waiting for this Mac')
+    expect(count(root)).toEqual(['1 command waiting for this Mac'])
     expect(root.textContent).not.toContain('iOS build')
     expect([...root.querySelectorAll('button')].some((b) => b.textContent === 'Stop all')).toBe(
       false
@@ -122,6 +126,11 @@ describe('MacBridgeRunningList', () => {
     seed([req('p', { status: 'pending' })])
     probe = mountProbe(<MacBridgeRunningList environmentId="env_box" />)
     expect(probe.container.textContent).toBe('')
+  })
+
+  it('countParts', () => {
+    expect(countParts(2, 1, 'box', 1)).toEqual(['2 commands running on this Mac from box', '1 waiting', '1 paused'])
+    expect(countParts(0, 0, 'box', 2)).toEqual(['2 calls paused with their thread from box'])
   })
 
   it('countLine', () => {
@@ -143,7 +152,7 @@ describe('MacBridgeRunningList', () => {
     const root = probe.container
     const list = root.querySelector('[data-mac-bridge-running-list]')!
     expect(list.getAttribute('data-mac-bridge-paused-count')).toBe('2')
-    expect(root.textContent).toContain('1 command running on this Mac from box · 2 paused')
+    expect(count(root)).toEqual(['1 command running on this Mac from box', '2 paused'])
     const rows = [...root.querySelectorAll('[data-mac-bridge-running-row]')]
     expect(rows.map((r) => r.getAttribute('data-mac-bridge-row-status'))).toEqual(['running', 'paused', 'paused'])
     expect(rows[0].querySelector('button')?.textContent).toBe('Stop')
