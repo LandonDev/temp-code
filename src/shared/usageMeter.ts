@@ -41,6 +41,9 @@ export const GENERAL_LABELS: Record<AccountProvider, string[]> = {
   cursor: []
 }
 
+/** The provider as the meter names it: the plan the accounts are on, not the harness. */
+export const PROVIDER_NAME: Record<AccountProvider, string> = { claude: 'Claude', codex: 'Codex', cursor: 'Cursor' }
+
 /** Below this share a bar's fill turns amber. */
 export const LOW_SHARE = 0.1
 export const isLow = (share: number | null): boolean => share !== null && share < LOW_SHARE

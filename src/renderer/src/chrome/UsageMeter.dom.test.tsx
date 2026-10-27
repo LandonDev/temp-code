@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, screen } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import type { ProfileView, UsageReport } from 'aliax-core/shared/types'
 import { emptyAccounts, type AccountsSnapshot } from '@server/shared/accounts'
 import type { Link } from '../lib/tcserver/store'
@@ -76,8 +76,10 @@ class FakeLink implements Link {
     if (method === 'session.subscribe') return Promise.resolve(null as T)
     return Promise.reject(new Error(`unexpected ${method}`))
   }
-  onPush(_listener: (push: ServerPush) => void): () => void {
-    return () => {}
+  listeners = new Set<(push: ServerPush) => void>()
+  onPush(listener: (push: ServerPush) => void): () => void {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
   }
   onOpen(): () => void {
     return () => {}
@@ -146,17 +148,19 @@ async function mount(thread?: Partial<SessionMeta>) {
 const row = (root: HTMLElement, provider: string) => root.querySelector(`[data-provider="${provider}"]`) as HTMLButtonElement
 const bar = (el: HTMLElement) => el.querySelector('[role="progressbar"]') as HTMLElement
 
+/** The row's words after the bar: the refill or the limit. */
+const trailing = (el: HTMLElement) => el.querySelector('[data-slot="progress"] ~ span')?.textContent ?? ''
+const details = () => document.querySelector('[data-slot="popover-content"]') as HTMLElement | null
+
 describe('UsageMeter', () => {
-  it('draws one row per provider with accounts: the best account’s room and its reset, no account name', async () => {
+  it('draws one row per provider with accounts: the pooled share and the next refill, no account named', async () => {
     const { root } = await mount()
     expect(root.querySelectorAll('[data-provider]')).toHaveLength(3)
-    // Claude: b is best (10% and 20% used), its tightest window is the weekly one with no clock.
-    expect(bar(row(root, 'claude')).getAttribute('aria-valuenow')).toBe('80')
-    expect(row(root, 'claude').textContent).not.toContain('resets in')
-    // Codex: y is throttled, so x counts: 20% left in the 5h window, refilling in 2h.
-    expect(bar(row(root, 'codex')).getAttribute('aria-valuenow')).toBe('20')
-    expect(row(root, 'codex').textContent).toContain('resets in 2h')
-    expect(root.textContent).not.toMatch(/@x\.com|Main/)
+    // Claude: a 0.4, b 0.8, c 0 (d expired, out); the only binding reset is c's 5h, in 2.5 h.
+    expect(bar(row(root, 'claude')).getAttribute('aria-valuenow')).toBe('40')
+    expect(trailing(row(root, 'claude'))).toBe('in 2h')
+    expect(row(root, 'claude').getAttribute('aria-label')).toBe('Claude usage, 40% left, refills in 2h')
+    expect(root.textContent).not.toMatch(/@x\.com|Main|Max 20x/)
   })
 
   it('renders nothing before any provider has accounts', async () => {
@@ -166,25 +170,71 @@ describe('UsageMeter', () => {
     expect(probe.container.innerHTML).toBe('')
   })
 
-  it('opens the read-only account list with the check on the global pin', async () => {
+  it('shows an empty track and no text before any account reported', async () => {
     const { root, link } = await mount()
+    const s = snapshot()
+    s.providers.claude.reports = []
     await probe!.act(async () => {
-      fireEvent.click(row(root, 'claude'))
+      for (const l of link.listeners) l({ push: 'accounts', snapshot: s } as ServerPush)
     })
-    const rows = screen.getAllByRole('option')
-    expect(rows).toHaveLength(4)
-    expect(rows.map((r) => r.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false', 'false'])
-    expect(rows.every((r) => r.getAttribute('aria-disabled') === 'true')).toBe(true)
-    expect(link.calls.some((c) => c.method === 'session.account.pin')).toBe(false)
+    expect(bar(row(root, 'claude')).getAttribute('aria-valuenow')).toBeNull()
+    expect(trailing(row(root, 'claude'))).toBe('')
+    expect(row(root, 'claude').getAttribute('aria-label')).toBe('Claude usage, no report yet')
   })
 
-  it("with a thread the list checks that thread's account", async () => {
-    const { root } = await mount({ account: 'b@x.com' })
+  it('says Limited and the time in the warning tone when every account is throttled', async () => {
+    const { root, link } = await mount()
+    const s = snapshot()
+    s.providers.codex.headroom = {
+      'x@x.com': { room: 0, throttledUntil: now + 5 * 60_000, ratePerMin: 0, seenAt: now },
+      'y@x.com': { room: 0, throttledUntil: now + 3 * 60_000, ratePerMin: 0, seenAt: now }
+    }
+    await probe!.act(async () => {
+      for (const l of link.listeners) l({ push: 'accounts', snapshot: s } as ServerPush)
+    })
+    const limited = row(root, 'codex').querySelector('.text-warning') as HTMLElement
+    expect(limited.textContent).toBe('Limited3m')
+    expect(row(root, 'codex').getAttribute('aria-label')).toMatch(/limited for 3m$/)
+    expect(bar(row(root, 'codex')).getAttribute('aria-valuenow')).not.toBeNull()
+  })
+
+  it('opens the windows and the count of accounts with room on click, with no account named', async () => {
+    const { root } = await mount()
     await probe!.act(async () => {
       fireEvent.click(row(root, 'claude'))
     })
-    const rows = screen.getAllByRole('option')
-    expect(rows.map((r) => r.getAttribute('aria-selected'))).toEqual(['false', 'true', 'false', 'false'])
-    expect(screen.getByRole('listbox').textContent).toContain('Auto · picked by model')
+    const body = details()!
+    expect([...body.querySelectorAll('[data-window]')].map((w) => w.getAttribute('data-window'))).toEqual(['5h', 'Weekly'])
+    expect(body.textContent).toContain('Week')
+    expect(body.textContent).toContain('40% left')
+    expect(body.textContent).toContain('2 accounts with room')
+    expect(body.textContent).not.toMatch(/@x\.com|Main|Max 20x/)
+  })
+
+  it('opens on hover', async () => {
+    const { root } = await mount()
+    const trigger = row(root, 'claude')
+    await probe!.act(async () => {
+      fireEvent.pointerEnter(trigger)
+      fireEvent.mouseEnter(trigger)
+      fireEvent.mouseMove(trigger)
+    })
+    await waitFor(() => expect(details()?.textContent).toContain('2 accounts with room'), { timeout: 2000 })
+  })
+
+  it('moves the bar on a pushed snapshot without a remount and asks the host for nothing', async () => {
+    const { root, link } = await mount()
+    const before = row(root, 'claude')
+    const s = snapshot()
+    s.providers.claude.reports = s.providers.claude.reports.map((r) => ({
+      ...r,
+      windows: r.windows.map((w) => ({ ...w, usedPercent: 0 }))
+    }))
+    await probe!.act(async () => {
+      for (const l of link.listeners) l({ push: 'accounts', snapshot: s } as ServerPush)
+    })
+    expect(row(root, 'claude')).toBe(before)
+    expect(bar(before).getAttribute('aria-valuenow')).toBe('100')
+    expect(link.calls.filter((c) => c.method.startsWith('accounts.')).map((c) => c.method)).toEqual(['accounts.list'])
   })
 })
