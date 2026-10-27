@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { useRef } from "react";
+import { useState } from "react";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { virtualChunk } from "../surfaces/chunks";
@@ -10,13 +10,14 @@ afterEach(cleanup);
 const KEYS = ["a", "b", "c", "d", "e"];
 
 function List({ rows }: { rows: number }) {
-  const scroller = useRef<HTMLDivElement>(null);
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   return (
-    <div ref={scroller} data-testid="scroller" style={{ height: 120, overflowY: "auto" }}>
+    <div ref={setScroller} data-testid="scroller" style={{ height: 120, overflowY: "auto" }}>
       <RailRows
         count={KEYS.length}
         rows={rows}
         scroller={scroller}
+        scrollMargin={0}
         estimateSize={() => 32}
         getItemKey={(i) => KEYS[i]}
         render={(i) => <span data-card={KEYS[i]}>{KEYS[i]}</span>}

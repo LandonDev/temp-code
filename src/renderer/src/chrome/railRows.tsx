@@ -50,7 +50,7 @@ export function RailRows({ rows, ...props }: Props) {
 function PlainRows({ count, scroller, getItemKey, render, reveal }: RailRowsProps) {
   useEffect(() => {
     if (!reveal) return;
-    scroller.current?.querySelector(`[data-index="${reveal.index}"]`)?.scrollIntoView?.({ block: "nearest" });
+    scroller?.querySelector(`[data-index="${reveal.index}"]`)?.scrollIntoView?.({ block: "nearest" });
   }, [reveal, scroller]);
   return (
     <div className="flex w-full flex-col gap-1">

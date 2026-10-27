@@ -1,9 +1,9 @@
 import { MoreHorizontal, Plus } from "./icons";
 import {
   memo,
+  useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import { warmProjectForCwd } from "../lib/monaco/focusBoot";
@@ -164,7 +164,16 @@ function SidebarComponent({
     onReset: resize.reset,
   });
   const sessionsLock = useLockOverscroll<HTMLDivElement>();
-  const sessionsScrollRef = useRef<HTMLDivElement>(null);
+  // The element that scrolls the column, as state: the list attaches to it
+  // the render it arrives, also when Back mounts the column again.
+  const [sessionsScroller, setSessionsScroller] = useState<HTMLDivElement | null>(null);
+  const sessionsScrollRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      sessionsLock(el);
+      setSessionsScroller(el);
+    },
+    [sessionsLock],
+  );
   /** The home: no workspace folder, the chats outside every workspace. */
   const atHome = workspaceCwd === "~";
   const searchActive = useShell((s) => s.searchViewOpen);
@@ -234,6 +243,7 @@ function SidebarComponent({
         onNewProject={() => setNewProjectOpen(true)}
         onRenameSession={(id, title) => onRenameSession?.(id, title)}
         onDeleteSession={(id) => onDeleteSession?.(id, { confirmed: true })}
+        scroller={sessionsScroller}
       />
     ) : null;
   const showSidebarFooter = !projectRailOpen;
@@ -326,10 +336,7 @@ function SidebarComponent({
         </div>
       </div>
       <div
-        ref={(el) => {
-          sessionsLock(el);
-          sessionsScrollRef.current = el;
-        }}
+        ref={sessionsScrollRef}
         className="min-h-0 flex-1 overflow-y-auto overscroll-none"
       >
         {workspaceSessions ?? (

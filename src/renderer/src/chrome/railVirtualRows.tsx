@@ -1,16 +1,26 @@
-import { useEffect, useRef, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { measureElement, useVirtualizer, type VirtualizerOptions } from "@tanstack/react-virtual";
 
 /** What the rail's list hands either mode (chrome/railRows.tsx). */
 export type RailRowsProps = {
   count: number;
-  scroller: RefObject<HTMLDivElement | null>;
+  /** The element that scrolls: state, not a ref, so its arrival re-renders
+   *  the list and the virtualizer attaches to it whatever is selected. */
+  scroller: HTMLElement | null;
+  /** The list's offset inside the scroller (its padding above the rows). */
+  scrollMargin: number;
+  /** Where a list mounting with no scroller yet starts (the column's memory). */
+  initialOffset?: number;
   estimateSize: (index: number) => number;
   getItemKey: (index: number) => string;
   render: (index: number) => ReactNode;
   /** Bring this item on screen; a new object asks again. */
   reveal: { index: number } | null;
 };
+
+/** The rail list's padding above its first card (WorkspaceSessions' pt-2),
+ *  inside the sidebar's scroller: the virtualizer's scroll margin. */
+export const RAIL_SCROLL_MARGIN_PX = 8;
 
 /** The gap between cards, in both modes. */
 export const RAIL_GAP_PX = 4;
@@ -19,7 +29,7 @@ export const RAIL_GAP_PX = 4;
  *  observe and again when it grows: a row mounting under a switch keeps its
  *  cached or estimated size instead of reading a rect, which would force a
  *  layout per new row before the paint. */
-const measureRow: VirtualizerOptions<HTMLDivElement, HTMLDivElement>["measureElement"] = (
+const measureRow: VirtualizerOptions<HTMLElement, HTMLDivElement>["measureElement"] = (
   node,
   entry,
   instance,
@@ -34,17 +44,19 @@ const measureRow: VirtualizerOptions<HTMLDivElement, HTMLDivElement>["measureEle
  * Rides virtualChunk, out of the first paint; until it lands the rail
  * renders the same cards plainly (railRows.tsx).
  */
-export function VirtualRows({ count, scroller, estimateSize, getItemKey, render, reveal }: RailRowsProps) {
-  const virtualizer = useVirtualizer({
+export function VirtualRows({ count, scroller, scrollMargin, initialOffset, estimateSize, getItemKey, render, reveal }: RailRowsProps) {
+  const virtualizer = useVirtualizer<HTMLElement, HTMLDivElement>({
     count,
-    getScrollElement: () => scroller.current,
+    getScrollElement: () => scroller,
+    scrollMargin,
     estimateSize,
     getItemKey,
     overscan: 4,
     gap: RAIL_GAP_PX,
     measureElement: measureRow,
-    // Swapped in under a list the person may have scrolled: start where it is.
-    initialOffset: () => scroller.current?.scrollTop ?? 0,
+    // Swapped in under a list the person may have scrolled: start where it
+    // is; mounted again before its scroller: start where the column was.
+    initialOffset: () => scroller?.scrollTop ?? initialOffset ?? 0,
   });
   // A reveal the plain list already answered is not replayed at the swap.
   const answered = useRef(reveal);
@@ -61,7 +73,7 @@ export function VirtualRows({ count, scroller, estimateSize, getItemKey, render,
           data-index={row.index}
           ref={virtualizer.measureElement}
           className="absolute top-0 left-0 w-full"
-          style={{ transform: `translateY(${row.start}px)` }}
+          style={{ transform: `translateY(${row.start - scrollMargin}px)` }}
         >
           {render(row.index)}
         </div>

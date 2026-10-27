@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -76,6 +77,7 @@ import {
 } from "../lib/workspaceSessions";
 import { dialogsChunk } from "../surfaces/chunks";
 import { RailRows } from "./railRows";
+import { RAIL_SCROLL_MARGIN_PX } from "./railVirtualRows";
 
 // Opened from a project's menu; mounted only while open (chrome/dialogs.ts).
 const ProjectSettingsDialog = dialogsChunk.surface("ProjectSettingsDialog");
@@ -96,6 +98,9 @@ type Props = {
   onNewProject: () => void;
   onRenameSession: (sessionId: string, title: string) => void;
   onDeleteSession: (sessionId: string) => void;
+  /** The element that scrolls the column (the sidebar's), as state: the
+   *  list attaches to it the render it arrives. */
+  scroller: HTMLElement | null;
 };
 
 type Dialog =
@@ -963,6 +968,24 @@ const estimateItem = (item: SidebarItem): number => {
 
 // --- root ------------------------------------------------------------------
 
+/** What the column keeps across a remount (Settings unmounts it, Back mounts
+ *  it again), per scope: where it was scrolled, how far each list was paged,
+ *  whether Chats was open, and the project it last revealed. */
+type ColumnMemory = { offset: number; pages: Pages; chatsOpen: boolean; revealed: string | null };
+const columnMemory = new Map<string, ColumnMemory>();
+const memoryOf = (scope: string): ColumnMemory => {
+  let memory = columnMemory.get(scope);
+  if (!memory) {
+    memory = { offset: 0, pages: {}, chatsOpen: true, revealed: null };
+    columnMemory.set(scope, memory);
+  }
+  return memory;
+};
+/** Tests start from a column that remembers nothing. */
+export function forgetColumnMemory(): void {
+  columnMemory.clear();
+}
+
 /** A project group is selected when the selection names any of its copies. */
 const groupHolds = (group: ProjectGroup, projectId: string | null): boolean =>
   !!projectId && (group.project.id === projectId || !!group.projectIds?.includes(projectId));
@@ -978,9 +1001,11 @@ export default function WorkspaceSessions({
   onNewProject,
   onRenameSession,
   onDeleteSession,
+  scroller,
 }: Props) {
   const metas = useSessionMetas();
   const planReady = usePlanReady(metas);
+  const memory = memoryOf(workspaceId ?? "home");
   const { workspaces, projects } = useWorkspaceCatalog();
   const lastSeen = useLastSeen();
   const seenFloor = useSeenFloor();
@@ -999,9 +1024,25 @@ export default function WorkspaceSessions({
     [cache, lastSeen, metas, projects, seenFloor, workspaceId, workspaceIds, workspaces],
   );
   const [dialog, setDialog] = useState<Dialog | null>(null);
-  const [chatsOpen, setChatsOpen] = useState(true);
+  const [chatsOpen, setChatsOpen] = useState(memory.chatsOpen);
   const [archived, setArchived] = useState<ArchivedState>({ open: false, shown: null });
-  const [pages, setPages] = useState<Pages>({});
+  const [pages, setPages] = useState<Pages>(memory.pages);
+  useEffect(() => {
+    memory.chatsOpen = chatsOpen;
+    memory.pages = pages;
+  }, [chatsOpen, memory, pages]);
+  // The offset follows the scroller, and comes back the render it arrives:
+  // the list has mounted by then, at its remembered pages, so the offset
+  // does not clamp to a shorter column.
+  useLayoutEffect(() => {
+    if (!scroller) return;
+    if (memory.offset > 0) scroller.scrollTop = memory.offset;
+    const save = () => {
+      memory.offset = scroller.scrollTop;
+    };
+    scroller.addEventListener("scroll", save, { passive: true });
+    return () => scroller.removeEventListener("scroll", save);
+  }, [memory, scroller]);
   const close = () => setDialog(null);
   // A dialog edits a project in its own workspace (a linked group's leader
   // may sit in another copy than the one selected).
@@ -1110,7 +1151,6 @@ export default function WorkspaceSessions({
     () => sidebarItems(groups, workspaceId === null),
     [groups, workspaceId],
   );
-  const scroller = useRef<HTMLDivElement>(null);
   const estimateSize = useCallback((i: number) => estimateItem(items[i]), [items]);
   const getItemKey = useCallback((i: number) => items[i].key, [items]);
   const rowCount = useMemo(() => items.reduce((n, item) => n + estimateItem(item) / ROW_PX, 0), [items]);
@@ -1119,16 +1159,16 @@ export default function WorkspaceSessions({
   // or as soon as the list fills after a boot that restored it. A meta push
   // re-sorting the cards must not scroll.
   const [reveal, setReveal] = useState<{ index: number } | null>(null);
-  const revealed = useRef<string | null>(null);
+  // A remount under the same selection keeps the remembered offset instead.
   useEffect(() => {
-    if (!selectedProjectId || revealed.current === selectedProjectId) return;
+    if (!selectedProjectId || memory.revealed === selectedProjectId) return;
     const index = items.findIndex(
       (item) => item.kind === "project" && groupHolds(item.group, selectedProjectId),
     );
     if (index < 0) return;
-    revealed.current = selectedProjectId;
+    memory.revealed = selectedProjectId;
     setReveal({ index });
-  }, [items, selectedProjectId]);
+  }, [items, memory, selectedProjectId]);
   const revealedSession = useRef(activeSessionId);
   useEffect(() => {
     if (!activeSessionId || revealedSession.current === activeSessionId) return;
@@ -1201,23 +1241,30 @@ export default function WorkspaceSessions({
 
   return (
     <PlanReadyContext.Provider value={planReady}>
-    <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-2 pt-2 pb-2">
-        <RowsContextMenu
-          label="Thread actions"
-          rowsFor={(id) => (id ? railMenu.rowsFor(id) : null)}
-          onPick={(pick, id) => id && railMenu.onPick(id, pick)}
-          onOpenChange={(open, id) => id && railMenu.onOpenChange(id, open)}
-        >
-        <RailRows
-          count={items.length}
-          rows={rowCount}
-          scroller={scroller}
-          estimateSize={estimateSize}
-          getItemKey={getItemKey}
-          render={(index) => entry(items[index])}
-          reveal={reveal}
-        />
-        </RowsContextMenu>
+    {/* The sidebar's element scrolls; this one only pads (pt-2 is the list's
+    scroll margin). */}
+    <div className="px-2 pt-2 pb-2">
+      {/* The menu's trigger is a DOM node: a component would drop its handler. */}
+      <RowsContextMenu
+        label="Thread actions"
+        rowsFor={(id) => (id ? railMenu.rowsFor(id) : null)}
+        onPick={(pick, id) => id && railMenu.onPick(id, pick)}
+        onOpenChange={(open, id) => id && railMenu.onOpenChange(id, open)}
+      >
+        <div>
+          <RailRows
+            count={items.length}
+            rows={rowCount}
+            scroller={scroller}
+            scrollMargin={RAIL_SCROLL_MARGIN_PX}
+            initialOffset={memory.offset}
+            estimateSize={estimateSize}
+            getItemKey={getItemKey}
+            render={(index) => entry(items[index])}
+            reveal={reveal}
+          />
+        </div>
+      </RowsContextMenu>
 
 
       {dialog?.kind === "settings" && workspace ? (
