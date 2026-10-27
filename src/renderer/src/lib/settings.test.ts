@@ -157,6 +157,13 @@ describe("settings sections", () => {
     expect(loadSettingsSection()).toBe("remote");
     expect(isSettingsSectionId("environments")).toBe(false);
   });
+
+  it("has no Build page; a saved one loads as the default", () => {
+    expect(SETTINGS_SECTIONS.some((section) => (section.id as string) === "build")).toBe(false);
+    mockLocalStorage();
+    localStorage.setItem("monocode.settingsSection", "build");
+    expect(loadSettingsSection()).toBe("general");
+  });
 });
 
 describe("keybindings", () => {

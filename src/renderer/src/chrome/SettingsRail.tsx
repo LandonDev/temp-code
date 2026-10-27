@@ -12,7 +12,6 @@ import {
   MessageSquarePlus,
   SlidersHorizontal,
   Users,
-  Wrench,
   type IconComponent,
 } from "./icons";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
@@ -34,7 +33,6 @@ const SECTION_ICONS: Record<StaticSettingsSectionId, IconComponent> = {
   keybindings: Keyboard,
   providers: Bot,
   orchestration: Users,
-  build: Wrench,
   reviews: GitCompare,
   appshots: Camera,
   remote: Globe,

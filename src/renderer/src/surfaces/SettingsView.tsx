@@ -19,7 +19,6 @@ import { KeybindingsPage } from "./settings/Keybindings";
 import { ProvidersPage } from "./settings/Providers";
 import { WorkspacePage } from "./settings/Workspace";
 import { OrchestrationPage } from "./settings/Orchestration";
-import { BuildPage } from "./settings/Build";
 import { ArchivePage } from "./settings/Archive";
 
 type Props = {
@@ -127,11 +126,6 @@ export function SettingsView({
           {section === "keybindings" ? <KeybindingsPage /> : null}
           {section === "providers" ? <ProvidersPage /> : null}
           {section === "orchestration" ? <OrchestrationPage /> : null}
-          {section === "build" ? (
-            <div>
-              <BuildPage />
-            </div>
-          ) : null}
           {section === "reviews" ? <ReviewsPage /> : null}
           {section === "appshots" ? (
             <div>

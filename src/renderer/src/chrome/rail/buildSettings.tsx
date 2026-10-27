@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import type { BuildConfig } from "@server/shared/build";
 import { registry } from "../../lib/connection";
 import { OPEN_SETTINGS_EVENT } from "../../lib/monaco/debugTab";
+import { workspaceSettingsSection } from "../../lib/settings";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
-import { Input, Row } from "../../surfaces/settingsBits";
-import { MatrixSpinner } from "../../surfaces/threads/bits";
+import { PageRow } from "../../components/page";
+import { Input } from "../../components/ui/input";
+import { Skeleton } from "../../components/ui/skeleton";
 
 /**
  * The workspace's build command (Build rail tab, and what the completed-turn
@@ -40,7 +42,7 @@ export function BuildFields({
     {
       key: "outputs" as const,
       label: "Outputs",
-      description: "Globs for the files it produces, comma-separated; ! excludes.",
+      description: "Globs of the files it makes, comma-separated. ! excludes.",
       placeholder: detected?.outputs || "e.g. target/*.jar",
     },
   ];
@@ -54,18 +56,18 @@ export function BuildFields({
             placeholder={f.placeholder}
             spellCheck={false}
             aria-label={`Build ${f.label.toLowerCase()}`}
-            className={compact ? "w-full font-mono" : "w-56 font-mono"}
+            className={compact ? "font-mono text-[12px]" : "w-64 font-mono text-[12px]"}
           />
         );
         return compact ? (
-          <label key={f.key} className="flex flex-col gap-1">
-            <span className="text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">{f.label}</span>
+          <label key={f.key} className="flex flex-col gap-1.5">
+            <span className="text-[12px] font-medium text-muted-foreground">{f.label}</span>
             {input}
           </label>
         ) : (
-          <Row key={f.key} label={f.label} description={f.description}>
+          <PageRow key={f.key} title={f.label} description={f.description}>
             {input}
-          </Row>
+          </PageRow>
         );
       })}
     </>
@@ -111,8 +113,16 @@ export function BuildEditor({ workspaceId }: { workspaceId: string }) {
 
   if (config === undefined) {
     return (
-      <div className="flex h-16 items-center justify-center">
-        <MatrixSpinner />
+      <div data-testid="build-skeleton" aria-hidden className="flex flex-col">
+        {[0, 1].map((i) => (
+          <div key={i} className="flex items-center gap-3 py-3">
+            <div className="flex flex-1 flex-col gap-1.5">
+              <Skeleton className="h-3.5 w-24" />
+              <Skeleton className="h-3 w-56" />
+            </div>
+            <Skeleton className="h-8 w-64" />
+          </div>
+        ))}
       </div>
     );
   }
@@ -121,17 +131,17 @@ export function BuildEditor({ workspaceId }: { workspaceId: string }) {
 
 // ── deep link from the Build rail tab ─────────────────────────────────
 
-let requestedScope: string | undefined;
+let requestedFocus = false;
 
-/** Open Settings on the Build page with this workspace selected. */
+/** Open Settings on this workspace's page with its Build section in view. */
 export function openBuildSettings(workspaceId: string): void {
-  requestedScope = workspaceId;
-  window.dispatchEvent(new CustomEvent(OPEN_SETTINGS_EVENT, { detail: "build" }));
+  requestedFocus = true;
+  window.dispatchEvent(new CustomEvent(OPEN_SETTINGS_EVENT, { detail: workspaceSettingsSection(workspaceId) }));
 }
 
-/** The scope a deep link asked for, consumed once. */
-export function takeRequestedBuildScope(): string | undefined {
-  const scope = requestedScope;
-  requestedScope = undefined;
-  return scope;
+/** Whether a deep link asked for the Build section, consumed once. */
+export function takeRequestedBuildFocus(): boolean {
+  const focus = requestedFocus;
+  requestedFocus = false;
+  return focus;
 }

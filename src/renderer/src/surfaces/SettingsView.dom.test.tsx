@@ -11,7 +11,6 @@ vi.mock("./settings/Keybindings", () => ({ KeybindingsPage: stub("keybindings") 
 vi.mock("./settings/Providers", () => ({ ProvidersPage: stub("providers") }));
 vi.mock("./settings/Workspace", () => ({ WorkspacePage: stub("workspace") }));
 vi.mock("./settings/Orchestration", () => ({ OrchestrationPage: stub("orchestration") }));
-vi.mock("./settings/Build", () => ({ BuildPage: stub("build") }));
 vi.mock("./settings/Archive", () => ({ ArchivePage: stub("archive") }));
 vi.mock("./ReviewSettings", () => ({ ReviewsPage: stub("reviews") }));
 vi.mock("./AppshotsSettings", () => ({ AppshotsPage: stub("appshots") }));

@@ -13,7 +13,6 @@ export type StaticSettingsSectionId =
   | "providers"
   | "orchestration"
   | "reviews"
-  | "build"
   | "appshots"
   | "archive";
 
@@ -59,13 +58,6 @@ export const SETTINGS_SECTIONS: {
     description: "A second model reads a branch before it lands. A project can override this from its settings.",
   },
   {
-    id: "build",
-    group: "threads",
-    label: "Build",
-    description:
-      "The command the Build rail tab runs for a workspace, and the files it produces. Projects can override it in their settings.",
-  },
-  {
     id: "appshots",
     group: "threads",
     label: "Appshots",
@@ -105,7 +97,7 @@ export function workspaceOfSection(id: SettingsSectionId): string | null {
   return id.startsWith("ws:") ? id.slice(3) : null;
 }
 
-/** Open Settings on one workspace's page (defaults, turn pass, build, rules). */
+/** Open Settings on one workspace's page (defaults, turn pass, accounts, build, rules, projects). */
 export function openWorkspaceSettings(workspaceId: string): void {
   requestSettings(workspaceSettingsSection(workspaceId));
 }
