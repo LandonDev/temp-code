@@ -96,9 +96,9 @@ describe('aboutPanelOptions', () => {
       credits: ''
     })
   })
-  it('leaves the commit out when the build has none', () => {
+  it('leaves the build field empty when the build has no commit, never the version twice', () => {
     const options = aboutPanelOptions({ release: 412, version: '1.0.412', sha: null })
-    expect(options).not.toHaveProperty('version')
+    expect(options.version).toBe('')
     expect(options.applicationVersion).toBe('1.0.412')
   })
   it("says what electron-builder.yml's copyright says", () => {

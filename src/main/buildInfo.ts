@@ -129,18 +129,20 @@ export function checkoutRootOf(path: string): string {
 export const COPYRIGHT = 'Copyright © 2026 Landon Hale'
 
 /** The About panel: the version with its commit, the copyright, no credits.
- *  The release number is the N in the version, so it is not repeated. */
+ *  The release number is the N in the version, so it is not repeated. With no
+ *  commit `version` is empty, not absent: absent, macOS shows the bundle's
+ *  build number, which is the version again. */
 export function aboutPanelOptions(info: BuildInfo): {
   applicationName: string
   applicationVersion: string
-  version?: string
+  version: string
   copyright: string
   credits: string
 } {
   return {
     applicationName: 'TempCode',
     applicationVersion: info.version,
-    ...(info.sha ? { version: info.sha.slice(0, 7) } : {}),
+    version: info.sha ? info.sha.slice(0, 7) : '',
     copyright: COPYRIGHT,
     credits: ''
   }
