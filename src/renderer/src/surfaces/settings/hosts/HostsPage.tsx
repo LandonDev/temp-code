@@ -4,7 +4,6 @@ import type { HarnessSyncStatus } from "@server/shared/contract-harness";
 import type { MemorySyncStatus } from "@server/shared/contract-memory";
 import type { AttachmentSettings } from "@server/shared/contract-attachments";
 import { Button } from "../../../components/ui/button";
-import { Separator } from "../../../components/ui/separator";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { ConfirmDialog, errorText } from "../../../chrome/ConfirmDialog";
 import { forgetSeen, useEnvironments } from "../../../lib/connection";
@@ -27,7 +26,6 @@ import { hostSections } from "./hostSections";
 import { LoadLimitRow, MacBridgeGroup, useMacBridgePolling } from "./MacBridgeGroup";
 import { HostSection, type HostMenuAction } from "./HostSection";
 import { rpc } from "./rpc";
-import { Group } from "./Group";
 import { HostSync, LocalSync } from "./Sync";
 import { ThisHost } from "./ThisHost";
 
@@ -164,57 +162,56 @@ export function HostsPage({ onOpenSession }: { onOpenSession?: (sessionId: strin
 
   return (
     <div className="flex flex-col gap-6" data-hosts-page>
-      {sections.map((section, i) => (
+      {sections.map((section) => (
         <Fragment key={section.id}>
-          {i > 0 ? <Separator /> : null}
-          <HostSection
-            id={section.id}
-            name={section.local && web ? status.name || section.name : section.name}
-            saved={section.saved}
-            onMenu={section.saved ? onMenu(section.saved) : undefined}
-          >
-            {section.local ? (
-              <>
-                <ThisHost
-                  status={status}
-                  attachments={attachments}
-                  error={remote.error}
-                  onSettings={(patch) => void remote.act("remote.settings.set", patch)}
-                  onAct={(method, params) => void remote.act(method, params)}
-                />
-                <Clients
-                  pairings={pairings}
-                  keys={keys}
-                  sessions={sessions}
-                  onPair={() => setDialog({ kind: "pair" })}
-                  onNewKey={() => setDialog({ kind: "key" })}
-                  onAct={(method, params) => void remote.act(method, params)}
-                />
-                {web ? null : <LocalRelease />}
-                <Group>
+          {section.local || section.saved ? (
+            <HostSection
+              id={section.id}
+              name={section.local && web ? status.name || section.name : section.name}
+              saved={section.saved}
+              environmentId={section.local ? status.environmentId : undefined}
+              onMenu={section.saved ? onMenu(section.saved) : undefined}
+            >
+              {section.local ? (
+                <>
+                  <ThisHost
+                    status={status}
+                    attachments={attachments}
+                    error={remote.error}
+                    onSettings={(patch) => void remote.act("remote.settings.set", patch)}
+                    onAct={(method, params) => void remote.act(method, params)}
+                  />
                   <HostAdmission environmentId={section.id} />
                   {web ? null : <LoadLimitRow />}
-                </Group>
-                {harness ? <LocalSync harness={harness} memory={memory} onAct={(method, params) => void remote.act(method, params)} /> : null}
-                {web ? null : <MacBridgeRememberedSection />}
-                {section.devices ? <DevicesGroup host={section.devices} onOpenSession={onOpenSession} /> : null}
-              </>
-            ) : (
-              <>
-                {section.saved ? (
-                  <Group>
-                    <HostDeploy environmentId={section.id} name={section.name} />
-                    <HostAdmission environmentId={section.id} />
-                  </Group>
-                ) : null}
-                {harness && section.saved ? (
-                  <HostSync environmentId={section.id} harness={harness} memory={memory} onSync={(id, h, m) => void remote.sync(id, h, m)} />
-                ) : null}
-                {section.bridge ? <MacBridgeGroup host={section.bridge} /> : null}
-                {section.devices ? <DevicesGroup host={section.devices} onOpenSession={onOpenSession} /> : null}
-              </>
-            )}
-          </HostSection>
+                </>
+              ) : (
+                <>
+                  <HostDeploy environmentId={section.id} name={section.name} />
+                  <HostAdmission environmentId={section.id} />
+                  {harness ? (
+                    <HostSync environmentId={section.id} harness={harness} memory={memory} onSync={(id, h, m) => void remote.sync(id, h, m)} />
+                  ) : null}
+                </>
+              )}
+            </HostSection>
+          ) : null}
+          {section.local ? (
+            <>
+              <Clients
+                pairings={pairings}
+                keys={keys}
+                sessions={sessions}
+                onPair={() => setDialog({ kind: "pair" })}
+                onNewKey={() => setDialog({ kind: "key" })}
+                onAct={(method, params) => void remote.act(method, params)}
+              />
+              {web ? null : <LocalRelease />}
+              {harness ? <LocalSync harness={harness} memory={memory} onAct={(method, params) => void remote.act(method, params)} /> : null}
+              {web ? null : <MacBridgeRememberedSection />}
+            </>
+          ) : null}
+          {section.bridge ? <MacBridgeGroup host={section.bridge} /> : null}
+          {section.devices ? <DevicesGroup host={section.devices} onOpenSession={onOpenSession} /> : null}
         </Fragment>
       ))}
       {hosts.error ? <p className="text-xs text-destructive">{hosts.error}</p> : null}

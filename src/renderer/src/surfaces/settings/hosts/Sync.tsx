@@ -2,7 +2,7 @@ import type { HarnessSyncStatus } from "@server/shared/contract-harness";
 import type { MemorySyncStatus } from "@server/shared/contract-memory";
 import { Button } from "../../../components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../../components/ui/collapsible";
-import { Switch } from "../../../components/ui/switch";
+import { SettingSwitch } from "../../../components/setting-switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { ChevronRight } from "../../../chrome/icons";
 import { revealPath } from "../../../lib/fs";
@@ -31,13 +31,13 @@ export function LocalSync({
     <Group title="Sync" data-sync="local">
       <Row
         title="Harness config"
-        description={harness.skipped > 0 ? `${harness.skipped} ${harness.skipped === 1 ? "file stays" : "files stay"} here: over 16 MB, a symlink out of reach, or a macOS binary` : undefined}
+        description={harness.skipped > 0 ? `${harness.skipped} ${harness.skipped === 1 ? "file stays" : "files stay"} here: over 16 MB, a symlink out of reach, or a macOS binary.` : undefined}
       >
-        <Switch aria-label="Sync harness config" checked={harness.enabled} onCheckedChange={(enabled) => onAct("harness.settings.set", { enabled })} />
+        <SettingSwitch label="Sync harness config" on={harness.enabled} onChange={(enabled) => onAct("harness.settings.set", { enabled })} />
       </Row>
       {memory ? (
         <Row title="Memory">
-          <Switch aria-label="Sync memory" checked={memory.enabled} onCheckedChange={(enabled) => onAct("memory.settings.set", { enabled })} />
+          <SettingSwitch label="Sync memory" on={memory.enabled} onChange={(enabled) => onAct("memory.settings.set", { enabled })} />
         </Row>
       ) : null}
       {conflicts.length > 0 ? (
@@ -47,7 +47,7 @@ export function LocalSync({
             {conflicts.length === 1 ? "1 conflict copy" : `${conflicts.length} conflict copies`}
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <div className="mb-1 flex flex-col rounded-lg bg-muted/40 px-3" data-memory-conflicts={conflicts.length}>
+            <div className="flex flex-col" data-memory-conflicts={conflicts.length}>
               {conflicts.map((c) => (
                 <Row key={c.path} title={c.of} description={<Facts parts={[`${c.host}'s copy`, ago(c.at)]} />}>
                   {isWebMode() ? null : (
@@ -66,7 +66,7 @@ export function LocalSync({
   );
 }
 
-/** A paired host's sync: what went over last and when, both legs, with Sync now. */
+/** A paired host's sync as one row of its section: what went over last and when, both legs, with Sync now. */
 export function HostSync({
   environmentId,
   harness,
@@ -84,37 +84,33 @@ export function HostSync({
   const running = env.running || mem?.running === true;
   const memoryOn = memory?.enabled ?? false;
   const sets = setsText(env.sets);
+  const harnessFacts = <Facts parts={["Harness config", ...harnessParts(env)]} className="flex" />;
   return (
-    <Group
+    <Row
       title="Sync"
       data-sync={environmentId}
-      action={
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={(!harness.enabled && !memoryOn) || !env.connected || running}
-          onClick={() => onSync(environmentId, harness.enabled, memoryOn)}
-        >
-          Sync now
-        </Button>
-      }
-    >
-      <Row
-        title="Harness config"
-        description={
-          sets ? (
+      description={
+        <>
+          {sets ? (
             <Tooltip>
-              <TooltipTrigger render={<span className="cursor-default" />}>
-                <Facts parts={harnessParts(env)} />
-              </TooltipTrigger>
+              <TooltipTrigger render={<span className="block cursor-default" />}>{harnessFacts}</TooltipTrigger>
               <TooltipContent>{sets}</TooltipContent>
             </Tooltip>
           ) : (
-            <Facts parts={harnessParts(env)} />
-          )
-        }
-      />
-      {mem ? <Row title="Memory" description={<Facts parts={memoryParts(mem)} />} /> : null}
-    </Group>
+            harnessFacts
+          )}
+          {mem ? <Facts parts={["Memory", ...memoryParts(mem)]} className="flex" /> : null}
+        </>
+      }
+    >
+      <Button
+        variant="secondary"
+        size="sm"
+        disabled={(!harness.enabled && !memoryOn) || !env.connected || running}
+        onClick={() => onSync(environmentId, harness.enabled, memoryOn)}
+      >
+        Sync now
+      </Button>
+    </Row>
   );
 }

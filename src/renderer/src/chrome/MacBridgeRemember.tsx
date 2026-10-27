@@ -11,7 +11,7 @@ import {
 import { Button } from '../components/ui/button'
 import { Item, ItemActions, ItemContent, ItemTitle } from '../components/ui/item'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
-import { DANGER_GHOST, Group } from '../surfaces/settings/hosts/Group'
+import { Group } from '../surfaces/settings/hosts/Group'
 import { errorText } from './ConfirmDialog'
 
 /**
@@ -68,7 +68,7 @@ export function MacBridgeRuleList({ sessionId, empty, heading }: { sessionId: st
   if (rules.length === 0)
     return empty ? <p className="text-xs text-muted-foreground">{empty}</p> : null
   const forgetAll = (
-    <Button variant="ghost" size="xs" className={DANGER_GHOST} onClick={() => void forget()}>
+    <Button variant="destructive" size="xs" onClick={() => void forget()}>
       Forget all
     </Button>
   )
@@ -91,7 +91,7 @@ export function MacBridgeRuleList({ sessionId, empty, heading }: { sessionId: st
             </ItemContent>
             <ItemActions className="shrink-0">
               {rule.uses ? <span className="text-xs tabular-nums text-muted-foreground">used {rule.uses}×</span> : null}
-              <Button variant="ghost" size="xs" className={DANGER_GHOST} onClick={() => void forget(rule.id)}>
+              <Button variant="destructive" size="xs" onClick={() => void forget(rule.id)}>
                 Remove
               </Button>
             </ItemActions>

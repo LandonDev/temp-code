@@ -110,17 +110,19 @@ export function LocalRelease() {
   const busy = publish?.phase === "running" || publish?.phase === "pending";
   return (
     <Group title="Release">
-      <Row title="Publish" description={<Facts parts={publishParts(publish)} />} error={error}>
+      <Row title="Publish" description={<Facts parts={publishParts(publish)} />}>
+        <Button variant="secondary" size="sm" disabled={!publish || !publish.readable || busy} onClick={() => setDialog(true)}>
+          Publish Mac release…
+        </Button>
+      </Row>
+      <Row title="Release checkout" error={error}>
         <CommitField
           aria-label="Release checkout"
           value={publish?.checkout ?? ""}
           placeholder="~/IdeaProjects/temp-code"
-          className="w-56"
+          className="w-64"
           onCommit={(checkout) => void setReleaseCheckout(checkout).catch((e) => setError(errorText(e)))}
         />
-        <Button variant="secondary" size="sm" disabled={!publish || !publish.readable || busy} onClick={() => setDialog(true)}>
-          Publish Mac release…
-        </Button>
       </Row>
       <JobLog environmentId={LOCAL_ENVIRONMENT_ID} job="publish" hostName="This Mac" />
       {dialog && publish ? (

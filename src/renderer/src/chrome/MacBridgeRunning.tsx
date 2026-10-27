@@ -3,10 +3,9 @@ import type { MacBridgeRequest } from '@server/shared/contract-macbridge'
 import { heldLine, startMacBridge, stopMacBridgeAll, useMacBridgeRunning } from '../lib/macBridge'
 import { requestCode } from './MacBridgeCards'
 import { Button } from '../components/ui/button'
-import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from '../components/ui/item'
+import { Row } from '../surfaces/settings/hosts/Group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip'
 import { Facts, splitFacts } from '../surfaces/settings/hosts/Facts'
-import { DANGER_GHOST } from '../surfaces/settings/hosts/Group'
 import { Pause } from './icons'
 
 /**
@@ -55,52 +54,44 @@ export function MacBridgeRunningList({
       <div className="flex min-h-7 items-center gap-3 text-xs text-muted-foreground" data-mac-bridge-count>
         <Facts parts={countParts(running, waiting, hostName, paused)} className="min-w-0 flex-1" />
         {stoppable.length > 1 ? (
-          <Button variant="ghost" size="xs" className={DANGER_GHOST} onClick={() => void stop(stoppable)}>
+          <Button variant="destructive" size="xs" onClick={() => void stop(stoppable)}>
             Stop all
           </Button>
         ) : null}
       </div>
       {inFlight.map((r) => (
-        <Item
+        <Row
           key={r.id}
-          size="xs"
-          className="px-0"
           data-mac-bridge-running-row={r.id}
           data-mac-bridge-held={r.status === 'held' ? r.held?.position : undefined}
           data-mac-bridge-row-status={r.status}
-        >
-          <ItemContent className="min-w-0">
-            <ItemTitle
-              className={`block max-w-full truncate font-mono text-xs font-normal ${r.status === 'paused' ? 'text-muted-foreground' : 'text-foreground'}`}
-            >
+          title={
+            <span className={`block max-w-full truncate font-mono text-xs font-normal ${r.status === 'paused' ? 'text-muted-foreground' : ''}`}>
               {requestCode(r)}
-            </ItemTitle>
-            {sessionId === undefined && r.threadTitle ? (
-              <ItemDescription className="truncate">{r.threadTitle}</ItemDescription>
-            ) : null}
-          </ItemContent>
-          <ItemActions className="shrink-0">
-            {r.status === 'held' && r.held ? (
-              <Facts parts={splitFacts(heldLine(r.held))} className="text-xs text-muted-foreground" />
-            ) : null}
-            {r.status === 'paused' ? (
-              // Held on its host while the thread is paused: the same slot as Stop, as a fact rather than a control.
-              <Tooltip>
-                <TooltipTrigger
-                  render={<span className="flex h-6 cursor-default items-center gap-1 px-2 text-xs text-muted-foreground" />}
-                >
-                  <Pause className="size-3" strokeWidth={1.75} aria-hidden="true" />
-                  Paused
-                </TooltipTrigger>
-                <TooltipContent>Held on its host until the thread continues; nothing runs on this Mac</TooltipContent>
-              </Tooltip>
-            ) : (
-              <Button variant="ghost" size="xs" className={DANGER_GHOST} onClick={() => void stop([r])}>
-                Stop
-              </Button>
-            )}
-          </ItemActions>
-        </Item>
+            </span>
+          }
+          description={sessionId === undefined && r.threadTitle ? r.threadTitle : undefined}
+        >
+          {r.status === 'held' && r.held ? (
+            <Facts parts={splitFacts(heldLine(r.held))} className="text-xs text-muted-foreground" />
+          ) : null}
+          {r.status === 'paused' ? (
+            // Held on its host while the thread is paused: the same slot as Stop, as a fact rather than a control.
+            <Tooltip>
+              <TooltipTrigger
+                render={<span className="flex h-6 cursor-default items-center gap-1 px-2 text-xs text-muted-foreground" />}
+              >
+                <Pause className="size-3" strokeWidth={1.75} aria-hidden="true" />
+                Paused
+              </TooltipTrigger>
+              <TooltipContent>Held on its host until the thread continues; nothing runs on this Mac</TooltipContent>
+            </Tooltip>
+          ) : (
+            <Button variant="destructive" size="xs" onClick={() => void stop([r])}>
+              Stop
+            </Button>
+          )}
+        </Row>
       ))}
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </div>

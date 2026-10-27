@@ -69,7 +69,7 @@ vi.mock("./Devices", () => ({ DevicesGroup: () => null, useDevicesPolling: () =>
 vi.mock("./MacBridgeGroup", () => ({ MacBridgeGroup: () => null, LoadLimitRow: () => null, useMacBridgePolling: () => {} }));
 
 const { HostsPage } = await import("./HostsPage");
-const { connectionWord } = await import("./HostSection");
+const { connectionMark } = await import("./HostSection");
 
 const flush = async (): Promise<void> => {
   await act(async () => {
@@ -88,13 +88,13 @@ afterEach(() => {
 });
 
 describe("a paired host's section", () => {
-  it("words each link state in sentence case", () => {
+  it("marks each link state with the shared vocabulary, and the retry countdown", () => {
     const at = (transport: EnvironmentStatus["transport"], extra: Partial<EnvironmentStatus> = {}) =>
-      connectionWord({ transport, fresh: true, lastHello: null, lastError: null, nextRetryAt: null, route: 0, ...extra } as EnvironmentStatus, 1_000);
-    expect(at("open")).toBe("Connected");
-    expect(at("reconnecting", { nextRetryAt: 5_000 })).toBe("Reconnecting, next try in 4 s");
-    expect(at("offline")).toBe("Offline");
-    expect(at("unauthorized")).toBe("Key refused");
+      connectionMark({ transport, fresh: true, lastHello: null, lastError: null, nextRetryAt: null, route: 0, ...extra } as EnvironmentStatus, 1_000);
+    expect(at("open")).toEqual({ state: "done", word: "Connected", detail: null });
+    expect(at("reconnecting", { nextRetryAt: 5_000 })).toEqual({ state: "working", word: "Reconnecting", detail: "next try in 4 s" });
+    expect(at("offline")).toMatchObject({ state: "stopped", word: "Offline" });
+    expect(at("unauthorized")).toMatchObject({ state: "failed", word: "Sign in needed" });
   });
 
   it("names the host, its link, how it is reached and what its key may do, with the drift mark", async () => {

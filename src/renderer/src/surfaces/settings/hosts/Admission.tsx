@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { AdmissionState } from "@server/shared/contract-admission";
 import { Button } from "../../../components/ui/button";
 import { Skeleton } from "../../../components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { errorText } from "../../../chrome/ConfirmDialog";
 import { registry, useEnvironmentStatus } from "../../../lib/connection";
 import { CommitField } from "./CommitField";
@@ -57,8 +58,8 @@ export function HostAdmission({ environmentId }: { environmentId: string }) {
   if (!connected || state === "none") return null;
   if (!state) {
     return (
-      <Row title="Running threads" data-admission={environmentId} description={<Skeleton className="mt-0.5 h-3 w-48" />}>
-        <Skeleton className="h-7 w-20" />
+      <Row title="Running threads" data-admission={environmentId}>
+        <Skeleton className="h-8 w-20" />
       </Row>
     );
   }
@@ -67,10 +68,15 @@ export function HostAdmission({ environmentId }: { environmentId: string }) {
       title="Running threads"
       data-admission={environmentId}
       description={
-        <>
-          <Facts parts={runningParts(state)} className="flex text-foreground/80" />
-          <Facts parts={budgetParts(state)} className="flex" />
-        </>
+        // What the default cap is sized from is a hover away, not a line.
+        <Tooltip>
+          <TooltipTrigger render={<span className="cursor-default" />}>
+            <Facts parts={runningParts(state)} />
+          </TooltipTrigger>
+          <TooltipContent>
+            <Facts parts={budgetParts(state)} />
+          </TooltipContent>
+        </Tooltip>
       }
       error={error}
     >

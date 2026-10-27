@@ -7,7 +7,6 @@ import { errorText } from "../../../chrome/ConfirmDialog";
 import { useEnvironmentStatus } from "../../../lib/connection";
 import { hostJobCard, type HostJobCard } from "../../../lib/hostJobCard";
 import { dismissJob, stopPublish, useDeployStatuses, useHostJob } from "../../../lib/hostJobs";
-import { DANGER_GHOST } from "./Group";
 
 /** A log is open while its job runs and after a failure; a pass folds it to its one line. */
 export const openByDefault = (card: Pick<HostJobCard, "phase" | "ending">): boolean => card.phase !== "done" || card.ending?.failed === true;
@@ -61,7 +60,7 @@ export function JobLog({ environmentId, job, hostName }: { environmentId: string
           ) : null}
         </CollapsibleTrigger>
         {card.stoppable ? (
-          <Button variant="ghost" size="xs" className={DANGER_GHOST} onClick={() => void stopPublish().catch((e) => setError(errorText(e)))}>
+          <Button variant="destructive" size="xs" onClick={() => void stopPublish().catch((e) => setError(errorText(e)))}>
             Stop
           </Button>
         ) : null}

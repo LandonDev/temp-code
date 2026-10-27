@@ -13,7 +13,7 @@ import { Skeleton } from "../../../components/ui/skeleton";
 import { ConfirmDialog, errorText } from "../../../chrome/ConfirmDialog";
 import { deleteSimulator, openXcodeDevices, refreshHostDevicesHosts, shutdownSimulator, useHostDevices } from "../../../lib/hostDevices";
 import { Facts, splitFacts } from "./Facts";
-import { DANGER_GHOST, Group, Row } from "./Group";
+import { Group, Row } from "./Group";
 
 /**
  * The devices a Mac is running (docs/box.md "Devices on the Mac"), in that
@@ -75,21 +75,24 @@ export function DevicesBlock({ host, report, error, onOpenSession, onShutdown, o
     }
   }, []);
 
-  const summary = report ? (
-    <Facts parts={splitFacts(devicesSummary(report))} className="justify-end text-xs text-muted-foreground" />
-  ) : error ? (
-    <span className="text-xs text-muted-foreground">Not reachable</span>
-  ) : null;
-  const xcode = report
+  // The heading says what the rows cannot: the phones' state and the Xcode in use. The simulator count is the
+  // rows themselves, and the load is the Load limit row's.
+  const summaryParts = report
     ? [
+        ...splitFacts(devicesSummary(report)).filter((part) => !/^(No simulators|\d+ simulators?|load )/.test(part)),
         ...(report.xcode ? [`${report.xcode.name}${report.xcode.version ? ` ${report.xcode.version}` : ""}`] : []),
         ...(report.xcode?.from === "developerDir" ? ["DEVELOPER_DIR"] : []),
         ...report.problems,
       ]
     : [];
+  const summary = report ? (
+    <Facts parts={summaryParts} className="justify-end text-xs text-muted-foreground" />
+  ) : error ? (
+    <span className="text-xs text-muted-foreground">Not reachable</span>
+  ) : null;
 
   return (
-    <Group title="Devices" data-devices={host.environmentId} action={<span data-summary className="min-w-0">{summary}</span>}>
+    <Group title={host.local ? "Devices" : `Devices on ${host.name}`} data-devices={host.environmentId} action={<span data-summary className="min-w-0">{summary}</span>}>
       {!report && !error ? (
         <div data-looking className="flex flex-col gap-2 py-2" aria-busy="true">
           <Skeleton className="h-3.5 w-40" />
@@ -120,7 +123,7 @@ export function DevicesBlock({ host, report, error, onOpenSession, onShutdown, o
                   Shutdown
                 </Button>
               ) : null}
-              <Button variant="ghost" size="xs" className={DANGER_GHOST} disabled={busy !== null} onClick={() => setConfirm(sim)}>
+              <Button variant="destructive" size="xs" disabled={busy !== null} onClick={() => setConfirm(sim)}>
                 Delete
               </Button>
             </DeviceRow>
@@ -141,7 +144,6 @@ export function DevicesBlock({ host, report, error, onOpenSession, onShutdown, o
               </Button>
             </DeviceRow>
           ))}
-          {xcode.length ? <Facts parts={xcode} className="flex pt-1.5 text-xs text-muted-foreground" /> : null}
         </>
       ) : null}
       {failed ? <p className="pt-1 text-xs text-destructive">{failed}</p> : null}
@@ -196,20 +198,28 @@ function DeviceRow({
   children: ReactNode;
 }) {
   return (
-    <Row title={name} description={detail} data-device={udid}>
+    <Row
+      title={name}
+      data-device={udid}
+      description={
+        <>
+          {detail}
+          {holder ? (
+            <span data-holder className="block truncate">
+              {onOpenSession ? (
+                <Button variant="link" size="xs" className="h-auto max-w-full truncate px-0 text-xs font-normal text-muted-foreground hover:text-foreground" onClick={() => onOpenSession(holder.sessionId)}>
+                  {holderText(holder)}
+                </Button>
+              ) : (
+                holderText(holder)
+              )}
+            </span>
+          ) : null}
+        </>
+      }
+    >
       {/* The actions show on hover or focus, with no transition: rows do not move. */}
       <span className={`flex items-center gap-1 ${busy ? "" : "opacity-0 group-hover/item:opacity-100 focus-within:opacity-100"}`}>{children}</span>
-      {holder ? (
-        <span data-holder className="max-w-40 truncate text-xs">
-          {onOpenSession ? (
-            <Button variant="link" size="xs" className="h-auto max-w-full truncate px-0 text-muted-foreground hover:text-foreground" onClick={() => onOpenSession(holder.sessionId)}>
-              {holderText(holder)}
-            </Button>
-          ) : (
-            <span className="text-muted-foreground">{holderText(holder)}</span>
-          )}
-        </span>
-      ) : null}
       <Facts parts={state} className="text-xs text-muted-foreground" />
     </Row>
   );

@@ -79,7 +79,7 @@ export function CommitField(props: NumberField | TextField) {
         }
         onKeyDown?.(e);
       }}
-      className={cn("h-7", kind === "text" ? null : "w-20 text-right tabular-nums", className)}
+      className={cn(kind === "text" ? null : "w-20 text-right tabular-nums", className)}
     />
   );
 }

@@ -12,14 +12,15 @@ type DataAttributes = Record<`data-${string}`, string | number | undefined>;
  */
 export function Group({
   title,
+  description,
   action,
   className,
   children,
   ...data
-}: { title?: ReactNode; action?: ReactNode; className?: string; children: ReactNode } & DataAttributes) {
+}: { title?: ReactNode; description?: ReactNode; action?: ReactNode; className?: string; children: ReactNode } & DataAttributes) {
   return (
     <div className={cn("min-w-0", className)} {...data}>
-      <PageSection title={title} action={action}>
+      <PageSection title={title} description={description} action={action}>
         {children}
       </PageSection>
     </div>
@@ -63,6 +64,3 @@ export function Row({
     </Item>
   );
 }
-
-/** A row action that removes or stops something: a ghost button in the red, quieter than a filled one in a list. */
-export const DANGER_GHOST = "text-destructive hover:bg-destructive/10 active:bg-destructive/15";

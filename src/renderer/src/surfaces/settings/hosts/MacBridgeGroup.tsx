@@ -3,7 +3,7 @@ import type { MacBridgeHostPolicy, MacBridgePolicy } from "@server/shared/contra
 import { trimNumber, type MacBridgeLoad } from "@server/shared/contract-macbridge";
 import { macUrl } from "@server/shared/contract-ports";
 import { Button } from "../../../components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../components/ui/select";
+import { ChoiceSelect } from "../../../components/choice-select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { errorText } from "../../../chrome/ConfirmDialog";
 import { MacBridgeRunningList } from "../../../chrome/MacBridgeRunning";
@@ -31,10 +31,10 @@ export const POLICIES: { value: MacBridgePolicy; label: string }[] = [
 
 /** What each level lets the host's threads do, in one line under Access. */
 export const POLICY_TEXT: Record<MacBridgePolicy, string> = {
-  off: "Nothing on this Mac",
-  read: "Reads shared folders and projects; asks for the rest",
-  "read+run": "Also runs commands; each asks unless remembered",
-  full: "Any file except keys and credentials; commands ask unless remembered or from a thread in full access",
+  off: "Nothing on this Mac.",
+  read: "Reads shared folders and projects; asks for the rest.",
+  "read+run": "Also runs commands; each asks unless remembered.",
+  full: "Any file except keys and credentials.",
 };
 
 /** The host list and the Mac's load, every 5 s while the page shows (desktop only: the bridge is this Mac's). */
@@ -65,10 +65,10 @@ export function MacBridgeGroup({ host }: { host: MacBridgeHostPolicy }) {
   }, []);
   return (
     <Group
-      title="Mac bridge"
+      title={`Mac bridge for ${host.name}`}
       data-mac-bridge-host={host.environmentId}
       action={
-        <Button variant="secondary" size="sm" onClick={() => setSettings(true)}>
+        <Button variant="ghost" size="sm" onClick={() => setSettings(true)}>
           Settings…
         </Button>
       }
@@ -78,31 +78,20 @@ export function MacBridgeGroup({ host }: { host: MacBridgeHostPolicy }) {
         description={
           <>
             {POLICY_TEXT[host.policy]}
-            {host.registered ? null : <span className="block" data-mac-bridge-unregistered>Not connected to this Mac right now</span>}
+            {host.registered ? null : <span className="block" data-mac-bridge-unregistered>Not connected to this Mac right now.</span>}
           </>
         }
         error={error}
       >
-        <Select
-          items={POLICIES}
+        <ChoiceSelect
+          label={`What ${host.name} may do on this Mac`}
           value={host.policy}
-          onValueChange={(policy) => {
-            if (policy && policy !== host.policy) void run(() => setMacBridgePolicy(host.environmentId, policy as MacBridgePolicy));
-          }}
-        >
-          <SelectTrigger size="sm" aria-label={`What ${host.name} may do on this Mac`} className="w-36">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {POLICIES.map((p) => (
-              <SelectItem key={p.value} value={p.value}>
-                {p.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          options={POLICIES}
+          className="w-36"
+          onChange={(policy) => void run(() => setMacBridgePolicy(host.environmentId, policy))}
+        />
       </Row>
-      <MacBridgeRunningList environmentId={host.environmentId} hostName={host.name} />
+      <MacBridgeRunningList environmentId={host.environmentId} />
       <Forwards environmentId={host.environmentId} />
       {settings ? <MacBridgeHostDialog host={host} onClose={() => setSettings(false)} /> : null}
     </Group>
@@ -114,7 +103,7 @@ function Forwards({ environmentId }: { environmentId: string }) {
   const fwd = useHostForwards(environmentId);
   if (!fwd?.enabled || fwd.forwards.length === 0) return null;
   return (
-    <div className="flex flex-col" data-port-forwards={environmentId}>
+    <>
       {fwd.forwards.map((f) =>
         f.macPort === null ? (
           <Row
@@ -145,7 +134,7 @@ function Forwards({ environmentId }: { environmentId: string }) {
           </Row>
         ),
       )}
-    </div>
+    </>
   );
 }
 

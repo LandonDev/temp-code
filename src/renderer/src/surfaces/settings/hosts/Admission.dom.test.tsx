@@ -59,7 +59,7 @@ const flush = async (): Promise<void> => {
 };
 
 describe("HostAdmission", () => {
-  it("shows a skeleton row while admission.get answers, then the running facts and the memory facts", async () => {
+  it("shows a skeleton row while admission.get answers, then the running facts", async () => {
     let resolve!: (s: AdmissionState) => void;
     answers.set("local:admission.get", () => new Promise((r) => (resolve = r)));
     const { container } = render(<HostAdmission environmentId="local" />);
@@ -68,7 +68,8 @@ describe("HostAdmission", () => {
     expect(container.querySelector("[aria-label='Running cap']")).toBeNull();
     await act(async () => resolve(state()));
     expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
-    expect(facts(container)).toEqual([["118 of 120 running", "7 queued"], ["80 GiB budget", "331 MB per thread", "9 GiB free"]]);
+    // The memory the cap is sized from is the running facts' tooltip, not a line.
+    expect(facts(container)).toEqual([["118 of 120 running", "7 queued"]]);
     // On the default: the field shows it as its placeholder, and there is nothing to go back to.
     const field = screen.getByLabelText("Running cap") as HTMLInputElement;
     expect(field.value).toBe("");

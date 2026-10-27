@@ -59,16 +59,17 @@ afterEach(cleanup);
 describe("DevicesBlock", () => {
   it("the summary at the heading, one row per device with its state words and holder", () => {
     const { root } = mount();
-    expect(facts(root.querySelector("[data-summary]"))).toEqual(["2 simulators, 1 booted", "iPhone 17 Pro Max connected", "load 2.1 / 10 cores"]);
+    // The rows say how many simulators there are, the Load limit row says the load: the heading keeps the phone and Xcode.
+    expect(facts(root.querySelector("[data-summary]"))).toEqual(["iPhone 17 Pro Max connected", "Xcode-beta 27.0"]);
     const [sim, ipad, phone] = rows(root);
     expect(sim!.textContent).toContain("iPhone 17 Pro");
     expect(sim!.textContent).toContain("iOS 27.0");
     expect(facts(sim!).slice(-2)).toEqual(["Booted", "12% CPU"]);
+    expect(sim!.querySelector("[data-slot=item-description] [data-holder]")).not.toBeNull();
     expect(sim!.querySelector("[data-holder]")!.textContent).toBe("iOS: Home, running");
     expect(facts(ipad!)).toEqual(["Shutdown"]);
     expect(ipad!.querySelector("[data-holder]")).toBeNull();
     expect(facts(phone!)).toEqual(["Landon’s iPhone", "iOS 27.2", "Connected", "USB"]);
-    expect(root.textContent).toContain("Xcode-beta 27.0");
     expect(root.textContent).not.toContain("·");
   });
 
@@ -113,7 +114,7 @@ describe("DevicesBlock", () => {
     const { root } = mount({ report: report({ simulators: [], phones: [] }) });
     expect(root.querySelector("[data-empty]")!.textContent).toBe("No simulators");
     expect(rows(root)).toHaveLength(0);
-    expect(facts(root.querySelector("[data-summary]"))).toEqual(["No simulators", "load 2.1 / 10 cores"]);
+    expect(facts(root.querySelector("[data-summary]"))).toEqual(["Xcode-beta 27.0"]);
   });
 
   it("a phone with no simulator still gets its row, with the muted line in place of the simulators", () => {

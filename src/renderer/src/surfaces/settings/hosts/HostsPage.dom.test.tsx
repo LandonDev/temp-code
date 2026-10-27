@@ -52,6 +52,14 @@ vi.mock("../../../lib/tcserver/link", () => ({ loadSavedEnvironments: async () =
 vi.mock("../../../lib/macBridge", () => ({ useMacBridgeHosts: () => [] }));
 vi.mock("../../../lib/hostDevices", () => ({ useHostDevicesHosts: () => null }));
 vi.mock("../../../lib/nativeWeb", () => ({ isWebMode: () => false }));
+let confirms: string[] = [];
+vi.mock("../../../chrome/ConfirmDialog", async (original) => ({
+  ...(await original<typeof import("../../../chrome/ConfirmDialog")>()),
+  confirmAction: async (request: { title: string }) => {
+    confirms.push(request.title);
+    return true;
+  },
+}));
 vi.mock("../../../chrome/HostGlyph", () => ({ HostGlyph: () => null }));
 vi.mock("../../../chrome/DeployDrift", () => ({ DeployDriftMark: () => null }));
 vi.mock("../../../stores/environment", () => ({ environment: { forget: () => {} } }));
@@ -138,9 +146,13 @@ describe("HostsPage", () => {
     await flush();
     expect(container.querySelector("[data-hosts-loading]")).toBeNull();
     expect(container.querySelector('[data-environment-row="local"]')?.textContent).toContain("This Mac");
-    expect(screen.getByText("env_1gP-MhkVVRaMwHbVCysYow")).toBeTruthy();
-    expect(screen.getByText("Listening on 127.0.0.1:7677")).toBeTruthy();
-    expect(screen.getByText("Minutes of silence before a working thread is stuck")).toBeTruthy();
+    expect(screen.getByText("Listening on 127.0.0.1:7677.")).toBeTruthy();
+    expect(screen.getByText("Minutes of silence before a working thread is stuck.")).toBeTruthy();
+    // The environment id is no row of the page: it is the host's menu's to copy.
+    expect(screen.queryByText("env_1gP-MhkVVRaMwHbVCysYow")).toBeNull();
+    fireEvent.click(screen.getByLabelText("This Mac actions"));
+    await flush();
+    expect(await screen.findByText("Copy environment id")).toBeTruthy();
   });
 
   it("says No clients when nothing may reach this host", async () => {
@@ -163,18 +175,20 @@ describe("HostsPage", () => {
     expect([...b.querySelectorAll("[data-slot=facts] > span")].map((s) => s.textContent)).toEqual(["Chrome", "admin", "seen 2h ago"]);
   });
 
-  it("revokes a key and signs a browser out, then reads the lists again", async () => {
+  it("revokes a key and signs a browser out after their confirms, then reads the lists again", async () => {
     seed({ "remote.keys.list": [key()], "remote.sessions.list": [session()] });
     render(<HostsPage />);
     await flush();
     calls.length = 0;
     fireEvent.click(screen.getByText("Revoke"));
     await flush();
+    expect(confirms).toEqual(["Revoke iPhone"]);
     expect(calls[0]).toEqual({ method: "remote.keys.revoke", params: { id: "k1" } });
     expect(calls.some((c) => c.method === "remote.keys.list")).toBe(true);
     calls.length = 0;
     fireEvent.click(screen.getByText("Sign out"));
     await flush();
+    expect(confirms.at(-1)).toBe("Sign out Studio browser");
     expect(calls[0]).toEqual({ method: "remote.sessions.revoke", params: { id: "b1" } });
     expect(calls.some((c) => c.method === "remote.sessions.list")).toBe(true);
   });

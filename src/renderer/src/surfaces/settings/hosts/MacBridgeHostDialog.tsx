@@ -7,7 +7,7 @@ import {
 import { Button } from "../../../components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../../../components/ui/dialog";
 import { Input } from "../../../components/ui/input";
-import { Switch } from "../../../components/ui/switch";
+import { SettingSwitch } from "../../../components/setting-switch";
 import { errorText } from "../../../chrome/ConfirmDialog";
 import { pickFolder } from "../../../lib/fs";
 import { setMacBridgeLimits, setMacBridgeShared, useMacBridgeHosts } from "../../../lib/macBridge";
@@ -15,7 +15,7 @@ import { isWebMode } from "../../../lib/nativeWeb";
 import { setForwarding, useHostForwards } from "../../../lib/portForwards";
 import { CommitField } from "./CommitField";
 import { Facts } from "./Facts";
-import { DANGER_GHOST, Group, Row } from "./Group";
+import { Group, Row } from "./Group";
 import { usageParts } from "./parts";
 
 /**
@@ -55,7 +55,7 @@ export function MacBridgeHostDialog({ host: initial, onClose }: { host: MacBridg
           <Group>
             {fwd ? (
               <Row title="Forward dev servers">
-                <Switch aria-label={`Forward ${host.name}'s dev servers to this Mac`} checked={fwd.enabled} onCheckedChange={(on) => void run(() => setForwarding(id, on))} />
+                <SettingSwitch label={`Forward ${host.name}'s dev servers to this Mac`} on={fwd.enabled} onChange={(on) => void run(() => setForwarding(id, on))} />
               </Row>
             ) : null}
             {runs ? (
@@ -86,16 +86,13 @@ export function MacBridgeHostDialog({ host: initial, onClose }: { host: MacBridg
           {host.policy !== "off" ? (
             <Group title="Shared folders" data-mac-bridge-shared={host.shared.length}>
               {host.shared.length === 0 ? (
-                <p className="py-1.5 text-xs text-muted-foreground">
-                  {host.policy === "full" ? "None: full access reads everywhere except keys and credentials" : "None: every read outside this Mac's projects asks"}
-                </p>
+                <p className="py-1.5 text-xs text-muted-foreground">No shared folders</p>
               ) : null}
               {host.shared.map((folder) => (
                 <Row key={folder} title={<span className="block truncate font-mono text-xs font-normal">{folder}</span>}>
                   <Button
-                    variant="ghost"
+                    variant="destructive"
                     size="xs"
-                    className={DANGER_GHOST}
                     onClick={() => void run(() => setMacBridgeShared(id, host.shared.filter((f) => f !== folder)))}
                   >
                     Remove

@@ -106,22 +106,22 @@ panel's Branch section, not the header's.
 One page for this machine and every host it is paired with (settings section
 id `remote`, opened with `shell.openSettings("remote")`; a saved
 `environments` section reads as it). surfaces/settings/hosts/HostsPage.tsx
-draws one section per host from `hostSections` (this machine first, then the
-paired hosts in the environments' order, then a host only the Mac bridge or
-the devices list knows), 24px apart with one `Separator` between them. A
-section is a header (the 12px `HostGlyph`, the name in 14px medium, a paired
-host's link state in words, the `+N` drift mark, a paired host's `⋯` menu:
-Retry now, Pair again…, Rename…, Routes…, Remove…) and that host's groups
-16px apart, each a 12px muted heading over `Item` rows (`Group`, `Row` in
-Group.tsx). This machine: its id, listener, public origin, stuck clock and
-attachment limit; Clients (Pair a device, New key; pairings, keys, browser
-sessions); Release (desktop); Running threads and Load limit; Sync;
-Remembered approvals; Devices. A paired host: Deploy with its log, Running
-threads, Sync with Sync now, and the Mac bridge (Access, the running and held
-calls, the forwarded ports, Settings… for the caps, forwarding
-and shared folders). Facts on one line are `Facts` spans, never dots; numbers
-are `CommitField`s; logs and conflict copies are `Collapsible`s under their
-row. Add host sits at the page's foot (desktop only).
+draws the page as frame sections (`PageSection`, `PageRow`) from
+`hostSections`: each host is one section headed by its name, its link state
+as a `StatusMark` from `linkMarkOf`, the `+N` drift mark, Retry or Pair
+again when the link needs one and a `⋯` menu (this machine: Copy
+environment id; a paired host: Rename…, Routes…, Remove…), how a paired host
+is reached under the heading. This machine's section holds Remote access,
+Port, Public origin, Stuck after, Attachment limit, Running threads and Load
+limit; Clients (one ghost Add… menu: Pair a device…, New key…; Revoke and
+Sign out confirm), Release (Publish, Release checkout), Sync (switches, the
+conflict copies under Memory), Remembered approvals and Devices follow as
+their own sections. A paired host's section holds Deploy with its log,
+Running threads and Sync with Sync now; "Mac bridge for <host>" follows
+(Access, the running and held calls, the forwarded ports, Settings… for the
+caps, forwarding and shared folders). Facts on one line are `Facts` spans,
+never dots; numbers are `CommitField`s; switches `SettingSwitch`; options
+`ChoiceSelect`. Add host sits at the page's foot (desktop only).
 
 ### Settings → a workspace
 

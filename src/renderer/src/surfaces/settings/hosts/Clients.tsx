@@ -1,11 +1,12 @@
 import type { RemoteKey, RemotePairing, RemoteSession } from "@server/shared/contract-remote";
 import { Button } from "../../../components/ui/button";
-import { Empty, EmptyTitle } from "../../../components/ui/empty";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
+import { confirmAction } from "../../../chrome/ConfirmDialog";
 import { ago } from "../../harnessLine";
 import { capsText, originText } from "../../../lib/hostConnection";
 import { Countdown } from "./dialogs/fields";
 import { Facts } from "./Facts";
-import { DANGER_GHOST, Group, Row } from "./Group";
+import { Group, Row } from "./Group";
 
 /** "Chrome", "Safari", "Edge"…: the browser a session signed in from; "" when the agent names none. */
 export function shortAgent(ua: string): string {
@@ -32,25 +33,29 @@ export function Clients({
   onAct: (method: string, params: unknown) => void;
 }) {
   const empty = pairings.length === 0 && keys.length === 0 && sessions.length === 0;
+  // Neither can be undone: the client has to pair again.
+  const revoke = async (k: RemoteKey): Promise<void> => {
+    if (await confirmAction({ title: `Revoke ${k.name}`, body: "Its sockets close now and it has to pair again.", action: "Revoke", danger: true }))
+      onAct("remote.keys.revoke", { id: k.id });
+  };
+  const signOut = async (s: RemoteSession): Promise<void> => {
+    if (await confirmAction({ title: `Sign out ${s.keyName}`, body: "The browser has to pair again to come back.", action: "Sign out", danger: true }))
+      onAct("remote.sessions.revoke", { id: s.id });
+  };
   return (
     <Group
       title="Clients"
       action={
-        <div className="flex items-center gap-1.5">
-          <Button variant="secondary" size="sm" onClick={onPair}>
-            Pair a device
-          </Button>
-          <Button variant="secondary" size="sm" onClick={onNewKey}>
-            New key
-          </Button>
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="ghost" size="sm" />}>Add…</DropdownMenuTrigger>
+          <DropdownMenuContent align="end" size="sm">
+            <DropdownMenuItem onClick={onPair}>Pair a device…</DropdownMenuItem>
+            <DropdownMenuItem onClick={onNewKey}>New key…</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       }
     >
-      {empty ? (
-        <Empty className="p-4">
-          <EmptyTitle className="text-[13px] font-normal text-muted-foreground">No clients</EmptyTitle>
-        </Empty>
-      ) : null}
+      {empty ? <p className="py-1.5 text-xs text-muted-foreground">No clients</p> : null}
       {pairings.map((p) => (
         <Row
           key={p.id}
@@ -82,7 +87,7 @@ export function Clients({
             />
           }
         >
-          <Button variant="ghost" size="sm" className={DANGER_GHOST} onClick={() => onAct("remote.keys.revoke", { id: k.id })}>
+          <Button variant="destructive" size="sm" onClick={() => void revoke(k)}>
             Revoke
           </Button>
         </Row>
@@ -94,7 +99,7 @@ export function Clients({
           title={s.keyName}
           description={<Facts parts={[shortAgent(s.userAgent ?? "") || "Browser", capsText(s.caps), `seen ${ago(s.lastSeenAt)}`]} />}
         >
-          <Button variant="ghost" size="sm" className={DANGER_GHOST} onClick={() => onAct("remote.sessions.revoke", { id: s.id })}>
+          <Button variant="destructive" size="sm" onClick={() => void signOut(s)}>
             Sign out
           </Button>
         </Row>

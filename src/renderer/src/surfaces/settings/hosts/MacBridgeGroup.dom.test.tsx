@@ -62,12 +62,12 @@ describe("MacBridgeGroup", () => {
       expect(screen.getByText(POLICY_TEXT[policy])).toBeTruthy();
       unmount();
     }
-    expect(POLICY_TEXT.read).toBe("Reads shared folders and projects; asks for the rest");
+    expect(POLICY_TEXT.read).toBe("Reads shared folders and projects; asks for the rest.");
   });
 
   it("says when the host cannot reach this Mac", () => {
     const { container, unmount } = render(<MacBridgeGroup host={host({ registered: false })} />);
-    expect(container.querySelector("[data-mac-bridge-unregistered]")?.textContent).toBe("Not connected to this Mac right now");
+    expect(container.querySelector("[data-mac-bridge-unregistered]")?.textContent).toBe("Not connected to this Mac right now.");
     unmount();
     const live = render(<MacBridgeGroup host={host()} />);
     expect(live.container.querySelector("[data-mac-bridge-unregistered]")).toBeNull();
@@ -75,7 +75,7 @@ describe("MacBridgeGroup", () => {
 
   it("sets the policy from the Access select", async () => {
     render(<MacBridgeGroup host={host()} />);
-    fireEvent.click(screen.getByLabelText("What box may do on this Mac"));
+    fireEvent.click(await screen.findByLabelText("What box may do on this Mac"));
     await flush();
     const option = await screen.findByRole("option", { name: "Read and run" });
     await flush();
