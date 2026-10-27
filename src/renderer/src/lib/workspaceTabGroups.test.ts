@@ -9,6 +9,7 @@ import {
   findTabForProject,
   filterTabsForProjectId,
   filterTabsForWorkspace,
+  planCloseFocused,
   planWorkspaceTabClose,
   replaceGroupInTabOrder,
   tabProjectKey,
@@ -73,6 +74,31 @@ describe("filterTabsForProject", () => {
     expect(
       filterTabsForProject(tabs, sessions, "/tmp/beta").map((tab) => tab.id),
     ).toEqual(["t2", "t3"]);
+  });
+});
+
+describe("planCloseFocused", () => {
+  const split = (id: string): WorkspaceTab => {
+    const t = tab(id, "a");
+    return { ...t, layout: { type: "split", id: "s", dir: "right", sizes: [0.5, 0.5], children: [leaf("a"), leaf("b")] } } as WorkspaceTab;
+  };
+
+  it("closes the focused pane of a split", () => {
+    expect(planCloseFocused(split("t1"), ["t1", "t2"])).toEqual({ kind: "pane" });
+  });
+
+  it("a thread alone in its tab closes the tab and brings the right neighbour, else the left", () => {
+    expect(planCloseFocused(tab("t2", "b"), ["t1", "t2", "t3"])).toEqual({ kind: "tab", next: "t3" });
+    expect(planCloseFocused(tab("t3", "c"), ["t1", "t2", "t3"])).toEqual({ kind: "tab", next: "t2" });
+  });
+
+  it("does nothing when no other tab is on the strip", () => {
+    expect(planCloseFocused(tab("t1", "a"), ["t1"])).toEqual({ kind: "none" });
+    expect(planCloseFocused(tab("t1", "a"), [])).toEqual({ kind: "none" });
+  });
+
+  it("a tab off the strip hands over to the strip's first", () => {
+    expect(planCloseFocused(tab("tx", "x"), ["t1", "t2"])).toEqual({ kind: "tab", next: "t1" });
   });
 });
 

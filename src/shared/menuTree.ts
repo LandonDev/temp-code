@@ -20,7 +20,9 @@ export interface MenuCommand {
   pageKey?: true
   /** Hidden from the in-app bar of a browser (/ui has no second window and no terminal). */
   desktopOnly?: true
-  /** Show/Hide labels; `label` is the show one. */
+  /** Two labels: `show` normally, `hide` while the window names the id in
+   *  `MenuState.open` (Show/Hide on a toggle; Close Tab/Close Pane on ⌘W,
+   *  open while the focused tab is split). `label` is the `show` one. */
   toggle?: { show: string; hide: string }
   /** Set by `resolveMenu` only. */
   enabled?: boolean
@@ -95,7 +97,7 @@ export const MENU_TREE: MenuSection[] = [
       sep,
       cmd('save_all', 'Save All', 'CmdOrCtrl+S'),
       sep,
-      cmd('close_tab', 'Close Pane', 'CmdOrCtrl+W'),
+      { ...cmd('close_tab', 'Close Tab', 'CmdOrCtrl+W'), toggle: { show: 'Close Tab', hide: 'Close Pane' } },
       role('close', 'Close Window', 'CmdOrCtrl+Shift+W')
     ]
   },

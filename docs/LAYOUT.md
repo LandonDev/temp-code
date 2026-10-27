@@ -348,6 +348,13 @@ reached from the ⋯ menu's Recent threads.
   on an `Input`. Arrows, Home and End move focus along the row (only the
   active chip is in the tab order), Enter or Space selects. The row and its
   gaps are outside the window's drag region.
+- **Closing a tab.** ⌘W on a thread alone in its tab closes the tab and
+  brings the neighbouring tab forward (right, else left, in strip order;
+  `planCloseFocused` in lib/workspaceTabGroups.ts); on the strip's last tab
+  it does nothing. The thread stays: a live one keeps its chip, a settled
+  one leaves for Recent threads. The thread menu's "Close tab" (after Open
+  to the side, only while the thread has a tab; "Close pane" when it shares
+  one) does the same. A chip has no hover X: it would read as archive.
 - **Hover.** One `Tooltip` per chip under a shared `TooltipProvider`: the
   title, and under it the status word with what it is about ("Working
   typecheck", "Needs you  approve Bash", a tally, a failure's verdict).
@@ -486,7 +493,9 @@ pieces it draws are surfaces/paneChrome.tsx.
 - **The header.** Alone in its tab a thread has none. In a split every
   thread pane has a 36px `PaneHeader`: the title (13px, truncated; a
   subagent's, which has no chip, shows whole on hover) and Close, a ghost icon button with "Close
-  pane ⌘W" on hover. The focus mark is the header itself: the focused
+  pane ⌘W" on hover. ⌘W closes the focused pane in a split (File › Close
+  Pane) and the tab of a thread alone in it (File › Close Tab; "Closing a
+  tab" under the thread strip). The focus mark is the header itself: the focused
   pane's is the content's background with the title in foreground, the
   others' the rail's gray with a muted title. A file pane's tab bar takes
   the same two backgrounds. No dot, no status mark, no grip.

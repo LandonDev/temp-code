@@ -7,6 +7,8 @@ import type { ThreadRules } from "@server/shared/rules";
 import type { SessionMeta, ThreadType } from "../lib/tcserver/types";
 import { threadMenuRows, type ThreadMenuExtra } from "../lib/threadMenu";
 import { archiveThread, isRemovable, liveResources, loadThreadResources, startThreadResources, useThreadResources } from "../lib/threadResources";
+import { leafIds } from "../lib/layout";
+import { shortcutFor } from "../lib/settings";
 import { workspaceTabsStore } from "../stores/workspace";
 import { workspaceActions } from "../stores/workspaceActions";
 import { SessionActionsContext } from "../surfaces/threadChat";
@@ -68,6 +70,15 @@ function sidePane(id: string): string | null {
   return pane && pane !== id ? pane : null;
 }
 
+/** Close tab's fact: the thread has an open tab; split when it shares it, ⌘W's caps when it is the focused pane. */
+function closeFact(id: string): { split: boolean; shortcut?: string } | undefined {
+  const state = workspaceTabsStore.getState();
+  const tab = state.tabs.find((t) => leafIds(t.layout).includes(id));
+  if (!tab) return undefined;
+  const focused = state.activeTabId === tab.id && tab.focusedId === id;
+  return { split: leafIds(tab.layout).length > 1, ...(focused ? { shortcut: shortcutFor("Panes", "Close") } : {}) };
+}
+
 function titleOf(id: string): string {
   return (sessionStore.get(id)?.title ?? sessionStore.metaOf(id)?.title) || "Untitled";
 }
@@ -113,6 +124,7 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
             : undefined,
         moves: own ? host.moves : [],
         side: !!sidePane(id),
+        close: actions?.onCloseTab ? closeFact(id) : undefined,
       },
       extra,
     );
@@ -137,6 +149,7 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
       else quiet(commands.retype(id, type));
     } else if (pick === "rename") (h.onRename ? h.onRename(id) : setDialog({ kind: "rename", id }));
     else if (pick === "open") h.onOpen?.(id);
+    else if (pick === "close-tab") actions?.onCloseTab?.(id);
     else if (pick === "side") {
       const pane = sidePane(id);
       if (pane) workspaceActions.dropThread(id, pane, "right");

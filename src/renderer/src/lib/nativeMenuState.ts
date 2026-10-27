@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { EMPTY_MENU_STATE, sameMenuState, type MenuState } from "@shared/menuTree";
 import { shellStore } from "../stores/shell";
+import { workspaceTabsStore } from "../stores/workspace";
+import { leafIds } from "./layout";
 import { threadsToMarkRead } from "./markRead";
 import { menuStateSender } from "./native";
 import { rightPanel } from "./rightPanel";
@@ -23,6 +25,8 @@ export type MenuFacts = {
   /** The focused root thread's panel, or `none` with no root thread on screen or no room for it. */
   panel: "open" | "closed" | "none";
   dockOpen: boolean;
+  /** The active tab holds more than one pane: ⌘W reads Close Pane, else Close Tab. */
+  split: boolean;
   /** The dock's cwd is a project: Show Terminal has somewhere to open. */
   dockUsable: boolean;
   notesEnabled: boolean;
@@ -44,6 +48,7 @@ export function menuStateOf(f: MenuFacts): MenuState {
   if (f.panel === "open") open.push("toggle_panel");
   if (f.panel === "none") disabled.push("toggle_panel");
   if (f.dockOpen) open.push("toggle_terminal");
+  if (f.split) open.push("close_tab");
   if (!f.dockUsable) disabled.push("toggle_terminal");
   if (!f.notesEnabled) disabled.push("open_notes");
   if (f.unread === 0) disabled.push("mark_all_read");
@@ -65,11 +70,14 @@ function readFacts(dock: { dockOpen: boolean; dockUsable: boolean }): MenuFacts 
   const focusedId = rightPanel.focused();
   const focused = focusedId && !sessionStore.metaOf(focusedId)?.parentId ? focusedId : null;
   const markable = new Set(threadsToMarkRead(metas, catalog, null).ids);
+  const tabs = workspaceTabsStore.getState();
+  const active = tabs.tabs.find((tab) => tab.id === tabs.activeTabId);
   const unread = metas.filter((m) => markable.has(m.id) && isUnread(m, lastSeen, floor)).length;
   return {
     sidebarOpen: shellStore.getState().projectRailOpen,
     panel: !focused || !rightPanel.hasRoom(focused) ? "none" : rightPanel.get(focused).open ? "open" : "closed",
     ...dock,
+    split: !!active && leafIds(active.layout).length > 1,
     notesEnabled: loadNotesEnabled(),
     unread,
     counts: batchCounts(metas, { catalog, lastSeen, floor, scope: EVERYWHERE, now: Date.now() }),
@@ -110,6 +118,7 @@ export function publishMenuState(
     subscribeNotesEnabled(schedule),
     rightPanel.subscribe(schedule),
     shellStore.subscribe(schedule),
+    workspaceTabsStore.subscribe(schedule),
   ];
   const clock = setInterval(schedule, MENU_STATE_CLOCK_MS);
   flush();

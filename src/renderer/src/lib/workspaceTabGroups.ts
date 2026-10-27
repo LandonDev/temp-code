@@ -113,6 +113,24 @@ export function filterTabsForWorkspace(
   });
 }
 
+/**
+ * What ⌘W does to the focused thread of `tab`: in a split, close its pane;
+ * alone in its tab, close the tab and bring the neighbouring tab forward
+ * (right, else left, in strip order). The thread stays. Nothing when no
+ * other tab is on the strip: the last one stays.
+ */
+export type CloseFocusedPlan = { kind: "pane" } | { kind: "tab"; next: string } | { kind: "none" };
+
+export function planCloseFocused(
+  tab: Pick<WorkspaceTab, "id" | "layout">,
+  stripTabs: readonly string[],
+): CloseFocusedPlan {
+  if (leafIds(tab.layout).length > 1) return { kind: "pane" };
+  const at = stripTabs.indexOf(tab.id);
+  const next = at < 0 ? stripTabs[0] : (stripTabs[at + 1] ?? stripTabs[at - 1]);
+  return next && next !== tab.id ? { kind: "tab", next } : { kind: "none" };
+}
+
 export type WorkspaceTabCloseScope = "project" | "workspace";
 
 export type WorkspaceTabClosePlan =

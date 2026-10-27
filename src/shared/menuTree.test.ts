@@ -4,6 +4,7 @@ import {
   MAIN_MENU_IDS,
   MENU_COMMANDS,
   MENU_TREE,
+  EMPTY_MENU_STATE,
   RENDERER_MENU_IDS,
   inAppMenus,
   resolveMenu,
@@ -98,7 +99,7 @@ describe('menu tree', () => {
       '—',
       ['Save All', 'Cmd+S'],
       '—',
-      ['Close Pane', 'Cmd+W'],
+      ['Close Tab', 'Cmd+W'],
       ['Close Window', 'Shift+Cmd+W']
     ])
     expect(section('Edit')).toEqual([
@@ -196,9 +197,10 @@ describe('menu tree', () => {
     expect(all.filter((c) => RESERVED.includes(c))).toEqual([])
   })
 
-  it('gives every toggle both labels', () => {
-    const toggles = MENU_COMMANDS.filter((c) => c.toggle)
+  it('gives every toggle both labels, and ⌘W its Tab and Pane', () => {
+    const toggles = MENU_COMMANDS.filter((c) => c.toggle && c.id !== 'close_tab')
     expect(toggles.map((c) => c.id)).toEqual(['toggle_sidebar', 'toggle_panel', 'toggle_terminal'])
+    expect(MENU_COMMANDS.find((c) => c.id === 'close_tab')!.toggle).toEqual({ show: 'Close Tab', hide: 'Close Pane' })
     for (const c of toggles) {
       expect(c.toggle!.show).toMatch(/^Show /)
       expect(c.toggle!.hide).toMatch(/^Hide /)
@@ -225,6 +227,11 @@ describe('resolveMenu', () => {
     expect(find(tree, 'pause_all_threads').enabled).toBe(false)
     expect(find(tree, 'focus_left').enabled).toBe(false)
     expect(find(tree, 'stop_all_threads').enabled).toBe(true)
+  })
+
+  it('reads Close Pane on ⌘W while the focused tab is split, Close Tab otherwise', () => {
+    expect(find(resolveMenu(MENU_TREE, EMPTY_MENU_STATE), 'close_tab').label).toBe('Close Tab')
+    expect(find(resolveMenu(MENU_TREE, { open: ['close_tab'], disabled: [] }), 'close_tab').label).toBe('Close Pane')
   })
 
   it('leaves the tree itself alone', () => {

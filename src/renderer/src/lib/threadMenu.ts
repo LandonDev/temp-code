@@ -56,6 +56,8 @@ export type ThreadMenuFacts = {
   moves: readonly MenuRow[];
   /** Open to the side: a pane is focused on screen and it is not this thread's. */
   side?: boolean;
+  /** The thread has an open tab: Close tab (Close pane in a split); `shortcut` is ⌘W's caps when it is the focused pane. */
+  close?: { split: boolean; shortcut?: string };
 };
 
 export type ThreadMenuExtra = { open?: boolean; newPass?: boolean };
@@ -78,6 +80,14 @@ export function threadMenuRows(facts: ThreadMenuFacts, extra: ThreadMenuExtra = 
   if (queued && (extra.open || extra.newPass)) rows.push({ kind: "item", id: "start-now", label: "Start now", icon: Play });
   // The keyboard's way to the chip drag: split the focused pane and open the thread beside it.
   if (facts.side) rows.push({ kind: "item", id: "side", label: "Open to the side", icon: PanelRight });
+  if (facts.close)
+    rows.push({
+      kind: "item",
+      id: "close-tab",
+      label: facts.close.split ? "Close pane" : "Close tab",
+      icon: X,
+      ...(facts.close.shortcut ? { shortcut: facts.close.shortcut } : {}),
+    });
   rows.push({ kind: "sep" });
 
   rows.push({ kind: "item", id: "rename", label: "Rename", icon: Pencil });

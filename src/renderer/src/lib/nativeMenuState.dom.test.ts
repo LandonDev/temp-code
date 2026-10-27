@@ -12,6 +12,7 @@ const facts = (over: Partial<MenuFacts> = {}): MenuFacts => ({
   sidebarOpen: false,
   panel: "closed",
   dockOpen: false,
+  split: false,
   dockUsable: true,
   notesEnabled: true,
   unread: 1,
@@ -26,6 +27,10 @@ describe("menuStateOf", () => {
       disabled: [],
     });
     expect(menuStateOf(facts())).toEqual({ open: [], disabled: [] });
+  });
+
+  it("names ⌘W Close Pane while the active tab is split", () => {
+    expect(menuStateOf(facts({ split: true })).open).toEqual(["close_tab"]);
   });
 
   it("greys the panel with no root thread on screen and the terminal outside a project", () => {

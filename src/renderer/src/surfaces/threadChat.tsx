@@ -73,6 +73,8 @@ export type SessionActions = {
   onModelSettingsChange: (sessionId: string, settings: Record<string, string>) => void;
   onRuntimeModeChange: (sessionId: string, mode: RuntimeMode) => void;
   onThreadTypeChange: (sessionId: string, type: ThreadType) => void;
+  /** The thread menu's Close tab: the thread's pane in a split, else its tab; the thread stays. */
+  onCloseTab?: (sessionId: string) => void;
   onNewTerminal: (sessionId: string) => void;
   onInboxCardDismiss?: (sessionId: string) => void;
   onNoteCardDismiss?: (sessionId: string) => void;

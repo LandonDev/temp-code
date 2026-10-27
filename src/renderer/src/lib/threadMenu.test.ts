@@ -153,11 +153,23 @@ describe("threadMenuRows: what a surface adds", () => {
     expect(ids(threadMenuRows(facts()))).not.toContain("side");
   });
 
-  it("every row but the separators carries a glyph, and no row a shortcut", () => {
-    const rows = threadMenuRows(facts({ status: "watching", goal: false, side: true, threadType: "research" }), { open: true, newPass: true });
+  it("Close tab after Open to the side when the thread has a tab, Close pane in a split, ⌘W only on the focused pane", () => {
+    expect(ids(threadMenuRows(facts()))).not.toContain("close-tab");
+    const lone = threadMenuRows(facts({ side: true, close: { split: false, shortcut: "⌘W" } }));
+    expect(ids(lone).indexOf("close-tab")).toBe(ids(lone).indexOf("side") + 1);
+    expect(row(lone, "close-tab")).toMatchObject({ label: "Close tab", shortcut: "⌘W" });
+    expect(row(threadMenuRows(facts({ close: { split: true } })), "close-tab")).toMatchObject({ label: "Close pane" });
+    expect(row(threadMenuRows(facts({ close: { split: true } })), "close-tab")).not.toHaveProperty("shortcut");
+  });
+
+  it("every row but the separators carries a glyph, and no row a shortcut but Close tab's ⌘W", () => {
+    const rows = threadMenuRows(
+      facts({ status: "watching", goal: false, side: true, threadType: "research", close: { split: false, shortcut: "⌘W" } }),
+      { open: true, newPass: true },
+    );
     for (const r of rows) {
       if (r.kind === "item" || r.kind === "sub") expect(r.icon, r.id).toBeTruthy();
-      if (r.kind === "item") expect(r.shortcut, r.id).toBeUndefined();
+      if (r.kind === "item" && r.id !== "close-tab") expect(r.shortcut, r.id).toBeUndefined();
     }
   });
 });

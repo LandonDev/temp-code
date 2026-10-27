@@ -206,6 +206,7 @@ import {
   applyDeletedSessionToWorkspace,
   filterTabsForProject,
   filterTabsForWorkspace,
+  planCloseFocused,
   planWorkspaceTabClose,
   tabProjectKey,
   workspaceTabCwd,
@@ -1268,6 +1269,31 @@ export default function App() {
     [activeTabId, dirtyFiles, onCloseTab, projectCwd],
   );
 
+  /** Close a thread's tab with `next` brought forward; the thread stays (a live one keeps its chip). */
+  const closeThreadTab = useCallback(
+    (tabId: string, next: string) => {
+      if (workspaceTabsStore.getState().activeTabId === tabId) activateTab(next);
+      workspaceActions.closeTab(tabId);
+      void refreshHistory(sidebarCwd);
+    },
+    [activateTab, sidebarCwd],
+  );
+
+  /** The thread menu's Close tab: its pane in a split, else its tab (planCloseFocused). */
+  const onCloseThreadTab = useCallback(
+    (sessionId: string) => {
+      const tab = workspaceTabsStore.getState().tabs.find((t) => leafIds(t.layout).includes(sessionId));
+      if (!tab) return;
+      const plan = planCloseFocused(tab, headerStore.getState().stripTabs);
+      if (plan.kind === "tab") closeThreadTab(tab.id, plan.next);
+      else if (plan.kind === "pane") {
+        const next = closeLeaf(tab, sessionId);
+        if (next) setTabs((prev) => prev.map((t) => (t.id === tab.id ? { ...t, layout: next.layout, focusedId: next.focusedId } : t)));
+      }
+    },
+    [closeThreadTab],
+  );
+
   const onClosePane = useCallback(
     (sessionId?: string) => {
       if (sessionId === undefined && projectTerminalFocused) {
@@ -1290,8 +1316,12 @@ export default function App() {
       );
       if (!sessionIds.includes(closingId)) return;
       const nextTab = closeLeaf(activeTab, closingId);
-      // ⌘W never removes a thread from the strip.
-      if (!nextTab) return;
+      // A thread alone in its tab: close the tab, never the thread (planCloseFocused).
+      if (!nextTab) {
+        const plan = planCloseFocused(activeTab, headerStore.getState().stripTabs);
+        if (plan.kind === "tab") closeThreadTab(activeTab.id, plan.next);
+        return;
+      }
       setTabs((prev) =>
         prev.map((t) =>
           t.id === activeTab.id
@@ -1311,6 +1341,7 @@ export default function App() {
     },
     [
       activeTab,
+      closeThreadTab,
       onCloseFile,
       onCloseProjectTerminal,
       projectTerminalFocused,
@@ -3264,6 +3295,7 @@ export default function App() {
       onModelSettingsChange,
       onRuntimeModeChange,
       onThreadTypeChange,
+      onCloseTab: onCloseThreadTab,
       onNewTerminal: onNewTerminalInSession,
       onInboxCardDismiss,
       onNoteCardDismiss,
@@ -3284,6 +3316,7 @@ export default function App() {
       onModelSettingsChange,
       onRuntimeModeChange,
       onThreadTypeChange,
+      onCloseThreadTab,
       onNewTerminalInSession,
       onInboxCardDismiss,
       onNoteCardDismiss,

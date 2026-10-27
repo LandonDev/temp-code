@@ -2019,7 +2019,8 @@ Window and Help (What's New opens the running build's notes, Show Logs opens
 `<userData>/logs`, the host profile, Developer Tools). Ids
 are command ids of lib/appCommands.ts; `MAIN_MENU_IDS` act in main. Each
 window sends what it shows over `menu:state` (lib/nativeMenuState.ts:
-Show/Hide on the three toggles, idle rows greyed) and main rebuilds the menu
+Show/Hide on the three toggles, ⌘W's Close Tab or Close Pane while the
+focused tab is split, idle rows greyed) and main rebuilds the menu
 from the focused window's state when it changes. A `pageKey` row (New
 Terminal, ⌃`) shows its key but leaves it to the page. The in-app bar
 (chrome/MenuBar.tsx, `inAppMenus`) mounts only in web mode off macOS: a
