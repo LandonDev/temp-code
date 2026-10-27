@@ -266,7 +266,9 @@ app replaces itself from the feed, and only from the feed.
   `StatusMark` is the one status vocabulary, `threadStateOf` turns a wire
   status into its state; sonner is the one toast stack). Nothing in
   src/renderer writes a literal colour, duration or curve, and no bullet
-  lists appear in the UI.
+  lists appear in the UI. The motion guard has no application timing
+  exceptions: CSS uses the motion tokens, JavaScript uses `lib/ease.ts`,
+  and the named spinner and shimmer tokens own their continuous timing.
 - Settings rows and sections use `components/page.tsx` (`PageRow`,
   `PageSection`), which pass native props and data attributes to their roots;
   Hosts exports these as `Row` and `Group` without copying their markup.

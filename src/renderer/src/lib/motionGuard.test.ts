@@ -6,9 +6,8 @@ import { describe, expect, it } from "vitest";
  * The motion guard. Durations and curves live in two places only: lib/ease.ts
  * and the token layer at the top of index.css (through the `@theme inline`
  * block). Everywhere else in src/renderer a literal timing is a failure,
- * unless the site is listed below with the area that owns it. The lists only
- * shrink: an area that moves its file onto the tokens deletes its row (or
- * lowers its count); nobody adds one. A26 empties them.
+ * unless it defines a token below or a third-party class needs the literal.
+ * Each kept entry states why; application sites use the shared tokens.
  *
  * MOTION_GUARD_PRINT=1 prints the tree's current tally as the lists' source.
  */
@@ -16,30 +15,11 @@ import { describe, expect, it } from "vitest";
 const ROOT = resolve(__dirname, "..");
 
 /** .ts/.tsx files allowed literal timings: the owning area and how many. */
-const ALLOWED: Record<string, { owner: string; count: number }> = {
-  "chrome/AttachmentChip.tsx": { owner: "A10", count: 1 },
-  "chrome/ComposerInput.tsx": { owner: "A10", count: 3 },
-  "chrome/ModelSettings.tsx": { owner: "A10", count: 1 },
-  "components/ui/plan-card.tsx": { owner: "shell", count: 4 },
-  "components/ui/question-card.tsx": { owner: "shell", count: 10 },
-  "components/ui/spinner.tsx": { owner: "shell", count: 1 },
-  "lib/composerHeight.ts": { owner: "A10", count: 2 },
-  "surfaces/TranscriptMinimap.tsx": { owner: "A7", count: 1 },
-};
+const ALLOWED: Record<string, { owner: string; count: number }> = {};
 
-/** CSS rules allowed literal timings, as "<file> <selector>": the owning area. */
+/** Only token definitions may keep literal timings. */
 const CSS_ALLOWED: Record<string, string> = {
-  "assets/components.css @utility shimmer": "shell",
-  "assets/components.css .t-toggle-thumb": "shell",
-  'assets/components.css .t-check[aria-checked="true"] svg path': "shell",
-  "assets/components.css .task-donut": "shell",
-  "assets/components.css .task-strike": "shell",
-  'assets/components.css .task-label[data-state="done"] .task-strike': "shell",
-  "index.css @theme": "shell",
-  "index.css :root": "shell",
-  "index.css .z-fade-in, .z-fade-quick": "A7",
-  "index.css .monaco-editor .model-change-line": "A23",
-  "index.css .monaco-editor .reveal-flash-line": "A23",
+  "index.css @theme": "kept: Tailwind's named spinner animation defines its continuous turn here",
 };
 
 /** Every @keyframes in a stylesheet under src/renderer/src, and what it serves. */

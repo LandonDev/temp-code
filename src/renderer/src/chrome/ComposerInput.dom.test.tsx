@@ -226,6 +226,28 @@ describe('ComposerInput under jsdom', () => {
     expect(onState.mock.lastCall?.[0]).toBe('にほ')
   })
 
+  it('fades a clear with the shared exit timing and the current CSS curve', async () => {
+    const { ref, root, probe } = mount()
+    root.style.setProperty('--ease-out', 'linear')
+    let finish!: () => void
+    const finished = new Promise<void>((resolve) => { finish = resolve })
+    const cancel = vi.fn()
+    const animate = vi.fn(() => ({ finished, cancel }))
+    Object.defineProperty(root, 'animate', { value: animate })
+    probe.act(() => type(root, 'sent'))
+    probe.act(() => ref.current!.clear(true))
+    expect(animate).toHaveBeenCalledWith([{ opacity: 1 }, { opacity: 0 }], {
+      duration: 120,
+      easing: 'linear',
+      fill: 'forwards'
+    })
+    expect(root.textContent).toBe('sent')
+    finish()
+    await finished
+    expect(root.textContent).toBe('')
+    expect(cancel).toHaveBeenCalledOnce()
+  })
+
   it('insertText through the handle types at the end and reports once', () => {
     const { onState, ref, root, probe } = mount()
     probe.act(() => type(root, 'a'))

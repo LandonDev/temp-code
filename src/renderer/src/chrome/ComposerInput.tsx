@@ -1,3 +1,4 @@
+import { DUR } from '../lib/ease'
 import {
   forwardRef,
   useEffect,
@@ -318,8 +319,8 @@ export const ComposerInput = forwardRef<
         return
       }
       const anim = root.animate([{ opacity: 1 }, { opacity: 0 }], {
-        duration: 80,
-        easing: 'ease-out',
+        duration: DUR.fast * 1000,
+        easing: getComputedStyle(root).getPropertyValue('--ease-out').trim(),
         fill: 'forwards'
       })
       clearing.current = anim

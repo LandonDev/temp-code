@@ -1,3 +1,4 @@
+import { DUR, EASE_EXIT, EASE_IN_OUT, EASE_OUT, SPRING_LAYOUT } from "@renderer/lib/ease";
 import { RefreshCw } from "@renderer/chrome/icons";
 import { AnimatePresence, motion, MotionConfig, useReducedMotion, type Variants } from "motion/react";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
@@ -61,8 +62,8 @@ function MorphFrame({ at, children }: { at: number; children: Array<ReactNode> }
   );
 }
 
-const LABEL_MORPH = { type: "spring", duration: 0.3, bounce: 0 } as const;
-const LABEL_OUT = { type: "spring", duration: 0.2, bounce: 0 } as const;
+const LABEL_MORPH = SPRING_LAYOUT;
+const LABEL_OUT = { duration: DUR.fast, ease: EASE_EXIT } as const;
 
 function MorphLabel({ children }: { children: ReactNode }) {
   return (
@@ -98,12 +99,12 @@ function ProgressDonut({ done, total }: { done: number; total: number }) {
   );
 }
 
-const TURN = { type: "spring", duration: 0.55, bounce: 0.18 } as const;
+const TURN = { duration: DUR.drawer, ease: EASE_IN_OUT } as const;
 const MARK_SWAP = "col-start-1 row-start-1 transition-[opacity,scale,filter] duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none";
 
 const PREVIOUS: Variants = {
-  hidden: { opacity: 0, x: -8, filter: "blur(2px)", transition: { duration: 0.16, ease: [0.22, 1, 0.36, 1] } },
-  shown: { opacity: 1, x: 0, filter: "blur(0px)", transition: { duration: 0.24, ease: [0.22, 1, 0.36, 1] } },
+  hidden: { opacity: 0, x: -8, filter: "blur(2px)", transition: { duration: DUR.fast, ease: EASE_EXIT } },
+  shown: { opacity: 1, x: 0, filter: "blur(0px)", transition: { duration: DUR.slow, ease: EASE_OUT } },
 };
 
 export function QuestionCard({

@@ -63,9 +63,9 @@ function CountdownRing({ left, total, onCancel }: { left: number; total: number;
   const remaining = total <= 0 ? 0 : Math.max(0, Math.min(1, left / total));
   const band = BANDS[Math.min(BANDS.length - 1, Math.floor((1 - remaining) * BANDS.length))];
   const ring = (
-    <svg aria-hidden viewBox="0 0 18 18" className={cn("size-[18px] -rotate-90 transition-colors duration-500 ease-out motion-reduce:transition-none", band)}>
+    <svg aria-hidden viewBox="0 0 18 18" className={cn("size-[18px] -rotate-90 transition-colors duration-(--dur-slow) ease-(--ease-out) motion-reduce:transition-none", band)}>
       <circle cx="9" cy="9" r={RADIUS} fill="none" stroke="currentColor" strokeWidth="1.5" opacity={0.25} />
-      <circle cx="9" cy="9" r={RADIUS} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={circumference * (1 - remaining)} className="transition-[stroke-dashoffset] duration-1000 ease-linear motion-reduce:transition-none" />
+      <circle cx="9" cy="9" r={RADIUS} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={circumference * (1 - remaining)} className="transition-[stroke-dashoffset] duration-(--dur-drawer) ease-(--ease-out) motion-reduce:transition-none" />
     </svg>
   );
   if (!onCancel) return <span className="grid shrink-0">{ring}</span>;

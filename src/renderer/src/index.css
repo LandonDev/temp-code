@@ -69,6 +69,7 @@
   --editor-symbol-variable: #4a9aa6;
   --editor-symbol-keyword: #787878;
   /* Motion: four durations, three curves. Springs are in lib/ease.ts. */
+  --motion-shimmer: text-shimmer 2s linear infinite;
   --dur-instant: 0ms;
   --dur-fast: 120ms;
   --dur-base: 180ms;
@@ -165,6 +166,7 @@ html.theme-light {
 }
 
 @theme {
+  --animate-spinner: spin 900ms linear infinite;
   --color-accent: var(--accent);
   --color-skill: #e8c547;
   --color-mention: #38bdf8;
@@ -181,8 +183,8 @@ html.theme-light {
   --color-overlay: color-mix(in oklab, var(--popover) 96%, transparent);
   /* Motion bar: one duration and one curve for every utility transition.
      The same curve is EASE_OUT in lib/ease.ts. */
-  --default-transition-duration: 120ms;
-  --default-transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  --default-transition-duration: var(--dur-fast);
+  --default-transition-timing-function: var(--ease-out);
   --font-mono:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     "Courier New", monospace;
@@ -202,7 +204,6 @@ html.theme-light {
   --thread-info: #60a5fa;
   --thread-violet: #a78bfa;
   --thread-cyan: #22d3ee;
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* One focus ring for every control; the ring sits inside the box so rows
@@ -633,7 +634,7 @@ header[data-tauri-drag-region] button {
 
 .z-fade-in,
 .z-fade-quick {
-  animation: z-fade-quick 150ms var(--ease-out);
+  animation: z-fade-quick var(--dur-fast) var(--ease-out);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -652,12 +653,12 @@ header[data-tauri-drag-region] button {
 /* A model edit that arrived from disk (an agent or shell write). */
 .monaco-editor .model-change-line {
   background-color: color-mix(in srgb, var(--color-success) 12%, transparent);
-  transition: background-color 600ms var(--ease-out);
+  transition: background-color var(--dur-slow) var(--ease-out);
 }
 /* reveal-flash: surfaces/monaco/MonacoPane.tsx's navigation landing; the line
    holds a wash, then lets go (A23). */
 .monaco-editor .reveal-flash-line {
-  animation: reveal-flash 1.8s var(--ease-out) forwards;
+  animation: reveal-flash var(--dur-slow) var(--ease-out) forwards;
 }
 @keyframes reveal-flash {
   0%,

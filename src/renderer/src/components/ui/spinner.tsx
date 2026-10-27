@@ -14,7 +14,7 @@ function Spinner({ className, ...props }: ComponentProps<"svg">) {
       data-slot="spinner"
       role="status"
       aria-label="Loading"
-      className={cn("size-4 shrink-0 animate-[spin_900ms_linear_infinite] motion-reduce:animate-none", className)}
+      className={cn("size-4 shrink-0 animate-spinner motion-reduce:animate-none", className)}
       {...props}
     >
       <circle cx="12" cy="12" r="9" pathLength={100} strokeDasharray="72 100" className="origin-center -rotate-[135deg]" />

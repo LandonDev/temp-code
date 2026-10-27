@@ -156,7 +156,7 @@ export const TranscriptMinimap = memo(function TranscriptMinimap({
             onClick={() => jump(tick)}
           >
             <span
-              className={`block h-0.5 rounded-full transition-[width,opacity] duration-100 ${spec.className}`}
+              className={`block h-0.5 rounded-full transition-[width,opacity] duration-(--dur-fast) ${spec.className}`}
               style={{ width: spec.width + (hovered ? 4 : 0) }}
             />
           </Button>

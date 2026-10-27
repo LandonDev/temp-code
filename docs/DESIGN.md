@@ -127,8 +127,9 @@ released drag). `springEasing` turns a spring into a CSS `linear()` curve
 and its settle time (`SPRING_LAYOUT_CSS`: 370ms, no overshoot), for a
 transition that glides like the spring without JavaScript.
 `lib/motionGuard.test.ts` fails on any literal duration or curve outside
-`lib/ease.ts` and this layer; the sites still open are listed there with
-the area that owns each, and the lists only shrink.
+`lib/ease.ts` and this layer; its script allow-list is empty. The only
+kept CSS rule defines Tailwind’s named spinner token. The shimmer token
+keeps its 2s sweep, and the spinner token keeps its 900ms turn.
 
 ### Layers
 
@@ -283,7 +284,7 @@ being produced shimmers (`TextShimmer`); nothing else does.
 | Appshot | fade + scale 0.95→1 centred, `--dur-slow`; holds; glides into its chip, `--dur-drawer` `--ease-drawer` | — | fade in and out in place, `--dur-fast` |
 | Released drag | settles on `SPRING_GLIDE` | — | none |
 | List rows (rail, tabs, fleet, attachments) | none | none | none |
-| Transcript rows | one 150ms fade on first appearance, never replayed | — | none |
+| Transcript rows | one `--dur-fast` fade on first appearance, never replayed | — | none |
 | Streaming text | the jitter buffer (lib/smoothText); words fade `--dur-base` in `StreamingText` | — | none |
 | Composer send | the bubble glides up 16px, `--dur-slow` `--ease-drawer` | — | fade, `--dur-fast` |
 

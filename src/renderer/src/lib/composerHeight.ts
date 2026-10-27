@@ -17,7 +17,7 @@ export function morphTextareaHeight(el: HTMLElement, max: number): void {
   }
   el.style.height = prev;
   void el.offsetHeight;
-  el.style.transition = "height 180ms ease-out";
+  el.style.transition = "height var(--dur-base) var(--ease-out)";
   el.style.height = next;
   const clear = (event: TransitionEvent): void => {
     if (event.propertyName !== "height") return;
