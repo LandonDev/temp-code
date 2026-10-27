@@ -4,6 +4,7 @@ import { Item } from "../../../components/ui/item";
 import { STATUS_WORD, StatusMark, statusNeedsYou, statusToneClass } from "../../../components/ui/status";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { MessageSquare, MoreHorizontal, Pause, Play } from "../../../chrome/icons";
+import { RowsMenu, type MenuRow } from "../../../chrome/menuRows";
 import { HarnessIcon } from "../../../chrome/HarnessIcon";
 import { HostGlyph } from "../../../chrome/HostGlyph";
 import { cn } from "../../../lib/cn";
@@ -28,8 +29,9 @@ import { groupOf, typeWord, useBoardDigest, useRowMeta, type BoardRowRef, type R
  * under the offline tint. A click opens the thread's full view in the
  * board's place; on hover the model mark gives way to Message, the one
  * verb the state calls for (Pause, Resume, Start now) and ⋯, the thread's
- * menu (rowMenu.ts), which a right-click on the row or an agent line opens
- * too. Every action goes to the row's own host (the commands route by the
+ * menu (lib/threadMenu.ts, the thread's one list), which a right-click on
+ * the row or an agent line opens too (MasterView's one context menu reads
+ * `data-menu-id`). Every action goes to the row's own host (the commands route by the
  * thread's id).
  *
  * `MasterRow` reads its own meta, its plan's, its digest (the host's
@@ -39,7 +41,12 @@ import { groupOf, typeWord, useBoardDigest, useRowMeta, type BoardRowRef, type R
  * draws from props alone, so a static preview renders it without a store.
  */
 
-export type OnRowMenu = (id: string, at: { x: number; y: number }) => void;
+/** The board's thread menu (chrome/useThreadMenu.tsx): the rows a thread's ⋯ shows and its picks. */
+export type RowMenu = {
+  rowsFor: (id: string) => readonly MenuRow[];
+  onPick: (id: string, pick: string) => void;
+  onOpenChange: (id: string, open: boolean) => void;
+};
 
 /** The host's glyph for a thread, as a render function so the view itself reads no store. */
 export type HostGlyphOf = (environmentId: string, title?: string) => ReactNode;
@@ -51,7 +58,7 @@ export const MasterRow = memo(function MasterRow({
   landed,
   host,
   onOpen,
-  onMenu,
+  menu,
 }: {
   rowRef: BoardRowRef;
   /** The batch marked this row's branch landed. */
@@ -60,8 +67,8 @@ export const MasterRow = memo(function MasterRow({
   host: RowHost | null;
   /** Open the thread's full view; `focus` lands in its composer. */
   onOpen: (id: string, focus?: boolean) => void;
-  /** The thread's menu at a point. */
-  onMenu: OnRowMenu;
+  /** The thread's menu: the ⋯ button's rows (a right-click reads `data-menu-id`). */
+  menu: RowMenu;
 }) {
   const meta = useRowMeta(rowRef);
   const plan = useSessionMeta(rowRef.planId);
@@ -79,7 +86,7 @@ export const MasterRow = memo(function MasterRow({
       host={host}
       hostGlyph={hostGlyph}
       onOpen={onOpen}
-      onMenu={onMenu}
+      menu={menu}
     />
   );
 });
@@ -96,7 +103,7 @@ export function MasterRowView({
   host,
   hostGlyph,
   onOpen,
-  onMenu,
+  menu,
 }: {
   meta: SessionMeta;
   /** The plan's title when the row is a plan and the build it started. */
@@ -108,7 +115,7 @@ export function MasterRowView({
   host: RowHost | null;
   hostGlyph: HostGlyphOf;
   onOpen: (id: string, focus?: boolean) => void;
-  onMenu: OnRowMenu;
+  menu: RowMenu;
 }) {
   const title = planTitle || meta.title;
   const { state, detail } = rowStatus(meta, digest, landed);
@@ -127,11 +134,6 @@ export function MasterRowView({
       onOpen(meta.id);
     }
   };
-  const openMenu = (e: MouseEvent<HTMLElement>) => {
-    e.stopPropagation();
-    const rect = e.currentTarget.getBoundingClientRect();
-    onMenu(meta.id, { x: rect.left, y: rect.bottom + 4 });
-  };
   const verb =
     meta.status === "queued"
       ? { label: "Start now", icon: Play, run: () => commands.startNow(meta.id) }
@@ -148,10 +150,7 @@ export function MasterRowView({
       tabIndex={0}
       onClick={() => onOpen(meta.id)}
       onKeyDown={onKey}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        onMenu(meta.id, { x: e.clientX, y: e.clientY });
-      }}
+      data-menu-id={meta.id}
       className={cn(
         "group relative grid cursor-default grid-cols-[16px_1fr] items-start gap-x-2 gap-y-0 rounded-md px-3 py-2 hover:bg-foreground/5",
         host?.offline && "opacity-50",
@@ -198,7 +197,7 @@ export function MasterRowView({
       {agents ? (
         <>
           <span />
-          <AgentLines agents={agents} hostGlyph={hostGlyph} onOpen={onOpen} onMenu={onMenu} />
+          <AgentLines agents={agents} hostGlyph={hostGlyph} onOpen={onOpen} />
         </>
       ) : null}
 
@@ -215,9 +214,19 @@ export function MasterRowView({
             <verb.icon />
           </RowAction>
         ) : null}
-        <RowAction label="Thread actions" tooltip="More" onClick={openMenu} menu>
-          <MoreHorizontal />
-        </RowAction>
+        <RowsMenu
+          label="Thread actions"
+          tip={{ label: "More" }}
+          trigger={
+            <Button variant="ghost" size="icon-xs" aria-label="Thread actions" onClick={stop}>
+              <MoreHorizontal />
+            </Button>
+          }
+          rows={() => menu.rowsFor(meta.id)}
+          onPick={(pick) => menu.onPick(meta.id, pick)}
+          onOpenChange={(open) => menu.onOpenChange(meta.id, open)}
+          align="start"
+        />
       </span>
     </Item>
   );
@@ -226,13 +235,11 @@ export function MasterRowView({
 function RowAction({
   label,
   tooltip = label,
-  menu,
   onClick,
   children,
 }: {
   label: string;
   tooltip?: string;
-  menu?: boolean;
   onClick: (e: MouseEvent<HTMLButtonElement>) => void;
   children: ReactNode;
 }) {
@@ -244,7 +251,6 @@ function RowAction({
             variant="ghost"
             size="icon-xs"
             aria-label={label}
-            aria-haspopup={menu ? "menu" : undefined}
             onClick={(e) => {
               e.stopPropagation();
               onClick(e);
@@ -265,12 +271,12 @@ function RowAction({
  *  host's glyph; one quiet line for the ones past the cap and the settled
  *  ones. A line opens its agent in the board's place, where its approval
  *  or question is answered; its click never reaches the row. */
-function AgentLines({ agents, hostGlyph, onOpen, onMenu }: { agents: RowAgents; hostGlyph: HostGlyphOf; onOpen: (id: string) => void; onMenu: OnRowMenu }) {
+function AgentLines({ agents, hostGlyph, onOpen }: { agents: RowAgents; hostGlyph: HostGlyphOf; onOpen: (id: string) => void }) {
   const tail = agentTail(agents);
   return (
     <ul className="flex flex-col pt-1" data-agents>
       {agents.lines.map((line) => (
-        <AgentLineRow key={line.id} line={line} hostGlyph={hostGlyph} onOpen={onOpen} onMenu={onMenu} />
+        <AgentLineRow key={line.id} line={line} hostGlyph={hostGlyph} onOpen={onOpen} />
       ))}
       {tail ? (
         <li className={cn("pl-5 text-xs leading-5 tabular-nums", tail.waiting ? statusToneClass("waiting") : "text-muted-foreground")} data-agents-tail>
@@ -281,7 +287,7 @@ function AgentLines({ agents, hostGlyph, onOpen, onMenu }: { agents: RowAgents; 
   );
 }
 
-function AgentLineRow({ line, hostGlyph, onOpen, onMenu }: { line: AgentLine; hostGlyph: HostGlyphOf; onOpen: (id: string) => void; onMenu: OnRowMenu }) {
+function AgentLineRow({ line, hostGlyph, onOpen }: { line: AgentLine; hostGlyph: HostGlyphOf; onOpen: (id: string) => void }) {
   const Glyph = line.agentType ? AGENT_GLYPHS[line.agentType] : line.threadType ? THREAD_GLYPHS[line.threadType] : null;
   return (
     <li>
@@ -292,11 +298,7 @@ function AgentLineRow({ line, hostGlyph, onOpen, onMenu }: { line: AgentLine; ho
           onOpen(line.id);
         }}
         onKeyDown={stop}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          onMenu(line.id, { x: e.clientX, y: e.clientY });
-        }}
+        data-menu-id={line.id}
         className="-mx-1 flex h-5 w-[calc(100%+8px)] min-w-0 cursor-default items-center gap-2 rounded-sm px-1 text-left text-xs hover:bg-foreground/5"
         data-agent={line.id}
       >

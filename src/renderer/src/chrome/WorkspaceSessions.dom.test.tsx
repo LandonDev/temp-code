@@ -7,7 +7,9 @@ import type { ProjectMeta, SessionMeta } from '../lib/tcserver/types'
 import { mountProbe } from '../test/renderProbe'
 import { threadRow, type ThreadRow } from '../lib/workspaceSessions'
 import { nextPage } from '../lib/sidebarRows'
-import { ProjectRow, ThreadList, masterMenuItem } from './WorkspaceSessions'
+import { ProjectRow, ThreadList } from './WorkspaceSessions'
+import { screen, within } from '@testing-library/react'
+import { resetMenus } from './menuRows'
 import { projectFolds } from '../lib/projectFolds'
 import { subagentRowsStore } from '../stores/subagentRows'
 import { registry } from '../lib/connection'
@@ -55,8 +57,14 @@ const actions = {
   activeSessionId: undefined as string | undefined,
   onOpen: () => {},
   onRename: () => {},
-  onDelete: () => {},
-  openMenu: () => {}
+  openMenu: () => {},
+  menu: {
+    rowsFor: (id: string) => [{ kind: 'item' as const, id: 'rename', label: `Rename ${id}` }],
+    onPick: () => {},
+    onOpenChange: () => {}
+  },
+  renamingId: null as string | null,
+  onStartRename: () => {}
 }
 
 const rowCount = (root: HTMLElement) => root.querySelectorAll('[role="button"]').length
@@ -366,16 +374,28 @@ describe('a thread row ends in its mark', () => {
     probe.unmount()
   })
 
-  it("its one hover action is More, opening the right-click's menu", () => {
-    const opened: unknown[] = []
+  it("its one hover action is More, opening the thread's menu", async () => {
+    resetMenus()
+    const onOpenChange = vi.fn()
+    const onPick = vi.fn()
     const probe = mountProbe(
-      <ThreadList threads={[threadRow(meta('t'), {})]} actions={{ ...actions, openMenu: (m) => opened.push(m) }} className="" />
+      <ThreadList threads={[threadRow(meta('t'), {})]} actions={{ ...actions, menu: { ...actions.menu, onOpenChange, onPick } }} className="" />
     )
     const more = probe.container.querySelector<HTMLButtonElement>('button[aria-label="More"]')!
     act(() => {
       fireEvent.click(more)
     })
-    expect(opened).toHaveLength(1)
+    expect(onOpenChange).toHaveBeenCalledWith('t', true)
+    const list = await screen.findByRole('menu', { name: 'Thread actions' })
+    fireEvent.click(within(list).getByText('Rename t'))
+    expect(onPick).toHaveBeenCalledWith('t', 'rename')
+    probe.unmount()
+  })
+
+  it('a row carries its thread for the list\'s one right-click menu, and renames in place', () => {
+    const probe = mountProbe(<ThreadList threads={[threadRow(meta('t0'), {})]} actions={{ ...actions, renamingId: 't0' }} className="" />)
+    expect(probe.container.querySelector('[data-menu-id="t0"]')).toBeTruthy()
+    expect(probe.container.querySelector('input')).toBeTruthy()
     probe.unmount()
   })
 })
@@ -413,29 +433,3 @@ describe('the host glyph on rail rows', () => {
   })
 })
 
-describe('the rail row menu: the master pin', () => {
-  const openOn = (masterIds?: ReadonlySet<string>, projectId: string | null = 'p1') => {
-    const items: { kind: string; id?: string; label?: string }[][] = []
-    const probe = mountProbe(
-      <ThreadList
-        threads={[threadRow(meta('t0', { projectId }), {})]}
-        actions={{ ...actions, masterIds, openMenu: (state) => items.push(state.items) }}
-        className=""
-      />
-    )
-    fireEvent.contextMenu(probe.container.querySelector('[role="button"]')!)
-    probe.unmount()
-    return items[0]?.flatMap((i) => (i.kind === 'item' && i.id === 'master' ? [i.label] : [])) ?? []
-  }
-
-  it('offers Make master thread to a root in a project, Not a master to a master', () => {
-    expect(openOn()).toEqual(['Make master thread'])
-    expect(openOn(new Set(['t0']))).toEqual(['Not a master'])
-    expect(openOn(new Set(['other']))).toEqual(['Make master thread'])
-  })
-
-  it('offers no pin to a thread outside a project', () => {
-    expect(openOn(undefined, null)).toEqual([])
-    expect(masterMenuItem({ id: 't0', projectId: null }, new Set(['t0']))).toBeNull()
-  })
-})

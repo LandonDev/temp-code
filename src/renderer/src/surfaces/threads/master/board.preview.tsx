@@ -30,7 +30,7 @@ export function BoardPreview() {
                 host={null}
                 hostGlyph={noHost}
                 onOpen={noop}
-                onMenu={noop}
+                menu={{ rowsFor: () => [], onPick: noop, onOpenChange: noop }}
               />
             ))}
           </div>

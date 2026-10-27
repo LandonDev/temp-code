@@ -551,8 +551,7 @@ describe("the master view", () => {
     expect(pause).toHaveBeenCalledWith("c-run");
     pause.mockRestore();
     fireEvent.click(within(screen.getByRole("button", { name: /Idle one/ })).getByRole("button", { name: "Thread actions" }));
-    await flush();
-    expect(screen.getByRole("menu", { name: "Thread actions" })).toBeTruthy();
+    expect(await screen.findByRole("menu", { name: "Thread actions" })).toBeTruthy();
     // Neither click opened the thread.
     expect(document.querySelector("[data-child-pane]")).toBeNull();
   });
@@ -725,15 +724,15 @@ describe("the master view", () => {
     expect(link.calls.some((c) => c.method === "session.send" && (c.params as { text: string }).text === "Ship it")).toBe(true);
   });
 
-  it("a row's right-click menu leads with New pass…, and its dialog sends into that thread on its own host and closes", async () => {
+  it("a row's right-click menu leads with Open and New pass…, and its dialog sends into that thread on its own host and closes", async () => {
     seed([meta({ id: "c-home", title: "Home", status: "running" })]);
     seedBox([boxMeta({ id: "c-box", title: "Inbox", status: "idle" })], true);
     renderView();
     await flush();
     fireEvent.contextMenu(screen.getByRole("button", { name: /Inbox/ }));
-    const menu = screen.getByRole("menu", { name: "Thread actions" });
+    const menu = await screen.findByRole("menu", { name: "Thread actions" });
     const labels = within(menu).getAllByRole("menuitem").map((i) => i.textContent);
-    expect(labels.slice(0, 2)).toEqual(["New pass…", "Open"]);
+    expect(labels.slice(0, 2)).toEqual(["Open", "New pass…"]);
     expect(labels).toContain("Rename");
     expect(labels).toContain("Archive");
     fireEvent.click(within(menu).getByRole("menuitem", { name: "New pass…" }));
@@ -1137,8 +1136,7 @@ describe("the master view", () => {
     renderView();
     await flush();
     fireEvent.click(within(screen.getByRole("button", { name: /Just queued/ })).getByRole("button", { name: "Thread actions" }));
-    await flush();
-    fireEvent.click(within(screen.getByRole("menu", { name: "Thread actions" })).getByText("Remove from queue"));
+    fireEvent.click(within(await screen.findByRole("menu", { name: "Thread actions" })).getByText("Remove from queue"));
     await flush();
     expect(link.calls.find((c) => c.method === "session.batch")?.params).toMatchObject({ action: "stop", ids: ["c-new"] });
   });

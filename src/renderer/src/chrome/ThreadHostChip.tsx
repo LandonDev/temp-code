@@ -18,7 +18,8 @@ import {
 import { ConfirmDialog } from "./ConfirmDialog";
 import { retargetDraft } from "./DraftHostPicker";
 import { useToastSync } from "./toastSync";
-import type { ExplorerMenuItem } from "./ExplorerMenu";
+import { Server } from "./icons";
+import type { MenuRow } from "./menuRows";
 
 /**
  * The active thread's host for the thread menu (chrome/ThreadMenu.tsx):
@@ -34,7 +35,7 @@ import type { ExplorerMenuItem } from "./ExplorerMenu";
 export function useThreadHost(sessionId: string | null): {
   host: { environmentId: string; name: string } | null;
   movingTo: string | null;
-  moves: ExplorerMenuItem[];
+  moves: MenuRow[];
   pick: (id: string) => boolean;
   dialog: JSX.Element | null;
 } {
@@ -69,12 +70,13 @@ export function useThreadHost(sessionId: string | null): {
     !!movingTo,
   );
   const movingName = movingTo ? (registry.environment(movingTo)?.name ?? movingTo) : null;
-  const moves: ExplorerMenuItem[] = movingName
-    ? [{ kind: "item", id: "moving", label: `Moving to ${movingName}…`, disabled: true }]
+  const moves: MenuRow[] = movingName
+    ? [{ kind: "item", id: "moving", label: `Moving to ${movingName}…`, icon: Server, disabled: true }]
     : targets.map((t) => ({
         kind: "item",
         id: `move:${t.environmentId}`,
         label: `Move to ${t.name}…`,
+        icon: Server,
         disabled: !t.ok,
         ...(t.ok ? {} : { description: t.reason }),
       }));

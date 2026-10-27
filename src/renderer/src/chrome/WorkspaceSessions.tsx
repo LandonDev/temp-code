@@ -11,6 +11,8 @@ import {
 } from "react";
 import { measureElement, useVirtualizer, type VirtualizerOptions } from "@tanstack/react-virtual";
 import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
+import { RowsContextMenu, RowsMenu, type MenuRow } from "./menuRows";
+import { useThreadMenu } from "./useThreadMenu";
 import { HostGlyph } from "./HostGlyph";
 import { PreambleDialog } from "./PreambleDialog";
 import {
@@ -49,8 +51,7 @@ import {
   windowRows,
   type SidebarItem,
 } from "../lib/sidebarRows";
-import { archive as archiveThread, interrupt, pause, resume, setMaster } from "../lib/tcserver/commands";
-import { masterMenuLabel, useMasterIds } from "../lib/masterThread";
+import { archive as archiveThread, interrupt, pause, resume } from "../lib/tcserver/commands";
 import { dormantByType, dormantThreads, focusedTree, marksAtRest, threadStatus } from "../lib/threadStripModel";
 import { deleteProject } from "../lib/tcserver/projects";
 import { archiveLinked, projectHomeNow, renameLinked } from "../lib/projectHome";
@@ -87,8 +88,7 @@ type Dialog =
   | { kind: "settings"; project: ProjectMeta }
   | { kind: "preamble"; project: ProjectMeta }
   | { kind: "teardown"; project: ProjectMeta; action: "archive" | "delete" }
-  | { kind: "delete-project"; project: ProjectMeta }
-  | { kind: "delete-chat"; thread: ThreadRow };
+  | { kind: "delete-project"; project: ProjectMeta };
 
 type MenuState = {
   x: number;
@@ -119,6 +119,28 @@ function MoreRow({ hidden, onMore }: { hidden: number; onMore: () => void }) {
 
 /** A row's one hover action: ⋯, the same menu a right-click opens. It
  *  takes the trailing slot's place by opacity, as the rail's rows do. */
+/** The ⋯ a row shows on hover and focus, as a menu's trigger. */
+function moreTrigger(className?: string) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      aria-label="More"
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+      className={cn(
+        "text-muted-foreground hover:text-foreground",
+        "pointer-events-none opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-none",
+        "group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100 group-hover/row:pointer-events-auto group-hover/row:opacity-100 data-popup-open:pointer-events-auto data-popup-open:opacity-100",
+        className,
+      )}
+    >
+      <MoreHorizontal className="size-4" strokeWidth={1.5} />
+    </Button>
+  );
+}
+
 function MoreAction({ onOpen, className }: { onOpen: (anchor: HTMLElement) => void; className?: string }) {
   return (
     <Tooltip>
@@ -208,21 +230,20 @@ type RowActions = {
   focusedTree: ReadonlySet<string>;
   onOpen: (id: string) => void;
   onRename: (id: string, title: string) => void;
-  onDelete: (thread: ThreadRow) => void;
   openMenu: (state: MenuState) => void;
-  /** The master threads (CLAUDE.md "Master threads"), any number per project. */
-  masterIds?: ReadonlySet<string>;
+  /** The thread rows' one menu (chrome/useThreadMenu.tsx). */
+  menu: RailThreadMenu;
+  /** The row whose title is being renamed in place. */
+  renamingId: string | null;
+  onStartRename: (id: string | null) => void;
 };
 
-/** The rail row's pin item: a root thread in a project may be made a
- *  master, and a master may stop being one. */
-export function masterMenuItem(
-  thread: Pick<ThreadRow, "id" | "projectId">,
-  masterIds: ReadonlySet<string> | undefined,
-): ExplorerMenuItem | null {
-  if (!thread.projectId) return null;
-  return { kind: "item", id: "master", label: masterMenuLabel(!!masterIds?.has(thread.id)) };
-}
+/** The thread menu as the rail's rows use it: stable across renders. */
+type RailThreadMenu = {
+  rowsFor: (id: string) => readonly MenuRow[];
+  onPick: (id: string, pick: string) => void;
+  onOpenChange: (id: string, open: boolean) => void;
+};
 
 /** Row sizes come from the ResizeObserver, which reports every row once on
  *  observe and again when it grows: a row mounting under a switch keeps its
@@ -314,7 +335,8 @@ export function ThreadRowView({
   fold,
   title,
   onOpen,
-  onMenu,
+  menuId,
+  more,
   onRename,
 }: {
   row: ThreadRow;
@@ -331,8 +353,10 @@ export function ThreadRowView({
   /** In place of the title: the rename field. */
   title?: ReactNode;
   onOpen?: () => void;
-  /** A right-click or ⋯ opens the row's menu at this point. */
-  onMenu?: (at: { x: number; y: number }) => void;
+  /** The row's thread for the list's one right-click menu (`data-menu-id`). */
+  menuId?: string;
+  /** The row's ⋯ menu, over the mark on hover and focus. */
+  more?: ReactNode;
   onRename?: () => void;
 }) {
   const tally = batchTally(row);
@@ -356,14 +380,7 @@ export function ThreadRowView({
       onPointerLeave={() => sessionPrefetch.leave(row.id)}
       onDoubleClick={onRename}
       onKeyDown={(e) => e.key === "Enter" && !editing && onOpen?.()}
-      onContextMenu={
-        onMenu
-          ? (e) => {
-              e.preventDefault();
-              onMenu({ x: e.clientX, y: e.clientY });
-            }
-          : undefined
-      }
+      data-menu-id={menuId}
       className={cn(
         ROW,
         verdict ? "min-h-8 py-1.5" : child ? "h-7" : "h-8",
@@ -423,7 +440,7 @@ export function ThreadRowView({
               {fold.count}
             </Button>
           ) : null}
-          <span className={cn("flex shrink-0 items-center gap-2", onMenu && YIELDS)}>
+          <span className={cn("flex shrink-0 items-center gap-2", more && YIELDS)}>
             {tally ? (
               <span className={cn("text-[12px] tabular-nums", tally.done === tally.total ? "text-success" : "text-muted-foreground")}>
                 {tally.done}/{tally.total}
@@ -433,12 +450,7 @@ export function ThreadRowView({
               <RowMark row={row} word={word} />
             </span>
           </span>
-          {onMenu ? (
-            <MoreAction
-              className="absolute top-1/2 right-1 -translate-y-1/2"
-              onOpen={(el) => onMenu(menuAt(el))}
-            />
-          ) : null}
+          {more}
         </>
       ) : null}
     </div>
@@ -462,35 +474,8 @@ const ChatRow = memo(function ChatRow({
   actions: RowActions;
   fold?: Fold;
 }) {
-  const [renaming, setRenaming] = useState(false);
   const offline = useHostsOffline([thread.environmentId]);
-
-  const menu = (at: { x: number; y: number }) => {
-    const master = masterMenuItem(thread, actions.masterIds);
-    const items: ExplorerMenuItem[] = [
-      { kind: "item", id: "rename", label: "Rename" },
-      ...(thread.running
-        ? [{ kind: "item", id: "stop", label: "Stop" } as const]
-        : thread.stopped
-          ? [{ kind: "item", id: "resume", label: "Resume" } as const]
-          : []),
-      ...(master ? [{ kind: "sep" } as const, master] : []),
-      { kind: "sep" },
-      { kind: "item", id: "delete", label: "Delete chat", danger: true },
-    ];
-    actions.openMenu({
-      ...at,
-      items,
-      onPick: (id) => {
-        if (id === "rename") setRenaming(true);
-        else if (id === "stop") void interrupt(thread.id);
-        else if (id === "resume") void resume(thread.id);
-        else if (id === "master") void setMaster(thread.id, !actions.masterIds?.has(thread.id));
-        else if (id === "delete") actions.onDelete(thread);
-      },
-    });
-  };
-
+  const renaming = actions.renamingId === thread.id;
   return (
     <ThreadRowView
       row={thread}
@@ -498,24 +483,40 @@ const ChatRow = memo(function ChatRow({
       offline={offline}
       fold={fold}
       onOpen={() => actions.onOpen(thread.id)}
-      onMenu={menu}
-      onRename={() => setRenaming(true)}
+      menuId={thread.id}
+      more={<MoreMenu id={thread.id} menu={actions.menu} />}
+      onRename={() => actions.onStartRename(thread.id)}
       title={
         renaming ? (
           <InlineRename
             value={thread.title}
             className="text-[13px]"
             onCommit={(t) => {
-              setRenaming(false);
+              actions.onStartRename(null);
               actions.onRename(thread.id, t);
             }}
-            onCancel={() => setRenaming(false)}
+            onCancel={() => actions.onStartRename(null)}
           />
         ) : undefined
       }
     />
   );
 });
+
+/** A rail row's ⋯: the thread's menu from its trigger. */
+function MoreMenu({ id, menu }: { id: string; menu: RailThreadMenu }) {
+  return (
+    <RowsMenu
+      label="Thread actions"
+      tip={{ label: "More", side: "right" }}
+      trigger={moreTrigger("absolute top-1/2 right-1 -translate-y-1/2")}
+      rows={() => menu.rowsFor(id)}
+      onPick={(pick) => menu.onPick(id, pick)}
+      onOpenChange={(open) => menu.onOpenChange(id, open)}
+      align="start"
+    />
+  );
+}
 
 /** A subagent under its root, or a batch thread under its master. */
 const ChildRow = memo(function ChildRow({
@@ -533,6 +534,7 @@ const ChildRow = memo(function ChildRow({
       selected={thread.id === actions.activeSessionId}
       offline={offline}
       onOpen={() => actions.onOpen(thread.id)}
+      menuId={thread.id}
     />
   );
 });
@@ -1064,8 +1066,8 @@ export default function WorkspaceSessions({
 
   // The parent hands down fresh closures each render; the memoized cards and
   // rows see one stable callback that reads the newest.
-  const latest = useRef({ onSelectProject, onOpenSession, onNewChat, onRenameSession });
-  latest.current = { onSelectProject, onOpenSession, onNewChat, onRenameSession };
+  const latest = useRef({ onSelectProject, onOpenSession, onNewChat, onRenameSession, onDeleteSession, activeSessionId });
+  latest.current = { onSelectProject, onOpenSession, onNewChat, onRenameSession, onDeleteSession, activeSessionId };
   const selectProject = useCallback((id: string) => latest.current.onSelectProject(id), []);
   const openSession = useCallback((id: string) => latest.current.onOpenSession(id), []);
   const newChat = useCallback(
@@ -1122,18 +1124,35 @@ export default function WorkspaceSessions({
   const moreChats = useCallback(() => morePages("chats"), [morePages]);
 
   const focused = useMemo(() => focusedTree(metas, activeSessionId), [activeSessionId, metas]);
-  const masterIds = useMasterIds();
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const threadMenu = useThreadMenu({
+    onRename: setRenamingId,
+    onDelete: (id) => latest.current.onDeleteSession(id),
+    onScreen: (id) => id === latest.current.activeSessionId,
+  });
+  // The rows are memoized: they get one stable menu that reads the newest.
+  const menuRef = useRef(threadMenu);
+  menuRef.current = threadMenu;
+  const railMenu = useMemo<RailThreadMenu>(
+    () => ({
+      rowsFor: (id) => menuRef.current.rowsFor(id),
+      onPick: (id, pick) => menuRef.current.onPick(id, pick),
+      onOpenChange: (id, open) => menuRef.current.onOpenChange(id, open),
+    }),
+    [],
+  );
   const rows = useMemo<RowActions>(
     () => ({
       activeSessionId,
       focusedTree: focused,
       onOpen: openSession,
       onRename: renameSession,
-      onDelete: (thread) => setDialog({ kind: "delete-chat", thread }),
       openMenu: setMenu,
-      masterIds,
+      menu: railMenu,
+      renamingId,
+      onStartRename: setRenamingId,
     }),
-    [activeSessionId, focused, openSession, renameSession, masterIds],
+    [activeSessionId, focused, openSession, renameSession, railMenu, renamingId],
   );
 
   // Cards are the virtual unit: each roots its own border and hover group,
@@ -1243,6 +1262,12 @@ export default function WorkspaceSessions({
 
   return (
     <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-2 pt-2 pb-2">
+        <RowsContextMenu
+          label="Thread actions"
+          rowsFor={(id) => (id ? railMenu.rowsFor(id) : null)}
+          onPick={(pick, id) => id && railMenu.onPick(id, pick)}
+          onOpenChange={(open, id) => id && railMenu.onOpenChange(id, open)}
+        >
         <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
           {virtualizer.getVirtualItems().map((row) => (
             <div
@@ -1256,6 +1281,7 @@ export default function WorkspaceSessions({
             </div>
           ))}
         </div>
+        </RowsContextMenu>
 
       {menu ? (
         <ExplorerMenu
@@ -1305,19 +1331,7 @@ export default function WorkspaceSessions({
           }}
         />
       ) : null}
-      {dialog?.kind === "delete-chat" ? (
-        <ConfirmDialog
-          title="Delete chat"
-          body="The chat and its whole transcript are gone for good."
-          confirmLabel="Delete"
-          danger
-          onCancel={close}
-          onConfirm={() => {
-            close();
-            onDeleteSession(dialog.thread.id);
-          }}
-        />
-      ) : null}
+      {threadMenu.dialogs}
     </div>
   );
 }

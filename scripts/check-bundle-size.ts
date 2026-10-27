@@ -56,6 +56,8 @@ export const NEVER_IN_ENTRY = [
   'src/renderer/src/surfaces/MediaViewer.tsx',
   'src/renderer/src/surfaces/ReleaseNotesSurface.tsx',
   'src/renderer/src/chrome/Lightbox.tsx',
+  // Every menu, context menu and popover body rides menuChunk (chrome/menuRows.tsx).
+  'src/renderer/src/chrome/menuBody.tsx',
   'src/renderer/src/aliax/pages.tsx'
 ]
 

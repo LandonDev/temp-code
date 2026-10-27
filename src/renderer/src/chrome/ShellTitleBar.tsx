@@ -66,7 +66,6 @@ export type HeaderEvents = Pick<
   | "onRename"
   | "onArchive"
   | "onDelete"
-  | "onAction"
   | "onSetRules"
   | "onRestore"
   | "onNew"

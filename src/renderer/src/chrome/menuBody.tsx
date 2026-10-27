@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import { Tip } from "../components/tip";
 import {
   ContextMenu,
@@ -30,7 +30,7 @@ import {
 } from "../components/ui/dropdown-menu";
 import { Kbd } from "../components/ui/kbd";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
-import type { LazyPopoverProps, MenuRow, MenuRowsKind, RowsContextMenuProps, RowsMenuProps } from "./menuRows";
+import type { LazyPopoverProps, MenuAt, MenuRow, MenuRowsKind, RowsContextMenuProps, RowsMenuProps } from "./menuRows";
 
 /**
  * The menus' body, in its own chunk (`menuChunk`): the Base UI menu, context
@@ -90,6 +90,11 @@ export function MenuRows({ items, onPick, kind }: { items: readonly MenuRow[]; o
     }
   }
   return <>{out}</>;
+}
+
+/** Rows given as a function are built here, inside the open popup only. */
+function OpenRows({ rows, onPick, kind }: { rows: RowsMenuProps["rows"]; onPick: (id: string) => void; kind: MenuRowsKind }) {
+  return <MenuRows kind={kind} items={typeof rows === "function" ? rows() : rows} onPick={onPick} />;
 }
 
 function rowKey(row: MenuRow, index: number): string {
@@ -171,48 +176,64 @@ export function DropdownRows({
   return (
     <DropdownMenu defaultOpen={defaultOpen} onOpenChange={(open) => onOpenChange?.(open)}>
       {tip ? (
-        <Tip label={tip.label} shortcut={tip.shortcut}>
+        <Tip label={tip.label} shortcut={tip.shortcut} side={tip.side}>
           {opener}
         </Tip>
       ) : (
         opener
       )}
       <DropdownMenuContent size={size} align={align} side={side} className={className} aria-label={label}>
-        <MenuRows kind="dropdown" items={rows} onPick={onPick} />
+        <OpenRows kind="dropdown" rows={rows} onPick={onPick} />
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
-/** The id the menu opened on: the clicked row's `data-menu-id`, else the
- *  focused one's (a keyboard open), else null. */
-function menuIdOf(event: Event | undefined): string | null {
-  const target = event?.target instanceof Element ? event.target : null;
-  const row = target?.closest("[data-menu-id]") ?? document.activeElement?.closest?.("[data-menu-id]") ?? null;
-  return row?.getAttribute("data-menu-id") ?? null;
-}
-
-export function ContextRows({ children, label, rowsFor, onPick, onOpenChange, disabled }: RowsContextMenuProps) {
+/**
+ * The right-click menu of a list. The list itself is not the trigger (it
+ * would remount when this body swaps in): a hidden trigger beside it takes
+ * each right-click the list hands over (`opener`), at the same point.
+ */
+export function ContextRows({
+  label,
+  rowsFor,
+  onPick,
+  onOpenChange,
+  opener,
+}: RowsContextMenuProps & { opener: MutableRefObject<((at: MenuAt) => void) | null> }) {
   const [state, setState] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+  const trigger = useRef<HTMLSpanElement>(null);
+  const asked = useRef<MenuAt | null>(null);
+  const back = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    opener.current = (at) => {
+      asked.current = at;
+      trigger.current?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: at.x, clientY: at.y, button: 2 }));
+    };
+    return () => {
+      opener.current = null;
+    };
+  }, [opener]);
   const rows = state.open ? rowsFor(state.id) : null;
   return (
     <ContextMenu
-      disabled={disabled}
       open={state.open && !!rows?.length}
-      onOpenChange={(open, details) => {
+      onOpenChange={(open) => {
         if (!open) {
           setState((prev) => ({ ...prev, open: false }));
           onOpenChange?.(false, state.id);
           return;
         }
-        const id = menuIdOf(details.event);
-        if (!rowsFor(id)?.length) return;
-        setState({ open: true, id });
-        onOpenChange?.(true, id);
+        const at = asked.current;
+        asked.current = null;
+        if (!at || !rowsFor(at.id)?.length) return;
+        back.current = at.row;
+        setState({ open: true, id: at.id });
+        onOpenChange?.(true, at.id);
       }}
     >
-      <ContextMenuTrigger render={children} />
-      <ContextMenuContent aria-label={label}>
+      <ContextMenuTrigger render={<span ref={trigger} aria-hidden className="pointer-events-none fixed size-0" />} />
+      <ContextMenuContent aria-label={label} finalFocus={back}>
         {rows ? <MenuRows kind="context" items={rows} onPick={(pick) => onPick(pick, state.id)} /> : null}
       </ContextMenuContent>
     </ContextMenu>
@@ -237,7 +258,7 @@ export function PopoverBody({
   return (
     <Popover open={open} defaultOpen={open === undefined ? defaultOpen : undefined} onOpenChange={(next) => onOpenChange?.(next)}>
       {opener && tip ? (
-        <Tip label={tip.label} shortcut={tip.shortcut}>
+        <Tip label={tip.label} shortcut={tip.shortcut} side={tip.side}>
           {opener}
         </Tip>
       ) : (

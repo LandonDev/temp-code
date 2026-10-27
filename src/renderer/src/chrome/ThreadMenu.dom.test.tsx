@@ -4,12 +4,24 @@ import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/ui/context-menu";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
-import { chipMenuItems } from "./ThreadHeader";
+import { threadMenuRows, type ThreadMenuFacts } from "../lib/threadMenu";
 import type { ChipThread, StripChip } from "./ThreadHeaderStrip";
 import { MenuRows } from "./menuBody";
 import { ThreadMenu } from "./ThreadMenu";
 
 vi.mock("./HostGlyph", () => ({ HostGlyph: () => <span data-host-glyph /> }));
+
+const facts = (over: Partial<ThreadMenuFacts> = {}): ThreadMenuFacts => ({
+  status: "idle",
+  threadType: "chat",
+  projectId: "p1",
+  parentId: null,
+  master: false,
+  resources: 0,
+  goal: null,
+  moves: [],
+  ...over,
+});
 
 const chip = (id: string, title: string, updatedAt: number): StripChip => {
   const thread: ChipThread = {
@@ -78,22 +90,22 @@ describe("ThreadMenu", () => {
   it("with two hosts the first line names the host, and the move rows sit with the thread's", async () => {
     menu({
       host: { environmentId: "env_box", name: "box" },
-      rows: chipMenuItems(chip("a", "A", 1), undefined, 0, false, [
-        { kind: "item", id: "move:local", label: "Move to This Mac…", disabled: true, description: "The thread is running" },
-      ]),
+      rows: threadMenuRows(
+        facts({ moves: [{ kind: "item", id: "move:local", label: "Move to This Mac…", disabled: true, description: "The thread is running" }] }),
+      ),
     });
     const list = await openMenu();
-    expect(list.querySelector("[data-thread-line]")?.textContent).toBe("box");
+    expect(list.querySelector("[data-menu-note='line']")?.textContent).toBe("box");
     expect(within(list).getByText("Move to This Mac…")).toBeTruthy();
     expect(within(list).getByText("The thread is running")).toBeTruthy();
   });
 
   it("shows the cost only above zero", async () => {
     menu({ cost: 0 });
-    expect((await openMenu()).querySelector("[data-thread-line]")).toBeNull();
+    expect((await openMenu()).querySelector("[data-menu-note='line']")).toBeNull();
     cleanup();
     menu({ cost: 1.237 });
-    expect((await openMenu()).querySelector("[data-thread-line]")?.textContent).toBe("$1.24");
+    expect((await openMenu()).querySelector("[data-menu-note='line']")?.textContent).toBe("$1.24");
   });
 
   it("Recent threads lists settled threads in the order given, at most twelve, and opens one", async () => {
@@ -132,7 +144,7 @@ describe("ThreadMenu", () => {
 
 describe("MenuRows", () => {
   it("the Type submenu picks a type by its row id", async () => {
-    const props = menu({ rows: chipMenuItems(chip("a", "A", 1)) });
+    const props = menu({ rows: threadMenuRows(facts()) });
     const list = await openMenu();
     fireEvent.click(within(list).getByText("Type"));
     fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Plan" }));
@@ -140,7 +152,7 @@ describe("MenuRows", () => {
   });
 
   it("the ⋯ menu and the chip's right-click render the same rows", async () => {
-    const items = chipMenuItems(chip("a", "A", 1), undefined, 2, true);
+    const items = threadMenuRows(facts({ resources: 2, master: true }));
     const labels = (root: HTMLElement) =>
       [...root.querySelectorAll('[role^="menuitem"]')].map((el) => el.textContent);
     render(
@@ -163,6 +175,6 @@ describe("MenuRows", () => {
     );
     const context = labels(await screen.findByRole("menu", { name: "context" }));
     expect(context).toEqual(dropdown);
-    expect(dropdown).toEqual(expect.arrayContaining(["Rename", "Resources (2)…", "Archive…", "Delete…"]));
+    expect(dropdown).toEqual(expect.arrayContaining(["Rename", "Resources…2", "Archive…", "Delete…"]));
   });
 });

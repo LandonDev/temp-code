@@ -3,14 +3,12 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
-  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import type { BackgroundWork } from "@server/shared/events";
 import type { ThreadRules } from "@server/shared/rules";
 import { Button } from "../components/ui/button";
-import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/ui/context-menu";
 import { Input } from "../components/ui/input";
 import { StatusMark } from "../components/ui/status";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
@@ -33,6 +31,7 @@ import {
   type ThreadStatus,
 } from "../lib/threadStripModel";
 import type { ActivityKind } from "../lib/session";
+import { RowsContextMenu, type MenuRow } from "./menuRows";
 import { THREAD_GLYPHS } from "../surfaces/threads/threadTypes";
 import { ThreadStatusMark } from "./TabIndicator";
 
@@ -82,10 +81,12 @@ type ChipEvents = {
   renamingId: string | null;
   onStartRename: (id: string) => void;
   onRename: (id: string, title: string) => void;
-  /** The right-click, before the menu opens: load what its rows need. */
-  onContextMenu: (chip: StripChip, event: ReactMouseEvent<HTMLElement>) => void;
-  /** The thread's menu rows, rendered inside the chip's ContextMenu. */
-  menu?: (chip: StripChip, close: () => void) => ReactNode;
+  /** A chip's right-click: the thread's rows (lib/threadMenu.ts), one menu for the strip. */
+  menu?: {
+    rowsFor: (id: string | null) => readonly MenuRow[] | null;
+    onPick: (pick: string, id: string | null) => void;
+    onOpenChange: (open: boolean, id: string | null) => void;
+  };
   activeRef: (el: HTMLDivElement | null) => void;
   /** The threads pinned as their project's master: the chip reads "Master" after the title. */
   masterIds?: ReadonlySet<string>;
@@ -122,6 +123,13 @@ export function ThreadHeaderStrip({
   return (
     <div className="flex min-w-0 flex-1 items-center">
       <TooltipProvider>
+        <RowsContextMenu
+          label="Thread actions"
+          rowsFor={events.menu?.rowsFor ?? (() => null)}
+          onPick={(pick, id) => events.menu?.onPick(pick, id)}
+          onOpenChange={(open, id) => events.menu?.onOpenChange(open, id)}
+          disabled={!events.menu}
+        >
         <div
           ref={stripRef}
           onWheel={wheelToX}
@@ -146,6 +154,7 @@ export function ThreadHeaderStrip({
           ))}
           {trailing}
         </div>
+        </RowsContextMenu>
       </TooltipProvider>
       <div className="h-full min-w-1.5 flex-1" />
       {end}
@@ -336,7 +345,6 @@ function Chip({
   onSelect,
   ...events
 }: { chip: StripChip; active: boolean; focusable: boolean; onSelect: (id: string) => void } & ChipEvents) {
-  const [menuOpen, setMenuOpen] = useState(false);
   const drag = useChipDrag(chip.id, () => {
     if (!active) onSelect(chip.id);
   });
@@ -346,13 +354,12 @@ function Chip({
   const unread = !active && chip.unread;
   const Glyph = THREAD_GLYPHS[chip.thread.threadType ?? "chat"];
   return (
-    <ContextMenu open={menuOpen} onOpenChange={setMenuOpen}>
-      <ContextMenuTrigger
-        ref={active ? events.activeRef : undefined}
-        className="shrink-0"
-        onContextMenu={(event) => events.onContextMenu(chip, event)}
-        onDoubleClick={() => events.onStartRename(chip.id)}
-      >
+    <div
+      ref={active ? events.activeRef : undefined}
+      className="shrink-0"
+      data-menu-id={chip.id}
+      onDoubleClick={() => events.onStartRename(chip.id)}
+    >
         <Tooltip>
           <TooltipTrigger
             render={
@@ -386,10 +393,6 @@ function Chip({
             <ChipHoverLabel title={title} status={status} />
           </TooltipContent>
         </Tooltip>
-      </ContextMenuTrigger>
-      {menuOpen && events.menu ? (
-        <ContextMenuContent aria-label="Thread actions">{events.menu(chip, () => setMenuOpen(false))}</ContextMenuContent>
-      ) : null}
-    </ContextMenu>
+    </div>
   );
 }

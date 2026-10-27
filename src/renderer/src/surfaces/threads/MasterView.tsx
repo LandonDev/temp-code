@@ -2,8 +2,8 @@ import { measureElement, useVirtualizer, type VirtualizerOptions } from "@tansta
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ConfirmDialog } from "../../chrome/ConfirmDialog";
 import { ExplorerMenu } from "../../chrome/ExplorerMenu";
-import { MoveThreadConfirm } from "../../chrome/ThreadHostChip";
-import { ArchiveThreadDialog } from "../../chrome/ThreadResourcesDialog";
+import { RowsContextMenu } from "../../chrome/menuRows";
+import { useThreadMenu } from "../../chrome/useThreadMenu";
 import { ChevronDown, MoreHorizontal, Plus } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
@@ -14,10 +14,7 @@ import type { SessionMeta } from "../../lib/tcserver/types";
 import { resourcesHeldBy } from "../../lib/threadBatch";
 import { useProjects, useWorkspaces } from "../../lib/tcserver/workspaces";
 import { useMetaById } from "../../lib/threads/agents";
-import { useMasterIds } from "../../lib/masterThread";
-import { sessionStore, useQueue, useSessionMetasWhen } from "../../lib/tcserver/store";
-import { loadThreadResources, useThreadResources } from "../../lib/threadResources";
-import { moveTargets, useMoving } from "../../lib/threadMove";
+import { useSessionMetasWhen } from "../../lib/tcserver/store";
 import { chatOf } from "./chatSlots";
 import { AddThreadDialog } from "./master/AddThreadDialog";
 import { AdoptThreadDialog } from "./master/AdoptThreadDialog";
@@ -25,10 +22,8 @@ import { ArchiveBatchDialog } from "./master/ArchiveBatchDialog";
 import { BatchFoot } from "./master/BatchFoot";
 import { addMenuItems, adoptCandidates, boardMenuItems, doneRows, pairedProjectIds, pausableRows, pausedRows, type ArchiveWhich } from "./master/boardActions";
 import { ChildPane } from "./master/ChildPane";
-import { MasterRow, type OnRowMenu } from "./master/MasterRow";
+import { MasterRow, type RowMenu } from "./master/MasterRow";
 import { NewPassDialog } from "./master/NewPassDialog";
-import { RenameThreadDialog } from "./master/RenameThreadDialog";
-import { rowMenuItems } from "./master/rowMenu";
 import { AgentSummaryContext } from "./master/agentSummary";
 import {
   adoptThreads,
@@ -56,9 +51,9 @@ import type { ThreadViewProps } from "./ThreadView";
  * row's own host. A row opens its thread's full view in the whole pane
  * with one Back control (Escape and ⌘↩ too); the board comes back at the
  * scroll it was left at. A right-click on a row, or on a subagent line
- * under it, opens that thread's menu (master/rowMenu.ts): New pass… first,
+ * under it, opens that thread's menu (lib/threadMenu.ts): New pass… first,
  * a dialog with the thread's own composer (NewPassDialog), then Open and
- * the tab's thread actions with the host moves. Until the master has a first child the chat is
+ * the thread's rows as every surface has them (chrome/useThreadMenu.tsx). Until the master has a first child the chat is
  * the whole view, the way an orchestration thread opens.
  *
  * The board paints from one `batch.board` answer (useMasterModel) and
@@ -79,7 +74,6 @@ export function pausable(children: readonly SessionMeta[]): SessionMeta[] {
 }
 
 type Menu = { kind: "board" | "add"; x: number; y: number };
-type RowMenu = { id: string; x: number; y: number };
 
 type BoardItem = { kind: "header"; key: string; group: BoardGroup } | { kind: "row"; key: string; row: BoardRowRef };
 
@@ -117,6 +111,8 @@ export function MasterView(props: ThreadViewProps) {
   const meta = useMetaById(session.id);
   const model = useMasterModel(session);
   const { layout, batch, digests, summaries, loaded, landed, openId, setOpenId } = model;
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
   const openMeta = useMetaById(openId);
   const environments = useEnvironments();
   const statuses = useEnvironmentStatuses();
@@ -137,15 +133,24 @@ export function MasterView(props: ThreadViewProps) {
   const [archiving, setArchiving] = useState<ArchiveWhich | null>(null);
   const [pausing, setPausing] = useState(false);
   const [focusComposer, setFocusComposer] = useState(false);
-  const [rowMenu, setRowMenu] = useState<RowMenu | null>(null);
   const [passFor, setPassFor] = useState<string | null>(null);
-  const [renaming, setRenaming] = useState<string | null>(null);
-  const [archivingId, setArchivingId] = useState<string | null>(null);
-  const [moving, setMoving] = useState<{ id: string; to: string; name: string } | null>(null);
-  const masterIds = useMasterIds();
-  const moves = useMoving();
-  const menuQueue = useQueue(rowMenu?.id ?? "");
-  const archiveResources = useThreadResources(archivingId);
+  const threadMenu = useThreadMenu({
+    onOpen: (id) => openRef.current(id),
+    onNewPass: setPassFor,
+    // A row the board's answer names before the store holds it menus from that answer.
+    metaFor: (id) => layoutRef.current.rows.find((r) => r.id === id)?.fallback ?? null,
+  });
+  // The rows' ⋯ and the board's one right-click read the same list, with Open and New pass….
+  const menuApi = useRef(threadMenu);
+  menuApi.current = threadMenu;
+  const rowMenu = useMemo<RowMenu>(
+    () => ({
+      rowsFor: (id) => menuApi.current.rowsFor(id, { open: true, newPass: true }),
+      onPick: (id, pick) => menuApi.current.onPick(id, pick),
+      onOpenChange: (id, open) => menuApi.current.onOpenChange(id, open),
+    }),
+    [],
+  );
   const hasBoard = layout.rows.length > 0;
   // The rows' metas (and the adopt candidates) are read, and followed, only
   // while a menu or a dialog needs them; never per frame of the board.
@@ -215,7 +220,6 @@ export function MasterView(props: ThreadViewProps) {
     setOpenId(id);
   };
   const open = useCallback((id: string, focus?: boolean) => openRef.current(id, focus), []);
-  const onRowMenu = useCallback<OnRowMenu>((id, at) => setRowMenu({ id, ...at }), []);
 
   if (!hasBoard) {
     return (
@@ -258,57 +262,6 @@ export function MasterView(props: ThreadViewProps) {
     );
   }
 
-  // A row's (or an agent line's) menu: the thread on its own host.
-  // A row the board's answer names before the store holds it menus from that answer.
-  const menuMeta = rowMenu ? (sessionStore.metaOf(rowMenu.id) ?? layout.rows.find((r) => r.id === rowMenu.id)?.fallback ?? null) : null;
-  const menuItems = menuMeta
-    ? rowMenuItems(
-        menuMeta,
-        masterIds.has(menuMeta.id),
-        moveTargets(
-          {
-            ...menuMeta,
-            busy: sessionStore.get(menuMeta.id)?.busy,
-            treeHasLiveWork: sessionStore.get(menuMeta.id)?.treeHasLiveWork,
-            treeHasPaused: sessionStore.get(menuMeta.id)?.treeHasPaused,
-            queued: menuQueue.length,
-          },
-          environments,
-          (id) => statuses.get(id) ?? { transport: "offline", lastHello: null },
-          moves.has(menuMeta.id),
-        ),
-      )
-    : [];
-  const onRowPick = (pick: string) => {
-    const id = rowMenu?.id;
-    setRowMenu(null);
-    if (!id) return;
-    const quiet = (run: Promise<unknown>) => void run.catch(() => undefined);
-    if (pick === "new-pass") setPassFor(id);
-    else if (pick === "open") open(id);
-    else if (pick === "rename") setRenaming(id);
-    else if (pick === "resume") quiet(commands.resume(id));
-    else if (pick === "pause") quiet(commands.pause(id));
-    else if (pick === "stop") quiet(commands.interrupt(id));
-    else if (pick === "compact") quiet(commands.compact(id));
-    else if (pick === "start-now") quiet(commands.startNow(id));
-    else if (pick === "remove-queue") {
-      const env = (sessionStore.metaOf(id) ?? layout.rows.find((r) => r.id === id)?.fallback)?.environmentId;
-      if (env) quiet(commands.sessionBatch(env, "stop", [id]));
-    }
-    else if (pick === "killBackground") quiet(commands.killBackground(id));
-    else if (pick === "master") quiet(commands.setMaster(id, !masterIds.has(id)));
-    else if (pick === "archive") {
-      void loadThreadResources(id);
-      setArchivingId(id);
-    } else if (pick.startsWith("move:")) {
-      const to = pick.slice("move:".length);
-      setMoving({ id, to, name: hostNames.get(to) ?? to });
-    }
-  };
-  const renamingMeta = renaming ? sessionStore.metaOf(renaming) : null;
-  const archivingMeta = archivingId ? sessionStore.metaOf(archivingId) : null;
-
   const title = meta?.title || session.title || "Master";
   const actions = (
     <>
@@ -347,6 +300,12 @@ export function MasterView(props: ThreadViewProps) {
       <BoardDigestContext.Provider value={digests}>
         <AgentSummaryContext.Provider value={summaries}>
           <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-2 pt-1 pb-3" data-board-scroller>
+            <RowsContextMenu
+              label="Thread actions"
+              rowsFor={(id) => (id ? rowMenu.rowsFor(id) : null)}
+              onPick={(pick, id) => id && rowMenu.onPick(id, pick)}
+              onOpenChange={(open, id) => id && rowMenu.onOpenChange(id, open)}
+            >
             <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
               {virtualizer.getVirtualItems().map((v) => {
                 const item = items[v.index];
@@ -365,12 +324,13 @@ export function MasterView(props: ThreadViewProps) {
                         {item.group.label}
                       </h3>
                     ) : (
-                      <MasterRow rowRef={item.row} landed={landed.has(item.row.id)} host={hostOf(item.row.environmentId)} onOpen={open} onMenu={onRowMenu} />
+                      <MasterRow rowRef={item.row} landed={landed.has(item.row.id)} host={hostOf(item.row.environmentId)} onOpen={open} menu={rowMenu} />
                     )}
                   </div>
                 );
               })}
             </div>
+            </RowsContextMenu>
           </div>
         </AgentSummaryContext.Provider>
       </BoardDigestContext.Provider>
@@ -430,32 +390,11 @@ export function MasterView(props: ThreadViewProps) {
           onConfirm={(removeResources) => archiveBatch(session, rows, archiving, removeResources)}
         />
       ) : null}
-      {rowMenu && menuItems.length > 0 ? (
-        <ExplorerMenu x={rowMenu.x} y={rowMenu.y} ariaLabel="Thread actions" items={menuItems} onPick={onRowPick} onClose={() => setRowMenu(null)} />
-      ) : null}
+      {threadMenu.dialogs}
       {passFor ? (
         <BoardDigestContext.Provider value={digests}>
           <NewPassDialog sessionId={passFor} landed={landed.has(passFor)} onClose={() => setPassFor(null)} />
         </BoardDigestContext.Provider>
-      ) : null}
-      {renamingMeta ? <RenameThreadDialog sessionId={renamingMeta.id} title={renamingMeta.title} onClose={() => setRenaming(null)} /> : null}
-      {archivingMeta ? (
-        <ArchiveThreadDialog
-          sessionId={archivingMeta.id}
-          title={archivingMeta.title || "this thread"}
-          resources={archiveResources}
-          onCancel={() => setArchivingId(null)}
-          onArchived={() => setArchivingId(null)}
-        />
-      ) : null}
-      {moving ? (
-        <MoveThreadConfirm
-          sessionId={moving.id}
-          to={moving.to}
-          toName={moving.name}
-          fromName={hostNames.get(sessionStore.metaOf(moving.id)?.environmentId ?? "") ?? "this host"}
-          onClose={() => setMoving(null)}
-        />
       ) : null}
       {pausing ? (
         <ConfirmDialog

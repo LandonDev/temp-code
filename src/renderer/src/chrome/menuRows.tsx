@@ -126,17 +126,20 @@ function chain(element: ReactElement, extra: Handlers, attrs: Record<string, unk
   return cloneElement(element, { ...attrs, ...merged });
 }
 
+export type TipProps = { label: string; shortcut?: string; side?: "top" | "bottom" | "left" | "right" };
+
 export type RowsMenuProps = {
   /** The button that opens the menu (a `Button`, usually ghost icon-sm). */
   trigger: ReactElement;
   /** The menu's accessible name. */
   label: string;
-  rows: readonly MenuRow[];
+  /** The rows, or a function giving them, called only while the menu is open. */
+  rows: readonly MenuRow[] | (() => readonly MenuRow[]);
   onPick: (id: string) => void;
   /** Opened: load what the rows need. */
   onOpenChange?: (open: boolean) => void;
   /** The trigger's name on hover, with its binding's cap. */
-  tip?: { label: string; shortcut?: string };
+  tip?: TipProps;
   align?: "start" | "center" | "end";
   side?: "top" | "bottom" | "left" | "right";
   /** The popup's classes (a width). */
@@ -166,7 +169,7 @@ export function RowsMenu(props: RowsMenuProps) {
     },
     { "aria-haspopup": "menu", "aria-expanded": false },
   );
-  return props.tip ? <Tip label={props.tip.label} shortcut={props.tip.shortcut}>{cold}</Tip> : cold;
+  return props.tip ? <Tip label={props.tip.label} shortcut={props.tip.shortcut} side={props.tip.side}>{cold}</Tip> : cold;
 }
 
 /** The person asked for this menu: swap now, even with a field focused
@@ -190,32 +193,59 @@ export type RowsContextMenuProps = {
   disabled?: boolean;
 };
 
-/** A menu of verbs at the pointer (`ContextMenu`). */
+/** Where a right-click asked for the menu: the point, the row's id, the row itself. */
+export type MenuAt = { x: number; y: number; id: string | null; row: HTMLElement | null };
+
+/**
+ * A menu of verbs at the pointer (`ContextMenu`). The list stays the same
+ * element through the swap (nothing under it remounts): it takes the
+ * right-click and hands it to the body, which sits beside it once loaded.
+ */
 export function RowsContextMenu(props: RowsContextMenuProps) {
   const B = useBody();
-  const pending = useRef<{ x: number; y: number; id: string | null } | null>(null);
+  const opener = useRef<((at: MenuAt) => void) | null>(null);
+  const pending = useRef<MenuAt | null>(null);
   useEffect(() => {
     const at = pending.current;
-    if (!B || !at) return;
+    if (!B || !at || !opener.current) return;
     pending.current = null;
-    const target =
-      (at.id ? document.querySelector(`[data-menu-id="${CSS.escape(at.id)}"]`) : null) ??
-      document.elementFromPoint?.(at.x, at.y);
-    target?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: at.x, clientY: at.y, button: 2 }));
+    opener.current(at);
   }, [B]);
-  if (B) return <B.ContextRows {...props} />;
-  if (props.disabled) return props.children;
-  return chain(props.children, {
-    onPointerEnter: warmMenus,
-    onContextMenu: (event) => {
-      const mouse = event as unknown as MouseEvent;
-      event.preventDefault();
-      const row = (event.target as Element | null)?.closest?.("[data-menu-id]");
-      pending.current = { x: mouse.clientX, y: mouse.clientY, id: row?.getAttribute("data-menu-id") ?? null };
-      if (menuChunk.loaded()) wakeNow();
-      else menuChunk.load().then(wakeNow, () => {});
-    },
-  });
+  const child = props.disabled
+    ? props.children
+    : chain(props.children, {
+        onPointerEnter: warmMenus,
+        onContextMenu: (event) => {
+          const target = event.target instanceof Element ? event.target : null;
+          const row = (target?.closest("[data-menu-id]") as HTMLElement | null) ?? null;
+          const id = row?.getAttribute("data-menu-id") ?? null;
+          event.preventDefault();
+          if (!props.rowsFor(id)?.length) return;
+          event.stopPropagation();
+          const mouse = event.nativeEvent as MouseEvent;
+          let x = mouse.clientX;
+          let y = mouse.clientY;
+          // The keyboard's context-menu key: under the row it came from.
+          if (x === 0 && y === 0 && row) {
+            const rect = row.getBoundingClientRect();
+            x = rect.left;
+            y = rect.bottom;
+          }
+          const at = { x, y, id, row };
+          if (opener.current) opener.current(at);
+          else {
+            pending.current = at;
+            if (menuChunk.loaded()) wakeNow();
+            else menuChunk.load().then(wakeNow, () => {});
+          }
+        },
+      });
+  return (
+    <>
+      {child}
+      {B && !props.disabled ? <B.ContextRows {...props} opener={opener} /> : null}
+    </>
+  );
 }
 
 export type LazyPopoverProps = {
@@ -225,7 +255,7 @@ export type LazyPopoverProps = {
   anchor?: Element | { getBoundingClientRect: () => DOMRect } | null;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  tip?: { label: string; shortcut?: string };
+  tip?: TipProps;
   align?: "start" | "center" | "end";
   side?: "top" | "bottom" | "left" | "right";
   sideOffset?: number;
@@ -262,5 +292,5 @@ export function LazyPopover(props: LazyPopoverProps) {
     },
     { "aria-haspopup": "dialog", "aria-expanded": false },
   );
-  return props.tip ? <Tip label={props.tip.label} shortcut={props.tip.shortcut}>{cold}</Tip> : cold;
+  return props.tip ? <Tip label={props.tip.label} shortcut={props.tip.shortcut} side={props.tip.side}>{cold}</Tip> : cold;
 }

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HeaderModel } from "../lib/threadHeaderModel";
@@ -50,7 +50,6 @@ function strip(over: Partial<ComponentProps<typeof ThreadHeaderStrip>> = {}) {
       renamingId={null}
       onStartRename={() => {}}
       onRename={() => {}}
-      onContextMenu={() => {}}
       activeRef={() => {}}
       {...over}
     />
@@ -60,8 +59,13 @@ function strip(over: Partial<ComponentProps<typeof ThreadHeaderStrip>> = {}) {
 function mount(over: Partial<ComponentProps<typeof ThreadHeaderStrip>> = {}) {
   const onSelect = vi.fn();
   const onContextMenu = vi.fn();
-  const view = render(strip({ onSelect, onContextMenu, ...over }));
-  return { onSelect, onContextMenu, ...view };
+  const menu = {
+    rowsFor: (id: string | null) => (id ? [{ kind: "item" as const, id: "rename", label: `Rename ${model.live.find((c) => c.id === id)?.thread.title}` }] : null),
+    onPick: vi.fn(),
+    onOpenChange: (open: boolean, id: string | null) => open && onContextMenu(id),
+  };
+  const view = render(strip({ onSelect, menu, ...over }));
+  return { onSelect, onContextMenu, menu, ...view };
 }
 
 const tab = (name: string) => screen.getByRole("tab", { name: new RegExp(name) });
@@ -69,21 +73,21 @@ const tab = (name: string) => screen.getByRole("tab", { name: new RegExp(name) }
 afterEach(cleanup);
 
 describe("ThreadHeaderStrip pointer", () => {
-  it("a right press does not select, and the contextmenu that follows opens that chip's menu", () => {
+  it("a right press does not select, and the contextmenu that follows opens that chip's menu", async () => {
     const { onSelect, onContextMenu } = mount();
     fireEvent.pointerDown(tab("Beta"), { button: 2 });
     expect(onSelect).not.toHaveBeenCalled();
     fireEvent.contextMenu(tab("Beta"));
-    expect(onContextMenu).toHaveBeenCalledTimes(1);
-    expect(onContextMenu.mock.calls[0]![0].id).toBe("b");
+    await waitFor(() => expect(onContextMenu).toHaveBeenCalledWith("b"));
+    expect(await screen.findByText("Rename Beta")).toBeTruthy();
   });
 
-  it("a Control-click is a right-click on the Mac: no select, the menu", () => {
+  it("a Control-click is a right-click on the Mac: no select, the menu", async () => {
     const { onSelect, onContextMenu } = mount();
     fireEvent.pointerDown(tab("Gamma"), { button: 0, ctrlKey: true });
     expect(onSelect).not.toHaveBeenCalled();
     fireEvent.contextMenu(tab("Gamma"));
-    expect(onContextMenu.mock.calls[0]![0].id).toBe("c");
+    await waitFor(() => expect(onContextMenu).toHaveBeenCalledWith("c"));
   });
 
   it("a primary press and release selects, on the release", () => {
@@ -173,10 +177,11 @@ describe("ThreadHeaderStrip chip", () => {
     expect((screen.getByRole("textbox", { name: "Thread title" }) as HTMLInputElement).value).toBe("Beta");
   });
 
-  it("a right-click opens the chip's menu with its rows", async () => {
-    mount({ menu: (c) => <div role="menuitem">Rename {c.thread.title}</div> });
+  it("a right-click opens the chip's menu with its rows, and a pick names the chip", async () => {
+    const { menu } = mount();
     fireEvent.contextMenu(tab("Gamma"));
-    expect(await screen.findByText("Rename Gamma")).toBeTruthy();
+    fireEvent.click(await screen.findByText("Rename Gamma"));
+    expect(menu.onPick).toHaveBeenCalledWith("rename", "c");
   });
 
   it("reads the chip's status from its thread: the tree, the activity, the tally", () => {

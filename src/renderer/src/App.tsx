@@ -260,9 +260,7 @@ import {
 } from "./lib/tcserver/store";
 import { rightPanel } from "./lib/rightPanel";
 import { headerNeighbour } from "./lib/threadHeaderModel";
-import type { ThreadAction } from "./chrome/ThreadHeader";
 import type { ThreadRules } from "@server/shared/rules";
-import type { TabThreadAction } from "./chrome/TitleBar";
 import * as serverCommands from "./lib/tcserver/commands";
 import { requestTranscriptJump } from "./lib/transcriptJump";
 import { installAppFacade } from "./lib/appFacade";
@@ -2639,25 +2637,6 @@ export default function App() {
     [],
   );
 
-  /** Pause / Continue / Stop from a tab's context menu, on its focused thread. */
-  // Leaves with chrome/Popover.tsx: area A12's thread menu handles these actions itself (its plan, slice 2).
-  const onTabThreadAction = useCallback((tabId: string, action: TabThreadAction) => {
-    const tab = workspaceTabsStore.getState().tabs.find((entry) => entry.id === tabId);
-    if (!tab) return;
-    const ids = leafIds(tab.layout);
-    const session =
-      sessionStore.getSnapshot().find((s) => s.id === tab.focusedId) ??
-      sessionStore.getSnapshot().find((s) => ids.includes(s.id));
-    if (!session) return;
-    const run =
-      action === "pause"
-        ? serverCommands.pause(session.id)
-        : action === "resume"
-          ? serverCommands.resume(session.id)
-          : serverCommands.interrupt(session.id);
-    void run.catch(() => undefined);
-  }, []);
-
   /** The empty session's type picker. A draft becomes a real thread of that
    *  type at once, so its rules and tune have somewhere to live. */
   const onThreadTypeChange = useCallback((sessionId: string, threadType: ThreadType) => {
@@ -3130,20 +3109,6 @@ export default function App() {
     },
     [appendTab, createSessionHere],
   );
-  // Leaves with chrome/Popover.tsx: area A12's thread menu handles these actions itself (its plan, slice 2).
-  const onHeaderAction = useCallback((sessionId: string, action: ThreadAction) => {
-    const run =
-      action === "pause"
-        ? serverCommands.pause(sessionId)
-        : action === "resume"
-          ? serverCommands.resume(sessionId)
-          : action === "compact"
-            ? serverCommands.compact(sessionId)
-            : action === "killBackground"
-              ? serverCommands.killBackground(sessionId)
-              : serverCommands.interrupt(sessionId);
-    void run.catch(() => undefined);
-  }, []);
   const onHeaderSetRules = useCallback((sessionId: string, threadRules: ThreadRules | null) => {
     setSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, threadRules } : s)));
     void serverCommands.setThreadRules(sessionId, threadRules).catch(() => undefined);
@@ -3169,7 +3134,6 @@ export default function App() {
             onRename: onRenameHistorySession,
             onArchive: onHeaderArchive,
             onDelete: onHeaderDelete,
-            onAction: onHeaderAction,
             onSetRules: onHeaderSetRules,
             onRestore: onRestoreThread,
             onNew: onHeaderNew,
@@ -3188,7 +3152,6 @@ export default function App() {
       onRenameHistorySession,
       onHeaderArchive,
       onHeaderDelete,
-      onHeaderAction,
       onHeaderSetRules,
       onRestoreThread,
       onHeaderNew,
@@ -3683,7 +3646,6 @@ export default function App() {
           onRemoveFromGroup={onRemoveFromGroup}
           onUngroup={onUngroup}
           onGroupNewTab={onGroupNewTab}
-          onTabThreadAction={onTabThreadAction}
           onGroupClose={onGroupCloseTabs}
           onGroupMoveToNewWindow={onGroupMoveToNewWindow}
           onSelectProject={deckLayout ? onSelectProject : undefined}

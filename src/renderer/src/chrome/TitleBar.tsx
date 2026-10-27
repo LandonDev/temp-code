@@ -6,6 +6,8 @@ import { environmentOfCwd } from "../lib/tcserver/projects";
 import {
   ChevronLeft,
   ChevronRight,
+  Folder,
+  FolderPlus,
   GitCompare,
   Inbox,
   PanelLeft,
@@ -14,6 +16,7 @@ import {
   Settings,
   StickyNote,
   Terminal,
+  Ungroup,
   X,
 } from "./icons";
 import {
@@ -61,7 +64,8 @@ import {
 import { TabGroupMenu, type TabGroupMenuAction } from "./TabGroupMenu";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { CwdPicker } from "./CwdPicker";
-import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
+import { RowsContextMenu, tidy, type MenuRow } from "./menuRows";
+import { useThreadMenu } from "./useThreadMenu";
 import { ProjectLogoIcon } from "./ProjectLogoIcon";
 import { ProjectMascot } from "./ProjectMascot";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
@@ -71,7 +75,6 @@ import { useSortable, type SortableDropTarget } from "../hooks/useSortable";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { HarnessIcon } from "./HarnessIcon";
 import { TabIndicator, type TabThread } from "./TabIndicator";
-import { threadStateOf } from "../components/ui/status";
 import { ThreadHeader, type ThreadHeaderProps } from "./ThreadHeader";
 import type { ThreadType } from "../lib/tcserver/types";
 import { THREAD_GLYPHS, THREAD_LABELS, THREAD_TINTS } from "../surfaces/threads/threadTypes";
@@ -111,32 +114,6 @@ export type Tab = {
   updatedAt?: number;
 };
 
-export type TabThreadAction = "pause" | "resume" | "stop";
-
-/** Pause / Continue / Stop, by what the thread is doing now. */
-function threadActionItems(status: TabThread["status"] | undefined): ExplorerMenuItem[] {
-  return tabThreadActions(status).map((action) => ({
-    kind: "item",
-    id: `thread:${action}`,
-    label: THREAD_ACTION_LABEL[action],
-  }));
-}
-
-/** The verbs by the thread's state in the one vocabulary (`threadStateOf`). */
-export function tabThreadActions(status: TabThread["status"] | undefined): TabThreadAction[] {
-  switch (threadStateOf(status)) {
-    case "working":
-      return ["pause", "stop"];
-    case "paused":
-      return ["resume", "stop"];
-    case "waiting":
-    case "watching":
-      return ["stop"];
-    default:
-      return [];
-  }
-}
-
 /** The group menu's "New …" rows for the four non-chat thread types;
  *  "New tab in group" stays the chat. */
 const NEW_THREAD_ITEMS = (["planning", "implementation", "research", "orchestration"] as const).map(
@@ -148,11 +125,12 @@ const NEW_THREAD_ITEMS = (["planning", "implementation", "research", "orchestrat
   }),
 );
 
-const THREAD_ACTION_LABEL: Record<TabThreadAction, string> = {
-  pause: "Pause",
-  resume: "Continue",
-  stop: "Stop",
-};
+/** The thread a tab shows: its focused pane's, else its first. */
+function tabThreadId(tabId: string): string | null {
+  const tab = workspaceTabsStore.getState().tabs.find((entry) => entry.id === tabId);
+  if (!tab) return null;
+  return tab.focusedId ?? leafIds(tab.layout)[0] ?? null;
+}
 
 type Props = {
   tabs: Tab[];
@@ -185,7 +163,6 @@ type Props = {
   onRemoveFromGroup?: (tabId: string) => void;
   onUngroup?: (groupId: string) => void;
   onGroupNewTab?: (groupId: string, threadType?: ThreadType) => void;
-  onTabThreadAction?: (tabId: string, action: TabThreadAction) => void;
   /** Deck mode: temp-code's thread strip and heading controls, in the strip's place. */
   header?: ThreadHeaderProps;
   onGroupClose?: (tabIds: string[]) => void;
@@ -334,7 +311,6 @@ function TitleTabItem({
   sortable,
   onSelect,
   onClose,
-  onContextMenu,
   dropTarget,
   groupPosition,
   itemRef,
@@ -348,7 +324,6 @@ function TitleTabItem({
   sortable: SortableApi;
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
-  onContextMenu?: (event: ReactMouseEvent<HTMLDivElement>) => void;
   dropTarget?: TabDropTarget | null;
   groupPosition?: TabGroupPosition;
   itemRef?: (el: HTMLDivElement | null) => void;
@@ -395,11 +370,7 @@ function TitleTabItem({
         onSelect(tab.id);
         if (canDrag) sortable.onItemPointerDown(tab.id, event);
       }}
-      onContextMenu={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onContextMenu?.(event);
-      }}
+      data-menu-id={tab.id}
     >
       {showStart ? (
         <div className="pointer-events-none absolute inset-y-1.5 left-0 z-20 w-0.5 rounded-full bg-accent" />
@@ -599,7 +570,6 @@ function TabGroupBlock({
   dropTarget,
   onSelect,
   onClose,
-  onTabContextMenu,
   onToggleCollapse,
   onGroupContextMenu,
   deckLayout = false,
@@ -621,7 +591,6 @@ function TabGroupBlock({
   dropTarget?: TabDropTarget | null;
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
-  onTabContextMenu: (tab: Tab, event: ReactMouseEvent<HTMLDivElement>) => void;
   onToggleCollapse: () => void;
   onGroupContextMenu: (event: ReactMouseEvent<HTMLButtonElement>) => void;
   deckLayout?: boolean;
@@ -718,7 +687,6 @@ function TabGroupBlock({
                 sortable={sortable}
                 onSelect={onSelect}
                 onClose={onClose}
-                onContextMenu={(event) => onTabContextMenu(tab, event)}
                 dropTarget={dropTargetFor(sortable.dropTarget, "tab", tab.id)}
                 groupPosition={position}
                 deckLayout={deckLayout}
@@ -941,7 +909,6 @@ function TitleBarComponent({
   onRemoveFromGroup,
   onUngroup,
   onGroupNewTab,
-  onTabThreadAction,
   header,
   onGroupClose,
   onGroupMoveToNewWindow,
@@ -1030,11 +997,7 @@ function TitleBarComponent({
     groupId: string;
     tabIds: string[];
   } | null>(null);
-  const [tabMenu, setTabMenu] = useState<{
-    x: number;
-    y: number;
-    tabId: string;
-  } | null>(null);
+  const threadMenu = useThreadMenu({ onScreen: (id) => tabThreadId(activeId) === id });
 
   const groupSummaries = segments.flatMap((segment) => {
     if (segment.kind !== "group") return [];
@@ -1122,54 +1085,36 @@ function TitleBarComponent({
     ],
   );
 
-  const onTabContextMenu = useCallback(
-    (tab: Tab, event: ReactMouseEvent<HTMLDivElement>) => {
-      setTabMenu({ x: event.clientX, y: event.clientY, tabId: tab.id });
-    },
-    [],
-  );
-
-  const tabMenuItems: ExplorerMenuItem[] = (() => {
-    if (!tabMenu) return [];
-    const tab = tabs.find((entry) => entry.id === tabMenu.tabId);
-    if (!tab) return [];
-    const items = threadActionItems(tab.thread?.status);
-    if (items.length > 0) items.push({ kind: "sep" });
-    items.push({ kind: "item", id: "new-group", label: "Add to new group" });
+  /** A tab's right-click: its focused thread's rows (lib/threadMenu.ts), then the group rows. */
+  const tabMenuRows = (tabId: string | null): MenuRow[] | null => {
+    const tab = tabId ? tabs.find((entry) => entry.id === tabId) : undefined;
+    if (!tab) return null;
+    const threadId = tabThreadId(tab.id);
+    const rows: MenuRow[] = threadId ? [...threadMenu.rowsFor(threadId), { kind: "sep" }] : [];
+    rows.push({ kind: "item", id: "new-group", label: "Add to new group", icon: FolderPlus });
     const others = groupSummaries.filter(
       (group) =>
         group.id !== tab.groupId &&
         canJoinTabGroup(tabs, tab.id, group.id, projectOf),
     );
     if (others.length > 0) {
-      items.push({ kind: "sep" });
-      for (const group of others) {
-        items.push({
-          kind: "item",
-          id: `add:${group.id}`,
-          label: `Add to ${group.label}`,
-        });
-      }
+      rows.push({ kind: "sep" });
+      for (const group of others) rows.push({ kind: "item", id: `add:${group.id}`, label: `Add to ${group.label}`, icon: Folder });
     }
-    if (tab.groupId) {
-      items.push({ kind: "sep" });
-      items.push({ kind: "item", id: "remove", label: "Remove from group" });
-    }
-    return items;
-  })();
+    if (tab.groupId) rows.push({ kind: "sep" }, { kind: "item", id: "remove", label: "Remove from group", icon: Ungroup });
+    return tidy(rows);
+  };
 
-  const onTabMenuPick = useCallback(
-    (id: string) => {
-      if (!tabMenu) return;
-      const tabId = tabMenu.tabId;
-      setTabMenu(null);
-      if (id.startsWith("thread:")) onTabThreadAction?.(tabId, id.slice(7) as TabThreadAction);
-      else if (id === "new-group") onAddToNewGroup?.(tabId);
-      else if (id === "remove") onRemoveFromGroup?.(tabId);
-      else if (id.startsWith("add:")) onAddToGroup?.(tabId, id.slice(4));
-    },
-    [onAddToGroup, onAddToNewGroup, onRemoveFromGroup, onTabThreadAction, tabMenu],
-  );
+  const onTabMenuPick = (id: string, tabId: string | null) => {
+    if (!tabId) return;
+    if (id === "new-group") onAddToNewGroup?.(tabId);
+    else if (id === "remove") onRemoveFromGroup?.(tabId);
+    else if (id.startsWith("add:")) onAddToGroup?.(tabId, id.slice(4));
+    else {
+      const threadId = tabThreadId(tabId);
+      if (threadId) threadMenu.onPick(threadId, id);
+    }
+  };
 
   const onGroupRename = useCallback((projectKey: string, label: string) => {
     saveTabGroupLabel(projectKey, label);
@@ -1436,6 +1381,12 @@ function TitleBarComponent({
               }}
             />
           ) : (
+            <RowsContextMenu
+              label="Tab actions"
+              rowsFor={tabMenuRows}
+              onPick={onTabMenuPick}
+              onOpenChange={(open, tabId) => threadMenu.onOpenChange(tabId ? tabThreadId(tabId) : null, open)}
+            >
             <div
               ref={setTabStripRef}
               className="scrollbar-none flex h-full min-w-0 cursor-default items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none pl-[var(--strip-pad-l,8px)] pr-[var(--strip-pad-r,8px)]"
@@ -1492,7 +1443,6 @@ function TitleBarComponent({
                     )}
                     onSelect={onSelect}
                     onClose={onClose}
-                    onTabContextMenu={onTabContextMenu}
                     onToggleCollapse={() => toggleGroupCollapse(segment.key)}
                     onGroupContextMenu={(event) =>
                       onGroupContextMenu(segment, event)
@@ -1530,8 +1480,7 @@ function TitleBarComponent({
                     sortable={sortable}
                     onSelect={onSelect}
                     onClose={onClose}
-                    onContextMenu={(event) => onTabContextMenu(tab, event)}
-                    dropTarget={dropTargetFor(
+                        dropTarget={dropTargetFor(
                       sortable.dropTarget,
                       "tab",
                       tab.id,
@@ -1549,6 +1498,7 @@ function TitleBarComponent({
               );
             })}
             </div>
+            </RowsContextMenu>
           )}
         </div>
 
@@ -1620,16 +1570,7 @@ function TitleBarComponent({
           />
         ) : null}
 
-        {tabMenu ? (
-          <ExplorerMenu
-            x={tabMenu.x}
-            y={tabMenu.y}
-            items={tabMenuItems}
-            ariaLabel="Tab actions"
-            onPick={onTabMenuPick}
-            onClose={() => setTabMenu(null)}
-          />
-        ) : null}
+        {threadMenu.dialogs}
 
         {/* Deck mode keeps New in the sidebar and Terminal in the title bar,
             so the strip carries no trailing actions. */}
