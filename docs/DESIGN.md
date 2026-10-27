@@ -213,8 +213,10 @@ instant.
 
 The right side is one panel, one width (320px, resizable), one header, with
 sections that exist only when they have content (Activity, Agents, Changes,
-Notes) and a segmented control that lists only those sections; its default
-section follows the thread's state. It is a docked column, not a drawer or
+Notes) and a segmented control of icon segments that lists only those
+sections, each named on hover and by its accessible name; its default
+section follows the thread's state. It yields to the thread, which never
+goes under 360px beside it. It is a docked column, not a drawer or
 a sheet, and it never animates its width (it toggles; the content fades
 over `--dur-fast`). The bottom dock holds the terminal and the dev servers
 pane. Nothing else floats at the side of a thread.
@@ -290,7 +292,7 @@ being produced shimmers (`TextShimmer`); nothing else does.
 | Tooltip | fade + scale 0.95→1, `--dur-base`; moves between triggers instead of reopening | fade, `--dur-fast` | fade |
 | Toast (sonner) | rise and fade, `--dur-base` | fade, `--dur-fast` | fade |
 | Right panel, rail | no width animation; content fades `--dur-fast` | same | same |
-| Tab indicator | segmented: the pill glides on `SPRING_LAYOUT_CSS`; line tabs and the tab strip: instant | — | jump |
+| Tab indicator | segmented: the pill glides on `SPRING_LAYOUT_CSS` (`TabsIndicator`); line tabs and the tab strip: instant | — | jump |
 | Press | scale 0.985, `--dur-fast` | release | colour only |
 | Fold (collapsible) | height, `--dur-slow` `--ease-out` | height, `--dur-base` | opacity |
 | Disclosure chevron | rotates with its fold, `--dur-base` `--ease-out` | same | none |

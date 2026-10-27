@@ -198,7 +198,10 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   panel" on hover, View › Show Panel is greyed and ⌘⇧R does nothing
   (ThreadView measures its row; `rightPanel.setRoom`, `usePanelRoom`). On
   `bg-sidebar` with the `border-border` hairline; a 36px
-  header of `Tabs variant="line"` and a close button; the section's body
+  header of a segmented control (`PanelSections`: `Tabs variant="default"`
+  of 28px icon segments, each named by its aria-label and a tooltip, the
+  pill gliding between them; seven fit at 260px, so nothing scrolls) and a
+  close button; the section's body
   below (`ActivitySection`, `FleetList`, `NotesBody`, `ChangesPanel`,
   `FileTree`, `BuildPanel`, `DebugPanel`). It toggles, never tweens its width; the body fades in
   over `--dur-fast`. Closed is closed: the thread header's button, ⌘⇧R and

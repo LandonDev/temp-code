@@ -1,9 +1,9 @@
 import { lazy, Suspense, useContext, useMemo } from "react";
 import { Button } from "@renderer/components/ui/button";
 import { Spinner } from "@renderer/components/ui/spinner";
-import { Tabs, TabsList, TabsTrigger } from "@renderer/components/ui/tabs";
+import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "@renderer/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
-import { X } from "../chrome/icons";
+import { Activity, Bug, Folder, GitCompare, Hammer, StickyNote, Users, X, type IconComponent } from "../chrome/icons";
 import { BuildPanel } from "../chrome/rail/BuildPanel";
 import { ChangesPanel } from "../chrome/rail/ChangesPanel";
 import { FileTree } from "../chrome/FileTree";
@@ -40,6 +40,50 @@ import { SessionActionsContext } from "./threadChat";
 const DebugPanel = lazy(() => import("../chrome/rail/DebugPanel"));
 // Listed for a dev build, and for any thread that asked for it ("Debug this file").
 const DEBUG_SECTION = import.meta.env.DEV;
+
+/** Each section's segment glyph; its name is the segment's label and tooltip. */
+const SECTION_ICON: Record<Section, IconComponent> = {
+  activity: Activity,
+  agents: Users,
+  changes: GitCompare,
+  notes: StickyNote,
+  files: Folder,
+  build: Hammer,
+  debug: Bug,
+};
+
+/** The header's segmented control: one 28px icon segment per section, named
+ *  by its aria-label and a tooltip, the pill gliding between them. */
+export function PanelSections({
+  sections,
+  value,
+  onChange,
+}: {
+  sections: readonly Section[];
+  value: Section;
+  onChange: (section: Section) => void;
+}) {
+  return (
+    <Tabs value={value} onValueChange={(next) => onChange(next as Section)} className="min-w-0 flex-1">
+      <TabsList aria-label="Panel sections" className="relative p-0.5">
+        <TabsIndicator />
+        {sections.map((s) => {
+          const Icon = SECTION_ICON[s];
+          return (
+            <Tooltip key={s}>
+              <TooltipTrigger
+                render={<TabsTrigger value={s} aria-label={SECTION_LABEL[s]} className={`size-7 flex-none p-0 ${TABS_PILL_TRIGGER}`} />}
+              >
+                <Icon className="size-3.5" strokeWidth={1.5} />
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{SECTION_LABEL[s]}</TooltipContent>
+            </Tooltip>
+          );
+        })}
+      </TabsList>
+    </Tabs>
+  );
+}
 
 export type RightPanelProps = {
   session: Session;
@@ -98,19 +142,11 @@ export function RightPanel(props: RightPanelProps) {
       style={{ width: props.width ?? state.width, contain: "strict" }}
     >
       <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border pr-1.5 pl-2">
-        <Tabs
+        <PanelSections
+          sections={available.sections}
           value={section}
-          onValueChange={(next) => rightPanel.set(session.id, { section: next as Section })}
-          className="min-w-0 flex-1"
-        >
-          <TabsList variant="line" className="h-9 w-full justify-start overflow-x-auto">
-            {available.sections.map((s) => (
-              <TabsTrigger key={s} value={s} className="h-9 flex-none text-[12px]">
-                {SECTION_LABEL[s]}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+          onChange={(next) => rightPanel.set(session.id, { section: next })}
+        />
         <Tooltip>
           <TooltipTrigger
             render={

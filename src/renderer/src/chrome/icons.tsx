@@ -12,6 +12,7 @@ import SlashIcon from "@hugeicons/core-free-icons/SlashIcon";
 import AddSquareIcon from "@hugeicons/core-free-icons/AddSquareIcon";
 import AlertCircleIcon from "@hugeicons/core-free-icons/AlertCircleIcon";
 import AppWindowIcon from "@hugeicons/core-free-icons/AppWindowIcon";
+import Activity01Icon from "@hugeicons/core-free-icons/Activity01Icon";
 import Bug01Icon from "@hugeicons/core-free-icons/Bug01Icon";
 import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
 import Layers01Icon from "@hugeicons/core-free-icons/Layers01Icon";
@@ -112,6 +113,7 @@ import InformationCircleIcon from "@hugeicons/core-free-icons/InformationCircleI
 import UndoIcon from "@hugeicons/core-free-icons/UndoIcon";
 import UngroupItemsIcon from "@hugeicons/core-free-icons/UngroupItemsIcon";
 import WholeWordIcon from "@hugeicons/core-free-icons/WholeWordIcon";
+import HammerIcon from "@hugeicons/core-free-icons/HammerIcon";
 import Wrench01Icon from "@hugeicons/core-free-icons/Wrench01Icon";
 import { forwardRef, type Ref } from "react";
 
@@ -171,6 +173,7 @@ const UnfoldVerticalIcon: IconSvgElement = [
   ["path", { d: "M7 17L12 22L17 17", ...stroke, key: "5" }],
 ];
 
+export const Activity = wrap(Activity01Icon, "Activity");
 export const Bug = wrap(Bug01Icon, "Bug");
 export const Clock = wrap(Clock01Icon, "Clock");
 export const Eye = wrap(ViewIcon, "Eye");
@@ -286,5 +289,6 @@ export const UnfoldVertical = wrap(UnfoldVerticalIcon, "UnfoldVertical");
 export const Ungroup = wrap(UngroupItemsIcon, "Ungroup");
 export const WandSparkles = wrap(MagicWand01Icon, "WandSparkles");
 export const WholeWord = wrap(WholeWordIcon, "WholeWord");
+export const Hammer = wrap(HammerIcon, "Hammer");
 export const Wrench = wrap(Wrench01Icon, "Wrench");
 export const X = wrap(Cancel01Icon, "X");

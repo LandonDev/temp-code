@@ -112,7 +112,7 @@ describe("RightPanel", () => {
     state.agents = [agent("a1", "running"), agent("a2", "done")];
     rightPanel.open("s1");
     render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
-    const tabs = screen.getAllByRole("tab").map((t) => t.textContent);
+    const tabs = screen.getAllByRole("tab").map((t) => t.getAttribute("aria-label"));
     expect(tabs).toEqual(["Activity", "Agents", "Changes", "Notes", "Files", "Build", "Debug"]); // a dev build (vitest) lists Debug
     // The Activity section's subagents row opens the Agents section.
     fireEvent.click(screen.getByTestId("activity-body"));
@@ -123,6 +123,20 @@ describe("RightPanel", () => {
     expect(rightPanel.get("s1").section).toBe("agents");
     fireEvent.click(screen.getByRole("tab", { name: "Notes" }));
     expect(screen.getByTestId("notes-body")).toBeTruthy();
+  });
+
+  it("the header is a segmented control of named icon segments, with no scroll box", () => {
+    rightPanel.open("s1");
+    render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
+    const list = screen.getByRole("tablist", { name: "Panel sections" });
+    expect(list.getAttribute("data-variant")).toBe("default");
+    expect(list.className).not.toMatch(/overflow/);
+    expect(list.querySelector("[data-slot=tabs-indicator]")).toBeTruthy();
+    for (const tab of screen.getAllByRole("tab")) {
+      expect(tab.getAttribute("aria-label")).toBeTruthy();
+      expect(tab.textContent).toBe("");
+      expect(tab.querySelector("svg")).toBeTruthy();
+    }
   });
 
   it("a remembered section that no longer exists falls back to the default; the close button closes", () => {
@@ -151,7 +165,7 @@ describe("RightPanel", () => {
     const chat = { ...session, cwd: "~", projectId: null } as unknown as Session;
     rightPanel.open("s1");
     const r = render(<RightPanel session={chat} onOpenFile={noop} onOpenDiff={noop} />);
-    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Notes"]);
+    expect(screen.getAllByRole("tab").map((t) => t.getAttribute("aria-label"))).toEqual(["Notes"]);
     r.unmount();
   });
 
@@ -178,7 +192,7 @@ describe("RightPanel", () => {
     state.meta = { id: "s1", status: "idle", background: { tasks: [{ id: "t1", label: "x", kind: "shell", startedAt: 0 }], agents: [], batch: null, watchingSince: null } } as unknown as SessionMeta;
     rightPanel.open("s1");
     render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
-    expect(screen.getAllByRole("tab")[0].textContent).toBe("Activity");
+    expect(screen.getAllByRole("tab")[0].getAttribute("aria-label")).toBe("Activity");
     expect(screen.getByTestId("activity-body")).toBeTruthy();
   });
 });
