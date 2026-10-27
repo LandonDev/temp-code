@@ -7,6 +7,7 @@ import { sessionStore } from "../../lib/tcserver/store";
 import type { SessionMeta, ThreadType } from "../../lib/tcserver/types";
 import { planTasks, splitSections, type Section } from "../../lib/threads/planDoc";
 import { usePlanFile } from "../../hooks/usePlanFile";
+import { isSettledPlanning } from "../../hooks/usePlanReady";
 import { projectPlanComplete } from "@server/shared/projectPlan";
 import { loadProjectPlan, useProjectPlan } from "../../lib/projectPlan";
 import { MilestoneList, ProjectPlanCard, ProjectPlanPin } from "./ProjectPlanCard";
@@ -145,11 +146,16 @@ export function PlanView(props: ThreadViewProps) {
   const collapsed = hasDoc && !chatOpen;
 
   const [starting, setStarting] = useState(false);
-  const headerDetail = projectPlan
-    ? milestoneDetail
-    : tasks.length > 0
-      ? `${tasks.length} task${tasks.length === 1 ? "" : "s"}`
-      : null;
+  const taskCount = tasks.length > 0 ? `${tasks.length} task${tasks.length === 1 ? "" : "s"}` : null;
+  // Written, settled and no build yet: the plan awaits its build, as the tab and the rail say.
+  const planReady = !projectPlan && !spawned && hasDoc && isSettledPlanning(session);
+  const headerDetail = projectPlan ? (
+    milestoneDetail
+  ) : planReady ? (
+    <StatusMark state="plan-ready" detail={taskCount ?? undefined} data-plan-ready />
+  ) : (
+    taskCount
+  );
   const headerActions = projectPlan ? (
     <ProjectPlanPin
       projectId={session.projectId}

@@ -7,7 +7,7 @@ import type { ProjectMeta, SessionMeta } from '../lib/tcserver/types'
 import { mountProbe } from '../test/renderProbe'
 import { threadRow, type ThreadRow } from '../lib/workspaceSessions'
 import { nextPage } from '../lib/sidebarRows'
-import { ProjectRow, ThreadList } from './WorkspaceSessions'
+import { PlanReadyContext, ProjectRow, ThreadList } from './WorkspaceSessions'
 import { screen, within } from '@testing-library/react'
 import { resetMenus } from './menuRows'
 import { projectFolds } from '../lib/projectFolds'
@@ -347,6 +347,21 @@ describe('a thread row ends in its mark', () => {
     probe.rerender(list('idle'))
     expect(probe.container.querySelector('[role="button"]')).toBe(row)
     expect(document.activeElement).toBe(row)
+    probe.unmount()
+  })
+
+  it('a planning row whose plan awaits its build draws the Plan ready mark', () => {
+    const list = (ready: boolean) => (
+      <PlanReadyContext.Provider value={ready ? { t: true } : {}}>
+        <ThreadList threads={[threadRow(meta('t', { threadType: 'planning', planPath: '/p.md' }), { t: 1000 })]} actions={actions} className="" />
+      </PlanReadyContext.Provider>
+    )
+    const probe = mountProbe(list(true))
+    const mark = () => probe.container.querySelector<HTMLElement>('[data-slot="status-mark"]')
+    expect(mark()?.getAttribute('data-state')).toBe('plan-ready')
+    expect(mark()?.getAttribute('aria-label')).toBe('Plan ready')
+    probe.rerender(list(false))
+    expect(mark()).toBeNull()
     probe.unmount()
   })
 

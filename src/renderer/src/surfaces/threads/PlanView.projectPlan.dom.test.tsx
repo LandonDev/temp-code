@@ -119,6 +119,18 @@ describe("PlanView for a project plan", () => {
     expect(header.textContent).not.toContain("·");
     expect(screen.getByRole("button", { name: "Start build" })).toBeTruthy();
     expect(document.querySelector("[data-project-plan-card]")).toBeNull();
+    // Written and settled with no build: the Plan ready mark carries the count.
+    const mark = header.querySelector("[data-plan-ready]");
+    expect(mark?.getAttribute("data-state")).toBe("plan-ready");
+    expect(mark?.textContent).toBe("Plan ready2 tasks");
+  });
+
+  it("a plan still being written shows its count alone", () => {
+    doc = "# Plan\n\n## Tasks\n- [ ] a\n";
+    render(<PlanView {...props(session({ threadType: "planning", status: "running", planPath: "/repo/.temp-code/plan-x.md" }))} />);
+    const header = document.querySelector("[data-view-header]") as HTMLElement;
+    expect(header.querySelector("[data-plan-ready]")).toBeNull();
+    expect(header.textContent).toContain("1 task");
   });
 
   it("once the build exists the header opens it instead of offering Start", () => {
@@ -132,6 +144,7 @@ describe("PlanView for a project plan", () => {
       />,
     );
     expect(screen.queryByRole("button", { name: "Start build" })).toBeNull();
+    expect(document.querySelector("[data-plan-ready]")).toBeNull();
     const handoff = screen.getByRole("button", { name: /Implementation/ });
     expect(handoff.textContent).toContain("Working");
     fireEvent.click(handoff);

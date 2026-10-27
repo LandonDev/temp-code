@@ -101,15 +101,18 @@ export type RowStateInput = Pick<CardThread, "status"> &
  * A row's state in the one vocabulary (components/ui/status.tsx): the tree's
  * flags folded into a wire status, then `threadStateOf`. A paused tree reads
  * paused; waiting reads waiting unless the tree needs recovery; a failure the
- * tree has not moved past reads failed; a settled root with live subagents
- * reads watching, other live work under it working. The glyph, word and tone come from `StatusMark` alone, and a row
+ * tree has not moved past reads failed; a plan awaiting its build reads
+ * plan-ready; a settled root with live subagents reads watching, other live
+ * work under it working. The glyph, word and tone come from `StatusMark` alone, and a row
  * draws a mark only where `marksAtRest` says so.
  */
-export function rowState(t: RowStateInput): ThreadState {
+export function rowState(t: RowStateInput, planReady = false): ThreadState {
   if (t.status === "paused" || t.treeHasPaused) return "paused";
   if (t.status === "waiting" && !t.treeCanContinue) return "waiting";
   if (!t.treeHasLiveWork && (t.status === "error" || t.treeCanContinue)) return "failed";
-  if (settledWithAgents(threadStateOf(t.status), t.background)) return "watching";
+  const own = threadStateOf(t.status, { planReady });
+  if (own === "plan-ready") return own;
+  if (settledWithAgents(own, t.background)) return "watching";
   if (t.treeHasLiveWork && (t.status === "idle" || t.status === "done" || t.status == null)) return "working";
   return threadStateOf(t.status);
 }

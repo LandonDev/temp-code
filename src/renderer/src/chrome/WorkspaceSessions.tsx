@@ -1,7 +1,9 @@
 import { useHostsOffline } from "./hostOffline";
 import {
+  createContext,
   memo,
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -61,6 +63,7 @@ import { deleteProject } from "../lib/tcserver/projects";
 import { archiveLinked, projectHomeNow, renameLinked } from "../lib/projectHome";
 import { sessionPrefetch } from "../lib/sessionPrefetch";
 import { useSessionMetas } from "../lib/tcserver/store";
+import { usePlanReady } from "../hooks/usePlanReady";
 import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import { subagentRows, subagentRowsOpen, useSubagentRows } from "../stores/subagentRows";
@@ -233,9 +236,13 @@ type Fold = { count: number; open: boolean; noun: "subagent" | "thread"; onToggl
 
 /** A row's state and what its tooltip says about it: the word, then the
  *  activity, the failure or the round's tally (docs/DESIGN.md "Status vocabulary"). */
-export function rowMark(row: ThreadRow): { state: ThreadState; label: string } {
-  const state = rowState(row);
+/** The rail's planning threads whose plan awaits its build (usePlanReady), by id. */
+export const PlanReadyContext = createContext<Readonly<Record<string, boolean>>>({});
+
+export function rowMark(row: ThreadRow, planReady = false): { state: ThreadState; label: string } {
+  const state = rowState(row, planReady);
   const status = threadStatus({
+    planReady,
     status: row.status,
     treeHasPaused: row.treeHasPaused,
     treeCanContinue: row.treeCanContinue,
@@ -255,7 +262,7 @@ export function rowMark(row: ThreadRow): { state: ThreadState; label: string } {
  *  label (the row's tooltip says them), or the glyph and its word (`word`,
  *  the popover's rows). Nothing on a settled row. */
 function RowMark({ row, word }: { row: ThreadRow; word?: boolean }) {
-  const { state, label } = rowMark(row);
+  const { state, label } = rowMark(row, !!useContext(PlanReadyContext)[row.id]);
   if (!marksAtRest(state)) return null;
   if (word) return <StatusMark state={state} className="shrink-0" />;
   return <StatusMark state={state} word={false} aria-label={label} />;
@@ -317,8 +324,9 @@ export function ThreadRowView({
   const Glyph = child ? (row.agentType ? AGENT_GLYPHS[row.agentType] : row.threadType ? THREAD_GLYPHS[row.threadType] : null) : null;
   const live = child && row.running ? row.activity?.trim() : "";
   const editing = title != null;
+  const planReady = !!useContext(PlanReadyContext)[row.id];
   const verdict = word && row.failure && rowState(row) === "failed" ? row.failure : null;
-  const mark = rowMark(row);
+  const mark = rowMark(row, planReady);
   // Hover and focus put More over the glyph, so the row itself says the
   // word and its detail: the pointer anywhere on it, or the keyboard on it.
   const tip = !word && !editing && marksAtRest(mark.state) ? mark.label : null;
@@ -972,6 +980,7 @@ export default function WorkspaceSessions({
   onDeleteSession,
 }: Props) {
   const metas = useSessionMetas();
+  const planReady = usePlanReady(metas);
   const { workspaces, projects } = useWorkspaceCatalog();
   const lastSeen = useLastSeen();
   const seenFloor = useSeenFloor();
@@ -1191,6 +1200,7 @@ export default function WorkspaceSessions({
   };
 
   return (
+    <PlanReadyContext.Provider value={planReady}>
     <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-2 pt-2 pb-2">
         <RowsContextMenu
           label="Thread actions"
@@ -1246,5 +1256,6 @@ export default function WorkspaceSessions({
       ) : null}
       {threadMenu.dialogs}
     </div>
+    </PlanReadyContext.Provider>
   );
 }
