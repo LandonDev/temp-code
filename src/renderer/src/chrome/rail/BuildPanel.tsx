@@ -1,11 +1,19 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { BuildRun, BuildTarget, EffectiveBuild, RemoteStatus } from "@server/shared/build";
-import { cn } from "../../motion/cn";
-import { StatefulButton } from "../../motion/StatefulButton";
+import { ChoiceSelect, type Choice } from "@renderer/components/choice-select";
+import { Button } from "@renderer/components/ui/button";
+import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from "@renderer/components/ui/empty";
+import { Item, ItemActions, ItemContent } from "@renderer/components/ui/item";
+import { Progress } from "@renderer/components/ui/progress";
+import { ScrollArea } from "@renderer/components/ui/scroll-area";
+import { Skeleton } from "@renderer/components/ui/skeleton";
+import { Spinner } from "@renderer/components/ui/spinner";
+import { StatusMark, type ThreadState } from "@renderer/components/ui/status";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@renderer/components/ui/tooltip";
+import { cn } from "@renderer/lib/cn";
 import { FileRefMenu } from "../../surfaces/FileRefMenu";
-import { duration } from "../../lib/format";
+import { duration, useNow } from "../../lib/duration";
 import { invoke } from "../../lib/native";
-import { useClock } from "../../lib/turnClock";
 import { registry } from "../../lib/connection";
 import { useProjects } from "../../lib/tcserver/workspaces";
 import {
@@ -15,17 +23,19 @@ import {
   runBuild,
   useBuild,
   useSync,
+  type SyncProgress,
 } from "../../lib/projectRailStore";
 import { openBuildSettings } from "./buildSettings";
-import { RailSelect } from "./RailSelect";
 
 const targetKey = (projectId: string): string => `build-target:${projectId}`;
 
 /**
- * The Build tab: one button that runs the project's build command in
- * its checkout, the log streaming live underneath, and the files the
- * build produced at the bottom (click → Finder). The command comes from
- * the project override, the workspace setting, or detection.
+ * The right panel's Build section: one button that runs the project's
+ * build command in its checkout, one status row for the run, the log
+ * streaming live under it, and the files the build produced (click →
+ * Finder). The command comes from the project override, the workspace
+ * setting, or detection. This is the container: hooks and requests;
+ * `BuildView` draws.
  */
 export function BuildPanel({ projectId }: { projectId: string }) {
   const build = useBuild(projectId);
@@ -46,10 +56,6 @@ export function BuildPanel({ projectId }: { projectId: string }) {
   const [target, setTarget] = useState<string | null>(() => localStorage.getItem(targetKey(projectId)));
 
   const run = build?.run ?? null;
-  const lines = build?.lines ?? [];
-  const running = run?.status === "running";
-  // The shared second hand drives the live elapsed label, which renders only while running.
-  const now = useClock(running);
   const own = targets[0]?.branch ?? project?.branch ?? null;
   const chosen = target && targets.some((t) => t.branch === target) ? target : own;
   const branchArg = chosen && chosen !== own ? chosen : undefined;
@@ -117,233 +123,330 @@ export function BuildPanel({ projectId }: { projectId: string }) {
     }
   };
 
-  const groups = (["project", "checkout", "branch"] as const).map((kind) => ({
-    label: kind === "checkout" ? "Other checkouts" : kind === "branch" ? "Branches" : undefined,
-    items: targets
-      .filter((t) => t.kind === kind)
-      .map((t) => ({ value: t.branch, label: t.branch, title: t.cwd ?? undefined })),
-  }));
-
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-content/10 px-2 pr-1.5">
-        <RailSelect
-          value={chosen}
-          groups={groups}
-          disabled={running || targets.length < 2}
-          ariaLabel="Build branch"
-          title={
-            targets.find((t) => t.branch === chosen)?.cwd ??
-            (chosen ? `${chosen} — built in its own worktree` : undefined)
-          }
-          onChange={pick}
-        />
-        {running && run ? (
-          <span className="shrink-0 text-[11px] tabular-nums text-content/50">{duration(now - run.startedAt)}</span>
-        ) : null}
-        <StatefulButton
-          size="sm"
-          variant={running ? "secondary" : "primary"}
-          disabled={!effective || pulling}
-          onClick={() => void (running ? cancelBuild(projectId).catch(() => undefined) : start())}
-          className="shrink-0"
-        >
-          {running ? "Cancel" : "Build"}
-        </StatefulButton>
-      </div>
-      <RemoteLine
-        remote={remote}
-        pulling={pulling}
-        progress={pulling ? sync : undefined}
-        error={pullError}
-        disabled={running}
-        onPull={() => void pull()}
-      />
-      <div className="shrink-0 px-3 pb-2 text-[11px] leading-4">
-        {effective ? (
-          <div className="truncate font-mono text-content/50" title={effective.command}>
-            {effective.command}
-            {effective.source !== "project" ? <span className="text-content/40"> · {effective.source}</span> : null}
-          </div>
-        ) : effective === null ? (
-          <span className="text-content/50">
-            No build command yet ·{" "}
-            <button
-              type="button"
-              onClick={() => workspaceId && openBuildSettings(workspaceId)}
-              className="text-content/70 underline-offset-2 transition-colors hover:text-content hover:underline"
-            >
-              set one
-            </button>
-          </span>
-        ) : (
-          <span className="invisible">…</span>
-        )}
-      </div>
-      {error ? <p className="shrink-0 break-words px-3 pb-2 text-[11px] leading-snug text-danger">{error}</p> : null}
-      <Log lines={lines} runId={run?.id ?? null} />
-      {run && run.status !== "running" ? <StatusLine run={run} own={own} /> : null}
-      {run && run.outputs.length > 0 ? <Outputs outputs={run.outputs} /> : null}
-    </div>
+    <BuildView
+      targets={targets}
+      chosen={chosen}
+      own={own}
+      effective={effective}
+      run={run}
+      lines={build?.lines ?? []}
+      remote={remote}
+      pulling={pulling}
+      progress={pulling ? sync : undefined}
+      pullError={pullError}
+      error={error}
+      onPick={pick}
+      onBuild={() => void start()}
+      onCancel={() => void cancelBuild(projectId).catch(() => undefined)}
+      onFetch={() => void pull()}
+      onSetCommand={() => workspaceId && openBuildSettings(workspaceId)}
+      onReveal={(path) => void invoke("reveal_path", { path })}
+    />
   );
 }
 
-/** The chosen branch against origin, and the way to catch it up. Quiet
- *  when current; a count and a Fetch button when origin is ahead; git's
- *  own progress while fetching. The line keeps its height while the
- *  status loads or when there is nothing to say, so the command under it
- *  never jumps. */
-function RemoteLine({
+const STATE: Record<BuildRun["status"], ThreadState> = {
+  running: "working",
+  ok: "done",
+  failed: "failed",
+  cancelled: "stopped",
+};
+
+const TARGET_GROUP: Record<BuildTarget["kind"], string | undefined> = {
+  project: undefined,
+  checkout: "Other checkouts",
+  branch: "Branches",
+};
+
+/** The Build section drawn from its data: the tests and ui:preview render this without a host. */
+export function BuildView({
+  targets,
+  chosen,
+  own,
+  effective,
+  run,
+  lines,
+  remote,
+  pulling,
+  progress,
+  pullError,
+  error,
+  onPick,
+  onBuild,
+  onCancel,
+  onFetch,
+  onSetCommand,
+  onReveal,
+}: {
+  targets: BuildTarget[];
+  /** the branch the next build runs on */
+  chosen: string | null;
+  /** the project's own branch */
+  own: string | null;
+  /** the command; undefined while it loads, null when none is set or detected */
+  effective: EffectiveBuild | null | undefined;
+  run: BuildRun | null;
+  lines: string[];
+  remote: RemoteStatus | null | undefined;
+  pulling: boolean;
+  progress: SyncProgress | undefined;
+  pullError: string | null;
+  error: string | null;
+  onPick: (branch: string) => void;
+  onBuild: () => void;
+  onCancel: () => void;
+  onFetch: () => void;
+  onSetCommand: () => void;
+  onReveal: (path: string) => void;
+}) {
+  const running = run?.status === "running";
+  const options: Choice<string>[] = targets.map((t) => ({ value: t.branch, label: t.branch, group: TARGET_GROUP[t.kind] }));
+  if (chosen && !options.some((o) => o.value === chosen)) options.unshift({ value: chosen, label: chosen });
+  const where = targets.find((t) => t.branch === chosen)?.cwd ?? (chosen ? `${chosen} builds in its own worktree` : null);
+
+  return (
+    <TooltipProvider>
+      <div className="flex min-h-0 flex-1 flex-col" data-slot="build-section">
+        <div className="flex h-9 shrink-0 items-center gap-2 px-3">
+          {chosen ? (
+            <Tooltip>
+              <TooltipTrigger render={<span className="flex min-w-0 flex-1" />}>
+                <ChoiceSelect
+                  label="Build branch"
+                  size="sm"
+                  value={chosen}
+                  options={options}
+                  disabled={running || targets.length < 2}
+                  onChange={onPick}
+                  className="w-full min-w-0"
+                />
+              </TooltipTrigger>
+              {where ? <TooltipContent>{where}</TooltipContent> : null}
+            </Tooltip>
+          ) : (
+            <span className="flex-1" />
+          )}
+          {running ? (
+            <Button size="sm" variant="secondary" onClick={onCancel}>
+              Cancel
+            </Button>
+          ) : (
+            <Button size="sm" disabled={!effective || pulling} onClick={onBuild}>
+              Build
+            </Button>
+          )}
+        </div>
+        {error ? <p className="shrink-0 px-3 pb-2 text-xs break-words text-destructive">{error}</p> : null}
+        <OriginLine remote={remote} pulling={pulling} progress={progress} error={pullError} disabled={running} onFetch={onFetch} />
+        {effective === null ? (
+          <Empty className={cn("p-4", run && "flex-none")}>
+            <EmptyHeader>
+              <EmptyTitle className="text-[13px]">No build command</EmptyTitle>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button variant="link" size="sm" onClick={onSetCommand}>
+                Set one
+              </Button>
+            </EmptyContent>
+          </Empty>
+        ) : (
+          <div className="shrink-0 px-1">
+            <StatusRow run={run} own={own} effective={effective} />
+          </div>
+        )}
+        {run || lines.length > 0 ? <Log lines={lines} runId={run?.id ?? null} /> : null}
+        {run && run.outputs.length > 0 ? <Outputs outputs={run.outputs} onReveal={onReveal} /> : null}
+      </div>
+    </TooltipProvider>
+  );
+}
+
+/** The run's state in the status vocabulary with its detail, the command under it. Before a run, the command alone. */
+function StatusRow({ run, own, effective }: { run: BuildRun | null; own: string | null; effective: EffectiveBuild | undefined }) {
+  const running = run?.status === "running";
+  const now = useNow(running);
+  const command = effective?.command ?? run?.command;
+  const commandLine = command ? (
+    <span className="flex min-w-0 items-baseline text-xs text-muted-foreground">
+      <Tooltip>
+        <TooltipTrigger render={<span className="min-w-0 truncate font-mono" />}>{command}</TooltipTrigger>
+        <TooltipContent>{command}</TooltipContent>
+      </Tooltip>
+      {effective && effective.source !== "project" ? <span className="ml-2 shrink-0">{effective.source}</span> : null}
+    </span>
+  ) : (
+    <Skeleton className="h-3 w-40" />
+  );
+  if (!run) {
+    return (
+      <Item size="xs" className="min-h-7 flex-nowrap py-0">
+        <ItemContent className="min-w-0">{commandLine}</ItemContent>
+      </Item>
+    );
+  }
+  const took = duration((run.endedAt ?? (running && now > 0 ? now : Date.now())) - run.startedAt);
+  const facts: ReactNode[] = [];
+  if (run.status === "running" || run.status === "ok") facts.push(took);
+  if (run.status === "failed") {
+    if (run.exitCode !== undefined) facts.push(`exit ${run.exitCode}`);
+    facts.push(took);
+  }
+  if (run.branch && run.branch !== own) facts.push(run.branch);
+  return (
+    <Item size="xs" className="min-h-7 flex-nowrap py-1" data-build-status={run.status}>
+      <ItemContent className="min-w-0">
+        <StatusMark
+          state={STATE[run.status]}
+          className="text-[13px]"
+          detail={
+            facts.length > 0 ? (
+              <>
+                {facts.map((fact, i) => (
+                  <span key={i} className={i > 0 ? "ml-2" : undefined}>
+                    {fact}
+                  </span>
+                ))}
+              </>
+            ) : undefined
+          }
+        />
+        <span className="mt-0.5 block">{commandLine}</span>
+      </ItemContent>
+    </Item>
+  );
+}
+
+/** The chosen branch against origin, said only when origin has commits
+ *  this checkout lacks; git's own progress while fetching. */
+function OriginLine({
   remote,
   pulling,
   progress,
   error,
   disabled,
-  onPull,
+  onFetch,
 }: {
   remote: RemoteStatus | null | undefined;
   pulling: boolean;
-  progress: { line: string; percent: number | null } | undefined;
+  progress: SyncProgress | undefined;
   error: string | null;
   disabled: boolean;
-  onPull: () => void;
+  onFetch: () => void;
 }) {
-  const needs = !!remote && (remote.behind > 0 || remote.stale === true);
-  const text = pulling
-    ? (progress?.line ?? "Fetching…")
-    : !remote
-      ? null
-      : !remote.upstream
-        ? "Not on origin"
-        : remote.behind > 0
-          ? `↓${remote.behind} behind origin${remote.ahead > 0 ? ` · ↑${remote.ahead}` : ""}${remote.stale ? " · more on origin" : ""}`
-          : remote.stale
-            ? "Origin has new commits"
-            : remote.ahead > 0
-              ? `↑${remote.ahead} ahead of origin`
-              : "Up to date with origin";
+  const behind = !!remote && remote.upstream && remote.behind > 0;
+  const stale = !!remote && remote.stale === true;
+  if (!behind && !stale && !pulling) {
+    return error ? <p className="shrink-0 px-3 pb-2 text-xs break-words text-destructive">{error}</p> : null;
+  }
+  const text = pulling ? (progress?.line ?? "Fetching…") : behind ? `${remote!.behind} behind origin` : "Origin has new commits";
   return (
-    <div className="shrink-0 px-3 pt-2 pb-1">
-      <div className="flex h-6 items-center gap-2 text-[11px]">
-        <span
-          className={cn(
-            "min-w-0 flex-1 truncate tabular-nums",
-            pulling ? "font-mono text-content/50" : needs ? "text-content" : "text-content/50",
-          )}
-          title={text ?? undefined}
-        >
+    <div className="shrink-0 px-3 pb-2" data-slot="build-origin">
+      <div className="flex h-7 items-center gap-2">
+        <span className={cn("min-w-0 flex-1 truncate text-xs tabular-nums", pulling ? "font-mono text-muted-foreground" : "text-foreground")}>
           {text}
         </span>
-        {needs || pulling ? (
-          <StatefulButton
-            size="sm"
-            variant="secondary"
-            state={pulling ? "loading" : "idle"}
-            disabled={disabled}
-            loadingText="Fetching"
-            onClick={onPull}
-            className="h-6 shrink-0 px-2 text-[11px]"
-          >
-            Fetch
-          </StatefulButton>
-        ) : null}
+        <Button size="xs" variant="secondary" disabled={disabled || pulling} aria-busy={pulling || undefined} onClick={onFetch}>
+          {pulling ? <Spinner className="size-3" aria-hidden="true" role="presentation" aria-label={undefined} /> : null}
+          Fetch
+        </Button>
       </div>
-      {pulling ? (
-        <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-content/10">
-          <div
-            className={cn(
-              "h-full origin-left bg-content/50 transition-transform",
-              progress?.percent == null ? "w-1/4 motion-safe:animate-pulse" : "w-full",
-            )}
-            style={progress?.percent != null ? { transform: `scaleX(${progress.percent / 100})` } : undefined}
-          />
-        </div>
-      ) : null}
-      {error && !pulling ? <p className="mt-1 break-words text-[11px] leading-snug text-danger">{error}</p> : null}
+      {pulling && progress?.percent != null ? <Progress value={progress.percent} fill="muted" aria-label="Fetching" className="mt-1" /> : null}
+      {error && !pulling ? <p className="mt-1 text-xs break-words text-destructive">{error}</p> : null}
     </div>
   );
 }
 
-/** Autoscrolls while the user sits at the bottom; scrolling up parks it,
- *  scrolling back down re-arms it. */
+/** Follows the tail while the reader sits at the bottom; scrolling up parks it, scrolling back down re-arms it. */
 function Log({ lines, runId }: { lines: string[]; runId: string | null }) {
-  const ref = useRef<HTMLDivElement>(null);
+  const box = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
-  useLayoutEffect(() => {
-    if (stick.current) ref.current?.scrollTo({ top: ref.current.scrollHeight });
-  }, [lines.length, runId]);
-  return (
-    <div
-      ref={ref}
-      onScroll={() => {
-        const el = ref.current;
-        if (el) stick.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 12;
-      }}
-      className={cn(
-        "min-h-0 flex-1 overflow-y-auto border-t border-content/10 font-mono text-[11px] leading-relaxed text-content/50",
-        (lines.length > 0 || runId) && "px-3 py-2",
-      )}
-    >
-      {lines.length === 0 && !runId ? (
-        <p className="px-3 py-2 font-sans text-[12px] text-content/50">No builds yet</p>
-      ) : (
-        lines.map((line, i) => (
-          <div key={i} className="whitespace-pre-wrap break-words">
-            {line}
-          </div>
-        ))
-      )}
-    </div>
-  );
-}
+  const viewport = (): HTMLElement | null => box.current?.querySelector<HTMLElement>("[data-slot=scroll-area-viewport]") ?? null;
 
-function StatusLine({ run, own }: { run: BuildRun; own: string | null }) {
-  const took = duration((run.endedAt ?? Date.now()) - run.startedAt);
-  const where = run.branch && run.branch !== own ? ` · ${run.branch}` : "";
+  useEffect(() => {
+    const el = viewport();
+    if (!el) return;
+    const onScroll = (): void => {
+      stick.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 12;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    const el = viewport();
+    if (el && stick.current) el.scrollTop = el.scrollHeight;
+  }, [lines.length, runId]);
+
   return (
-    <p
-      className={cn(
-        "shrink-0 border-t border-content/10 px-3 py-2 text-[11px] tabular-nums",
-        run.status === "ok" && "text-content/50",
-        run.status === "failed" && "text-danger",
-        run.status === "cancelled" && "text-content/40",
-      )}
-    >
-      {run.status === "ok"
-        ? `Built in ${took}${where}`
-        : run.status === "failed"
-          ? `Failed${run.exitCode !== undefined ? ` · exit ${run.exitCode}` : ""} · ${took}${where}`
-          : `Cancelled${where}`}
-    </p>
+    <div ref={box} className="flex min-h-0 flex-1 flex-col" data-slot="build-log">
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="px-3 py-2 font-mono text-xs leading-relaxed text-muted-foreground">
+          {lines.map((line, i) => (
+            <div key={i} className="break-words whitespace-pre-wrap">
+              {line}
+            </div>
+          ))}
+        </div>
+      </ScrollArea>
+    </div>
   );
 }
 
 const fmtSize = (n: number): string =>
   n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`;
 
-function Outputs({ outputs }: { outputs: BuildRun["outputs"] }) {
+function Outputs({ outputs, onReveal }: { outputs: BuildRun["outputs"]; onReveal: (path: string) => void }) {
   return (
-    <div className="max-h-40 shrink-0 overflow-y-auto border-t border-content/10 p-2">
-      {outputs.map((o) => (
-        <FileRefMenu key={o.abs} target={o.abs}>
-          <button
-            type="button"
-            onClick={() => void invoke("reveal_path", { path: o.abs })}
-            title={o.abs}
-            className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left transition-colors hover:bg-content/5 active:bg-content/10"
-          >
-            <span className={cn("min-w-0 flex-1 truncate text-[13px] font-medium text-content", !o.fresh && "text-content/50")}>
-              {o.path.split("/").pop()}
-              <span className="ml-1.5 text-[11px] text-content/40">
-                {o.path.includes("/") ? o.path.slice(0, o.path.lastIndexOf("/")) : ""}
-              </span>
-            </span>
-            <span className="shrink-0 text-[11px] tabular-nums text-content/40">
-              {o.fresh ? fmtSize(o.size) : "not rebuilt"}
-            </span>
-          </button>
-        </FileRefMenu>
-      ))}
+    <div className="flex max-h-44 shrink-0 flex-col pt-2 pb-3" data-slot="build-outputs">
+      <h3 className="flex h-6 shrink-0 items-center px-3 text-xs font-medium text-muted-foreground">
+        Outputs
+      </h3>
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="flex flex-col px-1">
+          {outputs.map((o) => (
+            <OutputRow key={o.abs} output={o} onReveal={onReveal} />
+          ))}
+        </div>
+      </ScrollArea>
     </div>
+  );
+}
+
+function OutputRow({ output, onReveal }: { output: BuildRun["outputs"][number]; onReveal: (path: string) => void }) {
+  const slash = output.path.lastIndexOf("/");
+  const name = output.path.slice(slash + 1);
+  const folder = slash > 0 ? output.path.slice(0, slash) : "";
+  const reveal = (): void => onReveal(output.abs);
+  const onKeyDown = (e: KeyboardEvent): void => {
+    if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
+    e.preventDefault();
+    reveal();
+  };
+  return (
+    <FileRefMenu target={output.abs}>
+      <Item
+        size="xs"
+        role="button"
+        tabIndex={0}
+        data-output={output.path}
+        onClick={reveal}
+        onKeyDown={onKeyDown}
+        className="min-h-7 flex-nowrap py-0 hover:bg-foreground/5"
+      >
+        <ItemContent className="min-w-0">
+          <Tooltip>
+            <TooltipTrigger render={<span className="flex min-w-0 items-baseline" />}>
+              <span className={cn("min-w-0 truncate text-[13px]", output.fresh ? "text-foreground" : "text-muted-foreground")}>{name}</span>
+              {folder ? <span className="ml-2 min-w-0 shrink-[1000] truncate text-xs text-muted-foreground">{folder}</span> : null}
+            </TooltipTrigger>
+            <TooltipContent>{output.abs}</TooltipContent>
+          </Tooltip>
+        </ItemContent>
+        <ItemActions>
+          <span className="text-xs text-muted-foreground tabular-nums">{output.fresh ? fmtSize(output.size) : "Not rebuilt"}</span>
+        </ItemActions>
+      </Item>
+    </FileRefMenu>
   );
 }
