@@ -11,7 +11,7 @@ DESIGN.md wins.
 
 | Class of element | Component (file) | Rule |
 | --- | --- | --- |
-| Any button, icon button, row action | `Button` (button.tsx) | Flat. `default` is the one primary per surface; `secondary` gray; `ghost` for icon and row buttons; `outline` only inside forms; `destructive` red; `link` inline. Never a raw `<button>` with classes. |
+| Any button, icon button, row action | `Button` (button.tsx) | Flat. `default` is the one primary per surface; `secondary` gray; `ghost` for icon and row buttons; `outline` only inside forms; `destructive` red; `link` inline. Never a raw button element with classes. |
 | A toggle button, a segmented bar | `Toggle`, `ToggleGroup` (toggle.tsx, toggle-group.tsx) | `spacing={0}` joins a group into one bar. |
 | A modal | `Dialog` (dialog.tsx) | Centred, `size` sm/default/md/lg; `full` for a viewer (an image, a rendered page). CRUD and every form opens in one. |
 | A confirm | `AlertDialog*` (dialog.tsx); from code, `useConfirm()` (chrome/ConfirmDialog.tsx) | Only for destructive, irreversible actions. One title, one line, Cancel + the verb. Never `window.confirm`. |
@@ -35,7 +35,7 @@ DESIGN.md wins.
 | Tabs, a segmented control | `Tabs` (tabs.tsx) | `variant="default"` segmented, `variant="line"` underlined. The file and terminal strip (chrome/SurfaceTabs.tsx) is a line `Tabs` of 28px chips: icon, name, and a 16px slot whose unsaved dot turns into close on hover (a clean active tab shows close). |
 | Rows and columns of structured data | `Table` (table.tsx) | Flat: hairline rows, no box, no column rules, first and last columns on the inset. No hover fill; the cells hold the controls. |
 | A list row, a settings row | `Item` (item.tsx) | Media, title + description, actions. Settings pages are columns of these. |
-| A list row the whole of which acts (open, pick, restore) | `ItemButton` (item.tsx) | The `Item` row as one `<button type="button">`, with Item's variants and sizes; the caller names its hover fill. Never `Item render={<button />}`. |
+| A list row the whole of which acts (open, pick, restore) | `ItemButton` (item.tsx) | The `Item` row as one button element (type button), with Item's variants and sizes; the caller names its hover fill. Never an `Item` turned into a button through its `render` prop. |
 | A divider | `Separator` (separator.tsx) | Spacing first; a separator only where spacing cannot tell groups apart. |
 | A disclosure | `Collapsible` (collapsible.tsx) | Height eases through `.collapsible-resize`. A fold with no trigger of its own is the same panel, opened by `open`. |
 | An icon replacing another (Copy → Check) | `SwapIcon` (../../motion/IconSwap.tsx) | The new glyph grows from a quarter size on `SPRING_LAYOUT`; reduced motion cross-fades. |
@@ -98,7 +98,7 @@ beside motionGuard and counts each named palette exception.
      `bg-muted` (our `accent` is the blue), `rounded-2xl` cards → `rounded-xl`,
      `text-base` → `text-sm`, `text-[0.9375rem]` → `text-[13px]`,
      `dark:` tweaks dropped where the tokens already differ.
-   - motion: literal `duration-[280ms]`/`ease-[cubic-bezier(…)]` → the
+   - motion: a literal duration or curve in Tailwind's bracket form → the
      tokens (`duration-(--dur-slow) ease-(--ease-out)`); exits at
      `--dur-fast`; every animated class carries its `motion-reduce:` guard.
    - z-index: `z-50` → `z-(--layer-popover)` / `z-(--layer-dialog)`.
