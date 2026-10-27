@@ -41,6 +41,27 @@ component builds each surface, and how**. Nothing here is built yet.
 - The right side is one panel per root thread, closed by default; "The
   right side" below.
 
+### First run
+
+A new install opens the ordinary window, with no welcome screen or wizard:
+a blank chat at the home, set to Claude, with the empty thread and its
+composer. The rail adds two rows that each leave once their step is done.
+While this machine has no Claude or Codex account, the foot's first row is
+"Sign in to Claude" (ChatGPT when the default harness is Codex), its glyph
+in the accent, the one call to action in the window; it opens the sign-in
+window, reads "Signing in…" while that runs, and gives way to the usage
+meter once the account arrives. A failure is one toast and a cancel says
+nothing; a person who sends first gets a failure card that says "Not
+signed in to Claude". While the Workspaces list is empty its heading has no
++ and one "Add workspace…" row stands under it, opening the folder picker;
+the first workspace takes the row's place and gives the heading its +
+back. Column two at an empty home keeps its header and shows nothing under
+it, so the first send fills it without moving the transcript. Removing the
+last workspace returns the rail to that shape (chrome/SignInRow.tsx,
+`ProjectSection` in chrome/ProjectRail.tsx, `sidebarItems` in
+lib/sidebarRows.ts; fixtures `FirstRunRail` and `SignedInRail` in
+chrome/Rail.fixtures.tsx).
+
 ### Window title and the dock
 
 The window's title names what it shows (src/renderer/src/lib/windowTitle.ts,
@@ -89,11 +110,11 @@ of the right panel's Changes section, not the header's.
 | --- | --- | --- |
 | Frame | `chrome/ProjectRail.tsx`, a flex column on `bg-sidebar` | resizable; the 40px header (traffic lights, back, forward, the toggle), the scrolling list, a hairline, the foot. Deck only: the classic layout is retired (`useSidebarLayout` answers `deck`) |
 | Row | `chrome/RailRow.tsx` (`RailRow`) | every row in the rail and the settings list: 36px, a 16px glyph, a 13px label, `text-muted-foreground` at rest and `text-foreground` on hover, focus and selection; selection is `aria-current` with a `bg-muted` fill, hover `bg-foreground/5`, never a bar, border or shadow; at most one trailing mark (`trailingInteractive` puts a control such as a workspace's status word beside the row's button) and one hover action (an icon Button with its Tooltip that takes the trailing slot's place); a Tooltip, never `title=`; rows never animate in or out. The lists sit in an 8px inset |
-| Heading | `RailHeading` in `chrome/RailRow.tsx` | 28px, 12px `font-medium` muted, sentence case, on the rows' glyph column; "Pinned" only when pins exist, "Workspaces" ends in Add workspace (one always-visible icon button) |
+| Heading | `RailHeading` in `chrome/RailRow.tsx` | 28px, 12px `font-medium` muted, sentence case, on the rows' glyph column; "Pinned" only when pins exist, "Workspaces" ends in Add workspace (one always-visible icon button) unless the list is empty, when an Add workspace… row stands under it instead |
 | List | Chats, then Pinned, then Workspaces | Chats is the first row (the home's loose chats, its trailing mark the waiting or working glyph); Notes and Mark all read are not in the rail (Search finds notes with `type:note`, each thread's notes are the right panel's; Mark all read is in the Threads menu and every workspace and host menu) |
 | Workspace row | `WorkspaceRow` in `chrome/ProjectRail.tsx` on `lib/linkedRail.ts` | the glyph, the alias-resolved name, its one `StatusMark` word as its trailing mark and ⋯ (the right-click's menu: label, colour, mascot, Pin or Unpin, Reveal, Mark all read, the fleet switches, Archive, Delete) as its hover action; drag reorders it, a 2px accent line marks the drop. One "Workspaces" section for every host, no host headers; a workspace linked across hosts (one `linkId`) is one row led by this machine's copy, its threads, word, Mark all read, pin and drag spanning every copy; order, pins, recents, labels, colours and mascots keep their keys, the other copies alias to the leader's (`aliasKeys`). No diff stat, no pin button, no shimmer on the name. The glyph (logo or mascot, never animated or tinted by state), the word (Needs you, Failed, Working, Paused, loudest first; a click opens the workspace's threads in a Popover) and the 24px line under the row naming the thread behind the word (`+N` for the others) are A2's, in `chrome/WorkspaceRowMarks.tsx`; unread is the row's emphasis |
 | Offline tint | `chrome/hostOffline.ts` | with two or more hosts, a row whose host's link is not open (a rail row: every host of it) sits at `opacity-50` with `data-host-offline`, as the master board's rows do; its rows are the launch mirror's and lift when the host is back |
-| Foot | `RailFoot` in `chrome/ProjectRail.tsx` (`railFootRows`) | under a 1px hairline, in order: the update row when there is something to act on, the Hosts row with two or more hosts, Inbox (medium foreground while something is unseen), Search (Tooltip ⌘K), Accounts, Stats, Settings (Tooltip ⌘,), then the usage meter. The same foot sits under the workspace column while the rail is collapsed |
+| Foot | `RailFoot` in `chrome/ProjectRail.tsx` (`railFootRows`) | under a 1px hairline, in order: the sign-in row while this machine has no Claude or Codex account, the update row when there is something to act on, the Hosts row with two or more hosts, Inbox (medium foreground while something is unseen), Search (Tooltip ⌘K), Accounts, Stats, Settings (Tooltip ⌘,), then the usage meter. The same foot sits under the workspace column while the rail is collapsed |
 | Update row | `chrome/UpdateRow.tsx` (`updateRowState`) | one RailRow, absent while idle or checking: "Updated to 1.0.N" (opens What's new, ✕ dismisses), "Update to 1.0.N" or "Retry update" (installs; What's new as the hover action when there are notes), "Downloading" with its percentage, "Restart to update"; the glyph is the accent while there is something to do, no tinted fill. Check for updates is in the app menu and Settings, General |
 | Hosts row | `HostsRow` in `chrome/HostRows.tsx` | only with two or more hosts: one row ending in a 6px dot per host (`toneOf`), its aria-label naming each host and its state; a click opens a `DropdownMenu` with a submenu per host (the `HostGlyph`, the name, the state word and the `+N` deploy drift), holding Switch to <host> (not for the host on screen), Add workspace here…, Mark all read, Pause all, Resume all, Stop all and Archive done, then Host settings. A host's boot resume is a sonner toast ("7 threads resumed after restart", the host's name under it with two or more hosts; `useBootResumeToasts`) |
 | Usage meter | `chrome/UsageMeter.tsx` on `src/shared/usageMeter.ts` (`meterFor`), the foot's last block | one 36px ghost row per provider with accounts: the provider glyph, an 80px 4px `Progress` of the pooled share (the mean room over every account routing could pick, each account's room its tighter of 5h and week; expired and unreported accounts left out; amber below 10%), then "in 2h" (the next refill) in 12px `text-muted-foreground`, or "Limited 3m" in `text-warning` while every account is throttled; before any report an empty track and no text. No account name. Hover (the tooltip's delays), click or Enter opens a `Popover` to the right: the provider and "62% left", one row per usage window (5h, Week, each per-model cap) with its refill, percent and bar, and one muted foot line, "3 accounts with room". It moves on the `accounts` push alone |
