@@ -171,14 +171,32 @@ rows say exactly this:
 | failed | a ring with a bang | Failed | red |
 | queued | a dashed ring | Queued | muted |
 | stopped | a square | Stopped | muted |
-| watching | a ring, breathing | Watching | muted |
+| watching | a ring | Watching | muted |
+| plan-ready | a page | Plan ready | muted |
 | done | a check | Done | muted |
 | idle | a faint ring | Idle | muted |
 
-The word may be followed by what the state is about, in the same tone:
+The word may be followed by what the state is about, muted after it:
 "Working  typecheck", "Needs you  approve Bash", "Watching  3 subagents",
 "Failed  usage cap". A watching thread always says what it watches; a row
-that cannot say is a bug.
+that cannot say is a bug. `threadStatus` (lib/threadStripModel.ts) is the one
+place that decides a thread's state and its detail, the tree's overrides
+included, and `ThreadStatusMark` (chrome/TabIndicator.tsx) draws it with the
+round's tally 8px after the detail.
+
+A detail starts lower-case, never ends in a full stop and never repeats the
+word. Two facts on one line are separated by margin, never by a middle dot,
+a pipe or a bullet.
+
+At rest a row draws no mark for idle and done (`marksAtRest`): a mark that
+would only say "nothing is happening" is noise. A tab is the glyph alone;
+its hover line and the strip above the composer say the word and the rest.
+
+Nothing loops. Every status glyph is still except working's spinner, a
+rotation and the one moving glyph. When a mounted mark's state changes into
+working, waiting or watching its glyph breathes once (opacity over
+`--dur-slow`); under reduced motion it does not. Every other change is
+instant.
 
 ## Panels, modals, menus, popovers, sheets
 

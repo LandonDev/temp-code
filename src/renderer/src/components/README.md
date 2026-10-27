@@ -39,7 +39,7 @@ DESIGN.md wins.
 | Something is happening (text) | `TextShimmer` (text-shimmer.tsx) | The one shimmer. |
 | Nothing here | `Empty` (empty.tsx) | Title, one line, at most one action. |
 | An inline callout | `Alert` (alert.tsx) | Tinted by tone. Not for transcript notices. |
-| A thread's state | `StatusMark` (status.tsx) | One glyph, one word, one tone per state; `detail` is what it is about, muted after the word ("Working  typecheck", a tally). The only status-to-colour map; `threadStateOf(status, { settled, planReady })` turns a session's wire status into the state (a written plan is `plan-ready`, muted), `linkMarkOf(transport)` a host link into its state and word. |
+| A thread's state | `StatusMark` (status.tsx) | One glyph, one word, one tone per state; `detail` is what it is about, muted after the word ("Working  typecheck", a tally). The only status-to-colour map; `threadStateOf(status, { settled, planReady })` turns a session's wire status into the state (a written plan is `plan-ready`, muted), `linkMarkOf(transport)` a host link into its state and word. A thread's row reads `threadStatus` (lib/threadStripModel.ts: the state with the tree's overrides, the detail and the tally) and draws it with `ThreadStatusMark` (chrome/TabIndicator.tsx); `marksAtRest` leaves idle and done unmarked. |
 | A key cap | `Kbd` (kbd.tsx) | In menus, tooltips, buttons. |
 | A toast | sonner `toast()`; one `<Toaster>` (toaster.tsx) mounted lazily in main.tsx | The four custom toast stacks are retired. |
 | A question from the agent | `QuestionCard` (question-card.tsx) | Lettered options, free-form field, `multiSelect` for several picks, ⌘⏎ (keys only while focus is inside the card). |
