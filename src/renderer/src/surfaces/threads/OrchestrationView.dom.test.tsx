@@ -66,6 +66,8 @@ describe("OrchestrationView", () => {
     expect(queryByText("Orchestrator log")).toBeNull();
     expect(container.querySelector('[aria-label="Show orchestrator log"]')).toBeNull();
     expect(container.querySelectorAll("button")).toHaveLength(0);
+    // the slot is flex-1 in a column; a block wrapper would leave it unbounded and unscrollable
+    expect(getByTestId("transcript").parentElement?.className).toContain("flex-col");
   });
 
   it("has no header before the first agent", () => {

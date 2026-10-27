@@ -37,7 +37,7 @@ export function OrchestrationView(props: ThreadViewProps) {
     column = (
       <>
         {header}
-        <div className="relative min-h-0 flex-1">{slots.transcript}</div>
+        {slots.transcript}
         <ChatFooter slots={slots} />
       </>
     );
