@@ -1,7 +1,11 @@
 import { useState } from "react";
 import type { ConductOverride, ThreadRules } from "@server/shared/rules";
 import { Modal } from "./Modal";
-import { Row, Segmented, Select, Toggle } from "../surfaces/settingsBits";
+import { Button } from "../components/ui/button";
+import { ChoiceSelect } from "../components/choice-select";
+import { PageRow } from "../components/page";
+import { Switch } from "../components/ui/switch";
+import { Textarea } from "../components/ui/textarea";
 import { useRulesScope, type OrchestrationRules } from "../lib/tcserver/rules";
 
 /**
@@ -98,47 +102,48 @@ export function ThreadTune({
   };
   return (
     <div className="flex flex-col gap-4 px-4 py-3">
-      <textarea
+      <Textarea
         rows={3}
+        aria-label="Custom instructions"
         value={tune.instructions ?? ""}
         placeholder="Custom instructions for this run…"
         onChange={(e) => onChange({ ...tune, instructions: e.target.value })}
-        className="w-full resize-none rounded-md border border-content/10 bg-content/5 px-2.5 py-2 text-[13px] leading-relaxed text-content outline-none placeholder:text-content/40 hover:border-content/20 focus:border-accent/60"
+        className="resize-none"
       />
       {base ? (
         <div>
-          <div className="text-[11px] font-medium uppercase tracking-wide text-content/40">
-            Rules · defaults from Settings
-          </div>
-          <Row label={<Label text="Delegation" overridden={"delegation" in conduct} onReset={() => reset("delegation")} />}>
-            <Segmented
+          <p className="mb-2 text-xs font-medium text-muted-foreground">Rules</p>
+          <PageRow title={<Label text="Delegation" overridden={"delegation" in conduct} onReset={() => reset("delegation")} />}>
+            <ChoiceSelect
+              size="sm"
               label="Delegation"
               value={conduct.delegation ?? base.delegation}
               options={DELEGATION_OPTIONS}
               onChange={(delegation) => set("delegation", delegation)}
             />
-          </Row>
+          </PageRow>
           {SWITCHES.map((s) => (
-            <Row key={s.key} label={<Label text={s.label} overridden={s.key in conduct} onReset={() => reset(s.key)} />}>
-              <Toggle
-                label={s.label}
-                on={(conduct[s.key] as boolean | undefined) ?? (base[s.key] as boolean)}
-                onChange={(on) => set(s.key, on as never)}
+            <PageRow key={s.key} title={<Label text={s.label} overridden={s.key in conduct} onReset={() => reset(s.key)} />}>
+              <Switch
+                aria-label={s.label}
+                checked={(conduct[s.key] as boolean | undefined) ?? (base[s.key] as boolean)}
+                onCheckedChange={(on) => set(s.key, on as never)}
               />
-            </Row>
+            </PageRow>
           ))}
           {CAPS.map((cap) => {
             const value = conduct[cap.key] ?? base[cap.key];
             const steps = cap.steps.includes(value) ? cap.steps : [...cap.steps, value].sort((a, b) => a - b);
             return (
-              <Row key={cap.key} label={<Label text={cap.label} overridden={cap.key in conduct} onReset={() => reset(cap.key)} />}>
-                <Select
+              <PageRow key={cap.key} title={<Label text={cap.label} overridden={cap.key in conduct} onReset={() => reset(cap.key)} />}>
+                <ChoiceSelect
+                  size="sm"
                   label={cap.label}
                   value={String(value)}
                   onChange={(v) => set(cap.key, Number(v))}
                   options={steps.map((o) => ({ value: String(o), label: o === 0 ? "Unlimited" : String(o) }))}
                 />
-              </Row>
+              </PageRow>
             );
           })}
         </div>
@@ -152,13 +157,9 @@ function Label({ text, overridden, onReset }: { text: string; overridden: boolea
     <span className="inline-flex items-center gap-2">
       {text}
       {overridden ? (
-        <button
-          type="button"
-          onClick={onReset}
-          className="text-[11px] font-normal text-accent hover:underline"
-        >
+        <Button variant="link" size="xs" onClick={onReset} className="h-auto px-0 font-normal text-muted-foreground hover:text-foreground">
           Reset
-        </button>
+        </Button>
       ) : null}
     </span>
   );
@@ -189,21 +190,11 @@ export function TuneDialog({
       size="md"
     >
       <ThreadTune environmentId={environmentId} tune={tune} onChange={setTune} workspaceId={workspaceId} />
-      <div className="flex items-center justify-end gap-2 border-t border-content/10 px-4 py-3">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-md px-3 py-1.5 text-[12px] text-content/70 hover:bg-content/8 hover:text-content"
-        >
+      <div className="flex items-center justify-end gap-2 px-4 py-3">
+        <Button variant="secondary" onClick={onCancel}>
           Cancel
-        </button>
-        <button
-          type="button"
-          onClick={() => onSave(normalizeTune(tune))}
-          className="rounded-md bg-content px-3 py-1.5 text-[12px] font-medium text-background-base hover:bg-content/70"
-        >
-          Save
-        </button>
+        </Button>
+        <Button onClick={() => onSave(normalizeTune(tune))}>Save</Button>
       </div>
     </Modal>
   );

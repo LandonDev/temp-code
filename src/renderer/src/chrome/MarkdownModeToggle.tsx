@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 
 export type MarkdownViewMode = "preview" | "source";
 
@@ -29,50 +30,28 @@ type ToggleProps = {
   onChange: (mode: MarkdownViewMode) => void;
 };
 
+/** Preview or source: one joined bar of two toggles, floating at the
+ *  pane's top right. */
 export function MarkdownModeToggle({ mode, onChange }: ToggleProps) {
   return (
-    <div
-      role="tablist"
+    <ToggleGroup
+      spacing={0}
+      size="sm"
       aria-label="Markdown view"
-      className="flex gap-0.5 rounded-md border border-content/10 bg-background-base/80 p-0.5"
+      value={[mode]}
+      onValueChange={(next: unknown[]) => {
+        const picked = next[0] as MarkdownViewMode | undefined;
+        if (picked) onChange(picked);
+      }}
+      className="rounded-lg border border-border bg-popover p-0.5"
     >
-      <ModeTab
-        label="Preview"
-        selected={mode === "preview"}
-        onSelect={() => onChange("preview")}
-      />
-      <ModeTab
-        label="Source"
-        selected={mode === "source"}
-        onSelect={() => onChange("source")}
-      />
-    </div>
-  );
-}
-
-function ModeTab({
-  label,
-  selected,
-  onSelect,
-}: {
-  label: string;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={selected}
-      className={`pressable rounded-[4px] px-2 py-0.5 text-[11px] transition-colors ${
-        selected
-          ? "bg-content/10 text-content"
-          : "text-content/50 hover:text-content"
-      }`}
-      onClick={onSelect}
-    >
-      {label}
-    </button>
+      <ToggleGroupItem value="preview" size="sm" className="h-6 px-2 text-xs">
+        Preview
+      </ToggleGroupItem>
+      <ToggleGroupItem value="source" size="sm" className="h-6 px-2 text-xs">
+        Source
+      </ToggleGroupItem>
+    </ToggleGroup>
   );
 }
 

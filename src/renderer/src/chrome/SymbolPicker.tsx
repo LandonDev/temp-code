@@ -1,15 +1,13 @@
-import { Search } from "./icons";
 import {
   useEffect,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { createPortal } from "react-dom";
-import { LAYER } from "../lib/layers";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import type { EditorNavigation } from "../lib/search";
 import type { WorkspaceSymbolRow } from "../surfaces/monaco/lsp/providers";
+import { PickerDialog, PickerNote, pickerRowClass } from "./PickerDialog";
 
 /**
  * ⌘O: workspace symbols from the project's running language servers
@@ -50,10 +48,6 @@ export function SymbolPicker({ projectId, onOpen, onClose }: Props) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    search.current?.focus();
-  }, []);
-
-  useEffect(() => {
     const trimmed = query.trim();
     if (!projectId || !trimmed) {
       setRows([]);
@@ -92,11 +86,6 @@ export function SymbolPicker({ projectId, onOpen, onClose }: Props) {
   };
 
   const onSearchKey = (e: ReactKeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      onClose();
-      return;
-    }
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       if (rows.length === 0) return;
@@ -123,46 +112,21 @@ export function SymbolPicker({ projectId, onOpen, onClose }: Props) {
           ? "No matching symbols"
           : null;
 
-  return createPortal(
-    <div className="fixed inset-0" style={{ zIndex: LAYER.dialog }}>
-      <div className="absolute inset-0 bg-black/40" onMouseDown={onClose} />
-      <div
-        role="dialog"
-        aria-label="Go to Symbol"
-        data-symbol-picker
-        onMouseDown={(e) => e.stopPropagation()}
-        className="absolute left-1/2 top-[12%] flex w-[min(560px,calc(100vw-24px))] -translate-x-1/2 flex-col overflow-hidden rounded-2xl shadow-2xl glass-surface floating-surface"
-      >
-        <div className="pb-1">
-          <label className="flex h-9 items-center gap-2 border-b border-content/10 px-3 text-content/50">
-            <Search className="size-3.5 shrink-0" strokeWidth={1.75} />
-            <input
-              ref={search}
-              type="text"
-              value={query}
-              placeholder="Go to Symbol"
-              aria-label="Go to Symbol"
-              spellCheck={false}
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              className="min-w-0 flex-1 bg-transparent text-[13px] text-content outline-none placeholder:text-content/40"
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setActive(0);
-              }}
-              onKeyDown={onSearchKey}
-            />
-          </label>
-        </div>
-        {empty ? (
-          <p className="px-3 py-3 text-[12px] text-content/50">{empty}</p>
-        ) : (
-          <SymbolList rows={rows} active={active} onActive={setActive} onPick={pick} />
-        )}
-      </div>
-    </div>,
-    document.body,
+  return (
+    <PickerDialog
+      label="Go to Symbol"
+      data-symbol-picker
+      search={search}
+      query={query}
+      onQuery={(next) => {
+        setQuery(next);
+        setActive(0);
+      }}
+      onSearchKey={onSearchKey}
+      onClose={onClose}
+    >
+      {empty ? <PickerNote>{empty}</PickerNote> : <SymbolList rows={rows} active={active} onActive={setActive} onPick={pick} />}
+    </PickerDialog>
   );
 }
 
@@ -178,7 +142,7 @@ function SymbolList({
   onPick: (row: WorkspaceSymbolRow) => void;
 }) {
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
-  const activeRef = useRef<HTMLButtonElement>(null);
+  const activeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     activeRef.current?.scrollIntoView({ block: "nearest" });
@@ -189,39 +153,36 @@ function SymbolList({
       ref={lockOverscroll}
       role="listbox"
       aria-label="Symbols"
-      className="max-h-[min(380px,50vh)] overflow-y-auto overscroll-none p-1 pt-0"
+      className="max-h-[min(380px,50vh)] overflow-y-auto overscroll-none"
     >
       {rows.map((row, index) => {
         const highlighted = index === active;
         const path = pathOf(row.uri);
         const file = path.slice(path.lastIndexOf("/") + 1);
         return (
-          <button
+          <div
             key={`${row.uri}:${row.range.startLineNumber}:${row.name}:${index}`}
             ref={highlighted ? activeRef : undefined}
-            type="button"
             role="option"
             aria-selected={highlighted}
             onMouseDown={(e) => e.preventDefault()}
             onMouseEnter={() => onActive(index)}
             onClick={() => onPick(row)}
-            className={`flex h-7 w-full items-center gap-3 rounded-lg px-2 text-left text-[13px] leading-none ${
-              highlighted ? "bg-content/10 text-content" : "text-content hover:bg-content/5"
-            }`}
+            className={pickerRowClass(highlighted)}
           >
-            <span className="w-16 shrink-0 truncate font-mono text-[11px] uppercase tracking-wide text-content/40">
+            <span className="w-16 shrink-0 truncate text-[11px] text-muted-foreground">
               {KIND_LABELS[row.kind] ?? "symbol"}
             </span>
             <span className="min-w-0 flex-1 truncate">
               {row.name}
               {row.containerName ? (
-                <span className="text-content/40"> · {row.containerName}</span>
+                <span className="ms-2 text-muted-foreground">{row.containerName}</span>
               ) : null}
             </span>
-            <span className="min-w-0 max-w-[45%] truncate font-mono text-[11px] text-content/40">
+            <span className="min-w-0 max-w-[45%] truncate font-mono text-[11px] text-muted-foreground">
               {file}:{row.range.startLineNumber}
             </span>
-          </button>
+          </div>
         );
       })}
     </div>

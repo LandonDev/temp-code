@@ -1,4 +1,3 @@
-import { Search } from "./icons";
 import {
   useEffect,
   useMemo,
@@ -7,7 +6,6 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import { createPortal } from "react-dom";
 import {
   loadProjectFiles,
   peekProjectFiles,
@@ -15,11 +13,11 @@ import {
   recentOpenedFiles,
   type RankedFile,
 } from "../lib/fileIndex";
-import { LAYER } from "../lib/layers";
 import { looksLikeProject } from "../lib/recents";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { MatchText } from "./MatchText";
+import { PickerDialog, PickerNote, pickerRowClass } from "./PickerDialog";
 
 type Props = {
   open: boolean;
@@ -37,8 +35,6 @@ export function FilePicker({
   onClose,
 }: Props) {
   const search = useRef<HTMLInputElement>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const [files, setFiles] = useState(() => peekProjectFiles(cwd) ?? []);
@@ -101,25 +97,6 @@ export function FilePicker({
     );
   }, [results.length]);
 
-  useEffect(() => {
-    if (!open) return;
-    search.current?.focus();
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      e.preventDefault();
-      e.stopPropagation();
-      onCloseRef.current();
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [open]);
-
-  if (!open) return null;
-
   const pick = (file: RankedFile) => {
     onOpenFile(file.path);
     onClose();
@@ -156,52 +133,26 @@ export function FilePicker({
     matchCount: results.length,
   });
 
-  return createPortal(
-    <div className="fixed inset-0" style={{ zIndex: LAYER.dialog }}>
-      <div className="absolute inset-0 bg-black/40" onMouseDown={onClose} />
-      <div
-        role="dialog"
-        aria-label="Go to File"
-        data-file-picker
-        onMouseDown={(e) => e.stopPropagation()}
-        className="absolute left-1/2 top-[12%] flex w-[min(560px,calc(100vw-24px))] -translate-x-1/2 flex-col overflow-hidden rounded-2xl shadow-2xl glass-surface floating-surface"
-      >
-        <div className="pb-1">
-          <label className="flex h-9 items-center gap-2 border-b border-content/10 px-3 text-content/50">
-            <Search className="size-3.5 shrink-0" strokeWidth={1.75} />
-            <input
-              ref={search}
-              type="text"
-              value={query}
-              placeholder="Go to File"
-              aria-label="Go to File"
-              spellCheck={false}
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              className="min-w-0 flex-1 bg-transparent text-[13px] text-content outline-none placeholder:text-content/40"
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setActive(0);
-              }}
-              onKeyDown={onSearchKey}
-            />
-          </label>
-        </div>
-        {empty ? (
-          <p className="px-3 py-3 text-[12px] text-content/50">{empty}</p>
-        ) : (
-          <FileList
-            files={results}
-            active={active}
-            query={query}
-            onActive={setActive}
-            onPick={pick}
-          />
-        )}
-      </div>
-    </div>,
-    document.body,
+  return (
+    <PickerDialog
+      open={open}
+      label="Go to File"
+      data-file-picker
+      search={search}
+      query={query}
+      onQuery={(next) => {
+        setQuery(next);
+        setActive(0);
+      }}
+      onSearchKey={onSearchKey}
+      onClose={onClose}
+    >
+      {empty ? (
+        <PickerNote>{empty}</PickerNote>
+      ) : (
+        <FileList files={results} active={active} query={query} onActive={setActive} onPick={pick} />
+      )}
+    </PickerDialog>
   );
 }
 
@@ -244,7 +195,7 @@ function FileList({
   onPick: (file: RankedFile) => void;
 }) {
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
-  const activeRef = useRef<HTMLButtonElement>(null);
+  const activeRef = useRef<HTMLDivElement>(null);
   const pointer = useRef({ x: Number.NaN, y: Number.NaN, allow: false });
   const fromPointer = useRef(false);
 
@@ -280,7 +231,7 @@ function FileList({
       role="listbox"
       aria-label="Files"
       onMouseMove={onListMouseMove}
-      className="max-h-[min(380px,50vh)] overflow-y-auto overscroll-none p-1 pt-0"
+      className="max-h-[min(380px,50vh)] overflow-y-auto overscroll-none"
     >
       {files.map((file, index) => {
         const highlighted = index === active;
@@ -288,18 +239,15 @@ function FileList({
         const dir = slash === -1 ? "" : file.relative.slice(0, slash);
         const nameOffset = slash === -1 ? 0 : slash + 1;
         return (
-          <button
+          <div
             key={file.path}
             ref={highlighted ? activeRef : undefined}
-            type="button"
             role="option"
             aria-selected={highlighted}
             onMouseDown={(e) => e.preventDefault()}
             onMouseEnter={() => onRowEnter(index)}
             onClick={() => onPick(file)}
-            className={`flex h-7 w-full items-center gap-3 rounded-lg px-2 text-left text-[13px] leading-none ${
-              highlighted ? "bg-content/10 text-content" : "text-content hover:bg-content/5"
-            }`}
+            className={pickerRowClass(highlighted)}
           >
             <span className="shrink-0">
               <FileTypeIcon name={file.name} isDir={false} />
@@ -314,7 +262,7 @@ function FileList({
               />
             </span>
             {dir ? (
-              <span className="min-w-0 max-w-[45%] truncate font-mono text-[11px] text-content/40">
+              <span className="min-w-0 max-w-[45%] truncate font-mono text-[11px] text-muted-foreground">
                 <MatchText
                   text={dir}
                   positions={file.positions.filter((pos) => pos < slash)}
@@ -322,7 +270,7 @@ function FileList({
                 />
               </span>
             ) : null}
-          </button>
+          </div>
         );
       })}
     </div>
