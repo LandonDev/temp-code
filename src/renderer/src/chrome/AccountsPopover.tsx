@@ -144,7 +144,7 @@ function AccountRow({
             ) : null}
           </span>
           {report?.plan ? <PlanLine plan={report.plan} now={now} /> : null}
-          {status ? <span className={`truncate text-[11px] ${status.tone}`}>{status.text}</span> : null}
+          {status ? <Facts parts={status.parts} className={`text-[11px] ${status.tone}`} /> : null}
           {report?.banked ? (
             <span className="text-[11px] text-muted-foreground">
               {report.banked} banked reset{report.banked === 1 ? "" : "s"}
@@ -158,59 +158,64 @@ function AccountRow({
   );
 }
 
-function statusLine(report: UsageReport | undefined, now: number): { text: string; tone: string } | null {
+/** Facts on one line, 8px apart; the last one gives way when the line is short. */
+function Facts({ parts, className }: { parts: readonly (string | { text: string; className?: string })[]; className?: string }) {
+  return (
+    <span className={`flex min-w-0 gap-2 ${className ?? ""}`}>
+      {parts.map((part, i) => {
+        const { text, className: tone } = typeof part === "string" ? { text: part, className: undefined } : part;
+        return (
+          <span key={i} className={`${i === parts.length - 1 ? "min-w-0 truncate" : "shrink-0"} ${tone ?? ""}`}>
+            {text}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+function statusLine(report: UsageReport | undefined, now: number): { parts: string[]; tone: string } | null {
   if (!report) return null;
-  if (report.expired) return { text: "Session expired · sign in again in Aliax", tone: "text-warning" };
+  if (report.expired) return { parts: ["Session expired", "sign in again in Aliax"], tone: "text-warning" };
   if (report.rateLimit) {
     const until = report.rateLimit.until;
-    const text =
+    const parts =
       until === undefined
-        ? "Usage rate limited"
+        ? ["Usage rate limited"]
         : until <= now
-          ? "Usage rate limited · retrying"
-          : `Usage rate limited · ${untilLabel(until, now)} left`;
-    return { text, tone: "text-warning" };
+          ? ["Usage rate limited", "retrying"]
+          : ["Usage rate limited", `${untilLabel(until, now)} left`];
+    return { parts, tone: "text-warning" };
   }
   return null;
 }
 
-const STATUS_TEXT: Record<string, string> = {
-  canceled: "canceled · won't renew",
-  cancelled: "canceled · won't renew",
-  past_due: "payment past due",
-  unpaid: "payment failed",
-  incomplete: "payment incomplete",
-  incomplete_expired: "payment expired",
-  paused: "paused",
-  trialing: "trial",
-  lapsed: "ended",
+const STATUS_TEXT: Record<string, string[]> = {
+  canceled: ["canceled", "won't renew"],
+  cancelled: ["canceled", "won't renew"],
+  past_due: ["payment past due"],
+  unpaid: ["payment failed"],
+  incomplete: ["payment incomplete"],
+  incomplete_expired: ["payment expired"],
+  paused: ["paused"],
+  trialing: ["trial"],
+  lapsed: ["ended"],
 };
 const STATUS_OK = new Set(["active", "trialing"]);
 
 const shortDate = (at: number): string =>
   new Date(at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
-/** "Max 20x · $200/mo · renews Oct 3", with a warning when the plan is ending. */
+/** "Max 20x  $200/mo  renews Oct 3", the tail in amber when the plan is ending. */
 function PlanLine({ plan, now }: { plan: PlanInfo; now: number }) {
-  const parts = [plan.name];
+  const parts: (string | { text: string; className: string })[] = [plan.name];
   if (plan.monthlyUsd !== undefined) parts.push(`$${plan.monthlyUsd}/mo`);
-  let tail: { text: string; warn: boolean } | null = null;
-  if (plan.cancelsAt !== undefined) tail = { text: `canceled · ends ${shortDate(plan.cancelsAt)}`, warn: true };
+  const warn = (text: string) => ({ text, className: "text-warning" });
+  if (plan.cancelsAt !== undefined) parts.push(warn("canceled"), warn(`ends ${shortDate(plan.cancelsAt)}`));
   else if (plan.status && !STATUS_OK.has(plan.status))
-    tail = { text: STATUS_TEXT[plan.status] ?? plan.status.replace(/_/g, " "), warn: true };
-  else if (plan.renewsAt !== undefined && plan.renewsAt > now)
-    tail = { text: `renews ${shortDate(plan.renewsAt)}`, warn: false };
-  return (
-    <span className="truncate text-[11px] text-muted-foreground">
-      {parts.join(" · ")}
-      {tail ? (
-        <>
-          {" · "}
-          <span className={tail.warn ? "text-warning" : ""}>{tail.text}</span>
-        </>
-      ) : null}
-    </span>
-  );
+    parts.push(...(STATUS_TEXT[plan.status] ?? [plan.status.replace(/_/g, " ")]).map(warn));
+  else if (plan.renewsAt !== undefined && plan.renewsAt > now) parts.push(`renews ${shortDate(plan.renewsAt)}`);
+  return <Facts parts={parts} className="text-[11px] text-muted-foreground" />;
 }
 
 /** Group windows by the moment they refill, to the minute. */
@@ -279,10 +284,7 @@ function UsageCell({ group, now }: { group: UsageWindow[]; now: number }) {
         {refills ? (
           <>
             {period ? <CycleRing fraction={cycleFraction(head.resetsAt as number, period, now)} /> : null}
-            <span className="truncate">
-              in {untilLabel(head.resetsAt as number, now)}
-              <span className="text-muted-foreground"> · {resetPoint(head.resetsAt as number, now)}</span>
-            </span>
+            <Facts parts={[`in ${untilLabel(head.resetsAt as number, now)}`, resetPoint(head.resetsAt as number, now)]} />
           </>
         ) : null}
       </span>

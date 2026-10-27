@@ -22,7 +22,7 @@ const accounts = {
 
 const scope: AccountScope = { provider: "claude", inherited: null, current: "b", shown: "b" };
 
-function Harness({ onOpenChange }: { onOpenChange: (open: boolean) => void }) {
+function Harness({ onOpenChange, list = accounts }: { onOpenChange: (open: boolean) => void; list?: ProviderAccounts }) {
   const [open, setOpen] = useState(false);
   return (
     <AccountsPopover
@@ -33,7 +33,7 @@ function Harness({ onOpenChange }: { onOpenChange: (open: boolean) => void }) {
         onOpenChange(next);
       }}
       provider="claude"
-      accounts={accounts}
+      accounts={list}
       scope={scope}
       now={0}
     />
@@ -53,5 +53,34 @@ describe("AccountsPopover", () => {
     fireEvent.keyDown(list, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("listbox", { name: "claude accounts" })).toBeNull());
     expect(onOpenChange).toHaveBeenLastCalledWith(false);
+  });
+});
+
+describe("an account row's lines", () => {
+  it("sets two facts on one line apart by margin, never a middle dot", async () => {
+    const DAY = 86_400_000;
+    const withPlan = {
+      ...accounts,
+      reports: [
+        {
+          profileName: "a",
+          windows: [],
+          plan: { name: "Max 20x", monthlyUsd: 200, cancelsAt: 3 * DAY },
+          rateLimit: { until: 2 * 3_600_000 },
+        },
+      ],
+    } as unknown as ProviderAccounts;
+    render(<Harness onOpenChange={() => {}} list={withPlan} />);
+    fireEvent.click(screen.getByRole("button", { name: "Pick another account" }));
+    const list = await screen.findByRole("listbox", { name: "claude accounts" });
+    const row = within(list).getAllByRole("option")[0];
+    const plan = within(row).getByText("Max 20x").parentElement!;
+    expect(Array.from(plan.children, (c) => c.textContent)).toEqual(["Max 20x", "$200/mo", "canceled", expect.stringMatching(/^ends /)]);
+    expect(plan.className).toContain("gap-2");
+    expect(within(plan).getByText("canceled").className).toContain("text-warning");
+    const limited = within(row).getByText("Usage rate limited").parentElement!;
+    expect(limited.children).toHaveLength(2);
+    expect(limited.children[1].textContent).toMatch(/ left$/);
+    expect(row.textContent).not.toContain("·");
   });
 });

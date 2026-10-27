@@ -127,15 +127,17 @@ const nameOf = (id: string): string => registry.environment(id)?.name ?? id;
 const files = (n: number): string => `${n} uncommitted file${n === 1 ? "" : "s"}`;
 
 /**
- * What the move confirm says about the branch: `null` while the host is
- * still looking, `"error"` when it could not say.
+ * What the move confirm says about the branch, one fact per part (the
+ * branch, then the uncommitted files): `null` while the host is still
+ * looking, `"error"` when it could not say. The caller sets the parts
+ * apart by margin.
  */
-export function movePreviewLine(p: SessionMovePreview | null | "error"): string {
-  if (p === null) return "Checking the branch…";
-  if (p === "error") return "Could not read the branch; the move carries it if there is one.";
-  if (!p.branch && !p.detached) return p.dirty ? `No branch to carry · ${files(p.dirty)} stay behind` : "No branch to carry";
+export function movePreviewParts(p: SessionMovePreview | null | "error"): string[] {
+  if (p === null) return ["Checking the branch…"];
+  if (p === "error") return ["Could not read the branch; the move carries it if there is one."];
+  if (!p.branch && !p.detached) return p.dirty ? ["No branch to carry", `${files(p.dirty)} stay behind`] : ["No branch to carry"];
   const what = p.branch ? `Branch ${p.branch} travels too` : "The checked-out commit travels too";
-  return p.dirty ? `${what} · ${files(p.dirty)} will be carried` : what;
+  return p.dirty ? [what, `${files(p.dirty)} will be carried`] : [what];
 }
 
 /** The one fact a finished move's toast carries under its title, when the

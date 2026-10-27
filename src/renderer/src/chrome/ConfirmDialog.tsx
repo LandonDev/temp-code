@@ -82,7 +82,7 @@ export function ConfirmDialog({
   title: string;
   body?: string;
   /** One specific fact under the body (what this move carries), a notch stronger than it. */
-  note?: string;
+  note?: ReactNode;
   confirmLabel: string;
   danger?: boolean;
   onCancel: () => void;
