@@ -313,14 +313,19 @@ app replaces itself from the feed, and only from the feed.
   checks literal renderer colours against the token layer and counted
   palette exceptions; the counts only shrink.
 - The renderer is split (docs/bundle-split.md): the index chunk carries
-  only the first paint (rail, transcript, composer, thread header; 4.56 MiB,
-  down from 8.07 MiB) and every other surface is a lazy chunk behind
+  only the first paint (rail, transcript, composer, thread header; 5,000.1
+  kB after A26, under the 5,136.0 kB budget) and every other surface is a
+  lazy chunk behind
   `defineChunk` (src/renderer/src/lib/lazyChunk.tsx), listed in
   `src/renderer/src/surfaces/chunks.ts`: Settings, the Aliax pages
   (recharts), the edit row's diff body, the CodeMirror
   editor with its find keys and git helpers, the terminal (xterm), the
   non-chat thread views (board, plan, research, fleet), the HTML render
-  frame, the media viewer, the lightbox and the release notes. A mount
+  frame, the media viewer, the lightbox, the release notes with the
+  changelog parser, the action-opened dialogs (`dialogsChunk` over
+  chrome/dialogs.ts, each mounted only while open) and the rail's
+  virtualizer (`virtualChunk`; the rail lists its cards plainly until it
+  lands, chrome/railRows.tsx). A mount
   point calls `chunk.surface(name, <SurfaceSkeleton kind=… />)`, which
   sits in a `ChunkBoundary` (a failed import or a render throw holds the
   skeleton with "Couldn't load" and Retry, which replaces the lazy and the

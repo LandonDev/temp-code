@@ -29,12 +29,13 @@ to the tokens below, to `chrome/icons` and to the motion values below.
 The README's table is the authority on which component renders which class
 of element; nothing is rendered twice by two different things.
 
-Retired by this standard, migrated area by area, never patched further:
-`chrome/Drawer.tsx`, `chrome/RailAction.tsx`,
-`chrome/ComposerAction.tsx`, the four
-custom toast stacks (sonner), the nine spinner builds (`Spinner`), the
-twenty status-to-colour maps (`StatusMark`), the 390 raw `<button>`s (`Button`). ReUI, BeUI and Beautiful
-UI are no longer sources; their registries are gone from components.json.
+What this standard retired is gone: the old drawer, settings shim, rail and
+composer action buttons and motion button, the four custom toast stacks
+(sonner), the nine spinner builds (`Spinner`), the twenty status-to-colour
+maps (`StatusMark`) and every raw button (`Button`, `ItemButton`). ReUI, BeUI
+and Beautiful UI are no longer sources; their registries are gone from
+components.json. `lib/motionGuard.test.ts`, `lib/colourGuard.test.ts` and
+`domTitles.test.ts` keep it that way.
 
 Hand-made and staying so: the transcript's rows and markdown pipeline, the
 composer's field, the rail, the tab strip, the editor, the terminal, the
