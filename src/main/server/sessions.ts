@@ -3930,10 +3930,10 @@ export class SessionRegistry {
           const busy = (this.queues.get(sessionId)?.length ?? 0) > 0 || (this.pendingReports.get(sessionId)?.length ?? 0) > 0
           if (busy) {
             this.holdNotice(sessionId, NOTES_REMINDER_COMMIT)
-            if (!this.drainReports(sessionId)) this.drainQueue(sessionId)
+            this.drainSettled(sessionId)
           } else void this.runNotesReminder(sessionId)
-        } else if (!this.drainReports(sessionId)) {
-          this.drainQueue(sessionId)
+        } else {
+          this.drainSettled(sessionId)
         }
       }
       if (event.status === 'error') {
@@ -4366,7 +4366,7 @@ export class SessionRegistry {
       this.lastActivity.set(sessionId, Date.now())
       await handle.send(NOTES_REMINDER_COMMIT)
     } catch {
-      if (!this.drainReports(sessionId)) this.drainQueue(sessionId)
+      this.drainSettled(sessionId)
     }
   }
 
@@ -4582,7 +4582,7 @@ export class SessionRegistry {
     } catch {
       // Harness refused (gone, mid-restart) — settle back to normal flow.
       this.passActive.delete(sessionId)
-      if (!this.drainReports(sessionId)) this.drainQueue(sessionId)
+      this.drainSettled(sessionId)
     }
   }
 
@@ -4599,47 +4599,76 @@ export class SessionRegistry {
     this.pendingReports.set(sessionId, list)
     const status = this.store.getSession(sessionId)?.status
     if ((status === 'idle' || status === 'watching') && !this.isTreePaused(sessionId)) {
-      this.drainReports(sessionId)
+      this.drainSettled(sessionId)
     }
   }
 
-  /** On settle: send every parked report to the harness in ONE turn (one
-   *  agent-report row each) — several children settling behind a busy
+  /** A settled thread takes what waits for it as ONE turn: the person's
+   *  next message when one is queued, carrying the held notices and every
+   *  parked report ahead of it (drainQueue), else the reports alone. The
+   *  app's own lines never spend a turn of their own while the person's
+   *  text waits, and a report never wakes the thread without it. */
+  private drainSettled(sessionId: string): void {
+    if ((this.queues.get(sessionId)?.length ?? 0) > 0) this.drainQueue(sessionId)
+    else this.drainReports(sessionId)
+  }
+
+  /** The parked reports, off the list and onto the transcript as their
+   *  rows; their texts joined, '' when none. The caller sends them. */
+  private takeReports(sessionId: string): { items: AgentReport[]; text: string } {
+    const list = this.pendingReports.get(sessionId)
+    if (!list?.length) return { items: [], text: '' }
+    const items = list.splice(0)
+    this.pendingReports.delete(sessionId)
+    for (const item of items) {
+      this.append(sessionId, {
+        type: 'agent-report',
+        agentId: item.agentId,
+        title: item.title,
+        status: item.status
+      })
+    }
+    return { items, text: items.map((item) => item.text).join('\n\n') }
+  }
+
+  /** Reports the harness refused (gone, mid-restart) go back to the front of the list for the next settle. */
+  private parkReports(sessionId: string, items: AgentReport[]): void {
+    if (!items.length) return
+    const q = this.pendingReports.get(sessionId) ?? []
+    q.unshift(...items)
+    this.pendingReports.set(sessionId, q)
+  }
+
+  /** On settle with nothing of the person's waiting: send every parked
+   *  report to the harness in ONE turn (one agent-report row each), the
+   *  held notices ahead of them — several children settling behind a busy
    *  parent used to cost a wake turn apiece. Returns whether reports took
-   *  this settle (the queue then waits its turn). */
+   *  this settle. */
   private drainReports(sessionId: string): boolean {
     if (this.isTreePaused(sessionId)) return false
     if (this.draining.has(sessionId)) return false
-    const list = this.pendingReports.get(sessionId)
-    if (!list?.length) return false
-    const items = list.splice(0)
-    this.pendingReports.delete(sessionId)
+    if (!this.pendingReports.get(sessionId)?.length) return false
     this.draining.add(sessionId)
+    let taken: AgentReport[] = []
     void (async () => {
       const handle = await this.handleFor(sessionId)
-      for (const item of items) {
-        this.append(sessionId, {
-          type: 'agent-report',
-          agentId: item.agentId,
-          title: item.title,
-          status: item.status
-        })
-      }
+      const { items, text } = this.takeReports(sessionId)
+      taken = items
       this.lastActivity.set(sessionId, Date.now())
       void this.armBaseline(sessionId)
-      await handle.send(items.map((item) => item.text).join('\n\n'))
+      const notices = this.takeNotices(sessionId)
+      await handle.send(`${notices ? `${notices}\n\n` : ''}${text}`)
     })()
-      .catch(() => {
-        // Harness refused (gone, mid-restart) — park them for the next settle.
-        const q = this.pendingReports.get(sessionId) ?? []
-        q.unshift(...items)
-        this.pendingReports.set(sessionId, q)
-      })
+      .catch(() => this.parkReports(sessionId, taken))
       .finally(() => this.draining.delete(sessionId))
     return true
   }
 
-  /** On idle: send the next queued message, one per settle. */
+  /** On a settle: send the next queued message, one per settle, with the
+   *  reports parked meanwhile riding ahead of it in the same send (their
+   *  rows land first, the user row last; send() puts the held notices
+   *  ahead of everything), so the person's text is never behind a wake
+   *  turn of the app's own. */
   private drainQueue(sessionId: string): void {
     if (this.isTreePaused(sessionId)) return
     if (this.draining.has(sessionId)) return
@@ -4648,6 +4677,8 @@ export class SessionRegistry {
     const item = q.shift()!
     this.notifyQueue(sessionId)
     this.draining.add(sessionId)
+    const reports = this.takeReports(sessionId)
+    if (reports.text) this.holdNotice(sessionId, reports.text)
     // A queued message released after the pass finished IS the next pass —
     // the same stamp the board's pass button sends. Without it, send()
     // stamps newPass:false and the message glues onto the finished round.
@@ -4663,6 +4694,7 @@ export class SessionRegistry {
       .catch(() => {
         q.unshift(item)
         this.notifyQueue(sessionId)
+        this.parkReports(sessionId, reports.items)
       })
       .finally(() => this.draining.delete(sessionId))
   }
