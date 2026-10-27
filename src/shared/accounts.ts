@@ -24,6 +24,9 @@ export type RoutedProvider = 'claude' | 'codex'
 export const ROUTED_PROVIDERS: RoutedProvider[] = ['claude', 'codex']
 export const isRoutedProvider = (id: string): id is RoutedProvider => id === 'claude' || id === 'codex'
 
+/** The account a person signs in to for each routed provider. */
+export const SIGN_IN_NAME: Record<RoutedProvider, string> = { claude: 'Claude', codex: 'ChatGPT' }
+
 /**
  * One explicit account per provider, on a project or a workspace: threads of
  * both providers hang off the same project. Absent means inherit (workspace,

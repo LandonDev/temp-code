@@ -150,6 +150,16 @@ describe('failureKindOf on captured messages', () => {
     const limited = describeFailure('rate_limited', ctx({ account: null, limit: { window: 'weekly' } }))
     expect(limited.summary).toBe('Anthropic answered with a weekly limit')
   })
+
+  it('says not signed in when no account exists and the CLI was never signed in', () => {
+    const message = 'Not logged in · Please run /login'
+    const claude = classifyFailure(ctx({ account: null, message }))
+    expect(claude).toMatchObject({ kind: 'oauth_expired', summary: 'Not signed in to Claude', cause: 'No account on this host is signed in.' })
+    const codex = classifyFailure(ctx({ provider: 'codex', account: null, message }))
+    expect(codex).toMatchObject({ kind: 'oauth_expired', summary: 'Not signed in to ChatGPT' })
+    const lapsed = describeFailure('oauth_expired', ctx({ account: 'me@example.com', message }))
+    expect(lapsed.summary).toBe('Anthropic session for me@example.com expired and could not be refreshed')
+  })
 })
 
 describe('refusalCodeOf', () => {

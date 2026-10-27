@@ -1,5 +1,6 @@
 import type { Failure, FailureKind, LimitWindow } from '@shared/events'
 import type { ProviderId } from '@shared/catalog'
+import { isRoutedProvider, SIGN_IN_NAME } from '@shared/accounts'
 import { splitPath } from 'aliax-core'
 import type { NetworkInfo } from './gatewayCore'
 
@@ -56,6 +57,8 @@ export interface FailureContext {
 
 const OAUTH_EXPIRED =
   /oauth session expired|could not be refreshed|oauth token (has )?expired|token (has been |was )?revoked|please run \/login|invalid api key|authentication_error|failed to authenticate|needs sign-in|not logged in|unauthorized|\(401\)|\b401\b/i
+/** The CLI was never signed in, as opposed to a session that lapsed. */
+const NOT_SIGNED_IN = /not logged in|please run \/login|invalid api key|needs sign-in/i
 const TOKEN_EXPIRED = /token_expired/i
 const QUOTA = /out of credits|insufficient[_ ]credits|credit balance|insufficient_quota|billing|exceeded your current quota|no credits/i
 const RATE_LIMITED = /rate[ _-]?limit|too many requests|usage limit|\b429\b|overloaded_error|overloaded|hit your limit|reached (your|the) (usage )?limit/i
@@ -145,6 +148,9 @@ export function describeFailure(kind: FailureKind, ctx: FailureContext): { summa
   const model = ctx.model ?? 'The model'
   switch (kind) {
     case 'oauth_expired':
+      if (!account && isRoutedProvider(ctx.provider) && NOT_SIGNED_IN.test(ctx.message)) {
+        return { summary: `Not signed in to ${SIGN_IN_NAME[ctx.provider]}`, cause: 'No account on this host is signed in.' }
+      }
       return {
         summary: account
           ? `${sessionName(ctx.provider)} for ${account} expired and could not be refreshed`
