@@ -34,9 +34,9 @@ import { Counts, FileName } from "./changeRows";
 
 /**
  * The Changes section's lower group: this checkout against a target
- * branch (what the Branch section was). The target picker, ahead and
- * behind, the files this branch changed since the merge base (click → the
- * diff against that base), the commits on each side behind one fold, and
+ * branch (what the Branch section was). The target picker, the files
+ * this branch changed since the merge base (click → the diff against that
+ * base), the commits ahead and behind behind one fold, and
  * the moves in a ⋯ menu: bring the target in (merge or rebase) or land the
  * branch on it. Conflicts never leave a half-merged tree; the group lists
  * the files instead. A move that lands says so in a toast.
@@ -74,7 +74,7 @@ export function ChangesAgainst({
       try {
         const r = await fetchCompare(projectId, t ?? undefined);
         setError(null);
-        if (!t) setTarget(r.target);
+        if (!t && r) setTarget(r.target);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       }
@@ -157,7 +157,9 @@ export function ChangesAgainst({
       target={target}
       locals={locals}
       remotes={remotes}
-      compare={compare ?? null}
+      // A picked target whose answer has not come yet is loading, not "no target".
+      compare={compare === null && target ? undefined : compare}
+      branchesKnown={!!branchList}
       selectedPath={selectedPath}
       moving={moving}
       blocked={buildRunning}
@@ -177,6 +179,7 @@ export function AgainstView({
   locals,
   remotes,
   compare,
+  branchesKnown = true,
   selectedPath,
   moving,
   blocked,
@@ -190,7 +193,10 @@ export function AgainstView({
   target: string | null;
   locals: string[];
   remotes: string[];
-  compare: CompareResult | null;
+  /** undefined while loading; null when the host has no branch to compare against */
+  compare: CompareResult | null | undefined;
+  /** the branch lists have loaded, so a target missing from them is gone */
+  branchesKnown?: boolean;
   selectedPath?: string;
   moving: AgainstMove | null;
   /** a build is running in the checkout: no move may start */
@@ -208,6 +214,8 @@ export function AgainstView({
   const isLocal = !!target && locals.includes(target);
   const busy = !!moving || blocked;
   const branch = current ?? "this branch";
+  const gone = !!error && !!target && target !== current && branchesKnown && !known.includes(target);
+  const shownError = gone ? `${target} no longer exists` : error;
 
   return (
     <section aria-label="Against" className="flex flex-col">
@@ -240,11 +248,6 @@ export function AgainstView({
             ) : null}
           </SelectContent>
         </Select>
-        {compare ? (
-          <span className="shrink-0 text-xs tabular-nums text-muted-foreground" aria-label={`${ahead} ahead, ${behind} behind`}>
-            ↑{ahead} ↓{behind}
-          </span>
-        ) : null}
         <DropdownMenu>
           <Tooltip>
             <TooltipTrigger
@@ -276,7 +279,7 @@ export function AgainstView({
         </DropdownMenu>
       </div>
 
-      {error ? <p className="px-2 pb-1 text-xs break-words text-destructive">{error}</p> : null}
+      {shownError ? <p className="px-2 pb-1 text-xs break-words text-destructive">{shownError}</p> : null}
       {conflicts ? (
         <Alert variant="error" className="my-1">
           <AlertTitle>
@@ -292,7 +295,7 @@ export function AgainstView({
         </Alert>
       ) : null}
 
-      {!compare && !error ? (
+      {compare === undefined && !error ? (
         <div className="flex flex-col gap-1 px-2 pt-1" aria-busy="true" aria-label="Loading the comparison">
           {["w-1/2", "w-2/5"].map((w) => (
             <div key={w} className="flex h-7 items-center gap-2">
@@ -302,9 +305,8 @@ export function AgainstView({
           ))}
         </div>
       ) : compare && compare.files.length === 0 ? (
-        <p className="flex h-7 items-center px-2 text-xs text-muted-foreground">
-          {ahead === 0 && behind === 0 ? `Up to date with ${compare.target}` : `No file differs from ${compare.target}`}
-        </p>
+        // The picker names the branch and the commits fold says ahead and behind; even says nothing.
+        ahead > 0 || behind > 0 ? <p className="flex h-7 items-center px-2 text-xs text-muted-foreground">No file differs</p> : null
       ) : compare ? (
         <div className="flex flex-col">
           {compare.files.map((c) => {

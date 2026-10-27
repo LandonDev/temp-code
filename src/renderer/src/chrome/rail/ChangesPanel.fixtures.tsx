@@ -141,6 +141,12 @@ export default [
   { name: "not published", props: base(index({ upstream: null })) },
   { name: "with the Against group", props: base(unstaged, "", { against: against() }) },
   { name: "nothing here, against master", props: base(index(), "", { against: against() }) },
+  {
+    name: "against: no file differs, commits do",
+    props: base(index(), "", { against: against({ compare: { target: "master", mergeBase: "base", ahead: 1, behind: 2, ours: [], theirs: [], files: [] } }) }),
+  },
+  { name: "against: no target to compare", props: base(index(), "", { against: against({ target: null, compare: null, locals: [], remotes: [] }) }) },
+  { name: "against: the picked branch is gone", props: base(index(), "", { against: against({ target: "old-feature", compare: undefined, error: "unknown branch: old-feature" }) }) },
   { name: "against: conflicts", props: base(index(), "", { against: against({ conflicts: ["src/renderer/src/lib/rightPanel.ts", "docs/LAYOUT.md"] }) }) },
   { name: "error", props: base(unstaged, "", { error: "fatal: Unable to create '.git/index.lock': File exists." }) },
 ];

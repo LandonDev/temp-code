@@ -27,8 +27,8 @@ import {
 import type { OpenFileFn } from "../lib/search";
 import type { Session } from "../lib/session";
 import { projectForCwd } from "../lib/tcserver/projects";
-import type { ProjectMeta } from "../lib/tcserver/types";
-import { useProjects } from "../lib/tcserver/workspaces";
+import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
+import { useProjects, useWorkspaces } from "../lib/tcserver/workspaces";
 import { fleetCounts, useAgents, useMetaById } from "../lib/threads/agents";
 import { useActivity } from "../lib/activity";
 import { ActivitySection } from "./threads/ActivitySection";
@@ -128,7 +128,7 @@ export function RightPanel(props: RightPanelProps) {
         key={section}
         className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-(--dur-fast) flex min-h-0 flex-1 flex-col overflow-hidden"
       >
-        <SectionBody section={section} project={facts.project} {...props} />
+        <SectionBody section={section} project={facts.project} workspace={facts.workspace} {...props} />
       </div>
       <div
         {...sashKeys}
@@ -141,14 +141,18 @@ export function RightPanel(props: RightPanelProps) {
   );
 }
 
-/** The thread's state as the facts `sectionsFor` reads, and the project the sections key by. */
-function usePanelFacts(session: Session, state: PanelState): { facts: PanelFacts; project: ProjectMeta | undefined } {
+type PanelPlace = { facts: PanelFacts; project: ProjectMeta | undefined; workspace: WorkspaceMeta | undefined };
+
+/** The thread's state as the facts `sectionsFor` reads, and the project (or a loose chat's git workspace) the sections key by. */
+function usePanelFacts(session: Session, state: PanelState): PanelPlace {
   const agents = useAgents(session.id);
   const meta = useMetaById(session.id);
   const projects = useProjects();
+  const workspaces = useWorkspaces();
   const project =
     (session.cwd && session.cwd !== "~" ? projectForCwd(session.cwd, projects) : undefined) ??
     projects.find((p) => p.id === session.projectId && p.environmentId === session.environmentId);
+  const workspace = project?.cwd ? undefined : looseWorkspace(session, workspaces);
   const devRunning = useDevRunning(project?.id);
   const activity = useActivity(session.id).rows;
   const counts = fleetCounts(agents);
@@ -157,6 +161,7 @@ function usePanelFacts(session: Session, state: PanelState): { facts: PanelFacts
     () => ({
       root: !session.parentId,
       project: !!project?.cwd,
+      checkout: !!project?.cwd || !!workspace,
       agents: agents.length,
       liveAgents: counts.working + counts.waiting,
       // The rows A6 joins: background tasks, subagents, a batch, dev servers and Mac bridge calls.
@@ -165,21 +170,31 @@ function usePanelFacts(session: Session, state: PanelState): { facts: PanelFacts
       devRunning,
       debug: DEBUG_SECTION || state.debug,
     }),
-    [session, project, agents.length, counts.working, counts.waiting, status, devRunning, activity.length, state.debug],
+    [session, project, workspace, agents.length, counts.working, counts.waiting, status, devRunning, activity.length, state.debug],
   );
-  return { facts, project };
+  return { facts, project, workspace };
+}
+
+/** A loose chat's workspace when its folder is a git repository: by the thread's workspace id on its host, else by its cwd. */
+function looseWorkspace(session: Session, workspaces: WorkspaceMeta[]): WorkspaceMeta | undefined {
+  const onHost = workspaces.filter((w) => w.environmentId === session.environmentId);
+  const workspace =
+    (session.workspaceId ? onHost.find((w) => w.id === session.workspaceId) : undefined) ??
+    (session.cwd ? onHost.find((w) => w.path === session.cwd) : undefined);
+  return workspace?.git ? workspace : undefined;
 }
 
 function SectionBody({
   section,
   project,
+  workspace,
   session,
   onOpenFile,
   onOpenDiff,
   onOpenSession,
   selectedPath,
-}: RightPanelProps & { section: Section; project: ProjectMeta | undefined }) {
-  const cwd = project?.cwd ?? session.cwd;
+}: RightPanelProps & { section: Section; project: ProjectMeta | undefined; workspace: WorkspaceMeta | undefined }) {
+  const cwd = project?.cwd ?? workspace?.path ?? session.cwd;
   const gitStatuses = useGitFileStatuses(cwd, section === "files");
   const actions = useContext(SessionActionsContext);
   switch (section) {

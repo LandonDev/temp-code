@@ -4,7 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CompareResult, MergeResult } from "@server/shared/domain";
 
 const h = vi.hoisted(() => ({
-  compare: undefined as CompareResult | undefined,
+  compare: undefined as CompareResult | null | undefined,
+  branches: { locals: ["feat", "master"], remotes: ["origin/master"], current: "feat" } as { locals: string[]; remotes: string[]; current: string },
+  fetchError: null as Error | null,
   merge: vi.fn((): Promise<MergeResult> => Promise.resolve({ ok: true, sha: "abc1234def", fastForward: false })),
   land: vi.fn((): Promise<MergeResult> => Promise.resolve({ ok: true, sha: "fff0000aaa", fastForward: true })),
   review: vi.fn(),
@@ -13,11 +15,11 @@ const h = vi.hoisted(() => ({
 
 vi.mock("../../lib/projectRailStore", () => ({
   fetchBranches: () => Promise.resolve(),
-  fetchCompare: () => Promise.resolve(h.compare),
+  fetchCompare: () => (h.fetchError ? Promise.reject(h.fetchError) : Promise.resolve(h.compare)),
   fetchLog: () => Promise.resolve(),
   mergeFrom: h.merge,
   mergeInto: h.land,
-  useBranchList: () => ({ locals: ["feat", "master"], remotes: ["origin/master"], current: "feat" }),
+  useBranchList: () => h.branches,
   useBuild: () => undefined,
   useCompare: () => h.compare,
   useGitLog: () => [{ sha: "head" }],
@@ -59,6 +61,8 @@ const move = (name: string) => {
 beforeEach(() => {
   localStorage.setItem("compare-target:p1", "master");
   h.compare = compareOf();
+  h.branches = { locals: ["feat", "master"], remotes: ["origin/master"], current: "feat" };
+  h.fetchError = null;
   vi.clearAllMocks();
 });
 afterEach(cleanup);
@@ -67,7 +71,9 @@ describe("ChangesAgainst", () => {
   it("lists the files changed since the merge base and opens one against it", async () => {
     mount();
     await flush();
-    expect(screen.getByLabelText("2 ahead, 1 behind").textContent).toBe("↑2 ↓1");
+    // Ahead and behind are the commits fold's alone, never repeated in the header.
+    expect(screen.queryByText("↑2 ↓1")).toBeNull();
+    expect(screen.queryByLabelText("2 ahead, 1 behind")).toBeNull();
     expect(screen.getByText("New")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Open the diff of src/a.ts against master" }));
     expect(h.review).toHaveBeenCalledWith("/p/src/a.ts", "base123");
@@ -133,11 +139,43 @@ describe("ChangesAgainst", () => {
     expect(screen.getByText("Commit or stash your changes first")).toBeTruthy();
   });
 
-  it("an up-to-date branch says so", async () => {
+  it("an up-to-date branch says nothing under the picker", async () => {
     h.compare = compareOf({ ahead: 0, behind: 0, ours: [], theirs: [], files: [] });
+    const { container } = mount();
+    await flush();
+    expect(screen.queryByText(/Up to date/)).toBeNull();
+    expect(screen.queryByText(/No file differs/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /commits/ })).toBeNull();
+    expect(container.querySelector("[aria-busy]")).toBeNull();
+  });
+
+  it("no file differs but commits do: the line names no branch, the fold says the commits", async () => {
+    h.compare = compareOf({ files: [] });
     mount();
     await flush();
-    expect(screen.getByText("Up to date with master")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /commits/ })).toBeNull();
+    expect(screen.getByText("No file differs")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /2 commits ahead/ })).toBeTruthy();
+  });
+
+  it("with no target and none to default to, the picker stands alone: no skeleton, no error", async () => {
+    localStorage.removeItem("compare-target:p1");
+    h.compare = null;
+    h.branches = { locals: ["master"], remotes: [], current: "master" };
+    const { container } = mount();
+    await flush();
+    expect(screen.getByRole("combobox", { name: "Compare against" }).textContent).toContain("Choose a branch");
+    expect(container.querySelector("[aria-busy]")).toBeNull();
+    expect(container.querySelector(".text-destructive")).toBeNull();
+    expect(screen.queryByText(/main/)).toBeNull();
+  });
+
+  it("a picked branch that is gone says so in words", async () => {
+    localStorage.setItem("compare-target:p1", "old-feature");
+    h.compare = undefined;
+    h.fetchError = new Error("unknown branch: old-feature");
+    mount();
+    await flush();
+    expect(screen.getByText("old-feature no longer exists")).toBeTruthy();
+    expect(screen.queryByText(/unknown branch/)).toBeNull();
   });
 });

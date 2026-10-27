@@ -5,6 +5,7 @@ import { PANEL_MAX, PANEL_MIN, PANEL_WIDTH, rightPanel, sectionsFor, shownSectio
 const quiet: PanelFacts = {
   root: true,
   project: false,
+  checkout: false,
   agents: 0,
   liveAgents: 0,
   backgroundTasks: 0,
@@ -23,16 +24,23 @@ describe("sectionsFor", () => {
   });
 
   it("a project thread adds the checkout sections, changes first; debug only for a dev build or the setting", () => {
-    expect(sectionsFor({ ...quiet, project: true })).toEqual({
+    expect(sectionsFor({ ...quiet, project: true, checkout: true })).toEqual({
       sections: ["changes", "notes", "files", "build"],
       defaultSection: "changes",
     });
-    expect(sectionsFor({ ...quiet, project: true, debug: true }).sections).toEqual(["changes", "notes", "files", "build", "debug"]);
+    expect(sectionsFor({ ...quiet, project: true, checkout: true, debug: true }).sections).toEqual(["changes", "notes", "files", "build", "debug"]);
     expect(sectionsFor({ ...quiet, debug: true }).sections).toEqual(["notes"]);
   });
 
+  it("a loose chat in a git workspace lists Changes and Files, never Build or Debug", () => {
+    expect(sectionsFor({ ...quiet, checkout: true, debug: true })).toEqual({
+      sections: ["changes", "notes", "files"],
+      defaultSection: "changes",
+    });
+  });
+
   it("subagents add agents and take the default, live or done; live ones add activity and win it", () => {
-    expect(sectionsFor({ ...quiet, project: true, agents: 2 })).toEqual({
+    expect(sectionsFor({ ...quiet, project: true, checkout: true, agents: 2 })).toEqual({
       sections: ["agents", "changes", "notes", "files", "build"],
       defaultSection: "agents",
     });
@@ -43,11 +51,11 @@ describe("sectionsFor", () => {
   it("a watching master's wait, background tasks and a dev server each open a section; its batch never opens Agents", () => {
     expect(sectionsFor({ ...quiet, watching: true }).sections).toEqual(["activity", "notes"]);
     expect(sectionsFor({ ...quiet, backgroundTasks: 1 }).sections).toEqual(["activity", "notes"]);
-    expect(sectionsFor({ ...quiet, project: true, devRunning: true }).sections[0]).toBe("activity");
+    expect(sectionsFor({ ...quiet, project: true, checkout: true, devRunning: true }).sections[0]).toBe("activity");
   });
 
   it("the asked section shows when it exists, else the default", () => {
-    const available = sectionsFor({ ...quiet, project: true });
+    const available = sectionsFor({ ...quiet, project: true, checkout: true });
     expect(shownSection("files", available)).toBe("files");
     expect(shownSection("agents", available)).toBe("changes");
     expect(shownSection(null, available)).toBe("changes");

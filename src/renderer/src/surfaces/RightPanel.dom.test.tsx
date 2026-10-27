@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionMeta } from "../lib/tcserver/types";
 
 const state = vi.hoisted(() => ({
+  workspaces: [] as { id: string; environmentId: string; path: string; git: boolean }[],
   agents: [] as SessionMeta[],
   meta: null as SessionMeta | null,
   devRunning: false,
@@ -21,6 +22,7 @@ vi.mock("../lib/threads/agents", () => ({
 }));
 vi.mock("../lib/tcserver/workspaces", () => ({
   useProjects: () => [{ id: "p1", environmentId: "local", cwd: "/p", name: "P" }],
+  useWorkspaces: () => state.workspaces,
 }));
 vi.mock("../lib/tcserver/projects", () => ({ projectForCwd: (cwd: string) => (cwd === "/p" ? { id: "p1", environmentId: "local", cwd: "/p", name: "P" } : undefined) }));
 vi.mock("../lib/devServers", () => ({ useDevRunning: () => state.devRunning }));
@@ -61,6 +63,7 @@ const noop = () => {};
 beforeEach(() => {
   rightPanel.reset();
   state.agents = [];
+  state.workspaces = [];
   state.meta = null;
   state.devRunning = false;
 });
@@ -146,6 +149,25 @@ describe("RightPanel", () => {
 
   it("a chat with no project has notes alone", () => {
     const chat = { ...session, cwd: "~", projectId: null } as unknown as Session;
+    rightPanel.open("s1");
+    const r = render(<RightPanel session={chat} onOpenFile={noop} onOpenDiff={noop} />);
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Notes"]);
+    r.unmount();
+  });
+
+  it("a loose chat in a git workspace lists Changes and Files on the workspace's folder, never Build", () => {
+    state.workspaces = [{ id: "w1", environmentId: "local", path: "/w", git: true }];
+    const chat = { ...session, cwd: "/w", projectId: null, workspaceId: "w1" } as unknown as Session;
+    rightPanel.open("s1");
+    const r = render(<RightPanel session={chat} onOpenFile={noop} onOpenDiff={noop} />);
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Changes", "Notes", "Files"]);
+    expect(screen.getByTestId("changes-body")).toBeTruthy();
+    r.unmount();
+  });
+
+  it("a loose chat in a workspace that is no repository has notes alone", () => {
+    state.workspaces = [{ id: "w1", environmentId: "local", path: "/w", git: false }];
+    const chat = { ...session, cwd: "/w", projectId: null, workspaceId: "w1" } as unknown as Session;
     rightPanel.open("s1");
     const r = render(<RightPanel session={chat} onOpenFile={noop} onOpenDiff={noop} />);
     expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Notes"]);

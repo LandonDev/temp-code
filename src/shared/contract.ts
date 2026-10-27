@@ -381,7 +381,7 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   }),
   // ── branch compare / merge (Branch rail) ─────────────────────────────
   // No target → the server's default (origin/HEAD, main, master, …); the
-  // result names the target it used.
+  // result names the target it used, or is null when no other branch qualifies.
   z.object({
     id: z.string(),
     method: z.literal('project.compare'),

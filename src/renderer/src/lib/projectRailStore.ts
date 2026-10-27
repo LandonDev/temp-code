@@ -33,7 +33,8 @@ export interface SyncProgress {
 }
 
 interface State {
-  compares: Record<string, CompareResult>;
+  /** null: the host has no branch to compare against. */
+  compares: Record<string, CompareResult | null>;
   builds: Record<string, BuildState>;
   syncs: Record<string, SyncProgress>;
   /** keyed by workspace id: branches are a repo property */
@@ -122,17 +123,18 @@ registry.onLink((link, event) => {
 
 // ── fetches ───────────────────────────────────────────────────────────
 
-export async function fetchCompare(projectId: string, target?: string): Promise<CompareResult> {
+/** null when no target was named and the host has none to default to. */
+export async function fetchCompare(projectId: string, target?: string): Promise<CompareResult | null> {
   const compare = (await linkOfProject(projectId).request("project.compare", {
     projectId,
     ...(target ? { target } : {}),
-  })) as CompareResult;
+  })) as CompareResult | null;
   set({ compares: { ...state.compares, [projectId]: compare } });
   return compare;
 }
 
 export function dropCompare(projectId: string): void {
-  if (!state.compares[projectId]) return;
+  if (!(projectId in state.compares)) return;
   set({ compares: without(state.compares, projectId) });
 }
 
@@ -199,7 +201,8 @@ export async function pullBranch(projectId: string, branch?: string): Promise<Re
 
 // ── hooks ─────────────────────────────────────────────────────────────
 
-export function useCompare(projectId: string): CompareResult | undefined {
+/** undefined while loading; null when there is no branch to compare against. */
+export function useCompare(projectId: string): CompareResult | null | undefined {
   return useSyncExternalStore(subscribe, () => state.compares[projectId], () => undefined);
 }
 

@@ -525,8 +525,9 @@ async function refExists(dir: string, ref: string): Promise<boolean> {
 }
 
 /** The branch a compare defaults to: origin's HEAD, else main/master (a
- *  local head first, else its origin ref), else the first other local branch. */
-export async function defaultTarget(dir: string): Promise<string> {
+ *  local head first, else its origin ref), else the first other local branch;
+ *  null when nothing but the current branch qualifies. */
+export async function defaultTarget(dir: string): Promise<string | null> {
   const current = await currentBranch(dir)
   const candidates: string[] = []
   try {
@@ -548,7 +549,7 @@ export async function defaultTarget(dir: string): Promise<string> {
     if (await refExists(dir, `refs/remotes/origin/${name}`)) return `origin/${name}`
   }
   const { locals } = await branches(dir)
-  return locals.find((b) => b !== current) ?? 'main'
+  return locals.find((b) => b !== current) ?? null
 }
 
 /** Tracked changes present (staged or not)? Untracked files don't count —
@@ -606,9 +607,11 @@ async function diffFiles(dir: string, from: string, to: string): Promise<FileCha
     .sort((a, b) => a.path.localeCompare(b.path))
 }
 
-/** This checkout vs `target` (default: defaultTarget). Unknown target throws. */
-export async function compare(dir: string, target?: string): Promise<CompareResult> {
+/** This checkout vs `target` (default: defaultTarget); null with no target
+ *  given and none to default to. A named target that is unknown throws. */
+export async function compare(dir: string, target?: string): Promise<CompareResult | null> {
   const t = target ?? (await defaultTarget(dir))
+  if (t === null) return null
   if (!(await refExists(dir, t))) throw new Error(`unknown branch: ${t}`)
   let mergeBase: string
   try {

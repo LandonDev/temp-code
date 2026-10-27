@@ -34,6 +34,8 @@ export type PanelFacts = {
   root: boolean;
   /** The thread's cwd resolves to a project with a checkout. */
   project: boolean;
+  /** A git checkout to show: the project's, or a loose chat's git workspace. */
+  checkout: boolean;
   /** Subagents of the thread, live or settled. */
   agents: number;
   /** Subagents working or waiting. */
@@ -59,16 +61,16 @@ export function sectionsFor(facts: PanelFacts): PanelSections {
   if (activity) sections.push("activity");
   // A master's batch lives on its board, never here: agents means its own subagents.
   if (facts.agents > 0) sections.push("agents");
-  if (facts.project) sections.push("changes");
+  if (facts.checkout) sections.push("changes");
   sections.push("notes");
-  if (facts.project) sections.push("files");
+  if (facts.checkout) sections.push("files");
   if (facts.project) sections.push("build");
   if (facts.project && facts.debug) sections.push("debug");
   const defaultSection: Section = activity
     ? "activity"
     : facts.agents > 0
       ? "agents"
-      : facts.project
+      : facts.checkout
         ? "changes"
         : "notes";
   return { sections, defaultSection };
