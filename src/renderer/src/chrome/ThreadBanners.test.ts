@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SessionMeta } from "../lib/tcserver/types";
-import { bannerThreads, pausedText } from "./ThreadBanners";
+import { STALE_WATCH_MS } from "@shared/watch";
+import { bannerThreads, pausedText, staleText, staleWatchers } from "./ThreadBanners";
 
 function meta(id: string, over: Partial<SessionMeta> = {}): SessionMeta {
   return {
@@ -90,5 +91,33 @@ describe("pausedText", () => {
   it("counts the batch threads paused with their master before the Mac jobs", () => {
     expect(pausedText([{ title: "Master" }], 0, 3)).toBe("Master is paused, and 3 batch threads with it");
     expect(pausedText([{ title: "Master" }], 2, 1)).toBe("Master is paused, and 1 batch thread with it, and 2 Mac jobs with it");
+  });
+});
+
+describe("staleWatchers", () => {
+  const now = 100 * STALE_WATCH_MS;
+  const watching = (id: string, since: number, over: Partial<SessionMeta> = {}): SessionMeta =>
+    meta(id, {
+      status: "watching",
+      projectId: "a",
+      background: { tasks: [], agents: [], batch: null, watchingSince: since },
+      ...over,
+    });
+
+  it("lists roots watching past 30 minutes, oldest first, leaving out fresh ones and the thread on screen", () => {
+    const old = watching("old", now - 3 * STALE_WATCH_MS);
+    const older = watching("older", now - 5 * STALE_WATCH_MS);
+    const fresh = watching("fresh", now - 60_000);
+    const onScreen = watching("on-screen", now - 4 * STALE_WATCH_MS);
+    const child = watching("child", now - 4 * STALE_WATCH_MS, { parentId: "older" });
+    const elsewhere = watching("elsewhere", now - 4 * STALE_WATCH_MS, { projectId: "b" });
+    const list = staleWatchers([old, older, fresh, onScreen, child, elsewhere], "a", "on-screen", now);
+    expect(list.map((m) => m.id)).toEqual(["older", "old"]);
+  });
+
+  it("names one thread with its age and counts several", () => {
+    const one = watching("Deploy watch", now - (2 * 3_600_000 + 14 * 60_000));
+    expect(staleText([one], now)).toBe("Deploy watch has been watching for 2h 14m");
+    expect(staleText([one, one], now)).toBe("2 threads watching for over 30 min");
   });
 });

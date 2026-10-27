@@ -9,6 +9,10 @@ import AddSquareIcon from "@hugeicons/core-free-icons/AddSquareIcon";
 import AlertCircleIcon from "@hugeicons/core-free-icons/AlertCircleIcon";
 import AppWindowIcon from "@hugeicons/core-free-icons/AppWindowIcon";
 import Bug01Icon from "@hugeicons/core-free-icons/Bug01Icon";
+import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
+import Layers01Icon from "@hugeicons/core-free-icons/Layers01Icon";
+import ViewIcon from "@hugeicons/core-free-icons/ViewIcon";
+import WorkflowSquare01Icon from "@hugeicons/core-free-icons/WorkflowSquare01Icon";
 import FileCodeIcon from "@hugeicons/core-free-icons/FileCodeIcon";
 import ArchiveIcon from "@hugeicons/core-free-icons/ArchiveIcon";
 import ArchiveRestoreIcon from "@hugeicons/core-free-icons/ArchiveRestoreIcon";
@@ -167,6 +171,10 @@ const UnfoldVerticalIcon: IconSvgElement = [
 
 export const AlertCircle = wrap(AlertCircleIcon, "AlertCircle");
 export const Bug = wrap(Bug01Icon, "Bug");
+export const Clock = wrap(Clock01Icon, "Clock");
+export const Eye = wrap(ViewIcon, "Eye");
+export const Layers = wrap(Layers01Icon, "Layers");
+export const Workflow = wrap(WorkflowSquare01Icon, "Workflow");
 export const Camera = wrap(Camera01Icon, "Camera");
 export const FileCode = wrap(FileCodeIcon, "FileCode");
 export const Circle = wrap(CircleIcon, "Circle");

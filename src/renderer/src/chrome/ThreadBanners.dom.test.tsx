@@ -11,7 +11,8 @@ vi.mock("../lib/tcserver/store", () => ({
   useSessionMetas: () => metas,
   sessionFromMeta: (m: SessionMeta) => ({ harness: m.provider, model: m.model, modelSettings: {} }),
 }));
-vi.mock("../lib/tcserver/commands", () => ({ resume: vi.fn(), interrupt: vi.fn(), continueSession: vi.fn(), reasoningOf: () => "medium" }));
+const { killBackground } = vi.hoisted(() => ({ killBackground: vi.fn(() => Promise.resolve()) }));
+vi.mock("../lib/tcserver/commands", () => ({ resume: vi.fn(), interrupt: vi.fn(), continueSession: vi.fn(), reasoningOf: () => "medium", killBackground }));
 vi.mock("../lib/threadNotes", () => ({ useThreadNotes: (_env: string, id: string) => notes.get(id) }));
 vi.mock("./ModelPicker", () => ({ ModelPicker: () => null }));
 vi.mock("./ModelSettings", () => ({ ModelSettings: () => null }));
@@ -53,5 +54,33 @@ describe("the needs-you banner", () => {
     notes.set("One", { text: "## State\n\n- stuck\n", updatedAt: 1, path: null });
     render(<ThreadBanners projectId="p1" onOpen={() => {}} />);
     expect(screen.getByRole("alert").textContent).toBe("2 threads need youOpen first");
+  });
+});
+
+describe("the stale-watching banner", () => {
+  it("counts the stale watchers, leaves the fresh one and the thread on screen out, and Stop all stops each", async () => {
+    const now = Date.now();
+    const bg = (since: number) => ({ tasks: [], agents: [], batch: null, watchingSince: since });
+    metas.push(
+      meta("a", { status: "watching", background: bg(now - 40 * 60_000) }),
+      meta("b", { status: "watching", background: bg(now - 90 * 60_000) }),
+      meta("fresh", { status: "watching", background: bg(now - 5 * 60_000) }),
+      meta("here", { status: "watching", background: bg(now - 60 * 60_000) }),
+    );
+    const onOpen = vi.fn();
+    render(<ThreadBanners projectId="p1" activeSessionId="here" onOpen={onOpen} />);
+    const banner = screen.getByRole("status");
+    expect(banner.textContent).toContain("2 threads watching for over 30 min");
+    screen.getByText("Open").click();
+    expect(onOpen).toHaveBeenCalledWith("b");
+    screen.getByText("Stop all").click();
+    await vi.waitFor(() => expect(killBackground).toHaveBeenCalledTimes(2));
+    expect(killBackground.mock.calls.map((c) => (c as unknown as string[])[0]).sort()).toEqual(["a", "b"]);
+  });
+
+  it("renders nothing while every watcher is fresh", () => {
+    metas.push(meta("fresh", { status: "watching", background: { tasks: [], agents: [], batch: null, watchingSince: Date.now() } }));
+    const { container } = render(<ThreadBanners projectId="p1" onOpen={() => {}} />);
+    expect(container.textContent).toBe("");
   });
 });

@@ -17,7 +17,7 @@ import type { ProjectMeta, SessionMeta, WorkspaceMeta } from "./types";
  */
 
 /** Fields a meta carries only while a turn runs; the mirror leaves them out. */
-const TRANSIENT: readonly (keyof SessionMeta)[] = ["activity", "activityKind"];
+const TRANSIENT: readonly (keyof SessionMeta)[] = ["activity", "activityKind", "background"];
 
 export const MIRROR_WRITE_DELAY_MS = 750;
 

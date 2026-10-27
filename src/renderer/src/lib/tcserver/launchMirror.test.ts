@@ -100,9 +100,17 @@ const install = (delayMs = 100) => {
 
 describe("summarize", () => {
   it("drops the transient fields and keeps the rest, environment included", () => {
-    const s = summarize(meta({ activity: "Editing x.ts", activityKind: "edit", tasks: { done: 1, total: 3 } }));
+    const s = summarize(
+      meta({
+        activity: "Editing x.ts",
+        activityKind: "edit",
+        background: { tasks: [], agents: ["c"], batch: null, watchingSince: 5 },
+        tasks: { done: 1, total: 3 },
+      }),
+    );
     expect(s).not.toHaveProperty("activity");
     expect(s).not.toHaveProperty("activityKind");
+    expect(s).not.toHaveProperty("background");
     expect(s.environmentId).toBe("local");
     expect(s.tasks).toEqual({ done: 1, total: 3 });
   });

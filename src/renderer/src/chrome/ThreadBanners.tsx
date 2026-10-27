@@ -1,5 +1,9 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
+import { isStaleWatch } from "@shared/watch";
+import { stopAll } from "../lib/activity";
 import { heldSuffix, useMacHeldTotal } from "../lib/macBridge";
+import { useSlowClock } from "../lib/turnClock";
+import { duration } from "../surfaces/threads/bits";
 import { mergeModelSettings, nativeModelId, resolveModel } from "../lib/models";
 import type { HarnessId } from "../lib/session";
 import * as serverCommands from "../lib/tcserver/commands";
@@ -7,7 +11,7 @@ import { sessionFromMeta, useSessionMetas } from "../lib/tcserver/store";
 import type { SessionMeta } from "../lib/tcserver/types";
 import { stateLine } from "@shared/notes";
 import { useThreadNotes } from "../lib/threadNotes";
-import { ChevronDown, CircleAlert, MessageSquare, Pause } from "./icons";
+import { ChevronDown, CircleAlert, Eye, MessageSquare, Pause } from "./icons";
 import { ModelPicker } from "./ModelPicker";
 import { ModelSettings } from "./ModelSettings";
 import { Popover } from "./Popover";
@@ -22,7 +26,7 @@ type Props = {
   onOpen: (sessionId: string) => void;
 };
 
-type Kind = "recovery" | "paused" | "needs-you";
+type Kind = "recovery" | "paused" | "needs-you" | "watching";
 
 const GLOBAL_ROOT = (m: SessionMeta): boolean => !m.parentId && !m.archived;
 
@@ -66,6 +70,29 @@ export function bannerThreads(
   return { paused, recovery, needsYou, batchPaused: allPaused.length - paused.length };
 }
 
+/**
+ * Roots in `projectId` (null: every root) watching for over 30 minutes
+ * without waking (isStaleWatch), oldest first; the thread on screen is left
+ * out, its own strip says it.
+ */
+export function staleWatchers(
+  metas: readonly SessionMeta[],
+  projectId: string | null,
+  activeSessionId: string | undefined,
+  now: number,
+): SessionMeta[] {
+  return metas
+    .filter((m) => ROOT(m, projectId) && m.id !== activeSessionId && isStaleWatch(m, now))
+    .sort((a, b) => (a.background?.watchingSince ?? 0) - (b.background?.watchingSince ?? 0));
+}
+
+/** The stale-watching banner's line. */
+export function staleText(stale: readonly Pick<SessionMeta, "title" | "background">[], now: number): string {
+  if (stale.length !== 1) return `${stale.length} threads watching for over 30 min`;
+  const since = stale[0].background?.watchingSince ?? now;
+  return `${stale[0].title} has been watching for ${duration(Math.max(0, now - since))}`;
+}
+
 /** The paused strip's line: the thread (or the count), the batch threads paused with their master, and the Mac jobs waiting with it when any. */
 export function pausedText(paused: readonly Pick<SessionMeta, "title">[], held: number, batchPaused = 0): string {
   const head = paused.length === 1 ? `${paused[0].title} is paused` : `${paused.length} threads paused`;
@@ -87,12 +114,19 @@ export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
     [activeSessionId, metas, projectId],
   );
   const [busy, setBusy] = useState<Kind | "stop" | null>(null);
-  const [failed, setFailed] = useState<Record<Kind, number>>({ recovery: 0, paused: 0, "needs-you": 0 });
+  const [failed, setFailed] = useState<Record<Kind, number>>({ recovery: 0, paused: 0, "needs-you": 0, watching: 0 });
   // Mac calls the paused trees hold on their hosts (lib/macBridge.ts): they wait with the thread and resume with it.
   const pausedIds = useMemo(() => paused.map((m) => m.id), [paused]);
   const held = useMacHeldTotal(pausedIds);
+  // The half-minute clock runs only while some root watches at all.
+  const anyWatching = useMemo(() => metas.some((m) => GLOBAL_ROOT(m) && m.status === "watching"), [metas]);
+  const now = useSlowClock(anyWatching);
+  const stale = useMemo(
+    () => (now ? staleWatchers(metas, projectId, activeSessionId, now) : []),
+    [activeSessionId, metas, now, projectId],
+  );
 
-  if (paused.length === 0 && recovery.length === 0 && needsYou.length === 0) return null;
+  if (paused.length === 0 && recovery.length === 0 && needsYou.length === 0 && stale.length === 0) return null;
 
   const run = async (kind: Kind | "stop", work: () => Promise<number>): Promise<void> => {
     if (busy) return;
@@ -103,7 +137,8 @@ export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
       const n = await work();
       setFailed((prev) => ({ ...prev, [tally]: n }));
     } catch {
-      setFailed((prev) => ({ ...prev, [tally]: kind === "recovery" ? recovery.length : paused.length }));
+      const total = kind === "recovery" ? recovery.length : kind === "watching" ? stale.length : paused.length;
+      setFailed((prev) => ({ ...prev, [tally]: total }));
     } finally {
       setBusy(null);
     }
@@ -118,6 +153,7 @@ export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
   const continueErrored = (settings?: serverCommands.QueueRunSettings) =>
     run("recovery", () => each(recovery, (id) => serverCommands.continueSession(id, settings)));
   const continueLabel = recovery.length === 1 ? "Continue" : "Continue all";
+  const stopWatchers = () => run("watching", () => each(stale, stopAll));
 
   return (
     <section className="shrink-0" aria-label="Thread alerts" aria-live="polite">
@@ -152,6 +188,16 @@ export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
               onContinue={(settings) => void continueErrored(settings)}
             />
           }
+        />
+      ) : null}
+      {stale.length > 0 ? (
+        <Banner
+          kind="watching"
+          text={staleText(stale, now)}
+          failed={failed.watching}
+          disabled={busy !== null}
+          secondary={{ label: busy === "watching" ? "Stopping…" : "Stop all", onClick: () => void stopWatchers() }}
+          primary={{ label: "Open", onClick: () => onOpen(stale[0].id) }}
         />
       ) : null}
       {paused.length > 0 ? (
@@ -311,14 +357,14 @@ function Banner({
   menu?: ReactNode;
 }) {
   const destructive = kind === "recovery";
-  const Icon = kind === "paused" ? Pause : kind === "recovery" ? CircleAlert : MessageSquare;
+  const Icon = kind === "paused" ? Pause : kind === "recovery" ? CircleAlert : kind === "watching" ? Eye : MessageSquare;
   const tint = destructive
     ? "border-danger/20 bg-danger/8 text-danger"
     : "border-warning/20 bg-warning/8 text-warning";
   const button = destructive ? DESTRUCTIVE_BUTTON : "border-warning/25 bg-warning/10 hover:bg-warning/20";
   return (
     <div
-      role={kind === "paused" ? "status" : "alert"}
+      role={kind === "paused" || kind === "watching" ? "status" : "alert"}
       className={`flex min-h-7 items-center gap-2 border-b px-3 py-1 text-xs ${tint}`}
     >
       <Icon className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />

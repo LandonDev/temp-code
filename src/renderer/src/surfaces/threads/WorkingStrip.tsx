@@ -1,8 +1,13 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useMemo, useState, type ReactNode } from "react";
+import { isStaleWatch, watchPhrase } from "@server/shared/watch";
+import { Button } from "@renderer/components/ui/button";
+import { StatusMark } from "@renderer/components/ui/status";
+import { cn } from "@renderer/lib/cn";
 import { usePaneVisible } from "../../hooks/paneVisibility";
 import { Pause, Square } from "../../chrome/icons";
 import type { Session } from "../../lib/session";
-import { useClock } from "../../lib/turnClock";
+import { stopAll } from "../../lib/activity";
+import { useClock, useSlowClock } from "../../lib/turnClock";
 import { MatrixSpinner, duration } from "./bits";
 
 /**
@@ -16,8 +21,12 @@ import { MatrixSpinner, duration } from "./bits";
  * or the process died) fills it the same way in neutral: a square, Stopped,
  * why, the frozen elapsed, and Resume. A queued thread (created, not
  * booted: over the host's cap or waiting for a sibling) reads its reason
- * from the row's activity line and offers one quiet Start now. Only opacity
- * animates in and out (120ms); the slot never changes height.
+ * from the row's activity line and offers one quiet Start now. A watching
+ * thread (its turn ended, background work is live) says what it watches,
+ * "Watching  3 subagents, a monitor", with the stretch's age at the end;
+ * past 30 minutes the age turns amber and Stop all appears. The line opens
+ * the Activity section. Only opacity animates in and out (120ms); the slot
+ * never changes height.
  */
 
 const FLAVOUR_WORDS = [
@@ -64,12 +73,15 @@ export const WorkingStrip = memo(function WorkingStrip({
   onStop,
   onResume,
   onStart,
+  onOpenActivity,
 }: {
   session: Session;
   onStop: () => void;
   onResume: () => Promise<void> | void;
   /** Start a queued thread now (session.start); absent, the strip only says Queued. */
   onStart?: () => Promise<void> | void;
+  /** A watching line's click: the right panel's Activity section. */
+  onOpenActivity?: () => void;
 }) {
   const status = session.status ?? (session.busy ? "running" : "idle");
   const running = status === "running" || (status !== "starting" && status !== "paused" && !!session.busy);
@@ -78,14 +90,17 @@ export const WorkingStrip = memo(function WorkingStrip({
   const stopped = status === "stopped";
   // Created, not booted (CLAUDE.md "Master threads"): one quiet word, no clock.
   const queued = status === "queued";
+  const watching = status === "watching";
   const active = running || starting;
-  const visible = active || paused || stopped || queued;
+  const visible = active || paused || stopped || queued || watching;
   const turnStart = turnStartOf(session);
 
   const shown = usePaneVisible();
   // The shared second hand, only while the strip is live and on screen; a
   // parked pane reads 0 and catches up on its first visible tick.
   const now = useClock(active && shown);
+  // The watching age moves by minutes: the half-minute clock, only while watching.
+  const slowNow = useSlowClock(watching && shown);
   const elapsed = paused || stopped
     ? Math.max(0, session.frozenActiveElapsed ?? 0)
     : active
@@ -107,6 +122,14 @@ export const WorkingStrip = memo(function WorkingStrip({
     setStartBusy(true);
     Promise.resolve(onStart()).finally(() => setStartBusy(false));
   };
+  const [stopBusy, setStopBusy] = useState(false);
+  const stopEverything = (): void => {
+    if (stopBusy) return;
+    setStopBusy(true);
+    stopAll(session.id).finally(() => setStopBusy(false));
+  };
+  const watchSince = session.background?.watchingSince ?? null;
+  const stale = watching && slowNow > 0 && isStaleWatch({ status, background: session.background }, slowNow);
   // "Queued · waiting for X": the host's line for the row.
   const queuedLine = queued && session.activity?.startsWith("Queued") ? session.activity : "Queued";
 
@@ -164,6 +187,23 @@ export const WorkingStrip = memo(function WorkingStrip({
               {resumeBusy ? "Continuing…" : "Continue"}
             </button>
           </>
+        ) : watching ? (
+          <>
+            <WatchLine onOpen={onOpenActivity}>
+              <StatusMark state="watching" className="font-normal" />
+              <span className="ml-2 min-w-0 truncate">{watchPhrase(session.background)}</span>
+            </WatchLine>
+            {watchSince && slowNow > 0 ? (
+              <span className={cn("ml-auto shrink-0 tabular-nums", stale ? "text-warning" : "text-muted-foreground")}>
+                {duration(Math.max(0, slowNow - watchSince))}
+              </span>
+            ) : null}
+            {stale ? (
+              <Button variant="ghost" size="xs" className="shrink-0" onClick={stopEverything} disabled={stopBusy}>
+                {stopBusy ? "Stopping…" : "Stop all"}
+              </Button>
+            ) : null}
+          </>
         ) : starting ? (
           <span>Sending…</span>
         ) : queued ? (
@@ -191,3 +231,14 @@ export const WorkingStrip = memo(function WorkingStrip({
     </div>
   );
 });
+
+/** The watching line: a button onto the Activity section when there is one to open. */
+function WatchLine({ onOpen, children }: { onOpen?: () => void; children: ReactNode }) {
+  const row = "flex min-w-0 items-center text-xs text-muted-foreground";
+  if (!onOpen) return <span className={row}>{children}</span>;
+  return (
+    <Button variant="ghost" size="xs" onClick={onOpen} className={cn(row, "-ml-2 shrink justify-start font-normal")}>
+      {children}
+    </Button>
+  );
+}

@@ -12,7 +12,7 @@ import {
 } from "./models";
 import type { ThreadRules } from "@server/shared/rules";
 import type { AgentType, SessionStatus, ThreadType } from "./tcserver/types";
-import type { Failure } from "@server/shared/events";
+import type { BackgroundWork, Failure } from "@server/shared/events";
 import type { ThreadState } from "./tcserver/todos";
 
 export type HarnessId =
@@ -322,6 +322,8 @@ export type Session = {
   /** What a working thread is doing right now ("Editing Foo.tsx"). */
   activity?: string | null;
   activityKind?: ActivityKind | null;
+  /** What the thread waits on in the background (tasks, live subagents, a master's batch, the watching stretch). */
+  background?: BackgroundWork | null;
   /** Server-side status; `busy` is derived from it. */
   status?: SessionStatus;
   busySince?: number | null;
