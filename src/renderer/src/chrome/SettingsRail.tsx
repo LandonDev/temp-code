@@ -15,8 +15,6 @@ import {
   type IconComponent,
 } from "./icons";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
-import { Button } from "../components/ui/button";
-import { cn } from "../lib/cn";
 import {
   SETTINGS_GROUPS,
   SETTINGS_SECTIONS,
@@ -26,6 +24,7 @@ import {
 } from "../lib/settings";
 import { useWorkspaces } from "../lib/tcserver/workspaces";
 import { registry, useEnvironments } from "../lib/connection";
+import { RailHeading, RailRow } from "./RailRow";
 
 const SECTION_ICONS: Record<StaticSettingsSectionId, IconComponent> = {
   general: SlidersHorizontal,
@@ -63,84 +62,49 @@ export function SettingsNav({ section, onSelect, onClose }: Props) {
       <div
         ref={lockOverscroll}
         aria-label="Settings"
-        className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto overscroll-none px-2 pb-2"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-none px-2 pb-2"
       >
         {SETTINGS_GROUPS.map((group, index) => (
-          <div key={group.id} role="group" aria-labelledby={`settings-group-${group.id}`} className="flex flex-col gap-px">
-            <GroupHeading id={`settings-group-${group.id}`} first={index === 0}>
-              {group.label}
-            </GroupHeading>
+          <div
+            key={group.id}
+            role="group"
+            aria-labelledby={`settings-group-${group.id}`}
+            className={`flex flex-col ${index === 0 ? "" : "pt-4"}`}
+          >
+            <RailHeading id={`settings-group-${group.id}`}>{group.label}</RailHeading>
             {SETTINGS_SECTIONS.filter((item) => item.group === group.id).map((item) => (
-              <NavRow
+              <RailRow
                 key={item.id}
                 label={item.label}
                 icon={SECTION_ICONS[item.id]}
-                active={item.id === section}
+                selected={item.id === section}
                 onClick={() => onSelect(item.id)}
               />
             ))}
           </div>
         ))}
-        {workspaces.length ? <GroupHeading>Workspaces</GroupHeading> : null}
-        {workspaces.map((workspace) => {
-          const id = workspaceSettingsSection(workspace.id);
-          return (
-            <NavRow
-              key={id}
-              label={workspace.name}
-              detail={hostOf(workspace.environmentId)}
-              icon={Folder}
-              active={id === section}
-              onClick={() => onSelect(id)}
-            />
-          );
-        })}
+        {workspaces.length ? (
+          <div role="group" aria-labelledby="settings-group-workspaces" className="flex flex-col pt-4">
+            <RailHeading id="settings-group-workspaces">Workspaces</RailHeading>
+            {workspaces.map((workspace) => {
+              const id = workspaceSettingsSection(workspace.id);
+              return (
+                <RailRow
+                  key={id}
+                  label={workspace.name}
+                  trailing={hostOf(workspace.environmentId)}
+                  icon={Folder}
+                  selected={id === section}
+                  onClick={() => onSelect(id)}
+                />
+              );
+            })}
+          </div>
+        ) : null}
       </div>
-      <div className="flex shrink-0 flex-col gap-px p-2">
-        <NavRow label="Back" icon={ArrowLeft} onClick={onClose} />
+      <div className="flex shrink-0 flex-col border-t border-border p-2">
+        <RailRow label="Back" icon={ArrowLeft} onClick={onClose} />
       </div>
     </>
-  );
-}
-
-/** A group's name over its pages: 12px medium muted, never uppercase. */
-function GroupHeading({ id, first = false, children }: { id?: string; first?: boolean; children: string }) {
-  return (
-    <div id={id} className={`px-2 pb-1 text-xs font-medium text-muted-foreground ${first ? "pt-1" : "pt-4"}`}>
-      {children}
-    </div>
-  );
-}
-
-function NavRow({
-  label,
-  detail,
-  icon: Icon,
-  active = false,
-  onClick,
-}: {
-  label: string;
-  /** A muted word after the label: the host a workspace lives on. */
-  detail?: string | null;
-  icon: IconComponent;
-  active?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <Button
-      variant="ghost"
-      onClick={onClick}
-      aria-current={active ? "page" : undefined}
-      className={cn(
-        "h-9 w-full justify-start gap-2 px-2 text-[13px] font-normal",
-        active ? "bg-muted text-foreground hover:bg-muted" : "text-muted-foreground hover:text-foreground",
-      )}
-    >
-      <Icon className="size-4 shrink-0" />
-      <span className="min-w-0 flex-1 truncate text-start">
-        {label}
-        {detail ? <span className="ml-2 text-muted-foreground">{detail}</span> : null}
-      </span>
-    </Button>
   );
 }
