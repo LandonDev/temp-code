@@ -41,10 +41,10 @@ describe("rowAgents", () => {
       meta("fail", "c", "error", { createdAt: 3, failure: { summary: "Usage cap until 14:00" } as SessionMeta["failure"] }),
     ])!;
     expect(r.lines.map((l) => l.id)).toEqual(["wait", "fail", "run"]);
-    expect(r.lines.map((l) => l.what)).toEqual([
-      { text: "waiting for approval — Bash", tone: "warning" },
-      { text: "Usage cap until 14:00", tone: "danger" },
-      { text: "Editing Rail.tsx", tone: "muted" },
+    expect(r.lines.map((l) => [l.state, l.detail])).toEqual([
+      ["waiting", "approve Bash"],
+      ["failed", "Usage cap until 14:00"],
+      ["working", "Editing Rail.tsx"],
     ]);
     expect(r.lines[2]).toMatchObject({ title: "Edit the rail", environmentId: "local" });
     expect(r).toMatchObject({ more: 0, moreWaiting: 0, done: 1 });
@@ -60,13 +60,13 @@ describe("rowAgents", () => {
     ];
     const r = rowAgents(agents)!;
     expect(r.lines.map((l) => l.id)).toEqual(["w1", "w2", "w3"]);
-    expect(r.lines[0]!.what).toEqual({ text: "waiting for approval", tone: "warning" });
-    expect(agentTail(r)).toEqual({ text: "and 3 more · 1 done", waiting: true });
+    expect(r.lines[0]).toMatchObject({ state: "waiting", detail: "" });
+    expect(agentTail(r)).toEqual({ text: "and 3 more, 1 done", waiting: true });
     expect(agentTail(rowAgents(agents.slice(0, 3))!)).toBeNull();
   });
 
-  it("says Paused for a paused agent", () => {
-    expect(rowAgents([meta("p", "c", "paused")])!.lines[0]!.what).toEqual({ text: "Paused", tone: "muted" });
+  it("leaves a paused agent's detail to its glyph", () => {
+    expect(rowAgents([meta("p", "c", "paused")])!.lines[0]).toMatchObject({ state: "paused", detail: "" });
   });
 });
 
@@ -79,7 +79,7 @@ describe("AgentSummaries", () => {
     store.update(["c1", "c2"], metas);
     expect(wake).toHaveBeenCalledTimes(1);
     const first = store.get("c1");
-    expect(first?.lines.map((l) => l.what?.text)).toEqual(["Reading a.ts"]);
+    expect(first?.lines.map((l) => l.detail)).toEqual(["Reading a.ts"]);
     expect(store.get("c2")).toBeNull();
 
     store.update(["c1", "c2"], [...metas, meta("unrelated", "x", "running")]);
@@ -88,7 +88,7 @@ describe("AgentSummaries", () => {
 
     store.update(["c1", "c2"], [meta("c1", null), meta("c2", null), meta("a", "c1", "running", { activity: "Editing a.ts" })]);
     expect(wake).toHaveBeenCalledTimes(2);
-    expect(store.get("c1")?.lines[0]!.what?.text).toBe("Editing a.ts");
+    expect(store.get("c1")?.lines[0]!.detail).toBe("Editing a.ts");
 
     store.update(["c1", "c2"], [meta("c1", null), meta("c2", null), meta("a", "c1", "idle")]);
     expect(wake).toHaveBeenCalledTimes(3);

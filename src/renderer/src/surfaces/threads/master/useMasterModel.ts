@@ -15,7 +15,7 @@ import { registry } from "../../../lib/connection";
 import { useEnvironmentStatuses } from "../../../lib/connection/status";
 import * as commands from "../../../lib/tcserver/commands";
 import type { EnvironmentStatus } from "../../../lib/connection/types";
-import { isLiveStatus, type AgentTone } from "../../../lib/threads/agents";
+import { isLiveStatus } from "../../../lib/threads/agents";
 import { sessionStore, useSessionMeta } from "../../../lib/tcserver/store";
 import type { SessionMeta, SessionStatus, ThreadType } from "../../../lib/tcserver/types";
 import { usePaneVisible } from "../../../hooks/paneVisibility";
@@ -194,7 +194,7 @@ export const GROUP_ORDER: readonly MasterGroupId[] = ["needsYou", "running", "qu
 
 export const GROUP_LABEL: Record<MasterGroupId, string> = {
   needsYou: "Needs you",
-  running: "Running",
+  running: "Working",
   queued: "Queued",
   done: "Done",
 };
@@ -230,7 +230,7 @@ export function masterCounts(rows: readonly { meta: { status: SessionStatus } }[
   return counts;
 }
 
-/** The muted word after a row's title: its type. */
+/** A thread's type in a word: the row glyph's tooltip, the adopt sheet's rows. */
 export const TYPE_WORD: Record<string, string> = {
   implementation: "Implementation",
   planning: "Plan",
@@ -248,23 +248,6 @@ export function typeWord(child: Pick<SessionMeta, "threadType">): string {
 export function clockTime(ts: number): string {
   const d = new Date(ts);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
-
-/** A row's line from its digest (what agentLine read from the transcript
- *  before): the question or the approval while it waits, the failure when
- *  it errored, its last words otherwise. */
-export function digestLine(meta: Pick<SessionMeta, "status" | "activity" | "failure">, digest: BoardDigest): { text: string; tone: AgentTone } {
-  switch (meta.status) {
-    case "waiting":
-      if (digest.question) return { text: `has a question — ${digest.question}`, tone: "warning" };
-      return { text: meta.activity ? `waiting for approval — ${meta.activity}` : "waiting for approval", tone: "warning" };
-    case "error":
-      return { text: digest.failure || meta.failure?.summary || "failed", tone: "danger" };
-    case "watching":
-      return { text: "waiting on background work", tone: "muted" };
-    default:
-      return { text: digest.last ?? "", tone: "muted" };
-  }
 }
 
 /** "2 of 10 landed" beside the land step. */

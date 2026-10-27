@@ -1,18 +1,20 @@
 import type { BoardDigest } from "@server/shared/contract-batch";
+import { threadStateOf, type ThreadState } from "../../../components/ui/status";
 import type { TodoItem } from "../../../lib/tcserver/todos";
 import type { SessionMeta } from "../../../lib/tcserver/types";
-import type { AgentTone } from "../../../lib/threads/agents";
-import { clockTime, digestLine, groupOf } from "./useMasterModel";
+import { leadStripped } from "../../../lib/threads/agents";
+import { clockTime } from "./useMasterModel";
 
 /**
- * What a row shows under its two lines, by the thread's type, from its
- * digest (the host's `batch.board`, boardDigest.ts): an implementation its
- * task list, a research or orchestration thread one summary line (the
- * notes' State, else the thread's last words). Chat and plan rows carry
- * nothing more. Pure, so the dom tests read the same rules the row draws.
+ * What a board row says under its title (docs/LAYOUT.md "Master"): the
+ * thread's state in the vocabulary (components/ui/status.tsx) and what
+ * that state is about, from its meta and its digest (the host's
+ * `batch.board`, boardDigest.ts). The section heading says the state's
+ * word, so the row says only the detail. Pure, so the dom tests read the
+ * same rules the row draws.
  */
 
-export type RowBody = { kind: "tasks"; tasks: TodoItem[] } | { kind: "summary"; text: string } | null;
+export type RowStatus = { state: ThreadState; detail: string };
 
 const NO_TASKS: TodoItem[] = [];
 
@@ -26,81 +28,54 @@ export function summaryLine(digest: Pick<BoardDigest, "state" | "last">): string
   return digest.state || digest.last || "";
 }
 
-export function rowBody(
-  meta: Pick<SessionMeta, "threadType">,
-  digest: Pick<BoardDigest, "todos" | "state" | "last">,
-  /** The row's second line, so a summary never repeats it. */
-  whatText = "",
-): RowBody {
-  switch (meta.threadType) {
-    case "implementation": {
-      const tasks = taskList(digest);
-      return tasks.length > 0 ? { kind: "tasks", tasks } : null;
-    }
-    case "research":
-    case "orchestration": {
-      const text = summaryLine(digest);
-      return text && text !== whatText ? { kind: "summary", text } : null;
-    }
-    default:
-      return null;
-  }
-}
-
-/** Whether a row's task list is open before the person touches it: open
- *  while the thread works or needs them, folded once it sits in Done (done,
- *  idle after a turn, stopped); the tally stays either way. */
-export function tasksOpenByDefault(status: SessionMeta["status"]): boolean {
-  return groupOf(status) !== "done";
-}
-
-/** Done of total once the thread has a task list; null before. The row
- *  prints it as "3/7" with a thin bar filled to done/total. */
-export function taskProgress(tasks: readonly TodoItem[]): { done: number; total: number } | null {
-  if (tasks.length === 0) return null;
-  return { done: tasks.filter((t) => t.status === "completed").length, total: tasks.length };
+/** The task in hand: the one in progress; null when none is. */
+export function taskInHand(todos: readonly TodoItem[]): string | null {
+  return todos.find((t) => t.status === "in_progress")?.content.trim() || null;
 }
 
 /** "3/7" once the thread has a task list; null before. */
 export function taskTally(tasks: readonly TodoItem[]): string | null {
-  const p = taskProgress(tasks);
-  return p ? `${p.done}/${p.total}` : null;
+  if (tasks.length === 0) return null;
+  return `${tasks.filter((t) => t.status === "completed").length}/${tasks.length}`;
 }
 
-/** The row's second line: the scheduler's or the harness's `activity`
- *  while the thread is queued or working, the question or the failure
- *  while it needs the person, when it landed once it is done. */
-export function whatLine(
-  meta: Pick<SessionMeta, "status" | "activity" | "updatedAt">,
-  line: { text: string; tone: AgentTone },
+/** A row's state and its detail. An idle thread on the board has had a
+ *  turn, so it is done. The detail: the task in hand or the activity while working, the question or the
+ *  approval while waiting, the failure, what it watches or waits for in
+ *  the queue (without the lead the word already says), when it landed,
+ *  else a research or orchestration thread's summary once done. */
+export function rowStatus(
+  meta: Pick<SessionMeta, "status" | "activity" | "failure" | "updatedAt" | "threadType">,
+  digest: Pick<BoardDigest, "todos" | "state" | "last" | "question" | "failure">,
   landed: boolean,
-): { text: string; tone: AgentTone } | null {
-  switch (meta.status) {
+): RowStatus {
+  const state = threadStateOf(meta.status, { settled: meta.status === "idle" });
+  const activity = meta.activity?.trim() ?? "";
+  switch (state) {
+    case "working":
+      return { state, detail: (meta.threadType === "implementation" && taskInHand(taskList(digest))) || activity };
     case "waiting":
-    case "error":
-      return line.text ? line : null;
-    case "paused":
-      return { text: "Paused", tone: "muted" };
-    case "queued":
-    case "starting":
-    case "running":
+      return { state, detail: digest.question?.trim() || (activity ? `approve ${activity}` : "") };
+    case "failed":
+      return { state, detail: digest.failure?.trim() || meta.failure?.summary.trim() || "" };
     case "watching":
-      return { text: meta.activity?.trim() || line.text, tone: "muted" };
-    case "stopped":
-      return { text: "Stopped", tone: "muted" };
+    case "queued":
+      return { state, detail: leadStripped(activity, state) };
+    case "done":
+      if (landed) return { state, detail: `Landed ${clockTime(meta.updatedAt)}` };
+      return { state, detail: meta.threadType === "research" || meta.threadType === "orchestration" ? summaryLine(digest) : "" };
     default:
-      return landed ? { text: `Landed ${clockTime(meta.updatedAt)}`, tone: "muted" } : null;
+      return { state, detail: "" };
   }
 }
 
-/** The New pass dialog's one line under the title: what the thread is
- *  doing now, the board row's own second line, else its last words. */
+/** The New pass dialog's one line under the title: the board row's own
+ *  status, else the thread's last words. */
 export function passLine(
-  meta: Pick<SessionMeta, "status" | "activity" | "failure" | "updatedAt">,
+  meta: Pick<SessionMeta, "status" | "activity" | "failure" | "updatedAt" | "threadType">,
   digest: BoardDigest,
   landed: boolean,
-): { text: string; tone: AgentTone } {
-  const what = whatLine(meta, digestLine(meta, digest), landed);
-  if (what?.text) return what;
-  return { text: digest.last ?? "", tone: "muted" };
+): RowStatus {
+  const status = rowStatus(meta, digest, landed);
+  return status.detail ? status : { state: status.state, detail: digest.last ?? "" };
 }

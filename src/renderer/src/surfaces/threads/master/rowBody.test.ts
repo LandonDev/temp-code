@@ -1,71 +1,75 @@
 import { describe, expect, it } from "vitest";
 import type { TodoItem } from "../../../lib/tcserver/todos";
 import type { BoardDigest } from "@server/shared/contract-batch";
-import { passLine, rowBody, summaryLine, taskProgress, tasksOpenByDefault, taskTally, whatLine } from "./rowBody";
+import type { SessionMeta } from "../../../lib/tcserver/types";
+import { passLine, rowStatus, summaryLine, taskInHand, taskTally } from "./rowBody";
 
-describe("what a row shows under its lines, by type", () => {
-  it("an implementation shows its task list; nothing before the first list", () => {
-    const todos: TodoItem[] = [
-      { content: "Read the brief", status: "completed" },
-      { content: "Write the view", status: "in_progress" },
-      { content: "Tests", status: "pending" },
-    ];
-    expect(rowBody({ threadType: "implementation" }, { todos })).toEqual({ kind: "tasks", tasks: todos });
-    expect(rowBody({ threadType: "implementation" }, {})).toBeNull();
+const todos: TodoItem[] = [
+  { content: "Read the brief", status: "completed" },
+  { content: "Write the view", status: "in_progress" },
+  { content: "Tests", status: "pending" },
+];
+
+const at = new Date(2026, 9, 27, 12, 8).getTime();
+const m = (over: Partial<SessionMeta>) =>
+  ({ status: "idle", activity: null, failure: null, updatedAt: at, threadType: "implementation", ...over }) as SessionMeta;
+
+describe("the task list", () => {
+  it("names the task in hand and tallies done of total", () => {
+    expect(taskInHand(todos)).toBe("Write the view");
+    expect(taskInHand(todos.slice(0, 1))).toBeNull();
     expect(taskTally(todos)).toBe("1/3");
     expect(taskTally([])).toBeNull();
-    expect(taskProgress(todos)).toEqual({ done: 1, total: 3 });
-    expect(taskProgress([])).toBeNull();
   });
 
-  it("the task list is open while the thread works or needs you, folded once it sits in Done", () => {
-    for (const status of ["running", "starting", "watching", "paused", "waiting", "error", "queued"] as const) expect(tasksOpenByDefault(status)).toBe(true);
-    for (const status of ["done", "idle", "stopped"] as const) expect(tasksOpenByDefault(status)).toBe(false);
-  });
-
-  it("research and orchestration show one summary: the notes' State line, else the last words", () => {
-    expect(rowBody({ threadType: "research" }, { state: "Composer done, strip in flight", last: "Looked at three sources." })).toEqual({
-      kind: "summary",
-      text: "Composer done, strip in flight",
-    });
-    expect(rowBody({ threadType: "orchestration" }, { last: "Looked at three sources." })).toEqual({
-      kind: "summary",
-      text: "Looked at three sources.",
-    });
+  it("the summary is the notes' State, else the last words", () => {
+    expect(summaryLine({ state: "Composer done", last: "Looked." })).toBe("Composer done");
+    expect(summaryLine({ last: "Looked." })).toBe("Looked.");
     expect(summaryLine({})).toBe("");
-    // A summary that is the second line already is not drawn twice.
-    expect(rowBody({ threadType: "orchestration" }, { last: "Looked at three sources." }, "Looked at three sources.")).toBeNull();
-    expect(rowBody({ threadType: "research" }, {})).toBeNull();
-  });
-
-  it("chat and plan rows carry nothing more, whatever they hold", () => {
-    const digest = { todos: [{ content: "x", status: "pending" as const }], state: "Doing x" };
-    expect(rowBody({ threadType: "chat" }, digest)).toBeNull();
-    expect(rowBody({ threadType: "planning" }, digest)).toBeNull();
-    expect(rowBody({ threadType: null }, digest)).toBeNull();
   });
 });
 
-describe("the second line", () => {
-  const line = { text: "has a question — Ad Hoc or Debug?", tone: "warning" as const };
-  const at = new Date(2026, 9, 21, 12, 8).getTime();
-  it("is the activity while queued or working, the question while waiting, when it landed once done", () => {
-    expect(whatLine({ status: "running", activity: "Running ios:test", updatedAt: at }, line, false)).toEqual({ text: "Running ios:test", tone: "muted" });
-    expect(whatLine({ status: "queued", activity: "Queued · waiting for Home", updatedAt: at }, line, false)?.text).toBe("Queued · waiting for Home");
-    expect(whatLine({ status: "waiting", activity: null, updatedAt: at }, line, false)).toEqual(line);
-    expect(whatLine({ status: "paused", activity: null, updatedAt: at }, line, false)?.text).toBe("Paused");
-    expect(whatLine({ status: "idle", activity: null, updatedAt: at }, line, true)?.text).toBe("Landed 12:08");
-    expect(whatLine({ status: "idle", activity: null, updatedAt: at }, line, false)).toBeNull();
+describe("rowStatus", () => {
+  it("working: an implementation's task in hand, else the activity", () => {
+    expect(rowStatus(m({ status: "running", activity: "Running ios:test" }), { todos }, false)).toEqual({ state: "working", detail: "Write the view" });
+    expect(rowStatus(m({ status: "running", activity: "Running ios:test" }), {}, false)).toEqual({ state: "working", detail: "Running ios:test" });
+    expect(rowStatus(m({ status: "starting", threadType: "chat", activity: "Reading" }), { todos }, false)).toEqual({ state: "working", detail: "Reading" });
+  });
+
+  it("waiting: the open question, else approve and what it was doing, with no old prefix", () => {
+    expect(rowStatus(m({ status: "waiting", activity: "Running rm" }), { question: "Ad Hoc or Debug?" }, false)).toEqual({ state: "waiting", detail: "Ad Hoc or Debug?" });
+    expect(rowStatus(m({ status: "waiting", activity: "Bash" }), {}, false)).toEqual({ state: "waiting", detail: "approve Bash" });
+    expect(rowStatus(m({ status: "waiting" }), {}, false)).toEqual({ state: "waiting", detail: "" });
+  });
+
+  it("failed: the digest's failure, else the meta's summary", () => {
+    expect(rowStatus(m({ status: "error" }), { failure: "Rate limited until 14:00" }, false)).toEqual({ state: "failed", detail: "Rate limited until 14:00" });
+    expect(rowStatus(m({ status: "error", failure: { summary: "Usage cap" } as SessionMeta["failure"] }), {}, false).detail).toBe("Usage cap");
+  });
+
+  it("watching and queued strip the lead their word says", () => {
+    expect(rowStatus(m({ status: "watching", activity: "Waiting on 3 subagents" }), {}, false)).toEqual({ state: "watching", detail: "3 subagents" });
+    expect(rowStatus(m({ status: "queued", activity: "Queued · waiting for Home" }), {}, false)).toEqual({ state: "queued", detail: "waiting for Home" });
+  });
+
+  it("paused and stopped leave the detail to the glyph", () => {
+    expect(rowStatus(m({ status: "paused", activity: "x" }), {}, false)).toEqual({ state: "paused", detail: "" });
+    expect(rowStatus(m({ status: "stopped" }), {}, false)).toEqual({ state: "stopped", detail: "" });
+  });
+
+  it("an idle row is done: when it landed, else a research or orchestration summary, else nothing", () => {
+    expect(rowStatus(m({}), {}, true)).toEqual({ state: "done", detail: "Landed 12:08" });
+    expect(rowStatus(m({ threadType: "research" }), { state: "Composer done", last: "x" }, false)).toEqual({ state: "done", detail: "Composer done" });
+    expect(rowStatus(m({ status: "done", threadType: "orchestration" }), { last: "Looked at three sources." }, false).detail).toBe("Looked at three sources.");
+    expect(rowStatus(m({ threadType: "chat" }), { last: "x" }, false)).toEqual({ state: "done", detail: "" });
   });
 });
 
-describe("the New pass dialog's line", () => {
-  const digest = { last: "Wrote the empty state." } as BoardDigest;
-  it("reads what the thread does now while it works, its question while it waits", () => {
-    expect(passLine({ status: "running", activity: "Running tests", failure: null, updatedAt: 0 } as never, digest, false)).toEqual({ text: "Running tests", tone: "muted" });
-    expect(passLine({ status: "waiting", activity: null, failure: null, updatedAt: 0 } as never, { question: "Which icon?" } as BoardDigest, false).tone).toBe("warning");
-  });
-  it("reads its last words once it is idle", () => {
-    expect(passLine({ status: "idle", activity: null, failure: null, updatedAt: 0 } as never, digest, false)).toEqual({ text: "Wrote the empty state.", tone: "muted" });
+describe("passLine", () => {
+  it("is the row's status, else its last words", () => {
+    const digest = { last: "Wrote the empty state." } as BoardDigest;
+    expect(passLine(m({ status: "running", activity: "Running tests", threadType: "chat" }), digest, false)).toEqual({ state: "working", detail: "Running tests" });
+    expect(passLine(m({ status: "waiting" }), { question: "Which icon?" } as BoardDigest, false).state).toBe("waiting");
+    expect(passLine(m({ threadType: "chat" }), digest, false)).toEqual({ state: "done", detail: "Wrote the empty state." });
   });
 });

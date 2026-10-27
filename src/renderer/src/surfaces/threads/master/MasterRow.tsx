@@ -1,44 +1,50 @@
-import { useReducedMotion } from "motion/react";
-import { memo, useState, type KeyboardEvent, type ReactNode } from "react";
-import { Check, ChevronRight, Circle, MessageSquare, Pause, Play, Square, X } from "../../../chrome/icons";
+import { memo, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { Button } from "../../../components/ui/button";
+import { Item } from "../../../components/ui/item";
+import { StatusMark, statusNeedsYou, statusToneClass } from "../../../components/ui/status";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
+import { MessageSquare, MoreHorizontal, Pause, Play } from "../../../chrome/icons";
 import { HarnessIcon } from "../../../chrome/HarnessIcon";
 import { HostGlyph } from "../../../chrome/HostGlyph";
-import { ArchiveThreadDialog } from "../../../chrome/ThreadResourcesDialog";
+import { cn } from "../../../lib/cn";
 import * as commands from "../../../lib/tcserver/commands";
 import { asHarness, useSessionMeta } from "../../../lib/tcserver/store";
-import type { TodoItem } from "../../../lib/tcserver/todos";
+import type { BoardDigest } from "@server/shared/contract-batch";
 import type { SessionMeta } from "../../../lib/tcserver/types";
 import { hasRunningTurn } from "../../../lib/threadBatch";
-import { loadThreadResources, useThreadResources } from "../../../lib/threadResources";
-import { modelLabel, TONE_CLASS } from "../../../lib/threads/agents";
-import { TweenHeight } from "../../../motion";
-import { AGENT_GLYPHS, THREAD_GLYPHS, THREAD_TINTS } from "../threadTypes";
-import { MatrixSpinner } from "../spinners";
-import { StatusGlyph } from "../fleet/rowBits";
+import { modelLabel } from "../../../lib/threads/agents";
+import { AGENT_GLYPHS, THREAD_GLYPHS } from "../threadTypes";
 import { agentTail, useRowAgents, type AgentLine, type RowAgents } from "./agentSummary";
-import { rowBody, taskList, taskProgress, tasksOpenByDefault, whatLine } from "./rowBody";
-import { digestLine, typeWord, useBoardDigest, useRowMeta, type BoardRowRef, type RowHost } from "./useMasterModel";
+import { rowStatus, taskList, taskTally } from "./rowBody";
+import { groupOf, typeWord, useBoardDigest, useRowMeta, type BoardRowRef, type RowHost } from "./useMasterModel";
 
 /**
- * One row of the batch (docs/LAYOUT.md "Master"). Two lines: the type's
- * glyph, the title and the task tally; then the status glyph beside what
- * the thread is doing, and at the right the host's dot and name when the
- * thread runs on another host than the master, the provider's mark, the
- * model, its effort and context. Under them the thread's live subagents,
- * one line each (AgentLines). Under an implementation its task list,
- * open while it works and folded once it is done, the tally its
- * disclosure; under a research or orchestration thread one summary line.
- * A row of a host out of reach is under the offline tint. A click opens
- * the thread's full view in the board's place; hover shows Message, Pause
- * or Resume, Stop and Remove; a right-click on the row or one of its agent
- * lines asks the board for that thread's menu (New pass…, rowMenu.ts). Every action goes to the row's own host (the
- * commands route by the thread's id).
+ * One row of the batch (docs/LAYOUT.md "Master"). Line one: the type's
+ * glyph (its word on hover), the title, the host's glyph, and at the end
+ * the provider's mark, the model, its effort and context. Line two: the
+ * status glyph with what the state is about (the section heading says
+ * the word), and the task tally at the end. Under them the thread's live
+ * subagents, one line each (AgentLines). A row of a host out of reach is
+ * under the offline tint. A click opens the thread's full view in the
+ * board's place; on hover the model mark gives way to Message, the one
+ * verb the state calls for (Pause, Resume, Start now) and ⋯, the thread's
+ * menu (rowMenu.ts), which a right-click on the row or an agent line opens
+ * too. Every action goes to the row's own host (the commands route by the
+ * thread's id).
  *
- * The row reads its own meta, its plan's, its digest (the host's
- * `batch.board`) and its agents' lines, and takes nothing else that changes: one child's
- * activity re-renders this row alone, and nothing here loads a
- * transcript, polls a context or reads notes.
+ * `MasterRow` reads its own meta, its plan's, its digest (the host's
+ * `batch.board`) and its agents' lines, and takes nothing else that
+ * changes: one child's activity re-renders this row alone, and nothing
+ * here loads a transcript, polls a context or reads notes. `MasterRowView`
+ * draws from props alone, so a static preview renders it without a store.
  */
+
+export type OnRowMenu = (id: string, at: { x: number; y: number }) => void;
+
+/** The host's glyph for a thread, as a render function so the view itself reads no store. */
+export type HostGlyphOf = (environmentId: string, title?: string) => ReactNode;
+
+const hostGlyph: HostGlyphOf = (environmentId, title) => <HostGlyph environmentId={environmentId} title={title} className="shrink-0" />;
 
 export const MasterRow = memo(function MasterRow({
   rowRef,
@@ -54,7 +60,7 @@ export const MasterRow = memo(function MasterRow({
   host: RowHost | null;
   /** Open the thread's full view; `focus` lands in its composer. */
   onOpen: (id: string, focus?: boolean) => void;
-  /** The thread's right-click menu at the pointer. */
+  /** The thread's menu at a point. */
   onMenu: OnRowMenu;
 }) {
   const meta = useRowMeta(rowRef);
@@ -62,184 +68,204 @@ export const MasterRow = memo(function MasterRow({
   const digest = useBoardDigest(rowRef.id);
   const agents = useRowAgents(rowRef.id);
   if (!meta) return null;
-  return <RowBodyView meta={meta} plan={plan} digest={digest} agents={agents} landed={landed} host={host} onOpen={onOpen} onMenu={onMenu} />;
+  return (
+    <MasterRowView
+      meta={meta}
+      planTitle={plan?.title}
+      planId={plan?.id}
+      digest={digest}
+      agents={agents}
+      landed={landed}
+      host={host}
+      hostGlyph={hostGlyph}
+      onOpen={onOpen}
+      onMenu={onMenu}
+    />
+  );
 });
 
-export type OnRowMenu = (id: string, at: { x: number; y: number }) => void;
+const stop = (e: { stopPropagation(): void }) => e.stopPropagation();
 
-function RowBodyView({
+export function MasterRowView({
   meta,
-  plan,
+  planTitle,
+  planId,
   digest,
   agents,
   landed,
   host,
+  hostGlyph,
   onOpen,
   onMenu,
 }: {
   meta: SessionMeta;
-  plan: SessionMeta | null;
-  digest: ReturnType<typeof useBoardDigest>;
+  /** The plan's title when the row is a plan and the build it started. */
+  planTitle?: string;
+  planId?: string;
+  digest: BoardDigest;
   agents: RowAgents | null;
   landed: boolean;
   host: RowHost | null;
+  hostGlyph: HostGlyphOf;
   onOpen: (id: string, focus?: boolean) => void;
   onMenu: OnRowMenu;
 }) {
-  const title = plan?.title || meta.title;
-  const what = whatLine(meta, digestLine(meta, digest), landed);
-  const body = rowBody(meta, digest, what?.text);
-  const progress = taskProgress(taskList(digest));
-  // The person's own open or close holds while the row is on screen; until
-  // then the list follows the thread (open while it works, folded once done).
-  const [expanded, setExpanded] = useState<boolean | null>(null);
-  const tasksOpen = expanded ?? tasksOpenByDefault(meta.status);
-  const foldable = body?.kind === "tasks";
-  const reduce = useReducedMotion();
-  const queued = meta.status === "queued";
-  const settled = !queued && !what && !landed && meta.status !== "waiting" && meta.status !== "error";
-  const dim = queued || meta.status === "idle" || meta.status === "stopped" || meta.status === "done";
-  const [archiving, setArchiving] = useState(false);
-  const resources = useThreadResources(archiving ? meta.id : null);
+  const title = planTitle || meta.title;
+  const { state, detail } = rowStatus(meta, digest, landed);
+  const tally = taskTally(taskList(digest));
+  const group = groupOf(meta.status);
+  const quiet = group === "done" || group === "queued";
   const Glyph = meta.threadType ? THREAD_GLYPHS[meta.threadType] : null;
-  const tint = meta.threadType ? THREAD_TINTS[meta.threadType] : "text-content/50";
+  const type = typeWord(meta);
 
-  const openArchive = () => {
-    void loadThreadResources(meta.id);
-    setArchiving(true);
-  };
   const onKey = (e: KeyboardEvent) => {
+    if (e.target !== e.currentTarget) return;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       onOpen(meta.id);
     }
   };
-
-  const actions: ReactNode[] = [];
-  if (queued) {
-    // Start now goes past `after`; Remove from queue is the fleet switches'
-    // Stop on a queued root (it archives; lib/threadBatch.ts).
-    actions.push(<Action key="start" title="Start now" icon={Play} onClick={() => void commands.startNow(meta.id)} />);
-    actions.push(
-      <Action key="remove" title="Remove from queue" icon={X} onClick={() => void commands.sessionBatch(meta.environmentId, "stop", [meta.id])} />,
-    );
-  } else {
-    actions.push(<Action key="message" title="Message" icon={MessageSquare} onClick={() => onOpen(meta.id, true)} />);
-    if (hasRunningTurn(meta)) {
-      actions.push(<Action key="pause" title="Pause" icon={Pause} onClick={() => void commands.pause(meta.id)} />);
-      actions.push(<Action key="stop" title="Stop" icon={Square} onClick={() => void commands.interrupt(meta.id)} />);
-    } else if (meta.status === "paused" || meta.status === "stopped") {
-      actions.push(<Action key="resume" title="Resume" icon={Play} onClick={() => void commands.resume(meta.id)} />);
-    }
-    actions.push(<Action key="remove" title="Remove" icon={X} onClick={openArchive} />);
-  }
+  const openMenu = (e: MouseEvent<HTMLElement>) => {
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    onMenu(meta.id, { x: rect.left, y: rect.bottom + 4 });
+  };
+  const verb =
+    meta.status === "queued"
+      ? { label: "Start now", icon: Play, run: () => commands.startNow(meta.id) }
+      : hasRunningTurn(meta)
+        ? { label: "Pause", icon: Pause, run: () => commands.pause(meta.id) }
+        : meta.status === "paused" || meta.status === "stopped"
+          ? { label: "Resume", icon: Play, run: () => commands.resume(meta.id) }
+          : null;
 
   return (
-    <div
-      className={`group relative rounded-lg transition-colors duration-100 hover:bg-content/5 ${host?.offline ? "opacity-50" : ""}`}
-      data-status={meta.status}
-      data-type={meta.threadType ?? undefined}
-      data-plan={plan?.id}
-      data-host={host?.id}
-      data-host-offline={host?.offline || undefined}
+    <Item
+      size="xs"
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(meta.id)}
+      onKeyDown={onKey}
       onContextMenu={(e) => {
         e.preventDefault();
         onMenu(meta.id, { x: e.clientX, y: e.clientY });
       }}
+      className={cn(
+        "group relative grid cursor-default grid-cols-[16px_1fr] items-start gap-x-2 gap-y-0 rounded-md px-3 py-2 hover:bg-foreground/5",
+        host?.offline && "opacity-50",
+      )}
+      data-status={meta.status}
+      data-type={meta.threadType ?? undefined}
+      data-plan={planId}
+      data-host={host?.id}
+      data-host-offline={host?.offline || undefined}
     >
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => onOpen(meta.id)}
-        onKeyDown={onKey}
-        data-tasks-open={foldable ? tasksOpen : undefined}
-        className="grid w-full cursor-default grid-cols-[16px_1fr] gap-x-2 rounded-lg px-3 py-2 text-left"
-      >
-        {/* Line one: the type's glyph, the title, the tally. */}
-        <span className="flex h-[18px] items-center justify-center">
-          {Glyph ? <Glyph className={`size-3.5 ${dim ? "text-content/40" : tint}`} strokeWidth={1.75} /> : null}
-        </span>
-        <span className="flex min-w-0 items-baseline gap-2 leading-[18px]">
-          <span className={`min-w-0 truncate text-[13px] font-medium ${dim ? "text-content/60" : "text-content"}`}>{title || "Untitled"}</span>
-          <span className="shrink-0 text-xs text-content/40">{typeWord(meta)}</span>
-          {progress ? (
-            <Tally
-              progress={progress}
-              fold={foldable ? { open: tasksOpen, onToggle: () => setExpanded(!tasksOpen) } : null}
-            />
-          ) : null}
-        </span>
-
-        {/* Line two: the status glyph beside the activity; the model at the right. */}
-        <span className="flex h-4 items-center justify-center">
-          <StatusGlyph status={settled ? "idle" : meta.status} />
-        </span>
-        <span className="flex min-w-0 items-center gap-3 leading-4">
-          <span className={`min-w-0 flex-1 truncate text-xs ${what ? TONE_CLASS[what.tone] : "text-content/40"}`}>
-            {what?.text ?? (settled ? "Done" : "")}
-          </span>
-          <ModelMark meta={meta} host={host} />
-        </span>
-
-        {agents ? (
-          <>
-            <span />
-            <AgentLines agents={agents} onOpen={onOpen} onMenu={onMenu} />
-          </>
+      {/* Line one: the type's glyph, the title, the host; the model at the end. */}
+      <span className="flex h-5 items-center justify-center">
+        {Glyph ? (
+          <Tooltip>
+            <TooltipTrigger render={<span className="flex" role="img" aria-label={type || undefined} />}>
+              <Glyph className="size-4 text-muted-foreground" strokeWidth={1.5} />
+            </TooltipTrigger>
+            {type ? <TooltipContent>{type}</TooltipContent> : null}
+          </Tooltip>
         ) : null}
+      </span>
+      <span className="flex h-5 min-w-0 items-center gap-2">
+        <span className={cn("min-w-0 truncate text-[13px] font-medium", quiet ? "text-muted-foreground" : "text-foreground")} data-row-title>
+          {title || "Untitled"}
+        </span>
+        {hostGlyph(meta.environmentId, host?.offline ? `${host.name} is offline` : undefined)}
+        <span className="flex-1" />
+        <ModelMark meta={meta} />
+      </span>
 
-        {body?.kind === "tasks" ? (
-          <>
-            <span />
-            <TweenHeight open={tasksOpen} animate={!reduce}>
-              <TaskList tasks={body.tasks} dim={dim} open={tasksOpen} />
-            </TweenHeight>
-          </>
-        ) : body?.kind === "summary" ? (
-          <>
-            <span />
-            <span className="mt-1 line-clamp-2 text-xs leading-4 text-content/50" data-summary>
-              {body.text}
-            </span>
-          </>
-        ) : null}
-      </div>
+      {/* Line two: the status glyph with its detail; the tally at the end. */}
+      <span />
+      <span className="mt-0.5 flex h-4 min-w-0 items-center gap-2" data-row-status>
+        <StatusMark state={state} word={detail || false} className="min-w-0" />
+        {tally ? <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground" data-tally>{tally}</span> : null}
+      </span>
 
-      <div
-        data-actions
-        className="pointer-events-none absolute top-[13px] right-2 flex gap-0.5 rounded-md border border-content/10 bg-background-base p-0.5 opacity-0 transition-opacity duration-100 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
-      >
-        {actions}
-      </div>
-
-      {archiving ? (
-        <ArchiveThreadDialog
-          sessionId={meta.id}
-          title={title || "this thread"}
-          resources={resources}
-          onCancel={() => setArchiving(false)}
-          onArchived={() => setArchiving(false)}
-        />
+      {agents ? (
+        <>
+          <span />
+          <AgentLines agents={agents} hostGlyph={hostGlyph} onOpen={onOpen} onMenu={onMenu} />
+        </>
       ) : null}
-    </div>
+
+      <span
+        data-actions
+        onKeyDown={stop}
+        className="pointer-events-none absolute top-1.5 right-2 flex gap-0.5 opacity-0 transition-opacity duration-(--dur-fast) group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+      >
+        <RowAction label="Message" onClick={() => onOpen(meta.id, true)}>
+          <MessageSquare />
+        </RowAction>
+        {verb ? (
+          <RowAction label={verb.label} onClick={() => void verb.run().catch(() => undefined)}>
+            <verb.icon />
+          </RowAction>
+        ) : null}
+        <RowAction label="Thread actions" tooltip="More" onClick={openMenu} menu>
+          <MoreHorizontal />
+        </RowAction>
+      </span>
+    </Item>
+  );
+}
+
+function RowAction({
+  label,
+  tooltip = label,
+  menu,
+  onClick,
+  children,
+}: {
+  label: string;
+  tooltip?: string;
+  menu?: boolean;
+  onClick: (e: MouseEvent<HTMLButtonElement>) => void;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={label}
+            aria-haspopup={menu ? "menu" : undefined}
+            onClick={(e) => {
+              e.stopPropagation();
+              onClick(e);
+            }}
+          />
+        }
+      >
+        {children}
+      </TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
   );
 }
 
 /** The thread's live subagents under its two lines (agentSummary.ts): per
- * agent its status mark, its role's glyph, its title and what it is doing,
- * waiting and failed in their tones, then the host's glyph; one quiet line
- * for the ones past the cap and the settled ones. A line opens its agent
- * in the board's place, where its approval or question is answered; its
- * click never reaches the row. */
-function AgentLines({ agents, onOpen, onMenu }: { agents: RowAgents; onOpen: (id: string) => void; onMenu: OnRowMenu }) {
+ *  agent its status glyph, its role's glyph, its title and what its state
+ *  is about (amber when it needs the person, red when it failed), then the
+ *  host's glyph; one quiet line for the ones past the cap and the settled
+ *  ones. A line opens its agent in the board's place, where its approval
+ *  or question is answered; its click never reaches the row. */
+function AgentLines({ agents, hostGlyph, onOpen, onMenu }: { agents: RowAgents; hostGlyph: HostGlyphOf; onOpen: (id: string) => void; onMenu: OnRowMenu }) {
   const tail = agentTail(agents);
   return (
     <ul className="flex flex-col pt-1" data-agents>
       {agents.lines.map((line) => (
-        <AgentLineRow key={line.id} line={line} onOpen={onOpen} onMenu={onMenu} />
+        <AgentLineRow key={line.id} line={line} hostGlyph={hostGlyph} onOpen={onOpen} onMenu={onMenu} />
       ))}
       {tail ? (
-        <li className={`pl-[18px] text-xs leading-5 tabular-nums ${tail.waiting ? "text-warning" : "text-content/35"}`} data-agents-tail>
+        <li className={cn("pl-5 text-xs leading-5 tabular-nums", tail.waiting ? statusToneClass("waiting") : "text-muted-foreground")} data-agents-tail>
           {tail.text}
         </li>
       ) : null}
@@ -247,9 +273,8 @@ function AgentLines({ agents, onOpen, onMenu }: { agents: RowAgents; onOpen: (id
   );
 }
 
-function AgentLineRow({ line, onOpen, onMenu }: { line: AgentLine; onOpen: (id: string) => void; onMenu: OnRowMenu }) {
+function AgentLineRow({ line, hostGlyph, onOpen, onMenu }: { line: AgentLine; hostGlyph: HostGlyphOf; onOpen: (id: string) => void; onMenu: OnRowMenu }) {
   const Glyph = line.agentType ? AGENT_GLYPHS[line.agentType] : line.threadType ? THREAD_GLYPHS[line.threadType] : null;
-  const what = line.what?.text ? line.what : null;
   return (
     <li>
       <button
@@ -258,143 +283,39 @@ function AgentLineRow({ line, onOpen, onMenu }: { line: AgentLine; onOpen: (id: 
           e.stopPropagation();
           onOpen(line.id);
         }}
-        onKeyDown={(e) => e.stopPropagation()}
+        onKeyDown={stop}
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();
           onMenu(line.id, { x: e.clientX, y: e.clientY });
         }}
-        className="-mx-1 flex h-5 w-[calc(100%+8px)] min-w-0 cursor-default items-center gap-1.5 rounded px-1 text-left text-xs hover:bg-content/5"
+        className="-mx-1 flex h-5 w-[calc(100%+8px)] min-w-0 cursor-default items-center gap-2 rounded-sm px-1 text-left text-xs hover:bg-foreground/5"
         data-agent={line.id}
-        data-agent-status={line.status}
       >
-        <span className="flex size-3 shrink-0 items-center justify-center">
-          <StatusGlyph status={line.status} />
+        <StatusMark state={line.state} word={false} />
+        {Glyph ? <Glyph className="size-3 shrink-0 text-muted-foreground" strokeWidth={1.5} /> : null}
+        <span className="max-w-[45%] min-w-0 truncate text-muted-foreground">{line.title || "Subagent"}</span>
+        <span className={cn("min-w-0 flex-1 truncate", statusNeedsYou(line.state) ? statusToneClass(line.state) : "text-muted-foreground")} data-agent-what>
+          {line.detail}
         </span>
-        {Glyph ? <Glyph className="size-3 shrink-0 text-content/40" strokeWidth={1.75} /> : null}
-        <span className="max-w-[45%] min-w-0 truncate text-content/70">{line.title || "Subagent"}</span>
-        <span className={`min-w-0 flex-1 truncate ${what && what.tone !== "muted" ? TONE_CLASS[what.tone] : "text-content/40"}`} data-agent-what>
-          {what?.text}
-        </span>
-        <HostGlyph environmentId={line.environmentId} className="shrink-0" />
+        {hostGlyph(line.environmentId)}
       </button>
     </li>
   );
 }
 
-/** The task tally right after the type word: "3/7" and a thin bar filled
- *  to done of total, the foot's own meter (BatchFoot) at row scale. With a
- *  task list under the row it is the list's disclosure too, a chevron at
- *  its end turning when open; its click never reaches the row. */
-function Tally({ progress, fold }: { progress: { done: number; total: number }; fold: { open: boolean; onToggle: () => void } | null }) {
-  const { done, total } = progress;
-  const meter = (
-    <>
-      <span>
-        {done}/{total}
-      </span>
-      <span
-        className="block h-0.5 w-8 overflow-hidden rounded-full bg-content/10"
-        role="progressbar"
-        aria-label={`${done} of ${total} tasks done`}
-        aria-valuenow={done}
-        aria-valuemin={0}
-        aria-valuemax={total}
-      >
-        <span
-          className="block h-full rounded-full bg-content/40"
-          style={{ transform: `scaleX(${total ? done / total : 0})`, transformOrigin: "left", transition: "transform 200ms linear" }}
-        />
-      </span>
-    </>
-  );
-  if (!fold) {
-    return (
-      <span className="flex shrink-0 items-center gap-1.5 text-xs tabular-nums text-content/50" data-tally>
-        {meter}
-      </span>
-    );
-  }
-  return (
-    <button
-      type="button"
-      aria-expanded={fold.open}
-      aria-label={`${fold.open ? "Hide" : "Show"} tasks`}
-      onClick={(e) => {
-        e.stopPropagation();
-        fold.onToggle();
-      }}
-      onKeyDown={(e) => e.stopPropagation()}
-      className="pressable -mx-1 flex shrink-0 items-center gap-1.5 rounded px-1 text-xs tabular-nums text-content/50 hover:text-content/80"
-      data-tally
-    >
-      {meter}
-      <ChevronRight className={`size-3 transition-transform duration-150 ease-(--ease-out) ${fold.open ? "rotate-90" : ""}`} strokeWidth={1.75} />
-    </button>
-  );
-}
-
-/** The provider's mark, the model, then its effort and context in a
- *  quieter gray; first the host's glyph (chrome/HostGlyph.tsx), its name on
- *  hover, or that it is offline. */
-function ModelMark({ meta, host }: { meta: SessionMeta; host: RowHost | null }) {
+/** The provider's mark, the model, then its effort and context; it gives
+ *  way to the row's actions on hover and focus. */
+function ModelMark({ meta }: { meta: SessionMeta }) {
   const rest = [meta.reasoning, meta.context1m ? "1M" : null].filter(Boolean).join(" ");
   return (
     <span
-      className="flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap transition-opacity duration-100 group-hover:opacity-0 group-focus-within:opacity-0"
+      className="flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap text-muted-foreground transition-opacity duration-(--dur-fast) group-focus-within:opacity-0 group-hover:opacity-0"
       data-model
     >
-      <HostGlyph environmentId={meta.environmentId} title={host?.offline ? `${host.name} is offline` : undefined} className="mr-0.5" />
-      <HarnessIcon harness={asHarness(meta.provider)} className="size-3 text-content/60" />
-      <span className="text-content/60">{modelLabel(meta.provider, meta.model)}</span>
-      {rest ? <span className="text-content/35">{rest}</span> : null}
+      <HarnessIcon harness={asHarness(meta.provider)} className="size-3" />
+      <span>{modelLabel(meta.provider, meta.model)}</span>
+      {rest ? <span className="ml-0.5">{rest}</span> : null}
     </span>
-  );
-}
-
-/** The implementation's tasks as a checklist: a check once done, the
- *  spinner on the one in hand, a hollow ring ahead. Progress reads down
- *  the glyph column. */
-export function TaskList({ tasks, dim = false, open = true }: { tasks: readonly TodoItem[]; dim?: boolean; open?: boolean }) {
-  return (
-    <ul className="flex flex-col gap-[3px] pt-1.5" data-tasks inert={!open} aria-hidden={!open}>
-      {tasks.map((task, i) => (
-        <li key={i} className="grid grid-cols-[12px_1fr] items-start gap-x-2 text-xs leading-4" data-task-status={task.status}>
-          <span className="flex h-4 items-center justify-center">
-            {task.status === "completed" ? (
-              <Check className="size-3 text-content/35" strokeWidth={2} />
-            ) : task.status === "in_progress" && !dim ? (
-              <MatrixSpinner cell={1.5} />
-            ) : (
-              <Circle className="size-[9px] text-content/25" strokeWidth={2} />
-            )}
-          </span>
-          <span
-            className={`min-w-0 truncate ${
-              task.status === "completed" ? "text-content/40" : task.status === "in_progress" ? "text-content" : "text-content/55"
-            }`}
-          >
-            {task.content}
-          </span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function Action({ title, icon: Icon, onClick }: { title: string; icon: typeof X; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      title={title}
-      aria-label={title}
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
-      className="pressable grid h-5 w-[22px] place-items-center rounded text-content/50 hover:bg-content/8 hover:text-content"
-    >
-      <Icon className="size-3" strokeWidth={1.5} />
-    </button>
   );
 }

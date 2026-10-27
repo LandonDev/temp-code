@@ -7,9 +7,10 @@ import {
   blockedLine,
   boardLayout,
   BoardDigests,
-  digestLine,
   foldBatchPush,
   foldRows,
+  GROUP_LABEL,
+  GROUP_ORDER,
   groupOf,
   groupRows,
   masterChildrenOf,
@@ -57,7 +58,7 @@ describe("grouping by status", () => {
     const rows = [meta("idle"), meta("running"), meta("waiting")].map(rowOf);
     const groups = groupRows(rows);
     expect(groups.map((g) => g.id)).toEqual(["needsYou", "running", "done"]);
-    expect(groups.map((g) => g.label)).toEqual(["Needs you", "Running", "Done"]);
+    expect(groups.map((g) => g.label)).toEqual(["Needs you", "Working", "Done"]);
     expect(masterCounts(rows)).toEqual({ needsYou: 1, running: 1, queued: 0, done: 1 });
   });
 
@@ -248,16 +249,9 @@ describe("the batch", () => {
   });
 });
 
-describe("the row's line from its digest", () => {
-  it("is the question while waiting, else the approval with what it was doing; the failure when errored; the last words otherwise", () => {
-    expect(digestLine({ status: "waiting", activity: "Running rm", failure: null }, { question: "Ad Hoc or Debug?" })).toEqual({ text: "has a question — Ad Hoc or Debug?", tone: "warning" });
-    expect(digestLine({ status: "waiting", activity: "Running rm", failure: null }, {})).toEqual({ text: "waiting for approval — Running rm", tone: "warning" });
-    expect(digestLine({ status: "waiting", activity: null, failure: null }, {})).toEqual({ text: "waiting for approval", tone: "warning" });
-    expect(digestLine({ status: "error", activity: null, failure: null }, { failure: "Rate limited until 14:00" })).toEqual({ text: "Rate limited until 14:00", tone: "danger" });
-    expect(digestLine({ status: "error", activity: null, failure: null }, {}).text).toBe("failed");
-    expect(digestLine({ status: "watching", activity: null, failure: null }, { last: "x" }).text).toBe("waiting on background work");
-    expect(digestLine({ status: "idle", activity: null, failure: null }, { last: "Shipped it." })).toEqual({ text: "Shipped it.", tone: "muted" });
-    expect(digestLine({ status: "idle", activity: null, failure: null }, {}).text).toBe("");
+describe("the sections", () => {
+  it("say the vocabulary's words: Needs you, Working, Queued, Done", () => {
+    expect(GROUP_ORDER.map((id) => GROUP_LABEL[id])).toEqual(["Needs you", "Working", "Queued", "Done"]);
   });
 });
 

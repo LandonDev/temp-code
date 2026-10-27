@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Modal } from "../../../chrome/Modal";
-import { TONE_CLASS, useMetaById, useSessionById } from "../../../lib/threads/agents";
+import { statusNeedsYou, statusToneClass } from "../../../components/ui/status";
+import { useMetaById, useSessionById } from "../../../lib/threads/agents";
 import { useSessionActions, ThreadComposer } from "../../threadChat";
 import { StatusGlyph } from "../fleet/rowBits";
 import { passLine } from "./rowBody";
@@ -39,7 +40,7 @@ export function NewPassDialog({ sessionId, landed, onClose }: { sessionId: strin
           <span className="flex size-3.5 shrink-0 items-center justify-center">
             <StatusGlyph status={meta.status} />
           </span>
-          <span className={`min-w-0 truncate ${line.tone === "muted" ? "text-content/50" : TONE_CLASS[line.tone]}`}>{line.text}</span>
+          <span className={`min-w-0 truncate ${statusNeedsYou(line.state) ? statusToneClass(line.state) : "text-content/50"}`}>{line.detail}</span>
         </p>
         <div className="px-2.5 pt-3 pb-2.5">
           {session ? (

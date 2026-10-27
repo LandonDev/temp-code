@@ -1,8 +1,7 @@
 import { createContext, useContext, useSyncExternalStore } from "react";
-import type { AgentTone } from "../../../lib/threads/agents";
+import type { ThreadState } from "../../../components/ui/status";
 import type { SessionMeta, SessionStatus } from "../../../lib/tcserver/types";
-import { whatLine } from "./rowBody";
-import { digestLine } from "./useMasterModel";
+import { rowStatus } from "./rowBody";
 
 /**
  * A board row's subagents (docs/LAYOUT.md "Master"): every unarchived
@@ -16,16 +15,16 @@ import { digestLine } from "./useMasterModel";
  * something else.
  */
 
-/** One subagent under a row: what it is and what it is doing, in the
- *  board row's own words (`whatLine` over `digestLine`, meta only). */
+/** One subagent under a row: what it is, its state and what that state
+ *  is about, in the board row's own words (`rowStatus`, meta only). */
 export type AgentLine = {
   id: string;
   environmentId: string;
   title: string;
-  status: SessionStatus;
+  state: ThreadState;
+  detail: string;
   agentType: SessionMeta["agentType"];
   threadType: SessionMeta["threadType"];
-  what: { text: string; tone: AgentTone } | null;
 };
 
 export type RowAgents = {
@@ -79,15 +78,8 @@ export function subtreeOf(index: ReadonlyMap<string, readonly SessionMeta[]>, ro
 const NO_DIGEST = {};
 
 function lineOf(m: SessionMeta): AgentLine {
-  return {
-    id: m.id,
-    environmentId: m.environmentId,
-    title: m.title,
-    status: m.status,
-    agentType: m.agentType,
-    threadType: m.threadType,
-    what: whatLine(m, digestLine(m, NO_DIGEST), false),
-  };
+  const { state, detail } = rowStatus(m, NO_DIGEST, false);
+  return { id: m.id, environmentId: m.environmentId, title: m.title, state, detail, agentType: m.agentType, threadType: m.threadType };
 }
 
 /** The live agents as lines, the person's first (waiting, failed, working,
@@ -106,17 +98,17 @@ export function rowAgents(agents: readonly SessionMeta[], cap = AGENT_LINES): Ro
   };
 }
 
-/** The quiet line after the agents: "and 2 more · 3 done"; null when
+/** The quiet line after the agents: "and 2 more, 3 done"; null when
  *  every agent has a line. */
 export function agentTail(r: RowAgents): { text: string; waiting: boolean } | null {
   const parts = [r.more > 0 ? `and ${r.more} more` : null, r.done > 0 ? `${r.done} done` : null].filter(Boolean);
-  return parts.length ? { text: parts.join(" · "), waiting: r.moreWaiting > 0 } : null;
+  return parts.length ? { text: parts.join(", "), waiting: r.moreWaiting > 0 } : null;
 }
 
 const sig = (r: RowAgents | null): string =>
   r
     ? `${r.more}/${r.moreWaiting}/${r.done}\n` +
-      r.lines.map((l) => [l.id, l.environmentId, l.status, l.title, l.agentType, l.threadType, l.what?.tone, l.what?.text].join("\t")).join("\n")
+      r.lines.map((l) => [l.id, l.environmentId, l.state, l.title, l.agentType, l.threadType, l.detail].join("\t")).join("\n")
     : "";
 
 /** Every row's agents, from one index of the store. `update` keeps each

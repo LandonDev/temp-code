@@ -87,7 +87,7 @@ type RowMenu = { id: string; x: number; y: number };
 type BoardItem = { kind: "header"; key: string; group: BoardGroup } | { kind: "row"; key: string; row: BoardRowRef };
 
 const HEADER_PX = 36;
-const ROW_PX = 52;
+const ROW_PX = 54;
 
 /** Row sizes come from the ResizeObserver (WorkspaceSessions' rule): a row
  *  mounting while the list scrolls keeps its cached or estimated size
@@ -355,9 +355,8 @@ export function MasterView(props: ThreadViewProps) {
                     style={{ transform: `translateY(${v.start}px)` }}
                   >
                     {item.kind === "header" ? (
-                      <h3 className="flex items-baseline gap-2 px-3 pt-4 pb-1.5 text-xs font-normal text-content/40" data-group-header={item.group.id}>
+                      <h3 className="px-3 pt-4 pb-1 text-xs font-medium text-muted-foreground" data-group-header={item.group.id}>
                         {item.group.label}
-                        <span className="tabular-nums text-content/30">{item.group.rows.length}</span>
                       </h3>
                     ) : (
                       <MasterRow rowRef={item.row} landed={landed.has(item.row.id)} host={hostOf(item.row.environmentId)} onOpen={open} onMenu={onRowMenu} />
