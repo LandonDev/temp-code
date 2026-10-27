@@ -1,5 +1,7 @@
+import { mkdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { app, BrowserWindow, globalShortcut, Menu, shell, type MenuItemConstructorOptions } from 'electron'
-import { MENU_TREE, type MenuNode } from './menu-tree'
+import { EMPTY_MENU_STATE, MENU_TREE, resolveMenu, type MenuNode, type MenuState } from '../shared/menuTree'
 import { createWindow } from './windows'
 import { hostProfileRunning, profileHost } from './server/doctorProfile'
 
@@ -19,6 +21,13 @@ function dispatch(id: string): void {
     })
     return
   }
+  if (id === 'show_logs') {
+    // The directory the server writes its logs and profiles to.
+    const dir = join(app.getPath('userData'), 'logs')
+    mkdirSync(dir, { recursive: true })
+    void shell.openPath(dir)
+    return
+  }
   if (id === 'quit') {
     app.quit()
     return
@@ -33,17 +42,27 @@ function dispatch(id: string): void {
 
 function toItem(node: MenuNode): MenuItemConstructorOptions {
   if (node.kind === 'separator') return { type: 'separator' }
-  if (node.kind === 'role') return { role: node.role as MenuItemConstructorOptions['role'] }
+  if (node.kind === 'submenu') return { label: node.label, submenu: node.items.map(toItem) }
+  if (node.kind === 'role') {
+    return {
+      role: node.role as MenuItemConstructorOptions['role'],
+      ...(node.label ? { label: node.label } : {}),
+      ...(node.accelerator ? { accelerator: node.accelerator } : {})
+    }
+  }
   return {
     id: node.id,
     label: node.label,
     ...(node.accelerator ? { accelerator: node.accelerator } : {}),
+    // The page owns the key (a focused terminal keeps ⌃` for the shell); the item only shows it.
+    ...(node.pageKey ? { registerAccelerator: false } : {}),
+    ...(node.enabled === false ? { enabled: false } : {}),
     click: () => dispatch(node.id)
   }
 }
 
-export function buildMenu(): Menu {
-  const template: MenuItemConstructorOptions[] = MENU_TREE.map((section) => ({
+export function buildMenu(state: MenuState = EMPTY_MENU_STATE): Menu {
+  const template: MenuItemConstructorOptions[] = resolveMenu(MENU_TREE, state).map((section) => ({
     label: section.label,
     ...(section.role ? { role: section.role } : {}),
     submenu: section.items.map(toItem)

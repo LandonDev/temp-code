@@ -3449,7 +3449,6 @@ export default function App() {
         case "open_notes": return go(a.onOpenNotes);
         case "open_settings": return go(() => a.openSettings());
         case "check_for_updates": return go(() => void updateStore.check(true));
-        case "sidebar_opacity": return go(() => a.openSettings("appearance"));
         case "find_in_project": return go(a.onFindInProject);
         case "new_window": return go(() => void invoke("open_new_window").catch(() => {}));
         case "find": return go(() => openFindInActiveEditor());

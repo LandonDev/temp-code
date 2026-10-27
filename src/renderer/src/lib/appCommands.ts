@@ -4,7 +4,7 @@
  *
  *   - DOM: App.tsx's window-capture keydown calls `createKeyResolver()`
  *     and dispatches whatever it returns.
- *   - Native menu: `src/main/menu-tree.ts` items carry the same ids and
+ *   - Native menu: `src/shared/menuTree.ts` items carry the same ids and
  *     arrive over `native:menu` (`listen(id)` in lib/native.ts);
  *     `menuCommandAllowed` applies the same overlay guard.
  *
@@ -65,7 +65,6 @@ export const APP_COMMANDS = [
   "open_notes",
   "open_settings",
   "check_for_updates",
-  "sidebar_opacity",
   "find_in_project",
   "new_window",
   "find",

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createKeyResolver, menuCommandAllowed, DOUBLE_SHIFT_MS } from "./appCommands";
+import { RENDERER_MENU_IDS } from "@shared/menuTree";
+import { createKeyResolver, isAppCommandId, menuCommandAllowed, DOUBLE_SHIFT_MS } from "./appCommands";
 
 type Surface = "dialog" | "monaco" | "terminal" | "codemirror" | "composer" | null;
 
@@ -162,5 +163,9 @@ describe("command map: guards", () => {
     expect(menuCommandAllowed("go_to_file", { dialogOpen: true, lightboxOpen: false })).toBe(false);
     expect(menuCommandAllowed("zoom_in", { dialogOpen: true, lightboxOpen: false })).toBe(true);
     expect(menuCommandAllowed("go_to_file", { dialogOpen: false, lightboxOpen: false })).toBe(true);
+  });
+
+  it("every renderer id in the menu tree is a command", () => {
+    expect(RENDERER_MENU_IDS.filter((id) => !isAppCommandId(id))).toEqual([]);
   });
 });
