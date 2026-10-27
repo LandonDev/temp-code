@@ -335,7 +335,9 @@ describe("SearchView across hosts", () => {
 
   it("opens with the command's initial query in the field", async () => {
     const view = render(<SearchView open cwd="/Users/me/app" recents={recents} initialQuery="type:note" {...props()} />);
-    expect((view.container.querySelector("input") as HTMLInputElement).value).toBe("type:note ");
+    const field = view.container.querySelector("input") as HTMLInputElement;
+    expect(field.value).toBe("type:note ");
+    expect(field.closest('[data-slot="input-group"]')).not.toBeNull();
     view.unmount();
   });
 

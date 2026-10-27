@@ -56,6 +56,9 @@ describe("ProjectSearch", () => {
     const view = render(<ProjectSearch cwd="/app" onOpenFile={vi.fn()} onClose={vi.fn()} />);
     const matchCase = view.getByRole("button", { name: "Match case" });
     expect(matchCase.getAttribute("aria-pressed")).toBe("false");
+    // The toggles sit inside the field's InputGroup, beside the bare input.
+    const group = view.getByLabelText("Search").closest('[data-slot="input-group"]') as HTMLElement;
+    expect(group.contains(matchCase)).toBe(true);
     await act(async () => {
       fireEvent.click(matchCase);
       fireEvent.click(view.getByRole("button", { name: "Use regular expression" }));

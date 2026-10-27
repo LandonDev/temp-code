@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
+import { GroupInput, Input, InputGroup } from "../components/ui/input";
 import { ItemButton } from "../components/ui/item";
 import { Spinner } from "../components/ui/spinner";
 import { Toggle } from "../components/ui/toggle";
@@ -163,8 +163,22 @@ export function ProjectSearch({
         </span>
       </div>
       <div className="flex shrink-0 flex-col gap-2 p-3">
-        <div className="relative">
-          <Input
+        <InputGroup
+          trailing={
+            <>
+              <OptionToggle label="Match case" pressed={caseSensitive} onPressedChange={setCaseSensitive}>
+                <CaseSensitive />
+              </OptionToggle>
+              <OptionToggle label="Match whole word" pressed={wholeWord} onPressedChange={setWholeWord}>
+                <WholeWord />
+              </OptionToggle>
+              <OptionToggle label="Use regular expression" pressed={regex} onPressedChange={setRegex}>
+                <Regex />
+              </OptionToggle>
+            </>
+          }
+        >
+          <GroupInput
             ref={inputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -172,20 +186,8 @@ export function ProjectSearch({
             placeholder="Search"
             aria-label="Search"
             spellCheck={false}
-            className="pe-[84px]"
           />
-          <div className="absolute end-1 top-1/2 flex -translate-y-1/2 items-center">
-            <OptionToggle label="Match case" pressed={caseSensitive} onPressedChange={setCaseSensitive}>
-              <CaseSensitive />
-            </OptionToggle>
-            <OptionToggle label="Match whole word" pressed={wholeWord} onPressedChange={setWholeWord}>
-              <WholeWord />
-            </OptionToggle>
-            <OptionToggle label="Use regular expression" pressed={regex} onPressedChange={setRegex}>
-              <Regex />
-            </OptionToggle>
-          </div>
-        </div>
+        </InputGroup>
         <Input
           value={include}
           onChange={(event) => setInclude(event.target.value)}

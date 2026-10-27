@@ -20,7 +20,7 @@ import { WindowControls } from "../chrome/WindowControls";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
-import { Input } from "../components/ui/input";
+import { GroupInput, InputGroup } from "../components/ui/input";
 import { Item } from "../components/ui/item";
 import { Spinner } from "../components/ui/spinner";
 import {
@@ -425,9 +425,16 @@ export function SearchView({
           <OverlayNav onBack={onClose} onToggleSidebar={onToggleSidebar} />
         )}
         <div className="flex min-w-0 flex-1 items-center gap-1.5 px-3">
-          <div className="relative min-w-0 flex-1">
-            <Search className="pointer-events-none absolute start-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
+          <InputGroup
+            className="flex-1"
+            leading={<Search />}
+            trailing={
+              searching ? (
+                <Spinner aria-label="Searching" className="me-1.5 size-3.5 text-muted-foreground" />
+              ) : null
+            }
+          >
+            <GroupInput
               ref={inputRef}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -441,12 +448,9 @@ export function SearchView({
               autoCorrect="off"
               autoCapitalize="off"
               data-tauri-drag-region="false"
-              className="select-text ps-8 pe-8"
+              className="select-text"
             />
-            {searching ? (
-              <Spinner className="absolute end-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            ) : null}
-          </div>
+          </InputGroup>
           <SearchFiltersMenu
             query={query}
             onQueryChange={setQuery}

@@ -23,7 +23,7 @@ import { useDragResize } from "../hooks/useDragResize";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
-import { Input } from "../components/ui/input";
+import { GroupInput, InputGroup } from "../components/ui/input";
 import { Item } from "../components/ui/item";
 import { Skeleton } from "../components/ui/skeleton";
 import { Spinner } from "../components/ui/spinner";
@@ -464,18 +464,16 @@ export function InboxView({
           </TabsList>
         </Tabs>
         <div className="flex items-center gap-1">
-          <div className="relative min-w-0 flex-1">
-            <Search className="pointer-events-none absolute start-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
+          <InputGroup className="flex-1" leading={<Search />}>
+            <GroupInput
               value={searchInput}
               onChange={(event) => setSearchInput(event.target.value)}
               placeholder="Filter inbox"
               aria-label="Filter inbox"
               spellCheck={false}
               autoComplete="off"
-              className="ps-8"
             />
-          </div>
+          </InputGroup>
           <InboxFiltersMenu
             trigger={
               <Button
