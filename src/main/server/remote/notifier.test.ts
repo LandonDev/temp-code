@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentEvent, EventRow, SessionMeta } from '@shared/events'
-import { batchBody, Notifier, type Notice, type NotifierRegistry } from './notifier'
+import { approvalLine, batchBody, Notifier, type Notice, type NotifierRegistry } from './notifier'
 
 /** A registry of metas and rows the test drives by hand. */
 class FakeRegistry implements NotifierRegistry {
@@ -139,7 +139,7 @@ describe('needs_you', () => {
         kind: 'approval',
         threadId: 't1',
         title: 'Ship it',
-        body: 'Needs approval: Bash — git push --force',
+        body: 'Run git push --force?',
         url: 'https://tc.example/ui#thread=t1',
         ts: Date.now(),
         seq: 2,
@@ -160,7 +160,7 @@ describe('needs_you', () => {
     expect(seen()).toEqual(['needs_you:t1', 'finished:t1'])
     expect(notices[1].body).toBe('Done in 6s')
     reg.status('t1', 'idle')
-    reg.push('t1', { tasks: { done: 1, total: 1 } })
+    reg.push('t1', { tasks: { done: 1, total: 3 } })
     settle()
     expect(seen()).toEqual(['needs_you:t1', 'finished:t1'])
     // The next turn is a new state: it finishes again.
@@ -178,7 +178,10 @@ describe('needs_you', () => {
     reg.row('q', {
       type: 'question-request',
       requestId: 'q1',
-      questions: [{ question: 'Tabs or spaces?', options: [{ label: 'Tabs' }] }]
+      questions: [
+        { question: 'Tabs or spaces?', options: [{ label: 'Tabs' }] },
+        { question: 'Keep the old API?', options: [{ label: 'Yes' }] }
+      ]
     })
     reg.status('q', 'waiting')
     reg.row('p', { type: 'approval-request', requestId: 'p1', toolName: 'ExitPlanMode', input: {} })
@@ -192,12 +195,12 @@ describe('needs_you', () => {
     reg.status('fast', 'idle')
     settle()
     expect(notices.map((n) => [n.event, n.threadId, n.body])).toEqual([
-      ['needs_you', 'q', 'Asked: Tabs or spaces?'],
+      ['needs_you', 'q', 'Tabs or spaces?'],
       ['needs_you', 'p', 'Plan ready to approve'],
       ['finished', 'fast', 'Done in 2s']
     ])
   })
-  it('reports a subagent prompt on its root, naming the subagent', () => {
+  it('reports a subagent prompt on its root, without naming the subagent', () => {
     reg.add('root', { title: 'Fleet', status: 'running' })
     reg.add('kid', { title: 'review-auth', parentId: 'root', status: 'running' })
     notifier.start()
@@ -210,7 +213,7 @@ describe('needs_you', () => {
     reg.status('kid', 'waiting')
     settle()
     expect(notices.map((n) => [n.event, n.threadId, n.title, n.body])).toEqual([
-      ['needs_you', 'root', 'Fleet', 'Needs approval (subagent review-auth): Bash — rm -rf dist']
+      ['needs_you', 'root', 'Fleet', 'Run rm -rf dist?']
     ])
     reg.row('kid', { type: 'approval-resolved', requestId: 'k1', allow: false })
     reg.status('kid', 'running')
@@ -264,7 +267,7 @@ describe('stuck', () => {
     expect(notices).toEqual([])
     minutes(1.5)
     expect(notices.map((n) => [n.event, n.threadId, n.body])).toEqual([
-      ['stuck', 'w', 'Quiet for 10 min while working']
+      ['stuck', 'w', 'No output for 10m']
     ])
     minutes(10)
     expect(seen()).toEqual(['stuck:w'])
@@ -282,21 +285,17 @@ describe('stuck', () => {
     minutes(30)
     expect(seen().filter((s) => s === 'stuck:w').length).toBe(3)
   })
-  it('a stall report makes a working thread stuck at once; a subagent row counts as activity', () => {
+  it('a subagent row counts as activity of its root', () => {
     reg.add('r', { status: 'running' })
     reg.add('c', { parentId: 'r', status: 'running' })
-    reg.add('idle', { status: 'idle' })
     notifier.start()
-    notifier.reportStall('c')
-    notifier.reportStall('idle')
-    settle()
-    expect(notices.map((n) => [n.event, n.threadId, n.body])).toEqual([
-      ['stuck', 'r', 'Stalled while working']
-    ])
+    reg.row('r', { type: 'user-text', text: 'go' })
     minutes(9.9)
     reg.row('c', { type: 'tool-call', callId: 'k', name: 'Read', input: {} })
     minutes(9.9)
-    expect(seen()).toEqual(['stuck:r'])
+    expect(notices).toEqual([])
+    minutes(0.6)
+    expect(notices.map((n) => [n.event, n.threadId, n.body])).toEqual([['stuck', 'r', 'No output for 10m']])
   })
 })
 
@@ -369,7 +368,7 @@ describe("the host's verdict, a gone harness, a queued thread", () => {
     reg.row('g', { type: 'user-text', text: 'go' })
     reg.status('g', 'stopped')
     settle()
-    expect(notices.map((n) => [n.event, n.kind, n.body, n.seq])).toEqual([['failed', 'stopped', 'Stopped: the harness is gone', 1]])
+    expect(notices.map((n) => [n.event, n.kind, n.body, n.seq])).toEqual([['failed', 'stopped', 'Stopped unexpectedly', 1]])
     reg.status('g', 'stopped')
     settle()
     expect(seen()).toEqual(['failed:g'])
@@ -421,7 +420,7 @@ describe("a master's batch", () => {
     expect(notices).toEqual([])
     reg.status('m', 'watching')
     settle()
-    expect(notices.map((n) => [n.event, n.kind, n.body, n.seq])).toEqual([['finished', 'batch', 'Batch done · 3 landed · gate passed in 4m 12s · release-281 tagged', 2]])
+    expect(notices.map((n) => [n.event, n.kind, n.body, n.seq])).toEqual([['finished', 'batch', 'Batch done: 3 landed, gate passed in 4m 12s, release-281 tagged', 2]])
     // Told once: the master's next idle is an ordinary finish, not the batch again.
     reg.status('m', 'running')
     reg.row('m', { type: 'assistant-text', text: 'Landed.', delta: false } as AgentEvent)
@@ -443,17 +442,87 @@ describe("a master's batch", () => {
     expect(notices).toEqual([])
     reg.row('m', { type: 'notice', kind: 'gate', message: 'Gate failed on master · at vitest', gate: gate(false) })
     settle()
-    expect(notices.map((n) => [n.event, n.kind, n.body])).toEqual([['failed', 'batch', 'Batch stopped: gate failed · at vitest']])
+    expect(notices.map((n) => [n.event, n.kind, n.body])).toEqual([['failed', 'batch', 'Batch stopped: gate failed at vitest']])
     reg.row('m', { type: 'notice', kind: 'gate', message: 'Release failed on master', gate: gate(false, 'release') })
     settle()
     expect(notices.at(-1)).toMatchObject({ event: 'failed', kind: 'batch', body: 'Batch stopped: release failed' })
   })
   it('batchBody reads the engine rows and nothing else', () => {
-    expect(batchBody({ kind: 'batch', message: 'Batch done: 2 landed\nmore' })).toEqual({ body: 'Batch done · 2 landed', failed: false })
+    expect(batchBody({ kind: 'batch', message: 'Batch done: 2 landed\nmore' })).toEqual({ body: 'Batch done: 2 landed', failed: false })
     expect(batchBody({ kind: 'batch', message: 'Batch done' })).toEqual({ body: 'Batch done', failed: false })
     expect(batchBody({ kind: 'batch', message: 'Merged by the batch: b → master at abc' })).toBeNull()
     expect(batchBody({ kind: 'gate', message: 'Gate passed on master', gate: { step: 'gate', ok: true } })).toBeNull()
-    expect(batchBody({ kind: 'gate', message: 'Typecheck failed on b · 3 errors', gate: { step: 'typecheck', ok: false } })).toEqual({ body: 'Batch stopped: typecheck failed · 3 errors', failed: true })
+    expect(batchBody({ kind: 'gate', message: 'Typecheck failed on b · 3 errors', gate: { step: 'typecheck', ok: false } })).toEqual({ body: 'Batch stopped: typecheck failed, 3 errors', failed: true })
     expect(batchBody({ kind: 'account-gone', message: 'Account work is gone' })).toBeNull()
+  })
+})
+
+describe('approvalLine', () => {
+  it('asks the action as a question, from the harness sentence when it gives one', () => {
+    expect(approvalLine('Read', { file_path: '/a/b/types.ts' }, 'Claude wants to read types.ts')).toBe('Read types.ts?')
+    expect(approvalLine('Bash', { command: 'bun test' }, 'Claude wants to run `bun test`.')).toBe('Run bun test?')
+  })
+  it('names each tool family by its verb', () => {
+    expect(approvalLine('Bash', { command: 'bun test' })).toBe('Run bun test?')
+    expect(approvalLine('shell', { command: ['git', 'status'] })).toBe('Run git status?')
+    expect(approvalLine('exec_command', { cmd: 'ls' })).toBe('Run ls?')
+    expect(approvalLine('Read', { file_path: '/repo/src/types.ts' })).toBe('Read types.ts?')
+    expect(approvalLine('Write', { file_path: '/repo/diag.ts' })).toBe('Create diag.ts?')
+    expect(approvalLine('Edit', { file_path: '/repo/src/main/server/remote/notifier.ts' })).toBe('Edit notifier.ts?')
+    expect(approvalLine('MultiEdit', { file_path: 'a/b.ts' })).toBe('Edit b.ts?')
+    expect(approvalLine('NotebookEdit', { notebook_path: '/n/x.ipynb' })).toBe('Edit x.ipynb?')
+    expect(approvalLine('apply_patch', { fileChanges: { '/repo/a.ts': {} } })).toBe('Edit a.ts?')
+    expect(approvalLine('apply_patch', { itemId: 'i' })).toBe('Edit files?')
+    expect(approvalLine('WebFetch', { url: 'https://example.com/docs/x' })).toBe('Fetch example.com?')
+    expect(approvalLine('WebSearch', { query: 'vitest fake timers' })).toBe('Search the web for vitest fake timers?')
+    expect(approvalLine('mcp__linear__create_issue', { title: 'x' })).toBe('Use linear?')
+    expect(approvalLine('MCP server "github"', {})).toBe('Use github?')
+    expect(approvalLine('Glob', { pattern: '*.ts' })).toBe('Use Glob?')
+    expect(approvalLine('Bash', {})).toBe('Run a command?')
+  })
+  it('cuts the detail at 90 characters before the question mark', () => {
+    const line = approvalLine('Bash', { command: 'x'.repeat(200) })
+    expect(line).toBe(`Run ${'x'.repeat(89)}…?`)
+  })
+})
+
+describe('the title', () => {
+  it('names an untitled thread by its place and drops the subtitle', () => {
+    notifier.stop()
+    notifier = new Notifier({ registry: reg, stuckMinutes: () => 10, place: () => 'Alpha', now: () => Date.now(), log: () => {} })
+    notifier.onNotice((n) => {
+      notices.push(n)
+    })
+    reg.add('u', { title: '', status: 'running' })
+    reg.add('n', { title: 'Ship it', status: 'running' })
+    notifier.start()
+    for (const id of ['u', 'n']) {
+      reg.row(id, { type: 'user-text', text: 'go' })
+      reg.status(id, 'idle')
+    }
+    settle()
+    expect(notices.map((n) => [n.threadId, n.title, n.subtitle])).toEqual([
+      ['u', 'Alpha', undefined],
+      ['n', 'Ship it', 'Alpha']
+    ])
+  })
+})
+
+describe('the finished body', () => {
+  it('counts the tasks left, and says nothing of a finished list', () => {
+    reg.add('a', { status: 'running', busySince: Date.now(), tasks: { done: 5, total: 7 } })
+    reg.add('b', { status: 'running', busySince: Date.now(), tasks: { done: 7, total: 7 } })
+    stuckMinutes = 60
+    notifier.start()
+    minutes(12)
+    for (const id of ['a', 'b']) {
+      reg.row(id, { type: 'turn-complete' })
+      reg.status(id, 'idle')
+    }
+    settle()
+    expect(notices.map((n) => [n.threadId, n.body])).toEqual([
+      ['a', 'Done in 12m, 2 tasks left'],
+      ['b', 'Done in 12m']
+    ])
   })
 })

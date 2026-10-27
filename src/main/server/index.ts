@@ -2882,8 +2882,9 @@ export async function startServer(
   })
   activityFeed.start()
   batchRuns.onChange((state) => activityFeed.poke(state.masterId))
+  // The waiting kind gives no reason: the card would read "Needs you  Needs you".
   notifier.onNotice((n) => {
-    if (n.event === 'needs_you') activityFeed.needsYou(n.threadId, n.body)
+    if (n.event === 'needs_you' && n.kind !== 'waiting') activityFeed.needsYou(n.threadId, n.body)
   })
   void pushRegistry.resync()
   notifier.onNotice((n) => {

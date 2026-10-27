@@ -1,5 +1,4 @@
 import type { EventRow, Failure, SessionMeta } from '@shared/events'
-import { toolFace } from './facade'
 
 /**
  * Thread state → one notice per transition, for the hub, per-key webhooks
@@ -10,8 +9,7 @@ import { toolFace } from './facade'
  *              master's batch ended
  *   failed     an error row ended the turn, an account needs sign-in, the
  *              harness is gone (`stopped`), or a batch step failed
- *   stuck      a working thread wrote no row for `stuckMinutes`, or a
- *              stall was reported for it
+ *   stuck      a working thread wrote no row for `stuckMinutes`
  *
  * Every signal (a meta push, a persisted row) marks the thread and arms a
  * short timer; at the flush the LIVE meta decides what the thread is in,
@@ -19,7 +17,14 @@ import { toolFace } from './facade'
  * last one sent for that thread. A prompt that is answered inside the
  * window, or a turn that settles and restarts, produces nothing twice.
  * Roots only: a subagent's rows count as activity of its root, and its
- * prompts are reported on the root with the subagent named.
+ * prompts are reported on the root.
+ *
+ * One voice: the title names the thread, the body says what happened in
+ * the fewest words, a status word or a verb first, a colon before its
+ * detail, commas between further facts. "Run bun test?", "Tabs or
+ * spaces?", "Needs you", "Done in 12m, 2 tasks left", "Ready to build",
+ * "Batch done: 3 landed, gate passed", "Failed: <the host's verdict>",
+ * "Stopped unexpectedly", "No output for 12m".
  */
 
 export type NoticeEvent = 'needs_you' | 'finished' | 'failed' | 'stuck'
@@ -85,9 +90,8 @@ interface Pending {
   sessionId: string
   requestId: string
   kind: 'permission' | 'question' | 'plan'
+  /** The body: the approval's question, or the first question asked. */
   face: string
-  /** The subagent that asked, when it was not the root itself. */
-  by: string | null
   /** The root's row the prompt sits at (a subagent's prompt lands on the root's latest row). */
   seq: number
 }
@@ -106,31 +110,103 @@ interface ThreadState {
   startedAt: number | null
   stuckSent: boolean
   timer: ReturnType<typeof setTimeout> | null
-  /** A stall report asked for an immediate stuck check. */
-  stalled: boolean
 }
 
 const oneLine = (text: string): string => text.replace(/\s+/g, ' ').trim()
 const firstLine = (text: string): string => oneLine(text.split(/\r?\n/).find((l) => l.trim()) ?? '')
 const cut = (text: string, max: number): string =>
   text.length <= max ? text : `${text.slice(0, max - 1)}…`
+const DETAIL_CHARS = 90
+
+const basename = (path: string): string => path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path
 
 /**
- * The body of a batch engine row on a master (batch.ts): "Batch done · 3
- * landed · gate passed in 4m 12s" from its `Batch done: <line>` notice, or
- * "Batch stopped: gate failed · at vitest" from a failing gate or release
- * step (the row's message is `gateLine`; what follows its " · " is kept).
+ * An approval as the question the person answers: "Run bun test?",
+ * "Read types.ts?", "Use linear?". The harness's own sentence when it
+ * gives one ("Claude wants to read foo.txt" → "Read foo.txt?"), else a
+ * verb by tool name; the detail is cut at 90 characters.
+ */
+export function approvalLine(toolName: string, input: unknown, title?: string): string {
+  const said = title ? /\bwants to\s+(.+)$/is.exec(oneLine(title)) : null
+  if (said) {
+    const action = said[1].replace(/`/g, '').replace(/[.\s]+$/, '')
+    if (action) return `${cut(action[0].toUpperCase() + action.slice(1), DETAIL_CHARS + 10)}?`
+  }
+  const rec = input && typeof input === 'object' && !Array.isArray(input) ? (input as Record<string, unknown>) : {}
+  const str = (...keys: string[]): string | null => {
+    for (const key of keys) {
+      const v = rec[key]
+      if (typeof v === 'string' && v.trim()) return oneLine(v)
+      if (Array.isArray(v) && v.length && v.every((x) => typeof x === 'string')) return oneLine(v.join(' '))
+    }
+    return null
+  }
+  const firstKey = (key: string): string | null => {
+    const v = rec[key]
+    return v && typeof v === 'object' && !Array.isArray(v) ? (Object.keys(v)[0] ?? null) : null
+  }
+  const line = (verb: string, detail: string | null, none: string): string =>
+    detail ? `${verb} ${cut(detail, DETAIL_CHARS)}?` : `${none}?`
+  const name = toolName.trim()
+  const lower = name.toLowerCase()
+  const path = str('file_path', 'notebook_path', 'path') ?? firstKey('fileChanges') ?? firstKey('changes')
+  switch (lower) {
+    case 'bash':
+    case 'shell':
+    case 'exec_command':
+    case 'local_shell':
+      return line('Run', str('command', 'cmd'), 'Run a command')
+    case 'read':
+      return line('Read', path && basename(path), 'Read a file')
+    case 'write':
+      return line('Create', path && basename(path), 'Create a file')
+    case 'edit':
+    case 'multiedit':
+    case 'notebookedit':
+    case 'apply_patch':
+      return line('Edit', path && basename(path), 'Edit files')
+    case 'webfetch': {
+      const url = str('url')
+      let host: string | null = null
+      try {
+        host = url ? new URL(url).hostname : null
+      } catch {
+        host = url
+      }
+      return line('Fetch', host, 'Fetch a page')
+    }
+    case 'websearch':
+      return line('Search the web for', str('query'), 'Search the web')
+  }
+  if (lower.startsWith('mcp__')) {
+    const end = name.lastIndexOf('__')
+    const server = end > 5 ? name.slice(5, end) : name.slice(5)
+    return line('Use', server || null, 'Use a tool')
+  }
+  const mcp = /^MCP server "(.*)"$/.exec(name)
+  if (mcp) return line('Use', mcp[1] || null, 'Use a tool')
+  return line('Use', name || null, 'Use a tool')
+}
+
+/**
+ * The body of a batch engine row on a master (batch.ts): "Batch done: 3
+ * landed, gate passed in 4m 12s" from its `Batch done: <line>` notice, or
+ * "Batch stopped: gate failed at vitest" from a failing gate or release
+ * step (the row's message is `gateLine`; what follows its " · " is kept,
+ * an `at …` place joined with a space, anything else with a comma).
  * Null for any other notice row.
  */
 export function batchBody(event: { kind: string; message: string; gate?: { step: string; ok: boolean } }): { body: string; failed: boolean } | null {
   if (event.kind === 'batch') {
     const m = /^Batch done(?::\s*(.*))?$/s.exec(firstLine(event.message))
     if (!m) return null
-    return { body: cut(m[1] ? `Batch done · ${m[1]}` : 'Batch done', BODY_CHARS), failed: false }
+    const line = m[1] ? m[1].split(' · ').map((part) => part.trim()).filter(Boolean).join(', ') : ''
+    return { body: cut(line ? `Batch done: ${line}` : 'Batch done', BODY_CHARS), failed: false }
   }
   if (event.kind === 'gate' && event.gate && !event.gate.ok) {
-    const tail = firstLine(event.message).split(' · ').slice(1).join(' · ')
-    return { body: cut(`Batch stopped: ${event.gate.step} failed${tail ? ` · ${tail}` : ''}`, BODY_CHARS), failed: true }
+    const tail = firstLine(event.message).split(' · ').slice(1).map((part) => part.trim()).filter(Boolean).join(', ')
+    const join = !tail ? '' : tail.startsWith('at ') ? ` ${tail}` : `, ${tail}`
+    return { body: cut(`Batch stopped: ${event.gate.step} failed${join}`, BODY_CHARS), failed: true }
   }
   return null
 }
@@ -191,15 +267,6 @@ export class Notifier {
     this.threads.clear()
   }
 
-  /** A stall was measured for this thread (or its root): check it now. */
-  reportStall(sessionId: string): void {
-    const rootId = this.options.registry.rootSessionOf(sessionId)
-    const state = this.threads.get(rootId)
-    if (!state) return
-    state.stalled = true
-    this.arm(rootId)
-  }
-
   private stateOf(id: string, status: SessionMeta['status']): ThreadState {
     let state = this.threads.get(id)
     if (!state) {
@@ -213,8 +280,7 @@ export class Notifier {
         lastRowSeq: 0,
         startedAt: WORKING.has(status) ? (this.options.registry.get(id)?.busySince ?? null) : null,
         stuckSent: false,
-        timer: null,
-        stalled: false
+        timer: null
       }
       this.threads.set(id, state)
     }
@@ -259,7 +325,6 @@ export class Notifier {
     state.lastRowAt = this.now()
     state.lastRowSeq = Math.max(state.lastRowSeq, own ? row.seq : state.lastRowSeq + 1)
     state.stuckSent = false
-    state.stalled = false
     const { event } = row
     switch (event.type) {
       case 'approval-request': {
@@ -268,10 +333,7 @@ export class Notifier {
           sessionId: row.sessionId,
           requestId: event.requestId,
           kind: plan ? 'plan' : 'permission',
-          face: plan
-            ? ''
-            : `${event.toolName} — ${event.title ? oneLine(event.title) : toolFace(event.input)}`,
-          by: own ? null : (reg.get(row.sessionId)?.title ?? row.sessionId),
+          face: plan ? '' : approvalLine(event.toolName, event.input, event.title),
           seq: own ? row.seq : state.lastRowSeq
         }
         this.arm(rootId)
@@ -282,8 +344,7 @@ export class Notifier {
           sessionId: row.sessionId,
           requestId: event.requestId,
           kind: 'question',
-          face: event.questions.map((q) => oneLine(q.question)).join(' · '),
-          by: own ? null : (reg.get(row.sessionId)?.title ?? row.sessionId),
+          face: oneLine(event.questions[0]?.question ?? ''),
           seq: own ? row.seq : state.lastRowSeq
         }
         this.arm(rootId)
@@ -344,21 +405,15 @@ export class Notifier {
       p.sessionId !== id &&
       this.options.registry.get(p.sessionId)?.status === 'waiting'
     if (meta.status === 'waiting' || childWaiting) {
-      const who = p?.by ? ` (subagent ${cut(p.by, 60)})` : ''
       if (!p)
         return {
           event: 'needs_you',
           kind: 'waiting',
           key: `waiting:${state.lastRowSeq}`,
-          body: `Waiting for you${who}`,
+          body: 'Needs you',
           seq: state.lastRowSeq
         }
-      const body =
-        p.kind === 'plan'
-          ? `Plan ready to approve${who}`
-          : p.kind === 'question'
-            ? `Asked${who}: ${p.face}`
-            : `Needs approval${who}: ${p.face}`
+      const body = p.kind === 'plan' ? 'Plan ready to approve' : p.face || 'Needs you'
       return {
         event: 'needs_you',
         kind: p.kind === 'permission' ? 'approval' : p.kind,
@@ -382,7 +437,7 @@ export class Notifier {
     }
     if (meta.status === 'stopped') {
       // The liveness sweep found no harness behind a running row (sessions.ts).
-      return { event: 'failed', kind: 'stopped', key: `stopped:${state.lastRowSeq}`, body: 'Stopped: the harness is gone', seq: state.lastRowSeq }
+      return { event: 'failed', kind: 'stopped', key: `stopped:${state.lastRowSeq}`, body: 'Stopped unexpectedly', seq: state.lastRowSeq }
     }
     if (signIn && WORKING.has(meta.status)) {
       return {
@@ -398,17 +453,7 @@ export class Notifier {
       const b = state.lastBatch
       return { event: b.failed ? 'failed' : 'finished', kind: 'batch', key: `batch:${b.seq}`, body: b.body, seq: b.seq }
     }
-    if (WORKING.has(meta.status)) {
-      if (state.stalled)
-        return {
-          event: 'stuck',
-          kind: 'stuck',
-          key: `stuck:${state.lastRowSeq}`,
-          body: 'Stalled while working',
-          seq: state.lastRowSeq
-        }
-      return null
-    }
+    if (WORKING.has(meta.status)) return null
     if (meta.status === 'idle' || meta.status === 'done') {
       // A stop by the user is not a finish, and a thread that never worked since we looked has nothing to report.
       if (state.lastError?.stopped && state.lastError.seq >= state.lastRowSeq - 2) return null
@@ -425,14 +470,12 @@ export class Notifier {
     return null
   }
 
-  /** "Done in 12m · 7 tasks": the stretch's length, and the list's tally when the thread has one. */
+  /** "Done in 12m", and "Done in 12m, 2 tasks left" when the thread's list is not finished. */
   private finishedBody(meta: SessionMeta, state: ThreadState): string {
-    const parts: string[] = []
     const ms = state.startedAt === null ? 0 : this.now() - state.startedAt
-    parts.push(ms >= 1000 ? `Done in ${briefDuration(ms)}` : 'Done')
-    const tasks = meta.tasks
-    if (tasks && tasks.total > 0) parts.push(tasks.done === tasks.total ? `${tasks.total} ${tasks.total === 1 ? 'task' : 'tasks'}` : `${tasks.done}/${tasks.total} tasks`)
-    return parts.join(' · ')
+    const done = ms >= 1000 ? `Done in ${briefDuration(ms)}` : 'Done'
+    const left = meta.tasks && meta.tasks.total > 0 ? meta.tasks.total - meta.tasks.done : 0
+    return left > 0 ? `${done}, ${left} ${left === 1 ? 'task' : 'tasks'} left` : done
   }
 
   private flush(id: string): void {
@@ -464,7 +507,7 @@ export class Notifier {
         id,
         'stuck',
         'stuck',
-        `Quiet for ${Math.round((now - state.lastRowAt) / 60_000)} min while working`,
+        `No output for ${briefDuration(now - state.lastRowAt)}`,
         state.lastRowSeq
       )
     }
@@ -474,14 +517,16 @@ export class Notifier {
     const meta = this.options.registry.get(id)
     if (!meta) return
     const origin = this.options.origin?.() ?? null
-    const place = this.options.place?.(meta) ?? null
+    const place = oneLine(this.options.place?.(meta) ?? '')
     const hostName = this.options.hostName?.() ?? null
+    // An untitled thread is named by its place, which then is not said again as the subtitle.
+    const named = oneLine(meta.title)
     const notice: Notice = {
       event,
       kind,
       threadId: id,
-      title: cut(oneLine(meta.title) || 'Untitled', 120),
-      ...(place ? { subtitle: cut(oneLine(place), 80) } : {}),
+      title: cut(named || place || 'Untitled', 120),
+      ...(named && place ? { subtitle: cut(place, 80) } : {}),
       body,
       ...(origin ? { url: `${origin}/ui#thread=${id}` } : {}),
       ts: this.now(),
