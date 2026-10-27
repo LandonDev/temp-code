@@ -782,12 +782,13 @@ export class SessionRegistry {
   bootResumeRoom(pending: readonly string[]): number {
     const cap = this.admission?.cap() ?? Number.POSITIVE_INFINITY
     const waiting = new Set(pending)
-    let live = 0
-    for (const id of this.liveIds()) {
-      if (waiting.has(id) && !this.handles.has(id) && !this.starting.has(id)) continue
-      live++
-    }
-    return Math.max(0, cap - live)
+    // Every harness up or booting, plus the rows the resumer already picked
+    // (still running by their row, their harness on its way): the index's
+    // live rows outside the waiting list. The threads still waiting hold
+    // nothing yet.
+    const live = this.liveIds()
+    for (const id of this.indexOf().live.keys()) if (!waiting.has(id)) live.add(id)
+    return Math.max(0, cap - live.size)
   }
 
   /** A boot-resume thread past the cap: queued with its nudge, started by the
