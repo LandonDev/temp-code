@@ -24,7 +24,7 @@ vi.mock("../lib/githubTasks", async (importOriginal) => ({
   peekGithubWorkItemDetails: () => null,
   peekGithubWorkItemThread: () => null,
   peekGithubPrDiff: () => null,
-  githubWorkItemDetails: () => Promise.resolve({ body: "", author: "ana" }),
+  githubWorkItemDetails: () => Promise.resolve({ body: "The gate holds a merge.", author: "ana" }),
   githubWorkItemThread: () => Promise.resolve({ comments: [] }),
   githubPrDiff: () => Promise.resolve(null),
 }));
@@ -32,7 +32,9 @@ vi.mock("../lib/native", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/native")>()),
   openUrl: vi.fn(),
 }));
-vi.mock("./AgentMarkdown", () => ({ AgentMarkdown: ({ text }: { text: string }) => <div>{text}</div> }));
+vi.mock("./AgentMarkdown", () => ({
+  AgentMarkdown: ({ text, size }: { text: string; size?: string }) => <div data-markdown-size={size}>{text}</div>,
+}));
 vi.mock("./InboxComments", () => ({ InboxComments: () => null, InboxCommentForm: () => null }));
 vi.mock("./InboxPrDiff", () => ({ InboxPrDiff: () => null }));
 
@@ -79,6 +81,8 @@ describe("the inbox detail", () => {
     expect(approved.className).not.toMatch(/text-success|text-destructive/);
     expect(header.textContent).toContain("Open");
     expect(view.getByRole("heading", { name: "Fix the gate" }).className).toContain("text-[16px]");
+    // The description is panel prose, not the transcript's.
+    expect(view.getByText("The gate holds a merge.").getAttribute("data-markdown-size")).toBe("compact");
   });
 
   it("puts a pull request's Summary and Code on line tabs", async () => {

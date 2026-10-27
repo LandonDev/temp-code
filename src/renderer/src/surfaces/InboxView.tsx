@@ -1237,7 +1237,7 @@ function InboxDetail({
       ) : (
         <>
           {details?.body.trim() ? (
-            <AgentMarkdown text={details.body} cwd={markdownCwd} />
+            <AgentMarkdown text={details.body} cwd={markdownCwd} size="compact" />
           ) : (
             <p className="text-[13px] text-muted-foreground">No description</p>
           )}
