@@ -12,7 +12,7 @@ describe("the motion floor", () => {
   });
 
   it("has no modal or popover-exit keyframes left from the ghost exits", () => {
-    expect(css).not.toMatch(/@keyframes (modal-|popover-close|approval-toast)/);
+    expect(css).not.toMatch(/@keyframes (modal-|popover-close|popover-open|approval-toast)/);
     expect(css).not.toMatch(/\.(modal-panel|modal-backdrop|modal-closing|popover-close|approval-toast)\b/);
   });
 
@@ -20,6 +20,5 @@ describe("the motion floor", () => {
     const reduced = css.split("@media (prefers-reduced-motion: reduce)").slice(1).join("");
     expect(reduced).toContain('[data-slot="dialog-content"]');
     expect(reduced).toContain("animation-duration: var(--dur-fast);");
-    expect(reduced).toMatch(/\.popover-open \{\s*animation: z-fade-quick var\(--dur-fast\) var\(--ease-out\) both;/);
   });
 });

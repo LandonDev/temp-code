@@ -15,8 +15,8 @@ import { implementPlan } from "../../lib/tcserver/plans";
 
 type BuildType = "implementation" | "orchestration";
 
-/** The pickers still float on the old chrome/Popover, portalled outside the
- *  dialog: a press inside one is not a press outside the dialog. */
+/** The pickers float in their own portals outside the dialog: a press
+ *  inside one is not a press outside the dialog. */
 const PICKERS = "[data-model-picker], [data-slot=select-content], [data-access-picker]";
 
 /** A close the dialog should refuse: a press or a focus move that landed

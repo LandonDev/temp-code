@@ -49,7 +49,6 @@ const KEYFRAMES: Record<string, string> = {
   "status-breathe": "components/ui/status.tsx",
   "mascot-rest": "chrome/ComposerRunner.tsx",
   "mascot-talk": "chrome/ComposerRunner.tsx",
-  "popover-open": "chrome/Popover.tsx",
   "z-fade-quick": "surfaces/AgentTranscript.tsx",
   "reveal-flash": "surfaces/monaco/MonacoPane.tsx",
   "bubble-send-in": "surfaces/transcript/UserMessage.tsx",

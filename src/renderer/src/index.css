@@ -62,7 +62,7 @@
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   --ease-exit: cubic-bezier(0.4, 0, 0.6, 1);
-  /* Layers (mirrors lib/layers.ts): popovers and menus sit above dialogs so a
+  /* Layers: popovers and menus sit above dialogs so a
      picker opened inside one is never hidden by it. */
   --layer-dialog: 90;
   --layer-popover: 95;
@@ -627,50 +627,6 @@ header[data-tauri-drag-region] button {
 
 .monocode-terminal .xterm-screen {
   user-select: text;
-}
-
-/* Popovers grow in from the edge they hang off, sliding the last few pixels
-   out of their trigger. The travel carries the animation rather than the fade:
-   WebKit composites `backdrop-filter` on its own layer, so a short opacity
-   ramp over the glass is nearly invisible. Still brief — a menu that takes its
-   time reads as lag rather than polish. */
-/* popover-open and its side rules leave with chrome/Popover.tsx (area A12, menus). */
-@keyframes popover-open {
-  from {
-    opacity: 0;
-    transform: translate(var(--popover-shift, 0), var(--popover-lift, 0))
-      scale(0.94);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-.popover-open {
-  animation: popover-open var(--dur-base) var(--ease-out) both;
-}
-
-.popover-open[data-popover-side="bottom"] {
-  --popover-lift: -8px;
-}
-
-.popover-open[data-popover-side="top"] {
-  --popover-lift: 8px;
-}
-
-.popover-open[data-popover-side="right"] {
-  --popover-shift: -8px;
-}
-
-.popover-open[data-popover-side="left"] {
-  --popover-shift: 8px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .popover-open {
-    animation: z-fade-quick var(--dur-fast) var(--ease-out) both;
-  }
 }
 
 /* z-fade-quick: the transcript's row fade (.z-fade-in, AgentTranscript.tsx)
