@@ -1,50 +1,72 @@
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { Button } from "@renderer/components/ui/button";
+import { Collapsible, CollapsibleContent } from "@renderer/components/ui/collapsible";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@renderer/components/ui/context-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@renderer/components/ui/dropdown-menu";
+import { Empty, EmptyHeader, EmptyTitle } from "@renderer/components/ui/empty";
+import { Item, ItemActions, ItemContent, ItemMedia } from "@renderer/components/ui/item";
+import { ScrollArea } from "@renderer/components/ui/scroll-area";
+import { Skeleton } from "@renderer/components/ui/skeleton";
+import { Spinner } from "@renderer/components/ui/spinner";
+import { Textarea } from "@renderer/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@renderer/components/ui/tooltip";
+import { cn } from "@renderer/lib/cn";
 import { registry } from "../../lib/connection";
-import { environmentOfCwd } from "../../lib/tcserver/projects";
-import { useEffect, useState, type ReactNode } from "react";
-import { motion, useReducedMotion } from "motion/react";
-import { ENTER, SPRING_LAYOUT } from "../../lib/ease";
-import { GLIDE_MAX_ROWS } from "../../lib/listGlide";
-import { ArrowDownCircle, Archive, ChevronRight, CloudUpload, Minus, Plus, Undo2 } from "../icons";
-import { cn } from "../../motion/cn";
-import { StatefulButton, type ButtonState } from "../../motion/StatefulButton";
-import { Spinner } from "../../surfaces/threads/spinners";
-import { ConfirmDialog } from "../ConfirmDialog";
+import { useEditorConfig } from "../../lib/editorConfig";
 import { invalidateWatchedFiles } from "../../lib/fileWatch";
-import { timeAgo } from "../../lib/format";
 import {
   basename,
   gitCommit,
   gitDiscardFile,
   gitFileDiff,
+  gitPrCreate,
+  gitPrStatus,
   gitPull,
   gitPush,
   gitStageAll,
   gitStageContents,
   gitStageFile,
   gitStash,
+  gitSync,
   gitUnstageAll,
   gitUnstageFile,
   notifyGitChanged,
   type GitChangedFile,
   type GitDiffIndex,
+  type GitPr,
 } from "../../lib/fs";
-import { refreshGitSnapshot, useGitSnapshot } from "../../lib/gitIndexStore";
+import { refreshGitSnapshot, useGitIndex } from "../../lib/gitIndexStore";
+import { generateCommitMessage, generatePrContent } from "../../lib/harness";
+import { openUrl } from "../../lib/native";
+import { editorLabelFor, openInEditor } from "../../lib/openInEditor";
+import { MOD } from "../../lib/platform";
 import { requestReview } from "../../lib/reviewRequest";
+import type { OpenFileFn } from "../../lib/search";
+import { environmentOfCwd } from "../../lib/tcserver/projects";
+import { IconAction } from "../../surfaces/transcript/IconAction";
+import { confirmAction, errorText } from "../ConfirmDialog";
+import { FileTypeIcon } from "../FileTypeIcon";
+import { ChevronDown, ChevronRight, Minus, MoreHorizontal, Plus, Undo2, WandSparkles } from "../icons";
 
 /**
- * The Changes tab: the checkout's index, staged and unstaged, on the
- * server's git methods. Rows open the file against HEAD; an unstaged
- * modification unfolds into its hunks, each stageable on its own; the
- * commit box commits the index as it stands. Pull, push and stash sit in
- * the header. Refreshes ride the server's tree watcher through
- * `gitIndexStore` — nothing here polls.
+ * The right panel's Changes section: the one place a checkout's changes
+ * are listed (docs/DESIGN.md "Panels"). The branch with Sync or Publish
+ * and the pull request at the top, pull, push, stash and stage-all in a
+ * ⋯ menu; the index staged and unstaged, rows opening the file against
+ * HEAD, an unstaged modification folding open into hunks stageable one by
+ * one; the branch against a target below (`against`, ChangesAgainst); the
+ * commit field pinned at the foot with the generated message and Commit's
+ * menu (and push; push and create a PR). Refreshes ride the server's tree
+ * watcher through `gitIndexStore`; nothing here polls.
  */
 
-const DIFF_CONFIG = { scanLimit: 5_000, timeout: 100 };
-/** Hunks sit one tree level under their file: the tree's 8 + depth * 12. */
-const HUNK_INDENT = 8 + 12;
-
-interface Hunk {
+export interface Hunk {
   /** 1-based line span in the working copy */
   from: number;
   to: number;
@@ -60,67 +82,123 @@ interface HunkSet {
   hunks: Hunk[];
 }
 
+/** A folded-open file's hunks, or "loading" while its diff is read. */
+export type HunkFold = { hunks: Hunk[] } | "loading";
+
 async function loadHunks(environmentId: string, cwd: string, relative: string): Promise<HunkSet> {
   const diff = await gitFileDiff(environmentId, cwd, relative);
   if (diff.binary || diff.tooLarge) return { original: "", current: "", hunks: [] };
-  // CodeMirror's diff and the editor's git helpers stay out of the index
-  // bundle (the editor chunk, surfaces/chunks.ts): the rail only needs them
-  // once a file is expanded.
-  const [{ Chunk }, { Text }, { diffLineStats }] = await Promise.all([
-    import("@codemirror/merge"),
-    import("@codemirror/state"),
-    import("../../surfaces/editorGit"),
-  ]);
-  const orig = Text.of(diff.original.split("\n"));
-  const cur = Text.of(diff.current.split("\n"));
-  const hunks = Chunk.build(orig, cur, DIFF_CONFIG).map((c): Hunk => {
-    const start = Math.min(c.fromB, cur.length);
-    const from = cur.lineAt(start).number;
-    const to = c.fromB === c.toB ? from : cur.lineAt(Math.max(start, Math.min(c.endB, cur.length) - 1)).number;
-    return { from, to, pos: c.fromB, ...diffLineStats(cur, [c], orig) };
-  });
+  // The editor's git helpers (and CodeMirror's diff under them) stay out
+  // of the index bundle (the editor chunk, surfaces/chunks.ts): the panel
+  // only needs them once a file is folded open.
+  const { hunksOf } = await import("../../surfaces/editorGit");
+  const hunks = hunksOf(diff.original, diff.current);
   return { original: diff.original, current: diff.current, hunks };
 }
 
-function syncLabel(index: GitDiffIndex): string {
-  if (index.ahead > 0 && index.behind > 0) return `${index.ahead} ahead · ${index.behind} behind`;
-  if (index.ahead > 0) return `${index.ahead} to push`;
-  if (index.behind > 0) return `${index.behind} to pull`;
-  return "No uncommitted changes";
+/** What the section offers, from the index, the PR and the field. */
+export interface ChangesRules {
+  canCommit: boolean;
+  canCommitPush: boolean;
+  canCommitPushPr: boolean;
+  canGenerate: boolean;
+  canCreatePr: boolean;
+  canViewPr: boolean;
+  canPublish: boolean;
+  canSync: boolean;
+  onDefault: boolean;
+}
+
+export function changesRules(index: GitDiffIndex | null, pr: GitPr | null, message: string, busy: boolean): ChangesRules {
+  const files = index?.files ?? [];
+  const staged = files.some((f) => f.staged);
+  const hasRemote = Boolean(index?.remote);
+  const hasOpenPr = pr?.state === "open";
+  const ahead = index?.ahead ?? 0;
+  const behind = index?.behind ?? 0;
+  const diverged = ahead > 0 && behind > 0;
+  const onDefault = !!index?.branch && !!index.defaultBranch && index.branch === index.defaultBranch;
+  const canCommit = staged && message.trim().length > 0 && !busy;
+  const canCommitPush = canCommit && hasRemote && !diverged;
+  return {
+    canCommit,
+    canCommitPush,
+    canCommitPushPr: canCommitPush && !hasOpenPr && !onDefault,
+    canGenerate: files.length > 0 && !busy,
+    canCreatePr:
+      hasRemote && !hasOpenPr && !onDefault && !diverged && files.length === 0 && (index?.aheadOfDefault ?? 0) > 0 && behind === 0,
+    canViewPr: hasOpenPr && !!pr?.url,
+    canPublish: hasRemote && !index?.upstream,
+    canSync: hasRemote && Boolean(index?.upstream) && (ahead > 0 || behind > 0),
+    onDefault,
+  };
+}
+
+const prByCwd = new Map<string, GitPr | null>();
+
+/** The branch's open pull request, read on mount, on a branch change and when the window comes forward. */
+function usePrStatus(environmentId: string, cwd: string, branch: string | null | undefined): { pr: GitPr | null; reload: () => void } {
+  const key = JSON.stringify([environmentId, cwd]);
+  const [pr, setPr] = useState<GitPr | null>(() => (cwd && cwd !== "~" && branch ? (prByCwd.get(key) ?? null) : null));
+  const [nonce, setNonce] = useState(0);
+  const reload = useCallback(() => setNonce((value) => value + 1), []);
+  useEffect(() => {
+    if (!cwd || cwd === "~" || !branch) {
+      setPr(null);
+      return;
+    }
+    let cancelled = false;
+    const load = () => {
+      void gitPrStatus(environmentId, cwd)
+        .then((next) => {
+          prByCwd.set(key, next);
+          if (!cancelled) setPr(next);
+        })
+        .catch(() => {
+          prByCwd.set(key, null);
+          if (!cancelled) setPr(null);
+        });
+    };
+    load();
+    window.addEventListener("focus", load);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", load);
+    };
+  }, [environmentId, cwd, branch, key, nonce]);
+  return { pr, reload };
 }
 
 export function ChangesPanel({
   cwd,
   selectedPath,
   onOpenDiff,
+  onOpenFile,
+  against,
 }: {
   cwd: string;
   /** the review file the focused tab shows, relative to the git root */
   selectedPath?: string;
   /** opens the file as a review tab; HEAD is parked as its base first */
   onOpenDiff: (path: string) => void;
+  /** the fallback for "Open in <editor>" when no editor is set up */
+  onOpenFile?: OpenFileFn;
+  /** the branch against a target (ChangesAgainst), under the files */
+  against?: ReactNode;
 }) {
   const environmentId = environmentOfCwd(cwd) ?? registry.primary().environmentId;
-  const { index, log } = useGitSnapshot(cwd);
-  const reduce = useReducedMotion();
+  const index = useGitIndex(cwd);
+  const editorConfig = useEditorConfig();
+  const { pr, reload: reloadPr } = usePrStatus(environmentId, cwd, index?.branch);
   const [message, setMessage] = useState("");
-  const [commitState, setCommitState] = useState<ButtonState>("idle");
-  const [pushState, setPushState] = useState<ButtonState>("idle");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hunks, setHunks] = useState<Record<string, HunkSet | "loading">>({});
-
   const files = index?.files ?? [];
-  const staged = files.filter((f) => f.staged);
   const unstaged = files.filter((f) => f.unstaged);
-  const hasRemote = Boolean(index?.remote);
-  const hasUpstream = Boolean(index?.upstream);
-  const canCommit = staged.length > 0 && message.trim().length > 0 && !busy;
-  // Rows glide on stage/unstage while the list is short; past the cap
-  // (a big rebase) they just re-sort.
-  const glide = !reduce && files.length <= GLIDE_MAX_ROWS;
+  const rules = changesRules(index, pr, message, !!busy);
 
-  // Unfolded files keep their hunks current as the index moves.
+  // Folded-open files keep their hunks current as the index moves.
   useEffect(() => {
     for (const relative of Object.keys(hunks)) {
       if (!unstaged.some((f) => f.relative === relative && f.status === "modified")) {
@@ -137,16 +215,17 @@ export function ChangesPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [environmentId, cwd, index]);
 
-  const fail = (e: unknown) => setError(e instanceof Error ? e.message : String(e));
-
-  const mutate = async (key: string, op: () => Promise<void>, touched?: string[]) => {
-    if (busy) return;
+  /** Runs one git step with the section busy on `key`, then refreshes what it touched. */
+  const run = async (key: string, op: () => Promise<void>, touched?: string[]): Promise<boolean> => {
+    if (busy) return false;
     setBusy(key);
     setError(null);
+    let ok = true;
     try {
       await op();
     } catch (e) {
-      fail(e);
+      ok = false;
+      setError(errorText(e));
     } finally {
       notifyGitChanged();
       if (touched) {
@@ -156,456 +235,632 @@ export function ChangesPanel({
       await refreshGitSnapshot(cwd);
       setBusy(null);
     }
+    return ok;
   };
 
-  const [pendingDiscard, setPendingDiscard] = useState<GitChangedFile | null>(null);
-  const discard = (file: GitChangedFile) => setPendingDiscard(file);
-  const confirmDiscard = () => {
-    const file = pendingDiscard;
-    setPendingDiscard(null);
-    if (!file) return;
-    void mutate(file.relative, () => gitDiscardFile(environmentId, cwd, file.relative), [file.path]);
+  /** Pushing to the default branch asks first. */
+  const confirmDefault = (kind: "push" | "pr"): Promise<boolean> => {
+    if (!rules.onDefault || !index?.branch) return Promise.resolve(true);
+    return kind === "pr"
+      ? confirmAction({ title: `Create a pull request from ${index.branch}?`, body: "This is the default branch.", action: "Create PR" })
+      : confirmAction({ title: `Push to ${index.branch}?`, body: "This is the default branch.", action: "Push" });
   };
 
-  const toggleHunks = (file: GitChangedFile) => {
-    if (file.relative in hunks) {
-      setHunks((prev) => {
-        const { [file.relative]: _gone, ...rest } = prev;
-        return rest;
+  const openCreatedPr = async (): Promise<void> => {
+    const content = await generatePrContent(cwd);
+    if (!content) throw new Error("Could not prepare the pull request");
+    const url = await gitPrCreate(environmentId, cwd, content.title, content.body, content.base, content.head);
+    await openUrl(url.trim());
+  };
+
+  const actions: ChangesActions = {
+    open: (file) => {
+      if (file.status === "deleted") return;
+      requestReview(file.path, "HEAD");
+      onOpenDiff(file.path);
+    },
+    openInEditor: onOpenFile ? (file) => void openInEditor({ path: file.path, cwd }, onOpenFile) : undefined,
+    stage: (file) => void run(file.relative, () => gitStageFile(environmentId, cwd, file.relative)),
+    unstage: (file) => void run(file.relative, () => gitUnstageFile(environmentId, cwd, file.relative)),
+    discard: async (file) => {
+      const name = basename(file.relative);
+      const ok = await confirmAction(
+        file.status === "untracked"
+          ? { title: `Delete ${name}?`, body: "The untracked file is deleted for good.", action: "Delete", danger: true }
+          : { title: `Discard changes in ${name}?`, body: "The edits are gone for good.", action: "Discard", danger: true },
+      );
+      if (ok) await run(file.relative, () => gitDiscardFile(environmentId, cwd, file.relative), [file.path]);
+    },
+    toggleHunks: (file) => {
+      if (file.relative in hunks) {
+        setHunks((prev) => {
+          const { [file.relative]: _gone, ...rest } = prev;
+          return rest;
+        });
+        return;
+      }
+      setHunks((prev) => ({ ...prev, [file.relative]: "loading" }));
+      void loadHunks(environmentId, cwd, file.relative)
+        .then((set) => setHunks((prev) => (file.relative in prev ? { ...prev, [file.relative]: set } : prev)))
+        .catch((e) => {
+          setError(errorText(e));
+          setHunks((prev) => {
+            const { [file.relative]: _gone, ...rest } = prev;
+            return rest;
+          });
+        });
+    },
+    stageHunk: (file, hunk) => {
+      const set = hunks[file.relative];
+      if (!set || set === "loading") return;
+      void import("../../surfaces/editorGit").then(({ stageChunkText }) => {
+        const contents = stageChunkText(set.original, set.current, hunk.pos);
+        if (contents == null) return;
+        void run(`${file.relative}#${hunk.from}`, () => gitStageContents(environmentId, cwd, file.relative, contents));
       });
-      return;
-    }
-    setHunks((prev) => ({ ...prev, [file.relative]: "loading" }));
-    void loadHunks(environmentId, cwd, file.relative)
-      .then((set) => setHunks((prev) => (file.relative in prev ? { ...prev, [file.relative]: set } : prev)))
-      .catch(fail);
+    },
+    stageAll: () => void run("stage-all", () => gitStageAll(environmentId, cwd)),
+    unstageAll: () => void run("unstage-all", () => gitUnstageAll(environmentId, cwd)),
+    pull: () => void run("pull", () => gitPull(environmentId, cwd)),
+    push: async () => {
+      if (await confirmDefault("push")) await run("push", () => gitPush(environmentId, cwd));
+    },
+    stash: () => void run("stash", () => gitStash(environmentId, cwd), files.map((f) => f.path)),
+    sync: async () => {
+      if (!index || !(rules.canSync || rules.canPublish)) return;
+      const willPush = !index.upstream || index.ahead > 0;
+      if (willPush && !(await confirmDefault("push"))) return;
+      if (await run("sync", () => gitSync(environmentId, cwd))) reloadPr();
+    },
+    createPr: async () => {
+      if (!rules.canCreatePr || !(await confirmDefault("pr"))) return;
+      const ok = await run("pr", async () => {
+        if ((index?.ahead ?? 0) > 0) await gitPush(environmentId, cwd);
+        await openCreatedPr();
+      });
+      if (ok) reloadPr();
+    },
+    viewPr: () => {
+      if (pr?.url) void openUrl(pr.url);
+    },
+    generate: async () => {
+      if (!rules.canGenerate) return;
+      setBusy("generate");
+      setError(null);
+      try {
+        setMessage(await generateCommitMessage(cwd));
+      } catch (e) {
+        setError(errorText(e));
+      } finally {
+        setBusy(null);
+      }
+    },
+    commit: async (then) => {
+      if (!rules.canCommit) return;
+      if (then !== "none" && !(await confirmDefault(then === "pr" ? "pr" : "push"))) return;
+      const text = message.trim();
+      const ok = await run("commit", async () => {
+        await gitCommit(environmentId, cwd, text);
+        // The commit landed: the field's work is done even if the push fails.
+        setMessage("");
+        if (then !== "none") await gitPush(environmentId, cwd);
+        if (then === "pr") await openCreatedPr();
+      });
+      if (ok && then === "pr") reloadPr();
+    },
   };
 
-  const stageHunk = (file: GitChangedFile, set: HunkSet, hunk: Hunk) => {
-    void import("../../surfaces/editorGit").then(({ stageChunkText }) => {
-      const contents = stageChunkText(set.original, set.current, hunk.pos);
-      if (contents == null) return;
-      stageHunkContents(file, hunk, contents);
-    });
-  };
-
-  const stageHunkContents = (file: GitChangedFile, hunk: Hunk, contents: string) => {
-    void mutate(`${file.relative}#${hunk.from}`, () => gitStageContents(environmentId, cwd, file.relative, contents));
-  };
-
-  const open = (file: GitChangedFile) => {
-    if (file.status === "deleted") return;
-    requestReview(file.path, "HEAD");
-    onOpenDiff(file.path);
-  };
-
-  const commit = async (alsoPush: boolean) => {
-    if (!canCommit) return;
-    const setState = alsoPush ? setPushState : setCommitState;
-    setState("loading");
-    setBusy("commit");
-    setError(null);
-    try {
-      await gitCommit(environmentId, cwd, message.trim());
-      if (alsoPush) await gitPush(environmentId, cwd);
-      setMessage("");
-      setState("success");
-      window.setTimeout(() => setState("idle"), 1500);
-    } catch (e) {
-      setState("error");
-      fail(e);
-      window.setTimeout(() => setState("idle"), 2500);
-    } finally {
-      notifyGitChanged();
-      await refreshGitSnapshot(cwd);
-      setBusy(null);
-    }
-  };
-
-  const committing = commitState === "loading" || pushState === "loading";
+  const folds: Record<string, HunkFold> = {};
+  for (const [relative, set] of Object.entries(hunks)) folds[relative] = set === "loading" ? set : { hunks: set.hunks };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      {pendingDiscard ? (
-        <ConfirmDialog
-          title={
-            pendingDiscard.status === "untracked"
-              ? `Delete ${basename(pendingDiscard.relative)}?`
-              : `Discard changes in ${basename(pendingDiscard.relative)}?`
-          }
-          body={
-            pendingDiscard.status === "untracked"
-              ? "The untracked file is deleted for good."
-              : "The edits are gone for good."
-          }
-          confirmLabel={pendingDiscard.status === "untracked" ? "Delete" : "Discard"}
-          danger
-          onCancel={() => setPendingDiscard(null)}
-          onConfirm={confirmDiscard}
-        />
-      ) : null}
-      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-content/10 px-2 pr-1.5">
-        <span className="min-w-0 truncate px-1 text-[12px] font-medium text-content" title={index?.branch ?? undefined}>
-          {index?.branch ?? "—"}
-        </span>
-        {index && (index.ahead > 0 || index.behind > 0) ? (
-          <span className="shrink-0 text-[11px] tabular-nums text-content/50">
-            {index.ahead > 0 ? `↑${index.ahead}` : ""}
-            {index.ahead > 0 && index.behind > 0 ? " " : ""}
-            {index.behind > 0 ? `↓${index.behind}` : ""}
-          </span>
-        ) : null}
-        <span className="flex-1" />
-        <IconAction
-          title={hasUpstream ? "Pull (fast-forward)" : "No upstream to pull from"}
-          disabled={!hasUpstream || !!busy}
-          busy={busy === "pull"}
-          onClick={() => void mutate("pull", () => gitPull(environmentId, cwd))}
-        >
-          <ArrowDownCircle className="size-3.5" strokeWidth={1.75} />
-        </IconAction>
-        <IconAction
-          title={hasRemote ? (hasUpstream ? "Push" : "Publish branch") : "No remote"}
-          disabled={!hasRemote || !!busy}
-          busy={busy === "push"}
-          onClick={() => void mutate("push", () => gitPush(environmentId, cwd))}
-        >
-          <CloudUpload className="size-3.5" strokeWidth={1.75} />
-        </IconAction>
-        <IconAction
-          title="Stash changes"
-          disabled={files.length === 0 || !!busy}
-          busy={busy === "stash"}
-          onClick={() => void mutate("stash", () => gitStash(environmentId, cwd), files.map((f) => f.path))}
-        >
-          <Archive className="size-3.5" strokeWidth={1.75} />
-        </IconAction>
-      </div>
+    <ChangesView
+      index={index}
+      pr={pr}
+      rules={rules}
+      selectedPath={selectedPath}
+      busy={busy}
+      error={error}
+      message={message}
+      onMessage={setMessage}
+      folds={folds}
+      editorLabel={(file) => editorLabelFor(file.path, editorConfig)}
+      actions={actions}
+      against={against}
+    />
+  );
+}
 
-      {error ? <p className="shrink-0 break-words px-2 py-2 text-[11px] leading-snug text-danger">{error}</p> : null}
+export interface ChangesActions {
+  open: (file: GitChangedFile) => void;
+  /** absent: the section has no way to open a file outside a review tab */
+  openInEditor?: (file: GitChangedFile) => void;
+  stage: (file: GitChangedFile) => void;
+  unstage: (file: GitChangedFile) => void;
+  discard: (file: GitChangedFile) => void;
+  toggleHunks: (file: GitChangedFile) => void;
+  stageHunk: (file: GitChangedFile, hunk: Hunk) => void;
+  stageAll: () => void;
+  unstageAll: () => void;
+  pull: () => void;
+  push: () => void;
+  stash: () => void;
+  sync: () => void;
+  createPr: () => void;
+  viewPr: () => void;
+  generate: () => void;
+  /** commit the index, then nothing, push, or push and open a pull request */
+  commit: (then: "none" | "push" | "pr") => void;
+}
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {!index ? (
-          <div className="flex h-16 items-center justify-center">
-            <Spinner className="size-3.5 text-content/50" />
-          </div>
-        ) : files.length === 0 ? (
-          <p className="px-3 py-2 text-[12px] text-content/50">{syncLabel(index)}</p>
-        ) : (
-          <div className="p-2 pt-0">
-            {staged.length > 0 ? (
-              <Section
-                label={`Staged · ${staged.length}`}
-                action={{
-                  title: "Unstage all",
-                  icon: <Minus className="size-3.5" strokeWidth={1.75} />,
-                  onClick: () => void mutate("unstage-all", () => gitUnstageAll(environmentId, cwd)),
-                }}
-              >
-                {staged.map((file) => (
-                  <Row
-                    key={`s:${file.relative}`}
-                    file={file}
-                    reduce={!!reduce}
-                    glide={glide}
-                    active={selectedPath === file.relative}
-                    busy={busy === file.relative}
-                    onOpen={() => open(file)}
-                    actions={
-                      <IconAction
-                        title="Unstage"
-                        disabled={!!busy}
-                        onClick={() => void mutate(file.relative, () => gitUnstageFile(environmentId, cwd, file.relative))}
-                      >
-                        <Minus className="size-3.5" strokeWidth={1.75} />
-                      </IconAction>
-                    }
-                  />
-                ))}
-              </Section>
-            ) : null}
-            {unstaged.length > 0 ? (
-              <Section
-                label={`Changes · ${unstaged.length}`}
-                action={{
-                  title: "Stage all",
-                  icon: <Plus className="size-3.5" strokeWidth={1.75} />,
-                  onClick: () => void mutate("stage-all", () => gitStageAll(environmentId, cwd)),
-                }}
-              >
-                {unstaged.map((file) => {
-                  const set = hunks[file.relative];
-                  const foldable = file.status === "modified";
-                  return (
-                    <div key={`u:${file.relative}`}>
-                      <Row
-                        file={file}
-                        reduce={!!reduce}
-                        glide={glide}
-                        active={selectedPath === file.relative}
-                        busy={busy === file.relative}
-                        onOpen={() => open(file)}
-                        fold={foldable ? { open: set !== undefined, onToggle: () => toggleHunks(file) } : undefined}
-                        actions={
-                          <>
-                            <IconAction title="Discard" disabled={!!busy} onClick={() => discard(file)}>
-                              <Undo2 className="size-3.5" strokeWidth={1.75} />
-                            </IconAction>
-                            <IconAction
-                              title="Stage"
-                              disabled={!!busy}
-                              onClick={() => void mutate(file.relative, () => gitStageFile(environmentId, cwd, file.relative))}
-                            >
-                              <Plus className="size-3.5" strokeWidth={1.75} />
-                            </IconAction>
-                          </>
-                        }
-                      />
-                      {set === "loading" ? (
-                        <div className="flex h-7 items-center" style={{ paddingLeft: HUNK_INDENT }}>
-                          <Spinner className="size-3 text-content/40" />
-                        </div>
-                      ) : set ? (
-                        set.hunks.length === 0 ? (
-                          <p className="flex h-7 items-center text-[12px] text-content/50" style={{ paddingLeft: HUNK_INDENT }}>
-                            Nothing to stage line by line
-                          </p>
-                        ) : (
-                          set.hunks.map((h) => (
-                            <div
-                              key={h.from}
-                              className="flex h-7 items-center gap-2 rounded-md pr-2 text-[11px] transition-colors hover:bg-content/5"
-                              style={{ paddingLeft: HUNK_INDENT }}
-                            >
-                              <span className="tabular-nums text-content/50">
-                                {h.from === h.to ? `L${h.from}` : `L${h.from}–${h.to}`}
-                              </span>
-                              <span className="tabular-nums">
-                                {h.additions > 0 ? <span className="text-success">+{h.additions}</span> : null}
-                                {h.additions > 0 && h.deletions > 0 ? " " : ""}
-                                {h.deletions > 0 ? <span className="text-danger">−{h.deletions}</span> : null}
-                              </span>
-                              <span className="flex-1" />
-                              <IconAction
-                                title="Stage hunk"
-                                disabled={!!busy}
-                                busy={busy === `${file.relative}#${h.from}`}
-                                onClick={() => stageHunk(file, set, h)}
-                              >
-                                <Plus className="size-3.5" strokeWidth={1.75} />
-                              </IconAction>
-                            </div>
-                          ))
-                        )
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </Section>
-            ) : null}
-          </div>
-        )}
-      </div>
+/** The Changes section given its data (ChangesPanel; tests; ui:preview fixtures). */
+export function ChangesView({
+  index,
+  pr,
+  rules,
+  selectedPath,
+  busy,
+  error,
+  message,
+  onMessage,
+  folds,
+  editorLabel,
+  actions,
+  against,
+}: {
+  index: GitDiffIndex | null;
+  pr: GitPr | null;
+  rules: ChangesRules;
+  selectedPath?: string;
+  busy: string | null;
+  error: string | null;
+  message: string;
+  onMessage: (text: string) => void;
+  folds: Record<string, HunkFold>;
+  editorLabel: (file: GitChangedFile) => string | null;
+  actions: ChangesActions;
+  against?: ReactNode;
+}) {
+  const files = index?.files ?? [];
+  const staged = files.filter((f) => f.staged);
+  const unstaged = files.filter((f) => f.unstaged);
+  const both = staged.length > 0 && unstaged.length > 0;
+  const rowProps = { selectedPath, busy, editorLabel, actions };
 
-      {log && log.length > 0 ? (
-        <div className="max-h-44 shrink-0 overflow-y-auto border-t border-content/10 p-2">
-          <p className="flex h-6 items-center px-2 text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">
-            Recent
+  return (
+    <TooltipProvider>
+      <div className="flex min-h-0 flex-1 flex-col" data-slot="changes-section">
+        {index ? <TopRow index={index} pr={pr} rules={rules} busy={busy} actions={actions} /> : <TopRowSkeleton />}
+        {error ? (
+          <p role="alert" className="shrink-0 px-3 pb-2 text-xs break-words text-destructive">
+            {error}
           </p>
-          {log.map((c) => (
-            <div key={c.hash} className="flex h-6 items-center gap-2 px-2">
-              <span className="shrink-0 font-mono text-[11px] tabular-nums text-content/40">{c.short}</span>
-              <span className="min-w-0 flex-1 truncate text-[12px] text-content" title={c.subject}>
-                {c.subject}
-              </span>
-              <span className="shrink-0 text-[11px] tabular-nums text-content/40">{timeAgo(Date.parse(c.date))}</span>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      {index && files.length > 0 ? (
-        <div className="shrink-0 border-t border-content/10 p-2">
-          <input
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key !== "Enter") return;
-              e.preventDefault();
-              void commit(e.metaKey || e.ctrlKey);
-            }}
-            placeholder={staged.length > 0 ? "Commit message" : "Stage something to commit"}
-            disabled={staged.length === 0 || committing}
-            aria-label="Commit message"
-            className="w-full rounded-md bg-content/10 px-2 py-1 text-[13px] leading-5 text-content outline-none placeholder:text-content/40 disabled:opacity-40"
-          />
-          <div className="mt-2 flex gap-2">
-            <StatefulButton
-              size="sm"
-              variant="secondary"
-              state={commitState}
-              disabled={!canCommit || committing}
-              loadingText="Committing"
-              successText="Committed"
-              errorText="Failed"
-              onClick={() => void commit(false)}
-              className="min-w-0 flex-1"
-              title="Commit the index (↩)"
-            >
-              Commit
-            </StatefulButton>
-            <StatefulButton
-              size="sm"
-              variant="primary"
-              state={pushState}
-              disabled={!canCommit || committing || !hasRemote}
-              loadingText="Pushing"
-              successText="Pushed"
-              errorText="Failed"
-              onClick={() => void commit(true)}
-              className="min-w-0 flex-1"
-              title={hasRemote ? "Commit, then push (⌘↩)" : "No remote"}
-            >
-              Commit & push
-            </StatefulButton>
+        ) : null}
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="flex flex-col gap-4 px-1 pb-3">
+            {!index ? (
+              <RowsSkeleton />
+            ) : files.length === 0 ? (
+              <Empty className="flex-none py-6">
+                <EmptyHeader>
+                  <EmptyTitle>No changes</EmptyTitle>
+                </EmptyHeader>
+              </Empty>
+            ) : (
+              <>
+                {staged.length > 0 ? (
+                  <Group heading={both ? "Staged" : null} count={staged.length}>
+                    {staged.map((file) => (
+                      <FileRow key={`s:${file.relative}`} file={file} side="staged" {...rowProps} />
+                    ))}
+                  </Group>
+                ) : null}
+                {unstaged.length > 0 ? (
+                  <Group heading={both ? "Changes" : null} count={unstaged.length}>
+                    {unstaged.map((file) => (
+                      <FileRow key={`u:${file.relative}`} file={file} side="unstaged" fold={folds[file.relative]} {...rowProps} />
+                    ))}
+                  </Group>
+                ) : null}
+              </>
+            )}
+            {against}
           </div>
-        </div>
-      ) : null}
+        </ScrollArea>
+        {index && files.length > 0 ? (
+          <CommitFooter staged={staged.length > 0} message={message} onMessage={onMessage} rules={rules} busy={busy} actions={actions} />
+        ) : null}
+      </div>
+    </TooltipProvider>
+  );
+}
+
+function TopRowSkeleton() {
+  return (
+    <div className="flex h-9 shrink-0 items-center px-3" aria-hidden>
+      <Skeleton className="h-3.5 w-24" />
     </div>
   );
 }
 
-function Section({
-  label,
-  action,
-  children,
-}: {
-  label: string;
-  action: { title: string; icon: ReactNode; onClick: () => void };
-  children: ReactNode;
-}) {
+function RowsSkeleton() {
   return (
-    <div className="pb-1">
-      <div className="group flex h-6 items-center px-2">
-        <span className="text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">{label}</span>
-        <span className="flex-1" />
-        <span className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-          <IconAction title={action.title} onClick={action.onClick}>
-            {action.icon}
+    <div className="flex flex-col gap-1 px-2 pt-1" aria-busy="true" aria-label="Loading changes">
+      {["w-2/3", "w-1/2", "w-3/5"].map((w) => (
+        <div key={w} className="flex h-7 items-center gap-2">
+          <Skeleton className="size-4" />
+          <Skeleton className={cn("h-3.5", w)} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Ahead and behind of an upstream, as git's arrows. */
+function distance(behind: number, ahead: number): string {
+  return [behind > 0 ? `↓${behind}` : "", ahead > 0 ? `↑${ahead}` : ""].filter(Boolean).join(" ");
+}
+
+function TopRow({
+  index,
+  pr,
+  rules,
+  busy,
+  actions,
+}: {
+  index: GitDiffIndex;
+  pr: GitPr | null;
+  rules: ChangesRules;
+  busy: string | null;
+  actions: ChangesActions;
+}) {
+  const files = index.files;
+  const hasUnstaged = files.some((f) => f.unstaged);
+  const hasStaged = files.some((f) => f.staged);
+  const branch = index.branch ?? "Detached HEAD";
+  return (
+    <div className="flex h-9 shrink-0 items-center gap-1 pr-2 pl-3">
+      <Tooltip>
+        <TooltipTrigger render={<span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground" />}>{branch}</TooltipTrigger>
+        <TooltipContent>{index.upstream ? `Tracks ${index.upstream}` : index.remote ? "Not published" : "No remote"}</TooltipContent>
+      </Tooltip>
+      {rules.canPublish ? (
+        <Button variant="ghost" size="sm" disabled={!!busy} onClick={actions.sync}>
+          {busy === "sync" ? <Spinner /> : null}
+          Publish
+        </Button>
+      ) : rules.canSync ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button variant="ghost" size="sm" disabled={!!busy} onClick={actions.sync} aria-label={`Sync with ${index.upstream}`} />
+            }
+          >
+            {busy === "sync" ? <Spinner /> : null}
+            Sync
+            <span className="text-xs tabular-nums text-muted-foreground">{distance(index.behind, index.ahead)}</span>
+          </TooltipTrigger>
+          <TooltipContent>Pull, then push {index.upstream}</TooltipContent>
+        </Tooltip>
+      ) : null}
+      {rules.canViewPr && pr ? (
+        <Button variant="ghost" size="sm" onClick={actions.viewPr}>
+          PR #{pr.number}
+        </Button>
+      ) : rules.canCreatePr ? (
+        <Tooltip>
+          <TooltipTrigger render={<Button variant="ghost" size="sm" disabled={!!busy} onClick={actions.createPr} />}>
+            {busy === "pr" ? <Spinner /> : null}
+            Create PR
+          </TooltipTrigger>
+          <TooltipContent>{index.defaultBranch ? `Into ${index.defaultBranch}` : "Open a pull request"}</TooltipContent>
+        </Tooltip>
+      ) : null}
+      <DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <DropdownMenuTrigger
+                aria-label="More git actions"
+                render={<Button variant="ghost" size="icon-xs" className="text-muted-foreground hover:text-foreground" />}
+              />
+            }
+          >
+            {busy === "pull" || busy === "push" || busy === "stash" || busy === "stage-all" || busy === "unstage-all" ? (
+              <Spinner className="size-3" />
+            ) : (
+              <MoreHorizontal className="size-3.5" />
+            )}
+          </TooltipTrigger>
+          <TooltipContent>More</TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent size="sm" align="end" aria-label="More git actions">
+          <DropdownMenuItem disabled={!index.upstream || !!busy} onClick={actions.pull}>
+            Pull
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={!index.remote || !!busy} onClick={actions.push}>
+            {index.upstream ? "Push" : "Publish"}
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={files.length === 0 || !!busy} onClick={actions.stash}>
+            Stash changes
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem disabled={!hasUnstaged || !!busy} onClick={actions.stageAll}>
+            Stage all
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={!hasStaged || !!busy} onClick={actions.unstageAll}>
+            Unstage all
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+/** A group of rows; its heading shows only where two groups meet. */
+function Group({ heading, count, children }: { heading: string | null; count: number; children: ReactNode }) {
+  return (
+    <section aria-label={heading ?? undefined}>
+      {heading ? (
+        <h3 className="flex h-6 items-center justify-between px-2 text-xs font-medium text-muted-foreground">
+          {heading}
+          <span className="tabular-nums">{count}</span>
+        </h3>
+      ) : null}
+      <div className="flex flex-col">{children}</div>
+    </section>
+  );
+}
+
+/** `+n −n` in the diff colours; New for a file git has not seen, Deleted for one that is gone. */
+export function Counts({ status, additions, deletions }: { status: string; additions: number; deletions: number }) {
+  if (status === "untracked" || status === "added") return <span className="text-xs text-muted-foreground">New</span>;
+  if (status === "deleted") return <span className="text-xs text-muted-foreground">Deleted</span>;
+  return (
+    <span className="text-xs tabular-nums">
+      {additions > 0 ? <span className="text-success">+{additions}</span> : null}
+      {additions > 0 && deletions > 0 ? " " : null}
+      {deletions > 0 ? <span className="text-destructive">−{deletions}</span> : null}
+    </span>
+  );
+}
+
+/** A file's name with its folder after it, the folder truncating first. */
+export function FileName({ relative, muted }: { relative: string; muted?: boolean }) {
+  const name = basename(relative);
+  const dir = relative.includes("/") ? relative.slice(0, relative.lastIndexOf("/")) : "";
+  return (
+    <span className="flex min-w-0 items-baseline gap-2">
+      <span className={cn("shrink-0 truncate text-[13px]", muted ? "text-muted-foreground" : "text-foreground")}>{name}</span>
+      {dir ? <span className="min-w-0 truncate text-xs text-muted-foreground">{dir}</span> : null}
+    </span>
+  );
+}
+
+function FileRow({
+  file,
+  side,
+  fold,
+  selectedPath,
+  busy,
+  editorLabel,
+  actions,
+}: {
+  file: GitChangedFile;
+  side: "staged" | "unstaged";
+  fold?: HunkFold;
+  selectedPath?: string;
+  busy: string | null;
+  editorLabel: (file: GitChangedFile) => string | null;
+  actions: ChangesActions;
+}) {
+  const deleted = file.status === "deleted";
+  const foldable = side === "unstaged" && file.status === "modified";
+  const open = fold !== undefined;
+  const active = selectedPath === file.relative;
+  const editor = actions.openInEditor ? editorLabel(file) : null;
+  const rowBusy = busy === file.relative;
+
+  const row = (
+    <Item
+      size="xs"
+      aria-current={active || undefined}
+      className={cn("group/row min-h-7 flex-nowrap gap-2 py-0 hover:bg-foreground/5", active && "bg-muted hover:bg-muted")}
+    >
+      <ItemMedia className="relative z-10 size-4">
+        {foldable ? (
+          <>
+            <span className={cn("grid place-items-center", open ? "opacity-0" : "group-hover/row:opacity-0 group-focus-within/row:opacity-0")}>
+              <FileTypeIcon name={file.relative} size={16} />
+            </span>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label={open ? `Hide hunks of ${basename(file.relative)}` : `Show hunks of ${basename(file.relative)}`}
+              aria-expanded={open}
+              onClick={() => actions.toggleHunks(file)}
+              className={cn(
+                "absolute inset-0 size-4 rounded-sm text-muted-foreground hover:text-foreground",
+                open ? "opacity-100" : "opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100",
+              )}
+            >
+              <ChevronRight className={cn("size-3 transition-transform duration-(--dur-fast) motion-reduce:transition-none", open && "rotate-90")} />
+            </Button>
+          </>
+        ) : (
+          <FileTypeIcon name={file.relative} size={16} />
+        )}
+      </ItemMedia>
+      <ItemContent className="min-w-0">
+        <button
+          type="button"
+          disabled={deleted}
+          onClick={() => actions.open(file)}
+          className="flex min-w-0 items-center text-left outline-none before:absolute before:inset-0 before:content-[''] focus-visible:before:rounded-lg focus-visible:before:ring-2 focus-visible:before:ring-ring disabled:cursor-default"
+          aria-label={deleted ? `${file.relative}, deleted` : `Open the diff of ${file.relative}`}
+        >
+          <FileName relative={file.relative} muted={deleted} />
+        </button>
+      </ItemContent>
+      <ItemActions className="relative z-10 gap-1">
+        {rowBusy ? (
+          <Spinner className="size-3 text-muted-foreground" />
+        ) : (
+          <span className="hidden items-center group-hover/row:flex group-focus-within/row:flex">
+            {side === "staged" ? (
+              <IconAction label="Unstage" disabled={!!busy} onClick={() => actions.unstage(file)}>
+                <Minus className="size-3.5" />
+              </IconAction>
+            ) : (
+              <>
+                <IconAction label="Discard" disabled={!!busy} onClick={() => actions.discard(file)}>
+                  <Undo2 className="size-3.5" />
+                </IconAction>
+                <IconAction label="Stage" disabled={!!busy} onClick={() => actions.stage(file)}>
+                  <Plus className="size-3.5" />
+                </IconAction>
+              </>
+            )}
+          </span>
+        )}
+        <Counts status={file.status} additions={file.additions} deletions={file.deletions} />
+      </ItemActions>
+    </Item>
+  );
+
+  return (
+    <Collapsible open={open}>
+      <ContextMenu>
+        <ContextMenuTrigger render={<div className="relative" />}>{row}</ContextMenuTrigger>
+        <ContextMenuContent aria-label={`${basename(file.relative)} actions`}>
+          {!deleted ? <ContextMenuItem onClick={() => actions.open(file)}>Open diff</ContextMenuItem> : null}
+          {editor && !deleted ? <ContextMenuItem onClick={() => actions.openInEditor?.(file)}>{editor}</ContextMenuItem> : null}
+          {side === "staged" ? (
+            <ContextMenuItem onClick={() => actions.unstage(file)}>Unstage</ContextMenuItem>
+          ) : (
+            <ContextMenuItem onClick={() => actions.stage(file)}>Stage</ContextMenuItem>
+          )}
+          {side === "unstaged" ? (
+            <>
+              <ContextMenuSeparator />
+              <ContextMenuItem onClick={() => actions.discard(file)}>{file.status === "untracked" ? "Delete…" : "Discard…"}</ContextMenuItem>
+            </>
+          ) : null}
+        </ContextMenuContent>
+      </ContextMenu>
+      {foldable ? (
+        <CollapsibleContent>
+          <HunkRows file={file} fold={fold} busy={busy} actions={actions} />
+        </CollapsibleContent>
+      ) : null}
+    </Collapsible>
+  );
+}
+
+/** A folded-open file's hunks, aligned under its name. */
+function HunkRows({ file, fold, busy, actions }: { file: GitChangedFile; fold?: HunkFold; busy: string | null; actions: ChangesActions }) {
+  if (!fold) return null;
+  if (fold === "loading") {
+    return (
+      <div className="flex h-7 items-center pl-8" aria-busy="true" aria-label="Loading hunks">
+        <Skeleton className="h-3 w-20" />
+      </div>
+    );
+  }
+  if (fold.hunks.length === 0) return <p className="flex h-7 items-center pl-8 text-xs text-muted-foreground">Nothing to stage line by line</p>;
+  return (
+    <div className="flex flex-col">
+      {fold.hunks.map((h) => {
+        const span = h.from === h.to ? `L${h.from}` : `L${h.from}–${h.to}`;
+        return (
+          <div key={h.from} className="group/hunk flex h-7 items-center gap-2 rounded-lg pr-2 pl-8 hover:bg-foreground/5">
+            <span className="text-xs tabular-nums text-muted-foreground">{span}</span>
+            <Counts status="modified" additions={h.additions} deletions={h.deletions} />
+            <span className="flex-1" />
+            {busy === `${file.relative}#${h.from}` ? (
+              <Spinner className="size-3 text-muted-foreground" />
+            ) : (
+              <span className="opacity-0 group-hover/hunk:opacity-100 group-focus-within/hunk:opacity-100">
+                <IconAction label={`Stage lines ${span.slice(1)}`} disabled={!!busy} onClick={() => actions.stageHunk(file, h)}>
+                  <Plus className="size-3.5" />
+                </IconAction>
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function CommitFooter({
+  staged,
+  message,
+  onMessage,
+  rules,
+  busy,
+  actions,
+}: {
+  staged: boolean;
+  message: string;
+  onMessage: (text: string) => void;
+  rules: ChangesRules;
+  busy: string | null;
+  actions: ChangesActions;
+}) {
+  const committing = busy === "commit";
+  return (
+    <div className="flex shrink-0 flex-col gap-2 border-t border-border px-3 py-3">
+      <div className="relative">
+        <Textarea
+          value={message}
+          rows={1}
+          onChange={(e) => onMessage(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" || !(e.metaKey || e.ctrlKey)) return;
+            e.preventDefault();
+            actions.commit("none");
+          }}
+          placeholder={staged ? "Message" : "Stage files to commit"}
+          aria-label="Commit message"
+          className="max-h-40 min-h-8 resize-none py-1.5 pr-8 leading-5"
+        />
+        <span className="absolute top-1 right-1">
+          <IconAction label="Generate commit message" disabled={!rules.canGenerate} onClick={actions.generate}>
+            {busy === "generate" ? <Spinner className="size-3" /> : <WandSparkles className="size-3.5" />}
           </IconAction>
         </span>
       </div>
-      {children}
-    </div>
-  );
-}
-
-function Row({
-  file,
-  reduce,
-  glide,
-  active,
-  busy,
-  fold,
-  actions,
-  onOpen,
-}: {
-  file: GitChangedFile;
-  reduce: boolean;
-  glide: boolean;
-  active: boolean;
-  busy: boolean;
-  fold?: { open: boolean; onToggle: () => void };
-  actions: ReactNode;
-  onOpen: () => void;
-}) {
-  const name = basename(file.relative);
-  const dir = file.relative.includes("/") ? file.relative.slice(0, file.relative.lastIndexOf("/")) : "";
-  const deleted = file.status === "deleted";
-  return (
-    <motion.div
-      layout={glide}
-      layoutDependency={file.relative}
-      initial={reduce ? false : ENTER.initial}
-      animate={ENTER.animate}
-      transition={{ ...ENTER.transition, layout: SPRING_LAYOUT }}
-      className={cn(
-        "group flex h-7 w-full items-center gap-1 rounded-md px-2 transition-colors",
-        active ? "bg-content/10 text-content" : "hover:bg-content/5 active:bg-content/10",
-      )}
-    >
-      <span className="grid size-4 shrink-0 place-items-center">
-        {fold ? (
-          <button
-            type="button"
-            aria-label={fold.open ? "Hide hunks" : "Show hunks"}
-            aria-expanded={fold.open}
-            onClick={fold.onToggle}
-            className="grid size-4 place-items-center rounded-md text-content/40 hover:text-content"
+      <div className="flex">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button size="sm" className="min-w-0 flex-1 rounded-r-none" disabled={!rules.canCommit} onClick={() => actions.commit("none")} />
+            }
           >
-            <ChevronRight
-              className={cn("size-3 transition-transform", fold.open && "rotate-90")}
-              strokeWidth={1.75}
-            />
-          </button>
-        ) : null}
-      </span>
-      <button
-        type="button"
-        disabled={deleted}
-        onClick={onOpen}
-        title={file.relative}
-        className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-      >
-        <span className={cn("min-w-0 flex-1 truncate text-[13px] font-medium text-content", deleted && "text-content/50 line-through")}>
-          {name}
-          {dir ? <span className="ml-1.5 text-[11px] text-content/40">{dir}</span> : null}
-        </span>
-      </button>
-      {busy ? (
-        <Spinner className="size-3 shrink-0 text-content/50" />
-      ) : (
-        <span className={cn("shrink-0 items-center", active ? "flex" : "hidden group-hover:flex group-focus-within:flex")}>
-          {actions}
-        </span>
-      )}
-      <span className="shrink-0 text-[11px] tabular-nums">
-        {file.status === "untracked" ? (
-          <span className="text-success">new</span>
-        ) : (
-          <>
-            <span className="text-success">+{file.additions}</span>{" "}
-            <span className="text-danger">−{file.deletions}</span>
-          </>
-        )}
-      </span>
-    </motion.div>
-  );
-}
-
-function IconAction({
-  title,
-  disabled,
-  busy,
-  onClick,
-  children,
-}: {
-  title: string;
-  disabled?: boolean;
-  busy?: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      title={title}
-      aria-label={title}
-      disabled={disabled}
-      onClick={onClick}
-      className="pressable grid size-5 place-items-center rounded-md text-content/50 hover:bg-content/10 hover:text-content disabled:opacity-40 disabled:hover:bg-transparent"
-    >
-      {busy ? <Spinner className="size-3" /> : children}
-    </button>
+            {committing ? <Spinner /> : null}
+            Commit
+          </TooltipTrigger>
+          <TooltipContent>Commit {MOD}↩</TooltipContent>
+        </Tooltip>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            aria-label="Commit options"
+            disabled={!rules.canCommit}
+            render={<Button size="icon-sm" className="rounded-l-none border-l border-primary-foreground/15" />}
+          >
+            <ChevronDown className="size-3.5" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent size="sm" align="end" aria-label="Commit options">
+            <DropdownMenuItem disabled={!rules.canCommitPush} onClick={() => actions.commit("push")}>
+              Commit & push
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled={!rules.canCommitPushPr} onClick={() => actions.commit("pr")}>
+              Commit, push & create PR
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
   );
 }

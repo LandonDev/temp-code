@@ -227,6 +227,24 @@ export function diffLineStats(
   return { additions, deletions };
 }
 
+/** The changes between two versions of a file, one entry per hunk: its
+ *  1-based line span in `current`, its counts, and its offset there (what
+ *  `stageChunkText` takes). The right panel's Changes section folds a file
+ *  open into these. */
+export function hunksOf(
+  original: string,
+  current: string,
+): { from: number; to: number; additions: number; deletions: number; pos: number }[] {
+  const orig = Text.of(original.split("\n"));
+  const cur = Text.of(current.split("\n"));
+  return Chunk.build(orig, cur, DIFF_CONFIG).map((c) => {
+    const start = Math.min(c.fromB, cur.length);
+    const from = cur.lineAt(start).number;
+    const to = c.fromB === c.toB ? from : cur.lineAt(Math.max(start, Math.min(c.endB, cur.length) - 1)).number;
+    return { from, to, pos: c.fromB, ...diffLineStats(cur, [c], orig) };
+  });
+}
+
 export function diffLineStatsForView(view: EditorView): {
   additions: number;
   deletions: number;

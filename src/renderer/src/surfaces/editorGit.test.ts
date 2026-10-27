@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { Chunk } from "@codemirror/merge";
 import {
   findChunk,
+  hunksOf,
   gitThemeSpec,
   revertChunkText,
   stageChunkText,
@@ -236,5 +237,20 @@ describe("gitThemeSpec", () => {
     expect(gitThemeSpec[".cm-gitDeletedLine"].backgroundColor).toBe(
       "color-mix(in srgb, var(--color-destructive) 10%, transparent)",
     );
+  });
+});
+
+describe("hunksOf", () => {
+  it("answers one hunk per change with its span in the current file and its counts", () => {
+    const hunks = hunksOf("a\nb\nc\nd\ne\nf\ng\nh\n", "a\nB\nc\nd\ne\nf\nG\nG2\nh\n");
+    expect(hunks.map(({ from, to, additions, deletions }) => ({ from, to, additions, deletions }))).toEqual([
+      { from: 2, to: 2, additions: 1, deletions: 1 },
+      { from: 7, to: 8, additions: 2, deletions: 1 },
+    ]);
+    expect(stageChunkText("a\nb\nc\nd\ne\nf\ng\nh\n", "a\nB\nc\nd\ne\nf\nG\nG2\nh\n", hunks[0].pos)).toBe("a\nB\nc\nd\ne\nf\ng\nh\n");
+  });
+
+  it("answers nothing when the versions match", () => {
+    expect(hunksOf("same\n", "same\n")).toEqual([]);
   });
 });
