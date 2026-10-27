@@ -1328,7 +1328,9 @@ names the far child).
 - `session.focus { sessionId | null }` (operate): each socket names the
   thread its window's focused pane shows (`FocusSignal` in
   lib/tcserver/commands.ts, sent from SessionPane's focused-pane effect,
-  null while the window is blurred, again after a reconnect). The host's
+  null while the window is blurred or its person is away: locked, asleep or
+  no input for 2 minutes, src/main/attention.ts over `app:attention`; again
+  after a reconnect). The host's
   `FocusSet` (src/main/server/focus.ts) keeps the union across sockets,
   widened to subagents and a focused master's batch; a closed socket drops
   its own. `RunningServer.isInteractive` and the scheduler's `focused` hook
@@ -1773,12 +1775,26 @@ proof and the sizing rules; the pieces, by name:
   updates. Notifications: the notifier's `Notice` carries `kind` (approval,
   question, plan, waiting, finished, failed, stuck, batch, stopped),
   `subtitle` (the project's name, else the workspace's), an approval's
-  `requestId` and `hostName`; bodies are one line ("Needs approval: Bash —
-  bun test", "Asked: …", "Plan ready to approve", "Done in 12m · 7 tasks",
-  "Plan complete — implementation started: …", "Batch done · <line>",
-  "Batch stopped: gate failed · at vitest", "Failed: <the host's failure
-  summary, else the first line>", "Stopped: the harness is gone", "Quiet for
-  n min while working"); a queued thread decides nothing. The alert
+  `requestId` and `hostName`. One voice (the header of remote/notifier.ts):
+  the title is the thread's title (an untitled thread takes its project's
+  name and no subtitle), the body one line, a status word or a verb first, a
+  colon before its detail, commas after, no dashes, dots or raw tool names:
+  an approval is the action as a question (`approvalLine`: "Run bun test?",
+  "Read types.ts?", "Use linear?"; the subagent that asked is not named),
+  "Tabs or spaces?" (the first question), "Plan ready to approve", "Needs
+  you", "Done in 12m" or "Done in 12m, 2 tasks left", "Ready to build",
+  "Batch done: 3 landed, gate passed in 4m 12s", "Batch stopped: gate
+  failed at vitest", "Failed: <the host's failure summary, else the first
+  line>", "Stopped unexpectedly", "No output for 12m"; the hub's host
+  notices are titled by the host's name, "Not heard from in 3m" and "Back
+  online". A queued thread decides nothing, and the host stays quiet when
+  the person needs nothing: a thread whose `masterId` names a live master
+  sends no Done (the master's batch notice covers it, and the master's
+  idle after it is not a second Done), a plan whose build started sends
+  nothing, and a root a desktop window names to its person right now
+  (`FocusSet.isNamed`, unwidened) is stamped `onScreen`, which the hub,
+  local APNs and the relay skip while key webhooks and the Live Activity
+  reason still take it. The alert
   (remote/apnsPayload.ts, identical in infra/hub/src/delivery.ts) has the
   subtitle, `thread-id` and `summary-arg` per thread, `relevance-score`
   (needs_you 1, failed 0.8, stuck 0.6, finished 0.4), sound only for
@@ -1900,9 +1916,9 @@ threadBatch.test.ts), one `session.batch` per host.
   plan, and `plans.archiveAfterStart` (default on) archives the plan thread.
   The thread that started the plan (`startedBy`, set by app_start_thread,
   else `parentId`) is woken with a `<subagent-report>` through
-  `deliverAgentReport`; a person-started plan is the notifier's finished
-  notice ("Plan complete — implementation started: …" or "…waiting for you
-  to start the build") and the tab's "Plan ready" mark. With auto-start off
+  `deliverAgentReport`; a person-started plan whose build waits for them is
+  the notifier's "Ready to build" (nothing once the build started: it says
+  Done itself) and the tab's "Plan ready" mark. With auto-start off
   the plan view's single Start build button (it opens the Start dialog,
   surfaces/threads/StartBuildDialog.tsx), the phone's Start a build sheet (its
   confirm is `plan.implement` since thread 25) and `plan.implement` over the
