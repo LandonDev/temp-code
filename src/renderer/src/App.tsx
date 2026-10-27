@@ -512,12 +512,14 @@ export default function App() {
   const { activeTab, active } = activeSessionOf(tabs, activeTabId, sessions);
   // The window's title: the page that covers it, else the focused pane and its project.
   const titleFile = activeTab ? focusedFileTab(activeTab) : undefined;
-  const titleProjectId = active ? active.projectId : selectedProjectId;
+  // The project terminal dock, focused, names the window as a terminal of the selected project.
+  const titleDock = dockVisible && projectTerminalFocused;
+  const titleProjectId = active && !titleDock ? active.projectId : selectedProjectId;
   const titleProject = (titleProjectId && projects.find((project) => project.id === titleProjectId)?.name) || null;
   const titleText = windowTitle({
     page: settingsOpen ? "settings" : accountsPage ?? (notesViewOpen ? "notes" : inboxViewOpen ? "inbox" : searchViewOpen ? "search" : null),
     pane:
-      titleFile?.terminal
+      titleDock || titleFile?.terminal
         ? { kind: "terminal" }
         : titleFile
           ? { kind: "file", path: titleFile.path }

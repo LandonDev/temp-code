@@ -70,7 +70,6 @@ import { useSegmentDrag } from "../hooks/useSegmentDrag";
 import { useSortable, type SortableDropTarget } from "../hooks/useSortable";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { HarnessIcon } from "./HarnessIcon";
-import { getCurrentWindow } from "../lib/native";
 import { TabIndicator, type TabThread } from "./TabIndicator";
 import { ThreadHeader, type ThreadHeaderProps } from "./ThreadHeader";
 import type { ThreadType } from "../lib/tcserver/types";
@@ -1248,13 +1247,6 @@ function TitleBarComponent({
     }
     return "TempCode";
   }, [activeTab, cwd]);
-
-  useEffect(() => {
-    document.title = systemTitle;
-    try {
-      void getCurrentWindow().setTitle(systemTitle);
-    } catch {}
-  }, [systemTitle]);
 
   const railClosed = deckLayout && !projectRailOpen;
   const showCurrentProject = looksLikeProject(cwd);
