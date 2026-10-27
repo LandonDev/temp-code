@@ -44,6 +44,7 @@ export function ErrorChip({
       glyph={<StatusMark state="failed" word={false} />}
       lead="Failed"
       tone="strong"
+      wrap
       details={[row.message]}
     >
       {row.showContinue ? (

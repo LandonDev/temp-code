@@ -125,4 +125,19 @@ describe("QuestionCard", () => {
     const two = render(<QuestionCard question={meta([spec("A?", ["A"]), spec("B?", ["B"])])} onAnswer={() => {}} />);
     expect(two.container.querySelector<HTMLElement>('[data-slot="question-card"]')!.className.split(" ")).not.toContain(hide);
   });
+
+  it("shows an option's description and answers with its bare label", () => {
+    const onAnswer = vi.fn();
+    const view = render(
+      <QuestionCard
+        question={meta([{ question: "Count free items?", options: [{ label: "Count them", description: "Free items add to the total" }, { label: "Skip them" }] }])}
+        onAnswer={onAnswer}
+      />,
+    );
+    const picked = option(view.container, "Count them");
+    expect(picked.textContent).toContain("Free items add to the total");
+    fireEvent.click(picked);
+    fireEvent.click(advance());
+    expect(onAnswer).toHaveBeenCalledWith("q1", [["Count them"]]);
+  });
 });

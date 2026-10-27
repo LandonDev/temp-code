@@ -14,6 +14,11 @@ const NO_PROGRESS = "[&>div:first-child>span:last-child]:hidden";
 /** The free-text option a question offers unless it says otherwise. */
 const OTHER = "Other";
 
+/** What an option reads on the card: its label, and its description when it
+ *  has one (the card has no line of its own for it). */
+const shownLabel = (option: { label: string; description?: string }) =>
+  option.description ? `${option.label}: ${option.description}` : option.label;
+
 /** The harness's questions in the card's shape: the header is a question's
  *  description unless the card's title already says it. */
 export function cardQuestions(question: QuestionMeta, title: string): Question[] {
@@ -22,10 +27,19 @@ export function cardQuestions(question: QuestionMeta, title: string): Question[]
     description: spec.header && spec.header !== title ? spec.header : undefined,
     multiSelect: spec.multiSelect,
     options: [
-      ...spec.options.map((option) => ({ label: option.label })),
+      ...spec.options.map((option) => ({ label: shownLabel(option) })),
       ...(spec.allowFreeform !== false ? [{ label: OTHER, freeform: true }] : []),
     ],
   }));
+}
+
+/** The card's answers in the harness's words: a picked option goes back as
+ *  its bare label; typed text goes back as typed. */
+export function harnessAnswers(question: QuestionMeta, answers: string[][]): string[][] {
+  return answers.map((picked, i) => {
+    const options = question.questions[i]?.options ?? [];
+    return picked.map((shown) => options.find((option) => shownLabel(option) === shown)?.label ?? shown);
+  });
 }
 
 /**
@@ -48,7 +62,7 @@ export function QuestionCard({
       className={cn(CARD_SHAPE, question.questions.length === 1 && NO_PROGRESS)}
       title={title}
       questions={cardQuestions(question, title)}
-      onSubmitAnswers={(answers) => onAnswer(question.requestId, answers)}
+      onSubmitAnswers={(answers) => onAnswer(question.requestId, harnessAnswers(question, answers))}
       onSkip={() => onAnswer(question.requestId, null)}
     />
   );

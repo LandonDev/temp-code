@@ -25,6 +25,7 @@ export function CompactionCard({ block }: { block: Block }) {
         glyph={<StatusMark state="failed" word={false} />}
         lead="Compaction failed"
         tone="strong"
+        wrap
         details={[meta.error]}
       />
     );

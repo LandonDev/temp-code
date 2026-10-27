@@ -50,14 +50,16 @@ export function PlanHandoffRow({ block }: { block: Block }) {
         >
           <span className="truncate">{title}</span>
         </Button>,
+      ]}
+      trailing={
         meta ? (
           meta.archived ? (
             <span className="text-xs font-medium text-muted-foreground">Archived</span>
           ) : (
             <StatusMark state={buildState(meta.status)} />
           )
-        ) : null,
-      ]}
+        ) : null
+      }
     />
   );
 }

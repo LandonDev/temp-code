@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { Button } from "../../components/ui/button";
 import type { Block } from "../../lib/session";
 import { NoticeLine } from "./NoticeLine";
+import { ErrorChip } from "../ErrorChip";
 import { NoticeRow, PassRow } from "./NoticeRow";
 
 afterEach(cleanup);
@@ -89,4 +90,23 @@ describe("SystemRow", () => {
     expect(container.querySelector("pre")).toBeNull();
     expect(container.textContent).toBe("Resumed after the host restarted at 3:41 PM");
   });
+
+describe("NoticeLine in a narrow pane", () => {
+  it("every detail may shrink; a trailing status never does", () => {
+    const { container } = render(
+      <NoticeLine lead="Started the build" details={["A very long build title that fills the pane", "second"]} trailing={<span>Working</span>} />,
+    );
+    const spans = [...container.querySelectorAll('[data-slot="notice-line"] > div > div > span')];
+    expect(spans[1].className).toContain("truncate");
+    expect(spans[2].className).toContain("truncate");
+    expect(spans[3].textContent).toBe("Working");
+    expect(spans[3].className).toContain("shrink-0");
+  });
+
+  it("a failure's message wraps instead of truncating", () => {
+    const { container } = render(<ErrorChip sessionId="s1" row={{ stopped: false, message: "x ".repeat(200), showContinue: false, failure: null }} />);
+    const message = [...container.querySelectorAll('[data-slot="notice-line"] > div > div > span')][1];
+    expect(message.className).not.toContain("truncate");
+  });
+});
 });

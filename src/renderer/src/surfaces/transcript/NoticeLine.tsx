@@ -7,8 +7,9 @@ import { cn } from "../../lib/cn";
 /**
  * A notice on one line, the action rows' size (14px on 32px): a 14px glyph
  * slot (a StatusMark glyph when a state applies, else a chrome icon), the
- * lead, its details 8px apart in the muted ink, then actions shown on the
- * line's hover or focus. The glyph slot matches the action rows' tool icon,
+ * lead, its details 8px apart in the muted ink (each shrinks and truncates
+ * before the lead, a `trailing` status or the chevron does), then actions
+ * shown on the line's hover or focus. The glyph slot matches the action rows' tool icon,
  * so notice text lines up with them. Wrapping text breaks under the lead,
  * never under the glyph. A line that opens (`fold`, inside a Collapsible)
  * is its own trigger, as an action row is: the whole line, a bare chevron
@@ -20,6 +21,7 @@ export function NoticeLine({
   lead,
   details = [],
   fold,
+  trailing,
   actions,
   tone = "muted",
   wrap = false,
@@ -32,6 +34,8 @@ export function NoticeLine({
   details?: ReactNode[];
   /** The line opens what it holds: its open state and the trigger's name. */
   fold?: { open: boolean; label: string };
+  /** Shown after the details and never squeezed (a status). */
+  trailing?: ReactNode;
   actions?: ReactNode;
   /** `strong` sets the lead in the foreground (a red run, a live hold). */
   tone?: "muted" | "strong";
@@ -71,12 +75,13 @@ export function NoticeLine({
               key={i}
               className={cn(
                 "text-muted-foreground",
-                wrap ? "" : i === shown.length - 1 ? "min-w-0 truncate" : "shrink-0",
+                wrap ? "" : "min-w-0 truncate",
               )}
             >
               {detail}
             </span>
           ))}
+          {trailing ? <span className="flex shrink-0 items-center">{trailing}</span> : null}
           {fold ? (
             <ChevronRight
               aria-hidden
