@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AppSearchHit, ContentHit, FileHit, MessageHit } from "./appSearch";
+import { flattenGrouped, groupHits, type AppSearchHit, type ContentHit, type FileHit, type MessageHit } from "./appSearch";
 import {
+  browseHits,
   dedupePairedFiles,
   foldFileHits,
   formatSeconds,
@@ -10,6 +11,7 @@ import {
   matchesProject,
   mergeCrossHost,
   noteHits,
+  notePreview,
   parseSearchQuery,
   setQueryToken,
   runCrossHostSearch,
@@ -251,6 +253,66 @@ describe("foldFileHits", () => {
     const out = mergeCrossHost(perHost, { pairs, hostOrder: ["local", "box"] });
     expect(out).toHaveLength(1);
     expect(out[0]).toMatchObject({ host: "box", line: 3, more: 1, newer: true });
+  });
+});
+
+describe("browseHits", () => {
+  const input = {
+    threads: [
+      { host: "local", id: "old", cwd: "/Users/me/app", harness: "claude" as const, title: "Old", updatedAt: 1 },
+      { host: "box", id: "new", cwd: "/work/alpha", harness: "codex" as const, title: "New", updatedAt: 9 },
+    ],
+    files: [
+      { host: "local", path: "/Users/me/app/b.ts", relative: "b.ts", name: "b.ts" },
+      { host: "local", path: "/Users/me/app/a.ts", relative: "a.ts", name: "a.ts" },
+    ],
+    notes: [
+      { host: "box", id: "n1", title: "Plan", body: "# Plan\n\nShip the fold", updatedAt: 2 },
+      { host: "local", id: "n2", title: "Later", body: "Later note", updatedAt: 5, sourceCwd: "/Users/me/app" },
+    ],
+    projects: [{ host: "local", path: "/Users/me/app" }, { host: "box", path: "/work/alpha" }],
+    displayTitle: (title: string) => title,
+  };
+
+  it("lists each kind per host: threads and notes by recency, files and projects in recents order", () => {
+    const perHost = browseHits(input);
+    expect([...perHost.keys()].sort()).toEqual(["box", "local"]);
+    const merged = mergeCrossHost(perHost, { pairs, hostOrder: ["local", "box"] });
+    const flat = flattenGrouped(groupHits(merged, null));
+    expect(flat.map((hit) => hit.id)).toEqual([
+      "conversation:new",
+      "conversation:old",
+      "file:local:/Users/me/app/b.ts",
+      "file:local:/Users/me/app/a.ts",
+      "note:local:n2",
+      "note:box:n1",
+      "project:/Users/me/app",
+      "project:/work/alpha",
+    ]);
+    expect(flat.find((hit) => hit.id === "note:box:n1")).toMatchObject({ preview: "Ship the fold", title: "Plan" });
+  });
+
+  it("goes through the same type: and project: filters as a search", () => {
+    const perHost = browseHits(input);
+    expect(mergeCrossHost(perHost, { pairs, hostOrder: ["local", "box"], types: ["note"] }).map((hit) => hit.id)).toEqual([
+      "note:local:n2",
+      "note:box:n1",
+    ]);
+    expect(mergeCrossHost(perHost, { pairs, hostOrder: ["local", "box"], project: "alpha" }).map((hit) => hit.id)).toEqual([
+      "conversation:new",
+      "project:/work/alpha",
+    ]);
+  });
+
+  it("is empty with nothing to list", () => {
+    expect(browseHits({ ...input, threads: [], files: [], notes: [], projects: [] }).size).toBe(0);
+  });
+});
+
+describe("notePreview", () => {
+  it("is the first line that is not the title, heading marks dropped", () => {
+    expect(notePreview("Plan", "# Plan\n\n## Steps\nmore")).toBe("Steps");
+    expect(notePreview("Plan", "Plan")).toBe("");
   });
 });
 

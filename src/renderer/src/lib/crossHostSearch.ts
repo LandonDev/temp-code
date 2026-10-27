@@ -5,9 +5,11 @@ import {
   recencyBonus,
   type AppSearchHit,
   type ContentHit,
+  type ConversationHit,
   type FileHit,
   type MessageHit,
   type NoteHit,
+  type ProjectHit,
   type SearchKind,
 } from "./appSearch";
 import type { Environment } from "./connection/types";
@@ -465,6 +467,92 @@ export function noteHits(
     ...(row.sourceCwd ? { cwd: row.sourceCwd } : {}),
     score: 12 + recencyBonus(row.updatedAt),
   }));
+}
+
+// ── browse: a filter typed with no words lists its scope ──────────────
+
+export type BrowseInput = {
+  /** Root, unarchived threads of the asked hosts. */
+  threads: readonly (ThreadMeta & { host: string })[];
+  /** This project's recently opened files, most recent first. */
+  files: readonly { host: string; path: string; relative: string; name: string }[];
+  notes: readonly { host: string; id: string; title: string; body: string; updatedAt: number; sourceCwd?: string }[];
+  /** Recent projects, most recent first. */
+  projects: readonly { host: string; path: string }[];
+  displayTitle: (title: string, harness: MessageHit["harness"]) => string;
+};
+
+/** What a search with only `type:`, `project:` or `host:` typed shows: the
+ *  newest items of each kind the window and the hosts hold, per host, for
+ *  mergeCrossHost to filter and groupHits to cut. Threads and notes order by
+ *  recency, files and projects keep their recents order. */
+export function browseHits(input: BrowseInput): Map<string, AppSearchHit[]> {
+  const out = new Map<string, AppSearchHit[]>();
+  const add = (host: string, hit: AppSearchHit) => {
+    const list = out.get(host) ?? [];
+    list.push(hit);
+    out.set(host, list);
+  };
+  for (const thread of input.threads) {
+    add(thread.host, {
+      id: `conversation:${thread.id}`,
+      kind: "conversation",
+      host: thread.host,
+      sessionId: thread.id,
+      cwd: thread.cwd,
+      harness: thread.harness,
+      title: input.displayTitle(thread.title, thread.harness),
+      updatedAt: thread.updatedAt,
+      score: 0,
+      positions: [],
+    } satisfies ConversationHit);
+  }
+  input.files.forEach((file, index) => {
+    add(file.host, {
+      id: `file:${file.host}:${file.path}`,
+      kind: "file",
+      host: file.host,
+      path: file.path,
+      relative: file.relative,
+      name: file.name,
+      score: input.files.length - index,
+      positions: [],
+    } satisfies FileHit);
+  });
+  for (const note of input.notes) {
+    add(note.host, {
+      id: `note:${note.host}:${note.id}`,
+      kind: "note",
+      host: note.host,
+      noteId: note.id,
+      title: note.title,
+      preview: notePreview(note.title, note.body),
+      updatedAt: note.updatedAt,
+      ...(note.sourceCwd ? { cwd: note.sourceCwd } : {}),
+      score: 0,
+    } satisfies NoteHit);
+  }
+  input.projects.forEach((project, index) => {
+    add(project.host, {
+      id: `project:${project.path}`,
+      kind: "project",
+      host: project.host,
+      path: project.path,
+      name: projectName(project.path),
+      score: input.projects.length - index,
+      positions: [],
+    } satisfies ProjectHit);
+  });
+  return out;
+}
+
+/** A note's first line of text that is not its title. */
+export function notePreview(title: string, body: string): string {
+  for (const raw of body.split("\n")) {
+    const line = raw.replace(/^#+\s*/, "").trim();
+    if (line && line !== title.trim()) return line;
+  }
+  return "";
 }
 
 /** The footer's line for one host: "box: 1.2 s", "mac: skipped (offline)". */

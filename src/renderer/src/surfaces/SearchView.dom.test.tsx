@@ -25,9 +25,11 @@ const h = vi.hoisted(() => {
     invokeOn: vi.fn(),
     searchProject: vi.fn(),
     listProjectFiles: vi.fn(),
+    recentFiles: [] as string[],
     metas: [
       { id: "s-local", environmentId: "local", parentId: null, archived: false, cwd: "/Users/me/app", provider: "claude", title: "Gateway trace", updatedAt: 5 },
       { id: "s-box", environmentId: "env_box", parentId: null, archived: false, cwd: "/work/app", provider: "codex", title: "Box thread", updatedAt: 6 },
+      { id: "s-alpha", environmentId: "local", parentId: null, archived: false, cwd: "/Users/me/alpha", provider: "claude", title: "Alpha thread", updatedAt: 7 },
     ],
     workspaces: [
       { id: "w1", environmentId: "local", name: "app", path: "/Users/me/app", git: true, createdAt: 1 },
@@ -64,7 +66,7 @@ vi.mock("../lib/fileIndex", async (importOriginal) => {
     { name: "gateway.ts", path: "/Users/me/app/src/gateway.ts", relative: "src/gateway.ts" },
     { name: "README.md", path: "/Users/me/app/README.md", relative: "README.md" },
   ];
-  return { ...real, peekProjectFiles: () => files, loadProjectFiles: () => Promise.resolve(files), recentOpenedFiles: () => [] };
+  return { ...real, peekProjectFiles: () => files, loadProjectFiles: () => Promise.resolve(files), recentOpenedFiles: () => h.recentFiles };
 });
 vi.mock("../lib/settings", () => ({ loadNotesEnabled: () => true }));
 vi.mock("../lib/session", () => ({ sessionDisplayTitle: (title: string) => title }));
@@ -86,6 +88,11 @@ function answers(): void {
         hits: env === "env_box" ? [{ sessionId: "s-box", seq: 4, role: "assistant", snippet: "the gateway on the box", ts: 1, rank: -3 }] : [],
         truncated: false,
       });
+    }
+    if (method === "notes_list") {
+      return Promise.resolve(
+        env === "env_box" ? [{ id: "n1", slug: "plan", title: "Plan", body: "# Plan\nShip the fold", createdAt: 1, updatedAt: 3 }] : [],
+      );
     }
     if (method === "notes_search") {
       return Promise.resolve({
@@ -336,6 +343,52 @@ describe("SearchView across hosts", () => {
     expect(name.textContent).toBe("gateway.tssrc:2+1 more");
     fireEvent.keyDown(view.container.querySelector("input") as HTMLInputElement, { key: "Enter" });
     expect(p.onOpenFile).toHaveBeenCalledWith("/Users/me/app/src/gateway.ts", { line: 2, column: 2 });
+    view.unmount();
+  });
+
+  it("a bare type:note lists the notes, with no host search, spinner or footer", async () => {
+    const view = render(<SearchView open cwd="/Users/me/app" recents={recents} initialQuery="type:note" {...props()} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    expect(kinds(view)).toEqual(["note"]);
+    expect(rows(view)[0].textContent).toContain("Ship the fold");
+    expect(rows(view)[0].textContent).toContain("Plan");
+    expect(h.invokeOn.mock.calls.some(([, method]) => method === "search_sessions" || method === "notes_search")).toBe(false);
+    expect(h.searchProject).not.toHaveBeenCalled();
+    expect(view.container.querySelector('[data-slot="spinner"]')).toBeNull();
+    expect(view.queryByLabelText("Hosts searched")).toBeNull();
+    view.unmount();
+  });
+
+  it("a bare type:file lists this project's recent files", async () => {
+    h.recentFiles = ["/Users/me/app/README.md", "/Users/me/app/src/gateway.ts"];
+    const view = render(<SearchView open cwd="/Users/me/app" recents={recents} {...props()} />);
+    await search(view, "type:file");
+    expect(rows(view).map((row) => row.textContent)).toEqual(["README.md", "gateway.tssrc"]);
+    h.recentFiles = [];
+    view.unmount();
+  });
+
+  it("a bare project: lists that project's threads", async () => {
+    const view = render(<SearchView open cwd="/Users/me/app" recents={recents} {...props()} />);
+    await search(view, "project:alpha");
+    expect(kinds(view)).toEqual(["conversation"]);
+    expect(rows(view)[0].textContent).toContain("Alpha thread");
+    view.unmount();
+  });
+
+  it("a browse that finds nothing says so and offers to clear the filters", async () => {
+    const view = render(<SearchView open cwd="/Users/me/app" recents={recents} {...props()} />);
+    await search(view, "type:project host:box");
+    expect(rows(view)).toHaveLength(0);
+    expect(view.getByText("No results")).toBeTruthy();
+    expect(view.getByText("Filters are narrowing this search")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Clear filters" }));
+    });
+    expect((view.container.querySelector("input") as HTMLInputElement).value).toBe("");
+    expect(view.queryByText("No results")).toBeNull();
     view.unmount();
   });
 

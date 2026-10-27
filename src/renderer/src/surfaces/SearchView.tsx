@@ -36,6 +36,7 @@ import {
 import { registry, useEnvironmentStatuses, useEnvironments } from "../lib/connection";
 import type { Environment, EnvironmentStatus } from "../lib/connection/types";
 import {
+  browseHits,
   hostTimingLabel,
   hostsMatching,
   mergeCrossHost,
@@ -57,6 +58,7 @@ import {
 } from "../lib/fileIndex";
 import { listProjectFiles, type ProjectFile } from "../lib/fs";
 import { invokeOn } from "../lib/native";
+import { loadNotes, peekNotes, type Note } from "../lib/notes";
 import { prettyCwd, projectName } from "../lib/paths";
 import { IS_MAC } from "../lib/platform";
 import { pairWorkspaces, partnersOf } from "../lib/projectPairs";
@@ -74,7 +76,10 @@ import { useWorkspaces } from "../lib/tcserver/workspaces";
  * in the field's filter menu, which writes the same tokens. Each host answers in parallel and its
  * rows land as they come; with two or more hosts paired the footer says how
  * long each took, or that it was skipped. Rows carry the host's mark when more than one host is
- * paired. Enter opens a row where it lives; ⌘↩ opens it in a new pane.
+ * paired. A filter typed with no words lists its scope instead: the newest
+ * threads, recent files, notes and recent projects it holds (`type:note`
+ * from the Notes command opens on the notes). Enter opens a row where it
+ * lives; ⌘↩ opens it in a new pane.
  * The list never animates: it is read tens of times a day.
  */
 
@@ -144,6 +149,9 @@ export function SearchView({
 
   const parsed = useMemo(() => parseSearchQuery(query), [query]);
   const text = parsed.text;
+  const filtered = parsed.hosts !== null || parsed.types !== null || parsed.project !== null;
+  const browsing = !text && filtered;
+  const [notes, setNotes] = useState<ReadonlyMap<string, Note[]>>(() => new Map());
 
   const environments = useEnvironments();
   const statuses = useEnvironmentStatuses();
@@ -335,7 +343,60 @@ export function SearchView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [askedHosts, currentHost, fileCwdOf, metas, open, text]);
 
+  // A browse that may show notes reads each asked, online host's notes: the
+  // cache paints at once, the host's answer replaces it. An offline host is
+  // skipped, and nothing waits on a host to paint the other kinds.
+  const browseNotes = browsing && loadNotesEnabled() && (parsed.types === null || parsed.types.includes("note"));
+  useEffect(() => {
+    if (!open || !browseNotes) return;
+    let cancelled = false;
+    const hosts = askedHosts.filter((env) => isOnline(env, statuses.get(env.id)));
+    const land = (host: string, list: Note[]) => {
+      if (!cancelled) setNotes((prev) => new Map(prev).set(host, list));
+    };
+    for (const env of hosts) {
+      const cached = peekNotes(env.id);
+      if (cached) land(env.id, cached);
+      void loadNotes(env.id).then((list) => land(env.id, list), () => {});
+    }
+    return () => {
+      cancelled = true;
+    };
+    // `statuses` changes on every heartbeat; online is read when the browse starts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [askedHosts, browseNotes, open]);
+
+  const browsed = useMemo(() => {
+    if (!browsing) return null;
+    const asked = new Set(askedHosts.map((env) => env.id));
+    return browseHits({
+      threads: metas
+        .filter((meta) => asked.has(meta.environmentId) && !meta.parentId && !meta.archived)
+        .map((meta) => ({ host: meta.environmentId, id: meta.id, cwd: meta.cwd, harness: meta.provider as HarnessId, title: meta.title, updatedAt: meta.updatedAt })),
+      files:
+        asked.has(currentHost) && looksLikeProject(cwd)
+          ? rankProjectFiles(files, "", recentOpenedFiles(cwd)).map((file) => ({ ...file, host: currentHost }))
+          : [],
+      notes: browseNotes
+        ? [...notes].filter(([host]) => asked.has(host)).flatMap(([host, list]) => list.map((note) => ({ ...note, host })))
+        : [],
+      projects: recents
+        .map((recent) => ({ host: environmentOfCwd(recent.path) ?? registry.primaryEnvironmentId, path: recent.path }))
+        .filter((project) => asked.has(project.host)),
+      displayTitle: sessionDisplayTitle,
+    });
+  }, [askedHosts, browseNotes, browsing, currentHost, cwd, files, metas, notes, recents]);
+
   const hits = useMemo(() => {
+    if (browsed) {
+      const merged = mergeCrossHost(browsed, {
+        pairs,
+        hostOrder: environments.map((env) => env.id),
+        types: parsed.types,
+        project: parsed.project,
+      });
+      return flattenGrouped(groupHits(merged, parsed.types));
+    }
     if (!text) return [];
     const combined = new Map<string, AppSearchHit[]>();
     for (const env of askedHosts) {
@@ -348,7 +409,7 @@ export function SearchView({
       project: parsed.project,
     });
     return flattenGrouped(groupHits(merged, parsed.types));
-  }, [askedHosts, environments, memoryHits, pairs, parsed.project, parsed.types, snapshot, text]);
+  }, [askedHosts, browsed, environments, memoryHits, pairs, parsed.project, parsed.types, snapshot, text]);
 
   const activeHit = hits[active] ?? null;
   const searching = !!text && snapshot !== null && !snapshot.settled;
@@ -401,11 +462,10 @@ export function SearchView({
 
   if (!open) return null;
 
-  const empty = !text;
+  const empty = !text && !browsing;
   const noHost = parsed.hosts !== null && askedHosts.length === 0;
-  const failed = progress.length > 0 && progress.every((row) => row.state === "failed" || row.state === "skipped");
-  const noResults = !empty && hits.length === 0 && !searching && snapshot !== null;
-  const filtered = parsed.hosts !== null || parsed.types !== null || parsed.project !== null;
+  const failed = !browsing && progress.length > 0 && progress.every((row) => row.state === "failed" || row.state === "skipped");
+  const noResults = !empty && hits.length === 0 && (browsing || snapshot?.settled === true);
   const focusField = () => inputRef.current?.focus();
   const clearFilters = () => {
     setQuery(setQueryToken(setQueryToken(setQueryToken(query, "host", null), "type", null), "project", null));
@@ -713,7 +773,7 @@ function rowCopy(hit: AppSearchHit, query: string): RowCopy {
     return {
       icon: <StickyNote className="size-3.5" />,
       title: <MatchText text={hit.preview || hit.title} query={query} />,
-      meta: hit.title,
+      meta: hit.preview ? hit.title : "",
       mono: false,
     };
   }
