@@ -10,9 +10,9 @@ import { useSyncExternalStore } from "react";
  * the last panel was dragged to.
  */
 
-export type Section = "activity" | "agents" | "changes" | "notes" | "files" | "branch" | "build" | "dev" | "debug";
+export type Section = "activity" | "agents" | "changes" | "notes" | "files" | "build" | "dev" | "debug";
 
-export const SECTIONS: readonly Section[] = ["activity", "agents", "changes", "notes", "files", "branch", "build", "dev", "debug"];
+export const SECTIONS: readonly Section[] = ["activity", "agents", "changes", "notes", "files", "build", "dev", "debug"];
 
 export const SECTION_LABEL: Record<Section, string> = {
   activity: "Activity",
@@ -20,7 +20,6 @@ export const SECTION_LABEL: Record<Section, string> = {
   changes: "Changes",
   notes: "Notes",
   files: "Files",
-  branch: "Branch",
   build: "Build",
   dev: "Dev",
   debug: "Debug",
@@ -64,7 +63,6 @@ export function sectionsFor(facts: PanelFacts): PanelSections {
   if (facts.project) sections.push("changes");
   sections.push("notes");
   if (facts.project) sections.push("files");
-  if (facts.project) sections.push("branch");
   if (facts.project) sections.push("build");
   if (facts.project) sections.push("dev");
   if (facts.project && facts.debug) sections.push("debug");

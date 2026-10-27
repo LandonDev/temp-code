@@ -39,7 +39,6 @@ vi.mock("./threads/ActivitySection", () => ({
 }));
 vi.mock("./threads/NotesPanel", () => ({ NotesBody: () => <div data-testid="notes-body">notes</div> }));
 vi.mock("../chrome/rail/ChangesPanel", () => ({ ChangesPanel: () => <div data-testid="changes-body">changes</div> }));
-vi.mock("../chrome/rail/BranchPanel", () => ({ BranchPanel: () => <div>branch</div> }));
 vi.mock("../chrome/rail/BuildPanel", () => ({ BuildPanel: () => <div>build</div> }));
 vi.mock("../chrome/rail/DevServerPanel", () => ({ DevServerPanel: () => <div>dev</div> }));
 vi.mock("../chrome/rail/DebugPanel", () => ({ default: () => <div>debug</div> }));
@@ -83,7 +82,7 @@ describe("RightPanel", () => {
     rightPanel.open("s1");
     render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
     const tabs = screen.getAllByRole("tab").map((t) => t.textContent);
-    expect(tabs).toEqual(["Activity", "Agents", "Changes", "Notes", "Files", "Branch", "Build", "Dev", "Debug"]); // a dev build (vitest) lists Debug
+    expect(tabs).toEqual(["Activity", "Agents", "Changes", "Notes", "Files", "Build", "Dev", "Debug"]); // a dev build (vitest) lists Debug
     // The Activity section's subagents row opens the Agents section.
     fireEvent.click(screen.getByTestId("activity-body"));
     expect(rightPanel.get("s1").section).toBe("agents");

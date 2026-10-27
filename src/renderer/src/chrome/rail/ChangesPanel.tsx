@@ -48,10 +48,13 @@ import { editorLabelFor, openInEditor } from "../../lib/openInEditor";
 import { MOD } from "../../lib/platform";
 import { requestReview } from "../../lib/reviewRequest";
 import type { OpenFileFn } from "../../lib/search";
-import { environmentOfCwd } from "../../lib/tcserver/projects";
+import { environmentOfCwd, projectForCwd } from "../../lib/tcserver/projects";
+import { useProjects } from "../../lib/tcserver/workspaces";
 import { IconAction } from "../../surfaces/transcript/IconAction";
 import { confirmAction, errorText } from "../ConfirmDialog";
 import { FileTypeIcon } from "../FileTypeIcon";
+import { ChangesAgainst } from "./ChangesAgainst";
+import { Counts, FileName } from "./changeRows";
 import { ChevronDown, ChevronRight, Minus, MoreHorizontal, Plus, Undo2, WandSparkles } from "../icons";
 
 /**
@@ -60,7 +63,8 @@ import { ChevronDown, ChevronRight, Minus, MoreHorizontal, Plus, Undo2, WandSpar
  * and the pull request at the top, pull, push, stash and stage-all in a
  * ⋯ menu; the index staged and unstaged, rows opening the file against
  * HEAD, an unstaged modification folding open into hunks stageable one by
- * one; the branch against a target below (`against`, ChangesAgainst); the
+ * one; the branch against a target below (ChangesAgainst, the project's
+ * when the checkout is one); the
  * commit field pinned at the foot with the generated message and Commit's
  * menu (and push; push and create a PR). Refreshes ride the server's tree
  * watcher through `gitIndexStore`; nothing here polls.
@@ -174,7 +178,6 @@ export function ChangesPanel({
   selectedPath,
   onOpenDiff,
   onOpenFile,
-  against,
 }: {
   cwd: string;
   /** the review file the focused tab shows, relative to the git root */
@@ -183,9 +186,8 @@ export function ChangesPanel({
   onOpenDiff: (path: string) => void;
   /** the fallback for "Open in <editor>" when no editor is set up */
   onOpenFile?: OpenFileFn;
-  /** the branch against a target (ChangesAgainst), under the files */
-  against?: ReactNode;
 }) {
+  const project = projectForCwd(cwd, useProjects());
   const environmentId = environmentOfCwd(cwd) ?? registry.primary().environmentId;
   const index = useGitIndex(cwd);
   const editorConfig = useEditorConfig();
@@ -366,7 +368,7 @@ export function ChangesPanel({
       folds={folds}
       editorLabel={(file) => editorLabelFor(file.path, editorConfig)}
       actions={actions}
-      against={against}
+      against={project ? <ChangesAgainst key={project.id} projectId={project.id} selectedPath={selectedPath} onOpenDiff={onOpenDiff} /> : null}
     />
   );
 }
@@ -612,31 +614,6 @@ function Group({ heading, count, children }: { heading: string | null; count: nu
   );
 }
 
-/** `+n −n` in the diff colours; New for a file git has not seen, Deleted for one that is gone. */
-export function Counts({ status, additions, deletions }: { status: string; additions: number; deletions: number }) {
-  if (status === "untracked" || status === "added") return <span className="text-xs text-muted-foreground">New</span>;
-  if (status === "deleted") return <span className="text-xs text-muted-foreground">Deleted</span>;
-  return (
-    <span className="text-xs tabular-nums">
-      {additions > 0 ? <span className="text-success">+{additions}</span> : null}
-      {additions > 0 && deletions > 0 ? " " : null}
-      {deletions > 0 ? <span className="text-destructive">−{deletions}</span> : null}
-    </span>
-  );
-}
-
-/** A file's name with its folder after it, the folder truncating first. */
-export function FileName({ relative, muted }: { relative: string; muted?: boolean }) {
-  const name = basename(relative);
-  const dir = relative.includes("/") ? relative.slice(0, relative.lastIndexOf("/")) : "";
-  return (
-    <span className="flex min-w-0 items-baseline gap-2">
-      <span className={cn("shrink-0 truncate text-[13px]", muted ? "text-muted-foreground" : "text-foreground")}>{name}</span>
-      {dir ? <span className="min-w-0 truncate text-xs text-muted-foreground">{dir}</span> : null}
-    </span>
-  );
-}
-
 function FileRow({
   file,
   side,
@@ -671,7 +648,7 @@ function FileRow({
         {foldable ? (
           <>
             <span className={cn("grid place-items-center", open ? "opacity-0" : "group-hover/row:opacity-0 group-focus-within/row:opacity-0")}>
-              <FileTypeIcon name={file.relative} size={16} />
+              <FileTypeIcon name={file.relative} isDir={false} size={16} />
             </span>
             <Button
               variant="ghost"
@@ -688,7 +665,7 @@ function FileRow({
             </Button>
           </>
         ) : (
-          <FileTypeIcon name={file.relative} size={16} />
+          <FileTypeIcon name={file.relative} isDir={false} size={16} />
         )}
       </ItemMedia>
       <ItemContent className="min-w-0">

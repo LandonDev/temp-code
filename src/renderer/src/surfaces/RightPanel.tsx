@@ -4,7 +4,6 @@ import { Spinner } from "@renderer/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@renderer/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { X } from "../chrome/icons";
-import { BranchPanel } from "../chrome/rail/BranchPanel";
 import { BuildPanel } from "../chrome/rail/BuildPanel";
 import { ChangesPanel } from "../chrome/rail/ChangesPanel";
 import { DevServerPanel } from "../chrome/rail/DevServerPanel";
@@ -194,7 +193,7 @@ function SectionBody({
     case "notes":
       return <NotesBody session={session} />;
     case "changes":
-      return <ChangesPanel cwd={cwd} selectedPath={selectedPath} onOpenDiff={onOpenDiff} />;
+      return <ChangesPanel cwd={cwd} selectedPath={selectedPath} onOpenDiff={onOpenDiff} onOpenFile={onOpenFile} />;
     case "files":
       return (
         <FileTree
@@ -206,8 +205,6 @@ function SectionBody({
           gitStatuses={gitStatuses}
         />
       );
-    case "branch":
-      return project ? <BranchPanel projectId={project.id} selectedPath={selectedPath} onOpenDiff={onOpenDiff} /> : null;
     case "build":
       return project ? <BuildPanel projectId={project.id} /> : null;
     case "dev":

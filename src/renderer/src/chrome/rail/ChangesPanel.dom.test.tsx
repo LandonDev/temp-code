@@ -5,6 +5,7 @@ import type { GitDiffIndex, GitPr } from "../../lib/fs";
 
 const h = vi.hoisted(() => ({
   index: null as GitDiffIndex | null,
+  project: false,
   pr: null as GitPr | null,
   confirm: vi.fn(() => Promise.resolve(true)),
   review: vi.fn(),
@@ -37,7 +38,12 @@ vi.mock("../../lib/fs", async (importOriginal) => ({
 }));
 vi.mock("../../lib/gitIndexStore", () => ({ useGitIndex: () => h.index, refreshGitSnapshot: () => Promise.resolve() }));
 vi.mock("../../lib/connection", () => ({ registry: { primary: () => ({ environmentId: "local" }) } }));
-vi.mock("../../lib/tcserver/projects", () => ({ environmentOfCwd: () => "local" }));
+vi.mock("../../lib/tcserver/projects", () => ({
+  environmentOfCwd: () => "local",
+  projectForCwd: (cwd: string) => (h.project && cwd === "/p" ? { id: "p1", cwd: "/p" } : undefined),
+}));
+vi.mock("../../lib/tcserver/workspaces", () => ({ useProjects: () => [] }));
+vi.mock("./ChangesAgainst", () => ({ ChangesAgainst: ({ projectId }: { projectId: string }) => <section aria-label="Against">{projectId}</section> }));
 vi.mock("../../lib/editorConfig", () => ({ useEditorConfig: () => null }));
 vi.mock("../../lib/openInEditor", () => ({ editorLabelFor: () => "Open in VS Code", openInEditor: vi.fn() }));
 vi.mock("../../lib/fileWatch", () => ({ invalidateWatchedFiles: () => {} }));
@@ -94,6 +100,7 @@ const menuItem = (name: string) => screen.getByRole("menuitem", { name });
 beforeEach(() => {
   h.index = null;
   h.pr = null;
+  h.project = false;
   vi.clearAllMocks();
   h.confirm.mockImplementation(() => Promise.resolve(true));
 });
@@ -279,6 +286,24 @@ describe("ChangesPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Stage" }));
     await flush();
     expect(screen.getByRole("alert").textContent).toBe("index.lock exists");
+  });
+});
+
+describe("ChangesPanel against a target", () => {
+  it("shows the Against group under the files when the checkout is a project's", async () => {
+    h.index = indexOf();
+    h.project = true;
+    mount();
+    await flush();
+    expect(screen.getByRole("region", { name: "Against" }).textContent).toBe("p1");
+    expect(screen.getByText("No changes")).toBeTruthy();
+  });
+
+  it("has no Against group outside a project", async () => {
+    h.index = indexOf();
+    mount();
+    await flush();
+    expect(screen.queryByRole("region", { name: "Against" })).toBeNull();
   });
 });
 
