@@ -307,7 +307,10 @@ app replaces itself from the feed, and only from the feed.
   editor with its find keys and git helpers, the terminal (xterm), the
   non-chat thread views (board, plan, research, fleet), the HTML render
   frame, the media viewer, the lightbox and the release notes. A mount
-  point calls `chunk.surface(name, <SurfaceSkeleton kind=… />)`; a trigger
+  point calls `chunk.surface(name, <SurfaceSkeleton kind=… />)`, which
+  sits in a `ChunkBoundary` (a failed import or a render throw holds the
+  skeleton with "Couldn't load" and Retry, which replaces the lazy and the
+  chunk's promise; the rail and the other panes stay); a trigger
   spreads `chunk.intent` (hover or focus warms the chunk, so a click on a
   warm machine never shows the skeleton); the first thread on screen warms
   the diff and thread-view chunks in an idle slot (`preloadWhenIdle`).
@@ -369,7 +372,8 @@ app replaces itself from the feed, and only from the feed.
 - The writer (`installLaunchMirrorWriter`) follows `onMetaChange` and the
   workspace catalog, diffs each LISTED host's rows against what it last
   wrote (object identity), and sends the difference over
-  `launch-mirror:write` after a 750 ms quiet period or when the page hides;
+  `launch-mirror:write` after a 750 ms quiet period or when the page hides,
+  landed in batches of 200 rows on the host;
   the first write per host is `full`. A host still painted from the mirror
   is never written (it would be rewritten from itself). The cursor saved
   with the host is the `session.changes` head the next boot resumes from.
@@ -573,6 +577,40 @@ routed to (aliax-core's `forward`). Two listeners:
   and the socket it went on, and `upstreamTrace` ties them to the gateway's
   request. The fake provider (TEMP_CODE_FAKE_PROVIDERS) is pooled too, by
   the original origin.
+- Deadlines (S7 of the stability sweep): a gateway control call (the
+  child asking main for a credential, an account) times out at 30 s
+  (gatewayWire.ts `GatewayControlTimeout`; a credential miss is
+  `credential_timeout`, a 503 the failure kind reads as `network`); an
+  upstream request on the pooled path has headers 60 s, body idle 120 s
+  and total 10 min deadlines (upstream.ts; `TEMP_CODE_UPSTREAM_HEADERS_MS`
+  and `_BODY_IDLE_MS` are the seams), the stage named in the failure; a
+  codex app-server RPC past its timer (30 s, `turn/start` 60 s) fails the
+  turn instead of hanging it, and one stalled at boot is released or
+  retried. The gateway tells main when a forwarded request goes out and
+  when it is done (`onRequestStart`/`onRequestEnd` on the control plane,
+  the wire's `request` event); `chooseAccount` and `pickNext` share one
+  `eligible()` rule, and a model's cooldown leaves the account's other
+  models available.
+- What a turn says while it waits (S3): a `phase` event is activity, never
+  a row. The claude driver emits `cli-starting` on a cold spawn,
+  `initializing` from a send until `system/init`, `retrying` on the CLI's
+  own `api_retry` (attempt, delay, status) and clears it at the first text,
+  thinking or tool call; the codex driver emits `retrying` on
+  `willRetry`/`Reconnecting`; sessions.ts words them ("Starting the CLI",
+  "Initializing", "Rate limited · retry 3 in 32 s") and folds them onto the
+  meta like `context` (`phaseLine`). A provider request open past 15 s with
+  nothing finer known reads "Waiting for the provider · 25 s", re-pushed
+  every 5 s (`providerRequest`, `PROVIDER_WAIT_MS`). A first-output
+  watchdog (`FIRST_OUTPUT_MS`, 60 s after a send with nothing back at all)
+  settles the turn with the silence error and puts the process down; the
+  registry re-queues the message once at the front, and a second silence
+  on the same message leaves the row errored `harness_crashed`
+  (drivers/silence.ts). Every `session.send` writes one span line to
+  stalls.log (sendSpans.ts: `send session=<id> accepted=0 prepared=12
+  handle=340(warm) delivered=… init=… first-message=… first-content=2100`,
+  flushed at the first content or 15 s in, a phase never reached `-`), and
+  a meta push names its producer in the loop line
+  (`meta:4038/781ids(accounts:3900,status:138)`).
 - Pre-connect (src/main/server/preconnect.ts): when a turn starts on an
   idle thread, and when the composer of an idle thread gains focus
   (`session.preconnect`, operate; the renderer asks once per thread per
@@ -1144,8 +1182,10 @@ names the far child).
 - **One rail.** `lib/linkedRail.ts` (`mergeRailSections`, restored from
   a39cc107 and keyed by `linkId`) joins copies into one row led by this
   machine's copy, the other copies aliased to the leader's keys
-  (`aliasKeys`) so order, pins, recents, labels, colours and mascots keep
-  theirs; one "Workspaces" section, no host headers, every copy's threads by
+  (`aliasKeys`) so order, pins, recents, labels, colours, mascots, the
+  window folder and the selected-project memory (projectContext
+  `folderKey`/`sameFolder`: a box copy's path reads and writes the
+  leader's entry) keep theirs; one "Workspaces" section, no host headers, every copy's threads by
   recency, unread sums, Mark all read and the fleet switches over every
   copy, a down host's rows under the offline tint. Host status is one Hosts
   row at the rail's foot (`HostsRow` in chrome/HostRows.tsx, two or more
@@ -1348,7 +1388,10 @@ names the far child).
   (`lib/markdownParse.ts`, `useMarkdownReady`). Streaming rows keep the
   incremental main-thread path. With no `Worker` (tests, node), or one that
   fails, throws or never gives a first answer (8 s), every text is ready at
-  once and the main thread parses as before. The renderer aliases
+  once and the main thread parses as before; once the worker has answered,
+  a request past 1.5 s parses that row alone on the main thread (the
+  worker keeps serving the rest), a row that unmounts cancels its request,
+  and the ready set is a 4,000-digest LRU tied to the hast cache. The renderer aliases
   `decode-named-character-reference` to its plain build (the DOM build has
   no document in a worker); keep that alias when touching the vite config.
 - Opening a box thread is round trips (about 200 ms each from the Mac),
@@ -1391,10 +1434,15 @@ names the far child).
   loop's mean lag is under 50 ms, joins a duplicate read (method and a
   digest of params, from any socket) to the one waiting or running, runs a
   write or fs.watch each in its turn (dropped if its socket closed first),
-  and runs anything that waited 20 s. The path fence runs before the gate.
+  and runs anything that waited 20 s, up to twice the bulk cap at once. The
+  path fence runs before the gate.
 - Pushes: a socket's own focused thread's rows go at once; other threads'
   rows wait 33 ms, or 100 ms locally and 250 ms remotely while the loop
-  lags (wire.ts `eventsWindowMs`). Stall lines end
+  lags (wire.ts `eventsWindowMs`). A socket whose send queue passes the
+  backpressure mark sheds the unfocused session and event pushes (the
+  replayable ones; control and peer frames stay) and tells the client to
+  `resync` once it drained to half; one past 64 MiB is closed (1013,
+  `SocketBudget` in wire.ts). Stall lines end
   `lane=bulk:<running>/<held>`; the renderer reports `first-paint
   session=<id> host=<env> ms=<n>` past 500 ms (lib/firstPaint.ts).
 - The host's own jobs pause on `yieldUntilIdle` (cold mover, turn index
@@ -1434,7 +1482,13 @@ proof and the sizing rules; the pieces, by name:
   for a thread the host has named the meta's fields, so a restored master
   keeps `isMaster` and opens on its board (store.test.ts "a layout stub
   for a thread the host has listed", sessionStore.test.ts "loadSession
-  when the host is not connected yet").
+  when the host is not connected yet"). `ensureMeta` asks the owning host
+  first (the entry's, a mirror row's, or a named host), then only
+  connected hosts, once each with retry off; past a 300 ms window a tab
+  opens a provisional entry the meta fills whole or that reads `gone`, and
+  a pane whose thread is gone shows "No longer on <host>" with Close tab
+  and Open archived (`SessionGone`); the board under Search, Inbox, Notes,
+  Accounts or Settings is parked (`.board-parked`), never display:none.
 - `batch.board { masterId }` (read): the master board's one answer;
   "Master threads" above.
 - The gateway's byte path runs in a utility process ("Provider traffic"
@@ -2196,7 +2250,7 @@ this is the short one.
   carrying the masterId is `done`, or `idle` with a turn completed,
   `Store.hasCompletedTurn`); an errored or stopped child blocks the end,
   and so does one idle on a turn that ended in a failure (its row's
-  `failure`, a usage cap; `blocked.why` `failed`), `blocked` names it and
+  `failure`, a usage cap; `blocked.why` `failed`; a paused child `paused`, one idle on a turn it never completed `no-turn`), `blocked` names it and
   the master is told once as a `<batch-report>`.
   Steps run in order on the host's `GateQueue`, a gate or release outcome a
   `gate` notice row on the master; a red step stops the rest and tells the
@@ -2220,8 +2274,9 @@ this is the short one.
   the land step (refused when the list names no gate). The deploy restarts
   the box's own process: the row is persisted before the trigger fires and
   `Batches.resumeAfterBoot` (after the BootResumer) closes the step from
-  the trigger's exit file, runs the steps after it and `then`; a publish or
-  a shell step in flight at a restart is failed as such. `batch.stopStep
+  the trigger's exit file, runs the steps after it and `then`; any step still
+  running at a restart but a deploy it can follow (gate, release, land
+  and shell alike) is failed as such, the master told. `batch.stopStep
   { masterId, stepId }` (operate) kills a running shell step's process
   group or stops the Mac's publish job. Seam: `TEMP_CODE_GATE_STUB=<json>`
   (rules `{ step, branch?, ok, log? }`) decides a gate or release step
@@ -2247,13 +2302,30 @@ this is the short one.
   on that watching as on idle, the boot ledger keeps it so a restart brings
   it back (into a turn, then watching again), and the batch closing idles
   it (`registry.masterIdle` when nothing is coming). The liveness sweep
-  never touches a watching row.
-- **A message to a live master goes straight in.** To a watching master it
-  starts a turn at once (the idle path). To a master mid-turn, `queueAdd`
-  whispers it into the live turn as a `<user-steer>` with its user row
-  kept (`steerMaster`; attachments still queue), and a master's
-  `wait_for_agent` in flight returns `{ status: 'steered', message }` in
-  every mode (`registry.nextSteer`), never swallowing the person.
+  takes watching rows too: a master kept watching by its batch whose
+  harness is dead past the grace reads `stopped` (Resume boots a fresh
+  harness with the restart nudge; the parked reports follow at its settle),
+  a thread watching its own background work settles idle, a report to a
+  dead watching master boots a fresh harness (`drainReports`); Stop and
+  Kill background tasks on a watching master idle it for real (a one-shot
+  `stopWatching`), unpinning idles it, and `liveIds` counts handles and
+  boots only. `decorate` gives a watching master its batch's reason ahead
+  of the watch line ("Blocked: A errored") and every meta carries
+  `lastEventAt`.
+- **A message to a live thread goes straight in.** To a watching master it
+  starts a turn at once (the idle path). To any thread mid-turn and not
+  paused, `queueAdd` whispers it into the live turn as a `<user-steer>`
+  with its user row kept (`steerLive`; attachments still queue; the
+  composer's Enter steers by default, `MID_TURN_DEFAULT`; `queue.add`
+  answers `queued` with its item or `steered` with its id); a whisper into
+  a dead handle boots a fresh harness that gets the text once; a provider
+  that cannot take mid-turn input front-queues it; and a send releases the
+  thread's pending `wait_for_agent` as the steer does
+  (`resolveSteerWaiters`): a master's wait in flight returns
+  `{ status: 'steered', message }` in every mode, never swallowing the
+  person. A settle, idle or watching, takes what waits as one turn
+  (`drainSettled`): the held notices, the parked reports, the person's text
+  last; a report never wakes the thread alone while text waits.
   MASTER_MECHANICS prefers ending the turn and being woken to blocking
   waits.
 - **Pause cascades.** `session.pause` on a master pauses every root of its

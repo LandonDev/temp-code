@@ -426,7 +426,13 @@ each one by hand. Now:
   spinner, the tab says Stopped, and the header menu offers Resume;
   `session.resume` on a stopped thread calls `resumeStopped`. The boot no
   longer flips running rows to idle; only waiting and watching rows are
-  idled at boot.
+  idled at boot. A watching row is swept too (since 2026-10-27): a master
+  kept watching by its batch whose harness is gone reads stopped ("The
+  harness behind this master is gone; Resume brings it back"), and a
+  thread watching its own background work settles idle. The batch engine
+  fails any step still running at a restart but a deploy it can follow
+  (gate, release, land and shell alike), tells the master, and lets the
+  batch close (`Batches.resumeAfterBoot`).
 - **The toast.** When a boot resumed anything, every socket gets one
   `boot-resume` push (count, the boot's time) and the rail says "7 threads
   resumed after restart" as a sonner toast, with the host's name under it
@@ -574,7 +580,11 @@ temp-code `src/main/server/remote/{peers,accountSync}.ts`):
   `harness_crashed`, `unknown`), the account the turn was routed to, one
   line naming what happened ("Anthropic session for landon@… expired and
   could not be refreshed", "Account work@… is no longer on file") and one
-  with the likely cause. A stop and a "turn ended:" wind-down note are never
+  with the likely cause. A gateway control call that times out (30 s; a
+  credential miss is `credential_timeout`, a 503) and an upstream request
+  past its deadline (headers 60 s, body idle 120 s, total 10 min) are
+  `network`, the stage named in the summary; a codex RPC past its timer
+  (30 s, `turn/start` 60 s) fails the turn instead of hanging it. A stop and a "turn ended:" wind-down note are never
   classified. The verdict is folded onto the session row (`session_folds.failure`,
   `SessionMeta.failure`, cleared by whatever settles the error) so the tab
   edge and the workspace popover's failed row print the summary instead of
@@ -2435,6 +2445,37 @@ under 10% of the budget. On the box that is near 120 threads; on a 48 GiB
 Mac, near 54. Every harness process counts, roots and subagents; Start
 now and the focused thread's sends go past it. Settings → Hosts has a
 Running threads row in each host's section: "118 of 120 running  7 queued".
+
+**The sweep of 2026-10-27** (the plan `.temp-code/plan-uwzJrzlRpSL0.md`,
+the report `.temp-code/reports/6hOLqAs21Udx.md`; the probe suite that
+found the holes is in sessions-liveness.test.ts) took the loop's other
+storms off it. The account re-pick runs for the accounts that moved
+(`pickableChange`: an out mark, a cooldown, an expiry or a full window
+changed, appeared or left), in slices of 100 behind the loop, each slice's
+metas tagged `accounts`; a window reset at the clock hour once re-picked
+every unarchived thread at once (4,038 metas in a second, nine of nine
+storms matched). `registry.list` reads the session index, newest first,
+never the sessions table, and decorates a family's tree once per list
+(51 to 618 ms a call before; the remote profile pages the raw rows and
+decorates the page alone). A socket whose send queue passes the
+backpressure mark sheds the unfocused session and event pushes and asks
+for a `resync` once drained to half; one past 64 MiB closes (`SocketBudget`).
+The thread mirror and the session index share one 2 s debounced write and
+the launch mirror lands in batches of 200 rows; port scans share helper
+slots and run only around live calls; an overdue bulk request (20 s) runs
+at twice the bulk cap; the local profile's `session.events` reads 4 MiB
+pages on the reader worker, the fold flags live on the fold row, and a
+reader that failed restarts after a backoff. Every `session.send` writes
+one span line to stalls.log (`send session=<id> accepted=0 prepared=12
+handle=340(warm) delivered=… init=… first-message=… first-content=2100`,
+flushed at the first content or 15 s in; a phase never reached reads `-`),
+and a meta push names its producer in the loop line
+(`meta:4038/781ids(accounts:3900,status:138)`). The renderer's side: a list
+push merges every row and builds one snapshot, an unchanged meta changes
+nothing, the recently shown transcripts stay under 20,000 folded rows, and
+the terminal poll and the composer runner's frame loop run only while
+their pane shows. Re-measure the box with the profiler and
+`stalls-summary.ts` on a working day and add the column above.
 
 ## Profiling the host
 

@@ -13,7 +13,10 @@ on intent so the skeleton is rarely seen.
   returns a chunk: `load()` (the import, once), `preload()` (the import with
   the promise dropped), `loaded()`, `intent` (`onPointerEnter` / `onFocus`
   handlers for a trigger), and `surface(name, fallback)`: the module's
-  component behind `React.lazy` and a Suspense boundary. Once the module
+  component behind `React.lazy`, a Suspense boundary and a `ChunkBoundary`
+  (a failed import or a render throw holds the skeleton with "Couldn't
+  load" and Retry, which replaces the lazy and the chunk's promise; the
+  rail and the other panes stay). Once the module
   has landed the lazy initializer gets a settled thenable, so the first
   mount after a preload commits in one pass with no fallback at all.
   `preloadWhenIdle(chunk)` runs the import in a `requestIdleCallback` slot.

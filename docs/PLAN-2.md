@@ -203,7 +203,8 @@ After every completed turn, write the thread's readable transcript to
 
 - **Trigger:** in `SessionRegistry.append()`, on a `turn-complete` event
   for a session with a `projectId`, schedule `mirrorSession(sessionId)`
-  debounced ~2s per session (a multi-agent burst writes once).
+  debounced 2 s per session, the write shared with the session index's
+  since 2026-10-27 (a multi-agent burst writes once).
 - **Content:** frontmatter (`title`, `threadType`, `provider · model`,
   `status`, `updated` ISO timestamp, `sessionId`) then the dialogue.
   Reuse the `transcriptHandoff()` walk (`sessions.ts:32`) but richer:

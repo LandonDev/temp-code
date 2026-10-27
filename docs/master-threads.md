@@ -457,20 +457,54 @@ keeps the row so a restart brings the master back (into a turn with the
 restart nudge, then watching again). The batch closing idles it: the next
 turn end is a real idle, and a batch that closes with nothing coming (its
 children deleted) idles the master through `registry.masterIdle` from
-the engine's review. The liveness sweep only ever flips `running` and
-`starting` rows, so a watching master is never "stopped".
+the engine's review. The liveness sweep takes watching rows too (S4 of the
+stability sweep, 2026-10-27): a master kept watching by its batch whose
+harness is dead past the grace reads `stopped` ("The harness behind this
+master is gone; Resume brings it back": Resume boots a fresh harness with
+the restart nudge, and the parked reports follow at its settle), and a
+thread watching its own background work settles idle when its harness is
+gone (the tasks died with it). A report to a dead watching master boots a
+fresh harness instead of parking for ever (`drainReports`); one to a
+stopped master parks until Resume. Stop and Kill background tasks on a
+watching master idle it for real (a one-shot `stopWatching` that
+`masterKeepsWatching` honours until the next turn starts: a send or a
+report drain), so it holds no running slot; unpinning a watching master
+idles it. Slots are counted by handle (`liveIds`: a harness up or booting),
+never by a row's status. `decorate` gives a watching master its real reason
+from its batch ahead of the watch line ("Blocked: A errored", "Gate running
+since 14:02"), and every meta carries `lastEventAt`, the last row's time, so
+a row can say how long it has been still.
 
-A person's message reaches a live master at once. To a watching master it
-starts a turn (the idle path in `send`). To a master mid-turn, `queueAdd`
-(what the composer calls for a running thread) does not queue: the user
-row is kept on the transcript and the text is whispered into the live
-turn as `<user-steer>…</user-steer>` (`steerMaster`, the notes-reminder
-path; a message with attachments still queues), and a master's
-`wait_for_agent` in flight returns `{ status: 'steered', message }` in
-every mode (`registry.nextSteer`, raced against the settles), so a
-blocking wait never swallows the person; the agents keep running and the
-master waits again after acting. `MASTER_MECHANICS` tells the master to
-prefer ending its turn and being woken over blocking waits.
+A person's message reaches any live thread at once (`steerLive`, S1). To a
+watching master it starts a turn (the idle path in `send`). To a thread
+mid-turn and not paused, `queueAdd` (what the composer calls for a running
+thread; its Enter steers by default, `MID_TURN_DEFAULT`, a stored
+preference winning) does not queue: the user row is kept on the transcript
+and the text is whispered into the live turn as
+`<user-steer>…</user-steer>` (the notes-reminder path; a message with
+attachments still queues), and `queue.add` answers `{ kind: 'steered', id }`
+so the renderer never looks for its text in the pushed list. A whisper into
+a dead handle boots a fresh harness that gets the text as a plain message
+once; a provider that cannot take mid-turn input front-queues it. A send
+into a live turn releases the thread's pending `wait_for_agent` as the
+steer does (`resolveSteerWaiters`): a master's wait in flight returns
+`{ status: 'steered', message }` in every mode, so a blocking wait never
+swallows the person; the agents keep running and the master waits again
+after acting. A settle into watching (native, or a master's open batch)
+drains what waits as idle does, and as ONE turn (`drainSettled`, S2): the
+held notices first, the parked `<subagent-report>`s next, the person's
+text last; a report delivered while text waits goes with that text instead
+of waking the thread alone. `MASTER_MECHANICS` tells the master to prefer
+ending its turn and being woken over blocking waits.
+
+The batch's blocks and a restart. `blockOf` names a paused child
+(`paused`: "is paused: Resume it or remove it") and one idle on a turn it
+never completed (`no-turn`: "ended its turn without completing: send it a
+message or remove it") beside an errored, stopped or failed one, the master
+told once as a `<batch-report>`; a complete plan with no build still holds
+the batch open, unblocked. The engine fails any step still running at a
+restart other than a deploy it can follow (gate, release and land join
+shell), tells the master, and lets the batch close.
 
 Pause and Resume cascade: `session.pause` on a master pauses every root of
 its batch on this host (sessionBatch.ts `batchChildIds`, four at a time

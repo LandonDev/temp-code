@@ -166,7 +166,13 @@ foreground, the same words the group line uses); the components only draw it.
   block only. With no `Worker` (tests, node), or a worker that fails to
   load, throws, or gives no first answer within 8 s, every text is ready at
   once and the main thread parses as before: a row never waits on a worker
-  that is not coming (`parseWorkerStats.failures` counts it). The worker
+  that is not coming (`parseWorkerStats.failures` counts it). Once the
+  worker has answered, a request past 1.5 s parses that row alone on the
+  main thread while the worker keeps serving the rest, a row that unmounts
+  cancels its request (dropped before posting, else a `{ cancel }` the
+  worker's queue honours before parsing), and the ready set is a
+  4,000-digest LRU tied to the hast cache, so an evicted tree is asked for
+  again. The worker
   bundles micromark, whose entity decoder picks a DOM build under the
   browser condition; electron.vite.config.ts aliases
   `decode-named-character-reference` to its plain build for the whole
