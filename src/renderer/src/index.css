@@ -1,4 +1,106 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "./assets/components.css";
+
+/* `dark:` means the default theme; `html.theme-light` is the light one. */
+@custom-variant dark (&:where(html:not(.theme-light), html:not(.theme-light) *));
+
+/*
+ * The token layer (docs/DESIGN.md "Tokens"). One neutral palette in two
+ * themes; colour is reserved for status and the one accent. Every colour,
+ * radius, shadow and motion value a component uses is a name from here:
+ * nothing in src/renderer writes a literal colour, duration or curve.
+ */
+:root {
+  /* Surfaces, darkest to lightest: the rail, the content, a card, a floating
+     layer. One gray step between neighbours is the only depth cue. */
+  --sidebar: oklch(0.17 0.003 270);
+  --background: oklch(0.195 0.003 270);
+  --card: oklch(0.225 0.004 270);
+  --popover: oklch(0.24 0.004 270);
+  --muted: oklch(0.275 0.004 270);
+  --secondary: oklch(0.29 0.004 270);
+  --input: rgb(255 255 255 / 0.12);
+  --border: rgb(255 255 255 / 0.09);
+  /* Ink: foreground for what matters, muted for what supports it. */
+  --foreground: oklch(0.93 0.003 270);
+  --muted-foreground: oklch(0.68 0.006 270);
+  --card-foreground: var(--foreground);
+  --popover-foreground: var(--foreground);
+  --secondary-foreground: var(--foreground);
+  /* The quiet primary: near-white on dark, near-black on light. */
+  --primary: oklch(0.96 0 0);
+  --primary-foreground: oklch(0.2 0 0);
+  /* Meaning: the one accent (links, focus, the rare CTA) and the status colours. */
+  --accent: hsl(211 92% 62%);
+  --accent-foreground: #ffffff;
+  --ring: var(--accent);
+  --destructive: var(--thread-danger);
+  --destructive-foreground: #ffffff;
+  --success: var(--thread-success);
+  --warning: var(--thread-warning);
+  --info: var(--thread-info);
+  /* Floating layers: one shadow, soft. Docked chrome has none. */
+  --shadow-overlay: 0 8px 24px -8px rgb(0 0 0 / 0.5), 0 2px 6px -2px rgb(0 0 0 / 0.3);
+  --skeleton-sweep: rgb(255 255 255 / 0.07);
+  /* Motion: four durations, three curves. Springs are in lib/ease.ts. */
+  --dur-instant: 0ms;
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 240ms;
+  --dur-drawer: 300ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 0.6, 1);
+  /* Layers (mirrors lib/layers.ts): popovers and menus sit above dialogs so a
+     picker opened inside one is never hidden by it. */
+  --layer-dialog: 90;
+  --layer-popover: 95;
+  --layer-toast: 100;
+  --layer-tooltip: 110;
+}
+
+html.theme-light {
+  --sidebar: oklch(0.972 0.002 80);
+  --background: oklch(1 0 0);
+  --card: oklch(0.985 0.002 80);
+  --popover: oklch(1 0 0);
+  --muted: oklch(0.955 0.002 80);
+  --secondary: oklch(0.94 0.003 80);
+  --input: rgb(0 0 0 / 0.12);
+  --border: rgb(0 0 0 / 0.08);
+  --foreground: oklch(0.2 0.004 270);
+  --muted-foreground: oklch(0.5 0.008 270);
+  --primary: oklch(0.2 0 0);
+  --primary-foreground: oklch(0.99 0 0);
+  --accent: hsl(211 92% 48%);
+  --shadow-overlay: 0 8px 24px -8px rgb(0 0 0 / 0.18), 0 2px 6px -2px rgb(0 0 0 / 0.1);
+  --skeleton-sweep: rgb(0 0 0 / 0.06);
+}
+
+@theme inline {
+  --color-sidebar: var(--sidebar);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --shadow-overlay: var(--shadow-overlay);
+}
 @source "../../../node_modules/streamdown/dist/*.js";
 @source "../../../node_modules/@streamdown/code/dist/*.js";
 @source "../../../node_modules/@streamdown/mermaid/dist/*.js";
@@ -26,13 +128,12 @@
 }
 
 @theme {
-  --color-background-base: hsl(
-    var(--theme-hue) var(--theme-saturation) var(--background-lightness)
-  );
-  --color-content: hsl(
-    var(--theme-hue) var(--theme-saturation) var(--content-lightness)
-  );
-  --color-accent: hsl(211 92% 62%);
+  /* Legacy names: `background-base` is `background`, `content` is
+     `foreground`. New code uses the token names; these stay until the last
+     reader is migrated. */
+  --color-background-base: var(--background);
+  --color-content: var(--foreground);
+  --color-accent: var(--accent);
   --color-skill: #e8c547;
   --color-mention: #38bdf8;
   /* Semantic colours for thread boards: status dots, tints, tallies. */
@@ -46,7 +147,7 @@
   /* Every floating layer's fill (see .floating-surface): a lifted, near-opaque
      plane a step above the base so a busy transcript never reads through a
      menu or a dialog. */
-  --color-overlay: hsl(var(--theme-hue) var(--theme-saturation) 15% / 0.96);
+  --color-overlay: color-mix(in oklab, var(--popover) 96%, transparent);
   /* Motion bar: one duration and one curve for every utility transition.
      The same curve is EASE_OUT in lib/ease.ts. */
   --default-transition-duration: 120ms;
@@ -125,7 +226,6 @@ html.theme-light {
   --thread-violet: #7c3aed;
   --thread-cyan: #0891b2;
   --thread-busy: #db2777;
-  --color-overlay: hsl(var(--theme-hue) var(--theme-saturation) 100% / 0.97);
   color-scheme: light;
 }
 
@@ -199,9 +299,10 @@ html.theme-light .sidebar-glass {
 }
 
 html.is-mac.glass .sidebar-glass {
-  background: hsl(
-    var(--theme-hue) var(--theme-saturation) var(--background-lightness) /
-      var(--sidebar-opacity)
+  background: color-mix(
+    in oklab,
+    var(--sidebar) calc(var(--sidebar-opacity) * 100%),
+    transparent
   );
 }
 
@@ -786,12 +887,8 @@ html.theme-light .agent-markdown .shiki span {
       transparent calc(50% + var(--spread))
     ),
     linear-gradient(
-      hsl(
-        var(--theme-hue) var(--theme-saturation) var(--content-lightness) / 0.4
-      ),
-      hsl(
-        var(--theme-hue) var(--theme-saturation) var(--content-lightness) / 0.4
-      )
+      color-mix(in oklab, var(--foreground) 40%, transparent),
+      color-mix(in oklab, var(--foreground) 40%, transparent)
     );
   background-size:
     250% 100%,

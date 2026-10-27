@@ -12,14 +12,6 @@ export const SPRING_PRESS = {
   mass: 0.6,
 } as const;
 
-/** Icon swaps inside a button: the composer's Send → Queue → Pause morph. */
-export const SPRING_SWAP = {
-  type: "spring",
-  stiffness: 460,
-  damping: 30,
-  mass: 0.55,
-} as const;
-
 /** Overlay panel entrances and the row-to-detail morph. */
 export const SPRING_PANEL = {
   type: "spring",
@@ -28,7 +20,8 @@ export const SPRING_PANEL = {
   mass: 0.5,
 } as const;
 
-/** Shared-layout glides: pills, washes and panels morphing between positions. */
+/** Shared-layout glides: pills, washes and panels morphing between positions,
+ *  and icon swaps inside a button (the composer's Send → Queue → Pause). */
 export const SPRING_LAYOUT = {
   type: "spring",
   stiffness: 360,
@@ -36,13 +29,15 @@ export const SPRING_LAYOUT = {
   mass: 0.6,
 } as const;
 
-/** Elements that trail the pointer (magnetic pulls). */
-export const SPRING_MOUSE = {
-  type: "spring",
-  stiffness: 200,
-  damping: 15,
-  mass: 0.3,
-} as const;
+/** The same spring under its older name; new code says SPRING_LAYOUT. */
+export const SPRING_SWAP = SPRING_LAYOUT;
+
+/**
+ * The durations, in seconds for Motion, mirroring the CSS tokens in
+ * index.css (`--dur-fast`, `--dur-base`, `--dur-slow`, `--dur-drawer`);
+ * ease.test.ts keeps the two in step.
+ */
+export const DUR = { fast: 0.12, base: 0.18, slow: 0.24, drawer: 0.3 } as const;
 
 /** Long, settled travel: a sidebar reopening, a card gliding home. */
 export const SPRING_GLIDE = {
@@ -67,9 +62,15 @@ export const EASE_OUT_CSS = "cubic-bezier(0.16, 1, 0.3, 1)";
 /** EASE_DRAWER as a CSS timing function, for the push panels' width transitions. */
 export const EASE_DRAWER_CSS = "cubic-bezier(0.32, 0.72, 0, 1)";
 
-/** The one entrance: fade up 4px over 150 ms. Spread onto a motion element. */
+/** A closing overlay's curve, as CSS `--ease-exit`. */
+export const EASE_EXIT = [0.4, 0, 0.6, 1] as const;
+
+/** The one entrance: fade up 4px over DUR.base. Spread onto a motion element. */
 export const ENTER = {
   initial: { opacity: 0, y: 4 },
   animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.15, ease: EASE_OUT },
+  transition: { duration: DUR.base, ease: EASE_OUT },
 } as const;
+
+/** The one exit: a fade over DUR.fast. */
+export const FADE_OUT = { opacity: 0, transition: { duration: DUR.fast, ease: EASE_OUT } } as const;

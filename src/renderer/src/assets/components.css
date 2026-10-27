@@ -1,0 +1,328 @@
+/* The component layer's own CSS: the parts utilities cannot express.
+ * Everything here belongs to a component in src/renderer/src/components/ui;
+ * tokens live in index.css. Each rule names the component it serves. */
+
+/* Every field (input, textarea, select trigger): the focus ring is drawn
+   inside the border so tight rows never clip it. */
+@utility focus-field {
+  outline: none;
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--dur-fast);
+  transition-timing-function: var(--ease-out);
+
+  &:focus-within {
+    border-color: var(--ring);
+    box-shadow: inset 0 0 0 0.5px var(--ring);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition-duration: 0ms;
+  }
+}
+
+/* TextShimmer and an uploading Attachment title: one highlight sweep
+   through muted text, 2s, background-position only. */
+@utility shimmer {
+  background-image:
+    linear-gradient(90deg, transparent calc(50% - 2.5em), currentColor, transparent calc(50% + 2.5em)),
+    linear-gradient(color-mix(in oklab, currentColor 45%, transparent), color-mix(in oklab, currentColor 45%, transparent));
+  background-size: 250% 100%, auto;
+  background-repeat: no-repeat;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: text-shimmer 2s linear infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    background-image: none;
+    -webkit-text-fill-color: currentColor;
+  }
+}
+
+@keyframes text-shimmer {
+  0% {
+    background-position: 100% center;
+  }
+  100% {
+    background-position: 0% center;
+  }
+}
+
+/* StreamingText: each word fades in. */
+@keyframes streaming-word-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+.streaming-word {
+  animation: streaming-word-fade var(--dur-base) var(--ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .streaming-word {
+    animation: none;
+  }
+}
+
+/* Skeleton: one slow sweep. */
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton-shimmer::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: linear-gradient(90deg, transparent, var(--skeleton-sweep), transparent);
+  transform: translateX(-100%);
+  animation: skeleton-shimmer 1600ms linear infinite;
+}
+
+@keyframes skeleton-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer::after {
+    animation: none;
+  }
+}
+
+/* Switch: the thumb slides on a clip-path and grows 5px toward the other
+   side on hover, so the hand knows which way it goes. */
+.t-toggle {
+  --toggle-travel: 14px;
+  --toggle-thumb: 14px;
+  --toggle-grow: 5px;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.t-toggle-thumb {
+  width: calc(var(--toggle-travel) + var(--toggle-thumb));
+  clip-path: inset(0 var(--toggle-travel) 0 0 round 999px);
+  transition: clip-path 220ms cubic-bezier(0.23, 1, 0.32, 1);
+  will-change: clip-path;
+}
+
+.t-toggle[data-on="true"] .t-toggle-thumb {
+  clip-path: inset(0 0 0 var(--toggle-travel) round 999px);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .t-toggle:hover:not(:disabled) .t-toggle-thumb {
+    clip-path: inset(0 calc(var(--toggle-travel) - var(--toggle-grow)) 0 0 round 999px);
+  }
+  .t-toggle[data-on="true"]:hover:not(:disabled) .t-toggle-thumb {
+    clip-path: inset(0 0 0 calc(var(--toggle-travel) - var(--toggle-grow)) round 999px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-toggle,
+  .t-toggle-thumb {
+    transition: none;
+  }
+}
+
+/* Checkbox: the check draws itself in over 350ms. */
+.t-check {
+  transition:
+    background-color var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out);
+}
+
+.t-check svg path {
+  stroke-dasharray: 13;
+  stroke-dashoffset: 13;
+  transition: stroke-dashoffset var(--dur-base) var(--ease-out);
+}
+
+.t-check[aria-checked="true"] svg path {
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 350ms var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-check,
+  .t-check svg path {
+    transition: none !important;
+  }
+}
+
+/* Collapsible: the panel's height eases open and shut. */
+.collapsible-resize {
+  height: var(--collapsible-panel-height);
+  transition: height var(--dur-slow) var(--ease-out);
+}
+
+.collapsible-resize[data-starting-style],
+.collapsible-resize[data-ending-style] {
+  height: 0;
+}
+
+.collapsible-resize[data-ending-style] {
+  transition-duration: var(--dur-base);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .collapsible-resize,
+  .collapsible-resize[data-starting-style],
+  .collapsible-resize[data-ending-style] {
+    height: var(--collapsible-panel-height);
+    transition: opacity var(--dur-fast) var(--ease-out);
+  }
+  .collapsible-resize[data-starting-style],
+  .collapsible-resize[data-ending-style] {
+    opacity: 0;
+  }
+}
+
+/* StatusMark: the watching glyph breathes, slowly. */
+@keyframes status-watching {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.status-watching {
+  animation: status-watching 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-watching {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+/* TaskList: marks, the cursor, the strike-through, the chevron. */
+:root {
+  --task-morph: 160ms;
+  --task-slide: 260ms;
+  --task-draw: 220ms;
+  --task-draw-lead: 110ms;
+  --task-check-len: 9.9;
+  --task-done: color-mix(in oklab, var(--foreground) 45%, transparent);
+}
+
+.task-mark {
+  transition: color var(--task-morph) var(--ease-out);
+}
+
+.task-ring,
+.task-ring-open,
+.task-fill {
+  transition: opacity var(--task-morph) var(--ease-out);
+}
+
+.task-fill,
+.task-ring {
+  opacity: 0;
+}
+
+.task-mark[data-state="done"] .task-fill {
+  opacity: 1;
+}
+
+.task-mark[data-state="active"] .task-ring {
+  opacity: 1;
+}
+
+.task-mark:not([data-state="pending"]) .task-ring-open {
+  opacity: 0;
+}
+
+.task-check {
+  stroke-dasharray: var(--task-check-len);
+  stroke-dashoffset: var(--task-check-len);
+  transition: stroke-dashoffset var(--task-draw) var(--ease-out);
+}
+
+.task-mark[data-state="done"] .task-check {
+  stroke: var(--card);
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset var(--task-draw) var(--ease-out) var(--task-draw-lead);
+}
+
+.task-cursor {
+  transform-origin: center;
+  transition:
+    translate var(--task-slide) var(--ease-out),
+    opacity var(--task-morph) var(--ease-out),
+    scale var(--task-morph) var(--ease-out);
+}
+
+.task-cursor:not([data-slide]) {
+  transition-property: opacity, scale;
+}
+
+.task-cursor[data-gone] {
+  opacity: 0;
+  scale: 0.6;
+}
+
+.task-share {
+  transition:
+    translate var(--task-slide) var(--ease-out),
+    opacity var(--task-morph) var(--ease-out);
+}
+
+.task-share:not([data-slide]) {
+  transition-property: opacity;
+}
+
+.task-share[data-gone] {
+  opacity: 0;
+}
+
+.task-donut {
+  transition: stroke-dashoffset 320ms var(--ease-out);
+}
+
+.task-strike {
+  position: absolute;
+  inset-inline: 0;
+  top: 11px;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 150ms var(--ease-out);
+}
+
+.task-label[data-state="done"] .task-strike {
+  transform: scaleX(1);
+  transition: transform 280ms var(--ease-out) 40ms;
+}
+
+.task-chevron {
+  transition: rotate var(--task-morph) var(--ease-out);
+}
+
+.task-chevron[data-open] {
+  rotate: 180deg;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-check,
+  .task-chevron,
+  .task-fill,
+  .task-cursor,
+  .task-mark,
+  .task-mark[data-state="done"] .task-check,
+  .task-donut,
+  .task-ring,
+  .task-ring-open,
+  .task-strike,
+  .task-label[data-state="done"] .task-strike {
+    transition: none;
+  }
+}

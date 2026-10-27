@@ -1,8 +1,10 @@
-import React, { Profiler, useLayoutEffect } from "react";
+import React, { Profiler, Suspense, lazy, useLayoutEffect } from "react";
 import ReactDOM from "react-dom/client";
 import { getVersion, listen } from "./lib/native";
 import { installEditorKeys } from "./lib/editorKeys";
 import App from "./App";
+/* The toast stack rides its own chunk: sonner is not part of the first paint. */
+const Toaster = lazy(() => import("./components/ui/toaster").then((m) => ({ default: m.Toaster })));
 import { initAppearance, syncWindowGlass } from "./lib/appearance";
 import { initSounds } from "./lib/sounds";
 import { initServerLink } from "./lib/tcserver/link";
@@ -87,6 +89,9 @@ function Root() {
   const tree = (
     <BootGate>
       <App />
+      <Suspense fallback={null}>
+        <Toaster />
+      </Suspense>
     </BootGate>
   );
   return PROFILED ? (

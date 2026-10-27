@@ -15,7 +15,6 @@ import {
   DialogHeader,
   DialogTitle
 } from '@aliax/components/ui/dialog'
-import { Toaster } from '@aliax/components/ui/sonner'
 import { TooltipProvider } from '@aliax/components/ui/tooltip'
 import { EASE_OUT } from '@aliax/lib/ease'
 import { AccountsView, SectionSkeleton } from '@aliax/views/accounts'
@@ -157,7 +156,6 @@ function AliaxRoot({ page, children }: { page: 'accounts' | 'stats'; children: R
             {children}
           </motion.div>
         </main>
-        <Toaster position="bottom-right" />
       </div>
     </TooltipProvider>
   )

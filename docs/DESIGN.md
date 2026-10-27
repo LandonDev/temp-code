@@ -1,133 +1,282 @@
 # Design system
 
-The target look is **Cursor**: quiet chrome, white/near-black surfaces, one
-step of gray between sidebar and content, hairline borders, small type,
-almost no color — and motion that feels physical, not decorative. Layouts are
-specified separately; this doc fixes the ingredients every layout is built
-from.
+This is the standard every renderer change follows. It wins every conflict
+with docs/LAYOUT.md, a skill's advice, a library's default or a thread's
+brief. `src/renderer/src/components/README.md` is the map from each class of
+UI element to the one component that renders it.
 
-## The three libraries and how they layer
+## The look, in one paragraph
 
-| Layer | Library | Role | How it gets in |
+Claude desktop's transcript inside Cursor's chrome. The chrome is quiet and
+dense: 13px type, one gray step between the rail, the content and a floating
+layer, hairline borders, no shadows on anything docked. The transcript is
+generous: 15px prose on a 1.6 line height, the person's words in a soft
+bubble on the right, the model's as plain text on the left, its actions
+clumped into one muted line per paragraph that opens into a single
+thin-bordered list. Colour means something or is absent: amber when the
+person is needed, red when something failed, green for lines added, the one
+blue accent for links and focus. Motion is short, physical and interruptible;
+nothing bounces, glows, slides in from nowhere or stays on screen when it is
+done.
+
+## The one standard
+
+Kobra (kobra.systems) on Base UI is the component library. Every button,
+field, menu, popover, dialog, sheet, tab, switch, tooltip, list row, empty
+state, spinner, skeleton, question card, plan card and task list is the
+component under `src/renderer/src/components/ui`, adapted once at install
+to the tokens below, to `chrome/icons` and to the motion values below.
+The README's table is the authority on which component renders which class
+of element; nothing is rendered twice by two different things.
+
+Retired by this standard, migrated area by area, never patched further:
+`chrome/Modal.tsx`, `chrome/Popover.tsx`, `chrome/Drawer.tsx`,
+`chrome/ConfirmDialog.tsx`, `lib/layers.ts` (Base UI stacks its own
+portals), `surfaces/settingsBits.tsx`, `chrome/RailAction.tsx`,
+`chrome/ComposerAction.tsx`, `motion/Button.tsx`, `motion/Tabs.tsx`,
+`motion/TextShimmer.tsx`, `aliax/components/ui/*`, `radix-ui`, the four
+custom toast stacks (sonner), the nine spinner builds (`Spinner`), the
+twenty status-to-colour maps (`StatusMark`), the 228 `title=` attributes
+(`Tooltip`), the 390 raw `<button>`s (`Button`). ReUI, BeUI and Beautiful
+UI are no longer sources; their registries are gone from components.json.
+
+Hand-made and staying so: the transcript's rows and markdown pipeline, the
+composer's field, the rail, the tab strip, the editor, the terminal, the
+charts. They are built from the components above wherever they have a
+button, a menu, a field or a status.
+
+## Tokens
+
+The token layer is the top of `src/renderer/src/index.css`. Nothing in
+`src/renderer` writes a literal colour, duration or curve; a new value is a
+new token, named for its use, added there first.
+
+### Colour
+
+Dark is the default theme; `html.theme-light` is the light one (`dark:` in
+a class means the default). One neutral palette; there is no hue, saturation
+or glass setting any more.
+
+| Token | Use | Dark | Light |
 | --- | --- | --- | --- |
-| Base system | **ReUI** (radix-nova) | Structural components: buttons, dialogs, popovers, selects, scroll areas, data-grid, tree. The shadcn-compatible foundation everything sits on. | `npx shadcn@latest add @reui/<name>` → `components/ui` + `components/reui`. Pro key in `.env.local` unlocks premium blocks (verified live: 643 items visible). |
-| Motion | **BeUI** (beui.dev) | Animated primitives built on `motion/react`: stateful/magnetic buttons, morphing modals, animated tabs, toast stacks, drawers, command palette. 104 components, Tailwind 4 + React 19. | `npx shadcn@latest add @beui/<name>` → adapted into `components/motion`. |
-| Agent-native | **Beautiful UI** (beautifului.dev — the old beautiful-ui-five.vercel.app) | The 19 AI-interface primitives: Thinking, Streaming Text, Tool Chips, Approval Card, Task Rows, Prompt Bar, Code Block, Diff Table, Loading State, Chat, Sidebar Nav, Search, Context Cards, Selection Actions, … Copy-paste only, no registry. | Copy from the site → `components/bui`, then run the adaptation checklist in `components/bui/README.md`. |
+| `sidebar` | the rail and the title bar | oklch 0.17 | oklch 0.972 warm |
+| `background` | content | oklch 0.195 | white |
+| `card` | a bounded region inside content (a card, a transcript action list) | oklch 0.225 | oklch 0.985 |
+| `popover` | every floating layer: menu, popover, dialog, sheet, tooltip (light) | oklch 0.24 | white |
+| `muted` | a hovered or highlighted row, a track, a key cap | oklch 0.275 | oklch 0.955 |
+| `secondary` | the secondary button | oklch 0.29 | oklch 0.94 |
+| `border` | every hairline | white 9% | black 8% |
+| `input` | a field's border, a switch's off track | white 12% | black 12% |
+| `foreground` | text that matters | oklch 0.93 | oklch 0.2 |
+| `muted-foreground` | text that supports it | oklch 0.68 | oklch 0.5 |
+| `primary` / `primary-foreground` | the one primary button per surface, a checked box, a switch on | near-white / near-black | near-black / white |
+| `accent` | links, focus rings, the rare call to action | blue 62% | blue 48% |
+| `warning` | the person is needed | amber | amber |
+| `destructive` | failed, delete | red | red |
+| `success` | lines added, passed | green | green |
+| `info` | the one informational tint | blue | blue |
 
-Conflict rule: **structure from ReUI, movement from BeUI, agent semantics
-from Beautiful UI.** When two libraries offer the same thing, the more
-specific layer wins (a Beautiful UI Prompt Bar beats composing one from ReUI
-inputs). Every copied component is adapted before first use — our tokens, our
-lucide icons, our springs — so nothing on screen betrays which library it
-came from.
+Opacities on `foreground` are the hover vocabulary: `/5` a hovered row,
+`/7` a hovered ghost button, `/12` a pressed one. Status colours never fill
+a surface above `/10`.
 
-## Theme
+### Type scale
 
-Tokens live in `src/renderer/src/assets/main.css` and are the only place
-color, radius, or shadow values may be written. Two themes, switched by `.dark`
-on `<html>`, which `main.tsx` syncs to the OS setting.
-
-- **Light** (the screenshot): white content, warm paper-gray chrome
-  (`--sidebar` oklch 0.972), near-black text, borders at black/8%.
-- **Dark**: neutral grays — content oklch 0.185, sidebar 0.155, cards 0.215,
-  borders at white/9%.
-- `--sidebar` exists because Cursor's chrome always sits one gray step from
-  content. Sidebar darker than content in dark mode, lighter in light mode.
-- `--primary` is near-black (light) / near-white (dark): primary actions are
-  quiet dark pills, like Cursor's "Connect Slack". Color is reserved for
-  meaning: `--info` blue (the one accent, e.g. "Update"), `--success`
-  emerald, `--destructive` red, `--warning` yellow. Status dots and the rare
-  CTA are the only colored things on screen.
-- `--radius` 0.5rem base. Rows and chips use `md`/`lg`; only the prompt bar
-  and floating panels go `xl`.
-- Depth comes from the gray step + hairline border, not shadows. Shadows are
-  for floating layers only (popover, dialog, prompt bar), and stay soft.
-
-## Typography
-
-System font stack (SF Pro on macOS), antialiased. Per Apple's typography
-rules:
-
-- UI text is small and dense: 13px default (`text-[13px]`), 12px for
-  secondary rows, `text-sm` ceiling for body content in the transcript.
-- Tracking is size-specific: large headings get `-0.02em`; body stays at 0.
-  Never one letter-spacing for all sizes.
-- Hierarchy comes from weight + color (foreground vs `muted-foreground`),
-  not size jumps. Cursor's "Thought **for 2s**" pattern — same size, dimmer
-  color — is the house move for secondary halves of a phrase.
-- Code is SF Mono / ui-monospace, one size down from surrounding text.
-
-## Motion language
-
-All springs live in `src/renderer/src/lib/ease.ts` — components never inline
-transition values. The presets already follow Apple's damping/response model
-(critically damped by default; bounce only where momentum exists).
-
-| Preset | Use |
+| Size | Where |
 | --- | --- |
-| `SPRING_PRESS` | press feedback on tappable surfaces |
-| `SPRING_SWAP` | label/icon slots trading places (StatefulButton) |
-| `SPRING_PANEL` | modal/sheet entrances |
-| `SPRING_LAYOUT` | shared-layout glides — selection pills, morphing tabs |
-| `SPRING_MOUSE` | decorative pointer-follow only |
-| `SPRING_GLIDE` | dragged handles/fills, critically damped |
-| `EASE_OUT` / `EASE_DRAWER` | exits and non-gesture CSS transitions |
+| 11px | a key cap, a group label in a menu, a count |
+| 12px | secondary lines in the chrome, descriptions under a title, status words |
+| 13px | the chrome's default: rows, menus, buttons, fields, tabs, settings |
+| 14px | dialog and panel body text, an Item's title |
+| 15px | the transcript's prose, the composer's field (line height 1.6) |
+| 16px | a dialog or sheet title (semibold) |
 
-House rules (from the apple-design skill, enforced in review):
+Weight and colour make the hierarchy, not size jumps: a title is `font-medium`
+foreground, its detail `muted-foreground` at the next size down. Code is the
+mono face one size below its surroundings. Tracking: `-0.01em` from 16px
+up, none below. Numbers in tables and tallies are `tabular-nums`.
 
-1. **Respond on pointer-down**, never on release. No latency on the input
-   path; feedback is continuous during a gesture, not only at the end.
-2. **Every animation is interruptible.** Animate from the current on-screen
-   value; never lock input during a transition. Springs, not fixed-duration
-   keyframes, for anything a user can touch.
-3. **Velocity hands off.** A released drag continues at the finger's
-   velocity; flicks project momentum to pick their target.
-4. **Spatial consistency.** Things exit the way they entered; popovers and
-   menus scale from their trigger (`transform-origin` at the source).
-5. **Critically damped by default.** Overshoot only when the user's gesture
-   carried momentum. A menu that just fades in never bounces.
-6. **Rubber-band at edges** instead of hard stops.
-7. **Animate only `transform` and `opacity`**; streaming text and lists never
-   trigger layout-animating ancestors.
-8. **Reduced motion is a real path**: cross-fades replace slides/springs
-   (`useReducedMotion` in Motion components + the global CSS guard).
-9. **Materialize translucency**: if a surface blurs (`backdrop-filter`),
-   animate blur + scale together on entry; honor
-   `prefers-reduced-transparency` by going frosty/solid.
+### Spacing
 
-## Component source map
+The 4px grid. Inside a row: 8px between glyph and label, 12px horizontal
+padding, rows 28px tall in menus and dense lists, 36px in the rail and
+settings. Between groups in a panel or page: 16px; between sections: 24px.
+A panel's inset is 12px; a dialog's 20px. Never a value off the grid.
 
-Where each app surface gets its component when layouts are built:
+### Radius ladder
 
-| Surface | Source |
-| --- | --- |
-| Sidebar session rows, groups | Beautiful UI Sidebar Nav / Task Rows patterns, ReUI primitives |
-| Prompt bar (composer, model picker) | Beautiful UI Prompt Bar |
-| Streaming answer / markdown | Beautiful UI Streaming Text + our shiki Code Block |
-| Thinking traces | Beautiful UI Thinking |
-| Tool calls/results | Beautiful UI Tool Chips |
-| Approvals | Beautiful UI Approval Card |
-| Subagent status | Beautiful UI Task Rows |
-| Diffs (checkpoints, later) | Beautiful UI Diff Table |
-| Command palette / search | BeUI Command Palette, Beautiful UI Search |
-| Dialogs, dropdowns, selects, tooltips | ReUI (`components/ui`) |
-| Buttons with async state | BeUI StatefulButton (`components/motion`) |
-| Tabs, drawers, toasts | BeUI |
+`sm` 4px a key cap, a checkbox; `md` 6px a row's hover, a small button;
+`lg` 8px a button, a field, a menu at the `sm` size, a card inside content;
+`xl` 12px a popover, a card that stands alone, the composer; `2xl` 16px a
+dialog, a sheet; `full` a switch, an avatar, a pill. Nested radii are
+concentric: the inner radius is the outer minus the padding.
 
-## The host glyph
+### Shadow
 
-With two or more hosts known, every thread and agent row says which host
-it runs on with one glyph (chrome/HostGlyph.tsx): 12px, `text-content/45`,
-a laptop for a Mac and a server for anything else, the host's name on
-hover. It sits on the rail's rows and subagent rows, the fleet panel, the
-spawn row, the Inbox card, search hits and the master board. It is never
-coloured and never carries the name as text: colour on a row belongs to
-status dots, and the name is one hover away. With one host it is not drawn.
+`shadow-overlay` on floating layers only (menu, popover, dialog, sheet).
+Docked chrome and cards have no shadow; their depth is the gray step and
+the hairline.
 
-## Restraint (what we do not do)
+### Motion tokens
 
-No cards within cards. No glows. No decorative badges or chips. No repeating
-the same data twice. No over-explaining — states are shown, not narrated. No
-color without meaning. No shadows for flat, docked UI. Confirmation dialogs
-only for destructive, irreversible actions. Every spacing and timing value is
-a deliberate choice we can defend.
+CSS `--dur-fast` 120ms (press, hover, every exit, every reduced-motion
+fade), `--dur-base` 180ms (menu, popover, tooltip entrances; folds),
+`--dur-slow` 240ms (dialog and panel entrances), `--dur-drawer` 300ms (a
+sheet). Curves: `--ease-out` for entrances and most transitions,
+`--ease-exit` for a closing overlay, `--ease-drawer` for a sheet,
+`--ease-in-out` for a symmetric move. Springs live in `lib/ease.ts`:
+`SPRING_PRESS` (press only), `SPRING_LAYOUT` (the tab indicator, icon
+swaps), `SPRING_PANEL` (a row morphing into a card), `SPRING_GLIDE` (a
+released drag). `SPRING_SWAP` merges into `SPRING_LAYOUT`; `SPRING_MOUSE`
+is gone.
+
+### Layers
+
+`--layer-dialog` 90, `--layer-popover` 95 (menus, popovers, selects:
+above a dialog so a picker inside one is never hidden), `--layer-toast`
+100, `--layer-tooltip` 110.
+
+## Typography and text hierarchy
+
+Hard rule: no bullet points in the UI. Lists of bullets in a panel, a card,
+a settings page, a notice or a transcript row are a smell; the one place a
+bulleted list may stay is a markdown list the model wrote in its answer.
+
+What to do instead: a group of related facts is set apart by text hierarchy
+and space, not by glyphs or separators. A status is a `StatusMark` (glyph,
+word, tone) on its own line or at the end of the title line. A detail line
+sits under its title in `muted-foreground` at the next size down, with 2px
+between them. A secondary line sits 4px below the detail in the same muted
+tone, or at the end of the row in `tabular-nums` when it is a count or a
+time. Groups are 16px apart; a group that needs a name gets a short
+`font-medium` heading in 12px `muted-foreground`, never a label with a
+colon. Two facts on one line are separated by two spaces of margin, never a
+middle dot, a pipe or a bullet.
+
+Other rules: nothing is said twice (a count in the title is not repeated in
+the body); nothing is explained that the layout already shows; labels are
+nouns, buttons are verbs; a chip or badge exists only when it carries a
+state the row cannot otherwise show, and never beside a title.
+
+## Status vocabulary
+
+`StatusMark` (components/ui/status.tsx) is the only status-to-glyph, -word
+and -colour map. Every rail row, tab, strip, board row, card and the phone's
+rows say exactly this:
+
+| State | Glyph | Word | Tone |
+| --- | --- | --- | --- |
+| working | the spinner | Working | foreground |
+| waiting | a dot in a ring | Needs you | amber |
+| paused | two bars | Paused | muted |
+| failed | a ring with a bang | Failed | red |
+| queued | a dashed ring | Queued | muted |
+| stopped | a square | Stopped | muted |
+| watching | a ring, breathing | Watching | muted |
+| done | a check | Done | muted |
+| idle | a faint ring | Idle | muted |
+
+The word may be followed by what the state is about, in the same tone:
+"Working  typecheck", "Needs you  approve Bash", "Watching  3 subagents",
+"Failed  usage cap". A watching thread always says what it watches; a row
+that cannot say is a bug.
+
+## Panels, modals, menus, popovers, sheets
+
+The right side is one panel, one width (320px, resizable), one header, with
+sections that exist only when they have content (Activity, Agents, Changes,
+Notes) and a segmented control that lists only those sections; its default
+section follows the thread's state. It is a docked column, not a drawer or
+a sheet, and it never animates its width (it toggles; the content fades
+over `--dur-fast`). The bottom dock holds the terminal and the dev servers
+pane. Nothing else floats at the side of a thread.
+
+A modal (`Dialog`) is for a form, a CRUD action or a decision that needs the
+whole screen's attention; it never holds a list that could be a panel. A
+confirm (`AlertDialog`) is for destructive, irreversible actions only, with
+one title, one line and two buttons. A sheet is for a long form or picker
+that would not fit a dialog. A menu (`DropdownMenu`, `ContextMenu`) is
+verbs; a popover is content (a picker, a preview, a list of accounts). A
+popover scales from its trigger; a menu scales from its trigger; a context
+menu fades at the pointer; a dialog rises 4px and fades; a sheet slides 16px
+from its edge. Every one of them exits in `--dur-fast`, back a quarter of
+the way it came, and keeps its direction. Under reduced motion they cross-
+fade in `--dur-fast`; nothing appears in one frame.
+
+## Iconography
+
+`@renderer/chrome/icons` (Hugeicons under lucide names), 16px in rows and
+buttons, 14px in dense chrome, 12px as a mark beside text, 1.5px stroke,
+`currentColor`. An icon never carries meaning alone where a word fits; a
+tool row in the transcript keeps its tool icon beside its humanized verb.
+The host glyph (chrome/HostGlyph.tsx) stays as it is: 12px, uncoloured, the
+name on hover, drawn only with two or more hosts.
+
+## Loading and empty states
+
+A surface that waits shows a `Skeleton` in the shape of what is coming when
+the wait is a load, and a `Spinner` with a word ("Loading…", "Starting…")
+when it is an action. A list with nothing in it shows one `Empty`: a title,
+one line, at most one action; never an illustration or a dashed box. A
+thread with no messages shows the composer and nothing else. Text that is
+being produced shimmers (`TextShimmer`); nothing else does.
+
+## Motion values
+
+| Surface | Enter | Exit | Reduced motion |
+| --- | --- | --- | --- |
+| Dialog | fade + scale 0.95→1 + rise 4px, `--dur-slow` `--ease-out` | fade + scale →0.98, `--dur-fast` | fade only |
+| Sheet | fade + slide 16px from its edge, `--dur-drawer` `--ease-drawer` | fade + slide 16px back, `--dur-slow` | fade only |
+| Popover, menu, select | fade + scale 0.95→1 from the trigger, `--dur-base` | fade + scale →0.98, `--dur-fast` | fade only |
+| Context menu | fade at the pointer, `--dur-fast` | fade, `--dur-fast` | same |
+| Tooltip | fade + scale 0.95→1, `--dur-base`; moves between triggers instead of reopening | fade, `--dur-fast` | fade |
+| Toast (sonner) | rise and fade, `--dur-base` | fade, `--dur-fast` | fade |
+| Right panel, rail | no width animation; content fades `--dur-fast` | same | same |
+| Tab indicator | `SPRING_LAYOUT` glide | — | jump |
+| Press | scale 0.985, `--dur-fast` | release | colour only |
+| Fold (collapsible) | height, `--dur-slow` `--ease-out` | height, `--dur-base` | opacity |
+| List rows (rail, tabs, fleet, attachments) | none | none | none |
+| Transcript rows | one 150ms fade on first appearance, never replayed | — | none |
+| Streaming text | the jitter buffer (lib/smoothText); words fade `--dur-base` in `StreamingText` | — | none |
+| Composer send | the bubble glides up, 280ms `--ease-drawer` | — | none |
+
+Rules: animate `transform` and `opacity` (and height only through the
+collapsible); every animation is interruptible and starts from the current
+value; nothing animates on a keystroke; nothing overshoots without a
+gesture; every animated class carries its `motion-reduce:` guard.
+
+## The transcript
+
+The target is Claude desktop's transcript with our tool icons and
+humanized names kept (the plan at .temp-code/plan-h5M-bmLmzYd4.md fixes the
+rows). The person's message is a right-aligned bubble (`card`, `rounded-xl`,
+15px) with no avatar or timestamp. The model's prose is plain 15px text.
+Between paragraphs, the actions since the last paragraph are one muted line
+("Created diag.ts, ran a command  +46 ▾") that opens into one thin-bordered
+`card` listing one row per action ("Created  diag.ts  +46 ▸", "Ran  npx
+convex dev…  ▸", "Read  types.ts ▸"), verb muted, object in foreground,
+counts green and red, a caret per row. A lone command opens a card headed by
+its tool name with the command in mono and its output under it. File changes
+keep their counts on the line and their diff behind the caret. No background-
+task lines: live work is the right panel's Activity section. No timestamps
+in the flow; the closing line says what the turn took and nothing else.
+
+## Restraint
+
+No cards within cards. No glows. No decorative badges or chips. No
+repeating the same data twice. No over-explaining: states are shown, not
+narrated. No colour without meaning. No shadows on docked UI. No left colour
+bar for focus or selection (a focused or selected row is a `muted` fill).
+No bullet points in the UI. Confirmation dialogs only for destructive,
+irreversible actions. Every spacing and timing value is a token we can name.
+
+## Verifying without a dev instance
+
+A renderer change proves itself with a jsdom DOM test beside the component
+(`*.dom.test.tsx`, `NODE_ENV=test npx vitest run <file>`), the renderer
+typecheck (`npm run typecheck:web`) and, for anything visual, a static
+render through `html_preview` (render the component with
+`react-dom/server`'s `renderToStaticMarkup` against `out/renderer`'s CSS,
+or a hand-written HTML sketch of the same tokens). The one electron-vite
+build per branch is for `bun run check:bundle`; the index chunk stays under
+5 MiB + 16 KiB and imports no lazy surface statically.

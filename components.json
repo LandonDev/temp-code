@@ -14,16 +14,15 @@
     "components": "@renderer/components",
     "ui": "@renderer/components/ui",
     "lib": "@renderer/lib",
-    "utils": "@renderer/lib/utils",
+    "utils": "@renderer/lib/cn",
     "hooks": "@renderer/hooks"
   },
   "registries": {
-    "@reui": {
-      "url": "https://reui.io/r/{style}/{name}.json",
+    "@kobra": {
+      "url": "https://kobra.systems/r/{name}.json",
       "headers": {
-        "Authorization": "Bearer ${REUI_LICENSE_KEY}"
+        "Authorization": "Bearer ${KOBRA_TOKEN}"
       }
-    },
-    "@beui": "https://beui.dev/r/{name}.json"
+    }
   }
 }
