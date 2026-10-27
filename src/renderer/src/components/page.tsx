@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import { useId, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import { cn } from "@renderer/lib/cn";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "./ui/item";
 import { Skeleton } from "./ui/skeleton";
@@ -47,7 +47,8 @@ function PageSection({
   action,
   className,
   children,
-}: {
+  ...rest
+}: Omit<ComponentPropsWithoutRef<"section">, "title"> & {
   title?: ReactNode;
   description?: ReactNode;
   action?: ReactNode;
@@ -57,7 +58,7 @@ function PageSection({
   const id = useId();
   const hasHead = Boolean(title || action);
   return (
-    <section data-slot="page-section" aria-labelledby={title ? id : undefined} className={cn("min-w-0", className)}>
+    <section {...rest} data-slot="page-section" aria-labelledby={title ? id : undefined} className={cn("min-w-0", className)}>
       {hasHead ? (
         // A 20px line, so the heading sits closer to its rows than to the
         // section above; a small action button overhangs it evenly.
@@ -92,7 +93,8 @@ function PageRow({
   media,
   className,
   children,
-}: {
+  ...rest
+}: Omit<ComponentPropsWithoutRef<"div">, "title"> & {
   title: ReactNode;
   description?: ReactNode;
   error?: ReactNode;
@@ -102,6 +104,7 @@ function PageRow({
 }) {
   return (
     <Item
+      {...rest}
       data-slot="page-row"
       className={cn(
         "rounded-none border-x-0 border-b-0 border-t-transparent px-0 py-3 [[data-slot=page-row]+&]:border-t-border",

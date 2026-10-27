@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Page, PageRow, PageRowsSkeleton, PageSection } from "./page";
 import { Button } from "./ui/button";
 
@@ -34,6 +34,16 @@ describe("Page", () => {
 });
 
 describe("PageSection", () => {
+  it("passes data attributes and native props to its section", () => {
+    const onClick = vi.fn();
+    render(<PageSection title="Hosts" data-host="local" id="hosts" onClick={onClick}><PageRow title="Host" /></PageSection>);
+    const section = screen.getByRole("region", { name: "Hosts" });
+    expect(section.dataset.host).toBe("local");
+    expect(section.id).toBe("hosts");
+    fireEvent.click(section);
+    expect(onClick).toHaveBeenCalledOnce();
+  });
+
   it("is a region named by its heading, with its action beside it", () => {
     render(
       <PageSection title="Plans" action={<Button variant="ghost" size="sm">Reset</Button>}>
@@ -46,6 +56,16 @@ describe("PageSection", () => {
 });
 
 describe("PageRow", () => {
+  it("passes data attributes and native props to its row", () => {
+    const onClick = vi.fn();
+    render(<PageRow title="Host" data-host="local" id="host" onClick={onClick} />);
+    const row = screen.getByText("Host").closest<HTMLElement>("[data-slot=page-row]")!;
+    expect(row.dataset.host).toBe("local");
+    expect(row.id).toBe("host");
+    fireEvent.click(row);
+    expect(onClick).toHaveBeenCalledOnce();
+  });
+
   it("draws a hairline only between neighbouring rows", () => {
     render(
       <PageSection title="Extras">

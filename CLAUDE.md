@@ -267,6 +267,9 @@ app replaces itself from the feed, and only from the feed.
   status into its state; sonner is the one toast stack). Nothing in
   src/renderer writes a literal colour, duration or curve, and no bullet
   lists appear in the UI.
+- Settings rows and sections use `components/page.tsx` (`PageRow`,
+  `PageSection`), which pass native props and data attributes to their roots;
+  Hosts exports these as `Row` and `Group` without copying their markup.
 - The right side of a thread is one panel (`lib/rightPanel.ts`,
   `surfaces/RightPanel.tsx`; docs/LAYOUT.md "The right side"); Modal and
   ConfirmDialog ride `components/ui/dialog.tsx`.
