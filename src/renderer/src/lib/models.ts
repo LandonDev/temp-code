@@ -12,7 +12,6 @@ export type ModelSetting = {
   kind: "select" | "toggle";
   value: string;
   options: ModelSettingChoice[];
-  description?: string;
 };
 
 export type AgentModel = {

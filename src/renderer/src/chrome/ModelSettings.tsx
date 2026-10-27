@@ -1,19 +1,10 @@
-import { Brain, Check, ChevronDown, Gauge, Maximize2, Zap } from "./icons";
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent as ReactKeyboardEvent,
-} from "react";
-import { Popover } from "./Popover";
-import {
-  getModelSnapshot,
-  resolveModel,
-  subscribeModels,
-  type ModelSetting,
-} from "../lib/models";
+import { useMemo, useSyncExternalStore, type ReactNode } from "react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import { Switch } from "../components/ui/switch";
+import { contextPercent, type ContextUsage } from "../lib/contextUsage";
+import { getModelSnapshot, resolveModel, subscribeModels, type ModelSetting } from "../lib/models";
 import type { HarnessId } from "../lib/session";
+import { speedChoices, speedOf, withSpeed, type Speed } from "../lib/speed";
 
 type Props = {
   harness: HarnessId;
@@ -22,238 +13,121 @@ type Props = {
   environmentId?: string;
   values: Record<string, string>;
   onChange: (settings: Record<string, string>) => void;
-  onClose?: () => void;
+  /** The thread's context reading: the Context row shows its percent. */
+  context?: ContextUsage;
 };
 
-const MENU_WIDTH = 220;
+/** Settings in the order the rows stand; speed tiers fold into one row. */
+const ORDER = ["effort", "context", "variant", "agent", "reasoning", "thinking"];
+const SPEED_IDS = new Set(["fast", "ultrafast"]);
 
-export function ModelSettings({
-  harness,
-  model,
-  environmentId,
-  values,
-  onChange,
-  onClose,
-}: Props) {
-  const catalog = useSyncCatalog();
-  const settings = useMemo(() => {
-    void catalog;
+/** The current model's settings, sorted, from the live catalog. */
+export function useModelSettings(harness: HarnessId, model: string, environmentId?: string): ModelSetting[] {
+  const version = useSyncExternalStore(subscribeModels, getModelSnapshot, getModelSnapshot);
+  return useMemo(() => {
+    void version;
     const list = resolveModel(harness, model, environmentId).settings ?? [];
-    const order = ["variant", "agent", "effort", "reasoning", "thinking", "fast", "ultrafast", "context"];
-    return [...list].sort((a, b) => {
-      const ai = order.indexOf(a.id);
-      const bi = order.indexOf(b.id);
-      return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
-    });
-  }, [catalog, environmentId, harness, model]);
+    const rank = (s: ModelSetting) => (ORDER.indexOf(s.id) < 0 ? 99 : ORDER.indexOf(s.id));
+    return [...list].sort((a, b) => rank(a) - rank(b));
+  }, [version, environmentId, harness, model]);
+}
 
+/** The label of the effort the next turn runs at, for the model button. */
+export function effortLabel(settings: readonly ModelSetting[], values: Record<string, string>): string | null {
+  const effort = settings.find((s) => s.id === "effort");
+  if (!effort) return null;
+  const value = values.effort ?? effort.value;
+  return effort.options.find((o) => o.value === value)?.label ?? null;
+}
+
+/**
+ * The model menu's foot: one 32px row per setting of the current model,
+ * the label on the left and its control on the right. Effort, Context (with
+ * the thread's percent), Speed when the model carries a tier, then any
+ * other setting a harness's catalog sends.
+ */
+export function ModelSettingsRows({ harness, model, environmentId, values, onChange, context }: Props) {
+  const settings = useModelSettings(harness, model, environmentId);
+  const speeds = speedChoices(settings);
   if (settings.length === 0) return null;
-
-  // Fast and Ultrafast are two service tiers of one knob: one on turns the other off.
-  const setValue = (id: string, value: string) => {
-    const other = id === "fast" ? "ultrafast" : id === "ultrafast" ? "fast" : null;
-    const exclusive = other && value === "true" && values[other] === "true" ? { [other]: "false" } : {};
-    onChange({ ...values, ...exclusive, [id]: value });
-  };
-
+  const set = (id: string, value: string) => onChange({ ...values, [id]: value });
+  const rows = settings.filter((s) => !SPEED_IDS.has(s.id));
+  const percent = contextPercent(context);
   return (
-    <>
-      {settings.map((setting) =>
-        setting.kind === "toggle" ? (
-          <ToggleSetting
-            key={setting.id}
-            setting={setting}
-            value={values[setting.id] ?? setting.value}
-            onChange={(value) => setValue(setting.id, value)}
+    <div data-model-settings-rows className="flex flex-col">
+      {rows.map((setting) => (
+        <SettingRow key={setting.id} label={setting.label}>
+          {setting.id === "context" && percent !== null ? (
+            <span className="me-2 text-xs tabular-nums text-muted-foreground">{percent}%</span>
+          ) : null}
+          {setting.kind === "toggle" ? (
+            <Switch
+              aria-label={setting.label}
+              checked={(values[setting.id] ?? setting.value) === "true"}
+              onCheckedChange={(on) => set(setting.id, on ? "true" : "false")}
+            />
+          ) : (
+            <RowSelect
+              label={setting.label}
+              value={values[setting.id] ?? setting.value}
+              options={setting.options}
+              onChange={(value) => set(setting.id, value)}
+            />
+          )}
+        </SettingRow>
+      ))}
+      {speeds.length ? (
+        <SettingRow label="Speed">
+          <RowSelect
+            label="Speed"
+            value={speedOf(values)}
+            options={speeds}
+            onChange={(speed) => onChange(withSpeed(values, speed as Speed, speeds))}
           />
-        ) : (
-          <SelectSetting
-            key={setting.id}
-            setting={setting}
-            value={values[setting.id] ?? setting.value}
-            onChange={(value) => setValue(setting.id, value)}
-            onClose={onClose}
-          />
-        ),
-      )}
-    </>
-  );
-}
-
-function useSyncCatalog(): number {
-  const [version, setVersion] = useState(getModelSnapshot);
-  useEffect(() => subscribeModels(() => setVersion(getModelSnapshot())), []);
-  return version;
-}
-
-function ToggleSetting({
-  setting,
-  value,
-  onChange,
-}: {
-  setting: ModelSetting;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  const on = value === "true";
-  const Icon =
-    setting.id === "fast" || setting.id === "ultrafast"
-      ? Zap
-      : setting.id === "thinking"
-        ? Brain
-        : Gauge;
-  return (
-    <button
-      type="button"
-      title={setting.description ?? setting.label}
-      aria-label={setting.label}
-      aria-pressed={on}
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={() => onChange(on ? "false" : "true")}
-      className={`flex h-6.5 items-center gap-1 rounded-md px-1.5 ${
-        on
-          ? "bg-content/20 text-content"
-          : "bg-content/10 text-content/50 hover:bg-content/15 hover:text-content"
-      }`}
-    >
-      <Icon className="size-3.5 shrink-0" strokeWidth={1.75} />
-      <span className="text-[11px]">{setting.label}</span>
-    </button>
-  );
-}
-
-function SelectSetting({
-  setting,
-  value,
-  onChange,
-  onClose,
-}: {
-  setting: ModelSetting;
-  value: string;
-  onChange: (value: string) => void;
-  onClose?: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(() =>
-    Math.max(
-      0,
-      setting.options.findIndex((option) => option.value === value),
-    ),
-  );
-  const root = useRef<HTMLDivElement>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-  const current =
-    setting.options.find((option) => option.value === value) ??
-    setting.options[0];
-  const Icon = setting.id === "context" ? Maximize2 : Gauge;
-
-  const dismiss = (restore: boolean) => {
-    setOpen(false);
-    if (restore) onCloseRef.current?.();
-  };
-
-  useEffect(() => {
-    if (!open) return;
-    setActive(
-      Math.max(
-        0,
-        setting.options.findIndex((option) => option.value === value),
-      ),
-    );
-  }, [open, setting.options, value]);
-
-  const pick = (next: string) => {
-    onChange(next);
-    dismiss(true);
-  };
-
-  const onMenuKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setActive((i) => Math.min(setting.options.length - 1, i + 1));
-      return;
-    }
-    if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setActive((i) => Math.max(0, i - 1));
-      return;
-    }
-    if (e.key === "Enter") {
-      e.preventDefault();
-      const option = setting.options[active];
-      if (option) pick(option.value);
-    }
-  };
-
-  return (
-    <div ref={root} className="relative">
-      <button
-        type="button"
-        title={setting.description ?? setting.label}
-        aria-label={`${setting.label}: ${current?.label ?? value}`}
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={() => {
-          if (open) {
-            dismiss(true);
-            return;
-          }
-          setOpen(true);
-        }}
-        className={`flex h-6.5 max-w-36 items-center gap-1 rounded-md px-1.5 ${
-          open ? "bg-content/10 text-content" : "bg-content/5 text-content hover:bg-content/10"
-        }`}
-      >
-        <Icon className="size-3.5 shrink-0" strokeWidth={1.75} />
-        <span className="min-w-0 truncate text-[11px]">
-          {current?.label ?? setting.label}
-        </span>
-        <ChevronDown
-          className={`size-3 shrink-0 text-content/50 transition-transform duration-150 ${open ? "rotate-180" : ""}`}
-          strokeWidth={1.75}
-        />
-      </button>
-      {open ? (
-        <Popover
-          anchor={root}
-          side="top"
-          width={MENU_WIDTH}
-          autoFocus
-          onDismiss={(reason) => dismiss(reason === "escape")}
-          role="listbox"
-          aria-label={setting.label}
-          data-model-settings
-          tabIndex={-1}
-          onKeyDown={onMenuKey}
-          className="p-1"
-        >
-          {setting.options.map((option, index) => {
-            const selected = option.value === value;
-            const highlighted = index === active;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                role="option"
-                aria-selected={selected}
-                onMouseDown={(e) => e.preventDefault()}
-                onMouseEnter={() => setActive(index)}
-                onClick={() => pick(option.value)}
-                className={`flex h-7 w-full items-center gap-3 rounded-lg px-2 text-left text-[13px] leading-none ${
-                  highlighted ? "bg-content/10 text-content" : "text-content hover:bg-content/5"
-                }`}
-              >
-                <span className="min-w-0 flex-1 truncate">{option.label}</span>
-                {selected ? (
-                  <Check className="size-3.5 shrink-0" strokeWidth={2.25} />
-                ) : null}
-              </button>
-            );
-          })}
-        </Popover>
+        </SettingRow>
       ) : null}
     </div>
+  );
+}
+
+function SettingRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex h-8 items-center gap-2 px-2">
+      <span className="text-[13px] text-muted-foreground">{label}</span>
+      <span className="ms-auto flex items-center">{children}</span>
+    </div>
+  );
+}
+
+function RowSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: readonly { value: string; label: string }[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <Select
+      items={options}
+      value={value}
+      onValueChange={(next) => {
+        if (next !== null && next !== value) onChange(next as string);
+      }}
+    >
+      <SelectTrigger size="sm" aria-label={label} className="border-transparent hover:bg-foreground/7 data-popup-open:bg-foreground/7 [&>svg]:size-3">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent align="end" className="min-w-28 p-1">
+        {options.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }

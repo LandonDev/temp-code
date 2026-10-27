@@ -61,7 +61,6 @@ import { InboxMiniCard } from './InboxMiniCard'
 import { NoteMiniCard } from './NoteMiniCard'
 import { HandoffMiniCard } from './HandoffMiniCard'
 import { ModelPicker } from './ModelPicker'
-import { ModelSettings } from './ModelSettings'
 import { projectName } from '../lib/paths'
 import { consumeQuoteRequest, type QuoteRequest } from '../lib/quoteDraft'
 import { useTabGroupLogos } from '../hooks/useTabGroupLogos'
@@ -175,6 +174,7 @@ export function Composer({
   branch,
   recents = [],
   hideProjectPicker = false,
+  context,
   quoteRequest,
   initialDraft,
   inboxCard,
@@ -601,7 +601,7 @@ export function Composer({
     if (!focused) return
     if (
       document.querySelector(
-        '[data-model-picker], [data-access-picker], [data-add-menu], [data-model-settings], [data-file-picker], [data-branch-picker]'
+        '[data-model-picker], [data-access-picker], [data-add-menu], [data-file-picker], [data-branch-picker]'
       )
     )
       return
@@ -957,14 +957,7 @@ export function Composer({
                   hotkeys={hotkeys && enabled}
                   onChange={changeModel}
                   onClose={() => inputRef.current?.focus()}
-                />
-                <ModelSettings
-                  harness={harness}
-                  model={model}
-                  environmentId={environmentId}
-                  values={modelSettings}
-                  onChange={changeModelSettings}
-                  onClose={() => inputRef.current?.focus()}
+                  settings={{ values: modelSettings, onChange: changeModelSettings, context }}
                 />
                 {sessionId ? (
                   <GoalControl

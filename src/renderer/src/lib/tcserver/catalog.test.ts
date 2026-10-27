@@ -110,7 +110,7 @@ describe("agentModelsFor", () => {
       models: [{ id: "a", label: "A", reasoning: ["low"], speedTiers: ["priority", "ultrafast"] }],
     };
     const all = [...agentModelsFor(codex), ...agentModelsFor({ ...claude, models: [{ ...claude.models[0], speedTiers: ["fast"] }] })];
-    for (const m of all) for (const s of m.settings ?? []) expect(s.description).toBeUndefined();
+    for (const m of all) for (const s of m.settings ?? []) expect("description" in s).toBe(false);
   });
 });
 

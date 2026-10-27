@@ -2,7 +2,6 @@ import { useState } from "react";
 import type { ThreadRules } from "@server/shared/rules";
 import { AccessPicker } from "../../chrome/AccessPicker";
 import { ModelPicker } from "../../chrome/ModelPicker";
-import { ModelSettings } from "../../chrome/ModelSettings";
 import { ThreadTune, normalizeTune } from "../../chrome/ThreadTune";
 import { Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from "../../components/ui/dialog";
@@ -18,7 +17,7 @@ type BuildType = "implementation" | "orchestration";
 
 /** The pickers still float on the old chrome/Popover, portalled outside the
  *  dialog: a press inside one is not a press outside the dialog. */
-const PICKERS = "[data-model-picker], [data-model-settings], [data-access-picker]";
+const PICKERS = "[data-model-picker], [data-slot=select-content], [data-access-picker]";
 
 /** A close the dialog should refuse: a press or a focus move that landed
  *  in one of the pickers. */
@@ -137,13 +136,7 @@ export function StartBuildDialog({
               setChoice({ harness: h, model: m });
               setSettings(mergeModelSettings(resolveModel(h, m, session.environmentId), settings));
             }}
-          />
-          <ModelSettings
-            harness={choice.harness}
-            model={choice.model}
-            environmentId={session.environmentId}
-            values={settings}
-            onChange={setSettings}
+            settings={{ values: settings, onChange: setSettings }}
           />
           <AccessPicker value={mode} onChange={setMode} />
         </div>

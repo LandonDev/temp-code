@@ -29,7 +29,6 @@ vi.mock("../../chrome/ModelPicker", async () => {
       ),
   };
 });
-vi.mock("../../chrome/ModelSettings", () => ({ ModelSettings: () => <span data-model-settings /> }));
 vi.mock("../../chrome/AccessPicker", () => ({ AccessPicker: () => <span data-access-picker /> }));
 vi.mock("../../chrome/ThreadTune", () => ({
   ThreadTune: () => <div data-thread-tune />,

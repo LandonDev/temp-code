@@ -16,7 +16,6 @@ import { StatusMark, type ThreadState } from "../components/ui/status";
 import { cn } from "../lib/cn";
 import { ChevronDown } from "./icons";
 import { ModelPicker } from "./ModelPicker";
-import { ModelSettings } from "./ModelSettings";
 import { Popover } from "./Popover";
 
 type Props = {
@@ -302,7 +301,7 @@ function ContinueAs({
           tabIndex={-1}
           role="dialog"
           aria-label="Continue as"
-          ignore="[data-model-picker], [data-model-settings]"
+          ignore="[data-model-picker], [data-slot=select-content]"
           onDismiss={() => setOpen(false)}
         >
           <div className="px-3 pt-2.5 pb-3 text-content">
@@ -316,13 +315,7 @@ function ContinueAs({
                   setChoice({ harness, model });
                   setSettings(mergeModelSettings(resolveModel(harness, model, from.environmentId), settings));
                 }}
-              />
-              <ModelSettings
-                harness={choice.harness}
-                model={choice.model}
-                environmentId={from.environmentId}
-                values={settings}
-                onChange={setSettings}
+                settings={{ values: settings, onChange: setSettings }}
               />
             </div>
             <button

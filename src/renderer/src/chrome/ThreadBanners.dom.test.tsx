@@ -15,7 +15,6 @@ const { killBackground } = vi.hoisted(() => ({ killBackground: vi.fn(() => Promi
 vi.mock("../lib/tcserver/commands", () => ({ resume: vi.fn(), interrupt: vi.fn(), continueSession: vi.fn(), reasoningOf: () => "medium", killBackground }));
 vi.mock("../lib/threadNotes", () => ({ useThreadNotes: (_env: string, id: string) => notes.get(id) }));
 vi.mock("./ModelPicker", () => ({ ModelPicker: () => null }));
-vi.mock("./ModelSettings", () => ({ ModelSettings: () => null }));
 vi.mock("./Popover", () => ({ Popover: () => null }));
 
 import { ThreadBanners } from "./ThreadBanners";
