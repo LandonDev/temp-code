@@ -1,9 +1,11 @@
-import type { PointerEvent as ReactPointerEvent } from "react";
+import { useState, type PointerEvent as ReactPointerEvent } from "react";
 import { X } from "../chrome/icons";
 import { Button } from "../components/ui/button";
 import { Kbd } from "../components/ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { cn } from "../lib/cn";
+import { suppressTextSelection } from "../lib/drag";
+import type { LayoutSash } from "../lib/layout";
 import { MOD } from "../lib/platform";
 
 /**
@@ -66,6 +68,146 @@ export function PaneHeader({
           <Kbd size="sm">{`${MOD}W`}</Kbd>
         </TooltipContent>
       </Tooltip>
+    </div>
+  );
+}
+
+/** One arrow press moves a boundary this much of its group; Shift, `BIG_STEP`. */
+export const SASH_STEP = 0.02;
+export const SASH_BIG_STEP = 0.1;
+
+/**
+ * The boundary between two panes: a hairline with a 6px hit area each side.
+ * Dragging previews every frame and commits on release (Escape cancels);
+ * the arrow keys along its axis move it a step at a time; a double-click
+ * makes the group's panes equal.
+ */
+export function Sash({
+  sash,
+  containerRef,
+  onPreview,
+  onCommit,
+  onCancel,
+  onEqualize,
+}: {
+  sash: LayoutSash;
+  containerRef: { current: HTMLDivElement | null };
+  onPreview: (ratio: number) => void;
+  onCommit: (ratio: number) => void;
+  onCancel: () => void;
+  onEqualize: () => void;
+}) {
+  const [dragging, setDragging] = useState(false);
+  const row = sash.dir === "right";
+  const boundary = sash.sizes.slice(0, sash.index + 1).reduce((sum, size) => sum + size, 0);
+  const group = sash.group;
+
+  return (
+    <div
+      role="separator"
+      tabIndex={0}
+      aria-label="Resize panes"
+      aria-orientation={row ? "vertical" : "horizontal"}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(boundary * 100)}
+      className={cn("group/sash absolute z-10 bg-border outline-none", row ? "w-px" : "h-px")}
+      style={
+        row
+          ? {
+              left: `${(group.x + boundary * group.w) * 100}%`,
+              top: `${group.y * 100}%`,
+              height: `${group.h * 100}%`,
+            }
+          : {
+              left: `${group.x * 100}%`,
+              top: `${(group.y + boundary * group.h) * 100}%`,
+              width: `${group.w * 100}%`,
+            }
+      }
+      onKeyDown={(event) => {
+        const back = row ? "ArrowLeft" : "ArrowUp";
+        const forward = row ? "ArrowRight" : "ArrowDown";
+        if (event.key !== back && event.key !== forward) return;
+        event.preventDefault();
+        const step = event.shiftKey ? SASH_BIG_STEP : SASH_STEP;
+        onCommit(boundary + (event.key === forward ? step : -step));
+      }}
+      onDoubleClick={onEqualize}
+    >
+      <div
+        className={cn(
+          "absolute touch-none",
+          row ? "inset-y-0 -left-1.5 -right-1.5 cursor-col-resize" : "inset-x-0 -top-1.5 -bottom-1.5 cursor-row-resize",
+        )}
+        onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          e.preventDefault();
+          e.stopPropagation();
+          const handle = e.currentTarget;
+          const parent = containerRef.current;
+          if (!parent) return;
+          handle.setPointerCapture(e.pointerId);
+          setDragging(true);
+          const rect = parent.getBoundingClientRect();
+          const restoreSelection = suppressTextSelection();
+          const previousCursor = document.body.style.cursor;
+          document.body.style.cursor = row ? "col-resize" : "row-resize";
+          const origin = row ? rect.left + group.x * rect.width : rect.top + group.y * rect.height;
+          const span = row ? group.w * rect.width : group.h * rect.height;
+          let nextBoundary = boundary;
+          let moved = false;
+          let frame: number | null = null;
+
+          const move = (ev: PointerEvent) => {
+            const pos = row ? ev.clientX : ev.clientY;
+            if (span <= 0) return;
+            moved = true;
+            nextBoundary = (pos - origin) / span;
+            if (frame != null) return;
+            frame = requestAnimationFrame(() => {
+              frame = null;
+              onPreview(nextBoundary);
+            });
+          };
+          const finish = (commit: boolean) => {
+            if (frame != null) {
+              cancelAnimationFrame(frame);
+              frame = null;
+            }
+            if (handle.hasPointerCapture(e.pointerId)) handle.releasePointerCapture(e.pointerId);
+            handle.removeEventListener("pointermove", move);
+            handle.removeEventListener("pointerup", up);
+            handle.removeEventListener("pointercancel", cancel);
+            window.removeEventListener("keydown", keydown);
+            restoreSelection();
+            document.body.style.cursor = previousCursor;
+            setDragging(false);
+            if (!moved) return;
+            if (commit) onCommit(nextBoundary);
+            else onCancel();
+          };
+          const up = () => finish(true);
+          const cancel = () => finish(false);
+          const keydown = (event: KeyboardEvent) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            finish(false);
+          };
+          handle.addEventListener("pointermove", move);
+          handle.addEventListener("pointerup", up);
+          handle.addEventListener("pointercancel", cancel);
+          window.addEventListener("keydown", keydown);
+        }}
+      >
+        <div
+          className={cn(
+            "absolute transition-colors duration-(--dur-fast) ease-(--ease-out) group-focus-visible/sash:bg-accent motion-reduce:transition-none",
+            dragging ? "bg-foreground/12" : "group-hover/sash:bg-foreground/7",
+            row ? "inset-y-0 left-1/2 w-1 -translate-x-1/2" : "inset-x-0 top-1/2 h-1 -translate-y-1/2",
+          )}
+        />
+      </div>
     </div>
   );
 }

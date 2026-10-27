@@ -20,7 +20,6 @@ import {
   leaf,
   setSplitRatio,
   type LayoutNode,
-  type LayoutSash,
   type PaneEdge,
   type WorkspaceTab,
 } from "../lib/layout";
@@ -35,6 +34,7 @@ import type { Session } from "../lib/session";
 import { sessionStore, useSession } from "../lib/tcserver/store";
 import { FilePane } from "./FilePane";
 import { holdWhileHidden, paneTreePropsEqual } from "./paneTreeProps";
+import { Sash } from "./paneChrome";
 import { SessionPane } from "./SessionPane";
 import { SessionGone } from "./SessionGone";
 
@@ -338,6 +338,13 @@ function PaneTreeComponent({
             onRatio(tabId, sash.splitId, sash.index, ratio);
           }}
           onCancel={() => setDraft(null)}
+          onEqualize={() => {
+            // App applies each call against the state the last one left,
+            // so walking the boundaries in order lands every pane equal.
+            const n = sash.sizes.length;
+            setDraft(null);
+            for (let i = 0; i < n - 1; i++) onRatio(tabId, sash.splitId, i, (i + 1) / n);
+          }}
         />
       ))}
     </div>
@@ -372,118 +379,3 @@ function PaneDropHint({ edge }: { edge: PaneEdge }) {
   );
 }
 
-function Sash({
-  sash,
-  containerRef,
-  onPreview,
-  onCommit,
-  onCancel,
-}: {
-  sash: LayoutSash;
-  containerRef: { current: HTMLDivElement | null };
-  onPreview: (ratio: number) => void;
-  onCommit: (ratio: number) => void;
-  onCancel: () => void;
-}) {
-  const row = sash.dir === "right";
-  const boundary = sash.sizes
-    .slice(0, sash.index + 1)
-    .reduce((sum, size) => sum + size, 0);
-  const group = sash.group;
-
-  return (
-    <div
-      role="separator"
-      aria-orientation={row ? "vertical" : "horizontal"}
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={Math.round(boundary * 100)}
-      className={
-        row
-          ? "absolute z-10 w-px bg-content/10"
-          : "absolute z-10 h-px bg-content/10"
-      }
-      style={
-        row
-          ? {
-              left: `${(group.x + boundary * group.w) * 100}%`,
-              top: `${group.y * 100}%`,
-              height: `${group.h * 100}%`,
-            }
-          : {
-              left: `${group.x * 100}%`,
-              top: `${(group.y + boundary * group.h) * 100}%`,
-              width: `${group.w * 100}%`,
-            }
-      }
-    >
-      <div
-        className={
-          row
-            ? "absolute inset-y-0 -left-1.5 -right-1.5 cursor-col-resize touch-none"
-            : "absolute inset-x-0 -top-1.5 -bottom-1.5 cursor-row-resize touch-none"
-        }
-        onPointerDown={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          const handle = e.currentTarget;
-          const parent = containerRef.current;
-          if (!parent) return;
-          handle.setPointerCapture(e.pointerId);
-          const rect = parent.getBoundingClientRect();
-          const restoreSelection = suppressTextSelection();
-          const previousCursor = document.body.style.cursor;
-          document.body.style.cursor = row ? "col-resize" : "row-resize";
-          const origin = row
-            ? rect.left + group.x * rect.width
-            : rect.top + group.y * rect.height;
-          const span = row ? group.w * rect.width : group.h * rect.height;
-          let nextBoundary = boundary;
-          let moved = false;
-          let frame: number | null = null;
-
-          const move = (ev: PointerEvent) => {
-            const pos = row ? ev.clientX : ev.clientY;
-            if (span <= 0) return;
-            moved = true;
-            nextBoundary = (pos - origin) / span;
-            if (frame != null) return;
-            frame = requestAnimationFrame(() => {
-              frame = null;
-              onPreview(nextBoundary);
-            });
-          };
-          const finish = (commit: boolean) => {
-            if (frame != null) {
-              cancelAnimationFrame(frame);
-              frame = null;
-            }
-            if (handle.hasPointerCapture(e.pointerId)) {
-              handle.releasePointerCapture(e.pointerId);
-            }
-            handle.removeEventListener("pointermove", move);
-            handle.removeEventListener("pointerup", up);
-            handle.removeEventListener("pointercancel", cancel);
-            window.removeEventListener("keydown", keydown);
-            restoreSelection();
-            document.body.style.cursor = previousCursor;
-            if (!moved) return;
-            if (commit) onCommit(nextBoundary);
-            else onCancel();
-          };
-          const up = () => finish(true);
-          const cancel = () => finish(false);
-          const keydown = (event: KeyboardEvent) => {
-            if (event.key !== "Escape") return;
-            event.preventDefault();
-            finish(false);
-          };
-          handle.addEventListener("pointermove", move);
-          handle.addEventListener("pointerup", up);
-          handle.addEventListener("pointercancel", cancel);
-          window.addEventListener("keydown", keydown);
-        }}
-      />
-    </div>
-  );
-}

@@ -16,7 +16,10 @@ vi.mock("./FilePane", () => ({ FilePane: () => null }));
 vi.mock("../lib/threadResources", () => ({ hostName: (id: string) => (id === "env_box" ? "box" : "this Mac") }));
 vi.mock("../stores/shell", () => ({ shell: { openSettings } }));
 
-import { SessionLeaf } from "./PaneTree";
+import { PaneTree, SessionLeaf } from "./PaneTree";
+import type { LayoutNode, WorkspaceTab } from "../lib/layout";
+import { setTabSplitRatio } from "../lib/workspaceFocus";
+import { initialWorkspaceTabsState, workspace, workspaceTabsStore } from "../stores/workspace";
 
 afterEach(() => {
   cleanup();
@@ -70,5 +73,50 @@ describe("SessionLeaf for a thread no host has", () => {
     state.session = thread("loading");
     render(<SessionLeaf id="t1" {...base} onClose={() => {}} />);
     expect(screen.getByTestId("session-pane")).toBeTruthy();
+  });
+});
+
+function splitTab(sizes: number[]): WorkspaceTab {
+  const layout: LayoutNode = {
+    type: "split",
+    id: "row",
+    dir: "right",
+    children: sizes.map((_, i) => ({ type: "leaf", id: `p${i}` })),
+    sizes,
+  };
+  return { kind: "session", id: "tab", layout, focusedId: "p0", editorPanes: [], terminalPanes: [] } as WorkspaceTab;
+}
+
+const noop = () => {};
+function tree() {
+  const onRatio = (tabId: string, splitId: string, index: number, ratio: number) =>
+    workspace.setTabs((tabs) => setTabSplitRatio(tabs, tabId, splitId, index, ratio));
+  return render(
+    <PaneTree
+      tabId="tab"
+      visible
+      onFocus={noop}
+      onClose={noop}
+      onSelectFile={noop}
+      onCloseFile={noop}
+      onReorderFiles={noop}
+      onFileDirtyChange={noop}
+      onFileErrorCountChange={noop}
+      onRatio={onRatio}
+      onOpenFile={noop}
+      onOpenDiff={noop}
+      onMovePane={noop}
+    />,
+  );
+}
+
+describe("PaneTree's sashes", () => {
+  it("a double-click on a sash makes a three-pane row equal", () => {
+    state.session = thread("loading");
+    workspaceTabsStore.setState(initialWorkspaceTabsState([splitTab([0.6, 0.2, 0.2])]));
+    tree();
+    fireEvent.doubleClick(screen.getAllByRole("separator", { name: "Resize panes" })[1]);
+    const layout = workspaceTabsStore.getState().tabs[0].layout as Extract<LayoutNode, { type: "split" }>;
+    for (const size of layout.sizes) expect(size).toBeCloseTo(1 / 3);
   });
 });
