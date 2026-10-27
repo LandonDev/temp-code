@@ -886,17 +886,28 @@ routed to (aliax-core's `forward`). Two listeners:
   otherwise, portTail.ts); the call's transcript row ends with "Open on the
   Mac :5174", the Resources panel has Open and Stop. The bottom dock's
   Dev servers tab starts one (its starter, chrome/rail/DevServerPanel.tsx):
-  the host detects targets
-  (devTargets.ts: package.json dev scripts at the root and in workspaces
-  with the lockfile's runner, Expo apps, Xcode/XcodeGen apps as Mac-only)
+  the host detects targets, only what a person would pick
+  (devTargets.ts: the root's dev script with the lockfile's runner, then
+  each workspace app by name, one script each; Expo and Xcode/XcodeGen apps
+  Mac-only; each with `what`, a few words from src/shared/devServerWords.ts)
   and runs one in its own process group (devRuns.ts, `devServer.*`,
   `dev-run` pushes, `devServer.runs` for every running run) on this Mac or
-  the box's copy of the project. What runs lives in that ONE tab of the
-  bottom dock (surfaces/DevServersPane.tsx on chrome/DockFrame.tsx; rules
-  `liveServers` in lib/devServers.ts, state lib/devPane.ts): every server
-  live on a connected host now (a running run, or a ledger `port` row still
-  listening that passes the shared rules), with its console, "Open on the
-  Mac :5174" and Stop; a row leaves the moment its host drops it. The dock
+  the box's copy of the project, for the thread on screen
+  (`devServer.start { sessionId }`, `DevRun.sessionId`). One dev server per
+  thread: Run for a thread that has one asks "Replace it, or start another
+  for a different feature?" (`runChoice`; Replace stops the first), and a
+  thread's shell opening a second hears the same from the host's dev-server
+  line (portTail.ts `oneServerLine`; a port the shared rules say is not a
+  dev server, such as the gate's workers, is never announced). What runs
+  lives in that ONE tab of the bottom dock (surfaces/DevServersPane.tsx on
+  chrome/DockFrame.tsx; rules `liveServers` and `serverGroups` in
+  lib/devServers.ts, state lib/devPane.ts): every server live on a
+  connected host now (a running run, or a ledger `port` row still listening
+  that passes the shared rules; a port a run holds is listed once), under
+  the thread it belongs to, in plain words ("Vite dev server") with its
+  address, "Open on the Mac :5174" and Stop (chrome/DevServerRow.tsx, the
+  same row in the thread's Resources); a row leaves the moment its host
+  drops it. The dock
   is bottom only and has one bar (chrome/DockBar.tsx: the project's
   terminals and the Dev servers tab as line tabs, New terminal, Hide); the
   tab shows only when a host can serve the project, a server runs or the

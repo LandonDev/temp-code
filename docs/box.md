@@ -1688,15 +1688,30 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
   the tab shows only when a host can serve the project, a server runs or
   the pane is open (`devTabOf`). Its body is a 288px column, the starter
   (chrome/rail/DevServerPanel.tsx: the target, Run, and with two or more
-  hosts the host to run on) above a list of the servers live on every
-  connected host right now, newest first; the picked one's console beside
-  it (surfaces/DevConsole.tsx). A row is a running Dev Server run (each
-  host's `devServer.runs` at link-up, then its `dev-run` pushes) or a `port`
-  row on a thread's ledger that is not removed and still passes the shared
-  rules, titled by the run's target ("web · dev") or the thread's project and
-  port ("cosmicweb :3007"), with the host glyph when two hosts are paired,
-  "Open on the Mac :5174" under it when it opens here, and Stop. The host
-  dropping a server takes its row out at once: no "Exited" rows, no
+  hosts the host to run on) above the servers live on every connected host
+  right now, grouped under the thread each belongs to (`serverGroups`), the
+  picked one's console beside it (surfaces/DevConsole.tsx). The starter
+  offers only what a person would pick (devTargets.ts): the root's dev
+  script with the lockfile's runner, then each workspace app by name with
+  one script (dev, else start, serve, web, storybook), Expo and Xcode apps
+  on a Mac only, each as "web (Vite dev server)" (src/shared/devServerWords.ts).
+  Run starts it for the thread on screen (`devServer.start { sessionId }`,
+  `DevRun.sessionId`, a subagent's root). One dev server per thread: Run
+  for a thread that already has one asks "Replace it, or start another for
+  a different feature?" (Replace stops the first; a thread's own `port`
+  rows count), and a thread whose shell opens a second hears it from the
+  host's dev-server line (portTail.ts `oneServerLine`). A row is a running
+  Dev Server run (each host's `devServer.runs` at link-up, then its
+  `dev-run` pushes) or a `port` row on a thread's ledger that is not
+  removed and still passes the shared rules (a port a run holds is the
+  run's, listed once), titled in plain words ("Vite dev server", read past
+  the package runner: `commandWords`), with its address, the host glyph
+  when two hosts are paired, "Open on the Mac :5174" when it opens here,
+  and Stop (chrome/DevServerRow.tsx; a thread's Resources dialog shows the
+  same rows from the same list). A port the shared rules say is not a dev
+  server (the gate's or a test run's worker) is never announced to the
+  thread. The host dropping a server takes its row out at once: no
+  "Exited" rows, no
   history. With nothing live the console's place says what Run would start.
   The pane is closed until the person opens it (the thread menu's Dev
   server row toggles it, the bar's Dev servers tab opens it, a Run opens

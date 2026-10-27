@@ -59,6 +59,7 @@ import { MacThreadTokens, MacTools, macToolsHooks, rebootWhenSettled } from './m
 import { OfflineError, ThreadResources } from './threadResources'
 import { SharedScanner, ThreadPorts } from './threadPorts'
 import { PortTail } from './portTail'
+import { notDevServer } from '@shared/devServerRules'
 import { PortSweep } from './portSweep'
 import { readTaskLog, type TaskLogDeps } from './taskLog'
 import { DevRuns } from './devRuns'
@@ -909,7 +910,15 @@ export async function startServer(
     },
     running: (callId) => threadPorts.running(callId),
     sessionOfCall: (callId) => threadPorts.sessionOfCall(callId),
-    whisper: (sessionId, text) => registry.whisper(sessionId, text)
+    whisper: (sessionId, text) => registry.whisper(sessionId, text),
+    others: (row) => [
+      ...resources
+        .listAll({ kind: 'port', environmentId })
+        .filter((r) => r.sessionId === row.sessionId && r.id !== row.id && r.callId !== row.callId && r.removedAt === null && !r.removeRequestedAt)
+        .filter((r) => !notDevServer(Number(r.identifier), null, r.label))
+        .map((r) => Number(r.identifier)),
+      ...devRuns.running().flatMap((run) => (run.sessionId === row.sessionId ? run.ports.map((p) => p.port) : []))
+    ]
   })
   registry.toolResultTail = (sessionId, callId, output) => portTail.tail(sessionId, callId, output)
   threadPorts.onCallEnd((_sessionId, callId) => portTail.callEnded(resources.listAll({ kind: 'port', environmentId }).filter((r) => r.callId === callId).map((r) => r.id)))

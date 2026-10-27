@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { PortForwardInfo } from '@shared/contract-ports'
 import type { ThreadResource } from '@shared/contract-resources'
-import { PortTail } from './portTail'
+import { oneServerLine, PortTail } from './portTail'
 
 const MAC = 'env_mac000000000000000000'
 const row = (id: string, port: number, callId: string): ThreadResource => ({
@@ -20,7 +20,7 @@ const row = (id: string, port: number, callId: string): ThreadResource => ({
   callId
 })
 
-function rig() {
+function rig(others: (row: ThreadResource) => number[] = () => []) {
   const rows = new Map<string, ThreadResource>()
   const forwards = new Map<string, PortForwardInfo[]>()
   const running = new Set<string>()
@@ -35,6 +35,7 @@ function rig() {
     running: (callId) => running.has(callId),
     sessionOfCall: (callId) => (callId === 'sub' ? 'child' : null),
     whisper: (sessionId, text) => void whispers.push([sessionId, text]),
+    others,
     setTimer: (fn) => void timers.push(fn)
   })
   const fire = () => {
@@ -82,5 +83,30 @@ describe('PortTail', () => {
     r.forwards.set('r1', [{ environmentId: MAC, hostName: 'Mac', macPort: null, error: 'no free port from 5173 to 5273' }])
     r.settle([p])
     expect(await r.tail.tail('root', 'c1', '')).toBe('Port 5173 was not forwarded to the Mac: no free port from 5173 to 5273')
+  })
+
+  it('never announces a port that is not a dev server: the gate’s worker, a test run', async () => {
+    const r = rig()
+    const gate = { ...row('g1', 37095, 'c1'), label: '/srv/agents/home/.bun/bin/bun scripts/gate.ts --tier commit --since 4bf3892c' }
+    r.rows.set('g1', gate)
+    r.forwards.set('g1', [{ environmentId: MAC, hostName: 'Mac', macPort: 37095, error: null }])
+    r.settle([gate])
+    expect(await r.tail.tail('root', 'c1', '')).toBeNull()
+    r.tail.bound(['g1'])
+    r.fire()
+    expect(r.whispers).toEqual([])
+  })
+
+  it('tells a thread that already runs a dev server to keep one, unless this one is for a different feature', async () => {
+    const r = rig((p) => (p.id === 'r2' ? [5173] : []))
+    const second = row('r2', 3000, 'c2')
+    r.rows.set('r2', second)
+    r.forwards.set('r2', [{ environmentId: MAC, hostName: 'Mac', macPort: 3000, error: null }])
+    r.settle([second])
+    expect(await r.tail.tail('root', 'c2', '')).toBe(`Forwarded to http://localhost:3000 on the Mac\n${oneServerLine([5173])}`)
+    expect(oneServerLine([5173])).toBe(
+      'This thread already runs a dev server on port 5173. Keep one dev server per thread: if this one replaces it, stop the old one; keep both only if this one is for a different feature, and say which.'
+    )
+    expect(oneServerLine([5173, 3000])).toContain('dev servers on ports 5173, 3000')
   })
 })

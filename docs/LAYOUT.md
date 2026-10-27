@@ -282,14 +282,16 @@ the project, a server runs or the pane is open. Switching is instant.
 - **Terminals** (surfaces/ProjectTerminalDock.tsx): one dock per project,
   the picked terminal below the bar.
 - **Dev servers** (surfaces/DevServersPane.tsx): a 288px column, the
-  starter (one 36px row: the target `Select` and Run, the hosts as a
-  `ToggleGroup` with two or more, an error line) above `Item` rows of the
-  dev servers live on the hosts right now, and the picked one's console
-  filling the rest. A row is its title with the host glyph, "Open on the
-  Mac :5174" under it (and "5173 is taken here" when the port moved), Stop
-  at its end. It lists only what a host still lists; a row the host drops
-  leaves at once, nothing animates in or out. With nothing live the
-  console's place is one `Empty`: "No dev servers running" over the
+  starter (one 36px row: the target `Select`, "web (Vite dev server)", and
+  Run; the hosts as a `ToggleGroup` with two or more; Replace, Start another
+  and Cancel when the thread on screen already runs one; an error line)
+  above the dev servers live on the hosts right now, grouped under their
+  threads (a 12px muted heading per thread), and the picked one's console
+  filling the rest. A row (chrome/DevServerRow.tsx) is what it is in plain
+  words with the host glyph, its address and "Open on the Mac :5174" under
+  it, Stop at its end. It lists only what a host still lists; a row the
+  host drops leaves at once, nothing animates in or out. With nothing live
+  the console's place is one `Empty`: "No dev servers running" over the
   command Run would start. Closed until opened (the thread menu's Dev
   server row, the bar's tab, a Run); open and its height persist, and
   it takes the terminals' height. In this state a terminal tab switches
