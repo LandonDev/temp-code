@@ -1113,7 +1113,7 @@ describe("a row's subagents", () => {
     ]);
     const waiting = rowOf(/Home screen/).querySelector("[data-agent='a11'] [data-agent-what]")!;
     expect(waiting.className).toContain("text-warning");
-    expect(rowOf(/Home screen/).querySelector("[data-agent='a111'] [data-agent-what]")!.className).toContain("text-danger");
+    expect(rowOf(/Home screen/).querySelector("[data-agent='a111'] [data-agent-what]")!.className).toContain("text-destructive");
     expect(tailOf(/Home screen/)).toBe("1 done");
     expect(rowOf(/A question/).querySelector("[data-agents]")).toBeNull();
     // Agents are not rows of the board.
