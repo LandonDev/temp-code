@@ -188,7 +188,7 @@ export function RailHeading({
   const Icon = action?.icon;
   return (
     <div className="flex h-7 shrink-0 items-center gap-1 pr-1 pl-3">
-      <span id={id} className="min-w-0 flex-1 truncate text-[12px] font-medium text-muted-foreground">
+      <span id={id} data-rail-heading className="min-w-0 flex-1 truncate text-[12px] font-medium text-muted-foreground">
         {children}
       </span>
       {action && Icon ? (

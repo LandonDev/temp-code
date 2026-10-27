@@ -149,16 +149,15 @@ describe("the rail", () => {
         recents={[{ path: BOX_PATH, openedAt: 3 }, { path: MAC_PATH, openedAt: 2 }, { path: ONLY_BOX, openedAt: 1 }]}
         onSelectProject={() => {}}
         onOpenProject={() => {}}
+        onOpenChats={() => {}}
       />,
     );
     await probe.act(flush);
     return probe.container;
   }
-  const rowNames = (root: HTMLElement) =>
-    [...root.querySelectorAll('nav[aria-label="Workspaces"] [title="Workspace options"]')].map(
-      (b) => b.parentElement?.querySelector("button")?.textContent ?? "",
-    );
-  const headers = (root: HTMLElement) => [...root.querySelectorAll("nav span.uppercase")].map((s) => s.textContent?.trim());
+  const workspaceRows = (root: HTMLElement) => [...root.querySelectorAll('nav[aria-label="Workspaces"] [data-rail-path]')];
+  const rowNames = (root: HTMLElement) => workspaceRows(root).map((row) => row.querySelector("button")?.textContent ?? "");
+  const headers = (root: HTMLElement) => [...root.querySelectorAll("nav [data-rail-heading]")].map((s) => s.textContent?.trim());
 
   it("shows one row for the linked workspace, led by this machine's copy, under one Workspaces header", async () => {
     const root = await mountRail([LOCAL, BOX]);
@@ -166,9 +165,17 @@ describe("the rail", () => {
     expect(headers(root)).toContain("Workspaces");
     expect(headers(root)).not.toContain("tempcode-box");
     expect(headers(root)).not.toContain("This Mac");
-    // The lead row's tooltip names this machine's folder.
-    const lead = root.querySelector('nav[aria-label="Workspaces"] button[aria-label="temp-code"]');
-    expect(lead?.getAttribute("title")).toContain(MAC_PATH);
+    // The lead row is this machine's folder.
+    expect(workspaceRows(root)[0].getAttribute("data-rail-path")).toBe(MAC_PATH);
+  });
+
+  it("opens with Chats as the list's first row, with no Accounts heading", async () => {
+    const root = await mountRail([LOCAL, BOX]);
+    const list = root.querySelector('nav[aria-label="Workspaces"] .overflow-y-auto')!;
+    expect(list.querySelector("button")?.textContent).toBe("Chats");
+    expect(headers(root)).not.toContain("Accounts");
+    // The rows themselves carry no title= (the status chip is A2's mark).
+    expect(list.querySelector("[data-rail-row] > button[title]")).toBeNull();
   });
 
   it("counts both copies' threads on the row's status", async () => {

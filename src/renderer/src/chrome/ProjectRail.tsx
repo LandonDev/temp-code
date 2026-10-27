@@ -11,7 +11,6 @@ import {
   ListChecks,
   MessageSquare,
   MoreHorizontal,
-  Pause,
   Pin,
   PinOff,
   Plus,
@@ -20,11 +19,10 @@ import {
   Settings,
   Trash2,
 } from "./icons";
-import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useDragResize } from "../hooks/useDragResize";
 import { useInboxUnseen } from "../hooks/useInboxUnseen";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
-import { useProjectDiffStats } from "../hooks/useProjectDiffStats";
 import { useSortable } from "../hooks/useSortable";
 import { useTabGroupLogos } from "../hooks/useTabGroupLogos";
 import {
@@ -34,7 +32,7 @@ import {
   PROJECT_RAIL_WIDTH_MIN,
   saveProjectRailWidth,
 } from "../lib/appearance";
-import { basename, revealPath, type GitDiffStats } from "../lib/fs";
+import { basename, revealPath } from "../lib/fs";
 import { IS_MAC, MOD } from "../lib/platform";
 import { projectName } from "../lib/paths";
 import {
@@ -65,7 +63,6 @@ import {
   saveTabGroupLabel,
   saveTabGroupMascot,
 } from "../lib/tabGroups";
-import type { CardThread } from "../lib/projectCardModel";
 import { useWorkspaceRailStatuses, type WorkspaceRailStatus } from "../hooks/useProjectSignals";
 import { threadsToMarkRead } from "../lib/markRead";
 import { batchActionOfMenuId, batchCounts, batchMenuExtraItems, type BatchCounts } from "../lib/threadBatchMenu";
@@ -75,7 +72,6 @@ import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
 import { markAllSeen, markSessionsSeen } from "../lib/sessionSeen";
 import { useSessionMetas } from "../lib/tcserver/store";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
-import { ProjectLogoIcon } from "./ProjectLogoIcon";
 import { WorkspaceThreadsPopover } from "./WorkspaceThreadsPopover";
 import { subscribeProjectRailActions } from "../lib/projectRailActions";
 import {
@@ -84,17 +80,15 @@ import {
   workspaceByPath,
   workspaceLabelKey,
 } from "../lib/tcserver/workspaces";
-import { ProjectMascot } from "./ProjectMascot";
-import { RailRow } from "./RailRow";
+import { RailHeading, RailRow } from "./RailRow";
+import { RailStatusChip, WorkspaceGlyph, WorkspaceWorkingLine } from "./WorkspaceRowMarks";
 import { RemoveProjectDialog } from "./RemoveProjectDialog";
 import { DevModeSlot, TabVisitNav } from "./TitleBar";
 import { UpdateRow, useUpdateRowState } from "./UpdateRow";
 import { UsageMeter } from "./UsageMeter";
 import { shell, useShell, type AliaxPageId } from "../stores/shell";
 import { SettingsNav } from "./SettingsRail";
-import { Shimmer } from "../surfaces/Shimmer";
 import { TabGroupMenu, type TabGroupMenuExtraItem } from "./TabGroupMenu";
-import { TerminalSpinner } from "./TerminalSpinner";
 import { aliaxChunk, inboxChunk, searchChunk, settingsChunk } from "../surfaces/chunks";
 import { Kbd } from "../components/ui/kbd";
 import { StatusMark } from "../components/ui/status";
@@ -500,12 +494,11 @@ export function ProjectRail({
                 activeSessionId={activeSessionId ?? null}
                 onSelectAgent={onSelectAgent}
                 sortable={pinnedSortable}
-                pinned
                 searchActive={overlayOpen}
                 onSelect={onSelectProject}
-                onTogglePin={onTogglePin}
                 onContextMenu={onProjectContextMenu}
                 onOpenMenu={openProjectMenu}
+                menuPath={projectMenu?.path ?? null}
                 groupLabels={groupLabels}
                 groupColors={groupColors}
                 groupCustomColors={groupCustomColors}
@@ -527,12 +520,11 @@ export function ProjectRail({
               activeSessionId={activeSessionId ?? null}
               onSelectAgent={onSelectAgent}
               sortable={projectSortable}
-              pinned={false}
               searchActive={overlayOpen}
               onSelect={onSelectProject}
-              onTogglePin={onTogglePin}
               onContextMenu={onProjectContextMenu}
               onOpenMenu={openProjectMenu}
+              menuPath={projectMenu?.path ?? null}
               groupLabels={groupLabels}
               groupColors={groupColors}
               groupCustomColors={groupCustomColors}
@@ -635,7 +627,6 @@ type SortableHandle = ReturnType<typeof useSortable>;
 
 function ProjectSection({
   label,
-  note,
   items,
   statusKey,
   indexOf,
@@ -648,12 +639,11 @@ function ProjectSection({
   activeSessionId,
   onSelectAgent,
   sortable,
-  pinned,
   searchActive,
   onSelect,
-  onTogglePin,
   onContextMenu,
   onOpenMenu,
+  menuPath,
   groupLabels,
   groupColors,
   groupCustomColors,
@@ -661,8 +651,6 @@ function ProjectSection({
   groupMascots,
 }: {
   label: string;
-  /** One line under the header, when the host has something to say once (BootResumeNote). */
-  note?: ReactNode;
   items: RailItem[];
   /** The status map's key for a row's folder (its link's leader path). */
   statusKey: (path: string) => string;
@@ -677,12 +665,12 @@ function ProjectSection({
   activeSessionId: string | null;
   onSelectAgent?: (sessionId: string) => void;
   sortable: SortableHandle;
-  pinned: boolean;
   searchActive: boolean;
   onSelect: (path: string) => void;
-  onTogglePin: (path: string) => void;
   onContextMenu: (path: string, event: MouseEvent<HTMLElement>) => void;
   onOpenMenu: (path: string, x: number, y: number) => void;
+  /** The folder whose menu is open: its ⋯ stays shown. */
+  menuPath: string | null;
   groupLabels: Record<string, string>;
   groupColors: Record<string, number>;
   groupCustomColors: Record<string, string>;
@@ -690,30 +678,16 @@ function ProjectSection({
   groupMascots: Record<string, string>;
 }) {
   return (
-    <div className="shrink-0">
-      <div className="flex h-9 items-center gap-1 px-2 pr-1.5">
-        <span className="min-w-0 flex-1 truncate px-2 text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">
-          {label}
-        </span>
-        {onAdd ? (
-          <button
-            type="button"
-            title="Add workspace"
-            aria-label="Add workspace"
-            onClick={onAdd}
-            className="pressable grid size-6 shrink-0 place-items-center rounded-md text-content/50 hover:bg-content/10 hover:text-content"
-          >
-            <Plus className="size-3.5" strokeWidth={1.75} />
-          </button>
-        ) : null}
-      </div>
-      {note}
+    <div className="shrink-0 px-2 pt-4">
+      <RailHeading action={onAdd ? { label: "Add workspace", icon: Plus, onClick: onAdd } : undefined}>
+        {label}
+      </RailHeading>
       {items.length === 0 && emptyLabel ? (
-        <p className="px-3 py-2 text-[12px] text-content/50">{emptyLabel}</p>
+        <p className="px-3 py-2 text-[12px] text-muted-foreground">{emptyLabel}</p>
       ) : null}
-      <div className="flex flex-col gap-px p-2 pt-0">
+      <div className="flex flex-col">
         {items.map((item, index) => (
-          <ProjectCard
+          <WorkspaceRow
             key={item.path}
             item={item}
             selected={!searchActive && item.paths.some((p) => sameProjectPath(p, cwd))}
@@ -722,13 +696,12 @@ function ProjectSection({
             railStatus={railStatuses.get(statusKey(item.path))}
             activeSessionId={activeSessionId}
             onSelectAgent={onSelectAgent}
-            pinned={pinned}
             sortable={sortable}
             index={indexOf ? indexOf(item) : index}
             onSelect={onSelect}
-            onTogglePin={onTogglePin}
             onContextMenu={onContextMenu}
             onOpenMenu={onOpenMenu}
+            menuOpen={menuPath !== null && item.paths.some((p) => sameProjectPath(p, menuPath))}
             groupLabels={groupLabels}
             groupColors={groupColors}
             groupCustomColors={groupCustomColors}
@@ -741,101 +714,12 @@ function ProjectSection({
   );
 }
 
-const nameClassName = "min-w-0 flex-1 truncate text-[12px] leading-none";
-
-/** The chip's word for each dominant workspace state, plural-aware. */
-const RAIL_CHIP_LABEL: Record<NonNullable<WorkspaceRailStatus["kind"]>, string> = {
-  paused: "Paused",
-  needsYou: "Needs you",
-  busy: "Working",
-  unread: "Done",
-};
-
-function railChipTitle(status: WorkspaceRailStatus): string {
-  if (!status.kind) return "";
-  const word = status.count === 1 ? "thread" : "threads";
-  return `${RAIL_CHIP_LABEL[status.kind]} — ${status.count} ${word}`;
-}
-
-/** One small always-visible indicator per workspace row, replacing the
- *  plain shimmer/tint as the only signal something is happening: click
- *  opens the compact per-thread breakdown. */
-function RailStatusChip({
-  status,
-  open,
-  onToggle,
-  chipRef,
-}: {
-  status: WorkspaceRailStatus;
-  open: boolean;
-  onToggle: () => void;
-  chipRef: RefObject<HTMLButtonElement | null>;
-}) {
-  if (!status.kind) return null;
-  return (
-    <button
-      ref={chipRef}
-      type="button"
-      data-no-drag
-      title={railChipTitle(status)}
-      aria-label={railChipTitle(status)}
-      aria-haspopup="menu"
-      aria-expanded={open}
-      onPointerDown={(event) => event.stopPropagation()}
-      onClick={(event) => {
-        event.stopPropagation();
-        onToggle();
-      }}
-      className={`pressable grid size-4 shrink-0 place-items-center rounded ${
-        open ? "bg-content/10" : "hover:bg-content/10"
-      }`}
-    >
-      {status.kind === "paused" ? (
-        <Pause className="size-2.5 fill-current text-warning" strokeWidth={1.75} />
-      ) : status.kind === "needsYou" ? (
-        <span className="size-1.5 rounded-full bg-warning" />
-      ) : status.kind === "busy" ? (
-        <span className="size-1.5 animate-pulse rounded-full bg-accent" />
-      ) : (
-        <span className="size-1.5 rounded-full bg-info" />
-      )}
-    </button>
-  );
-}
-
-/** What a busy workspace is doing, indented under its row: no chip, no
- *  popover to open — the running thread's own name says it. Several
- *  threads working name the loudest one and count the rest. */
-function WorkspaceWorkingLine({
-  running,
-  onSelect,
-}: {
-  running: CardThread[];
-  onSelect?: (sessionId: string) => void;
-}) {
-  const [first, ...rest] = running;
-  if (!first) return null;
-  return (
-    <button
-      type="button"
-      data-no-drag
-      title={running.map((t) => t.title || "Untitled").join("\n")}
-      onClick={(event) => {
-        event.stopPropagation();
-        onSelect?.(first.id);
-      }}
-      className="pressable flex h-6 w-full items-center gap-1.5 rounded-md py-0.5 pr-2 pl-8 text-left text-[11px] leading-tight text-content/50 hover:bg-content/5 hover:text-content"
-    >
-      <TerminalSpinner />
-      <span className="min-w-0 flex-1 truncate">{first.title || "Untitled"}</span>
-      {rest.length > 0 ? (
-        <span className="shrink-0 tabular-nums text-content/40">+{rest.length}</span>
-      ) : null}
-    </button>
-  );
-}
-
-function ProjectCard({
+/**
+ * One workspace: its glyph, its alias-resolved name, the status chip as
+ * its trailing mark and ⋯ (the same menu as a right-click) as its hover
+ * action; drag reorders it. A busy one has its working line under it.
+ */
+function WorkspaceRow({
   item,
   selected,
   busy,
@@ -843,13 +727,12 @@ function ProjectCard({
   railStatus,
   activeSessionId,
   onSelectAgent,
-  pinned,
   sortable,
   index,
   onSelect,
-  onTogglePin,
   onContextMenu,
   onOpenMenu,
+  menuOpen,
   groupLabels,
   groupColors,
   groupCustomColors,
@@ -863,189 +746,110 @@ function ProjectCard({
   railStatus: WorkspaceRailStatus | undefined;
   activeSessionId: string | null;
   onSelectAgent?: (sessionId: string) => void;
-  pinned: boolean;
   sortable: SortableHandle;
   index: number;
   onSelect: (path: string) => void;
-  onTogglePin: (path: string) => void;
   onContextMenu: (path: string, event: MouseEvent<HTMLElement>) => void;
   onOpenMenu: (path: string, x: number, y: number) => void;
+  menuOpen: boolean;
   groupLabels: Record<string, string>;
   groupColors: Record<string, number>;
   groupCustomColors: Record<string, string>;
   groupLogos: ReturnType<typeof useTabGroupLogos>;
   groupMascots: Record<string, string>;
 }) {
-  const fallbackName = basename(item.path);
   const workspaces = useWorkspaces();
   const workspaceId = workspaceByPath(workspaces, item.path)?.id ?? null;
   const offline = useHostsOffline(item.hosts);
   // Labels, colours and mascots key by the link's leader (lib/linkedRail.ts).
   const projectKey = workspaceLabelKey(workspaces, item.path, projectName(item.path));
-  const name = resolveTabGroupLabel(projectKey, groupLabels, fallbackName);
+  const name = resolveTabGroupLabel(projectKey, groupLabels, basename(item.path));
   const logoPath = resolveTabGroupLogo(projectKey, groupLogos);
   // No logo set: the server's repo icon or host mark stands in, unless the
   // user picked a mascot on purpose.
   const serverIcon = useWorkspaceIcon(workspaceId);
-  const showLogo =
-    !!logoPath ||
-    (!groupMascots[projectKey] && !!(serverIcon?.dataUrl || serverIcon?.host));
-  const color = resolveTabGroupColor(
-    projectKey,
-    groupColors,
-    groupCustomColors,
-    projectKey,
-  );
+  const showLogo = !!logoPath || (!groupMascots[projectKey] && !!(serverIcon?.dataUrl || serverIcon?.host));
+  const color = resolveTabGroupColor(projectKey, groupColors, groupCustomColors, projectKey);
   const dragging = sortable.draggingId === item.path;
-  const showStart =
-    sortable.draggingId &&
-    sortable.toIndex === index &&
-    sortable.fromIndex !== null &&
-    sortable.toIndex < sortable.fromIndex;
-  const showEnd =
-    sortable.draggingId &&
-    sortable.toIndex === index &&
-    sortable.fromIndex !== null &&
-    sortable.toIndex > sortable.fromIndex;
-  // Only the active card asks git; the rest show nothing rather than fan out.
-  const diffEnabled = selected && Boolean(item.path) && item.path !== "~";
-  const stats = useProjectDiffStats(item.path, diffEnabled);
-  const files = stats?.files ?? 0;
-  const additions = stats?.additions ?? 0;
-  const deletions = stats?.deletions ?? 0;
-  const hasChanges = files > 0 || additions > 0 || deletions > 0;
-  const cardTitle = projectCardTitle(item.path, name, stats, busy, needsYou);
-  const cardAriaLabel = projectCardAriaLabel(name, stats, busy, needsYou);
+  const dropping = sortable.draggingId && sortable.toIndex === index && sortable.fromIndex !== null;
+  const showStart = dropping && sortable.toIndex! < sortable.fromIndex!;
+  const showEnd = dropping && sortable.toIndex! > sortable.fromIndex!;
   const [threadsOpen, setThreadsOpen] = useState(false);
   const chipRef = useRef<HTMLButtonElement>(null);
 
   return (
     <>
-    <div
-      ref={(el) => sortable.setItemRef(item.path, el)}
-      data-host-offline={offline || undefined}
-      className={`group relative flex h-7 touch-none items-stretch rounded-md px-2 ${
-        selected
-          ? "bg-content/10 text-content"
-          : "text-content/50 hover:bg-content/5 hover:text-content"
-      } ${dragging ? "opacity-40" : offline ? "opacity-50" : ""} cursor-default`}
-      onPointerDown={(event) => {
-        if (event.button !== 0) return;
-        if ((event.target as HTMLElement | null)?.closest("[data-no-drag]")) {
-          return;
+      <RailRow
+        rowRef={(el) => sortable.setItemRef(item.path, el)}
+        data-host-offline={offline || undefined}
+        data-rail-path={item.path}
+        className={`touch-none ${dragging ? "opacity-40" : offline ? "opacity-50" : ""}`}
+        glyph={
+          <WorkspaceGlyph
+            showLogo={showLogo}
+            logoPath={logoPath}
+            workspaceId={workspaceId}
+            projectKey={projectKey}
+            color={color}
+            mascotName={resolveTabGroupMascot(projectKey, groupMascots)}
+            busy={busy}
+            needsYou={needsYou}
+          />
         }
-        sortable.onItemPointerDown(item.path, event);
-      }}
-      onClick={(event) => {
-        if ((event.target as HTMLElement | null)?.closest("[data-no-drag]")) {
-          return;
+        label={name}
+        ariaLabel={workspaceRowAriaLabel(name, busy, needsYou)}
+        selected={selected}
+        trailingInteractive
+        trailing={
+          railStatus?.kind && railStatus.kind !== "busy" ? (
+            <RailStatusChip
+              status={railStatus}
+              open={threadsOpen}
+              onToggle={() => setThreadsOpen((v) => !v)}
+              chipRef={chipRef}
+            />
+          ) : null
         }
-        if (sortable.consumeClick()) return;
-        onSelect(item.path);
-      }}
-      onContextMenu={(event) => onContextMenu(item.path, event)}
-    >
-      {showStart ? (
-        <div className="pointer-events-none absolute inset-x-2 top-0 z-20 h-0.5 rounded-full bg-accent" />
-      ) : null}
-      {showEnd ? (
-        <div className="pointer-events-none absolute inset-x-2 bottom-0 z-20 h-0.5 rounded-full bg-accent" />
-      ) : null}
-      <button
-        type="button"
-        title={cardTitle}
-        aria-label={cardAriaLabel}
-        aria-current={selected ? "true" : undefined}
-        className="flex min-w-0 flex-1 cursor-default items-center gap-2 pr-1 text-left"
+        hoverAction={{
+          label: "Workspace options",
+          icon: MoreHorizontal,
+          menu: true,
+          expanded: menuOpen,
+          onClick: (event) => onOpenMenu(item.path, event.clientX, event.clientY),
+        }}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          if ((event.target as HTMLElement | null)?.closest("[data-no-drag]")) return;
+          sortable.onItemPointerDown(item.path, event);
+        }}
+        onClick={() => {
+          if (sortable.consumeClick()) return;
+          onSelect(item.path);
+        }}
+        onContextMenu={(event) => onContextMenu(item.path, event)}
       >
-        <div className="grid size-4 shrink-0 place-items-center transition-opacity group-hover:opacity-0">
-          {showLogo && !busy && !needsYou ? (
-            <ProjectLogoIcon
-              path={logoPath}
-              workspaceId={workspaceId}
-              className="size-4 rounded-md"
-              imageClassName="size-4"
-            />
-          ) : (
-            <ProjectMascot
-              project={projectKey}
-              color={needsYou ? "var(--color-warning)" : color}
-              name={resolveTabGroupMascot(projectKey, groupMascots)}
-              className="size-3"
-              active={busy}
-            />
-          )}
-        </div>
-        {busy ? (
-          <Shimmer as="span" duration={1.4} className={nameClassName}>
-            {name}
-          </Shimmer>
-        ) : (
-          <span className={nameClassName}>{name}</span>
-        )}
-        {hasChanges ? (
-          <span className="shrink-0">
-            <ProjectDiffStat additions={additions} deletions={deletions} />
-          </span>
+        {showStart ? (
+          <div className="pointer-events-none absolute inset-x-2 top-0 z-20 h-0.5 rounded-full bg-accent" />
         ) : null}
-      </button>
-      {railStatus?.kind && railStatus.kind !== "busy" ? (
-        <RailStatusChip
-          status={railStatus}
-          open={threadsOpen}
-          onToggle={() => setThreadsOpen((v) => !v)}
-          chipRef={chipRef}
+        {showEnd ? (
+          <div className="pointer-events-none absolute inset-x-2 bottom-0 z-20 h-0.5 rounded-full bg-accent" />
+        ) : null}
+      </RailRow>
+      {railStatus?.kind === "busy" && railStatus.running?.length ? (
+        <WorkspaceWorkingLine running={railStatus.running} onSelect={onSelectAgent} />
+      ) : null}
+      {threadsOpen && workspaceId ? (
+        <WorkspaceThreadsPopover
+          anchor={chipRef}
+          workspaceIds={item.workspaceIds.length > 0 ? item.workspaceIds : [workspaceId]}
+          activeSessionId={activeSessionId}
+          onDismiss={() => setThreadsOpen(false)}
+          onSelectThread={(sessionId) => {
+            setThreadsOpen(false);
+            onSelectAgent?.(sessionId);
+          }}
         />
       ) : null}
-      <button
-        type="button"
-        data-no-drag
-        title="Workspace options"
-        aria-label="Workspace options"
-        aria-haspopup="menu"
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={(event) => {
-          event.stopPropagation();
-          onOpenMenu(item.path, event.clientX, event.clientY);
-        }}
-        className="pressable pointer-events-none absolute right-0.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-md text-content/50 opacity-0 transition-opacity hover:bg-content/10 hover:text-content group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
-      >
-        <MoreHorizontal className="size-3.5" strokeWidth={1.75} />
-      </button>
-      <button
-        type="button"
-        data-no-drag
-        title={pinned ? "Unpin workspace" : "Pin workspace"}
-        aria-label={pinned ? "Unpin workspace" : "Pin workspace"}
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={(event) => {
-          event.stopPropagation();
-          onTogglePin(item.path);
-        }}
-        className="absolute left-2 top-1/2 grid size-4 -translate-y-1/2 place-items-center rounded-md text-content/50 opacity-0 pointer-events-none transition-opacity hover:text-content group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
-      >
-        {pinned ? (
-          <PinOff className="size-3.5" strokeWidth={1.75} />
-        ) : (
-          <Pin className="size-3.5" strokeWidth={1.75} />
-        )}
-      </button>
-    </div>
-    {railStatus?.kind === "busy" && railStatus.running?.length ? (
-      <WorkspaceWorkingLine running={railStatus.running} onSelect={onSelectAgent} />
-    ) : null}
-    {threadsOpen && workspaceId ? (
-      <WorkspaceThreadsPopover
-        anchor={chipRef}
-        workspaceIds={item.workspaceIds.length > 0 ? item.workspaceIds : [workspaceId]}
-        activeSessionId={activeSessionId}
-        onDismiss={() => setThreadsOpen(false)}
-        onSelectThread={(sessionId) => {
-          setThreadsOpen(false);
-          onSelectAgent?.(sessionId);
-        }}
-      />
-    ) : null}
     </>
   );
 }
@@ -1057,37 +861,6 @@ function pathIn(path: string, paths: Set<string>): boolean {
   return false;
 }
 
-function ProjectDiffStat({
-  additions,
-  deletions,
-}: {
-  additions: number;
-  deletions: number;
-}) {
-  if (additions <= 0 && deletions <= 0) return null;
-
-  const label = [
-    additions > 0 ? `+${additions}` : "",
-    deletions > 0 ? `-${deletions}` : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  return (
-    <span
-      title={`${label} uncommitted`}
-      className="flex shrink-0 items-center gap-1 font-mono text-[11px] tabular-nums"
-    >
-      {additions > 0 ? (
-        <span className="text-success">+{additions}</span>
-      ) : null}
-      {deletions > 0 ? (
-        <span className="text-danger">-{deletions}</span>
-      ) : null}
-    </span>
-  );
-}
-
 /** The rail's Chats entry: loose chats signal like a workspace card does. */
 export function chatsAriaLabel(busy: boolean, needsYou: boolean): string {
   if (needsYou) return "Chats, needs you";
@@ -1095,52 +868,12 @@ export function chatsAriaLabel(busy: boolean, needsYou: boolean): string {
   return "Chats";
 }
 
-export function projectCardTitle(
-  path: string,
-  name: string,
-  stats: GitDiffStats | null,
-  busy: boolean,
-  needsYou = false,
-): string {
-  const parts = [name, path];
-  // A blocked thread outranks a working one, and only one of the two is said.
-  if (needsYou) parts.push("Needs you");
-  else if (busy) parts.push("Working");
-  const files = stats?.files ?? 0;
-  const additions = stats?.additions ?? 0;
-  const deletions = stats?.deletions ?? 0;
-  if (files > 0 || additions > 0 || deletions > 0) {
-    parts.push(
-      [
-        files > 0 ? `${files} ${files === 1 ? "file" : "files"} changed` : "",
-        additions > 0 ? `+${additions}` : "",
-        deletions > 0 ? `-${deletions}` : "",
-      ]
-        .filter(Boolean)
-        .join(" "),
-    );
-  }
-  return parts.join("\n");
-}
-
-export function projectCardAriaLabel(
-  name: string,
-  stats: GitDiffStats | null,
-  busy: boolean,
-  needsYou = false,
-): string {
-  const parts = [name];
-  if (needsYou) parts.push("needs you");
-  else if (busy) parts.push("working");
-  const files = stats?.files ?? 0;
-  const additions = stats?.additions ?? 0;
-  const deletions = stats?.deletions ?? 0;
-  if (files > 0) {
-    parts.push(`${files} ${files === 1 ? "file" : "files"} changed`);
-  }
-  if (additions > 0) parts.push(`+${additions}`);
-  if (deletions > 0) parts.push(`-${deletions}`);
-  return parts.join(", ");
+/** A workspace row's name for assistive tech: the name, then the one
+ *  state that matters (needs you outranks working). */
+export function workspaceRowAriaLabel(name: string, busy: boolean, needsYou = false): string {
+  if (needsYou) return `${name}, needs you`;
+  if (busy) return `${name}, working`;
+  return name;
 }
 
 export type RailFootRowId = "update" | "hosts" | "inbox" | "search" | "accounts" | "stats" | "settings";
