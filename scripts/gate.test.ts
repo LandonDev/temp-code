@@ -3,23 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import {
-  STEPS,
-  TIER_PATHS,
-  formatReport,
-  gateDir,
-  matchPath,
-  parseArgs,
-  readStoredHash,
-  runSteps,
-  selectSteps,
-  shouldSkipTypecheck,
-  storeHash,
-  tiersForPaths,
-  typecheckHash,
-  type Step,
-  macOnlySkips
-} from './gate'
+import { STEPS, TIER_PATHS, formatReport, gateDir, matchPath, parseArgs, readStoredHash, runSteps, selectSteps, shouldSkipTypecheck, storeHash, tiersForPaths, typecheckHash, type Step, macOnlySkips, judgeReport, stepArgs } from './gate'
 
 describe('the step list', () => {
   it('has unique names, a tier and a lane on every step, and the hook-facing steps in the commit tier', () => {
@@ -256,5 +240,50 @@ describe('the parallel runner', () => {
     expect(report.ok).toBe(true)
     expect(report.results[0]).toMatchObject({ name: 'typecheck', outcome: 'skipped', note: 'no change' })
     expect(formatReport(report)).toContain('– typecheck')
+  })
+})
+
+describe('the vitest step and its JSON report', () => {
+  const report = (over: Record<string, unknown>) => ({ numTotalTests: 3, numPassedTests: 3, numFailedTests: 0, testResults: [], ...over })
+
+  it('the vitest step writes the JSON report beside its log, after the default reporter', () => {
+    const vitest = STEPS.find((s) => s.name === 'vitest')!
+    expect(vitest.json).toBe(true)
+    expect(stepArgs(vitest, '/g/logs')).toEqual({
+      args: ['vitest', 'run', '--reporter=default', '--reporter=json', '--outputFile=/g/logs/vitest.json'],
+      jsonFile: '/g/logs/vitest.json'
+    })
+    expect(stepArgs(STEPS.find((s) => s.name === 'typecheck')!, '/g/logs')).toEqual({ args: ['run', 'typecheck'], jsonFile: null })
+  })
+
+  it('a green exit is itself, report or not', () => {
+    expect(judgeReport(0, 'ok', null)).toEqual({ exitCode: 0, tail: 'ok' })
+    expect(judgeReport(0, 'ok', report({ success: false }))).toEqual({ exitCode: 0, tail: 'ok' })
+  })
+
+  it('a reporter that died after a green run passes the step on the report, and the tail says so', () => {
+    const r = judgeReport(1, '', report({ success: true }))
+    expect(r.exitCode).toBe(0)
+    expect(r.tail).toBe('vitest exited 1 after the tests ran; its JSON report says all 3 passed, so the step passes')
+    expect(judgeReport(null, 'RUN v3', report({ success: true })).tail).toBe('RUN v3\nvitest exited by signal after the tests ran; its JSON report says all 3 passed, so the step passes')
+  })
+
+  it('a red report names its failures when the output printed nothing, and keeps the output when it did', () => {
+    const red = report({
+      success: false,
+      numFailedTests: 1,
+      testResults: [{ name: 'src/x.test.ts', assertionResults: [{ fullName: 'x > boom', status: 'failed' }, { fullName: 'x > fine', status: 'passed' }] }]
+    })
+    expect(judgeReport(1, '', red)).toEqual({ exitCode: 1, tail: 'vitest printed nothing; its JSON report lists 1 failed\nFAIL src/x.test.ts > x > boom' })
+    expect(judgeReport(1, 'FAIL x > boom\n(details)', red)).toEqual({ exitCode: 1, tail: 'FAIL x > boom\n(details)' })
+  })
+
+  it('no report and no output names the workers that never started; output without a report stands', () => {
+    expect(judgeReport(1, '  \n', null)).toEqual({
+      exitCode: 1,
+      tail: 'vitest printed nothing and wrote no report: its workers never started (the host at its pids cap, or the pool could not spawn)'
+    })
+    expect(judgeReport(null, '', null).exitCode).toBe(1)
+    expect(judgeReport(2, 'Error: Channel closed', null)).toEqual({ exitCode: 2, tail: 'Error: Channel closed' })
   })
 })

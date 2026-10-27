@@ -1,4 +1,5 @@
 import { configDefaults, defineConfig } from 'vitest/config'
+import { availableParallelism } from 'node:os'
 import { resolve } from 'node:path'
 
 // Root vitest: the transplanted renderer tests (src/renderer/src/**) and
@@ -32,6 +33,13 @@ export default defineConfig({
     // a slow test.
     testTimeout: 20_000,
     hookTimeout: 20_000,
+    // One bounded forks pool. The box shares one pids budget (cgroup v2
+    // counts threads) across every thread's test runs, and the default pool
+    // (a fork per core, 31 on the box) could not spawn its workers under the
+    // cap and died before its first line of output (2026-10-27). Four forks
+    // on Linux; the Mac keeps half its cores, beside the train's other lanes.
+    pool: 'forks',
+    maxWorkers: process.platform === 'linux' ? 4 : Math.max(2, Math.floor(availableParallelism() / 2)),
     projects: [
       {
         extends: true,

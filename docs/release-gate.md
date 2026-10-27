@@ -60,6 +60,16 @@ bun run gate [--tier commit|publish|all] [--since <ref>] [--full]
   blob id for a clean file, the file's own hash for a modified one, the path
   for a deleted one. `--full` runs it regardless, and the hash is stored
   only when typecheck itself passed.
+- **vitest** runs one bounded forks pool (vitest.config.ts: four forks on
+  Linux, half the cores on the Mac): the box shares one pids budget, counted
+  in threads, across every thread's test runs, and the default pool (a fork
+  per core, 31 on the box) could not spawn its workers under the cap and
+  exited 1 with nothing printed (2026-10-27). The gate's step adds the JSON
+  reporter beside the default one (`<git-dir>/temp-code-gate/logs/vitest.json`)
+  and reads it when the exit and the output disagree (scripts/gate.ts
+  `judgeReport`): a reporter that died after a green run passes the step, a
+  red report names its failures when nothing was printed, and no report with
+  no output says the workers never started.
 - **vitest** keeps its cache in `node_modules/.vite/vitest`; the gate never
   passes `--no-cache` or clears it.
 - **The Xcode** for `ios` and `ios-client` is scripts/ios-xcode.sh's pick

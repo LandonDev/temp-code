@@ -26,7 +26,7 @@
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 export type Tier = 'commit' | 'publish'
@@ -41,6 +41,9 @@ export interface Step {
   lane: string
   /** Extra environment for the child. */
   env?: Record<string, string>
+  /** The step writes vitest's JSON report beside its log, and the report
+   *  decides when the step's exit and its output disagree (judgeReport). */
+  json?: boolean
   /** What the step guards, for the report and the docs. */
   why: string
   /** True for the one step the tree hash may skip (see typecheckHash). */
@@ -74,7 +77,8 @@ export const STEPS: Step[] = [
     args: ['vitest', 'run'],
     lane: 'vitest',
     env: { NODE_ENV: 'test' },
-    why: 'the unit tests (src/**/*.test.ts, scripts/**/*.test.ts)'
+    json: true,
+    why: 'the unit tests (src/**/*.test.ts, scripts/**/*.test.ts); vitest.config.ts bounds the pool, and the JSON report decides when the reporter dies'
   },
   {
     name: 'build',
@@ -392,6 +396,58 @@ export async function runSteps(
   return { ok: !failed, ms: Date.now() - t0, results: ordered }
 }
 
+/** The command line a step runs: a `json` step adds vitest's JSON reporter beside the default one. */
+export function stepArgs(step: Step, logDir: string): { args: string[]; jsonFile: string | null } {
+  if (!step.json) return { args: step.args, jsonFile: null }
+  const jsonFile = join(logDir, `${step.name}.json`)
+  return { args: [...step.args, '--reporter=default', '--reporter=json', `--outputFile=${jsonFile}`], jsonFile }
+}
+
+/** What the gate reads of vitest's JSON report. */
+export interface JsonReport {
+  success?: boolean
+  numTotalTests?: number
+  numPassedTests?: number
+  numFailedTests?: number
+  testResults?: { name?: string; assertionResults?: { fullName?: string; status?: string }[] }[]
+}
+
+export function readJsonReport(file: string | null): JsonReport | null {
+  if (!file) return null
+  try {
+    return JSON.parse(readFileSync(file, 'utf8')) as JsonReport
+  } catch {
+    return null
+  }
+}
+
+/**
+ * A step with a JSON report (vitest): the report decides when the step's
+ * exit and its output disagree. On the box (2026-10-27) `vitest run` exited
+ * 1 with nothing printed while the same files passed under another reporter
+ * or pool: a report saying every test passed makes the step pass and the
+ * tail say so; a report with failures names them when the output did not;
+ * no report and no output names the one cause that leaves both empty, the
+ * workers never started (the host's pids cap). A green exit is itself.
+ */
+export function judgeReport(exitCode: number | null, tail: string, report: JsonReport | null): { exitCode: number | null; tail: string } {
+  if (exitCode === 0) return { exitCode, tail }
+  if (report?.success === true) {
+    const n = report.numPassedTests ?? report.numTotalTests ?? 0
+    const note = `vitest exited ${exitCode ?? 'by signal'} after the tests ran; its JSON report says all ${n} passed, so the step passes`
+    return { exitCode: 0, tail: tail.trim() ? `${tail}\n${note}` : note }
+  }
+  if (report?.success === false) {
+    if (tail.trim()) return { exitCode, tail }
+    const failed = (report.testResults ?? []).flatMap((f) =>
+      (f.assertionResults ?? []).filter((a) => a.status === 'failed').map((a) => `FAIL ${f.name ?? ''} > ${a.fullName ?? ''}`)
+    )
+    return { exitCode, tail: [`vitest printed nothing; its JSON report lists ${report.numFailedTests ?? failed.length} failed`, ...failed.slice(0, 20)].join('\n') }
+  }
+  if (!tail.trim()) return { exitCode: exitCode ?? 1, tail: 'vitest printed nothing and wrote no report: its workers never started (the host at its pids cap, or the pool could not spawn)' }
+  return { exitCode, tail }
+}
+
 /** Spawns one step, streams its output to a log file (and stdout when verbose), keeps the tail. */
 export function spawnStep(opts: { repo: string; logDir: string; verbose: boolean; tailLines?: number }): RunOne {
   const tailLines = opts.tailLines ?? 60
@@ -399,10 +455,12 @@ export function spawnStep(opts: { repo: string; logDir: string; verbose: boolean
     new Promise((resolvePromise) => {
       mkdirSync(opts.logDir, { recursive: true })
       const logFile = join(opts.logDir, `${step.name}.log`)
-      writeFileSync(logFile, `$ ${step.cmd} ${step.args.join(' ')}\n`)
+      const { args, jsonFile } = stepArgs(step, opts.logDir)
+      if (jsonFile) rmSync(jsonFile, { force: true })
+      writeFileSync(logFile, `$ ${step.cmd} ${args.join(' ')}\n`)
       // Its own process group, so stopping a step stops what it spawned
       // (bun run → npm → tsc) and not just the first process.
-      const child = spawn(step.cmd, step.args, {
+      const child = spawn(step.cmd, args, {
         cwd: opts.repo,
         env: { ...plainEnv(), ...step.env, FORCE_COLOR: '0', NO_COLOR: '1' },
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -442,8 +500,8 @@ export function spawnStep(opts: { repo: string; logDir: string; verbose: boolean
       child.on('close', (code, sig) => {
         signal.removeEventListener('abort', onAbort)
         if (partial) lines.push(partial)
-        const tail = lines.slice(-tailLines).join('\n') + `\n(full log: ${logFile})`
-        resolvePromise({ exitCode: code ?? (sig ? 1 : null), tail })
+        const judged = judgeReport(code ?? (sig ? 1 : null), lines.slice(-tailLines).join('\n'), readJsonReport(jsonFile))
+        resolvePromise({ exitCode: judged.exitCode, tail: `${judged.tail}\n(full log: ${logFile})` })
       })
     })
 }

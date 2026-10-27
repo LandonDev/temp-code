@@ -129,6 +129,11 @@ Two separate steps, on purpose, over one gate.
     `<git-dir>/temp-code-gate/logs/<step>.log`, the times in
     `last-run.json` beside it. docs/release-gate.md has the measured
     times on the Mac and the box.
+  - vitest runs one bounded forks pool (vitest.config.ts: four forks on
+    Linux, half the cores on the Mac; the box's pids budget counts threads)
+    and the gate's step writes the JSON report beside its log and reads it
+    when the exit and the output disagree (`judgeReport` in scripts/gate.ts;
+    docs/release-gate.md).
   - Caches: vitest keeps node_modules/.vite/vitest and SwiftPM each
     package's `.build`; the gate never cleans either. typecheck is skipped
     when no .ts/.tsx/.json (or generated Swift) file changed since the
