@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useStore } from 'zustand'
 import type { ThreadResource } from '@server/shared/contract-resources'
+import { Button } from '@renderer/components/ui/button'
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@renderer/components/ui/empty'
+import { Item, ItemActions, ItemContent, ItemGroup, ItemTitle } from '@renderer/components/ui/item'
+import { Spinner } from '@renderer/components/ui/spinner'
 import {
   KIND_LABEL,
   archiveThread,
@@ -13,12 +17,11 @@ import {
 } from '../lib/threadResources'
 import { openUrl, portLine, rowOpen } from '../lib/devPorts'
 import { useLiveDevServers } from '../lib/devServers'
-import { ItemGroup } from '../components/ui/item'
 import { DevServerRow } from './DevServerRow'
 import { macBridgeStore } from '../lib/macBridge'
-import { DialogFooter, errorText } from './ConfirmDialog'
-import { Modal } from './Modal'
-import { MatrixSpinner } from '../surfaces/threads/spinners'
+import { DialogFooter, ErrorLine, errorText } from './ConfirmDialog'
+import { CheckRow, Tip } from './DialogField'
+import { Modal, useModalClose } from './Modal'
 
 /**
  * Thread resources (docs/box.md "Thread resources"): the thread menu's
@@ -31,54 +34,49 @@ import { MatrixSpinner } from '../surfaces/threads/spinners'
  * same list from the same source, and nothing a host no longer lists.
  */
 
+const DESTRUCTIVE_GHOST = 'text-destructive hover:bg-destructive/10 hover:text-destructive'
+
 function ResourceRow({ row, onRemove, pending }: { row: ThreadResource; onRemove: () => void; pending: boolean }) {
   const localId = useStore(macBridgeStore, (s) => s.localId)
   // A dev server's line is where it opens here; the ledger's note only when it has one.
   const state = rowState(row) ?? portLine(row, localId)
   const open = rowOpen(row, localId)
   const waiting = !!row.removeRequestedAt && !row.removedAt
+  const busy = pending || waiting
   return (
-    <div className="flex items-center gap-3" data-resource={row.id}>
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-baseline gap-1.5 text-[12px] text-content/80">
-          <span className="shrink-0 text-content/50">{hostName(row.environmentId)}</span>
-          <span className="shrink-0 text-content/40">·</span>
-          <span className="shrink-0 text-content/50">{KIND_LABEL[row.kind]}</span>
-          <span className="min-w-0 truncate font-mono text-content/90" title={row.identifier}>
-            {row.label}
-          </span>
+    <Item size="sm" role="listitem" className="px-0" data-resource={row.id}>
+      <ItemContent className="min-w-0">
+        <Tip label={row.identifier}>
+          <ItemTitle className="max-w-full font-mono text-xs">
+            <span className="truncate">{row.label}</span>
+          </ItemTitle>
+        </Tip>
+        <div data-slot="item-description" className="flex min-w-0 flex-wrap gap-x-2 text-xs text-muted-foreground">
+          <span>{hostName(row.environmentId)}</span>
+          <span>{KIND_LABEL[row.kind]}</span>
+          {state ? <span className="min-w-0">{state}</span> : null}
         </div>
-        {state ? (
-          <div className="truncate text-[11px] text-content/45" title={state}>
-            {state}
-          </div>
+      </ItemContent>
+      <ItemActions>
+        {open ? (
+          <Tip label={open.url}>
+            <Button variant="ghost" size="xs" onClick={() => openUrl(open.url)}>
+              {open.label}
+            </Button>
+          </Tip>
         ) : null}
-      </div>
-      {open ? (
-        <button
-          type="button"
-          onClick={() => openUrl(open.url)}
-          title={open.url}
-          className="pressable shrink-0 rounded-md px-2 py-0.5 text-[11px] text-content/70 hover:bg-content/8 hover:text-content"
-        >
-          {open.label}
-        </button>
-      ) : null}
-      <button
-        type="button"
-        disabled={pending || waiting}
-        onClick={onRemove}
-        className="pressable flex shrink-0 items-center gap-1.5 rounded-md border border-content/10 px-2 py-0.5 text-[11px] text-danger hover:border-danger/40 hover:bg-danger/10 disabled:cursor-default disabled:opacity-40"
-      >
-        {pending || waiting ? <MatrixSpinner cell={1.5} /> : null}
-        {waiting ? 'Waiting' : row.kind === 'port' ? 'Stop' : 'Remove'}
-      </button>
-    </div>
+        <Button variant="ghost" size="xs" disabled={busy} onClick={onRemove} className={DESTRUCTIVE_GHOST}>
+          {busy ? <Spinner className="size-3" /> : null}
+          {waiting ? 'Waiting' : row.kind === 'port' ? 'Stop' : 'Remove'}
+        </Button>
+      </ItemActions>
+    </Item>
   )
 }
 
-/** The rows of one thread with Remove per row and Remove all. */
-export function ThreadResourceList({ sessionId, empty }: { sessionId: string; empty?: string }) {
+/** The rows of one thread with Remove per row and Remove all, its live dev
+ *  servers above them; `empty` shows "Nothing recorded" when there are none. */
+export function ThreadResourceList({ sessionId, empty }: { sessionId: string; empty?: boolean }) {
   const rows = useThreadResources(sessionId).filter((r) => r.kind !== 'port')
   const servers = useLiveDevServers().filter((s) => s.sessionId === sessionId)
   const [pending, setPending] = useState<Set<string>>(() => new Set())
@@ -101,31 +99,39 @@ export function ThreadResourceList({ sessionId, empty }: { sessionId: string; em
       })
     }
   }
-  if (rows.length === 0 && servers.length === 0) return empty ? <p className="text-[12px] text-content/40">{empty}</p> : null
+  if (rows.length === 0 && servers.length === 0)
+    return empty ? (
+      <Empty className="p-4">
+        <EmptyHeader>
+          <EmptyTitle>Nothing recorded</EmptyTitle>
+          <EmptyDescription>Worktrees, simulators and dev servers this thread creates show here.</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    ) : null
   return (
-    <div className="flex flex-col gap-1.5" data-thread-resources={sessionId}>
+    <div className="flex flex-col gap-2" data-thread-resources={sessionId}>
       {servers.length ? (
-        <ItemGroup aria-label="Dev servers" className="-mx-2 gap-0.5">
+        <ItemGroup aria-label="Dev servers">
           {servers.map((server) => (
             <DevServerRow key={server.key} server={server} />
           ))}
         </ItemGroup>
       ) : null}
-      {rows.map((row) => (
-        <ResourceRow key={row.id} row={row} pending={pending.has(row.id)} onRemove={() => void remove([row.id])} />
-      ))}
+      {rows.length ? (
+        <ItemGroup>
+          {rows.map((row) => (
+            <ResourceRow key={row.id} row={row} pending={pending.has(row.id)} onRemove={() => void remove([row.id])} />
+          ))}
+        </ItemGroup>
+      ) : null}
       {rows.length > 1 ? (
-        <div className="flex justify-end pt-1">
-          <button
-            type="button"
-            className="pressable rounded-md px-2 py-0.5 text-[11px] text-danger hover:bg-danger/10"
-            onClick={() => void remove()}
-          >
+        <div className="flex justify-end">
+          <Button variant="ghost" size="xs" className={DESTRUCTIVE_GHOST} onClick={() => void remove()}>
             Remove all
-          </button>
+          </Button>
         </div>
       ) : null}
-      {error ? <p className="whitespace-pre-wrap text-[11px] text-danger">{error}</p> : null}
+      <ErrorLine error={error} />
     </div>
   )
 }
@@ -134,66 +140,81 @@ export function ThreadResourceList({ sessionId, empty }: { sessionId: string; em
 export function ThreadResourcesDialog({ sessionId, title, onClose }: { sessionId: string; title: string; onClose: () => void }) {
   useEffect(() => void loadThreadResources(sessionId), [sessionId])
   return (
-    <Modal onClose={onClose} title={`Resources · ${title}`} size="md">
-      <div className="flex flex-col gap-3 px-4 py-3">
-        <p className="text-[12px] leading-snug text-content/50">
-          What this thread created and where: git worktrees, simulators, dev instances and dev servers, on its host or on the Mac.
-          Remove runs on that host as the thread; a branch with commits nowhere else stays, and the row says so.
-        </p>
-        <ThreadResourceList sessionId={sessionId} empty="Nothing recorded: this thread created no worktrees, simulators, dev instances or dev servers." />
+    <Modal onClose={onClose} title="Resources" description={title} size="md">
+      <div className="px-4 py-4">
+        <ThreadResourceList sessionId={sessionId} empty />
       </div>
     </Modal>
   )
 }
 
-/** Archive, offering to remove the thread's resources with it (the box is on by default). */
-export function ArchiveThreadDialog({
-  sessionId,
-  title,
-  resources,
-  onCancel,
-  onArchived
-}: {
+type ArchiveProps = {
   sessionId: string
   title: string
   resources: readonly ThreadResource[]
   onCancel: () => void
   onArchived: () => void
-}) {
-  const [remove, setRemove] = useState(true)
+}
+
+/** Archive, offering to remove the thread's resources with it (the box is on by default). */
+export function ArchiveThreadDialog(props: ArchiveProps) {
   const [pending, setPending] = useState(false)
+  return (
+    <Modal onClose={props.onCancel} busy={pending} title={`Archive ${props.title}?`} size="sm">
+      <ArchiveBody {...props} pending={pending} setPending={setPending} />
+    </Modal>
+  )
+}
+
+function ArchiveBody({
+  sessionId,
+  resources,
+  onCancel,
+  onArchived,
+  pending,
+  setPending
+}: ArchiveProps & { pending: boolean; setPending: (on: boolean) => void }) {
+  const close = useModalClose()
+  const [remove, setRemove] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const confirm = async () => {
     setPending(true)
     setError(null)
     try {
       await archiveThread(sessionId, { removeResources: remove })
-      onArchived()
+      setPending(false)
+      if (close) close(onArchived)
+      else onArchived()
     } catch (err) {
       setError(errorText(err))
       setPending(false)
     }
   }
   return (
-    <Modal onClose={onCancel} busy={pending} title={`Archive ${title}?`} size="sm">
-      <div className="flex flex-col gap-2.5 px-4 py-3">
-        <label className="flex items-start gap-2 text-[12px] leading-snug text-content/80">
-          <input type="checkbox" className="mt-0.5" checked={remove} onChange={(e) => setRemove(e.target.checked)} data-remove-resources />
-          <span>{removalClause(resources)}</span>
-        </label>
-        <ul className="flex flex-col gap-0.5 pl-6 text-[11px] text-content/50">
-          {resources.map((r) => (
-            <li key={r.id} className="flex min-w-0 items-baseline gap-1.5">
-              <span className="shrink-0">{KIND_LABEL[r.kind]}</span>
-              <span className="min-w-0 truncate font-mono text-content/70" title={r.identifier}>
-                {r.label}
-              </span>
-            </li>
-          ))}
-        </ul>
-        {error ? <p className="whitespace-pre-wrap text-[11px] leading-4 text-danger">{error}</p> : null}
-      </div>
-      <DialogFooter onCancel={onCancel} onConfirm={confirm} confirmLabel="Archive" pending={pending} />
-    </Modal>
+    <>
+      {resources.length ? (
+        <div className="flex flex-col gap-1 px-4 py-4">
+          <CheckRow label={removalClause(resources)} checked={remove} disabled={pending} onCheckedChange={setRemove} />
+          <div className="flex flex-col gap-0.5 pl-6 text-xs text-muted-foreground" data-archive-resources>
+            {resources.map((r) => (
+              <div key={r.id} className="flex min-w-0 gap-2">
+                <span className="shrink-0">{KIND_LABEL[r.kind]}</span>
+                <Tip label={r.identifier}>
+                  <span className="min-w-0 truncate font-mono">{r.label}</span>
+                </Tip>
+              </div>
+            ))}
+          </div>
+          <ErrorLine error={error} />
+        </div>
+      ) : error ? (
+        <div className="px-4 py-4">
+          <ErrorLine error={error} />
+        </div>
+      ) : (
+        <div aria-hidden className="h-4" />
+      )}
+      <DialogFooter onCancel={onCancel} onConfirm={() => void confirm()} confirmLabel="Archive" pending={pending} />
+    </>
   )
 }

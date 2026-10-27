@@ -1,9 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import type { ThreadResource } from '@server/shared/contract-resources'
 import { mountProbe } from '../test/renderProbe'
 import { threadResourcesStore } from '../lib/threadResources'
 import { macBridgeStore } from '../lib/macBridge'
 import { sessionStore } from '../lib/tcserver/store'
+
+const archive = vi.hoisted(() => ({ fn: null as null | ((id: string, opts: unknown) => Promise<void>) }))
+vi.mock('../lib/threadResources', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../lib/threadResources')>()
+  return { ...real, archiveThread: (id: string, opts: { removeResources: boolean }) => (archive.fn ? archive.fn(id, opts) : real.archiveThread(id, opts)) }
+})
 import { ArchiveThreadDialog, ThreadResourceList } from './ThreadResourcesDialog'
 
 vi.mock('../lib/tcserver/store', async (importOriginal) => {
@@ -37,7 +44,7 @@ describe('ThreadResourceList', () => {
     probe = null
   })
 
-  it('lists the live rows with host, kind and label, hides removed ones, and shows the empty line otherwise', () => {
+  it('lists the live rows with host, kind and label (the identifier on its tooltip), hides removed ones, and shows the empty line otherwise', async () => {
     threadResourcesStore.setState({
       bySession: {
         s1: [
@@ -47,20 +54,31 @@ describe('ThreadResourceList', () => {
         ]
       }
     })
-    probe = mountProbe(<ThreadResourceList sessionId="s1" empty="Nothing recorded." />)
+    probe = mountProbe(<ThreadResourceList sessionId="s1" empty />)
     const rows = [...probe.container.querySelectorAll('[data-resource]')]
     expect(rows.map((r) => r.getAttribute('data-resource'))).toEqual(['r1', 'r2'])
     expect(rows[0].textContent).toContain('worktree')
     expect(rows[0].textContent).toContain('ios/home')
-    expect(rows[0].querySelector('[title]')?.getAttribute('title')).toBe('/Users/landon/IdeaProjects/tc-ios/home')
+    // The identifier is the label's tooltip, not a title attribute.
+    expect(probe.container.querySelector('[title]')).toBeNull()
+    expect(rows[0].querySelector('[data-slot=tooltip-trigger]')?.textContent).toBe('ios/home')
+    expect(rows[0].querySelector('[data-slot=item-description]')?.textContent).toBe('macworktree')
+    const trigger = rows[0].querySelector('[data-slot=tooltip-trigger]') as HTMLElement
+    fireEvent.pointerEnter(trigger, { pointerType: 'mouse' })
+    fireEvent.mouseEnter(trigger)
+    fireEvent.mouseMove(trigger)
+    await waitFor(() => expect(screen.getByText('/Users/landon/IdeaProjects/tc-ios/home')).toBeTruthy(), { timeout: 1500 })
     expect(rows[1].textContent).toContain('simulator')
     expect(rows[1].textContent).toContain('tc-ios-home')
     expect(rows.every((r) => r.querySelector('button')?.textContent === 'Remove')).toBe(true)
     expect(probe.container.textContent).toContain('Remove all')
 
-    probe.act(() => probe!.rerender(<ThreadResourceList sessionId="s2" empty="Nothing recorded." />))
+    probe.act(() => probe!.rerender(<ThreadResourceList sessionId="s2" empty />))
     expect(probe.container.querySelectorAll('[data-resource]')).toHaveLength(0)
-    expect(probe.container.textContent).toBe('Nothing recorded.')
+    expect(probe.container.querySelector('[data-slot=empty-title]')?.textContent).toBe('Nothing recorded')
+
+    probe.act(() => probe!.rerender(<ThreadResourceList sessionId="s2" />))
+    expect(probe.container.textContent).toBe('')
   })
 
   it('lists the thread’s live dev servers as the Dev servers pane does, and none the host dropped', () => {
@@ -131,12 +149,30 @@ describe('ArchiveThreadDialog', () => {
   it('offers the removal with the box on by default, the clause counting the rows, and lists what goes', () => {
     const resources = [row({}), row({ id: 'r2', kind: 'devInstance', identifier: '/Users/landon/Library/Application Support/temp-code-dev2', label: 'temp-code-dev2', branch: null })]
     probe = mountProbe(<ArchiveThreadDialog sessionId="s1" title="iOS home" resources={resources} onCancel={() => {}} onArchived={() => {}} />)
-    const box = document.body.querySelector('[data-remove-resources]') as HTMLInputElement
-    expect(box.checked).toBe(true)
+    const box = screen.getByRole('checkbox', { name: /and remove 2 resources on / })
+    expect(box.getAttribute('aria-checked')).toBe('true')
     expect(document.body.textContent).toContain('Archive iOS home?')
     expect(document.body.textContent).toMatch(/and remove 2 resources on /)
     expect(document.body.textContent).toContain('dev instance')
     expect(document.body.textContent).toContain('temp-code-dev2')
     expect([...document.body.querySelectorAll('button')].map((b) => b.textContent)).toContain('Archive')
+    // The resources sit as plain lines under the choice: no list markers.
+    expect(document.body.querySelector('ul, li')).toBeNull()
+    expect(document.body.querySelector('[data-archive-resources]')?.children).toHaveLength(2)
+  })
+
+  it('archives with the choice as ticked and closes after its exit; unticked, the resources stay', async () => {
+    const calls: unknown[] = []
+    const archived = vi.fn()
+    archive.fn = async (id, opts) => void calls.push([id, opts])
+    probe = mountProbe(<ArchiveThreadDialog sessionId="s1" title="iOS home" resources={[row({})]} onCancel={() => {}} onArchived={archived} />)
+    fireEvent.click(screen.getByRole('checkbox', { name: /and remove 1 resource on / }))
+    await probe.act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Archive' }))
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(archived).toHaveBeenCalledTimes(1))
+    expect(calls).toEqual([['s1', { removeResources: false }]])
+    archive.fn = null
   })
 })

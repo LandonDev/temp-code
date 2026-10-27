@@ -24,6 +24,14 @@ if (typeof window.matchMedia !== 'function') {
     }) as MediaQueryList
 }
 
+// Base UI's ScrollArea reads the viewport's running animations; jsdom has
+// none. The flag keeps every popup's exit as immediate as it was without
+// getAnimations (Base UI's own switch for tests).
+if (typeof Element.prototype.getAnimations !== 'function') {
+  Element.prototype.getAnimations = () => []
+}
+;(globalThis as { BASE_UI_ANIMATIONS_DISABLED?: boolean }).BASE_UI_ANIMATIONS_DISABLED = true
+
 if (typeof Element.prototype.animate !== 'function') {
   Element.prototype.animate = function animate(): Animation {
     const listeners = new Map<string, Set<Listener>>()

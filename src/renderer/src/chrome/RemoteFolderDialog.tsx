@@ -1,11 +1,16 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Button } from "@renderer/components/ui/button";
+import { Input } from "@renderer/components/ui/input";
+import { Item, ItemContent, ItemMedia, ItemTitle } from "@renderer/components/ui/item";
+import { ScrollArea } from "@renderer/components/ui/scroll-area";
+import { Skeleton } from "@renderer/components/ui/skeleton";
+import { Spinner } from "@renderer/components/ui/spinner";
 import { DialogFooter, ErrorLine, errorText } from "./ConfirmDialog";
 import { ChevronRight, Folder, FolderPlus } from "./icons";
-import { Modal } from "./Modal";
+import { Modal, useModalClose } from "./Modal";
+import { cn } from "../lib/cn";
 import { registry, useEnvironments } from "../lib/connection";
 import { createPath, listDir, type FsEntry } from "../lib/fs";
-import { INPUT_CLASS, Input, SecondaryButton } from "../surfaces/settingsBits";
-import { MatrixSpinner } from "../surfaces/threads/spinners";
 
 /**
  * Pick a folder on another machine (thread K2). No native dialog can open
@@ -38,25 +43,72 @@ export function crumbsFor(root: string, dir: string): { label: string; path: str
   return crumbs;
 }
 
-export function RemoteFolderDialog({
-  environmentId,
-  onClose,
-  onPick,
-}: {
+type Props = {
   environmentId: string;
   onClose: () => void;
   /** The folder chosen; the caller makes the workspace. */
   onPick: (path: string) => void;
-}) {
-  const environment = useEnvironments().find((e) => e.id === environmentId);
-  const name = environment?.name ?? environmentId;
+};
+
+export function RemoteFolderDialog(props: Props) {
+  const environment = useEnvironments().find((e) => e.id === props.environmentId);
+  const [pending, setPending] = useState(false);
+  return (
+    <Modal onClose={props.onClose} busy={pending} title={`Add a workspace on ${environment?.name ?? props.environmentId}`} size="md">
+      <FolderPicker {...props} pending={pending} setPending={setPending} />
+    </Modal>
+  );
+}
+
+/** Three rows in the shape of the folder list while it loads. */
+function FolderSkeleton() {
+  return (
+    <div className="flex flex-col" aria-busy>
+      {["w-32", "w-24", "w-40"].map((w) => (
+        <div key={w} className="flex h-7 items-center gap-2 px-2">
+          <Skeleton className="size-3.5 rounded-sm" />
+          <Skeleton className={cn("h-3", w)} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FolderPicker({ environmentId, onClose, onPick, pending, setPending }: Props & { pending: boolean; setPending: (on: boolean) => void }) {
+  const close = useModalClose();
   const [workRoot, setWorkRoot] = useState<WorkRoot | null>(null);
   const [dir, setDir] = useState<string | null>(null);
   const [entries, setEntries] = useState<FsEntry[] | null>(null);
   const [typed, setTyped] = useState("");
   const [newFolder, setNewFolder] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const pick = (path: string) => {
+    if (close) close(() => onPick(path));
+    else onPick(path);
+  };
+
+  // Only the newest listing lands: a slow answer for a folder already left is dropped.
+  const latest = useRef(0);
+  const load = useCallback(
+    async (path: string) => {
+      const n = ++latest.current;
+      setEntries(null);
+      setError(null);
+      try {
+        const listed = await listDir(environmentId, path);
+        if (n !== latest.current) return;
+        setEntries(listed.filter((e) => e.isDir && !e.name.startsWith(".")));
+        setDir(path);
+        setTyped(path);
+      } catch (err) {
+        if (n !== latest.current) return;
+        setEntries([]);
+        setError(errorText(err));
+      }
+    },
+    [environmentId],
+  );
 
   useEffect(() => {
     let live = true;
@@ -65,38 +117,21 @@ export function RemoteFolderDialog({
       .request<WorkRoot>("workspace.root")
       .then((root) => {
         if (!live) return;
+        const start = root.exists ? root.root : root.home;
         setWorkRoot(root);
-        setDir(root.exists ? root.root : root.home);
-        setTyped(root.exists ? root.root : root.home);
+        setDir(start);
+        setTyped(start);
+        void load(start);
       })
       .catch((err) => live && setError(errorText(err)));
     return () => {
       live = false;
     };
-  }, [environmentId]);
-
-  const load = useCallback(
-    async (path: string) => {
-      setEntries(null);
-      setError(null);
-      try {
-        const listed = await listDir(environmentId, path);
-        setEntries(listed.filter((e) => e.isDir && !e.name.startsWith(".")));
-        setDir(path);
-        setTyped(path);
-      } catch (err) {
-        setEntries([]);
-        setError(errorText(err));
-      }
-    },
-    [environmentId],
-  );
-  useEffect(() => {
-    if (dir !== null && entries === null) void load(dir);
-  }, [dir, entries, load]);
+  }, [environmentId, load]);
 
   const crumbs = useMemo(() => (workRoot && dir ? crumbsFor(workRoot.root, dir) : []), [dir, workRoot]);
   const up = dir ? parentOf(dir) : null;
+  const loading = !workRoot && !error;
 
   const makeFolder = async (e: FormEvent) => {
     e.preventDefault();
@@ -106,8 +141,8 @@ export function RemoteFolderDialog({
     setError(null);
     try {
       const made = await createPath(environmentId, dir, folder, true);
-      setNewFolder(null);
-      onPick(made);
+      setPending(false);
+      pick(made);
     } catch (err) {
       setError(errorText(err));
       setPending(false);
@@ -116,67 +151,74 @@ export function RemoteFolderDialog({
 
   const choose = () => {
     const path = typed.trim();
-    if (path) onPick(path);
+    if (path) pick(path);
   };
 
   return (
-    <Modal onClose={onClose} busy={pending} title={`Add a workspace on ${name}`} size="md">
-      <div className="flex flex-col gap-3 px-4 py-3">
-        {!workRoot && !error ? (
-          <div className="flex justify-center py-6">
-            <MatrixSpinner cell={2} />
-          </div>
-        ) : null}
-        {workRoot ? (
+    <>
+      <div className="flex flex-col gap-3 px-4 py-4">
+        {workRoot || loading ? (
           <>
-            <nav aria-label="Folder" className="flex min-w-0 flex-wrap items-center gap-0.5 text-[12px] text-content/60">
-              {up && crumbs.length === 1 && crumbs[0].path !== workRoot.root ? (
-                <button type="button" onClick={() => void load(up)} className="pressable rounded px-1 hover:bg-content/10 hover:text-content">
+            <nav aria-label="Folder" className="-mx-2 flex min-h-6 min-w-0 flex-wrap items-center gap-0.5">
+              {loading ? <Skeleton className="mx-2 h-3 w-28" /> : null}
+              {workRoot && up && crumbs.length === 1 && crumbs[0].path !== workRoot.root ? (
+                <Button variant="ghost" size="xs" className="text-muted-foreground" onClick={() => void load(up)}>
                   ..
-                </button>
+                </Button>
               ) : null}
               {crumbs.map((crumb, i) => (
-                <span key={crumb.path} className="flex items-center gap-0.5">
-                  {i > 0 ? <ChevronRight className="size-3 text-content/30" strokeWidth={2} /> : null}
-                  <button
-                    type="button"
+                <span key={crumb.path} className="flex min-w-0 items-center gap-0.5">
+                  {i > 0 ? <ChevronRight className="size-3 shrink-0 text-muted-foreground" /> : null}
+                  <Button
+                    variant="ghost"
+                    size="xs"
                     onClick={() => void load(crumb.path)}
-                    className={`pressable max-w-48 truncate rounded px-1 hover:bg-content/10 hover:text-content ${i === crumbs.length - 1 ? "text-content" : ""}`}
+                    aria-current={i === crumbs.length - 1 ? "location" : undefined}
+                    className={cn("max-w-48 justify-start", i === crumbs.length - 1 ? "text-foreground" : "text-muted-foreground")}
                   >
-                    {crumb.label}
-                  </button>
+                    <span className="truncate">{crumb.label}</span>
+                  </Button>
                 </span>
               ))}
             </nav>
-            <div className="max-h-64 min-h-24 overflow-y-auto rounded-lg border border-content/10" data-remote-folders>
-              {entries === null ? (
-                <div className="flex justify-center py-6">
-                  <MatrixSpinner cell={1.5} />
+            <div className="rounded-lg border border-border" data-remote-folders>
+              {loading || entries === null ? (
+                <div className="p-1">
+                  <FolderSkeleton />
                 </div>
               ) : entries.length === 0 ? (
-                <p className="px-3 py-3 text-[12px] text-content/40">No folders here.</p>
+                <p className="px-3 py-3 text-xs text-muted-foreground">No folders here.</p>
               ) : (
-                <ul className="flex flex-col p-1">
-                  {entries.map((entry) => (
-                    <li key={entry.path}>
-                      <button
-                        type="button"
+                <ScrollArea className="max-h-64 [&>[data-slot=scroll-area-viewport]]:max-h-64">
+                  <div className="flex flex-col p-1">
+                    {entries.map((entry) => (
+                      <Item
+                        key={entry.path}
+                        size="xs"
+                        render={<button type="button" />}
                         onClick={() => void load(entry.path)}
-                        onDoubleClick={() => onPick(entry.path)}
-                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12px] text-content/80 hover:bg-content/10 hover:text-content"
+                        onDoubleClick={() => pick(entry.path)}
+                        className="rounded-sm text-start hover:bg-foreground/5"
                       >
-                        <Folder className="size-3.5 shrink-0 text-content/50" strokeWidth={1.75} />
-                        <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                        <ItemMedia>
+                          <Folder className="size-3.5" />
+                        </ItemMedia>
+                        <ItemContent className="min-w-0">
+                          <ItemTitle className="max-w-full font-normal">
+                            <span className="truncate">{entry.name}</span>
+                          </ItemTitle>
+                        </ItemContent>
+                      </Item>
+                    ))}
+                  </div>
+                </ScrollArea>
               )}
             </div>
             {newFolder === null ? (
               <div className="flex items-center gap-2">
                 <Input
                   value={typed}
+                  disabled={loading}
                   onChange={(e) => setTyped(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
@@ -187,31 +229,42 @@ export function RemoteFolderDialog({
                   aria-label="Folder path"
                   spellCheck={false}
                   autoComplete="off"
-                  className="min-w-0 flex-1"
+                  className="flex-1 font-mono text-xs"
                   data-remote-path
                 />
-                <SecondaryButton onClick={() => setNewFolder("")}>
-                  <FolderPlus className="size-3.5" strokeWidth={1.75} />
+                <Button variant="secondary" disabled={!dir} onClick={() => setNewFolder("")}>
+                  <FolderPlus />
                   New folder
-                </SecondaryButton>
+                </Button>
               </div>
             ) : (
               <form onSubmit={(e) => void makeFolder(e)} className="flex items-center gap-2">
-                <input
+                <Input
                   value={newFolder}
                   autoFocus
+                  disabled={pending}
                   onChange={(e) => setNewFolder(e.target.value)}
-                  placeholder="folder name"
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setNewFolder(null);
+                    }
+                  }}
+                  placeholder="Folder name"
                   aria-label="New folder name"
                   spellCheck={false}
                   autoComplete="off"
-                  className={`${INPUT_CLASS} min-w-0 flex-1`}
+                  className="flex-1"
                   data-remote-new-folder
                 />
-                <SecondaryButton onClick={() => setNewFolder(null)}>Cancel</SecondaryButton>
-                <button type="submit" disabled={!newFolder.trim() || pending} className="pressable rounded-md bg-content/10 px-2.5 py-1 text-[12px] text-content hover:bg-content/15 disabled:opacity-40">
+                <Button variant="ghost" disabled={pending} onClick={() => setNewFolder(null)}>
+                  Cancel
+                </Button>
+                <Button type="submit" variant="secondary" disabled={!newFolder.trim() || pending}>
+                  {pending ? <Spinner className="size-3.5" /> : null}
                   Create and use
-                </button>
+                </Button>
               </form>
             )}
           </>
@@ -219,6 +272,6 @@ export function RemoteFolderDialog({
         <ErrorLine error={error} />
       </div>
       <DialogFooter onCancel={onClose} confirmLabel="Use this folder" onConfirm={choose} disabled={!typed.trim() || pending} />
-    </Modal>
+    </>
   );
 }

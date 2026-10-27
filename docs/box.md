@@ -1608,10 +1608,12 @@ a thread that holds something.
   check. The host pushes `{ push: 'resources', sessionId, resources }` after
   every change.
 - **Renderer**: the thread menu's "Resources…" (count once known) opens the
-  panel (chrome/ThreadResourcesDialog.tsx): host · kind · label per row,
-  Remove, "Waiting" while the host is offline, the last outcome under the
-  row, Remove all. Archive on a thread with rows asks first: "and remove 2
-  resources on the Mac" with the box on by default. A single archive calls
+  dialog (chrome/ThreadResourcesDialog.tsx): one row per resource, its label
+  in mono with the identifier on its tooltip, host, kind and the last outcome
+  under it, Remove (Stop for a dev server), "Waiting" while the host is
+  offline, Remove all; "Nothing recorded" when there are none. Archive on a
+  thread with rows asks first: "and remove 2 resources on the Mac" as a
+  checkbox, on by default, the resources as plain lines under it. A single archive calls
   `archiveThread(sessionId, { removeResources })` (lib/threadResources.ts);
   the fleet's Archive done sends `session.batch { cleanup: true }`, and the
   host's `registry.resourceCleanup` (index.ts) is `resources.remove` for each

@@ -519,8 +519,9 @@ in the whole pane, with Back.
   existing thread… (`master/AdoptThreadDialog.tsx`: the project's
   unarchived root threads in no batch and no master themselves, on this
   host and on the project's paired copies elsewhere (`pairedProjectIds`,
-  lib/projectPairs.ts), one checkbox row each with the host's name at the
-  right when they span hosts; Add is one `batch.adopt` on the master's
+  lib/projectPairs.ts), one checkbox row each (the type glyph, the title,
+  the type word) with the host's name at the right when they span hosts, in
+  a list that scrolls past 320px; Add is one `batch.adopt` on the master's
   host, a thread of another host named `<envId>:<id>`, the host's
   refusals read back by title in the sheet). No counts anywhere: the rows
   say them.
