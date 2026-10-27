@@ -7,7 +7,7 @@ const { retryLoad, block } = vi.hoisted(() => ({
   retryLoad: vi.fn(),
   block: { degraded: null as unknown, name: "box", text: null as string | null },
 }));
-vi.mock("../lib/tcserver/store", () => ({ sessionStore: { retryLoad }, useQueue: () => [] }));
+vi.mock("../lib/tcserver/store", () => ({ sessionStore: { retryLoad, isDraft: () => false }, useQueue: () => [] }));
 vi.mock("../chrome/ConnectionLine", () => ({ useEnvironmentBlock: () => block, ConnectionLine: () => null }));
 vi.mock("../chrome/Composer", () => ({ Composer: () => <div data-testid="composer" /> }));
 vi.mock("../chrome/MacBridgeCards", () => ({ MacBridgeThreadCards: () => null }));
@@ -18,7 +18,9 @@ vi.mock("../chrome/MessageQueue", () => ({ MessageQueue: () => null }));
 vi.mock("../chrome/SessionReview", () => ({ SessionReview: () => null }));
 vi.mock("../lib/recents", () => ({ looksLikeProject: () => true }));
 vi.mock("./AgentTranscript", () => ({ AgentTranscript: () => null }));
-vi.mock("./chunks", () => ({ diffChunk: {}, threadViewsChunk: {} }));
+// Every chunk the pane warms is a stub, whichever ones it names: a new
+// chunk import never leaves this suite red.
+vi.mock("./chunks", () => new Proxy({}, { has: (_target, key) => key !== "then", get: (_target, key) => (key === "then" ? undefined : {}) }));
 vi.mock("../lib/lazyChunk", async (importOriginal) => ({ ...(await importOriginal<typeof import("../lib/lazyChunk")>()), preloadWhenIdle: () => {} }));
 vi.mock("./EmptySession", () => ({ EmptySession: () => <div data-testid="empty-session" /> }));
 vi.mock("./threads/ThreadView", () => ({ ThreadView: () => <div data-testid="thread-view" /> }));
