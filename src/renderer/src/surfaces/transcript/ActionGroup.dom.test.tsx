@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { beforeAll, describe, expect, it } from "vitest";
-import { act, fireEvent, render } from "@testing-library/react";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import type { Block } from "../../lib/session";
 import { TranscriptSessionContext } from "../transcriptSession";
 import { ActionGroup } from "./ActionGroup";
@@ -9,6 +9,8 @@ import { setEditorConfigForTest } from "../../lib/editorConfig";
 
 // A row's file menu asks which editor opens files; there is no preload here.
 beforeAll(() => setEditorConfigForTest(null));
+// Unmount each render, so no scheduled React work outlives the jsdom environment.
+afterEach(cleanup);
 
 const CWD = "/r";
 const lines = (n: number) => Array.from({ length: n }, (_, i) => `l${i}`).join("\n");
