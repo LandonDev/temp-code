@@ -55,13 +55,15 @@ export function SearchFiltersMenu({
   const hereToken = here && !/\s/.test(here) ? here.toLowerCase() : null;
   const projectValue = parsed.project === null ? "any" : parsed.project === hereToken ? "here" : "other";
 
+  // A written token ends with a space so the next typed word stays a word.
+  const write = (next: string) => onQueryChange(next ? `${next} ` : "");
   const toggleType = (kind: SearchKind, on: boolean) => {
     const next = SEARCH_KINDS.filter((k) => (k === kind ? on : types.includes(k)));
-    onQueryChange(setQueryToken(query, "type", next.length === SEARCH_KINDS.length ? null : next));
+    write(setQueryToken(query, "type", next.length === SEARCH_KINDS.length ? null : next));
   };
   const toggleHost = (id: string, on: boolean) => {
     const next = environments.filter((env) => (env.id === id ? on : hostIds.has(env.id)));
-    onQueryChange(
+    write(
       setQueryToken(
         query,
         "host",
@@ -70,8 +72,8 @@ export function SearchFiltersMenu({
     );
   };
   const setProject = (value: string) => {
-    if (value === "any") onQueryChange(setQueryToken(query, "project", null));
-    else if (value === "here" && hereToken) onQueryChange(setQueryToken(query, "project", [hereToken]));
+    if (value === "any") write(setQueryToken(query, "project", null));
+    else if (value === "here" && hereToken) write(setQueryToken(query, "project", [hereToken]));
   };
 
   return (
@@ -103,6 +105,8 @@ export function SearchFiltersMenu({
             <DropdownMenuCheckboxItem
               key={kind}
               checked={types.includes(kind)}
+              // The last ticked box stays: no ticks would read as every one.
+              disabled={types.length === 1 && types.includes(kind)}
               onCheckedChange={(on) => toggleType(kind, on)}
               closeOnClick={false}
             >
@@ -117,6 +121,7 @@ export function SearchFiltersMenu({
               <DropdownMenuCheckboxItem
                 key={env.id}
                 checked={hostIds.has(env.id)}
+                disabled={hostIds.size === 1 && hostIds.has(env.id)}
                 onCheckedChange={(on) => toggleHost(env.id, on)}
                 closeOnClick={false}
               >

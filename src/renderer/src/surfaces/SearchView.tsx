@@ -176,6 +176,8 @@ export function SearchView({
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      // An open menu (the filters) takes its own Escape first.
+      if (event.target instanceof Element && event.target.closest('[role="menu"]')) return;
       event.preventDefault();
       event.stopPropagation();
       onCloseRef.current();

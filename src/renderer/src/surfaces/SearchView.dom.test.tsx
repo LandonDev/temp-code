@@ -276,22 +276,22 @@ describe("SearchView across hosts", () => {
     await act(async () => {
       fireEvent.click(menuItem(menu, "Files"));
     });
-    expect(input.value).toBe("gateway type:thread,note,project");
+    expect(input.value).toBe("gateway type:thread,note,project ");
     menu = view.baseElement.querySelector('[data-slot="dropdown-menu-content"]') as HTMLElement;
     expect(menuItem(menu, "Files").getAttribute("aria-checked")).toBe("false");
 
     await act(async () => {
       fireEvent.click(menuItem(menu, "This Mac"));
     });
-    expect(input.value).toBe("gateway type:thread,note,project host:box");
+    expect(input.value).toBe("gateway type:thread,note,project host:box ");
     await act(async () => {
       fireEvent.click(menuItem(menu, "This Mac"));
     });
-    expect(input.value).toBe("gateway type:thread,note,project");
+    expect(input.value).toBe("gateway type:thread,note,project ");
     await act(async () => {
       fireEvent.click(menuItem(menu, "app"));
     });
-    expect(input.value).toBe("gateway type:thread,note,project project:app");
+    expect(input.value).toBe("gateway type:thread,note,project project:app ");
     view.unmount();
   });
 
@@ -336,6 +336,22 @@ describe("SearchView across hosts", () => {
   it("opens with the command's initial query in the field", async () => {
     const view = render(<SearchView open cwd="/Users/me/app" recents={recents} initialQuery="type:note" {...props()} />);
     expect((view.container.querySelector("input") as HTMLInputElement).value).toBe("type:note ");
+    view.unmount();
+  });
+
+  it("keeps the last ticked box of a group, and Escape in the menu leaves search open", async () => {
+    const p = props();
+    const view = render(<SearchView open cwd="/Users/me/app" recents={recents} {...p} />);
+    await search(view, "gateway type:thread");
+    const menu = await openFilters(view);
+    expect(menuItem(menu, "Threads").getAttribute("aria-disabled")).toBe("true");
+    expect(menuItem(menu, "Files").getAttribute("aria-disabled")).not.toBe("true");
+    await act(async () => {
+      fireEvent.keyDown(menuItem(menu, "Files"), { key: "Escape" });
+    });
+    expect(p.onClose).not.toHaveBeenCalled();
+    fireEvent.keyDown(view.container.querySelector("input") as HTMLInputElement, { key: "Escape" });
+    expect(p.onClose).toHaveBeenCalledTimes(1);
     view.unmount();
   });
 });
