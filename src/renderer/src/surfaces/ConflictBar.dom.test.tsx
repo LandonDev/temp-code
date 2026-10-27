@@ -41,4 +41,18 @@ describe("ConflictBar", () => {
     expect(onKeep).toHaveBeenCalledTimes(1);
     expect(onReload).not.toHaveBeenCalled();
   });
+
+  it("wraps the message instead of cutting it, with the actions kept together at the end", () => {
+    probe = mountProbe(<ConflictBar kind="external" onReload={vi.fn()} onKeep={vi.fn()} />);
+    const message = [...probe.container.querySelectorAll("span")].find((span) =>
+      span.textContent?.startsWith("Changed on disk"),
+    )!;
+    expect(message.textContent).toBe("Changed on disk where you were editing");
+    expect(message.className).not.toContain("truncate");
+    expect(message.parentElement!.className).toContain("flex-wrap");
+    const end = probe.container.querySelector<HTMLElement>("[data-alert-end]")!;
+    expect(end.className).toContain("ms-auto");
+    expect(end.className).toContain("shrink-0");
+    expect(end.querySelectorAll("button")).toHaveLength(2);
+  });
 });
