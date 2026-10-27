@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Tip, TruncateTip } from "../components/tip";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/ui/context-menu";
@@ -241,5 +242,62 @@ describe("the title bar's icon buttons", () => {
     fireEvent.mouseEnter(button);
     fireEvent.focus(button);
     await waitFor(() => expect(document.querySelector('[data-slot="tooltip-content"]')?.textContent).toBe("Sidebar⌘B"), { timeout: 2000 });
+  });
+});
+
+describe("focus after a menu closes", () => {
+  beforeEach(() => resetMenus());
+
+  it("Escape gives focus back to the clicked row's own control, a roving tab's button too", async () => {
+    await act(async () => {
+      await menuChunk.load();
+      warmMenus();
+    });
+    render(
+      <RowsContextMenu label="Rows" rowsFor={(id) => (id ? [{ kind: "item", id: "x", label: "X" }] : null)} onPick={() => {}}>
+        <div>
+          <div data-menu-id="b">
+            <button type="button" tabIndex={-1}>
+              Beta
+            </button>
+          </div>
+        </div>
+      </RowsContextMenu>,
+    );
+    fireEvent.contextMenu(screen.getByText("Beta"));
+    const menu = await screen.findByRole("menu", { name: "Rows" });
+    fireEvent.keyDown(menu, { key: "Escape" });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByText("Beta")));
+  });
+
+  it("a pick that opens a dialog leaves focus in the dialog's field once the menu has closed", async () => {
+    await act(async () => {
+      await menuChunk.load();
+      warmMenus();
+    });
+    function Surface() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <RowsContextMenu label="Rows" rowsFor={(id) => (id ? [{ kind: "item", id: "customize", label: "Customize…" }] : null)} onPick={() => setOpen(true)}>
+            <div>
+              <button type="button" data-menu-id="b">
+                Beta
+              </button>
+            </div>
+          </RowsContextMenu>
+          {open ? (
+            <div data-slot="dialog-content">
+              <input aria-label="Name" autoFocus />
+            </div>
+          ) : null}
+        </>
+      );
+    }
+    render(<Surface />);
+    fireEvent.contextMenu(screen.getByText("Beta"));
+    fireEvent.click(within(await screen.findByRole("menu", { name: "Rows" })).getByText("Customize…"));
+    await waitFor(() => expect(screen.queryByRole("menu", { name: "Rows" })).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Name")));
   });
 });

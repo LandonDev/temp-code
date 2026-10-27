@@ -92,6 +92,32 @@ export function MenuRows({ items, onPick, kind }: { items: readonly MenuRow[]; o
   return <>{out}</>;
 }
 
+/**
+ * Focus after a menu has finished closing. A pick that opened a dialog
+ * gets the dialog's first field (the menu held focus while it closed, so
+ * the dialog's own first focus was lost); a pick that moved focus anywhere
+ * else keeps it; otherwise focus goes back to `target`.
+ */
+function restoreFocus(target: HTMLElement | null): void {
+  const dialogs = document.querySelectorAll<HTMLElement>("[data-slot='dialog-content'], [data-slot='alert-dialog-content']");
+  const dialog = dialogs[dialogs.length - 1];
+  const active = document.activeElement;
+  if (dialog) {
+    if (!dialog.contains(active)) (dialog.querySelector<HTMLElement>("input, textarea, select, button") ?? dialog).focus({ preventScroll: true });
+    return;
+  }
+  if (active && active !== document.body && !active.closest("[data-slot$='menu-content']")) return;
+  target?.focus({ preventScroll: true });
+}
+
+/** The control a row's menu gives focus back to: the row itself when it
+ *  takes focus, else the control inside it (a roving tab's button). */
+function focusableOf(row: HTMLElement | null): HTMLElement | null {
+  if (!row) return null;
+  if (row.matches("button, a[href], input, [tabindex]")) return row;
+  return row.querySelector<HTMLElement>("button, a[href], input, [tabindex]") ?? row;
+}
+
 /** Rows given as a function are built here, inside the open popup only. */
 function OpenRows({ rows, onPick, kind }: { rows: RowsMenuProps["rows"]; onPick: (id: string) => void; kind: MenuRowsKind }) {
   return <MenuRows kind={kind} items={typeof rows === "function" ? rows() : rows} onPick={onPick} />;
@@ -175,12 +201,14 @@ export function DropdownRows({
   modal,
   finalFocus,
 }: RowsMenuProps & { defaultOpen?: boolean }) {
-  const opener = <DropdownMenuTrigger render={trigger} />;
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const opener = <DropdownMenuTrigger ref={triggerRef} render={trigger} />;
   return (
     <DropdownMenu
       {...(open === undefined ? { defaultOpen } : { open })}
       modal={modal}
       onOpenChange={(next) => onOpenChange?.(next)}
+      onOpenChangeComplete={(next) => !next && finalFocus === undefined && restoreFocus(triggerRef.current)}
     >
       {tip ? (
         <Tip label={tip.label} shortcut={tip.shortcut} side={tip.side}>
@@ -189,7 +217,7 @@ export function DropdownRows({
       ) : (
         opener
       )}
-      <DropdownMenuContent size={size} align={align} side={side} className={className} aria-label={label} finalFocus={finalFocus}>
+      <DropdownMenuContent size={size} align={align} side={side} className={className} aria-label={label} finalFocus={finalFocus ?? false}>
         <OpenRows kind="dropdown" rows={rows} onPick={onPick} />
       </DropdownMenuContent>
     </DropdownMenu>
@@ -225,6 +253,7 @@ export function ContextRows({
   return (
     <ContextMenu
       open={state.open && !!rows?.length}
+      onOpenChangeComplete={(open) => !open && restoreFocus(back.current)}
       onOpenChange={(open) => {
         if (!open) {
           setState((prev) => ({ ...prev, open: false }));
@@ -234,13 +263,13 @@ export function ContextRows({
         const at = asked.current;
         asked.current = null;
         if (!at || !rowsFor(at.id)?.length) return;
-        back.current = at.row;
+        back.current = focusableOf(at.row);
         setState({ open: true, id: at.id });
         onOpenChange?.(true, at.id);
       }}
     >
       <ContextMenuTrigger render={<span ref={trigger} aria-hidden className="pointer-events-none fixed size-0" />} />
-      <ContextMenuContent aria-label={label} finalFocus={back}>
+      <ContextMenuContent aria-label={label} finalFocus={false}>
         {rows ? <MenuRows kind="context" items={rows} onPick={(pick) => onPick(pick, state.id)} /> : null}
       </ContextMenuContent>
     </ContextMenu>

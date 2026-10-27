@@ -17,6 +17,7 @@ import { ProjectMascot } from "./ProjectMascot";
 
 /** What the dialog saves; the caller writes each part where it lives. */
 export type GroupLook = {
+  /** Empty: no name of its own (the folder's or project's shows). */
   name: string;
   /** null: the first colour (the default). */
   colorIndex: number | null;
@@ -101,7 +102,8 @@ function CustomizeForm({
       if (logo.kind !== "keep") onLogoChange?.();
       const index = color === CUSTOM ? null : Number(color);
       onSave({
-        name: name.trim() || label,
+        // Empty clears the name back to the project's own.
+        name: name.trim(),
         colorIndex: index === 0 ? null : index,
         customColor: color === CUSTOM ? custom : null,
         mascot,

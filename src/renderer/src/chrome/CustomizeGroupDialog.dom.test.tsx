@@ -67,6 +67,13 @@ describe("CustomizeGroupDialog", () => {
     await waitFor(() => expect(second.onSave.mock.calls[0]?.[0]).toMatchObject({ colorIndex: null, customColor: "#123456" }));
   });
 
+  it("an emptied Name saves empty, clearing the name back to the project's own", async () => {
+    const { onSave } = open({ label: "Alpha" });
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onSave.mock.calls[0]?.[0]).toMatchObject({ name: "" }));
+  });
+
   it("Cancel applies nothing", async () => {
     const { onSave, onClose } = open();
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Alpha" } });
