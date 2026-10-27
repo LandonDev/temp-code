@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DevRun } from '@server/shared/contract-devservers'
 import type { ThreadResource } from '@server/shared/contract-resources'
-import { applyDevRunPush, applyHostRuns, devHosts, devServerStore, liveServers, shownServer, targetLabel, type LiveServerSources } from './devServers'
+import { applyDevRunPush, applyHostRuns, devHosts, devTabOf, devServerStore, liveServers, shownServer, targetLabel, type LiveServerSources } from './devServers'
 import { devPane, devPaneStore, resetDevPane } from './devPane'
 import { pairWorkspaces } from './projectPairs'
 
@@ -184,5 +184,17 @@ describe('the Dev servers pane', () => {
     devPane.close()
     resetDevPane()
     expect(devPaneStore.getState().open).toBe(false)
+  })
+})
+
+describe('devTabOf', () => {
+  it('shows the tab when a host can serve the project, a server runs, or the pane is open', () => {
+    expect(devTabOf({ servable: true, count: 0, open: false })).toEqual({ count: 0 })
+    expect(devTabOf({ servable: false, count: 2, open: false })).toEqual({ count: 2 })
+    expect(devTabOf({ servable: false, count: 0, open: true })).toEqual({ count: 0 })
+  })
+
+  it('hides it when none of them holds', () => {
+    expect(devTabOf({ servable: false, count: 0, open: false })).toBeNull()
   })
 })

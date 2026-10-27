@@ -1,10 +1,8 @@
-import { ChevronDown, Globe, Plus } from "../chrome/icons";
+import { DockBar } from "../chrome/DockBar";
 import { DockFrame } from "../chrome/DockFrame";
-import { SurfaceTabs } from "../chrome/SurfaceTabs";
-import { IconButton } from "../chrome/TitleBar";
 import { devPane } from "../lib/devPane";
+import { useDevTab } from "../lib/devServers";
 import type { ProjectTerminalDock } from "../lib/projectTerminal";
-import { MOD } from "../lib/platform";
 import type { TerminalMetaPatch } from "../lib/terminalTab";
 import { terminalChunk } from "./chunks";
 import { SurfaceSkeleton } from "./SurfaceSkeleton";
@@ -26,6 +24,7 @@ type Props = {
   onTerminalMetaChange?: (fileId: string, patch: TerminalMetaPatch) => void;
 };
 
+/** The bottom dock showing a project's terminals; its bar's Dev servers tab opens the other occupant. */
 export function ProjectTerminalDock({
   dock,
   focused,
@@ -39,6 +38,8 @@ export function ProjectTerminalDock({
   onReorderTerminals,
   onTerminalMetaChange,
 }: Props) {
+  const dev = useDevTab(dock.projectPath);
+
   return (
     <DockFrame
       data-project-terminal-dock=""
@@ -47,36 +48,21 @@ export function ProjectTerminalDock({
       label="Resize terminal"
       onFocus={onFocus}
       onSizePaint={onSizePaint}
-      onSizeCommit={onSizeCommit}
+      onSizeCommit={(size) => {
+        onSizeCommit(size);
+        devPane.size(size);
+      }}
     >
-      <SurfaceTabs
-        files={dock.pane.files}
-        activeFileId={dock.pane.activeFileId}
-        dirtyFileIds={EMPTY_IDS}
-        fileErrorCounts={EMPTY_ERRORS}
-        label="Terminals"
-        onSelectFile={onSelectTerminal}
-        onCloseFile={onCloseTerminal}
+      <DockBar
+        terminals={dock.pane.files}
+        active={dock.pane.activeFileId}
+        dev={dev}
+        onSelect={onSelectTerminal}
+        onSelectDev={() => devPane.open()}
+        onClose={onCloseTerminal}
         onReorder={onReorderTerminals}
-        trailing={
-          <div className="flex shrink-0 items-center gap-0.5 border-l border-content/10 px-2">
-            <IconButton
-              label={`New Terminal (${MOD}\`)`}
-              onClick={onAddTerminal}
-            >
-              <Plus className="size-3.5" strokeWidth={1.75} />
-            </IconButton>
-            <IconButton label="Dev Servers" onClick={() => devPane.open()}>
-              <Globe className="size-3.5" strokeWidth={1.75} />
-            </IconButton>
-            <IconButton
-              label={`Hide Terminal (${MOD}J)`}
-              onClick={onHide}
-            >
-              <ChevronDown className="size-3.5" strokeWidth={1.75} />
-            </IconButton>
-          </div>
-        }
+        onAdd={onAddTerminal}
+        onHide={onHide}
       />
       <div className="relative min-h-0 min-w-0 flex-1">
         {dock.pane.files.map((file) => (
@@ -101,6 +87,3 @@ export function ProjectTerminalDock({
     </DockFrame>
   );
 }
-
-const EMPTY_IDS = new Set<string>();
-const EMPTY_ERRORS = new Map<string, number>();

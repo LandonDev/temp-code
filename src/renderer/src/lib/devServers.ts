@@ -13,6 +13,8 @@ import { useEnvironments, useEnvironmentStatuses } from './connection/status'
 import { pairWorkspaces, partnersOf } from './projectPairs'
 import type { ProjectMeta } from './tcserver/types'
 import { useProjects, useWorkspaces } from './tcserver/workspaces'
+import { sameProjectPath } from './recents'
+import { useDevPane } from './devPane'
 
 /**
  * The Dev Server button's state (docs/box.md "Dev servers on the box"): per
@@ -333,4 +335,25 @@ export function useLiveDevServers(): LiveServer[] {
 export async function stopLiveServer(server: LiveServer): Promise<void> {
   if (server.runId) await stopDevServer(server.environmentId, server.runId)
   else if (server.resource) await removeThreadResources(server.resource.sessionId, [server.resource.id])
+}
+
+/**
+ * Whether the bottom dock shows its Dev servers tab, and the count beside it:
+ * only when a host can serve the project, a server runs anywhere, or the pane
+ * is open (so the tab the person is on never vanishes under them).
+ */
+export function devTabOf({ servable, count, open }: { servable: boolean; count: number; open: boolean }): { count: number } | null {
+  return servable || count > 0 || open ? { count } : null
+}
+
+/** `devTabOf` for the dock of `projectPath`: this machine's project at that folder, else any host's. */
+export function useDevTab(projectPath: string): { count: number } | null {
+  const projects = useProjects()
+  const local = registry.primary().environmentId
+  const here = projects.filter((p) => !p.archived && p.cwd && sameProjectPath(p.cwd, projectPath))
+  const project = here.find((p) => p.environmentId === local) ?? here[0]
+  const servable = useDevServable(project)
+  const count = useLiveDevServers().length
+  const open = useDevPane((s) => s.open)
+  return devTabOf({ servable, count, open })
 }

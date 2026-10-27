@@ -1,22 +1,25 @@
 import { useState } from "react";
 import { useStore } from "zustand";
+import { DEV_TAB, DockBar } from "../chrome/DockBar";
 import { DockFrame } from "../chrome/DockFrame";
 import { HostGlyph } from "../chrome/HostGlyph";
-import { ChevronDown, Play, Square, Terminal } from "../chrome/icons";
-import { IconButton } from "../chrome/TitleBar";
+import { Square } from "../chrome/icons";
 import { devPane, useDevPane } from "../lib/devPane";
 import { openUrl, portOpen } from "../lib/devPorts";
-import { shownServer, stopLiveServer, useLiveDevServers, type LiveServer } from "../lib/devServers";
+import { shownServer, stopLiveServer, useDevTab, useLiveDevServers, type LiveServer } from "../lib/devServers";
 import { macBridgeStore } from "../lib/macBridge";
 import { isWebMode } from "../lib/nativeWeb";
-import { rightPanel } from "../lib/rightPanel";
+import { findProjectTerminal, selectDockTerminal, withDockOpen } from "../lib/projectTerminal";
+import { useProjects } from "../lib/tcserver/workspaces";
+import { dockCwdOf, useProject } from "../stores/project";
+import { terminals, useTerminals } from "../stores/terminals";
 import { Spinner } from "./threads/spinners";
 import { DevConsole } from "./DevConsole";
 
 /**
  * The Dev servers pane (docs/box.md "Dev servers on the box"): the bottom
- * dock's other occupant, in the terminal's type and density but its own
- * thing. One row per dev server live on a host right now (a running Dev
+ * dock's other occupant, under the same bar as the terminals (its Dev
+ * servers tab is the one picked). One row per dev server live on a host right now (a running Dev
  * Server run, or a port a thread opened that still listens); a row leaves
  * the moment its host drops it. The picked row's console fills the rest.
  */
@@ -27,13 +30,14 @@ export function DevServersPane({
 }: {
   onSizePaint: (size: number) => void;
   onSizeCommit: (size: number) => void;
-  /** Absent at /ui, where there is no terminal to switch to. */
-  onShowTerminal?: () => void;
+  onShowTerminal: () => void;
 }) {
   const size = useDevPane((s) => s.size);
   const picked = useDevPane((s) => s.picked);
   const servers = useLiveDevServers();
   const shown = shownServer(servers, picked);
+  const { cwd, dock } = useCurrentDock();
+  const dev = useDevTab(cwd);
 
   return (
     <DockFrame
@@ -45,28 +49,24 @@ export function DevServersPane({
       onSizePaint={onSizePaint}
       onSizeCommit={onSizeCommit}
     >
-      <div className="flex h-9 shrink-0 items-center border-b border-content/10 pl-3">
-        <h2 className="min-w-0 flex-1 truncate text-[12px] font-medium text-content/80">Dev servers</h2>
-        <div className="flex shrink-0 items-center gap-0.5 border-l border-content/10 px-2">
-          <IconButton label="Start a Dev Server" onClick={() => rightPanel.show("dev")}>
-            <Play className="size-3.5" strokeWidth={1.75} />
-          </IconButton>
-          {onShowTerminal ? (
-            <IconButton
-              label="Terminal"
-              onClick={() => {
-                devPane.close();
-                onShowTerminal();
-              }}
-            >
-              <Terminal className="size-3.5" strokeWidth={1.75} />
-            </IconButton>
-          ) : null}
-          <IconButton label="Hide Dev Servers" onClick={devPane.close}>
-            <ChevronDown className="size-3.5" strokeWidth={1.75} />
-          </IconButton>
-        </div>
-      </div>
+      <DockBar
+        terminals={dock?.pane.files ?? EMPTY_FILES}
+        active={DEV_TAB}
+        dev={dev ?? { count: servers.length }}
+        onSelect={(id) => {
+          terminals.updateDock(cwd, (d) => selectDockTerminal(d, id));
+          onShowTerminal();
+        }}
+        onSelectDev={noop}
+        onAdd={() => {
+          if (dock) terminals.openNext(cwd);
+          onShowTerminal();
+        }}
+        onHide={() => {
+          devPane.close();
+          terminals.updateDock(cwd, (d) => withDockOpen(d, false));
+        }}
+      />
       {shown ? (
         <div className="flex min-h-0 min-w-0 flex-1">
           <div
@@ -98,6 +98,17 @@ export function DevServersPane({
 }
 
 const noop = () => {};
+const EMPTY_FILES: never[] = [];
+
+/** The dock of the project on screen: the same derivation as `currentDockCwd()`, as React state. */
+function useCurrentDock() {
+  const projectCwd = useProject((s) => s.projectCwd);
+  const selectedProjectId = useProject((s) => s.selectedProjectId);
+  const projects = useProjects();
+  const cwd = dockCwdOf({ projectCwd, selectedProjectId }, projects);
+  const dock = useTerminals((s) => findProjectTerminal(s.docks, cwd));
+  return { cwd, dock, projectId: selectedProjectId };
+}
 
 function ServerRow({ server, selected }: { server: LiveServer; selected: boolean }) {
   const localId = useStore(macBridgeStore, (s) => s.localId);
