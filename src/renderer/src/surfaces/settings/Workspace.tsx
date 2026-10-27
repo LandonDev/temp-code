@@ -120,7 +120,7 @@ function ProjectsSection({ workspace }: { workspace: WorkspaceMeta }) {
           key={project.id}
           data-slot="project-row"
           render={<button type="button" onClick={() => setOpen(project)} />}
-          className="-mx-2 w-[calc(100%+1rem)] cursor-default px-2 py-2.5 text-start hover:bg-muted"
+          className="-mx-2 w-[calc(100%+1rem)] cursor-default border-0 px-2 py-2.5 text-start hover:bg-muted"
         >
           <ItemContent className="min-w-0">
             <ItemTitle>{project.name}</ItemTitle>

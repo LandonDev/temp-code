@@ -107,6 +107,20 @@ and shared folders). Facts on one line are `Facts` spans, never dots; numbers
 are `CommitField`s; logs and conflict copies are `Collapsible`s under their
 row. Add host sits at the page's foot (desktop only).
 
+### Settings → a workspace
+
+Each workspace has its own page (section id `ws:<workspace id>`,
+surfaces/settings/Workspace.tsx), its sections in this order: New threads,
+Completed turn, Accounts (a `ChoiceSelect` per routed provider), Build (the
+command and outputs; the Build rail tab's settings link opens this page and
+scrolls here, `openBuildSettings` → `takeRequestedBuildFocus`), Orchestration
+(where the workspace's rules stand, Edit rules) and Projects (one row per
+live project, its pinned accounts or Auto as the muted line, opening the
+project's settings dialog). There is no separate Build page. Orchestration,
+Reviews, Appshots and Archive are pages on the same frame (`Page`,
+`PageSection`, `PageRow`); Orchestration's models are one flat `Table` with a
+group row per provider.
+
 ### The right side
 
 One panel per root thread at its pane's right edge (`surfaces/RightPanel.tsx`

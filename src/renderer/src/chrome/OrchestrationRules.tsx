@@ -310,7 +310,7 @@ function ModelRow({
           value={policy === true ? "everyone" : policy === false ? "off" : "orchestrators"}
           onChange={(v) => onChange({ approved: v === "everyone" ? true : v === "off" ? false : "orchestrators" })}
           options={APPROVAL_OPTIONS}
-          className="w-40"
+          className="w-44"
         />
       </TableCell>
       <TableCell className="text-end">
