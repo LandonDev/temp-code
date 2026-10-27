@@ -67,7 +67,8 @@ project header's plan chip (see below) lists the same actions with the pin:
 With every milestone done the two milestone buttons give way to "Every
 milestone is done". **Keep as the project's plan** is the view header's
 "Project's plan" toggle (`projectPlan.pin`): pressed, the project header's
-chip reads "Plan · 3 of 7 milestones done".
+chip reads "Plan" with the milestones' tally, `3/7` (the phone's chip keeps
+"Plan · 3 of 7 milestones done").
 
 ## Milestone ticks
 

@@ -88,10 +88,10 @@ panel's Branch section, not the header's.
 | Piece | Component | Styling |
 | --- | --- | --- |
 | Frame | `chrome/ProjectRail.tsx`, a flex column on `bg-sidebar` | resizable; the 40px header (traffic lights, back, forward, the toggle), the scrolling list, a hairline, the foot. Deck only: the classic layout is retired (`useSidebarLayout` answers `deck`) |
-| Row | `chrome/RailRow.tsx` (`RailRow`) | every row in the rail and the settings list: 36px, a 16px glyph, a 13px label, `text-muted-foreground` at rest and `text-foreground` on hover, focus and selection; selection is `aria-current` with a `bg-muted` fill, hover `bg-foreground/5`, never a bar, border or shadow; at most one trailing mark (`trailingInteractive` puts a control such as A2's status chip beside the row's button) and one hover action (an icon Button with its Tooltip that takes the trailing slot's place); a Tooltip, never `title=`; rows never animate in or out. The lists sit in an 8px inset |
+| Row | `chrome/RailRow.tsx` (`RailRow`) | every row in the rail and the settings list: 36px, a 16px glyph, a 13px label, `text-muted-foreground` at rest and `text-foreground` on hover, focus and selection; selection is `aria-current` with a `bg-muted` fill, hover `bg-foreground/5`, never a bar, border or shadow; at most one trailing mark (`trailingInteractive` puts a control such as a workspace's status word beside the row's button) and one hover action (an icon Button with its Tooltip that takes the trailing slot's place); a Tooltip, never `title=`; rows never animate in or out. The lists sit in an 8px inset |
 | Heading | `RailHeading` in `chrome/RailRow.tsx` | 28px, 12px `font-medium` muted, sentence case, on the rows' glyph column; "Pinned" only when pins exist, "Workspaces" ends in Add workspace (one always-visible icon button) |
 | List | Chats, then Pinned, then Workspaces | Chats is the first row (the home's loose chats, its trailing mark the waiting or working glyph); Notes and Mark all read are not in the rail (Search finds notes with `type:note`, each thread's notes are the right panel's; Mark all read is in the View menu and every workspace and host menu) |
-| Workspace row | `WorkspaceRow` in `chrome/ProjectRail.tsx` on `lib/linkedRail.ts` | the glyph, the alias-resolved name, the status chip as its trailing mark and ⋯ (the right-click's menu: label, colour, mascot, Pin or Unpin, Reveal, Mark all read, the fleet switches, Archive, Delete) as its hover action; drag reorders it, a 2px accent line marks the drop. One "Workspaces" section for every host, no host headers; a workspace linked across hosts (one `linkId`) is one row led by this machine's copy, its threads, status chip, Mark all read, pin and drag spanning every copy; order, pins, recents, labels, colours and mascots keep their keys, the other copies alias to the leader's (`aliasKeys`). No diff stat, no pin button, no shimmer on the name. The glyph, the chip and the working line under a busy row are A2's, in `chrome/WorkspaceRowMarks.tsx` |
+| Workspace row | `WorkspaceRow` in `chrome/ProjectRail.tsx` on `lib/linkedRail.ts` | the glyph, the alias-resolved name, its one `StatusMark` word as its trailing mark and ⋯ (the right-click's menu: label, colour, mascot, Pin or Unpin, Reveal, Mark all read, the fleet switches, Archive, Delete) as its hover action; drag reorders it, a 2px accent line marks the drop. One "Workspaces" section for every host, no host headers; a workspace linked across hosts (one `linkId`) is one row led by this machine's copy, its threads, word, Mark all read, pin and drag spanning every copy; order, pins, recents, labels, colours and mascots keep their keys, the other copies alias to the leader's (`aliasKeys`). No diff stat, no pin button, no shimmer on the name. The glyph (logo or mascot, never animated or tinted by state), the word (Needs you, Failed, Working, Paused, loudest first; a click opens the workspace's threads in a Popover) and the 24px line under the row naming the thread behind the word (`+N` for the others) are A2's, in `chrome/WorkspaceRowMarks.tsx`; unread is the row's emphasis |
 | Offline tint | `chrome/hostOffline.ts` | with two or more hosts, a row whose host's link is not open (a rail row: every host of it) sits at `opacity-50` with `data-host-offline`, as the master board's rows do; its rows are the launch mirror's and lift when the host is back |
 | Foot | `RailFoot` in `chrome/ProjectRail.tsx` (`railFootRows`) | under a 1px hairline, in order: the update row when there is something to act on, the Hosts row with two or more hosts, Inbox (medium foreground while something is unseen), Search (Tooltip ⌘K), Accounts, Stats, Settings (Tooltip ⌘,), then the usage meter. The same foot sits under the workspace column while the rail is collapsed |
 | Update row | `chrome/UpdateRow.tsx` (`updateRowState`) | one RailRow, absent while idle or checking: "Updated to 1.0.N" (opens What's new, ✕ dismisses), "Update to 1.0.N" or "Retry update" (installs; What's new as the hover action when there are notes), "Downloading" with its percentage, "Restart to update"; the glyph is the accent while there is something to do, no tinted fill. Check for updates is in the app menu and Settings, General |
@@ -99,7 +99,7 @@ panel's Branch section, not the header's.
 | Usage meter | `chrome/UsageMeter.tsx` on `src/shared/usageMeter.ts` (`meterFor`), the foot's last block | one 36px ghost row per provider with accounts: the provider glyph, an 80px 4px `Progress` of the pooled share (the mean room over every account routing could pick, each account's room its tighter of 5h and week; expired and unreported accounts left out; amber below 10%), then "in 2h" (the next refill) in 12px `text-muted-foreground`, or "Limited 3m" in `text-warning` while every account is throttled; before any report an empty track and no text. No account name. Hover (the tooltip's delays), click or Enter opens a `Popover` to the right: the provider and "62% left", one row per usage window (5h, Week, each per-model cap) with its refill, percent and bar, and one muted foot line, "3 accounts with room". It moves on the `accounts` push alone |
 | Settings list | `SettingsNav` in `chrome/SettingsRail.tsx` | while settings are open the rail's list is the pages as RailRows under RailHeadings, then the workspaces (another host's names its host as muted trailing text), and Back as the foot's one row |
 | Workspace column | `chrome/Sidebar.tsx` | column two holds only the workspace's projects and threads (`WorkspaceSessions`) under one 40px header: the workspace's name (Chats at the home) in 13px medium, New thread (Tooltip ⌘N) and the workspace ⋯ menu. No tabs: files and changes are the right panel's Files and Changes sections; ⌘P still goes to a file. While the rail is collapsed a 40px row with the traffic lights and the toggle sits above the header and the rail's foot sits under the threads |
-| Project row | the workspace column's rows (`WorkspaceSessions`) | name 13px; below/right: `git-branch` glyph + branch or `tc/<tag>` worktree tag, 11px muted; relative time right-aligned; status dot when a thread runs (emerald pulse / amber waiting / red error); a master and its batch print as one nested block ("Master" below), and nothing inside a master is unread |
+| Project row | `ProjectRowView` / `ProjectRow` in `chrome/WorkspaceSessions.tsx` | a 32px fold: the chevron, the name (`font-medium` while a thread in it is unread) and one `StatusMark` word at the end, the loudest of Needs you, Failed, Working and Paused (`groupMark`, lib/sidebarRows.ts), nothing when quiet; ⋯ and a right-click open its menu. Open by default, the person's close remembered (`lib/projectFolds.ts`). Its threads are 32px `ThreadRowView` rows under it, each ending in its glyph alone (`rowState` → `StatusMark`; the word and what it is about on hover), a settled row in nothing, unread by weight; subagents and a master's batch one step in, the master with its batch's done tally. No border, branch line, time, dot or tint |
 
 ### Settings → Hosts
 
@@ -699,29 +699,26 @@ in the whole pane, with Back.
   strip with one quiet Start now; only the header strip leaves it out.
   Under the master's rail row a child on a host whose link is not open
   sits under the same offline tint as on the board (`data-host-offline`).
-- **On the project card** (and the workspace popover) a master with a batch
-  is one block between the hairlines, three steps deep, each step's mark
-  in a 12px box under the step above's glyph:
+- **In the workspace column** a master is a thread row ending in its
+  batch's done tally (`3/7`, green when all are done) and its mark; its
+  fold holds its batch first, then its own subagents.
+- **In the workspace popover** (a rail row's word) a master with a batch
+  is one block:
   ```
-  ◌ ▤ iOS batch 2                     3/7
-        2 agents · 1 working
-     ⠿ ⌗ Home like the sidebar        4m
-           1 agent · 1 needs approval
-     ● ⌗ Live Activity          Needs you
-     • 2 queued
+  iOS batch 2                       3/7  ○ Watching
+  2 agents  1 working
+     ▤ Home like the sidebar              ◌ Working
+     ▤ Live Activity                      ⊙ Needs you
+     2 queued
   ```
-  The master's line ends with the batch's done tally (green when all are
-  done); its own working subagents sit under its title, apart from the
-  batch. Each batch thread that works, waits, failed, paused or stopped
-  is a line, loudest first (Needs you and Failed in words, a running one's
-  task tally or elapsed), its working subagents under its title; queued
-  ones are one quiet count and settled ones are the tally. A master
-  settled and seen over a finished batch prints nothing, like any dormant
-  thread. Nothing inside a master is ever unread (`housedIds`): the
-  master reads them, so they carry no dot or bold and no unread count
-  anywhere; a waiting one still lights the card's "need you" and the
-  workspace chip. In a thread list (Chats, archived) a master's fold
-  holds its batch first, then its own subagents.
+  Its own working subagents sit under its title, two spaces between their
+  parts; each batch thread that works, waits, failed, paused or stopped is
+  a row one step in, loudest first; queued ones are one quiet count and
+  settled ones are the tally. A master settled and seen over a finished
+  batch prints nothing, like any dormant thread. Nothing inside a master
+  is ever unread (`housedIds`): the master reads them, so they carry no
+  weight and no unread count anywhere; a waiting one still lights its
+  project's and its workspace's Needs you.
 
 ## ADE ambitions (later — but the frame reserves room now)
 

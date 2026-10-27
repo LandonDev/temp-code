@@ -434,8 +434,9 @@ routed to (aliax-core's `forward`). Two listeners:
   session row: `failureKind.ts`, stamped in `Sessions.append` from the
   harness's words, the gateway's last refusal for the thread and the
   routing). The transcript's FailureCard prints its two lines and at most
-  three actions that fit the kind, Retry last; the tab edge and the
-  workspace popover print the summary instead of "Failed". docs/box.md
+  three actions that fit the kind, Retry last; the tab edge prints the
+  summary instead of "Failed", and the workspace popover prints it under
+  the thread's title. docs/box.md
   "A failed turn says what happened". Nothing in a renderer parses an error
   string; add a kind to `FailureKindSchema`, a rule to `failureKindOf`, its
   actions to `failureActions`, and run `bun run gen:swift`.
@@ -1953,8 +1954,8 @@ threadBatch.test.ts), one `session.batch` per host.
   milestone N (a planning thread linked to the first undone milestone, then
   the ordinary single Start), Orchestrate milestone N, Revise… (a dialog
   whose text goes in as a new turn); the view header's "Project's plan"
-  toggle keeps it as the project's plan (the header chip then reads "Plan ·
-  3 of 7 milestones done"). A landed
+  toggle keeps it as the project's plan (the header chip then reads "Plan"
+  and `3/7`). A landed
   `project.mergeInto` ticks the milestone of every linked build
   (`ProjectPlans.landed`, src/main/server/projectPlan.ts); the checkbox in
   the plan view ticks by hand. State over `projectPlan.*` RPCs
@@ -2292,18 +2293,20 @@ this is the short one.
   first, then the subagents, folded behind "N threads"), each with its own
   subagents under it; a plan whose build has started takes no row
   (`startedPlan`), an archived thread never does, and a batch whose master
-  is archived or unpinned shows as plain roots. On the project card and the
-  workspace popover a master is one block (`masterBlock` in
-  lib/sidebarRows.ts, `MasterLines` in chrome/WorkspaceSessions.tsx): the
-  master's line with the batch's done tally (`3/7`), its own working
-  subagents under its title in the fleet's words, then each batch thread
-  that works, waits, failed, paused or stopped one step in, loudest first
-  (Needs you and Failed in words), its working subagents under it, and the
-  queued ones as one "N queued" line; settled ones are the tally. Nothing
-  inside a master is unread (`housedIds`: the batch and every subagent of
-  the master or of its batch): no dot, no bold, and no count in the card,
-  the workspace chip, the popover or Mark all read; the master keeps its
-  own. They still count as working and needing you (`cardThreads`).
+  is archived or unpinned shows as plain roots. In the workspace column a
+  project row lists the batch under its master, whose row ends in the
+  batch's done tally (`3/7`); the workspace popover (a rail row's word)
+  keeps a master as one block (`masterBlock` in lib/sidebarRows.ts,
+  `MasterRows` in chrome/WorkspaceThreadsPopover.tsx): the master's row
+  with the tally, its own working subagents under its title in the fleet's
+  words, then each batch thread that works, waits, failed, paused or
+  stopped one step in, loudest first, its working subagents under it, and
+  the queued ones as one "N queued" line; settled ones are the tally.
+  Nothing inside a master is unread (`housedIds`: the batch and every
+  subagent of the master or of its batch): no weight and no count in the
+  project row, the rail row, the popover or Mark all read; the master
+  keeps its own. They still light their project's and workspace's Needs
+  you and Working (`groupMark` over `cardThreads`).
 - **Proofs and tests.** `bun run script:e2e-master-batch`
   (scripts/e2e-master-batch.ts: the whole flow in one process, a haiku
   master pinned with `session.setMaster` beside a second master of the same
