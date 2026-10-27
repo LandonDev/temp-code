@@ -173,8 +173,25 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   placeholder Activity listing what the meta says runs until area A6 lands
   the live list). It toggles, never tweens its width; the body fades in
   over `--dur-fast`. Closed is closed: the thread header's button, ⌘⇧R and
-  View › Show Panel reopen it on its last section. The agent
-  detail sheet (`fleet.detailId`) still slides over the pane.
+  View › Show Panel reopen it on its last section. An agent's
+  detail (`fleet.detailId`, surfaces/threads/fleet/AgentDetail.tsx) is a
+  672px `Sheet` from the window's right edge (what it holds: "Orchestration"
+  below). Its transcript mounts once the slide in has finished, and Open
+  closes it before splitting the agent beside its parent.
+
+### The viewers
+
+An image (chrome/Lightbox.tsx) and an agent's HTML page
+(surfaces/HtmlRenderViewer.tsx) open in a full-window `Dialog`
+(`size="full"`, the window less 24px a side), each on its own module
+store (lightboxStore.ts, htmlRenderOverlayStore.ts) and each in a lazy
+chunk, so neither Dialog is in the first paint. The lightbox has no chrome but the close, the arrows at the
+window's sides and the 12px counter; a slide change fades over
+`--dur-fast`. The page is capped at 1152px wide on `background`, the
+document filling it, one secondary close button over its top right corner
+and no title bar. Escape and the arrow keys reach both through the command
+map (lib/appCommands.ts); a click outside the image or the page closes
+them.
 
 ### Project dialogs on a linked project
 
@@ -447,9 +464,10 @@ favicon, the title, the host, the claim; the address in a tooltip).
   running"), Done alone once finished; the full text in a tooltip. Rows
   read the meta (`agentStatus`); a row loads its transcript only to quote a
   waiting agent or a failure the meta lacks. Nothing in a row moves.
-- **A row opens the agent's detail** over the pane (fleet/AgentDetail.tsx,
-  its content fleet/AgentDetailBody.tsx): the title, the status in full,
-  one muted tabular line (host, model, effort, branch, +a −d, tasks,
+- **A row opens the agent's detail**, a 672px Sheet from the window's
+  right edge (fleet/AgentDetail.tsx, its content
+  fleet/AgentDetailBody.tsx): the title, the status in full, one muted
+  tabular line (host, model, effort, branch, +a −d, tasks,
   context, cost, elapsed), the transcript, and a field that steers a live
   agent and messages a settled one. A spawn row in the transcript opens the
   same detail.

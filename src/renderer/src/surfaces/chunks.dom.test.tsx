@@ -13,7 +13,7 @@ const EXPECTED: Record<keyof typeof allChunks, string[]> = {
   editorChunk: ["FileEditor", "handleEditorFindKey", "openFindInActiveEditor"],
   terminalChunk: ["TerminalView", "DevServersPane"],
   threadViewsChunk: ["ImplementationView", "OrchestrationView", "PlanView", "ResearchView"],
-  htmlRenderChunk: ["HtmlRenderRow", "HtmlRenderDocument"],
+  htmlRenderChunk: ["HtmlRenderRow", "HtmlRenderDocument", "HtmlRenderViewer"],
   mediaChunk: ["MediaGate", "MediaReview"],
   lightboxChunk: ["Lightbox"],
   releaseNotesChunk: ["ReleaseNotesSurface"],

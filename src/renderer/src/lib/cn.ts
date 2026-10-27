@@ -1,5 +1,9 @@
 import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
+import { extendTailwindMerge } from "tailwind-merge";
+
+/** tailwind-merge told our own theme tokens, so `shadow-none` after
+ *  `shadow-overlay` replaces it instead of sitting beside it. */
+const twMerge = extendTailwindMerge({ extend: { theme: { shadow: ["overlay"] } } });
 
 /** Class list with Tailwind conflicts resolved (last wins). The one `cn`
  *  every component imports; components.json points shadcn's `utils` here. */

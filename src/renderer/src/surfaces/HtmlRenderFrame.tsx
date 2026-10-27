@@ -13,7 +13,7 @@ import {
 } from "@shared/htmlRender";
 import { Maximize2 } from "../chrome/icons";
 import { useHtmlRenderTheme } from "../hooks/useHtmlRenderTheme";
-import { openHtmlRenderOverlay } from "./HtmlRenderOverlay";
+import { openHtmlRenderOverlay } from "./htmlRenderOverlayStore";
 
 /**
  * An agent's HTML page inline in the thread (ported from T3 Code): the page
@@ -146,3 +146,6 @@ export function HtmlRenderDocument(props: {
     />
   );
 }
+
+// The full-window viewer rides this chunk too (HtmlRenderOverlay.tsx mounts it).
+export { HtmlRenderViewer } from "./HtmlRenderViewer";
