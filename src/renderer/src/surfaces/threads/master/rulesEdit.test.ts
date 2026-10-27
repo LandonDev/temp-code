@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BatchStepSpec } from "@server/shared/contract-batch";
-import { addableKinds, addStep, defaultName, KIND_CHOICES, moveStep, newStepId, removeStep, renameStep, shellDraftValid, stepLine, stepsValid } from "./rulesEdit";
+import { addableKinds, addStep, defaultName, KIND_CHOICES, moveStep, newStepId, normalizeSteps, removeStep, renameStep, shellDraftValid, stepLine, stepsValid } from "./rulesEdit";
 
 const steps: BatchStepSpec[] = [
   { id: "land", name: "Merging", kind: "land" },
@@ -30,11 +30,22 @@ describe("editing the step list", () => {
   });
 
   it("moves within the list and stays put at the ends, removes and renames by index", () => {
-    expect(moveStep(steps, 1, -1).map((s) => s.id)).toEqual(["gate", "land"]);
-    expect(moveStep(steps, 0, -1).map((s) => s.id)).toEqual(["land", "gate"]);
-    expect(moveStep(steps, 1, 1).map((s) => s.id)).toEqual(["land", "gate"]);
-    expect(removeStep(steps, 0).map((s) => s.id)).toEqual(["gate"]);
+    const three: BatchStepSpec[] = [...steps, { id: "release", name: "Release", kind: "release" }];
+    expect(moveStep(three, 2, -1).map((s) => s.id)).toEqual(["land", "release", "gate"]);
+    expect(moveStep(three, 1, 1).map((s) => s.id)).toEqual(["land", "release", "gate"]);
+    expect(moveStep(three, 2, 1).map((s) => s.id)).toEqual(["land", "gate", "release"]);
+    expect(removeStep(three, 1).map((s) => s.id)).toEqual(["land", "release"]);
     expect(renameStep(steps, 1, "Full gate")[1].name).toBe("Full gate");
+  });
+
+  it("pins land first: it never moves, nothing passes it, it is never removed or offered", () => {
+    expect(moveStep(steps, 1, -1).map((s) => s.id)).toEqual(["land", "gate"]);
+    expect(moveStep(steps, 0, 1).map((s) => s.id)).toEqual(["land", "gate"]);
+    expect(removeStep(steps, 0).map((s) => s.id)).toEqual(["land", "gate"]);
+    expect(addableKinds([{ kind: "gate" }]).map((c) => c.value)).not.toContain("land");
+    // A list that put land later, or has none, opens with land on top.
+    expect(normalizeSteps([steps[1], steps[0]]).map((s) => s.id)).toEqual(["land", "gate"]);
+    expect(normalizeSteps([steps[1]])).toEqual([{ id: "land", name: "Land", kind: "land" }, steps[1]]);
   });
 
   it("saves only a list where every step is named and every shell step has a command", () => {

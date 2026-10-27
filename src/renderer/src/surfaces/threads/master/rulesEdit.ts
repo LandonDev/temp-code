@@ -19,11 +19,22 @@ export const KIND_LABEL: Record<BatchStepKind, string> = {
 /** The add menu's choices, in the contract's order. */
 export const KIND_CHOICES: { value: BatchStepKind; label: string }[] = BatchStepKindSchema.options.map((value) => ({ value, label: KIND_LABEL[value] }));
 
-/** The kinds the list may still take: one of each built-in kind, any number of shell steps. */
+/** The kinds the list may still take: one of each built-in kind but land
+ *  (always there, always first), any number of shell steps. */
 export function addableKinds(steps: readonly Pick<BatchStepSpec, "kind">[]): { value: BatchStepKind; label: string }[] {
   const taken = new Set(steps.map((s) => s.kind));
-  return KIND_CHOICES.filter((c) => c.value === "shell" || !taken.has(c.value));
+  return KIND_CHOICES.filter((c) => c.value === "shell" || (c.value !== "land" && !taken.has(c.value)));
 }
+
+/** Land always runs first, as the host runs it: the list with its land
+ *  step at the top, one made when the list has none (the host would add it). */
+export function normalizeSteps(steps: readonly BatchStepSpec[]): BatchStepSpec[] {
+  const land = steps.find((s) => s.kind === "land") ?? { id: newStepId("land", steps), kind: "land", name: "Land" };
+  return [land, ...steps.filter((s) => s !== land)];
+}
+
+/** The land step stays put: it never moves, and nothing moves above it. */
+export const pinned = (step: Pick<BatchStepSpec, "kind"> | undefined): boolean => step?.kind === "land";
 
 /** What a built-in step is called until the person renames it; a shell step is named by hand. */
 export function defaultName(kind: BatchStepKind): string {
@@ -57,13 +68,14 @@ export function addStep(steps: readonly BatchStepSpec[], kind: BatchStepKind, sh
 export function moveStep(steps: readonly BatchStepSpec[], index: number, by: -1 | 1): BatchStepSpec[] {
   const to = index + by;
   if (index < 0 || index >= steps.length || to < 0 || to >= steps.length) return [...steps];
+  if (pinned(steps[index]) || pinned(steps[to])) return [...steps];
   const next = [...steps];
   [next[index], next[to]] = [next[to], next[index]];
   return next;
 }
 
 export function removeStep(steps: readonly BatchStepSpec[], index: number): BatchStepSpec[] {
-  return steps.filter((_, i) => i !== index);
+  return steps.filter((s, i) => i !== index || pinned(s));
 }
 
 export function renameStep(steps: readonly BatchStepSpec[], index: number, name: string): BatchStepSpec[] {

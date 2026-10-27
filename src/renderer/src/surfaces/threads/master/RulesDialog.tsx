@@ -11,14 +11,14 @@ import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
 import { Item, ItemActions, ItemContent } from "../../../components/ui/item";
 import { cn } from "../../../lib/cn";
-import { addableKinds, addStep, moveStep, removeStep, renameStep, shellDraftValid, stepLine, stepsValid, type ShellDraft } from "./rulesEdit";
+import { addableKinds, addStep, moveStep, normalizeSteps, pinned, removeStep, renameStep, shellDraftValid, stepLine, stepsValid, type ShellDraft } from "./rulesEdit";
 import { stepsOf } from "./steps";
 import { rulesSentence, type Rules } from "./useMasterModel";
 
 /**
  * The batch's rules as a form: how branches land, the steps in order
- * (each with its name, its kind or command, and Up, Down and Remove), a
- * picker to add a step (a built-in kind lands at once with its name; a
+ * (each with its name, its kind or command, and Up, Down and Remove; land
+ * is pinned first with none of them), a picker to add a step (a built-in kind lands at once with its name; a
  * shell command asks for a name, the command and where it runs), what
  * happens then, and the summary line. The sentence under the fields reads
  * the list back as the foot will show it. Save is `batch.setRules`; the
@@ -49,7 +49,7 @@ function RulesForm({
   pending,
   setPending,
 }: RulesProps & { pending: boolean; setPending: (pending: boolean) => void }) {
-  const [rules, setRules] = useState<Rules>(() => ({ ...initial, steps: stepsOf(initial) }));
+  const [rules, setRules] = useState<Rules>(() => ({ ...initial, steps: normalizeSteps(stepsOf(initial)) }));
   const [error, setError] = useState<string | null>(null);
   const [shell, setShell] = useState<ShellDraft | null>(null);
   const close = useModalClose();
@@ -128,30 +128,39 @@ function RulesForm({
                       {stepLine(step)}
                     </span>
                   </ItemContent>
-                  <ItemActions className="gap-0">
-                    <Tip label="Move up">
-                      <Button type="button" variant="ghost" size="icon-xs" aria-label={`Move ${name} up`} disabled={i === 0} onClick={() => setSteps(moveStep(steps, i, -1))}>
-                        <ChevronUp />
-                      </Button>
-                    </Tip>
-                    <Tip label="Move down">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-xs"
-                        aria-label={`Move ${name} down`}
-                        disabled={i === steps.length - 1}
-                        onClick={() => setSteps(moveStep(steps, i, 1))}
-                      >
-                        <ChevronDown />
-                      </Button>
-                    </Tip>
-                    <Tip label="Remove">
-                      <Button type="button" variant="ghost" size="icon-xs" aria-label={`Remove ${name}`} onClick={() => setSteps(removeStep(steps, i))}>
-                        <X />
-                      </Button>
-                    </Tip>
-                  </ItemActions>
+                  {pinned(step) ? null : (
+                    <ItemActions className="gap-0">
+                      <Tip label="Move up">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-xs"
+                          aria-label={`Move ${name} up`}
+                          disabled={i === 0 || pinned(steps[i - 1])}
+                          onClick={() => setSteps(moveStep(steps, i, -1))}
+                        >
+                          <ChevronUp />
+                        </Button>
+                      </Tip>
+                      <Tip label="Move down">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-xs"
+                          aria-label={`Move ${name} down`}
+                          disabled={i === steps.length - 1}
+                          onClick={() => setSteps(moveStep(steps, i, 1))}
+                        >
+                          <ChevronDown />
+                        </Button>
+                      </Tip>
+                      <Tip label="Remove">
+                        <Button type="button" variant="ghost" size="icon-xs" aria-label={`Remove ${name}`} onClick={() => setSteps(removeStep(steps, i))}>
+                          <X />
+                        </Button>
+                      </Tip>
+                    </ItemActions>
+                  )}
                 </Item>
               );
             })}
