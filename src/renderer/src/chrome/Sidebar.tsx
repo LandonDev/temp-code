@@ -5,7 +5,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type MouseEvent as ReactMouseEvent,
 } from "react";
 import { warmProjectForCwd } from "../lib/monaco/focusBoot";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -185,12 +184,9 @@ function SidebarComponent({
       );
   /** What the Sessions list shows: a workspace, the home (null), or nothing. */
   const sessionsScope: string | null | undefined = workspaceId ?? (atHome ? null : undefined);
-  const [workspaceMenu, setWorkspaceMenu] = useState<HTMLElement | null>(null);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [threadDefaultsOpen, setThreadDefaultsOpen] = useState(false);
   const [preambleOpen, setPreambleOpen] = useState(false);
-  const openWorkspaceMenu = (event: ReactMouseEvent<HTMLButtonElement>) =>
-    setWorkspaceMenu(event.currentTarget);
   // The workspace menu's "Archive dormant threads": every settled, seen,
   // unpinned root the Sessions list shows for this workspace, project
   // threads and loose chats alike, sparing the focused session's tree.
@@ -284,24 +280,32 @@ function SidebarComponent({
             </Tooltip>
           ) : null}
           {workspaceSessions ? (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="Workspace options"
-                    aria-haspopup="menu"
-                    aria-expanded={!!workspaceMenu}
-                    onClick={openWorkspaceMenu}
-                    className="text-muted-foreground hover:text-foreground"
-                  />
-                }
-              >
-                <MoreHorizontal className="size-4" strokeWidth={1.5} />
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Workspace options</TooltipContent>
-            </Tooltip>
+            <WorkspaceMenu
+              trigger={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Workspace options"
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <MoreHorizontal className="size-4" strokeWidth={1.5} />
+                </Button>
+              }
+              canNewProject={!!workspace}
+              onNewProject={() => setNewProjectOpen(true)}
+              onNewChat={() => onNewChat?.(null)}
+              dormantCount={dormant.length}
+              onArchiveDormant={() => void Promise.allSettled(dormant.map((t) => archive(t.id, true)))}
+              dormantGroups={dormantGroups}
+              onArchiveDormantType={(type) =>
+                void Promise.allSettled((dormantGroups.find((g) => g.type === type)?.threads ?? []).map((t) => archive(t.id, true)))
+              }
+              onThreadDefaults={workspace ? () => setThreadDefaultsOpen(true) : undefined}
+              onOrchestration={workspace ? () => openOrchestrationSettings(workspace.id) : undefined}
+              onPreamble={workspace ? () => setPreambleOpen(true) : undefined}
+              onWorkspaceSettings={workspace ? () => openWorkspaceSettings(workspace.id) : undefined}
+              onRemoveWorkspace={railVisible && !atHome ? () => requestProjectRailAction({ kind: "remove", path: workspacePath }) : undefined}
+            />
           ) : null}
         </div>
       </div>
@@ -326,36 +330,6 @@ function SidebarComponent({
           onOpenAccountsPage={onOpenAccountsPage}
           onOpenWhatsNew={onOpenWhatsNew}
           onAddWorkspace={(environmentId) => onOpenProject(environmentId)}
-        />
-      ) : null}
-      {workspaceMenu ? (
-        <WorkspaceMenu
-          anchor={workspaceMenu}
-          onDismiss={() => setWorkspaceMenu(null)}
-          canNewProject={!!workspace}
-          onNewProject={() => setNewProjectOpen(true)}
-          onNewChat={() => onNewChat?.(null)}
-          dormantCount={dormant.length}
-          onArchiveDormant={() =>
-            void Promise.allSettled(dormant.map((t) => archive(t.id, true)))
-          }
-          dormantGroups={dormantGroups}
-          onArchiveDormantType={(type) =>
-            void Promise.allSettled(
-              (dormantGroups.find((g) => g.type === type)?.threads ?? []).map((t) =>
-                archive(t.id, true),
-              ),
-            )
-          }
-          onThreadDefaults={workspace ? () => setThreadDefaultsOpen(true) : undefined}
-          onOrchestration={workspace ? () => openOrchestrationSettings(workspace.id) : undefined}
-          onPreamble={workspace ? () => setPreambleOpen(true) : undefined}
-          onWorkspaceSettings={workspace ? () => openWorkspaceSettings(workspace.id) : undefined}
-          onRemoveWorkspace={
-            railVisible && !atHome
-              ? () => requestProjectRailAction({ kind: "remove", path: workspacePath })
-              : undefined
-          }
         />
       ) : null}
       {preambleOpen && workspace ? (

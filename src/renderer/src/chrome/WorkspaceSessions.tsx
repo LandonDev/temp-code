@@ -10,15 +10,24 @@ import {
   type ReactNode,
 } from "react";
 import { measureElement, useVirtualizer, type VirtualizerOptions } from "@tanstack/react-virtual";
-import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
-import { RowsContextMenu, RowsMenu, type MenuRow } from "./menuRows";
+import { RowsContextMenu, RowsMenu, tidy, type MenuRow } from "./menuRows";
 import { useThreadMenu } from "./useThreadMenu";
 import { HostGlyph } from "./HostGlyph";
 import { PreambleDialog } from "./PreambleDialog";
 import {
+  Archive,
+  ArchiveRestore,
   ChevronRight,
+  FileText,
+  MessageSquarePlus,
   MoreHorizontal,
+  Pause,
+  Pencil,
+  Play,
   Plus,
+  Settings,
+  Square,
+  Trash2,
 } from "./icons";
 import {
   ConfirmDialog,
@@ -90,14 +99,6 @@ type Dialog =
   | { kind: "teardown"; project: ProjectMeta; action: "archive" | "delete" }
   | { kind: "delete-project"; project: ProjectMeta };
 
-type MenuState = {
-  x: number;
-  y: number;
-  items: ExplorerMenuItem[];
-  onPick: (id: string) => void;
-};
-
-const MENU_WIDTH = 228;
 
 // --- clocks ---------------------------------------------------------------
 
@@ -141,36 +142,6 @@ function moreTrigger(className?: string) {
   );
 }
 
-function MoreAction({ onOpen, className }: { onOpen: (anchor: HTMLElement) => void; className?: string }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label="More"
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpen(e.currentTarget);
-            }}
-            onDoubleClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-            className={cn(
-              "text-muted-foreground hover:text-foreground",
-              "pointer-events-none opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-none",
-              "group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100 group-hover/row:pointer-events-auto group-hover/row:opacity-100",
-              className,
-            )}
-          />
-        }
-      >
-        <MoreHorizontal className="size-4" strokeWidth={1.5} />
-      </TooltipTrigger>
-      <TooltipContent side="right">More</TooltipContent>
-    </Tooltip>
-  );
-}
 
 /** The trailing slot fades while the row's hover action shows. */
 const YIELDS =
@@ -217,11 +188,6 @@ function InlineRename({
   );
 }
 
-const menuAt = (anchor: HTMLElement) => {
-  const rect = anchor.getBoundingClientRect();
-  return { x: Math.max(8, rect.right - MENU_WIDTH), y: rect.bottom + 4 };
-};
-
 // --- rows ------------------------------------------------------------------
 
 type RowActions = {
@@ -230,7 +196,6 @@ type RowActions = {
   focusedTree: ReadonlySet<string>;
   onOpen: (id: string) => void;
   onRename: (id: string, title: string) => void;
-  openMenu: (state: MenuState) => void;
   /** The thread rows' one menu (chrome/useThreadMenu.tsx). */
   menu: RailThreadMenu;
   /** The row whose title is being renamed in place. */
@@ -638,7 +603,7 @@ export function ProjectRowView({
   mark,
   title,
   onClick,
-  onMenu,
+  menu,
   onRename,
 }: {
   name: string;
@@ -649,11 +614,12 @@ export function ProjectRowView({
   /** In place of the name: the rename field. */
   title?: ReactNode;
   onClick?: () => void;
-  onMenu?: (at: { x: number; y: number }) => void;
+  /** The project's menu: its right-click and its ⋯ show the same rows. */
+  menu?: { rows: () => readonly MenuRow[]; onPick: (id: string) => void };
   onRename?: () => void;
 }) {
   const editing = title != null;
-  return (
+  const row = (
     <div
       role="button"
       tabIndex={0}
@@ -663,14 +629,6 @@ export function ProjectRowView({
       onClick={() => !editing && onClick?.()}
       onDoubleClick={onRename}
       onKeyDown={(e) => e.key === "Enter" && !editing && onClick?.()}
-      onContextMenu={
-        onMenu
-          ? (e) => {
-              e.preventDefault();
-              onMenu({ x: e.clientX, y: e.clientY });
-            }
-          : undefined
-      }
       className={cn(ROW, "h-8 hover:bg-foreground/5", selected || unread ? "text-foreground" : "text-muted-foreground hover:text-foreground")}
     >
       <span aria-hidden className="grid size-4 shrink-0 place-items-center">
@@ -679,13 +637,27 @@ export function ProjectRowView({
       {editing ? title : <span className={cn("min-w-0 flex-1 truncate", unread && "font-medium")}>{name}</span>}
       {!editing ? (
         <>
-          {mark ? <StatusMark state={mark.state} className={cn("shrink-0", onMenu && YIELDS)} /> : null}
-          {onMenu ? (
-            <MoreAction className="absolute top-1/2 right-1 -translate-y-1/2" onOpen={(el) => onMenu(menuAt(el))} />
+          {mark ? <StatusMark state={mark.state} className={cn("shrink-0", menu && YIELDS)} /> : null}
+          {menu ? (
+            <RowsMenu
+              label="Project actions"
+              tip={{ label: "More", side: "right" }}
+              trigger={moreTrigger("absolute top-1/2 right-1 -translate-y-1/2")}
+              rows={menu.rows}
+              onPick={menu.onPick}
+              align="start"
+            />
           ) : null}
         </>
       ) : null}
     </div>
+  );
+  return menu ? (
+    <RowsContextMenu label="Project actions" lazyMount rowsFor={menu.rows} onPick={(pick) => menu.onPick(pick)}>
+      {row}
+    </RowsContextMenu>
+  ) : (
+    row
   );
 }
 
@@ -735,70 +707,50 @@ export const ProjectRow = memo(function ProjectRow({
   const stoppable = stoppableThreads(status);
   const teardown = project.mode === "worktree" && Boolean(project.branch);
 
-  const menu = (at: { x: number; y: number }) => {
-    const dormant = dormantThreads(threads, lastSeen, seenFloor, rows.focusedTree);
-    const dormantGroups = dormantByType(dormant);
-    const items: ExplorerMenuItem[] = [
-      { kind: "item", id: "chat", label: "New chat" },
-      { kind: "item", id: "rename", label: "Rename" },
-      { kind: "item", id: "settings", label: "Project settings" },
-      { kind: "item", id: "preamble", label: "Preamble…" },
+  const dormant = () => dormantThreads(threads, lastSeen, seenFloor, rows.focusedTree);
+  const menuRows = (): MenuRow[] => {
+    const all = dormant();
+    const items: MenuRow[] = [
+      { kind: "item", id: "chat", label: "New chat", icon: MessageSquarePlus },
+      { kind: "item", id: "rename", label: "Rename", icon: Pencil },
+      { kind: "item", id: "settings", label: "Project settings", icon: Settings },
+      { kind: "item", id: "preamble", label: "Preamble…", icon: FileText },
+      { kind: "sep" },
     ];
-    if (runAction === "resume")
-      items.push({ kind: "item", id: "resume", label: "Continue paused threads" });
-    else if (runAction === "pause")
-      items.push({ kind: "item", id: "pause", label: "Pause active threads" });
-    if (stoppable.length)
-      items.push(
-        { kind: "item", id: "stop", label: "Stop active threads", danger: true },
-        { kind: "sep" },
-      );
+    if (runAction === "resume") items.push({ kind: "item", id: "resume", label: "Continue paused threads", icon: Play });
+    else if (runAction === "pause") items.push({ kind: "item", id: "pause", label: "Pause active threads", icon: Pause });
+    if (stoppable.length) items.push({ kind: "item", id: "stop", label: "Stop active threads", icon: Square, danger: true });
     items.push(
+      { kind: "sep" },
       {
         kind: "item",
         id: "archive-dormant",
-        label:
-          dormant.length > 0
-            ? `Archive ${dormant.length} dormant thread${dormant.length === 1 ? "" : "s"}`
-            : "Archive dormant threads",
-        disabled: dormant.length === 0,
+        label: all.length > 0 ? `Archive ${all.length} dormant thread${all.length === 1 ? "" : "s"}` : "Archive dormant threads",
+        icon: Archive,
+        disabled: all.length === 0,
       },
-      ...dormantGroups.map(
-        (g): ExplorerMenuItem => ({ kind: "item", id: `archive-dormant:${g.type}`, label: g.label }),
-      ),
-      {
-        kind: "item",
-        id: "archive",
-        label: teardown ? "Archive project…" : "Archive project",
-      },
+      ...dormantByType(all).map((g): MenuRow => ({ kind: "item", id: `archive-dormant:${g.type}`, label: g.label, icon: THREAD_GLYPHS[g.type] })),
+      { kind: "item", id: "archive", label: teardown ? "Archive project…" : "Archive project", icon: Archive },
       { kind: "sep" },
-      { kind: "item", id: "delete", label: "Delete project…", danger: true },
+      { kind: "item", id: "delete", label: "Delete project…", icon: Trash2, danger: true },
     );
-    rows.openMenu({
-      ...at,
-      items,
-      onPick: (id) => {
-        if (id === "chat") newChat(project.id);
-        else if (id === "rename") setRenaming(true);
-        else if (id === "settings") openSettings(project);
-        else if (id === "preamble") openPreamble(project);
-        else if (id === "resume")
-          void Promise.allSettled(status.paused.map((t) => resume(t.id)));
-        else if (id === "pause")
-          void Promise.allSettled(status.running.map((t) => pause(t.id)));
-        else if (id === "stop")
-          void Promise.allSettled(stoppable.map((t) => interrupt(t.id)));
-        else if (id === "archive-dormant")
-          void Promise.allSettled(dormant.map((t) => archiveThread(t.id, true)));
-        else if (id.startsWith("archive-dormant:"))
-          void Promise.allSettled(
-            (dormantGroups.find((g) => g.type === id.slice("archive-dormant:".length))?.threads ?? [])
-              .map((t) => archiveThread(t.id, true)),
-          );
-        else if (id === "archive") archive(project);
-        else if (id === "delete") remove(project);
-      },
-    });
+    return tidy(items);
+  };
+  const onMenuPick = (id: string) => {
+    if (id === "chat") newChat(project.id);
+    else if (id === "rename") setRenaming(true);
+    else if (id === "settings") openSettings(project);
+    else if (id === "preamble") openPreamble(project);
+    else if (id === "resume") void Promise.allSettled(status.paused.map((t) => resume(t.id)));
+    else if (id === "pause") void Promise.allSettled(status.running.map((t) => pause(t.id)));
+    else if (id === "stop") void Promise.allSettled(stoppable.map((t) => interrupt(t.id)));
+    else if (id === "archive-dormant") void Promise.allSettled(dormant().map((t) => archiveThread(t.id, true)));
+    else if (id.startsWith("archive-dormant:"))
+      void Promise.allSettled(
+        (dormantByType(dormant()).find((g) => g.type === id.slice("archive-dormant:".length))?.threads ?? []).map((t) => archiveThread(t.id, true)),
+      );
+    else if (id === "archive") archive(project);
+    else if (id === "delete") remove(project);
   };
 
   return (
@@ -813,7 +765,7 @@ export const ProjectRow = memo(function ProjectRow({
           if (!selected) selectProject(project.id);
           projectFolds.toggle(project.id);
         }}
-        onMenu={menu}
+        menu={{ rows: menuRows, onPick: onMenuPick }}
         onRename={() => setRenaming(true)}
         title={
           renaming ? (
@@ -914,17 +866,14 @@ const ArchivedProjects = memo(function ArchivedProjects({
               open={shown === project.id}
               mark={null}
               onClick={() => show(project.id)}
-              onMenu={(at) =>
-                rows.openMenu({
-                  ...at,
-                  items: [
-                    { kind: "item", id: "restore", label: "Restore" },
-                    { kind: "sep" },
-                    { kind: "item", id: "delete", label: "Delete project…", danger: true },
-                  ],
-                  onPick: (id) => (id === "restore" ? onRestore(project) : onDelete(project)),
-                })
-              }
+              menu={{
+                rows: () => [
+                  { kind: "item", id: "restore", label: "Restore", icon: ArchiveRestore },
+                  { kind: "sep" },
+                  { kind: "item", id: "delete", label: "Delete project…", icon: Trash2, danger: true },
+                ],
+                onPick: (id) => (id === "restore" ? onRestore(project) : onDelete(project)),
+              }}
             />
             <CollapsibleContent>
               <ThreadList
@@ -1051,7 +1000,6 @@ export default function WorkspaceSessions({
       ),
     [cache, lastSeen, metas, projects, seenFloor, workspaceId, workspaceIds, workspaces],
   );
-  const [menu, setMenu] = useState<MenuState | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [chatsOpen, setChatsOpen] = useState(true);
   const [archived, setArchived] = useState<ArchivedState>({ open: false, shown: null });
@@ -1147,7 +1095,6 @@ export default function WorkspaceSessions({
       focusedTree: focused,
       onOpen: openSession,
       onRename: renameSession,
-      openMenu: setMenu,
       menu: railMenu,
       renamingId,
       onStartRename: setRenamingId,
@@ -1283,19 +1230,6 @@ export default function WorkspaceSessions({
         </div>
         </RowsContextMenu>
 
-      {menu ? (
-        <ExplorerMenu
-          x={menu.x}
-          y={menu.y}
-          items={menu.items}
-          ariaLabel="Actions"
-          onPick={(id) => {
-            setMenu(null);
-            menu.onPick(id);
-          }}
-          onClose={() => setMenu(null)}
-        />
-      ) : null}
 
       {dialog?.kind === "settings" && workspace ? (
         <ProjectSettingsDialog

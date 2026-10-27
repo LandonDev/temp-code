@@ -7,8 +7,9 @@ import { sessionStore } from "../lib/tcserver/store";
 import type { SessionMeta, WorkspaceMeta } from "../lib/tcserver/types";
 import { workspaceStore } from "../lib/tcserver/workspaces";
 import { resetThreadBatchForTests, useBatchPending } from "../lib/threadBatch";
-import { batchExplorerItems, batchMenuExtraItems } from "../lib/threadBatchMenu";
-import { ExplorerMenu } from "./ExplorerMenu";
+import { batchMenuExtraItems, batchMenuRows } from "../lib/threadBatchMenu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
+import { MenuRows } from "./menuBody";
 import { HostsRow } from "./HostRows";
 import { ProjectRail } from "./ProjectRail";
 import { TabGroupMenu } from "./TabGroupMenu";
@@ -66,24 +67,21 @@ describe("the fleet switches as menu rows", () => {
     expect(screen.getByRole("menuitem", { name: "Archive done" })).toBeTruthy();
   });
 
-  it("host menu: Mark all read first, then the switches, zero rows disabled", () => {
+  it("the rows: Mark all read first, then the switches, zero rows disabled", () => {
     const onPick = vi.fn();
     render(
-      <ExplorerMenu
-        x={0}
-        y={0}
-        ariaLabel="Host actions"
-        items={batchExplorerItems({ pause: 0, resume: 2, stop: 0, archiveDone: 1 }, 4)}
-        onClose={noop}
-        onPick={onPick}
-      />,
+      <DropdownMenu defaultOpen>
+        <DropdownMenuTrigger>open</DropdownMenuTrigger>
+        <DropdownMenuContent aria-label="Host actions">
+          <MenuRows kind="dropdown" items={batchMenuRows({ pause: 0, resume: 2, stop: 0, archiveDone: 1 }, 4)} onPick={onPick} />
+        </DropdownMenuContent>
+      </DropdownMenu>,
     );
     const names = screen.getAllByRole("menuitem").map((el) => el.textContent);
     expect(names).toEqual(["Mark all read", "Pause all", "Resume all", "Stop all", "Archive done"]);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Pause all" }));
-    expect(onPick).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Resume all" }));
-    expect(onPick).toHaveBeenCalledWith("batch-resume");
+    expect(screen.getByRole("menuitem", { name: "Pause all" }).getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getByRole("menuitem", { name: "Resume all" }).getAttribute("aria-disabled")).toBeNull();
+    expect(screen.getAllByRole("menuitem").every((el) => el.querySelector("svg"))).toBe(true);
     fireEvent.click(screen.getByRole("menuitem", { name: "Mark all read" }));
     expect(onPick).toHaveBeenCalledWith("read");
   });

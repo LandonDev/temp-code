@@ -1,10 +1,12 @@
-import { useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { Popover, type PopoverAnchor } from "./Popover";
-import { LAYER } from "../lib/layers";
+import type { ReactElement } from "react";
+import type { ThreadType } from "../lib/tcserver/types";
+import { THREAD_GLYPHS } from "../surfaces/threads/threadTypes";
+import { Archive, FileText, FolderPlus, MessageSquarePlus, Settings, SlidersHorizontal, Workflow, X } from "./icons";
+import { RowsMenu, tidy, type MenuRow } from "./menuRows";
 
 type Props = {
-  anchor: PopoverAnchor;
-  onDismiss: () => void;
+  /** The workspace header's ⋯ button. */
+  trigger: ReactElement;
   onNewProject: () => void;
   onNewChat: () => void;
   /** Settled, seen, unpinned roots across the workspace; 0 greys the item. */
@@ -23,18 +25,9 @@ type Props = {
   canNewProject: boolean;
 };
 
-type Item = {
-  id: string;
-  label: string;
-  disabled?: boolean;
-  danger?: boolean;
-  run: () => void;
-};
-
-/** The "..." menu on a workspace header. Same look as ExplorerMenu, anchored to an element. */
+/** The ⋯ menu on a workspace header. */
 export function WorkspaceMenu({
-  anchor,
-  onDismiss,
+  trigger,
   onNewProject,
   onNewChat,
   dormantCount,
@@ -48,131 +41,51 @@ export function WorkspaceMenu({
   onRemoveWorkspace,
   canNewProject,
 }: Props) {
-  const groups: Item[][] = [
-    [
+  const rows = (): MenuRow[] =>
+    tidy([
+      { kind: "item", id: "new-project", label: "New project", icon: FolderPlus, disabled: !canNewProject },
+      { kind: "item", id: "new-chat", label: "New chat", icon: MessageSquarePlus },
+      { kind: "sep" },
       {
-        id: "new-project",
-        label: "New project",
-        disabled: !canNewProject,
-        run: onNewProject,
-      },
-      { id: "new-chat", label: "New chat", run: onNewChat },
-    ],
-    [
-      {
+        kind: "item",
         id: "archive-dormant",
-        label:
-          dormantCount > 0
-            ? `Archive ${dormantCount} dormant thread${dormantCount === 1 ? "" : "s"}`
-            : "Archive dormant threads",
+        label: dormantCount > 0 ? `Archive ${dormantCount} dormant thread${dormantCount === 1 ? "" : "s"}` : "Archive dormant threads",
+        icon: Archive,
         disabled: dormantCount === 0,
-        run: onArchiveDormant,
       },
-      ...dormantGroups.map((g) => ({
+      ...dormantGroups.map((g): MenuRow => ({
+        kind: "item",
         id: `archive-dormant:${g.type}`,
         label: g.label,
-        run: () => onArchiveDormantType?.(g.type),
+        icon: THREAD_GLYPHS[g.type as ThreadType] ?? Archive,
       })),
-    ],
-    [
-      ...(onThreadDefaults
-        ? [{ id: "thread-defaults", label: "Thread defaults", run: onThreadDefaults }]
-        : []),
-      ...(onOrchestration
-        ? [{ id: "orchestration", label: "Orchestration", run: onOrchestration }]
-        : []),
-      ...(onPreamble ? [{ id: "preamble", label: "Preamble…", run: onPreamble }] : []),
-      ...(onWorkspaceSettings
-        ? [{ id: "settings", label: "Workspace settings", run: onWorkspaceSettings }]
-        : []),
-    ],
-    onRemoveWorkspace
-      ? [
-          {
-            id: "remove",
-            label: "Remove workspace",
-            danger: true,
-            run: onRemoveWorkspace,
-          },
-        ]
-      : [],
-  ].filter((group) => group.length > 0);
-  const items = groups.flat();
-  const enabled = items.filter((i) => !i.disabled);
-  const [active, setActive] = useState(enabled[0]?.id ?? null);
-
-  const pick = (item: Item) => {
-    if (item.disabled) return;
-    onDismiss();
-    item.run();
+      { kind: "sep" },
+      ...(onThreadDefaults ? [{ kind: "item", id: "thread-defaults", label: "Thread defaults", icon: SlidersHorizontal } as const] : []),
+      ...(onOrchestration ? [{ kind: "item", id: "orchestration", label: "Orchestration", icon: Workflow } as const] : []),
+      ...(onPreamble ? [{ kind: "item", id: "preamble", label: "Preamble…", icon: FileText } as const] : []),
+      ...(onWorkspaceSettings ? [{ kind: "item", id: "settings", label: "Workspace settings", icon: Settings } as const] : []),
+      { kind: "sep" },
+      ...(onRemoveWorkspace ? [{ kind: "item", id: "remove", label: "Remove workspace", icon: X, danger: true } as const] : []),
+    ]);
+  const pick = (id: string) => {
+    if (id === "new-project") onNewProject();
+    else if (id === "new-chat") onNewChat();
+    else if (id === "archive-dormant") onArchiveDormant();
+    else if (id.startsWith("archive-dormant:")) onArchiveDormantType?.(id.slice("archive-dormant:".length));
+    else if (id === "thread-defaults") onThreadDefaults?.();
+    else if (id === "orchestration") onOrchestration?.();
+    else if (id === "preamble") onPreamble?.();
+    else if (id === "settings") onWorkspaceSettings?.();
+    else if (id === "remove") onRemoveWorkspace?.();
   };
-
-  const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      e.preventDefault();
-      const from = enabled.findIndex((i) => i.id === active);
-      const dir = e.key === "ArrowDown" ? 1 : -1;
-      setActive(
-        enabled[(from + dir + enabled.length) % enabled.length]?.id ?? null,
-      );
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      const item = items.find((i) => i.id === active);
-      if (item) pick(item);
-    }
-  };
-
   return (
-    <Popover
-      anchor={anchor}
-      side="bottom"
-      align="end"
-      gap={4}
-      width={200}
-      layer={LAYER.popover}
-      autoFocus
-      onDismiss={onDismiss}
-      role="menu"
-      tabIndex={-1}
-      aria-label="Workspace actions"
-      onKeyDown={onKey}
-      onContextMenu={(e) => e.preventDefault()}
-      className="overflow-y-auto overscroll-none p-1"
-    >
-      {groups.map((group, gi) => (
-        <div key={gi}>
-          {gi > 0 ? (
-            <div role="separator" className="my-1 h-px bg-content/10" />
-          ) : null}
-          {group.map((item) => {
-            const highlighted = item.id === active;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                role="menuitem"
-                disabled={item.disabled}
-                onMouseDown={(e) => e.preventDefault()}
-                onMouseEnter={() => !item.disabled && setActive(item.id)}
-                onClick={() => pick(item)}
-                className={`flex h-7 w-full items-center gap-3 rounded-lg px-2 text-left text-[13px] leading-none ${
-                  item.disabled
-                    ? "text-content/30"
-                    : item.danger
-                      ? highlighted
-                        ? "bg-danger/20 text-danger"
-                        : "text-danger hover:bg-danger/15"
-                      : highlighted
-                        ? "bg-content/10 text-content"
-                        : "text-content hover:bg-content/5"
-                }`}
-              >
-                <span className="min-w-0 flex-1 truncate">{item.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      ))}
-    </Popover>
+    <RowsMenu
+      label="Workspace actions"
+      tip={{ label: "Workspace options", side: "bottom" }}
+      trigger={trigger}
+      rows={rows}
+      onPick={pick}
+      className="w-52"
+    />
   );
 }

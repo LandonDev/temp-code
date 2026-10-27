@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceMeta } from "../lib/tcserver/types";
 
@@ -22,7 +22,6 @@ vi.mock("../lib/tcserver/workspaces", () => ({
 }));
 vi.mock("./ProjectRail", () => ({ ProjectRail: () => <nav data-testid="rail" />, RailFoot: () => <div data-testid="foot" /> }));
 vi.mock("./WorkspaceSessions", () => ({ default: () => <div data-testid="threads" /> }));
-vi.mock("./WorkspaceMenu", () => ({ WorkspaceMenu: () => <div role="menu" aria-label="Workspace" /> }));
 vi.mock("../lib/monaco/focusBoot", () => ({ warmProjectForCwd: () => Promise.resolve() }));
 
 import { Sidebar } from "./Sidebar";
@@ -43,7 +42,7 @@ const mount = (onNew = vi.fn()) =>
   );
 
 describe("the workspace column", () => {
-  it("is the workspace's threads under one header: its name, New thread and its menu, no tabs", () => {
+  it("is the workspace's threads under one header: its name, New thread and its menu, no tabs", async () => {
     const onNew = vi.fn();
     mount(onNew);
     expect(screen.getByRole("heading", { name: "alpha" })).toBeTruthy();
@@ -55,8 +54,9 @@ describe("the workspace column", () => {
     const menu = screen.getByRole("button", { name: "Workspace options" });
     expect(menu.getAttribute("aria-haspopup")).toBe("menu");
     fireEvent.click(menu);
-    expect(screen.getByRole("menu", { name: "Workspace" })).toBeTruthy();
-    expect(menu.getAttribute("aria-expanded")).toBe("true");
+    const list = await screen.findByRole("menu", { name: "Workspace actions" });
+    expect(within(list).getByText("New chat")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Workspace options" }).getAttribute("aria-expanded")).toBe("true");
   });
 
   it("is headed Chats at the home", () => {

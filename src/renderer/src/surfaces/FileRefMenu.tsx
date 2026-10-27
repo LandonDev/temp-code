@@ -1,5 +1,6 @@
-import { useState, type MouseEvent, type ReactNode } from "react";
-import { ExplorerMenu, type ExplorerMenuItem } from "../chrome/ExplorerMenu";
+import type { ReactNode } from "react";
+import { Copy, ExternalLink, FileText, FolderOpen } from "../chrome/icons";
+import { RowsContextMenu, type MenuRow } from "../chrome/menuRows";
 import { copyText } from "../lib/clipboard";
 import { useEditorConfig } from "../lib/editorConfig";
 import { fileRefTarget } from "../lib/fileRef";
@@ -28,21 +29,19 @@ export function FileRefMenu({
   onOpenFile?: OpenFileFn;
   children: ReactNode;
 }) {
-  const [at, setAt] = useState<{ x: number; y: number } | null>(null);
   const editorConfig = useEditorConfig();
   // The thread's host: a path outside every catalog root is on it (lib/pathHost.ts).
   const threadHost = useTranscriptHost();
   if (!target) return <>{children}</>;
   const ref = fileRefTarget(target, cwd);
   const editorLabel = editorLabelFor(ref.abs, editorConfig, threadHost);
-  const items: ExplorerMenuItem[] = [
-    ...(editorLabel ? [{ kind: "item", id: "editor", label: editorLabel } as const] : []),
-    ...(ref.abs ? [{ kind: "item", id: "reveal", label: "Reveal in Finder" } as const] : []),
-    { kind: "item", id: "path", label: "Copy Path" },
-    { kind: "item", id: "name", label: "Copy File Name" },
+  const items: MenuRow[] = [
+    ...(editorLabel ? [{ kind: "item", id: "editor", label: editorLabel, icon: ExternalLink } as const] : []),
+    ...(ref.abs ? [{ kind: "item", id: "reveal", label: "Reveal in Finder", icon: FolderOpen } as const] : []),
+    { kind: "item", id: "path", label: "Copy Path", icon: Copy },
+    { kind: "item", id: "name", label: "Copy File Name", icon: FileText },
   ];
   const pick = (id: string) => {
-    setAt(null);
     if (id === "editor" && ref.abs) {
       const tail = /:(\d+)(?::(\d+))?\s*$/.exec(target);
       void openInEditor(
@@ -59,24 +58,9 @@ export function FileRefMenu({
     else if (id === "path") void copyText(ref.abs ?? ref.clean);
     else if (id === "name") void copyText(ref.name);
   };
-  const onContextMenu = (e: MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setAt({ x: e.clientX, y: e.clientY });
-  };
   return (
-    <span className="contents" onContextMenu={onContextMenu}>
-      {children}
-      {at && (
-        <ExplorerMenu
-          x={at.x}
-          y={at.y}
-          items={items}
-          ariaLabel="File link actions"
-          onPick={pick}
-          onClose={() => setAt(null)}
-        />
-      )}
-    </span>
+    <RowsContextMenu label="File link actions" lazyMount rowsFor={() => items} onPick={pick}>
+      <span className="contents">{children}</span>
+    </RowsContextMenu>
   );
 }

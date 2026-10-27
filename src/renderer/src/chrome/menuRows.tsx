@@ -145,12 +145,19 @@ export type RowsMenuProps = {
   /** The popup's classes (a width). */
   className?: string;
   size?: "sm" | "default";
+  /** Controlled: the menu bar opens one menu at a time and moves on hover. */
+  open?: boolean;
+  /** Non-modal: the page behind stays live (the menu bar's other titles). */
+  modal?: boolean;
 };
 
 /** A menu of verbs dropped from a trigger (`DropdownMenu`). */
 export function RowsMenu(props: RowsMenuProps) {
   const B = useBody();
   const [pending, setPending] = useState(false);
+  useEffect(() => {
+    if (!B && props.open) menuChunk.load().then(wakeNow, () => {});
+  }, [B, props.open]);
   if (B) return <B.DropdownRows {...props} defaultOpen={pending} onOpenChange={(open) => {
     if (!open) setPending(false);
     props.onOpenChange?.(open);
@@ -191,6 +198,9 @@ export type RowsContextMenuProps = {
   onPick: (pick: string, id: string | null) => void;
   onOpenChange?: (open: boolean, id: string | null) => void;
   disabled?: boolean;
+  /** Mount the body only from the first right-click on (a file link: a
+   *  transcript holds hundreds, and few are ever right-clicked). */
+  lazyMount?: boolean;
 };
 
 /** Where a right-click asked for the menu: the point, the row's id, the row itself. */
@@ -205,18 +215,21 @@ export function RowsContextMenu(props: RowsContextMenuProps) {
   const B = useBody();
   const opener = useRef<((at: MenuAt) => void) | null>(null);
   const pending = useRef<MenuAt | null>(null);
+  const [used, setUsed] = useState(!props.lazyMount);
   useEffect(() => {
     const at = pending.current;
-    if (!B || !at || !opener.current) return;
+    if (!B || !used || !at || !opener.current) return;
     pending.current = null;
     opener.current(at);
-  }, [B]);
+  }, [B, used]);
   const child = props.disabled
     ? props.children
     : chain(props.children, {
         onPointerEnter: warmMenus,
         onContextMenu: (event) => {
           const target = event.target instanceof Element ? event.target : null;
+          // A field keeps the system's own menu (cut, copy, paste, spelling).
+          if (target?.closest("input, textarea, [contenteditable='true']")) return;
           const row = (target?.closest("[data-menu-id]") as HTMLElement | null) ?? null;
           const id = row?.getAttribute("data-menu-id") ?? null;
           event.preventDefault();
@@ -235,6 +248,7 @@ export function RowsContextMenu(props: RowsContextMenuProps) {
           if (opener.current) opener.current(at);
           else {
             pending.current = at;
+            setUsed(true);
             if (menuChunk.loaded()) wakeNow();
             else menuChunk.load().then(wakeNow, () => {});
           }
@@ -243,7 +257,7 @@ export function RowsContextMenu(props: RowsContextMenuProps) {
   return (
     <>
       {child}
-      {B && !props.disabled ? <B.ContextRows {...props} opener={opener} /> : null}
+      {B && used && !props.disabled ? <B.ContextRows {...props} opener={opener} /> : null}
     </>
   );
 }

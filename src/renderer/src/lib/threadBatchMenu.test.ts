@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SessionMeta } from "./tcserver/types";
-import { batchActionOfMenuId, batchCounts, batchExplorerItems, batchMenuExtraItems, batchMenuId } from "./threadBatchMenu";
+import { batchActionOfMenuId, batchCounts, batchMenuRows, batchMenuExtraItems, batchMenuId } from "./threadBatchMenu";
 
 const NOW = 9_000_000;
 function meta(over: Partial<SessionMeta>): SessionMeta {
@@ -25,8 +25,10 @@ describe("thread batch menu rows", () => {
     expect(batchMenuExtraItems(null).every((i) => i.disabled)).toBe(true);
   });
 
-  it("builds a host menu with Mark all read first", () => {
-    const items = batchExplorerItems({ pause: 0, resume: 3, stop: 0, archiveDone: 1 }, 0);
+  it("builds the rows with Mark all read first when a count is given, each with its glyph", () => {
+    expect(batchMenuRows(null).map((i) => (i.kind === "item" ? i.id : "sep"))).toEqual(["batch-pause", "batch-resume", "batch-stop", "batch-archiveDone"]);
+    expect(batchMenuRows(null).every((i) => i.kind === "item" && i.icon && i.disabled)).toBe(true);
+    const items = batchMenuRows({ pause: 0, resume: 3, stop: 0, archiveDone: 1 }, 0);
     expect(items.map((i) => (i.kind === "item" ? [i.id, i.disabled] : "sep"))).toEqual([
       ["read", true],
       ["batch-pause", true],

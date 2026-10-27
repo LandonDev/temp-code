@@ -1,12 +1,12 @@
-import type { ExplorerMenuItem } from "../chrome/ExplorerMenu";
+import type { MenuRow } from "../chrome/menuRows";
 import type { TabGroupMenuExtraItem } from "../chrome/TabGroupMenu";
-import { Archive, Pause, Play, Square } from "../chrome/icons";
+import { Archive, Check, Pause, Play, Square } from "../chrome/icons";
 import type { SessionMeta } from "./tcserver/types";
 import { BATCH_ACTIONS, BATCH_LABEL, batchTargets, type BatchAction, type BatchSelection } from "./threadBatch";
 
 /**
- * The fleet switches as menu rows, for the project menu (TabGroupMenu),
- * the host menus (ExplorerMenu) and Settings. A row whose count is zero is
+ * The fleet switches as menu rows (`MenuRow`s), for the project and group
+ * menus. A row whose count is zero is
  * disabled rather than hidden, so the menu keeps its shape from one open
  * to the next and the eye lands where it did last time.
  */
@@ -53,18 +53,20 @@ export function batchMenuExtraItems(counts: BatchCounts | null): TabGroupMenuExt
   }));
 }
 
-/** A host menu's rows: Mark all read, then the four switches. */
-export function batchExplorerItems(counts: BatchCounts | null, readCount: number): ExplorerMenuItem[] {
-  return [
-    { kind: "item", id: "read", label: "Mark all read", disabled: readCount === 0 },
-    ...BATCH_ACTIONS.map(
-      (action): ExplorerMenuItem => ({
-        kind: "item",
-        id: batchMenuId(action),
-        label: BATCH_LABEL[action],
-        disabled: counts ? counts[action] === 0 : true,
-        danger: action === "stop",
-      }),
-    ),
-  ];
+/** The fleet switches as one group of rows: Mark all read first when a
+ *  count is given, then Pause all, Resume all, Stop all and Archive done. */
+export function batchMenuRows(counts: BatchCounts | null, readCount?: number): MenuRow[] {
+  const rows: MenuRow[] = [];
+  if (readCount !== undefined) rows.push({ kind: "item", id: "read", label: "Mark all read", icon: Check, disabled: readCount === 0 });
+  for (const action of BATCH_ACTIONS) {
+    rows.push({
+      kind: "item",
+      id: batchMenuId(action),
+      label: BATCH_LABEL[action],
+      icon: ICON[action],
+      disabled: counts ? counts[action] === 0 : true,
+      danger: action === "stop",
+    });
+  }
+  return rows;
 }

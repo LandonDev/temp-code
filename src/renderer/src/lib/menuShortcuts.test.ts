@@ -14,8 +14,6 @@ const ROOT = join(__dirname, "..");
 
 /** Files whose hand-typed hints are not yet on `shortcutFor`, with who moves them. */
 const NOT_YET: readonly string[] = [
-  // A12 slice 3: the file tree's context menu.
-  "chrome/FileTree.tsx",
   // A12 slice 4: the group menu loses its ⌘T and ⌘W.
   "chrome/TabGroupMenu.tsx",
 ];

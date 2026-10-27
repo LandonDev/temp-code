@@ -181,3 +181,41 @@ describe("the lazy menus", () => {
     expect(onPick).toHaveBeenCalledWith("open", "b");
   });
 });
+
+describe("RowsContextMenu's edges", () => {
+  beforeEach(() => resetMenus());
+
+  it("lazyMount mounts no body until the first right-click, then opens there", async () => {
+    await act(async () => {
+      await menuChunk.load();
+      warmMenus();
+    });
+    render(
+      <RowsContextMenu label="Link" lazyMount rowsFor={() => [{ kind: "item", id: "copy", label: "Copy Path" }]} onPick={() => {}}>
+        <span>a/b.ts</span>
+      </RowsContextMenu>,
+    );
+    expect(document.querySelector('[data-slot="context-menu-trigger"]')).toBeNull();
+    fireEvent.contextMenu(screen.getByText("a/b.ts"));
+    expect(await screen.findByRole("menu", { name: "Link" })).toBeTruthy();
+  });
+
+  it("a right-click in a field keeps the system's menu", async () => {
+    await act(async () => {
+      await menuChunk.load();
+      warmMenus();
+    });
+    render(
+      <RowsContextMenu label="Rows" rowsFor={() => [{ kind: "item", id: "x", label: "X" }]} onPick={() => {}}>
+        <div>
+          <input aria-label="Name" />
+        </div>
+      </RowsContextMenu>,
+    );
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    screen.getByLabelText("Name").dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByRole("menu", { name: "Rows" })).toBeNull();
+  });
+});

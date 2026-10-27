@@ -1,4 +1,5 @@
-import type { ExplorerMenuItem } from "../../../chrome/ExplorerMenu";
+import { Archive, ListPlus, MessageSquarePlus, Pause, Play } from "../../../chrome/icons";
+import type { MenuRow } from "../../../chrome/menuRows";
 import type { EnvironmentStatus } from "../../../lib/connection/types";
 import { pairWorkspaces, partnersOf } from "../../../lib/projectPairs";
 import type { ProjectMeta, SessionMeta } from "../../../lib/tcserver/types";
@@ -34,21 +35,21 @@ export function pausableRows<T extends { meta: SessionMeta }>(rows: readonly T[]
 }
 
 /** The ⋯ menu: the fleet switches for this batch, a row with nothing to act on disabled. */
-export function boardMenuItems(counts: { pausable: number; paused: number; done: number; all: number }): ExplorerMenuItem[] {
+export function boardMenuItems(counts: { pausable: number; paused: number; done: number; all: number }): MenuRow[] {
   return [
-    { kind: "item", id: "pause", label: "Pause all", disabled: counts.pausable === 0 },
-    { kind: "item", id: "resume", label: "Resume all", disabled: counts.paused === 0 },
+    { kind: "item", id: "pause", label: "Pause all", icon: Pause, disabled: counts.pausable === 0 },
+    { kind: "item", id: "resume", label: "Resume all", icon: Play, disabled: counts.paused === 0 },
     { kind: "sep" },
-    { kind: "item", id: "archive-done", label: "Archive done…", disabled: counts.done === 0 },
-    { kind: "item", id: "archive-all", label: "Archive all…", disabled: counts.all === 0 },
+    { kind: "item", id: "archive-done", label: "Archive done…", icon: Archive, disabled: counts.done === 0 },
+    { kind: "item", id: "archive-all", label: "Archive all…", icon: Archive, disabled: counts.all === 0 },
   ];
 }
 
 /** The + menu: a new thread, or one the project already has. */
-export function addMenuItems(candidates: number): ExplorerMenuItem[] {
+export function addMenuItems(candidates: number): MenuRow[] {
   return [
-    { kind: "item", id: "new", label: "New thread…" },
-    { kind: "item", id: "adopt", label: "Add existing thread…", disabled: candidates === 0 },
+    { kind: "item", id: "new", label: "New thread…", icon: MessageSquarePlus },
+    { kind: "item", id: "adopt", label: "Add existing thread…", icon: ListPlus, disabled: candidates === 0 },
   ];
 }
 

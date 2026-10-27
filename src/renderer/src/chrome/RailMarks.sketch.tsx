@@ -87,13 +87,13 @@ export function RailMarksSketch() {
         </div>
       </nav>
       <div className="flex w-[300px] flex-col bg-sidebar px-2 py-2">
-        <ProjectRowView name="Alpha" open mark={markOf(alpha)} unread onMenu={noop} />
+        <ProjectRowView name="Alpha" open mark={markOf(alpha)} unread menu={{ rows: () => [], onPick: noop }} />
         {alpha.map((t) => (
           <ThreadRowView key={t.id} row={t} selected={t.id === "a1"} />
         ))}
         <ThreadRowView row={row("b4", "Rules dialog", { status: "running", masterId: "m", activity: "Editing rulesEdit.ts", provider: "claude", model: "claude-opus-5-5" })} child />
-        <ProjectRowView name="Beta" open={false} mark={markOf([row("p", "Paused work", { status: "paused" })])} onMenu={noop} />
-        <ProjectRowView name="Gamma" open={false} mark={null} onMenu={noop} />
+        <ProjectRowView name="Beta" open={false} mark={markOf([row("p", "Paused work", { status: "paused" })])} menu={{ rows: () => [], onPick: noop }} />
+        <ProjectRowView name="Gamma" open={false} mark={null} menu={{ rows: () => [], onPick: noop }} />
       </div>
     </div>
   );

@@ -30,33 +30,33 @@ describe("MenuBar", () => {
     expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["File", "Edit", "View", "Go", "Threads"]);
   });
 
-  it("lists a menu's rows from the tree with their keys", () => {
+  it("lists a menu's rows from the tree with their keys", async () => {
     render(<MenuBar onCommand={() => {}} />);
     tapAlt();
     fireEvent.click(menuButton("Go"));
     const go = inAppMenus(MENU_TREE).find((m) => m.label === "Go")!;
     const expected = go.items.flatMap((i) => (i.kind === "item" ? [i.label] : []));
-    const rows = screen.getAllByRole("menuitem");
+    const rows = await screen.findAllByRole("menuitem");
     expect(rows).toHaveLength(expected.length);
     rows.forEach((row, i) => expect(row.textContent).toMatch(new RegExp(`^${expected[i].replace(/[.…]/g, "\\$&")}`)));
     expect(rows[0].textContent).toContain(acceleratorLabel("CmdOrCtrl+K"));
   });
 
-  it("sends a pick to onCommand and closes", () => {
+  it("sends a pick to onCommand and closes", async () => {
     const onCommand = vi.fn();
     render(<MenuBar onCommand={onCommand} />);
     tapAlt();
     fireEvent.click(menuButton("Threads"));
-    fireEvent.click(screen.getByRole("menuitem", { name: /Mark All Read/ }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Mark All Read/ }));
     expect(onCommand).toHaveBeenCalledWith("mark_all_read");
     expect(screen.queryByRole("button", { name: "File" })).toBeNull();
   });
 
-  it("greys a disabled row", () => {
+  it("greys a disabled row", async () => {
     render(<MenuBar onCommand={() => {}} disabled={["open_notes"]} />);
     tapAlt();
     fireEvent.click(menuButton("Go"));
-    const notes = screen.getByRole("menuitem", { name: /Notes/ }) as HTMLButtonElement;
+    const notes = (await screen.findByRole("menuitem", { name: /Notes/ })) as HTMLButtonElement;
     expect(notes.disabled || notes.getAttribute("aria-disabled") === "true").toBe(true);
   });
 });

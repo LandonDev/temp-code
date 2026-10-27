@@ -1,12 +1,10 @@
 import { measureElement, useVirtualizer, type VirtualizerOptions } from "@tanstack/react-virtual";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ConfirmDialog } from "../../chrome/ConfirmDialog";
-import { ExplorerMenu } from "../../chrome/ExplorerMenu";
-import { RowsContextMenu } from "../../chrome/menuRows";
+import { RowsContextMenu, RowsMenu } from "../../chrome/menuRows";
 import { useThreadMenu } from "../../chrome/useThreadMenu";
 import { ChevronDown, MoreHorizontal, Plus } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { registry } from "../../lib/connection";
 import { useEnvironments, useEnvironmentStatuses } from "../../lib/connection/status";
 import * as commands from "../../lib/tcserver/commands";
@@ -73,7 +71,6 @@ export function pausable(children: readonly SessionMeta[]): SessionMeta[] {
   return pausableRows(children.map((meta) => ({ meta }))).map((r) => r.meta);
 }
 
-type Menu = { kind: "board" | "add"; x: number; y: number };
 
 type BoardItem = { kind: "header"; key: string; group: BoardGroup } | { kind: "row"; key: string; row: BoardRowRef };
 
@@ -101,11 +98,6 @@ function reportBoardPaint(masterId: string, rows: number, ms: number): void {
   }
 }
 
-const menuAt = (el: HTMLElement, kind: Menu["kind"]): Menu => {
-  const rect = el.getBoundingClientRect();
-  return { kind, x: rect.left, y: rect.bottom + 4 };
-};
-
 export function MasterView(props: ThreadViewProps) {
   const { session } = props;
   const meta = useMetaById(session.id);
@@ -127,7 +119,8 @@ export function MasterView(props: ThreadViewProps) {
     };
   }, [environments, statuses, masterHost]);
   const [chatOpen, setChatOpen] = useState(true);
-  const [menu, setMenu] = useState<Menu | null>(null);
+  // The open title-bar menu: the rows' metas are read only while one is.
+  const [menu, setMenu] = useState<"board" | "add" | null>(null);
   const [adding, setAdding] = useState(false);
   const [adopting, setAdopting] = useState(false);
   const [archiving, setArchiving] = useState<ArchiveWhich | null>(null);
@@ -265,34 +258,31 @@ export function MasterView(props: ThreadViewProps) {
   const title = meta?.title || session.title || "Master";
   const actions = (
     <>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Batch actions"
-              aria-haspopup="menu"
-              aria-expanded={menu?.kind === "board" || undefined}
-              onClick={(e) => setMenu(menuAt(e.currentTarget, "board"))}
-            />
-          }
-        >
-          <MoreHorizontal />
-        </TooltipTrigger>
-        <TooltipContent>Batch actions</TooltipContent>
-      </Tooltip>
-      <Button
-        variant="ghost"
-        size="sm"
-        aria-haspopup="menu"
-        aria-expanded={menu?.kind === "add" || undefined}
-        onClick={(e) => setMenu(menuAt(e.currentTarget, "add"))}
-      >
-        <Plus />
-        Thread
-        <ChevronDown className="text-muted-foreground" />
-      </Button>
+      <RowsMenu
+        label="Batch actions"
+        tip={{ label: "Batch actions" }}
+        trigger={
+          <Button variant="ghost" size="icon-sm" aria-label="Batch actions">
+            <MoreHorizontal />
+          </Button>
+        }
+        rows={() => boardMenuItems({ pausable: toPause.length, paused: paused.length, done: done.length, all: layout.rows.length })}
+        onPick={onMenuPick}
+        onOpenChange={(open) => setMenu(open ? "board" : null)}
+      />
+      <RowsMenu
+        label="Add a thread"
+        trigger={
+          <Button variant="ghost" size="sm">
+            <Plus />
+            Thread
+            <ChevronDown className="text-muted-foreground" />
+          </Button>
+        }
+        rows={() => addMenuItems(candidates.length)}
+        onPick={onMenuPick}
+        onOpenChange={(open) => setMenu(open ? "add" : null)}
+      />
     </>
   );
   const board = (
@@ -358,20 +348,6 @@ export function MasterView(props: ThreadViewProps) {
         detail={batch.rules.summary || undefined}
         actions={actions}
       />
-      {menu ? (
-        <ExplorerMenu
-          x={menu.x}
-          y={menu.y}
-          ariaLabel={menu.kind === "board" ? "Batch actions" : "Add a thread"}
-          items={
-            menu.kind === "board"
-              ? boardMenuItems({ pausable: toPause.length, paused: paused.length, done: done.length, all: layout.rows.length })
-              : addMenuItems(candidates.length)
-          }
-          onPick={onMenuPick}
-          onClose={() => setMenu(null)}
-        />
-      ) : null}
       {adding && meta ? <AddThreadDialog master={meta} siblings={children} onClose={() => setAdding(false)} /> : null}
       {adopting ? (
         <AdoptThreadDialog

@@ -57,7 +57,6 @@ const actions = {
   activeSessionId: undefined as string | undefined,
   onOpen: () => {},
   onRename: () => {},
-  openMenu: () => {},
   menu: {
     rowsFor: (id: string) => [{ kind: 'item' as const, id: 'rename', label: `Rename ${id}` }],
     onPick: () => {},

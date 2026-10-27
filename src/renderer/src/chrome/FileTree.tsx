@@ -7,9 +7,18 @@ import { onFileEvent, watchCwd } from "../lib/projectWatch";
 import {
   ChevronDown,
   ChevronRight,
+  ClipboardPaste,
+  Copy,
+  CopyPlus,
+  ExternalLink,
   FilePlus,
+  FolderOpen,
   FolderPlus,
   FoldVertical,
+  Pencil,
+  Scissors,
+  Terminal,
+  Trash2,
 } from "./icons";
 import { Button } from "@renderer/components/ui/button";
 import { Skeleton } from "@renderer/components/ui/skeleton";
@@ -21,7 +30,6 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import {
@@ -57,9 +65,10 @@ import {
   type FsEntry,
 } from "../lib/fs";
 import { displayPath, parentPath, rebasePath } from "../lib/paths";
-import { IS_MAC, MOD } from "../lib/platform";
+import { IS_MAC } from "../lib/platform";
 import type { GitStatusMap } from "../hooks/useGitFileStatuses";
-import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
+import { shortcutFor } from "../lib/settings";
+import { RowsContextMenu, type MenuRow } from "./menuRows";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { useConfirm } from "./ConfirmDialog";
 import { editorChunk, mediaChunk } from "../surfaces/chunks";
@@ -90,7 +99,6 @@ type Props = {
 type Creating = { id: number; parent: string; isDir: boolean };
 type Clip = { mode: "copy" | "cut"; path: string; isDir: boolean };
 type MenuTarget = { path: string; isDir: boolean; isRoot: boolean };
-type MenuState = { x: number; y: number; target: MenuTarget };
 
 const REVEAL_LABEL = IS_MAC
   ? "Reveal in Finder"
@@ -113,10 +121,6 @@ type TreeCtxValue = {
   onCreateCancel: (id: number) => void;
   onRenameCommit: (path: string, raw: string) => Promise<void>;
   onRenameCancel: () => void;
-  onItemContextMenu: (
-    entry: { path: string; isDir: boolean },
-    e: ReactMouseEvent,
-  ) => void;
 };
 
 const TreeCtx = createContext<TreeCtxValue | null>(null);
@@ -155,84 +159,37 @@ function explorerItems(
   clip: Clip | null,
   canOpenTerminal: boolean,
   editorLabel: string | null = null,
-): ExplorerMenuItem[] {
+): MenuRow[] {
   const pasteParent = target.isDir ? target.path : parentPath(target.path);
   const pasteBlocked =
     !clip ||
     (clip.isDir &&
       (pasteParent === clip.path || pasteParent.startsWith(`${clip.path}/`)));
-  return [
-    { kind: "item", id: "new-file", label: "New File" },
-    { kind: "item", id: "new-folder", label: "New Folder" },
+  const rows: MenuRow[] = [
+    { kind: "item", id: "new-file", label: "New File", icon: FilePlus },
+    { kind: "item", id: "new-folder", label: "New Folder", icon: FolderPlus },
     { kind: "sep" },
-    {
-      kind: "item",
-      id: "cut",
-      label: "Cut",
-      shortcut: `${MOD}X`,
-      disabled: target.isRoot,
-    },
-    {
-      kind: "item",
-      id: "copy",
-      label: "Copy",
-      shortcut: `${MOD}C`,
-      disabled: target.isRoot,
-    },
-    {
-      kind: "item",
-      id: "paste",
-      label: "Paste",
-      shortcut: `${MOD}V`,
-      disabled: pasteBlocked,
-    },
-    {
-      kind: "item",
-      id: "duplicate",
-      label: "Duplicate",
-      disabled: target.isRoot,
-    },
+    { kind: "item", id: "cut", label: "Cut", icon: Scissors, shortcut: shortcutFor("Files", "Cut"), disabled: target.isRoot },
+    { kind: "item", id: "copy", label: "Copy", icon: Copy, shortcut: shortcutFor("Files", "Copy"), disabled: target.isRoot },
+    { kind: "item", id: "paste", label: "Paste", icon: ClipboardPaste, shortcut: shortcutFor("Files", "Paste"), disabled: pasteBlocked },
+    { kind: "item", id: "duplicate", label: "Duplicate", icon: CopyPlus, disabled: target.isRoot },
     { kind: "sep" },
-    { kind: "item", id: "copy-path", label: "Copy Path" },
-    { kind: "item", id: "copy-relative-path", label: "Copy Relative Path" },
+    { kind: "item", id: "copy-path", label: "Copy Path", icon: Copy },
+    { kind: "item", id: "copy-relative-path", label: "Copy Relative Path", icon: Copy },
     { kind: "sep" },
-    {
-      kind: "item",
-      id: "rename",
-      label: "Rename",
-      shortcut: "F2",
-      disabled: target.isRoot,
-    },
-    {
-      kind: "item",
-      id: "delete",
-      label: "Delete",
-      shortcut: "⌫",
-      disabled: target.isRoot,
-      danger: true,
-    },
+    { kind: "item", id: "rename", label: "Rename", icon: Pencil, shortcut: shortcutFor("Files", "Rename"), disabled: target.isRoot },
+    { kind: "item", id: "delete", label: "Delete", icon: Trash2, shortcut: shortcutFor("Files", "Delete"), disabled: target.isRoot, danger: true },
     { kind: "sep" },
-    ...(editorLabel && !target.isDir
-      ? [
-          {
-            kind: "item" as const,
-            id: "open-editor",
-            label: editorLabel,
-            shortcut: "⌥⏎",
-          },
-        ]
-      : []),
-    ...(canOpenTerminal
-      ? [
-          {
-            kind: "item" as const,
-            id: "open-terminal",
-            label: "Open in Terminal",
-          },
-        ]
-      : []),
-    { kind: "item", id: "reveal", label: REVEAL_LABEL },
   ];
+  if (editorLabel && !target.isDir) rows.push({ kind: "item", id: "open-editor", label: editorLabel, icon: ExternalLink, shortcut: shortcutFor("Files", "Open in Editor") });
+  if (canOpenTerminal) rows.push({ kind: "item", id: "open-terminal", label: "Open in Terminal", icon: Terminal });
+  rows.push({ kind: "item", id: "reveal", label: REVEAL_LABEL, icon: FolderOpen });
+  return rows;
+}
+
+/** A tree row's menu id: the kind and the path, read back by `targetOfMenuId`. */
+function menuIdOf(entry: { path: string; isDir: boolean }): string {
+  return `${entry.isDir ? "d" : "f"}:${entry.path}`;
 }
 
 export function FileTree({
@@ -255,7 +212,6 @@ export function FileTree({
   const [creating, setCreating] = useState<Creating | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [clip, setClip] = useState<Clip | null>(null);
-  const [menu, setMenu] = useState<MenuState | null>(null);
   const [opError, setOpError] = useState<string | null>(null);
   const [epoch, setEpoch] = useState(0);
   const creatingRef = useRef(creating);
@@ -326,7 +282,6 @@ export function FileTree({
   const startRename = (path: string) => {
     if (path === cwd) return;
     setCreating(null);
-    setMenu(null);
     onSelect(path);
     setRenaming(path);
   };
@@ -459,11 +414,13 @@ export function FileTree({
     }
   };
 
-  const openMenu = (target: MenuTarget, x: number, y: number) => {
+  /** The row a menu id names: a tree row, or the root for the background. */
+  const targetOf = (id: string | null): MenuTarget =>
+    id ? { path: id.slice(2), isDir: id.startsWith("d:"), isRoot: false } : { path: cwd, isDir: true, isRoot: true };
+  const openMenu = (target: MenuTarget) => {
     setCreating(null);
     setRenaming(null);
     onSelect(target.path);
-    setMenu({ x, y, target });
   };
 
   const runAction = async (id: string, target: MenuTarget) => {
@@ -510,25 +467,6 @@ export function FileTree({
         onOpenTerminal?.(target.isDir ? target.path : parentPath(target.path));
         return;
     }
-  };
-
-  const onItemContextMenu = (
-    entry: { path: string; isDir: boolean },
-    e: ReactMouseEvent,
-  ) => {
-    e.preventDefault();
-    e.stopPropagation();
-    openMenu(
-      { path: entry.path, isDir: entry.isDir, isRoot: false },
-      e.clientX,
-      e.clientY,
-    );
-  };
-
-  const onBackgroundMenu = (e: ReactMouseEvent) => {
-    if ((e.target as HTMLElement).closest("input")) return;
-    e.preventDefault();
-    openMenu({ path: cwd, isDir: true, isRoot: true }, e.clientX, e.clientY);
   };
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -629,13 +567,6 @@ export function FileTree({
     }
   };
 
-  useEffect(() => {
-    if (!menu) return;
-    const onScroll = () => setMenu(null);
-    const scrollParent = rootRef.current?.closest(".overflow-y-auto") ?? window;
-    scrollParent.addEventListener("scroll", onScroll, true);
-    return () => scrollParent.removeEventListener("scroll", onScroll, true);
-  }, [menu]);
 
   // The server's tree watcher: a change under a listed folder re-lists
   // that folder (batched), so agent and shell writes show without a nudge.
@@ -723,15 +654,19 @@ export function FileTree({
           onCreateCancel,
           onRenameCommit,
           onRenameCancel,
-          onItemContextMenu,
         }}
       >
+        <RowsContextMenu
+          label="File actions"
+          rowsFor={(id) => explorerItems(targetOf(id), clip, !!onOpenTerminal, editorLabelFor(targetOf(id).path, editorConfig))}
+          onPick={(pick, id) => void runAction(pick, targetOf(id))}
+          onOpenChange={(open, id) => open && openMenu(targetOf(id))}
+        >
         <div
           ref={rootRef}
           tabIndex={-1}
           className="flex h-full min-h-0 flex-col outline-none"
           onKeyDown={onKeyDown}
-          onContextMenu={onBackgroundMenu}
           onPointerEnter={warmFileSurfaces}
         >
           <div
@@ -777,24 +712,7 @@ export function FileTree({
             </div>
           </div>
         </div>
-        {menu ? (
-          <ExplorerMenu
-            x={menu.x}
-            y={menu.y}
-            items={explorerItems(
-              menu.target,
-              clip,
-              !!onOpenTerminal,
-              editorLabelFor(menu.target.path, editorConfig),
-            )}
-            onPick={(id) => {
-              const target = menu.target;
-              setMenu(null);
-              void runAction(id, target);
-            }}
-            onClose={() => setMenu(null)}
-          />
-        ) : null}
+        </RowsContextMenu>
       </TreeCtx.Provider>
     </TooltipProvider>
   );
@@ -902,7 +820,6 @@ function TreeNode({ entry, depth }: { entry: FsEntry; depth: number }) {
     onOpenFile,
     onRenameCommit,
     onRenameCancel,
-    onItemContextMenu,
   } = useTree();
   const open = expanded.has(entry.path);
   const [children, setChildren] = useState<FsEntry[] | null>(() =>
@@ -977,7 +894,7 @@ function TreeNode({ entry, depth }: { entry: FsEntry; depth: number }) {
                 aria-selected={selected}
                 aria-current={selected || undefined}
                 onClick={onClick}
-                onContextMenu={(e) => onItemContextMenu(entry, e)}
+                data-menu-id={menuIdOf(entry)}
                 style={{ paddingLeft: 8 + depth * 12 }}
                 className={`flex h-7.5 w-full cursor-default items-center gap-1 pr-2 text-left text-[14px] leading-none text-foreground outline-none ${
                   selected ? "bg-muted" : "hover:bg-foreground/5"

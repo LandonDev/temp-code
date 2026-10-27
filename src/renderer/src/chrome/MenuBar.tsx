@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MENU_TREE, inAppMenus, type InAppMenu } from "@shared/menuTree";
-import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
+import { Button } from "../components/ui/button";
+import { cn } from "../lib/cn";
+import { RowsMenu, type MenuRow } from "./menuRows";
 import { ALT, IS_MAC, MOD, SHIFT } from "../lib/platform";
 
 /**
@@ -25,8 +27,9 @@ export function acceleratorLabel(accelerator: string): string {
   return mods.join("") + (KEY_NAMES[key] ?? key);
 }
 
-function rowsOf(menu: InAppMenu, disabled: ReadonlySet<string>): ExplorerMenuItem[] {
-  return menu.items.map((item): ExplorerMenuItem =>
+/** A menu's rows: words and keys, no glyphs, as the native bar. */
+function rowsOf(menu: InAppMenu, disabled: ReadonlySet<string>): MenuRow[] {
+  return menu.items.map((item): MenuRow =>
     item.kind === "separator"
       ? { kind: "sep" }
       : {
@@ -50,7 +53,6 @@ export function MenuBar({ onCommand, disabled }: Props) {
   const off = useMemo(() => new Set(disabled ?? []), [disabled]);
   const [open, setOpen] = useState(false);
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
-  const [menuAnchor, setMenuAnchor] = useState<{ x: number; y: number } | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
 
   // Toggle with standalone Alt key tap
@@ -70,7 +72,6 @@ export function MenuBar({ onCommand, disabled }: Props) {
         setOpen((prev) => {
           if (prev) {
             setActiveMenu(null);
-            setMenuAnchor(null);
             return false;
           }
           return true;
@@ -93,16 +94,7 @@ export function MenuBar({ onCommand, disabled }: Props) {
     };
   }, []);
 
-  const openDropdown = useCallback((key: string, target: HTMLElement) => {
-    const rect = target.getBoundingClientRect();
-    setActiveMenu(key);
-    setMenuAnchor({ x: rect.left, y: rect.bottom + 4 });
-  }, []);
-
-  const closeMenu = useCallback(() => {
-    setActiveMenu(null);
-    setMenuAnchor(null);
-  }, []);
+  const closeMenu = useCallback(() => setActiveMenu(null), []);
 
   const handlePick = useCallback(
     (id: string) => {
@@ -120,50 +112,41 @@ export function MenuBar({ onCommand, disabled }: Props) {
   return (
     <div
       ref={barRef}
-      className="flex h-7 shrink-0 items-center gap-0.5 border-b border-content/10 bg-content/5 px-2 text-[12px]"
+      className="flex h-7 shrink-0 items-center gap-0.5 border-b border-border bg-sidebar px-2 text-[12px]"
       data-tauri-drag-region="false"
     >
-      {menus.map(({ label }) => {
-        const key = label;
+      {menus.map((menu) => {
+        const key = menu.label;
         const isActive = activeMenu === key;
         return (
-          <button
+          <RowsMenu
             key={key}
-            type="button"
-            data-tauri-drag-region="false"
-            onClick={(e) => {
-              if (isActive) {
-                closeMenu();
-              } else {
-                openDropdown(key, e.currentTarget);
-              }
+            label={`${key} menu`}
+            open={isActive}
+            modal={false}
+            align="start"
+            trigger={
+              <Button
+                variant="ghost"
+                size="xs"
+                data-tauri-drag-region="false"
+                onMouseEnter={() => {
+                  if (activeMenu && activeMenu !== key) setActiveMenu(key);
+                }}
+                className={cn("h-5 px-2 text-[12px] font-normal", isActive ? "bg-muted text-foreground" : "text-muted-foreground")}
+              >
+                {key}
+              </Button>
+            }
+            rows={() => rowsOf(menu, off)}
+            onPick={handlePick}
+            onOpenChange={(next) => {
+              if (next) setActiveMenu(key);
+              else if (activeMenu === key) closeMenu();
             }}
-            onMouseEnter={(e) => {
-              if (activeMenu && activeMenu !== key) {
-                openDropdown(key, e.currentTarget);
-              }
-            }}
-            className={`pressable rounded-md px-2 py-0.5 transition-colors ${
-              isActive
-                ? "bg-content/10 text-content"
-                : "text-content/70 hover:bg-content/5 hover:text-content"
-            }`}
-          >
-            {label}
-          </button>
+          />
         );
       })}
-
-      {activeMenu && menuAnchor ? (
-        <ExplorerMenu
-          x={menuAnchor.x}
-          y={menuAnchor.y}
-          items={rowsOf(menus.find((m) => m.label === activeMenu)!, off)}
-          ariaLabel={`${activeMenu} menu`}
-          onPick={handlePick}
-          onClose={closeMenu}
-        />
-      ) : null}
     </div>
   );
 }

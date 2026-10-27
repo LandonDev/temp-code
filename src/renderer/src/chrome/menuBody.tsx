@@ -171,10 +171,16 @@ export function DropdownRows({
   className,
   size = "sm",
   defaultOpen,
+  open,
+  modal,
 }: RowsMenuProps & { defaultOpen?: boolean }) {
   const opener = <DropdownMenuTrigger render={trigger} />;
   return (
-    <DropdownMenu defaultOpen={defaultOpen} onOpenChange={(open) => onOpenChange?.(open)}>
+    <DropdownMenu
+      {...(open === undefined ? { defaultOpen } : { open })}
+      modal={modal}
+      onOpenChange={(next) => onOpenChange?.(next)}
+    >
       {tip ? (
         <Tip label={tip.label} shortcut={tip.shortcut} side={tip.side}>
           {opener}

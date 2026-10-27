@@ -1,14 +1,12 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FsEntry } from "../lib/fs";
-import type { ExplorerMenuItem } from "./ExplorerMenu";
 
 const ROOT = "/repo";
 
 const state = vi.hoisted(() => ({
   dirs: new Map<string, FsEntry[]>(),
-  menu: null as { items: ExplorerMenuItem[]; onPick: (id: string) => void } | null,
 }));
 
 function entry(path: string, isDir = false): FsEntry {
@@ -31,14 +29,12 @@ vi.mock("../lib/editorConfig", () => ({ useEditorConfig: () => null }));
 vi.mock("../lib/openInEditor", () => ({ editorLabelFor: () => null, openInEditor: vi.fn() }));
 vi.mock("../lib/editorRename", () => ({ applyBeforeMove: vi.fn(), applyWillRename: vi.fn() }));
 vi.mock("../lib/projectWatch", () => ({ watchCwd: () => () => {}, onFileEvent: () => () => {} }));
-vi.mock("../surfaces/chunks", () => ({ editorChunk: { preload: () => {} }, mediaChunk: { preload: () => {} } }));
-vi.mock("./ConfirmDialog", () => ({ useConfirm: () => async () => true }));
-vi.mock("./ExplorerMenu", () => ({
-  ExplorerMenu: (props: { items: ExplorerMenuItem[]; onPick: (id: string) => void }) => {
-    state.menu = props;
-    return <div role="menu" />;
-  },
+vi.mock("../surfaces/chunks", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../surfaces/chunks")>()),
+  editorChunk: { preload: () => {} },
+  mediaChunk: { preload: () => {} },
 }));
+vi.mock("./ConfirmDialog", () => ({ useConfirm: () => async () => true }));
 
 import { FileTree } from "./FileTree";
 
@@ -49,13 +45,15 @@ async function mount() {
   return { ...view, onOpenFile };
 }
 
-function item(id: string) {
-  return state.menu?.items.find((it) => it.kind === "item" && it.id === id) as Extract<ExplorerMenuItem, { kind: "item" }>;
+/** A row of the open file menu, and whether it is disabled. */
+async function row(name: string): Promise<{ el: HTMLElement; disabled: boolean }> {
+  const menu = await screen.findByRole("menu", { name: "File actions" });
+  const el = within(menu).getByText(name, { selector: "span" }).closest<HTMLElement>("[role='menuitem']")!;
+  return { el, disabled: el.getAttribute("aria-disabled") === "true" };
 }
 
 describe("FileTree", () => {
   beforeEach(() => {
-    state.menu = null;
     state.dirs = new Map([
       [ROOT, [entry(`${ROOT}/src`, true), entry(`${ROOT}/README.md`)]],
       [`${ROOT}/src`, [entry(`${ROOT}/src/app.ts`)]],
@@ -106,19 +104,21 @@ describe("FileTree", () => {
     const writeText = vi.fn(async () => {});
     Object.assign(navigator, { clipboard: { writeText } });
     fireEvent.contextMenu(screen.getByRole("tree"));
-    expect(screen.getByRole("menu")).toBeTruthy();
-    expect(item("rename").disabled).toBe(true);
-    expect(item("delete").disabled).toBe(true);
-    expect(item("cut").disabled).toBe(true);
-    expect(item("new-file").disabled).toBeFalsy();
-    await act(async () => state.menu!.onPick("copy-path"));
+    expect((await row("Rename")).disabled).toBe(true);
+    expect((await row("Delete")).disabled).toBe(true);
+    expect((await row("Cut")).disabled).toBe(true);
+    expect((await row("New File")).disabled).toBe(false);
+    fireEvent.click((await row("Copy Path")).el);
     expect(writeText).toHaveBeenCalledWith(ROOT);
   });
 
   it("a row's context menu targets that row", async () => {
     await mount();
     fireEvent.contextMenu(screen.getByRole("treeitem", { name: /README\.md/ }));
-    expect(item("rename").disabled).toBeFalsy();
-    expect(item("delete").disabled).toBeFalsy();
+    expect((await row("Rename")).disabled).toBe(false);
+    expect((await row("Delete")).disabled).toBe(false);
+    // Each verb with its glyph, and the file tree's real keys.
+    expect((await row("Rename")).el.querySelector("svg")).toBeTruthy();
+    expect((await row("Rename")).el.querySelector("kbd")?.textContent).toBe("F2");
   });
 });
