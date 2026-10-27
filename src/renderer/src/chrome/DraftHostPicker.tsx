@@ -114,7 +114,7 @@ export function DraftHostPicker({ sessionId, onClose }: { sessionId: string; onC
         <span className="max-w-32 truncate">{current.name}</span>
         <ChevronDown />
       </DropdownMenuTrigger>
-      <DropdownMenuContent size="sm" side="top" align="start" finalFocus={onClose ? false : undefined} className="w-64" aria-label="Start this thread on">
+      <DropdownMenuContent side="top" align="start" finalFocus={onClose ? false : undefined} className="w-64" aria-label="Start this thread on">
         <DropdownMenuRadioGroup value={current.id}>
           {hosts.map((env) => {
             const has = copies.some((c) => c.environmentId === env.id);

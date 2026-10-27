@@ -98,7 +98,7 @@ export function SearchFiltersMenu({
         </TooltipTrigger>
         <TooltipContent>Filters</TooltipContent>
       </Tooltip>
-      <DropdownMenuContent size="sm" align="end" className="min-w-44">
+      <DropdownMenuContent align="end" className="min-w-44">
         <DropdownMenuGroup>
           <DropdownMenuLabel>Type</DropdownMenuLabel>
           {SEARCH_KINDS.map((kind) => (

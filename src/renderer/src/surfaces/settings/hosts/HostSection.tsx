@@ -164,7 +164,7 @@ function HostMenu({ name, onMenu }: { name: string; onMenu: (action: HostMenuAct
   return (
     <DropdownMenu>
       <MenuTrigger name={name} />
-      <DropdownMenuContent align="end" size="sm">
+      <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={() => onMenu("rename")}>Rename…</DropdownMenuItem>
         <DropdownMenuItem onClick={() => onMenu("routes")}>Routes…</DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -180,7 +180,7 @@ function LocalMenu({ name, environmentId }: { name: string; environmentId: strin
   return (
     <DropdownMenu>
       <MenuTrigger name={name} />
-      <DropdownMenuContent align="end" size="sm">
+      <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(environmentId)}>Copy environment id</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

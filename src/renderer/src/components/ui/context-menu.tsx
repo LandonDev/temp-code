@@ -4,10 +4,11 @@ import { ContextMenu as ContextMenuPrimitive } from "@base-ui/react/context-menu
 import { cn } from "@renderer/lib/cn";
 import { KbdGroup } from "./kbd";
 
-/** The right-click menu: the same rows as the dropdown at the `sm` size,
- *  opened at the pointer with a plain fade (nothing to scale from). */
+/** The right-click menu: the dropdown's one row (28px, 12px padding, 8px
+ *  glyph gap), opened at the pointer with a plain fade (nothing to scale
+ *  from). A row with a description line grows past 28px. */
 const ROW =
-  "flex cursor-default select-none items-center gap-1.5 rounded-md py-1 ps-2 pe-1.5 text-[13px] outline-hidden focus:bg-muted data-highlighted:bg-muted data-disabled:pointer-events-none data-disabled:opacity-50 data-inset:ps-7 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-muted-foreground [&_svg:not([class*='size-'])]:size-3.5";
+  "flex min-h-7 cursor-default select-none items-center gap-2 rounded-lg px-3 py-1 text-[13px] outline-hidden focus:bg-muted data-highlighted:bg-muted data-disabled:pointer-events-none data-disabled:opacity-50 data-inset:ps-8.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-muted-foreground [&_svg:not([class*='size-'])]:size-3.5";
 
 function ContextMenu({ ...props }: ContextMenuPrimitive.Root.Props) {
   return <ContextMenuPrimitive.Root data-slot="context-menu" {...props} />;
@@ -35,7 +36,7 @@ function ContextMenuContent({
         <ContextMenuPrimitive.Popup
           data-slot="context-menu-content"
           className={cn(
-            "max-h-(--available-height) min-w-36 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-lg bg-popover p-1 text-popover-foreground shadow-overlay ring-1 ring-border outline-none duration-(--dur-fast) ease-(--ease-out) data-closed:animate-out data-closed:fade-out-0 data-open:animate-in data-open:fade-in-0 motion-reduce:duration-0",
+            "max-h-(--available-height) min-w-44 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-xl bg-popover p-1.5 text-popover-foreground shadow-overlay ring-1 ring-border outline-none duration-(--dur-fast) ease-(--ease-out) data-closed:animate-out data-closed:fade-out-0 data-open:animate-in data-open:fade-in-0 motion-reduce:duration-0",
             className,
           )}
           {...props}
@@ -50,7 +51,7 @@ function ContextMenuGroup({ ...props }: ContextMenuPrimitive.Group.Props) {
 }
 
 function ContextMenuLabel({ className, inset, ...props }: ContextMenuPrimitive.GroupLabel.Props & { inset?: boolean }) {
-  return <ContextMenuPrimitive.GroupLabel data-slot="context-menu-label" data-inset={inset} className={cn("py-1 ps-2 pe-1.5 text-[11px] font-medium text-muted-foreground data-inset:ps-7", className)} {...props} />;
+  return <ContextMenuPrimitive.GroupLabel data-slot="context-menu-label" data-inset={inset} className={cn("px-3 py-1 text-[11px] font-medium text-muted-foreground data-inset:ps-8.5", className)} {...props} />;
 }
 
 function ContextMenuItem({ className, inset, variant = "default", ...props }: ContextMenuPrimitive.Item.Props & { inset?: boolean; variant?: "default" | "destructive" }) {
@@ -84,8 +85,8 @@ function ContextMenuSubContent({ ...props }: ComponentProps<typeof ContextMenuCo
 
 function ContextMenuCheckboxItem({ className, children, checked, inset, ...props }: ContextMenuPrimitive.CheckboxItem.Props & { inset?: boolean }) {
   return (
-    <ContextMenuPrimitive.CheckboxItem data-slot="context-menu-checkbox-item" data-inset={inset} className={cn(ROW, "relative pe-7", className)} checked={checked} {...props}>
-      <span className="pointer-events-none absolute end-1.5">
+    <ContextMenuPrimitive.CheckboxItem data-slot="context-menu-checkbox-item" data-inset={inset} className={cn(ROW, "relative pe-8", className)} checked={checked} {...props}>
+      <span className="pointer-events-none absolute end-3">
         <ContextMenuPrimitive.CheckboxItemIndicator>
           <Check />
         </ContextMenuPrimitive.CheckboxItemIndicator>
@@ -101,8 +102,8 @@ function ContextMenuRadioGroup({ ...props }: ContextMenuPrimitive.RadioGroup.Pro
 
 function ContextMenuRadioItem({ className, children, inset, ...props }: ContextMenuPrimitive.RadioItem.Props & { inset?: boolean }) {
   return (
-    <ContextMenuPrimitive.RadioItem data-slot="context-menu-radio-item" data-inset={inset} className={cn(ROW, "relative pe-7", className)} {...props}>
-      <span className="pointer-events-none absolute end-1.5">
+    <ContextMenuPrimitive.RadioItem data-slot="context-menu-radio-item" data-inset={inset} className={cn(ROW, "relative pe-8", className)} {...props}>
+      <span className="pointer-events-none absolute end-3">
         <ContextMenuPrimitive.RadioItemIndicator>
           <Check />
         </ContextMenuPrimitive.RadioItemIndicator>
@@ -113,7 +114,7 @@ function ContextMenuRadioItem({ className, children, inset, ...props }: ContextM
 }
 
 function ContextMenuSeparator({ className, ...props }: ContextMenuPrimitive.Separator.Props) {
-  return <ContextMenuPrimitive.Separator data-slot="context-menu-separator" className={cn("-mx-1 my-1 h-px bg-border", className)} {...props} />;
+  return <ContextMenuPrimitive.Separator data-slot="context-menu-separator" className={cn("-mx-1.5 my-1.5 h-px bg-border", className)} {...props} />;
 }
 
 function ContextMenuShortcut({ className, ...props }: ComponentProps<typeof KbdGroup>) {

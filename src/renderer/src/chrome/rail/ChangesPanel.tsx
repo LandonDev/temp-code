@@ -610,7 +610,7 @@ function TopRow({
           </TooltipTrigger>
           <TooltipContent>More</TooltipContent>
         </Tooltip>
-        <DropdownMenuContent size="sm" align="end" aria-label="More git actions">
+        <DropdownMenuContent align="end" aria-label="More git actions">
           <DropdownMenuItem disabled={!index.upstream || !!busy} onClick={actions.pull}>
             Pull
           </DropdownMenuItem>
@@ -863,7 +863,7 @@ function CommitFooter({
           >
             <ChevronDown className="size-3.5" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent size="sm" align="end" aria-label="Commit options">
+          <DropdownMenuContent align="end" aria-label="Commit options">
             <DropdownMenuItem disabled={!rules.canCommitPush} onClick={() => actions.commit("push")}>
               Commit & push
             </DropdownMenuItem>

@@ -66,7 +66,7 @@ function HomeMenu({ home, environments, localName, onSetHome }: { home: string |
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger>Refreshed by</DropdownMenuSubTrigger>
-      <DropdownMenuSubContent size="sm">
+      <DropdownMenuSubContent>
         <DropdownMenuRadioGroup value={home ?? ""} onValueChange={(value: string) => onSetHome(value || null)}>
           <DropdownMenuRadioItem value="">{localName}</DropdownMenuRadioItem>
           {environments.map((e) => (
@@ -139,7 +139,7 @@ function ProviderSection({ service, props, now }: { service: ServiceView; props:
                   </TooltipTrigger>
                   <TooltipContent>{service.name} actions</TooltipContent>
                 </Tooltip>
-                <DropdownMenuContent align="end" size="sm">
+                <DropdownMenuContent align="end">
                   {service.canSaveCurrent ? (
                     <DropdownMenuItem disabled={busy === `capture:${service.id}`} onClick={() => props.onCapture(service.id)}>
                       Save current account

@@ -28,7 +28,7 @@ export function MenuSketch({ rows = WORKING }: { rows?: MenuRow[] }) {
     <div style={{ height: 420 }}>
       <DropdownMenu defaultOpen modal={false}>
         <DropdownMenuTrigger>⋯</DropdownMenuTrigger>
-        <DropdownMenuContent size="sm" align="start" className="w-60" aria-label="Thread menu">
+        <DropdownMenuContent align="start" className="w-60" aria-label="Thread menu">
           <MenuRows kind="dropdown" items={rows} onPick={() => {}} />
         </DropdownMenuContent>
       </DropdownMenu>

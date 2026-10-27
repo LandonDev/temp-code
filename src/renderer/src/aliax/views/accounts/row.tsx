@@ -256,7 +256,7 @@ export function AccountRow({ serviceId, profile, report, headroom, columns, now,
           </TooltipTrigger>
           <TooltipContent>More</TooltipContent>
         </Tooltip>
-        <DropdownMenuContent align="end" size="sm">
+        <DropdownMenuContent align="end">
           <DropdownMenuItem onClick={() => setEditing(true)}>Edit account…</DropdownMenuItem>
           {serviceId === "claude-code" ? (
             <DropdownMenuItem disabled={mint?.state === "minting"} onClick={onSetupToken}>

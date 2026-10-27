@@ -48,7 +48,7 @@ export function Clients({
       action={
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button variant="ghost" size="sm" />}>Add…</DropdownMenuTrigger>
-          <DropdownMenuContent align="end" size="sm">
+          <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={onPair}>Pair a device…</DropdownMenuItem>
             <DropdownMenuItem onClick={onNewKey}>New key…</DropdownMenuItem>
           </DropdownMenuContent>

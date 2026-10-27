@@ -132,7 +132,7 @@ function Row({ item, onPick, kind }: { item: MenuRow; onPick: (id: string) => vo
   if (item.kind === "sep" || item.kind === "label") return null;
   if (item.kind === "note") {
     return (
-      <div data-menu-note={item.id} className="flex items-center gap-2 px-1.5 py-1 text-[12px] text-muted-foreground">
+      <div data-menu-note={item.id} className="flex items-center gap-2 px-3 py-1 text-[12px] text-muted-foreground">
         {item.content}
       </div>
     );
@@ -195,7 +195,6 @@ export function DropdownRows({
   align = "end",
   side = "bottom",
   className,
-  size = "sm",
   defaultOpen,
   open,
   modal,
@@ -217,7 +216,7 @@ export function DropdownRows({
       ) : (
         opener
       )}
-      <DropdownMenuContent size={size} align={align} side={side} className={className} aria-label={label} finalFocus={finalFocus ?? false}>
+      <DropdownMenuContent align={align} side={side} className={className} aria-label={label} finalFocus={finalFocus ?? false}>
         <OpenRows kind="dropdown" rows={rows} onPick={onPick} />
       </DropdownMenuContent>
     </DropdownMenu>

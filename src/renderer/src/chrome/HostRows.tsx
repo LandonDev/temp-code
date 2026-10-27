@@ -95,7 +95,7 @@ export function HostsRow({ onAddWorkspace }: { onAddWorkspace: (environmentId: s
           </span>
         }
       />
-      <DropdownMenuContent size="sm" side="right" align="end" aria-label="Hosts">
+      <DropdownMenuContent side="right" align="end" aria-label="Hosts">
         {environments.map((environment) => (
           <HostSubmenu
             key={environment.id}
@@ -131,7 +131,7 @@ function HostSubmenu({
           <DeployDriftMark environmentId={id} />
         </span>
       </DropdownMenuSubTrigger>
-      <DropdownMenuSubContent size="sm" aria-label={`${name} actions`}>
+      <DropdownMenuSubContent aria-label={`${name} actions`}>
         <HostActions environmentId={id} name={name} onAddWorkspace={onAddWorkspace} />
       </DropdownMenuSubContent>
     </DropdownMenuSub>

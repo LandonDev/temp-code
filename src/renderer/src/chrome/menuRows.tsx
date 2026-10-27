@@ -156,7 +156,6 @@ export type RowsMenuProps = {
   side?: "top" | "bottom" | "left" | "right";
   /** The popup's classes (a width). */
   className?: string;
-  size?: "sm" | "default";
   /** Controlled: the menu bar opens one menu at a time and moves on hover. */
   open?: boolean;
   /** Non-modal: the page behind stays live (the menu bar's other titles). */

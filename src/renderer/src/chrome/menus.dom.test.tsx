@@ -28,7 +28,7 @@ async function openDropdown(items: readonly MenuRow[], onPick = vi.fn()) {
   render(
     <DropdownMenu defaultOpen>
       <DropdownMenuTrigger>open</DropdownMenuTrigger>
-      <DropdownMenuContent aria-label="menu" size="sm">
+      <DropdownMenuContent aria-label="menu">
         <MenuRows kind="dropdown" items={items} onPick={onPick} />
       </DropdownMenuContent>
     </DropdownMenu>,
@@ -63,6 +63,28 @@ describe("MenuRows", () => {
     fireEvent.click(within(second.list).getByText("Type"));
     fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Chat" }));
     expect(second.onPick).toHaveBeenCalledWith("type:chat");
+  });
+
+  it("draws one row size: 28px, 12px padding, 8px from its 14px glyph, in both menus", async () => {
+    const rowClasses = ["min-h-7", "px-3", "gap-2", "[&_svg:not([class*='size-'])]:size-3.5"];
+    const { list } = await openDropdown(ROWS);
+    const pause = within(list).getByRole("menuitem", { name: /Pause/ });
+    for (const c of rowClasses) expect(pause.className.split(/\s+/)).toContain(c);
+    expect(list.getAttribute("data-size")).toBeNull();
+    const check = within(list).getByRole("menuitemcheckbox", { name: "Mac bridge" });
+    expect(check.className.split(/\s+/)).toEqual(expect.arrayContaining(["min-h-7", "ps-3", "pe-8"]));
+    cleanup();
+    render(
+      <ContextMenu defaultOpen>
+        <ContextMenuTrigger>open</ContextMenuTrigger>
+        <ContextMenuContent aria-label="context">
+          <MenuRows kind="context" items={ROWS} onPick={() => {}} />
+        </ContextMenuContent>
+      </ContextMenu>,
+    );
+    const context = await screen.findByRole("menu", { name: "context" });
+    const archive = within(context).getByRole("menuitem", { name: /Archive/ });
+    for (const c of rowClasses) expect(archive.className.split(/\s+/)).toContain(c);
   });
 
   it("the context menu renders the same rows", async () => {

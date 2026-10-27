@@ -263,7 +263,7 @@ export function AgainstView({
             </TooltipTrigger>
             <TooltipContent>Merge or rebase</TooltipContent>
           </Tooltip>
-          <DropdownMenuContent size="sm" align="end" aria-label="Branch moves">
+          <DropdownMenuContent align="end" aria-label="Branch moves">
             <DropdownMenuItem disabled={busy || behind === 0} onClick={() => onMove("update")}>
               Update from {target}
             </DropdownMenuItem>

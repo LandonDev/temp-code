@@ -388,7 +388,7 @@ function RuleRow({
           </TooltipTrigger>
           <TooltipContent>Rule actions</TooltipContent>
         </Tooltip>
-        <DropdownMenuContent size="sm" align="end">
+        <DropdownMenuContent align="end">
           <DropdownMenuItem onClick={onEdit}>Edit…</DropdownMenuItem>
           <DropdownMenuItem disabled={first} onClick={onMoveUp}>
             Move up

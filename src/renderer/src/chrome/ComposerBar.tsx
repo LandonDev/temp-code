@@ -86,7 +86,7 @@ function AddMenu({
         </TooltipTrigger>
         <TooltipContent>Add</TooltipContent>
       </Tooltip>
-      <DropdownMenuContent size="sm" side="top" align="start" finalFocus={() => fieldOf()} data-add-menu className="w-56" aria-label="Add">
+      <DropdownMenuContent side="top" align="start" finalFocus={() => fieldOf()} data-add-menu className="w-56" aria-label="Add">
         <DropdownMenuItem disabled={!attachable} onClick={onAttach}>
           <Paperclip />
           Attach files
