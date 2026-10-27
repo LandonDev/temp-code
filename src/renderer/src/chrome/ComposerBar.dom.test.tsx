@@ -6,8 +6,20 @@
  * Enter would carry out.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { ComposerBar, SendButton } from "./ComposerBar";
+import { act, cleanup, fireEvent, render, renderHook, screen, within } from "@testing-library/react";
+
+const store = vi.hoisted(() => ({ blocks: new Map<string, unknown[]>(), listeners: new Set<() => void>() }));
+vi.mock("../lib/tcserver/store", () => ({
+  sessionStore: {
+    subscribe: (l: () => void) => {
+      store.listeners.add(l);
+      return () => store.listeners.delete(l);
+    },
+    get: (id: string) => (store.blocks.has(id) ? { blocks: store.blocks.get(id) } : undefined),
+  },
+}));
+
+import { ComposerBar, SendButton, useDraftRow } from "./ComposerBar";
 import type { HarnessId } from "../lib/session";
 
 function bar(harness: HarnessId, handlers: { onAttach?: () => void; onInsert?: (mark: "@" | "/") => void } = {}) {
@@ -111,5 +123,24 @@ describe("SendButton", () => {
   it("disabled while there is nothing to send", () => {
     render(<SendButton intent="send" disabled onSubmit={() => {}} onPause={() => {}} />);
     expect(screen.getByRole("button", { name: "Send" }).hasAttribute("disabled")).toBe(true);
+  });
+});
+
+describe("useDraftRow", () => {
+  it("shows the row on a new thread and the shell screen, and drops it after the first message", () => {
+    store.blocks.set("t", []);
+    const { result, rerender } = renderHook(({ id, shell }) => useDraftRow(id, shell), {
+      initialProps: { id: "t" as string | undefined, shell: false },
+    });
+    expect(result.current).toBe(true);
+    act(() => {
+      store.blocks.set("t", [{ kind: "user" }]);
+      for (const l of store.listeners) l();
+    });
+    expect(result.current).toBe(false);
+    rerender({ id: "t", shell: true });
+    expect(result.current).toBe(true);
+    rerender({ id: undefined, shell: false });
+    expect(result.current).toBe(true);
   });
 });

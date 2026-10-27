@@ -26,7 +26,12 @@ export function ThreadTypeChip({ value, onChange, onClose }: Props) {
         if (!open) onClose?.();
       }}
     >
-      <SelectTrigger size="sm" aria-label="Thread type" data-thread-type-picker className="shrink-0">
+      <SelectTrigger
+        size="sm"
+        aria-label="Thread type"
+        data-thread-type-picker
+        className="shrink-0 border-transparent px-1.5 text-xs text-muted-foreground hover:bg-foreground/7 hover:text-foreground data-popup-open:text-foreground [&>svg]:size-3"
+      >
         <SelectValue>
           <Glyph className="size-3.5" strokeWidth={1.5} />
           {THREAD_LABELS[value]}

@@ -458,7 +458,7 @@ html.is-resizing * {
 .composer-field:empty::before {
   content: attr(data-placeholder);
   pointer-events: none;
-  color: color-mix(in srgb, var(--color-content) 40%, transparent);
+  color: var(--color-muted-foreground);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

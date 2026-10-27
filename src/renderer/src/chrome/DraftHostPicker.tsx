@@ -1,13 +1,20 @@
-import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown } from "./icons";
+import { useEffect, useState } from "react";
+import { Button } from "../components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
+import { Spinner } from "../components/ui/spinner";
+import { ChevronDown } from "./icons";
 import { HostGlyph } from "./HostGlyph";
-import { Popover } from "./Popover";
 import { useEnvironmentStatuses, useEnvironments } from "../lib/connection/status";
 import { copiesOf, ensureLinkedArgs, ensureLinkedOn, probeOf, rememberLinkHost, type CopyProbe } from "../lib/projectHostChoice";
 import { sessionStore, useSession, useSessionMeta } from "../lib/tcserver/store";
 import type { ProjectMeta } from "../lib/tcserver/types";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
-import { Spinner } from "../surfaces/threads/spinners";
 
 /**
  * Where an unsent draft of a linked project starts (CLAUDE.md "One project
@@ -19,7 +26,7 @@ import { Spinner } from "../surfaces/threads/spinners";
  * the link (lib/projectHostChoice.ts). A sent thread moves through the
  * header's host chip instead.
  */
-export function DraftHostPicker({ sessionId }: { sessionId: string }) {
+export function DraftHostPicker({ sessionId, onClose }: { sessionId: string; onClose?: () => void }) {
   const session = useSession(sessionId);
   const meta = useSessionMeta(sessionId);
   const { projects, workspaces } = useWorkspaceCatalog();
@@ -28,7 +35,6 @@ export function DraftHostPicker({ sessionId }: { sessionId: string }) {
   const [open, setOpen] = useState(false);
   const [probes, setProbes] = useState<ReadonlyMap<string, CopyProbe>>(new Map());
   const [making, setMaking] = useState<string | null>(null);
-  const button = useRef<HTMLButtonElement | null>(null);
 
   const project = session?.projectId ? projects.find((p) => p.id === session.projectId && p.environmentId === session.environmentId) : undefined;
   const copies = copiesOf(projects, project?.linkId);
@@ -90,60 +96,57 @@ export function DraftHostPicker({ sessionId }: { sessionId: string }) {
   };
 
   return (
-    <>
-      <button
-        ref={button}
-        type="button"
+    <DropdownMenu
+      open={open}
+      onOpenChange={(next) => {
+        // A copy being made holds the menu open until it lands.
+        if (!next && making) return;
+        setOpen(next);
+        if (!next) onClose?.();
+      }}
+    >
+      <DropdownMenuTrigger
         data-draft-host-picker={current.id}
-        aria-haspopup="menu"
-        aria-expanded={open}
         aria-label={`Start on ${current.name}`}
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={() => setOpen((v) => !v)}
-        className={`flex min-w-0 shrink-0 items-center gap-1.5 text-[12px] ${open ? "text-content" : "text-content/50 hover:text-content"}`}
+        render={<Button variant="ghost" size="xs" className="min-w-0 font-normal text-muted-foreground hover:text-foreground aria-expanded:text-foreground" />}
       >
         <HostGlyph environmentId={current.id} />
         <span className="max-w-32 truncate">{current.name}</span>
-        <ChevronDown className={`size-3 shrink-0 text-content/50 ${open ? "rotate-180" : ""}`} strokeWidth={1.75} />
-      </button>
-      {open ? (
-        <Popover anchor={button} side="top" align="start" width={260} onDismiss={() => setOpen(false)} className="flex flex-col p-1" autoFocus>
-          <div role="menu" aria-label="Start this thread on" className="flex flex-col">
-            {hosts.map((env) => {
-              const has = copies.some((c) => c.environmentId === env.id);
-              const probe = has ? undefined : (probes.get(env.id) ?? (args ? { state: "checking" as const } : { state: "none" as const, note: "Not linked yet" }));
-              const disabled = making !== null || (!has && probe?.state !== "ready");
-              const note = probe?.state === "none" ? probe.note : !has && probe?.state === "ready" ? "New copy" : null;
-              return (
-                <button
-                  key={env.id}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={env.id === current.id}
-                  aria-disabled={disabled || undefined}
-                  data-draft-host-option={env.id}
-                  disabled={disabled}
-                  title={note ?? undefined}
-                  onClick={() => void pick(env.id)}
-                  className="flex h-8 items-center gap-2 rounded-md px-2 text-left text-[12px] text-content/80 enabled:hover:bg-content/10 enabled:hover:text-content disabled:cursor-default"
-                >
-                  <HostGlyph environmentId={env.id} className={probe?.state === "none" ? "opacity-50" : ""} />
-                  <span className={`min-w-0 flex-1 truncate ${probe?.state === "none" ? "text-content/40" : ""}`}>{env.name}</span>
-                  {making === env.id || probe?.state === "checking" ? (
-                    <Spinner />
-                  ) : note ? (
-                    <span className="max-w-32 shrink-0 truncate text-[11px] text-content/40" data-draft-host-note>
+        <ChevronDown />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent size="sm" side="top" align="start" finalFocus={onClose ? false : undefined} className="w-64" aria-label="Start this thread on">
+        <DropdownMenuRadioGroup value={current.id}>
+          {hosts.map((env) => {
+            const has = copies.some((c) => c.environmentId === env.id);
+            const probe = has ? undefined : (probes.get(env.id) ?? (args ? { state: "checking" as const } : { state: "none" as const, note: "Not linked yet" }));
+            const disabled = making !== null || (!has && probe?.state !== "ready");
+            const note = making === env.id ? "Making a copy…" : probe?.state === "none" ? probe.note : !has && probe?.state === "ready" ? "New copy" : null;
+            return (
+              <DropdownMenuRadioItem
+                key={env.id}
+                value={env.id}
+                disabled={disabled}
+                closeOnClick={false}
+                data-draft-host-option={env.id}
+                onClick={() => void pick(env.id)}
+                className="items-start py-1.5"
+              >
+                <HostGlyph environmentId={env.id} className="mt-0.5" />
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="truncate">{env.name}</span>
+                  {note ? (
+                    <span className="whitespace-normal text-xs text-muted-foreground" data-draft-host-note>
                       {note}
                     </span>
                   ) : null}
-                  {env.id === current.id ? <Check className="size-3.5 shrink-0" strokeWidth={2.25} /> : null}
-                </button>
-              );
-            })}
-          </div>
-        </Popover>
-      ) : null}
-    </>
+                </span>
+                {making === env.id || probe?.state === "checking" ? <Spinner className="mt-0.5 size-3.5" /> : null}
+              </DropdownMenuRadioItem>
+            );
+          })}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

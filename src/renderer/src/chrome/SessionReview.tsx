@@ -1,4 +1,5 @@
 import { sessionStore } from "../lib/tcserver/store";
+import { COMPOSER_SURFACE } from "./ComposerBar";
 import { ChevronRight } from "./icons";
 import { Button } from "../components/ui/button";
 import { Spinner } from "../components/ui/spinner";
@@ -183,7 +184,7 @@ export function SessionReviewView({
   return (
     <div ref={rootRef} className="px-2">
       <div
-        className="flex h-8 items-center gap-1 rounded-t-lg border border-b-0 border-border bg-card px-1"
+        className={`flex h-8 items-center gap-1 rounded-t-xl border-b-0 px-1 ${COMPOSER_SURFACE}`}
         data-session-review
       >
         <Button

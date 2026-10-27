@@ -1,8 +1,7 @@
 import { registry } from '../lib/connection'
 import { environmentOfCwd, hostOfCwd } from '../lib/tcserver/projects'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { DUR, EASE_OUT, FADE_OUT, SPRING_LAYOUT } from '../lib/ease'
-import { GLIDE_MAX_ROWS } from '../lib/listGlide'
+import { DUR, EASE_OUT } from '../lib/ease'
 import { recordSendOrigin } from '../lib/sendOrigin'
 import {
   useCallback,
@@ -72,7 +71,10 @@ import {
   subscribeMidTurnDefault,
   subscribeNotesEnabled
 } from '../lib/settings'
-import { ComposerBar, SendButton } from './ComposerBar'
+import { COMPOSER_SURFACE, ComposerBar, SendButton, useDraftRow } from './ComposerBar'
+import { Button } from '../components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip'
+import { X } from './icons'
 import { decideComposerAction, type ComposerIntent } from '../lib/composerAction'
 import {
   ComposerInput,
@@ -255,6 +257,7 @@ export function Composer({
   const mentionOpen = live?.mode === 'file'
   const metas = useSessionMetasWhen(!!live)
   const sessionMeta = useSessionMeta(sessionId)
+  const draft = useDraftRow(sessionId, shell)
   const projects = useProjects()
   const environmentId = (sessionId ? sessionStore.environmentOf(sessionId) : undefined) ?? sessionMeta?.environmentId ?? projects.find((p) => p.id === projectId)?.environmentId ?? environmentOfCwd(executionCwd) ?? registry.primary().environmentId
   const commands = useSlashCommands(environmentId, harness, executionCwd, commandOpen)
@@ -817,9 +820,7 @@ export function Composer({
         <div
           ref={boxRef}
           data-composer-box
-          className={`relative z-10 rounded-lg border bg-content/5 ${
-            fileDrag ? 'border-accent/60' : 'border-content/10 has-focus:border-content/20'
-          }`}
+          className={`relative z-10 rounded-xl ${COMPOSER_SURFACE} has-focus:border-input`}
         >
           <AnimatePresence>
             {fileDrag ? (
@@ -828,80 +829,51 @@ export function Composer({
                 animate={{ opacity: 1 }}
                 exit={reduce ? undefined : { opacity: 0 }}
                 transition={{ duration: DUR.fast, ease: EASE_OUT }}
-                className="pointer-events-none absolute inset-0 z-20 grid place-items-center rounded-lg bg-accent/8 text-[12px] text-content/70"
+                className="pointer-events-none absolute inset-0 z-20 grid place-items-center rounded-xl bg-accent/8 text-xs text-muted-foreground"
               >
                 Drop files to attach
               </motion.div>
             ) : null}
           </AnimatePresence>
-          <div className="flex min-w-0 items-center gap-2.5 px-3 pt-2.5">
-            {hideProjectPicker ? null : (
-              <CwdPicker
-                cwd={cwd}
-                recents={recents}
-                projectLogoPath={projectLogoPath}
-                enabled={enabled}
-                onCwdChange={onCwdChange}
-                onNewTerminal={onNewTerminal}
-                onClose={() => inputRef.current?.focus()}
-              />
-            )}
-            {sessionId && enabled ? <DraftHostPicker sessionId={sessionId} /> : null}
-            <BranchPicker
-              cwd={cwd}
-              branch={branch}
-              enabled={enabled && !busy}
-              onChange={onBranchChange}
-              onClose={() => inputRef.current?.focus()}
-            />
-            {threadType && onThreadTypeChange ? (
-              <ThreadTypeChip
-                value={threadType}
-                onChange={onThreadTypeChange}
-                onClose={() => inputRef.current?.focus()}
-              />
-            ) : null}
-          </div>
 
           {attachments.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5 px-3 pt-2">
-              <AnimatePresence initial={false}>
-                {attachments.map((file) => (
-                  <motion.div
-                    key={file.id}
-                    layout={attachments.length <= GLIDE_MAX_ROWS}
-                    initial={reduce ? false : { opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1, transition: SPRING_LAYOUT }}
-                    exit={reduce ? undefined : FADE_OUT}
-                  >
-                    <AttachmentChip
-                      environmentId={file.environmentId ?? environmentId}
-                      attachment={file}
-                      progress={uploads[file.id]}
-                      onRemove={uploading ? undefined : () => removeAttachment(file.id)}
-                      onOpen={
-                        file.kind === 'image'
-                          ? () => openAttachmentImages(environmentId, attachments, file)
-                          : undefined
-                      }
-                    />
-                  </motion.div>
-                ))}
-              </AnimatePresence>
+            <div className="flex flex-wrap gap-2 px-3 pt-3">
+              {attachments.map((file) => (
+                <AttachmentChip
+                  key={file.id}
+                  environmentId={file.environmentId ?? environmentId}
+                  attachment={file}
+                  progress={uploads[file.id]}
+                  onRemove={uploading ? undefined : () => removeAttachment(file.id)}
+                  onOpen={
+                    file.kind === 'image'
+                      ? () => openAttachmentImages(environmentId, attachments, file)
+                      : undefined
+                  }
+                />
+              ))}
             </div>
           ) : null}
 
           {attachNote ? (
-            <div role="alert" data-attach-note className="flex items-start gap-1.5 px-3 pt-1.5 text-[11px] leading-snug text-danger">
-              <span className="min-w-0 flex-1">{attachNote}</span>
-              <button
-                type="button"
-                aria-label="Dismiss"
-                onClick={() => setAttachNote(null)}
-                className="shrink-0 text-danger/70 hover:text-danger"
-              >
-                ×
-              </button>
+            <div role="alert" data-attach-note className="flex items-start gap-1 px-3 pt-1.5 text-xs text-destructive">
+              <span className="min-w-0 flex-1 py-1">{attachNote}</span>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label="Dismiss"
+                      onClick={() => setAttachNote(null)}
+                      className="text-destructive/80 hover:text-destructive"
+                    />
+                  }
+                >
+                  <X />
+                </TooltipTrigger>
+                <TooltipContent>Dismiss</TooltipContent>
+              </Tooltip>
             </div>
           ) : null}
 
@@ -928,9 +900,7 @@ export function Composer({
                       ? 'How can I help you today?'
                       : 'Ask, build, / for skills, @ for references... '
             }
-            className={`composer-field relative max-h-40 w-full px-3 font-sans text-sm leading-5.5 text-content outline-none ${
-              shell ? 'py-4' : 'py-3'
-            }`}
+            className="composer-field relative max-h-40 w-full px-3 pt-3 pb-2 font-sans text-[15px] leading-[1.6] text-foreground outline-none"
             maxHeight={160}
             tokens={tokens}
             onFocus={onFocus}
@@ -972,6 +942,38 @@ export function Composer({
             }
           />
         </div>
+        {draft ? (
+          <div data-composer-draft-row className="mt-1 flex h-7 min-w-0 items-center gap-2 px-3 text-xs text-muted-foreground">
+            {hideProjectPicker ? null : (
+              <CwdPicker
+                cwd={cwd}
+                recents={recents}
+                projectLogoPath={projectLogoPath}
+                enabled={enabled}
+                onCwdChange={onCwdChange}
+                onNewTerminal={onNewTerminal}
+                onClose={() => inputRef.current?.focus()}
+              />
+            )}
+            {sessionId && enabled ? (
+              <DraftHostPicker sessionId={sessionId} onClose={() => inputRef.current?.focus()} />
+            ) : null}
+            <BranchPicker
+              cwd={cwd}
+              branch={branch}
+              enabled={enabled && !busy}
+              onChange={onBranchChange}
+              onClose={() => inputRef.current?.focus()}
+            />
+            {threadType && onThreadTypeChange ? (
+              <ThreadTypeChip
+                value={threadType}
+                onChange={onThreadTypeChange}
+                onClose={() => inputRef.current?.focus()}
+              />
+            ) : null}
+          </div>
+        ) : null}
         {runnerLive && runnerEnabled ? (
           <ComposerRunner
             boxRef={boxRef}

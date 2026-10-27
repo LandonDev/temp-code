@@ -1,5 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import { X } from './icons'
+import {
+  Attachment as AttachmentFrame,
+  AttachmentAction,
+  AttachmentActions,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentMedia,
+  AttachmentTitle,
+  AttachmentTrigger
+} from '../components/ui/attachment'
+import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip'
+import { formatBytes } from '../lib/attachmentUpload'
 import { attachmentPreviewSrc } from '../lib/attachments'
 import type { Attachment } from '../lib/session'
 import { FileTypeIcon } from './FileTypeIcon'
@@ -45,89 +57,69 @@ type Props = {
   onRemove?: () => void
   /** Image chips open the viewer when this is given. */
   onOpen?: () => void
-  /** An upload to the thread's host in flight (or failed): a bar along the chip's foot. */
+  /** An upload to the thread's host in flight (or failed): said in the chip's line. */
   progress?: { sent: number; total: number; failed?: boolean }
 }
 
-function UploadBar({ progress }: { progress: NonNullable<Props['progress']> }) {
-  const fraction = progress.total > 0 ? Math.min(1, progress.sent / progress.total) : progress.failed ? 1 : 0
-  return (
-    <span
-      aria-hidden
-      className="pointer-events-none absolute inset-x-1 bottom-0 h-0.5 overflow-hidden rounded-full bg-content/15"
-    >
-      <span
-        className={`block h-full rounded-full transition-[width] duration-150 ${progress.failed ? 'bg-danger' : 'bg-accent'}`}
-        style={{ width: `${Math.round(fraction * 100)}%` }}
-      />
-    </span>
-  )
+/** The chip's one line: the upload while it runs or failed, else the size. */
+export function attachmentLine(attachment: Attachment, progress?: Props['progress']): string | null {
+  if (progress?.failed) return 'Failed'
+  if (progress) {
+    const percent = progress.total > 0 ? Math.round((progress.sent / progress.total) * 100) : 0
+    return `Uploading ${percent}%`
+  }
+  return attachment.size > 0 ? formatBytes(attachment.size) : null
 }
 
+/** A file in the composer or on a sent message: the image or the file's
+ *  glyph, its name, one line under it, and Remove while it can go. */
 export function AttachmentChip({ environmentId, attachment, onRemove, onOpen, progress }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const preview = useAttachmentSrc(environmentId, attachment, useNearViewport(ref))
   const image = attachment.kind === 'image' && preview
-  const percent = progress && progress.total > 0 ? Math.round((progress.sent / progress.total) * 100) : 0
-  const title = progress
-    ? progress.failed
-      ? `${attachment.name}: upload failed`
-      : `${attachment.name}: uploading to the thread's host, ${percent}%`
-    : (attachment.path ?? attachment.name)
+  const line = attachmentLine(attachment, progress)
+  const state = progress?.failed ? 'error' : progress ? 'uploading' : 'done'
 
   return (
-    <div
+    <AttachmentFrame
       ref={ref}
-      className={`group relative flex min-w-0 items-center gap-1.5 rounded-md ${
-        image ? '' : 'bg-content/10 py-0.5 pl-1 pr-1'
-      } ${progress?.failed ? 'ring-1 ring-danger/60' : ''}`}
-      title={title}
+      size="sm"
+      state={state}
+      className="min-w-0 max-w-60"
       data-attachment-path={attachment.path}
-      data-upload={progress ? (progress.failed ? 'failed' : String(percent)) : undefined}
+      data-upload={progress ? (progress.failed ? 'failed' : String(progress.total > 0 ? Math.round((progress.sent / progress.total) * 100) : 0)) : undefined}
     >
-      {progress ? <UploadBar progress={progress} /> : null}
-      {image ? (
-        onOpen ? (
-          <button
-            type="button"
-            {...lightboxChunk.intent}
-            onClick={onOpen}
-            aria-label={`Preview ${attachment.name}`}
-            className={`block size-9 shrink-0 cursor-zoom-in overflow-hidden rounded-lg ${attachment.textPath ? 'w-14' : ''}`}
-          >
-            <img src={preview} alt="" decoding="async" className={`size-full object-cover ${attachment.textPath ? 'w-14' : ''}`} />
-          </button>
-        ) : (
-          <img src={preview} alt="" decoding="async" className={`size-9 shrink-0 rounded-lg object-cover ${attachment.textPath ? 'w-14' : ''}`} />
-        )
-      ) : (
-        <>
-          <span className="grid size-5 shrink-0 place-items-center">
-            <FileTypeIcon name={attachment.name} isDir={false} size={16} />
-          </span>
-          <span className="min-w-0 max-w-[140px] truncate text-[11px] leading-none text-content/70">
-            {attachment.name}
-          </span>
-        </>
-      )}
-      {onRemove ? (
-        <button
-          type="button"
-          title="Remove"
-          aria-label={`Remove ${attachment.name}`}
-          onClick={(e) => {
-            e.stopPropagation()
-            onRemove()
-          }}
-          className={`grid shrink-0 place-items-center rounded-full text-content/70 hover:bg-content/15 hover:text-content ${
-            image
-              ? 'absolute -right-1 -top-1 size-5 bg-content/20 opacity-100'
-              : 'size-4 text-content/40'
-          }`}
-        >
-          <X className="size-3" strokeWidth={2} />
-        </button>
+      <AttachmentMedia variant={image ? 'image' : 'icon'}>
+        {image ? <img src={preview} alt="" decoding="async" /> : <FileTypeIcon name={attachment.name} isDir={false} size={16} />}
+      </AttachmentMedia>
+      <AttachmentContent>
+        <AttachmentTitle>{attachment.name}</AttachmentTitle>
+        {line ? <AttachmentDescription className="tabular-nums">{line}</AttachmentDescription> : null}
+      </AttachmentContent>
+      {image && onOpen ? (
+        <AttachmentTrigger {...lightboxChunk.intent} onClick={onOpen} aria-label={`Preview ${attachment.name}`} className="cursor-zoom-in" />
       ) : null}
-    </div>
+      {onRemove ? (
+        <AttachmentActions>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <AttachmentAction
+                  aria-label={`Remove ${attachment.name}`}
+                  className="text-muted-foreground hover:text-foreground"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onRemove()
+                  }}
+                />
+              }
+            >
+              <X />
+            </TooltipTrigger>
+            <TooltipContent>Remove</TooltipContent>
+          </Tooltip>
+        </AttachmentActions>
+      ) : null}
+    </AttachmentFrame>
   )
 }

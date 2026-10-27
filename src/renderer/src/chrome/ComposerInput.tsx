@@ -69,7 +69,6 @@ function chipElement(chip: ComposerChip): HTMLElement {
   el.dataset.token = chip.token
   el.dataset.name = chip.name
   el.contentEditable = 'false'
-  el.title = chip.token
   el.className =
     'inline-flex select-none items-center gap-1 rounded-[5px] bg-accent/20 px-1 align-baseline font-medium text-content'
   const brand = brandOf(chip.name)

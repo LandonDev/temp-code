@@ -3,7 +3,8 @@
  * The composer's draft host picker: shown for an unsent draft of a linked
  * project, it lists every connected host; a host with a copy retargets the
  * draft at once, one without is asked with a dry run and gets its copy made
- * on pick, and one with no checkout is disabled with the host's note.
+ * on pick, and one with no checkout is disabled with the host's note
+ * under its name.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -89,7 +90,8 @@ beforeEach(() => {
 afterEach(cleanup);
 
 const options = () => screen.getAllByRole("menuitemradio");
-const option = (id: string) => document.querySelector(`[data-draft-host-option="${id}"]`) as HTMLButtonElement;
+const option = (id: string) => document.querySelector(`[data-draft-host-option="${id}"]`) as HTMLElement;
+const disabled = (el: HTMLElement) => el.getAttribute("aria-disabled") === "true";
 
 describe("DraftHostPicker", () => {
   it("shows only for an unsent draft of a linked project with two or more hosts", () => {
@@ -132,7 +134,7 @@ describe("DraftHostPicker", () => {
     expect(env).toBe("mini");
     expect(args).toMatchObject({ projectLinkId: "pl_a", workspaceLinkId: "wl_a", name: "temp-code", callerProjectCwd: "/Users/me/temp-code" });
     expect(dryRun).toBe(true);
-    expect(option("mini").disabled).toBe(true);
+    expect(disabled(option("mini"))).toBe(true);
     expect(option("mini").querySelector("[data-draft-host-note]")?.textContent).toBe("no checkout of temp-code");
   });
 
@@ -144,7 +146,7 @@ describe("DraftHostPicker", () => {
     render(<DraftHostPicker sessionId="d" />);
     fireEvent.click(screen.getByRole("button", { name: "Start on This Mac" }));
     await flush();
-    expect(option("mini").disabled).toBe(false);
+    expect(disabled(option("mini"))).toBe(false);
     expect(option("mini").textContent).toContain("New copy");
     fireEvent.click(option("mini"));
     await flush();

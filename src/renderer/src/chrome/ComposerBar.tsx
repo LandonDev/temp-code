@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import type { MouseEvent, ReactNode } from "react";
+import { useSyncExternalStore, type MouseEvent, type ReactNode } from "react";
 import { Button } from "../components/ui/button";
 import {
   DropdownMenu,
@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../com
 import { composerActionHint, composerActionLabel, type ComposerIntent } from "../lib/composerAction";
 import { DUR, EASE_OUT } from "../lib/ease";
 import { MOD } from "../lib/platform";
+import { sessionStore } from "../lib/tcserver/store";
 import { harnessSupportsAttachments, type HarnessId, type RuntimeMode } from "../lib/session";
 import { AccessPicker } from "./AccessPicker";
 import { ArrowUp, AtSign, CornerDownRight, ListPlus, Paperclip, Pause, Plus, Slash } from "./icons";
@@ -100,6 +101,20 @@ function AddMenu({
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/** The composer's surface: the box's fill and hairline, shared by the
+ *  checkpoint strip that sits on its top edge (chrome/SessionReview.tsx). */
+export const COMPOSER_SURFACE = "border border-border bg-card";
+
+/** Whether the row under the box (project, host, branch, type) shows: on the
+ *  shell's new-thread screen and on a thread with no message yet. After the
+ *  first message they live in the header, the right panel and the thread menu. */
+export function useDraftRow(sessionId: string | undefined, shell = false): boolean {
+  return useSyncExternalStore(
+    sessionStore.subscribe,
+    () => shell || !sessionId || (sessionStore.get(sessionId)?.blocks.length ?? 0) === 0,
   );
 }
 

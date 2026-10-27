@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, render } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const imageDataFor = vi.fn((_environmentId: string, _path: string) => Promise.resolve("data:image/png;base64,AA=="));
@@ -43,5 +43,18 @@ describe("AttachmentChip", () => {
     await act(async () => FakeObserver.last!.cb([{ isIntersecting: true }]));
     expect(imageDataFor).toHaveBeenCalledWith("local", "/tmp/shot.png");
     expect(container.querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,AA==");
+  });
+
+  it("says the size, then the upload, and marks a failed one", () => {
+    const file: Attachment = { id: "f", name: "log.txt", mimeType: "text/plain", kind: "file", size: 4096 } as Attachment;
+    const { container, rerender } = render(<AttachmentChip environmentId="local" attachment={file} onRemove={() => {}} />);
+    expect(container.textContent).toContain("4 KB");
+    expect(screen.getByRole("button", { name: "Remove log.txt" })).toBeTruthy();
+    rerender(<AttachmentChip environmentId="local" attachment={file} progress={{ sent: 42, total: 100 }} />);
+    expect(container.textContent).toContain("Uploading 42%");
+    rerender(<AttachmentChip environmentId="local" attachment={file} progress={{ sent: 10, total: 100, failed: true }} />);
+    expect(container.textContent).toContain("Failed");
+    expect(container.querySelector("[data-slot=attachment]")?.getAttribute("data-state")).toBe("error");
+    expect(container.querySelector("[data-slot=attachment]")?.hasAttribute("title")).toBe(false);
   });
 });
