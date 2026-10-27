@@ -3,7 +3,10 @@ import {
   buildHeaderModel,
   headerNeighbour,
   headerOrder,
+  holdDepartures,
+  orderChips,
   pauseAllLabel,
+  stripChips,
 } from "./threadHeaderModel";
 import type { StripThread } from "./threadStripModel";
 
@@ -127,5 +130,54 @@ describe("pauseAllLabel", () => {
     expect(pauseAllLabel("idle")).toBe("Pause all");
     expect(pauseAllLabel("busy")).toBe("Pausing…");
     expect(pauseAllLabel("failed")).toBe("Pause failed — retry");
+  });
+});
+
+describe("orderChips", () => {
+  const c = (id: string, updatedAt = 0) => ({ id, updatedAt });
+
+  it("keeps the places of the ids it knows, whatever their status did", () => {
+    expect(orderChips(["b", "a", "c"], [c("a", 9), c("b", 1), c("c", 5)])).toEqual(["b", "a", "c"]);
+  });
+
+  it("appends new ids at the end and drops the ones gone", () => {
+    expect(orderChips(["a", "b"], [c("b"), c("n")])).toEqual(["b", "n"]);
+  });
+
+  it("orders a cold start by age, oldest first", () => {
+    expect(orderChips([], [c("new", 30), c("old", 10), c("mid", 20)])).toEqual(["old", "mid", "new"]);
+  });
+
+  it("appends several arrivals oldest first after the known ones", () => {
+    expect(orderChips(["a"], [c("y", 8), c("a"), c("x", 2)])).toEqual(["a", "x", "y"]);
+  });
+});
+
+describe("holdDepartures", () => {
+  it("holds a chip that left while the pointer is over the strip, then lets it go", () => {
+    expect(holdDepartures(["a", "b", "c"], ["a", "c"], true)).toEqual(["a", "b", "c"]);
+    expect(holdDepartures(["a", "b", "c"], ["a", "c"], false)).toEqual(["a", "c"]);
+  });
+
+  it("still lets a new chip join at the end while holding", () => {
+    expect(holdDepartures(["a", "b"], ["a", "n"], true)).toEqual(["a", "b", "n"]);
+  });
+});
+
+describe("stripChips", () => {
+  it("draws the live chips, and a dormant thread only when it is on screen", () => {
+    const model = buildHeaderModel({
+      threads,
+      tabs,
+      selectedProjectId: "p1",
+      activeTabId: "t-seen",
+      lastSeen: { seen: 100, unread: 10 },
+      planReady: {},
+    });
+    const drawn = stripChips(model).map((chip) => chip.id);
+    expect(drawn).toContain("seen");
+    expect(drawn).toEqual([...model.live.map((chip) => chip.id), "seen"]);
+    const elsewhere = { ...model, activeId: null };
+    expect(stripChips(elsewhere).map((chip) => chip.id)).toEqual(model.live.map((chip) => chip.id));
   });
 });

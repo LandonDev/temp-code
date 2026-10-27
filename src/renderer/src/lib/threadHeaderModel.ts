@@ -85,6 +85,75 @@ export function buildHeaderModel<T extends StripThread>(input: {
   return { ...model, activeId: active?.id ?? null };
 }
 
+/** The chips the strip draws: the live ones, plus the thread on screen when
+ *  it is dormant (the thread on screen always has its chip). The dormant
+ *  rest is "Recent threads" in the thread menu. */
+export function stripChips<T extends StripThread>(model: HeaderModel<T>): HeaderChip<T>[] {
+  const active = model.dormant.find((c) => c.id === model.activeId);
+  return active ? [...model.live, active] : model.live;
+}
+
+/**
+ * The strip's stable order, the way a browser orders tabs: the ids already in
+ * `order` keep their places, the ones gone drop out, and new ones join at the
+ * end, oldest first when several arrive at once (so a cold start reads left
+ * to right by age). A status change never moves a chip.
+ */
+export function orderChips(
+  order: readonly string[],
+  chips: readonly { id: string; updatedAt: number }[],
+): string[] {
+  const present = new Set(chips.map((c) => c.id));
+  const kept = order.filter((id) => present.has(id));
+  const known = new Set(kept);
+  const added = chips
+    .filter((c) => !known.has(c.id))
+    .sort((a, b) => a.updatedAt - b.updatedAt)
+    .map((c) => c.id);
+  return added.length === 0 && kept.length === order.length ? [...order] : [...kept, ...added];
+}
+
+/**
+ * While `holding` (the pointer is over the strip) a chip that left `next`
+ * stays where it was, so nothing shifts under the cursor after a click; new
+ * ones still join at the end. Once `holding` is false the departures go.
+ */
+export function holdDepartures(
+  shown: readonly string[],
+  next: readonly string[],
+  holding: boolean,
+): string[] {
+  if (!holding) return [...next];
+  const shownSet = new Set(shown);
+  return [...shown, ...next.filter((id) => !shownSet.has(id))];
+}
+
+/** The model as the strip draws it: `live` is the drawn chips in their
+ *  stable order (`order` is the saved one; see orderChips), `dormant` the
+ *  rest for "Recent threads". */
+export function orderModel<T extends StripThread>(
+  model: HeaderModel<T>,
+  order: readonly string[],
+): HeaderModel<T> {
+  const drawn = stripChips(model);
+  const byId = new Map(drawn.map((chip) => [chip.id, chip]));
+  return {
+    live: orderChips(order, drawn).map((id) => byId.get(id)!),
+    dormant: drawn === model.live ? model.dormant : model.dormant.filter((c) => c.id !== model.activeId),
+    activeId: model.activeId,
+  };
+}
+
+/** The key a project's strip order is saved under: a linked project's
+ *  copies on every host share their link id, so they share one order. */
+export function stripScopeKey(
+  project: { id: string; linkId?: string | null } | undefined,
+  workspaceId: string | null,
+): string {
+  if (project) return project.linkId ? `link:${project.linkId}` : project.id;
+  return `loose:${workspaceId ?? ""}`;
+}
+
 /** Strip order for next/previous: the live row, then the shelf. */
 export function headerOrder<T extends StripThread>(model: HeaderModel<T>): HeaderChip<T>[] {
   return [...model.live, ...model.dormant];

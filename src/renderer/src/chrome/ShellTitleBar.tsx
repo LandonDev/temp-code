@@ -12,7 +12,8 @@ import {
   tabArchived,
 } from "../lib/workspaceTabGroups";
 import { useEditors } from "../stores/editors";
-import { header } from "../stores/header";
+import { header, stripOrder, stripOrderStore } from "../stores/header";
+import { useStore } from "zustand";
 import { dockCwdOf, useProject, useProjectCwds } from "../stores/project";
 import { useShell } from "../stores/shell";
 import { useTerminals } from "../stores/terminals";
@@ -46,6 +47,8 @@ import { terminalTabLabel } from "../lib/terminalTab";
 import {
   buildHeaderModel,
   headerOrder,
+  orderModel,
+  stripScopeKey,
   type HeaderTab,
 } from "../lib/threadHeaderModel";
 import { inProjectScope, projectRootThreads, runningRoots } from "../lib/threadStripModel";
@@ -195,7 +198,7 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
       }),
     [deckTabs],
   );
-  const headerModel = useMemo(
+  const builtModel = useMemo(
     () =>
       buildHeaderModel({
         threads: chipThreads,
@@ -208,6 +211,19 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
       }),
     [activeTabId, chipThreads, deckLayout, headerTabs, lastSeen, seenFloor, planReady, projectScope],
   );
+  // The strip keeps a stable order per project, like a browser's tabs.
+  const orderKey = stripScopeKey(
+    selectedProjectId ? catalog.projects.find((p) => p.id === selectedProjectId) : undefined,
+    headerWorkspaceId,
+  );
+  const savedOrder = useStore(stripOrderStore, (s) => s.order[orderKey]?.ids);
+  const headerModel = useMemo(
+    () => orderModel(builtModel, savedOrder ?? []),
+    [builtModel, savedOrder],
+  );
+  useEffect(() => {
+    if (deckLayout) stripOrder.set(orderKey, headerModel.live.map((chip) => chip.id));
+  }, [deckLayout, headerModel, orderKey]);
   const stripTabs = useMemo(() => {
     if (!deckLayout) return nextTitleTabs.map((tab) => tab.id);
     const chipTabIds = new Set(

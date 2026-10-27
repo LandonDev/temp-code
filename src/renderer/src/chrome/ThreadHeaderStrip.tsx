@@ -11,7 +11,7 @@ import { DUR, EASE_OUT, FADE_OUT, SPRING_LAYOUT } from "../lib/ease";
 import { GLIDE_MAX_ROWS, useListGlide } from "../lib/listGlide";
 import { HARNESSES, sessionDisplayTitle, type HarnessId } from "../lib/session";
 import type { ThreadType } from "../lib/tcserver/types";
-import type { HeaderChip, HeaderModel } from "../lib/threadHeaderModel";
+import { holdDepartures, type HeaderChip, type HeaderModel } from "../lib/threadHeaderModel";
 import type { ReadyMap, StripThread } from "../lib/threadStripModel";
 import { Tabs, TabsTrigger } from "../motion";
 import { THREAD_GLYPHS, THREAD_LABELS, THREAD_TINTS, timeAgo } from "../surfaces/threads/bits";
@@ -104,8 +104,9 @@ export function ThreadHeaderStrip({
 }) {
   const reduce = useReducedMotion();
   const activeId = model.activeId ?? "";
+  const live = useHeldChips(model.live);
   const { generation, glide } = useListGlide(
-    model.live.map((c) => c.id).concat(model.dormant.map((c) => c.id)),
+    live.chips.map((c) => c.id),
   );
   const row = (chips: StripChip[], shelf: boolean) => (
     <AnimatePresence key={generation} initial={false} mode="popLayout">
@@ -145,7 +146,7 @@ export function ThreadHeaderStrip({
       generation={generation}
       className="flex min-w-0 flex-1 flex-col"
     >
-      <div className="flex h-10 min-w-0 items-center">
+      <div className="flex h-10 min-w-0 items-center" onPointerEnter={live.hold} onPointerLeave={live.release}>
         <motion.div
           layoutScroll
           ref={stripRef}
@@ -155,27 +156,35 @@ export function ThreadHeaderStrip({
           data-tauri-drag-region="false"
           className="scrollbar-none flex h-full min-w-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none px-1.5"
         >
-          {row(model.live, false)}
+          {row(live.chips, false)}
           {trailing}
         </motion.div>
         <div className="min-w-1.5 flex-1" />
         {end}
         <ArchivedShelf archived={archived} onRestore={onRestore} />
       </div>
-      {model.dormant.length > 0 ? (
-        <motion.div
-          layoutScroll
-          onWheel={wheelToX}
-          role="tablist"
-          data-strip="shelf"
-          data-tauri-drag-region="false"
-          className="scrollbar-none flex h-7 min-w-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none px-1.5 pb-1"
-        >
-          {row(model.dormant, true)}
-        </motion.div>
-      ) : null}
     </Tabs>
   );
+}
+
+/**
+ * The chips as drawn: while the pointer is over the strip a chip whose thread
+ * left the row stays in its place (a click never shifts the row under the
+ * cursor); when the pointer leaves, the departures go.
+ */
+function useHeldChips(next: StripChip[]): { chips: StripChip[]; hold: () => void; release: () => void } {
+  const [holding, setHolding] = useState(false);
+  const shown = useRef<StripChip[]>(next);
+  const byId = new Map(shown.current.map((chip) => [chip.id, chip]));
+  for (const chip of next) byId.set(chip.id, chip);
+  const ids = holdDepartures(
+    shown.current.map((chip) => chip.id),
+    next.map((chip) => chip.id),
+    holding,
+  );
+  const chips = ids.length === next.length ? next : ids.map((id) => byId.get(id)!);
+  shown.current = chips;
+  return { chips, hold: () => setHolding(true), release: () => setHolding(false) };
 }
 
 function rowDependency(chips: StripChip[]): string {
