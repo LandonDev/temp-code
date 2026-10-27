@@ -94,7 +94,8 @@ export function WorkspaceThreadsList({
       const status = projectCardStatus(section.threads, activeSessionId, lastSeen, seenFloor);
       // A blocked thread inside a master, or a blocked master, says so in
       // its master's block below; the rows here are everyone else's.
-      const inBlock = new Set(masterBlocks(section.roots, status).map((b) => b.master.id));
+      const unread = new Set(status.unread.map((u) => u.id));
+      const inBlock = new Set(masterBlocks(section.roots, (id) => unread.has(id)).map((b) => b.master.id));
       return {
         ...section,
         status,

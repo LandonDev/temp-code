@@ -144,15 +144,6 @@ function cachedRow(
   return row;
 }
 
-export type ThreadSummary = {
-  needYou: number;
-  failed: number;
-  paused: number;
-  running: number;
-  dormant: number;
-  unread: number;
-};
-
 /** `floor`: threads with no lastSeen entry count as seen up to this time.
  *  `housed`: the thread sits inside a master (`housedIds`), never unread. */
 export function threadRow(
@@ -433,27 +424,6 @@ export function groupWorkspaceSessions(
     cache.rows = nextRows!;
     cache.groups = nextGroups!;
     cache.last = out;
-  }
-  return out;
-}
-
-/** Each thread counts once: running, then paused, waiting, failed, unread, else dormant. */
-export function summarizeThreads(threads: readonly ThreadRow[]): ThreadSummary {
-  const out: ThreadSummary = {
-    needYou: 0,
-    failed: 0,
-    paused: 0,
-    running: 0,
-    dormant: 0,
-    unread: 0,
-  };
-  for (const t of threads) {
-    if (t.running) out.running++;
-    else if (t.paused) out.paused++;
-    else if (t.needsYou) out.needYou++;
-    else if (t.failed) out.failed++;
-    else if (t.unread) out.unread++;
-    else out.dormant++;
   }
   return out;
 }

@@ -1,7 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { projectCardStatus } from "./projectCardModel";
 import { SESSION_LIST_PAGE } from "./sessionListWindow";
-import { liveLines, nextPage, sessionItemIndex, sidebarItems, windowRows } from "./sidebarRows";
+import type { Catalog } from "./projectContext";
+import {
+  groupMark,
+  groupUnread,
+  liveLines,
+  masterBlock,
+  nextPage,
+  rowState,
+  sessionItemIndex,
+  sidebarItems,
+  windowRows,
+  workspaceMarks,
+} from "./sidebarRows";
 import type { ProjectMeta, SessionMeta } from "./tcserver/types";
 import {
   threadRow,
@@ -152,5 +164,159 @@ describe("liveLines", () => {
       "unread:done",
     ]);
     expect(lines[0]?.thread).toBe(threads[1]);
+  });
+});
+
+describe("rowState", () => {
+  it("folds the tree's flags into the one vocabulary", () => {
+    expect(rowState({ status: "running" })).toBe("working");
+    expect(rowState({ status: "starting" })).toBe("working");
+    expect(rowState({ status: "idle", treeHasPaused: true })).toBe("paused");
+    expect(rowState({ status: "waiting" })).toBe("waiting");
+    // A waiting root whose tree needs recovery reads failed.
+    expect(rowState({ status: "waiting", treeCanContinue: true })).toBe("failed");
+    expect(rowState({ status: "error" })).toBe("failed");
+    expect(rowState({ status: "idle", treeCanContinue: true })).toBe("failed");
+    // Live work outranks a failure the tree already moved past.
+    expect(rowState({ status: "error", treeHasLiveWork: true })).toBe("failed");
+    expect(rowState({ status: "idle", treeCanContinue: true, treeHasLiveWork: true })).toBe("working");
+    expect(rowState({ status: "idle", treeHasLiveWork: true })).toBe("working");
+    expect(rowState({ status: "done", treeHasLiveWork: true })).toBe("working");
+    expect(rowState({ status: "watching", treeHasLiveWork: true })).toBe("watching");
+    expect(rowState({ status: "queued" })).toBe("queued");
+    expect(rowState({ status: "stopped" })).toBe("stopped");
+  });
+
+  it("leaves a settled row unmarked", () => {
+    expect(rowState({ status: "idle" })).toBe("idle");
+    expect(rowState({ status: "done" })).toBe("done");
+  });
+});
+
+const row = (id: string, extra: Partial<SessionMeta> = {}, seen: Record<string, number> = {}, housed = false) =>
+  threadRow(meta(id, extra), seen, 0, housed);
+
+describe("groupMark", () => {
+  it("says the loudest state: needs you, failed, working, paused", () => {
+    const paused = row("p", { status: "paused" });
+    const running = row("r", { status: "running" });
+    const failed = row("f", { status: "error" });
+    const waiting = row("w", { status: "waiting" });
+    expect(groupMark([paused, running, failed, waiting])?.state).toBe("waiting");
+    expect(groupMark([paused, running, failed])?.state).toBe("failed");
+    expect(groupMark([paused, running])?.state).toBe("working");
+    expect(groupMark([paused])?.state).toBe("paused");
+    expect(groupMark([row("watch", { status: "watching" })])?.state).toBe("working");
+  });
+
+  it("is null for a quiet group", () => {
+    expect(groupMark([row("a"), row("b", { status: "done" }), row("q", { status: "queued" }), row("s", { status: "stopped" })])).toBeNull();
+    expect(groupMark([])).toBeNull();
+  });
+
+  it("names the newest root in the state and counts the others", () => {
+    const old = row("old", { status: "running", updatedAt: 10 });
+    const fresh = row("fresh", { status: "running", updatedAt: 90 });
+    const quiet = row("quiet", { updatedAt: 200 });
+    expect(groupMark([old, fresh, quiet])).toEqual({ state: "working", about: fresh, more: 1 });
+  });
+
+  it("names a waiting batch thread by its master, as a nested row or a flat one", () => {
+    const child = row("b1", { status: "waiting", masterId: "m", updatedAt: 300 }, {}, true);
+    const master = { ...row("m", { status: "watching", isMaster: true, updatedAt: 5 }), batch: [child] };
+    const other = row("x", { status: "waiting", updatedAt: 100 });
+    expect(groupMark([master, other])).toEqual({ state: "waiting", about: master, more: 1 });
+    // A flat list (the rail's) finds the master by its id.
+    const flatMaster = row("m", { status: "watching", isMaster: true, updatedAt: 5 });
+    expect(groupMark([flatMaster, child])).toEqual({ state: "waiting", about: flatMaster, more: 0 });
+  });
+});
+
+describe("groupUnread", () => {
+  it("reads a settled, unseen root and never a housed one", () => {
+    expect(groupUnread([row("a", { status: "done", updatedAt: 50 }, { a: 10 })])).toBe(true);
+    expect(groupUnread([row("a", { status: "done", updatedAt: 50 }, { a: 90 })])).toBe(false);
+    expect(groupUnread([row("a", { status: "done", updatedAt: 50 }, { a: 10 }, true)])).toBe(false);
+    // A root whose tree still works says Working, not unread.
+    expect(groupUnread([row("a", { status: "done", updatedAt: 50, treeHasLiveWork: true }, { a: 10 })])).toBe(false);
+  });
+});
+
+describe("masterBlock", () => {
+  it("carries each batch thread's state, loudest first, and counts queued and settled", () => {
+    const b = (id: string, status: SessionMeta["status"]) => row(id, { status, masterId: "m" }, {}, true);
+    const master = {
+      ...row("m", { status: "watching", isMaster: true }),
+      batch: [b("run", "running"), b("wait", "waiting"), b("q", "queued"), b("done", "done"), b("idle", "idle")],
+    };
+    const block = masterBlock(master, false)!;
+    expect(block.state).toBe("watching");
+    expect(block.lines.map((l) => [l.thread.id, l.state])).toEqual([
+      ["wait", "waiting"],
+      ["run", "working"],
+    ]);
+    expect(block).toMatchObject({ queued: 1, done: 2, total: 5 });
+  });
+
+  it("is null for a seen, settled master over a finished batch", () => {
+    const master = { ...row("m", { isMaster: true }), batch: [row("d", { status: "done", masterId: "m" }, {}, true)] };
+    expect(masterBlock(master, false)).toBeNull();
+    expect(masterBlock(master, true)).not.toBeNull();
+  });
+});
+
+describe("workspaceMarks", () => {
+  const empty: Catalog = { workspaces: [], projects: [] };
+  const at = (cwd: string) => ({ cwd, workspaceId: null });
+
+  it("is quiet for a seen, idle thread and unread for an unseen settled one", () => {
+    expect(workspaceMarks([meta("t1", at("/a"))], empty, { t1: 100 }).has("/a")).toBe(false);
+    expect(workspaceMarks([meta("t1", { ...at("/a"), status: "done" })], empty, { t1: 50 }).get("/a")).toEqual({
+      mark: null,
+      unread: true,
+    });
+  });
+
+  it("gives the word and the thread behind it, keeping workspaces apart", () => {
+    const marks = workspaceMarks(
+      [meta("t1", { ...at("/a"), status: "running" }), meta("t2", { ...at("/b"), status: "waiting" })],
+      empty,
+      {},
+    );
+    expect(marks.get("/a")?.mark).toMatchObject({ state: "working", about: { id: "t1" }, more: 0 });
+    expect(marks.get("/b")?.mark).toMatchObject({ state: "waiting", about: { id: "t2" } });
+  });
+
+  it("skips archived threads, subagents, and an archived project's threads", () => {
+    const retired: Catalog = {
+      workspaces: [],
+      projects: [{ ...project("p1", true), cwd: "/a" }],
+    };
+    const marks = workspaceMarks(
+      [
+        meta("t0", { ...at("/a"), status: "error", projectId: "p1" }),
+        meta("t1", { ...at("/a"), status: "running", archived: true }),
+        meta("t2", { ...at("/a"), status: "waiting", parentId: "t1" }),
+      ],
+      retired,
+      {},
+    );
+    expect(marks.has("/a")).toBe(false);
+  });
+
+  it("folds a linked workspace's copies under the leader's key", () => {
+    const keyOf = (path: string) => (path === "/srv/b" ? "/a" : path);
+    const marks = workspaceMarks(
+      [
+        meta("t1", { ...at("/a"), status: "running", updatedAt: 10 }),
+        meta("t2", { ...at("/srv/b"), status: "running", environmentId: "env_box", updatedAt: 20 }),
+      ],
+      empty,
+      {},
+      0,
+      keyOf,
+    );
+    expect([...marks.keys()]).toEqual(["/a"]);
+    expect(marks.get("/a")?.mark).toMatchObject({ state: "working", about: { id: "t2" }, more: 1 });
   });
 });

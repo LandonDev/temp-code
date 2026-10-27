@@ -7,14 +7,13 @@ import {
   housedIds,
   rowCache,
   startedPlan,
-  summarizeThreads,
   threadRow,
   type RowCache,
   type WorkspaceSessionGroups,
 } from "./workspaceSessions";
 import { projectCardStatus } from "./projectCardModel";
 import { threadsToMarkRead, threadsToMarkReadOnHost } from "./markRead";
-import { workspaceRailStatuses } from "../hooks/useProjectSignals";
+import { workspaceMarks } from "./sidebarRows";
 
 const ws = (id: string, path: string): WorkspaceMeta => ({
   environmentId: "local",
@@ -182,8 +181,8 @@ describe("groupWorkspaceSessions", () => {
     expect(status.unread.map((t) => t.id).sort()).toEqual(["master", "orphan", "plain"]);
 
     const catalog = { workspaces, projects };
-    const rail = workspaceRailStatuses(metas, catalog, {});
-    expect(rail.get("/repo/a")).toMatchObject({ kind: "unread", count: 3 });
+    const rail = workspaceMarks(metas, catalog, {});
+    expect(rail.get("/repo/a")).toEqual({ mark: null, unread: true });
     // Mark all read neither marks nor counts what the master reads.
     expect(threadsToMarkRead(metas, catalog, "/repo/a").ids.sort()).toEqual(["master", "orphan", "plain"]);
     expect(threadsToMarkReadOnHost(metas, "local").ids.sort()).toEqual(["master", "orphan", "plain"]);
@@ -194,8 +193,9 @@ describe("groupWorkspaceSessions", () => {
       meta("master", { projectId: "p1", cwd: "/wt/p1", isMaster: true, status: "watching" }),
       meta("b1", { projectId: "p1", cwd: "/wt/p1", masterId: "master", status: "waiting" }),
     ];
-    const rail = workspaceRailStatuses(metas, { workspaces, projects }, {});
-    expect(rail.get("/repo/a")).toMatchObject({ kind: "needsYou", count: 1 });
+    const rail = workspaceMarks(metas, { workspaces, projects }, {});
+    // The master stands in for its batch thread, and its own watching counts as working, quieter.
+    expect(rail.get("/repo/a")?.mark).toMatchObject({ state: "waiting", about: { id: "master" }, more: 0 });
   });
 
   it("a batch child whose master is archived, or no longer a master, is a root row of its own", () => {
@@ -315,27 +315,6 @@ describe("threadRow", () => {
     expect(threadRow(meta("t", { status: "waiting" }), {}).needsYou).toBe(true);
     expect(threadRow(meta("t", { status: "error" }), {}).failed).toBe(true);
     expect(threadRow(meta("t", { status: "paused" }), {}).paused).toBe(true);
-  });
-});
-
-describe("summarizeThreads", () => {
-  it("counts each thread once", () => {
-    const rows = [
-      meta("1", { status: "running" }),
-      meta("2", { status: "waiting" }),
-      meta("3", { status: "error" }),
-      meta("4", { status: "paused" }),
-      meta("5", { status: "idle", updatedAt: 10 }),
-      meta("6", { status: "idle", updatedAt: 10 }),
-    ].map((m) => threadRow(m, { "6": 10 }));
-    expect(summarizeThreads(rows)).toEqual({
-      running: 1,
-      needYou: 1,
-      failed: 1,
-      paused: 1,
-      unread: 1,
-      dormant: 1,
-    });
   });
 });
 

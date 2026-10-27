@@ -1,10 +1,16 @@
+import type { SessionMeta } from "./tcserver/types";
+import { threadStateOf, type ThreadState } from "../components/ui/status";
 import type { CardThread, ProjectCardStatus } from "./projectCardModel";
+import { type Catalog, workspacePathOfSession } from "./projectContext";
 import { agentSummary, type AgentSummary } from "./threads/agents";
+import { marksAtRest } from "./threadStripModel";
 import { SESSION_LIST_PAGE, sessionListWindow } from "./sessionListWindow";
-import type {
-  ProjectGroup,
-  ThreadRow,
-  WorkspaceSessionGroups,
+import {
+  housedIds,
+  threadRow,
+  type ProjectGroup,
+  type ThreadRow,
+  type WorkspaceSessionGroups,
 } from "./workspaceSessions";
 
 /**
@@ -86,26 +92,127 @@ export function windowRows<T extends { id: string }>(
 export const nextPage = (requested: number): number =>
   requested + SESSION_LIST_PAGE;
 
-/** One thread's state on a card line, in the card's own buckets and order
- *  (projectCardModel `projectCardStatus`): paused, waiting, failed, then
- *  working (a watching master and live work under it count), stopped,
- *  queued, else settled. */
-export type LineState = "paused" | "waiting" | "failed" | "running" | "stopped" | "queued" | "settled";
+/** What a row's state reads: its own status and its tree's flags. */
+export type RowStateInput = Pick<CardThread, "status"> &
+  Partial<Pick<CardThread, "treeHasPaused" | "treeHasLiveWork" | "treeCanContinue">>;
 
-export function lineState(t: CardThread): LineState {
+/**
+ * A row's state in the one vocabulary (components/ui/status.tsx): the tree's
+ * flags folded into a wire status, then `threadStateOf`. A paused tree reads
+ * paused; waiting reads waiting unless the tree needs recovery; a failure the
+ * tree has not moved past reads failed; live work under a settled root reads
+ * working. The glyph, word and tone come from `StatusMark` alone, and a row
+ * draws a mark only where `marksAtRest` says so.
+ */
+export function rowState(t: RowStateInput): ThreadState {
   if (t.status === "paused" || t.treeHasPaused) return "paused";
   if (t.status === "waiting" && !t.treeCanContinue) return "waiting";
   if (!t.treeHasLiveWork && (t.status === "error" || t.treeCanContinue)) return "failed";
-  if (
-    t.status === "running" ||
-    t.status === "starting" ||
-    t.status === "watching" ||
-    t.treeHasLiveWork
-  )
-    return "running";
-  if (t.status === "stopped") return "stopped";
-  if (t.status === "queued") return "queued";
-  return "settled";
+  if (t.treeHasLiveWork && (t.status === "idle" || t.status === "done" || t.status == null)) return "working";
+  return threadStateOf(t.status);
+}
+
+/** The states a group's word says, loudest first; watching counts as working. */
+export type GroupState = "waiting" | "failed" | "working" | "paused";
+
+const GROUP_ORDER: readonly GroupState[] = ["waiting", "failed", "working", "paused"];
+
+const groupStateOf = (state: ThreadState): GroupState | null =>
+  state === "watching" ? "working" : (GROUP_ORDER as readonly ThreadState[]).includes(state) ? (state as GroupState) : null;
+
+/** The row a group's word names: a batch thread is named by its master. */
+type GroupRow = RowStateInput & {
+  id: string;
+  updatedAt: number;
+  masterId?: string;
+  batch?: readonly GroupRow[];
+};
+
+/** A project's or workspace's one word: its loudest state, the newest thread
+ *  behind it (`about`) and how many more share it. */
+export type GroupMark<T> = { state: GroupState; about: T; more: number };
+
+/**
+ * The loudest of waiting > failed > working > paused over every root and
+ * every batch thread (`cardThreads`), or null when the group is quiet.
+ * `about` is the newest root in that state, a batch thread's master standing
+ * in for it; `more` counts the other roots in that state.
+ */
+export function groupMark<T extends GroupRow>(roots: readonly T[]): GroupMark<T> | null {
+  const byId = new Map<string, T>(roots.map((r) => [r.id, r]));
+  // Per state, each stand-in root with the newest update behind it.
+  const found = new Map<GroupState, Map<T, number>>();
+  const note = (row: GroupRow, standIn: T) => {
+    const state = groupStateOf(rowState(row));
+    if (!state) return;
+    const seen = found.get(state) ?? found.set(state, new Map()).get(state)!;
+    seen.set(standIn, Math.max(seen.get(standIn) ?? 0, row.updatedAt));
+  };
+  for (const root of roots) {
+    const standIn = (root.masterId && byId.get(root.masterId)) || root;
+    note(root, standIn);
+    for (const b of root.batch ?? []) note(b, root);
+  }
+  for (const state of GROUP_ORDER) {
+    const seen = found.get(state);
+    if (!seen?.size) continue;
+    let about: T | null = null;
+    let at = -Infinity;
+    for (const [row, updated] of seen)
+      if (updated > at) {
+        about = row;
+        at = updated;
+      }
+    return { state, about: about!, more: seen.size - 1 };
+  }
+  return null;
+}
+
+/** Is any root unread: settled, unseen, quiet, and not inside a master. */
+export function groupUnread(roots: readonly (RowStateInput & { unread?: boolean; housed?: boolean })[]): boolean {
+  return roots.some((r) => !!r.unread && !r.housed && !marksAtRest(rowState(r)));
+}
+
+/** A rail row's state: its word with the thread behind it, and whether it reads unread. */
+export type WorkspaceMark = { mark: GroupMark<ThreadRow> | null; unread: boolean };
+
+/**
+ * One mark per workspace path: the roots of every unarchived project (and the
+ * loose chats) folded into `groupMark` and `groupUnread`. A thread inside a
+ * master (`housedIds`) still lights the word, never the unread weight.
+ * `keyOf` folds a workspace's copies on other hosts into its leader's path
+ * (lib/linkedRail.ts `aliasKeys`), so a linked row reads every copy as one.
+ */
+export function workspaceMarks(
+  metas: readonly SessionMeta[],
+  catalog: Catalog,
+  lastSeen: Record<string, number>,
+  floor = 0,
+  keyOf: (path: string) => string = (path) => path,
+): Map<string, WorkspaceMark> {
+  const archivedProjects = new Set(catalog.projects.filter((p) => p.archived).map((p) => p.id));
+  const housed = housedIds(metas);
+  const byPath = new Map<string, ThreadRow[]>();
+  for (const meta of metas) {
+    if (meta.parentId || meta.archived) continue;
+    // An archived project's threads never enter the workspace's list, so
+    // they say nothing on its row either.
+    if (meta.projectId && archivedProjects.has(meta.projectId)) continue;
+    const at = workspacePathOfSession(meta, catalog);
+    if (!at) continue;
+    const path = keyOf(at);
+    const row = threadRow(meta, lastSeen, floor, housed.has(meta.id));
+    const list = byPath.get(path);
+    if (list) list.push(row);
+    else byPath.set(path, [row]);
+  }
+  const out = new Map<string, WorkspaceMark>();
+  for (const [path, rows] of byPath) {
+    const mark = groupMark(rows);
+    const unread = groupUnread(rows);
+    if (mark || unread) out.set(path, { mark, unread });
+  }
+  return out;
 }
 
 /** A row's subagents in the fleet's words, only while one of them works,
@@ -124,14 +231,14 @@ export function liveAgents(rows: readonly ThreadRow[] | undefined): AgentSummary
   return s && s.working + s.waiting + s.failed > 0 ? s : null;
 }
 
-export type BatchLine = { thread: ThreadRow; state: LineState; agents: AgentSummary | null };
+export type BatchLine = { thread: ThreadRow; state: ThreadState; agents: AgentSummary | null };
 
 /** A master on its card: its own line, its own working subagents apart,
  *  then every batch thread with something to say, loudest first. Queued
  *  and settled ones fold into counts. */
 export type MasterBlock = {
   master: ThreadRow;
-  state: LineState;
+  state: ThreadState;
   unread: boolean;
   agents: AgentSummary | null;
   lines: BatchLine[];
@@ -140,14 +247,17 @@ export type MasterBlock = {
   total: number;
 };
 
-const LINE_RANK: Record<LineState, number> = {
+const LINE_RANK: Record<ThreadState, number> = {
   waiting: 0,
   failed: 1,
   paused: 2,
-  running: 3,
-  stopped: 4,
-  queued: 5,
-  settled: 6,
+  working: 3,
+  watching: 3,
+  "plan-ready": 4,
+  stopped: 5,
+  queued: 6,
+  done: 7,
+  idle: 7,
 };
 
 /** The block for a master row with a batch, or null when nothing in it
@@ -160,26 +270,26 @@ export function masterBlock(master: ThreadRow, unread: boolean): MasterBlock | n
   let queued = 0;
   let done = 0;
   for (const thread of batch) {
-    const state = lineState(thread);
+    const state = rowState(thread);
     if (state === "queued") queued++;
-    else if (state === "settled") done++;
+    else if (!marksAtRest(state)) done++;
     else lines.push({ thread, state, agents: liveAgents(thread.children) });
   }
   lines.sort((a, b) => LINE_RANK[a.state] - LINE_RANK[b.state]);
-  const state = lineState(master);
+  const state = rowState(master);
   const agents = liveAgents(master.children);
-  if (!lines.length && !queued && !unread && !agents && state === "settled") return null;
+  if (!lines.length && !queued && !unread && !agents && !marksAtRest(state)) return null;
   return { master, state, unread, agents, lines, queued, done, total: batch.length };
 }
 
 /** The blocks of a card's roots, one per master with something to say. */
 export function masterBlocks(
   roots: readonly ThreadRow[],
-  status: Pick<ProjectCardStatus<CardThread>, "unread">,
+  isUnread: (id: string) => boolean,
 ): MasterBlock[] {
   const out: MasterBlock[] = [];
   for (const root of roots) {
-    const block = masterBlock(root, status.unread.some((u) => u.id === root.id));
+    const block = masterBlock(root, isUnread(root.id));
     if (block) out.push(block);
   }
   return out;
@@ -201,7 +311,8 @@ export function liveLines<T extends CardThread>(
   status: ProjectCardStatus<T>,
   roots: readonly ThreadRow[] = [],
 ): LiveLine<T>[] {
-  const blocks = masterBlocks(roots, status);
+  const unread = new Set(status.unread.map((u) => u.id));
+  const blocks = masterBlocks(roots, (id) => unread.has(id));
   const inBlock = new Set(blocks.map((b) => b.master.id));
   const own = (t: T) => !t.housed && !inBlock.has(t.id);
   const lines: LiveLine<T>[] = blocks.map((block) => ({ kind: "master", id: block.master.id, block }));

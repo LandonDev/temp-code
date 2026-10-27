@@ -32,6 +32,7 @@ import { duration, timeAgo } from "../lib/format";
 import { agentSummaryParts, modelLabel, type AgentSummary } from "../lib/threads/agents";
 import { AGENT_GLYPHS, THREAD_GLYPHS, THREAD_TINTS } from "../surfaces/threads/threadTypes";
 import { MatrixSpinner } from "../surfaces/threads/spinners";
+import type { ThreadState } from "../components/ui/status";
 import {
   cardTasks,
   cardTooltip,
@@ -48,7 +49,6 @@ import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
 import {
   liveLines,
   type BatchLine,
-  type LineState,
   type MasterBlock,
   nextPage,
   sessionItemIndex,
@@ -741,11 +741,11 @@ function UnreadLine({
  *  column whatever the mark: the spinner while it works (the watching
  *  master's muted pulse while its batch does), the pause, the needs-you and
  *  failed dots, the stop square, the queued dot, the unread dot. */
-function LineMark({ state, thread, unread }: { state: LineState; thread: ThreadRow; unread?: boolean }) {
+function LineMark({ state, thread, unread }: { state: ThreadState; thread: ThreadRow; unread?: boolean }) {
   return (
     <span className="grid size-3 shrink-0 place-items-center">
-      {state === "running" ? (
-        thread.status === "watching" ? (
+      {state === "working" || state === "watching" ? (
+        state === "watching" ? (
           <StatusDot status="watching" />
         ) : (
           <MatrixSpinner cell={1.8} tint={thread.activityKind} />
@@ -813,11 +813,11 @@ function BatchThreadLine({
           <span className="shrink-0 font-medium text-warning">Needs you</span>
         ) : state === "failed" ? (
           <span className="shrink-0 font-medium text-danger">Failed</span>
-        ) : state === "running" && tasks ? (
+        ) : state === "working" && tasks ? (
           <span className="shrink-0 tabular-nums text-content/40" title={`${tasks.done} of ${tasks.total} tasks done`}>
             {tasks.done}/{tasks.total}
           </span>
-        ) : state === "running" ? (
+        ) : state === "working" ? (
           <span className={`shrink-0 whitespace-nowrap tabular-nums text-content/40 ${ms < 3000 ? "opacity-0" : ""}`}>
             {duration(ms)}
           </span>
