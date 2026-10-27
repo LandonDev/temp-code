@@ -25,7 +25,8 @@ export type DockBarProps = {
   onClose?: (id: string) => void;
   /** Absent: the tabs do not drag. */
   onReorder?: (ids: string[]) => void;
-  onAdd: () => void;
+  /** Absent: no New terminal (the page at /ui has no terminal). */
+  onAdd?: () => void;
   onHide: () => void;
 };
 
@@ -132,14 +133,16 @@ export function DockBar({ terminals, active, dev, onSelect, onSelectDev, onClose
       </Tabs>
       <TooltipProvider>
         <div className="flex shrink-0 items-center gap-1 pr-2">
-          <Tooltip>
-            <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label="New terminal" onClick={onAdd} />}>
-              <Plus />
-            </TooltipTrigger>
-            <TooltipContent>
-              New terminal <Kbd>{MOD}`</Kbd>
-            </TooltipContent>
-          </Tooltip>
+          {onAdd ? (
+            <Tooltip>
+              <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label="New terminal" onClick={onAdd} />}>
+                <Plus />
+              </TooltipTrigger>
+              <TooltipContent>
+                New terminal <Kbd>{MOD}`</Kbd>
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
           <Tooltip>
             <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Hide panel" onClick={onHide} />}>
               <X />

@@ -32,7 +32,8 @@ export function DevServersPane({
 }: {
   onSizePaint: (size: number) => void;
   onSizeCommit: (size: number) => void;
-  onShowTerminal: () => void;
+  /** Absent at /ui, where there is no terminal to switch to: the bar then has no terminal tabs and no New terminal. */
+  onShowTerminal?: () => void;
 }) {
   const size = useDevPane((s) => s.size);
   const picked = useDevPane((s) => s.picked);
@@ -62,18 +63,22 @@ export function DevServersPane({
       }}
     >
       <DockBar
-        terminals={dock?.pane.files ?? EMPTY_FILES}
+        terminals={onShowTerminal ? (dock?.pane.files ?? EMPTY_FILES) : EMPTY_FILES}
         active={DEV_TAB}
         dev={dev ?? { count: servers.length }}
         onSelect={(id) => {
           terminals.updateDock(cwd, (d) => selectDockTerminal(d, id));
-          onShowTerminal();
+          onShowTerminal?.();
         }}
         onSelectDev={noop}
-        onAdd={() => {
-          if (dock) terminals.openNext(cwd);
-          onShowTerminal();
-        }}
+        onAdd={
+          onShowTerminal
+            ? () => {
+                if (dock) terminals.openNext(cwd);
+                onShowTerminal();
+              }
+            : undefined
+        }
         onHide={() => {
           devPane.close();
           terminals.updateDock(cwd, (d) => withDockOpen(d, false));

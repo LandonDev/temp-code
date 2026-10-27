@@ -183,6 +183,13 @@ describe('DevServersPane', () => {
     expect(onShowTerminal).toHaveBeenCalledTimes(1)
   })
 
+  it('has no terminal tabs and no New terminal without a terminal to show (the page at /ui)', async () => {
+    terminalsStore.setState(initialTerminalsState([createProjectTerminal(CWD, newTerminalFile(CWD, 'zsh'))]), true)
+    probe = mountProbe(<DevServersPane onSizePaint={() => {}} onSizeCommit={() => {}} />)
+    expect([...probe.container.querySelectorAll('[role="tab"]')].map((t) => t.textContent)).toEqual(['Dev servers'])
+    expect(probe.container.querySelector('[aria-label="New terminal"]')).toBeNull()
+  })
+
   it('hide closes the pane and the dock under it', async () => {
     terminalsStore.setState(initialTerminalsState([createProjectTerminal(CWD, newTerminalFile(CWD))]), true)
     mount()
