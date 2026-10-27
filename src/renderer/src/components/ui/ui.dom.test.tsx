@@ -11,6 +11,7 @@ import { Skeleton } from "./skeleton";
 import { GroupInput, InputGroup } from "./input";
 import { Progress } from "./progress";
 import { TOOLTIP_CLOSE_DELAY, TOOLTIP_DELAY } from "./tooltip";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table";
 
 vi.mock("@renderer/hooks/paneVisibility", () => ({ usePaneVisible: () => true }));
 
@@ -234,5 +235,32 @@ describe("Kbd", () => {
   it("renders a key cap", () => {
     render(<Kbd>⌘</Kbd>);
     expect(document.querySelector("kbd[data-slot=kbd]")?.textContent).toBe("⌘");
+  });
+});
+
+describe("Table", () => {
+  it("renders table semantics flat, with no box around it", () => {
+    render(
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Model</TableHead>
+            <TableHead>Effort</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow>
+            <TableCell>Opus</TableCell>
+            <TableCell>High</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>,
+    );
+    expect(screen.getByRole("table")).toBeTruthy();
+    expect(screen.getAllByRole("columnheader").map((head) => head.textContent)).toEqual(["Model", "Effort"]);
+    expect(screen.getAllByRole("cell").map((cell) => cell.textContent)).toEqual(["Opus", "High"]);
+    const container = screen.getByRole("table").parentElement!;
+    expect(container.dataset.slot).toBe("table-container");
+    expect(container.className).not.toMatch(/border|rounded/);
   });
 });
