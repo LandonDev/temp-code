@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
-import { Item, ItemActions, ItemContent } from "@renderer/components/ui/item";
+import { ItemButton, ItemActions, ItemContent } from "@renderer/components/ui/item";
 import { ScrollArea } from "@renderer/components/ui/scroll-area";
 import { StatusMark } from "@renderer/components/ui/status";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@renderer/components/ui/tooltip";
@@ -139,10 +139,9 @@ export function DebugView({
             <ScrollArea className="max-h-40 [&>[data-slot=scroll-area-viewport]]:max-h-40">
               <div className="flex flex-col px-1">
                 {frames.map((f) => (
-                  <Item
+                  <ItemButton
                     key={f.id}
                     size="xs"
-                    render={<button type="button" />}
                     aria-current={f.id === activeFrameId ? "true" : undefined}
                     onClick={() => onSelectFrame(f)}
                     className={cn("min-h-7 flex-nowrap py-0 text-left", f.id === activeFrameId ? "bg-muted" : "hover:bg-foreground/5")}
@@ -153,7 +152,7 @@ export function DebugView({
                     <ItemActions>
                       <span className="text-xs tabular-nums text-muted-foreground">{f.line}</span>
                     </ItemActions>
-                  </Item>
+                  </ItemButton>
                 ))}
               </div>
             </ScrollArea>

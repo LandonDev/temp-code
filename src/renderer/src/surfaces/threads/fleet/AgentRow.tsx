@@ -1,5 +1,5 @@
 import { HostGlyph } from "../../../chrome/HostGlyph";
-import { Item } from "../../../components/ui/item";
+import { ItemButton } from "../../../components/ui/item";
 import { StatusMark } from "../../../components/ui/status";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { cn } from "../../../lib/cn";
@@ -34,9 +34,8 @@ export function AgentRowView({
     <StatusMark state={status.state} detail={status.detail} className="min-w-0" />
   );
   return (
-    <Item
+    <ItemButton
       size="xs"
-      render={<button type="button" />}
       onClick={onOpen}
       aria-current={selected || undefined}
       className={cn(
@@ -57,7 +56,7 @@ export function AgentRowView({
           mark
         )}
       </span>
-    </Item>
+    </ItemButton>
   );
 }
 

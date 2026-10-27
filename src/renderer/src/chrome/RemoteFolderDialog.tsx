@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
-import { Item, ItemContent, ItemMedia, ItemTitle } from "@renderer/components/ui/item";
+import { ItemButton, ItemContent, ItemMedia, ItemTitle } from "@renderer/components/ui/item";
 import { ScrollArea } from "@renderer/components/ui/scroll-area";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { Spinner } from "@renderer/components/ui/spinner";
@@ -192,10 +192,9 @@ function FolderPicker({ environmentId, onClose, onPick, pending, setPending }: P
                 <ScrollArea className="max-h-64 [&>[data-slot=scroll-area-viewport]]:max-h-64">
                   <div className="flex flex-col p-1">
                     {entries.map((entry) => (
-                      <Item
+                      <ItemButton
                         key={entry.path}
                         size="xs"
-                        render={<button type="button" />}
                         onClick={() => void load(entry.path)}
                         onDoubleClick={() => pick(entry.path)}
                         className="rounded-sm text-start hover:bg-foreground/5"
@@ -208,7 +207,7 @@ function FolderPicker({ environmentId, onClose, onPick, pending, setPending }: P
                             <span className="truncate">{entry.name}</span>
                           </ItemTitle>
                         </ItemContent>
-                      </Item>
+                      </ItemButton>
                     ))}
                   </div>
                 </ScrollArea>

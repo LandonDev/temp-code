@@ -11,7 +11,7 @@ import {
 } from "react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { Item } from "../components/ui/item";
+import { ItemButton } from "../components/ui/item";
 import { Spinner } from "../components/ui/spinner";
 import { Toggle } from "../components/ui/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
@@ -240,10 +240,10 @@ export function ProjectSearch({
               <ul>
                 {group.matches.map((match) => (
                   <li key={`${match.path}:${match.line}:${match.column}`}>
-                    <Item
+                    <ItemButton
                       size="xs"
                       className="flex-nowrap items-start gap-2 rounded-md px-1.5 py-0.5 text-left transition-none hover:bg-foreground/5"
-                      render={<button type="button" onClick={() => openMatch(match)} />}
+                      onClick={() => openMatch(match)}
                     >
                       <span className="w-7 shrink-0 text-right font-mono text-[11px] leading-5 text-muted-foreground tabular-nums">
                         {match.line}
@@ -256,7 +256,7 @@ export function ProjectSearch({
                           regex={regex}
                         />
                       </span>
-                    </Item>
+                    </ItemButton>
                   </li>
                 ))}
               </ul>

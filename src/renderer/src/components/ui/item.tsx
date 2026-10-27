@@ -39,6 +39,21 @@ function Item({ className, variant = "default", size = "default", render, ...pro
   });
 }
 
+/** An `Item` that is one button: a list row the whole of which acts (open,
+ *  pick, restore). Flat like the row; the caller names its hover fill. */
+function ItemButton({ className, variant = "default", size = "default", type = "button", ...props }: ComponentProps<"button"> & VariantProps<typeof itemVariants>) {
+  return (
+    <button
+      type={type}
+      data-slot="item"
+      data-variant={variant}
+      data-size={size}
+      className={cn(itemVariants({ variant, size }), "text-start disabled:pointer-events-none disabled:opacity-50", className)}
+      {...props}
+    />
+  );
+}
+
 const itemMediaVariants = cva("flex shrink-0 items-center justify-center gap-2 text-muted-foreground group-has-data-[slot=item-description]/item:translate-y-0.5 group-has-data-[slot=item-description]/item:self-start [&_svg]:pointer-events-none", {
   variants: {
     variant: {
@@ -80,4 +95,4 @@ function ItemFooter({ className, ...props }: ComponentProps<"div">) {
   return <div data-slot="item-footer" className={cn("flex basis-full items-center justify-between gap-2", className)} {...props} />;
 }
 
-export { Item, ItemMedia, ItemContent, ItemActions, ItemGroup, ItemSeparator, ItemTitle, ItemDescription, ItemHeader, ItemFooter };
+export { Item, ItemButton, ItemMedia, ItemContent, ItemActions, ItemGroup, ItemSeparator, ItemTitle, ItemDescription, ItemHeader, ItemFooter };

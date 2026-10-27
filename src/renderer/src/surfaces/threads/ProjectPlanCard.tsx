@@ -4,7 +4,7 @@ import { nextMilestone, parseProjectPlan, type Milestone } from "@server/shared/
 import { Pin } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
-import { Item, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "../../components/ui/item";
+import { Item, ItemButton, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "../../components/ui/item";
 import { Spinner } from "../../components/ui/spinner";
 import { Toggle } from "../../components/ui/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
@@ -205,17 +205,17 @@ export function ProjectPlanOptions({
     return (
       <ItemGroup className="p-1" data-project-plan-options>
         {rows.map((r) => (
-          <Item
+          <ItemButton
             key={r.key}
             size="xs"
-            render={<button type="button" disabled={r.disabled || busy !== null} onClick={r.onClick} />}
+            disabled={r.disabled || busy !== null} onClick={r.onClick}
             className="text-left hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
           >
             <ItemContent>
               <ItemTitle className="font-normal">{r.label}</ItemTitle>
             </ItemContent>
             {busy === r.key ? <Spinner /> : null}
-          </Item>
+          </ItemButton>
         ))}
       </ItemGroup>
     );

@@ -12,6 +12,7 @@ import { GroupInput, InputGroup } from "./input";
 import { Progress } from "./progress";
 import { TOOLTIP_CLOSE_DELAY, TOOLTIP_DELAY, Tooltip, TooltipContent, TooltipTrigger, resetTooltips, tooltipChunk, warmTooltips } from "./tooltip";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table";
+import { Item, ItemButton } from "./item";
 
 vi.mock("@renderer/hooks/paneVisibility", () => ({ usePaneVisible: () => true }));
 
@@ -280,6 +281,28 @@ describe("Tooltip delays", () => {
   it("are one number each, exported for a hover popover to reuse", () => {
     expect(TOOLTIP_DELAY).toBe(400);
     expect(TOOLTIP_CLOSE_DELAY).toBe(120);
+  });
+});
+
+describe("ItemButton", () => {
+  it("is one button that reads as an Item row, and acts on a click", () => {
+    const onClick = vi.fn();
+    render(
+      <>
+        <Item size="xs">row</Item>
+        <ItemButton size="xs" onClick={onClick}>
+          open
+        </ItemButton>
+      </>,
+    );
+    const button = screen.getByRole("button", { name: "open" });
+    expect(button.getAttribute("type")).toBe("button");
+    expect(button.getAttribute("data-slot")).toBe("item");
+    expect(button.getAttribute("data-size")).toBe("xs");
+    const row = screen.getByText("row");
+    for (const name of row.className.split(" ")) expect(button.className).toContain(name);
+    fireEvent.click(button);
+    expect(onClick).toHaveBeenCalledTimes(1);
   });
 });
 

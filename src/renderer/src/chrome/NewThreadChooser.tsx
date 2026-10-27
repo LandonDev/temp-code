@@ -5,7 +5,7 @@ import type { ThreadRules } from "@server/shared/rules";
 import type { ThreadType } from "../lib/tcserver/types";
 import { ChevronLeft, Plus, SlidersHorizontal } from "./icons";
 import { Button } from "../components/ui/button";
-import { Item, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "../components/ui/item";
+import { ItemButton, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "../components/ui/item";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { cn } from "../lib/cn";
@@ -128,9 +128,8 @@ export function NewThreadChooser({
             const tunable = TUNABLE.has(type);
             return (
               <div key={type} className="group/row flex items-center rounded-lg hover:bg-muted">
-                <Item
+                <ItemButton
                   size="xs"
-                  render={<button type="button" />}
                   className="min-w-0 flex-1 text-start"
                   onClick={() => start(type)}
                 >
@@ -141,7 +140,7 @@ export function NewThreadChooser({
                     <ItemTitle>{THREAD_START_LABELS[type] ?? THREAD_LABELS[type]}</ItemTitle>
                     <ItemDescription className="mt-0.5">{THREAD_HINTS[type]}</ItemDescription>
                   </ItemContent>
-                </Item>
+                </ItemButton>
                 {tunable ? (
                   <Tooltip>
                     <TooltipTrigger

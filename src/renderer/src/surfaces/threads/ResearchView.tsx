@@ -3,7 +3,7 @@ import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { OpenFileFn } from "../../lib/search";
 import { FileText, Search } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
-import { Item, ItemContent, ItemTitle } from "../../components/ui/item";
+import { Item, ItemButton, ItemContent, ItemTitle } from "../../components/ui/item";
 import { StatusMark, threadStateOf } from "../../components/ui/status";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { usePlanFile } from "../../hooks/usePlanFile";
@@ -336,9 +336,9 @@ function AngleGroup({
       {self ? (
         <Item size="xs">{head}</Item>
       ) : (
-        <Item size="xs" render={<button type="button" onClick={onOpen} />} className="text-left hover:bg-muted">
+        <ItemButton size="xs" onClick={onOpen} className="text-left hover:bg-muted">
           {head}
-        </Item>
+        </ItemButton>
       )}
       {findings?.summary && filePath ? (
         <Tooltip>

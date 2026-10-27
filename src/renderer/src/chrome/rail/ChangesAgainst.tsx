@@ -5,7 +5,7 @@ import { Alert, AlertDescription, AlertTitle } from "@renderer/components/ui/ale
 import { Button } from "@renderer/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@renderer/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@renderer/components/ui/dropdown-menu";
-import { Item, ItemActions, ItemContent, ItemMedia } from "@renderer/components/ui/item";
+import { ItemButton, ItemActions, ItemContent, ItemMedia } from "@renderer/components/ui/item";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@renderer/components/ui/select";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { Spinner } from "@renderer/components/ui/spinner";
@@ -311,10 +311,10 @@ export function AgainstView({
             const deleted = c.status === "deleted";
             const active = selectedPath === c.path;
             return (
-              <Item
+              <ItemButton
                 key={c.path}
                 size="xs"
-                render={<button type="button" disabled={deleted} onClick={() => onOpen(c.path)} />}
+                disabled={deleted} onClick={() => onOpen(c.path)}
                 aria-current={active || undefined}
                 aria-label={deleted ? `${c.path}, deleted` : `Open the diff of ${c.path} against ${compare.target}`}
                 className={cn("min-h-7 flex-nowrap gap-2 py-0 text-left", !deleted && "hover:bg-foreground/5", active && "bg-muted hover:bg-muted")}
@@ -328,7 +328,7 @@ export function AgainstView({
                 <ItemActions>
                   <Counts status={c.status} additions={c.adds} deletions={c.dels} />
                 </ItemActions>
-              </Item>
+              </ItemButton>
             );
           })}
         </div>
@@ -350,7 +350,6 @@ function Commits({ ours, theirs, ahead, behind }: { ours: CommitInfo[]; theirs: 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger
-        render={<button type="button" />}
         className="flex h-7 w-full items-center gap-1 rounded-lg px-2 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
       >
         <ChevronRight className={cn("size-3 shrink-0 transition-transform duration-(--dur-fast) motion-reduce:transition-none", open && "rotate-90")} />

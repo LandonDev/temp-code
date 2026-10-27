@@ -3,7 +3,7 @@ import { loadToast } from "../components/ui/toaster";
 import { Tip } from "../components/tip";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "../components/ui/item";
+import { ItemButton, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "../components/ui/item";
 import { shortcutFor } from "../lib/settings";
 import { THREAD_GLYPHS } from "../surfaces/threads/threadTypes";
 import { timeAgo } from "../lib/duration";
@@ -197,11 +197,11 @@ export function ArchivedList({
         {shown.map((thread) => {
           const Glyph = THREAD_GLYPHS[thread.type ?? "chat"];
           return (
-            <Item
+            <ItemButton
               key={thread.id}
               size="xs"
               data-archived={thread.id}
-              render={<button type="button" onClick={() => onRestore(thread.id)} />}
+              onClick={() => onRestore(thread.id)}
               className="text-left hover:bg-muted"
             >
               <ItemMedia>
@@ -215,7 +215,7 @@ export function ArchivedList({
                 <ArchiveRestore className="size-3.5" strokeWidth={1.5} />
                 Restore
               </ItemActions>
-            </Item>
+            </ItemButton>
           );
         })}
       </div>

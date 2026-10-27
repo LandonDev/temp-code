@@ -35,6 +35,7 @@ DESIGN.md wins.
 | Tabs, a segmented control | `Tabs` (tabs.tsx) | `variant="default"` segmented, `variant="line"` underlined. The file and terminal strip (chrome/SurfaceTabs.tsx) is a line `Tabs` of 28px chips: icon, name, and a 16px slot whose unsaved dot turns into close on hover (a clean active tab shows close). |
 | Rows and columns of structured data | `Table` (table.tsx) | Flat: hairline rows, no box, no column rules, first and last columns on the inset. No hover fill; the cells hold the controls. |
 | A list row, a settings row | `Item` (item.tsx) | Media, title + description, actions. Settings pages are columns of these. |
+| A list row the whole of which acts (open, pick, restore) | `ItemButton` (item.tsx) | The `Item` row as one `<button type="button">`, with Item's variants and sizes; the caller names its hover fill. Never `Item render={<button />}`. |
 | A divider | `Separator` (separator.tsx) | Spacing first; a separator only where spacing cannot tell groups apart. |
 | A disclosure | `Collapsible` (collapsible.tsx) | Height eases through `.collapsible-resize`. A fold with no trigger of its own is the same panel, opened by `open`. |
 | An icon replacing another (Copy → Check) | `SwapIcon` (../../motion/IconSwap.tsx) | The new glyph grows from a quarter size on `SPRING_LAYOUT`; reduced motion cross-fades. |
