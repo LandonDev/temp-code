@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import type { MacBridgeRequest } from '@server/shared/contract-macbridge'
-import { LAYER } from '../lib/layers'
+import { Button } from '../components/ui/button'
+import { Checkbox } from '../components/ui/checkbox'
+import { Facts } from '../surfaces/settings/hosts/Facts'
+import { DANGER_GHOST } from '../surfaces/settings/hosts/Group'
 import { leafIds } from '../lib/layout'
 import {
   decideMacBridge,
@@ -11,6 +14,7 @@ import {
   stopMacBridgeAll,
   useAllMacBridgeRequests,
   useMacBridgeRequests,
+  type MacBridgeQueue,
   type MacBridgeRunningGroup
 } from '../lib/macBridge'
 import { loadMacBridgeRules, startMacBridgeRules, useRunRemember } from '../lib/macBridgeRules'
@@ -25,13 +29,13 @@ import { RunRememberSelect } from './MacBridgeRemember'
  * ApprovalControls): Allow / Deny, plus the one remember the request
  * offers. Answered on the LOCAL link only (`macBridge.decide` is local).
  * MacBridgeThreadCards sits above the thread's composer; MacBridgeToasts
- * carries the requests of threads not on screen.
+ * carries the requests of threads not on screen as sonner toasts.
  *
  * Never a screenful: `queueOf` (lib/macBridge.ts) keeps one waiting card per
  * host with "and N more", decided in order, and folds the running commands
  * into one line per host with Stop all. A quiet request (admitted without a
  * prompt while the host's "Show running commands" is off) gets no card at
- * all; Settings → Remote access → Mac bridge lists it, with Stop.
+ * all; the host's Mac bridge on Settings → Hosts lists it, with Stop.
  */
 
 const METHOD_TEXT: Record<MacBridgeRequest['method'], string> = {
@@ -46,8 +50,28 @@ const METHOD_TEXT: Record<MacBridgeRequest['method'], string> = {
 export const requestCode = (request: MacBridgeRequest): string =>
   request.argv ? quoteArgv(request.argv) : (request.command ?? request.path ?? '')
 
-const CARD_CLASS =
-  'pointer-events-auto flex flex-col gap-2 rounded-lg border border-warning/30 bg-background-base/95 px-3 py-2.5 text-[12px] shadow-md glass-surface'
+const CARD_CLASS = 'flex flex-col gap-2 rounded-xl border border-border bg-card px-3 py-2.5 text-[13px]'
+
+/** "box wants to run on this Mac": the line a card and a toast lead with. */
+export const requestTitle = (request: MacBridgeRequest): string =>
+  `${request.hostName} wants to ${METHOD_TEXT[request.method]}${request.interactive ? ' interactively' : ''} on this Mac`
+
+/** A run's cwd, its timeout and whether stdin stays open; a write's mode and size. */
+export function requestFacts(request: MacBridgeRequest): string[] {
+  if (request.kind === 'run')
+    return [
+      `in ${request.cwd ?? ''}`,
+      ...(request.timeoutMs ? [`stops after ${Math.round(request.timeoutMs / 1000)} s`] : []),
+      ...(request.interactive ? ['interactive: stdin stays open, ends after 30 idle minutes'] : [])
+    ]
+  if (request.kind === 'write')
+    return [
+      request.writeMode ?? 'create',
+      `${(request.bytes ?? 0).toLocaleString()} bytes`,
+      ...(request.createsFolders ? ['creates the missing folders'] : [])
+    ]
+  return []
+}
 
 function MacBridgeCard({
   request,
@@ -76,100 +100,58 @@ function MacBridgeCard({
       setBusy(false)
     }
   }
-  const rememberLabel =
-    request.kind === 'run'
-      ? null
-      : request.folder
-        ? `Allow ${request.folder} for this thread`
-        : null
+  const rememberLabel = request.kind !== 'run' && request.folder ? `Allow ${request.folder} for this thread` : null
+  const facts = requestFacts(request)
   return (
-    <div
-      className={CARD_CLASS}
-      role="group"
-      aria-label="Mac bridge request"
-      data-mac-bridge-request={request.id}
-    >
-      <div className="flex items-center gap-2">
-        <CircleAlert className="size-3.5 shrink-0 text-warning" strokeWidth={1.75} />
-        <span className="min-w-0 flex-1 truncate text-content">
-          <span className="font-semibold">{request.hostName}</span> wants to{' '}
-          {METHOD_TEXT[request.method]}
-          {request.interactive ? ' interactively' : ''} on this Mac
+    <div className={CARD_CLASS} role="group" aria-label="Mac bridge request" data-mac-bridge-request={request.id}>
+      <div className="flex items-start gap-2">
+        <CircleAlert className="mt-0.5 size-3.5 shrink-0 text-warning" strokeWidth={1.75} />
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-medium text-foreground">{requestTitle(request)}</div>
           {showThread && request.threadTitle ? (
-            <span className="text-content/50"> · {request.threadTitle}</span>
+            <div className="truncate text-xs text-muted-foreground">{request.threadTitle}</div>
           ) : null}
-        </span>
+        </div>
         {more > 0 ? (
-          <span
-            className="shrink-0 text-[11px] text-content/50"
-            data-mac-bridge-more={more}
-          >
+          <span className="shrink-0 text-xs tabular-nums text-muted-foreground" data-mac-bridge-more={more}>
             and {more} more
           </span>
         ) : null}
       </div>
-      <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-md bg-content/5 px-2 py-1.5 font-mono text-[11px] text-content/90">
+      <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-muted/40 px-2.5 py-1.5 font-mono text-xs text-foreground">
         {requestCode(request)}
       </pre>
-      {request.kind === 'run' ? (
-        <div className="text-[11px] text-content/50">
-          in <span className="font-mono">{request.cwd}</span>
-          {request.timeoutMs ? ` · stops after ${Math.round(request.timeoutMs / 1000)} s` : ''}
-          {request.interactive
-            ? ' · interactive: stdin stays open, ends after 30 idle minutes'
-            : ''}
-        </div>
-      ) : null}
-      {request.kind === 'write' ? (
-        <div className="text-[11px] text-content/50">
-          {request.writeMode ?? 'create'} · {(request.bytes ?? 0).toLocaleString()} bytes
-          {request.createsFolders ? ' · creates the missing folders' : ''}
-        </div>
-      ) : null}
+      {facts.length ? <Facts parts={facts} className="text-xs text-muted-foreground" /> : null}
       {rememberLabel ? (
-        <label className="flex items-center gap-2 text-[11px] text-content/70">
-          <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Checkbox checked={remember} onCheckedChange={(on) => setRemember(on === true)} />
           <span className="min-w-0 truncate">{rememberLabel}</span>
         </label>
       ) : null}
       {request.kind === 'run' ? (
-        <RunRememberSelect
-          request={request}
-          value={runRemember.choice}
-          onChange={runRemember.setChoice}
-        />
+        <RunRememberSelect request={request} value={runRemember.choice} onChange={runRemember.setChoice} />
       ) : null}
       <div className="flex gap-2">
-        <button
-          type="button"
-          disabled={busy}
-          className="rounded-md bg-content px-2.5 py-0.5 text-[11px] text-background-base hover:bg-content/70"
-          onClick={() => void decide(true)}
-        >
+        <Button size="sm" disabled={busy} onClick={() => void decide(true)}>
           Allow
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          className="rounded-md bg-content/10 px-2.5 py-0.5 text-[11px] text-content/70 hover:bg-content/20"
-          onClick={() => void decide(false)}
-        >
+        </Button>
+        <Button variant="secondary" size="sm" disabled={busy} onClick={() => void decide(false)}>
           Deny
-        </button>
+        </Button>
       </div>
-      {error ? <div className="text-[11px] text-danger">{error}</div> : null}
+      {error ? <div className="text-xs text-destructive">{error}</div> : null}
     </div>
   )
 }
 
+/** "bun test running from box", or "3 commands running from box". */
+export const runningTitle = (group: MacBridgeRunningGroup): string =>
+  group.requests.length === 1
+    ? `${requestCode(group.requests[0]!)} running from ${group.hostName}`
+    : `${group.requests.length} commands running from ${group.hostName}`
+
 /** One host's running commands, folded: the command when there is one, the count past that, one Stop (all). */
-function MacBridgeRunningLine({
-  group,
-  showThread
-}: {
-  group: MacBridgeRunningGroup
-  showThread: boolean
-}) {
+function MacBridgeRunningLine({ group, showThread }: { group: MacBridgeRunningGroup; showThread: boolean }) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const one = group.requests.length === 1 ? group.requests[0] : null
@@ -186,90 +168,100 @@ function MacBridgeRunningLine({
   }
   return (
     <div
-      className={CARD_CLASS}
+      className="flex flex-col rounded-xl border border-border bg-card px-3 py-1.5 text-[13px]"
       role="group"
       aria-label="Commands running on this Mac"
       data-mac-bridge-running={group.environmentId}
       data-mac-bridge-running-count={group.requests.length}
     >
       <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-content">
+        <span className="min-w-0 flex-1 truncate text-muted-foreground">
           {one ? (
             <>
-              <span className="font-mono text-[11px] text-content/90" title={requestCode(one)}>
-                {requestCode(one)}
-              </span>
-              <span className="text-content/60"> running from {group.hostName}</span>
-              {showThread && one.threadTitle ? (
-                <span className="text-content/50"> · {one.threadTitle}</span>
-              ) : null}
+              <span className="font-mono text-xs text-foreground">{requestCode(one)}</span> running from {group.hostName}
             </>
           ) : (
             <>
-              <span className="font-semibold">{group.requests.length} commands</span>
-              <span className="text-content/60"> running from {group.hostName}</span>
+              <span className="font-medium text-foreground">{group.requests.length} commands</span> running from {group.hostName}
             </>
           )}
         </span>
-        <button
-          type="button"
-          disabled={busy}
-          className="shrink-0 rounded-md bg-content/10 px-2.5 py-0.5 text-[11px] text-danger hover:bg-content/20"
-          onClick={() => void stop()}
-        >
+        {showThread && one?.threadTitle ? (
+          <span className="max-w-40 shrink-0 truncate text-xs text-muted-foreground">{one.threadTitle}</span>
+        ) : null}
+        <Button variant="ghost" size="xs" className={DANGER_GHOST} disabled={busy} onClick={() => void stop()}>
           {one ? 'Stop' : 'Stop all'}
-        </button>
+        </Button>
       </div>
-      {error ? <div className="text-[11px] text-danger">{error}</div> : null}
+      {error ? <div className="text-xs text-destructive">{error}</div> : null}
     </div>
   )
 }
 
-/** The queue as cards: the running lines first (short), then one waiting card per host. */
-function MacBridgeQueueCards({
-  requests,
-  showThread
-}: {
-  requests: MacBridgeRequest[]
-  showThread: boolean
-}) {
-  const queue = useMemo(() => queueOf(requests), [requests])
-  return (
-    <>
-      {queue.running.map((g) => (
-        <MacBridgeRunningLine key={g.environmentId} group={g} showThread={showThread} />
-      ))}
-      {queue.pending.map((r) => (
-        <MacBridgeCard
-          key={r.id}
-          request={r}
-          more={queue.more[r.environmentId] ?? 0}
-          showThread={showThread}
-        />
-      ))}
-    </>
-  )
-}
-
-/** Above a box thread's composer: that thread's requests. */
-export function MacBridgeThreadCards({
-  environmentId,
-  sessionId
-}: {
-  environmentId: string
-  sessionId: string
-}) {
+/** Above a box thread's composer: that thread's requests, the running line first (short), then the waiting card. */
+export function MacBridgeThreadCards({ environmentId, sessionId }: { environmentId: string; sessionId: string }) {
   useEffect(() => startMacBridge(), [])
   const requests = useMacBridgeRequests(environmentId, sessionId)
+  const queue = useMemo(() => queueOf(requests), [requests])
   if (requests.length === 0) return null
   return (
     <div className="flex flex-col gap-2 px-1 pb-2">
-      <MacBridgeQueueCards requests={requests} showThread={false} />
+      {queue.running.map((g) => (
+        <MacBridgeRunningLine key={g.environmentId} group={g} showThread={false} />
+      ))}
+      {queue.pending.map((r) => (
+        <MacBridgeCard key={r.id} request={r} more={queue.more[r.environmentId] ?? 0} showThread={false} />
+      ))}
     </div>
   )
 }
 
-/** Requests of threads not in the active tab, as a stack at the bottom right. */
+const short = (text: string, max = 80): string => (text.length > max ? `${text.slice(0, max - 1)}…` : text)
+
+/**
+ * The requests of threads not on screen, as sonner toasts: one per host for
+ * its waiting request (Allow, Deny; the remember choice is the thread
+ * card's alone) and one per host while commands run from it (Stop all),
+ * updated as the queue moves and dismissed when nothing is left for it.
+ * `shown` is the set of toast ids up now, kept by the caller.
+ */
+export function syncMacBridgeToasts(queue: MacBridgeQueue, shown: Set<string>): void {
+  const live = new Set<string>()
+  for (const group of queue.running) {
+    const id = `mac-bridge-run:${group.environmentId}`
+    live.add(id)
+    toast(runningTitle(group), {
+      id,
+      duration: Infinity,
+      description: group.requests.length === 1 ? group.requests[0]!.threadTitle || undefined : undefined,
+      action: { label: group.requests.length === 1 ? 'Stop' : 'Stop all', onClick: () => void stopMacBridgeAll(group.requests).catch(() => {}) }
+    })
+  }
+  for (const request of queue.pending) {
+    const id = `mac-bridge:${request.environmentId}`
+    live.add(id)
+    const more = queue.more[request.environmentId] ?? 0
+    toast(requestTitle(request), {
+      id,
+      duration: Infinity,
+      description: (
+        <span className="flex min-w-0 flex-col" data-mac-bridge-toast={request.id}>
+          <span className="truncate font-mono text-xs">{short(requestCode(request))}</span>
+          {request.threadTitle || more ? (
+            <span className="truncate">{[request.threadTitle, more ? `and ${more} more` : ''].filter(Boolean).join(', ')}</span>
+          ) : null}
+        </span>
+      ),
+      action: { label: 'Allow', onClick: () => void decideMacBridge(request.id, true, false).catch(() => {}) },
+      cancel: { label: 'Deny', onClick: () => void decideMacBridge(request.id, false, false).catch(() => {}) }
+    })
+  }
+  for (const id of shown) if (!live.has(id)) toast.dismiss(id)
+  shown.clear()
+  for (const id of live) shown.add(id)
+}
+
+/** Keeps the toasts in step with the requests of threads not in the active tab. Renders nothing itself. */
 export function MacBridgeToasts() {
   useEffect(() => startMacBridge(), [])
   useEffect(() => startMacBridgeRules(), [])
@@ -280,19 +272,10 @@ export function MacBridgeToasts() {
     const tab = tabs.find((t) => t.id === activeTabId)
     return new Set(tab ? leafIds(tab.layout) : [])
   }, [tabs, activeTabId])
-  const hidden = useMemo(
-    () => requests.filter((r) => !visible.has(r.sessionId)),
-    [requests, visible]
-  )
-  if (hidden.length === 0) return null
-  return createPortal(
-    <div
-      aria-live="polite"
-      style={{ zIndex: LAYER.toast }}
-      className="pointer-events-none fixed bottom-3 right-3 flex w-[min(380px,calc(100vw-24px))] flex-col gap-2"
-    >
-      <MacBridgeQueueCards requests={hidden} showThread />
-    </div>,
-    document.body
-  )
+  const hidden = useMemo(() => requests.filter((r) => !visible.has(r.sessionId)), [requests, visible])
+  const queue = useMemo(() => queueOf(hidden), [hidden])
+  const shown = useRef(new Set<string>())
+  useEffect(() => syncMacBridgeToasts(queue, shown.current), [queue])
+  useEffect(() => () => syncMacBridgeToasts({ running: [], pending: [], more: {} }, shown.current), [])
+  return null
 }

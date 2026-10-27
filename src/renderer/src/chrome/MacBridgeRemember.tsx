@@ -10,6 +10,7 @@ import {
 } from '../lib/macBridgeRules'
 import { Button } from '../components/ui/button'
 import { Item, ItemActions, ItemContent, ItemTitle } from '../components/ui/item'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import { DANGER_GHOST, Group } from '../surfaces/settings/hosts/Group'
 import { errorText } from './ConfirmDialog'
 
@@ -32,24 +33,23 @@ export function RunRememberSelect({
   const options = runRememberOptions(request)
   if (options.length === 0)
     return (
-      <div className="text-[11px] text-content/50">
+      <div className="text-xs text-muted-foreground">
         Asks every time ({request.alwaysAsk}): nothing can be remembered for it.
       </div>
     )
   return (
-    <select
-      aria-label="Remember for this thread"
-      data-mac-bridge-remember
-      value={value}
-      onChange={(e) => onChange(e.target.value as RunRememberChoice)}
-      className="w-full min-w-0 truncate rounded-md border border-content/10 bg-content/5 px-1.5 py-0.5 text-[11px] text-content/80 hover:border-content/20"
-    >
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
+    <Select items={options} value={value} onValueChange={(v) => v && onChange(v as RunRememberChoice)}>
+      <SelectTrigger size="sm" aria-label="Remember for this thread" data-mac-bridge-remember className="w-full min-w-0 text-xs">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((o) => (
+          <SelectItem key={o.value} value={o.value} className="text-xs">
+            {o.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
 
