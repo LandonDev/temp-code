@@ -66,7 +66,7 @@ function MeterRow({
   const projects = useProjects();
   const workspaces = useWorkspaces();
   const scope = meta && meta.provider === provider ? scopeOf(meta, projects, workspaces) : null;
-  const left = meter.room === null ? null : Math.round(meter.room * 100);
+  const left = meter.share === null ? null : Math.round(meter.share * 100);
   const resets = meter.resetsAt !== null && meter.resetsAt > now ? `resets in ${untilShort(meter.resetsAt, now)}` : null;
 
   return (
