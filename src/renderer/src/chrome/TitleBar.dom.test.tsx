@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Link } from "../lib/connection";
@@ -8,6 +8,7 @@ import { sessionStore } from "../lib/tcserver/store";
 import type { SessionMeta } from "../lib/tcserver/types";
 import { buildHeaderModel, orderModel } from "../lib/threadHeaderModel";
 import type { ThreadHeaderProps } from "./ThreadHeader";
+import { tooltipChunk, warmTooltips } from "../components/ui/tooltip";
 import { TitleBar } from "./TitleBar";
 
 vi.mock("./WindowControls", () => ({ WindowControls: () => null }));
@@ -90,6 +91,22 @@ describe("TitleBar", () => {
     expect(screen.queryByRole("button", { name: /Terminal/ })).toBeNull();
     expect(screen.getByRole("button", { name: "Thread menu" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Panel" })).toBeTruthy();
+  });
+
+  it("with no room for the panel, its toggle is disabled and says why on hover", async () => {
+    await tooltipChunk.load();
+    warmTooltips();
+    const onToggleRail = vi.fn();
+    bar({ header: { ...header, railOpen: true, panelRoom: false, onToggleRail } });
+    const toggle = screen.getByRole("button", { name: "Panel" });
+    expect(toggle.getAttribute("aria-disabled")).toBe("true");
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(toggle);
+    expect(onToggleRail).not.toHaveBeenCalled();
+    fireEvent.pointerEnter(toggle, { pointerType: "mouse" });
+    fireEvent.mouseEnter(toggle);
+    fireEvent.mouseMove(toggle);
+    await waitFor(() => expect(screen.getByText("No room for the panel")).toBeTruthy(), { timeout: 1500 });
   });
 });
 

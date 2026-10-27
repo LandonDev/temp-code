@@ -20,7 +20,11 @@ import { ArrowUp, AtSign, CornerDownRight, ListPlus, Paperclip, Pause, Plus, Sla
 /**
  * The composer's one row under the field, 32px tall and never scrolling:
  * the `+` menu and the model button on the left, the permission mode
- * (absent for fx, which has none) and the send button on the right.
+ * (absent for fx, which has none) and the send button on the right. It is
+ * the `composer-bar` size container, so a narrow box gives way in order:
+ * the free space, then the model's effort word and name (down to its
+ * harness icon), then the mode's label (down to its icon). Add and Send
+ * never shrink; every control fits a 220px box.
  */
 export function ComposerBar({
   harness,
@@ -48,7 +52,7 @@ export function ComposerBar({
 }) {
   return (
     <TooltipProvider>
-      <div data-composer-bar className="mx-2 mb-2 flex h-8 min-w-0 items-center gap-1">
+      <div data-composer-bar className="@container/composer-bar mx-2 mb-2 flex h-8 min-w-0 items-center gap-1">
         <AddMenu attachable={harnessSupportsAttachments(harness)} onAttach={onAttach} onInsert={onInsert} fieldOf={fieldOf} />
         {model}
         <div className="ms-auto flex shrink-0 items-center gap-1">

@@ -4,6 +4,7 @@ import { Tip } from "../components/tip";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { ItemButton, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "../components/ui/item";
+import { NO_ROOM_LABEL } from "../lib/rightPanel";
 import { shortcutFor } from "../lib/settings";
 import { THREAD_GLYPHS } from "../surfaces/threads/threadTypes";
 import { timeAgo } from "../lib/duration";
@@ -42,7 +43,8 @@ export type ThreadMenuProps = {
   onOpenRecent: (id: string) => void;
   archived: readonly ArchivedThread[];
   onRestore: (id: string) => void;
-  panel: { open: boolean; onToggle: () => void };
+  /** `room` false: the thread's row is too narrow to draw the panel. */
+  panel: { open: boolean; room?: boolean; onToggle: () => void };
 };
 
 const RECENT_MAX = 12;
@@ -138,14 +140,20 @@ export function ThreadMenu({
         onOpenChange={(open) => open && onOpen?.()}
         className="w-60"
       />
-      <Tip label="Panel" shortcut={shortcutFor("App", "Panel")} side="bottom">
+      {/* No room keeps the reason on hover, so the button stays hoverable (aria-disabled, not disabled). */}
+      <Tip
+        label={panel.room === false ? NO_ROOM_LABEL : "Panel"}
+        shortcut={panel.room === false ? undefined : shortcutFor("App", "Panel")}
+        side="bottom"
+      >
         <Button
           variant="ghost"
           size="icon-sm"
           aria-label="Panel"
-          aria-pressed={panel.open}
-          onClick={panel.onToggle}
-          className="text-muted-foreground hover:text-foreground aria-pressed:bg-foreground/7 aria-pressed:text-foreground"
+          aria-pressed={panel.room !== false && panel.open}
+          aria-disabled={panel.room === false || undefined}
+          onClick={panel.room === false ? undefined : panel.onToggle}
+          className="text-muted-foreground hover:text-foreground aria-pressed:bg-foreground/7 aria-pressed:text-foreground aria-disabled:opacity-50 aria-disabled:hover:bg-transparent aria-disabled:hover:text-muted-foreground"
         >
           <PanelRight strokeWidth={1.5} />
         </Button>

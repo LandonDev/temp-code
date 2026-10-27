@@ -27,6 +27,23 @@ export const SECTION_LABEL: Record<Section, string> = {
 export const PANEL_WIDTH = 320;
 export const PANEL_MIN = 260;
 export const PANEL_MAX = 480;
+/** The thread column never goes narrower than this beside its panel. */
+export const THREAD_MIN = 360;
+
+/**
+ * The panel's drawn width in a row `containerWidth` wide: the stored width,
+ * shrunk so the thread keeps `THREAD_MIN`, never under `PANEL_MIN`. Null
+ * when even that does not fit: the panel is not drawn and keeps its stored
+ * open state for when the row widens.
+ */
+export function panelFit(containerWidth: number, storedWidth: number): number | null {
+  const room = Math.floor(containerWidth) - THREAD_MIN;
+  if (room < PANEL_MIN) return null;
+  return Math.min(PANEL_MAX, Math.max(PANEL_MIN, Math.min(storedWidth, room)));
+}
+
+/** The toggle's reason while a thread's row is too narrow for the panel. */
+export const NO_ROOM_LABEL = "No room for the panel";
 
 /** What the thread's state says about it; `sectionsFor` reads nothing else. */
 export type PanelFacts = {
@@ -114,6 +131,8 @@ const cache = new Map<string, PanelState>();
 const listeners = new Set<() => void>();
 let focusedId: string | null = null;
 const visibleIds = new Set<string>();
+/** Threads whose row is too narrow for the panel right now (never persisted). */
+const noRoom = new Set<string>();
 
 function save(): void {
   const ids = Object.keys(data.threads);
@@ -173,8 +192,20 @@ export const rightPanel = {
   close(id: string): void {
     write(id, { open: false });
   },
+  /** Does nothing while the thread's row has no room for the panel. */
   toggle(id: string): void {
+    if (noRoom.has(id)) return;
     write(id, { open: !stateOf(id).open });
+  },
+  /** ThreadView's measure: whether the thread's row fits the panel now. */
+  setRoom(id: string, fits: boolean): void {
+    if (fits === !noRoom.has(id)) return;
+    if (fits) noRoom.delete(id);
+    else noRoom.add(id);
+    emit();
+  },
+  hasRoom(id: string): boolean {
+    return !noRoom.has(id);
   },
   setWidth(id: string, width: number): void {
     write(id, { width });
@@ -212,6 +243,7 @@ export const rightPanel = {
     cache.clear();
     focusedId = null;
     visibleIds.clear();
+    noRoom.clear();
     try {
       localStorage.removeItem(KEY);
     } catch {
@@ -226,6 +258,15 @@ function subscribe(l: () => void): () => void {
   return () => {
     listeners.delete(l);
   };
+}
+
+/** Whether the thread's row has room for its panel (true until measured). */
+export function usePanelRoom(id: string): boolean {
+  return useSyncExternalStore(
+    subscribe,
+    () => !noRoom.has(id),
+    () => !noRoom.has(id),
+  );
 }
 
 export function useRightPanel(id: string): PanelState {

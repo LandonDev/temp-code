@@ -6,7 +6,7 @@ import { Kbd } from "../components/ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { cn } from "../lib/cn";
 import { suppressTextSelection } from "../lib/drag";
-import type { LayoutSash, PaneEdge } from "../lib/layout";
+import { clampSashBoundary, type LayoutSash, type PaneEdge } from "../lib/layout";
 import { MOD } from "../lib/platform";
 
 const titleClass = (focused: boolean) =>
@@ -111,6 +111,10 @@ export function Sash({
   const row = sash.dir === "right";
   const boundary = sash.sizes.slice(0, sash.index + 1).reduce((sum, size) => sum + size, 0);
   const group = sash.group;
+  // A row sash keeps both panes at THREAD_MIN where the group is wide enough.
+  const clamp = (next: number, spanPx: number) =>
+    row ? clampSashBoundary(sash.sizes, sash.index, next, spanPx) : next;
+  const groupSpan = () => (containerRef.current?.getBoundingClientRect().width ?? 0) * group.w;
   const keys = useSashKeys({
     label: "Resize panes",
     orientation: row ? "vertical" : "horizontal",
@@ -118,7 +122,7 @@ export function Sash({
     min: 0,
     max: 100,
     getSpan: () => 100,
-    onChange: (next) => onCommit(next / 100),
+    onChange: (next) => onCommit(clamp(next / 100, groupSpan())),
     onReset: onEqualize,
   });
 
@@ -168,7 +172,7 @@ export function Sash({
             const pos = row ? ev.clientX : ev.clientY;
             if (span <= 0) return;
             moved = true;
-            nextBoundary = (pos - origin) / span;
+            nextBoundary = clamp((pos - origin) / span, span);
             if (frame != null) return;
             frame = requestAnimationFrame(() => {
               frame = null;

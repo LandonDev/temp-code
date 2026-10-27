@@ -1,6 +1,16 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
-import { PANEL_MAX, PANEL_MIN, PANEL_WIDTH, rightPanel, sectionsFor, shownSection, type PanelFacts } from "./rightPanel";
+import {
+  PANEL_MAX,
+  PANEL_MIN,
+  PANEL_WIDTH,
+  THREAD_MIN,
+  panelFit,
+  rightPanel,
+  sectionsFor,
+  shownSection,
+  type PanelFacts,
+} from "./rightPanel";
 
 const quiet: PanelFacts = {
   root: true,
@@ -119,5 +129,40 @@ describe("the store", () => {
     n += 1;
     expect(JSON.stringify(localStorage.getItem("monocode.rightPanel"))).toBe(before);
     expect(n).toBe(1);
+  });
+});
+
+describe("panelFit", () => {
+  it("draws the stored width when the thread keeps THREAD_MIN beside it", () => {
+    expect(panelFit(1200, 320)).toBe(320);
+  });
+
+  it("shrinks toward PANEL_MIN so the thread keeps THREAD_MIN", () => {
+    expect(panelFit(THREAD_MIN + 300, 400)).toBe(300);
+    expect(panelFit(THREAD_MIN + PANEL_MIN, 400)).toBe(PANEL_MIN);
+  });
+
+  it("is null when even PANEL_MIN does not fit", () => {
+    expect(panelFit(THREAD_MIN + PANEL_MIN - 1, 320)).toBeNull();
+    expect(panelFit(400, 320)).toBeNull();
+  });
+
+  it("never passes PANEL_MAX", () => {
+    expect(panelFit(4000, 9000)).toBe(PANEL_MAX);
+  });
+});
+
+describe("no room", () => {
+  beforeEach(() => rightPanel.reset());
+
+  it("keeps the stored open state, and the toggle does nothing until the row has room", () => {
+    rightPanel.open("t1");
+    rightPanel.setRoom("t1", false);
+    expect(rightPanel.hasRoom("t1")).toBe(false);
+    rightPanel.toggle("t1");
+    expect(rightPanel.get("t1").open).toBe(true);
+    rightPanel.setRoom("t1", true);
+    rightPanel.toggle("t1");
+    expect(rightPanel.get("t1").open).toBe(false);
   });
 });

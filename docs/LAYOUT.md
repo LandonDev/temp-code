@@ -190,7 +190,14 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   the thread has subagents (live or done), else Changes, else Notes; a remembered section that no
   longer exists falls back to the default.
 - **Frame.** A docked column, 320px by default, 260 to 480 by the sash on
-  its left edge, on `bg-sidebar` with the `border-border` hairline; a 36px
+  its left edge, and it yields to the thread: the thread column never goes
+  under 360px (`THREAD_MIN`), so in a narrow row the panel is drawn
+  narrower, down to 260 (`panelFit`), and in a row narrower than 620 it is
+  not drawn at all. Its stored open state stays, so it returns when the row
+  widens; meanwhile the title bar's toggle is disabled with "No room for the
+  panel" on hover, View › Show Panel is greyed and ⌘⇧R does nothing
+  (ThreadView measures its row; `rightPanel.setRoom`, `usePanelRoom`). On
+  `bg-sidebar` with the `border-border` hairline; a 36px
   header of `Tabs variant="line"` and a close button; the section's body
   below (`ActivitySection`, `FleetList`, `NotesBody`, `ChangesPanel`,
   `FileTree`, `BuildPanel`, `DebugPanel`). It toggles, never tweens its width; the body fades in
@@ -375,6 +382,14 @@ permission select follows the same rule. Right: the permission
 mode as a quiet select (none for fx) and the send button, whose glyph is
 what Enter would do. No mascot runs along the composer.
 
+The row is the `composer-bar` size container, so a narrow box gives way in
+one order, by container variants and never by script: the free space
+first, then the model button's effort word (under 384px of row) and its
+name, truncating and then gone under 208px so the harness icon is left,
+then the permission mode's label under 336px, so its icon is left (its
+accessible name and tooltip still say "Permission mode: <mode>"). Add and
+Send never shrink; every control fits a 220px box.
+
 Under the box, one quiet row (`DraftRow`) holds project, host, branch and
 type on the shell's new-thread screen and until a thread's first message;
 the project picker ends in "Choose folder…", the folder dialog whose pick
@@ -482,7 +497,10 @@ pieces it draws are surfaces/paneChrome.tsx.
   4px band on it takes the rail handles' hover and drag tints, and the
   accent when focused from the keyboard. It is focusable ("Resize panes"):
   the arrows along its axis move it 2% (Shift 10%), and a double-click
-  makes the group's panes equal. Every resize handle shares `useSashKeys`: axis
+  makes the group's panes equal. A sash between side-by-side panes keeps
+  both at 360px or more (`clampSashBoundary`, the same `THREAD_MIN` the
+  right panel yields to); where the pair is narrower than two of those it
+  parts evenly. Every resize handle shares `useSashKeys`: axis
   arrows move 2% of its container (Shift 10%), and double-click resets its size.
 - **The drop zone.** The half the pane will take, a box inset 4px with
   rounded corners, the hairline and a translucent muted fill, fading in at

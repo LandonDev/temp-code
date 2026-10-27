@@ -46,6 +46,10 @@ export type RightPanelProps = {
   onOpenFile: OpenFileFn;
   onOpenDiff: (path?: string) => void;
   onOpenSession?: (sessionId: string) => void;
+  /** The drawn width, fitted to the thread's row (ThreadView, `panelFit`); the stored width by default. */
+  width?: number;
+  /** The widest the row allows a drag to (the row less `THREAD_MIN`). */
+  maxWidth?: number;
   /** The review file the focused tab shows, relative to the git root. */
   selectedPath?: string;
 };
@@ -67,7 +71,7 @@ export function RightPanel(props: RightPanelProps) {
   const resize = useDragResize({
     edge: "left",
     min: PANEL_MIN,
-    max: () => Math.min(PANEL_MAX, Math.floor(window.innerWidth * 0.5)),
+    max: () => Math.min(PANEL_MAX, props.maxWidth ?? Math.floor(window.innerWidth * 0.5)),
     defaultWidth: PANEL_WIDTH,
     initial: state.width,
     onCommit: (next) => rightPanel.setWidth(session.id, next),
@@ -77,7 +81,7 @@ export function RightPanel(props: RightPanelProps) {
     orientation: "vertical",
     value: resize.width,
     min: PANEL_MIN,
-    max: Math.min(PANEL_MAX, Math.floor(window.innerWidth * 0.5)),
+    max: Math.min(PANEL_MAX, props.maxWidth ?? Math.floor(window.innerWidth * 0.5)),
     getSpan: (handle) => handle.parentElement?.parentElement?.getBoundingClientRect().width || window.innerWidth,
     direction: -1,
     onChange: resize.resizeTo,
@@ -91,7 +95,7 @@ export function RightPanel(props: RightPanelProps) {
       ref={resize.setPaneRef}
       aria-label="Thread panel"
       className="relative flex shrink-0 flex-col border-l border-border bg-sidebar"
-      style={{ width: state.width, contain: "strict" }}
+      style={{ width: props.width ?? state.width, contain: "strict" }}
     >
       <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border pr-1.5 pl-2">
         <Tabs

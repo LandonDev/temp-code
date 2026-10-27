@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useRef, type ComponentProps } from "react";
 import { resolveSessionContext } from "../lib/projectContext";
 import type { BackgroundWork } from "@shared/events";
 import { pendingApprovalForSession } from "../lib/approvalToast";
-import { useRightPanel } from "../lib/rightPanel";
+import { usePanelRoom, useRightPanel } from "../lib/rightPanel";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import {
   filterTabsForProjectId,
@@ -110,6 +110,7 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
   const dirtyFiles = useEditors((s) => s.dirtyFiles);
   const panel = useRightPanel(activeSessionId ?? "");
   const railOpen = panel.open;
+  const panelRoom = usePanelRoom(activeSessionId ?? "");
   // A linked project's copies are one project here: the strip and its tabs hold every copy's threads.
   const projectScope = useMemo(() => {
     const selected = selectedProjectId ? catalog.projects.find((p) => p.id === selectedProjectId) : undefined;
@@ -278,9 +279,10 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
       cost,
       running,
       railOpen,
+      panelRoom,
       ...headerEvents,
     }),
-    [archivedThreads, cost, headerEvents, headerModel, headerWorkspaceId, planReady, railOpen, running],
+    [archivedThreads, cost, headerEvents, headerModel, headerWorkspaceId, panelRoom, planReady, railOpen, running],
   );
 
   const titleTabsRef = useRef(nextTitleTabs);

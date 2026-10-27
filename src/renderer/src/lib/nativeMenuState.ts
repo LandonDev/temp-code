@@ -20,7 +20,7 @@ import { isUnread } from "./threadStripModel";
 
 export type MenuFacts = {
   sidebarOpen: boolean;
-  /** The focused root thread's panel, or `none` with no root thread on screen. */
+  /** The focused root thread's panel, or `none` with no root thread on screen or no room for it. */
   panel: "open" | "closed" | "none";
   dockOpen: boolean;
   /** The dock's cwd is a project: Show Terminal has somewhere to open. */
@@ -68,7 +68,7 @@ function readFacts(dock: { dockOpen: boolean; dockUsable: boolean }): MenuFacts 
   const unread = metas.filter((m) => markable.has(m.id) && isUnread(m, lastSeen, floor)).length;
   return {
     sidebarOpen: shellStore.getState().projectRailOpen,
-    panel: focused ? (rightPanel.get(focused).open ? "open" : "closed") : "none",
+    panel: !focused || !rightPanel.hasRoom(focused) ? "none" : rightPanel.get(focused).open ? "open" : "closed",
     ...dock,
     notesEnabled: loadNotesEnabled(),
     unread,

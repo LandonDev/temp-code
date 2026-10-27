@@ -34,6 +34,8 @@ export type ThreadHeaderProps = {
   /** Roots with live work anywhere in their tree. */
   running: number;
   railOpen: boolean;
+  /** False while the thread's row is too narrow to draw the panel. */
+  panelRoom?: boolean;
   onSelect: (id: string) => void;
   onRename: (id: string, title: string) => void;
   onArchive: (id: string) => void;
@@ -72,6 +74,7 @@ export function ThreadHeader({
   cost,
   running,
   railOpen,
+  panelRoom,
   onSelect,
   onRename,
   onArchive,
@@ -154,7 +157,7 @@ export function ThreadHeader({
             onOpenRecent={onSelect}
             archived={archived}
             onRestore={onRestore}
-            panel={{ open: railOpen, onToggle: onToggleRail }}
+            panel={{ open: railOpen, room: panelRoom, onToggle: onToggleRail }}
           />
         }
       />

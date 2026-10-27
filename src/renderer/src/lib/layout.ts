@@ -1,3 +1,4 @@
+import { THREAD_MIN } from "./rightPanel";
 import { takeReviewRequest } from "./reviewRequest";
 import type { ReleaseNotesTabSource } from "./releaseNotes";
 import type { EditorTarget } from "@shared/editor";
@@ -651,6 +652,24 @@ export function splitSizesAtBoundary(
   sizes[index] = first;
   sizes[index + 1] = pair - first;
   return sizes;
+}
+
+/**
+ * A row sash's boundary with both panes it parts kept at `THREAD_MIN` px or
+ * more of the group's `spanPx`, where the pair is wide enough for that;
+ * a pair narrower than two minimums parts evenly.
+ */
+export function clampSashBoundary(
+  sizes: readonly number[],
+  index: number,
+  boundary: number,
+  spanPx: number,
+): number {
+  if (index < 0 || index >= sizes.length - 1) return boundary;
+  const before = sizes.slice(0, index).reduce((sum, n) => sum + n, 0);
+  const pair = sizes[index] + sizes[index + 1];
+  const min = Math.min(Math.max(MIN_SIZE, spanPx > 0 ? THREAD_MIN / spanPx : 0), pair / 2);
+  return before + Math.min(pair - min, Math.max(min, boundary - before));
 }
 
 export function leafIds(node: LayoutNode): string[] {

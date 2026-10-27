@@ -27,10 +27,30 @@ import {
   placePane,
   splitPane,
   splitSizesAtBoundary,
+  clampSashBoundary,
   updateTerminalTab,
   equalizeSplit,
   type LayoutNode,
 } from "./layout";
+
+describe("clampSashBoundary", () => {
+  it("keeps both panes at 360px where the group is wide enough", () => {
+    // 1000px: 360 is 0.36 of the group.
+    expect(clampSashBoundary([0.5, 0.5], 0, 0.1, 1000)).toBeCloseTo(0.36);
+    expect(clampSashBoundary([0.5, 0.5], 0, 0.9, 1000)).toBeCloseTo(0.64);
+    expect(clampSashBoundary([0.5, 0.5], 0, 0.5, 1000)).toBeCloseTo(0.5);
+  });
+
+  it("parts evenly when the pair is narrower than two minimums", () => {
+    expect(clampSashBoundary([0.5, 0.5], 0, 0.2, 600)).toBeCloseTo(0.5);
+    expect(clampSashBoundary([0.5, 0.5], 0, 0.8, 600)).toBeCloseTo(0.5);
+  });
+
+  it("clamps within the pair it parts, in a group of three", () => {
+    // 2000px: 360 is 0.18; the pair at index 1 spans 0.3..1.
+    expect(clampSashBoundary([0.3, 0.3, 0.4], 1, 0.35, 2000)).toBeCloseTo(0.48);
+  });
+});
 
 describe("splitSizesAtBoundary", () => {
   it("moves only the adjacent panes and preserves their total", () => {

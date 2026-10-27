@@ -375,15 +375,16 @@ export function ModelPicker({
                   size="sm"
                   aria-label={`${HARNESS_TITLE[current.harness]} ${current.name}${effort ? ` ${effort}` : ""}`}
                   aria-keyshortcuts={`${MOD}.`}
-                  className="min-w-0 gap-1.5 px-2 font-normal"
+                  className="min-w-0 shrink gap-1.5 px-2 font-normal"
                 />
               }
             />
           }
         >
           <HarnessIcon harness={current.harness} className="size-3.5 shrink-0" />
-          <span className="min-w-0 truncate text-foreground">{current.name}</span>
-          {effort ? <span className="ms-1 shrink-0 text-muted-foreground">{effort}</span> : null}
+          {/* In the composer's bar the words give way to the icon as the box narrows (ComposerBar). */}
+          <span className="min-w-0 truncate text-foreground @max-[13rem]/composer-bar:hidden">{current.name}</span>
+          {effort ? <span className="ms-1 shrink-0 text-muted-foreground @max-[24rem]/composer-bar:hidden">{effort}</span> : null}
           <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
         </TooltipTrigger>
         <TooltipContent>

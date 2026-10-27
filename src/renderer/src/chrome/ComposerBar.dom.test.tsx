@@ -56,9 +56,18 @@ describe("ComposerBar", () => {
   it("holds exactly +, the model button, the mode and send for Claude and Codex", () => {
     for (const harness of ["claude", "codex"] as const) {
       const { container, unmount } = bar(harness);
-      expect(rowNames(container)).toEqual(["Add", "Opus 5.5", "Permission mode", "Send"]);
+      expect(rowNames(container)).toEqual(["Add", "Opus 5.5", "Permission mode: Supervised", "Send"]);
       unmount();
     }
+  });
+
+  it("is a size container whose mode label gives way to its icon, and Add and Send never shrink", () => {
+    const { container } = bar("claude");
+    const row = container.querySelector<HTMLElement>("[data-composer-bar]")!;
+    expect(row.className).toContain("@container/composer-bar");
+    const mode = screen.getByRole("combobox", { name: "Permission mode: Supervised" });
+    expect(within(mode).getByText("Supervised").className).toContain("@max-[21rem]/composer-bar:hidden");
+    for (const name of ["Add", "Send"]) expect(screen.getByRole("button", { name }).className).toContain("shrink-0");
   });
 
   it("fx has no permission mode; nobody has an account, goal or context control", () => {

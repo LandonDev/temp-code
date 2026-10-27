@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { OpenFileFn } from "../../lib/search";
 import type { Session } from "../../lib/session";
 import type { ChatSource } from "./chatSlots";
@@ -16,7 +17,7 @@ const PlanView = threadViewsChunk.surface("PlanView", skeleton);
 const ResearchView = threadViewsChunk.surface("ResearchView", skeleton);
 // The panel rides its own chunk and mounts only while open, so a closed panel costs nothing.
 const RightPanel = rightPanelChunk.surface("RightPanel", <SurfaceSkeleton kind="pane" label="Loading panel" />);
-import { useRightPanel } from "../../lib/rightPanel";
+import { panelFit, rightPanel, THREAD_MIN, useRightPanel } from "../../lib/rightPanel";
 import { rightPanelChunk } from "../chunks";
 
 export type { ChatOpts } from "./chatSlots";
@@ -35,19 +36,34 @@ export type ThreadViewProps = ChatSource & {
 /** The switch on a session's thread type; null and chat fall through to
  *  ChatView, and a master thread (CLAUDE.md "Master threads") to
  *  MasterView whatever its type. Every root thread carries the right
- *  panel at its edge (surfaces/RightPanel.tsx); a subagent has none. */
+ *  panel at its edge (surfaces/RightPanel.tsx); a subagent has none. The
+ *  panel yields to the thread: it shrinks so the thread keeps `THREAD_MIN`,
+ *  and in a row too narrow for `PANEL_MIN` beside it, it is not drawn (its
+ *  open state stays, so it returns when the row widens). */
 export function ThreadView(props: ThreadViewProps) {
   const { session } = props;
   const master = isMasterThread(session);
-  const panelOpen = useRightPanel(session.id).open;
+  const panel = useRightPanel(session.id);
+  const [row, setRow] = useState<HTMLDivElement | null>(null);
+  const rowWidth = useRowWidth(row);
+  // Measured on the row, never the thread column, so the panel's width cannot feed its own measure.
+  const fit = rowWidth === null ? panel.width : panelFit(rowWidth, panel.width);
+  const root = !session.parentId;
+  useEffect(() => {
+    if (!root) return;
+    rightPanel.setRoom(session.id, fit !== null);
+  }, [fit, root, session.id]);
+  useEffect(() => (root ? () => rightPanel.setRoom(session.id, true) : undefined), [root, session.id]);
   const view = master ? <MasterView {...props} /> : typeView(props);
-  if (session.parentId) return view;
+  if (!root) return view;
   return (
-    <div className="relative flex min-h-0 min-w-0 flex-1">
+    <div ref={setRow} className="relative flex min-h-0 min-w-0 flex-1">
       {view}
-      {panelOpen ? (
+      {panel.open && fit !== null ? (
         <RightPanel
           session={session}
+          width={fit}
+          maxWidth={rowWidth === null ? undefined : rowWidth - THREAD_MIN}
           onOpenFile={props.onOpenFile}
           onOpenDiff={props.onOpenDiff}
           onOpenSession={props.onOpenSession}
@@ -55,6 +71,18 @@ export function ThreadView(props: ThreadViewProps) {
       ) : null}
     </div>
   );
+}
+
+/** The element's width, following its resizes; null until first measured. */
+function useRowWidth(el: HTMLElement | null): number | null {
+  const [width, setWidth] = useState<number | null>(null);
+  useEffect(() => {
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => setWidth(Math.round(entry.contentRect.width)));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [el]);
+  return width;
 }
 
 function typeView(props: ThreadViewProps) {
