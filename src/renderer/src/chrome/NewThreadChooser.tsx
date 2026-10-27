@@ -1,12 +1,16 @@
 import { registry } from "../lib/connection";
 import { useWorkspaces } from "../lib/tcserver/workspaces";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ThreadRules } from "@server/shared/rules";
 import type { ThreadType } from "../lib/tcserver/types";
 import { ChevronLeft, Plus, SlidersHorizontal } from "./icons";
-import { Popover } from "./Popover";
+import { Button } from "../components/ui/button";
+import { Item, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "../components/ui/item";
+import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
+import { cn } from "../lib/cn";
 import { ThreadTune, normalizeTune } from "./ThreadTune";
-import { THREAD_GLYPHS, THREAD_HINTS, THREAD_LABELS, THREAD_START_LABELS, THREAD_TINTS, THREAD_TYPES } from "../surfaces/threads/bits";
+import { THREAD_GLYPHS, THREAD_HINTS, THREAD_LABELS, THREAD_START_LABELS, THREAD_TYPES } from "../surfaces/threads/bits";
 
 const TUNABLE: ReadonlySet<ThreadType> = new Set(["orchestration", "research"]);
 
@@ -30,108 +34,138 @@ export function NewThreadChooser({
   const [open, setOpen] = useState(false);
   const [tuning, setTuning] = useState<ThreadType | null>(null);
   const [tune, setTune] = useState<ThreadRules>({});
-  const button = useRef<HTMLButtonElement | null>(null);
+  // The type whose options were last open: Back returns the focus to its button.
+  const [returnTo, setReturnTo] = useState<ThreadType | null>(null);
+  const popup = useRef<HTMLDivElement | null>(null);
+  const back = useRef<HTMLButtonElement | null>(null);
 
-  const close = () => {
-    setOpen(false);
-    setTuning(null);
-    setTune({});
-  };
+  useEffect(() => {
+    if (!open) return;
+    if (tuning) back.current?.focus();
+    else if (returnTo) popup.current?.querySelector<HTMLElement>(`[data-tune-type="${returnTo}"]`)?.focus();
+  }, [open, tuning, returnTo]);
+
   const start = (type: ThreadType, rules: ThreadRules | null = null) => {
-    close();
+    setOpen(false);
     onStart(type, rules);
+  };
+  const openTune = (type: ThreadType) => {
+    setReturnTo(type);
+    setTuning(type);
   };
 
   if (!environmentId) return null;
 
-  return (
+  const button = (
+    <Button
+      variant="ghost"
+      size={empty ? "sm" : "icon-sm"}
+      aria-label={empty ? undefined : "New thread"}
+      data-tauri-drag-region="false"
+      className="text-muted-foreground hover:text-foreground aria-expanded:text-foreground"
+    />
+  );
+  const face = (
     <>
-      <button
-        ref={button}
-        type="button"
-        title="New thread"
-        aria-label="New thread"
-        aria-expanded={open}
-        data-tauri-drag-region="false"
-        onClick={() => (open ? close() : setOpen(true))}
-        className={`flex h-6 shrink-0 items-center gap-1 rounded-md text-content/40 hover:bg-content/5 hover:text-content ${
-          empty ? "px-2 text-[13px]" : "w-6 justify-center"
-        } ${open ? "bg-content/10 text-content" : ""}`}
-      >
-        <Plus className="size-3.5" strokeWidth={1.75} />
-        {empty ? <span>New thread</span> : null}
-      </button>
-      {open ? (
-        <Popover
-          anchor={button}
-          side="bottom"
-          align="start"
-          width={tuning ? 360 : 272}
-          className="flex flex-col p-1"
-          onDismiss={close}
-          ignore="[aria-label='New thread']"
-        >
-          {tuning ? (
-            <>
-              <div className="flex items-center gap-1 px-1 pt-0.5">
-                <button
-                  type="button"
-                  aria-label="Back"
-                  onClick={() => setTuning(null)}
-                  className="pressable grid size-6 place-items-center rounded-md text-content/50 hover:bg-content/5 hover:text-content"
-                >
-                  <ChevronLeft className="size-3.5" strokeWidth={1.75} />
-                </button>
-                <span className="text-[13px] font-medium text-content">
-                  {THREAD_LABELS[tuning]} options
-                </span>
-              </div>
-              <ThreadTune environmentId={environmentId} tune={tune} onChange={setTune} workspaceId={workspaceId} />
-              <div className="flex justify-end px-1 pb-1 pt-2">
-                <button
-                  type="button"
-                  onClick={() => start(tuning, normalizeTune(tune))}
-                  className="rounded-md bg-content px-3 py-1.5 text-[12px] font-medium text-background-base hover:bg-content/70"
-                >
-                  Start {THREAD_LABELS[tuning].toLowerCase()}
-                </button>
-              </div>
-            </>
-          ) : (
-            THREAD_TYPES.map((type) => {
-              const Glyph = THREAD_GLYPHS[type];
-              return (
-                <div key={type} className="group flex items-center rounded-lg hover:bg-content/5">
-                  <button
-                    type="button"
-                    onClick={() => start(type)}
-                    className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-left"
-                  >
-                    <span className={`grid size-6 shrink-0 place-items-center rounded-md bg-content/6 ${THREAD_TINTS[type]}`}>
-                      <Glyph className="size-3.5" strokeWidth={1.75} />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block text-[13px] text-content">{THREAD_START_LABELS[type] ?? THREAD_LABELS[type]}</span>
-                      <span className="block truncate text-[11px] text-content/40">{THREAD_HINTS[type]}</span>
-                    </span>
-                  </button>
-                  {TUNABLE.has(type) ? (
-                    <button
-                      type="button"
-                      title={`${THREAD_LABELS[type]} options`}
-                      aria-label={`${THREAD_LABELS[type]} options`}
-                      onClick={() => setTuning(type)}
-                      className="mr-1 grid size-6 shrink-0 place-items-center rounded-md text-content/40 opacity-0 hover:bg-content/10 hover:text-content group-hover:opacity-100 focus-visible:opacity-100"
-                    >
-                      <SlidersHorizontal className="size-3.5" strokeWidth={1.75} />
-                    </button>
-                  ) : null}
-                </div>
-              );
-            })
-          )}
-        </Popover>
-      ) : null}
+      <Plus strokeWidth={1.5} />
+      {empty ? "New thread" : null}
     </>
+  );
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={setOpen}
+      onOpenChangeComplete={(isOpen) => {
+        // Reset only once the exit has played, so the popover leaves as it was.
+        if (isOpen) return;
+        setTuning(null);
+        setTune({});
+        setReturnTo(null);
+      }}
+    >
+      {empty ? (
+        <PopoverTrigger render={button}>{face}</PopoverTrigger>
+      ) : (
+        <Tooltip>
+          <TooltipTrigger render={<PopoverTrigger render={button} />}>{face}</TooltipTrigger>
+          <TooltipContent side="bottom">New thread</TooltipContent>
+        </Tooltip>
+      )}
+      <PopoverContent ref={popup} align="start" className={cn("gap-0 p-1", tuning ? "w-90" : "w-68")}>
+        {tuning ? (
+          <>
+            <div className="flex items-center gap-1 px-1 pt-1">
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      ref={back}
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label="Back"
+                      className="text-muted-foreground hover:text-foreground"
+                      onClick={() => setTuning(null)}
+                    />
+                  }
+                >
+                  <ChevronLeft strokeWidth={1.5} />
+                </TooltipTrigger>
+                <TooltipContent>Back</TooltipContent>
+              </Tooltip>
+              <span className="text-[13px] font-medium text-foreground">{THREAD_LABELS[tuning]} options</span>
+            </div>
+            <ThreadTune environmentId={environmentId} tune={tune} onChange={setTune} workspaceId={workspaceId} />
+            <div className="flex justify-end px-4 pb-3">
+              <Button size="sm" onClick={() => start(tuning, normalizeTune(tune))}>
+                Start {THREAD_LABELS[tuning].toLowerCase()}
+              </Button>
+            </div>
+          </>
+        ) : (
+          THREAD_TYPES.map((type) => {
+            const Glyph = THREAD_GLYPHS[type];
+            const tunable = TUNABLE.has(type);
+            return (
+              <div key={type} className="group/row flex items-center rounded-lg hover:bg-muted">
+                <Item
+                  size="xs"
+                  render={<button type="button" />}
+                  className="min-w-0 flex-1 text-start"
+                  onClick={() => start(type)}
+                >
+                  <ItemMedia>
+                    <Glyph className="size-3.5" strokeWidth={1.5} />
+                  </ItemMedia>
+                  <ItemContent className="min-w-0">
+                    <ItemTitle>{THREAD_START_LABELS[type] ?? THREAD_LABELS[type]}</ItemTitle>
+                    <ItemDescription className="mt-0.5">{THREAD_HINTS[type]}</ItemDescription>
+                  </ItemContent>
+                </Item>
+                {tunable ? (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          aria-label={`${THREAD_LABELS[type]} options`}
+                          data-tune-type={type}
+                          className="me-1 text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover/row:opacity-100 group-focus-within/row:opacity-100"
+                          onClick={() => openTune(type)}
+                        />
+                      }
+                    >
+                      <SlidersHorizontal strokeWidth={1.5} />
+                    </TooltipTrigger>
+                    <TooltipContent>{THREAD_LABELS[type]} options</TooltipContent>
+                  </Tooltip>
+                ) : null}
+              </div>
+            );
+          })
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }

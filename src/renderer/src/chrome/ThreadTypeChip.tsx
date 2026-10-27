@@ -1,14 +1,6 @@
-import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { ChevronDown } from "./icons";
-import { Popover } from "./Popover";
 import type { ThreadType } from "../lib/tcserver/types";
-import {
-  THREAD_GLYPHS,
-  THREAD_HINTS,
-  THREAD_LABELS,
-  THREAD_TINTS,
-  THREAD_TYPES,
-} from "../surfaces/threads/bits";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import { THREAD_GLYPHS, THREAD_HINTS, THREAD_LABELS, THREAD_TYPES } from "../surfaces/threads/bits";
 
 type Props = {
   value: ThreadType;
@@ -16,111 +8,50 @@ type Props = {
   onClose?: () => void;
 };
 
-const MENU_WIDTH = 272;
+const ITEMS = THREAD_TYPES.map((type) => ({ value: type, label: THREAD_LABELS[type] }));
 
-/** What kind of thread this is, in the composer's top row. Same shape as
- *  the access picker: a chip that opens a listbox of the five types. */
+/** What kind of thread this is, in the composer's top row: a select of
+ *  the thread types, each with its hint under its name. Closing hands the
+ *  focus back to the composer through `onClose`. */
 export function ThreadTypeChip({ value, onChange, onClose }: Props) {
-  const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(() => Math.max(0, THREAD_TYPES.indexOf(value)));
-  const root = useRef<HTMLDivElement>(null);
   const Glyph = THREAD_GLYPHS[value];
-
-  const dismiss = (restore: boolean) => {
-    setOpen(false);
-    if (restore) onClose?.();
-  };
-  const pick = (type: ThreadType) => {
-    if (type !== value) onChange(type);
-    dismiss(true);
-  };
-  const onMenuKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setActive((i) => Math.min(THREAD_TYPES.length - 1, i + 1));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setActive((i) => Math.max(0, i - 1));
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      pick(THREAD_TYPES[active]);
-    }
-  };
-
   return (
-    <div ref={root} className="relative shrink-0" data-thread-type-picker>
-      <button
-        type="button"
-        title={THREAD_HINTS[value]}
-        aria-label={`Thread type: ${THREAD_LABELS[value]}`}
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={() => {
-          if (open) {
-            dismiss(true);
-            return;
-          }
-          setActive(Math.max(0, THREAD_TYPES.indexOf(value)));
-          setOpen(true);
-        }}
-        className={`flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] ${
-          open ? "bg-content/10 text-content" : "text-content/70 hover:bg-content/8 hover:text-content"
-        }`}
+    <Select
+      items={ITEMS}
+      value={value}
+      onValueChange={(next) => {
+        if (next !== null && next !== value) onChange(next as ThreadType);
+      }}
+      onOpenChange={(open) => {
+        if (!open) onClose?.();
+      }}
+    >
+      <SelectTrigger size="sm" aria-label="Thread type" data-thread-type-picker className="shrink-0">
+        <SelectValue>
+          <Glyph className="size-3.5" strokeWidth={1.5} />
+          {THREAD_LABELS[value]}
+        </SelectValue>
+      </SelectTrigger>
+      {/* The composer takes the focus back itself, so the trigger must not. */}
+      <SelectContent
+        align="start"
+        data-thread-type-picker
+        finalFocus={onClose ? false : undefined}
+        className="w-72 p-1"
       >
-        <Glyph className={`size-3.5 shrink-0 ${THREAD_TINTS[value]}`} strokeWidth={1.75} />
-        <span className="min-w-0 truncate">{THREAD_LABELS[value]}</span>
-        <ChevronDown
-          className={`size-3 shrink-0 text-content/50 ${open ? "rotate-180" : ""}`}
-          strokeWidth={1.75}
-        />
-      </button>
-      {open ? (
-        <Popover
-          anchor={root}
-          side="bottom"
-          align="start"
-          width={MENU_WIDTH}
-          autoFocus
-          onDismiss={(reason) => dismiss(reason === "escape")}
-          role="listbox"
-          aria-label="Thread type"
-          data-thread-type-picker
-          tabIndex={-1}
-          onKeyDown={onMenuKey}
-          className="p-1"
-        >
-          {THREAD_TYPES.map((type, index) => {
-            const Icon = THREAD_GLYPHS[type];
-            const selected = type === value;
-            const highlighted = index === active;
-            return (
-              <button
-                key={type}
-                type="button"
-                role="option"
-                aria-selected={selected}
-                onMouseDown={(e) => e.preventDefault()}
-                onMouseEnter={() => setActive(index)}
-                onClick={() => pick(type)}
-                className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left ${
-                  highlighted ? "bg-content/10" : ""
-                }`}
-              >
-                <Icon className={`size-4 shrink-0 ${THREAD_TINTS[type]}`} strokeWidth={1.75} />
-                <span className="min-w-0 flex-1">
-                  <span className={`block text-[12px] leading-tight ${selected ? "text-content" : "text-content"}`}>
-                    {THREAD_LABELS[type]}
-                  </span>
-                  <span className="block truncate text-[11px] leading-tight text-content/40">
-                    {THREAD_HINTS[type]}
-                  </span>
-                </span>
-              </button>
-            );
-          })}
-        </Popover>
-      ) : null}
-    </div>
+        {THREAD_TYPES.map((type) => {
+          const Icon = THREAD_GLYPHS[type];
+          return (
+            <SelectItem key={type} value={type} label={THREAD_LABELS[type]} className="items-start py-1.5">
+              <Icon className="mt-0.5 size-3.5 text-muted-foreground" strokeWidth={1.5} />
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span>{THREAD_LABELS[type]}</span>
+                <span className="whitespace-normal text-xs text-muted-foreground">{THREAD_HINTS[type]}</span>
+              </span>
+            </SelectItem>
+          );
+        })}
+      </SelectContent>
+    </Select>
   );
 }
