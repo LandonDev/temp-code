@@ -30,6 +30,7 @@ import { projectForCwd } from "../lib/tcserver/projects";
 import type { ProjectMeta } from "../lib/tcserver/types";
 import { useProjects } from "../lib/tcserver/workspaces";
 import { fleetCounts, useAgents, useMetaById } from "../lib/threads/agents";
+import { ActivitySection } from "./threads/ActivitySection";
 import { FleetList } from "./threads/fleet/FleetPanel";
 import { NotesBody } from "./threads/NotesPanel";
 
@@ -156,12 +157,12 @@ function usePanelFacts(session: Session): { facts: PanelFacts; project: ProjectM
       project: !!project?.cwd,
       agents: agents.length,
       liveAgents: counts.working + counts.waiting,
-      backgroundTasks: 0,
+      backgroundTasks: meta?.background?.tasks.length ?? 0,
       watching: status === "watching",
       devRunning,
       debug: DEBUG_SECTION,
     }),
-    [session, project, agents.length, counts.working, counts.waiting, status, devRunning],
+    [session, project, agents.length, counts.working, counts.waiting, status, devRunning, meta?.background?.tasks.length],
   );
   return { facts, project };
 }
@@ -179,7 +180,7 @@ function SectionBody({
   const gitStatuses = useGitFileStatuses(cwd, section === "files");
   switch (section) {
     case "activity":
-      return <ActivityPlaceholder session={session} />;
+      return <ActivitySection threadId={session.id} onOpenAgents={() => rightPanel.open(session.id, "agents")} />;
     case "agents":
       return (
         <FleetList
@@ -215,21 +216,4 @@ function SectionBody({
         </Suspense>
       );
   }
-}
-
-/** What the thread's meta says it waits on, until area A6 lands the live list. */
-function ActivityPlaceholder({ session }: { session: Session }) {
-  const meta = useMetaById(session.id);
-  const agents = useAgents(session.id);
-  const counts = fleetCounts(agents);
-  const lines: string[] = [];
-  if (meta?.status === "watching") lines.push(meta.activity?.trim() || "Watching the batch");
-  if (counts.working > 0) lines.push(`${counts.working} subagent${counts.working === 1 ? "" : "s"} working`);
-  if (counts.waiting > 0) lines.push(`${counts.waiting} subagent${counts.waiting === 1 ? "" : "s"} waiting on approval`);
-  if (lines.length === 0 && meta?.activity) lines.push(meta.activity);
-  return (
-    <div className="flex flex-col gap-1 px-3 py-3 text-[13px] text-foreground">
-      {lines.length === 0 ? <p className="text-muted-foreground">Nothing running.</p> : lines.map((line) => <p key={line}>{line}</p>)}
-    </div>
-  );
 }

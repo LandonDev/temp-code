@@ -26,6 +26,13 @@ vi.mock("../lib/tcserver/projects", () => ({ projectForCwd: (cwd: string) => (cw
 vi.mock("../lib/devServers", () => ({ useDevRunning: () => state.devRunning }));
 vi.mock("../hooks/useGitFileStatuses", () => ({ useGitFileStatuses: () => ({}) }));
 vi.mock("./threads/fleet/FleetPanel", () => ({ FleetList: () => <div data-testid="agents-body">agents</div> }));
+vi.mock("./threads/ActivitySection", () => ({
+  ActivitySection: ({ onOpenAgents }: { onOpenAgents: () => void }) => (
+    <button type="button" data-testid="activity-body" onClick={onOpenAgents}>
+      activity
+    </button>
+  ),
+}));
 vi.mock("./threads/NotesPanel", () => ({ NotesBody: () => <div data-testid="notes-body">notes</div> }));
 vi.mock("../chrome/rail/ChangesPanel", () => ({ ChangesPanel: () => <div data-testid="changes-body">changes</div> }));
 vi.mock("../chrome/rail/BranchPanel", () => ({ BranchPanel: () => <div>branch</div> }));
@@ -66,7 +73,10 @@ describe("RightPanel", () => {
     render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
     const tabs = screen.getAllByRole("tab").map((t) => t.textContent);
     expect(tabs).toEqual(["Activity", "Agents", "Changes", "Notes", "Files", "Branch", "Build", "Dev", "Debug"]); // a dev build (vitest) lists Debug
-    expect(screen.getByText("1 subagent working")).toBeTruthy();
+    // The Activity section's subagents row opens the Agents section.
+    fireEvent.click(screen.getByTestId("activity-body"));
+    expect(rightPanel.get("s1").section).toBe("agents");
+    fireEvent.click(screen.getByRole("tab", { name: "Activity" }));
     fireEvent.click(screen.getByRole("tab", { name: "Agents" }));
     expect(screen.getByTestId("agents-body")).toBeTruthy();
     expect(rightPanel.get("s1").section).toBe("agents");
@@ -92,5 +102,13 @@ describe("RightPanel", () => {
     expect(rightPanel.focused()).toBe("s1");
     r.unmount();
     expect(rightPanel.focused()).toBeNull();
+  });
+
+  it("a background task alone gives the thread its Activity section, shown first", () => {
+    state.meta = { id: "s1", status: "idle", background: { tasks: [{ id: "t1", label: "x", kind: "shell", startedAt: 0 }], agents: [], batch: null, watchingSince: null } } as unknown as SessionMeta;
+    rightPanel.open("s1");
+    render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
+    expect(screen.getAllByRole("tab")[0].textContent).toBe("Activity");
+    expect(screen.getByTestId("activity-body")).toBeTruthy();
   });
 });

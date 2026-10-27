@@ -42,6 +42,7 @@ import { AgentTranscript } from "./AgentTranscript";
 import { DeferredMount } from "./DeferredMount";
 import { ChatColumn, type ChatOpts, type ChatSlots } from "./threads/chatSlots";
 import { WorkingStrip } from "./threads/WorkingStrip";
+import { rightPanel } from "../lib/rightPanel";
 
 /**
  * A thread's chat column, wherever it is drawn: the pane (SessionPane), a
@@ -404,6 +405,7 @@ export function useThreadChat({
           onStop={() => onStop(sessionId)}
           onResume={resume}
           onStart={() => serverCommands.startNow(sessionId).catch(() => undefined)}
+          onOpenActivity={() => rightPanel.open(sessionId, "activity")}
         />
       ) : null,
     composer: composerOf(opts),

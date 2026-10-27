@@ -1172,6 +1172,19 @@ names the far child).
   phone's subset. The desktop transcript prints no background-task rows
   (fold.ts); the `background-task` settle event is still emitted for the
   digest and the phone.
+- Renderer: `lib/activity.ts` joins the meta's `background`, the thread's
+  dev servers (its tree's ledger rows) and its running Mac calls into
+  `activityRows` (subagents as one summary row, a master's batch as one,
+  then oldest first; `rowStale`, `hasActivity`, `stopActivity`, `stopAll` =
+  `session.killBackground`). `surfaces/threads/ActivitySection.tsx` is the
+  right panel's Activity section: 28px rows (glyph, label, a shell's
+  command under it, the age, Stop), a shell, monitor, agent or workflow row
+  folding open onto its `session.taskLog` output, the subagents row opening
+  the Agents section, a dev server row the dev servers pane. The working
+  strip's watching case says "Watching  <watchPhrase>" with the stretch's
+  age (amber with Stop all past `STALE_WATCH_MS`) and opens the section;
+  `chrome/ThreadBanners.tsx` `staleWatchers` adds one banner for the other
+  roots of the project watching that long.
 
 ## Review before merge: an optional second model between the gate and the merge
 - Off by default. Settings → Reviews holds the global set; a project's
