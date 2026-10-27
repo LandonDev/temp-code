@@ -7,9 +7,14 @@ import {
   useAppshotSettings,
 } from "../lib/appshots";
 import { openUrl } from "../lib/native";
-import { Heading, Row, SecondaryButton, Segmented, Toggle } from "./settingsBits";
+import { ChoiceSelect, type Choice } from "../components/choice-select";
+import { PageRow, PageSection } from "../components/page";
+import { SettingSwitch } from "../components/setting-switch";
+import { Button } from "../components/ui/button";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
+import { Skeleton } from "../components/ui/skeleton";
 
-const DESTINATIONS: { value: AppshotDestination; label: string }[] = [
+const DESTINATIONS: Choice<AppshotDestination>[] = [
   { value: "automatic", label: "Automatic" },
   { value: "last-chat", label: "Last chat" },
   { value: "new-chat", label: "New chat" },
@@ -18,7 +23,7 @@ const DESTINATIONS: { value: AppshotDestination; label: string }[] = [
 const PANE_URL = "x-apple.systempreferences:com.apple.preference.security?";
 const POLL_MS = 5000;
 
-/** Settings › Appshots: the capture toggle, where a shot lands, and the two macOS grants it needs. */
+/** Settings › Appshots: the capture switch, where a shot lands, and the two macOS grants it needs. */
 export function AppshotsPage() {
   const settings = useAppshotSettings();
   const perms = useAppshotPermissions();
@@ -36,68 +41,63 @@ export function AppshotsPage() {
     };
   }, []);
 
-  const prompt = useCallback(
-    () => void refreshAppshotPermissions(true).catch(() => undefined),
-    [],
-  );
+  const prompt = useCallback(() => void refreshAppshotPermissions(true).catch(() => undefined), []);
 
   if (perms && !perms.available) {
     return (
-      <Row
-        label="Not available"
-        description="Appshots need macOS and the capture helper this build ships with."
-      />
+      <Empty className="py-10">
+        <EmptyHeader>
+          <EmptyTitle>Appshots need macOS</EmptyTitle>
+          <EmptyDescription>This build has no capture helper.</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
     );
   }
 
   return (
     <>
-      <Row label="Capture on double-⌘">
-        <Toggle
-          label="Capture on double-⌘"
-          on={settings.enabled}
-          onChange={(on) => {
-            setAppshotSettings({ enabled: on });
-            // The hotkey monitor hears nothing until Accessibility is granted,
-            // so turning the feature on asks for what is missing right away.
-            if (on && perms && !(perms.screen && perms.ax)) prompt();
-          }}
-        />
-      </Row>
-      <Row
-        label="Destination"
-        description="Automatic uses the open chat, or a new one when none is open."
-      >
-        <Segmented
-          label="Destination"
-          value={settings.destination}
-          options={DESTINATIONS}
-          onChange={(destination) => setAppshotSettings({ destination })}
-        />
-      </Row>
-      <Row label="Shutter sound">
-        <Toggle
-          label="Shutter sound"
-          on={settings.sound}
-          onChange={(sound) => setAppshotSettings({ sound })}
-        />
-      </Row>
+      <PageSection>
+        <PageRow title="Capture on double-⌘">
+          <SettingSwitch
+            label="Capture on double-⌘"
+            on={settings.enabled}
+            onChange={(on) => {
+              setAppshotSettings({ enabled: on });
+              // The hotkey monitor hears nothing until Accessibility is granted,
+              // so turning the feature on asks for what is missing right away.
+              if (on && perms && !(perms.screen && perms.ax)) prompt();
+            }}
+          />
+        </PageRow>
+        <PageRow title="Destination" description="Automatic uses the open chat, else a new one.">
+          <ChoiceSelect
+            label="Destination"
+            value={settings.destination}
+            options={DESTINATIONS}
+            onChange={(destination) => setAppshotSettings({ destination })}
+          />
+        </PageRow>
+        <PageRow title="Shutter sound">
+          <SettingSwitch label="Shutter sound" on={settings.sound} onChange={(sound) => setAppshotSettings({ sound })} />
+        </PageRow>
+      </PageSection>
 
-      <Heading title="Permissions" />
-      <PermissionRow
-        label="Screen Recording"
-        description="Captures the window image."
-        granted={perms ? perms.screen : null}
-        pane="Privacy_ScreenCapture"
-        onPrompt={prompt}
-      />
-      <PermissionRow
-        label="Accessibility"
-        description="Reads the window's text and hears the double-⌘."
-        granted={perms ? perms.ax : null}
-        pane="Privacy_Accessibility"
-        onPrompt={prompt}
-      />
+      <PageSection title="Permissions">
+        <PermissionRow
+          label="Screen Recording"
+          description="Captures the window image."
+          granted={perms ? perms.screen : null}
+          pane="Privacy_ScreenCapture"
+          onPrompt={prompt}
+        />
+        <PermissionRow
+          label="Accessibility"
+          description="Reads the window's text and hears the double-⌘."
+          granted={perms ? perms.ax : null}
+          pane="Privacy_Accessibility"
+          onPrompt={prompt}
+        />
+      </PageSection>
     </>
   );
 }
@@ -116,28 +116,22 @@ function PermissionRow({
   onPrompt: () => void;
 }) {
   return (
-    <Row label={label} description={description}>
-      <span className="flex items-center gap-1.5 text-[12px] text-content/70">
-        {granted === null ? (
-          <span className="text-content/40">Checking…</span>
-        ) : (
-          <>
-            <span
-              aria-hidden
-              className={`size-1.5 rounded-full ${granted ? "bg-success" : "bg-warning"}`}
-            />
-            {granted ? "Granted" : "Not granted"}
-          </>
-        )}
-      </span>
-      {granted === false ? (
+    <PageRow title={label} description={description}>
+      {granted === null ? (
+        <Skeleton data-testid="permission-skeleton" className="h-3 w-16" />
+      ) : granted ? (
+        <span className="text-[12px] text-muted-foreground">Granted</span>
+      ) : (
         <>
-          <SecondaryButton onClick={onPrompt}>Grant</SecondaryButton>
-          <SecondaryButton onClick={() => void openUrl(PANE_URL + pane)}>
+          <span className="text-[12px] text-warning">Not granted</span>
+          <Button variant="secondary" size="sm" onClick={onPrompt}>
+            Grant
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => void openUrl(PANE_URL + pane)}>
             System Settings
-          </SecondaryButton>
+          </Button>
         </>
-      ) : null}
-    </Row>
+      )}
+    </PageRow>
   );
 }

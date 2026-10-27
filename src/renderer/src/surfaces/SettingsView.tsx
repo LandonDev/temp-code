@@ -123,11 +123,7 @@ export function SettingsView({
           {section === "providers" ? <ProvidersPage /> : null}
           {section === "orchestration" ? <OrchestrationPage /> : null}
           {section === "reviews" ? <ReviewsPage /> : null}
-          {section === "appshots" ? (
-            <div>
-              <AppshotsPage />
-            </div>
-          ) : null}
+          {section === "appshots" ? <AppshotsPage /> : null}
           {section === "remote" ? <HostsPage onOpenSession={onOpenSession} /> : null}
           {section === "archive" ? (
             <div>

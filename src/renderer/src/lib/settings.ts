@@ -61,8 +61,7 @@ export const SETTINGS_SECTIONS: {
     id: "appshots",
     group: "threads",
     label: "Appshots",
-    description:
-      "Double-tap ⌘ over another app to drop its window, image and text, into a chat.",
+    description: "Double-tap ⌘ over another app to drop its window into a chat.",
   },
   {
     id: "archive",
