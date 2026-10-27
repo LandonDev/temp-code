@@ -40,7 +40,6 @@ import {
   isHtmlRenderOverlayOpen,
 } from "./surfaces/HtmlRenderOverlay";
 import { useSidebarLayout } from "./hooks/useSidebarLayout";
-import { toggleTranscriptZen } from "./lib/appearance";
 import { perfMark } from "./lib/perfMarks";
 import { IS_MAC } from "./lib/platform";
 import { updateStore } from "./lib/updateStore";
@@ -3403,7 +3402,6 @@ export default function App() {
             const id = rightPanel.focused();
             if (id) rightPanel.toggle(id);
           });
-        case "toggle_zen": return go(() => toggleTranscriptZen());
         case "open_project": return go(() => void a.pickProject());
         case "go_to_file": return go(a.onGoToFile);
         case "go_to_symbol": return go(a.onGoToSymbol);

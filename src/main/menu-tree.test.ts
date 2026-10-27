@@ -28,7 +28,6 @@ const EXPECTED: [string, string | undefined][] = [
   ['find', 'CmdOrCtrl+F'],
   ['toggle_sidebar', 'CmdOrCtrl+B'],
   ['toggle_panel', 'CmdOrCtrl+Shift+R'],
-  ['toggle_zen', 'CmdOrCtrl+Alt+Z'],
   ['open_inbox', undefined],
   ['mark_all_read', undefined],
   ['open_notes', undefined],
@@ -53,9 +52,9 @@ describe('menu tree', () => {
     expect(actual).toEqual(EXPECTED)
   })
 
-  it('sends 39 ids to the renderer and keeps quit and profiling in main', () => {
+  it('sends 38 ids to the renderer and keeps quit and profiling in main', () => {
     expect(MAIN_MENU_IDS).toEqual(['quit', 'profile_host'])
-    expect(RENDERER_MENU_IDS).toHaveLength(39)
+    expect(RENDERER_MENU_IDS).toHaveLength(38)
     expect(RENDERER_MENU_IDS).toContain('new_window')
     expect(RENDERER_MENU_IDS).not.toContain('quit')
     expect(RENDERER_MENU_IDS).not.toContain('profile_host')

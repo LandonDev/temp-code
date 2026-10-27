@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
-import { ALT, MOD, SHIFT } from "../lib/platform";
-import { toggleTranscriptZen } from "../lib/appearance";
+import { MOD, SHIFT } from "../lib/platform";
 import { updateStore } from "../lib/updateStore";
 
 type MenuKey = "file" | "view" | "terminal";
@@ -133,9 +132,6 @@ export function MenuBar({
         case "toggle_sidebar":
           onToggleSidebar();
           break;
-        case "toggle_zen":
-          toggleTranscriptZen();
-          break;
         case "open_model_picker":
           window.dispatchEvent(new Event("open_model_picker"));
           break;
@@ -191,7 +187,6 @@ export function MenuBar({
       case "view":
         return [
           { kind: "item", id: "toggle_sidebar", label: "Toggle Sidebar", shortcut: `${MOD}B` },
-          { kind: "item", id: "toggle_zen", label: "Toggle Zen Mode", shortcut: `${MOD}${ALT}Z` },
           { kind: "item", id: "open_inbox", label: "Inbox" },
           { kind: "item", id: "mark_all_read", label: "Mark All Threads as Read" },
           ...(onOpenNotes

@@ -98,7 +98,6 @@ export const MENU_TREE: MenuSection[] = [
     items: [
       cmd('toggle_sidebar', 'Toggle Sidebar', 'CmdOrCtrl+B'),
       cmd('toggle_panel', 'Toggle Thread Panel', 'CmdOrCtrl+Shift+R'),
-      cmd('toggle_zen', 'Toggle Zen Mode', 'CmdOrCtrl+Alt+Z'),
       cmd('open_inbox', 'Inbox'),
       cmd('mark_all_read', 'Mark All Threads as Read'),
       cmd('open_notes', 'Notes'),

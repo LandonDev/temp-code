@@ -9,12 +9,9 @@ import { Progress } from "../../components/ui/progress";
 import { Spinner } from "../../components/ui/spinner";
 import { SettingSwitch } from "../../components/setting-switch";
 import {
-  loadTranscriptLayout,
   loadTranscriptAnchor,
-  saveTranscriptLayout,
   saveTranscriptAnchor,
   TRANSCRIPT_ANCHOR_CHANGE_EVENT,
-  type TranscriptLayout,
 } from "../../lib/appearance";
 import { IS_MAC } from "../../lib/platform";
 import { clearInboxCache } from "../../lib/githubTasks";
@@ -91,7 +88,6 @@ export function GeneralPage({
 }: {
   onOpenWhatsNew: (version: string, markdown?: string) => void;
 }) {
-  const [transcriptLayout, setTranscriptLayout] = useState<TranscriptLayout>(loadTranscriptLayout);
   const [transcriptAnchor, setTranscriptAnchor] = useState(loadTranscriptAnchor);
   const [midTurn, setMidTurn] = useState<MidTurnDefault>(loadMidTurnDefault);
   const [composerRunner, setComposerRunner] = useStoredFlag(loadComposerRunner, saveComposerRunner);
@@ -112,20 +108,6 @@ export function GeneralPage({
   return (
     <>
       <PageSection title="Transcript">
-        <PageRow title="Transcript layout" description="Chat sets your prompts on the right.">
-          <ChoiceSelect
-            label="Transcript layout"
-            value={transcriptLayout}
-            options={[
-              { value: "full", label: "Full width" },
-              { value: "chat", label: "Chat" },
-            ]}
-            onChange={(next) => {
-              saveTranscriptLayout(next);
-              setTranscriptLayout(next);
-            }}
-          />
-        </PageRow>
         <SwitchRow
           title="Anchor prompts to top"
           description="A sent prompt sits at the top and the reply grows below it."

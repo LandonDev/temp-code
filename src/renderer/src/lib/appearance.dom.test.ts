@@ -53,7 +53,16 @@ describe("editor font size", () => {
 
 describe("initAppearance", () => {
   it("clears the retired keys and applies the font size", () => {
-    for (const key of ["themeHue", "themeSaturation", "sidebarOpacity", "bodyGlass", "glass", "sidebarLayout"]) {
+    for (const key of [
+      "themeHue",
+      "themeSaturation",
+      "sidebarOpacity",
+      "bodyGlass",
+      "glass",
+      "sidebarLayout",
+      "transcriptLayout",
+      "transcriptZen",
+    ]) {
       localStorage.setItem(`monocode.${key}`, "1");
     }
     localStorage.setItem("monocode.colorScheme", "dark");
