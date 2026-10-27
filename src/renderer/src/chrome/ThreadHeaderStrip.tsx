@@ -121,7 +121,10 @@ export function ThreadHeaderStrip({
   const held = useHeldChips(model.live, model.dormant);
   const focusable = held.chips.some((c) => c.id === activeId) ? activeId : held.chips[0]?.id;
   return (
-    <div className="flex min-w-0 flex-1 items-center">
+    // One 40px row box: the strip stretches to it and the end group centres in
+    // it, so the chips, New thread, the thread menu and Panel share one centre
+    // at y 6, whatever else the title bar holds.
+    <div className="flex h-10 min-w-0 flex-1 items-center">
       <TooltipProvider>
         <RowsContextMenu
           label="Thread actions"
@@ -140,7 +143,7 @@ export function ThreadHeaderStrip({
           aria-orientation="horizontal"
           data-strip="live"
           data-tauri-drag-region="false"
-          className="scrollbar-none flex h-10 min-w-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none pl-[var(--strip-pad-l,6px)] pr-[var(--strip-pad-r,6px)]"
+          className="scrollbar-none flex min-w-0 self-stretch items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none pl-[var(--strip-pad-l,6px)] pr-[var(--strip-pad-r,6px)]"
         >
           {held.chips.map((chip) => (
             <Chip
