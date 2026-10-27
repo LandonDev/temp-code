@@ -2293,7 +2293,9 @@ export async function startServer(
             sendFrame({
               id: req.id,
               ok: true,
-              result: await readAttachment(req.params.path, managedRoots())
+              // The desktop's own socket reads any path (fs.* is unfenced for it too);
+              // a remote caller passed fenceRequest and meets the roots again here.
+              result: await readAttachment(req.params.path, principal.kind === 'local' ? null : managedRoots())
             })
             break
           case 'session.create': {

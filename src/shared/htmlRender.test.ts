@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   DEFAULT_TOKENS,
   HTML_RENDER_MAX_HEIGHT,
@@ -13,6 +13,7 @@ import {
   htmlRenderThemeMessage,
   injectHtmlRenderBootstrap,
   readHtmlRenderContentHeight,
+  readHtmlRenderEscape,
   readHtmlRenderLinkRequest,
   readHtmlRenderReference
 } from './htmlRender'
@@ -106,6 +107,49 @@ describe('readHtmlRenderLinkRequest', () => {
         params: { url: 'https://example.com' }
       })
     ).toBeUndefined()
+  })
+})
+
+describe('readHtmlRenderEscape', () => {
+  it('reads only a tc/escape notification', () => {
+    expect(readHtmlRenderEscape({ jsonrpc: '2.0', method: 'tc/escape' })).toBe(true)
+    expect(readHtmlRenderEscape({ method: 'tc/escape' })).toBe(false)
+    expect(readHtmlRenderEscape({ jsonrpc: '2.0', method: 'ui/open-link' })).toBe(false)
+    expect(readHtmlRenderEscape('tc/escape')).toBe(false)
+    expect(readHtmlRenderEscape(null)).toBe(false)
+  })
+})
+
+describe('the bootstrap passes Escape up', () => {
+  /** Runs the injected script against a framed page's stand-in window and returns its keydown handler. */
+  const framed = () => {
+    const script = /<script>([\s\S]*?)<\/script>/.exec(injectHtmlRenderBootstrap('<p>x</p>'))![1]!
+    const keydown: ((e: unknown) => void)[] = []
+    const posted: unknown[] = []
+    const win = {
+      parent: { postMessage: (data: unknown) => posted.push(data) },
+      addEventListener: (type: string, f: (e: unknown) => void) => {
+        if (type === 'keydown') keydown.push(f)
+      }
+    }
+    const doc = { getElementById: () => ({ textContent: '' }), addEventListener: () => {} }
+    new Function('window', 'document', 'location', 'history', script)(win, doc, { hash: '' }, {})
+    return { keydown, posted }
+  }
+
+  it('posts tc/escape for an Escape the page left alone, and nothing for one it took or another key', () => {
+    vi.useFakeTimers()
+    try {
+      const { keydown, posted } = framed()
+      expect(keydown).toHaveLength(1)
+      keydown[0]!({ key: 'Escape', defaultPrevented: false })
+      keydown[0]!({ key: 'Escape', defaultPrevented: true })
+      keydown[0]!({ key: 'Enter', defaultPrevented: false })
+      vi.runAllTimers()
+      expect(posted).toEqual([{ jsonrpc: '2.0', method: 'tc/escape' }])
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

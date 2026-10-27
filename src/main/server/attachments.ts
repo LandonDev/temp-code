@@ -51,10 +51,12 @@ export async function saveAttachment(name: string, dataBase64: string): Promise<
 /** Data URL for thumbnails. Fenced to the attachments dir and the
  *  app-managed roots, by real path on a segment boundary (fence.ts
  *  insideRoots): `/a/b` holds `/a/b/c`, never the sibling `/a/bc` a bare
- *  startsWith admitted, nor a symlink inside that points out. */
-export async function readAttachment(path: string, allowedRoots: string[]): Promise<string> {
+ *  startsWith admitted, nor a symlink inside that points out. `null` roots
+ *  read anywhere: only this machine's own desktop socket passes it, for an
+ *  image picked from ~/Downloads that keeps its own path. */
+export async function readAttachment(path: string, allowedRoots: string[] | null): Promise<string> {
   const abs = resolve(path)
-  if (!insideRoots(abs, [ATTACH_DIR, ...allowedRoots])) {
+  if (allowedRoots && !insideRoots(abs, [ATTACH_DIR, ...allowedRoots])) {
     throw new Error('path outside app-managed directories')
   }
   const info = await stat(abs)

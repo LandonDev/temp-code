@@ -199,6 +199,14 @@ export function resolveAssetPath(url: string): string | null {
 
 const PREVIEW_PATH = /^\/preview\/([a-f0-9]+)\.html$/
 
+/** The desktop renderer's name for its own main process (`LOCAL_ENVIRONMENT_ID`). */
+export const LOCAL_HOST = 'local'
+
+/** Whether a `host` param on an asset URL names another machine: no host, `local` and this server's own id are this one. */
+export function isOtherHost(host: string | null, self: string | undefined): boolean {
+  return !!host && host !== LOCAL_HOST && host !== self
+}
+
 /** One handler for every session that serves the scheme (the app's and the preview window's). */
 export async function handleAssetRequest(request: Request): Promise<Response> {
   const url = new URL(request.url)
@@ -207,7 +215,7 @@ export async function handleAssetRequest(request: Request): Promise<Response> {
   if (url.host === 'file') {
     // A thread of another host: its token lives there, not in this process's table.
     const host = url.searchParams.get('host')
-    if (host && remoteMedia && host !== remoteMedia.environmentId) return serveRemoteMedia(host, url, request)
+    if (remoteMedia && isOtherHost(host, remoteMedia.environmentId)) return serveRemoteMedia(host!, url, request)
     return serveMedia(request)
   }
   if (url.host === 'page') {
@@ -221,7 +229,7 @@ export async function handleAssetRequest(request: Request): Promise<Response> {
     }
     // A thread of another host: its page lives there, not under this userData.
     const host = url.searchParams.get('host')
-    if (host && remotePages && host !== remotePages.environmentId) return serveRemotePage(host, url)
+    if (remotePages && isOtherHost(host, remotePages.environmentId)) return serveRemotePage(host!, url)
   }
   const path = resolveAssetPath(request.url)
   if (!path) return new Response('not found', { status: 404 })

@@ -260,11 +260,19 @@ An image (chrome/Lightbox.tsx) and an agent's HTML page
 store (lightboxStore.ts, htmlRenderOverlayStore.ts) and each in a lazy
 chunk, so neither Dialog is in the first paint. The lightbox has no chrome but the close, the arrows at the
 window's sides and the 12px counter; a slide change fades over
-`--dur-fast`. The page is capped at 1152px wide on `background`, the
+`--dur-fast`. The page fills the same frame on `background`, the
 document filling it, one secondary close button over its top right corner
-and no title bar. Escape and the arrow keys reach both through the command
-map (lib/appCommands.ts); a click outside the image or the page closes
-them.
+that holds focus when it opens, and no title bar. Escape and the arrow keys
+reach both through the command map (lib/appCommands.ts); while focus is
+inside the page, its bootstrap script passes an Escape the page did not take
+up as `tc/escape` (shared/htmlRender.ts), so a page saved before that closes
+only through Close or a click outside. A click outside the image or the
+page closes them, and focus goes back to what opened them. An image on a
+sent message is always a Preview button that opens the lightbox: the chip
+shows the thumbnail once its bytes arrive and the file's glyph until then,
+and the lightbox says "Couldn't open <name>" when they never do. This
+machine's desktop reads an image at any path (`attachment.read` is fenced
+only for remote callers).
 
 ### Project dialogs on a linked project
 

@@ -57,7 +57,7 @@ describe('FENCED_PARAMS', () => {
   /** Fenced elsewhere, or a key that only looks like a path (`from` is a host id on accounts.*, peer.register, peer.presence, relay.notice, ports.*, session.move (local-only), harness.manifest and memory.exchange, whose relPaths are checked against their sets in harnessSet.ts and memorySet.ts). */
   // The mac.* paths name files on the Mac, not here: they are local-only on this host, and the
   // Mac enforces its own policy (managed roots, shared folders, per-request approval) in macBridge.ts.
-  const OWN_FENCE = new Set(['fs.media', 'file.read', 'attachment.read', 'accounts.push', 'accounts.pull', 'accounts.removed', 'accounts.headroom', 'harness.manifest', 'memory.exchange', 'session.move', 'peer.register', 'peer.presence', 'relay.notice', 'ports.bound', 'ports.open', 'ports.data', 'ports.close', 'mac.readFile', 'mac.listDir', 'mac.fetchFile', 'mac.run', 'mac.writeFile'])
+  const OWN_FENCE = new Set(['fs.media', 'file.read', 'accounts.push', 'accounts.pull', 'accounts.removed', 'accounts.headroom', 'harness.manifest', 'memory.exchange', 'session.move', 'peer.register', 'peer.presence', 'relay.notice', 'ports.bound', 'ports.open', 'ports.data', 'ports.close', 'mac.readFile', 'mac.listDir', 'mac.fetchFile', 'mac.run', 'mac.writeFile'])
   const paramsOf = (option: z.ZodTypeAny): z.ZodObject<z.ZodRawShape> | null => {
     let schema = (option as z.ZodObject<{ params: z.ZodTypeAny }>).shape.params
     while (schema instanceof z.ZodOptional || schema instanceof z.ZodDefault)
@@ -74,7 +74,7 @@ describe('FENCED_PARAMS', () => {
       if (keys.some((k) => /Id$/.test(k))) continue // relative to a project, workspace or session
       if (!keys.some((k) => PATH_KEYS.has(k))) continue
       if (OWN_FENCE.has(method)) continue
-      if (!(method in FENCED_PARAMS)) missing.push(method)
+      if (!(method in FENCED_PARAMS) && !(method in ATTACHMENT_PARAMS)) missing.push(method)
     }
     expect(missing).toEqual([])
   })
@@ -93,7 +93,7 @@ describe('FENCED_PARAMS', () => {
       if (params && 'attachments' in params.shape && !(method in ATTACHMENT_PARAMS)) missing.push(method)
     }
     expect(missing).toEqual([])
-    expect(Object.keys(ATTACHMENT_PARAMS).sort()).toEqual(['queue.add', 'session.send'])
+    expect(Object.keys(ATTACHMENT_PARAMS).sort()).toEqual(['attachment.read', 'queue.add', 'session.send'])
   })
   it('names the right params', () => {
     const req = (method: string, params: unknown): ClientRequest => ({ id: '1', method, params }) as ClientRequest
@@ -128,6 +128,7 @@ describe('FENCED_PARAMS', () => {
     expect(attachmentPaths(req('queue.add', { sessionId: 's', text: 't', attachments: atts.slice(0, 2) }))).toEqual(['/r/a.png'])
     expect(attachmentPaths(req('session.send', { sessionId: 's', text: 't' }))).toEqual([])
     expect(attachmentPaths(req('session.list', {}))).toBeNull()
+    expect(attachmentPaths(req('attachment.read', { path: '/a' }))).toEqual(['/a'])
   })
 })
 
@@ -181,6 +182,14 @@ describe('fenceRequest on attachments', () => {
     expect(() => fenceRequest(req2('fs.readText', { path: join(pasteDir(), 'p.png') }), [root], [pasteDir()])).toThrow(FenceError)
   })
   const req2 = (method: string, params: unknown): ClientRequest => ({ id: '1', method, params }) as ClientRequest
+  it('fences a remote attachment.read to the roots and the paste dir', () => {
+    const read = (path: string) => fenceRequest(req2('attachment.read', { path }), [root], [pasteDir()])
+    expect(() => read(join(root, 'src', 'a.ts'))).not.toThrow()
+    expect(() => read(join(pasteDir(), 'p.png'))).not.toThrow()
+    expect(() => read(join(dir, 'repo-other', 'x.png'))).toThrow(FenceError)
+    expect(() => read(join(root, 'link-out'))).toThrow(FenceError)
+    expect(() => read('~/.ssh/id_rsa')).toThrow(FenceError)
+  })
 })
 
 describe('fenceRequest', () => {

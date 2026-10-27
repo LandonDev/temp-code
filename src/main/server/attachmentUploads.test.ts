@@ -340,4 +340,11 @@ describe('readAttachment', () => {
     await expect(readAttachment(join(sibling, 'b.png'), [root])).rejects.toThrow('outside app-managed')
     await expect(readAttachment(join(root, '..', 'repo-evil', 'b.png'), [root])).rejects.toThrow('outside app-managed')
   })
+  it('reads a file outside every root with null roots, the desktop socket\'s own read', async () => {
+    const downloads = join(dir, 'Downloads')
+    mkdirSync(downloads, { recursive: true })
+    writeFileSync(join(downloads, 'shot.png'), 'png')
+    await expect(readAttachment(join(downloads, 'shot.png'), null)).resolves.toMatch(/^data:image\/png;base64,/)
+    await expect(readAttachment(join(downloads, 'shot.png'), [join(dir, 'repo')])).rejects.toThrow('outside app-managed')
+  })
 })

@@ -8,6 +8,7 @@ import {
   htmlRenderThemeFragment,
   htmlRenderThemeMessage,
   readHtmlRenderContentHeight,
+  readHtmlRenderEscape,
   readHtmlRenderLinkRequest,
   type HtmlRenderReference,
 } from "@shared/htmlRender";
@@ -84,6 +85,8 @@ export function HtmlRenderDocument(props: {
   readonly className?: string;
   /** Receives the page's content height whenever it changes, so an inline frame can fit it. */
   readonly onContentHeight?: (height: number) => void;
+  /** Escape pressed inside the page, which this document never sees as a key; the viewer closes on it. */
+  readonly onEscape?: () => void;
 }) {
   const theme = useHtmlRenderTheme();
   const frameRef = useRef<HTMLIFrameElement>(null);
@@ -130,6 +133,15 @@ export function HtmlRenderDocument(props: {
     window.addEventListener("message", resize);
     return () => window.removeEventListener("message", resize);
   }, [onContentHeight]);
+  const { onEscape } = props;
+  useEffect(() => {
+    if (onEscape === undefined) return;
+    const escape = (event: MessageEvent) => {
+      if (readHtmlRenderEscape(event.data) && event.source === frameRef.current?.contentWindow) onEscape();
+    };
+    window.addEventListener("message", escape);
+    return () => window.removeEventListener("message", escape);
+  }, [onEscape]);
   return (
     <iframe
       ref={frameRef}

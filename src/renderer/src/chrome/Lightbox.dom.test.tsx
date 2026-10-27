@@ -74,6 +74,25 @@ describe('Lightbox', () => {
     expect(isLightboxOpen()).toBe(false)
   })
 
+  it('Escape closes it and focus goes back to the button that opened it', async () => {
+    render(
+      <>
+        <button type="button" onClick={() => openLightbox(items, 0)}>
+          Preview one.png
+        </button>
+        <Lightbox />
+      </>,
+    )
+    const opener = screen.getByRole('button', { name: 'Preview one.png' })
+    opener.focus()
+    fireEvent.click(opener)
+    await waitFor(() => expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true))
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' })
+    expect(isLightboxOpen()).toBe(false)
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    await waitFor(() => expect(document.activeElement).toBe(opener))
+  })
+
   it('a second mounted host renders nothing: one overlay for split panes', () => {
     render(
       <>

@@ -96,7 +96,8 @@ export function AttachmentChip({ environmentId, attachment, onRemove, onOpen, pr
         <AttachmentTitle>{attachment.name}</AttachmentTitle>
         {line ? <AttachmentDescription className="tabular-nums">{line}</AttachmentDescription> : null}
       </AttachmentContent>
-      {image && onOpen ? (
+      {/* An image always opens: the viewer reads it by path and says when it can't. */}
+      {attachment.kind === 'image' && onOpen ? (
         <AttachmentTrigger {...lightboxChunk.intent} onClick={onOpen} aria-label={`Preview ${attachment.name}`} className="cursor-zoom-in" />
       ) : null}
       {onRemove ? (

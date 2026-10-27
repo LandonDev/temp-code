@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const imageDataFor = vi.fn((_environmentId: string, _path: string) => Promise.resolve("data:image/png;base64,AA=="));
@@ -8,7 +8,8 @@ vi.mock("./lightboxStore", async (importOriginal) => ({
   imageDataFor: (environmentId: string, path: string) => imageDataFor(environmentId, path),
 }));
 
-import { AttachmentChip } from "./AttachmentChip";
+import { AttachmentChip, openAttachmentImages } from "./AttachmentChip";
+import { closeLightbox, lightboxSnapshot } from "./lightboxStore";
 import type { Attachment } from "../lib/session";
 
 class FakeObserver {
@@ -30,6 +31,8 @@ const history: Attachment = {
 };
 
 afterEach(() => {
+  closeLightbox();
+  cleanup();
   vi.unstubAllGlobals();
   imageDataFor.mockClear();
 });
@@ -56,5 +59,26 @@ describe("AttachmentChip", () => {
     expect(container.textContent).toContain("Failed");
     expect(container.querySelector("[data-slot=attachment]")?.getAttribute("data-state")).toBe("error");
     expect(container.querySelector("[data-slot=attachment]")?.hasAttribute("title")).toBe(false);
+  });
+
+  it("draws Preview on a path-only image whose bytes never came, and opens the viewer on it", async () => {
+    vi.stubGlobal("IntersectionObserver", FakeObserver);
+    imageDataFor.mockImplementationOnce(() => Promise.resolve(null as unknown as string));
+    const { container } = render(
+      <AttachmentChip environmentId="local" attachment={history} onOpen={() => openAttachmentImages("local", [history], history)} />,
+    );
+    await act(async () => FakeObserver.last!.cb([{ isIntersecting: true }]));
+    expect(container.querySelector("img")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Preview shot.png" }));
+    expect(lightboxSnapshot()).toEqual({
+      items: [{ environmentId: "local", name: "shot.png", src: undefined, path: "/tmp/shot.png" }],
+      index: 0,
+    });
+  });
+
+  it("a file has no Preview button", () => {
+    const file: Attachment = { id: "f", name: "log.txt", mimeType: "text/plain", kind: "file", size: 4096 } as Attachment;
+    render(<AttachmentChip environmentId="local" attachment={file} onOpen={() => {}} />);
+    expect(screen.queryByRole("button", { name: "Preview log.txt" })).toBeNull();
   });
 });

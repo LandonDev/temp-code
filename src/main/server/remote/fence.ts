@@ -146,7 +146,9 @@ const attachmentFiles = (p: { attachments?: WireAttachment[] }): string[] =>
  */
 export const ATTACHMENT_PARAMS: { [M in ClientRequest['method']]?: Picker<M> } = {
   'session.send': attachmentFiles,
-  'queue.add': attachmentFiles
+  'queue.add': attachmentFiles,
+  // A thumbnail read: the same roots readAttachment admits a remote caller.
+  'attachment.read': path
 }
 
 /** The paths a request names, or null when the method takes none. */

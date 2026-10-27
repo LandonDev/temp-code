@@ -1,6 +1,7 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
 const dataDir = mkdtempSync(join(tmpdir(), 'tc-assets-'))
@@ -8,11 +9,23 @@ afterAll(() => rmSync(dataDir, { recursive: true, force: true }))
 
 vi.mock('electron', () => ({
   app: { getPath: () => dataDir },
-  net: {},
+  // Reads the file a served path names; a missing file throws, as net.fetch would refuse it.
+  net: { fetch: async (url: string) => new Response(readFileSync(fileURLToPath(url))) },
   protocol: {}
 }))
 
-const { handleAssetRequest, resolveAssetPath, setRemoteMedia, setRemotePages } = await import('./assets')
+const { handleAssetRequest, isOtherHost, resolveAssetPath, setRemoteMedia, setRemotePages } = await import('./assets')
+
+describe('isOtherHost', () => {
+  it('reads no host, `local` and the server\'s own id as this machine, any other id as another', () => {
+    expect(isOtherHost(null, 'env_me')).toBe(false)
+    expect(isOtherHost('', 'env_me')).toBe(false)
+    expect(isOtherHost('local', 'env_me')).toBe(false)
+    expect(isOtherHost('env_me', 'env_me')).toBe(false)
+    expect(isOtherHost('env_box', 'env_me')).toBe(true)
+    expect(isOtherHost('env_box', undefined)).toBe(true)
+  })
+})
 
 describe('a page of another host', () => {
   const read = vi.fn(async (_host: string, sessionId: string, pageId: string) =>
@@ -47,6 +60,16 @@ describe('a page of another host', () => {
     expect((await page('env_me')).status).toBe(404)
     expect(read).toHaveBeenCalledTimes(3)
     expect((await page('..%2F..')).status).toBe(404)
+    expect(read).toHaveBeenCalledTimes(3)
+  })
+
+  it('serves `?host=local`, the desktop\'s name for its own host, from disk without a peer read', async () => {
+    mkdirSync(join(dataDir, 'html-renders', 'sess-9'), { recursive: true })
+    writeFileSync(join(dataDir, 'html-renders', 'sess-9', 'mine.html'), '<p>on this machine</p>')
+    const res = await page('local', '/sess-9/mine.html')
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Content-Type')).toBe('text/html; charset=utf-8')
+    expect(await res.text()).toBe('<p>on this machine</p>')
     expect(read).toHaveBeenCalledTimes(3)
   })
 })
@@ -101,6 +124,7 @@ describe('media of another host', () => {
     read.mockClear()
     // This host's own id on the URL: the local token table, which has no such token here.
     expect((await media('env_me')).status).toBe(404)
+    expect((await media('local')).status).toBe(404)
     expect(read).not.toHaveBeenCalled()
   })
 })

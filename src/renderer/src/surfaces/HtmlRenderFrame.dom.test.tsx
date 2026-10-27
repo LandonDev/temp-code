@@ -3,7 +3,7 @@ import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HTML_RENDER_MAX_HEIGHT } from "@shared/htmlRender";
 import { SCHEME_CHANGE_EVENT } from "../lib/appearance";
-import { HtmlRenderRow } from "./HtmlRenderFrame";
+import { HtmlRenderDocument, HtmlRenderRow } from "./HtmlRenderFrame";
 
 const reference = {
   sessionId: "sess",
@@ -71,5 +71,23 @@ describe("HtmlRenderRow", () => {
     expect(message.method).toBe("ui/notifications/host-context-changed");
     expect(message.params.theme).toBe("light");
     expect(frame.getAttribute("src")).toBe(src);
+  });
+});
+
+describe("HtmlRenderDocument", () => {
+  const escape = { jsonrpc: "2.0", method: "tc/escape" };
+  it("calls onEscape for a tc/escape from its own page only", () => {
+    const onEscape = vi.fn();
+    const { container } = render(<HtmlRenderDocument src="tempcode-asset://page/s/p.html" title="Page" onEscape={onEscape} />);
+    const frame = container.querySelector("iframe")!;
+    act(() => {
+      window.dispatchEvent(new MessageEvent("message", { data: escape, source: window }));
+    });
+    expect(onEscape).not.toHaveBeenCalled();
+    act(() => {
+      window.dispatchEvent(new MessageEvent("message", { data: sizeChanged(300), source: frame.contentWindow }));
+      window.dispatchEvent(new MessageEvent("message", { data: escape, source: frame.contentWindow }));
+    });
+    expect(onEscape).toHaveBeenCalledTimes(1);
   });
 });
