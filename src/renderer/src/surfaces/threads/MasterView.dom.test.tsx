@@ -1031,10 +1031,10 @@ describe("the master view", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Remove Gate" }));
     expect(ids()).toEqual(["land", "release"]);
     // A built-in kind lands at once with its name.
-    await pick(within(dialog).getByRole("combobox", { name: "Add a step" }), "Deploy to the box");
+    await pick(await within(dialog).findByRole("combobox", { name: "Add a step" }), "Deploy to the box");
     expect(ids()).toEqual(["land", "release", "deploy"]);
     // A shell step asks for a name and a command first; Add stays off until both are there.
-    await pick(within(dialog).getByRole("combobox", { name: "Add a step" }), "Shell command");
+    await pick(await within(dialog).findByRole("combobox", { name: "Add a step" }), "Shell command");
     const addStep = within(dialog).getByRole("button", { name: "Add step" });
     expect(addStep.hasAttribute("disabled")).toBe(true);
     fireEvent.change(within(dialog).getByLabelText("Step name"), { target: { value: "Smoke test" } });

@@ -35,6 +35,7 @@ vi.mock("../../../chrome/ModelPicker", () => ({ ModelPicker: () => <span /> }));
 
 import { AddThreadDialog, hostChoices } from "./AddThreadDialog";
 import { loadLinkHosts } from "../../../lib/projectHostChoice";
+import { tooltipChunk, warmTooltips } from "@renderer/components/ui/tooltip";
 
 const ws = (over: Partial<WorkspaceMeta>): WorkspaceMeta =>
   ({ id: "w", environmentId: "local", name: "temp-code", path: "/Users/me/temp-code", git: true, linkId: "wl_a", createdAt: 1, ...over }) as WorkspaceMeta;
@@ -138,6 +139,11 @@ describe("AddThreadDialog", () => {
     expect(hostButton("Mini").disabled).toBe(true);
     // The note hangs on a Tooltip over the disabled choice, never a title=.
     expect(hostButton("Mini").hasAttribute("title")).toBe(false);
+    // The tooltip's primitive loads on the first hover anywhere; load it first, as a warm app has.
+    await act(async () => {
+      warmTooltips();
+      await tooltipChunk.load();
+    });
     const wrapper = hostButton("Mini").closest("[data-choice-note]") as HTMLElement;
     await act(async () => {
       fireEvent.pointerEnter(wrapper, { pointerType: "mouse" });
