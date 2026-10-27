@@ -1,5 +1,6 @@
 import { AddonMark } from "../chrome/AddonMark";
 import { Button } from "../components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { HarnessIcon } from "../chrome/HarnessIcon";
 import { addonTitle } from "../lib/addonNames";
 import { openUrl } from "../lib/native";
@@ -72,16 +73,21 @@ export function reauthOf(blocks: Block[]): { app: string; url: string } | undefi
   return undefined;
 }
 
-/** A `/command` in the user's words, as the addon it names. */
+/** A `/command` in the user's words, as the addon it names; the command itself on hover. */
 export function CommandChip({ command }: { command: Pick<SlashCommand, "name" | "source"> }) {
   const proper = command.source === "mcp" || command.source === "plugin";
-  return (
-    <span
-      className="inline-flex items-center gap-1 rounded-md bg-content/10 px-1 align-baseline text-[13px] text-content"
-      title={`/${command.name}`}
-    >
+  const chip = "inline-flex items-center gap-1 rounded-md bg-foreground/10 px-1 align-baseline text-[13px] text-foreground";
+  const face = (
+    <>
       <AddonMark command={command} size={11} colored={false} />
       {proper ? addonTitle(command.name) : `/${command.name}`}
-    </span>
+    </>
+  );
+  if (!proper) return <span className={chip}>{face}</span>;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span className={chip} />}>{face}</TooltipTrigger>
+      <TooltipContent>/{command.name}</TooltipContent>
+    </Tooltip>
   );
 }

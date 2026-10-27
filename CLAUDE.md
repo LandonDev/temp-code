@@ -270,7 +270,7 @@ app replaces itself from the feed, and only from the feed.
   down from 8.07 MiB) and every other surface is a lazy chunk behind
   `defineChunk` (src/renderer/src/lib/lazyChunk.tsx), listed in
   `src/renderer/src/surfaces/chunks.ts`: Settings, the Aliax pages
-  (recharts), the diff pane and the edit card's diff body, the CodeMirror
+  (recharts), the diff pane and the edit row's diff body, the CodeMirror
   editor with its find keys and git helpers, the terminal (xterm), the
   non-chat thread views (board, plan, research, fleet), the HTML render
   frame, the media viewer, the lightbox and the release notes. A mount

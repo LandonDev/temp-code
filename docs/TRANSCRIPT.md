@@ -9,11 +9,50 @@ the phone's rules in docs/IOS-DESIGN.md "Performance".
 The window and `RowView` live in AgentTranscript.tsx; every row component
 lives under `surfaces/transcript/`, one file per area with its owner named
 in the first line: TranscriptBlock (the per-block switch), UserMessage,
-ActionGroup (A7, turn structure); ActivityRow and
-ToolCall (A8, action rows); ThinkingRow, TurnEnd, SystemRow, NoticeRow
+ActionGroup (A7, turn structure); ActivityRow, ToolCall, ActionRow,
+ActionLine, CommandCard, ToolGlyph and actionModel (A8, action rows); ThinkingRow, TurnEnd, SystemRow, NoticeRow
 (every typed notice through one switch), Approval and markdown.css (A9).
 `transcript/types.ts` holds the callback types, so nothing under
 `transcript/` imports AgentTranscript.tsx.
+
+## Action rows
+
+One action (an edit, a command, a read, a search, a fetch, a skill, a call
+into the app, a connector call, a subagent spawn, an approval) is one
+32 px line, `[glyph]  Verb  object  +46 −3  extras  ▸`
+(`transcript/ActionLine.tsx`). What each row says and opens is decided once
+in `transcript/actionModel.ts` (`actionOf`, unit-tested) from the words of
+`lib/toolPhrase.ts` (`toolPhraseParts`: the verb muted, the object in
+foreground, the same words the group line uses); the components only draw it.
+
+- **The glyph** (`transcript/ToolGlyph.tsx`): one 14 px box, the kind's
+  icon from the `GLYPH` record, the connector's mark or the subagent's
+  provider in its place, the `Spinner` while the call runs, the failed mark
+  in `destructive` when it failed or was denied (nothing else on the line
+  turns red), the waiting mark in amber while it asks for approval.
+- **What it opens.** A read or a list opens its file in the editor at the
+  line it started from (Claude's Read `offset` is that line), with no caret
+  and nothing in the transcript. A command opens its card
+  (`transcript/CommandCard.tsx`: the tool's name, `$ ` and the command in
+  mono with the light tint of `lib/shellTokens.ts`, twelve lines then Show
+  all, what it printed under it). An edit opens its diff (`EditRow.tsx`,
+  `DiffBody.tsx`), on the caret only, never on its own while it streams;
+  its counts tick instead. Anything else opens its details
+  (`ToolDetails.tsx`: the invocation, key and value rows for JSON, the
+  output; the raw view behind a ghost icon button on hover). An app call
+  that names a thread links its title to that thread; a spawn row opens the
+  agent. The body opens in place under the line through `Collapsible`.
+- **Approvals.** A call waiting on the person draws its line in the live
+  tense with no caret and no body of its own; the approval card mounts
+  directly under the line, and the row is an ordinary row again once
+  decided. An edit waiting on approval takes this row too.
+- **No borders of their own.** The one border is the group's list around
+  the rows (`ActionGroup`), which also gives each row its side padding, so
+  a lone row lines up with the prose. Hover lifts the verb and the caret to
+  foreground, as the group line does.
+- `transcript/ActionRow.fixtures.tsx` holds one of each row for a static
+  look; `ToolRow.dom.test.tsx` and `EditRow.dom.test.tsx` prove the
+  behaviour.
 
 ## Rules
 
