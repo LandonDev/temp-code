@@ -574,8 +574,8 @@ in the whole pane, with Back.
   works or needs you and folded once it sits in Done (`tasksOpenByDefault`);
   the tally is its disclosure, a chevron at its end turning when open, its
   click never reaching the row, and the person's own open or close holds
-  while the row is on screen. The fold is the foot's height tween
-  (`TweenHeight`, a snap under reduced motion); a research or orchestration thread
+  while the row is on screen. The fold is the app's one fold
+  (`Collapsible`, a fade under reduced motion); a research or orchestration thread
   one summary line, the first line under `## State` in its notes, else its
   last words (both from the digest), never the line two already says. Chat
   and plan rows carry the two lines only. Done and queued rows are dimmed.
@@ -660,8 +660,8 @@ in the whole pane, with Back.
   up (back at the bottom, it follows again); the steps still ahead in a
   muted row below. A failed step stays open with its last lines and the
   failure in red until Hide folds it. Every step done, the foot shrinks
-  back to the row. The grow and shrink are the app's height tween
-  (`TweenHeight`: 200 ms, the ease-out curve, a snap under reduced motion),
+  back to the row. The grow and shrink are the app's one fold
+  (`Collapsible`: `--dur-slow` open, `--dur-base` closed, a fade under reduced motion),
   the idle row and the console both mounted so either can tween shut, the
   hidden one inert. Read from the `batch.board` answer and the `batch` push
   (each step's log as the lines since the last push, `foldBatchPush`; a

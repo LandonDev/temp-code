@@ -53,9 +53,6 @@ export const EASE_IN_OUT = [0.77, 0, 0.175, 1] as const;
 /** Drawers and sheets sliding from an edge. */
 export const EASE_DRAWER = [0.32, 0.72, 0, 1] as const;
 
-/** EASE_OUT as a CSS timing function, for keyframes and transitions. */
-export const EASE_OUT_CSS = "cubic-bezier(0.16, 1, 0.3, 1)";
-
 /** A closing overlay's curve, as CSS `--ease-exit`. */
 export const EASE_EXIT = [0.4, 0, 0.6, 1] as const;
 

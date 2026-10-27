@@ -26,6 +26,7 @@ describe("the motion tokens", () => {
   it("keeps one layout spring and no CSS copies of the curves", () => {
     expect(Object.keys(ease)).not.toContain("SPRING_SWAP");
     expect(Object.keys(ease)).not.toContain("EASE_DRAWER_CSS");
+    expect(Object.keys(ease)).not.toContain("EASE_OUT_CSS");
   });
 });
 
