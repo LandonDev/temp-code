@@ -40,6 +40,7 @@ describe('DevServerPanel', () => {
   beforeEach(() => {
     // jsdom has no scrolling; the console follows its tail through scrollTo.
     Element.prototype.scrollTo = () => {}
+    Element.prototype.getAnimations ??= () => []
     localStorage.clear()
     resetDevPane()
     devServerStore.setState({ targets: {}, runs: {}, logs: {} })
@@ -80,8 +81,27 @@ describe('DevServerPanel', () => {
     vi.spyOn(registry, 'linkOf').mockImplementation(() => ({ request: async () => ({ targets: [], runs: [] }) }) as never)
     probe = mountProbe(<DevServerPanel projectId="p1" />)
     await flush()
-    expect(probe.container.querySelector('[role="radiogroup"]')).toBeNull()
-    expect(probe.container.textContent).toContain('No dev script, Expo app or Xcode project here')
+    expect(probe.container.querySelector('[aria-label="Run on"]')).toBeNull()
+    expect(probe.container.textContent).toContain('No targets')
+    const run = [...probe.container.querySelectorAll('button')].find((b) => b.textContent === 'Run') as HTMLButtonElement
+    expect(run.disabled).toBe(true)
+  })
+
+  it('shows a skeleton in the target field while the host answers', async () => {
+    vi.spyOn(registry, 'linkOf').mockImplementation(() => ({ request: () => new Promise(() => {}) }) as never)
+    probe = mountProbe(<DevServerPanel projectId="p1" />)
+    await flush()
+    expect(probe.container.querySelector('[data-dev-target-skeleton]')).not.toBeNull()
+    expect(probe.container.querySelector('[aria-label="Dev server target"]')).toBeNull()
+  })
+
+  it('offers each host with a copy of the project, this one picked', async () => {
+    probe = mountProbe(<DevServerPanel projectId="p1" />)
+    await flush()
+    const group = probe.container.querySelector('[aria-label="Run on"]')!
+    const items = [...group.querySelectorAll('button')]
+    expect(items.map((b) => b.textContent)).toEqual(['This Mac', 'box'])
+    expect(items[0].getAttribute('aria-pressed')).toBe('true')
   })
 
   it('starts the target and shows the run in the Dev servers pane, listing nothing itself', async () => {

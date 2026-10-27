@@ -346,12 +346,19 @@ export function devTabOf({ servable, count, open }: { servable: boolean; count: 
   return servable || count > 0 || open ? { count } : null
 }
 
-/** `devTabOf` for the dock of `projectPath`: this machine's project at that folder, else any host's. */
-export function useDevTab(projectPath: string): { count: number } | null {
+/** The project a dock at `projectPath` serves: this machine's project at that folder, else any host's. */
+export function useDockProject(projectPath: string): ProjectMeta | undefined {
   const projects = useProjects()
   const local = registry.primary().environmentId
-  const here = projects.filter((p) => !p.archived && p.cwd && sameProjectPath(p.cwd, projectPath))
-  const project = here.find((p) => p.environmentId === local) ?? here[0]
+  return useMemo(() => {
+    const here = projects.filter((p) => !p.archived && p.cwd && sameProjectPath(p.cwd, projectPath))
+    return here.find((p) => p.environmentId === local) ?? here[0]
+  }, [projects, projectPath, local])
+}
+
+/** `devTabOf` for the dock of `projectPath`. */
+export function useDevTab(projectPath: string): { count: number } | null {
+  const project = useDockProject(projectPath)
   const servable = useDevServable(project)
   const count = useLiveDevServers().length
   const open = useDevPane((s) => s.open)

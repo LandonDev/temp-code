@@ -1,27 +1,36 @@
-import { useState } from "react";
+import { useLayoutEffect, useState } from "react";
+import type { DevTarget } from "@server/shared/contract-devservers";
 import { useStore } from "zustand";
 import { DEV_TAB, DockBar } from "../chrome/DockBar";
 import { DockFrame } from "../chrome/DockFrame";
 import { HostGlyph } from "../chrome/HostGlyph";
 import { Square } from "../chrome/icons";
+import { DevStarter, useDevStarter } from "../chrome/rail/DevServerPanel";
+import { Button } from "../components/ui/button";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "../components/ui/item";
+import { ScrollArea } from "../components/ui/scroll-area";
+import { Spinner } from "../components/ui/spinner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { devPane, useDevPane } from "../lib/devPane";
 import { openUrl, portOpen } from "../lib/devPorts";
-import { shownServer, stopLiveServer, useDevTab, useLiveDevServers, type LiveServer } from "../lib/devServers";
+import { shownServer, stopLiveServer, useDevTab, useDockProject, useLiveDevServers, type LiveServer } from "../lib/devServers";
 import { macBridgeStore } from "../lib/macBridge";
 import { isWebMode } from "../lib/nativeWeb";
-import { findProjectTerminal, selectDockTerminal, withDockOpen } from "../lib/projectTerminal";
+import { findProjectTerminal, selectDockTerminal, withDockOpen, withDockSize } from "../lib/projectTerminal";
 import { useProjects } from "../lib/tcserver/workspaces";
 import { dockCwdOf, useProject } from "../stores/project";
 import { terminals, useTerminals } from "../stores/terminals";
-import { Spinner } from "./threads/spinners";
 import { DevConsole } from "./DevConsole";
 
 /**
  * The Dev servers pane (docs/box.md "Dev servers on the box"): the bottom
  * dock's other occupant, under the same bar as the terminals (its Dev
- * servers tab is the one picked). One row per dev server live on a host right now (a running Dev
- * Server run, or a port a thread opened that still listens); a row leaves
- * the moment its host drops it. The picked row's console fills the rest.
+ * servers tab is the one picked) and at the dock's height. The starter
+ * runs a target; below it, one row per dev server live on a host right now
+ * (a running Dev Server run, or a port a thread opened that still listens);
+ * a row leaves the moment its host drops it. The picked row's console fills
+ * the rest.
  */
 export function DevServersPane({
   onSizePaint,
@@ -38,6 +47,13 @@ export function DevServersPane({
   const shown = shownServer(servers, picked);
   const { cwd, dock } = useCurrentDock();
   const dev = useDevTab(cwd);
+  const project = useDockProject(cwd);
+  const starter = useDevStarter(project?.id ?? null);
+
+  // One height for the dock: the pane takes the terminals' before paint.
+  useLayoutEffect(() => {
+    if (dock && dock.size !== size) devPane.size(dock.size);
+  }, [dock, size]);
 
   return (
     <DockFrame
@@ -47,7 +63,10 @@ export function DevServersPane({
       label="Resize dev servers"
       onFocus={noop}
       onSizePaint={onSizePaint}
-      onSizeCommit={onSizeCommit}
+      onSizeCommit={(next) => {
+        onSizeCommit(next);
+        terminals.updateDock(cwd, (d) => withDockSize(d, next, { width: window.innerWidth, height: window.innerHeight }));
+      }}
     >
       <DockBar
         terminals={dock?.pane.files ?? EMPTY_FILES}
@@ -67,18 +86,21 @@ export function DevServersPane({
           terminals.updateDock(cwd, (d) => withDockOpen(d, false));
         }}
       />
-      {shown ? (
-        <div className="flex min-h-0 min-w-0 flex-1">
-          <div
-            role="listbox"
-            aria-label="Dev servers"
-            className="w-72 shrink-0 overflow-y-auto border-r border-content/10 py-1"
-          >
-            {servers.map((server) => (
-              <ServerRow key={server.key} server={server} selected={server.key === shown.key} />
-            ))}
-          </div>
-          <div className="relative min-h-0 min-w-0 flex-1">
+      <div className="flex min-h-0 min-w-0 flex-1">
+        <div className="flex w-72 shrink-0 flex-col border-r border-border">
+          <DevStarter starter={starter} />
+          {servers.length > 0 ? (
+            <ScrollArea className="min-h-0 flex-1">
+              <ItemGroup aria-label="Dev servers" className="gap-0.5 p-1.5">
+                {servers.map((server) => (
+                  <ServerRow key={server.key} server={server} picked={server.key === shown?.key} />
+                ))}
+              </ItemGroup>
+            </ScrollArea>
+          ) : null}
+        </div>
+        <div className="relative flex min-h-0 min-w-0 flex-1">
+          {shown ? (
             <DevConsole
               key={shown.key}
               source={{
@@ -88,13 +110,31 @@ export function DevServersPane({
               }}
               active
             />
-          </div>
+          ) : (
+            <Empty>
+              <EmptyHeader>
+                <EmptyTitle>No dev servers running</EmptyTitle>
+                {emptyLine(starter.targets, starter.target)}
+              </EmptyHeader>
+            </Empty>
+          )}
         </div>
-      ) : (
-        <p className="px-3 py-2 text-[12px] text-content/45">No dev servers running</p>
-      )}
+      </div>
     </DockFrame>
   );
+}
+
+/** Under the empty state's title: what Run would start, or why nothing can. */
+function emptyLine(targets: DevTarget[] | null | undefined, target: DevTarget | undefined) {
+  if (targets === undefined) return null;
+  if (targets === null) return <EmptyDescription>This host can't run dev servers</EmptyDescription>;
+  if (!target) return <EmptyDescription>Nothing to serve here</EmptyDescription>;
+  return <EmptyDescription className="font-mono text-xs">{commandLine(target)}</EmptyDescription>;
+}
+
+/** A target's command as one line: an Xcode target's `xcodebuild  <script>`, else the command itself. */
+export function commandLine(target: Pick<DevTarget, "command" | "script">): string {
+  return target.command.split("\n").some((line) => line.startsWith("xcodebuild")) ? `xcodebuild  ${target.script}` : target.command;
 }
 
 const noop = () => {};
@@ -107,10 +147,10 @@ function useCurrentDock() {
   const projects = useProjects();
   const cwd = dockCwdOf({ projectCwd, selectedProjectId }, projects);
   const dock = useTerminals((s) => findProjectTerminal(s.docks, cwd));
-  return { cwd, dock, projectId: selectedProjectId };
+  return { cwd, dock };
 }
 
-function ServerRow({ server, selected }: { server: LiveServer; selected: boolean }) {
+function ServerRow({ server, picked }: { server: LiveServer; picked: boolean }) {
   const localId = useStore(macBridgeStore, (s) => s.localId);
   const [stopping, setStopping] = useState(false);
   const open =
@@ -121,48 +161,71 @@ function ServerRow({ server, selected }: { server: LiveServer; selected: boolean
       .catch(() => undefined)
       .finally(() => setStopping(false));
   };
+  const title = (
+    <ItemTitle className="min-w-0 max-w-full">
+      <span className="min-w-0 truncate">{server.title}</span>
+      <HostGlyph environmentId={server.port?.environmentId ?? server.environmentId} />
+    </ItemTitle>
+  );
   return (
-    <div
+    <Item
+      size="xs"
+      role="listitem"
+      tabIndex={0}
       data-dev-server={server.key}
-      className={`group flex h-7 items-center gap-1 pl-1 pr-1.5 text-[12px] ${selected ? "bg-content/8" : "hover:bg-content/5"}`}
+      aria-current={picked || undefined}
+      className={`flex-nowrap rounded-md ${picked ? "bg-muted" : "hover:bg-foreground/5"}`}
+      onClick={() => devPane.pick(server.key)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" && event.target === event.currentTarget) devPane.pick(server.key);
+      }}
     >
-      <button
-        type="button"
-        role="option"
-        aria-selected={selected}
-        title={server.thread ?? undefined}
-        onClick={() => devPane.pick(server.key)}
-        className={`flex h-full min-w-0 flex-1 items-center gap-1.5 px-2 text-left ${selected ? "text-content" : "text-content/60 hover:text-content"}`}
-      >
-        <span className="min-w-0 truncate">{server.title}</span>
-        <HostGlyph environmentId={server.port?.environmentId ?? server.environmentId} />
-      </button>
-      <div
-        className={`flex shrink-0 items-center gap-0.5 ${
-          selected || stopping ? "" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-        }`}
-      >
+      <ItemContent className="min-w-0">
+        {server.thread ? (
+          <Tooltip>
+            <TooltipTrigger render={title} />
+            <TooltipContent>{server.thread}</TooltipContent>
+          </Tooltip>
+        ) : (
+          title
+        )}
+        {open?.movedFrom ? <ItemDescription>{open.movedFrom} is taken here</ItemDescription> : null}
+      </ItemContent>
+      <ItemActions className="gap-1">
         {open ? (
-          <button
-            type="button"
-            title={open.movedFrom ? `${open.url} · ${open.movedFrom} is taken here` : open.url}
-            onClick={() => openUrl(open.url)}
-            className="pressable h-6 shrink-0 rounded-md px-1.5 text-[11px] tabular-nums text-content/55 hover:bg-content/8 hover:text-content"
+          <Button
+            variant="link"
+            size="xs"
+            className="px-1 tabular-nums text-muted-foreground hover:text-foreground"
+            onClick={(event) => {
+              event.stopPropagation();
+              openUrl(open.url);
+            }}
           >
             {open.label} :{open.port}
-          </button>
+          </Button>
         ) : null}
-        <button
-          type="button"
-          aria-label="Stop"
-          title="Stop"
-          disabled={stopping}
-          onClick={stop}
-          className="pressable grid size-6 shrink-0 place-items-center rounded-md text-content/50 hover:bg-content/8 hover:text-content disabled:opacity-40"
-        >
-          {stopping ? <Spinner className="size-3" /> : <Square className="size-3" strokeWidth={2} />}
-        </button>
-      </div>
-    </div>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Stop"
+                disabled={stopping}
+                className="text-muted-foreground hover:text-foreground"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  stop();
+                }}
+              />
+            }
+          >
+            {stopping ? <Spinner className="size-3" /> : <Square className="size-3" strokeWidth={2} />}
+          </TooltipTrigger>
+          <TooltipContent>Stop</TooltipContent>
+        </Tooltip>
+      </ItemActions>
+    </Item>
   );
 }
