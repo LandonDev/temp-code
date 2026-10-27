@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { DevTarget } from "@server/shared/contract-devservers";
 import { ChoiceSelect } from "../../components/choice-select";
 import { Button } from "../../components/ui/button";
@@ -69,6 +69,8 @@ export function useDevStarter(projectId: string | null): DevStarterState {
   const sessionId = active
     ? threadRoot(active.id, (id) => sessions.find((s) => s.id === id)?.parentId ?? (id === active.id ? active.parentId : null))
     : null;
+  // The question is about the thread it was asked for: switching threads drops it.
+  useEffect(() => setAsking(false), [sessionId]);
 
   const start = async (replace: boolean): Promise<void> => {
     if (!envId || !copyId || !target) return;

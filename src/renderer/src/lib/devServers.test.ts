@@ -150,14 +150,19 @@ describe('the live dev servers', () => {
     expect(threadRoot('root', (id) => parents[id])).toBe('root')
   })
 
-  it('drops a row the moment the host does: removed, being removed, or a finished run', () => {
+  it('drops a row the moment the host does: removed, or a finished run', () => {
     const list = liveServers(
       sources({
         runs: { 'env_box/p9': [run({ status: 'failed' }), run({ id: 'b', status: 'stopped' })] },
-        resources: { t1: [port({ removedAt: 10 }), port({ id: 'res2', removeRequestedAt: 10 })] }
+        resources: { t1: [port({ removedAt: 10 })] }
       })
     )
     expect(list).toEqual([])
+  })
+
+  it('keeps a server whose stop waits on its host, saying why, until the host drops it', () => {
+    const list = liveServers(sources({ resources: { t1: [port({ id: 'res2', removeRequestedAt: 10, note: 'Mac offline, waiting' })] } }))
+    expect(list.map((s) => [s.key, s.stopping])).toEqual([['env_box/res2', 'Mac offline, waiting']])
   })
 
   it('never lists databases, MCP servers, proxies or other resource kinds', () => {

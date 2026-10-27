@@ -105,6 +105,12 @@ describe("openNext", () => {
     expect(b.path).toBe(`${a.path} 2`);
     expect(second.docks[0].pane.activeFileId).toBe(b.id);
   });
+
+  it("opens at a thread's folder inside the project's dock when given one", () => {
+    const s = openNext(initialTerminalsState(), "/repo", "/repo/.worktrees/t1");
+    expect(s.docks[0].projectPath).toBe("/repo");
+    expect(s.docks[0].pane.files[0].cwd).toBe("/repo/.worktrees/t1");
+  });
 });
 
 describe("terminals store", () => {

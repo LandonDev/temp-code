@@ -11,7 +11,7 @@ import { devPane, useDevPane } from "../lib/devPane";
 import { serverGroups, shownServer, useDevTab, useDockProject, useLiveDevServers } from "../lib/devServers";
 import { findProjectTerminal, selectDockTerminal, withDockOpen, withDockSize } from "../lib/projectTerminal";
 import { useProjects } from "../lib/tcserver/workspaces";
-import { dockCwdOf, useProject } from "../stores/project";
+import { dockCwdOf, useActivePane, useProject } from "../stores/project";
 import { terminals, useTerminals } from "../stores/terminals";
 import { DevConsole } from "./DevConsole";
 
@@ -43,6 +43,7 @@ export function DevServersPane({
   const dev = useDevTab(cwd);
   const project = useDockProject(cwd);
   const starter = useDevStarter(project?.id ?? null);
+  const activeCwd = useActivePane().active?.cwd;
 
   // One height for the dock: the pane takes the terminals' before paint.
   useLayoutEffect(() => {
@@ -74,7 +75,8 @@ export function DevServersPane({
         onAdd={
           onShowTerminal
             ? () => {
-                if (dock) terminals.openNext(cwd);
+                // Where the terminal dock's own New terminal opens: the thread on screen's folder.
+                if (dock) terminals.openNext(cwd, activeCwd || cwd);
                 onShowTerminal();
               }
             : undefined

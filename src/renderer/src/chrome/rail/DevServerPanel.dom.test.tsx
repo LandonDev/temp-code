@@ -164,4 +164,38 @@ describe('DevServerPanel', () => {
     expect(requests.some(([, m]) => m === 'devServer.stop')).toBe(false)
     expect(requests).toContainEqual(['env_mac', 'devServer.start', { projectId: 'p1', targetId: 'apps/web#dev', sessionId: 't1' }])
   })
+
+  it('does not start the new server when the old one did not stop, and says why', async () => {
+    vi.spyOn(sessionStore, 'environmentOf').mockReturnValue('env_mac')
+    const { threadResourcesStore } = await import('../../lib/threadResources')
+    threadResourcesStore.setState({
+      bySession: {
+        t1: [{ id: 'res1', sessionId: 't1', environmentId: 'env_mac', kind: 'port', identifier: '3007', label: 'npx vite', branch: null, createdAt: 5, removeRequestedAt: null, removedAt: null, note: null }]
+      }
+    })
+    const real = registry.linkOf
+    vi.spyOn(registry, 'linkOf').mockImplementation((env: string) => {
+      const link = (real as unknown as (e: string) => { request: (m: string, p: unknown) => Promise<unknown> })(env)
+      return {
+        request: async (method: string, params: unknown) => {
+          if (method === 'resources.remove') {
+            requests.push([env, method, params])
+            return { results: [{ id: 'res1', outcome: 'failed', note: 'kill: permission denied' }] }
+          }
+          return link.request(method, params)
+        }
+      } as never
+    })
+    vi.spyOn(sessionStore, 'linkFor').mockImplementation(() => registry.linkOf('env_mac') as never)
+    probe = mountProbe(<DevServerPanel projectId="p1" />)
+    await flush()
+    const button = (name: string) => [...probe!.container.querySelectorAll('button')].find((b) => b.textContent?.trim() === name) as HTMLElement
+    await probe.act(async () => button('Run').click())
+    await probe.act(async () => button('Replace').click())
+    await flush()
+    expect(requests.some(([, m]) => m === 'resources.remove')).toBe(true)
+    expect(requests.some(([, m]) => m === 'devServer.start')).toBe(false)
+    expect(probe.container.textContent).toContain('kill: permission denied')
+    threadResourcesStore.setState({ bySession: {} })
+  })
 })

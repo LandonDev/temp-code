@@ -253,6 +253,8 @@ export interface LiveServer {
   runId: string | null
   resource: { id: string; sessionId: string } | null
   startedAt: number
+  /** Stop was asked and the host has not dropped it yet: the reason it waits ("Mac offline, waiting"), else ''. */
+  stopping?: string
 }
 
 export interface LiveServerSources {
@@ -294,7 +296,7 @@ export function liveServers(src: LiveServerSources): LiveServer[] {
     const thread = src.thread(sessionId)
     if (!thread) continue
     for (const row of rows) {
-      if (row.kind !== 'port' || row.removedAt || row.removeRequestedAt) continue
+      if (row.kind !== 'port' || row.removedAt) continue
       const number = Number(row.identifier)
       if (notDevServer(number, null, row.label) || held.has(`${row.environmentId}:${number}`)) continue
       out.push({
@@ -306,7 +308,8 @@ export function liveServers(src: LiveServerSources): LiveServer[] {
         port: { number, environmentId: row.environmentId, forwards: row.forwards },
         runId: null,
         resource: { id: row.id, sessionId },
-        startedAt: row.createdAt
+        startedAt: row.createdAt,
+        ...(row.removeRequestedAt ? { stopping: row.note ?? '' } : {})
       })
     }
   }
@@ -355,10 +358,13 @@ export function useLiveDevServers(): LiveServer[] {
   }, [runs, resources, sessions, projects])
 }
 
-/** Stop a live server on its host: a run's process group, or the ledger row's process. */
+/** Stop a live server on its host: a run's process group, or the ledger row's process. Throws when it did not stop (failed, or waiting for its host). */
 export async function stopLiveServer(server: LiveServer): Promise<void> {
   if (server.runId) await stopDevServer(server.environmentId, server.runId)
-  else if (server.resource) await removeThreadResources(server.resource.sessionId, [server.resource.id])
+  else if (server.resource) {
+    const [result] = await removeThreadResources(server.resource.sessionId, [server.resource.id])
+    if (result && result.outcome !== 'removed') throw new Error(result.note ?? (result.outcome === 'waiting' ? 'Waiting for its host' : 'It did not stop'))
+  }
 }
 
 /**

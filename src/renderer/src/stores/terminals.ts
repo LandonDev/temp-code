@@ -68,11 +68,11 @@ export function openTerminal(
   };
 }
 
-/** A new terminal at the project's folder, titled after the ones its dock has. */
-export function openNext(state: TerminalsState, projectPath: string): TerminalsState {
+/** A new terminal in the project's dock at `cwd` (the project's folder by default), titled after the ones the dock has. */
+export function openNext(state: TerminalsState, projectPath: string, cwd = projectPath): TerminalsState {
   const existing = findProjectTerminal(state.docks, projectPath);
-  const title = existing ? nextDockTerminalTitle(existing, projectPath) : undefined;
-  return openTerminal(state, projectPath, newTerminalFile(projectPath, title));
+  const title = existing ? nextDockTerminalTitle(existing, cwd) : undefined;
+  return openTerminal(state, projectPath, newTerminalFile(cwd, title));
 }
 
 export function patchTerminal(
@@ -122,7 +122,7 @@ export const terminals = {
   ) => apply((s) => updateDock(s, projectPath, update)),
   openTerminal: (projectPath: string, file: FilePaneTab) =>
     apply((s) => openTerminal(s, projectPath, file)),
-  openNext: (projectPath: string) => apply((s) => openNext(s, projectPath)),
+  openNext: (projectPath: string, cwd?: string) => apply((s) => openNext(s, projectPath, cwd)),
   patchTerminal: (fileId: string, patch: TerminalMetaPatch) =>
     apply((s) => patchTerminal(s, fileId, patch)),
   removeProject: (projectPath: string) => apply((s) => removeProject(s, projectPath)),
