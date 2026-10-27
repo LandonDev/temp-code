@@ -127,6 +127,18 @@ describe("Workspace page", () => {
     expect(rows[1].querySelector("[data-slot=item-description]")?.textContent).toBe("Auto");
   });
 
+  it("shows the workspace's pin on a project that pins nothing itself", () => {
+    state.workspace = { ...state.workspace, accountPins: { claude: "alice" } };
+    state.projects = [
+      { id: "p1", workspaceId: "w1", name: "App", archived: false, accountPins: { claude: "bob" } },
+      { id: "p2", workspaceId: "w1", name: "Docs", archived: false },
+    ];
+    render(<WorkspacePage workspaceId="w1" />);
+    const [app, docs] = [...document.querySelectorAll<HTMLElement>("[data-slot=project-row] [data-slot=item-description]")];
+    expect(app.textContent).toBe("bob");
+    expect(docs.textContent).toBe("alice");
+  });
+
   it("opens a project's settings from its row", async () => {
     state.projects = [{ id: "p1", workspaceId: "w1", name: "App", archived: false }];
     render(<WorkspacePage workspaceId="w1" />);
@@ -143,5 +155,6 @@ describe("Workspace page", () => {
     render(<WorkspacePage workspaceId="w1" />);
     expect(scroll).toHaveBeenCalledWith({ block: "start" });
     expect(scroll.mock.contexts[0]).toBe(document.getElementById("settings-build"));
+    expect(document.activeElement).toBe(document.getElementById("settings-build"));
   });
 });

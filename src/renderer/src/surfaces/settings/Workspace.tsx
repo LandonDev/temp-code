@@ -30,14 +30,17 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   const build = useRef<HTMLDivElement>(null);
   useEffect(() => {
     // A jump the person asked for: no smooth scroll.
-    if (takeRequestedBuildFocus()) build.current?.scrollIntoView({ block: "start" });
+    if (!takeRequestedBuildFocus()) return;
+    build.current?.scrollIntoView({ block: "start" });
+    // Focus lands on the section, so the next Tab reaches Command.
+    build.current?.focus({ preventScroll: true });
   }, []);
   return (
     <>
       <ThreadDefaultsEditor workspaceId={workspaceId} />
       <TurnPassEditor workspaceId={workspaceId} />
       {workspace ? <AccountsSection workspace={workspace} /> : null}
-      <div id="settings-build" ref={build}>
+      <div id="settings-build" ref={build} tabIndex={-1} className="outline-none">
         <PageSection title="Build">
           <BuildEditor workspaceId={workspaceId} />
         </PageSection>
@@ -125,7 +128,7 @@ function ProjectsSection({ workspace }: { workspace: WorkspaceMeta }) {
           <ItemContent className="min-w-0">
             <ItemTitle>{project.name}</ItemTitle>
             <ItemDescription>
-              <ProjectPins pins={project.accountPins} environmentId={workspace.environmentId} />
+              <ProjectPins pins={{ ...workspace.accountPins, ...project.accountPins }} environmentId={workspace.environmentId} />
             </ItemDescription>
           </ItemContent>
           <ItemActions>
@@ -138,7 +141,7 @@ function ProjectsSection({ workspace }: { workspace: WorkspaceMeta }) {
   );
 }
 
-/** A project's pinned accounts, one span per provider; "Auto" with none. */
+/** The accounts a project's threads spend from (its pins over the workspace's), one span per provider; "Auto" with none. */
 function ProjectPins({ pins, environmentId }: { pins: AccountPins | undefined; environmentId: string }) {
   const { snapshot } = useAccounts(environmentId);
   const pinned = ROUTED_PROVIDERS.filter((provider) => pins?.[provider]);
