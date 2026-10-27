@@ -464,9 +464,8 @@ pieces it draws are surfaces/paneChrome.tsx.
   4px band on it takes the rail handles' hover and drag tints, and the
   accent when focused from the keyboard. It is focusable ("Resize panes"):
   the arrows along its axis move it 2% (Shift 10%), and a double-click
-  makes the group's panes equal. The pane sash and bottom dock share
-  `useSashKeys`: axis arrows move 2% of the container (Shift 10%), and
-  double-click resets the size.
+  makes the group's panes equal. Every resize handle shares `useSashKeys`: axis
+  arrows move 2% of its container (Shift 10%), and double-click resets its size.
 - **The drop zone.** The half the pane will take, a box inset 4px with
   rounded corners, the hairline and a translucent muted fill, fading in at
   `--dur-fast`; it moves between edges in place. The nearest edge wins:

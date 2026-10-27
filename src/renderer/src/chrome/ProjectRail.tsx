@@ -22,6 +22,7 @@ import {
 } from "./icons";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useDragResize } from "../hooks/useDragResize";
+import { useSashKeys } from "../hooks/useSashKeys";
 import { useInboxUnseen } from "../hooks/useInboxUnseen";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { useSortable } from "../hooks/useSortable";
@@ -190,6 +191,17 @@ export function ProjectRail({
     defaultWidth: PROJECT_RAIL_WIDTH_DEFAULT,
     initial: loadProjectRailWidth(),
     onCommit: saveProjectRailWidth,
+  });
+  const sashKeys = useSashKeys({
+    label: "Resize workspace rail",
+    orientation: "vertical",
+    value: resize.width,
+    min: PROJECT_RAIL_WIDTH_MIN,
+    max: Math.min(PROJECT_RAIL_WIDTH_MAX, Math.floor(window.innerWidth * 0.35)),
+    getSpan: (handle) => handle.closest(".app-shell")?.getBoundingClientRect().width || window.innerWidth,
+    direction: 1,
+    onChange: resize.resizeTo,
+    onReset: resize.reset,
   });
   const [railOrder, setRailOrder] = useState(loadProjectRailOrder);
   const [pinnedPaths, setPinnedPaths] = useState(loadPinnedProjects);
@@ -585,17 +597,11 @@ export function ProjectRail({
         />
       ) : null}
       <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize workspace rail"
-        aria-valuenow={resize.width}
-        aria-valuemin={PROJECT_RAIL_WIDTH_MIN}
-        aria-valuemax={PROJECT_RAIL_WIDTH_MAX}
-        className={`absolute inset-y-0 -right-px z-10 w-1.5 cursor-col-resize touch-none ${
+        {...sashKeys}
+        className={`absolute inset-y-0 -right-px z-10 w-1.5 cursor-col-resize touch-none outline-none focus-visible:bg-accent ${
           resize.dragging ? "bg-foreground/15" : "hover:bg-foreground/10"
         }`}
         onPointerDown={resize.onPointerDown}
-        onDoubleClick={resize.onDoubleClick}
       />
     </nav>
   );

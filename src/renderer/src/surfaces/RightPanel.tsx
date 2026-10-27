@@ -8,6 +8,7 @@ import { BuildPanel } from "../chrome/rail/BuildPanel";
 import { ChangesPanel } from "../chrome/rail/ChangesPanel";
 import { FileTree } from "../chrome/FileTree";
 import { useDragResize } from "../hooks/useDragResize";
+import { useSashKeys } from "../hooks/useSashKeys";
 import { useGitFileStatuses } from "../hooks/useGitFileStatuses";
 import { useDevRunning } from "../lib/devServers";
 import {
@@ -71,6 +72,17 @@ export function RightPanel(props: RightPanelProps) {
     initial: state.width,
     onCommit: (next) => rightPanel.setWidth(session.id, next),
   });
+  const sashKeys = useSashKeys({
+    label: "Resize panel",
+    orientation: "vertical",
+    value: resize.width,
+    min: PANEL_MIN,
+    max: Math.min(PANEL_MAX, Math.floor(window.innerWidth * 0.5)),
+    getSpan: (handle) => handle.parentElement?.parentElement?.getBoundingClientRect().width || window.innerWidth,
+    direction: -1,
+    onChange: resize.resizeTo,
+    onReset: resize.reset,
+  });
 
   if (!state.open || !section) return null;
 
@@ -119,17 +131,11 @@ export function RightPanel(props: RightPanelProps) {
         <SectionBody section={section} project={facts.project} {...props} />
       </div>
       <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize panel"
-        aria-valuenow={resize.width}
-        aria-valuemin={PANEL_MIN}
-        aria-valuemax={PANEL_MAX}
-        className={`absolute inset-y-0 -left-px z-10 w-1.5 cursor-col-resize touch-none ${
+        {...sashKeys}
+        className={`absolute inset-y-0 -left-px z-10 w-1.5 cursor-col-resize touch-none outline-none focus-visible:bg-accent ${
           resize.dragging ? "bg-foreground/12" : "hover:bg-foreground/7"
         }`}
         onPointerDown={resize.onPointerDown}
-        onDoubleClick={resize.onDoubleClick}
       />
     </aside>
   );

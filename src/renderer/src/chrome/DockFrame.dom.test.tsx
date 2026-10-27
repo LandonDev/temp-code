@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { defaultDockSize } from "../lib/projectTerminal";
+import { DOCK_SIZE_DEFAULT } from "../lib/projectTerminal";
 import { DockFrame } from "./DockFrame";
 
 afterEach(() => {
@@ -33,6 +33,6 @@ describe("DockFrame sash", () => {
     fireEvent.keyDown(handle, { key: "ArrowDown" });
     expect(handle.getAttribute("aria-valuenow")).toBe("400");
     fireEvent.doubleClick(handle);
-    expect(handle.getAttribute("aria-valuenow")).toBe(String(defaultDockSize("bottom")));
+    expect(handle.getAttribute("aria-valuenow")).toBe(String(DOCK_SIZE_DEFAULT));
   });
 });

@@ -36,6 +36,7 @@ import { openOrchestrationSettings } from "../lib/tcserver/rules";
 import { useBootResumeToasts } from "./HostRows";
 import { useProjectSignals } from "../hooks/useProjectSignals";
 import { useDragResize } from "../hooks/useDragResize";
+import { useSashKeys } from "../hooks/useSashKeys";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { looksLikeProject } from "../lib/recents";
 import { ProjectRail, RailFoot } from "./ProjectRail";
@@ -150,6 +151,17 @@ function SidebarComponent({
     onCommit: (next) => {
       rememberedWidth = next;
     },
+  });
+  const sashKeys = useSashKeys({
+    label: "Resize sidebar",
+    orientation: "vertical",
+    value: resize.width,
+    min: MIN_WIDTH,
+    max: Math.min(MAX_WIDTH, Math.floor(window.innerWidth * 0.5)),
+    getSpan: (handle) => handle.closest(".app-shell")?.getBoundingClientRect().width || window.innerWidth,
+    direction: 1,
+    onChange: resize.resizeTo,
+    onReset: resize.reset,
   });
   const sessionsLock = useLockOverscroll<HTMLDivElement>();
   const sessionsScrollRef = useRef<HTMLDivElement>(null);
@@ -356,17 +368,11 @@ function SidebarComponent({
         />
       ) : null}
       <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize sidebar"
-        aria-valuenow={resize.width}
-        aria-valuemin={MIN_WIDTH}
-        aria-valuemax={MAX_WIDTH}
-        className={`absolute inset-y-0 -right-px z-10 w-1.5 cursor-col-resize touch-none ${
+        {...sashKeys}
+        className={`absolute inset-y-0 -right-px z-10 w-1.5 cursor-col-resize touch-none outline-none focus-visible:bg-accent ${
           resize.dragging ? "bg-foreground/12" : "hover:bg-foreground/7"
         }`}
         onPointerDown={resize.onPointerDown}
-        onDoubleClick={resize.onDoubleClick}
       />
     </aside>
   );

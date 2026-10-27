@@ -75,7 +75,7 @@ export function useDragResize({
 
   const settle = useRef<{ stop: () => void } | null>(null);
 
-  const commit = (next: number) => {
+  const commit = (next: number, immediate = false) => {
     const value = clamp(next);
     const pane = paneRef.current;
     const from = widthRef.current;
@@ -86,7 +86,7 @@ export function useDragResize({
     onCommitRef.current?.(value);
     if (!pane) return;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (from === value || reduce) {
+    if (immediate || from === value || reduce) {
       pane.style.width = `${value}px`;
       return;
     }
@@ -147,15 +147,17 @@ export function useDragResize({
 
   useEffect(() => () => stopDrag.current?.(), []);
 
-  const onDoubleClick = () => {
-    commit(defaultRef.current);
-  };
+  /** Keyboard and reset changes commit at once, without a settling spring. */
+  const resizeTo = (next: number) => commit(next, true);
+  const reset = () => resizeTo(defaultRef.current);
 
   return {
     width,
     dragging,
     setPaneRef,
     onPointerDown,
-    onDoubleClick,
+    resizeTo,
+    reset,
+    onDoubleClick: () => commit(defaultRef.current),
   };
 }

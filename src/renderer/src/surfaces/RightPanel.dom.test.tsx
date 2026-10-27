@@ -64,9 +64,38 @@ beforeEach(() => {
   state.meta = null;
   state.devRunning = false;
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe("RightPanel", () => {
+  it("resizes from a focusable left-edge sash, saves the width and resets on double-click", () => {
+    rightPanel.open("s1");
+    const { container } = render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
+    vi.spyOn(container, "getBoundingClientRect").mockReturnValue({ width: 1000 } as DOMRect);
+    const handle = screen.getByRole("separator", { name: "Resize panel" });
+    const pane = handle.parentElement!;
+    handle.focus();
+    expect(document.activeElement).toBe(handle);
+    expect(handle.tabIndex).toBe(0);
+    expect(handle.getAttribute("aria-orientation")).toBe("vertical");
+    expect(handle.className).toContain("focus-visible:bg-accent");
+    fireEvent.keyDown(handle, { key: "ArrowLeft" });
+    expect(handle.getAttribute("aria-valuenow")).toBe("340");
+    expect(pane.style.width).toBe("340px");
+    expect(rightPanel.get("s1").width).toBe(340);
+    fireEvent.keyDown(handle, { key: "ArrowLeft", shiftKey: true });
+    expect(pane.style.width).toBe("440px");
+    expect(rightPanel.get("s1").width).toBe(440);
+    fireEvent.keyDown(handle, { key: "ArrowRight" });
+    expect(pane.style.width).toBe("420px");
+    fireEvent.doubleClick(handle);
+    expect(handle.getAttribute("aria-valuenow")).toBe("320");
+    expect(pane.style.width).toBe("320px");
+    expect(rightPanel.get("s1").width).toBe(320);
+  });
+
   it("renders nothing while closed, and nothing for a subagent", () => {
     const { container } = render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
     expect(container.querySelector("aside")).toBeNull();

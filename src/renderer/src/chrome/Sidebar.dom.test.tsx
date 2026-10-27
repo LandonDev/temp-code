@@ -26,19 +26,24 @@ vi.mock("../lib/monaco/focusBoot", () => ({ warmProjectForCwd: () => Promise.res
 
 import { Sidebar } from "./Sidebar";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 const mount = (onNew = vi.fn()) =>
   render(
-    <Sidebar
-      onSelectSession={() => {}}
-      onOpenFile={() => {}}
-      onSelectProject={() => {}}
-      onOpenProject={() => {}}
-      onSelectProjectCard={() => {}}
-      onNewChat={() => {}}
-      onNew={onNew}
-    />,
+    <div className="app-shell">
+      <Sidebar
+        onSelectSession={() => {}}
+        onOpenFile={() => {}}
+        onSelectProject={() => {}}
+        onOpenProject={() => {}}
+        onSelectProjectCard={() => {}}
+        onNewChat={() => {}}
+        onNew={onNew}
+      />
+    </div>,
   );
 
 describe("the workspace column", () => {
@@ -57,6 +62,29 @@ describe("the workspace column", () => {
     const list = await screen.findByRole("menu", { name: "Workspace actions" });
     expect(within(list).getByText("New chat")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Workspace options" }).getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("resizes from a focusable sash by 2% or Shift 10% and resets on double-click", () => {
+    const { container } = mount();
+    vi.spyOn(container.querySelector(".app-shell")!, "getBoundingClientRect").mockReturnValue({ width: 1000 } as DOMRect);
+    const handle = screen.getByRole("separator", { name: "Resize sidebar" });
+    const pane = handle.parentElement!;
+    handle.focus();
+    expect(document.activeElement).toBe(handle);
+    expect(handle.tabIndex).toBe(0);
+    expect(handle.getAttribute("aria-orientation")).toBe("vertical");
+    expect(handle.className).toContain("focus-visible:bg-accent");
+    fireEvent.keyDown(handle, { key: "ArrowRight" });
+    expect(handle.getAttribute("aria-valuenow")).toBe("280");
+    expect(pane.style.width).toBe("280px");
+    fireEvent.keyDown(handle, { key: "ArrowRight", shiftKey: true });
+    expect(handle.getAttribute("aria-valuenow")).toBe("380");
+    expect(pane.style.width).toBe("380px");
+    fireEvent.keyDown(handle, { key: "ArrowLeft" });
+    expect(pane.style.width).toBe("360px");
+    fireEvent.doubleClick(handle);
+    expect(handle.getAttribute("aria-valuenow")).toBe("260");
+    expect(pane.style.width).toBe("260px");
   });
 
   it("is headed Chats at the home", () => {
