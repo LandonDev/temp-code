@@ -298,6 +298,65 @@ describe('ThreadRows fold', () => {
   })
 })
 
+describe('a thread row ends in its mark', () => {
+  const one = (extra: Partial<SessionMeta>, seen: Record<string, number> = {}) => {
+    const probe = mountProbe(<ThreadList threads={[threadRow(meta('t', extra), seen)]} actions={actions} className="" />)
+    const row = probe.container.querySelector<HTMLElement>('[role="button"]')!
+    return { probe, row, mark: row.querySelector<HTMLElement>('[data-slot="status-mark"]') }
+  }
+
+  it('the glyph alone, its state on data-state, the word and what it is about as its label', () => {
+    const { probe, mark } = one({ status: 'running', busySince: 5, activity: 'Running bun' })
+    expect(mark?.getAttribute('data-state')).toBe('working')
+    expect(mark?.getAttribute('aria-label')).toBe('Working  running bun')
+    expect(mark?.querySelector('[data-slot="status-word"]')).toBeNull()
+    probe.unmount()
+    const waiting = one({ status: 'waiting' })
+    expect(waiting.mark?.getAttribute('data-state')).toBe('waiting')
+    expect(waiting.mark?.getAttribute('aria-label')).toBe('Needs you')
+    waiting.probe.unmount()
+    const failed = one({ status: 'error', failure: { kind: 'usage-cap', summary: 'Usage cap reached.' } as SessionMeta['failure'] })
+    expect(failed.mark?.getAttribute('aria-label')).toBe('Failed  usage cap reached')
+    failed.probe.unmount()
+  })
+
+  it('a settled row ends in nothing', () => {
+    for (const status of ['idle', 'done'] as const) {
+      const { probe, mark } = one({ status })
+      expect(mark).toBeNull()
+      probe.unmount()
+    }
+  })
+
+  it('an unread title is heavier, with no dot', () => {
+    const { probe, row } = one({ status: 'done', updatedAt: 200 }, { t: 100 })
+    const title = Array.from(row.querySelectorAll('span')).find((s) => s.textContent === 't')!
+    expect(title.className).toContain('font-medium')
+    expect(row.querySelector('.rounded-full')).toBeNull()
+    probe.unmount()
+  })
+
+  it('a paused row has its mark and no fill of its own', () => {
+    const { probe, row, mark } = one({ status: 'paused' })
+    expect(mark?.getAttribute('data-state')).toBe('paused')
+    expect(row.className).not.toMatch(/warning/)
+    probe.unmount()
+  })
+
+  it("its one hover action is More, opening the right-click's menu", () => {
+    const opened: unknown[] = []
+    const probe = mountProbe(
+      <ThreadList threads={[threadRow(meta('t'), {})]} actions={{ ...actions, openMenu: (m) => opened.push(m) }} className="" />
+    )
+    const more = probe.container.querySelector<HTMLButtonElement>('button[aria-label="More"]')!
+    act(() => {
+      fireEvent.click(more)
+    })
+    expect(opened).toHaveLength(1)
+    probe.unmount()
+  })
+})
+
 describe('the host glyph on rail rows', () => {
   afterEach(() => {
     hosts.environments = []
