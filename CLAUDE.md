@@ -1110,7 +1110,9 @@ routed to (aliax-core's `forward`). Two listeners:
   offline). Filters are typed in the box (`host:` and `type:` take a
   comma list, `project:` a name) or ticked in the field's filter menu
   (chrome/SearchFiltersMenu.tsx), which writes the same tokens
-  (`setQueryToken`); no other chrome. A command may open search with
+  (`setQueryToken`); no other chrome. Each host token first matches a whole
+  name or id; `mac` on macOS names the local host alone. Substrings apply
+  only when that token has no exact match. A command may open search with
   tokens already typed (`initialQuery`: `type:note`, `type:file`). Enter
   opens where the hit lives, ⌘↩ in a new pane; nothing in the list
   animates.

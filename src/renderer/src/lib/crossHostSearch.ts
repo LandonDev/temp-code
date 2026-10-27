@@ -112,14 +112,15 @@ export function hostsMatching(
   isMac = false,
 ): Environment[] {
   if (!tokens) return [...environments];
-  const needles = tokens.map((token) => token.toLowerCase());
-  return environments.filter((env) => {
-    const name = env.name.toLowerCase();
-    return needles.some((needle) => {
-      if (name.includes(needle) || env.id.toLowerCase() === needle) return true;
-      return needle === "mac" && env.id === "local" && isMac;
-    });
-  });
+  const matched = new Set<Environment>();
+  for (const token of tokens) {
+    const needle = token.toLowerCase();
+    const mac = needle === "mac" && isMac ? environments.find((env) => env.id === "local") : undefined;
+    const exact = mac ? [mac] : environments.filter((env) => env.name.toLowerCase() === needle || env.id.toLowerCase() === needle);
+    const hosts = exact.length ? exact : environments.filter((env) => env.name.toLowerCase().includes(needle));
+    for (const host of hosts) matched.add(host);
+  }
+  return environments.filter((env) => matched.has(env));
 }
 
 /** Whether a hit belongs to the project a `project:` token names: the

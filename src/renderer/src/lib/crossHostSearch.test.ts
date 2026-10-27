@@ -98,6 +98,23 @@ describe("hostsMatching", () => {
     expect(hostsMatching(null, hosts)).toHaveLength(2);
   });
 
+  it("host:mac names this Mac alone beside a macmini box", () => {
+    const hosts = [env("local", "This host"), env("box", "macmini")];
+    expect(hostsMatching(parseSearchQuery("host:mac").hosts, hosts, true)).toEqual([hosts[0]]);
+  });
+
+  it("prefers a whole name or id over a longer host name", () => {
+    const hosts = [env("a", "box"), env("b", "box2"), env("box-id", "remote"), env("c", "box-id-long")];
+    expect(hostsMatching(["BOX"], hosts)).toEqual([hosts[0]]);
+    expect(hostsMatching(["box-id"], hosts)).toEqual([hosts[2]]);
+  });
+
+  it("matches substrings when there is no exact match for that token", () => {
+    const hosts = [env("a", "macmini"), env("b", "macbook"), env("c", "box")];
+    expect(hostsMatching(["mac"], hosts)).toEqual(hosts.slice(0, 2));
+    expect(hostsMatching(["mac", "box"], hosts)).toEqual(hosts);
+  });
+
   it("takes the union of every name, in the hosts' order", () => {
     const three = [env("local", "This Mac"), env("env_box1", "box"), env("env_gpu", "gpu")];
     expect(hostsMatching(["gpu", "mac"], three).map((h) => h.id)).toEqual(["local", "env_gpu"]);
@@ -111,7 +128,7 @@ describe("hostToken", () => {
     const hosts = [env("local", "This Mac"), env("env_box1", "box"), env("env_box2", "box2")];
     expect(hostToken(hosts[0], hosts, true)).toBe("mac");
     expect(hostToken(hosts[0], hosts, false)).toBe("local");
-    expect(hostToken(hosts[1], hosts)).toBe("env_box1");
+    expect(hostToken(hosts[1], hosts)).toBe("box");
     expect(hostToken(hosts[2], hosts)).toBe("box2");
   });
 });
