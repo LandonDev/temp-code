@@ -727,7 +727,7 @@ routed to (aliax-core's `forward`). Two listeners:
   `<userData>/attachments/<sid>/`); the fence checks turn attachment paths.
   docs/box.md "Attachments on a remote thread". Proof:
   `bun run script:e2e-attachments`.
-- One thread moves Mac ↔ box from the thread header's host chip: the Mac's
+- One thread moves Mac ↔ box from the thread menu's "Move to <host>…" rows (the ⋯ menu and the chip's right-click): the Mac's
   own `session.move` (local) pushes over `session.import.*` or pulls over
   `session.export.*` (admin, on the peer link) in hash-chained parts; the
   receiver lands it remapped and hidden, the source keeps a tombstone only
@@ -873,7 +873,7 @@ routed to (aliax-core's `forward`). Two listeners:
   or a ledger `port` row still listening that passes the shared rules), with
   its console, "Open on the Mac :5174" and Stop; a row leaves the moment its
   host drops it. Closed by default and never opened on its own (the thread
-  header's Dev server button toggles it, the terminal dock's Dev Servers
+  menu's Dev server row toggles it, the terminal dock's Dev Servers
   button and a Run open it); while open it takes the terminal dock's place.
   Dev server consoles are never terminal tabs; old saved `devLog` tabs are
   dropped on load. docs/box.md "Dev servers on the box"; proof `bun run script:e2e-port-forward` (seam

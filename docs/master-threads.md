@@ -507,8 +507,7 @@ rows, the foot and the add sheet are the UI thread's
   and the master's own tool call.
 - **Every host on one board.** The rows are the batch's children on every
   host the renderer knows, a child on the box beside one at home; a row
-  away from the master's host carries that host's dot and name where the
-  thread header's host chip would, and sits under the offline tint while
+  away from the master's host carries that host's dot and name, and sits under the offline tint while
   that host is out of reach. Every action, the menus and the archive go to
   the row's own host; the add sheet starts a child on any linked host.
 - **Left out on purpose.** No cost column, no provider logos, no per-row

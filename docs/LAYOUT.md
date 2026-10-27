@@ -45,14 +45,29 @@ component builds each surface, and how**. Nothing here is built yet.
 
 ### Titlebar
 
-Drag region (`titlebar-drag`), hiddenInset traffic lights. Left: workspace /
-project breadcrumb as quiet text buttons (each opens its switcher popover,
-anchored to the text — apple-design §7 spatial anchoring). Right: the
-panel toggle as a ghost icon button. Center-right: the **activity pill** — a BeUI
-*Dynamic Island* adaptation showing running-agent count with a status dot;
-hover morphs it wider to a per-thread status list. This is the one piece of
-ambient chrome; it earns its place because agents run in background threads
-(phase 2 if time is tight).
+Drag region (`titlebar-drag`), hiddenInset traffic lights. In deck layout
+the bar is one row: the thread strip (below) fills it, and its right end
+holds exactly two ghost icon buttons, each with a `Tooltip`: the ⋯ thread
+menu, then the panel toggle (`aria-pressed` while the right panel is open,
+"Panel ⌘⇧R"), last because it is nearest the panel it opens. The rail-closed
+stand-ins (Inbox, Notes, Go to File, New session, Settings) and the Windows
+controls keep their places.
+
+The ⋯ menu (chrome/ThreadMenu.tsx, a `DropdownMenu` at the `sm` size) has
+three groups. First a quiet line, not an item: the host's glyph and name
+when the window has two or more hosts, and the thread's cost at the end in
+`tabular-nums` when it is above zero; absent when it would say nothing.
+Then the active thread's own rows, the same list its chip's right-click
+shows (`chipMenuItems`, rendered by the one `MenuRows` for both menus), with
+"Move to <host>…" rows before Archive (`useThreadHost` in
+chrome/ThreadHostChip.tsx; a disabled one carries its reason as a second
+line). Then the project: Pause all with the running count (only when
+something runs; a failure is a toast), Dev server checked while the Dev
+servers pane is open (only when a host can serve the project), Terminal
+with ⌘\`, Recent threads (the settled threads, freshest first, at most
+12, each with its age) and Archived threads… (a `Popover` from the ⋯ button
+with a search field past six; Restore on hover). The branch is the right
+panel's Branch section, not the header's.
 
 ### Sidebar
 
@@ -151,13 +166,50 @@ note.
 
 ### Thread strip
 
-BeUI *Tabs*, underline variant, `SPRING_LAYOUT` indicator. Each tab: type
-glyph (chat `message-square`, planning `map`, project plan `milestone`,
-implementation `list-checks`, orchestration `git-fork`, 14px) + title + status dot when running. Orchestration tabs may
-stack provider glyphs via ReUI *icon-stack*. `+` button opens a popover
-(ReUI) anchored to it: thread type picker (three rows with descriptions) +
-provider/model — replaces the current NewSessionDialog for threads. Overflow
-scrolls horizontally with faded edges (scroll edge effect, no hard border).
+chrome/ThreadHeaderStrip.tsx: the selected project's live root threads as
+one row of chips, a hand-made `role="tablist"` (DESIGN.md keeps the tab
+strip hand-made). The thread on screen always has its chip; settled threads
+leave the row and are reached from the ⋯ menu's Recent threads.
+
+- **Order.** Stable, like a browser's tabs: a chip keeps its place, a new
+  one joins at the end (oldest first when several arrive together), and a
+  status change never moves one (`orderChips` in lib/threadHeaderModel.ts).
+  The order is saved per project in localStorage (`monocode.stripOrder`,
+  `stripOrderStore` in stores/header.ts, 64 ids per project, a project not
+  shown for 30 days dropped on load) under the link id, so the copies of a
+  linked project share one order; the title bar orders the model before it
+  publishes, so ⌘1–9 and ⌃Tab walk the chips as they sit. While the pointer
+  is over the strip a chip whose thread settled holds its place
+  (`holdDepartures`), so nothing shifts under the cursor; it goes when the
+  pointer leaves.
+- **The chip.** A ghost `Button` with `role="tab"`, 28px tall, 12px
+  padding, `rounded-md`, 2px apart: the type glyph (14px, 1.5 stroke,
+  uncoloured), 8px, the title (13px, truncated at 224px), "Master" in
+  muted type when pinned, then the `StatusMark` glyph (none for an idle or
+  done thread). Muted at rest, `foreground/5` and foreground on hover (the
+  colour swap takes `--dur-fast`), `bg-muted` when active (no transition),
+  medium weight when unread, the accent ring on keyboard focus. No motion:
+  list rows take none.
+- **Input.** A primary press selects; a right press or a Control-click
+  never selects, and the contextmenu opens the thread's menu at the pointer
+  (`ContextMenu`, rows from `chipMenuItems`). Double-click renames in place
+  on an `Input`. Arrows, Home and End move focus along the row (only the
+  active chip is in the tab order), Enter or Space selects. The row and its
+  gaps are outside the window's drag region.
+- **Hover.** One `Tooltip` per chip under a shared `TooltipProvider`: the
+  title, and under it the status word with what it is about ("Working
+  typecheck", "Needs you  approve Bash", a tally, a failure's verdict).
+- **New thread.** The "+" after the last chip (chrome/NewThreadChooser.tsx)
+  is a ghost icon button, or "New thread" in words on an empty strip, opening
+  a `Popover` of `Item` rows, one per thread type; Orchestrate and Research
+  keep an options button whose tune view swaps in place with Back.
+
+File and terminal tabs (chrome/SurfaceTabs.tsx) take the chip's shape on a
+line `Tabs`: a 36px bar with its hairline, each tab 28px with the file-type
+icon, the name (italic for a review) and a 16px slot whose unsaved dot turns
+into the close button on hover (or on a clean active tab), the active tab
+underlined. No change counts (the Changes panel has them); drag to reorder
+keeps its 2px accent drop marker.
 
 ### Prompt bar (all thread types)
 
@@ -196,11 +248,11 @@ sash, double-click for the default size):
   the Mac :5174" and Stop. It lists only what a host still lists; a row the
   host drops leaves at once, nothing animates in or out. With nothing live
   it is one muted line, "No dev servers running". Closed until opened (the
-  thread header's Dev server button, the terminal dock's Dev Servers
-  button, Run in the panel's Dev section); open and its height persist.
+  thread menu's Dev server row, the terminal dock's Dev Servers button,
+  Run in the panel's Dev section); open and its height persist.
 
 While the pane is open the terminal dock is hidden, its own open flag
-untouched; asking for a terminal (⌘J, the titlebar's Terminal, New
+untouched; asking for a terminal (⌘J, the thread menu's Terminal, New
 Terminal, the pane's Terminal button) puts the pane away. Dev server
 consoles are never terminal tabs.
 
@@ -390,8 +442,7 @@ in the whole pane, with Back.
   "Landed 12:08" once the batch lists it, "Done" otherwise), and at the
   right the provider's mark, the model's name, then its effort and context
   in a quieter gray; first, when the thread runs on another host than the
-  master, that host's dot and name as the thread header's host chip draws
-  them (`rowHost`: the dot's tone from `hostTone`, muted, once per row,
+  master, that host's dot and name (`rowHost`: the dot's tone from `hostTone`, muted, once per row,
   nothing on a row at home). A row of a host whose link is not open sits
   under the offline tint (`opacity-50`, `data-host-offline`): its row is
   the launch mirror's and lifts when the host is back.
@@ -539,7 +590,7 @@ in the whole pane, with Back.
   dialog's 90; lib/layers.ts mirrors the `--layer-*` tokens).
 - **Everywhere else** a child is an ordinary root thread in the rail with
   its activity line ("Queued · waiting for <sibling>") and its own working
-  strip with one quiet Start now; only the strip and its shelf leave it out.
+  strip with one quiet Start now; only the header strip leaves it out.
   Under the master's rail row a child on a host whose link is not open
   sits under the same offline tint as on the board (`data-host-offline`).
 - **On the project card** (and the workspace popover) a master with a batch
