@@ -29,13 +29,6 @@ const NOT_YET: readonly string[] = [
   "surfaces/InboxPrDiff.tsx",
   "surfaces/NotesView.tsx",
   "surfaces/threadChat.tsx",
-  // A10's composer files (A12 slice 7 after A10 lands).
-  "chrome/AttachmentChip.tsx",
-  "chrome/DraftHostPicker.tsx",
-  "chrome/GoalControl.tsx",
-  "chrome/MessageQueue.tsx",
-  "chrome/ModelPicker.tsx",
-  "chrome/ModelSettings.tsx",
 ];
 
 function sources(dir: string): string[] {
