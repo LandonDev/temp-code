@@ -55,7 +55,7 @@ function Body({ env, onClose, onChanged, pending, setPending }: Props & { pendin
   };
   return (
     <>
-      <div className="flex flex-col gap-4 px-4 py-4">
+      <div className="flex flex-col gap-4 px-5 py-4">
         <ItemGroup aria-label="Routes">
           {routes.map((route, i) => (
             <Item key={route.url} role="listitem" size="xs" className="px-0">

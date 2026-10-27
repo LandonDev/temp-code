@@ -17,7 +17,7 @@ export function MacBridgeRulesDialog({
   useEffect(() => void loadMacBridgeRules(), [])
   return (
     <Modal onClose={onClose} title="Mac approvals" description={title} size="md">
-      <div className="flex flex-col gap-4 px-4 py-4">
+      <div className="flex flex-col gap-4 px-5 py-4">
         <MacBridgeRuleList
           sessionId={sessionId}
           empty="Nothing remembered. sudo, osascript, security and credential paths always ask."

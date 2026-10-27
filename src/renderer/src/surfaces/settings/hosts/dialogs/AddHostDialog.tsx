@@ -61,7 +61,7 @@ function Body({ repair, onClose, onChanged, pending, setPending }: Props & { pen
         if (ready) void submit();
       }}
     >
-      <div className="flex flex-col gap-4 px-4 py-4">
+      <div className="flex flex-col gap-4 px-5 py-4">
         <FieldRow label="With">
           <ToggleGroup spacing={0} size="sm" value={[mode]} onValueChange={(next) => next[0] && setMode(next[0] as "link" | "key")}>
             <ToggleGroupItem value="link">Pairing link</ToggleGroupItem>

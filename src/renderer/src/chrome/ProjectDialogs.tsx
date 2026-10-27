@@ -342,7 +342,7 @@ export function NewWorkspaceDialog({
     <Dialog {...root}>
       <ModalPanel onClose={onClose} busy={pending} title={`Add ${baseName(path)}`} description={prettyCwd(path)} size="sm">
         <form onSubmit={submit}>
-          <div className="flex flex-col gap-4 px-4 py-4">
+          <div className="flex flex-col gap-4 px-5 py-4">
             <Section label="Completed turn">
               <TurnPassFields value={pass} onChange={setPass} compact />
             </Section>
@@ -411,7 +411,7 @@ export function NewProjectDialog({
     <Dialog {...root}>
       <ModalPanel onClose={onClose} busy={pending} title="New project" description={workspace.name} size="sm">
         <form onSubmit={submit}>
-          <div className="flex flex-col gap-4 px-4 py-4">
+          <div className="flex flex-col gap-4 px-5 py-4">
             <Field label="Name">
               <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="What are you working on?" />
             </Field>
@@ -631,7 +631,7 @@ function ProjectSettingsBody({
             </SheetDescription>
           </SheetHeader>
           <ScrollArea className="min-h-0 flex-1">
-            <div className="flex flex-col gap-6 px-4 pb-6">
+            <div className="flex flex-col gap-6 px-5 pb-6">
               <div className="flex flex-col gap-4">
                 <Field label="Name">
                   <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} />
@@ -680,7 +680,7 @@ function ProjectSettingsBody({
           </ScrollArea>
           {/* Under the scroller, beside the foot: a failed save is never scrolled out of sight. */}
           {error ? (
-            <div className="border-t border-border px-4 pt-3">
+            <div className="border-t border-border px-5 pt-3">
               <ErrorLine error={error} />
             </div>
           ) : null}
@@ -816,7 +816,7 @@ export function ProjectTeardownDialog({
         size="sm"
       >
         {checks || error ? (
-          <div className="flex flex-col gap-4 px-4 py-4">
+          <div className="flex flex-col gap-4 px-5 py-4">
             {checks}
             <ErrorLine error={error} />
           </div>

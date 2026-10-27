@@ -33,12 +33,12 @@ function Made({ created, onClose }: { created: Created; onClose: () => void }) {
   const close = useModalClose();
   return (
     <>
-      <div className="flex flex-col gap-4 px-4 py-4">
+      <div className="flex flex-col gap-4 px-5 py-4">
         <Secret label="Key" value={created.token} />
         {created.webhookSecret ? <Secret label="Webhook signing secret" value={created.webhookSecret} /> : null}
       </div>
       {/* Nothing is left to cancel once the key exists: Done alone. */}
-      <div className="flex items-center justify-end gap-2 border-t border-border px-4 py-3">
+      <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
         <Button onClick={() => (close ? close(onClose) : onClose())}>Done</Button>
       </div>
     </>
@@ -92,7 +92,7 @@ function Form({
         if (name.trim()) void create();
       }}
     >
-      <div className="flex flex-col gap-4 px-4 py-4">
+      <div className="flex flex-col gap-4 px-5 py-4">
         <Field label="Name">
           <Input value={name} autoFocus onChange={(e) => setName(e.target.value)} placeholder={audience === "mcp" ? "grok" : "iphone"} />
         </Field>

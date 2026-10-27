@@ -44,7 +44,7 @@ function Body({ env, onClose, onChanged, pending, setPending }: Props & { pendin
         if (ready) void submit();
       }}
     >
-      <div className="flex flex-col gap-4 px-4 py-4">
+      <div className="flex flex-col gap-4 px-5 py-4">
         <Field label="Name">
           <Input
             value={name}

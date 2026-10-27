@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConfirmDialog, ConfirmHost, DialogFooter, confirmAction } from "./ConfirmDialog";
-import { Modal } from "./Modal";
+import { Modal, ModalBody } from "./Modal";
 
 afterEach(cleanup);
 
@@ -20,6 +20,22 @@ describe("Modal", () => {
     expect(dialog.textContent).toContain("A reusable shell");
     expect(dialog.textContent).toContain("Body");
     expect(screen.getByRole("button", { name: "Close" })).toBeTruthy();
+  });
+
+  it("insets its header, body and footer 20px from the dialog's edge", () => {
+    render(
+      <Modal title="Example" onClose={vi.fn()}>
+        <ModalBody data-testid="body">Body</ModalBody>
+        <DialogFooter onCancel={vi.fn()} confirmLabel="Save" />
+      </Modal>,
+    );
+    const dialog = screen.getByRole("dialog");
+    const header = dialog.querySelector("header")!;
+    expect(header.className).toContain("px-5");
+    expect(header.className).toContain("pt-5");
+    expect(screen.getByTestId("body").className).toContain("px-5");
+    const footer = screen.getByRole("button", { name: "Save" }).parentElement!;
+    expect(footer.className).toContain("px-5");
   });
 
   it("enters on the dialog's motion: 240ms in, 120ms out", () => {

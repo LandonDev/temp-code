@@ -46,7 +46,7 @@ export function DialogFooter({
 }) {
   const close = useModalClose();
   return (
-    <div className="flex items-center justify-end gap-2 border-t border-border px-4 py-3">
+    <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
       {note ? (
         <span data-footer-note className="me-auto min-w-0 truncate text-xs text-muted-foreground">
           {note}

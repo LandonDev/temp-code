@@ -156,7 +156,7 @@ function FolderPicker({ environmentId, onClose, onPick, pending, setPending }: P
 
   return (
     <>
-      <div className="flex flex-col gap-3 px-4 py-4">
+      <div className="flex flex-col gap-3 px-5 py-4">
         {workRoot || loading ? (
           <>
             <nav aria-label="Folder" className="-mx-2 flex min-h-6 min-w-0 flex-wrap items-center gap-0.5">

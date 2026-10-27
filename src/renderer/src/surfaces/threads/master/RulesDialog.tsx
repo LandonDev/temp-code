@@ -91,7 +91,7 @@ function RulesForm({
         void save();
       }}
     >
-      <div className="flex flex-col gap-4 px-4 py-4">
+      <div className="flex flex-col gap-4 px-5 py-4">
         {merges ? (
           <FieldRow label="Branches land" className="-my-2">
             <ChoiceToggle

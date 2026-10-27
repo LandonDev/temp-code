@@ -123,7 +123,7 @@ function CustomizeForm({
         void save();
       }}
     >
-      <div className="flex flex-col gap-4 px-4 py-4">
+      <div className="flex flex-col gap-4 px-5 py-4">
         <Field label="Name">
           <Input autoFocus onFocus={(e) => e.currentTarget.select()} value={name} onChange={(e) => setName(e.target.value)} />
         </Field>

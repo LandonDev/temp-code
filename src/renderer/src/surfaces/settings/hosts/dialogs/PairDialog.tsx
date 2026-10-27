@@ -35,7 +35,7 @@ function Code({ made, onClose, onChanged }: Props & { made: Made }) {
   };
   return (
     <>
-      <div className="flex flex-col gap-4 px-4 py-4">
+      <div className="flex flex-col gap-4 px-5 py-4">
         <div className="flex items-center gap-4">
           {made.qr ? <img src={made.qr} alt="Pairing QR code" className="size-32 shrink-0 rounded-lg outline outline-1 outline-foreground/10" /> : null}
           <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -88,7 +88,7 @@ function Form({ onClose, onChanged, pending, setPending, onMade }: Props & { pen
         if (name.trim()) void create();
       }}
     >
-      <div className="flex flex-col gap-4 px-4 py-4">
+      <div className="flex flex-col gap-4 px-5 py-4">
         <Field label="Name">
           <Input value={name} autoFocus onChange={(e) => setName(e.target.value)} placeholder="iPhone" />
         </Field>

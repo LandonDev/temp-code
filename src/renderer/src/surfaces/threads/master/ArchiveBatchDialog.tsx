@@ -48,7 +48,7 @@ function Body({ which, count, resources, onCancel, onConfirm, pending, setPendin
   };
   return (
     <>
-      <div className="flex flex-col gap-4 px-4 py-4" data-archive-batch={which}>
+      <div className="flex flex-col gap-4 px-5 py-4" data-archive-batch={which}>
         <p className="text-sm text-muted-foreground">{copy.body}</p>
         {copy.cleanup ? (
           <CheckRow label={copy.cleanup} checked={cleanup} onCheckedChange={setCleanup} />

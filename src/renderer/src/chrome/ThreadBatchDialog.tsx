@@ -40,7 +40,7 @@ function Confirm({ request }: { request: BatchRequest }): JSX.Element {
   };
   return (
     <Modal onClose={cancelThreadBatch} title={copy.title} size="sm">
-      <div className="flex flex-col gap-4 px-4 py-4" data-batch-confirm={request.action}>
+      <div className="flex flex-col gap-4 px-5 py-4" data-batch-confirm={request.action}>
         <p className="text-sm text-muted-foreground">{copy.body}</p>
         {copy.cleanup ? (
           <CheckRow label={copy.cleanup} checked={cleanup} onCheckedChange={setCleanup} />

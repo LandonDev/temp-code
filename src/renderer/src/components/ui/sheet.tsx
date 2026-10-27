@@ -80,11 +80,11 @@ function SheetContent({
 }
 
 function SheetHeader({ className, ...props }: ComponentProps<"div">) {
-  return <div data-slot="sheet-header" className={cn("flex flex-col gap-1 p-4 pe-12", className)} {...props} />;
+  return <div data-slot="sheet-header" className={cn("flex flex-col gap-1 p-5 pe-12", className)} {...props} />;
 }
 
 function SheetFooter({ className, ...props }: ComponentProps<"div">) {
-  return <div data-slot="sheet-footer" className={cn("mt-auto flex flex-row justify-end gap-2 p-4", className)} {...props} />;
+  return <div data-slot="sheet-footer" className={cn("mt-auto flex flex-row justify-end gap-2 p-5", className)} {...props} />;
 }
 
 function SheetTitle({ className, ...props }: SheetPrimitive.Title.Props) {

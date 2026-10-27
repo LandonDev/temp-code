@@ -71,7 +71,7 @@ function Body({
 
   return (
     <>
-      <div className="flex flex-col gap-4 px-4 py-4">
+      <div className="flex flex-col gap-4 px-5 py-4">
         <div className="relative">
           <Textarea
             ref={field}
@@ -105,7 +105,7 @@ function Body({
         </div>
         <ErrorLine error={error || generateError} />
       </div>
-      <div className="flex items-center justify-end gap-2 border-t border-border px-4 py-3">
+      <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
         <Button variant="ghost" disabled={waiting} onClick={() => (close ? close(onCancel) : onCancel())}>
           Cancel
         </Button>

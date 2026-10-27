@@ -73,7 +73,7 @@ export function ModalPanel({ busy = false, title, description, size = "md", clas
       aria-busy={busy || undefined}
       className={cn("flex max-h-[calc(100vh-4rem)] flex-col gap-0 overflow-hidden p-0", className)}
     >
-      <header className="flex shrink-0 items-start gap-2 px-4 pt-4">
+      <header className="flex shrink-0 items-start gap-2 px-5 pt-5">
         <div className="min-w-0 flex-1">
           <DialogTitle>{title}</DialogTitle>
           {description ? <DialogDescription className="mt-1 truncate text-xs">{description}</DialogDescription> : null}
@@ -91,6 +91,11 @@ export function ModalPanel({ busy = false, title, description, size = "md", clas
       </div>
     </DialogContent>
   );
+}
+
+/** A dialog's body: the 20px inset every dialog shares, fields 16px apart. */
+export function ModalBody({ className, ...props }: ComponentProps<"div">) {
+  return <div className={cn("flex flex-col gap-4 px-5 py-4", className)} {...props} />;
 }
 
 export function Modal(props: Props) {

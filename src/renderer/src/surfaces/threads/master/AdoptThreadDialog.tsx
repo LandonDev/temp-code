@@ -96,7 +96,7 @@ function AdoptBody({
         void onAdd(close);
       }}
     >
-      <div className="flex flex-col gap-2 px-4 py-4">
+      <div className="flex flex-col gap-2 px-5 py-4">
         <ScrollArea className="-mx-2 max-h-80 [&>[data-slot=scroll-area-viewport]]:max-h-80">
           <ItemGroup aria-label="Threads in no batch">
             {candidates.map((c) => {

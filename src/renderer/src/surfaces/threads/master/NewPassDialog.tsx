@@ -49,10 +49,10 @@ function Body({ sessionId, landed, onClose }: Props) {
   const line = passLine(meta, digest, landed);
   return (
     <div ref={body} data-new-pass={sessionId} data-new-pass-host={meta.environmentId}>
-      <p className="mt-1 flex h-4 items-center px-4" data-new-pass-line>
+      <p className="mt-1 flex h-4 items-center px-5" data-new-pass-line>
         <StatusMark state={line.state} detail={line.detail} />
       </p>
-      <div className="px-4 pt-4 pb-4">
+      <div className="px-5 pt-4 pb-4">
         {session ? (
           <ThreadComposer
             session={session}

@@ -153,7 +153,7 @@ function PreambleForm({
         }
       }}
     >
-      <div className="flex flex-col gap-4 px-4 py-4">
+      <div className="flex flex-col gap-4 px-5 py-4">
         <div className="grid grid-cols-2 gap-4">
           <Field label="Project rules" aside={<span className="text-xs tabular-nums text-muted-foreground" data-preamble-count>{words(count)}</span>}>
             <Textarea

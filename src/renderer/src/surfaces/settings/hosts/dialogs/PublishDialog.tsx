@@ -47,7 +47,7 @@ function Body({ notes: initial, refusal, onClose, onPublish, pending, setPending
         if (ready) void submit();
       }}
     >
-      <div className="flex flex-col gap-4 px-4 py-4">
+      <div className="flex flex-col gap-4 px-5 py-4">
         <Field label="Release notes">
           <Textarea value={notes} autoFocus rows={4} spellCheck={false} onChange={(e) => setNotes(e.target.value)} className="max-h-40 resize-none" />
         </Field>

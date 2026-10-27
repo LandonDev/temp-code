@@ -195,7 +195,7 @@ export function ThreadDefaultsDialog({
             if (value) void save(value);
           }}
         >
-          <div className="flex flex-col gap-4 px-4 py-4">
+          <div className="flex flex-col gap-4 px-5 py-4">
             {value ? (
               <DialogFields value={value} onChange={setValue} environmentId={workspace.environmentId} hint={scopeHint(workspace.id, scope ?? BUILT_IN_SCOPE)} />
             ) : (
@@ -203,7 +203,7 @@ export function ThreadDefaultsDialog({
             )}
             <ErrorLine error={error} />
           </div>
-          <div className="flex items-center justify-end gap-2 border-t border-border px-4 py-3">
+          <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
             {scope?.overridden ? (
               <Button variant="ghost" disabled={pending} onClick={() => void save(null)} className="me-auto">
                 Remove override

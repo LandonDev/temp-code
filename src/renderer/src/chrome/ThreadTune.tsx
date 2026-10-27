@@ -88,7 +88,7 @@ export function ThreadTune({
     onChange(out);
   };
   return (
-    <div className="flex flex-col gap-4 px-4 py-3">
+    <div className="flex flex-col gap-4 px-5 py-3">
       <Textarea
         rows={3}
         aria-label="Custom instructions"
@@ -180,7 +180,7 @@ export function TuneDialog({
       size="md"
     >
       <ThreadTune environmentId={environmentId} tune={tune} onChange={setTune} workspaceId={workspaceId} />
-      <div className="flex items-center justify-end gap-2 px-4 py-3">
+      <div className="flex items-center justify-end gap-2 px-5 py-3">
         <Button variant="secondary" onClick={onCancel}>
           Cancel
         </Button>

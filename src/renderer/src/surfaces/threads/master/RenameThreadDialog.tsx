@@ -41,7 +41,7 @@ function RenameForm({ sessionId, title, onClose, pending, setPending }: Props & 
         void save();
       }}
     >
-      <div className="flex flex-col gap-4 px-4 py-4">
+      <div className="flex flex-col gap-4 px-5 py-4">
         <Input autoFocus onFocus={(e) => e.currentTarget.select()} aria-label="Title" value={draft} onChange={(e) => setDraft(e.target.value)} />
         <ErrorLine error={error} />
       </div>

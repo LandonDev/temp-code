@@ -225,7 +225,7 @@ function AddThreadForm({
       }}
     >
       {/* The rows carry their own 8px, so the brief and the rows sit 16px apart. */}
-      <div className="flex flex-col gap-2 px-4 pt-4 pb-2">
+      <div className="flex flex-col gap-2 px-5 pt-4 pb-2">
         <Textarea
           autoFocus
           value={brief}
