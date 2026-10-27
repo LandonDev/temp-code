@@ -2,7 +2,6 @@ import {
   MoreHorizontal,
   Plus,
   Search,
-  Settings,
 } from "./icons";
 import {
   memo,
@@ -10,7 +9,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
@@ -34,7 +32,7 @@ import { archive } from "../lib/tcserver/commands";
 import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
 import { dormantByType, dormantThreads, focusedTree } from "../lib/threadStripModel";
 import { scopeTest } from "../lib/workspaceSessions";
-import { loadNotesEnabled, openWorkspaceSettings, subscribeNotesEnabled } from "../lib/settings";
+import { openWorkspaceSettings } from "../lib/settings";
 import { pickTextHarness } from "../lib/harness/textHarness";
 import { canTabVisitBack, canTabVisitForward } from "../lib/tabVisitHistory";
 import { selectedChangePath } from "../lib/workspaceTabGroups";
@@ -47,17 +45,16 @@ import { NewProjectDialog } from "./ProjectDialogs";
 import { ThreadDefaultsDialog } from "./ThreadDefaultsDialog";
 import { PreambleDialog } from "./PreambleDialog";
 import { openOrchestrationSettings } from "../lib/tcserver/rules";
-import { useLiveAgents } from "../lib/liveAgentTracker";
+import { useBootResumeToasts } from "./HostRows";
 import { useProjectSignals } from "../hooks/useProjectSignals";
 import { useDragResize } from "../hooks/useDragResize";
 import { useGitFileStatuses } from "../hooks/useGitFileStatuses";
-import { useInboxUnseen } from "../hooks/useInboxUnseen";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { useProjectDiffStats } from "../hooks/useProjectDiffStats";
 import { useSortable } from "../hooks/useSortable";
 import { looksLikeProject } from "../lib/recents";
 import { FileTree } from "./FileTree";
-import { ProjectRail } from "./ProjectRail";
+import { ProjectRail, RailFoot } from "./ProjectRail";
 import {
   useProject,
   useProjectCwds,
@@ -66,13 +63,9 @@ import {
   useSelectedWorkspaceIds,
 } from "../stores/project";
 import { shell, useShell, type AliaxPageId } from "../stores/shell";
-import { RailAction } from "./RailAction";
 import { DevModeSlot, IconButton, TabVisitNav } from "./TitleBar";
 import { ProjectSearch } from "./ProjectSearch";
-import { SidebarUpdateFooter } from "./SidebarUpdate";
-import { UsageMeter } from "./UsageMeter";
 import { SourceControl } from "./SourceControl";
-import { settingsChunk } from "../surfaces/chunks";
 import type { OpenFileFn } from "../lib/search";
 
 const MIN_WIDTH = 260;
@@ -141,7 +134,6 @@ function SidebarComponent({
   onNew,
   onSearch,
   onOpenInbox,
-  onOpenNotes,
   onOpenAccountsPage,
   onOpenChats,
   onGoToFile,
@@ -158,7 +150,6 @@ function SidebarComponent({
   const selectedDiffPath = activeTab ? selectedChangePath(activeTab, gitCwd) : undefined;
   const canVisitBack = useWorkspaceTabs((s) => canTabVisitBack(s.visits));
   const canGoForward = useWorkspaceTabs((s) => canTabVisitForward(s.visits));
-  const notesEnabled = useSyncExternalStore(subscribeNotesEnabled, loadNotesEnabled, () => true);
   const recents = useRailRecents();
   const selectedProjectId = useProject((s) => s.selectedProjectId);
   /** The workspace folder the app is in: the rail highlights this row, not
@@ -170,7 +161,7 @@ function SidebarComponent({
   const workspaceIds = useSelectedWorkspaceIds();
   const { busy: busyProjectPaths, needsYou: needsYouProjectPaths } =
     useProjectSignals();
-  const liveAgents = useLiveAgents();
+  useBootResumeToasts();
   const reduceMotion = useReducedMotion();
   const gitRoot = gitCwd || cwd;
   // Focus boot: start the JVM engine for a build-file project as soon as
@@ -179,7 +170,6 @@ function SidebarComponent({
   useEffect(() => {
     if (inProject) void warmProjectForCwd(gitRoot);
   }, [gitRoot, inProject]);
-  const inboxUnseen = useInboxUnseen();
   const resize = useDragResize({
     min: MIN_WIDTH,
     max: () => Math.min(MAX_WIDTH, Math.floor(window.innerWidth * 0.5)),
@@ -205,7 +195,6 @@ function SidebarComponent({
   const accountsPage = useShell((s) => s.accountsPage);
   const projectRailOpen = useShell((s) => s.projectRailOpen);
   const settingsOpen = useShell((s) => s.settingsOpen);
-  const updateNotice = useShell((s) => s.updateNotice);
   // Back leaves an overlay before it walks tab history.
   const canGoBack =
     canVisitBack || searchActive || settingsOpen || inboxActive || notesActive || !!accountsPage;
@@ -265,8 +254,6 @@ function SidebarComponent({
         onNewProject={() => setNewProjectOpen(true)}
         onRenameSession={(id, title) => onRenameSession?.(id, title)}
         onDeleteSession={(id) => onDeleteSession?.(id, { confirmed: true })}
-        onOpenAccountsPage={onOpenAccountsPage}
-        accountsPage={accountsPage}
       />
     ) : null;
   const showSidebarFooter = !projectRailOpen;
@@ -479,25 +466,15 @@ function SidebarComponent({
               />
             </div>
           ) : null}
-          {showSidebarFooter ? (
-            <>
-              <SidebarUpdateFooter
-                update={updateNotice}
-                onOpenWhatsNew={onOpenWhatsNew}
-                onDismissUpdate={shell.dismissUpdate}
-              />
-              <div className="flex shrink-0 flex-col gap-px p-2 pt-px">
-                <RailAction
-                  label="Settings"
-                  icon={Settings}
-                  onClick={() => shell.openSettings()}
-                  intent={settingsChunk.intent}
-                  shortcut={`${MOD},`}
-                  ariaLabel={`Settings (${MOD},)`}
-                />
-              </div>
-              <UsageMeter sessionId={activeSessionId} />
-            </>
+          {showSidebarFooter && onOpenProject ? (
+            <RailFoot
+              activeSessionId={activeSessionId}
+              onSearch={onSearch}
+              onOpenInbox={onOpenInbox}
+              onOpenAccountsPage={onOpenAccountsPage}
+              onOpenWhatsNew={onOpenWhatsNew}
+              onAddWorkspace={(environmentId) => onOpenProject(environmentId)}
+            />
           ) : null}
         </>
       )}
@@ -576,10 +553,8 @@ function SidebarComponent({
         <ProjectRail
           cwd={workspaceCwd}
           recents={recents}
-          inboxUnseen={inboxUnseen}
           busyPaths={busyProjectPaths}
           needsYouPaths={needsYouProjectPaths}
-          liveAgents={liveAgents}
           activeSessionId={activeSessionId}
           onSelectAgent={onSelectAgent}
           canGoBack={canGoBack}
@@ -588,10 +563,7 @@ function SidebarComponent({
           onGoForward={onGoForward}
           onSearch={onSearch}
           onOpenInbox={onOpenInbox}
-          notesEnabled={notesEnabled}
-          onOpenNotes={onOpenNotes}
           onOpenAccountsPage={onOpenAccountsPage}
-          accountsPage={accountsPage}
           onOpenChats={onOpenChats}
           onSelectProject={onSelectProject}
           onOpenProject={onOpenProject}

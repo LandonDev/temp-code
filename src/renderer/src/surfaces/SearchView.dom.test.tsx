@@ -69,7 +69,6 @@ vi.mock("../lib/projectLogos", () => ({ projectLogoSrc: () => null }));
 vi.mock("../lib/tabGroups", () => ({ TAB_GROUP_LOGOS_CHANGED: "x", tabGroupLogoDisplayRevision: () => 0 }));
 vi.mock("../chrome/TitleBar", () => ({ OverlayNav: () => <span /> }));
 vi.mock("../chrome/WindowControls", () => ({ WindowControls: () => <span /> }));
-vi.mock("../chrome/EnvironmentSwitcher", () => ({ toneOf: () => "bg-success" }));
 vi.mock("../chrome/FileTypeIcon", () => ({ FileTypeIcon: () => <span data-icon="file" /> }));
 vi.mock("../chrome/HarnessIcon", () => ({ HarnessIcon: () => <span data-icon="harness" /> }));
 

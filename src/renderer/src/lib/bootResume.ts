@@ -56,6 +56,11 @@ export function useBootResumeNotice(environmentId: string | undefined): BootResu
   );
 }
 
+/** Every host's notice not yet shown, for the toast that says it once. */
+export function useBootResumeNotices(): readonly BootResumeNotice[] {
+  return useSyncExternalStore(subscribe, () => notices);
+}
+
 /** The line's words: "1 thread resumed after restart", "7 threads …". */
 export function bootResumeLine(count: number): string {
   return `${count} ${count === 1 ? "thread" : "threads"} resumed after restart`;

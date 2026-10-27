@@ -1,15 +1,10 @@
 import { registry, useEnvironments } from "../lib/connection";
 import { environmentOfCwd } from "../lib/tcserver/projects";
 import { aliasKeys, mergeRailSections, type RailItem } from "../lib/linkedRail";
-import { EnvironmentSwitcher } from "./EnvironmentSwitcher";
-import { HostRows } from "./HostRows";
+import { HostsRow } from "./HostRows";
 import { useHostsOffline } from "./hostOffline";
 import {
   Archive,
-  Check,
-  ChevronDown,
-  ChevronUp,
-  CircleAlert,
   FolderOpen,
   ChartBar,
   Inbox,
@@ -19,7 +14,6 @@ import {
   Pause,
   Pin,
   PinOff,
-  File,
   Plus,
   Search,
   Users,
@@ -28,6 +22,7 @@ import {
 } from "./icons";
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react";
 import { useDragResize } from "../hooks/useDragResize";
+import { useInboxUnseen } from "../hooks/useInboxUnseen";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { useProjectDiffStats } from "../hooks/useProjectDiffStats";
 import { useSortable } from "../hooks/useSortable";
@@ -70,8 +65,6 @@ import {
   saveTabGroupLabel,
   saveTabGroupMascot,
 } from "../lib/tabGroups";
-import { formatLiveElapsed, type LiveAgent } from "../lib/liveAgents";
-import { useClock } from "../lib/turnClock";
 import type { CardThread } from "../lib/projectCardModel";
 import { useWorkspaceRailStatuses, type WorkspaceRailStatus } from "../hooks/useProjectSignals";
 import { threadsToMarkRead } from "../lib/markRead";
@@ -82,7 +75,6 @@ import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
 import { markAllSeen, markSessionsSeen } from "../lib/sessionSeen";
 import { useSessionMetas } from "../lib/tcserver/store";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
-import { HarnessIcon } from "./HarnessIcon";
 import { ProjectLogoIcon } from "./ProjectLogoIcon";
 import { WorkspaceThreadsPopover } from "./WorkspaceThreadsPopover";
 import { subscribeProjectRailActions } from "../lib/projectRailActions";
@@ -93,19 +85,19 @@ import {
   workspaceLabelKey,
 } from "../lib/tcserver/workspaces";
 import { ProjectMascot } from "./ProjectMascot";
-import { RailAction, RailSearch } from "./RailAction";
+import { RailRow } from "./RailRow";
 import { RemoveProjectDialog } from "./RemoveProjectDialog";
 import { DevModeSlot, TabVisitNav } from "./TitleBar";
-import { SidebarUpdateFooter } from "./SidebarUpdate";
+import { UpdateRow, useUpdateRowState } from "./UpdateRow";
 import { UsageMeter } from "./UsageMeter";
 import { shell, useShell, type AliaxPageId } from "../stores/shell";
 import { SettingsNav } from "./SettingsRail";
 import { Shimmer } from "../surfaces/Shimmer";
 import { TabGroupMenu, type TabGroupMenuExtraItem } from "./TabGroupMenu";
 import { TerminalSpinner } from "./TerminalSpinner";
-import { aliaxChunk, settingsChunk } from "../surfaces/chunks";
-import { inboxChunk } from "../surfaces/chunks";
-import { BootResumeNote } from "./BootResumeNote";
+import { aliaxChunk, inboxChunk, searchChunk, settingsChunk } from "../surfaces/chunks";
+import { Kbd } from "../components/ui/kbd";
+import { StatusMark } from "../components/ui/status";
 
 const REVEAL_LABEL = IS_MAC
   ? "Reveal in Finder"
@@ -140,7 +132,6 @@ export function projectMenuExtraItems(
 type Props = {
   cwd: string;
   recents: RecentProject[];
-  inboxUnseen?: boolean;
   busyPaths?: Iterable<string>;
   /** Folders holding a thread blocked on the user. Outranks `busyPaths`. */
   needsYouPaths?: Iterable<string>;
@@ -150,18 +141,14 @@ type Props = {
   onGoForward?: () => void;
   onSearch?: () => void;
   onOpenInbox?: () => void;
-  notesEnabled?: boolean;
-  onOpenNotes?: () => void;
-  /** The rail's Accounts section: the embedded Aliax pages. */
+  /** The foot's Accounts and Stats rows: the embedded Aliax pages. */
   onOpenAccountsPage?: (page: AliaxPageId) => void;
-  accountsPage?: AliaxPageId | null;
   /** The home: the chats outside every workspace. */
   onOpenChats?: () => void;
   onSelectProject: (path: string) => void;
   /** Add a workspace: this machine's folder dialog, or a host's folders when `environmentId` is another machine. */
   onOpenProject: (environmentId?: string) => void;
   onRemoveProject?: (path: string, options: { purgeData: boolean }) => void;
-  liveAgents?: LiveAgent[];
   activeSessionId?: string;
   onSelectAgent?: (sessionId: string) => void;
   onOpenWhatsNew?: (version: string, markdown?: string) => void;
@@ -170,7 +157,6 @@ type Props = {
 export function ProjectRail({
   cwd,
   recents,
-  inboxUnseen = false,
   busyPaths,
   needsYouPaths,
   canGoBack = false,
@@ -179,15 +165,11 @@ export function ProjectRail({
   onGoForward,
   onSearch,
   onOpenInbox,
-  notesEnabled = true,
-  onOpenNotes,
   onOpenAccountsPage,
-  accountsPage = null,
   onOpenChats,
   onSelectProject,
   onOpenProject,
   onRemoveProject,
-  liveAgents = [],
   activeSessionId,
   onSelectAgent,
   onOpenWhatsNew,
@@ -195,9 +177,11 @@ export function ProjectRail({
   const searchActive = useShell((s) => s.searchViewOpen);
   const inboxActive = useShell((s) => s.inboxViewOpen);
   const notesActive = useShell((s) => s.notesViewOpen);
+  const accountsPage = useShell((s) => s.accountsPage);
   const settingsOpen = useShell((s) => s.settingsOpen);
   const settingsSection = useShell((s) => s.settingsSection);
-  const updateNotice = useShell((s) => s.updateNotice);
+  /** A full-window view covers the list: no workspace row is selected. */
+  const overlayOpen = searchActive || inboxActive || notesActive || !!accountsPage;
   const resize = useDragResize({
     min: PROJECT_RAIL_WIDTH_MIN,
     max: () =>
@@ -245,7 +229,6 @@ export function ProjectRail({
   // One list for every host: a workspace linked across hosts is one row
   // with every copy's threads (lib/linkedRail.ts); each host's status sits
   // in its own row at the foot (HostRows).
-  const environments = useEnvironments();
   const rows = useMemo(() => mergeRailSections(sections, workspaces), [sections, workspaces]);
   /** The rail row a workspace folder sits in (its own, or its link's). */
   const rowOf = (path: string): RailItem | undefined =>
@@ -480,86 +463,31 @@ export function ProjectRail({
         />
       ) : (
         <>
-          <div className="flex shrink-0 flex-col gap-px p-2 pt-0">
-            <RailSearch
-              label="Search"
-              icon={Search}
-              onClick={onSearch}
-              active={searchActive}
-              shortcut={`${MOD}K`}
-              ariaLabel={`Search (${MOD}K)`}
-            />
-            <RailAction
-              label="Inbox"
-              icon={Inbox}
-              onClick={onOpenInbox}
-              {...inboxChunk.intent}
-              active={inboxActive}
-              dot={inboxUnseen}
-              ariaLabel={inboxUnseen ? "Inbox, new items" : "Inbox"}
-            />
-            <RailAction
-              label="Mark all read"
-              icon={ListChecks}
-              onClick={() => markRead(null)}
-              ariaLabel="Mark all threads read"
-            />
-            {notesEnabled ? (
-              <RailAction
-                label="Notes"
-                icon={File}
-                onClick={onOpenNotes}
-                active={notesActive}
-                ariaLabel="Notes"
-              />
-            ) : null}
-            {onOpenChats ? (
-              <RailAction
-                label="Chats"
-                icon={MessageSquare}
-                onClick={onOpenChats}
-                active={!searchActive && !inboxActive && !notesActive && !accountsPage && cwd === "~"}
-                dot={needsYou.has("~") || busy.has("~")}
-                ariaLabel={chatsAriaLabel(busy.has("~"), needsYou.has("~"))}
-              />
-            ) : null}
-            <EnvironmentSwitcher variant="rail" />
-          </div>
-          {onOpenAccountsPage ? (
-            <div className="shrink-0">
-              <div className="flex h-9 items-center gap-1 px-2 pr-1.5">
-                <span className="min-w-0 flex-1 truncate px-2 text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">
-                  Accounts
-                </span>
-              </div>
-              <div className="flex flex-col gap-px p-2 pt-0">
-                <RailAction
-                  label="Accounts"
-                  icon={Users}
-                  onClick={() => onOpenAccountsPage("accounts")}
-                  intent={aliaxChunk.intent}
-                  active={accountsPage === "accounts"}
-                  ariaLabel="Accounts"
-                />
-                <RailAction
-                  label="Stats"
-                  icon={ChartBar}
-                  onClick={() => onOpenAccountsPage("stats")}
-                  intent={aliaxChunk.intent}
-                  active={accountsPage === "stats"}
-                  ariaLabel="Stats"
-                />
-              </div>
-            </div>
-          ) : null}
-
           <div
             ref={(el) => {
               lockOverscroll(el);
               scrollRef.current = el;
             }}
-            className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-none pt-2 pb-2"
+            className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-none pb-2"
           >
+            {onOpenChats ? (
+              <div className="shrink-0 px-2">
+                <RailRow
+                  icon={MessageSquare}
+                  label="Chats"
+                  ariaLabel={chatsAriaLabel(busy.has("~"), needsYou.has("~"))}
+                  onClick={onOpenChats}
+                  selected={!overlayOpen && cwd === "~"}
+                  trailing={
+                    needsYou.has("~") ? (
+                      <StatusMark state="waiting" word={false} />
+                    ) : busy.has("~") ? (
+                      <StatusMark state="working" word={false} />
+                    ) : null
+                  }
+                />
+              </div>
+            ) : null}
             {rows.pinned.length > 0 ? (
               <ProjectSection
                 label="Pinned"
@@ -573,7 +501,7 @@ export function ProjectRail({
                 onSelectAgent={onSelectAgent}
                 sortable={pinnedSortable}
                 pinned
-                searchActive={searchActive || inboxActive || notesActive || !!accountsPage}
+                searchActive={overlayOpen}
                 onSelect={onSelectProject}
                 onTogglePin={onTogglePin}
                 onContextMenu={onProjectContextMenu}
@@ -591,7 +519,6 @@ export function ProjectRail({
               items={rows.projects}
               statusKey={statusKey}
               emptyLabel="No workspaces yet"
-              note={environments.length < 2 ? <BootResumeNote environmentId={registry.primary().environmentId} /> : null}
               onAdd={() => onOpenProject()}
               cwd={cwd}
               busy={busy}
@@ -601,7 +528,7 @@ export function ProjectRail({
               onSelectAgent={onSelectAgent}
               sortable={projectSortable}
               pinned={false}
-              searchActive={searchActive || inboxActive || notesActive || !!accountsPage}
+              searchActive={overlayOpen}
               onSelect={onSelectProject}
               onTogglePin={onTogglePin}
               onContextMenu={onProjectContextMenu}
@@ -613,32 +540,14 @@ export function ProjectRail({
               groupMascots={groupMascots}
             />
           </div>
-          <LiveAgentsPreview
-            agents={liveAgents}
+          <RailFoot
             activeSessionId={activeSessionId}
-            onSelect={onSelectAgent}
-            groupLabels={groupLabels}
-            groupColors={groupColors}
-            groupCustomColors={groupCustomColors}
-            groupMascots={groupMascots}
-          />
-          <SidebarUpdateFooter
-            update={updateNotice}
+            onSearch={onSearch}
+            onOpenInbox={onOpenInbox}
+            onOpenAccountsPage={onOpenAccountsPage}
             onOpenWhatsNew={onOpenWhatsNew}
-            onDismissUpdate={shell.dismissUpdate}
+            onAddWorkspace={(environmentId) => onOpenProject(environmentId)}
           />
-          <HostRows onAddWorkspace={(environmentId) => onOpenProject(environmentId)} />
-          <div className="flex shrink-0 flex-col gap-px p-2 pt-px">
-            <RailAction
-              label="Settings"
-              icon={Settings}
-              onClick={() => shell.openSettings()}
-              intent={settingsChunk.intent}
-              shortcut={`${MOD},`}
-              ariaLabel={`Settings (${MOD},)`}
-            />
-          </div>
-          <UsageMeter sessionId={activeSessionId ?? undefined} />
         </>
       )}
       {projectMenu ? (
@@ -723,190 +632,6 @@ export function ProjectRail({
 }
 
 type SortableHandle = ReturnType<typeof useSortable>;
-
-const LIVE_AGENT_MIN = 2;
-const LIVE_AGENT_CAP = 4;
-
-function LiveAgentsPreview({
-  agents,
-  activeSessionId,
-  onSelect,
-  groupLabels,
-  groupColors,
-  groupCustomColors,
-  groupMascots,
-}: {
-  agents: LiveAgent[];
-  activeSessionId?: string;
-  onSelect?: (sessionId: string) => void;
-  groupLabels: Record<string, string>;
-  groupColors: Record<string, number>;
-  groupCustomColors: Record<string, string>;
-  groupMascots: Record<string, string>;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const lockList = useLockOverscroll<HTMLDivElement>();
-  const ticking =
-    agents.length >= LIVE_AGENT_MIN &&
-    agents.some((agent) => !agent.done && agent.startedAt != null);
-  // The shared second hand; only live rows read it, and `ticking` is true exactly then.
-  const now = useClock(ticking);
-
-  if (agents.length < LIVE_AGENT_MIN) return null;
-
-  const extra = agents.length - LIVE_AGENT_CAP;
-  const visible =
-    expanded || extra <= 0 ? agents : agents.slice(0, LIVE_AGENT_CAP);
-
-  return (
-    <div
-      role="status"
-      aria-label="Working agents"
-      className="shrink-0 border-t border-content/10"
-    >
-      <div className="flex h-9 items-center gap-2 px-2 pr-1.5">
-        <span aria-hidden className="ml-2 size-1.5 shrink-0 rounded-full bg-accent" />
-        <span className="min-w-0 flex-1 truncate text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">
-          Working
-        </span>
-        <span className="px-1 text-[11px] tabular-nums text-content/40">{agents.length}</span>
-      </div>
-      <div
-        ref={expanded ? lockList : undefined}
-        className={`flex flex-col gap-px p-2 pt-0 ${
-          expanded ? "max-h-[45vh] overflow-y-auto overscroll-none" : ""
-        }`}
-      >
-          {visible.map((agent) => (
-            <LiveAgentCard
-              key={agent.id}
-              agent={agent}
-              now={now}
-              selected={agent.id === activeSessionId}
-              onSelect={onSelect}
-              groupLabels={groupLabels}
-              groupColors={groupColors}
-              groupCustomColors={groupCustomColors}
-              groupMascots={groupMascots}
-            />
-        ))}
-        {extra > 0 ? (
-          <button
-            type="button"
-            aria-expanded={expanded}
-            onClick={() => setExpanded((open) => !open)}
-            className="pressable flex h-7 w-full items-center gap-2 rounded-md px-2 text-[11px] text-content/50 hover:bg-content/5 hover:text-content"
-          >
-            {expanded ? (
-              <ChevronUp className="size-3.5" strokeWidth={1.75} />
-            ) : (
-              <ChevronDown className="size-3.5" strokeWidth={1.75} />
-            )}
-            <span className="tabular-nums">{expanded ? "Show less" : `${extra} more`}</span>
-          </button>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function LiveAgentCard({
-  agent,
-  now,
-  selected,
-  onSelect,
-  groupLabels,
-  groupColors,
-  groupCustomColors,
-  groupMascots,
-}: {
-  agent: LiveAgent;
-  now: number;
-  selected: boolean;
-  onSelect?: (sessionId: string) => void;
-  groupLabels: Record<string, string>;
-  groupColors: Record<string, number>;
-  groupCustomColors: Record<string, string>;
-  groupMascots: Record<string, string>;
-}) {
-  const projectKey = workspaceLabelKey(useWorkspaces(), agent.cwd, projectName(agent.cwd));
-  const project = resolveTabGroupLabel(projectKey, groupLabels, projectName(agent.cwd));
-  const color = resolveTabGroupColor(
-    projectKey,
-    groupColors,
-    groupCustomColors,
-    projectKey,
-  );
-  const elapsed = agent.done
-    ? agent.durationMs != null
-      ? formatLiveElapsed(0, agent.durationMs)
-      : ""
-    : agent.startedAt != null
-      ? formatLiveElapsed(agent.startedAt, now)
-      : "";
-  const activity = agent.needsApproval
-    ? "Needs you"
-    : agent.done
-      ? "Done"
-      : agent.activity;
-  const live = !agent.needsApproval && !agent.done;
-  const title = [agent.title, project, activity, elapsed]
-    .filter(Boolean)
-    .join("\n");
-
-  return (
-    <button
-      type="button"
-      title={title}
-      aria-label={[agent.title, project, activity, elapsed]
-        .filter(Boolean)
-        .join(", ")}
-      aria-current={selected ? "true" : undefined}
-      onClick={() => onSelect?.(agent.id)}
-      className={`relative flex w-full flex-col rounded-md px-2 py-1.5 text-left ${
-        selected ? "bg-content/10 text-content" : "hover:bg-content/5 active:bg-content/10"
-      }`}
-    >
-      <span className="flex min-w-0 items-center gap-2">
-        <ProjectMascot
-          project={projectKey}
-          color={color}
-          name={resolveTabGroupMascot(projectKey, groupMascots)}
-          className="size-2 shrink-0"
-          active={live}
-        />
-        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-snug">
-          {agent.title}
-        </span>
-      </span>
-      <span
-        className={`mt-1 flex min-w-0 items-center gap-1.5 pl-4 text-[11px] leading-tight ${
-          agent.needsApproval
-            ? "text-warning"
-            : agent.done
-              ? "text-success"
-              : "text-content/50"
-        }`}
-      >
-        {agent.needsApproval ? (
-          <CircleAlert className="size-3.5 shrink-0" strokeWidth={1.75} />
-        ) : agent.done ? (
-          <Check className="size-3.5 shrink-0" strokeWidth={2.25} />
-        ) : (
-          <TerminalSpinner />
-        )}
-        <span className="min-w-0 truncate">{activity}</span>
-      </span>
-      <span className="mt-1 flex min-w-0 items-center gap-1.5 pl-4 text-[11px] leading-tight text-content/40">
-        <HarnessIcon harness={agent.harness} className="size-3.5 shrink-0" />
-        <span className="min-w-0 flex-1 truncate">{project}</span>
-        {elapsed ? (
-          <span className="shrink-0 tabular-nums">{elapsed}</span>
-        ) : null}
-      </span>
-    </button>
-  );
-}
 
 function ProjectSection({
   label,
@@ -1416,4 +1141,116 @@ export function projectCardAriaLabel(
   if (additions > 0) parts.push(`+${additions}`);
   if (deletions > 0) parts.push(`-${deletions}`);
   return parts.join(", ");
+}
+
+export type RailFootRowId = "update" | "hosts" | "inbox" | "search" | "accounts" | "stats" | "settings";
+
+/** The foot's rows, in order: the update when there is one to act on, the
+ *  hosts with two or more, then Inbox, Search, Accounts, Stats, Settings. */
+export function railFootRows(facts: { update: boolean; hosts: number }): RailFootRowId[] {
+  const rows: RailFootRowId[] = [];
+  if (facts.update) rows.push("update");
+  if (facts.hosts >= 2) rows.push("hosts");
+  rows.push("inbox", "search", "accounts", "stats", "settings");
+  return rows;
+}
+
+/**
+ * The rail's foot under a hairline: its rows, then the usage meter. The
+ * same foot sits under the workspace column while the rail is collapsed.
+ */
+export function RailFoot({
+  activeSessionId,
+  onSearch,
+  onOpenInbox,
+  onOpenAccountsPage,
+  onOpenWhatsNew,
+  onAddWorkspace,
+}: {
+  activeSessionId?: string;
+  onSearch?: () => void;
+  onOpenInbox?: () => void;
+  onOpenAccountsPage?: (page: AliaxPageId) => void;
+  onOpenWhatsNew?: (version: string, markdown?: string) => void;
+  onAddWorkspace: (environmentId: string) => void;
+}) {
+  const searchActive = useShell((s) => s.searchViewOpen);
+  const inboxActive = useShell((s) => s.inboxViewOpen);
+  const accountsPage = useShell((s) => s.accountsPage);
+  const inboxUnseen = useInboxUnseen();
+  const environments = useEnvironments();
+  const update = useUpdateRowState();
+  const ids = railFootRows({ update: update !== null, hosts: environments.length });
+  const row = (id: RailFootRowId) => {
+    switch (id) {
+      case "update":
+        return <UpdateRow key={id} state={update} onOpenWhatsNew={onOpenWhatsNew} />;
+      case "hosts":
+        return <HostsRow key={id} onAddWorkspace={onAddWorkspace} />;
+      case "inbox":
+        return (
+          <RailRow
+            key={id}
+            icon={Inbox}
+            label="Inbox"
+            ariaLabel={inboxUnseen ? "Inbox, new items" : "Inbox"}
+            emphasis={inboxUnseen}
+            selected={inboxActive}
+            onClick={onOpenInbox}
+            intent={inboxChunk.intent}
+          />
+        );
+      case "search":
+        return (
+          <RailRow
+            key={id}
+            icon={Search}
+            label="Search"
+            selected={searchActive}
+            onClick={onSearch}
+            intent={searchChunk.intent}
+            tooltip={<Kbd>{`${MOD}K`}</Kbd>}
+          />
+        );
+      case "accounts":
+        return (
+          <RailRow
+            key={id}
+            icon={Users}
+            label="Accounts"
+            selected={accountsPage === "accounts"}
+            onClick={() => onOpenAccountsPage?.("accounts")}
+            intent={aliaxChunk.intent}
+          />
+        );
+      case "stats":
+        return (
+          <RailRow
+            key={id}
+            icon={ChartBar}
+            label="Stats"
+            selected={accountsPage === "stats"}
+            onClick={() => onOpenAccountsPage?.("stats")}
+            intent={aliaxChunk.intent}
+          />
+        );
+      case "settings":
+        return (
+          <RailRow
+            key={id}
+            icon={Settings}
+            label="Settings"
+            onClick={() => shell.openSettings()}
+            intent={settingsChunk.intent}
+            tooltip={<Kbd>{`${MOD},`}</Kbd>}
+          />
+        );
+    }
+  };
+  return (
+    <div className="flex shrink-0 flex-col border-t border-border">
+      <div className="flex flex-col p-2">{ids.map(row)}</div>
+      <UsageMeter sessionId={activeSessionId} />
+    </div>
+  );
 }

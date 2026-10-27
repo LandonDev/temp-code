@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chatsAriaLabel, projectCardAriaLabel, projectCardTitle, projectMenuExtraItems } from "./ProjectRail";
+import { chatsAriaLabel, projectCardAriaLabel, projectCardTitle, projectMenuExtraItems, railFootRows } from "./ProjectRail";
 
 const stats = { files: 2, additions: 3, deletions: 1 };
 
@@ -64,5 +64,17 @@ describe("projectMenuExtraItems", () => {
     const items = projectMenuExtraItems(true, false, null);
     expect(items.filter((i) => i.id.startsWith("batch-")).every((i) => i.disabled)).toBe(true);
     expect(items.map((i) => i.id)).not.toContain("archive");
+  });
+});
+
+describe("railFootRows", () => {
+  it("is Inbox, Search, Accounts, Stats, Settings with one host and nothing to update", () => {
+    expect(railFootRows({ update: false, hosts: 1 })).toEqual(["inbox", "search", "accounts", "stats", "settings"]);
+  });
+
+  it("puts the update first and the hosts after it, the hosts only with two or more", () => {
+    expect(railFootRows({ update: true, hosts: 2 })).toEqual(["update", "hosts", "inbox", "search", "accounts", "stats", "settings"]);
+    expect(railFootRows({ update: true, hosts: 1 })[0]).toBe("update");
+    expect(railFootRows({ update: false, hosts: 3 })[0]).toBe("hosts");
   });
 });

@@ -16,14 +16,12 @@ import { HostGlyph } from "./HostGlyph";
 import { PreambleDialog } from "./PreambleDialog";
 import {
   ArchiveRestore,
-  ChartBar,
   ChevronRight,
   GitBranch,
   MoreHorizontal,
   Pause,
   Plus,
   Trash2,
-  Users,
 } from "./icons";
 import {
   ConfirmDialog,
@@ -62,7 +60,6 @@ import {
   windowRows,
   type SidebarItem,
 } from "../lib/sidebarRows";
-import type { AliaxPageId } from "../stores/shell";
 import { archive as archiveThread, interrupt, pause, resume, setMaster } from "../lib/tcserver/commands";
 import { masterMenuLabel, useMasterIds } from "../lib/masterThread";
 import { dormantByType, dormantThreads, focusedTree } from "../lib/threadStripModel";
@@ -83,9 +80,6 @@ import {
 } from "../lib/workspaceSessions";
 
 type Props = {
-  /** The Accounts section (the embedded Aliax pages) follows the chats. */
-  onOpenAccountsPage?: (page: AliaxPageId) => void;
-  accountsPage?: AliaxPageId | null;
   /** Null: the home, the chats outside every workspace. */
   workspaceId: string | null;
   /** The workspace's copies on other hosts with it, the leader's first
@@ -1317,57 +1311,6 @@ const ChatsSection = memo(function ChatsSection({
   );
 });
 
-/** The Aliax pages, as a section under the chats: the same header as
- *  Chats, two rows styled like its thread rows. */
-const AccountsSection = memo(function AccountsSection({
-  page,
-  onOpen,
-}: {
-  page: AliaxPageId | null;
-  onOpen: (page: AliaxPageId) => void;
-}) {
-  const [open, setOpen] = useState(true);
-  const row = (id: AliaxPageId, label: string, Icon: typeof Users) => (
-    <button
-      type="button"
-      onClick={() => onOpen(id)}
-      aria-label={label}
-      className={`pressable flex h-7 w-full items-center gap-1.5 rounded-md px-2 text-left text-[12px] ${
-        page === id
-          ? "bg-content/10 text-content"
-          : "text-content/50 hover:bg-content/5 hover:text-content"
-      }`}
-    >
-      <Icon className="size-3.5 shrink-0" strokeWidth={1.75} />
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-    </button>
-  );
-  return (
-    <div>
-      <div className="flex h-7 items-center gap-1 pl-2 pr-1">
-        <button
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          aria-expanded={open}
-          className="pressable flex h-7 min-w-0 flex-1 items-center gap-1.5 text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase hover:text-content"
-        >
-          <ChevronRight
-            className={`size-3.5 transition-transform duration-150 ${open ? "rotate-90" : ""}`}
-            strokeWidth={2}
-          />
-          Accounts
-        </button>
-      </div>
-      <Fold open={open}>
-        <div className="flex flex-col gap-px">
-          {row("accounts", "Accounts", Users)}
-          {row("stats", "Stats", ChartBar)}
-        </div>
-      </Fold>
-    </div>
-  );
-});
-
 const ROW_PX = 28;
 
 /** Heights for the virtualizer's first pass; every item is then measured.
@@ -1378,8 +1321,6 @@ const estimateItem = (item: SidebarItem): number => {
       return 72;
     case "chats":
       return 24 + ROW_PX * Math.min(item.threads.length, SESSION_LIST_PAGE);
-    case "accounts":
-      return 28 + ROW_PX * 2;
     case "archived":
       return 24;
     case "empty":
@@ -1404,8 +1345,6 @@ export default function WorkspaceSessions({
   onNewProject,
   onRenameSession,
   onDeleteSession,
-  onOpenAccountsPage,
-  accountsPage = null,
 }: Props) {
   const metas = useSessionMetas();
   const { workspaces, projects } = useWorkspaceCatalog();
@@ -1518,8 +1457,8 @@ export default function WorkspaceSessions({
   // height animation is measured too: the root re-renders per frame while
   // a section opens or closes, and the memoized cards sit that out.)
   const items = useMemo(
-    () => sidebarItems(groups, workspaceId === null, !!onOpenAccountsPage),
-    [groups, workspaceId, onOpenAccountsPage],
+    () => sidebarItems(groups, workspaceId === null),
+    [groups, workspaceId],
   );
   const scroller = useRef<HTMLDivElement>(null);
   const estimateSize = useCallback((i: number) => estimateItem(items[i]), [items]);
@@ -1588,10 +1527,6 @@ export default function WorkspaceSessions({
             onToggle={toggleChats}
             onNewChat={newChat}
           />
-        );
-      case "accounts":
-        return (
-          <AccountsSection page={accountsPage} onOpen={onOpenAccountsPage!} />
         );
       case "archived":
         return (

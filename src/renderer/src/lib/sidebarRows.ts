@@ -16,17 +16,14 @@ import type {
 export type SidebarItem =
   | { kind: "project"; key: string; group: ProjectGroup }
   | { kind: "chats"; key: "chats"; threads: ThreadRow[] }
-  | { kind: "accounts"; key: "accounts" }
   | { kind: "archived"; key: "archived"; groups: ProjectGroup[] }
   | { kind: "empty"; key: "empty" };
 
 /** Cards first, then chats and archived when there are any, else the empty
- *  hint. The home has no cards to offer, so its chats section always shows.
- *  With `accounts`, the Aliax pages' section follows the chats. */
+ *  hint. The home has no cards to offer, so its chats section always shows. */
 export function sidebarItems(
   groups: WorkspaceSessionGroups,
   home = false,
-  accounts = false,
 ): SidebarItem[] {
   const items: SidebarItem[] = groups.projects.map((group) => ({
     kind: "project",
@@ -35,7 +32,6 @@ export function sidebarItems(
   }));
   if (groups.chats.length || home)
     items.push({ kind: "chats", key: "chats", threads: groups.chats });
-  if (accounts) items.push({ kind: "accounts", key: "accounts" });
   if (groups.archived.length)
     items.push({ kind: "archived", key: "archived", groups: groups.archived });
   if (!items.length) items.push({ kind: "empty", key: "empty" });
@@ -60,7 +56,6 @@ export function sessionItemIndex(items: readonly SidebarItem[], id: string): num
         return holds(item.threads, id);
       case "archived":
         return item.groups.some((g) => holds(g.threads, id));
-      case "accounts":
       case "empty":
         return false;
     }
