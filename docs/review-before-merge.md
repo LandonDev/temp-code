@@ -5,8 +5,8 @@ its merge to the project branch. Off by default.
 
 ## The setting
 
-Settings → Reviews is the global set; a project's settings dialog carries a
-Reviews disclosure that overrides it whole ("Use global setting" removes the
+Settings → Reviews is the global set; a project's settings sheet carries a
+Reviews section that overrides it whole ("Use global setting" removes the
 override). Precedence is project → global → defaults, never field by field.
 
 | Key | Default | Meaning |

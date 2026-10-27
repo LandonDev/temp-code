@@ -1243,7 +1243,7 @@ names the far child).
 
 ## Review before merge: an optional second model between the gate and the merge
 - Off by default. Settings → Reviews holds the global set; a project's
-  settings dialog (Reviews disclosure) overrides it whole, with "Use global
+  settings sheet (its Reviews section) overrides it whole, with "Use global
   setting" to go back. Keys: `review` and `review:project:<id>` in the
   settings table (`src/shared/review.ts` ReviewSettingsSchema: beforeMerge,
   provider + model (default codex gpt-6.1-sol at high; the picker shows only
@@ -1930,7 +1930,7 @@ threadBatch.test.ts), one `session.batch` per host.
   The flow (src/main/server/planFlow.ts, settings in src/shared/plans.ts)
   runs on that settle, never mid-turn: with `plans.autoImplement` on
   (default; Settings → Thread defaults → Plans, overridable per project from the
-  project's settings dialog) the host starts the implementation thread
+  project's settings sheet) the host starts the implementation thread
   itself — same host, cwd, model, effort and context window as the plan
   thread unless `plans.implementModel` / `implementReasoning` /
   `implementContext` fix one — with planPath set, the plan thread seeded,

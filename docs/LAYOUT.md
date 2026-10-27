@@ -135,7 +135,7 @@ scrolls here and focuses the section, `openBuildSettings` →
 rules item lands here the same way, `openOrchestrationSettings` →
 `takeRequestedRulesFocus`) and Projects (one row per live project, the
 accounts its threads spend from, its pins over the workspace's, as the muted
-line, and Settings… opening the project's settings dialog). There is no
+line, and Settings… opening the project's settings sheet). There is no
 separate Build page, and the Orchestration page holds the global rules only.
 Orchestration, Reviews, Appshots and Archive are pages on the same frame
 (`Page`, `PageSection`, `PageRow`); Orchestration's models are one flat
@@ -201,7 +201,10 @@ from the catalog and each host's hello). The dialogs act on that copy over
 its host's link, so a Mac whose own copy has not pulled the box's last edit
 never shows the old values:
 
-- **Project settings** (`chrome/ProjectDialogs.tsx`) and **Preamble**
+- **Project settings** (`chrome/ProjectDialogs.tsx`, a `Sheet` from the
+  right: name and branch, then Completed turn, Reviews, Accounts, Plans and
+  Build open under 12px headings, each with its "Use workspace setting" or
+  "Use global setting" link, nothing folded) and **Preamble**
   (`chrome/PreambleDialog.tsx`) read every field from the home copy and
   save it there; only the branch is this copy's own. The footer says
   "Saved on box" once, muted, left of Cancel. While the home's link is not
@@ -210,8 +213,9 @@ never shows the old values:
 - **Archive** (and restore) takes every copy, the home first; a home that
   is offline opens the archive dialog with Archive off and the reason. The
   worktree and branch clean-up apply to the copy it was opened on.
-- **Delete** deletes this copy and asks "Also delete the copy on box", off
-  by default, one switch per other copy, off while that host is offline.
+- **Delete** is an alert (`AlertDialog`, Cancel and the red verb): it
+  deletes this copy and asks "Also delete the copy on box", off by default,
+  one checkbox per other copy, off while that host is offline.
 
 An unlinked project's dialogs act on the project itself, with no footer
 note.
