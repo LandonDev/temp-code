@@ -422,8 +422,8 @@ describe('the host glyph on rail rows', () => {
     ]
     const probe = mountProbe(<ThreadList threads={[tree()]} actions={actions} className="" />)
     const [root, kid] = Array.from(probe.container.querySelectorAll('[role="button"]'))
-    expect(root.querySelector('[data-host-glyph]')?.getAttribute('title')).toBe('This Mac')
-    expect(kid.querySelector('[data-host-glyph]')?.getAttribute('title')).toBe('The box')
+    expect(root.querySelector('[data-host-glyph]')?.getAttribute('aria-label')).toBe('This Mac')
+    expect(kid.querySelector('[data-host-glyph]')?.getAttribute('aria-label')).toBe('The box')
     expect(kid.querySelector('[data-host-glyph]')?.getAttribute('data-host-kind')).toBe('server')
     // The old name chip is gone: the glyph carries no text.
     expect(root.querySelector('[data-host-badge]')).toBeNull()

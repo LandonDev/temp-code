@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Copy } from "../chrome/icons";
+import { Tip } from "../components/tip";
+import { Button } from "../components/ui/button";
 import { copyUserMessage } from "../lib/copyMessage";
 import { SwapIcon } from "../motion/IconSwap";
 import type { Attachment } from "../lib/session";
@@ -26,11 +28,12 @@ export function CopyMessageButton({
     [],
   );
   return (
-    <button
-      type="button"
-      title={copied ? "Copied" : "Copy message"}
+    <Tip label={copied ? "Copied" : "Copy message"}>
+    <Button
+      variant="ghost"
+      size="icon-xs"
       aria-label={copied ? "Copied" : "Copy message"}
-      className="pressable absolute -left-8 top-1/2 z-10 grid size-6 -translate-y-1/2 place-items-center rounded-md bg-content/8 text-content/50 opacity-0 transition-opacity hover:bg-content/10 hover:text-content focus-visible:opacity-100 group-hover/message:opacity-100"
+      className="absolute -left-8 top-1/2 z-10 -translate-y-1/2 text-muted-foreground opacity-0 transition-opacity duration-(--dur-fast) focus-visible:opacity-100 group-hover/message:opacity-100"
       onClick={(event) => {
         event.stopPropagation();
         playCue("copy");
@@ -45,6 +48,7 @@ export function CopyMessageButton({
       }}
     >
       <SwapIcon swapped={copied} from={<Copy className="size-3.5" strokeWidth={1.75} />} to={<Check className="size-3.5" strokeWidth={1.75} />} />
-    </button>
+    </Button>
+    </Tip>
   );
 }

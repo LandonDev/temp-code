@@ -64,6 +64,8 @@ import { CUSTOMIZE, groupActionOf, groupMenuRows, type TabGroupMenuAction } from
 import { ConfirmDialog } from "./ConfirmDialog";
 import { CwdPicker } from "./CwdPicker";
 import { shortcutFor } from "../lib/settings";
+import { Tip } from "../components/tip";
+import { Button } from "../components/ui/button";
 import { RowsContextMenu, tidy, type MenuRow } from "./menuRows";
 import { useThreadMenu } from "./useThreadMenu";
 import { ProjectLogoIcon } from "./ProjectLogoIcon";
@@ -79,7 +81,7 @@ import { ThreadHeader, type ThreadHeaderProps } from "./ThreadHeader";
 import type { ThreadType } from "../lib/tcserver/types";
 import { THREAD_GLYPHS, THREAD_LABELS, THREAD_TINTS } from "../surfaces/threads/threadTypes";
 import { WindowControls } from "./WindowControls";
-import { IS_MAC, MOD } from "../lib/platform";
+import { IS_MAC } from "../lib/platform";
 import type { RecentProject } from "../lib/recents";
 import { useShell } from "../stores/shell";
 import { sessionPrefetch, tabSessionIds } from "../lib/sessionPrefetch";
@@ -386,9 +388,9 @@ function TitleTabItem({
           className={`pointer-events-none absolute inset-x-0 inset-y-1.5 z-10 rounded-md ${dropTargetTint(dropTarget)}`}
         />
       ) : null}
+      <Tip label={tooltip} side="bottom">
       <button
         type="button"
-        title={tooltip}
         aria-label={tooltip}
         data-tauri-drag-region="false"
         onClick={() => {
@@ -436,11 +438,9 @@ function TitleTabItem({
               {headline}
             </span>
             {tab.dirty ? (
-              <span
-                className="size-1.5 shrink-0 rounded-full bg-muted-foreground"
-                title="Unsaved changes"
-                aria-label="Unsaved changes"
-              />
+              <Tip label="Unsaved changes">
+                <span className="size-1.5 shrink-0 rounded-full bg-muted-foreground" role="img" aria-label="Unsaved changes" />
+              </Tip>
             ) : null}
             {tab.thread ? <TabIndicator thread={tab.thread} /> : null}
           </span>
@@ -451,22 +451,25 @@ function TitleTabItem({
           ) : null}
         </span>
       </button>
+      </Tip>
       {closable ? (
-        <button
-          type="button"
-          title="Close Tab"
-          aria-label={`Close ${headline}`}
-          data-no-drag
-          data-tauri-drag-region="false"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onClose(tab.id);
-          }}
-          className="pressable absolute right-1 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-md text-muted-foreground opacity-0 hover:bg-foreground/7 hover:text-foreground group-hover:opacity-100"
-        >
-          <X className="size-3.5" strokeWidth={1.75} />
-        </button>
+        <Tip label="Close Tab" shortcut={shortcutFor("Panes", "Close")} side="bottom">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={`Close ${headline}`}
+            data-no-drag
+            data-tauri-drag-region="false"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose(tab.id);
+            }}
+            className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+          >
+            <X className="size-3.5" strokeWidth={1.75} />
+          </Button>
+        </Tip>
       ) : null}
     </div>
   );
@@ -720,24 +723,25 @@ function TabStripChevron({
   const label = side === "left" ? "Scroll tabs left" : "Scroll tabs right";
   const Icon = side === "left" ? ChevronLeft : ChevronRight;
   return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      data-tauri-drag-region="false"
-      onPointerDown={(event) => event.stopPropagation()}
-      onClick={onClick}
-      className={`pressable absolute top-5 z-40 grid size-6 -translate-y-1/2 place-items-center rounded-md border border-border bg-background text-muted-foreground hover:text-foreground ${
-        side === "left" ? "left-1" : "right-1"
-      }`}
-    >
-      <Icon className="size-3.5" strokeWidth={1.75} />
-    </button>
+    <Tip label={label} side="bottom">
+      <Button
+        variant="outline"
+        size="icon-xs"
+        aria-label={label}
+        data-tauri-drag-region="false"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={onClick}
+        className={`absolute top-5 z-40 -translate-y-1/2 bg-background text-muted-foreground hover:text-foreground ${side === "left" ? "left-1" : "right-1"}`}
+      >
+        <Icon className="size-3.5" strokeWidth={1.75} />
+      </Button>
+    </Tip>
   );
 }
 
 export function IconButton({
   label,
+  shortcut,
   active,
   accent,
   disabled,
@@ -745,7 +749,10 @@ export function IconButton({
   intent,
   children,
 }: {
+  /** Its name, on hover and to a screen reader. */
   label: string;
+  /** Its binding's key cap (`shortcutFor`). */
+  shortcut?: string;
   active?: boolean;
   accent?: boolean;
   disabled?: boolean;
@@ -755,30 +762,32 @@ export function IconButton({
   children: ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      {...intent}
-      title={label}
-      aria-label={label}
-      aria-pressed={active || accent}
-      aria-disabled={disabled}
-      data-tauri-drag-region="false"
-      onClick={() => {
-        if (disabled) return;
-        onClick?.();
-      }}
-      className={`pressable grid size-6 place-items-center rounded-md ${
-        disabled
-          ? "text-muted-foreground opacity-40"
-          : accent
-            ? "text-accent hover:bg-foreground/7"
-            : active
-              ? "text-foreground hover:bg-foreground/7"
-              : "text-muted-foreground hover:bg-foreground/7 hover:text-foreground"
-      }`}
-    >
-      {children}
-    </button>
+    <Tip label={label} shortcut={shortcut} side="bottom">
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        {...intent}
+        aria-label={label}
+        aria-pressed={active || accent}
+        aria-disabled={disabled}
+        data-tauri-drag-region="false"
+        onClick={() => {
+          if (disabled) return;
+          onClick?.();
+        }}
+        className={
+          disabled
+            ? "text-muted-foreground opacity-40"
+            : accent
+              ? "text-accent"
+              : active
+                ? "text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+        }
+      >
+        {children}
+      </Button>
+    </Tip>
   );
 }
 
@@ -786,7 +795,6 @@ export function DevModeLabel() {
   if (!import.meta.env.DEV) return null;
   return (
     <span
-      title="Development build"
       className="mr-1 min-w-0 truncate rounded-md bg-skill/15 px-1.5 py-0.5 text-[11px] font-medium tracking-wide text-skill"
     >
       Development
@@ -823,14 +831,16 @@ export function TabVisitNav({
   return (
     <div className="flex shrink-0 items-center">
       <IconButton
-        label={`Back (${MOD}[)`}
+        label="Back"
+        shortcut={shortcutFor("Tabs", "Back")}
         disabled={!canGoBack}
         onClick={onGoBack}
       >
         <ChevronLeft className="size-3.5" strokeWidth={1.75} />
       </IconButton>
       <IconButton
-        label={`Forward (${MOD}])`}
+        label="Forward"
+        shortcut={shortcutFor("Tabs", "Forward")}
         disabled={!canGoForward}
         onClick={onGoForward}
       >
@@ -861,13 +871,14 @@ export function OverlayNav({
   return (
     <div className="flex shrink-0 items-center px-2">
       {onBack ? (
-        <IconButton label={`Back (${MOD}[)`} onClick={onBack}>
+        <IconButton label="Back" shortcut={shortcutFor("Tabs", "Back")} onClick={onBack}>
           <ChevronLeft className="size-3.5" strokeWidth={1.75} />
         </IconButton>
       ) : null}
       {onToggleSidebar ? (
         <IconButton
-          label={`Sidebar (${shortcutFor("App", "Sidebar")})`}
+          label="Sidebar"
+            shortcut={shortcutFor("App", "Sidebar")}
           onClick={onToggleSidebar}
         >
           <PanelLeft className="size-3.5" strokeWidth={1.75} />
@@ -1203,10 +1214,10 @@ function TitleBarComponent({
         ) : null}
         {railClosed && !projectless ? (
           <>
-            <IconButton label={`Go to File (${MOD}P)`} onClick={onGoToFile}>
+            <IconButton label="Go to File" shortcut={shortcutFor("App", "Go to File")} onClick={onGoToFile}>
               <Search className="size-3.5" strokeWidth={1.75} />
             </IconButton>
-            <IconButton label={`New session (${MOD}T)`} onClick={onNew}>
+            <IconButton label="New Thread" shortcut={shortcutFor("Tabs", "New Thread")} onClick={onNew}>
               <Plus className="size-3.5" strokeWidth={1.75} />
             </IconButton>
           </>
@@ -1215,8 +1226,9 @@ function TitleBarComponent({
         {deckLayout && !header && !projectless && (onShowTerminal || onNewTerminal) ? (
           <IconButton
             label={
-              projectTerminalActive ? "Terminal" : `New Terminal (${shortcutFor("Terminal", "New")})`
+              projectTerminalActive ? "Terminal" : "New Terminal"
             }
+            shortcut={projectTerminalActive ? undefined : shortcutFor("Terminal", "New")}
             accent={projectTerminalActive}
             intent={terminalChunk.intent}
             onClick={
@@ -1232,7 +1244,7 @@ function TitleBarComponent({
         !projectRailOpen &&
         !showCurrentProject &&
         onOpenSettings ? (
-          <IconButton label={`Settings (${MOD},)`} onClick={onOpenSettings} intent={settingsChunk.intent}>
+          <IconButton label="Settings" shortcut={shortcutFor("App", "Settings")} onClick={onOpenSettings} intent={settingsChunk.intent}>
             <Settings className="size-3.5" strokeWidth={1.75} />
           </IconButton>
         ) : null}
@@ -1257,7 +1269,8 @@ function TitleBarComponent({
       {projectless && railClosed ? (
         <div className="flex h-10 shrink-0 items-center px-2">
           <IconButton
-            label={`Sidebar (${shortcutFor("App", "Sidebar")})`}
+            label="Sidebar"
+            shortcut={shortcutFor("App", "Sidebar")}
             onClick={onToggleSidebar}
           >
             <PanelLeft className="size-3.5" strokeWidth={1.75} />
@@ -1278,13 +1291,14 @@ function TitleBarComponent({
             </>
           )}
           <IconButton
-            label={`Sidebar (${shortcutFor("App", "Sidebar")})`}
+            label="Sidebar"
+            shortcut={shortcutFor("App", "Sidebar")}
             active={sidebarOpen}
             onClick={onToggleSidebar}
           >
             <PanelLeft className="size-3.5" strokeWidth={1.75} />
           </IconButton>
-          <IconButton label={`Go to File (${MOD}P)`} onClick={onGoToFile}>
+          <IconButton label="Go to File" shortcut={shortcutFor("App", "Go to File")} onClick={onGoToFile}>
             <Search className="size-3.5" strokeWidth={1.75} />
           </IconButton>
         </div>
@@ -1516,12 +1530,13 @@ function TitleBarComponent({
             so the strip carries no trailing actions. */}
         {deckLayout ? null : (
           <div className="flex shrink-0 items-center gap-0.5 border-l border-border px-2">
-            <IconButton label={`New Tab (${MOD}N)`} onClick={onNew}>
+            <IconButton label="New Thread" shortcut={shortcutFor("Tabs", "New Thread")} onClick={onNew}>
               <Plus className="size-3.5" strokeWidth={1.75} />
             </IconButton>
             {onNewTerminal ? (
               <IconButton
-                label={`New Terminal (${shortcutFor("Terminal", "New")})`}
+                label="New Terminal"
+                shortcut={shortcutFor("Terminal", "New")}
                 onClick={onNewTerminal}
               >
                 <Terminal className="size-3.5" strokeWidth={1.75} />
@@ -1577,9 +1592,9 @@ function ProjectDiffStats({
       : "Show changes";
 
   return (
+    <Tip label={label} side="bottom">
     <button
       type="button"
-      title={label}
       aria-label={label}
       aria-pressed={active}
       data-tauri-drag-region="false"
@@ -1605,5 +1620,6 @@ function ProjectDiffStats({
         <span className="text-danger">−{deletions}</span>
       ) : null}
     </button>
+    </Tip>
   );
 }

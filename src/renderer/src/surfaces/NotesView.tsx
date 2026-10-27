@@ -1,4 +1,6 @@
 import { Plus, Search, File, Trash2 } from "../chrome/icons";
+import { Button } from "../components/ui/button";
+import { Tip, TruncateTip } from "../components/tip";
 import { Spinner } from "../components/ui/spinner";
 import { EmptyState, SurfaceSkeleton } from "./SurfaceSkeleton";
 import { ConfirmDialog } from "../chrome/ConfirmDialog";
@@ -227,20 +229,22 @@ export function NotesView({
             className="h-7 w-full rounded-md bg-transparent pl-7 pr-2 text-[12px] text-content outline-none placeholder:text-content/40"
           />
         </div>
-        <button
-          type="button"
-          title="New note"
+        <Tip label="New note">
+        <Button
+          variant="ghost"
+          size="icon-xs"
           aria-label="New note"
           disabled={creating}
           onClick={() => void onCreate()}
-          className="pressable grid size-6 shrink-0 place-items-center rounded-md text-content/40 hover:bg-content/10 hover:text-content disabled:cursor-default disabled:opacity-40"
+          className="shrink-0 text-muted-foreground"
         >
           {creating ? (
             <Spinner className="size-3.5" />
           ) : (
             <Plus className="size-3.5" strokeWidth={1.75} />
           )}
-        </button>
+        </Button>
+        </Tip>
       </div>
       <div
         ref={listLock}
@@ -411,11 +415,9 @@ function NoteCard({
   const preview = notePreview(note.body, note.title);
   const project = noteSourceProject(note.sourceCwd);
   const time = formatRelativeTime(new Date(note.updatedAt).toISOString());
-  const hint = [note.title, project].filter(Boolean).join(" · ");
   return (
     <button
       type="button"
-      title={hint}
       aria-current={active ? "true" : undefined}
       onClick={onSelect}
       className={`flex w-full flex-col rounded-md border px-2.5 py-2 text-left ${
@@ -444,9 +446,9 @@ function NoteCard({
           </span>
         ) : null}
       </span>
-      <span className="mt-1 line-clamp-1 text-[13px] font-semibold leading-snug text-content">
-        {note.title}
-      </span>
+      <TruncateTip text={note.title}>
+        <span className="mt-1 block truncate text-[13px] font-semibold leading-snug text-content">{note.title}</span>
+      </TruncateTip>
       {preview ? (
         <span className="mt-1 line-clamp-1 text-[12px] leading-snug text-content/40">
           {preview}

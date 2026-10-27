@@ -1,6 +1,9 @@
 import { getCurrentWindow } from "../lib/native";
 import { Copy, Minus, Square, X } from "./icons";
 import { useEffect, useState } from "react";
+import { Tip } from "../components/tip";
+import { Button } from "../components/ui/button";
+import { TooltipProvider } from "../components/ui/tooltip";
 
 export function WindowControls() {
   const [isMaximized, setIsMaximized] = useState(false);
@@ -52,44 +55,42 @@ export function WindowControls() {
   };
 
   return (
-    <div
-      className="flex h-full shrink-0 items-stretch border-l border-content/10"
-      data-tauri-drag-region="false"
-    >
-      <button
-        type="button"
-        title="Minimize"
-        aria-label="Minimize window"
-        data-tauri-drag-region="false"
-        onClick={handleMinimize}
-        className="flex w-10 items-center justify-center text-content/50 transition-colors hover:bg-content/10 hover:text-content"
-      >
-        <Minus className="size-3.5" strokeWidth={1.75} />
-      </button>
-      <button
-        type="button"
-        title={isMaximized ? "Restore" : "Maximize"}
-        aria-label={isMaximized ? "Restore window" : "Maximize window"}
-        data-tauri-drag-region="false"
-        onClick={handleToggleMaximize}
-        className="flex w-10 items-center justify-center text-content/50 transition-colors hover:bg-content/10 hover:text-content"
-      >
-        {isMaximized ? (
-          <Copy className="size-3" strokeWidth={1.75} />
-        ) : (
-          <Square className="size-3" strokeWidth={1.75} />
-        )}
-      </button>
-      <button
-        type="button"
-        title="Close"
-        aria-label="Close window"
-        data-tauri-drag-region="false"
-        onClick={handleClose}
-        className="flex w-10 items-center justify-center text-content/50 transition-colors hover:bg-danger hover:text-white"
-      >
-        <X className="size-3.5" strokeWidth={1.75} />
-      </button>
-    </div>
+    <TooltipProvider>
+      <div className="flex h-full shrink-0 items-stretch border-l border-border" data-tauri-drag-region="false">
+        <Tip label="Minimize" side="bottom">
+          <Button
+            variant="ghost"
+            aria-label="Minimize window"
+            data-tauri-drag-region="false"
+            onClick={handleMinimize}
+            className="h-full w-10 rounded-none text-muted-foreground"
+          >
+            <Minus className="size-3.5" strokeWidth={1.75} />
+          </Button>
+        </Tip>
+        <Tip label={isMaximized ? "Restore" : "Maximize"} side="bottom">
+          <Button
+            variant="ghost"
+            aria-label={isMaximized ? "Restore window" : "Maximize window"}
+            data-tauri-drag-region="false"
+            onClick={handleToggleMaximize}
+            className="h-full w-10 rounded-none text-muted-foreground"
+          >
+            {isMaximized ? <Copy className="size-3" strokeWidth={1.75} /> : <Square className="size-3" strokeWidth={1.75} />}
+          </Button>
+        </Tip>
+        <Tip label="Close" side="bottom">
+          <Button
+            variant="ghost"
+            aria-label="Close window"
+            data-tauri-drag-region="false"
+            onClick={handleClose}
+            className="h-full w-10 rounded-none text-muted-foreground hover:bg-destructive hover:text-primary-foreground"
+          >
+            <X className="size-3.5" strokeWidth={1.75} />
+          </Button>
+        </Tip>
+      </div>
+    </TooltipProvider>
   );
 }

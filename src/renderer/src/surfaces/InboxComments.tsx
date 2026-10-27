@@ -1,4 +1,6 @@
 import { openUrl } from "../lib/native";
+import { Button } from "../components/ui/button";
+import { Tip } from "../components/tip";
 import {
   useEffect,
   useRef,
@@ -172,15 +174,11 @@ export function InboxCommentForm({
           <span className="min-w-0 truncate">
             Replying to {replyTo.author || "comment"}
           </span>
-          <button
-            type="button"
-            title="Cancel reply"
-            aria-label="Cancel reply"
-            onClick={onCancelReply}
-            className="grid size-5 shrink-0 place-items-center rounded-md text-content/40 hover:bg-content/10 hover:text-content"
-          >
-            <X className="size-3" strokeWidth={1.75} />
-          </button>
+          <Tip label="Cancel reply">
+            <Button variant="ghost" size="icon-xs" aria-label="Cancel reply" onClick={onCancelReply} className="shrink-0 text-muted-foreground">
+              <X className="size-3" strokeWidth={1.75} />
+            </Button>
+          </Tip>
         </div>
       ) : null}
       <div className="rounded-md border border-content/10 bg-content/5 focus-within:border-content/20">
@@ -275,16 +273,11 @@ function InboxComment({
           >
             <span aria-hidden>·</span>
             {comment.url && part === time ? (
-              <button
-                type="button"
-                title={
-                  provider === "linear" ? "Open in Linear" : "Open on GitHub"
-                }
-                onClick={() => void openUrl(comment.url)}
-                className="hover:text-content"
-              >
-                {part}
-              </button>
+              <Tip label={provider === "linear" ? "Open in Linear" : "Open on GitHub"}>
+                <Button variant="link" size="xs" onClick={() => void openUrl(comment.url)} className="h-auto p-0 text-[length:inherit] font-normal text-inherit">
+                  {part}
+                </Button>
+              </Tip>
             ) : (
               <span
                 className={

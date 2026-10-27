@@ -219,3 +219,27 @@ describe("RowsContextMenu's edges", () => {
     expect(screen.queryByRole("menu", { name: "Rows" })).toBeNull();
   });
 });
+
+describe("the title bar's icon buttons", () => {
+  beforeAll(async () => {
+    await act(async () => {
+      warmTooltips();
+      await tooltipChunk.load();
+    });
+  });
+
+  it("name themselves on hover with their binding's key, never with a title", async () => {
+    const { IconButton } = await import("./TitleBar");
+    render(
+      <IconButton label="Sidebar" shortcut="⌘B">
+        <span>icon</span>
+      </IconButton>,
+    );
+    const button = screen.getByRole("button", { name: "Sidebar" });
+    expect(button.getAttribute("title")).toBeNull();
+    fireEvent.pointerEnter(button);
+    fireEvent.mouseEnter(button);
+    fireEvent.focus(button);
+    await waitFor(() => expect(document.querySelector('[data-slot="tooltip-content"]')?.textContent).toBe("Sidebar⌘B"), { timeout: 2000 });
+  });
+});

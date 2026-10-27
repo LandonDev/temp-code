@@ -13,19 +13,6 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = __dirname;
 
-/** Files not yet swept, each with who sweeps it. Empty when the sweep is done. */
-const NOT_YET: readonly string[] = [
-  // A12 slice 6: the title= sweep.
-  "chrome/HostGlyph.tsx",
-  "chrome/TitleBar.tsx",
-  "chrome/WindowControls.tsx",
-  "surfaces/CopyMessageButton.tsx",
-  "surfaces/InboxComments.tsx",
-  "surfaces/InboxPrDiff.tsx",
-  "surfaces/NotesView.tsx",
-  "surfaces/threadChat.tsx",
-];
-
 function sources(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = join(dir, entry.name);
@@ -59,12 +46,7 @@ describe("title= on DOM elements", () => {
     if (lines.length) found.set(relative(ROOT, path), lines);
   }
 
-  it("none outside the files not yet swept", () => {
-    const stray = [...found].filter(([file]) => !NOT_YET.includes(file)).map(([file, lines]) => `${file}:${lines.join(",")}`);
-    expect(stray).toEqual([]);
-  });
-
-  it("the not-yet list names only files that still have one", () => {
-    expect(NOT_YET.filter((file) => !found.has(file))).toEqual([]);
+  it("none anywhere", () => {
+    expect([...found].map(([file, lines]) => `${file}:${lines.join(",")}`)).toEqual([]);
   });
 });

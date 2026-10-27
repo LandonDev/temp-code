@@ -1319,10 +1319,10 @@ describe("the batch across hosts", () => {
     expect(box.getAttribute("data-host-offline")).toBe("true");
     expect(box.className).toContain("opacity-50");
     // Every row draws its host's glyph, the name on hover; the offline row says so instead.
-    expect(home.querySelector("[data-row-title] + [data-host-glyph]")?.getAttribute("title")).toBe("This Mac");
+    expect(home.querySelector("[data-row-title] + [data-host-glyph]")?.getAttribute("aria-label")).toBe("This Mac");
     const glyph = box.querySelector("[data-row-title] + [data-host-glyph]")!;
     expect(glyph.getAttribute("data-host-glyph")).toBe("box");
-    expect(glyph.getAttribute("title")).toBe("The box is offline");
+    expect(glyph.getAttribute("aria-label")).toBe("The box is offline");
     expect(box.querySelector("[data-model]")!.textContent).not.toContain("The box");
     // The host comes back: the tint lifts and the glyph names it.
     hosts.statuses = new Map([
@@ -1337,7 +1337,7 @@ describe("the batch across hosts", () => {
     const again = screen.getByRole("button", { name: /Inbox/ }).closest("[data-status]")!;
     expect(again.getAttribute("data-host-offline")).toBeNull();
     expect(again.className).not.toContain("opacity-50");
-    expect(again.querySelector("[data-row-title] + [data-host-glyph]")?.getAttribute("title")).toBe("The box");
+    expect(again.querySelector("[data-row-title] + [data-host-glyph]")?.getAttribute("aria-label")).toBe("The box");
   });
 
   it("a child on another host lists its subagents from that host's rows, with the host's glyph", async () => {

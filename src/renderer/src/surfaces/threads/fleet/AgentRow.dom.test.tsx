@@ -93,6 +93,6 @@ describe("AgentRowView", () => {
       { id: "env_box", name: "The box", platform: "linux" },
     ];
     const two = render(<AgentRowView meta={meta} status={status} onOpen={() => {}} />);
-    expect(two.container.querySelector("[data-host-glyph]")?.getAttribute("title")).toBe("The box");
+    expect(two.container.querySelector("[data-host-glyph]")?.getAttribute("aria-label")).toBe("The box");
   });
 });

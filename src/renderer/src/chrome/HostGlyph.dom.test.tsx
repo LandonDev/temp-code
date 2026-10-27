@@ -50,13 +50,14 @@ describe('HostGlyph', () => {
     h.environments = [TWO[0], { ...TWO[1], platform: 'linux' }]
     const mac = glyph(render(<HostGlyph environmentId="local" />).container)!
     expect(mac.getAttribute('data-host-kind')).toBe('mac')
-    expect(mac.getAttribute('title')).toBe('This Mac')
+    // The name on hover is a Tip, never a title=; the glyph's own name stays.
+    expect(mac.getAttribute('title')).toBeNull()
     expect(mac.getAttribute('aria-label')).toBe('This Mac')
-    expect(mac.className).toContain('text-content/45')
+    expect(mac.className).toContain('text-muted-foreground')
     expect(mac.querySelector('svg')).not.toBeNull()
     const box = glyph(render(<HostGlyph environmentId="env_box" />).container)!
     expect(box.getAttribute('data-host-kind')).toBe('server')
-    expect(box.getAttribute('title')).toBe('The box')
+    expect(box.getAttribute('aria-label')).toBe('The box')
   })
 
   it('reads the live hello first, the saved platform before it, and preload for this machine', () => {
@@ -73,12 +74,12 @@ describe('HostGlyph', () => {
     h.native = 'linux'
     expect(glyph(render(<HostGlyph environmentId="local" />).container)!.getAttribute('data-host-kind')).toBe('server')
     // A host nothing is known of yet is a server.
-    expect(glyph(render(<HostGlyph environmentId="env_box2" />).container)!.getAttribute('title')).toBe('env_box2')
+    expect(glyph(render(<HostGlyph environmentId="env_box2" />).container)!.getAttribute('aria-label')).toBe('env_box2')
   })
 
   it('a row may say more than the name on hover', () => {
     h.environments = TWO
     const g = glyph(render(<HostGlyph environmentId="env_box" title="The box is offline" />).container)!
-    expect(g.getAttribute('title')).toBe('The box is offline')
+    expect(g.getAttribute('aria-label')).toBe('The box is offline')
   })
 })

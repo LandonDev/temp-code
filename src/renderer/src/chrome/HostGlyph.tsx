@@ -1,5 +1,6 @@
 import { useEnvironments } from "../lib/connection/status";
 import { useHostPlatform } from "../lib/hostPlatform";
+import { Tip } from "../components/tip";
 import { CloudServer, Laptop } from "./icons";
 
 /**
@@ -26,15 +27,16 @@ export function HostGlyph({
   const Icon = mac ? Laptop : CloudServer;
   const label = title ?? name;
   return (
-    <span
-      role="img"
-      aria-label={label}
-      title={label}
-      data-host-glyph={environmentId}
-      data-host-kind={mac ? "mac" : "server"}
-      className={`inline-flex shrink-0 text-content/45 ${className}`}
-    >
-      <Icon className="size-3" strokeWidth={1.75} aria-hidden />
-    </span>
+    <Tip label={label}>
+      <span
+        role="img"
+        aria-label={label}
+        data-host-glyph={environmentId}
+        data-host-kind={mac ? "mac" : "server"}
+        className={`inline-flex shrink-0 text-muted-foreground ${className}`}
+      >
+        <Icon className="size-3" strokeWidth={1.75} aria-hidden />
+      </span>
+    </Tip>
   );
 }

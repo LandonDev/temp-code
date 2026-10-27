@@ -71,14 +71,14 @@ describe("the host glyph beside agents and Inbox items", () => {
   it("the agent row names the child's host", () => {
     h.metas.set("a1", agent());
     const row = render(<AgentRow agent={agent()} onOpen={() => {}} />);
-    expect(glyphOf(row.container)?.getAttribute("title")).toBe("The box");
+    expect(glyphOf(row.container)?.getAttribute("aria-label")).toBe("The box");
     expect(glyphOf(row.container)?.getAttribute("data-host-kind")).toBe("server");
   });
 
   it("the spawn row names the child's host, from the row or from a cross-host id", () => {
     h.metas.set("a1", agent({ environmentId: "local" }));
     const known = render(<AgentSpawnRow block={{ agent: { id: "a1", title: "Port the view" } } as never} />);
-    expect(glyphOf(known.container)?.getAttribute("title")).toBe("This Mac");
+    expect(glyphOf(known.container)?.getAttribute("aria-label")).toBe("This Mac");
     const far = render(<AgentSpawnRow block={{ agent: { id: "env_box:s9", title: "Far child" } } as never} />);
     expect(glyphOf(far.container)?.getAttribute("data-host-glyph")).toBe("env_box");
     expect(hostOfAgentId("plain-id")).toBeUndefined();
@@ -114,7 +114,7 @@ describe("the host glyph beside agents and Inbox items", () => {
     const card = render(
       <InboxRow item={item} active={false} environmentId="env_box" showSource onSelect={() => {}} />,
     );
-    expect(glyphOf(card.container)?.getAttribute("title")).toBe("The box");
+    expect(glyphOf(card.container)?.getAttribute("aria-label")).toBe("The box");
     expect(card.container.textContent).not.toContain("The box");
   });
 });

@@ -4,6 +4,9 @@ import {
   FoldVertical,
   UnfoldVertical,
 } from "../chrome/icons";
+import { Tip, TruncateTip } from "../components/tip";
+import { Button } from "../components/ui/button";
+import { TooltipProvider } from "../components/ui/tooltip";
 import { useMemo, useState } from "react";
 import { FileTypeIcon } from "../chrome/FileTypeIcon";
 import { basename } from "../lib/fs";
@@ -92,27 +95,20 @@ export function InboxPrDiff({ diff }: Props) {
       <div className="flex items-center gap-3 text-[12px]">
         <span className="text-content/70">{fileLabel}</span>
         <DiffCounts additions={diff.additions} deletions={diff.deletions} />
-        <span className="ml-auto flex items-center gap-0.5">
-          <button
-            type="button"
-            title="Expand all files"
-            aria-label="Expand all files"
-            onClick={() => setOpen(new Set(files.map((file) => file.path)))}
-            className="grid size-7 place-items-center rounded-md text-content/40 hover:bg-content/10 hover:text-content"
-          >
-            <UnfoldVertical className="size-3.5" strokeWidth={1.75} />
-          </button>
-          <button
-            type="button"
-            title="Collapse all files"
-            aria-label="Collapse all files"
-            disabled={open.size === 0}
-            onClick={() => setOpen(new Set())}
-            className="grid size-7 place-items-center rounded-md text-content/40 hover:bg-content/10 hover:text-content disabled:opacity-40"
-          >
-            <FoldVertical className="size-3.5" strokeWidth={1.75} />
-          </button>
-        </span>
+        <TooltipProvider>
+          <span className="ml-auto flex items-center gap-0.5">
+            <Tip label="Expand all files">
+              <Button variant="ghost" size="icon-sm" aria-label="Expand all files" onClick={() => setOpen(new Set(files.map((file) => file.path)))} className="text-muted-foreground">
+                <UnfoldVertical className="size-3.5" strokeWidth={1.75} />
+              </Button>
+            </Tip>
+            <Tip label="Collapse all files">
+              <Button variant="ghost" size="icon-sm" aria-label="Collapse all files" disabled={open.size === 0} onClick={() => setOpen(new Set())} className="text-muted-foreground">
+                <FoldVertical className="size-3.5" strokeWidth={1.75} />
+              </Button>
+            </Tip>
+          </span>
+        </TooltipProvider>
       </div>
       {diff?.truncated ? (
         <p className="text-[12px] text-content/40">
@@ -166,9 +162,9 @@ function PrFileCard({
       >
         <Chevron className="size-3.5 shrink-0 text-content/40" strokeWidth={1.75} />
         <FileTypeIcon name={name} isDir={false} size={16} />
-        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-content" title={label}>
-          {label}
-        </span>
+        <TruncateTip text={label}>
+          <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-foreground">{label}</span>
+        </TruncateTip>
         <DiffCounts additions={file.additions} deletions={file.deletions} />
       </button>
       {expanded ? <PrFileBody file={file} /> : null}

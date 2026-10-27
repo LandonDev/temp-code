@@ -94,7 +94,7 @@ describe("InboxRow", () => {
 
   it("draws the host's glyph with two hosts and none with one", () => {
     const two = render(<InboxRow item={pr()} active={false} environmentId="env_box" showSource={false} onSelect={() => {}} />);
-    expect(two.container.querySelector("[data-host-glyph]")?.getAttribute("title")).toBe("The box");
+    expect(two.container.querySelector("[data-host-glyph]")?.getAttribute("aria-label")).toBe("The box");
     cleanup();
     const saved = h.environments;
     h.environments = [saved[0]];

@@ -1,4 +1,6 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { Button } from "../components/ui/button";
+import { Tip } from "../components/tip";
 import {
   createContext,
   useCallback,
@@ -387,16 +389,18 @@ export function useThreadChat({
               animate={{ opacity: 1, scale: 1, transition: SPRING_PRESS }}
               exit={FADE_OUT}
             >
-              <button
-                type="button"
-                title="Jump to latest"
-                aria-label="Jump to latest"
-                data-jump-to-bottom
-                onClick={() => jumpToBottomRef.current?.()}
-                className="pressable pointer-events-auto grid size-6 place-items-center rounded-md border border-content/10 bg-content/10 text-content shadow-md glass-surface glass-surface--md hover:bg-content/20"
-              >
-                <ChevronDown className="size-3.5" strokeWidth={1.75} />
-              </button>
+              <Tip label="Jump to latest">
+                <Button
+                  variant="secondary"
+                  size="icon-xs"
+                  aria-label="Jump to latest"
+                  data-jump-to-bottom
+                  onClick={() => jumpToBottomRef.current?.()}
+                  className="pointer-events-auto shadow-overlay ring-1 ring-border"
+                >
+                  <ChevronDown className="size-3.5" strokeWidth={1.75} />
+                </Button>
+              </Tip>
             </motion.div>
           ) : null}
         </AnimatePresence>

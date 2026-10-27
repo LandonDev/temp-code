@@ -293,6 +293,7 @@ export const KEYBINDING_GROUPS: KeybindingGroup[] = [
       { name: "Sidebar", keys: [[CMD, "B"]] },
       { name: "Panel", keys: [[CMD, SHF, "R"]] },
       { name: "Switch Model", keys: [[CMD, "."]] },
+      { name: "Settings", keys: [[CMD, ","]] },
     ],
   },
   {

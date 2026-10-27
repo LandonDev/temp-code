@@ -107,6 +107,6 @@ describe("AgentDetailBody", () => {
     ];
     h.metas.set("far", fixtureMeta("far", { environmentId: "env_box", title: "Far" }));
     const { container } = render(<AgentDetailBody agentId="far" parentCwd="/repo" onClose={() => {}} />);
-    expect(container.querySelector("[data-host-glyph]")?.getAttribute("title")).toBe("The box");
+    expect(container.querySelector("[data-host-glyph]")?.getAttribute("aria-label")).toBe("The box");
   });
 });

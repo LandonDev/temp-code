@@ -149,7 +149,7 @@ const kinds = (view: RenderResult) => rows(view).map((row) => row.dataset.kind);
 const hostOf = (row: HTMLElement) => {
   const mark = row.querySelector("[data-host-mark]");
   if (!mark) return null;
-  const name = mark.querySelector("[data-host-glyph]")?.getAttribute("title") ?? "";
+  const name = mark.querySelector("[data-host-glyph]")?.getAttribute("aria-label") ?? "";
   return mark.textContent ? `${name} · ${mark.textContent}` : name;
 };
 
