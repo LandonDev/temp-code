@@ -16,7 +16,9 @@ import { StatusMark } from "../components/ui/status";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
 import { pendingApprovalForSession } from "../lib/approvalToast";
 import { DRAG_THRESHOLD, setGrabbing, suppressTextSelection } from "../lib/drag";
+import type { PaneEdge } from "../lib/layout";
 import { paneDropFromPoint, setExternalPaneDrop } from "../lib/paneDrop";
+import { focus } from "../stores/focus";
 import { workspaceActions } from "../stores/workspaceActions";
 import { HARNESSES, sessionDisplayTitle, type HarnessId } from "../lib/session";
 import { sessionStore } from "../lib/tcserver/store";
@@ -284,7 +286,7 @@ function useChipDrag(id: string, select: () => void) {
       }
       const over = paneDropFromPoint(ev.clientX, ev.clientY);
       end();
-      if (over && over.id !== id) workspaceActions.dropThread(id, over.id, over.edge);
+      if (over && over.id !== id) dropChip(id, over.id, over.edge);
     };
     const key = (ev: KeyboardEvent) => {
       if (ev.key !== "Escape") return;
@@ -312,6 +314,16 @@ function useChipDrag(id: string, select: () => void) {
     window.addEventListener("blur", end);
   };
   return { dragging, onPointerDown };
+}
+
+/** The dropped thread joins the open sessions as App's own open does, and
+ *  its composer takes the keyboard from the dock or an editor. */
+function dropChip(id: string, paneId: string, edge: PaneEdge): void {
+  workspaceActions.dropThread(id, paneId, edge);
+  const session = sessionStore.get(id);
+  if (session && !sessionStore.isOpen(id)) sessionStore.mutate((open) => [...open, session]);
+  focus.projectTerminal(false);
+  focus.composer(true);
 }
 
 function Chip({

@@ -4,6 +4,9 @@ import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HeaderModel } from "../lib/threadHeaderModel";
 import { getExternalPaneDrop } from "../lib/paneDrop";
+import type { Session } from "../lib/session";
+import { sessionStore } from "../lib/tcserver/store";
+import { focusStore, initialFocusState } from "../stores/focus";
 
 const { dropThread } = vi.hoisted(() => ({ dropThread: vi.fn() }));
 vi.mock("../stores/workspaceActions", () => ({ workspaceActions: { dropThread } }));
@@ -230,6 +233,26 @@ describe("ThreadHeaderStrip chip drag", () => {
     expect(onSelect).not.toHaveBeenCalled();
     expect(dropThread).toHaveBeenCalledWith("b", "p1", "right");
     expect(getExternalPaneDrop()).toBeNull();
+    restore();
+  });
+
+  it("a thread open in no pane joins the open sessions, and its composer takes the keyboard from the dock", () => {
+    const restore = paneUnderPointer();
+    const beta = { id: "b" } as Session;
+    const get = vi.spyOn(sessionStore, "get").mockReturnValue(beta);
+    const isOpen = vi.spyOn(sessionStore, "isOpen").mockReturnValue(false);
+    const opened: Session[][] = [];
+    const mutate = vi.spyOn(sessionStore, "mutate").mockImplementation((update) => {
+      opened.push(typeof update === "function" ? update([]) : update);
+    });
+    focusStore.setState({ ...initialFocusState(false), projectTerminalFocused: true });
+    mount();
+    fireEvent.pointerDown(tab("Beta"), { button: 0, clientX: 380, clientY: 150 });
+    fireEvent.pointerMove(window, { clientX: 390, clientY: 150 });
+    fireEvent.pointerUp(window, { clientX: 390, clientY: 150 });
+    expect(opened).toEqual([[beta]]);
+    expect(focusStore.getState()).toEqual({ composerFocused: true, projectTerminalFocused: false });
+    for (const spy of [get, isOpen, mutate]) spy.mockRestore();
     restore();
   });
 

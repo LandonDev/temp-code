@@ -1,10 +1,16 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { tooltipChunk, warmTooltips } from "../components/ui/tooltip";
 import type { LayoutSash } from "../lib/layout";
 import { PaneDropHint, PaneHeader, Sash } from "./paneChrome";
 
 afterEach(cleanup);
+
+beforeAll(async () => {
+  await tooltipChunk.load();
+  warmTooltips();
+});
 
 function header(focused = true) {
   const onClose = vi.fn();
@@ -35,6 +41,14 @@ describe("PaneHeader", () => {
     expect(onDragStart).toHaveBeenCalledTimes(1);
     fireEvent.click(close);
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("a subagent's title, which has no chip, is a tooltip trigger; a root's is plain", () => {
+    render(<PaneHeader title="Sub" focused titleHint onClose={() => {}} />);
+    expect(screen.getByText("Sub").dataset.slot).toBe("tooltip-trigger");
+    cleanup();
+    render(<PaneHeader title="Root" focused onClose={() => {}} />);
+    expect(screen.getByText("Root").dataset.slot).toBeUndefined();
   });
 
   it("ignores a secondary press", () => {

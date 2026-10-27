@@ -621,6 +621,22 @@ export function setSplitRatio(
     : { ...node, sizes };
 }
 
+/** Give every pane of one group the same share. */
+export function equalizeSplit(node: LayoutNode, splitId: string): LayoutNode {
+  if (node.type === "leaf") return node;
+  if (node.id === splitId) {
+    const share = 1 / node.sizes.length;
+    return node.sizes.every((size) => size === share) ? node : { ...node, sizes: node.sizes.map(() => share) };
+  }
+  let changed = false;
+  const children = node.children.map((child) => {
+    const next = equalizeSplit(child, splitId);
+    if (next !== child) changed = true;
+    return next;
+  });
+  return changed ? { ...node, children } : node;
+}
+
 export function splitSizesAtBoundary(
   current: number[],
   index: number,

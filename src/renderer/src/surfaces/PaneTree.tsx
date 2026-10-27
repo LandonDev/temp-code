@@ -25,11 +25,11 @@ import {
 } from "../lib/layout";
 import type { RecentProject } from "../lib/recents";
 import type { TerminalMetaPatch } from "../lib/terminalTab";
-import { tabSurfacePanes } from "../lib/workspaceFocus";
+import { equalizeTabSplit, tabSurfacePanes } from "../lib/workspaceFocus";
 import { useEditors } from "../stores/editors";
 import { useFocus } from "../stores/focus";
 import { useProject } from "../stores/project";
-import { useWorkspaceTabs } from "../stores/workspace";
+import { useWorkspaceTabs, workspace } from "../stores/workspace";
 import type { Session } from "../lib/session";
 import { sessionStore, useSession } from "../lib/tcserver/store";
 import { FilePane } from "./FilePane";
@@ -337,11 +337,8 @@ function PaneTreeComponent({
           }}
           onCancel={() => setDraft(null)}
           onEqualize={() => {
-            // App applies each call against the state the last one left,
-            // so walking the boundaries in order lands every pane equal.
-            const n = sash.sizes.length;
             setDraft(null);
-            for (let i = 0; i < n - 1; i++) onRatio(tabId, sash.splitId, i, (i + 1) / n);
+            workspace.setTabs((tabs) => equalizeTabSplit(tabs, tabId, sash.splitId));
           }}
         />
       ))}

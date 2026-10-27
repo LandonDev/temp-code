@@ -443,8 +443,8 @@ A tab holds a tree of panes (surfaces/PaneTree.tsx on lib/layout.ts); the
 pieces it draws are surfaces/paneChrome.tsx.
 
 - **The header.** Alone in its tab a thread has none. In a split every
-  thread pane has a 36px `PaneHeader`: the title (13px, truncated, no
-  tooltip: the chip has it) and Close, a ghost icon button with "Close
+  thread pane has a 36px `PaneHeader`: the title (13px, truncated; a
+  subagent's, which has no chip, shows whole on hover) and Close, a ghost icon button with "Close
   pane ⌘W" on hover. The focus mark is the header itself: the focused
   pane's is the content's background with the title in foreground, the
   others' the rail's gray with a muted title. A file pane's tab bar takes
@@ -463,8 +463,9 @@ pieces it draws are surfaces/paneChrome.tsx.
   every drop splits, nothing drops in the centre.
 - **A chip onto a pane.** A thread's chip dragged out of the strip shows
   the same drop zone on the pane under the pointer, and a release there
-  opens the thread on that edge, its tab forward and it focused
-  (`workspaceActions.dropThread`): a thread already in that tab moves, one
+  opens the thread on that edge, its tab forward and its composer focused
+  (`workspaceActions.dropThread`; the strip's chip follows the focused
+  pane): a thread already in that tab moves, one
   from another tab leaves it (that tab goes when it held only the thread),
   one open nowhere joins. A release elsewhere, Escape or the window losing
   focus does nothing.

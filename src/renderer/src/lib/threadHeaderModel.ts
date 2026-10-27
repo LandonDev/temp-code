@@ -74,10 +74,11 @@ export function buildHeaderModel<T extends StripThread>(input: {
     live: live.map((t) => chip(t, true)),
     dormant: dormant.map((t) => chip(t, false)),
   };
-  const active = [...model.live, ...model.dormant].find(
-    (c) => c.tabId != null && c.tabId === input.activeTabId,
-  );
-  return { ...model, activeId: active?.id ?? null };
+  // The active tab's focused thread, else the first of its threads with a chip.
+  const chips = [...model.live, ...model.dormant];
+  const shown = input.tabs.find((tab) => tab.id === input.activeTabId)?.sessionIds ?? [];
+  const activeId = shown.find((id) => chips.some((c) => c.id === id)) ?? null;
+  return { ...model, activeId };
 }
 
 /** The chips the strip draws: the live ones, plus the thread on screen when

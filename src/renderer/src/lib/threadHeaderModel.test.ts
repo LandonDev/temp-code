@@ -50,6 +50,14 @@ describe("buildHeaderModel", () => {
     expect(model.activeId).toBe("run");
   });
 
+  it("two roots sharing the active tab: the focused one is the active chip", () => {
+    const model = (sessionIds: string[]) =>
+      buildHeaderModel({ threads, tabs: [{ id: "t-split", sessionIds }], selectedProjectId: "p1", activeTabId: "t-split", lastSeen, planReady: {} });
+    expect(model(["wait", "run"]).activeId).toBe("wait");
+    expect(model(["run", "wait"]).activeId).toBe("run");
+    expect(model(["child", "wait", "run"]).activeId).toBe("wait");
+  });
+
   it("carries the root's own status, the tree flags on its thread", () => {
     const model = buildHeaderModel({
       threads: [thread("x", { status: "running", treeHasPaused: true }), thread("y", { updatedAt: 200 })],

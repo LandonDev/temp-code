@@ -123,7 +123,7 @@ function tree() {
 describe("PaneTree's sashes", () => {
   it("a double-click on a sash makes a three-pane row equal", () => {
     state.session = thread("loading");
-    workspaceTabsStore.setState(initialWorkspaceTabsState([splitTab([0.6, 0.2, 0.2])]));
+    workspaceTabsStore.setState(initialWorkspaceTabsState([splitTab([0.1, 0.1, 0.8])]));
     tree();
     fireEvent.doubleClick(screen.getAllByRole("separator", { name: "Resize panes" })[1]);
     const layout = workspaceTabsStore.getState().tabs[0].layout as Extract<LayoutNode, { type: "split" }>;

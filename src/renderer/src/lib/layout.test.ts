@@ -28,6 +28,8 @@ import {
   splitPane,
   splitSizesAtBoundary,
   updateTerminalTab,
+  equalizeSplit,
+  type LayoutNode,
 } from "./layout";
 
 describe("splitSizesAtBoundary", () => {
@@ -458,5 +460,17 @@ describe("boardClass", () => {
     expect(boardClass(true).split(" ")).not.toContain("hidden");
     expect(boardClass(false).split(" ")).not.toContain("board-parked");
     expect(boardClass(false).split(" ")).toContain("flex-1");
+  });
+});
+
+describe("equalizeSplit", () => {
+  it("gives every pane of the group the same share, whatever the start", () => {
+    const row: LayoutNode = { type: "split", id: "row", dir: "right", children: [leaf("a"), leaf("b"), leaf("c")], sizes: [0.1, 0.1, 0.8] };
+    const outer: LayoutNode = { type: "split", id: "outer", dir: "down", children: [row, leaf("d")], sizes: [0.7, 0.3] };
+    const next = equalizeSplit(outer, "row");
+    expect(next.type === "split" && next.sizes).toEqual([0.7, 0.3]);
+    const inner = next.type === "split" ? next.children[0] : next;
+    expect(inner.type === "split" && inner.sizes).toEqual([1 / 3, 1 / 3, 1 / 3]);
+    expect(equalizeSplit(next, "row")).toBe(next);
   });
 });

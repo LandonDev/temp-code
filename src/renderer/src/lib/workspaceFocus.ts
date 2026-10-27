@@ -1,5 +1,5 @@
 import type { EditorPane, WorkspaceTab } from "./layout";
-import { setSplitRatio } from "./layout";
+import { equalizeSplit, setSplitRatio } from "./layout";
 
 /**
  * Focus updates on the tab list. Every function returns the same `tabs`
@@ -25,6 +25,13 @@ export function setTabSplitRatio(
 ): WorkspaceTab[] {
   return replaceTab(tabs, tabId, (tab) => {
     const layout = setSplitRatio(tab.layout, splitId, index, ratio);
+    return layout === tab.layout ? tab : { ...tab, layout };
+  });
+}
+
+export function equalizeTabSplit(tabs: WorkspaceTab[], tabId: string, splitId: string): WorkspaceTab[] {
+  return replaceTab(tabs, tabId, (tab) => {
+    const layout = equalizeSplit(tab.layout, splitId);
     return layout === tab.layout ? tab : { ...tab, layout };
   });
 }

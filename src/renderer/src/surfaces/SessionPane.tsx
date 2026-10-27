@@ -181,6 +181,7 @@ export const SessionPane = memo(function SessionPane({
         <PaneHeader
           title={title}
           focused={focused}
+          titleHint={!!session.parentId}
           onClose={() => onClose(session.id)}
           onDragStart={onPaneDragStart}
         />

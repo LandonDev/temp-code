@@ -8,6 +8,9 @@ import { suppressTextSelection } from "../lib/drag";
 import type { LayoutSash, PaneEdge } from "../lib/layout";
 import { MOD } from "../lib/platform";
 
+const titleClass = (focused: boolean) =>
+  cn("min-w-0 flex-1 truncate text-[13px]", focused ? "text-foreground" : "text-muted-foreground");
+
 /**
  * A split pane's header: the thread's title and Close. The focused pane's
  * header is the content's own background with the title in foreground; the
@@ -17,11 +20,14 @@ import { MOD } from "../lib/platform";
 export function PaneHeader({
   title,
   focused,
+  titleHint = false,
   onClose,
   onDragStart,
 }: {
   title: string;
   focused: boolean;
+  /** The full title on hover, for a thread the strip has no chip for (a subagent). */
+  titleHint?: boolean;
   onClose: () => void;
   onDragStart?: (event: ReactPointerEvent<HTMLElement>) => void;
 }) {
@@ -40,9 +46,14 @@ export function PaneHeader({
         onDragStart(event);
       }}
     >
-      <span className={cn("min-w-0 flex-1 truncate text-[13px]", focused ? "text-foreground" : "text-muted-foreground")}>
-        {title}
-      </span>
+      {titleHint ? (
+        <Tooltip>
+          <TooltipTrigger render={<span className={titleClass(focused)} />}>{title}</TooltipTrigger>
+          <TooltipContent>{title}</TooltipContent>
+        </Tooltip>
+      ) : (
+        <span className={titleClass(focused)}>{title}</span>
+      )}
       <Tooltip>
         <TooltipTrigger
           render={
