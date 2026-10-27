@@ -218,7 +218,11 @@ describe('ProjectTeardownDialog on a linked project', () => {
   it('delete takes this copy only, unless the copy on the box is ticked', async () => {
     const done = vi.fn()
     const first = render(<ProjectTeardownDialog project={MAC} action="delete" onClose={() => {}} onDone={done} />)
-    expect(screen.getByRole('alertdialog')).toBeTruthy()
+    // A choice to make: a form dialog, never a confirm holding a checkbox.
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(screen.getByRole('dialog').textContent).toContain('Delete Alpha (stale)?')
+    expect(screen.getByRole('dialog').textContent).toContain('Its threads are deleted for good.')
+    expect(screen.getByRole('button', { name: 'Delete project' }).getAttribute('data-variant')).toBe('destructive')
     const also = screen.getByRole('checkbox', { name: 'Also delete the copy on box' })
     expect(also.getAttribute('aria-checked')).toBe('false')
     await act(async () => {
@@ -243,8 +247,10 @@ describe('ProjectTeardownDialog on a linked project', () => {
     ])
   })
 
-  it('an unlinked project offers no copy to delete', () => {
+  it('an unlinked project with nothing to clean up is a plain confirm', () => {
     render(<ProjectTeardownDialog project={SOLO} action="delete" onClose={() => {}} onDone={() => {}} />)
+    expect(screen.getByRole('alertdialog')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Delete project' })).toBeTruthy()
     expect(screen.queryByRole('checkbox')).toBeNull()
     expect(footerNote()).toBeNull()
   })

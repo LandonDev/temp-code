@@ -96,8 +96,9 @@ export function FieldRow({
 }
 
 /**
- * One decision in a confirm (clean up the worktree, delete the branch): a
- * Checkbox and its label, never a Switch. The label names the checkbox.
+ * One decision in a form dialog (clean up the worktree, delete the branch):
+ * a Checkbox and its label, never a Switch. The label names the checkbox. A
+ * confirm never holds one: a destructive choice with options is a form.
  */
 export function CheckRow({
   label,

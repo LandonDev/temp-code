@@ -4,7 +4,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
-import { ModalPanel, useClosingDialog } from "./Modal";
+import { ModalBody, ModalPanel, useClosingDialog } from "./Modal";
 import { CheckRow, Field, FieldRow } from "./DialogField";
 import {
   AlertDialog,
@@ -782,9 +782,10 @@ export function ProjectTeardownDialog({
     </div>
   ) : null;
 
-  // Deleting is irreversible: an alert, Cancel and the red verb. Archiving
-  // is undone from the archive list, so it stays an ordinary dialog.
-  if (deleting) {
+  // Deleting with nothing to decide is a confirm: one title, one line, Cancel
+  // and the red verb. With cleanup or other copies to choose, it is a form
+  // dialog like Archive's, since a confirm never holds a checkbox.
+  if (deleting && !checks) {
     return (
       <AlertDialog {...root}>
         <AlertDialogContent aria-busy={pending || undefined}>
@@ -792,7 +793,6 @@ export function ProjectTeardownDialog({
             <AlertDialogTitle>Delete {project.name}?</AlertDialogTitle>
             <AlertDialogDescription>Its threads are deleted for good.</AlertDialogDescription>
           </AlertDialogHeader>
-          {checks}
           <ErrorLine error={error} />
           <AlertDialogFooter>
             <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
@@ -811,21 +811,21 @@ export function ProjectTeardownDialog({
       <ModalPanel
         onClose={onClose}
         busy={pending}
-        title={`Archive ${project.name}?`}
-        description="Its threads stay; restore it anytime."
+        title={deleting ? `Delete ${project.name}?` : `Archive ${project.name}?`}
+        description={deleting ? "Its threads are deleted for good." : "Its threads stay; restore it anytime."}
         size="sm"
       >
         {checks || error ? (
-          <div className="flex flex-col gap-4 px-5 py-4">
+          <ModalBody>
             {checks}
             <ErrorLine error={error} />
-          </div>
+          </ModalBody>
         ) : null}
         <Footer
           onCancel={() => closeThen(onClose)}
           onConfirm={() => void confirm()}
-          confirmLabel="Archive"
-          danger={any}
+          confirmLabel={deleting ? "Delete project" : "Archive"}
+          danger={deleting || any}
           pending={pending}
           disabled={!!blocked}
           note={blocked ?? undefined}
