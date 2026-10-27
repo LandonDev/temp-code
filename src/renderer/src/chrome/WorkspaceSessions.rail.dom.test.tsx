@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import { useCallback, useState } from "react";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionMeta } from "../lib/tcserver/types";
-import { virtualChunk } from "../surfaces/chunks";
+import { sessionStore } from "../lib/tcserver/store";
+import { menuChunk, virtualChunk } from "../surfaces/chunks";
+import { resetMenus, warmMenus } from "./menuRows";
 
 const h = vi.hoisted(() => ({ metas: [] as SessionMeta[] }));
 vi.mock("../lib/tcserver/store", async (importOriginal) => ({
@@ -80,11 +82,10 @@ function Column({ shown }: { shown: boolean }) {
 const shownChats = () => screen.queryAllByText(/^Chat \d+$/).length;
 
 let restore: (() => void)[] = [];
-beforeAll(async () => {
-  await virtualChunk.load();
-});
 beforeEach(() => {
   forgetColumnMemory();
+  resetMenus();
+  vi.spyOn(sessionStore, "metaOf").mockImplementation((id) => h.metas.find((m) => m.id === id) ?? null);
   h.metas = Array.from({ length: 40 }, (_, i) => chat(i));
   vi.stubGlobal("ResizeObserver", FakeResizeObserver);
   const height = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
@@ -99,12 +100,61 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   restore.forEach((r) => r());
   observers.length = 0;
 });
 afterAll(() => forgetColumnMemory());
 
+/** Right-click on a row's label, on the row, and on blank space under the list. */
+async function rightClicks() {
+  await act(async () => {
+    await menuChunk.load();
+    warmMenus();
+  });
+  const rowsFor = vi.spyOn(sessionStore, "metaOf");
+  const label = screen.getByText("Chat 3");
+  const row = label.closest<HTMLElement>("[data-menu-id]")!;
+  expect(row.getAttribute("data-menu-id")).toBe("c3");
+  fireEvent.contextMenu(label);
+  expect(rowsFor).toHaveBeenCalledWith("c3");
+  const menu = await screen.findByRole("menu", { name: "Thread actions" });
+  expect(within(menu).getByRole("menuitem", { name: /Rename/ })).toBeTruthy();
+  fireEvent.keyDown(menu, { key: "Escape" });
+  await act(async () => {});
+  fireEvent.contextMenu(row);
+  expect(await screen.findByRole("menu", { name: "Thread actions" })).toBeTruthy();
+}
+
+describe("a right-click on a rail row", () => {
+  it("opens the thread's menu in the plain list", async () => {
+    expect(virtualChunk.loaded()).toBeNull();
+    const view = render(<Column shown />);
+    expect(view.container.querySelector("[data-index].absolute")).toBeNull();
+    await rightClicks();
+  });
+
+  it("opens the thread's menu in the virtual list, and blank space opens nothing", async () => {
+    await act(async () => {
+      await virtualChunk.load();
+    });
+    const view = render(<Column shown />);
+    expect(view.container.querySelector("[data-index].absolute")).not.toBeNull();
+    await rightClicks();
+    cleanup();
+    resetMenus();
+    const again = render(<Column shown />);
+    fireEvent.contextMenu(again.container.querySelector(".px-2.pt-2.pb-2 > div")!);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByRole("menu", { name: "Thread actions" })).toBeNull();
+  });
+});
+
 describe("the workspace column across a remount", () => {
+  beforeAll(async () => {
+    await virtualChunk.load();
+  });
+
   it("shows every row again when it mounts with the virtualizer already loaded", () => {
     const view = render(<Column shown />);
     expect(view.container.querySelector(".relative.w-full")).not.toBeNull();
