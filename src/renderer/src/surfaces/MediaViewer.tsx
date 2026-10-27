@@ -40,40 +40,68 @@ import { FileHeader, fileFolder } from "./FileHeader";
 type MediaState =
   | { status: "pending" }
   | { status: "none" }
-  | { status: "media"; media: FileMedia };
+  | { status: "media"; media: FileMedia; failure?: MediaFailure; attempt: number };
 
-/** The file's media facts, and `reload` to ask again (a fresh token, so a URL the host forgot works again). */
-export function useFileMedia(path: string, environmentId?: string): { state: MediaState; reload: () => void } {
+/** Why an element could not use its bytes, as the host answers when asked again. */
+export type MediaFailure = "missing" | "unreachable" | "unsupported";
+
+/**
+ * The next state once the host answers (`answer` undefined: the ask was
+ * refused). A media tab stays a media tab once it is one: a file that left
+ * or a host out of reach is its failure, with Retry, never the editor. After
+ * an element error the same URL means the bytes are there and the element
+ * cannot use them; a new URL (a fresh token) is tried at once.
+ */
+export function nextMediaState(
+  prev: MediaState,
+  answer: FileMedia | null | undefined,
+  why: "watch" | "retry" | "error",
+  remote: boolean,
+): MediaState {
+  if (prev.status !== "media") return answer ? { status: "media", media: answer, attempt: 0 } : { status: "none" };
+  if (answer === null) return { ...prev, failure: "missing" };
+  if (answer === undefined) return { ...prev, failure: remote ? "unreachable" : "missing" };
+  if (why === "error" && answer.url === prev.media.url) return { ...prev, failure: "unsupported" };
+  return { status: "media", media: answer, attempt: why === "watch" ? prev.attempt : prev.attempt + 1 };
+}
+
+/**
+ * The file's media facts. `reload` asks the host again (Retry); `failed` is
+ * an element's error, answered by asking again too.
+ */
+export function useFileMedia(
+  path: string,
+  environmentId?: string,
+): { state: MediaState; reload: () => void; failed: () => void } {
   const [state, setState] = useState<MediaState>({ status: "pending" });
-  const [attempt, setAttempt] = useState(0);
+  const ask = useRef<(why: "watch" | "retry" | "error") => void>(() => {});
   useEffect(() => {
     let cancelled = false;
     setState({ status: "pending" });
     const host = environmentId ?? hostOfCwd(path);
-    const load = () =>
-      fileMedia(host, path)
-        .then((media) => {
-          if (cancelled) return;
-          setState(media ? { status: "media", media } : { status: "none" });
-        })
-        .catch(() => {
-          if (!cancelled) setState({ status: "none" });
-        });
-    void load();
+    const remote = hostNameOf(host) !== null;
+    const load = (why: "watch" | "retry" | "error") =>
+      void fileMedia(host, path).then(
+        (media) => !cancelled && setState((prev) => nextMediaState(prev, media, why, remote)),
+        () => !cancelled && setState((prev) => nextMediaState(prev, undefined, why, remote)),
+      );
+    ask.current = load;
+    load("watch");
     // A rewritten image (an agent regenerating a screenshot) gets a fresh
     // URL: the mtime rides in the query, so the element fetches again.
-    const unwatch = watchFile(path, () => void load(), host);
+    const unwatch = watchFile(path, () => load("watch"), host);
     return () => {
       cancelled = true;
       unwatch();
     };
-  }, [path, environmentId, attempt]);
-  const reload = useCallback(() => setAttempt((n) => n + 1), []);
-  return { state, reload };
+  }, [path, environmentId]);
+  const reload = useCallback(() => ask.current("retry"), []);
+  const failed = useCallback(() => ask.current("error"), []);
+  return { state, reload, failed };
 }
 
-/** What a failed element needs to say why: the host's name (null here) and Retry. */
-type MediaHost = { hostName: string | null; onReload?: () => void };
+/** What the working file's body needs from the gate: the host's name (null here), its failure, Retry. */
+type MediaHost = { hostName: string | null; failure?: MediaFailure; attempt?: number; onReload?: () => void; onFailed?: () => void };
 const MediaHostContext = createContext<MediaHost>({ hostName: null });
 
 function hostNameOf(host: string): string | null {
@@ -97,10 +125,16 @@ export function MediaGate({
   original?: (media: FileMedia) => ReactNode;
   children: () => ReactNode;
 }) {
-  const { state, reload } = useFileMedia(path, environmentId);
+  const { state, reload, failed } = useFileMedia(path, environmentId);
   if (state.status === "pending") return null;
   if (state.status === "none") return <>{children()}</>;
-  const host: MediaHost = { hostName: hostNameOf(environmentId ?? hostOfCwd(path)), onReload: reload };
+  const host: MediaHost = {
+    hostName: hostNameOf(environmentId ?? hostOfCwd(path)),
+    failure: state.failure,
+    attempt: state.attempt,
+    onReload: reload,
+    onFailed: failed,
+  };
   if (original) return <MediaHostContext.Provider value={host}>{original(state.media)}</MediaHostContext.Provider>;
   return <MediaViewer path={path} cwd={cwd} media={state.media} active={active} {...host} />;
 }
@@ -174,9 +208,6 @@ function Facts({ facts }: { facts: string[] }) {
   );
 }
 
-/** Why an element could not use its bytes, as the asset handler's HEAD tells it. */
-export type MediaFailure = "missing" | "unreachable" | "unsupported";
-
 /** The toggle keeps the pane's focus where it was: a click never takes it. */
 const keepFocus = (event: MouseEvent) => event.preventDefault();
 
@@ -187,7 +218,10 @@ export function MediaViewer({
   active,
   original,
   hostName = null,
+  failure,
+  attempt = 0,
   onReload,
+  onFailed,
   initial,
 }: {
   path: string;
@@ -198,17 +232,26 @@ export function MediaViewer({
   original?: FileMedia | null;
   /** The host the file lives on, null for this machine: a failure names it. */
   hostName?: string | null;
+  /** Why the working file cannot show, as the host answered. */
+  failure?: MediaFailure;
+  /** Bumped by each Retry, so the element loads again even at the same URL. */
+  attempt?: number;
   /** Ask the host again; absent, a failure offers no Retry. */
   onReload?: () => void;
-  /** The state to open in; the fixtures render each one statically. */
-  initial?: { fit?: boolean; failure?: MediaFailure };
+  /** The working file's element failed: ask the host why. */
+  onFailed?: () => void;
+  /** The size to open at; the fixtures render it statically. */
+  initial?: { fit?: boolean };
 }) {
   const name = basename(path);
   const [dims, setDims] = useState<Dims>(null);
   const [oldDims, setOldDims] = useState<Dims>(null);
   const [fit, setFit] = useState(initial?.fit ?? true);
   const toggleFit = useCallback(() => setFit((f) => !f), []);
-  const body = { name, fit, hostName, onReload, onToggleFit: toggleFit, failure: initial?.failure };
+  // The git side has no host to ask: a blob that will not show is its format.
+  const [beforeFailed, setBeforeFailed] = useState<string | null>(null);
+  const body = { name, fit, hostName, onReload, onToggleFit: toggleFit };
+  const after = { failure, onError: () => (onFailed ? onFailed() : undefined) };
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col bg-background">
@@ -237,15 +280,23 @@ export function MediaViewer({
       {original ? (
         <div className="flex min-h-0 flex-1">
           <ReviewSide label="Before" facts={mediaFacts(oldDims, original)} className="border-r border-border">
-            <MediaBody key={original.url} media={original} active={false} onDims={setOldDims} {...body} />
+            <MediaBody
+              key={original.url}
+              media={original}
+              active={false}
+              onDims={setOldDims}
+              failure={beforeFailed === original.url ? "unsupported" : undefined}
+              onError={() => setBeforeFailed(original.url)}
+              {...body}
+            />
           </ReviewSide>
           <ReviewSide label="After" facts={mediaFacts(dims, media)}>
-            <MediaBody key={media.url} media={media} active={active} onDims={setDims} {...body} />
+            <MediaBody key={`${media.url}#${attempt}`} media={media} active={active} onDims={setDims} {...after} {...body} />
           </ReviewSide>
         </div>
       ) : (
         <div className="min-h-0 flex-1">
-          <MediaBody key={media.url} media={media} active={active} onDims={setDims} {...body} />
+          <MediaBody key={`${media.url}#${attempt}`} media={media} active={active} onDims={setDims} {...after} {...body} />
         </div>
       )}
     </div>
@@ -278,18 +329,6 @@ function ReviewSide({
 const OUTLINE = "outline outline-1 -outline-offset-1 outline-image-outline";
 const FOCUS_RING = "outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
-/** Ask the asset handler why the element failed: 404 missing, 503 or no answer out of reach, else unsupported. */
-async function diagnose(url: string, remote: boolean): Promise<MediaFailure> {
-  try {
-    const answer = await fetch(assetHref(url), { method: "HEAD" });
-    if (answer.status === 404) return "missing";
-    if (answer.status === 503 && remote) return "unreachable";
-    return "unsupported";
-  } catch {
-    return remote ? "unreachable" : "unsupported";
-  }
-}
-
 function MediaBody({
   media,
   name,
@@ -299,7 +338,8 @@ function MediaBody({
   onReload,
   onToggleFit,
   onDims,
-  failure: initialFailure,
+  failure,
+  onError,
 }: {
   media: FileMedia;
   name: string;
@@ -310,17 +350,11 @@ function MediaBody({
   onToggleFit: () => void;
   onDims: (d: Dims) => void;
   failure?: MediaFailure;
+  onError: () => void;
 }) {
-  // Keyed by the URL: a rewritten file mounts afresh, its loading line and failure reset.
-  const [failure, setFailure] = useState<MediaFailure | null>(initialFailure ?? null);
+  // Keyed by the URL and the retry: a rewritten file or a Retry mounts afresh, its loading line with it.
   const [loaded, setLoaded] = useState(false);
-  const mounted = useRef(true);
-  useEffect(() => () => void (mounted.current = false), []);
   const ref = useRef<HTMLVideoElement & HTMLAudioElement>(null);
-  const onError = () =>
-    void diagnose(media.url, hostName !== null).then((why) => {
-      if (mounted.current) setFailure(why);
-    });
 
   // Space and the arrow keys drive the native controls when the element has
   // focus; give it focus with the tab so playback is one keypress away.

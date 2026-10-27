@@ -243,15 +243,15 @@ describe("MediaGate", () => {
 });
 
 describe("a media element that fails", () => {
-  const head = (answer: () => Promise<{ status: number }>) => {
-    const fetch = vi.fn(answer);
-    vi.stubGlobal("fetch", fetch);
-    return fetch;
-  };
-  afterEach(() => vi.unstubAllGlobals());
-
-  const failOn = async (path: string, media: FileMedia, environmentId?: string, selector = "img") => {
-    fileMedia.mockImplementation(() => Promise.resolve(media));
+  // The first ask opens the tab; the element's error asks the host again, and its answer says why.
+  const failOn = async (
+    path: string,
+    media: FileMedia,
+    again: () => Promise<FileMedia | null>,
+    environmentId?: string,
+    selector = "img",
+  ) => {
+    fileMedia.mockImplementationOnce(() => Promise.resolve(media)).mockImplementation(again);
     const view = mount(path, false, environmentId);
     await act(async () => {});
     await act(async () => {
@@ -259,42 +259,50 @@ describe("a media element that fails", () => {
     });
     return view;
   };
+  const retry = (root: HTMLElement) => [...root.querySelectorAll("button")].find((b) => b.textContent === "Retry");
 
-  it("says a missing file is missing from its host, and Retry asks the host again", async () => {
-    const fetch = head(() => Promise.resolve({ status: 404 }));
-    const { container } = await failOn("/tmp/shot.png", image, "env_box");
-    expect(fetch).toHaveBeenCalledWith(image.url, { method: "HEAD" });
+  it("says a file the host no longer has is missing there, and Retry brings it back", async () => {
+    const { container } = await failOn("/tmp/shot.png", image, () => Promise.resolve(null), "env_box");
     expect(container.textContent).toContain("Couldn’t open shot.png");
     expect(container.textContent).toContain("No such file on box.");
     expect(container.querySelector("header")).not.toBeNull();
-    const calls = fileMedia.mock.calls.length;
+    // A Retry the host still refuses keeps the failure: never the text editor.
     await act(async () => {
-      fireEvent.click([...container.querySelectorAll("button")].find((b) => b.textContent === "Retry")!);
+      fireEvent.click(retry(container)!);
     });
-    expect(fileMedia.mock.calls.length).toBe(calls + 1);
+    expect(container.querySelector('[data-testid="editor"]')).toBeNull();
+    expect(container.textContent).toContain("No such file on box.");
+    fileMedia.mockImplementation(() => Promise.resolve(image));
+    await act(async () => {
+      fireEvent.click(retry(container)!);
+    });
+    expect(container.querySelector("img")!.getAttribute("src")).toBe(image.url);
+    expect(retry(container)).toBeUndefined();
   });
 
-  it("says the host is out of reach on a 503 or no answer", async () => {
-    head(() => Promise.resolve({ status: 503 }));
-    const { container, unmount } = await failOn("/tmp/shot.png", image, "env_box");
+  it("says the host is out of reach when it cannot be asked", async () => {
+    const { container } = await failOn("/tmp/shot.png", image, () => Promise.reject(new Error("link down")), "env_box");
     expect(container.textContent).toContain("box is out of reach.");
-    unmount();
-    head(() => Promise.reject(new Error("link down")));
-    const again = await failOn("/tmp/shot.png", image, "env_box");
-    expect(again.container.textContent).toContain("box is out of reach.");
+    expect(retry(container)).toBeDefined();
   });
 
-  it("says an image it has the bytes for is not supported, with no Retry", async () => {
-    head(() => Promise.resolve({ status: 200 }));
-    const { container } = await failOn("/repo/photo.heic", { ...image, mime: "image/heic" });
+  it("tries a fresh token at once instead of failing", async () => {
+    const fresh = { ...image, url: image.url.replace("0123", "4567") };
+    const { container } = await failOn("/tmp/shot.png", image, () => Promise.resolve(fresh), "env_box");
+    expect(container.querySelector("img")!.getAttribute("src")).toBe(fresh.url);
+    expect(container.textContent).not.toContain("Couldn’t");
+  });
+
+  it("says an image the host still serves is not supported, with no Retry", async () => {
+    const heic = { ...image, mime: "image/heic" };
+    const { container } = await failOn("/repo/photo.heic", heic, () => Promise.resolve(heic));
     expect(container.textContent).toContain("Can’t show photo.heic");
     expect(container.textContent).toContain("This HEIC image isn’t supported here.");
-    expect([...container.querySelectorAll("button")].some((b) => b.textContent === "Retry")).toBe(false);
+    expect(retry(container)).toBeUndefined();
   });
 
   it("says a video it cannot decode cannot play", async () => {
-    head(() => Promise.resolve({ status: 200 }));
-    const { container } = await failOn("/repo/clip.mp4", video, undefined, "video");
+    const { container } = await failOn("/repo/clip.mp4", video, () => Promise.resolve(video), undefined, "video");
     expect(container.textContent).toContain("Can’t play clip.mp4");
     expect(container.textContent).toContain("Its codec isn’t supported here.");
   });
