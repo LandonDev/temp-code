@@ -453,10 +453,11 @@ routed to (aliax-core's `forward`). Two listeners:
   grant; the token response names its account and a token is filed only
   under that account. "Convert all to one-year tokens" in the Claude Code
   section's menu on the Accounts page converts every account; a grant
-  another host refreshes (the box, from an earlier handoff) is taken back
-  first over the peer link (`AccountSync.takeBack`: the takeOver pull
-  `accounts.setHome` uses, provisional landing, `accounts.confirm`, the
-  owner strips) and minted from here, a host out of reach leaves the session and the sign-in window to mint, and
+  another host refreshes (the box, from an
+  earlier handoff) is taken back first over the peer link (`AccountSync.
+  takeBack`: the takeOver pull `accounts.setHome` uses, provisional
+  landing, `accounts.confirm`, the owner strips) and minted from here, a
+  host out of reach leaves the session and the sign-in window to mint, and
   the row names that host when those fail too (never "convert it there");
   tokens inside their last 30 days renew on their
   own through the stored claude.ai session (6 h cadence, row + footer say
@@ -534,7 +535,8 @@ routed to (aliax-core's `forward`). Two listeners:
   cache TTL; a `fresh` pick keeps only the cache term). A pinned account is
   the route regardless. Picks read the store live; the rows' snapshot
   (`headroom` per provider, the bars on the account chip's menu and the
-  Accounts page's Rate bars, reset in their popover) follows at most every 5 s. The rail's foot
+  Accounts page's Rate bars, reset in their popover) follows at most
+  every 5 s. The rail's foot
   names no account: each provider's row is the pooled share from
   `src/shared/usageMeter.ts` (`meterFor`: the mean room over routable
   accounts, each its tighter of 5h and week) with the next refill, or
