@@ -14,6 +14,7 @@ import {
   type PrDiffFile,
   type PrDiffLine,
 } from "../lib/prDiff";
+import { EmptyState } from "./SurfaceSkeleton";
 
 const MAX_DISPLAY_LINES = 2000;
 
@@ -81,7 +82,7 @@ export function InboxPrDiff({ diff }: Props) {
   });
 
   if (files.length === 0) {
-    return <p className="text-[13px] text-content/40">No file changes</p>;
+    return <EmptyState title="No file changes" />;
   }
 
   const fileLabel = files.length === 1 ? "1 file" : `${files.length} files`;

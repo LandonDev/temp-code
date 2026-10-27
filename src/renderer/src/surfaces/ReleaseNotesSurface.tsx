@@ -3,8 +3,8 @@ import {
   releaseNotesMarkdown,
   type ReleaseNotesTabSource,
 } from "../lib/releaseNotes";
-import { FileText } from "../chrome/icons";
 import { AgentMarkdown } from "./AgentMarkdown";
+import { EmptyState } from "./SurfaceSkeleton";
 
 export function ReleaseNotesSurface({
   source,
@@ -26,10 +26,7 @@ export function ReleaseNotesSurface({
         {markdown ? (
           <AgentMarkdown text={markdown} streaming={false} />
         ) : (
-          <div className="flex flex-col items-center justify-center px-4 py-24 text-center">
-            <FileText className="mb-3 size-6 text-content/30" strokeWidth={1.75} />
-            <p className="text-[13px] text-content/40">No release notes for this version</p>
-          </div>
+          <EmptyState title="No release notes for this version" />
         )}
       </article>
     </div>

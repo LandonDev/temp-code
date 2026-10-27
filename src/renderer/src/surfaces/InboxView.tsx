@@ -121,6 +121,7 @@ import {
   type InboxReplyTarget,
 } from "./InboxComments";
 import { InboxPrDiff } from "./InboxPrDiff";
+import { EmptyState } from "./SurfaceSkeleton";
 
 const MIN_WIDTH = 240;
 const MAX_WIDTH = 420;
@@ -1228,7 +1229,7 @@ function InboxDetail({
         ) : prDiff ? (
           <InboxPrDiff key={`${item.projectPath}:${item.number}:${revision}`} diff={prDiff} />
         ) : (
-          <p className="text-[13px] text-muted-foreground">No file changes</p>
+          <EmptyState title="No file changes" />
         )
       ) : loading ? (
         <ParagraphSkeleton />

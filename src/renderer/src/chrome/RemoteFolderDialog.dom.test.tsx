@@ -58,7 +58,7 @@ describe("RemoteFolderDialog", () => {
 
     fireEvent.click(within(frame as HTMLElement).getByRole("button", { name: "temp-code" }));
     await flush();
-    expect(within(dialog).getByText("No folders here.")).toBeTruthy();
+    expect(within(dialog).getByText("No folders")).toBeTruthy();
     expect((within(dialog).getByLabelText("Folder path") as HTMLInputElement).value).toBe("/srv/agents/work/temp-code");
     expect(within(dialog).getByRole("button", { name: "temp-code" }).getAttribute("aria-current")).toBe("location");
   });

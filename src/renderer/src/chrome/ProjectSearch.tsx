@@ -22,6 +22,7 @@ import {
 } from "../lib/search";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { MatchText } from "./MatchText";
+import { EmptyState } from "../surfaces/SurfaceSkeleton";
 
 type Props = {
   cwd: string;
@@ -140,7 +141,7 @@ export function ProjectSearch({
   };
 
   if (!cwd || cwd === "~") {
-    return <p className="px-3 py-2 text-[12px] text-muted-foreground">No project folder</p>;
+    return <EmptyState title="No project folder" />;
   }
 
   const trimmed = query.trim();

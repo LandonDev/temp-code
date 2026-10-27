@@ -187,7 +187,7 @@ function FolderPicker({ environmentId, onClose, onPick, pending, setPending }: P
                   <FolderSkeleton />
                 </div>
               ) : entries.length === 0 ? (
-                <p className="px-3 py-3 text-xs text-muted-foreground">No folders here.</p>
+                <p className="px-3 py-3 text-xs text-muted-foreground">No folders</p>
               ) : (
                 <ScrollArea className="max-h-64 [&>[data-slot=scroll-area-viewport]]:max-h-64">
                   <div className="flex flex-col p-1">

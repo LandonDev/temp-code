@@ -1,6 +1,6 @@
 import { Plus, Search, File, Trash2 } from "../chrome/icons";
 import { Spinner } from "../components/ui/spinner";
-import { SurfaceSkeleton } from "./SurfaceSkeleton";
+import { EmptyState, SurfaceSkeleton } from "./SurfaceSkeleton";
 import { ConfirmDialog } from "../chrome/ConfirmDialog";
 import {
   Fragment,
@@ -251,11 +251,7 @@ export function NotesView({
         ) : loading && notes.length === 0 ? (
           <SurfaceSkeleton kind="rows" count={6} label="Loading notes" />
         ) : visible.length === 0 ? (
-          <p className="px-3 py-2 text-[12px] text-content/50">
-            {query.trim()
-              ? "No matching notes"
-              : "No notes yet"}
-          </p>
+          <EmptyState title={query.trim() ? "No matching notes" : "No notes yet"} />
         ) : (
           <ul className="flex flex-col gap-0.5 p-1.5">
             {visible.map((note) => (
