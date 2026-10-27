@@ -107,16 +107,8 @@ export function SettingsView({
         >
           {/* A page not yet built on PageSection renders inside one block, so the
               frame's 24px section gap never lands between its rows. */}
-          {section === "general" ? (
-            <div>
-              <GeneralPage onOpenWhatsNew={onOpenWhatsNew} />
-            </div>
-          ) : null}
-          {section === "defaults" ? (
-            <div>
-              <ThreadDefaultsPage />
-            </div>
-          ) : null}
+          {section === "general" ? <GeneralPage onOpenWhatsNew={onOpenWhatsNew} /> : null}
+          {section === "defaults" ? <ThreadDefaultsPage /> : null}
           {workspace ? (
             <div>
               <WorkspacePage key={workspace.id} workspaceId={workspace.id} />

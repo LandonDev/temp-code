@@ -1,7 +1,11 @@
 import { registry } from "../lib/connection";
 import { useEffect, useState } from "react";
 import { GHOST, PRIMARY } from "./ConfirmDialog";
-import { MatrixSpinner } from "../surfaces/threads/bits";
+import { ChoiceSelect } from "../components/choice-select";
+import { PageRow, PageSection } from "../components/page";
+import { Button } from "../components/ui/button";
+import { Skeleton } from "../components/ui/skeleton";
+import { Spinner } from "../components/ui/spinner";
 import { Modal } from "./Modal";
 import {
   BUILT_IN_SCOPE,
@@ -19,7 +23,6 @@ import {
 import { scopeKey, useThreadDefaults, useWorkspaceCatalog, workspaceStore } from "../lib/tcserver/workspaces";
 import { openWorkspaceSettings } from "../lib/settings";
 import type { ThreadDefaults, WorkspaceMeta } from "../lib/tcserver/types";
-import { Heading, Row, SecondaryButton, Select } from "../surfaces/settingsBits";
 
 /**
  * What a NEW thread starts with: provider, model, reasoning effort and access
@@ -67,45 +70,42 @@ export function ThreadDefaultsFields({ value, onChange, environmentId }: { value
   const rows = useDefaultsRows(value, onChange, environmentId);
   return (
     <>
-      <Row label="Model" description="The provider and model a thread opens on.">
-        <Select label="Provider" {...rows.provider} />
-        <Select label="Model" {...rows.model} />
-      </Row>
+      <PageRow title="Provider">
+        <ChoiceSelect label="Provider" {...rows.provider} />
+      </PageRow>
+      <PageRow title="Model">
+        <ChoiceSelect label="Model" {...rows.model} />
+      </PageRow>
       {rows.ladder.length > 1 ? (
-        <Row label="Reasoning" description="Effort level, from this model's ladder.">
-          <Select label="Reasoning" {...rows.reasoning} />
-        </Row>
+        <PageRow title="Reasoning">
+          <ChoiceSelect label="Reasoning" {...rows.reasoning} />
+        </PageRow>
       ) : null}
-      <Row label="Security" description={PERMISSION_HINTS[value.permission]}>
-        <Select label="Security" {...rows.permission} />
-      </Row>
+      <PageRow title="Security" description={PERMISSION_HINTS[value.permission]}>
+        <ChoiceSelect label="Security" {...rows.permission} />
+      </PageRow>
     </>
   );
 }
 
-function scopeHint(workspaceId: string | null, scope: DefaultsScope): string {
-  if (workspaceId === null) return "Applied wherever a workspace has no override of its own.";
+/** A workspace's page says whose set it shows; the global page's description already does. */
+function scopeHint(workspaceId: string | null, scope: DefaultsScope): string | undefined {
+  if (workspaceId === null) return undefined;
   return scope.overridden
     ? "This workspace overrides the global defaults."
     : "Using the global defaults; any change creates a workspace override.";
 }
 
 /** Self-loading group for one scope; every change saves at once. */
-export function ThreadDefaultsEditor({
-  workspaceId,
-  first = false,
-}: {
-  workspaceId: string | null;
-  first?: boolean;
-}) {
+export function ThreadDefaultsEditor({ workspaceId }: { workspaceId: string | null }) {
   const workspace = useWorkspaceCatalog().workspaces.find((w) => w.id === workspaceId);
   // Global app settings belong to this machine.
   const environmentId = workspaceId === null ? registry.primary().environmentId : workspace?.environmentId;
-  if (!environmentId) return <MatrixSpinner />;
-  return <DefaultsEditor key={environmentId} environmentId={environmentId} workspaceId={workspaceId} first={first} />;
+  if (!environmentId) return <DefaultsSkeleton />;
+  return <DefaultsEditor key={environmentId} environmentId={environmentId} workspaceId={workspaceId} />;
 }
 
-function DefaultsEditor({ environmentId, workspaceId, first }: { environmentId: string; workspaceId: string | null; first: boolean }) {
+function DefaultsEditor({ environmentId, workspaceId }: { environmentId: string; workspaceId: string | null }) {
   const scope = useThreadDefaults(environmentId, workspaceId);
   const [error, setError] = useState<string | null>(null);
   const save = (next: ThreadDefaults | null) => {
@@ -116,25 +116,38 @@ function DefaultsEditor({ environmentId, workspaceId, first }: { environmentId: 
   };
   const resettable = scope ? (workspaceId === null ? true : scope.overridden) : false;
   return (
-    <section>
-      <div className="flex items-end justify-between gap-4">
-        <Heading title="New threads" first={first} />
-        {resettable ? (
-          <span className="pb-1">
-            <SecondaryButton onClick={() => save(null)}>
-              {workspaceId === null ? "Reset" : "Remove override"}
-            </SecondaryButton>
-          </span>
-        ) : null}
-      </div>
-      <p className="pb-2 text-[12px] leading-relaxed text-content/40">
-        {scopeHint(workspaceId, scope ?? BUILT_IN_SCOPE)}
-      </p>
+    <PageSection
+      title="New threads"
+      description={scopeHint(workspaceId, scope ?? BUILT_IN_SCOPE)}
+      action={
+        resettable ? (
+          <Button variant="ghost" size="sm" onClick={() => save(null)}>
+            {workspaceId === null ? "Reset" : "Remove override"}
+          </Button>
+        ) : null
+      }
+    >
+      {scope ? <ThreadDefaultsFields value={scope.defaults} onChange={save} environmentId={environmentId} /> : <DefaultsSkeleton rows />}
       {workspaceId === null ? <OverridingWorkspaces environmentId={environmentId} /> : null}
-      {scope ? <ThreadDefaultsFields value={scope.defaults} onChange={save} environmentId={environmentId} /> : null}
-      {error ? <p className="pt-2 text-[12px] text-danger">{error}</p> : null}
-    </section>
+      {error ? <p className="pt-2 text-xs text-destructive">{error}</p> : null}
+    </PageSection>
   );
+}
+
+/** The rows' shape while the scope loads. */
+function DefaultsSkeleton({ rows = false }: { rows?: boolean }) {
+  const body = (
+    <div aria-busy="true" aria-label="Loading">
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="flex items-center gap-3 py-3">
+          <Skeleton className="h-3.5 w-24" />
+          <span className="flex-1" />
+          <Skeleton className="h-8 w-40 rounded-lg" />
+        </div>
+      ))}
+    </div>
+  );
+  return rows ? body : <PageSection title="New threads">{body}</PageSection>;
 }
 
 /** Under the global editor: which workspaces keep their own set. Each name
@@ -144,21 +157,13 @@ function OverridingWorkspaces({ environmentId }: { environmentId: string }) {
   const overriding = workspaces.filter((w) => w.environmentId === environmentId && defaults.get(scopeKey(w.environmentId, w.id))?.overridden);
   if (overriding.length === 0) return null;
   return (
-    <p className="pb-2 text-[12px] leading-relaxed text-content/40" data-testid="defaults-overrides">
-      Overridden in{" "}
-      {overriding.map((w, i) => (
-        <span key={w.id}>
-          {i > 0 ? ", " : null}
-          <button
-            type="button"
-            className="text-content/70 underline decoration-content/20 underline-offset-2 hover:text-content"
-            onClick={() => openWorkspaceSettings(w.id)}
-          >
-            {w.name}
-          </button>
-        </span>
+    <p className="flex flex-wrap items-center gap-x-2 pt-3 text-xs text-muted-foreground" data-testid="defaults-overrides">
+      Overridden in
+      {overriding.map((w) => (
+        <Button key={w.id} variant="link" size="xs" className="h-auto px-0 text-xs" onClick={() => openWorkspaceSettings(w.id)}>
+          {w.name}
+        </Button>
       ))}
-      .
     </p>
   );
 }
@@ -175,7 +180,7 @@ function Field({
   return (
     <label className="flex flex-col gap-1">
       <span className="text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">{label}</span>
-      <Select label={label} className="w-full" {...picker} />
+      <ChoiceSelect label={label} className="w-full" {...picker} />
     </label>
   );
 }
@@ -234,7 +239,7 @@ export function ThreadDefaultsDialog({
             Cancel
           </button>
           <button type="submit" disabled={pending || !value} className={PRIMARY}>
-            {pending ? <MatrixSpinner cell={1.5} /> : null}
+            {pending ? <Spinner className="size-3.5" /> : null}
             Save
           </button>
         </div>

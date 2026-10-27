@@ -25,7 +25,7 @@ import {
 export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   return (
     <>
-      <ThreadDefaultsEditor workspaceId={workspaceId} first />
+      <ThreadDefaultsEditor workspaceId={workspaceId} />
       <TurnPassEditor workspaceId={workspaceId} />
       <Heading title="Accounts" />
       <WorkspaceAccountsEditor workspaceId={workspaceId} />

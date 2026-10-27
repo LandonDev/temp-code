@@ -1,21 +1,26 @@
-import { ArrowDownCircle, Check, RefreshCw } from "../../chrome/icons";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { InboxProviderMark } from "../../chrome/InboxProviderMark";
+import { ChoiceSelect } from "../../components/choice-select";
+import { PageRow, PageSection } from "../../components/page";
+import { Button } from "../../components/ui/button";
+import { Checkbox } from "../../components/ui/checkbox";
+import { Input } from "../../components/ui/input";
+import { Kbd, KbdGroup } from "../../components/ui/kbd";
+import { Progress } from "../../components/ui/progress";
+import { Spinner } from "../../components/ui/spinner";
+import { SettingSwitch } from "../../components/setting-switch";
 import {
   loadSidebarLayout,
   loadTranscriptLayout,
-  loadTranscriptZen,
   loadTranscriptAnchor,
   saveSidebarLayout,
   saveTranscriptLayout,
-  saveTranscriptZen,
   saveTranscriptAnchor,
-  TRANSCRIPT_ZEN_CHANGE_EVENT,
   TRANSCRIPT_ANCHOR_CHANGE_EVENT,
   type SidebarLayout,
   type TranscriptLayout,
 } from "../../lib/appearance";
-import { ALT, MOD } from "../../lib/platform";
+import { IS_MAC } from "../../lib/platform";
 import { clearInboxCache } from "../../lib/githubTasks";
 import {
   disconnectLinear,
@@ -45,226 +50,196 @@ import {
 } from "../../lib/settings";
 import { loadSoundsEnabled, saveSoundsEnabled } from "../../lib/sounds";
 import { registry } from "../../lib/connection";
-import {
-  Heading,
-  Input,
-  Row,
-  Segmented,
-  SecondaryButton,
-  Toggle,
-} from "../settingsBits";
 import { EditorRow } from "../EditorRow";
-import { MatrixSpinner } from "../threads/bits";
 import { PlanSettingsEditor } from "../../chrome/PlanSettingsFields";
 import { updateStore, useUpdateSnapshot } from "../../lib/updateStore";
 import { MANUAL_DOWNLOAD_URL, canRetry } from "../../lib/updater";
 import { openUrl } from "../../lib/native";
 import { releaseNotesChunk } from "../chunks";
 
+/** A stored boolean setting with its own state; every flip saves. */
+function useStoredFlag(load: () => boolean, save: (on: boolean) => void): [boolean, (on: boolean) => void] {
+  const [on, setOn] = useState(load);
+  return [
+    on,
+    (next) => {
+      save(next);
+      setOn(next);
+    },
+  ];
+}
+
+/** A row whose control is one switch, named by the row's title. */
+function SwitchRow({
+  title,
+  description,
+  on,
+  onChange,
+}: {
+  title: string;
+  description?: ReactNode;
+  on: boolean;
+  onChange: (on: boolean) => void;
+}) {
+  return (
+    <PageRow title={title} description={description}>
+      <SettingSwitch label={title} on={on} onChange={onChange} />
+    </PageRow>
+  );
+}
+
+/** Keys as caps: "⌘ ↩" on macOS, "Ctrl Enter" elsewhere. */
+export function Keys({ keys }: { keys: string[] }) {
+  return (
+    <KbdGroup className="mx-0.5 align-[-2px]">
+      {keys.map((key) => (
+        <Kbd key={key} size="sm">
+          {key}
+        </Kbd>
+      ))}
+    </KbdGroup>
+  );
+}
+
+const MOD_ENTER = IS_MAC ? ["⌘", "↩"] : ["Ctrl", "Enter"];
+
 export function GeneralPage({
   onOpenWhatsNew,
 }: {
-  onOpenWhatsNew: (version: string) => void;
+  onOpenWhatsNew: (version: string, markdown?: string) => void;
 }) {
   const [layout, setLayout] = useState<SidebarLayout>(loadSidebarLayout);
-  const [transcriptLayout, setTranscriptLayout] =
-    useState<TranscriptLayout>(loadTranscriptLayout);
-  const [transcriptZen, setTranscriptZen] = useState(loadTranscriptZen);
-  const [transcriptAnchor, setTranscriptAnchor] =
-    useState(loadTranscriptAnchor);
-  const [composerRunner, setComposerRunner] = useState(loadComposerRunner);
-  const [gridArcadeEnabled, setGridArcadeEnabled] = useState(
-    loadGridArcadeEnabled,
-  );
-  const [notesEnabled, setNotesEnabled] = useState(loadNotesEnabled);
-  const [liveAgentsEnabled, setLiveAgentsEnabled] = useState(
-    loadLiveAgentsEnabled,
-  );
-  const [soundsEnabled, setSoundsEnabled] = useState(loadSoundsEnabled);
-  const [claudeHooks, setClaudeHooks] = useState(loadClaudeHooks);
+  const [transcriptLayout, setTranscriptLayout] = useState<TranscriptLayout>(loadTranscriptLayout);
+  const [transcriptAnchor, setTranscriptAnchor] = useState(loadTranscriptAnchor);
+  const [midTurn, setMidTurn] = useState<MidTurnDefault>(loadMidTurnDefault);
+  const [composerRunner, setComposerRunner] = useStoredFlag(loadComposerRunner, saveComposerRunner);
+  const [notesEnabled, setNotesEnabled] = useStoredFlag(loadNotesEnabled, saveNotesEnabled);
+  const [liveAgentsEnabled, setLiveAgentsEnabled] = useStoredFlag(loadLiveAgentsEnabled, saveLiveAgentsEnabled);
+  const [soundsEnabled, setSoundsEnabled] = useStoredFlag(loadSoundsEnabled, saveSoundsEnabled);
+  const [gridArcadeEnabled, setGridArcadeEnabled] = useStoredFlag(loadGridArcadeEnabled, saveGridArcadeEnabled);
+  const [claudeHooks, setClaudeHooks] = useStoredFlag(loadClaudeHooks, saveClaudeHooks);
 
+  // The menu flips the anchor too; follow it while the page is open.
   useEffect(() => {
-    const onZen = (event: Event) => {
-      setTranscriptZen((event as CustomEvent<boolean>).detail === true);
-    };
-    const onAnchor = (event: Event) => {
-      setTranscriptAnchor((event as CustomEvent<boolean>).detail === true);
-    };
-    window.addEventListener(TRANSCRIPT_ZEN_CHANGE_EVENT, onZen);
+    const onAnchor = (event: Event) => setTranscriptAnchor((event as CustomEvent<boolean>).detail === true);
     window.addEventListener(TRANSCRIPT_ANCHOR_CHANGE_EVENT, onAnchor);
-    return () => {
-      window.removeEventListener(TRANSCRIPT_ZEN_CHANGE_EVENT, onZen);
-      window.removeEventListener(TRANSCRIPT_ANCHOR_CHANGE_EVENT, onAnchor);
-    };
+    return () => window.removeEventListener(TRANSCRIPT_ANCHOR_CHANGE_EVENT, onAnchor);
   }, []);
 
-  const onLayout = (next: SidebarLayout) => {
-    saveSidebarLayout(next);
-    setLayout(next);
-  };
-
-  const onTranscriptZen = (next: boolean) => {
-    saveTranscriptZen(next);
-    setTranscriptZen(next);
-  };
-
-  const onTranscriptLayout = (next: TranscriptLayout) => {
-    saveTranscriptLayout(next);
-    setTranscriptLayout(next);
-  };
-
-  const onTranscriptAnchor = (next: boolean) => {
-    saveTranscriptAnchor(next);
-    setTranscriptAnchor(next);
-  };
-
-  const onComposerRunner = (next: boolean) => {
-    saveComposerRunner(next);
-    setComposerRunner(next);
-  };
-
-  const onGridArcadeEnabled = (next: boolean) => {
-    saveGridArcadeEnabled(next);
-    setGridArcadeEnabled(next);
-  };
-
-  const onNotesEnabled = (next: boolean) => {
-    saveNotesEnabled(next);
-    setNotesEnabled(next);
-  };
-
-  const onLiveAgentsEnabled = (next: boolean) => {
-    saveLiveAgentsEnabled(next);
-    setLiveAgentsEnabled(next);
-  };
-
-  const onSoundsEnabled = (next: boolean) => {
-    saveSoundsEnabled(next);
-    setSoundsEnabled(next);
-  };
-
-  const onClaudeHooks = (next: boolean) => {
-    saveClaudeHooks(next);
-    setClaudeHooks(next);
-  };
 
   return (
     <>
-      <Row
-        label="Workspace layout"
-        description="Deck adds the project rail, workspace panel and terminal dock."
-      >
-        <Segmented
-          label="Workspace layout"
-          value={layout}
-          options={[
-            { value: "deck", label: "Deck" },
-            { value: "classic", label: "Classic" },
-          ]}
-          onChange={onLayout}
-        />
-      </Row>
-      <Row
-        label="Transcript layout"
-        description="Chat aligns your prompts to the right."
-      >
-        <Segmented
-          label="Transcript layout"
-          value={transcriptLayout}
-          options={[
-            { value: "full", label: "Full width" },
-            { value: "chat", label: "Chat" },
-          ]}
-          onChange={onTranscriptLayout}
-        />
-      </Row>
-      <Row
-        label="Anchor prompts to top"
-        description="A sent prompt sits at the top and the reply grows below it."
-      >
-        <Toggle
-          label="Anchor prompts to top"
+      <PageSection title="Transcript">
+        <PageRow title="Workspace layout" description="Deck adds the project rail, workspace panel and terminal dock.">
+          <ChoiceSelect
+            label="Workspace layout"
+            value={layout}
+            options={[
+              { value: "deck", label: "Deck" },
+              { value: "classic", label: "Classic" },
+            ]}
+            onChange={(next) => {
+              saveSidebarLayout(next);
+              setLayout(next);
+            }}
+          />
+        </PageRow>
+        <PageRow title="Transcript layout" description="Chat sets your prompts on the right.">
+          <ChoiceSelect
+            label="Transcript layout"
+            value={transcriptLayout}
+            options={[
+              { value: "full", label: "Full width" },
+              { value: "chat", label: "Chat" },
+            ]}
+            onChange={(next) => {
+              saveTranscriptLayout(next);
+              setTranscriptLayout(next);
+            }}
+          />
+        </PageRow>
+        <SwitchRow
+          title="Anchor prompts to top"
+          description="A sent prompt sits at the top and the reply grows below it."
           on={transcriptAnchor}
-          onChange={onTranscriptAnchor}
+          onChange={(next) => {
+            saveTranscriptAnchor(next);
+            setTranscriptAnchor(next);
+          }}
         />
-      </Row>
-      <Row
-        label="Zen mode"
-        description={`Folds each run of tool calls under its heading (${MOD}${ALT}Z).`}
-      >
-        <Toggle
-          label="Zen mode"
-          on={transcriptZen}
-          onChange={onTranscriptZen}
-        />
-      </Row>
-      <Row
-        label="Composer mascot"
-        description="The project mascot runs along the composer during a turn."
-      >
-        <Toggle
-          label="Composer mascot"
+      </PageSection>
+
+      <PageSection title="Composer">
+        <PageRow
+          title="Enter while a turn runs"
+          description={
+            <>
+              Queue waits for the turn, Steer sends into it.
+              <Keys keys={MOD_ENTER} />
+              does the other.
+            </>
+          }
+        >
+          <ChoiceSelect
+            label="Enter while a turn runs"
+            value={midTurn}
+            options={[
+              { value: "queue", label: "Queue" },
+              { value: "steer", label: "Steer" },
+            ]}
+            onChange={(next) => {
+              saveMidTurnDefault(next);
+              setMidTurn(next);
+            }}
+          />
+        </PageRow>
+        <SwitchRow
+          title="Composer mascot"
+          description="The project mascot runs along the composer during a turn."
           on={composerRunner}
-          onChange={onComposerRunner}
+          onChange={setComposerRunner}
         />
-      </Row>
-      <Row
-        label="Enter while a turn runs"
-        description={`Queue waits for the turn, Steer sends into it (${MOD}Enter does the other).`}
-      >
-        <MidTurnSwitch />
-      </Row>
-      <Row
-        label="Empty session games"
-        description="Pac-man and snake idle on the empty-session grid."
-      >
-        <Toggle
-          label="Empty session games"
-          on={gridArcadeEnabled}
-          onChange={onGridArcadeEnabled}
-        />
-      </Row>
-      <Row
-        label="Notes"
-        description="A markdown notebook on the project rail."
-      >
-        <Toggle label="Notes" on={notesEnabled} onChange={onNotesEnabled} />
-      </Row>
-      <Row
-        label="Working agents"
-        description="A rail card lists chats in flight across projects."
-      >
-        <Toggle
-          label="Working agents"
+      </PageSection>
+
+      <PageSection title="Rail">
+        <SwitchRow title="Notes" description="A markdown notebook on the project rail." on={notesEnabled} onChange={setNotesEnabled} />
+        <SwitchRow
+          title="Working agents"
+          description="A rail card lists chats in flight across projects."
           on={liveAgentsEnabled}
-          onChange={onLiveAgentsEnabled}
+          onChange={setLiveAgentsEnabled}
         />
-      </Row>
-      <Row
-        label="Sounds"
-        description="Short cues for finished turns, inbox items and updates."
-      >
-        <Toggle label="Sounds" on={soundsEnabled} onChange={onSoundsEnabled} />
-      </Row>
-      <Row
-        label="Claude Code hooks"
-        description="Run the hooks from your settings.json files on the next turn."
-      >
-        <Toggle
-          label="Claude Code hooks"
-          on={claudeHooks}
-          onChange={onClaudeHooks}
-        />
-      </Row>
-      <EditorRow />
+      </PageSection>
 
       <PlanSettingsEditor />
 
-      <Heading title="Linear" />
       <LinearSettings />
 
-      <Heading title="About" />
-      <UpdateRow onOpenWhatsNew={onOpenWhatsNew} />
+      <PageSection title="Extras">
+        <SwitchRow
+          title="Sounds"
+          description="Short cues for finished turns, inbox items and updates."
+          on={soundsEnabled}
+          onChange={setSoundsEnabled}
+        />
+        <SwitchRow
+          title="Empty session games"
+          description="Pac-man and snake idle on the empty-session grid."
+          on={gridArcadeEnabled}
+          onChange={setGridArcadeEnabled}
+        />
+        <SwitchRow
+          title="Claude Code hooks"
+          description="Run the hooks from your settings.json files on the next turn."
+          on={claudeHooks}
+          onChange={setClaudeHooks}
+        />
+        <EditorRow />
+      </PageSection>
+
+      <PageSection title="About">
+        <UpdateRow onOpenWhatsNew={onOpenWhatsNew} />
+      </PageSection>
     </>
   );
 }
@@ -346,79 +321,53 @@ function LinearSettings() {
 
   return (
     <>
-      <Row
-        label={
-          <span className="flex items-center gap-2">
-            <InboxProviderMark provider="linear" className="size-4 shrink-0" />
-            API key
-          </span>
-        }
-        description="Create a personal API key in Linear → Settings → Security & Access."
-      >
-        {connected ? (
-          <SecondaryButton onClick={() => void onDisconnect()} disabled={busy}>
-            Disconnect
-          </SecondaryButton>
-        ) : (
-          <div className="flex items-center gap-2">
-            <Input
-              type="password"
-              value={token}
-              onChange={(event) => setToken(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") void onSave();
-              }}
-              placeholder="lin_api_…"
-              aria-label="Linear API key"
-              autoComplete="off"
-              spellCheck={false}
-              className="w-52 shrink-0"
-            />
-            <SecondaryButton
-              onClick={() => void onSave()}
-              disabled={busy || !token.trim()}
-            >
-              {busy ? <MatrixSpinner cell={1.5} /> : null}
-              Connect
-            </SecondaryButton>
-          </div>
-        )}
-      </Row>
-      {error ? (
-        <p className="pb-2 text-[12px] text-danger">{error}</p>
-      ) : null}
+      <PageSection title="Linear">
+        <PageRow
+          media={<InboxProviderMark provider="linear" className="size-4" />}
+          title="API key"
+          description="Create a personal key in Linear, under Settings, Security and access."
+          error={error}
+        >
+          {connected ? (
+            <Button variant="secondary" size="sm" onClick={() => void onDisconnect()} disabled={busy}>
+              {busy ? <Spinner className="size-3.5" /> : null}
+              Disconnect
+            </Button>
+          ) : (
+            <>
+              <Input
+                type="password"
+                value={token}
+                onChange={(event) => setToken(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") void onSave();
+                }}
+                placeholder="lin_api_…"
+                aria-label="Linear API key"
+                autoComplete="off"
+                spellCheck={false}
+                className="h-7 w-52"
+              />
+              <Button variant="secondary" size="sm" onClick={() => void onSave()} disabled={busy || !token.trim()}>
+                {busy ? <Spinner className="size-3.5" /> : null}
+                Connect
+              </Button>
+            </>
+          )}
+        </PageRow>
+      </PageSection>
       {connected && teams.length > 0 ? (
-        <div className="border-b border-content/5 py-4">
-          <div className="text-[13px] font-medium text-content">
-            Linear Teams
-          </div>
-          <p className="mt-1 text-[12px] leading-relaxed text-content/40">
-            Unchecked teams stay out of the inbox.
-          </p>
-          <div className="mt-3 flex flex-col gap-0.5">
-            {teams.map((team) => {
-              const checked = !hiddenTeamIds.includes(team.id);
-              return (
-                <button
-                  key={team.id}
-                  type="button"
-                  onClick={() => toggleTeam(team.id)}
-                  className="flex h-7 items-center gap-3 rounded-lg px-2 text-left text-[13px] text-content hover:bg-content/5 active:bg-content/10"
-                >
-                  <span className="min-w-0 flex-1 truncate">
-                    {team.name}
-                    {team.key ? (
-                      <span className="ml-1.5 text-content/40">{team.key}</span>
-                    ) : null}
-                  </span>
-                  {checked ? (
-                    <Check className="size-3.5 shrink-0" strokeWidth={2.25} />
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <PageSection title="Teams in the inbox">
+          {teams.map((team) => (
+            <PageRow key={team.id} title={team.name} description={team.key || undefined}>
+              <Checkbox
+                aria-label={team.name}
+                checked={!hiddenTeamIds.includes(team.id)}
+                onCheckedChange={() => toggleTeam(team.id)}
+              />
+            </PageRow>
+          ))}
+        </PageSection>
       ) : null}
     </>
   );
@@ -463,86 +412,58 @@ function UpdateRow({
   const retry = canRetry(snapshot);
   const actionable = (hasUpdate && canApply) || ready || retry;
 
+  const failed = snapshot.phase === "error";
   return (
-    <Row
-      label={
-        <span className="flex items-baseline gap-2">
-          Release
-          <span className="font-mono text-[12px] text-content/40 tabular-nums">
-            {snapshot.currentVersion}
-          </span>
-        </span>
-      }
-      description={
+    <PageRow
+      title={
         <>
-          <span className="block">{status}</span>
-          {downloading ? <DownloadProgress percent={snapshot.percent ?? 0} /> : null}
+          Release
+          <span className="font-mono text-xs font-normal text-muted-foreground tabular-nums">{snapshot.currentVersion}</span>
         </>
       }
+      description={
+        failed ? undefined : (
+          <>
+            {status}
+            {downloading ? (
+              <Progress aria-label="Download" value={Math.round(snapshot.percent ?? 0)} className="mt-2 w-64" />
+            ) : null}
+          </>
+        )
+      }
+      error={failed ? status : undefined}
     >
-      <div className="flex items-center gap-2">
-        {snapshot.phase === "error" && canApply ? (
-          <SecondaryButton onClick={() => void openUrl(MANUAL_DOWNLOAD_URL)}>
-            Download the installer
-          </SecondaryButton>
-        ) : (
-          <span className="contents" {...releaseNotesChunk.intent}>
-            <SecondaryButton onClick={onWhatsNew}>What's new</SecondaryButton>
-          </span>
-        )}
-        <SecondaryButton
-          onClick={() =>
-            void (actionable ? updateStore.install() : updateStore.check(true))
-          }
-          disabled={busy}
-        >
-          {busy ? (
-            <MatrixSpinner cell={1.5} />
-          ) : actionable ? (
-            <ArrowDownCircle className="size-3.5 text-accent" strokeWidth={1.75} aria-hidden />
-          ) : (
-            <RefreshCw className="size-3.5" strokeWidth={1.75} aria-hidden />
-          )}
-          {ready ? "Restart" : retry ? "Retry" : hasUpdate && canApply ? "Update" : "Check for updates"}
-        </SecondaryButton>
-      </div>
-    </Row>
+      {failed && canApply ? (
+        <Button variant="secondary" size="sm" onClick={() => void openUrl(MANUAL_DOWNLOAD_URL)}>
+          Download the installer
+        </Button>
+      ) : (
+        <span className="contents" {...releaseNotesChunk.intent}>
+          <Button variant="secondary" size="sm" onClick={onWhatsNew}>
+            What's new
+          </Button>
+        </span>
+      )}
+      <Button
+        variant={actionable ? "default" : "secondary"}
+        size="sm"
+        onClick={() => void (actionable ? updateStore.install() : updateStore.check(true))}
+        disabled={busy}
+      >
+        {busy ? <Spinner className="size-3.5" /> : null}
+        {updateActionLabel(snapshot.phase, { canApply, retry })}
+      </Button>
+    </PageRow>
   );
 }
 
-/** The download, as main reports it. */
-function DownloadProgress({ percent }: { percent: number }) {
-  const fraction = Math.min(1, Math.max(0, percent / 100));
-  return (
-    <span
-      role="progressbar"
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={Math.round(fraction * 100)}
-      className="mt-2 block h-1 w-64 overflow-hidden rounded-full bg-content/10"
-    >
-      <span
-        className="block h-full origin-left rounded-full bg-accent transition-transform duration-200"
-        style={{ transform: `scaleX(${fraction})` }}
-      />
-    </span>
-  );
-}
-
-function MidTurnSwitch() {
-  const [value, setValue] = useState<MidTurnDefault>(loadMidTurnDefault);
-  return (
-    <Segmented
-      label="Enter while a turn runs"
-      value={value}
-      options={[
-        { value: "queue", label: "Queue" },
-        { value: "steer", label: "Steer" },
-      ]}
-      onChange={(next) => {
-        saveMidTurnDefault(next);
-        setValue(next);
-      }}
-    />
-  );
+/** The update button's word for the updater's phase. */
+export function updateActionLabel(
+  phase: ReturnType<typeof useUpdateSnapshot>["phase"],
+  { canApply, retry }: { canApply: boolean; retry: boolean },
+): string {
+  if (phase === "ready") return "Restart";
+  if (retry) return "Retry";
+  if (phase === "available" && canApply) return "Update";
+  return "Check for updates";
 }

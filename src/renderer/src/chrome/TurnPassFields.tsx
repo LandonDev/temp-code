@@ -5,7 +5,9 @@ import {
   type TurnPass,
 } from "@server/shared/turnpass";
 import { linkOfWorkspace } from "../lib/tcserver/projects";
-import { Heading, Row, Select, Toggle } from "../surfaces/settingsBits";
+import { ChoiceSelect } from "../components/choice-select";
+import { PageRow, PageSection } from "../components/page";
+import { SettingSwitch } from "../components/setting-switch";
 
 /**
  * The "completed turn" pass: what an implementation or orchestration thread
@@ -32,62 +34,30 @@ export function TurnPassFields({
 }: {
   value: TurnPass;
   onChange: (next: TurnPass) => void;
-  /** Stacked, tighter rows for dialogs; the default is a settings page. */
+  /** Small pickers, for dialogs. */
   compact?: boolean;
 }) {
   const commit = (
-    <Select
+    <ChoiceSelect
       label="Commit"
+      size={compact ? "sm" : "default"}
       value={value.commit}
       options={COMMIT_OPTIONS}
-      onChange={(commit) => onChange({ ...value, commit: commit as TurnPass["commit"] })}
+      onChange={(commit) => onChange({ ...value, commit })}
     />
   );
-  if (compact) {
-    return (
-      <div className="flex flex-col gap-2.5">
-        <CompactRow {...COPY.verify}>
-          <Toggle label="Verify" on={value.verify} onChange={(verify) => onChange({ ...value, verify })} />
-        </CompactRow>
-        <CompactRow {...COPY.build}>
-          <Toggle label="Build" on={value.build} onChange={(build) => onChange({ ...value, build })} />
-        </CompactRow>
-        <CompactRow {...COPY.commit}>{commit}</CompactRow>
-      </div>
-    );
-  }
   return (
     <>
-      <Row label={COPY.verify.label} description={COPY.verify.hint}>
-        <Toggle label="Verify" on={value.verify} onChange={(verify) => onChange({ ...value, verify })} />
-      </Row>
-      <Row label={COPY.build.label} description={COPY.build.hint}>
-        <Toggle label="Build" on={value.build} onChange={(build) => onChange({ ...value, build })} />
-      </Row>
-      <Row label={COPY.commit.label} description={COPY.commit.hint}>
+      <PageRow title={COPY.verify.label} description={COPY.verify.hint}>
+        <SettingSwitch label="Verify" on={value.verify} onChange={(verify) => onChange({ ...value, verify })} />
+      </PageRow>
+      <PageRow title={COPY.build.label} description={COPY.build.hint}>
+        <SettingSwitch label="Build" on={value.build} onChange={(build) => onChange({ ...value, build })} />
+      </PageRow>
+      <PageRow title={COPY.commit.label} description={COPY.commit.hint}>
         {commit}
-      </Row>
+      </PageRow>
     </>
-  );
-}
-
-function CompactRow({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center gap-4">
-      <div className="min-w-0 flex-1">
-        <div className="text-[12px] font-medium text-content">{label}</div>
-        <div className="text-[11px] leading-4 text-content/40">{hint}</div>
-      </div>
-      {children}
-    </div>
   );
 }
 
@@ -144,14 +114,12 @@ export function TurnPassEditor({ workspaceId }: { workspaceId: string }) {
   };
 
   return (
-    <section>
-      <Heading title="Completed turn" />
-      <p className="pb-2 text-[12px] leading-relaxed text-content/40">
-        After a turn settles, implementation and orchestration threads run these
-        before anything queued.
-      </p>
+    <PageSection
+      title="Completed turn"
+      description="After a turn settles, implementation and orchestration threads run these before anything queued."
+    >
       {value ? <TurnPassFields value={value} onChange={change} /> : null}
-      {error ? <p className="pt-2 text-[11px] text-danger">{error}</p> : null}
-    </section>
+      {error ? <p className="pt-2 text-xs text-destructive">{error}</p> : null}
+    </PageSection>
   );
 }

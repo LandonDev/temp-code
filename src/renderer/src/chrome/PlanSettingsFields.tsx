@@ -8,9 +8,11 @@ import {
   BUILT_IN_PLAN_SCOPE,
   savePlanSettings,
   usePlanSettings,
-  type PlanScope,
 } from "../lib/tcserver/plans";
-import { Heading, Row, SecondaryButton, Select, Toggle } from "../surfaces/settingsBits";
+import { ChoiceSelect } from "../components/choice-select";
+import { PageRow, PageSection } from "../components/page";
+import { Button } from "../components/ui/button";
+import { SettingSwitch } from "../components/setting-switch";
 
 /**
  * What happens when a plan is complete (plans.ts): whether the build starts
@@ -51,48 +53,52 @@ export function PlanSettingsFields({
       ? [{ value: value.implementReasoning, label: EFFORT_LABELS[value.implementReasoning] }]
       : []),
   ];
-  const selectClass = compact ? "max-w-full" : undefined;
+  const size = compact ? "sm" : "default";
+  const hint = (text: string) => (compact ? undefined : text);
   return (
     <>
-      <Row
-        label="Start the build on its own"
-        description={compact ? undefined : "When the planner marks its plan complete, the implementation thread starts without a click."}
+      <PageRow
+        title="Start the build on its own"
+        description={hint("When the planner marks its plan complete, the implementation thread starts without a click.")}
       >
-        <Toggle label="Start the build on its own" on={value.autoImplement} onChange={(on) => set({ autoImplement: on })} />
-      </Row>
-      <Row
-        label="Archive the plan after start"
-        description={compact ? undefined : "The planning thread leaves the list once its build is running; the plan file and the link stay."}
+        <SettingSwitch label="Start the build on its own" on={value.autoImplement} onChange={(on) => set({ autoImplement: on })} />
+      </PageRow>
+      <PageRow
+        title="Archive the plan after start"
+        description={hint("The planning thread leaves the list once its build runs; the plan file and the link stay.")}
       >
-        <Toggle label="Archive the plan after start" on={value.archiveAfterStart} onChange={(on) => set({ archiveAfterStart: on })} />
-      </Row>
-      <Row label="Build model" description={compact ? undefined : "The planning thread's own model unless fixed here."}>
-        <Select
+        <SettingSwitch label="Archive the plan after start" on={value.archiveAfterStart} onChange={(on) => set({ archiveAfterStart: on })} />
+      </PageRow>
+      <PageRow title="Build model" description={hint("The planning thread's own model unless fixed here.")}>
+        <ChoiceSelect
           label="Build model"
+          size={size}
           value={value.implementModel}
           options={modelOptions}
-          className={selectClass}
           onChange={(implementModel) => set({ implementModel })}
         />
-      </Row>
-      <Row label="Build effort" description={compact ? undefined : "The planning thread's own effort unless fixed here."}>
-        <Select
+      </PageRow>
+      <PageRow title="Build effort" description={hint("The planning thread's own effort unless fixed here.")}>
+        <ChoiceSelect
           label="Build effort"
+          size={size}
           value={value.implementReasoning}
           options={reasoningOptions}
-          className={selectClass}
           onChange={(implementReasoning) => set({ implementReasoning: implementReasoning as PlanSettings["implementReasoning"] })}
         />
-      </Row>
-      <Row label="Build context" description={compact ? undefined : "The planning thread's own window unless fixed; 1M applies only to models that offer it."}>
-        <Select
+      </PageRow>
+      <PageRow
+        title="Build context"
+        description={hint("The planning thread's own window unless fixed; 1M applies only to models that offer it.")}
+      >
+        <ChoiceSelect
           label="Build context"
+          size={size}
           value={value.implementContext}
           options={[SAME, { value: "1m", label: "1M" }, { value: "200k", label: "200k" }]}
-          className={selectClass}
           onChange={(implementContext) => set({ implementContext: implementContext as PlanSettings["implementContext"] })}
         />
-      </Row>
+      </PageRow>
     </>
   );
 }
@@ -103,12 +109,6 @@ export function planSettingsSummary(s: PlanSettings): string {
   if (s.implementReasoning) parts.push(EFFORT_LABELS[s.implementReasoning]);
   if (s.implementContext) parts.push(s.implementContext === "1m" ? "1M" : "200k");
   return parts.join(" · ");
-}
-
-function scopeHint(scope: PlanScope): string {
-  return scope.overridden
-    ? "Applied wherever a project has no override of its own."
-    : "The built-in defaults; any change is kept here and applies wherever a project has no override.";
 }
 
 /** The global group on the Settings page: self-loading, saves on every change. */
@@ -122,18 +122,18 @@ export function PlanSettingsEditor() {
   };
   const shown = scope ?? BUILT_IN_PLAN_SCOPE;
   return (
-    <section>
-      <div className="flex items-end justify-between gap-4">
-        <Heading title="Plans" />
-        {shown.overridden ? (
-          <span className="pb-1">
-            <SecondaryButton onClick={() => save(null)}>Reset</SecondaryButton>
-          </span>
-        ) : null}
-      </div>
-      <p className="pb-2 text-[12px] leading-relaxed text-content/40">{scopeHint(shown)}</p>
+    <PageSection
+      title="Plans"
+      action={
+        shown.overridden ? (
+          <Button variant="ghost" size="sm" onClick={() => save(null)}>
+            Reset
+          </Button>
+        ) : null
+      }
+    >
       <PlanSettingsFields value={shown.settings} onChange={save} environmentId={environmentId} />
-      {error ? <p className="pt-2 text-[12px] text-danger">{error}</p> : null}
-    </section>
+      {error ? <p className="pt-2 text-xs text-destructive">{error}</p> : null}
+    </PageSection>
   );
 }

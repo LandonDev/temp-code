@@ -21,7 +21,7 @@ const TOP: Record<ModalSize, string> = {
 /** A popover or the composer's `@` and `/` list is open above the dialog:
  *  Escape is that layer's, and the dialog stays. */
 export function escapeOwnedAbove(): boolean {
-  return document.querySelector("[data-popover-side], [data-command-popover]") !== null;
+  return document.querySelector("[data-popover-side], [data-command-popover], [data-slot=select-content][data-open]") !== null;
 }
 
 type Props = {
