@@ -20,7 +20,11 @@ const TOKEN = /(?<=^|\s)\/([\w-]+(?::[\w-]+)?)(?=$|\s)/g
  *  the skills tree) costs seconds on a cold host: it runs only for one. */
 export function hasSlashToken(text: string): boolean {
   TOKEN.lastIndex = 0
-  return TOKEN.test(text)
+  const hit = TOKEN.test(text)
+  // A global regex keeps where its test stopped, and matchAll starts there:
+  // left alone, the expansion below would skip the first token.
+  TOKEN.lastIndex = 0
+  return hit
 }
 
 export async function expandSlashRefs(

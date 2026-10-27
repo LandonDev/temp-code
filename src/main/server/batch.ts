@@ -677,6 +677,9 @@ export class Batches {
   flush(): void {
     if (this.pushTimer) clearTimeout(this.pushTimer)
     this.pushTimer = null
+    // A step still in flight when the engine was disposed (a test's hung
+    // gate released at teardown) must not write to a closed store.
+    if (this.disposed) return
     this.lastPush = this.now()
     const ids = [...this.pushPending]
     this.pushPending.clear()
@@ -1553,7 +1556,10 @@ export class Batches {
     return [master.title.trim(), ...subjects].filter(Boolean).join('; ')
   }
 
+  private disposed = false
+
   dispose(): void {
+    this.disposed = true
     this.detach?.()
     if (this.pushTimer) clearTimeout(this.pushTimer)
     this.pushTimer = null

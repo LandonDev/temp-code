@@ -35,7 +35,7 @@ it('persists pin changes across a reopened DB and pushes metadata', async () => 
   const listener = vi.fn()
   const off = registry.onMeta(listener)
   registry.setPinned(session.id, true)
-  expect(listener).toHaveBeenCalledWith(expect.objectContaining({ id: session.id, pinned: true }))
+  expect(listener).toHaveBeenCalledWith(expect.objectContaining({ id: session.id, pinned: true }), expect.any(String))
   expect(() => registry.setPinned('missing', true)).toThrow('unknown session')
   off()
   await registry.disposeAll()
@@ -77,7 +77,8 @@ it('adopts old path-only sessions and assigns new path-only sessions to matching
   expect(store.getSession(a.id)?.workspaceId).toBe(workspace.id)
   expect(store.getSession(b.id)?.workspaceId).toBeNull()
   expect(listener).toHaveBeenCalledWith(
-    expect.objectContaining({ id: a.id, workspaceId: workspace.id })
+    expect.objectContaining({ id: a.id, workspaceId: workspace.id }),
+    expect.any(String)
   )
   expect(catalog).toHaveBeenCalledWith('workspaces')
   expect((await registry.create({ cwd: root })).workspaceId).toBe(workspace.id)

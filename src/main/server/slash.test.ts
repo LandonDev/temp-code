@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest'
-import { hasSlashToken } from './slash'
+import { describe, expect, it, vi } from 'vitest'
+import { expandSlashRefs, hasSlashToken } from './slash'
+
+vi.mock('./commands', () => ({
+  listCommands: async () => [{ name: 'x', source: 'plugin', path: null, description: '' }]
+}))
 
 describe('hasSlashToken', () => {
   it('finds a /word at a line start or after whitespace, with or without a namespace', () => {
@@ -16,5 +20,15 @@ describe('hasSlashToken', () => {
     expect(hasSlashToken('a 3/4 cup')).toBe(false)
     expect(hasSlashToken('no slash at all')).toBe(false)
     expect(hasSlashToken('')).toBe(false)
+  })
+})
+
+describe('expandSlashRefs', () => {
+  it('expands the first token of a message after hasSlashToken looked at it (the shared regex starts over)', async () => {
+    expect(hasSlashToken('make it a /x please')).toBe(true)
+    const out = await expandSlashRefs('claude', '/tmp', 'make it a /x please')
+    expect(out).toContain('use your "x" plugin')
+    // And again: the second message's token is found too.
+    expect(await expandSlashRefs('claude', '/tmp', 'then /x again')).toContain('use your "x" plugin')
   })
 })

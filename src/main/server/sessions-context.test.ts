@@ -44,7 +44,8 @@ it('keeps the last context reading on the row and serves it after a relaunch', a
   registry.onMeta(listener)
   registry.append(session.id, { type: 'context', tokens: 120_000, window: 200_000 })
   expect(listener).toHaveBeenLastCalledWith(
-    expect.objectContaining({ id: session.id, context: { tokens: 120_000, window: 200_000 } })
+    expect.objectContaining({ id: session.id, context: { tokens: 120_000, window: 200_000 } }),
+    expect.any(String)
   )
   // Accounting is meta, never transcript: the log stays as it was.
   expect(store.eventsAfter(session.id, 0).some((r) => r.event.type === 'context')).toBe(false)

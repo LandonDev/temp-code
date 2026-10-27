@@ -335,7 +335,8 @@ describe('warm-up off the loop', () => {
     reg.onMeta((m) => pushes.push(m.id))
     for (const e of variedLog(6)) reg.append('a', e)
     expect(reg.isFoldWarm('a')).toBe(true)
-    expect(store.getFold('a')).toBeNull()
+    // Nothing folded yet: the row holds the transcript flags alone (folded_seq 0), never a fold past the start.
+    expect(store.getFold('a')?.foldedSeq ?? 0).toBe(0)
     release()
     await reg.whenFoldWarm('a')
     expect(outputs(store.getFold('a'))).toEqual(outputs(reference('a')))

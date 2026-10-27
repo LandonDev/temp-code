@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { configure } from 'aliax-core'
 import { request as httpRequest } from 'node:http'
 import { WebSocket } from 'ws'
@@ -746,12 +746,17 @@ describe('session.focus', () => {
     row('cap-focused', 'idle')
     row('cap-plain', 'idle')
     const sock = await open(`ws://127.0.0.1:${server.port}/`)
+    // Slots are counted by handle, never by a row's status: the busy thread holds one as if its harness were up.
+    const liveSpy = vi.spyOn(server.registry, 'liveIds').mockReturnValue(new Set(['cap-busy']))
     const running = server.registry.scheduler.counts().running
-    expect((await sock.request('admission.set', { cap: Math.max(1, running) })).ok).toBe(true)
+    expect(running).toBe(1)
+    expect((await sock.request('admission.set', { cap: running })).ok).toBe(true)
     expect((await sock.request('session.focus', { sessionId: 'cap-focused' })).ok).toBe(true)
     const send = (id: string) => server.registry.scheduler.admit({ id, after: undefined, parentId: null })
+    expect(send('cap-busy')).toBe('start')
     expect(send('cap-plain')).toBe('queue')
     expect(send('cap-focused')).toBe('start')
+    liveSpy.mockRestore()
     expect((await sock.request('admission.set', { cap: null })).ok).toBe(true)
     sock.ws.close()
     await sock.closed
