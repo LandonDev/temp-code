@@ -676,9 +676,14 @@ function ProjectSettingsBody({
                 <BuildFields value={buildOverride ?? wsBuild ?? BUILD_EMPTY} onChange={setBuildOverride} detected={detected} compact />
                 {buildOverride ? linkButton("Use workspace setting", () => setBuildOverride(null)) : null}
               </Section>
-              <ErrorLine error={error} />
             </div>
           </ScrollArea>
+          {/* Under the scroller, beside the foot: a failed save is never scrolled out of sight. */}
+          {error ? (
+            <div className="border-t border-border px-4 pt-3">
+              <ErrorLine error={error} />
+            </div>
+          ) : null}
           <Footer onCancel={() => closeThen(onClose)} confirmLabel="Save" pending={pending} disabled={!dirty || !!blocked} note={note} />
         </form>
       </SheetContent>

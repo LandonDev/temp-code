@@ -65,8 +65,10 @@ export function AgentDetail({
                   })
               : undefined
           }
-          onOpenFile={onOpenFile}
-          onOpenDiff={onOpenDiff}
+          // A file or diff opens in a pane behind the sheet, so the sheet
+          // closes first, as Open does.
+          onOpenFile={onOpenFile ? (...args) => closeThen(() => (onClose(), onOpenFile(...args))) : undefined}
+          onOpenDiff={onOpenDiff ? (path) => closeThen(() => (onClose(), onOpenDiff(path))) : undefined}
         />
         <SheetClose
           aria-label="Close"

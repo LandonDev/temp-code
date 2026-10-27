@@ -28,7 +28,15 @@ vi.mock("../../../lib/tcserver/commands", async (importOriginal) => ({
   send: h.send,
   steer: h.steer,
 }));
-vi.mock("../../AgentTranscript", () => ({ AgentTranscript: () => <div data-testid="transcript" /> }));
+vi.mock("../../AgentTranscript", () => ({
+  AgentTranscript: (p: { onOpenFile?: (path: string) => void }) => (
+    <div data-testid="transcript">
+      <button type="button" onClick={() => p.onOpenFile?.("/srv/repo/a.ts")}>
+        a.ts
+      </button>
+    </div>
+  ),
+}));
 
 import { AgentDetail } from "./AgentDetail";
 
@@ -128,6 +136,16 @@ describe("AgentDetail", () => {
     await waitFor(() => expect(onEscape).toHaveBeenCalledTimes(1));
     await new Promise((r) => setTimeout(r, 20));
     expect(onEscape).toHaveBeenCalledTimes(1);
+  });
+
+  it("a file opened from the transcript closes the sheet first, so its pane is not behind it", async () => {
+    const onClose = vi.fn();
+    const onOpenFile = vi.fn();
+    render(<AgentDetail agentId="a1" parentCwd="/srv/repo" onClose={onClose} onOpenFile={onOpenFile} />);
+    fireEvent.click(await screen.findByRole("button", { name: "a.ts" }));
+    await waitFor(() => expect(onOpenFile).toHaveBeenCalledWith("/srv/repo/a.ts"));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onClose.mock.invocationCallOrder[0]).toBeLessThan(onOpenFile.mock.invocationCallOrder[0]);
   });
 
   it("Open closes first, then opens the agent beside its parent", async () => {

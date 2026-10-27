@@ -188,7 +188,8 @@ function PreambleForm({
           <p className="flex gap-2 font-mono text-[11px] text-muted-foreground" data-preamble-variables>
             {PREAMBLE_VARIABLES.map((v) => (
               <Tip key={v.name} label={`${v.meaning}, filled in when the thread starts`}>
-                <code>{`{{${v.name}}}`}</code>
+                {/* Focusable, and named for its meaning, so the help is not hover-only. */}
+                <code tabIndex={0} aria-label={`{{${v.name}}}: ${v.meaning}`} className="rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">{`{{${v.name}}}`}</code>
               </Tip>
             ))}
           </p>
