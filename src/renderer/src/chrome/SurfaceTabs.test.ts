@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { newReleaseNotesWorkspaceTab } from "../lib/layout";
+import { newFileTab, newReleaseNotesWorkspaceTab, newTerminalFile } from "../lib/layout";
 import { releaseNotesTitle } from "../lib/releaseNotes";
 import { appendProblems, surfaceTabPresentation } from "./SurfaceTabs";
 
@@ -14,6 +14,33 @@ describe("surfaceTabPresentation", () => {
       label: releaseNotesTitle("0.1.23"),
       iconName: "CHANGELOG.md",
       tooltip: releaseNotesTitle("0.1.23"),
+    });
+  });
+
+  it("names a file tab by its basename with the path as tooltip, and nothing else", () => {
+    const file = newFileTab("/repo/src/app.ts", "/repo");
+    expect(surfaceTabPresentation(file)).toEqual({
+      name: "app.ts",
+      label: "app.ts",
+      iconName: "app.ts",
+      tooltip: "/repo/src/app.ts",
+    });
+  });
+
+  it("says what a review tab is compared against", () => {
+    const file = { ...newFileTab("/repo/src/app.ts", "/repo", true), diffBase: "a".repeat(40) };
+    const presentation = surfaceTabPresentation(file);
+    expect(presentation.label).toBe("app.ts (vs aaaaaaa)");
+    expect(presentation.tooltip).toBe("/repo/src/app.ts (vs aaaaaaa)");
+  });
+
+  it("gives a terminal tab its directory as tooltip, without a middle dot", () => {
+    const file = newTerminalFile("/repo", "zsh");
+    expect(surfaceTabPresentation(file)).toEqual({
+      name: "zsh",
+      label: "zsh",
+      iconName: "zsh",
+      tooltip: "/repo",
     });
   });
 });

@@ -1,8 +1,11 @@
 import { GripVertical, Terminal, X } from "./icons";
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
+import { Button } from "../components/ui/button";
+import { Kbd } from "../components/ui/kbd";
+import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
 import { basename } from "../lib/fs";
-import { useGitIndex } from "../lib/gitIndexStore";
 import { useEditorState } from "../lib/monaco/editorState";
 import { projectForCwd } from "../lib/tcserver/projects";
 import {
@@ -58,7 +61,7 @@ export function surfaceTabPresentation(
     name,
     label: against ? `${name} (${against})` : name,
     iconName: name,
-    tooltip: terminal ? `${name} · ${file.cwd}` : against ? `${file.path} (${against})` : file.path,
+    tooltip: terminal ? file.cwd : against ? `${file.path} (${against})` : file.path,
   };
 }
 
@@ -87,10 +90,9 @@ export function SurfaceTabs({
 }: Props) {
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
   const activeTabRef = useRef<HTMLDivElement | null>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   // Every tab of one pane shares a checkout; the pane's first file names it.
   const cwd = files[0]?.cwd ?? "";
-  const index = useGitIndex(cwd);
-  const changed = index?.files ?? [];
   const busy = useEditorState((s) => {
     const project = cwd ? projectForCwd(cwd) : undefined;
     return project ? (s.lspBusy[project.id] ?? null) : null;
@@ -108,163 +110,176 @@ export function SurfaceTabs({
   }, [activeFileId, sortable.draggingId]);
 
   return (
-    <div className="flex h-9 min-w-0 shrink-0 border-b border-content/10">
-      <div
-        ref={lockOverscroll}
-        role="tablist"
-        aria-label={label}
-        className="scrollbar-none flex min-w-0 flex-1 overflow-x-auto overscroll-none"
+    <TooltipProvider>
+      <Tabs
+        value={activeFileId}
+        onValueChange={(value) => {
+          if (typeof value === "string" && value !== activeFileId) onSelectFile(value);
+        }}
+        className="h-9 min-w-0 shrink-0 gap-0 border-b border-border data-[orientation=horizontal]:flex-row"
       >
-      {onPaneDragStart ? (
-        <div
-          role="button"
-          title="Drag to reorder pane"
-          aria-label="Drag to reorder pane"
-          tabIndex={-1}
-          className="grid h-full w-5 shrink-0 cursor-grab place-items-center text-content/40 hover:bg-content/5 hover:text-content active:cursor-grabbing touch-none"
-          onPointerDown={(event) => {
-            if (event.button !== 0) return;
-            event.preventDefault();
-            event.stopPropagation();
-            onPaneDragStart(event);
-          }}
+        <TabsList
+          ref={lockOverscroll}
+          variant="line"
+          aria-label={label}
+          className="scrollbar-none min-w-0 flex-1 items-stretch justify-start overflow-x-auto overflow-y-hidden overscroll-none px-1 group-data-[orientation=horizontal]/tabs:h-full"
         >
-          <GripVertical className="size-3.5" strokeWidth={1.75} />
-        </div>
-      ) : null}
-      {files.map((file, index) => {
-        const active = file.id === activeFileId;
-        const dirty = dirtyFileIds.has(file.id);
-        const errors = fileErrorCounts.get(file.id) ?? 0;
-        const review = isReviewTab(file);
-        const terminal = isTerminalTab(file);
-        const { label, iconName, tooltip } = surfaceTabPresentation(file);
-        const change = terminal ? undefined : changed.find((f) => f.path === file.path);
-        const dragging = sortable.draggingId === file.id;
-        const showStart =
-          sortable.draggingId &&
-          sortable.toIndex === index &&
-          sortable.fromIndex !== null &&
-          sortable.toIndex < sortable.fromIndex;
-        const showEnd =
-          sortable.draggingId &&
-          sortable.toIndex === index &&
-          sortable.fromIndex !== null &&
-          sortable.toIndex > sortable.fromIndex;
-        return (
-          <div
-            key={file.id}
-            ref={(el) => {
-              sortable.setItemRef(file.id, el);
-              if (el && file.id === activeFileId) activeTabRef.current = el;
-            }}
-            className={`group relative flex w-52 min-w-28 shrink touch-none items-stretch border-r border-content/10 transition-opacity duration-100 ${
-              active ? "bg-content/8" : "hover:bg-content/5 active:bg-content/10"
-            } ${dragging ? "opacity-40" : ""} ${
-              canDrag ? "cursor-grab active:cursor-grabbing" : ""
-            }`}
-            onPointerDown={(event) => {
-              if (event.button !== 0) return;
-              if (
-                (event.target as HTMLElement | null)?.closest("[data-no-drag]")
-              ) {
-                return;
-              }
-              onSelectFile(file.id);
-              sortable.onItemPointerDown(file.id, event);
-            }}
-          >
-            {showStart ? (
-              <div className="pointer-events-none absolute inset-y-1.5 left-0 z-20 w-0.5 rounded-full bg-accent" />
-            ) : null}
-            {showEnd ? (
-              <div className="pointer-events-none absolute inset-y-1.5 right-0 z-20 w-0.5 rounded-full bg-accent" />
-            ) : null}
-            <button
-              type="button"
-              role="tab"
-              aria-selected={active}
-              title={appendProblems(tooltip, errors)}
-              onClick={() => {
-                if (sortable.consumeClick()) return;
-                onSelectFile(file.id);
-              }}
-              className={`flex min-w-0 flex-1 items-center gap-1.5 px-3 pr-8 text-left text-[12px] ${
-                canDrag ? "cursor-grab active:cursor-grabbing" : ""
-              } ${
-                active ? "text-content" : "text-content/50 hover:text-content"
-              }`}
-            >
-              {terminal ? (
-                <Terminal className="size-3.5 shrink-0" strokeWidth={1.75} />
-              ) : (
-                <FileTypeIcon name={iconName} isDir={false} size={14} />
-              )}
-              <span
-                className={`min-w-0 flex-1 truncate ${review ? "italic" : ""} ${
-                  errors
-                    ? active
-                      ? "text-danger"
-                      : "text-danger group-hover:text-danger"
-                    : ""
-                }`}
+          {onPaneDragStart ? (
+            <div className="shrink-0 pt-1">
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Drag to reorder pane"
+                      tabIndex={-1}
+                      className="w-5 cursor-grab touch-none text-muted-foreground hover:text-foreground active:cursor-grabbing"
+                      onPointerDown={(event) => {
+                        if (event.button !== 0) return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onPaneDragStart(event);
+                      }}
+                    />
+                  }
+                >
+                  <GripVertical />
+                </TooltipTrigger>
+                <TooltipContent>Drag to reorder pane</TooltipContent>
+              </Tooltip>
+            </div>
+          ) : null}
+          {files.map((file, index) => {
+            const active = file.id === activeFileId;
+            const hovered = file.id === hoveredId;
+            const dirty = dirtyFileIds.has(file.id);
+            const errors = fileErrorCounts.get(file.id) ?? 0;
+            const review = isReviewTab(file);
+            const terminal = isTerminalTab(file);
+            const { label, iconName, tooltip } = surfaceTabPresentation(file);
+            const dragging = sortable.draggingId === file.id;
+            const showStart =
+              sortable.draggingId &&
+              sortable.toIndex === index &&
+              sortable.fromIndex !== null &&
+              sortable.toIndex < sortable.fromIndex;
+            const showEnd =
+              sortable.draggingId &&
+              sortable.toIndex === index &&
+              sortable.fromIndex !== null &&
+              sortable.toIndex > sortable.fromIndex;
+            // A dirty tab keeps its dot until hovered; a clean one offers close
+            // while it is active or hovered.
+            const closable = hovered || (active && !dirty);
+            return (
+              <div
+                key={file.id}
+                ref={(el) => {
+                  sortable.setItemRef(file.id, el);
+                  if (el && file.id === activeFileId) activeTabRef.current = el;
+                }}
+                className={`relative min-w-24 max-w-52 shrink pt-1 ${dragging ? "opacity-40" : ""}`}
+                onMouseEnter={() => setHoveredId(file.id)}
+                onMouseLeave={() => setHoveredId((id) => (id === file.id ? null : id))}
               >
-                {label}
-              </span>
-              {change && change.status !== "untracked" && (change.additions > 0 || change.deletions > 0) ? (
-                <span className="shrink-0 text-[11px] tabular-nums">
-                  {change.additions > 0 ? <span className="text-success">+{change.additions}</span> : null}
-                  {change.additions > 0 && change.deletions > 0 ? " " : ""}
-                  {change.deletions > 0 ? <span className="text-danger">−{change.deletions}</span> : null}
+                {showStart ? (
+                  <div className="pointer-events-none absolute inset-y-1.5 -left-0.5 z-20 w-0.5 rounded-full bg-accent" />
+                ) : null}
+                {showEnd ? (
+                  <div className="pointer-events-none absolute inset-y-1.5 -right-0.5 z-20 w-0.5 rounded-full bg-accent" />
+                ) : null}
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <TabsTrigger
+                        value={file.id}
+                        onPointerDown={(event) => {
+                          if (event.button !== 0) return;
+                          onSelectFile(file.id);
+                          sortable.onItemPointerDown(file.id, event);
+                        }}
+                        className={`h-7 w-full flex-none touch-none justify-start gap-2 font-normal transition-none hover:bg-foreground/5 hover:transition-[background-color,color] group-data-[variant=line]/tabs-list:rounded-md group-data-[variant=line]/tabs-list:px-3 group-data-[variant=line]/tabs-list:pr-9 group-data-[variant=line]/tabs-list:after:-bottom-[3px] group-data-[variant=line]/tabs-list:after:transition-none ${
+                          canDrag ? "cursor-grab active:cursor-grabbing" : ""
+                        }`}
+                      />
+                    }
+                  >
+                    {terminal ? (
+                      <Terminal className="size-3.5" />
+                    ) : (
+                      <FileTypeIcon name={iconName} isDir={false} size={14} />
+                    )}
+                    <span
+                      className={`min-w-0 truncate text-left ${review ? "italic" : ""} ${
+                        errors ? "text-destructive" : ""
+                      }`}
+                    >
+                      {label}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>{appendProblems(tooltip, errors)}</TooltipContent>
+                </Tooltip>
+                <span className="pointer-events-none absolute top-1 right-3 grid h-7 w-4 place-items-center">
+                  {closable ? (
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            aria-label={`Close ${label}`}
+                            className="pointer-events-auto size-4 rounded-sm text-muted-foreground hover:text-foreground"
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onCloseFile(file.id);
+                            }}
+                          />
+                        }
+                      >
+                        <X />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Close <Kbd>⌘W</Kbd>
+                      </TooltipContent>
+                    </Tooltip>
+                  ) : dirty ? (
+                    <span
+                      role="img"
+                      aria-label="Unsaved changes"
+                      className={`size-1.5 rounded-full bg-current ${active ? "text-foreground" : "text-muted-foreground"}`}
+                    />
+                  ) : null}
                 </span>
-              ) : null}
-              {dirty ? (
-                <span
-                  className="size-1.5 shrink-0 rounded-full bg-content/70"
-                  title="Unsaved changes"
-                  aria-label="Unsaved changes"
-                />
-              ) : null}
-            </button>
-            <button
-              type="button"
-              title={`Close ${label}`}
-              aria-label={`Close ${label}`}
-              data-no-drag
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={(event) => {
-                event.stopPropagation();
-                onCloseFile(file.id);
+              </div>
+            );
+          })}
+          {onPaneDragStart ? (
+            <div
+              className="min-w-4 flex-1 cursor-grab active:cursor-grabbing"
+              onPointerDown={(event) => {
+                if (event.button !== 0) return;
+                event.preventDefault();
+                onPaneDragStart(event);
               }}
-              className={`pressable absolute right-1 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-md text-content/50 hover:bg-content/10 hover:text-content ${
-                active ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-              }`}
+            />
+          ) : null}
+        </TabsList>
+        {busy ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <div className="flex max-w-72 shrink-0 items-center px-3 text-[12px] text-muted-foreground tabular-nums" />
+              }
             >
-              <X className="size-3.5" strokeWidth={1.75} />
-            </button>
-          </div>
-        );
-      })}
-      {onPaneDragStart ? (
-        <div
-          className="min-w-4 flex-1 cursor-grab active:cursor-grabbing"
-          onPointerDown={(event) => {
-            if (event.button !== 0) return;
-            event.preventDefault();
-            onPaneDragStart(event);
-          }}
-        />
-      ) : null}
-      </div>
-      {busy ? (
-        <div
-          className="flex max-w-72 shrink-0 items-center px-3 text-[11px] text-content/40 tabular-nums"
-          title={busy}
-        >
-          <span className="min-w-0 truncate">{busy}</span>
-        </div>
-      ) : null}
-      {trailing}
-    </div>
+              <span className="min-w-0 truncate">{busy}</span>
+            </TooltipTrigger>
+            <TooltipContent>{busy}</TooltipContent>
+          </Tooltip>
+        ) : null}
+        {trailing}
+      </Tabs>
+    </TooltipProvider>
   );
 }

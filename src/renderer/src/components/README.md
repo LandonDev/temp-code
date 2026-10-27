@@ -27,7 +27,7 @@ DESIGN.md wins.
 | A labelled field in a dialog or sheet | `Field`, `FieldRow` (chrome/DialogField.tsx) | Label, control, hint; `FieldRow` for a choice at the row's end. |
 | A setting on or off | `Switch` (switch.tsx); `SettingSwitch` (../setting-switch.tsx) in a settings row | The only toggle for a setting. `SettingSwitch` names it and plays the switch cue. |
 | A choice in a list | `Checkbox` (checkbox.tsx) | |
-| Tabs, a segmented control | `Tabs` (tabs.tsx) | `variant="default"` segmented, `variant="line"` underlined. |
+| Tabs, a segmented control | `Tabs` (tabs.tsx) | `variant="default"` segmented, `variant="line"` underlined. The file and terminal strip (chrome/SurfaceTabs.tsx) is a line `Tabs` of 28px chips: icon, name, and a 16px slot whose unsaved dot turns into close on hover (a clean active tab shows close). |
 | A list row, a settings row | `Item` (item.tsx) | Media, title + description, actions. Settings pages are columns of these. |
 | A divider | `Separator` (separator.tsx) | Spacing first; a separator only where spacing cannot tell groups apart. |
 | A disclosure | `Collapsible` (collapsible.tsx) | Height eases through `.collapsible-resize`. |
