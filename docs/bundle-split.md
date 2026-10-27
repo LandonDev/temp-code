@@ -40,7 +40,9 @@ on intent so the skeleton is rarely seen.
 | htmlRender | HtmlRenderRow and HtmlRenderDocument (an agent's HTML page) | AgentTranscript.tsx, HtmlRenderOverlay.tsx | the row's own mount |
 | media | MediaGate and MediaReview (images, media, review) | FilePane.tsx | hovering the file tree |
 | lightbox | the Lightbox component (its store is `chrome/lightboxStore.ts`, in the main chunk) | Composer.tsx | hovering an attachment thumbnail |
-| releaseNotes | ReleaseNotesSurface | FilePane.tsx | the What's new button in Settings |
+| releaseNotes | ReleaseNotesSurface and the changelog parser (`lib/releaseNotesParse.ts`, the 34 kB `CHANGELOG.md?raw`) | FilePane.tsx; App.tsx's What's new asks `releaseNotesChunk.load()` | the What's new button in Settings |
+| dialogs | the dialogs an action opens (`chrome/dialogs.ts`): new project and workspace, project settings and teardown, the remote folder picker, thread defaults, the preamble, What's new, the fleet switches' confirm; with them Base UI's sheet, select and scroll-area | App.tsx, Sidebar.tsx, WorkspaceSessions.tsx, each mounted only while open | the workspace menu's trigger; the first thread on screen, after idle |
+| virtual | `@tanstack/react-virtual` and the rail's virtual rows (`chrome/railVirtualRows.tsx`); until it lands the rail lists its cards plainly (`chrome/railRows.tsx`) | WorkspaceSessions.tsx | an idle slot, or at once past 200 rows |
 
 Two things had to move for the boundaries to hold: the rail's
 `ChangesPanel` reached CodeMirror's diff (`@codemirror/merge`) and
@@ -50,8 +52,8 @@ expanded; and App.tsx's find keys (`handleEditorFindKey`,
 `openFindInActiveEditor`) go through `surfaces/editorFind.ts`, which asks
 the editor chunk only when it is loaded (an editor can only be mounted
 once it is, so before that no key is an editor's). The bundled changelog
-text (`CHANGELOG.md?raw`, 34 kB) stays in the main chunk: App.tsx reads it
-synchronously to open a What's new tab.
+text (`CHANGELOG.md?raw`, 34 kB) rides the release notes chunk since A26:
+App.tsx awaits that chunk before it opens What's new.
 
 The transcript's highlighter (`lib/highlight.worker.ts`) starts with no
 grammar and loads each language's chunk on first use
@@ -72,7 +74,8 @@ module sizes; excluded from the packaged app in electron-builder.yml).
 `bun run bundle:map` prints the entry chunk, its static closure, the biggest
 lazy chunks and the top contributors. `bun run check:bundle`
 (scripts/check-bundle-size.ts) fails when the index chunk's static closure
-passes 5 MiB (measured 4.56 MiB; the budget leaves about 10% for the
+passes 5 MiB + 16 KiB, 5,136.0 kB (measured 5,000.1 kB after A26's sweep, from
+5,287.9 kB over budget before it; the budget leaves room for the
 surfaces that belong in the first paint, not a chunk's worth: xterm alone is
 0.3 MiB, CodeMirror 0.8, recharts 0.9) or when any module of
 `NEVER_IN_ENTRY` (the packages and surfaces above) is in that closure — a
