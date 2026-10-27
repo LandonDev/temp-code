@@ -12,12 +12,7 @@
  * turn's array, so only the live turn regroups on a delta.
  */
 import type { Block } from "../lib/session";
-import {
-  groupTurnItems,
-  isProseBlock,
-  lastActivityIndex,
-  type TurnItem,
-} from "./transcriptActivity";
+import { groupTurnItems, isProseBlock, type TurnItem } from "./transcriptActivity";
 
 export type TurnInfo = {
   id: string;
@@ -37,11 +32,9 @@ export type TranscriptRow =
       key: string;
       turn: TurnInfo;
       item: TurnItem;
-      /** The group the agent is in: it opens by itself once a second call lands. */
-      autoOpen: boolean;
-      /** Zen: the group is behind the turn (the next paragraph landed). */
-      done: boolean;
-      /** Zen: prose straight after a group sits closer to it. */
+      /** The run the agent is in: the running turn's last item, a group. */
+      live: boolean;
+      /** Prose straight after a group sits closer to it. */
       compactTop: boolean;
     }
   | { kind: "end"; key: string; turn: TurnInfo }
@@ -55,13 +48,13 @@ export type TranscriptRows = {
   rowOfBlock: () => Map<string, number>;
 };
 
-const itemCache = new WeakMap<Block[], { zen: boolean; items: TurnItem[] }>();
+const itemCache = new WeakMap<Block[], TurnItem[]>();
 
-function itemsOf(turn: Block[], zen: boolean): TurnItem[] {
+function itemsOf(turn: Block[]): TurnItem[] {
   const hit = itemCache.get(turn);
-  if (hit && hit.zen === zen) return hit.items;
-  const items = groupTurnItems(turn, zen);
-  itemCache.set(turn, { zen, items });
+  if (hit) return hit;
+  const items = groupTurnItems(turn);
+  itemCache.set(turn, items);
   return items;
 }
 
@@ -74,7 +67,6 @@ export function turnUserBlock(blocks: Block[]): Block | undefined {
 
 export function flattenTurns(
   turns: Block[][],
-  zen: boolean,
   busy: boolean,
   options: { loadEarlier?: boolean } = {},
 ): TranscriptRows {
@@ -99,8 +91,7 @@ export function flattenTurns(
       durationMs,
       startedAt: userBlock?.startedAt,
     };
-    const items = itemsOf(blocks, zen);
-    const lastGroup = lastActivityIndex(items);
+    const items = itemsOf(blocks);
     items.forEach((item, itemIndex) => {
       if (item.type === "activity") {
         rows.push({
@@ -108,8 +99,7 @@ export function flattenTurns(
           key: item.blocks[0].id,
           turn,
           item,
-          autoOpen: !turn.settled && itemIndex === lastGroup,
-          done: turn.settled || itemIndex < items.length - 1,
+          live: !turn.settled && itemIndex === items.length - 1,
           compactTop: false,
         });
         return;
@@ -119,10 +109,8 @@ export function flattenTurns(
         key: item.block.id,
         turn,
         item,
-        autoOpen: false,
-        done: true,
-        compactTop:
-          zen && items[itemIndex - 1]?.type === "activity" && isProseBlock(item.block),
+        live: false,
+        compactTop: items[itemIndex - 1]?.type === "activity" && isProseBlock(item.block),
       });
     });
     rows.push({ kind: "end", key: `${turn.id}:end`, turn });
@@ -144,8 +132,9 @@ export function flattenTurns(
 
 /** Pixels per wrapped line of prose, and about how many characters fit one. */
 const PROSE_LINE = 24;
-const PROSE_CHARS = 90;
-const ACTIVITY_ROW = 28;
+const PROSE_CHARS = 80;
+/** A group's closed line and an action row share one height. */
+const ACTIVITY_ROW = 32;
 
 /**
  * A row's height before it is measured: close enough that the scrollbar
@@ -156,8 +145,8 @@ export function estimateRowHeight(row: TranscriptRow): number {
   if (row.kind === "end") return row.turn.durationMs != null || row.turn.isLast ? 36 : 0;
   const { item } = row;
   if (item.type === "activity") {
-    // The group folds to its latest call plus a disclosure line.
-    return ACTIVITY_ROW * Math.min(3, 1 + item.blocks.length);
+    // Closed by default: one line, or the lone call's own row.
+    return ACTIVITY_ROW;
   }
   const block = item.block;
   switch (block.role) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Block, ToolPreview } from "./session";
-import { commandPhrases, groupPhrase, humanName, kindOf, toolPhrase } from "./toolPhrase";
+import { commandPhrases, humanName, kindOf, toolPhrase } from "./toolPhrase";
 
 const CWD = "/Users/me/monocode";
 
@@ -181,59 +181,5 @@ describe("commandPhrases", () => {
     expect(commandPhrases(`/bin/zsh -lc 'cd /x && git diff | cat'`)).toEqual(["view the diff"]);
     expect(commandPhrases("FOO=1 env npm run check:web")).toEqual(["run npm run check:web"]);
     expect(commandPhrases("echo hi > out.txt")).toEqual(["write out.txt"]);
-  });
-});
-
-describe("groupPhrase", () => {
-  const read = (p: string, id = p) => call("Read", { file_path: `${CWD}/${p}` }, { id });
-
-  it("folds consecutive reads into one line by folder or project", () => {
-    expect(groupPhrase([read("src/lib/a.ts"), read("src/lib/b.ts"), read("src/lib/c.ts")], CWD)).toBe(
-      "Read 3 files in src/lib",
-    );
-    expect(groupPhrase([read("src/lib/a.ts"), read("README.md")], CWD)).toBe("Read monocode files");
-    expect(groupPhrase([read("src/a.ts")], CWD)).toBe("Read src/a.ts");
-    expect(groupPhrase([read("src/a.ts"), read("src/a.ts", "again")], CWD)).toBe("Read src/a.ts");
-    expect(groupPhrase([read("a.ts"), call("Read", { file_path: "/etc/hosts" })], CWD)).toBe(
-      "Read 2 files",
-    );
-  });
-
-  it("keeps the first two distinct things and counts the rest", () => {
-    const blocks = [
-      read("src/lib/a.ts"),
-      read("src/lib/b.ts"),
-      call("Grep", { pattern: "toolCallLabel" }),
-      call("Bash", { command: "npm test" }),
-      call("mcp__app__app_start_thread", {}),
-    ];
-    expect(groupPhrase(blocks, CWD)).toBe(
-      "Read 2 files in src/lib · Searched for toolCallLabel +2 more",
-    );
-  });
-
-  it("collapses edits, splits runs of reads around them, and marks failures", () => {
-    const edit = (p: string) => call("Edit", { file_path: `${CWD}/${p}` }, { id: `e:${p}` });
-    expect(groupPhrase([edit("a.ts"), edit("b.ts")], CWD)).toBe("Edited 2 files");
-    expect(groupPhrase([read("a.ts"), edit("a.ts"), read("b.ts")], CWD)).toBe(
-      "Read a.ts · Edited a.ts +1 more",
-    );
-    expect(
-      groupPhrase([call("Bash", { command: "npm test" }, { status: "failed" })], CWD),
-    ).toBe("Ran the tests (1 failed)");
-  });
-
-  it("speaks in the present while any call is still running", () => {
-    expect(groupPhrase([read("a.ts"), read("b.ts", "b")], CWD, true)).toBe("Reading monocode files");
-    expect(groupPhrase([call("Grep", { pattern: "x" }, { streaming: true })], CWD)).toBe(
-      "Searching for x",
-    );
-  });
-
-  it("ignores non-tool blocks and says Working for nothing", () => {
-    expect(groupPhrase([{ id: "p", role: "assistant", text: "hi" }])).toBe("");
-    expect(
-      groupPhrase([{ id: "x", role: "tool", text: "Working", tool: { kind: "other", title: "Working" } }]),
-    ).toBe("Ran 1 tool");
   });
 });

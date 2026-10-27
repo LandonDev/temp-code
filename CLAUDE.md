@@ -1400,7 +1400,7 @@ proof and the sizing rules; the pieces, by name:
   `MarkdownCache` that parses rows off the main actor (and a streaming
   row's changed block only, on it: `streamingDocument`), `TranscriptRows`
   (entries → the list's rows: an item, a phase of thinking and tool calls
-  under one line with the live rule (the desktop's zen activity view), a
+  under one line with the live rule (the desktop's former zen activity view), a
   live turn's thinking tail, a settled turn's closing line; stable ids) and
   `ToolPhrase` (the desktop's toolPhrase.ts with `group`, its `groupPhrase`,
   tested); `threads[id].fold`

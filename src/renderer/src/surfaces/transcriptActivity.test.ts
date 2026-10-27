@@ -1,18 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { Block } from "../lib/session";
 import {
-  activityPhaseTitle,
-  activityPreviousLabel,
+  actionGroupOf,
   awaitsUser,
-  buildActivityPhases,
   editVerb,
   groupTurnItems,
   groupTurns,
   isActivityBlock,
-  lastActivityIndex,
-  nestedScrollAbsorbsWheel,
+  liveEditFor,
   proseSummary,
-  splitActivityRows,
+  thoughtEndTs,
   toolCallLabel,
   toolCallState,
   turnCopyText,
@@ -98,68 +95,56 @@ describe("groupTurnItems", () => {
     });
   });
 
-  it("does not split a stack when tools are waiting for approval", () => {
+  it("leaves an undecided approval standing alone, outside the run", () => {
     const items = groupTurnItems([
       shell("a"),
       shell("b", "pending", { requestId: 1 }),
-      shell("c", "pending", { requestId: 2 }),
+      shell("c"),
     ]);
-    expect(items).toHaveLength(1);
-    expect(items[0]?.type).toBe("activity");
-    if (items[0]?.type !== "activity") return;
-    expect(items[0].blocks.map((block) => block.id)).toEqual(["a", "b", "c"]);
+    expect(items.map((item) => item.type)).toEqual(["activity", "block", "activity"]);
   });
 
-  it("still splits around assistant text and file edits", () => {
+  it("splits around assistant text and folds settled edits in", () => {
     const items = groupTurnItems([
       shell("a"),
       { id: "msg", role: "assistant", text: "next I will edit" },
       edit("e"),
-      shell("b", "pending", { requestId: 1 }),
+      shell("b"),
     ]);
-    expect(items.map((item) => item.type)).toEqual([
-      "activity",
-      "block",
-      "block",
-      "activity",
-    ]);
+    expect(items.map((item) => item.type)).toEqual(["activity", "block", "activity"]);
+    if (items[2]?.type !== "activity") return;
+    expect(items[2].blocks.map((block) => block.id)).toEqual(["e", "b"]);
   });
 
-  it("does not split a stack across empty assistant placeholders", () => {
+  it("does not split a run across empty assistant placeholders", () => {
     const items = groupTurnItems([
       shell("a"),
       { id: "ghost", role: "assistant", text: "", streaming: true },
-      shell("b", "pending", { requestId: 1 }),
-      shell("c", "pending", { requestId: 2 }),
+      shell("b"),
+      shell("c", "pending"),
     ]);
     expect(items).toHaveLength(1);
     expect(items[0]?.type).toBe("activity");
     if (items[0]?.type !== "activity") return;
     expect(items[0].blocks.map((block) => block.id)).toEqual(["a", "b", "c"]);
   });
-});
 
-describe("splitActivityRows", () => {
-  it("keeps the latest completed tool as the headline and inserts approvals above the collapsed rest", () => {
-    const rows = splitActivityRows([
-      shell("a"),
-      shell("find"),
-      shell("read", "pending", { requestId: 1 }),
-      shell("run", "pending", { requestId: 2 }),
+  it("keeps one run per paragraph when a thought sits between two calls", () => {
+    const items = groupTurnItems([
+      note("p1", "Looking."),
+      read("a"),
+      thought("t"),
+      shell("b"),
+      note("p2", "Done."),
     ]);
-    expect(rows.latest?.id).toBe("find");
-    expect(rows.pending.map((block) => block.id)).toEqual(["read", "run"]);
-    expect(rows.hidden.map((block) => block.id)).toEqual(["a"]);
+    expect(items.map((item) => item.type)).toEqual(["block", "activity", "block"]);
+    if (items[1]?.type !== "activity") return;
+    expect(items[1].blocks.map((block) => block.id)).toEqual(["a", "t", "b"]);
   });
 
-  it("shows only pending rows when nothing in the stack has finished", () => {
-    const rows = splitActivityRows([
-      shell("read", "pending", { requestId: 1 }),
-      shell("run", "pending", { requestId: 2 }),
-    ]);
-    expect(rows.latest).toBeUndefined();
-    expect(rows.pending.map((block) => block.id)).toEqual(["read", "run"]);
-    expect(rows.hidden).toEqual([]);
+  it("makes a run of thinking alone its own run", () => {
+    const items = groupTurnItems([note("p1", "Hm."), thought("t"), note("p2", "Right.")]);
+    expect(items.map((item) => item.type)).toEqual(["block", "activity", "block"]);
   });
 });
 
@@ -212,9 +197,9 @@ describe("groupTurns", () => {
   });
 });
 
-describe("zen mode grouping", () => {
+describe("runs between paragraphs", () => {
   it("folds edits into the activity stack", () => {
-    const items = groupTurnItems([shell("a"), edit("b"), shell("c")], true);
+    const items = groupTurnItems([shell("a"), edit("b"), shell("c")]);
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
       type: "activity",
@@ -222,19 +207,10 @@ describe("zen mode grouping", () => {
     });
   });
 
-  it("leaves edits as their own blocks when zen is off", () => {
-    const items = groupTurnItems([shell("a"), edit("b"), shell("c")]);
-    expect(items.map((item) => item.type)).toEqual([
-      "activity",
-      "block",
-      "activity",
-    ]);
-  });
-
   it("keeps an edit awaiting approval out of the stack", () => {
     const pending = edit("b");
     pending.approval = { requestId: 1 };
-    const items = groupTurnItems([shell("a"), pending], true);
+    const items = groupTurnItems([shell("a"), pending]);
     expect(items.map((item) => item.type)).toEqual(["activity", "block"]);
   });
 
@@ -249,7 +225,6 @@ describe("zen mode grouping", () => {
         edit("b"),
         { id: "a4", role: "assistant", text: "Released." },
       ],
-      true,
     );
     expect(items.map((item) => item.type)).toEqual([
       "block",
@@ -266,7 +241,7 @@ describe("zen mode grouping", () => {
   });
 
   it("folds a turn of nothing but calls into one group", () => {
-    const items = groupTurnItems([shell("a"), read("b"), edit("c")], true);
+    const items = groupTurnItems([shell("a"), read("b"), edit("c")]);
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({ type: "activity" });
   });
@@ -278,7 +253,6 @@ describe("zen mode grouping", () => {
         { id: "a1", role: "assistant", text: "Half" },
         { id: "a2", role: "assistant", text: "Done", streaming: true },
       ],
-      true,
     );
     expect(items.map((item) => item.type)).toEqual([
       "activity",
@@ -290,16 +264,7 @@ describe("zen mode grouping", () => {
   it("leaves a paragraph full size when the turn ends on a tool call", () => {
     const items = groupTurnItems(
       [{ id: "a1", role: "assistant", text: "Looking now." }, shell("a")],
-      true,
     );
-    expect(items.map((item) => item.type)).toEqual(["block", "activity"]);
-  });
-
-  it("leaves prose alone when zen is off", () => {
-    const items = groupTurnItems([
-      { id: "a1", role: "assistant", text: "Looking now." },
-      shell("a"),
-    ]);
     expect(items.map((item) => item.type)).toEqual(["block", "activity"]);
   });
 
@@ -310,7 +275,6 @@ describe("zen mode grouping", () => {
         shell("a"),
         { id: "done", role: "assistant", text: "Done." },
       ],
-      true,
     );
     expect(items.map((item) => item.type)).toEqual(["activity", "block"]);
     if (items[0]?.type !== "activity") return;
@@ -328,7 +292,6 @@ describe("zen mode grouping", () => {
         { id: "r2", role: "reasoning", text: "Another thought." },
         { id: "p2", role: "assistant", text: "Something else." },
       ],
-      true,
     );
     expect(items.map((item) => (item.type === "block" ? item.block.id : "activity"))).toEqual([
       "p",
@@ -339,18 +302,9 @@ describe("zen mode grouping", () => {
     expect(items[1].blocks.map((block) => block.id)).toEqual(["a", "r2"]);
   });
 
-  it("drops thinking entirely when zen is off", () => {
-    const items = groupTurnItems([
-      { id: "r", role: "reasoning", text: "thinking" },
-      shell("a"),
-    ]);
-    expect(items).toHaveLength(1);
-    if (items[0]?.type !== "activity") return;
-    expect(items[0].blocks.map((block) => block.id)).toEqual(["a"]);
-  });
 });
 
-describe("zen mode around a question", () => {
+describe("around a question", () => {
   const question = (id: string, answers?: string[][]): Block => ({
     id,
     role: "tool",
@@ -370,7 +324,6 @@ describe("zen mode around a question", () => {
     expect(wall.length).toBeGreaterThan(2000);
     const items = groupTurnItems(
       [shell("a"), read("b"), note("c", wall), question("q")],
-      true,
     );
     expect(shape(items)).toEqual(["activity(a,b)", "block(c)", "block(q)"]);
   });
@@ -385,7 +338,6 @@ describe("zen mode around a question", () => {
         read("e"),
         note("f", "Done."),
       ],
-      true,
     );
     expect(shape(items)).toEqual([
       "activity(a)",
@@ -394,7 +346,6 @@ describe("zen mode around a question", () => {
       "activity(d,e)",
       "block(f)",
     ]);
-    expect(lastActivityIndex(items)).toBe(3);
   });
 
   it("keeps the prose after the question full size too", () => {
@@ -406,7 +357,6 @@ describe("zen mode around a question", () => {
         shell("e"),
         note("f", "Done."),
       ],
-      true,
     );
     expect(shape(items)).toEqual([
       "block(c)",
@@ -418,175 +368,15 @@ describe("zen mode around a question", () => {
   });
 
   it("changes nothing for a turn without a question", () => {
-    const items = groupTurnItems([shell("a"), read("b"), note("c", wall)], true);
+    const items = groupTurnItems([shell("a"), read("b"), note("c", wall)]);
     expect(shape(items)).toEqual(["activity(a,b)", "block(c)"]);
   });
 
   it("treats an approval still waiting on the user like a question", () => {
     const items = groupTurnItems(
       [shell("a"), note("c", wall), shell("p", "pending", { requestId: 1 })],
-      true,
     );
     expect(shape(items)).toEqual(["activity(a)", "block(c)", "block(p)"]);
-  });
-});
-
-describe("activityPreviousLabel", () => {
-  it("counts what is waiting behind the disclosure", () => {
-    expect(activityPreviousLabel(1)).toBe("+1 previous tool call");
-    expect(activityPreviousLabel(4)).toBe("+4 previous tool calls");
-  });
-});
-
-describe("buildActivityPhases", () => {
-  it("groups a run of calls by the kind of work, keyed on its first step", () => {
-    const phases = buildActivityPhases([
-      search("s1"),
-      read("r1", "src/globals.css"),
-      read("r2", "src/layout.tsx"),
-      edit("e1", "src/globals.css"),
-      edit("e2", "src/theme.ts"),
-    ]);
-    expect(phases).toHaveLength(2);
-    expect(phases[0]).toMatchObject({ id: "s1", kind: "research" });
-    expect(phases[0].steps.map((block) => block.id)).toEqual([
-      "s1",
-      "r1",
-      "r2",
-    ]);
-    expect(phases[1]).toMatchObject({ id: "e1", kind: "edit" });
-    expect(phases[1].steps.map((block) => block.id)).toEqual(["e1", "e2"]);
-  });
-
-  it("starts a group when the work changes shape, narrated or not", () => {
-    const phases = buildActivityPhases([
-      read("r1", "a.ts"),
-      read("r2", "b.ts"),
-      edit("e1", "a.ts"),
-      edit("e2", "b.ts"),
-    ]);
-    expect(phases.map((phase) => phase.kind)).toEqual(["research", "edit"]);
-  });
-
-  it("folds a lone uninvited call into the group before it", () => {
-    const phases = buildActivityPhases([
-      edit("e1", "a.ts"),
-      read("r1", "a.ts"),
-      edit("e2", "b.ts"),
-    ]);
-    expect(phases).toHaveLength(1);
-    expect(phases[0].kind).toBe("edit");
-    expect(phases[0].steps.map((block) => block.id)).toEqual([
-      "e1",
-      "r1",
-      "e2",
-    ]);
-  });
-
-  it("gives a turn that only thought a group to sit in", () => {
-    const phases = buildActivityPhases([thought("r")]);
-    expect(phases).toHaveLength(1);
-    expect(phases[0]).toMatchObject({ id: "r", kind: "think" });
-    expect(phases[0].steps.map((block) => block.id)).toEqual(["r"]);
-  });
-
-  it("keeps reasoning inside the group instead of titling it", () => {
-    const phases = buildActivityPhases([
-      thought("t1"),
-      search("s1"),
-      thought("t2"),
-      search("s2"),
-    ]);
-    expect(phases).toHaveLength(1);
-    expect(phases[0]).toMatchObject({ id: "t1", kind: "research" });
-    expect(phases[0].steps.map((block) => block.id)).toEqual([
-      "t1",
-      "s1",
-      "t2",
-      "s2",
-    ]);
-  });
-
-  it("moves a thought at the end of a group into the group it introduced", () => {
-    const phases = buildActivityPhases([
-      read("r1", "a.ts"),
-      read("r2", "b.ts"),
-      thought("t1", "Now to apply the change."),
-      edit("e1", "a.ts"),
-      edit("e2", "b.ts"),
-    ]);
-    expect(phases.map((phase) => phase.kind)).toEqual(["research", "edit"]);
-    expect(phases[0].steps.map((block) => block.id)).toEqual(["r1", "r2"]);
-    expect(phases[1].steps.map((block) => block.id)).toEqual([
-      "t1",
-      "e1",
-      "e2",
-    ]);
-  });
-
-  it("never carries a headline: prose stands outside every group", () => {
-    const phases = buildActivityPhases([thought("t1"), search("s1")]);
-    expect(phases).toHaveLength(1);
-    expect(phases[0]).not.toHaveProperty("headline");
-  });
-});
-
-describe("activityPhaseTitle", () => {
-  const title = (blocks: Block[], live = false) =>
-    activityPhaseTitle(buildActivityPhases(blocks)[0], live);
-
-  it("says Thinking or Thought for a group that only reasoned", () => {
-    expect(title([thought("t1"), thought("t2")], true)).toBe("Thinking");
-    expect(title([thought("t1"), thought("t2")])).toBe("Thought");
-  });
-
-  it("counts failures in the line", () => {
-    expect(title([shell("a"), shell("b", "failed")])).toBe(
-      "Listed files (1 failed)",
-    );
-  });
-
-  it("says what the calls add up to, in the tense of the moment", () => {
-    expect(title([read("r1", "a.ts"), read("r2", "b.ts")], true)).toBe(
-      "Reading 2 files",
-    );
-    expect(title([read("r1", "a.ts"), read("r2", "b.ts")])).toBe(
-      "Read 2 files",
-    );
-    expect(title([read("r1", "src/index.css")])).toBe("Read src/index.css");
-    expect(title([search("s1"), search("s2")])).toBe("Searched for color tokens");
-    expect(title([search("s1"), read("r1")])).toBe(
-      "Searched for color tokens · Read src/App.tsx",
-    );
-    expect(title([edit("e1", "a.ts"), edit("e2", "b.ts")])).toBe(
-      "Edited 2 files",
-    );
-    expect(title([shell("a"), shell("b")])).toBe("Listed files");
-    expect(title([shell("a")], true)).toBe("Listing files");
-  });
-});
-
-describe("lastActivityIndex", () => {
-  it("points at the last group of the turn", () => {
-    const items = groupTurnItems(
-      [
-        { id: "u", role: "user", text: "go" },
-        shell("a"),
-        { id: "p", role: "plan", text: "## Plan" },
-        shell("b"),
-        { id: "done", role: "assistant", text: "Done." },
-      ],
-      true,
-    );
-    expect(lastActivityIndex(items)).toBe(3);
-  });
-
-  it("returns -1 for a turn that ran no tools", () => {
-    expect(
-      lastActivityIndex(
-        groupTurnItems([{ id: "a", role: "assistant", text: "Hi." }], true),
-      ),
-    ).toBe(-1);
   });
 });
 
@@ -651,37 +441,6 @@ describe("editVerb", () => {
   });
 });
 
-describe("nestedScrollAbsorbsWheel", () => {
-  const overflowing = {
-    scrollTop: 40,
-    scrollHeight: 200,
-    clientHeight: 80,
-  };
-
-  it("lets the parent handle the wheel when the list does not overflow", () => {
-    expect(
-      nestedScrollAbsorbsWheel(
-        { scrollTop: 0, scrollHeight: 80, clientHeight: 80 },
-        -20,
-      ),
-    ).toBe(false);
-  });
-
-  it("consumes scrolling that still has room inside the list", () => {
-    expect(nestedScrollAbsorbsWheel(overflowing, -20)).toBe(true);
-    expect(nestedScrollAbsorbsWheel(overflowing, 20)).toBe(true);
-  });
-
-  it("releases the wheel at the edges so the transcript can take over", () => {
-    expect(
-      nestedScrollAbsorbsWheel({ ...overflowing, scrollTop: 0 }, -20),
-    ).toBe(false);
-    expect(
-      nestedScrollAbsorbsWheel({ ...overflowing, scrollTop: 120 }, 20),
-    ).toBe(false);
-  });
-});
-
 describe("proseSummary", () => {
   it("reduces a paragraph to one plain line", () => {
     expect(
@@ -712,8 +471,6 @@ describe("awaitsUser / toolCallState", () => {
     expect(awaitsUser(question("q", [["a"]]))).toBe(false);
     expect(awaitsUser(shell("a", "pending", { requestId: 1 }))).toBe(true);
     expect(awaitsUser(shell("a", "pending", { requestId: 1, decided: "allow" }))).toBe(false);
-    const rows = splitActivityRows([shell("a"), question("q")]);
-    expect(rows.pending.map((b) => b.id)).toEqual(["q"]);
   });
 
   it("an auto-denied approval reads as denied, not accepted", () => {
@@ -746,5 +503,96 @@ describe("html_render rows", () => {
     expect(done.map((item) => item.type)).toEqual(["activity", "block", "activity"]);
     expect(isActivityBlock(page("completed"))).toBe(false);
     expect(isActivityBlock(page("running"))).toBe(true);
+  });
+});
+
+describe("actionGroupOf", () => {
+  const CWD = "/r";
+  const lines = (n: number) => Array.from({ length: n }, (_, i) => `l${i}`).join("\n");
+  const write = (id: string, path: string, n: number, status = "completed"): Block => ({
+    id,
+    role: "tool",
+    text: "Write",
+    tool: { callId: id, name: "Write", kind: "edit", status, input: { file_path: `${CWD}/${path}`, content: lines(n) } },
+  });
+  const change = (id: string, path: string, adds: number, dels: number, status = "completed"): Block => ({
+    id,
+    role: "tool",
+    text: "Edit",
+    tool: {
+      callId: id,
+      name: "Edit",
+      kind: "edit",
+      status,
+      input: { file_path: `${CWD}/${path}`, old_string: lines(dels), new_string: lines(adds) },
+    },
+  });
+  const bash = (id: string, command: string, status = "completed"): Block => ({
+    id,
+    role: "tool",
+    text: command,
+    tool: { callId: id, name: "Bash", kind: "execute", status, input: { command } },
+  });
+
+  it("sums every edit's counts and names the dominant kind", () => {
+    const g = actionGroupOf(
+      [read("r", `${CWD}/src/types.ts`), write("w", "diag.ts", 46), bash("b", "npx convex dev --once"), change("e", "schema.ts", 3, 1)],
+      { cwd: CWD },
+    );
+    expect(g).toMatchObject({ kind: "edit", adds: 49, dels: 1, failed: 0, lone: null });
+    expect(g.phrase).toBe("Read types.ts, created diag.ts, ran convex and 1 more");
+  });
+
+  it("breaks a tie towards the kind earlier in edit, run, research, other", () => {
+    expect(actionGroupOf([read("r"), bash("b", "ls")]).kind).toBe("run");
+    expect(actionGroupOf([read("r"), read("s"), bash("b", "ls")]).kind).toBe("research");
+  });
+
+  it("is a lone row for one call, and says Thought for a run of thinking", () => {
+    const one = read("r");
+    expect(actionGroupOf([one]).lone).toBe(one);
+    expect(actionGroupOf([thought("t"), one]).lone).toBeNull();
+    expect(actionGroupOf([thought("t")])).toMatchObject({ kind: "think", phrase: "Thought", lone: null });
+    expect(actionGroupOf([thought("t")], { live: true }).phrase).toBe("Thinking");
+  });
+
+  it("takes a running edit's counts from the live edit by path", () => {
+    const g = actionGroupOf([change("e", "src/schema.ts", 1, 0, "running")], {
+      cwd: CWD,
+      live: true,
+      liveEdits: {
+        "src/schema.ts": { path: "src/schema.ts", kind: "changed", adds: 12, dels: 4, diff: null, state: "editing", startedTs: 0, ts: 0 },
+      },
+    });
+    expect(g).toMatchObject({ adds: 12, dels: 4 });
+    expect(g.phrase).toBe("Editing schema.ts");
+  });
+
+  it("counts failed and denied calls", () => {
+    expect(actionGroupOf([bash("a", "npm test", "failed"), shell("b", "cancelled", { requestId: 1, decided: "deny" }), bash("c", "ls")]).failed).toBe(2);
+  });
+});
+
+describe("liveEditFor", () => {
+  const rec = (path: string) => ({ path, kind: "changed" as const, diff: null, state: "editing" as const, startedTs: 0, ts: 0 });
+  it("matches by path, then by suffix either way", () => {
+    expect(liveEditFor("a/b.ts", { "a/b.ts": rec("a/b.ts") })?.path).toBe("a/b.ts");
+    expect(liveEditFor("/r/a/b.ts", { x: rec("a/b.ts") })?.path).toBe("a/b.ts");
+    expect(liveEditFor("b.ts", { x: rec("a/b.ts") })?.path).toBe("a/b.ts");
+    expect(liveEditFor("c.ts", { x: rec("a/b.ts") })).toBeUndefined();
+    expect(liveEditFor("", { x: rec("a/b.ts") })).toBeUndefined();
+  });
+});
+
+describe("thoughtEndTs", () => {
+  it("is the thought's own end, else the next step's start", () => {
+    const blocks: Block[] = [
+      { ...thought("t1"), ts: 1, doneTs: 5 },
+      { ...thought("t2"), ts: 6 },
+      { ...shell("a"), ts: 9 },
+    ];
+    expect(thoughtEndTs(blocks, 0)).toBe(5);
+    expect(thoughtEndTs(blocks, 1)).toBe(9);
+    expect(thoughtEndTs([thought("t")], 0)).toBeUndefined();
   });
 });

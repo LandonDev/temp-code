@@ -9,7 +9,7 @@ the phone's rules in docs/IOS-DESIGN.md "Performance".
 The window and `RowView` live in AgentTranscript.tsx; every row component
 lives under `surfaces/transcript/`, one file per area with its owner named
 in the first line: TranscriptBlock (the per-block switch), UserMessage,
-ActivityGroup and ActivityPhases (A7, turn structure); ActivityRow and
+ActionGroup (A7, turn structure); ActivityRow and
 ToolCall (A8, action rows); ThinkingRow, TurnEnd, SystemRow, NoticeRow
 (every typed notice through one switch), Approval and markdown.css (A9).
 `transcript/types.ts` holds the callback types, so nothing under
@@ -18,8 +18,10 @@ ToolCall (A8, action rows); ThinkingRow, TurnEnd, SystemRow, NoticeRow
 ## Rules
 
 - **Rows are the unit.** The thread is a flat list of rows
-  (`surfaces/transcriptRows.ts`): one per turn item (a block, or a group of
-  tool calls folded behind "+N previous"), one closing row per turn (its
+  (`surfaces/transcriptRows.ts`): one per turn item (a block, or a group:
+  every action between two paragraphs, thinking included, one muted line
+  closed by default, live or settled, that opens into one list; a group of
+  one call is that call's own row), one closing row per turn (its
   duration line, the live timer, the thinking tail), and a `more` row at
   the top for the remote profile's "Load earlier messages". A row is keyed
   by the id of its first block, so it keeps its identity as the window

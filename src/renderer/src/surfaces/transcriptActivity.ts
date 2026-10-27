@@ -8,7 +8,11 @@ import {
 } from "../lib/harness/preview";
 import { displayPath } from "../lib/paths";
 import type { Block } from "../lib/session";
-import { groupPhrase, kindOf, toolPhrase } from "../lib/toolPhrase";
+import type { LiveEditState } from "../lib/tcserver/store";
+import { groupPhrase } from "../lib/groupPhrase";
+import { kindOf, toolPhrase } from "../lib/toolPhrase";
+import { editModel, isEditBlock } from "./editModel";
+import { splitEditCards } from "./editCards";
 import { htmlRenderOf } from "./htmlRenderBlock";
 
 export type ToolCallState = "pending" | "accepted" | "rejected";
@@ -114,11 +118,11 @@ export function isHiddenTool(block: Block): boolean {
 }
 
 /**
- * Zen mode folds edits in with the reads and searches. An edit still awaiting
- * approval stays out: you cannot judge a diff you cannot see.
+ * A step that folds into a run of actions: a call, or a thought. An edit
+ * still awaiting approval stays out: you cannot judge a diff you cannot see.
  */
-export function isActivityBlock(block: Block, zen = false): boolean {
-  if (zen && isThinkingBlock(block)) return true;
+export function isActivityBlock(block: Block): boolean {
+  if (isThinkingBlock(block)) return true;
   if (block.role !== "tool" && block.role !== "approval") return false;
   if (isHtmlRenderBlock(block)) return false;
   if (
@@ -127,14 +131,14 @@ export function isActivityBlock(block: Block, zen = false): boolean {
       block.text || block.tool?.title,
       block.tool?.preview,
     ) &&
-    (!zen || needsApproval(block))
+    needsApproval(block)
   ) {
     return false;
   }
   return !isHiddenTool(block);
 }
 
-/** Reasoning the agent streams while it works. Zen shows it, nothing else does. */
+/** Reasoning the agent streams while it works: a step in the run it sits in. */
 export function isThinkingBlock(block: Block): boolean {
   return block.role === "reasoning" && !!block.text.trim();
 }
@@ -150,7 +154,7 @@ export function isProseBlock(block: Block): boolean {
 
 /**
  * A block that hands the turn to the user: a question, answered or not, and
- * an approval still undecided. Zen renders it full size where it sits, never
+ * an approval still undecided. It renders full size where it sits, never
  * as a step inside a folded group, so what it asks stays readable.
  */
 export function endsWork(block: Block): boolean {
@@ -211,16 +215,17 @@ export function groupTurns(blocks: Block[]): Block[][] {
 }
 
 /**
- * Zen never folds what the agent said: every paragraph stands full size where
- * it streamed, and each run of tool calls between two paragraphs folds into
- * one activity group. Thinking rides inside the group it precedes.
+ * A turn's items: every paragraph stands full size where it streamed, and
+ * everything between two paragraphs (calls, settled edits, thinking) folds
+ * into one run. A question or an undecided approval breaks the run and
+ * stands alone.
  */
-export function groupTurnItems(blocks: Block[], zen = false): TurnItem[] {
+export function groupTurnItems(blocks: Block[]): TurnItem[] {
   const visible = blocks.filter(
     (block, index) =>
-      !isIgnoredTurnBlock(block, zen) &&
+      !isIgnoredTurnBlock(block) &&
       (isTodoBlock(block) || isHtmlRenderBlock(block) || !isHiddenTool(block)) &&
-      !(zen && repeatsNextProse(blocks, index)),
+      !repeatsNextProse(blocks, index),
   );
   const items: TurnItem[] = [];
   let activity: Block[] = [];
@@ -234,8 +239,8 @@ export function groupTurnItems(blocks: Block[], zen = false): TurnItem[] {
     const folds =
       !isTodoBlock(block) &&
       !isHtmlRenderBlock(block) &&
-      !(zen && endsWork(block)) &&
-      isActivityBlock(block, zen);
+      !endsWork(block) &&
+      isActivityBlock(block);
     if (folds) {
       activity.push(block);
       continue;
@@ -261,10 +266,9 @@ export function isHtmlRenderBlock(block: Block): boolean {
   return htmlRenderOf(block) !== null;
 }
 
-function isIgnoredTurnBlock(block: Block, zen: boolean): boolean {
-  // Zen keeps thinking as a step in the group, so a long think does not read
-  // as the agent having stalled. Everywhere else it stays out of the transcript.
-  if (block.role === "reasoning") return !zen || !block.text.trim();
+/** Empty reasoning and empty prose (a stream's placeholder) take no row. */
+function isIgnoredTurnBlock(block: Block): boolean {
+  if (block.role === "reasoning") return !block.text.trim();
   return block.role === "assistant" && !block.text.trim();
 }
 
@@ -298,55 +302,10 @@ export function turnCopyText(blocks: Block[]): string {
 }
 
 /**
- * Rows for the live stack: the newest finished call holds the line, anything
- * waiting on you sits under it, and the rest waits behind the disclosure.
- */
-export function splitActivityRows(blocks: Block[]): {
-  latest?: Block;
-  pending: Block[];
-  hidden: Block[];
-} {
-  const pending = blocks.filter(awaitsUser);
-  const completed = blocks.filter((block) => !awaitsUser(block));
-  const latest = completed[completed.length - 1];
-  return {
-    latest,
-    pending,
-    hidden: latest ? completed.slice(0, -1) : [],
-  };
-}
-
-/** The turn's last activity group: the one still live while the turn runs. */
-export function lastActivityIndex(items: TurnItem[]): number {
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    if (items[index].type === "activity") return index;
-  }
-  return -1;
-}
-
-export function activityPreviousLabel(count: number): string {
-  return `+${count} previous ${count === 1 ? "tool call" : "tool calls"}`;
-}
-
-/**
  * What a run of tool calls was for. Reads and searches are one thing — looking
  * around — so a grep followed by the file it turned up stays one group.
  */
 export type ActivityWorkKind = "research" | "edit" | "run" | "other";
-
-/** A work kind, or a group the agent only thought in. */
-export type ActivityPhaseKind = ActivityWorkKind | "think";
-
-/**
- * One chunk of a turn: a run of calls of one kind, with the thinking that
- * led into them. The prose around a group never joins it; it stands full
- * size in the transcript, before and after.
- */
-export type ActivityPhase = {
-  id: string;
-  kind: ActivityPhaseKind;
-  steps: Block[];
-};
 
 /** Ties break towards the kind that changed the most: an edit outranks a read. */
 const WORK_KIND_ORDER: ActivityWorkKind[] = [
@@ -367,75 +326,6 @@ export function toolCategory(block: Block): ActivityWorkKind {
   return "other";
 }
 
-/**
- * Splits a turn's activity into groups: one per kind of work, so a run of
- * reads followed by a run of edits reads as two things. Thinking is a step,
- * never a header, and a thought at the end of a group moves into the group
- * it introduced.
- */
-export function buildActivityPhases(blocks: Block[]): ActivityPhase[] {
-  const phases: ActivityPhase[] = [];
-  let current: ActivityPhase | undefined;
-
-  const open = (kind: ActivityPhaseKind) => {
-    current = { id: "", kind, steps: [] };
-    phases.push(current);
-    return current;
-  };
-
-  for (const block of blocks) {
-    if (isThinkingBlock(block)) {
-      if (!current) current = open("think");
-      current.steps.push(block);
-      if (!current.id) current.id = block.id;
-      continue;
-    }
-    const kind = toolCategory(block);
-    if (!current) {
-      current = open(kind);
-    } else if (current.kind === "think") {
-      // A group that opened on a thought takes the shape of the work after it.
-      current.kind = kind;
-    } else if (current.kind !== kind) {
-      const trailing = takeTrailingNarration(current);
-      current = open(kind);
-      current.steps.push(...trailing);
-      if (trailing[0]) current.id = trailing[0].id;
-    }
-    current.steps.push(block);
-    if (!current.id) current.id = block.id;
-  }
-
-  return absorbStrayPhases(phases);
-}
-
-/** The run of thinking a group ends on, lifted out of it. */
-function takeTrailingNarration(phase: ActivityPhase): Block[] {
-  let cut = phase.steps.length;
-  while (cut > 0 && !isToolBlock(phase.steps[cut - 1])) cut -= 1;
-  return phase.steps.splice(cut);
-}
-
-/**
- * A single call of another kind — the read wedged between two edits, the test
- * run after them — folds back into the group before it rather than taking a
- * header of its own.
- */
-function absorbStrayPhases(phases: ActivityPhase[]): ActivityPhase[] {
-  const kept: ActivityPhase[] = [];
-  for (const phase of phases) {
-    const previous = kept[kept.length - 1];
-    const stray = phase.steps.filter(isToolBlock).length === 1;
-    if (previous && stray && previous.steps.length > 0) {
-      previous.steps.push(...phase.steps);
-      previous.kind = dominantWorkKind(previous.steps) ?? previous.kind;
-      continue;
-    }
-    kept.push(phase);
-  }
-  return kept;
-}
-
 function dominantWorkKind(steps: Block[]): ActivityWorkKind | undefined {
   const counts = new Map<ActivityWorkKind, number>();
   for (const block of steps) {
@@ -451,27 +341,69 @@ function dominantWorkKind(steps: Block[]): ActivityWorkKind | undefined {
   return best;
 }
 
-/**
- * The group's header: what the calls add up to in plain words — "Read 3 files
- * in src/lib · Searched for tokens" — in the present tense while the group is
- * still running. A group that only thought says so.
- */
-export function activityPhaseTitle(
-  phase: ActivityPhase,
-  live = false,
-  cwd?: string,
-): string {
-  if (phase.kind === "think") return live ? "Thinking" : "Thought";
-  return groupPhrase(phase.steps, cwd, live) || (live ? "Working" : "Worked");
+/** The glyph a run leads with: its dominant kind of work, or think. */
+export type ActionGroupKind = ActivityWorkKind | "think";
+
+/** What a run of actions adds up to, for its one line. */
+export type ActionGroup = {
+  kind: ActionGroupKind;
+  phrase: string;
+  /** Lines added and removed over every edit in the run. */
+  adds: number;
+  dels: number;
+  /** Calls that failed or were denied. */
+  failed: number;
+  /** The run is one call: that call's own row, no line above it. */
+  lone: Block | null;
+};
+
+/** A running edit's server-side record, by the same suffix match EditRow uses. */
+export function liveEditFor(
+  path: string,
+  liveEdits: Record<string, LiveEditState> | undefined,
+): LiveEditState | undefined {
+  if (!path || !liveEdits) return undefined;
+  return (
+    liveEdits[path] ??
+    Object.values(liveEdits).find((r) => path.endsWith("/" + r.path) || r.path.endsWith("/" + path))
+  );
 }
 
-/** True when a nested scroller should consume this wheel, not the parent. */
-export function nestedScrollAbsorbsWheel(
-  el: { scrollTop: number; scrollHeight: number; clientHeight: number },
-  deltaY: number,
-): boolean {
-  if (el.scrollHeight <= el.clientHeight + 1) return false;
-  const atTop = el.scrollTop <= 0;
-  const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
-  return (deltaY < 0 && !atTop) || (deltaY > 0 && !atBottom);
+export function actionGroupOf(
+  blocks: Block[],
+  { cwd, live = false, liveEdits }: { cwd?: string; live?: boolean; liveEdits?: Record<string, LiveEditState> } = {},
+): ActionGroup {
+  const tools = blocks.filter(isToolBlock);
+  let adds = 0;
+  let dels = 0;
+  for (const block of tools) {
+    if (!isEditBlock(block)) continue;
+    const running = toolCallState(block) === "pending";
+    for (const card of splitEditCards(block).cards) {
+      const m = editModel(card);
+      const rec = running ? liveEditFor(m.path, liveEdits) : undefined;
+      adds += rec?.adds ?? m.adds;
+      dels += rec?.dels ?? m.dels;
+    }
+  }
+  const kind = dominantWorkKind(blocks) ?? "think";
+  const phrase =
+    kind === "think"
+      ? live ? "Thinking" : "Thought"
+      : groupPhrase(blocks, cwd, live) || (live ? "Working" : "Worked");
+  return {
+    kind,
+    phrase,
+    adds,
+    dels,
+    failed: tools.filter((b) => toolCallState(b) === "rejected").length,
+    lone: blocks.length === 1 && tools.length === 1 ? blocks[0] : null,
+  };
+}
+
+/** When a thought in a run settled: its own end, else the next step's start. */
+export function thoughtEndTs(blocks: Block[], index: number): number | undefined {
+  const block = blocks[index];
+  if (block?.doneTs != null) return block.doneTs;
+  return blocks.slice(index + 1).find((b) => b.ts != null)?.ts;
 }

@@ -1,12 +1,12 @@
 import type { Block } from "./session";
-import { displayPath, projectName } from "./paths";
+import { displayPath } from "./paths";
 
 const last = <T,>(xs: T[]): T | undefined => xs[xs.length - 1];
 
 /**
  * Plain words for a tool call: "Read src/lib/paths.ts", "Searched for
- * toolCallLabel", "Ran the tests", "Used Create Thread". The row and the
- * settled group header both come from here. Raw tool names, JSON and
+ * toolCallLabel", "Ran the tests", "Used Create Thread". The row comes from here;
+ * the group line builds on it (lib/groupPhrase.ts). Raw tool names, JSON and
  * provider names never make it into the line; the body keeps the detail.
  */
 
@@ -132,7 +132,8 @@ export function humanName(name: string): string {
   );
 }
 
-function pathOf(block: Block): string {
+/** The file a call names, from its input or the server's preview. */
+export function pathOf(block: Block): string {
   const i = inputOf(block);
   return (
     str(i.file_path) ||
@@ -158,7 +159,8 @@ function commandOf(block: Block): string {
   return title.replace(/^(bash|shell|run(?:ning)?(?:\s+command)?)\b[:\s]*/i, "");
 }
 
-function isLive(block: Block): boolean {
+/** Still running, streaming or waiting on a decision. */
+export function isLive(block: Block): boolean {
   const status = block.tool?.status?.toLowerCase() ?? "";
   return (
     !!block.streaming ||
@@ -557,86 +559,4 @@ export function toolPhrase(block: Block, cwd?: string, live = isLive(block)): st
       return `${live ? "Using" : "Used"} ${humanName(name)}`;
     }
   }
-}
-
-function isFailed(block: Block): boolean {
-  const s = block.tool?.status?.toLowerCase() ?? "";
-  return s === "failed" || s === "error" || block.approval?.decided === "deny";
-}
-
-/** Shared folder of a set of cwd-relative paths, "" at the project root. */
-function commonDir(paths: string[]): string {
-  const dirs = paths.map((p) => p.split("/").slice(0, -1));
-  let shared = dirs[0] ?? [];
-  for (const d of dirs.slice(1)) {
-    let n = 0;
-    while (n < shared.length && n < d.length && shared[n] === d[n]) n++;
-    shared = shared.slice(0, n);
-  }
-  return shared.join("/");
-}
-
-function readsPhrase(paths: string[], cwd: string | undefined, live: boolean): string {
-  const verb = live ? "Reading" : "Read";
-  const rel = paths.map((p) => displayPath(p, cwd));
-  if (rel.length === 1) return `${verb} ${rel[0]}`;
-  const inside = cwd ? rel.every((p) => !p.startsWith("/") && !p.startsWith("~")) : false;
-  if (!inside) return `${verb} ${rel.length} files`;
-  const dir = commonDir(rel);
-  return dir
-    ? `${verb} ${rel.length} files in ${dir}`
-    : `${verb} ${projectName(cwd!)} files`;
-}
-
-/**
- * One line for a run of calls: consecutive reads fold into "Read 3 files in
- * src/lib" (or "Read MonoCode files" across the project), edits into "Edited
- * 2 files", and the first two distinct phrases lead, "+N more" behind them.
- */
-export function groupPhrase(blocks: Block[], cwd?: string, live?: boolean): string {
-  const tools = blocks.filter((b) => b.role === "tool" || b.role === "approval");
-  if (tools.length === 0) return "";
-  const running = live ?? tools.some(isLive);
-  const phrases: string[] = [];
-  const push = (p: string): void => {
-    if (p && !phrases.includes(p)) phrases.push(p);
-  };
-  let reads: string[] = [];
-  let edits: string[] = [];
-  const flushReads = (): void => {
-    if (reads.length) push(readsPhrase([...new Set(reads)], cwd, running));
-    reads = [];
-  };
-  const flushEdits = (): void => {
-    const unique = [...new Set(edits)];
-    if (unique.length === 1) push(`${running ? "Editing" : "Edited"} ${displayPath(unique[0], cwd)}`);
-    else if (unique.length > 1) push(`${running ? "Editing" : "Edited"} ${unique.length} files`);
-    edits = [];
-  };
-  for (const b of tools) {
-    const kind = kindOf(b);
-    const path = pathOf(b);
-    if (kind === "read" && path) {
-      flushEdits();
-      reads.push(path);
-      continue;
-    }
-    if ((kind === "edit" || kind === "write" || kind === "patch") && path) {
-      flushReads();
-      edits.push(path);
-      continue;
-    }
-    flushReads();
-    flushEdits();
-    push(toolPhrase(b, cwd, running));
-  }
-  flushReads();
-  flushEdits();
-  const failed = tools.filter(isFailed).length;
-  const extra = phrases.length - 2;
-  let line = phrases.slice(0, 2).map((p) => trim(p, 48)).join(" · ");
-  if (!line) line = running ? "Working" : `Ran ${tools.length} ${tools.length === 1 ? "tool" : "tools"}`;
-  if (extra > 0) line += ` +${extra} more`;
-  if (failed) line += ` (${failed} failed)`;
-  return line;
 }

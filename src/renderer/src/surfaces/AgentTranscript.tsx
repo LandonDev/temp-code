@@ -28,7 +28,6 @@ import { usePaneVisible } from "../hooks/paneVisibility";
 import { saveTranscriptScroll, takeTranscriptScroll, type TranscriptScrollMemory } from "../lib/transcriptScrollMemory";
 import { blockForSeq, pendingTranscriptJump, subscribeTranscriptJump, takeTranscriptJump } from "../lib/transcriptJump";
 import { useTranscriptLayout } from "../hooks/useTranscriptLayout";
-import { useTranscriptZen } from "../hooks/useTranscriptZen";
 import { useTranscriptAnchor } from "../hooks/useTranscriptAnchor";
 import { useTranscriptSelection } from "../hooks/useTranscriptSelection";
 import type { TranscriptLayout } from "../lib/appearance";
@@ -38,8 +37,7 @@ import { TranscriptSessionContext } from "./transcriptSession";
 import { TranscriptSelectionMenu } from "./TranscriptSelectionMenu";
 import { groupTurns } from "./transcriptActivity";
 import { TurnEnd } from "./transcript/TurnEnd";
-import { ActivityPhases } from "./transcript/ActivityPhases";
-import { ActivityGroup } from "./transcript/ActivityGroup";
+import { ActionGroup } from "./transcript/ActionGroup";
 import { TranscriptBlock } from "./transcript/TranscriptBlock";
 import { TurnStamp } from "./transcript/UserMessage";
 /*
@@ -181,7 +179,6 @@ export function AgentTranscript({
     onAddToChat !== undefined,
   );
   const transcriptLayout = useTranscriptLayout();
-  const zen = useTranscriptZen();
   const promptAnchor = useTranscriptAnchor();
   const lastUserId = lastUserBlockId(blocks);
   const setShowJump = useCallback(
@@ -539,8 +536,8 @@ export function AgentTranscript({
   // lands above; the reader's anchor row keeps them where they were.
   const moreHistory = !!sessionId && sessionStore.hasOlderHistory(sessionId);
   const { rows, rowOfBlock } = useMemo(
-    () => flattenTurns(turns, zen, !!busy, { loadEarlier: moreHistory }),
-    [turns, zen, busy, moreHistory],
+    () => flattenTurns(turns, !!busy, { loadEarlier: moreHistory }),
+    [turns, busy, moreHistory],
   );
   const rowOf = useCallback((blockId: string) => rowOfBlock().get(blockId), [rowOfBlock]);
   // The layout takes the rows before they render, so each mounted row's
@@ -891,7 +888,6 @@ export function AgentTranscript({
                 !initialTurns.current!.has(row.turn.id) &&
                 !shownRows.current.has(row.key)
               }
-              zen={zen}
               cwd={cwd}
               layout={transcriptLayout}
               harnessOf={harnessOf}
@@ -952,7 +948,6 @@ type RowViewProps = {
   top: number;
   /** Born after the transcript mounted and never shown: fades in, once. */
   fresh: boolean;
-  zen: boolean;
   cwd?: string;
   layout: TranscriptLayout;
   harnessOf: (turn: Block[]) => HarnessId | undefined;
@@ -978,7 +973,6 @@ const RowView = memo(function RowView({
   row,
   top,
   fresh,
-  zen,
   cwd,
   layout,
   harnessOf,
@@ -1030,25 +1024,14 @@ const RowView = memo(function RowView({
           onHandoff={onHandoff}
         />
       ) : row.item.type === "activity" ? (
-        zen ? (
-          <ActivityPhases
-            blocks={row.item.blocks}
-            cwd={cwd}
-            done={row.done}
-            onApproval={onApproval}
-            onOpenFile={onOpenFile}
-            onOpenDiff={onOpenDiff}
-          />
-        ) : (
-          <ActivityGroup
-            blocks={row.item.blocks}
-            cwd={cwd}
-            autoOpen={row.autoOpen}
-            onApproval={onApproval}
-            onOpenFile={onOpenFile}
-            onOpenDiff={onOpenDiff}
-          />
-        )
+        <ActionGroup
+          blocks={row.item.blocks}
+          cwd={cwd}
+          live={row.live}
+          onApproval={onApproval}
+          onOpenFile={onOpenFile}
+          onOpenDiff={onOpenDiff}
+        />
       ) : row.item.block.role === "user" ? (
         <div data-block={row.item.block.id} className="group/turn flex min-w-0 flex-col">
           <TranscriptBlock
