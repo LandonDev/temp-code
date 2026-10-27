@@ -18,7 +18,8 @@ import { duration } from "../../lib/duration";
  * slot: the composer never shifts when work starts or stops. Every state is
  * one row with no box or wash: the status mark (its word, what it is about,
  * the round's tally), a time where the state has one, and the actions at
- * the end. Working says what it does and the stretch's elapsed time; a
+ * the end. Working says what it does and the stretch's elapsed time, and
+ * ends with Stop (a person's Stop idles the thread, so the slot empties); a
  * pending approval reads "Needs you  approve Bash" with Deny and Allow (the
  * transcript's card keeps its own); a question says so and leaves the choice
  * to its card; paused keeps its frozen time with Stop and Continue; stopped
@@ -103,6 +104,18 @@ export const WorkingStrip = memo(function WorkingStrip({
     setStartBusy(true);
     Promise.resolve(onStart()).finally(() => setStartBusy(false));
   };
+  // Stop on a working row holds "Stopping…" until the row leaves working.
+  const [stopping, setStopping] = useState(false);
+  const [stoppingState, setStoppingState] = useState(state);
+  if (stoppingState !== state) {
+    setStoppingState(state);
+    if (stopping) setStopping(false);
+  }
+  const stopTurn = (): void => {
+    if (stopping) return;
+    setStopping(true);
+    onStop();
+  };
   const [stopBusy, setStopBusy] = useState(false);
   const stopEverything = (): void => {
     if (stopBusy) return;
@@ -126,6 +139,11 @@ export const WorkingStrip = memo(function WorkingStrip({
           <>
             {mark}
             {elapsed >= 1000 ? time(elapsed) : null}
+            <Actions>
+              <Button variant="ghost" size="xs" onClick={stopTurn} disabled={stopping}>
+                {stopping ? "Stopping…" : "Stop"}
+              </Button>
+            </Actions>
           </>
         );
       case "waiting":

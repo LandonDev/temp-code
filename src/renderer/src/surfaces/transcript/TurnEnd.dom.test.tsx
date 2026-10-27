@@ -7,6 +7,7 @@ vi.mock("../../lib/clipboard", () => ({ copyText: (text: string) => copyText(tex
 vi.mock("../../lib/sounds", () => ({ playCue: () => {} }));
 
 import { TurnDuration, TurnEnd } from "./TurnEnd";
+import { TurnStateContext, type TurnSession } from "../turnState";
 
 afterEach(() => {
   cleanup();
@@ -83,5 +84,49 @@ describe("TurnEnd's thinking tail", () => {
     expect(tail.className).not.toMatch(/h-\[/);
     expect(tail.querySelector("svg")).not.toBeNull();
     expect(tail.textContent).toBe("Thinking");
+  });
+});
+
+describe("TurnEnd of a paused turn", () => {
+  it("says Paused with the frozen time, never Worked for, and no thinking tail", () => {
+    const user = { id: "u", role: "user" as const, text: "go", startedAt: 10, durationMs: 1000 };
+    const state = { status: "paused", busy: false, frozenActiveElapsed: 63_000, blocks: [user] } as unknown as TurnSession;
+    const { container } = render(
+      <TurnStateContext.Provider value={state}>
+        <TurnEnd
+          turn={{ id: "t", index: 0, isLast: true, settled: false, blocks: [user], userBlock: user, durationMs: 1000, startedAt: 10 }}
+          harnessOf={() => undefined}
+          turnState={state}
+        />
+      </TurnStateContext.Provider>,
+    );
+    expect(container.textContent).not.toMatch(/Worked for/);
+    expect(container.querySelector('[data-slot="thinking-tail"]')).toBeNull();
+    expect(container.querySelector('[data-state="paused"]')).not.toBeNull();
+  });
+});
+
+describe("TurnEnd's live state", () => {
+  const user = { id: "u", role: "user" as const, text: "go" };
+  const reply = { id: "a", role: "assistant" as const, text: "on it" };
+  const state = { status: "running", busy: true, busySince: Date.now() - 5_000, blocks: [user, reply] } as unknown as TurnSession;
+  const live = (liveState?: boolean) =>
+    render(
+      <TurnStateContext.Provider value={state}>
+        <TurnEnd
+          turn={{ id: "t", index: 0, isLast: true, settled: false, blocks: [user, reply], userBlock: user, durationMs: undefined, startedAt: undefined }}
+          harnessOf={() => undefined}
+          turnState={state}
+          liveState={liveState}
+        />
+      </TurnStateContext.Provider>,
+    );
+
+  it("draws Working by default, for a surface with no strip (the fleet's detail)", () => {
+    expect(live().container.querySelector('[data-state="working"]')).not.toBeNull();
+  });
+
+  it("draws nothing under a strip, which says it once", () => {
+    expect(live(false).container.textContent).toBe("");
   });
 });

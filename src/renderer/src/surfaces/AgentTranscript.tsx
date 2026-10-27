@@ -23,6 +23,7 @@ import { useReducedMotion } from "motion/react";
 import { type Block, type HarnessId } from "../lib/session";
 import { sessionStore } from "../lib/tcserver/store";
 import { TurnStateContext, type TurnSession } from "./turnState";
+import { isTurnPaused } from "../lib/turnClock";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { usePaneVisible } from "../hooks/paneVisibility";
 import { saveTranscriptScroll, takeTranscriptScroll, type TranscriptScrollMemory } from "../lib/transcriptScrollMemory";
@@ -112,6 +113,9 @@ type Props = {
   onJumpToBottomReady?: (jump: () => void) => void;
   /** False while another tab is in front. Hidden tabs stay laid out. */
   visible?: boolean;
+  /** The live turn's state line (Working, Needs you, Paused). Off where a
+   *  strip above the composer already says it. */
+  liveState?: boolean;
 };
 
 export function AgentTranscript({
@@ -132,6 +136,7 @@ export function AgentTranscript({
   onJumpToBottomChange,
   onJumpToBottomReady,
   visible: visibleProp = true,
+  liveState = true,
 }: Props) {
   // A parked pane keeps its transcript mounted; the context turns it off.
   const visible = visibleProp && usePaneVisible();
@@ -532,9 +537,11 @@ export function AgentTranscript({
   // Remote profile: the next page of history comes from the server and
   // lands above; the reader's anchor row keeps them where they were.
   const moreHistory = !!sessionId && sessionStore.hasOlderHistory(sessionId);
+  // A turn paused mid-way is not over: no closing line until it settles.
+  const paused = !busy && !!turnState && isTurnPaused(turnState);
   const { rows, rowOfBlock } = useMemo(
-    () => flattenTurns(turns, !!busy, { loadEarlier: moreHistory }),
-    [turns, busy, moreHistory],
+    () => flattenTurns(turns, !!busy, { loadEarlier: moreHistory, paused }),
+    [turns, busy, moreHistory, paused],
   );
   const rowOf = useCallback((blockId: string) => rowOfBlock().get(blockId), [rowOfBlock]);
   // The layout takes the rows before they render, so each mounted row's
@@ -888,6 +895,7 @@ export function AgentTranscript({
               cwd={cwd}
               harnessOf={harnessOf}
               turnState={row.kind !== "more" && row.turn.isLast ? (turnState ?? null) : null}
+              liveState={liveState}
               register={registerRow}
               onLoadEarlier={loadEarlier}
               onApproval={onApproval}
@@ -948,6 +956,7 @@ type RowViewProps = {
   harnessOf: (turn: Block[]) => HarnessId | undefined;
   /** The session, for the live turn's rows only; older rows never see it change. */
   turnState: TurnSession | null;
+  liveState: boolean;
   register: (key: string, el: HTMLElement | null) => void;
   onLoadEarlier: () => void;
   onApproval?: Props["onApproval"];
@@ -971,6 +980,7 @@ const RowView = memo(function RowView({
   cwd,
   harnessOf,
   turnState,
+  liveState,
   register,
   onLoadEarlier,
   onApproval,
@@ -1009,6 +1019,7 @@ const RowView = memo(function RowView({
           turn={row.turn}
           harnessOf={harnessOf}
           turnState={turnState}
+          liveState={liveState}
           onSaveNote={onSaveNote}
           onSecondOpinion={onSecondOpinion}
           onHandoff={onHandoff}

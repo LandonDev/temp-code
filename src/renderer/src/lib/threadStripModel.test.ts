@@ -171,6 +171,8 @@ describe("threadStatus", () => {
     expect(threadStatus({ status: "watching", background: bg({ agents: ["a", "b", "c"] }) }).detail).toBe("3 subagents");
     expect(threadStatus({ status: "watching", activity: "Waiting on 2 monitors" }).detail).toBe("2 monitors");
     expect(threadStatus({ status: "watching" })).toEqual({ state: "watching", detail: "background work", tally: null });
+    const lone = bg({ tasks: [{ id: "t", label: "Sleep 45 seconds in the background", kind: "shell", startedAt: 0 }] });
+    expect(threadStatus({ status: "watching", background: lone }).detail).toBe("sleep 45 seconds in the background");
   });
 
   it("gives a queued thread the host's reason past the word", () => {

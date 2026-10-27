@@ -369,6 +369,7 @@ export function useThreadChat({
             blocks={session.blocks}
             busy={!!session.busy}
             visible={visible}
+            liveState={session.threadType === "orchestration"}
             cwd={workCwd}
             harness={session.harness}
             onApproval={approve}

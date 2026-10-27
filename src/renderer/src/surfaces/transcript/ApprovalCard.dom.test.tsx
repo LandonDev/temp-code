@@ -17,9 +17,10 @@ const approval = (name: string, input: unknown, decided?: "allow" | "deny", auto
 afterEach(cleanup);
 
 describe("ApprovalCard", () => {
-  it("says why it waits and nothing the row already says", () => {
+  it("carries its actions and the amber glyph, not the strip's word", () => {
     const { container } = render(<ApprovalCard block={approval("Bash", { command: "rm -rf build" })} />);
-    expect(container.textContent).toBe("Needs youAllowDeny");
+    expect(container.textContent).toBe("AllowDeny");
+    expect(container.querySelector('[data-state="waiting"]')?.getAttribute("aria-label")).toBe("Needs you");
     expect(container.querySelector('[data-state="waiting"]')).not.toBeNull();
     expect(container.textContent).not.toContain("build");
     expect(container.querySelector("pre, code")).toBeNull();

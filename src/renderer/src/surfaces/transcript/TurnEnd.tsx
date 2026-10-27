@@ -20,11 +20,13 @@ import { spanWords } from "./thinking";
 import { ThinkingTail } from "./ThinkingRow";
 
 /** A turn's closing row: the thinking tail while it starts, its duration
- *  line once it is over, the live state while it runs or waits. */
+ *  line once it is over, the live state while it runs or waits (unless
+ *  `liveState` is off: a strip above the composer says it). */
 export function TurnEnd({
   turn,
   harnessOf,
   turnState,
+  liveState = true,
   onSaveNote,
   onSecondOpinion,
   onHandoff,
@@ -32,11 +34,13 @@ export function TurnEnd({
   turn: TurnInfo;
   harnessOf: (turn: Block[]) => HarnessId | undefined;
   turnState: TurnSession | null;
+  liveState?: boolean;
   onSaveNote?: (text: string) => void;
   onSecondOpinion?: SecondOpinionHandler;
   onHandoff?: HandoffHandler;
 }) {
   const { settled, durationMs, isLast } = turn;
+  const paused = turnState ? isTurnPaused(turnState) : false;
   // Settled only: the live turn's harness is not known until it answers.
   const fromHarness = useMemo(
     () => (settled ? harnessOf(turn.blocks) : undefined),
@@ -44,7 +48,7 @@ export function TurnEnd({
   );
   return (
     <>
-      {!settled && showsThinkingTail(turn.blocks) ? (
+      {!settled && !paused && showsThinkingTail(turn.blocks) ? (
         <ThinkingTail />
       ) : null}
       {durationMs != null && settled ? (
@@ -64,7 +68,7 @@ export function TurnEnd({
           }
         />
       ) : null}
-      {isLast && (!settled || (durationMs == null && turnState && isTurnPaused(turnState))) ? (
+      {liveState && isLast && !settled ? (
         <LiveTurnDuration turn={turn.blocks} />
       ) : null}
     </>

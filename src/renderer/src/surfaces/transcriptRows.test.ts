@@ -48,6 +48,13 @@ describe("flattenTurns", () => {
     expect(idle.find((r) => r.key === "t2")).toMatchObject({ live: false });
   });
 
+  it("keeps a paused last turn open, with nothing in it live", () => {
+    const turns = [[user("u0", "p", { startedAt: 10, durationMs: 900 }), tool("t0")]];
+    const { rows } = flattenTurns(turns, false, { paused: true });
+    expect(rows.find((r) => r.key === "u0:end")).toMatchObject({ turn: { settled: false, isLast: true } });
+    expect(rows.find((r) => r.key === "t0")).toMatchObject({ live: false });
+  });
+
   it("sits prose straight after a group closer to it", () => {
     const { rows } = flattenTurns([[user("u0"), reply("a0"), tool("t0"), reply("a1")]], false);
     expect(rows.find((r) => r.key === "a0")).toMatchObject({ compactTop: false });

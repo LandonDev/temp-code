@@ -65,11 +65,17 @@ export function turnUserBlock(blocks: Block[]): Block | undefined {
   return undefined;
 }
 
+/**
+ * `busy`: the last turn runs, so its last activity row is live. `paused`
+ * (options): it is paused mid-turn, so it stays open, with no closing line
+ * until it settles, but nothing in it reads as running.
+ */
 export function flattenTurns(
   turns: Block[][],
   busy: boolean,
-  options: { loadEarlier?: boolean } = {},
+  options: { loadEarlier?: boolean; paused?: boolean } = {},
 ): TranscriptRows {
+  const open = busy || !!options.paused;
   const rows: TranscriptRow[] = [];
   if (options.loadEarlier) rows.push({ kind: "more", key: "more" });
   turns.forEach((blocks, index) => {
@@ -85,7 +91,7 @@ export function flattenTurns(
       id: blocks[0].id,
       index,
       isLast,
-      settled: !(busy && isLast),
+      settled: !(open && isLast),
       blocks,
       userBlock,
       durationMs,
@@ -99,7 +105,7 @@ export function flattenTurns(
           key: item.blocks[0].id,
           turn,
           item,
-          live: !turn.settled && itemIndex === items.length - 1,
+          live: busy && isLast && itemIndex === items.length - 1,
           compactTop: false,
         });
         return;

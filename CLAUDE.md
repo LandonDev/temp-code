@@ -1305,9 +1305,11 @@ names the far child).
   `activity`): `tasks`, `agents` (live subagent ids), `batch { out, total }`
   for a pinned master's local children, and `watchingSince` (set when a
   status moves the row into watching). A child's status change re-pushes its
-  non-root parent and its master. The activity line is `watchLine`:
-  "Waiting on <label>" for one task, else "Waiting on <watchPhrase>"
-  ("3 subagents, a monitor"; src/shared/watch.ts, with `STALE_WATCH_MS`
+  non-root parent and its master. The activity line is `watchLine`,
+  "Waiting on <watchSubject>": `watchPhrase` names one task alone by its
+  label and counts anything more ("3 subagents, a monitor"; the strip,
+  `wait_for_agent` and the settle report read the same words;
+  src/shared/watch.ts, with `STALE_WATCH_MS`
   30 min and `isStaleWatch`), "Waiting on the batch's steps" for a master
   with nothing out.
 - `session.stopTask { sessionId, taskId }` (operate) stops one task through
@@ -1330,7 +1332,9 @@ names the far child).
   the host can read, so it opens nothing; a failed read says so), the
   subagents row opening the Agents section, a dev server row the dev
   servers pane. The working strip's watching case says "Watching
-  <watchSubject>" with the stretch's age and opens the section. A watch is
+  <watchSubject>" with the stretch's age and opens the section; its working
+  case ends with Stop, and the thread on screen is left out of the paused
+  and recovery banners (its strip and its FailureCard say it). A watch is
   stale (`isStaleWatch`: amber, Stop all, the banner) only past
   `STALE_WATCH_MS` on the thread's own tasks alone: live subagents and a
   master's batch have their own liveness, and Stop all

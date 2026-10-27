@@ -372,7 +372,7 @@ it('a wait on a watching child returns watching with what it waits on', async ()
   sessions[child.id] = child
   children = [child]
   const report = JSON.parse(await orchWaitForAgent(parent, { agentId: child.id }))
-  expect(report).toMatchObject({ agentId: child.id, status: 'watching', waitingOn: 'a monitor', note: 'its turn ended; background work keeps it alive, its reply is complete' })
+  expect(report).toMatchObject({ agentId: child.id, status: 'watching', waitingOn: 'poll CI', note: 'its turn ended; background work keeps it alive, its reply is complete' })
 })
 
 it('a stopped child settles the wait with the harness-died note', async () => {

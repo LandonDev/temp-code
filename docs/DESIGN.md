@@ -185,7 +185,15 @@ The word may be followed by what the state is about, muted after it:
 that cannot say is a bug. `threadStatus` (lib/threadStripModel.ts) is the one
 place that decides a thread's state and its detail, the tree's overrides
 included, and `ThreadStatusMark` (chrome/TabIndicator.tsx) draws it with the
-round's tally 8px after the detail.
+round's tally 8px after the detail. A watching thread on one task names it
+in the model's words ("Watching  sleep 45 seconds"); more than one is
+counted (`watchPhrase`, src/shared/watch.ts).
+
+The strip above the composer (surfaces/threads/WorkingStrip.tsx) is the
+one place a live thread on screen says its state: no banner and no
+transcript row repeat it. A working strip ends with Stop; a person's Stop
+idles the thread, the strip empties and the transcript's Stopped line says
+so once. Stopped with Resume means the harness is gone.
 
 A detail starts lower-case, never ends in a full stop and never repeats the
 word. Two facts on one line are separated by margin, never by a middle dot,
@@ -308,7 +316,12 @@ counts green and red, a caret per row. A lone command opens a card headed by
 its tool name with the command in mono and its output under it. File changes
 keep their counts on the line and their diff behind the caret. No background-
 task lines: live work is the right panel's Activity section. No timestamps
-in the flow; the closing line says what the turn took and nothing else. A thought is one row
+in the flow; the closing line says what the turn took and nothing else. A
+live turn's state is the strip's: the transcript draws the closing line
+once the turn is over, and a paused turn is not over (only a surface with
+no strip, the fleet's agent detail, draws the live state as its last row).
+An approval card carries the amber glyph and its two buttons, not the
+word. A thought is one row
 of that list: "Thinking" shimmering with its newest sentence while it
 streams, then "Thought for 4s ▸", which opens the text. The closing line
 reads "Worked for 2m 4s", its copy, note, hand-off and second-opinion

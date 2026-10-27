@@ -208,7 +208,7 @@ it('running → watching reports to a dormant parent once, saying what the child
   await settle()
   expect(types(parent.id).filter((t) => t === 'agent-report')).toHaveLength(1)
   expect(sends.get(parent.id)?.[0]).toContain('settled with status watching')
-  expect(sends.get(parent.id)?.[0]).toContain('it is watching a monitor')
+  expect(sends.get(parent.id)?.[0]).toContain('it is watching poll CI')
   emit(child, { type: 'background-tasks', tasks: [], items: [] })
   emit(child, { type: 'status', status: 'idle' })
   await settle()

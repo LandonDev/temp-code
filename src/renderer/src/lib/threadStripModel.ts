@@ -240,7 +240,7 @@ export function threadStatus(input: ThreadStatusInput): ThreadStatus {
     case "watching":
       return {
         state,
-        detail: watchPhrase(input.background) || lowerFirst(after(input.activity, "Waiting on")) || "background work",
+        detail: lowerFirst(watchPhrase(input.background)) || lowerFirst(after(input.activity, "Waiting on")) || "background work",
         tally: null,
       };
     case "queued":

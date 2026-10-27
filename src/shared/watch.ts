@@ -17,10 +17,15 @@ function counted(n: number, one: string, many: string): string {
   return n === 1 ? one : `${n} ${many}`
 }
 
-/** What a wait is made of, counted: "3 subagents, a monitor". Batch first,
- *  then subagents, then each task kind; "" when there is nothing. */
+/** What a wait is made of: one task alone (no subagents, no batch thread
+ *  out) by its label, in the model's words; else counted, "3 subagents, a
+ *  monitor", batch first, then subagents, then each task kind; "" when
+ *  there is nothing. */
 export function watchPhrase(bg: BackgroundWork | null | undefined): string {
   if (!bg) return ''
+  const lone = bg.tasks.length === 1 && !bg.agents.length && !(bg.batch && bg.batch.out > 0)
+  const label = lone ? bg.tasks[0].label.trim() : ''
+  if (label) return label
   const parts: string[] = []
   if (bg.batch && bg.batch.out > 0) parts.push(counted(bg.batch.out, 'a batch thread', 'batch threads'))
   if (bg.agents.length) parts.push(counted(bg.agents.length, 'a subagent', 'subagents'))

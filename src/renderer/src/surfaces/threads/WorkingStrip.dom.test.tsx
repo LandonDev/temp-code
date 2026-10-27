@@ -185,9 +185,25 @@ describe('WorkingStrip: a working thread', () => {
       </Probe>,
     )
     const text = probe.container.textContent ?? ''
-    expect(text).toMatch(/^Workingrunning bun3\/71m 3\ds$/)
+    expect(text).toMatch(/^Workingrunning bun3\/71m 3\dsStop$/)
     expect(text).not.toMatch(/Thinking|Percolating|·/)
-    expect(probe.container.querySelectorAll('button')).toHaveLength(0)
+    probe.unmount()
+  })
+
+  it('ends with Stop, which calls back once and says Stopping while it lands', async () => {
+    const onStop = vi.fn()
+    const probe = mountProbe(
+      <Probe id="strip">
+        <WorkingStrip session={session({ status: 'running', activity: 'Running bun' })} onStop={onStop} onResume={() => {}} />
+      </Probe>,
+    )
+    const buttons = [...probe.container.querySelectorAll('button')]
+    expect(buttons.map((b) => b.textContent)).toEqual(['Stop'])
+    await probe.act(async () => buttons[0]!.click())
+    await probe.act(async () => buttons[0]!.click())
+    expect(onStop).toHaveBeenCalledTimes(1)
+    expect(buttons[0]!.textContent).toBe('Stopping…')
+    expect(buttons[0]!.disabled).toBe(true)
     probe.unmount()
   })
 
@@ -197,7 +213,7 @@ describe('WorkingStrip: a working thread', () => {
         <WorkingStrip session={session({ status: 'starting' })} onStop={() => {}} onResume={() => {}} />
       </Probe>,
     )
-    expect(probe.container.textContent).toBe('Workingstarting')
+    expect(probe.container.textContent).toBe('WorkingstartingStop')
     probe.unmount()
   })
 })

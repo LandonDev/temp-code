@@ -34,7 +34,7 @@ export function ApprovalCard({
   }
   return (
     <div data-slot="approval" className="flex min-h-8 min-w-0 items-center gap-2 pb-1 pl-5.5 font-sans">
-      <StatusMark state="waiting" />
+      <StatusMark state="waiting" word={false} />
       <Button size="sm" onClick={() => onApproval?.(approval.requestId, "allow")}>
         Allow
       </Button>

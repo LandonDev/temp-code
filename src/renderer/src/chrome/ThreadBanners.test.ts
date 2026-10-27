@@ -73,6 +73,22 @@ describe("bannerThreads", () => {
     expect(result.needsYou).toEqual([]);
   });
 
+  it("leaves the thread on screen out of paused and recovery, its strip says it", () => {
+    const open = meta("o", { treeHasPaused: true, treeCanContinue: true });
+    const other = meta("p", { treeHasPaused: true });
+    const result = bannerThreads([open, other], null, "o");
+    expect(result.paused).toEqual([other]);
+    expect(result.recovery).toEqual([]);
+  });
+
+  it("drops a master on screen with the batch threads folded under it", () => {
+    const master = meta("m", { treeHasPaused: true });
+    const child = meta("c", { treeHasPaused: true, masterId: "m" });
+    const result = bannerThreads([master, child], null, "m");
+    expect(result.paused).toEqual([]);
+    expect(result.batchPaused).toBe(0);
+  });
+
   it("skips archived and subagent-child threads everywhere", () => {
     const archived = meta("a1", { treeHasPaused: true, archived: true });
     const child = meta("c1", { treeCanContinue: true, parentId: "a1" });

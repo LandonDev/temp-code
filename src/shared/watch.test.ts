@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import type { BackgroundTask, BackgroundWork } from './events'
 import { STALE_WATCH_MS, isStaleWatch, watchPhrase, watchSubject } from './watch'
 
-const task = (kind: BackgroundTask['kind'], id: string = kind): BackgroundTask => ({ id, label: id, kind, startedAt: 0 })
+// Unlabelled, so a lone task counts; `labelled` names one in the model's words.
+const task = (kind: BackgroundTask['kind'], id: string = kind): BackgroundTask => ({ id, label: '', kind, startedAt: 0 })
+const labelled = (label: string, kind: BackgroundTask['kind'] = 'shell'): BackgroundTask => ({ ...task(kind, label), label })
 const bg = (over: Partial<BackgroundWork>): BackgroundWork => ({
   tasks: [],
   agents: [],
@@ -30,6 +32,15 @@ describe('watchPhrase', () => {
     expect(watchPhrase(bg({ tasks: [task('workflow')] }))).toBe('a workflow')
     expect(watchPhrase(bg({ tasks: [task('cron')] }))).toBe('a wake-up')
     expect(watchPhrase(bg({ tasks: [task('other')] }))).toBe('a background task')
+  })
+
+  it('names one task alone by its label, and counts it beside anything else', () => {
+    expect(watchPhrase(bg({ tasks: [labelled('  Sleep 45 seconds in the background ')] }))).toBe('Sleep 45 seconds in the background')
+    expect(watchPhrase(bg({ tasks: [labelled('serve the app')], agents: ['a'] }))).toBe('a subagent, a command')
+    expect(watchPhrase(bg({ tasks: [labelled('serve the app')], batch: { out: 1, total: 2 } }))).toBe('a batch thread, a command')
+    expect(watchPhrase(bg({ tasks: [labelled('serve the app')], batch: { out: 0, total: 2 } }))).toBe('serve the app')
+    expect(watchPhrase(bg({ tasks: [labelled('a'), labelled('b')] }))).toBe('2 commands')
+    expect(watchSubject(bg({ tasks: [labelled('tail the log', 'monitor')] }))).toBe('tail the log')
   })
 
   it('orders batch, subagents, then the task kinds', () => {
