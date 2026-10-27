@@ -186,21 +186,24 @@ describe("useBootResumeToasts", () => {
     return null;
   }
 
-  it("says a host's boot resume once, as a toast, with the host's name when there are two", () => {
+  it("says a host's boot resume once, as a toast, with the host's name when there are two", async () => {
     hosts([LOCAL, BOX], {});
     noteBootResume("env_box", 7, 1234);
     render(<Probe />);
+    await act(flush);
     expect(toastMock).toHaveBeenCalledTimes(1);
     expect(toastMock).toHaveBeenCalledWith("7 threads resumed after restart", { description: "box" });
     cleanup();
     render(<Probe />);
+    await act(flush);
     expect(toastMock).toHaveBeenCalledTimes(1);
   });
 
-  it("names no host with one", () => {
+  it("names no host with one", async () => {
     hosts([LOCAL], {});
     noteBootResume("local", 1, 99);
     render(<Probe />);
+    await act(flush);
     expect(toastMock).toHaveBeenCalledWith("1 thread resumed after restart", undefined);
   });
 });

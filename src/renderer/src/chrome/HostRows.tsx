@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
 import {
   useEnvironments,
   useEnvironmentStatuses,
@@ -30,6 +29,7 @@ import {
 } from "../components/ui/dropdown-menu";
 import { DeployDriftMark } from "./DeployDrift";
 import { HostGlyph } from "./HostGlyph";
+import { loadToast } from "./toastSync";
 import { Server } from "./icons";
 import { RailRow } from "./RailRow";
 
@@ -185,10 +185,14 @@ export function useBootResumeToasts(): void {
   const notices = useBootResumeNotices();
   const environments = useEnvironments();
   useEffect(() => {
-    for (const notice of notices) {
-      const host = environments.length > 1 ? environments.find((e) => e.id === notice.environmentId)?.name : undefined;
-      toast(bootResumeLine(notice.count), host ? { description: host } : undefined);
-      dismissBootResume(notice.environmentId);
-    }
+    if (notices.length === 0) return;
+    const lines = notices.map((notice) => ({
+      line: bootResumeLine(notice.count),
+      host: environments.length > 1 ? environments.find((e) => e.id === notice.environmentId)?.name : undefined,
+    }));
+    for (const notice of notices) dismissBootResume(notice.environmentId);
+    void loadToast().then((toast) => {
+      for (const { line, host } of lines) toast(line, host ? { description: host } : undefined);
+    });
   }, [environments, notices]);
 }
