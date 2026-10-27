@@ -1,11 +1,8 @@
 import {
-  Inbox,
-  MessageSquare,
   MoreHorizontal,
   Plus,
   Search,
   Settings,
-  StickyNote,
 } from "./icons";
 import {
   memo,
@@ -23,18 +20,14 @@ import {
   saveSidebarTabOrder,
   type SidebarTabId,
 } from "../lib/appearance";
-import { basename } from "../lib/fs";
-import { ConnectionIndicator } from "./ConnectionIndicator";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { EASE_OUT } from "../lib/ease";
 import { IS_MAC, MOD } from "../lib/platform";
-import { projectName } from "../lib/paths";
 import type { ProjectMeta } from "../lib/tcserver/types";
 import {
   useWorkspaceCatalog,
   useWorkspaces,
   workspaceIdOf,
-  workspaceLabelKey,
 } from "../lib/tcserver/workspaces";
 import { useSessionMetas } from "../lib/tcserver/store";
 import { archive } from "../lib/tcserver/commands";
@@ -45,7 +38,6 @@ import { loadNotesEnabled, openWorkspaceSettings, subscribeNotesEnabled } from "
 import { pickTextHarness } from "../lib/harness/textHarness";
 import { canTabVisitBack, canTabVisitForward } from "../lib/tabVisitHistory";
 import { selectedChangePath } from "../lib/workspaceTabGroups";
-import { useSidebarLayout } from "../hooks/useSidebarLayout";
 import { useWorkspaceTabs } from "../stores/workspace";
 import { requestProjectRailAction } from "../lib/projectRailActions";
 import WorkspaceSessions from "./WorkspaceSessions";
@@ -57,31 +49,14 @@ import { PreambleDialog } from "./PreambleDialog";
 import { openOrchestrationSettings } from "../lib/tcserver/rules";
 import { useLiveAgents } from "../lib/liveAgentTracker";
 import { useProjectSignals } from "../hooks/useProjectSignals";
-import {
-  loadTabGroupColors,
-  loadTabGroupCustomColors,
-  loadTabGroupLabels,
-  loadTabGroupMascots,
-  resolveTabGroupColor,
-  resolveTabGroupLabel,
-  resolveTabGroupLogo,
-  resolveTabGroupMascot,
-} from "../lib/tabGroups";
 import { useDragResize } from "../hooks/useDragResize";
 import { useGitFileStatuses } from "../hooks/useGitFileStatuses";
 import { useInboxUnseen } from "../hooks/useInboxUnseen";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { useProjectDiffStats } from "../hooks/useProjectDiffStats";
 import { useSortable } from "../hooks/useSortable";
-import { useTabGroupLogos } from "../hooks/useTabGroupLogos";
-import {
-  looksLikeProject,
-  sameProjectPath,
-  type RecentProject,
-} from "../lib/recents";
-import { CwdPicker } from "./CwdPicker";
+import { looksLikeProject } from "../lib/recents";
 import { FileTree } from "./FileTree";
-import { FileTypeIcon } from "./FileTypeIcon";
 import { ProjectRail } from "./ProjectRail";
 import {
   useProject,
@@ -92,20 +67,13 @@ import {
 } from "../stores/project";
 import { shell, useShell, type AliaxPageId } from "../stores/shell";
 import { RailAction } from "./RailAction";
-import { SettingsNav } from "./SettingsRail";
-import { DevModeLabel, DevModeSlot, IconButton, TabVisitNav } from "./TitleBar";
+import { DevModeSlot, IconButton, TabVisitNav } from "./TitleBar";
 import { ProjectSearch } from "./ProjectSearch";
-import { ProjectLogoIcon } from "./ProjectLogoIcon";
-import { ProjectMascot } from "./ProjectMascot";
 import { SidebarUpdateFooter } from "./SidebarUpdate";
 import { UsageMeter } from "./UsageMeter";
 import { SourceControl } from "./SourceControl";
-import { inboxChunk } from "../surfaces/chunks";
-import { SurfaceSkeleton } from "../surfaces/SurfaceSkeleton";
 import { settingsChunk } from "../surfaces/chunks";
 import type { OpenFileFn } from "../lib/search";
-
-const InboxView = inboxChunk.surface("InboxView", <SurfaceSkeleton kind="pane" label="Loading inbox" />);
 
 const MIN_WIDTH = 260;
 const MAX_WIDTH = 560;
@@ -121,17 +89,6 @@ const TAB_LABELS: Record<SidebarTab, string> = {
   files: "Explorer",
   changes: "Changes",
 };
-
-function projectPathIn(
-  paths: Iterable<string> | undefined,
-  cwd: string,
-): boolean {
-  if (!paths) return false;
-  for (const path of paths) {
-    if (sameProjectPath(path, cwd)) return true;
-  }
-  return false;
-}
 
 type Props = {
   onSelectSession: (sessionId: string) => void;
@@ -182,7 +139,6 @@ function SidebarComponent({
   onOpenProject,
   onRemoveProject,
   onNew,
-  onNewTerminal,
   onSearch,
   onOpenInbox,
   onOpenNotes,
@@ -200,7 +156,6 @@ function SidebarComponent({
   const activeSessionId = active?.id;
   const textHarness = pickTextHarness(active?.harness);
   const selectedDiffPath = activeTab ? selectedChangePath(activeTab, gitCwd) : undefined;
-  const layout = useSidebarLayout();
   const canVisitBack = useWorkspaceTabs((s) => canTabVisitBack(s.visits));
   const canGoForward = useWorkspaceTabs((s) => canTabVisitForward(s.visits));
   const notesEnabled = useSyncExternalStore(subscribeNotesEnabled, loadNotesEnabled, () => true);
@@ -237,10 +192,9 @@ function SidebarComponent({
   const [tabOrder, setTabOrder] = useState<SidebarTab[]>(loadSidebarTabOrder);
   const sessionsLock = useLockOverscroll<HTMLDivElement>();
   const sessionsScrollRef = useRef<HTMLDivElement>(null);
-  const deckLayout = layout === "deck";
   /** The home: no workspace folder, the chats outside every workspace. It
    *  has one tab, Sessions, and nothing to browse or diff. */
-  const atHome = deckLayout && workspaceCwd === "~";
+  const atHome = workspaceCwd === "~";
   const shellTab = useShell((s) => s.sidebarTab);
   const tab: SidebarTab = atHome ? "sessions" : shellTab;
   const filesSearchOpen = useShell((s) => s.filesSearchOpen);
@@ -249,12 +203,9 @@ function SidebarComponent({
   const inboxActive = useShell((s) => s.inboxViewOpen);
   const notesActive = useShell((s) => s.notesViewOpen);
   const accountsPage = useShell((s) => s.accountsPage);
-  const sidebarOpen = useShell((s) => s.sidebarOpen);
   const projectRailOpen = useShell((s) => s.projectRailOpen);
   const settingsOpen = useShell((s) => s.settingsOpen);
-  const settingsSection = useShell((s) => s.settingsSection);
   const updateNotice = useShell((s) => s.updateNotice);
-  const open = deckLayout || sidebarOpen || settingsOpen;
   // Back leaves an overlay before it walks tab history.
   const canGoBack =
     canVisitBack || searchActive || settingsOpen || inboxActive || notesActive || !!accountsPage;
@@ -266,12 +217,9 @@ function SidebarComponent({
   });
   const visibleTabs: SidebarTab[] = atHome
     ? ["sessions"]
-    : deckLayout
-      ? tabOrder.filter((itemId) => itemId !== "inbox")
-      : tabOrder.filter((itemId) => itemId !== "changes");
+    : tabOrder.filter((itemId) => itemId !== "inbox");
   const canDragTabs = visibleTabs.length > 1;
-  const showProjectRail =
-    deckLayout && Boolean(onSelectProject && onOpenProject);
+  const showProjectRail = Boolean(onSelectProject && onOpenProject);
   // Settings live in the rail slot, so they keep it visible even when the
   // project rail itself is collapsed.
   const railVisible = showProjectRail && (projectRailOpen || settingsOpen);
@@ -321,11 +269,8 @@ function SidebarComponent({
         accountsPage={accountsPage}
       />
     ) : null;
-  const classicSettings = settingsOpen && !deckLayout;
-  const showSidebarFooter = !deckLayout || !projectRailOpen;
+  const showSidebarFooter = !projectRailOpen;
   const sidebarVisible = asideVisible({
-    open,
-    deckLayout,
     inProject,
     atHome,
     searchActive,
@@ -334,10 +279,8 @@ function SidebarComponent({
     accountsPage: accountsPage !== null,
     settingsOpen,
   });
-  const gitStatuses = useGitFileStatuses(gitRoot, open && tab === "files");
-  const changeStats = useProjectDiffStats(gitRoot, open && inProject);
-  const groupLogos = useTabGroupLogos();
-  const projectLogoPath = resolveTabGroupLogo(projectName(cwd), groupLogos);
+  const gitStatuses = useGitFileStatuses(gitRoot, tab === "files");
+  const changeStats = useProjectDiffStats(gitRoot, inProject);
 
   const onTabPick = (itemId: SidebarTab) => {
     shell.setSidebarTab(itemId);
@@ -425,7 +368,7 @@ function SidebarComponent({
       ref={resize.setPaneRef}
       className="sidebar-glass relative flex h-full min-h-0 shrink-0 flex-col border-r border-border"
     >
-      {deckLayout && railVisible ? (
+      {railVisible ? (
         <>
           <div
             className="flex h-10 shrink-0 select-none items-center gap-1 border-b border-border pl-3 pr-1.5"
@@ -451,75 +394,31 @@ function SidebarComponent({
         </>
       ) : (
         <>
-          {deckLayout ? (
-            <div
-              className="flex h-10 shrink-0 select-none items-center border-b border-border pr-1.5"
-              data-tauri-drag-region="deep"
-            >
-              {IS_MAC ? <div className="w-[78px] shrink-0" /> : null}
-              <DevModeSlot />
-              <TabVisitNav
-                canGoBack={canGoBack}
-                canGoForward={canGoForward}
-                onGoBack={onGoBack}
-                onGoForward={onGoForward}
-                onTogglePanel={shell.toggleProjectRail}
-                panelActive={false}
-              />
-            </div>
-          ) : (
-            <div
-              className="flex h-9.75 shrink-0 select-none items-center justify-end gap-1 pr-1.5"
-              data-tauri-drag-region="deep"
-            >
-              <DevModeLabel />
-              <TabVisitNav
-                canGoBack={canGoBack}
-                canGoForward={canGoForward}
-                onGoBack={onGoBack}
-                onGoForward={onGoForward}
-              />
-            </div>
-          )}
-          {deckLayout && onSelectProject ? (
-            <SidebarProjectPicker
-              cwd={atHome ? "~" : cwd}
-              recents={recents}
-              busy={projectPathIn(busyProjectPaths, atHome ? "~" : cwd)}
-              needsYou={projectPathIn(needsYouProjectPaths, atHome ? "~" : cwd)}
-              onSelectProject={onSelectProject}
-              onNewTerminal={onNewTerminal}
-              onSearch={onSearch}
-              onOpenInbox={onOpenInbox}
-              onOpenNotes={notesEnabled ? onOpenNotes : undefined}
-              searchActive={searchActive}
-              inboxActive={inboxActive}
-              notesActive={notesActive}
-              inboxUnseen={inboxUnseen}
+          <div
+            className="flex h-10 shrink-0 select-none items-center border-b border-border pr-1.5"
+            data-tauri-drag-region="deep"
+          >
+            {IS_MAC ? <div className="w-[78px] shrink-0" /> : null}
+            <DevModeSlot />
+            <TabVisitNav
+              canGoBack={canGoBack}
+              canGoForward={canGoForward}
+              onGoBack={onGoBack}
+              onGoForward={onGoForward}
+              onTogglePanel={shell.toggleProjectRail}
+              panelActive={false}
             />
-          ) : null}
-          {classicSettings ? null : (
-            <div
-              role="tablist"
-              aria-label="Workspace"
-              className={`flex h-9 shrink-0 items-center gap-px overflow-visible border-border px-2 ${
-                // Mirrors the rail-open header stack: each row owns its own
-                // bottom border, so the seams land on the title bar's.
-                deckLayout ? "border-b" : "border-y"
-              }`}
-            >
-              {workspaceTabItems}
-            </div>
-          )}
+          </div>
+          <div
+            role="tablist"
+            aria-label="Workspace"
+            className="flex h-9 shrink-0 items-center gap-px overflow-visible border-b border-border px-2"
+          >
+            {workspaceTabItems}
+          </div>
         </>
       )}
-      {classicSettings ? (
-        <SettingsNav
-          section={settingsSection}
-          onSelect={shell.selectSettingsSection}
-          onClose={shell.closeSettings}
-        />
-      ) : (
+      {(
         <>
           <div
             className={`flex min-h-0 flex-1 flex-col overflow-hidden ${
@@ -544,7 +443,7 @@ function SidebarComponent({
                   onFileDeleted={onFileDeleted}
                   onSearch={onOpenFilesSearch}
                   gitStatuses={gitStatuses}
-                  sourceControlActive={open && tab === "changes"}
+                  sourceControlActive={tab === "changes"}
                   onShowSourceControl={onShowSourceControl}
                 />
               </div>
@@ -554,44 +453,6 @@ function SidebarComponent({
               </p>
             )}
           </div>
-          {!deckLayout && tab === "sessions" && cwd && cwd !== "~" ? (
-            <div className="shrink-0 border-b border-border">
-              <div className="flex h-9 items-center px-2 pr-1.5">
-                <div
-                  title={cwd}
-                  className="flex h-full min-w-0 flex-1 items-center gap-1.5"
-                >
-                  {projectLogoPath ? (
-                    <ProjectLogoIcon
-                      path={projectLogoPath}
-                      className="size-4 shrink-0 rounded-md ml-1.5"
-                      imageClassName="size-4"
-                    />
-                  ) : (
-                    <span className="grid size-6 shrink-0 place-items-center">
-                      <FileTypeIcon name={basename(cwd)} isDir isRoot />
-                    </span>
-                  )}
-                  <span className="min-w-0 flex-1 truncate text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
-                    {workspace?.name ?? basename(cwd)}
-                  </span>
-                </div>
-                <div className="flex shrink-0 items-center gap-px">
-                  <ConnectionIndicator />
-                  {workspaceSessions ? (
-                    <SessionsHeaderButton
-                      label="Workspace actions"
-                      open={!!workspaceMenu}
-                      hasPopup
-                      onClick={openWorkspaceMenu}
-                    >
-                      <MoreHorizontal className="size-3" strokeWidth={1.75} />
-                    </SessionsHeaderButton>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          ) : null}
           <div
             ref={(el) => {
               sessionsLock(el);
@@ -607,20 +468,15 @@ function SidebarComponent({
               </p>
             )}
           </div>
-          {deckLayout && tab === "changes" ? (
+          {tab === "changes" ? (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <SourceControl
                 cwd={gitRoot}
-                enabled={open}
+                enabled
                 textHarness={textHarness}
                 selectedPath={selectedDiffPath}
                 onOpenFile={onOpenDiff ?? onOpenFile}
               />
-            </div>
-          ) : null}
-          {!deckLayout && tab === "inbox" ? (
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              <InboxView cwd={cwd} variant="sidebar" />
             </div>
           ) : null}
           {showSidebarFooter ? (
@@ -762,125 +618,6 @@ function SidebarComponent({
 }
 
 export const Sidebar = memo(SidebarComponent);
-
-function SidebarProjectPicker({
-  cwd,
-  recents,
-  busy,
-  needsYou = false,
-  onSelectProject,
-  onNewTerminal,
-  onSearch,
-  onOpenInbox,
-  onOpenNotes,
-  searchActive = false,
-  inboxActive = false,
-  notesActive = false,
-  inboxUnseen = false,
-}: {
-  cwd: string;
-  recents: RecentProject[];
-  busy: boolean;
-  needsYou?: boolean;
-  onSelectProject: (path: string) => void;
-  onNewTerminal?: () => void;
-  onSearch?: () => void;
-  onOpenInbox?: () => void;
-  onOpenNotes?: () => void;
-  searchActive?: boolean;
-  inboxActive?: boolean;
-  notesActive?: boolean;
-  inboxUnseen?: boolean;
-}) {
-  const [groupLabels] = useState(loadTabGroupLabels);
-  const [groupColors] = useState(loadTabGroupColors);
-  const [groupCustomColors] = useState(loadTabGroupCustomColors);
-  const [groupMascots] = useState(loadTabGroupMascots);
-  const groupLogos = useTabGroupLogos();
-  const atHome = cwd === "~";
-  const projectKey = workspaceLabelKey(useWorkspaces(), cwd, projectName(cwd));
-  const label = atHome
-    ? "Chats"
-    : resolveTabGroupLabel(projectKey, groupLabels, basename(cwd) || projectKey);
-  const logoPath = resolveTabGroupLogo(projectKey, groupLogos);
-  const color = resolveTabGroupColor(
-    projectKey,
-    groupColors,
-    groupCustomColors,
-    projectKey,
-  );
-
-  return (
-    <div
-      className="flex h-9 items-center gap-0.5 border-b border-border px-2"
-      data-tauri-drag-region="deep"
-    >
-      <CwdPicker
-        cwd={cwd}
-        recents={recents}
-        placement="below"
-        chevron
-        onCwdChange={onSelectProject}
-        onNewTerminal={onNewTerminal}
-        className="min-w-0 items-center"
-        buttonClassName="flex h-6.5 w-full items-center gap-1.5 rounded-md px-2 text-[12px] leading-none text-muted-foreground hover:text-foreground"
-      >
-        {atHome ? (
-          <MessageSquare className="size-3.5 shrink-0" strokeWidth={1.75} />
-        ) : logoPath ? (
-          <ProjectLogoIcon
-            path={logoPath}
-            className="size-3.5 shrink-0 rounded-md"
-            imageClassName="size-3.5"
-          />
-        ) : (
-          <ProjectMascot
-            project={projectKey}
-            color={needsYou ? "var(--color-warning)" : color}
-            name={resolveTabGroupMascot(projectKey, groupMascots)}
-            className="size-3 shrink-0"
-            active={busy}
-          />
-        )}
-        <span className="min-w-0 truncate">{label}</span>
-      </CwdPicker>
-      <div className="flex items-center ml-auto">
-        {onSearch ? (
-          <IconButton
-            label={`Search (${MOD}K)`}
-            active={searchActive}
-            onClick={onSearch}
-          >
-            <Search className="size-3.5" strokeWidth={1.75} />
-          </IconButton>
-        ) : null}
-        {onOpenInbox ? (
-          <IconButton
-            label={inboxUnseen ? "Inbox, new items" : "Inbox"}
-            active={inboxActive}
-            onClick={onOpenInbox}
-              {...inboxChunk.intent}
-          >
-            <span className="relative">
-              <Inbox className="size-3.5" strokeWidth={1.75} />
-              {inboxUnseen ? (
-                <span
-                  aria-hidden
-                  className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-accent"
-                />
-              ) : null}
-            </span>
-          </IconButton>
-        ) : null}
-        {onOpenNotes ? (
-          <IconButton label="Notes" active={notesActive} onClick={onOpenNotes}>
-            <StickyNote className="size-3.5" strokeWidth={1.75} />
-          </IconButton>
-        ) : null}
-      </div>
-    </div>
-  );
-}
 
 function WorkspaceTitleActions({
   onSearch,
