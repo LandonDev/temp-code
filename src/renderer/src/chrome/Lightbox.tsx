@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Button } from '@renderer/components/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '@renderer/components/ui/dialog'
 import { Spinner } from '@renderer/components/ui/spinner'
-import { Tip } from './DialogField'
+import { Tip } from '../components/tip'
 import { ChevronLeft, ChevronRight } from './icons'
 import {
   closeLightbox,

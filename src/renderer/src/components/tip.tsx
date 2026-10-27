@@ -1,4 +1,4 @@
-import { cloneElement, useLayoutEffect, useRef, useState, type ReactElement, type Ref } from "react";
+import { cloneElement, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type Ref } from "react";
 import { Kbd } from "./ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
@@ -14,11 +14,11 @@ type Side = "top" | "bottom" | "left" | "right";
 export function Tip({
   label,
   shortcut,
-  side = "bottom",
+  side,
   disabled,
   children,
 }: {
-  label: string;
+  label: ReactNode;
   shortcut?: string;
   side?: Side;
   disabled?: boolean;
@@ -42,7 +42,7 @@ export function Tip({
  */
 export function TruncateTip({
   text,
-  side = "bottom",
+  side,
   children,
 }: {
   text: string;

@@ -4,7 +4,7 @@ import { Button } from "@renderer/components/ui/button";
 import { Spinner } from "@renderer/components/ui/spinner";
 import { Textarea } from "@renderer/components/ui/textarea";
 import { ErrorLine, errorText } from "./ConfirmDialog";
-import { Tip } from "./DialogField";
+import { Tip } from "../components/tip";
 import { Modal, useModalClose } from "./Modal";
 import { generateCommitMessage } from "../lib/harness";
 import { MOD } from "../lib/platform";

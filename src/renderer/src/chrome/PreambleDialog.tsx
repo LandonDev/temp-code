@@ -1,7 +1,8 @@
 import { Suspense, lazy, useMemo, useRef, useState, type FormEvent, type RefObject } from "react";
 import { Modal, useModalClose } from "./Modal";
 import { DialogFooter as Footer, ErrorLine, errorText } from "./ConfirmDialog";
-import { Field, FieldRow, Tip } from "./DialogField";
+import { Field, FieldRow } from "./DialogField";
+import { Tip } from "../components/tip";
 import { Button } from "../components/ui/button";
 import { ScrollArea } from "../components/ui/scroll-area";
 import { Switch } from "../components/ui/switch";

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import type { BatchStepKind, BatchStepSpec } from "@server/shared/contract-batch";
 import { DialogFooter, ErrorLine, errorText } from "../../../chrome/ConfirmDialog";
-import { Field, FieldRow, Tip } from "../../../chrome/DialogField";
+import { Field, FieldRow } from "../../../chrome/DialogField";
+import { Tip } from "../../../components/tip";
 import { ChevronDown, ChevronUp, X } from "../../../chrome/icons";
 import { Modal, useModalClose } from "../../../chrome/Modal";
 import { ChoiceSelect } from "../../../components/choice-select";

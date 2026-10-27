@@ -3,7 +3,8 @@ import type { Capability } from "@server/shared/capabilities";
 import type { RemoteAudience } from "@server/shared/contract-remote";
 import { Input } from "@renderer/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@renderer/components/ui/toggle-group";
-import { Field, Tip } from "../../../../chrome/DialogField";
+import { Field } from "../../../../chrome/DialogField";
+import { Tip } from "../../../../components/tip";
 import { CopyButton } from "../CopyButton";
 
 /** The pieces the key and pairing dialogs share. */

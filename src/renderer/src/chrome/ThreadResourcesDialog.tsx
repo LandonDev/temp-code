@@ -20,7 +20,8 @@ import { useLiveDevServers } from '../lib/devServers'
 import { DevServerRow } from './DevServerRow'
 import { macBridgeStore } from '../lib/macBridge'
 import { DialogFooter, ErrorLine, errorText } from './ConfirmDialog'
-import { CheckRow, Tip } from './DialogField'
+import { CheckRow } from './DialogField'
+import { Tip } from '../components/tip'
 import { Modal, useModalClose } from './Modal'
 
 /**

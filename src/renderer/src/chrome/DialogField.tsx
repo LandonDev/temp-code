@@ -1,7 +1,6 @@
 import { cloneElement, isValidElement, useId, type ReactElement, type ReactNode } from "react";
 import { Checkbox } from "@renderer/components/ui/checkbox";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@renderer/components/ui/item";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { cn } from "../lib/cn";
 
 type Control = ReactElement<{ id?: string; "aria-describedby"?: string; "aria-labelledby"?: string; "aria-invalid"?: boolean }>;
@@ -93,16 +92,6 @@ export function FieldRow({
         })}
       </ItemActions>
     </Item>
-  );
-}
-
-/** A label on hover for one control (the `title=` replacement). */
-export function Tip({ label, side, children }: { label: ReactNode; side?: "top" | "bottom" | "left" | "right"; children: ReactElement }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger render={children} />
-      <TooltipContent side={side}>{label}</TooltipContent>
-    </Tooltip>
   );
 }
 

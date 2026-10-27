@@ -4,7 +4,7 @@ import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@renderer/components/ui/item";
 import { DialogFooter, ErrorLine } from "../../../../chrome/ConfirmDialog";
-import { Tip } from "../../../../chrome/DialogField";
+import { Tip } from "../../../../components/tip";
 import { ArrowDownLong, ArrowUpLong, X } from "../../../../chrome/icons";
 import { Modal, useModalClose } from "../../../../chrome/Modal";
 import { hostErrorText, kindOf, originText } from "../../../../lib/hostConnection";
