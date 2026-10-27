@@ -21,6 +21,7 @@ const tool = (id: string, name: string, input: unknown, extra: Partial<NonNullab
 const read = (id: string, path: string) => tool(id, "Read", { file_path: `${CWD}/${path}` }, { kind: "read" });
 const bash = (id: string, command: string, extra: Partial<NonNullable<Block["tool"]>> = {}) =>
   tool(id, "Bash", { command }, { kind: "execute", ...extra });
+const thought = (id: string): Block => ({ id, role: "reasoning", text: "Weighing the index.", ts: 1, doneTs: 4001 });
 const five = (): Block[] => [
   read("a", "src/types.ts"),
   tool("b", "Write", { file_path: `${CWD}/diag.ts`, content: lines(46) }, { kind: "edit" }),
@@ -87,10 +88,38 @@ describe("ActionGroup", () => {
     expect(trigger(container)!.getAttribute("aria-expanded")).toBe("true");
   });
 
-  it("says how many calls failed, in its own figure", () => {
+  it("marks failed calls with the failed glyph and their count", () => {
     const { container } = mount([read("a", "a.ts"), bash("b", "npm test", { status: "failed" })]);
-    expect(trigger(container)!.textContent).toContain("1 failed");
-    expect(trigger(container)!.textContent).not.toContain("(1 failed)");
+    const mark = trigger(container)!.querySelector('[data-slot="status-mark"]')!;
+    expect(mark.getAttribute("data-state")).toBe("failed");
+    expect(mark.getAttribute("aria-label")).toBe("1 failed");
+    expect(mark.textContent).toBe("1");
+  });
+
+  it("draws one call and the thought before it as two rows, no line and no box", () => {
+    const { container } = mount([thought("t"), read("a", "src/types.ts")]);
+    expect(container.querySelector("[data-kind]")).toBeNull();
+    expect(container.querySelector(".divide-y")).toBeNull();
+    expect(container.textContent).toContain("types.ts");
+    // One row for the read (its glyph), nothing repeating it.
+    expect(container.querySelectorAll("[data-glyph]").length).toBe(1);
+    expect(container.textContent).toContain("Thought for 4s");
+  });
+
+  it("draws a run of thinking alone as the thinking row, never a line saying Thought", () => {
+    const { container } = mount([thought("t")]);
+    expect(container.querySelector("[data-kind]")).toBeNull();
+    expect(container.textContent).toContain("Thought for 4s");
+  });
+
+  it("leads the line with the same glyph the run's first read draws on its row", () => {
+    const { container } = mount([read("a", "a.ts"), read("b", "b.ts"), bash("c", "ls")]);
+    const lineSvg = container.querySelector("[data-kind] svg")!.innerHTML;
+    act(() => {
+      fireEvent.click(trigger(container)!);
+    });
+    const rowSvg = container.querySelector(".divide-y [data-glyph] svg")!.innerHTML;
+    expect(lineSvg).toBe(rowSvg);
   });
 
   it("never puts content-visibility or containment on the group", () => {

@@ -353,8 +353,12 @@ export type ActionGroup = {
   dels: number;
   /** Calls that failed or were denied. */
   failed: number;
-  /** The run is one call: that call's own row, no line above it. */
-  lone: Block | null;
+  /**
+   * At most one call (with any thoughts around it): no line and no box, the
+   * steps draw as their own rows in order. A line over one call, or over a
+   * thought, would only say the row again.
+   */
+  lone: boolean;
 };
 
 /** A running edit's server-side record, by the same suffix match EditRow uses. */
@@ -397,7 +401,7 @@ export function actionGroupOf(
     adds,
     dels,
     failed: tools.filter((b) => toolCallState(b) === "rejected").length,
-    lone: blocks.length === 1 && tools.length === 1 ? blocks[0] : null,
+    lone: tools.length <= 1,
   };
 }
 

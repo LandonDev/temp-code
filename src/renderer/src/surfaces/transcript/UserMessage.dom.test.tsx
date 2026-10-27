@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { act, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import type { Block } from "../../lib/session";
 import { UserMessageBlock } from "./UserMessage";
 
@@ -10,7 +10,9 @@ const bubble = (c: HTMLElement) => c.querySelector<HTMLElement>("[data-user-bubb
 
 const realScrollHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight");
 afterEach(() => {
+  cleanup();
   if (realScrollHeight) Object.defineProperty(HTMLElement.prototype, "scrollHeight", realScrollHeight);
+  else delete (HTMLElement.prototype as { scrollHeight?: number }).scrollHeight;
 });
 
 describe("UserMessageBlock", () => {
@@ -37,18 +39,24 @@ describe("UserMessageBlock", () => {
     expect(bubble(container).textContent).toContain("log.txt");
   });
 
-  it("clamps a long message to four lines and toggles it on click", () => {
+  it("shows a message whole up to twelve lines, then Show more and Show less", () => {
     Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get: () => 400 });
-    const { container } = mount(user({ text: "line\n".repeat(20) }));
+    const { container, getByRole } = mount(user({ text: "line\n".repeat(30) }));
     const pre = bubble(container).querySelector("pre")!;
-    expect(pre.className).toContain("line-clamp-4");
+    expect(pre.className).toContain("line-clamp-12");
     act(() => {
-      fireEvent.click(bubble(container));
+      fireEvent.click(getByRole("button", { name: "Show more" }));
     });
-    expect(pre.className).not.toContain("line-clamp-4");
+    expect(pre.className).not.toContain("line-clamp-12");
     act(() => {
-      fireEvent.click(bubble(container));
+      fireEvent.click(getByRole("button", { name: "Show less" }));
     });
-    expect(pre.className).toContain("line-clamp-4");
+    expect(pre.className).toContain("line-clamp-12");
   });
+
+  it("offers no Show more for a message that fits", () => {
+    const { queryByRole } = mount(user());
+    expect(queryByRole("button", { name: "Show more" })).toBeNull();
+  });
+
 });

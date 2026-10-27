@@ -63,15 +63,21 @@ describe("flattenTurns", () => {
     expect(c[1].kind === "item" && a[1].kind === "item" && c[1].item !== a[1].item).toBe(true);
   });
 
+  it("estimates a lone run as its steps' rows", () => {
+    const thought: Block = { id: "r0", role: "reasoning", text: "Hm." };
+    const { rows } = flattenTurns([[user("u0"), thought, tool("t0"), reply("a0")]], false);
+    expect(estimateRowHeight(rows.find((r) => r.key === "r0")!)).toBe(32 * 2 + 4);
+  });
+
   it("estimates heights by what a row holds", () => {
     const { rows } = flattenTurns(
       [[user("u0", "one\ntwo"), tool("t0"), tool("t1"), tool("t2"), tool("t3"), reply("a0", "x".repeat(200) + "\n```ts\nconst a = 1\n```")]],
       false,
     );
     const by = Object.fromEntries(rows.map((r) => [r.key, estimateRowHeight(r)]));
-    expect(by.u0).toBe(52 + 24 * 2);
-    // A group is closed by default: one 32px line.
-    expect(by.t0).toBe(32);
+    expect(by.u0).toBe(56 + 24 * 2);
+    // A group is closed by default: one 32px line and the row's 4px foot.
+    expect(by.t0).toBe(36);
     // 3 wrapped lines of 80 characters, three fence lines, one fence.
     expect(by.a0).toBe(16 + 24 * 6 + 40);
     expect(by["u0:end"]).toBe(36);

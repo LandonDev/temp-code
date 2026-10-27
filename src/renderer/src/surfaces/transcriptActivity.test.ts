@@ -539,7 +539,7 @@ describe("actionGroupOf", () => {
       [read("r", `${CWD}/src/types.ts`), write("w", "diag.ts", 46), bash("b", "npx convex dev --once"), change("e", "schema.ts", 3, 1)],
       { cwd: CWD },
     );
-    expect(g).toMatchObject({ kind: "edit", adds: 49, dels: 1, failed: 0, lone: null });
+    expect(g).toMatchObject({ kind: "edit", adds: 49, dels: 1, failed: 0, lone: false });
     expect(g.phrase).toBe("Read types.ts, created diag.ts, ran convex dev and 1 more");
   });
 
@@ -548,12 +548,11 @@ describe("actionGroupOf", () => {
     expect(actionGroupOf([read("r"), read("s"), bash("b", "ls")]).kind).toBe("research");
   });
 
-  it("is a lone row for one call, and says Thought for a run of thinking", () => {
-    const one = read("r");
-    expect(actionGroupOf([one]).lone).toBe(one);
-    expect(actionGroupOf([thought("t"), one]).lone).toBeNull();
-    expect(actionGroupOf([thought("t")])).toMatchObject({ kind: "think", phrase: "Thought", lone: null });
-    expect(actionGroupOf([thought("t")], { live: true }).phrase).toBe("Thinking");
+  it("is lone, no line, for at most one call whatever thoughts sit around it", () => {
+    expect(actionGroupOf([read("r")]).lone).toBe(true);
+    expect(actionGroupOf([thought("t"), read("r")]).lone).toBe(true);
+    expect(actionGroupOf([thought("t")])).toMatchObject({ kind: "think", lone: true });
+    expect(actionGroupOf([thought("t"), read("r"), shell("s")]).lone).toBe(false);
   });
 
   it("takes a running edit's counts from the live edit by path", () => {

@@ -12,7 +12,7 @@
  * turn's array, so only the live turn regroups on a delta.
  */
 import type { Block } from "../lib/session";
-import { groupTurnItems, isProseBlock, type TurnItem } from "./transcriptActivity";
+import { groupTurnItems, isProseBlock, isToolBlock, type TurnItem } from "./transcriptActivity";
 
 export type TurnInfo = {
   id: string;
@@ -133,8 +133,10 @@ export function flattenTurns(
 /** Pixels per wrapped line of prose, and about how many characters fit one. */
 const PROSE_LINE = 24;
 const PROSE_CHARS = 80;
-/** A group's closed line and an action row share one height. */
-const ACTIVITY_ROW = 32;
+/** An action row or a closed group's line, and the row's 4px foot. */
+const ACTION_LINE = 32;
+const ROW_FOOT = 4;
+const ACTIVITY_ROW = ACTION_LINE + ROW_FOOT;
 
 /**
  * A row's height before it is measured: close enough that the scrollbar
@@ -145,15 +147,16 @@ export function estimateRowHeight(row: TranscriptRow): number {
   if (row.kind === "end") return row.turn.durationMs != null || row.turn.isLast ? 36 : 0;
   const { item } = row;
   if (item.type === "activity") {
-    // Closed by default: one line, or the lone call's own row.
-    return ACTIVITY_ROW;
+    // Closed by default: one line; a lone run is its steps' own rows.
+    const lines = item.blocks.filter(isToolBlock).length <= 1 ? item.blocks.length : 1;
+    return ACTION_LINE * lines + ROW_FOOT;
   }
   const block = item.block;
   switch (block.role) {
     case "user": {
-      // 20px above, 8px below, the bubble's padding and 24px a line (4 at most).
-      const lines = Math.min(4, Math.max(1, block.text.split("\n").length));
-      return 52 + 24 * lines + (block.attachments?.length ? 40 : 0) + (block.preamble ? 28 : 0);
+      // 20px above, 8px below, the bubble's 12px padding, 24px a line (12 at most) and the 4px foot.
+      const lines = Math.min(12, Math.max(1, block.text.split("\n").length));
+      return 56 + 24 * lines + (block.attachments?.length ? 40 : 0) + (block.preamble ? 28 : 0);
     }
     case "tool":
     case "approval":

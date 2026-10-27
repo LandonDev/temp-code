@@ -267,7 +267,7 @@ being produced shimmers (`TextShimmer`); nothing else does.
 | List rows (rail, tabs, fleet, attachments) | none | none | none |
 | Transcript rows | one 150ms fade on first appearance, never replayed | — | none |
 | Streaming text | the jitter buffer (lib/smoothText); words fade `--dur-base` in `StreamingText` | — | none |
-| Composer send | the bubble glides up, 280ms `--ease-drawer` | — | none |
+| Composer send | the bubble glides up 16px, `--dur-slow` `--ease-drawer` | — | fade, `--dur-fast` |
 
 Rules: animate `transform` and `opacity` (and height only through the
 collapsible); every animation is interruptible and starts from the current

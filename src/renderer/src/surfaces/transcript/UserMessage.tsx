@@ -1,5 +1,7 @@
 // A7 (turn structure): the person's message.
 import { MessageSquare } from "../../chrome/icons";
+import { Button } from "../../components/ui/button";
+import { DUR } from "../../lib/ease";
 import {
   type AnimationEvent,
   useContext,
@@ -20,9 +22,9 @@ import { CopyMessageButton } from "../CopyMessageButton";
 import { PreambleRow } from "../PreambleRow";
 import { useTranscriptSession } from "../transcriptSession";
 
-/** The send-in entrance's length (transcript.css `bubble-send-flip` and
- *  `bubble-send-in`, the composer send's 280ms on the drawer curve). */
-export const SEND_IN_MS = 280;
+/** The send-in entrance's length: transcript.css `bubble-send-flip` and
+ *  `bubble-send-in` run `--dur-slow` on the drawer curve. */
+export const SEND_IN_MS = DUR.slow * 1000;
 
 /**
  * The person's message: a soft bubble on the right, 15px, no avatar and no
@@ -95,9 +97,7 @@ export function UserMessageBlock({
     setOverflows(el.scrollHeight > el.clientHeight + 1);
   }, [text, expanded]);
 
-  const toggle = () => {
-    if (overflows) setExpanded((value) => !value);
-  };
+  const toggle = () => setExpanded((value) => !value);
 
   return (
     <div className="flex min-w-0 flex-col items-end pt-5 pb-2 pl-10">
@@ -109,14 +109,13 @@ export function UserMessageBlock({
       <div
         ref={bubbleRef}
         data-user-bubble=""
-        className="group/message relative w-fit max-w-[min(36rem,85%)] min-w-0 rounded-xl bg-card px-3.5 py-2.5 font-sans text-[15px] leading-6 text-foreground"
+        className="group/message relative w-fit max-w-[min(36rem,85%)] min-w-0 rounded-xl bg-card px-4 py-3 font-sans text-[15px] leading-6 text-foreground"
         style={
           entering == null
             ? { zIndex: stickyIndex }
             : { zIndex: stickyIndex, animationDelay: `${-entering}ms` }
         }
         onAnimationEnd={entering == null ? undefined : settleEntrance}
-        onClick={overflows ? toggle : undefined}
       >
         {text || block.attachments?.length ? (
           <CopyMessageButton text={text} attachments={block.attachments ?? []} />
@@ -152,10 +151,15 @@ export function UserMessageBlock({
         {text ? (
           <pre
             ref={textRef}
-            className={`min-w-0 whitespace-pre-wrap break-words font-sans ${expanded ? "" : "line-clamp-4"}`}
+            className={`min-w-0 whitespace-pre-wrap break-words font-sans ${expanded ? "" : "line-clamp-12"}`}
           >
             <UserText text={text} />
           </pre>
+        ) : null}
+        {overflows || expanded ? (
+          <Button variant="link" size="xs" aria-expanded={expanded} className="mt-1 h-auto px-0 text-muted-foreground" onClick={toggle}>
+            {expanded ? "Show less" : "Show more"}
+          </Button>
         ) : null}
       </div>
     </div>
@@ -178,18 +182,16 @@ export function UserText({ text }: { text: string }) {
     <>
       {parts.map((part, index) =>
         "id" in part ? (
-          <button
+          <Button
             key={index}
-            type="button"
-            className="inline-flex items-center gap-1 rounded-md bg-content/10 px-1 align-baseline text-[13px] text-content hover:underline"
-            onClick={(event) => {
-              event.stopPropagation();
-              onSelectSession?.(part.id);
-            }}
+            variant="ghost"
+            size="xs"
+            className="h-auto gap-1 px-1 align-baseline font-normal"
+            onClick={() => onSelectSession?.(part.id)}
           >
-            <MessageSquare className="size-3 opacity-60" />
+            <MessageSquare className="text-muted-foreground" />
             {part.title}
-          </button>
+          </Button>
         ) : "command" in part ? (
           <CommandChip key={index} command={part.command} />
         ) : (

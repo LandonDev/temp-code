@@ -36,6 +36,7 @@ import { TranscriptSelectionMenu } from "./TranscriptSelectionMenu";
 import { groupTurns } from "./transcriptActivity";
 import { TurnEnd } from "./transcript/TurnEnd";
 import { ActionGroup } from "./transcript/ActionGroup";
+import { Button } from "../components/ui/button";
 import { TranscriptBlock } from "./transcript/TranscriptBlock";
 /*
  * One scroll engine (ported from temp-code). Three modes: `follow` rides the
@@ -999,13 +1000,9 @@ const RowView = memo(function RowView({
     >
       {row.kind === "more" ? (
         <div className="flex justify-center py-3">
-          <button
-            type="button"
-            className="pressable rounded-md bg-content/8 px-2.5 py-1.5 font-sans text-[12px] text-content/50 hover:bg-content/10 hover:text-content"
-            onClick={onLoadEarlier}
-          >
+          <Button variant="secondary" size="sm" onClick={onLoadEarlier}>
             Load earlier messages
-          </button>
+          </Button>
         </div>
       ) : row.kind === "end" ? (
         <TurnEnd

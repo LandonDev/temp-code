@@ -8,7 +8,7 @@
  */
 @keyframes bubble-send-in {
   from {
-    transform: translateY(18px) scale(0.96);
+    transform: translateY(16px) scale(0.96);
     opacity: 0;
   }
   to {
@@ -17,7 +17,7 @@
   }
 }
 .bubble-send-in {
-  animation: bubble-send-in 280ms var(--ease-drawer) both;
+  animation: bubble-send-in var(--dur-slow) var(--ease-drawer) both;
   transform-origin: bottom right;
   will-change: transform;
 }
@@ -27,14 +27,14 @@
    reads as the same text moving. */
 @keyframes bubble-send-flip {
   from {
-    transform: translate(var(--send-dx, 0px), var(--send-dy, 18px)) scale(0.98);
+    transform: translate(var(--send-dx, 0px), var(--send-dy, 16px)) scale(0.98);
   }
   to {
     transform: none;
   }
 }
 .bubble-send-flip {
-  animation: bubble-send-flip 280ms var(--ease-drawer) both;
+  animation: bubble-send-flip var(--dur-slow) var(--ease-drawer) both;
   transform-origin: bottom right;
   will-change: transform;
 }
