@@ -22,6 +22,8 @@ import {
   type SettingsSectionId,
   type StaticSettingsSectionId,
 } from "../lib/settings";
+import { basename } from "../lib/fs";
+import type { WorkspaceMeta } from "../lib/tcserver/types";
 import { useWorkspaces } from "../lib/tcserver/workspaces";
 import { registry, useEnvironments } from "../lib/connection";
 import { RailHeading, RailRow } from "./RailRow";
@@ -55,6 +57,11 @@ export function SettingsNav({ section, onSelect, onClose }: Props) {
   const hostOf = (environmentId: string): string | null =>
     environments.length > 1 && environmentId !== registry.primaryEnvironmentId
       ? (environments.find((e) => e.id === environmentId)?.name ?? environmentId)
+      : null;
+  // Two workspaces of one name on one host: each says the folder it sits in.
+  const folderOf = (workspace: WorkspaceMeta): string | null =>
+    workspaces.some((w) => w.id !== workspace.id && w.environmentId === workspace.environmentId && w.name === workspace.name)
+      ? basename(workspace.path.replace(/\/+[^/]*\/*$/, "")) || null
       : null;
 
   return (
@@ -92,7 +99,7 @@ export function SettingsNav({ section, onSelect, onClose }: Props) {
                 <RailRow
                   key={id}
                   label={workspace.name}
-                  trailing={hostOf(workspace.environmentId)}
+                  trailing={hostOf(workspace.environmentId) ?? folderOf(workspace)}
                   icon={Folder}
                   selected={id === section}
                   onClick={() => onSelect(id)}

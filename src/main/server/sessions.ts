@@ -1737,7 +1737,21 @@ export class SessionRegistry {
 
   // ── workspaces & projects ──────────────────────────────────────────
 
-  async createWorkspace(path: string, name?: string, opts: { linkId?: string } = {}): Promise<WorkspaceMeta> {
+  /** Creates in flight, by path: the git reads between the existing-path
+   *  check and the insert let a second create for the folder pass the check. */
+  private readonly creatingWorkspaces = new Map<string, Promise<WorkspaceMeta>>()
+
+  /** One workspace per folder: a concurrent create for the same path joins
+   *  the first and answers its row. */
+  createWorkspace(path: string, name?: string, opts: { linkId?: string } = {}): Promise<WorkspaceMeta> {
+    const inFlight = this.creatingWorkspaces.get(path)
+    if (inFlight) return inFlight
+    const run = this.createWorkspaceNow(path, name, opts).finally(() => this.creatingWorkspaces.delete(path))
+    this.creatingWorkspaces.set(path, run)
+    return run
+  }
+
+  private async createWorkspaceNow(path: string, name: string | undefined, opts: { linkId?: string }): Promise<WorkspaceMeta> {
     const existing = this.store.listWorkspaces().find((w) => w.path === path)
     if (existing) return existing
     // A workspace names a folder on this host. A client that has not yet

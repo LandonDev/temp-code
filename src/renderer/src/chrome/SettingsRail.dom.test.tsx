@@ -43,6 +43,20 @@ describe("SettingsNav", () => {
     expect(container.textContent).not.toContain("·");
   });
 
+  it("tells two workspaces of one name on one host apart by their parent folder, and says nothing without a collision", () => {
+    hosts([env("local", "This Mac"), env("env_box", "box")]);
+    workspaces.list = [
+      { ...ws("w1", "app", "local"), path: "/Users/me/work/app" },
+      { ...ws("w2", "app", "local"), path: "/Users/me/old/app" },
+      ws("w3", "solo", "local"),
+      { ...ws("w4", "app", "env_box"), path: "/srv/app" },
+    ];
+    const { container } = render(<SettingsNav section="general" onSelect={() => {}} onClose={() => {}} />);
+    const rows = [...container.querySelectorAll('[aria-labelledby="settings-group-workspaces"] [data-rail-row]')];
+    // The host still wins on another host's row.
+    expect(rows.map((r) => r.querySelector("[data-rail-trailing]")?.textContent ?? null)).toEqual(["work", "old", null, "box"]);
+  });
+
   it("ends in Back at the foot", () => {
     hosts([env("local", "This Mac")]);
     workspaces.list = [];

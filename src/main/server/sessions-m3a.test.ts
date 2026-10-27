@@ -84,6 +84,13 @@ it('adopts old path-only sessions and assigns new path-only sessions to matching
   expect((await registry.create({ cwd: root })).workspaceId).toBe(workspace.id)
   expect((await registry.createWorkspace(root)).id).toBe(workspace.id)
 })
+it('joins a concurrent create for the same folder: one row, one id', async () => {
+  const [a, b] = await Promise.all([registry.createWorkspace(root), registry.createWorkspace(root)])
+  expect(a.id).toBe(b.id)
+  expect(registry.listWorkspaces().filter((w) => w.path === root)).toHaveLength(1)
+  // Settled, a later create answers the stored row.
+  expect((await registry.createWorkspace(root)).id).toBe(a.id)
+})
 it('recognizes typed and untyped placeholder titles while preserving custom titles', async () => {
   const session = await registry.create({ cwd: root })
   expect(isPlaceholderTitle(session)).toBe(true)
