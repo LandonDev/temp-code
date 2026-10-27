@@ -70,4 +70,20 @@ describe("PageRow", () => {
     expect(error.className).toContain("text-destructive");
     expect(error.className).toContain("line-clamp-none");
   });
+
+  it("never clamps a description, so its later lines stay readable", () => {
+    render(
+      <PageRow
+        title="Codex"
+        description={
+          <>
+            <span className="block">codex-cli 0.162.1</span>
+            <span className="block">/usr/bin/codex</span>
+            <span className="block">Login expired</span>
+          </>
+        }
+      />,
+    );
+    expect(screen.getByText("Login expired").closest("p")?.className).toContain("line-clamp-none");
+  });
 });

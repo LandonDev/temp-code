@@ -81,7 +81,8 @@ function PageSection({
  * One setting: media, title, a muted description under it, the control at
  * the end. A hairline sits above a row that follows another row, so the
  * first row of a section, or the first after a heading, has none.
- * `error` is a red line under the description, never clamped.
+ * Neither the description nor `error` (a red line under it) is clamped: a
+ * row's later lines (a path, a doctor's error) must stay readable.
  */
 function PageRow({
   title,
@@ -109,7 +110,7 @@ function PageRow({
       {media ? <ItemMedia>{media}</ItemMedia> : null}
       <ItemContent className="min-w-0">
         <ItemTitle>{title}</ItemTitle>
-        {description ? <ItemDescription>{description}</ItemDescription> : null}
+        {description ? <ItemDescription className="line-clamp-none">{description}</ItemDescription> : null}
         {error ? <ItemDescription className="line-clamp-none text-destructive">{error}</ItemDescription> : null}
       </ItemContent>
       {children ? <ItemActions className="shrink-0">{children}</ItemActions> : null}
