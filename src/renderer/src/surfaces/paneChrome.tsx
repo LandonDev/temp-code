@@ -1,3 +1,4 @@
+import { useSashKeys } from "../hooks/useSashKeys";
 import { useState, type PointerEvent as ReactPointerEvent } from "react";
 import { X } from "../chrome/icons";
 import { Button } from "../components/ui/button";
@@ -83,9 +84,7 @@ export function PaneHeader({
   );
 }
 
-/** One arrow press moves a boundary this much of its group; Shift, `BIG_STEP`. */
-export const SASH_STEP = 0.02;
-export const SASH_BIG_STEP = 0.1;
+export { SASH_STEP, SASH_BIG_STEP } from "../hooks/useSashKeys";
 
 /**
  * The boundary between two panes: a hairline with a 6px hit area each side.
@@ -112,16 +111,20 @@ export function Sash({
   const row = sash.dir === "right";
   const boundary = sash.sizes.slice(0, sash.index + 1).reduce((sum, size) => sum + size, 0);
   const group = sash.group;
+  const keys = useSashKeys({
+    label: "Resize panes",
+    orientation: row ? "vertical" : "horizontal",
+    value: boundary * 100,
+    min: 0,
+    max: 100,
+    getSpan: () => 100,
+    onChange: (next) => onCommit(next / 100),
+    onReset: onEqualize,
+  });
 
   return (
     <div
-      role="separator"
-      tabIndex={0}
-      aria-label="Resize panes"
-      aria-orientation={row ? "vertical" : "horizontal"}
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={Math.round(boundary * 100)}
+      {...keys}
       className={cn("group/sash absolute z-10 bg-border outline-none", row ? "w-px" : "h-px")}
       style={
         row
@@ -136,15 +139,6 @@ export function Sash({
               width: `${group.w * 100}%`,
             }
       }
-      onKeyDown={(event) => {
-        const back = row ? "ArrowLeft" : "ArrowUp";
-        const forward = row ? "ArrowRight" : "ArrowDown";
-        if (event.key !== back && event.key !== forward) return;
-        event.preventDefault();
-        const step = event.shiftKey ? SASH_BIG_STEP : SASH_STEP;
-        onCommit(boundary + (event.key === forward ? step : -step));
-      }}
-      onDoubleClick={onEqualize}
     >
       <div
         className={cn(

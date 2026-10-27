@@ -1,3 +1,4 @@
+import { useSashKeys } from "../hooks/useSashKeys";
 import {
   useEffect,
   useRef,
@@ -102,6 +103,22 @@ export function DockFrame({
     }
   };
 
+  const keys = useSashKeys({
+    label,
+    orientation: "horizontal",
+    value: size,
+    getSpan: (handle) => handle.parentElement?.parentElement?.getBoundingClientRect().height || window.innerHeight,
+    direction: -1,
+    onChange: (next) => {
+      pending.current = clampDockSize(next, { width: window.innerWidth, height: window.innerHeight });
+      commit();
+    },
+    onReset: () => {
+      pending.current = DOCK_SIZE_DEFAULT;
+      commit();
+    },
+  });
+
   return (
     <section
       {...data}
@@ -111,19 +128,12 @@ export function DockFrame({
       onMouseDown={onFocus}
     >
       <div
-        role="separator"
-        aria-orientation="horizontal"
-        aria-label={label}
-        aria-valuenow={size}
-        className={`absolute inset-x-0 -top-px z-10 h-1.5 cursor-row-resize touch-none ${dragging ? "bg-foreground/12" : "hover:bg-foreground/7"}`}
+        {...keys}
+        className={`absolute inset-x-0 -top-px z-10 h-1.5 cursor-row-resize touch-none outline-none focus-visible:bg-accent ${dragging ? "bg-foreground/12" : "hover:bg-foreground/7"}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
-        onDoubleClick={() => {
-          pending.current = DOCK_SIZE_DEFAULT;
-          commit();
-        }}
       />
       {children}
     </section>

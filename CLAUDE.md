@@ -272,6 +272,9 @@ app replaces itself from the feed, and only from the feed.
 - Settings rows and sections use `components/page.tsx` (`PageRow`,
   `PageSection`), which pass native props and data attributes to their roots;
   Hosts exports these as `Row` and `Group` without copying their markup.
+- The pane sash and bottom dock use `hooks/useSashKeys.ts` for focus,
+  separator ARIA, axis arrows (2% of the container, Shift 10%) and a
+  double-click reset. Keyboard resize commits at once.
 - The right side of a thread is one panel (`lib/rightPanel.ts`,
   `surfaces/RightPanel.tsx`; docs/LAYOUT.md "The right side"); Modal and
   ConfirmDialog ride `components/ui/dialog.tsx`.
