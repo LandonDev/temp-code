@@ -13,6 +13,7 @@ const state = vi.hoisted(() => ({
 
 const profile = (name: string) => ({ name, email: `${name}@example.com` });
 
+vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
 vi.mock("../../lib/sounds", () => ({ playCue: () => {} }));
 vi.mock("../../lib/connection", () => ({ registry: { primary: () => ({ environmentId: "local" }) } }));
 vi.mock("../../chrome/ThreadDefaultsDialog", () => ({ ThreadDefaultsEditor: () => <h2>New threads</h2> }));
@@ -58,8 +59,6 @@ vi.mock("../../stores/accounts", () => ({
 }));
 
 const { WorkspacePage } = await import("./Workspace");
-// ChoiceSelect rides a lazy chunk; load it so the comboboxes render at once.
-await (await import("../chunks")).selectChunk.load();
 
 const projectRows = () =>
   [...document.querySelectorAll<HTMLElement>("[data-slot=page-row]")].filter((row) => row.querySelector("[aria-label$=' settings']"));

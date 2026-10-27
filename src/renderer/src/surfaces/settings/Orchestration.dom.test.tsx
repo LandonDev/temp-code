@@ -11,6 +11,7 @@ const state = vi.hoisted(() => ({
   clear: vi.fn(async () => {}),
 }));
 
+vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
 vi.mock("../../lib/connection", () => ({ registry: { primary: () => ({ environmentId: "local" }) } }));
 vi.mock("../../lib/sounds", () => ({ playCue: () => {} }));
 vi.mock("../../lib/tcserver/workspaces", () => ({ useWorkspaces: () => state.workspaces }));
@@ -24,8 +25,6 @@ const { OrchestrationPage } = await import("./Orchestration");
 const { OrchestrationRulesEditor } = await import("../../chrome/OrchestrationRules");
 const { openOrchestrationSettings, takeRequestedRulesFocus } = await import("../../lib/tcserver/rules");
 const { OPEN_SETTINGS_EVENT } = await import("../../lib/monaco/debugTab");
-// ChoiceSelect rides a lazy chunk; load it so the comboboxes render at once.
-await (await import("../chunks")).selectChunk.load();
 
 const CATALOG: RulesCatalog = {
   claude: {

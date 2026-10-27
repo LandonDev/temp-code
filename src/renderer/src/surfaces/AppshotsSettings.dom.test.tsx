@@ -11,6 +11,7 @@ const state = vi.hoisted(() => ({
   refresh: vi.fn(async (_prompt?: boolean) => ({})),
 }));
 
+vi.mock("../components/choice-select", async () => await import("../components/choice-select-body"));
 vi.mock("../lib/sounds", () => ({ playCue: () => {} }));
 vi.mock("../lib/native", () => ({ openUrl: vi.fn() }));
 vi.mock("../lib/appshots", () => ({
@@ -21,8 +22,6 @@ vi.mock("../lib/appshots", () => ({
 }));
 
 const { AppshotsPage } = await import("./AppshotsSettings");
-// ChoiceSelect rides a lazy chunk; load it so the comboboxes render at once.
-await (await import("./chunks")).selectChunk.load();
 
 beforeEach(() => {
   state.perms = null;

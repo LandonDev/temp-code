@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
   set: vi.fn(async (_params: unknown): Promise<unknown> => ({})),
 }));
 
+vi.mock("../components/choice-select", async () => await import("../components/choice-select-body"));
 vi.mock("../lib/connection", () => ({
   registry: {
     primary: () => ({ environmentId: "local" }),
@@ -31,8 +32,6 @@ vi.mock("../lib/reviewScope", async (original) => ({
 }));
 
 const { ReviewsPage } = await import("./ReviewSettings");
-// ChoiceSelect rides a lazy chunk; load it so the comboboxes render at once.
-await (await import("./chunks")).selectChunk.load();
 const { ReviewFields } = await import("../chrome/ReviewFields");
 
 const SETTINGS: ReviewSettings = {
