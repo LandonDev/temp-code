@@ -1,4 +1,4 @@
-import { highlightCode } from "../chrome/FilePreview";
+import { DiffLine } from "../chrome/FilePreview";
 import { DIFF_LINE_CAP, type DiffRow } from "./diffRows";
 
 /**
@@ -22,7 +22,13 @@ export function DiffBody({
             ⋯
           </div>
         ) : (
-          <DiffLine key={n} row={row} onEditAt={onEditAt} />
+          <DiffLine
+            key={n}
+            number={row.type === "del" ? row.oldNo : row.newNo}
+            kind={row.type}
+            text={row.text}
+            onClick={editAt(row, onEditAt)}
+          />
         ),
       )}
       {rows.length > DIFF_LINE_CAP ? (
@@ -34,35 +40,10 @@ export function DiffBody({
   );
 }
 
-function DiffLine({
-  row,
-  onEditAt,
-}: {
-  row: DiffRow;
-  onEditAt?: (line: number) => void;
-}) {
-  const add = row.type === "add";
-  const del = row.type === "del";
-  const bg = add ? "bg-success/10" : del ? "bg-destructive/10" : "";
-  const mark = add ? "+" : del ? "−" : " ";
-  const markColor = add ? "text-success" : del ? "text-destructive" : "text-muted-foreground";
-  const number = del ? row.oldNo : row.newNo;
+/** A numbered row opens the inline editor at its line; a removed one has
+ *  no line to open. */
+function editAt(row: DiffRow, onEditAt?: (line: number) => void) {
   const line = row.newNo;
-  const editable = onEditAt !== undefined && !del && line !== undefined;
-  return (
-    <div
-      className={`flex items-baseline ${bg}`}
-      onClick={editable ? () => onEditAt(line) : undefined}
-    >
-      <span className="w-7 shrink-0 select-none pr-1 text-right font-mono text-[10px] tabular-nums text-muted-foreground">
-        {number ?? ""}
-      </span>
-      <span className={`w-3 shrink-0 text-center font-mono text-[10px] font-bold ${markColor}`}>
-        {mark}
-      </span>
-      <span className="min-w-0 flex-1 whitespace-pre-wrap pr-2 font-mono text-[11px] leading-4.5 [overflow-wrap:anywhere]">
-        {highlightCode(row.text, row.type === "ctx")}
-      </span>
-    </div>
-  );
+  if (!onEditAt || row.type === "del" || line === undefined) return undefined;
+  return () => onEditAt(line);
 }

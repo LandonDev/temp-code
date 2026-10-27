@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { CircleDashed, X } from "./icons";
+import { Button } from "../components/ui/button";
 import { MAX_PREVIEW_LINES } from "../lib/harness/preview";
 import { displayPath, resolveWorkspacePath } from "../lib/paths";
 import { RenderCache, cacheKey } from "../lib/renderCache";
@@ -63,6 +63,9 @@ type Props = {
   onOpenFile?: (path: string) => void;
 };
 
+/** The file an edit asks to change, before the person approves it: one
+ *  header row (the file, its counts, "Rejected" once refused) over the
+ *  diff's lines. A pending edit says nothing; the approval under it does. */
 export function FilePreview({ preview, status, cwd, onOpenFile }: Props) {
   const path = preview.path;
   const filePath = path ? (resolveWorkspacePath(path, cwd) ?? path) : undefined;
@@ -83,45 +86,36 @@ export function FilePreview({ preview, status, cwd, onOpenFile }: Props) {
     : fileName || preview.title || "File";
 
   return (
-    <div className="overflow-hidden rounded-[10px] border border-content/10 bg-content/6">
-      <div className="flex items-center gap-2 px-2.5 py-2">
-        <FileTypeIcon name={fileName || "file"} isDir={false} />
+    <div className="overflow-hidden rounded-lg border border-border bg-card">
+      <div className="flex h-9 items-center gap-2 px-3">
+        <FileTypeIcon name={fileName || "file"} isDir={false} size={14} />
         {filePath && onOpenFile ? (
-          <button
-            type="button"
-            className="min-w-0 flex-1 truncate text-left font-mono text-[12px] font-medium text-content hover:text-info hover:underline"
-            title={path}
+          <Button
+            variant="link"
+            className="h-auto min-w-0 shrink justify-start p-0 font-mono text-[12px] font-normal"
             onClick={() => onOpenFile(filePath)}
           >
-            {label}
-          </button>
+            <span className="truncate">{label}</span>
+          </Button>
         ) : (
-          <span
-            className="min-w-0 flex-1 truncate font-mono text-[12px] font-medium text-content"
-            title={path}
-          >
+          <span className="min-w-0 truncate font-mono text-[12px] text-foreground">
             {label}
           </span>
         )}
-        {added > 0 || deleted > 0 ? (
-          <span className="shrink-0 font-mono text-[11px] font-semibold">
-            {added > 0 ? (
-              <span className="text-success">+{added}</span>
-            ) : null}
-            {added > 0 && deleted > 0 ? " " : null}
-            {deleted > 0 ? (
-              <span className="text-danger">-{deleted}</span>
-            ) : null}
-          </span>
-        ) : (
-          <StatusIcon status={status} />
-        )}
+        <span className="ms-auto flex shrink-0 items-center gap-2 font-mono text-[12px] tabular-nums">
+          {added > 0 ? <span className="text-success">+{added}</span> : null}
+          {deleted > 0 ? (
+            <span className="text-destructive">−{deleted}</span>
+          ) : null}
+          {status === "rejected" ? (
+            <span className="font-sans text-muted-foreground">Rejected</span>
+          ) : null}
+        </span>
       </div>
       {showDiff ? (
-        <>
-          <div className="h-px bg-content/10" />
+        <div className="border-t border-border">
           <PreviewDiffLines lines={lines} />
-        </>
+        </div>
       ) : null}
     </div>
   );
@@ -138,76 +132,65 @@ export function PreviewDiffLines({ lines }: { lines: ToolPreviewLine[] }) {
   return (
     <div>
       {shown.map((line, index) => (
-        <PreviewLine
+        <DiffLine
           key={`${line.number ?? index}-${line.kind}-${index}`}
-          line={line}
-          showGutter
+          number={line.number}
+          kind={line.kind === "context" ? "ctx" : line.kind === "add" ? "add" : "del"}
+          text={line.text}
         />
       ))}
     </div>
   );
 }
 
-function PreviewLine({
-  line,
-  showGutter,
-}: {
-  line: ToolPreviewLine;
-  showGutter: boolean;
-}) {
-  const bg =
-    line.kind === "add"
-      ? "bg-success/10"
-      : line.kind === "del"
-        ? "bg-danger/10"
-        : "";
-  const bar =
-    line.kind === "add"
-      ? "bg-success"
-      : line.kind === "del"
-        ? "bg-danger"
-        : "bg-transparent";
-  const mark = line.kind === "add" ? "+" : line.kind === "del" ? "−" : " ";
-  const markColor =
-    line.kind === "add"
-      ? "text-success"
-      : line.kind === "del"
-        ? "text-danger"
-        : "text-transparent";
+export type DiffLineKind = "add" | "del" | "ctx";
 
+const LINE_TINT: Record<DiffLineKind, string> = {
+  add: "bg-success/10",
+  del: "bg-destructive/10",
+  ctx: "",
+};
+
+const LINE_MARK: Record<DiffLineKind, { mark: string; tone: string }> = {
+  add: { mark: "+", tone: "text-success" },
+  del: { mark: "−", tone: "text-destructive" },
+  ctx: { mark: " ", tone: "" },
+};
+
+/** One line of a diff, the transcript's and the approval preview's: the
+ *  number, the mark, the code; added and removed lines tinted, no bar. With
+ *  `onClick` the line opens the editor there. */
+export function DiffLine({
+  number,
+  kind,
+  text,
+  onClick,
+}: {
+  number?: number;
+  kind: DiffLineKind;
+  text: string;
+  onClick?: () => void;
+}) {
+  const { mark, tone } = LINE_MARK[kind];
   return (
-    <div className={`relative flex items-baseline ${bg}`}>
-      <span className={`absolute inset-y-0 left-0 w-0.5 ${bar}`} />
-      <span className="w-7 shrink-0 pr-1 text-right font-mono text-[10px] text-content/40">
-        {line.number ?? " "}
+    <div
+      data-diff-line={kind}
+      className={`group/line flex items-baseline ${LINE_TINT[kind]}${onClick ? " cursor-pointer" : ""}`}
+      onClick={onClick}
+    >
+      <span
+        className={`w-7 shrink-0 select-none pr-1 text-right font-mono text-[11px] tabular-nums text-muted-foreground${onClick ? " group-hover/line:text-foreground" : ""}`}
+      >
+        {number ?? ""}
       </span>
-      {showGutter ? (
-        <span
-          className={`w-3 shrink-0 text-center font-mono text-[10px] font-bold ${markColor}`}
-        >
-          {mark}
-        </span>
-      ) : null}
-      <span className="min-w-0 flex-1 truncate pr-2 font-mono text-[11px] leading-4.5">
-        {highlightCode(line.text, line.kind === "context")}
+      <span className={`w-3 shrink-0 select-none text-center font-mono text-[11px] font-medium ${tone}`}>
+        {mark}
+      </span>
+      <span className="min-w-0 flex-1 whitespace-pre-wrap pr-2 font-mono text-[11px] leading-[18px] [overflow-wrap:anywhere]">
+        {highlightCode(text, kind === "ctx")}
       </span>
     </div>
   );
-}
-
-function StatusIcon({ status }: { status: Status }) {
-  if (status === "rejected") {
-    return <X className="size-3.5 shrink-0 text-danger" strokeWidth={2} />;
-  }
-  if (status === "pending") {
-    return (
-      <CircleDashed
-        className="size-3.5 shrink-0 text-content/40"
-        strokeWidth={1.75}
-      />
-    );
-  }
-  return null;
 }
 
 /** One highlighted line per distinct text: elements are immutable, so a
@@ -223,6 +206,8 @@ export function highlightCode(text: string, dimmed: boolean): ReactElement {
   return el;
 }
 
+/** Code tints are neutral by weight, so green and red mean only added and
+ *  removed lines: keywords in foreground, the rest muted, comments faint. */
 function tokenizeLine(text: string, dimmed: boolean): ReactElement {
   const dim = dimmed ? "opacity-70" : "";
   const trimmed = text.trimStart();
@@ -231,33 +216,28 @@ function tokenizeLine(text: string, dimmed: boolean): ReactElement {
     trimmed.startsWith("///") ||
     trimmed.startsWith("#")
   ) {
-    return <span className={`text-content/40 ${dim}`}>{text}</span>;
+    return <span className={`text-muted-foreground/60 ${dim}`}>{text}</span>;
   }
 
-  const parts: { text: string; color: string }[] = [];
+  const parts: { text: string; keyword: boolean }[] = [];
   const regex = /\b([A-Za-z_][A-Za-z0-9_]*)\b/g;
   let last = 0;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(text))) {
     if (match.index > last) {
-      parts.push({ text: text.slice(last, match.index), color: "" });
+      parts.push({ text: text.slice(last, match.index), keyword: false });
     }
     const token = match[1];
-    const color = KEYWORDS.has(token)
-      ? "text-success"
-      : /^[A-Z]/.test(token)
-        ? "text-warning"
-        : "";
-    parts.push({ text: token, color });
+    parts.push({ text: token, keyword: KEYWORDS.has(token) });
     last = match.index + token.length;
   }
-  if (last < text.length) parts.push({ text: text.slice(last), color: "" });
+  if (last < text.length) parts.push({ text: text.slice(last), keyword: false });
 
   return (
-    <span className={`text-content/70 ${dim}`}>
+    <span className={`text-muted-foreground ${dim}`}>
       {parts.map((part, index) =>
-        part.color ? (
-          <span key={index} className={part.color}>
+        part.keyword ? (
+          <span key={index} className="text-foreground">
             {part.text}
           </span>
         ) : (
