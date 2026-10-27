@@ -31,6 +31,11 @@ type Props = {
   cwd: string;
   branch?: string;
   enabled?: boolean;
+  /** `composer`: the draft row's chip. `head`: the Changes section's branch
+   *  name, in its 13px medium type, the list opening below it. */
+  variant?: "composer" | "head";
+  /** A label on hover (the head's Tracks / Not published / No remote). */
+  tip?: string;
   onChange?: () => void;
   onClose?: () => void;
 };
@@ -47,9 +52,12 @@ export function BranchPicker({
   cwd,
   branch,
   enabled = true,
+  variant = "composer",
+  tip,
   onChange,
   onClose,
 }: Props) {
+  const head = variant === "head";
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -256,12 +264,16 @@ export function BranchPicker({
       }
       disabled={!interactive || !!blocked}
       className={cn(
-        "min-w-0 font-normal text-muted-foreground hover:text-foreground aria-expanded:text-foreground",
+        head
+          ? "h-7 min-w-0 max-w-full justify-start px-1.5 text-[13px] font-medium text-foreground"
+          : "min-w-0 font-normal text-muted-foreground hover:text-foreground aria-expanded:text-foreground",
         missingGit && "disabled:opacity-100",
       )}
     >
-      <GitBranch className="size-3.5 shrink-0" strokeWidth={1.75} />
-      {awaitingBranch ? (
+      {head ? null : <GitBranch className="size-3.5 shrink-0" strokeWidth={1.75} />}
+      {head && !awaitingBranch ? (
+        <span className="truncate">{label}</span>
+      ) : awaitingBranch ? (
         <span className="relative truncate font-mono text-[12px]">
           {/*
             A real text node, hidden rather than absent, so the pending
@@ -281,16 +293,17 @@ export function BranchPicker({
   );
 
   return (
-    <div className="flex max-w-[45%] shrink-0 items-center gap-2.5">
+    <div className={head ? "flex min-w-0 flex-1 items-center" : "flex max-w-[45%] shrink-0 items-center gap-2.5"}>
       <div className="relative min-w-0">
         <LazyPopover
           trigger={trigger}
+          tip={tip ? { label: tip } : undefined}
           open={open}
           onOpenChange={(next) => {
             if (next) setOpen(true);
             else dismiss(true);
           }}
-          side="top"
+          side={head ? "bottom" : "top"}
           align="start"
           label="Branch picker"
           initialFocus={search}

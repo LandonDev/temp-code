@@ -210,8 +210,10 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   - **Agents** (`FleetList`): A18's rows in a scroll area; none is one
     Empty, "No subagents".
   - **Changes** (`chrome/rail/ChangesPanel.tsx`): the one place a
-    checkout's changes are listed. Its top row is the branch (its upstream
-    on hover), Sync with `↓2 ↑1` or Publish, Create PR or PR #n, and a ⋯
+    checkout's changes are listed. Its top row is the branch, the one place
+    a thread's branch is changed once it has a message (BranchPicker's
+    head: the list, create, and the stash-or-commit choice for a dirty
+    tree; its upstream on hover), Sync with `↓2 ↑1` or Publish, Create PR or PR #n, and a ⋯
     menu (Pull, Push, Stash changes, Stage all, Unstage all); a push to the
     default branch confirms. Then the index: Staged and Changes headed
     only when both have rows, each row the file's type icon, its name with
@@ -355,10 +357,12 @@ the tiers the serving CLI lists, any other setting). Right: the permission
 mode as a quiet select (none for fx) and the send button, whose glyph is
 what Enter would do.
 
-Under the box, one quiet row holds project, host, branch and type on the
-shell's new-thread screen and until a thread's first message; after it the
-row holds the branch alone (no other control switches it), and the type is
-the thread menu's Type submenu. The goal is the thread menu's "Goal…"
+Under the box, one quiet row (`DraftRow`) holds project, host, branch and
+type on the shell's new-thread screen and until a thread's first message;
+the project picker ends in "Choose folder…", the folder dialog whose pick
+becomes the draft's project. After the first message the row is gone: the
+branch is changed in the Changes section's head and the type is the thread
+menu's Type submenu. The goal is the thread menu's "Goal…"
 (chrome/GoalDialog.tsx); usage and accounts are the rail's meter (A3); the
 context ring and its breakdown are gone, the percent is on the model menu.
 

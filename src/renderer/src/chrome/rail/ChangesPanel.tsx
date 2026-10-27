@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { Button } from "@renderer/components/ui/button";
 import { Collapsible, CollapsibleContent } from "@renderer/components/ui/collapsible";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@renderer/components/ui/context-menu";
@@ -54,6 +54,8 @@ import { IconAction } from "../../surfaces/transcript/IconAction";
 import { confirmAction, errorText } from "../ConfirmDialog";
 import { FileTypeIcon } from "../FileTypeIcon";
 import { ChangesAgainst } from "./ChangesAgainst";
+import { BranchPicker } from "../BranchPicker";
+import { SessionActionsContext } from "../../surfaces/threadChat";
 import { Counts, FileName } from "./changeRows";
 import { ChevronDown, ChevronRight, Minus, MoreHorizontal, Plus, Undo2, WandSparkles } from "../icons";
 
@@ -175,11 +177,14 @@ function usePrStatus(environmentId: string, cwd: string, branch: string | null |
 
 export function ChangesPanel({
   cwd,
+  sessionId,
   selectedPath,
   onOpenDiff,
   onOpenFile,
 }: {
   cwd: string;
+  /** The panel's thread: a branch switched in the head is its branch change. */
+  sessionId?: string;
   /** the review file the focused tab shows, relative to the git root */
   selectedPath?: string;
   /** opens the file as a review tab; HEAD is parked as its base first */
@@ -188,6 +193,7 @@ export function ChangesPanel({
   onOpenFile?: OpenFileFn;
 }) {
   const project = projectForCwd(cwd, useProjects());
+  const sessionActions = useContext(SessionActionsContext);
   const environmentId = environmentOfCwd(cwd) ?? registry.primary().environmentId;
   const index = useGitIndex(cwd);
   const editorConfig = useEditorConfig();
@@ -370,6 +376,17 @@ export function ChangesPanel({
       editorLabel={(file) => editorLabelFor(file.path, editorConfig)}
       actions={actions}
       against={project ? <ChangesAgainst key={project.id} projectId={project.id} selectedPath={selectedPath} onOpenDiff={onOpenDiff} /> : null}
+      branchPicker={
+        index ? (
+          <BranchPicker
+            variant="head"
+            cwd={cwd}
+            branch={index.branch ?? undefined}
+            tip={trackingWords(index)}
+            onChange={sessionId ? () => sessionActions?.onBranchChange(sessionId) : undefined}
+          />
+        ) : null
+      }
     />
   );
 }
@@ -410,6 +427,7 @@ export function ChangesView({
   editorLabel,
   actions,
   against,
+  branchPicker,
 }: {
   index: GitDiffIndex | null;
   pr: GitPr | null;
@@ -423,6 +441,8 @@ export function ChangesView({
   editorLabel: (file: GitChangedFile) => string | null;
   actions: ChangesActions;
   against?: ReactNode;
+  /** The branch name as the switch (BranchPicker's head); plain text without it. */
+  branchPicker?: ReactNode;
 }) {
   const files = index?.files ?? [];
   const staged = files.filter((f) => f.staged);
@@ -433,7 +453,7 @@ export function ChangesView({
   return (
     <TooltipProvider>
       <div className="flex min-h-0 flex-1 flex-col" data-slot="changes-section">
-        {index ? <TopRow index={index} pr={pr} rules={rules} busy={busy} actions={actions} /> : <TopRowSkeleton />}
+        {index ? <TopRow index={index} pr={pr} rules={rules} busy={busy} actions={actions} branchPicker={branchPicker} /> : <TopRowSkeleton />}
         {error ? (
           <p role="alert" className="shrink-0 px-3 pb-2 text-xs break-words text-destructive">
             {error}
@@ -504,29 +524,38 @@ function distance(behind: number, ahead: number): string {
   return [behind > 0 ? `↓${behind}` : "", ahead > 0 ? `↑${ahead}` : ""].filter(Boolean).join(" ");
 }
 
+/** Where the branch's commits go: the head's branch name says it on hover. */
+export function trackingWords(index: GitDiffIndex): string {
+  return index.upstream ? `Tracks ${index.upstream}` : index.remote ? "Not published" : "No remote";
+}
+
 function TopRow({
   index,
   pr,
   rules,
   busy,
   actions,
+  branchPicker,
 }: {
   index: GitDiffIndex;
   pr: GitPr | null;
   rules: ChangesRules;
   busy: string | null;
   actions: ChangesActions;
+  branchPicker?: ReactNode;
 }) {
   const files = index.files;
   const hasUnstaged = files.some((f) => f.unstaged);
   const hasStaged = files.some((f) => f.staged);
   const branch = index.branch ?? "Detached HEAD";
   return (
-    <div className="flex h-9 shrink-0 items-center gap-1 pr-2 pl-3">
-      <Tooltip>
-        <TooltipTrigger render={<span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground" />}>{branch}</TooltipTrigger>
-        <TooltipContent>{index.upstream ? `Tracks ${index.upstream}` : index.remote ? "Not published" : "No remote"}</TooltipContent>
-      </Tooltip>
+    <div className={cn("flex h-9 shrink-0 items-center gap-1 pr-2", branchPicker ? "pl-1.5" : "pl-3")}>
+      {branchPicker ?? (
+        <Tooltip>
+          <TooltipTrigger render={<span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground" />}>{branch}</TooltipTrigger>
+          <TooltipContent>{trackingWords(index)}</TooltipContent>
+        </Tooltip>
+      )}
       {rules.canPublish ? (
         <Button variant="ghost" size="sm" disabled={!!busy} onClick={actions.sync}>
           {busy === "sync" ? <Spinner /> : null}

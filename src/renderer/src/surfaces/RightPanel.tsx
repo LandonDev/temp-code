@@ -192,7 +192,7 @@ function SectionBody({
     case "notes":
       return <NotesBody session={session} />;
     case "changes":
-      return <ChangesPanel cwd={cwd} selectedPath={selectedPath} onOpenDiff={onOpenDiff} onOpenFile={onOpenFile} />;
+      return <ChangesPanel cwd={cwd} sessionId={session.id} selectedPath={selectedPath} onOpenDiff={onOpenDiff} onOpenFile={onOpenFile} />;
     case "files":
       return (
         <FileTree

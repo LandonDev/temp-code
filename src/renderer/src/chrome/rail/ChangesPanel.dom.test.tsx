@@ -62,10 +62,20 @@ vi.mock("../../surfaces/editorGit", () => ({
   stageChunkText: () => "staged text",
 }));
 
+// The head's branch switch: BranchPicker's own tests cover its list; here it reports what the head gave it.
+vi.mock("../BranchPicker", () => ({
+  BranchPicker: (p: { branch?: string; variant?: string; tip?: string; onChange?: () => void }) => (
+    <button type="button" aria-label={`Branch ${p.branch}`} data-variant={p.variant} data-tip={p.tip} onClick={() => p.onChange?.()}>
+      {p.branch}
+    </button>
+  ),
+}));
+
 // Base UI's scroll area asks for running animations; jsdom has none.
 if (!Element.prototype.getAnimations) Element.prototype.getAnimations = () => [];
 
 import { ChangesPanel, changesRules } from "./ChangesPanel";
+import { SessionActionsContext, type SessionActions } from "../../surfaces/threadChat";
 
 const file = (relative: string, over: Partial<GitDiffIndex["files"][number]> = {}) => ({
   path: `/p/${relative}`,
@@ -107,6 +117,22 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("ChangesPanel", () => {
+  it("the head's branch name is the switch, with its upstream on hover; a switch there is the thread's branch change", async () => {
+    h.index = indexOf();
+    const onBranchChange = vi.fn();
+    render(
+      <SessionActionsContext.Provider value={{ onBranchChange } as unknown as SessionActions}>
+        <ChangesPanel cwd="/p" sessionId="t1" onOpenDiff={onOpenDiff} />
+      </SessionActionsContext.Provider>,
+    );
+    await flush();
+    const head = screen.getByRole("button", { name: "Branch feat" });
+    expect(head.getAttribute("data-variant")).toBe("head");
+    expect(head.getAttribute("data-tip")).toBe("Tracks origin/feat");
+    fireEvent.click(head);
+    expect(onBranchChange).toHaveBeenCalledWith("t1");
+  });
+
   it("loads as skeleton rows, and an empty checkout is one Empty", async () => {
     const { rerender } = mount();
     expect(screen.getByLabelText("Loading changes")).toBeTruthy();

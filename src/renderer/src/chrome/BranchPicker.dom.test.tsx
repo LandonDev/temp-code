@@ -47,6 +47,16 @@ async function open() {
 }
 
 describe("BranchPicker", () => {
+  it("the head form is the branch name alone in 13px medium type, and opens the same list", async () => {
+    render(<BranchPicker cwd="/u/me/app" variant="head" tip="Tracks origin/main" />);
+    const trigger = screen.getByRole("button", { name: "Branch main" });
+    expect(trigger.querySelector("svg")).toBeNull();
+    expect(trigger.className).toContain("text-[13px]");
+    expect(trigger.className).toContain("font-medium");
+    const picker = await open();
+    expect(within(picker).getAllByRole("option").map((o) => o.textContent)).toEqual(["main", "feature", "fixorigin"]);
+  });
+
   it("opens with the search field focused and the branches as rows, the current one selected", async () => {
     render(<BranchPicker cwd="/u/me/app" />);
     const picker = await open();

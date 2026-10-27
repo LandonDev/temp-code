@@ -802,7 +802,8 @@ export function Composer({
   return (
     <div
       data-composer
-      className={`relative shrink-0 ${shell ? '' : 'p-1.5 pt-0'}`}
+      // Without the draft row under it the box keeps the panel's 12px inset from the bottom.
+      className={`relative shrink-0 ${shell ? '' : draft ? 'p-1.5 pt-0' : 'px-1.5 pb-3'}`}
       onMouseDown={onFocus}
     >
       {children}
@@ -945,38 +946,24 @@ export function Composer({
             }
           />
         </div>
-        <div data-composer-draft-row className="mt-1 flex h-7 min-w-0 items-center gap-2 px-3 text-xs text-muted-foreground">
-          {draft && !hideProjectPicker ? (
-            <CwdPicker
-              cwd={cwd}
-              recents={recents}
-              projectLogoPath={projectLogoPath}
-              enabled={enabled}
-              onCwdChange={onCwdChange}
-              onChooseFolder={onChooseFolder}
-              onNewTerminal={onNewTerminal}
-              onClose={() => inputRef.current?.focus()}
-            />
-          ) : null}
-          {draft && sessionId && enabled ? (
-            <DraftHostPicker sessionId={sessionId} onClose={() => inputRef.current?.focus()} />
-          ) : null}
-          {/* The branch stays after the first message: it has no other home. */}
-          <BranchPicker
-            cwd={cwd}
-            branch={branch}
-            enabled={enabled && !busy}
-            onChange={onBranchChange}
-            onClose={() => inputRef.current?.focus()}
-          />
-          {draft && threadType && onThreadTypeChange ? (
-            <ThreadTypeChip
-              value={threadType}
-              onChange={onThreadTypeChange}
-              onClose={() => inputRef.current?.focus()}
-            />
-          ) : null}
-        </div>
+        <DraftRow
+          draft={draft}
+          cwd={cwd}
+          recents={recents}
+          projectLogoPath={projectLogoPath}
+          enabled={enabled}
+          busy={busy}
+          branch={branch}
+          sessionId={sessionId}
+          hideProjectPicker={hideProjectPicker}
+          threadType={threadType}
+          onCwdChange={onCwdChange}
+          onChooseFolder={onChooseFolder}
+          onNewTerminal={onNewTerminal}
+          onBranchChange={onBranchChange}
+          onThreadTypeChange={onThreadTypeChange}
+          onClose={() => inputRef.current?.focus()}
+        />
         {runnerLive && runnerEnabled ? (
           <ComposerRunner
             boxRef={boxRef}
@@ -994,4 +981,67 @@ export function Composer({
 function hasFiles(data: DataTransfer | null): data is DataTransfer {
   if (!data) return false
   return [...data.types].some((type) => type === 'Files' || type === 'application/x-moz-file')
+}
+
+/**
+ * Under the box until a thread's first message: its project, host, branch and
+ * type. After it the row is gone: the branch is changed in the Changes
+ * section's head, the type in the thread menu.
+ */
+export function DraftRow({
+  draft,
+  cwd,
+  recents,
+  projectLogoPath,
+  enabled,
+  busy,
+  branch,
+  sessionId,
+  hideProjectPicker,
+  threadType,
+  onCwdChange,
+  onChooseFolder,
+  onNewTerminal,
+  onBranchChange,
+  onThreadTypeChange,
+  onClose
+}: {
+  /** No message yet: the row shows; after the first one it is gone. */
+  draft: boolean
+  cwd: string
+  recents: RecentProject[]
+  projectLogoPath?: string | null
+  enabled: boolean
+  busy: boolean
+  branch?: string
+  sessionId?: string
+  hideProjectPicker?: boolean
+  threadType?: ThreadType | null
+  onCwdChange: (cwd: string) => void
+  onChooseFolder?: () => void
+  onNewTerminal?: () => void
+  onBranchChange?: () => void
+  onThreadTypeChange?: (type: ThreadType) => void
+  onClose: () => void
+}) {
+  if (!draft) return null
+  return (
+    <div data-composer-draft-row className="mt-1 flex h-7 min-w-0 items-center gap-2 px-3 text-xs text-muted-foreground">
+      {hideProjectPicker ? null : (
+        <CwdPicker
+          cwd={cwd}
+          recents={recents}
+          projectLogoPath={projectLogoPath}
+          enabled={enabled}
+          onCwdChange={onCwdChange}
+          onChooseFolder={onChooseFolder}
+          onNewTerminal={onNewTerminal}
+          onClose={onClose}
+        />
+      )}
+      {sessionId && enabled ? <DraftHostPicker sessionId={sessionId} onClose={onClose} /> : null}
+      <BranchPicker cwd={cwd} branch={branch} enabled={enabled && !busy} onChange={onBranchChange} onClose={onClose} />
+      {threadType && onThreadTypeChange ? <ThreadTypeChip value={threadType} onChange={onThreadTypeChange} onClose={onClose} /> : null}
+    </div>
+  )
 }
