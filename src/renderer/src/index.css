@@ -161,7 +161,6 @@ html.theme-light {
   --color-info: var(--thread-info);
   --color-violet: var(--thread-violet);
   --color-cyan: var(--thread-cyan);
-  --color-busy: var(--thread-busy);
   /* Every floating layer's fill (see .floating-surface): a lifted, near-opaque
      plane a step above the base so a busy transcript never reads through a
      menu or a dialog. */
@@ -189,8 +188,6 @@ html.theme-light {
   --thread-info: #60a5fa;
   --thread-violet: #a78bfa;
   --thread-cyan: #22d3ee;
-  /* --thread-busy leaves with its last reader (area A17: `rg thread-busy src/renderer` empty). */
-  --thread-busy: #f472b6;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -238,7 +235,6 @@ html.theme-light {
   --thread-info: #2563eb;
   --thread-violet: #7c3aed;
   --thread-cyan: #0891b2;
-  --thread-busy: #db2777;
   color-scheme: light;
 }
 

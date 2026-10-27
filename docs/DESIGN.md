@@ -30,8 +30,8 @@ The README's table is the authority on which component renders which class
 of element; nothing is rendered twice by two different things.
 
 Retired by this standard, migrated area by area, never patched further:
-`chrome/Drawer.tsx`, `surfaces/settingsBits.tsx`, `chrome/RailAction.tsx`,
-`chrome/ComposerAction.tsx`, `motion/Button.tsx`, the four
+`chrome/Drawer.tsx`, `chrome/RailAction.tsx`,
+`chrome/ComposerAction.tsx`, the four
 custom toast stacks (sonner), the nine spinner builds (`Spinner`), the
 twenty status-to-colour maps (`StatusMark`), the 390 raw `<button>`s (`Button`). ReUI, BeUI and Beautiful
 UI are no longer sources; their registries are gone from components.json.

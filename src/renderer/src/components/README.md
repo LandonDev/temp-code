@@ -55,9 +55,6 @@ DESIGN.md wins.
 | A file in or on a turn | `Attachment` (attachment.tsx) | Media, name, one line, an action. |
 | The frame of one message | `Message` (message.tsx) | The user bubble itself is the transcript's. |
 
-`surfaces/settingsBits.tsx` is a retired shim over these components, kept
-with its props until A11's dialogs leave it; build nothing new on it.
-
 Hand-made and staying hand-made (they are the product, not a primitive):
 the transcript's rows and its markdown pipeline (streamdown, the worker,
 the Shiki code block, DiffBody), the composer field, the rail, the tab
