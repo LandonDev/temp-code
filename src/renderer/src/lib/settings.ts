@@ -284,20 +284,21 @@ export const KEYBINDING_GROUPS: KeybindingGroup[] = [
     bindings: [
       { name: "Search", keys: [[CMD, "K"]] },
       { name: "Go to File", keys: [[CMD, "P"], [SHF, SHF]] },
-      { name: "Go to Symbol", keys: [[CMD, "O"]] },
+      { name: "Open Project", keys: [[CMD, "O"]] },
+      { name: "Go to Symbol", keys: [[CMD, SHF, "O"]] },
       { name: "Type Hierarchy", keys: [[CMD, "T"]] },
       { name: "Find in Files", keys: [[CMD, SHF, "F"]] },
       { name: "Save All", keys: [[CMD, "S"]] },
       { name: "New Window", keys: [[CMD, SHF, "N"]] },
-      { name: "Toggle Sidebar", keys: [[CMD, "B"]] },
-      { name: "Toggle Panel", keys: [[CMD, SHF, "R"]] },
+      { name: "Sidebar", keys: [[CMD, "B"]] },
+      { name: "Panel", keys: [[CMD, SHF, "R"]] },
       { name: "Switch Model", keys: [[CMD, "."]] },
     ],
   },
   {
     title: "Tabs",
     bindings: [
-      { name: "New", keys: [[CMD, "N"]] },
+      { name: "New Thread", keys: [[CMD, "N"]] },
       { name: "Next", keys: [[CMD, SHF, "]"]] },
       { name: "Previous", keys: [[CMD, SHF, "["]] },
       { name: "Cycle Next", keys: [[CTL, "Tab"]] },
@@ -309,10 +310,10 @@ export const KEYBINDING_GROUPS: KeybindingGroup[] = [
     ],
   },
   {
-    title: "Environments",
+    title: "Hosts",
     bindings: [
-      { name: "Next", keys: [[CMD, OPT, "]"]] },
-      { name: "Previous", keys: [[CMD, OPT, "["]] },
+      { name: "Next Host", keys: [[CMD, OPT, "]"]] },
+      { name: "Previous Host", keys: [[CMD, OPT, "["]] },
       { name: "Activate 1 to 9", keys: [[CMD, OPT, "1–9"]] },
     ],
   },
@@ -331,9 +332,9 @@ export const KEYBINDING_GROUPS: KeybindingGroup[] = [
   {
     title: "Terminal",
     bindings: [
-      { name: "New", keys: [[CMD, "`"]] },
-      { name: "New Tab", keys: [[CMD, SHF, "`"]] },
-      { name: "Toggle Dock", keys: [[CMD, "J"]] },
+      { name: "New", keys: [[CTL, "`"]] },
+      { name: "New Tab", keys: [[CTL, SHF, "`"]] },
+      { name: "Show or Hide", keys: [[CMD, "J"]] },
     ],
   },
   {

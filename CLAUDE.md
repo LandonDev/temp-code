@@ -1987,9 +1987,9 @@ Show/Hide on the three toggles, idle rows greyed) and main rebuilds the menu
 from the focused window's state when it changes. A `pageKey` row (New
 Terminal, ⌃`) shows its key but leaves it to the page. The in-app bar
 (chrome/MenuBar.tsx, `inAppMenus`) mounts only in web mode off macOS: a
-desktop window off macOS has the native bar. Go to Symbol is ⌘⇧O in the
-menu; the renderer's resolver still maps ⌘O to it until A12 flips it and
-gives Open Project ⌘O in the same commit.
+desktop window off macOS has the native bar. Go to Symbol is ⌘⇧O and
+Open Project ⌘O, in the menu and the renderer's resolver alike; New
+Terminal is ⌃` (⌘` is macOS's window cycle).
 
 ## The fleet switches: one click for every thread of a scope
 Pause all, Resume all, Stop all and Archive done sit beside Mark all read in

@@ -7,6 +7,7 @@ import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { useSortable } from "../hooks/useSortable";
 import type { FilePaneTab } from "../lib/layout";
 import { MOD } from "../lib/platform";
+import { shortcutFor } from "../lib/settings";
 import { terminalTabLabel } from "../lib/terminalTab";
 import { Plus, Terminal, X } from "./icons";
 
@@ -139,7 +140,7 @@ export function DockBar({ terminals, active, dev, onSelect, onSelectDev, onClose
                 <Plus />
               </TooltipTrigger>
               <TooltipContent>
-                New terminal <Kbd>{MOD}`</Kbd>
+                New terminal <Kbd>{shortcutFor("Terminal", "New")}</Kbd>
               </TooltipContent>
             </Tooltip>
           ) : null}

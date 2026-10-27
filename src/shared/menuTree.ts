@@ -91,7 +91,7 @@ export const MENU_TREE: MenuSection[] = [
       cmd('new_terminal', 'New Terminal', 'Ctrl+`', { pageKey: true, desktopOnly: true }),
       cmd('new_window', 'New Window', 'CmdOrCtrl+Shift+N', { desktopOnly: true }),
       sep,
-      cmd('open_project', 'Open Project…'),
+      cmd('open_project', 'Open Project…', 'CmdOrCtrl+O'),
       sep,
       cmd('save_all', 'Save All', 'CmdOrCtrl+S'),
       sep,

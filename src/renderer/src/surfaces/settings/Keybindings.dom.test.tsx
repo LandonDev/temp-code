@@ -14,9 +14,10 @@ describe("Keybindings", () => {
     expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual([
       "App",
       "Tabs",
-      "Environments",
+      "Hosts",
       "Panes",
       "Terminal",
+      "Files",
       "Editor",
     ]);
     const search = row("Search");
@@ -38,7 +39,7 @@ describe("Keybindings", () => {
   it("filters, and says so when nothing matches", () => {
     render(<KeybindingsPage />);
     const filter = screen.getByRole("textbox", { name: "Filter keybindings" });
-    fireEvent.change(filter, { target: { value: "dock" } });
+    fireEvent.change(filter, { target: { value: "show or hide" } });
     expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["Terminal"]);
     fireEvent.change(filter, { target: { value: "zzz" } });
     expect(screen.getByText("No shortcut matches")).toBeTruthy();

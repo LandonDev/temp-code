@@ -28,16 +28,17 @@ function key(
 }
 
 describe("tabCommand", () => {
-  it("opens a terminal pane with cmd-backtick", () => {
-    expect(tabCommand(key({ key: "`", code: "Backquote", metaKey: true }))).toBe(
-      "new-terminal",
-    );
+  it("opens a terminal pane with ctrl-backtick, never cmd-backtick (the system's window cycle)", () => {
+    expect(tabCommand(key({ key: "`", code: "Backquote", ctrlKey: true }))).toBe("new-terminal");
+    expect(tabCommand(key({ key: "`", code: "Backquote", metaKey: true }))).toBeNull();
+    expect(tabCommand(key({ key: "`", code: "Backquote", metaKey: true, ctrlKey: true }))).toBeNull();
   });
 
-  it("opens a terminal workspace tab with shift-cmd-backtick", () => {
+  it("opens a terminal workspace tab with shift-ctrl-backtick, never shift-cmd", () => {
+    expect(tabCommand(key({ key: "~", code: "Backquote", metaKey: true, shiftKey: true }))).toBeNull();
     expect(
       tabCommand(
-        key({ key: "~", code: "Backquote", metaKey: true, shiftKey: true }),
+        key({ key: "~", code: "Backquote", ctrlKey: true, shiftKey: true }),
       ),
     ).toBe("new-terminal-tab");
   });

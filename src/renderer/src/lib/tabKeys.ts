@@ -14,8 +14,8 @@ import { insideMonaco } from "./editorKeys";
  *   Cycle next tab      ctrl-tab
  *   Cycle previous tab  ctrl-shift-tab
  *   Focus pane          cmd-opt-arrows
- *   New terminal        cmd-`
- *   New terminal tab    shift-cmd-`
+ *   New terminal        ctrl-` (⌘` and ⌘⇧` are the system's on macOS)
+ *   New terminal tab    shift-ctrl-`
  *   Toggle terminal     cmd-j
  */
 
@@ -64,6 +64,8 @@ export function tabCommand(e: KeyboardEvent): TabCommand | null {
   if (!mod || e.altKey) return null;
 
   if (e.key === "`" || e.code === "Backquote") {
+    // Control alone: on macOS ⌘` cycles the app's windows.
+    if (!e.ctrlKey || e.metaKey) return null;
     return e.shiftKey ? "new-terminal-tab" : "new-terminal";
   }
 

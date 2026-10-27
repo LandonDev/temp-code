@@ -138,7 +138,7 @@ export function ThreadMenu({
         onOpenChange={(open) => open && onOpen?.()}
         className="w-60"
       />
-      <Tip label="Panel" shortcut={shortcutFor("App", "Toggle Panel")} side="bottom">
+      <Tip label="Panel" shortcut={shortcutFor("App", "Panel")} side="bottom">
         <Button
           variant="ghost"
           size="icon-sm"

@@ -40,7 +40,7 @@ describe("command map: chords", () => {
   const resolve = createKeyResolver();
   it.each([
     ["p", "go_to_file"],
-    ["o", "go_to_symbol"],
+    ["o", "open_project"],
     ["t", "show_hierarchy"],
     ["n", "new_tab"],
     ["s", "save_all"],
@@ -58,6 +58,7 @@ describe("command map: chords", () => {
     expect(resolve(key("f", { meta: true, shift: true }), ctx)).toEqual({ id: "find_in_project" });
     expect(resolve(key("n", { meta: true, shift: true }), ctx)).toEqual({ id: "new_window" });
     expect(resolve(key("r", { meta: true, shift: true }), ctx)).toEqual({ id: "toggle_panel" });
+    expect(resolve(key("o", { meta: true, shift: true }), ctx)).toEqual({ id: "go_to_symbol" });
     expect(resolve(key("1", { meta: true }), ctx)).toEqual({ id: "activate_tab", index: 0 });
   });
 
@@ -150,7 +151,8 @@ describe("command map: guards", () => {
     expect(resolve(key("t", { ctrl: true }, "monaco"), ctx)).toBeNull();
     expect(resolve(key("d", { ctrl: true }, "monaco"), ctx)).toBeNull();
     expect(resolve(key("h", { ctrl: true }, "monaco"), ctx)).toBeNull();
-    expect(resolve(key("o", { meta: true }, "monaco"), ctx)).toEqual({ id: "go_to_symbol" });
+    expect(resolve(key("o", { meta: true }, "monaco"), ctx)).toEqual({ id: "open_project" });
+    expect(resolve(key("o", { meta: true, shift: true }, "monaco"), ctx)).toEqual({ id: "go_to_symbol" });
     expect(resolve(key("s", { meta: true }, "monaco"), ctx)).toEqual({ id: "save_all" });
   });
 

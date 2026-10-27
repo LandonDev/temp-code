@@ -63,6 +63,7 @@ import {
 import { CUSTOMIZE, groupActionOf, groupMenuRows, type TabGroupMenuAction } from "./TabGroupMenu";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { CwdPicker } from "./CwdPicker";
+import { shortcutFor } from "../lib/settings";
 import { RowsContextMenu, tidy, type MenuRow } from "./menuRows";
 import { useThreadMenu } from "./useThreadMenu";
 import { ProjectLogoIcon } from "./ProjectLogoIcon";
@@ -866,7 +867,7 @@ export function OverlayNav({
       ) : null}
       {onToggleSidebar ? (
         <IconButton
-          label={`Toggle Sidebar (${MOD}B)`}
+          label={`Sidebar (${shortcutFor("App", "Sidebar")})`}
           onClick={onToggleSidebar}
         >
           <PanelLeft className="size-3.5" strokeWidth={1.75} />
@@ -1214,7 +1215,7 @@ function TitleBarComponent({
         {deckLayout && !header && !projectless && (onShowTerminal || onNewTerminal) ? (
           <IconButton
             label={
-              projectTerminalActive ? "Terminal" : `New Terminal (${MOD}\`)`
+              projectTerminalActive ? "Terminal" : `New Terminal (${shortcutFor("Terminal", "New")})`
             }
             accent={projectTerminalActive}
             intent={terminalChunk.intent}
@@ -1256,7 +1257,7 @@ function TitleBarComponent({
       {projectless && railClosed ? (
         <div className="flex h-10 shrink-0 items-center px-2">
           <IconButton
-            label={`Toggle Sidebar (${MOD}B)`}
+            label={`Sidebar (${shortcutFor("App", "Sidebar")})`}
             onClick={onToggleSidebar}
           >
             <PanelLeft className="size-3.5" strokeWidth={1.75} />
@@ -1277,7 +1278,7 @@ function TitleBarComponent({
             </>
           )}
           <IconButton
-            label={`Toggle Sidebar (${MOD}B)`}
+            label={`Sidebar (${shortcutFor("App", "Sidebar")})`}
             active={sidebarOpen}
             onClick={onToggleSidebar}
           >
@@ -1520,7 +1521,7 @@ function TitleBarComponent({
             </IconButton>
             {onNewTerminal ? (
               <IconButton
-                label={`New Terminal (${MOD}\`)`}
+                label={`New Terminal (${shortcutFor("Terminal", "New")})`}
                 onClick={onNewTerminal}
               >
                 <Terminal className="size-3.5" strokeWidth={1.75} />

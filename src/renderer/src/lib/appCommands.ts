@@ -25,14 +25,12 @@
  *
  * Keys:
  *   Shift Shift (400 ms)  go_to_file        ⌘P        go_to_file
- *   ⌘O                    go_to_symbol      ⌘T        show_hierarchy
+ *   ⌘O                    open_project      ⌘T        show_hierarchy
  *   ⌘S                    save_all          ⌘N        new_tab
  *   ⌘K open_search  ⌘B toggle_sidebar  ⌘⇧R toggle_panel  ⌘, open_settings
- *   ⌘⇧F find_in_project  ⌘⇧N new_window  ⌘= / ⌘- / ⌘0 zoom
+ *   ⌘⇧F find_in_project  ⌘⇧N new_window  ⌘⇧O go_to_symbol  ⌘= / ⌘- / ⌘0 zoom
  *   ⌘⌥] next_environment  ⌘⌥[ prev_environment  ⌘⌥1–9 activate_environment
- *   Tab and pane chords: lib/tabKeys.ts (⌘W ⌘D ⌘⇧D ⌘J ⌘[ ⌘] ⌘1–9 ⌘` …)
- *   Open Project has no key yet; it stays in the File menu (⌘O once A12
- *   flips the resolver, Go to Symbol to ⌘⇧O).
+ *   Tab and pane chords: lib/tabKeys.ts (⌘W ⌘D ⌘⇧D ⌘J ⌘[ ⌘] ⌘1–9 ⌃` …)
  */
 
 import { insideMonaco, isEditorChord } from "./editorKeys";
@@ -256,6 +254,7 @@ export function createKeyResolver(now: () => number = () => performance.now()) {
       if (key === "f") return { id: "find_in_project" };
       if (key === "n") return { id: "new_window" };
       if (key === "r") return { id: "toggle_panel" };
+      if (key === "o") return { id: "go_to_symbol" };
       return null;
     }
 
@@ -265,7 +264,7 @@ export function createKeyResolver(now: () => number = () => performance.now()) {
       case "p":
         return { id: "go_to_file" };
       case "o":
-        return { id: "go_to_symbol" };
+        return { id: "open_project" };
       case "t":
         return { id: "show_hierarchy" };
       case "s":

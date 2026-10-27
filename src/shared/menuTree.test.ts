@@ -94,7 +94,7 @@ describe('menu tree', () => {
       ['New Terminal', 'Ctrl+`'],
       ['New Window', 'Shift+Cmd+N'],
       '—',
-      ['Open Project…'],
+      ['Open Project…', 'Cmd+O'],
       '—',
       ['Save All', 'Cmd+S'],
       '—',
@@ -160,8 +160,9 @@ describe('menu tree', () => {
     expect(section('Help')).toEqual([['Show Logs'], ['Profile the Host for 10 Seconds'], ['Developer Tools', 'Alt+Cmd+I']])
   })
 
-  it('leaves Open Project without a key until the resolver gives it ⌘O', () => {
-    expect(MENU_COMMANDS.find((c) => c.id === 'open_project')!.accelerator).toBeUndefined()
+  it('gives Open Project ⌘O, the key the renderer\'s resolver maps to it, and Go to Symbol ⌘⇧O', () => {
+    expect(MENU_COMMANDS.find((c) => c.id === 'open_project')!.accelerator).toBe('CmdOrCtrl+O')
+    expect(MENU_COMMANDS.find((c) => c.id === 'go_to_symbol')!.accelerator).toBe('CmdOrCtrl+Shift+O')
   })
 
   it('has no Force Reload, no Appearance… and no New Terminal Tab', () => {
