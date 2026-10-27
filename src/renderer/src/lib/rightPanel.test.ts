@@ -7,7 +7,6 @@ const quiet: PanelFacts = {
   project: false,
   agents: 0,
   liveAgents: 0,
-  batch: false,
   backgroundTasks: 0,
   watching: false,
   devRunning: false,
@@ -41,8 +40,7 @@ describe("sectionsFor", () => {
     expect(sectionsFor({ ...quiet, agents: 2, liveAgents: 1 }).defaultSection).toBe("activity");
   });
 
-  it("a master's batch, a watching wait, background tasks and a dev server each open a section", () => {
-    expect(sectionsFor({ ...quiet, batch: true }).sections).toEqual(["agents", "notes"]);
+  it("a watching master's wait, background tasks and a dev server each open a section; its batch never opens Agents", () => {
     expect(sectionsFor({ ...quiet, watching: true }).sections).toEqual(["activity", "notes"]);
     expect(sectionsFor({ ...quiet, backgroundTasks: 1 }).sections).toEqual(["activity", "notes"]);
     expect(sectionsFor({ ...quiet, project: true, devRunning: true }).sections[0]).toBe("activity");

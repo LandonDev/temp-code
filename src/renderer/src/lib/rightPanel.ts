@@ -40,8 +40,6 @@ export type PanelFacts = {
   agents: number;
   /** Subagents working or waiting. */
   liveAgents: number;
-  /** A master with a batch. */
-  batch: boolean;
   /** Background shells and monitors the host reports. */
   backgroundTasks: number;
   /** A watching master waiting on its batch. */
@@ -61,7 +59,8 @@ export function sectionsFor(facts: PanelFacts): PanelSections {
   // One line per section, in the header's order; an area that retires a section deletes its line.
   const sections: Section[] = [];
   if (activity) sections.push("activity");
-  if (facts.agents > 0 || facts.batch) sections.push("agents");
+  // A master's batch lives on its board, never here: agents means its own subagents.
+  if (facts.agents > 0) sections.push("agents");
   if (facts.project) sections.push("changes");
   sections.push("notes");
   if (facts.project) sections.push("files");
@@ -71,7 +70,7 @@ export function sectionsFor(facts: PanelFacts): PanelSections {
   if (facts.project && facts.debug) sections.push("debug");
   const defaultSection: Section = activity
     ? "activity"
-    : facts.agents > 0 || facts.batch
+    : facts.agents > 0
       ? "agents"
       : facts.project
         ? "changes"

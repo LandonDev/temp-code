@@ -12,7 +12,6 @@ import { FileTree } from "../chrome/FileTree";
 import { useDragResize } from "../hooks/useDragResize";
 import { useGitFileStatuses } from "../hooks/useGitFileStatuses";
 import { useDevRunning } from "../lib/devServers";
-import { isMasterThread } from "../lib/masterThread";
 import {
   PANEL_MAX,
   PANEL_MIN,
@@ -157,7 +156,6 @@ function usePanelFacts(session: Session): { facts: PanelFacts; project: ProjectM
       project: !!project?.cwd,
       agents: agents.length,
       liveAgents: counts.working + counts.waiting,
-      batch: isMasterThread(session),
       backgroundTasks: 0,
       watching: status === "watching",
       devRunning,

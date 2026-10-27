@@ -108,12 +108,12 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
 - **Sections.** `sectionsFor(facts)` is pure, one line per section, in the
   header's order: Activity when background tasks, live subagents, a
   watching master's wait or a running dev server exist; Agents when the
-  thread has subagents or a batch; Changes when its cwd is a project
+  thread has subagents of its own (a master's batch lives on its board,
+  never here); Changes when its cwd is a project
   checkout; Notes for every root; Files, Branch, Build and Dev for a
   project thread, and Debug for one on a dev build (or with the debug
   setting on, once one exists). The default is Activity if it exists, else Agents when
-  the thread has subagents (live or done) or a batch, else Changes, else
-  Notes; a remembered section that no
+  the thread has subagents (live or done), else Changes, else Notes; a remembered section that no
   longer exists falls back to the default.
 - **Frame.** A docked column, 320px by default, 260 to 480 by the sash on
   its left edge, on `bg-sidebar` with the `border-border` hairline; a 36px
