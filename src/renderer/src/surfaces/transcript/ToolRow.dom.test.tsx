@@ -96,4 +96,60 @@ describe("ActionRow", () => {
     fireEvent.click(getByRole("button", { name: "Auth rewrite" }));
     expect(onSelect).toHaveBeenCalledWith("t1");
   });
+
+  it("an opened run row shows the tool's name, the command and what it printed", async () => {
+    const output = Array.from({ length: 30 }, (_, n) => `line ${n + 1}`).join("\n");
+    const block = call("Bash", { command: "cd x && npm test 2>&1 | tail -40" }, { detail: output });
+    const { getByRole, container, getByText } = render(<ActionRow block={block} />);
+    await act(async () => {
+      fireEvent.click(getByRole("button", { name: /^Ran/ }));
+    });
+    expect(getByText("Bash")).toBeTruthy();
+    const pre = container.querySelector("pre")!;
+    expect(pre.textContent).toBe("$ cd x && npm test 2>&1 | tail -40");
+    expect(getByText("npm").className).toContain("text-info");
+    expect(container.textContent).toContain("line 24");
+    expect(container.textContent).not.toContain("line 25");
+    expect(getByText("6 more lines")).toBeTruthy();
+  });
+
+  it("a failed run's output reads in red", async () => {
+    const block = call("Bash", { command: "npm test" }, { status: "failed", detail: "1 failed" });
+    const { getByRole, getByText } = render(<ActionRow block={block} />);
+    await act(async () => {
+      fireEvent.click(getByRole("button", { name: "Ran the tests" }));
+    });
+    expect(getByText("1 failed").className).toContain("text-destructive");
+  });
+
+  it("a settled run with nothing printed says so", async () => {
+    const { getByRole, getByText } = render(<ActionRow block={call("Bash", { command: "true" })} />);
+    await act(async () => {
+      fireEvent.click(getByRole("button", { expanded: false }));
+    });
+    expect(getByText("(no output)")).toBeTruthy();
+  });
+
+  it("a body still on the server says it is loading", async () => {
+    const block = call("Bash", { command: "npm test" }, { omitted: { sessionId: "s", seqs: [1], bytes: 12_000, loading: true } });
+    const { getByRole, container } = render(<ActionRow block={block} />);
+    await act(async () => {
+      fireEvent.click(getByRole("button", { name: "Ran the tests" }));
+    });
+    expect(container.textContent).toContain("Loading");
+  });
+
+  it("the raw toggle swaps the formatted view for the verbatim one", async () => {
+    const block = call("Grep", { pattern: "needle", path: "src" });
+    const { getByRole, container } = render(<ActionRow block={block} />);
+    await act(async () => {
+      fireEvent.click(getByRole("button", { name: "Searched for needle" }));
+    });
+    expect(container.querySelector("pre")!.textContent).toBe("needle in src");
+    await act(async () => {
+      fireEvent.click(getByRole("button", { name: "Show raw" }));
+    });
+    expect(container.querySelector("pre")!.textContent).toContain('"pattern"');
+    expect(getByRole("button", { name: "Show formatted" })).toBeTruthy();
+  });
 });

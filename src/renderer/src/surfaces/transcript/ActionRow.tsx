@@ -13,6 +13,7 @@ import { ReconnectChip, SubagentSteps } from "../ToolChips";
 import { ToolDetails } from "../ToolDetails";
 import { useTranscriptHost } from "../transcriptSession";
 import { ActionLine } from "./ActionLine";
+import { CommandCard } from "./CommandCard";
 import { useAction, type Action } from "./actionModel";
 import { ApprovalControls } from "./Approval";
 import { ToolGlyph } from "./ToolGlyph";
@@ -82,7 +83,11 @@ export function ActionRow({
         <Collapsible open={open} onOpenChange={setOpen}>
           <CollapsibleContent>
             <div className="px-3 pb-2">
-              <ToolDetails block={block} />
+              {action.opens === "command" ? (
+                <CommandCard block={block} failed={action.failed} />
+              ) : (
+                <ToolDetails block={block} />
+              )}
             </div>
           </CollapsibleContent>
         </Collapsible>
