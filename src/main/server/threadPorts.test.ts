@@ -19,6 +19,7 @@ describe('ThreadPorts', () => {
   let ports: ThreadPorts
   let listeners: Listener[]
   let parents: Map<number, number>
+  let args: Map<number, string>
   let now: number
   beforeEach(() => {
     db = openDb(':memory:')
@@ -31,7 +32,8 @@ describe('ThreadPorts', () => {
       { port: 9999, pid: 150, address: '127.0.0.1', command: 'node' }
     ]
     parents = new Map([[1, 0], [HARNESS, 1], [150, HARNESS]])
-    const scanner = new SharedScanner(async (): Promise<Scan> => ({ listeners: [...listeners], parents: new Map(parents) }), () => now)
+    args = new Map()
+    const scanner = new SharedScanner(async (): Promise<Scan> => ({ listeners: [...listeners], parents: new Map(parents), args: new Map(args) }), () => now)
     ports = new ThreadPorts({ resources: ledger, environmentId: ME, harnessPid: (id) => (id === 'child' || id === 'root' ? HARNESS : null), scanner, now: () => now, log: () => {} })
   })
   afterEach(() => {
@@ -79,6 +81,27 @@ describe('ThreadPorts', () => {
     now += 2_000
     await ports.tick()
     expect(ledger.listAll({ kind: 'port' })).toEqual([])
+  })
+
+  it("never files the merge gate's vitest worker under a call that did not name the gate: the runner is found above the listener", async () => {
+    // The call ran a script; the script ran the gate; the gate's vitest forked a worker that listens.
+    call('root', 'c1', './scripts/land.sh')
+    await flush()
+    parents.set(240, HARNESS)
+    parents.set(250, 240)
+    args.set(240, '/srv/agents/home/.bun/bin/bun scripts/gate.ts --tier commit --since 00bb5d7c288…')
+    args.set(250, 'node /srv/agents/work/temp-code/node_modules/vitest/dist/cli.js run')
+    args.set(300, 'node /srv/agents/work/temp-code/node_modules/tinypool/dist/entry/process.js')
+    spawnServer(45649, 300, 250)
+    now += 2_000
+    await ports.tick()
+    expect(ledger.listAll({ kind: 'port' })).toEqual([])
+    // A real server under the same call, with no runner above it, is filed.
+    args.set(310, 'bun run dev')
+    spawnServer(5173, 310)
+    now += 2_000
+    await ports.tick()
+    expect(ledger.listAll({ kind: 'port' }).map((r) => r.identifier)).toEqual(['5173'])
   })
 
   it('keeps polling for the grace period after the last call, then stops', async () => {

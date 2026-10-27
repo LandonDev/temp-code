@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { readFile, readlink } from 'node:fs/promises'
-import { NOT_DEV_RUNNER, notDevServer } from '@shared/devServerRules'
+import { notDevServer, underRunner } from '@shared/devServerRules'
 import type { EventRow } from '@shared/events'
 import type { ThreadResources } from './threadResources'
 import { shellOf } from './threadResourcesParse'
@@ -114,7 +114,7 @@ export function skipReason(l: Listener, chain: readonly ProcInfo[], ownPid: numb
   const own = notDevServer(l.port, l.command ?? baseName(chain[0]?.args ?? null), chain[0]?.args ?? null)
   if (own) return own
   // A test worker sits under its runner: the gate, vitest, a typecheck.
-  return chain.some((p) => p.args && NOT_DEV_RUNNER.test(p.args)) ? 'a test run or the gate' : null
+  return underRunner(chain.map((p) => p.args)) ? 'a test run or the gate' : null
 }
 
 /** Which thread a listener is, by the rules above; `chain` starts at the listener's process and goes up. */

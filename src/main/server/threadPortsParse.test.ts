@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { announcedPorts, byPort, descendants, parseLsof, parsePs, parseSs, portLabel } from './threadPortsParse'
+import { announcedPorts, byPort, descendants, parseArgs, parseLsof, parsePs, parseSs, parseStarts, portLabel } from './threadPortsParse'
 
 const ports = (out: string) => announcedPorts(out).map((a) => a.port)
 
@@ -78,6 +78,19 @@ describe('listeners', () => {
     const parents = parsePs('    1     0\n  100     1\n  200   100\n  201   200\n  300     1\n  bad line\n')
     expect([...descendants(parents, [100])].sort()).toEqual([100, 200, 201])
     expect(descendants(parents, [999])).toEqual(new Set([999]))
+  })
+
+  it('reads pid, parent, start and the command line off one ps call', () => {
+    const ps = '      1       0 10-02:11:05 /sbin/init\n    240       7       03:12 /srv/agents/home/.bun/bin/bun scripts/gate.ts --tier commit --since 00bb5d7c288…\n    300     250       00:09 node /srv/agents/work/temp-code/node_modules/tinypool/dist/entry/process.js\n'
+    const parents = parsePs(ps)
+    expect([...parents]).toEqual([[1, 0], [240, 7], [300, 250]])
+    const started = parseStarts(ps, 1_000_000_000)
+    expect(started.get(300)).toBe(1_000_000_000 - 9_000)
+    expect(started.get(240)).toBe(1_000_000_000 - (3 * 60 + 12) * 1000)
+    const args = parseArgs(ps)
+    expect(args.get(240)).toBe('/srv/agents/home/.bun/bin/bun scripts/gate.ts --tier commit --since 00bb5d7c288…')
+    expect(args.get(300)).toBe('node /srv/agents/work/temp-code/node_modules/tinypool/dist/entry/process.js')
+    expect(args.get(1)).toBe('/sbin/init')
   })
 })
 

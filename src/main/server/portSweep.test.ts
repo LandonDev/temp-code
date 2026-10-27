@@ -75,6 +75,8 @@ describe('skipReason', () => {
     expect(skipReason(listener(43401, 10), chain('npm run typecheck'), 7)).toBe(gate)
     expect(skipReason(listener(5173, 10), chain('node node_modules/.bin/vite', 'bun run dev'), 7)).toBeNull()
     expect(skipReason(listener(5174, 10), chain('cd apps/vitest-demo && bun run dev'), 7)).toBeNull()
+    // The merge gate's vitest worker, as the box saw it filed: the worker's own command names tinypool, the gate is two above.
+    expect(skipReason(listener(45649, 10), chain('node /srv/agents/work/temp-code/node_modules/tinypool/dist/entry/process.js', 'node /srv/agents/work/temp-code/node_modules/vitest/dist/cli.js', '/srv/agents/home/.bun/bin/bun scripts/gate.ts --tier commit --since 00bb5d7c288…'), 7)).toBe(gate)
   })
 })
 
@@ -252,6 +254,23 @@ describe('PortSweep', () => {
     serve(3002, 300, { cwd: '/srv/agents/work/a/apps/web', args: 'next-server (v16)' })
     await sweep.sweep()
     expect(ledger.live(ME, 'port', '3002')).toMatchObject({ callId: 'c1', label: 'cd apps/web && bun run dev -p 3002 &' })
+  })
+
+  it("the merge gate's vitest workers, under the app itself, are never filed, whatever their folder", async () => {
+    // worker (300) <- vitest (250) <- the gate (240) <- the app (7): the gate runs in the project checkout, a thread's folder.
+    procs.set(240, { cwd: '/srv/agents/work/a', args: '/srv/agents/home/.bun/bin/bun scripts/gate.ts --tier commit --since 00bb5d7c288…' })
+    parents.set(240, 7)
+    procs.set(250, { cwd: '/srv/agents/work/a', args: 'node /srv/agents/work/temp-code/node_modules/vitest/dist/cli.js run' })
+    parents.set(250, 240)
+    serve(45649, 300, { cwd: '/srv/agents/work/a', args: 'node /srv/agents/work/temp-code/node_modules/tinypool/dist/entry/process.js' }, 250)
+    serve(45485, 301, { cwd: '/srv/agents/work/a', args: 'node /srv/agents/work/temp-code/node_modules/tinypool/dist/entry/process.js' }, 250)
+    const reports = await sweep.sweep()
+    expect(reports.filter((r) => r.port === 45649 || r.port === 45485).map((r) => r.verdict)).toEqual([
+      { skip: 'a test run or the gate', final: true },
+      { skip: 'a test run or the gate', final: true }
+    ])
+    expect(ledger.listAll({ kind: 'port' })).toEqual([])
+    expect(recorded).toBe(0)
   })
 
   it('leaves Dev Server runs and rows already on the ledger alone, and a dry run records nothing', async () => {

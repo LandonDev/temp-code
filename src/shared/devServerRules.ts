@@ -23,6 +23,14 @@ export const NOT_DEV_COMMAND =
 export const NOT_DEV_RUNNER =
   /\bscripts\/gate\.ts\b|\/node_modules\/(?:\.bin\/)?(?:vitest|jest|mocha|@playwright\/test)\b|(?:^|[\s;&|(])(?:bunx\s+|npx\s+|pnpm\s+(?:exec\s+)?|yarn\s+)?(?:vitest|jest|mocha|tsc)(?=\s|$)|\bplaywright\s+test\b|\bbun\s+test\b|\b(?:bun|npm|pnpm|yarn)\s+(?:run\s+)?(?:test|typecheck|gate)(?=[\s:]|$)/
 
+/** A listener under a test run, a typecheck or the gate, by ANY process
+ *  above it: a vitest worker's own command names tinypool, not the gate
+ *  that runs it, so the runner is found on the way up (the sweep's chain,
+ *  the shell-call detector's ancestry). */
+export function underRunner(commands: readonly (string | null | undefined)[]): boolean {
+  return commands.some((c) => !!c && NOT_DEV_RUNNER.test(c))
+}
+
 /** Why a listener is not a dev server, null when it may be one. */
 export function notDevServer(port: number, name: string | null, command: string | null): string | null {
   if (NOT_DEV_PORTS.has(port)) return 'a database or debugger port'

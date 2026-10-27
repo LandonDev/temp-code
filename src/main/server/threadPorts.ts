@@ -1,10 +1,10 @@
 import { execFileBudgeted } from './spawnBudget'
 import type { ThreadResource } from '@shared/contract-resources'
-import { notDevServer } from '@shared/devServerRules'
+import { notDevServer, underRunner } from '@shared/devServerRules'
 import type { EventRow } from '@shared/events'
 import type { ThreadResources } from './threadResources'
 import { shellOf } from './threadResourcesParse'
-import { announcedPorts, byPort, descendants, parseLsof, parsePs, parseSs, parseStarts, portLabel, validPort, type Listener } from './threadPortsParse'
+import { announcedPorts, byPort, descendants, parseArgs, parseLsof, parsePs, parseSs, parseStarts, portLabel, validPort, type Listener } from './threadPortsParse'
 
 /**
  * Dev servers a thread starts, filed in the ledger as `port` rows (docs/box.md
@@ -30,6 +30,10 @@ export interface Scan {
   parents: Map<number, number>
   /** pid → when it started (epoch ms); absent from a scan that did not read it. */
   started?: Map<number, number>
+  /** pid → its command line; absent from a scan that did not read it. The
+   *  ancestry rule reads it: a listener under the gate, a typecheck or a
+   *  test run, however deep, is never a dev server. */
+  args?: Map<number, string>
 }
 
 const run = async (cmd: string, args: string[]): Promise<string> => {
@@ -44,9 +48,9 @@ const run = async (cmd: string, args: string[]): Promise<string> => {
 export async function scanHost(platform: NodeJS.Platform = process.platform): Promise<Scan> {
   const [listen, ps] = await Promise.all([
     platform === 'linux' ? run('ss', ['-ltnpH']).then(parseSs) : run('lsof', ['-nP', '-iTCP', '-sTCP:LISTEN']).then(parseLsof),
-    run('ps', ['-A', '-o', 'pid=,ppid=,etime='])
+    run('ps', ['-A', '-o', 'pid=,ppid=,etime=,args='])
   ])
-  return { listeners: listen, parents: parsePs(ps), started: parseStarts(ps, Date.now()) }
+  return { listeners: listen, parents: parsePs(ps), started: parseStarts(ps, Date.now()), args: parseArgs(ps) }
 }
 
 /** One scan shared by everyone who asks within `maxAgeMs` (the watcher and the dev runs). */
@@ -212,11 +216,24 @@ export class ThreadPorts {
     for (const l of byPort(this.under(scan, pid)).values()) {
       if (a.baseline.has(l.port) || !validPort(l.port)) continue
       if (this.deps.resources.live(this.deps.environmentId, 'port', String(l.port))) continue
+      // The listener's own command line and every process between it and
+      // the harness: a worker of the gate, a typecheck or a test run the
+      // call ran (by a script, say) is the runner's, whatever the call said.
+      if (underRunner(this.ancestry(scan, l.pid, pid))) continue
       const running = [...a.calls.entries()].at(-1)
       const by = callId ? { callId, command: command ?? '' } : running ? { callId: running[0], command: running[1] } : a.last
       if (!by) continue
       this.record(sessionId, l.port, l.pid, by.callId, portLabel(l.port, { command: by.command, process: l.command }), l.command)
     }
+  }
+
+  /** The command lines from `pid` up to (not including) `root`, nearest first. */
+  private ancestry(scan: Scan, pid: number, root: number): (string | undefined)[] {
+    const out: (string | undefined)[] = []
+    for (let p: number | undefined = pid, hops = 0; p !== undefined && p !== root && hops < 32; p = scan.parents.get(p), hops++) {
+      out.push(scan.args?.get(p))
+    }
+    return out
   }
 
   /** A database, an MCP server or a test run's worker is never filed (src/shared/devServerRules.ts). */

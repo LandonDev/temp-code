@@ -113,10 +113,21 @@ export function parseLsof(text: string): Listener[] {
 export function parsePs(text: string): Map<number, number> {
   const parents = new Map<number, number>()
   for (const line of text.split('\n')) {
-    const m = /^\s*(\d+)\s+(\d+)(?:\s+[\d:-]+)?\s*$/.exec(line)
+    const m = /^\s*(\d+)\s+(\d+)(?:\s+[\d:-]+)?(?:\s+.*)?$/.exec(line)
     if (m) parents.set(Number(m[1]), Number(m[2]))
   }
   return parents
+}
+
+/** `ps -A -o pid=,ppid=,etime=,args=` → pid → its command line (what the
+ *  ancestry rule reads: a worker under the gate is the gate's). */
+export function parseArgs(text: string): Map<number, string> {
+  const args = new Map<number, string>()
+  for (const line of text.split('\n')) {
+    const m = /^\s*(\d+)\s+\d+\s+[\d:-]+\s+(\S.*)$/.exec(line)
+    if (m) args.set(Number(m[1]), m[2].trim())
+  }
+  return args
 }
 
 /** ps's `etime`, `[[dd-]hh:]mm:ss`, in milliseconds; null when it is not one. */
@@ -131,7 +142,7 @@ export function parseEtime(text: string): number | null {
 export function parseStarts(text: string, now: number): Map<number, number> {
   const started = new Map<number, number>()
   for (const line of text.split('\n')) {
-    const m = /^\s*(\d+)\s+\d+\s+([\d:-]+)\s*$/.exec(line)
+    const m = /^\s*(\d+)\s+\d+\s+([\d:-]+)(?:\s+.*)?$/.exec(line)
     const age = m ? parseEtime(m[2]) : null
     if (m && age !== null) started.set(Number(m[1]), now - age)
   }
