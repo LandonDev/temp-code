@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render } from "@testing-library/react";
-import { FileHeader, type FileHeaderDiff } from "./FileHeader";
+import { FileHeader, fileFolder, type FileHeaderDiff } from "./FileHeader";
 
 const diff = (over: Partial<FileHeaderDiff> = {}): FileHeaderDiff => ({
   additions: 4,
@@ -88,5 +88,21 @@ describe("FileHeader", () => {
     );
     expect(container.querySelector("[title]")).toBeNull();
     expect(container.textContent).not.toContain("·");
+  });
+
+  it("renders a tab's own trailing controls, and no save word without a save", () => {
+    const { container } = render(
+      <FileHeader folder="img">
+        <span data-testid="facts">640 × 480</span>
+      </FileHeader>,
+    );
+    expect(container.querySelector('[data-testid="facts"]')).not.toBeNull();
+    expect(container.textContent).toBe("img640 × 480");
+    expect(container.textContent).not.toContain("Sav");
+  });
+
+  it("finds the folder the header shows, null at the project root", () => {
+    expect(fileFolder("/repo/img/shot.png", "/repo")).toBe("img");
+    expect(fileFolder("/repo/a.png", "/repo")).toBeNull();
   });
 });

@@ -35,6 +35,11 @@ export function hostForPath({ owners, threadHost, primary }: PathHostInput): str
  * says where it is missing from and nothing else.
  */
 export function openFailureText(message: string, hostName: string | null): string {
-  if (/\bENOENT\b/.test(message)) return hostName ? `No such file on ${hostName}.` : "No such file.";
+  if (/\bENOENT\b/.test(message)) return missingFileText(hostName);
   return message;
+}
+
+/** A missing file, said the same way by the editor and the media viewer. */
+export function missingFileText(hostName: string | null): string {
+  return hostName ? `No such file on ${hostName}.` : "No such file.";
 }

@@ -61,7 +61,7 @@ import { registry } from "../lib/connection";
 import { displayPath } from "../lib/paths";
 import type { EditorNavigation } from "../lib/search";
 import { MarkdownPreview } from "./AgentMarkdown";
-import { FileHeader, type SaveState } from "./FileHeader";
+import { FileHeader, fileFolder, type SaveState } from "./FileHeader";
 import { editorAutocomplete } from "./editorAutocomplete";
 import { languageForPath, schemeExtensions } from "./editorChrome";
 import { preserveEditorViewport, replaceEditorDoc } from "./editorDoc";
@@ -354,9 +354,7 @@ export function FileEditor({
     [onErrorCountChange, path],
   );
 
-  const shown = displayPath(path, cwd);
-  const slash = shown.lastIndexOf("/");
-  const folder = slash > 0 ? shown.slice(0, slash) : null;
+  const folder = fileFolder(path, cwd);
   if (loadState.status === "loading") return <EditorLoading name={basename(path)} />;
 
   if (loadState.status === "error") {

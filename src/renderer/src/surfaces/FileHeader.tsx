@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp } from "../chrome/icons";
 import { Button } from "../components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
+import { displayPath } from "../lib/paths";
 
 export type SaveState =
   | { status: "idle" | "saving" | "saved" }
@@ -23,8 +24,20 @@ type FileHeaderProps = {
   folder: string | null;
   diff?: FileHeaderDiff;
   markdown?: { mode: MarkdownViewMode; onModeChange(mode: MarkdownViewMode): void };
-  save: SaveState;
+  /** Absent for a tab that never saves (a media file): idle. */
+  save?: SaveState;
+  /** Trailing controls and facts of the tab's own kind, before the stepper. */
+  children?: ReactNode;
 };
+
+/** The folder the header shows: displayPath cut at its last slash; null at the project root. */
+export function fileFolder(path: string, cwd: string): string | null {
+  const shown = displayPath(path, cwd);
+  const slash = shown.lastIndexOf("/");
+  return slash > 0 ? shown.slice(0, slash) : null;
+}
+
+const IDLE: SaveState = { status: "idle" };
 
 /** The buttons keep the editor's focus: a click never takes the caret. */
 const keepFocus = (event: MouseEvent) => event.preventDefault();
@@ -35,7 +48,7 @@ const keepFocus = (event: MouseEvent) => event.preventDefault();
  * stepper, the Markdown view, and a save that is still running or failed
  * (a finished save is the tab's dirty mark clearing).
  */
-export function FileHeader({ folder, diff, markdown, save }: FileHeaderProps) {
+export function FileHeader({ folder, diff, markdown, save = IDLE, children }: FileHeaderProps) {
   return (
     <TooltipProvider>
       <header className="flex h-8 shrink-0 items-center gap-2 border-b border-border bg-background px-3 text-[12px]">
@@ -68,6 +81,7 @@ export function FileHeader({ folder, diff, markdown, save }: FileHeaderProps) {
             <ToggleGroupItem value="source" className="text-[12px]">Source</ToggleGroupItem>
           </ToggleGroup>
         ) : null}
+        {children}
         {diff ? <Stepper diff={diff} /> : null}
       </header>
     </TooltipProvider>

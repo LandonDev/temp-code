@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hostForPath, openFailureText } from "./pathHost";
+import { hostForPath, missingFileText, openFailureText } from "./pathHost";
 
 const primary = "local";
 
@@ -36,5 +36,12 @@ describe("openFailureText", () => {
 
   it("every other failure keeps the host's words", () => {
     expect(openFailureText("Binary files cannot be edited.", "The box")).toBe("Binary files cannot be edited.");
+  });
+});
+
+describe("missingFileText", () => {
+  it("names the host the file is missing from, and nothing on this machine", () => {
+    expect(missingFileText("The box")).toBe("No such file on The box.");
+    expect(missingFileText(null)).toBe("No such file.");
   });
 });
