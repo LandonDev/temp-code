@@ -486,6 +486,8 @@ describe("the master view", () => {
     const impl = screen.getByRole("button", { name: /Home screen/ });
     expect(impl.querySelector("[data-row-status]")?.textContent).toBe("Write the view1/3");
     expect(impl.querySelector("[data-tally]")?.textContent).toBe("1/3");
+    // A reader hears the state and its detail, not the state alone.
+    expect(screen.getByRole("button", { name: /Working, Write the view/ })).toBe(impl);
     expect(within(impl).queryByRole("list")).toBeNull();
     expect(within(impl).queryByRole("progressbar")).toBeNull();
     // A chat keeps its activity; the tally still ends its line.
@@ -1126,6 +1128,19 @@ describe("the master view", () => {
     fireEvent.click(within(screen.getByRole("menu", { name: "Thread actions" })).getByText("Remove from queue"));
     await flush();
     expect(link.calls.find((c) => c.method === "session.batch")?.params).toMatchObject({ action: "stop", ids: ["c-q"] });
+  });
+
+  it("a queued row the board's answer names before the store has it still opens its menu and leaves the queue on its host", async () => {
+    seed([meta({ id: "c-run", title: "Home", status: "running", createdAt: 1 })]);
+    const { environmentId: _e, ...wire } = meta({ id: "c-new", title: "Just queued", status: "queued", activity: "Queued · waiting for Home", createdAt: 2 });
+    link.boardChildren = [wire];
+    renderView();
+    await flush();
+    fireEvent.click(within(screen.getByRole("button", { name: /Just queued/ })).getByRole("button", { name: "Thread actions" }));
+    await flush();
+    fireEvent.click(within(screen.getByRole("menu", { name: "Thread actions" })).getByText("Remove from queue"));
+    await flush();
+    expect(link.calls.find((c) => c.method === "session.batch")?.params).toMatchObject({ action: "stop", ids: ["c-new"] });
   });
 
   it("the header carries the master's title, its summary and the two actions", async () => {

@@ -259,7 +259,8 @@ export function MasterView(props: ThreadViewProps) {
   }
 
   // A row's (or an agent line's) menu: the thread on its own host.
-  const menuMeta = rowMenu ? sessionStore.metaOf(rowMenu.id) : null;
+  // A row the board's answer names before the store holds it menus from that answer.
+  const menuMeta = rowMenu ? (sessionStore.metaOf(rowMenu.id) ?? layout.rows.find((r) => r.id === rowMenu.id)?.fallback ?? null) : null;
   const menuItems = menuMeta
     ? rowMenuItems(
         menuMeta,
@@ -292,7 +293,7 @@ export function MasterView(props: ThreadViewProps) {
     else if (pick === "compact") quiet(commands.compact(id));
     else if (pick === "start-now") quiet(commands.startNow(id));
     else if (pick === "remove-queue") {
-      const env = sessionStore.metaOf(id)?.environmentId;
+      const env = (sessionStore.metaOf(id) ?? layout.rows.find((r) => r.id === id)?.fallback)?.environmentId;
       if (env) quiet(commands.sessionBatch(env, "stop", [id]));
     }
     else if (pick === "killBackground") quiet(commands.killBackground(id));

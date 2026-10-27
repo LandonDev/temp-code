@@ -1,7 +1,7 @@
 import { memo, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { Button } from "../../../components/ui/button";
 import { Item } from "../../../components/ui/item";
-import { StatusMark, statusNeedsYou, statusToneClass } from "../../../components/ui/status";
+import { STATUS_WORD, StatusMark, statusNeedsYou, statusToneClass } from "../../../components/ui/status";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { MessageSquare, MoreHorizontal, Pause, Play } from "../../../chrome/icons";
 import { HarnessIcon } from "../../../chrome/HarnessIcon";
@@ -112,6 +112,8 @@ export function MasterRowView({
 }) {
   const title = planTitle || meta.title;
   const { state, detail } = rowStatus(meta, digest, landed);
+  // The word the glyph stands for and the detail, as one name for readers.
+  const statusLabel = detail ? `${STATUS_WORD[state]}, ${detail}` : STATUS_WORD[state];
   const tally = taskTally(taskList(digest));
   const group = groupOf(meta.status);
   const quiet = group === "done" || group === "queued";
@@ -186,9 +188,9 @@ export function MasterRowView({
         {/* Amber and red say their detail in the state's tone; every other
             state's detail is the muted line under the title. */}
         {statusNeedsYou(state) ? (
-          <StatusMark state={state} word={detail || false} className="min-w-0" />
+          <StatusMark state={state} word={detail || false} aria-label={statusLabel} className="min-w-0" />
         ) : (
-          <StatusMark state={state} word={false} detail={detail || undefined} className="min-w-0" />
+          <StatusMark state={state} word={false} detail={detail || undefined} aria-label={statusLabel} className="min-w-0" />
         )}
         {tally ? <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground" data-tally>{tally}</span> : null}
       </span>
