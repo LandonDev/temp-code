@@ -1,11 +1,14 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { LAYER, liftedLayer } from "./layers";
+import { LAYER } from "./layers";
 
-describe("liftedLayer", () => {
-  it("keeps a surface's own layer at the root and lifts it above a dialog it opened from", () => {
-    expect(liftedLayer(LAYER.popover, null)).toBe(LAYER.popover);
-    expect(liftedLayer(LAYER.popover, LAYER.dialog)).toBe(LAYER.dialog + 1);
-    expect(liftedLayer(LAYER.submenu, LAYER.dialog)).toBe(LAYER.dialog + 2);
-    expect(liftedLayer(LAYER.toast, LAYER.dialog)).toBe(LAYER.dialog + 1 + (LAYER.toast - LAYER.popover));
+describe("LAYER", () => {
+  it("matches the --layer tokens and puts menus above dialogs", () => {
+    const css = readFileSync(new URL("../index.css", import.meta.url), "utf8");
+    for (const name of ["dialog", "popover", "toast"] as const) {
+      expect(css).toContain(`--layer-${name}: ${LAYER[name]};`);
+    }
+    expect(LAYER.popover).toBeGreaterThan(LAYER.dialog);
+    expect(LAYER.submenu).toBeGreaterThan(LAYER.popover);
   });
 });

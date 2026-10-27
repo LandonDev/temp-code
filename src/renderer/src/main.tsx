@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { getVersion, listen } from "./lib/native";
 import { installEditorKeys } from "./lib/editorKeys";
 import App from "./App";
+import { ConfirmHost } from "./chrome/ConfirmDialog";
 /* The toast stack rides its own chunk: sonner is not part of the first paint. */
 const Toaster = lazy(() => import("./components/ui/toaster").then((m) => ({ default: m.Toaster })));
 import { initAppearance } from "./lib/appearance";
@@ -86,6 +87,7 @@ function Root() {
   const tree = (
     <BootGate>
       <App />
+      <ConfirmHost />
       <Suspense fallback={null}>
         <Toaster />
       </Suspense>

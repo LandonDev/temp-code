@@ -15,7 +15,7 @@
  * Guards, in order:
  *   1. Lightbox open: Escape / ← / → become the lightbox commands and
  *      nothing else fires but zoom.
- *   2. Inside a dialog (`role="dialog"`, `.modal-panel`): only
+ *   2. Inside a dialog (`role="dialog"` or `"alertdialog"`): only
  *      DIALOG_SAFE commands (zoom, Save All, update check) fire.
  *   3. A focused Monaco keeps its own chords (⌘P parameter info, ⌃T, ⌃D,
  *      ⌃H, ⌃⌥H); lib/editorKeys.ts stops ⌘P before we see it.
@@ -107,7 +107,7 @@ export const DIALOG_SAFE: ReadonlySet<AppCommandId> = new Set<AppCommandId>([
 
 export const DOUBLE_SHIFT_MS = 400;
 
-const DIALOG = '[role="dialog"], .modal-panel';
+const DIALOG = '[role="dialog"], [role="alertdialog"]';
 const TERMINAL = ".monocode-terminal";
 const CODEMIRROR = ".cm-editor";
 const PICKER =

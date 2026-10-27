@@ -716,8 +716,8 @@ describe("the master view", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "New pass…" }));
     await flush();
     field = within(screen.getByRole("dialog")).getByLabelText("Message") as HTMLTextAreaElement;
-    fireEvent.keyDown(window, { key: "Escape" });
-    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.keyDown(field, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(sent).toHaveLength(1);
   });
 
@@ -1333,7 +1333,7 @@ describe("the batch across hosts", () => {
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "Batch actions" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Pause all" }));
-    let dialog = screen.getByRole("dialog");
+    let dialog = screen.getByRole("alertdialog");
     expect(within(dialog).getByText("Pause 2 running threads?")).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "Pause all" }));
     await flush();

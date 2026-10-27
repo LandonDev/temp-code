@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Suspense, lazy, useMemo, useRef, useState, type FormEvent } from "react";
 import { Modal } from "./Modal";
 import { DialogFooter as Footer, ErrorLine, GHOST, errorText } from "./ConfirmDialog";
 import { Toggle } from "../surfaces/settingsBits";
@@ -88,12 +88,12 @@ function PreambleEditor({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
+  // The caret opens at the end of the text.
+  const focusText = () => {
     const el = ref.current;
-    if (!el) return;
-    el.focus();
-    el.setSelectionRange(el.value.length, el.value.length);
-  }, []);
+    el?.setSelectionRange(el.value.length, el.value.length);
+    return el ?? true;
+  };
 
   const normalized = normalizePreamble(text);
   const count = useMemo(() => wordCount(text), [text]);
@@ -126,7 +126,7 @@ function PreambleEditor({
       : `The default for projects in ${scope.workspace.name} without their own`;
 
   return (
-    <Modal onClose={onClose} busy={pending} title={title} description={description} size="md">
+    <Modal onClose={onClose} busy={pending} title={title} description={description} size="md" initialFocus={focusText}>
       <form
         onSubmit={submit}
         onKeyDown={(e) => {

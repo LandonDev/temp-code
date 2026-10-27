@@ -9,8 +9,7 @@ import {
   type Ref,
 } from "react";
 import { createPortal } from "react-dom";
-import { LAYER, useLiftedLayer } from "../lib/layers";
-import { ghostOut } from "./Modal";
+import { LAYER } from "../lib/layers";
 import {
   placePopover,
   type AnchorRect,
@@ -54,8 +53,6 @@ type Props = Omit<ComponentPropsWithoutRef<"div">, "style"> & {
   ignore?: string;
   ref?: Ref<HTMLDivElement>;
 };
-
-export const POPOVER_OUT_MS = 100;
 
 const SURFACE =
   "glass-surface floating-surface rounded-xl shadow-xl outline-none";
@@ -148,8 +145,6 @@ export function Popover({
   children,
   ...rest
 }: Props) {
-  // Opened from inside a dialog, the surface sits above the dialog's layer.
-  const zIndex = useLiftedLayer(layer);
   const surface = useRef<HTMLDivElement | null>(null);
   const [position, setPosition] = useState<PopoverPosition | null>(null);
   const anchorRef = useRef(anchor);
@@ -192,18 +187,6 @@ export function Popover({
   useEffect(() => {
     if (autoFocus) surface.current?.focus();
   }, [autoFocus]);
-
-  // Menus unmount outright; a ghost copy plays the 100ms exit. A surface
-  // still connected at cleanup is StrictMode rehearsing, not a real close.
-  useEffect(() => {
-    return () => {
-      const el = surface.current;
-      if (el && !el.isConnected) {
-        el.classList.remove("popover-open");
-        ghostOut(el, "popover-close", POPOVER_OUT_MS);
-      }
-    };
-  }, []);
 
   useEffect(() => {
     if (!onDismiss) return;
@@ -261,7 +244,7 @@ export function Popover({
         else if (ref) ref.current = el;
       }}
       data-popover-side={position?.side ?? side}
-      style={{ ...placed, zIndex, ...style }}
+      style={{ ...placed, zIndex: layer, ...style }}
       className={`${position ? "popover-open " : ""}${bare ? "" : `${SURFACE} `}${className ?? ""}`}
     >
       {children}

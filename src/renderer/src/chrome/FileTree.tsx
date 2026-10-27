@@ -61,6 +61,7 @@ import type { GitStatusMap } from "../hooks/useGitFileStatuses";
 import { useProjectDiffStats } from "../hooks/useProjectDiffStats";
 import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
 import { FileTypeIcon } from "./FileTypeIcon";
+import { useConfirm } from "./ConfirmDialog";
 import { diffChunk, editorChunk, mediaChunk } from "../surfaces/chunks";
 
 /** A pointer over the tree is about to open a file: warm the editor and media chunks. */
@@ -250,6 +251,7 @@ export function FileTree({
 }: Props) {
   const environmentId = environmentOfCwd(cwd) ?? registry.primary().environmentId;
   const editorConfig = useEditorConfig();
+  const confirm = useConfirm();
   const [expanded, setExpanded] = useState(() => loadExpanded(cwd));
   const [selectedPath, setSelectedPath] = useState(() => loadSelected(cwd));
   const [children, setChildren] = useState<FsEntry[] | null>(() =>
@@ -384,11 +386,11 @@ export function FileTree({
     if (path === cwd) return;
     const isDir = isDirAt(cwd, path);
     const label = basename(path);
-    const ok = window.confirm(
-      isDir
-        ? `Delete folder “${label}” and everything inside it?`
-        : `Delete “${label}”?`,
-    );
+    const ok = await confirm({
+      title: isDir ? `Delete folder “${label}” and everything inside it?` : `Delete “${label}”?`,
+      action: "Delete",
+      danger: true,
+    });
     if (!ok) return;
     await deletePath(environmentId, path);
     await refreshTouched([parentPath(path)], isDir ? [path] : []);

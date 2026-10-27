@@ -1,4 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { DUR, EASE_OUT, SPRING_LAYOUT } from "../../lib/ease";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ThreadRules } from "@server/shared/rules";
 import { AccessPicker } from "../../chrome/AccessPicker";
@@ -451,11 +452,9 @@ export function StartButton({ session, tasks }: { session: Session; tasks: strin
 
   return (
     <motion.div
-      initial={reduce ? false : { opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={reduce ? undefined : { opacity: 0, scale: 0.9 }}
-      // The plan settling is a rare, earned moment — a touch of overshoot.
-      transition={{ type: "spring", stiffness: 420, damping: 28, mass: 0.6 }}
+      initial={reduce ? false : { opacity: 0, scale: 0.96 }}
+      animate={{ opacity: 1, scale: 1, transition: SPRING_LAYOUT }}
+      exit={reduce ? undefined : { opacity: 0, scale: 0.98, transition: { duration: DUR.fast, ease: EASE_OUT } }}
     >
       <button
         ref={trigger}

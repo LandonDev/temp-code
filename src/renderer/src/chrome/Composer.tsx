@@ -2,7 +2,7 @@ import { registry } from '../lib/connection'
 import { environmentOfCwd, hostOfCwd } from '../lib/tcserver/projects'
 import { Plus } from './icons'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { EASE_OUT, SPRING_SWAP } from '../lib/ease'
+import { DUR, EASE_OUT, FADE_OUT, SPRING_LAYOUT } from '../lib/ease'
 import { GLIDE_MAX_ROWS } from '../lib/listGlide'
 import { recordSendOrigin } from '../lib/sendOrigin'
 import {
@@ -850,7 +850,7 @@ export function Composer({
                 initial={reduce ? false : { opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={reduce ? undefined : { opacity: 0 }}
-                transition={{ duration: 0.12, ease: EASE_OUT }}
+                transition={{ duration: DUR.fast, ease: EASE_OUT }}
                 className="pointer-events-none absolute inset-0 z-20 grid place-items-center rounded-lg bg-accent/8 text-[12px] text-content/70"
               >
                 Drop files to attach
@@ -894,10 +894,8 @@ export function Composer({
                     key={file.id}
                     layout={attachments.length <= GLIDE_MAX_ROWS}
                     initial={reduce ? false : { opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1, transition: SPRING_SWAP }}
-                    exit={
-                      reduce ? undefined : { opacity: 0, scale: 0.9, transition: { duration: 0.1 } }
-                    }
+                    animate={{ opacity: 1, scale: 1, transition: SPRING_LAYOUT }}
+                    exit={reduce ? undefined : FADE_OUT}
                   >
                     <AttachmentChip
                       environmentId={file.environmentId ?? environmentId}

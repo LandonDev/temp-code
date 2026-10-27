@@ -8,29 +8,22 @@ import { Popover } from "./Popover";
 /**
  * A menu opened from inside a dialog sits above it: the add sheet's model
  * picker and the rules dialog's menus are Popovers portalled to the body,
- * so the DOM order alone would put them under the sheet's fixed layer.
+ * and the popover layer outranks the dialog's at the root and inside one.
  */
 
 afterEach(cleanup);
 
 describe("a popover inside a modal", () => {
-  it("takes a z-index above the dialog's layer, and its own layer at the root", () => {
+  it("takes the popover layer, above the dialog's", () => {
     render(
-      <>
-        <Popover anchor={{ x: 10, y: 10 }} data-testid="root-menu">
-          root
+      <Modal onClose={() => {}} title="Add a thread">
+        <Popover anchor={{ x: 20, y: 20 }} data-testid="sheet-menu">
+          menu
         </Popover>
-        <Modal onClose={() => {}} title="Add a thread">
-          <Popover anchor={{ x: 20, y: 20 }} data-testid="sheet-menu">
-            menu
-          </Popover>
-        </Modal>
-      </>,
+      </Modal>,
     );
-    const dialog = screen.getByRole("dialog").closest("[style]") as HTMLElement;
-    const dialogZ = Number(dialog.style.zIndex);
-    expect(dialogZ).toBe(LAYER.dialog);
-    expect(Number(screen.getByTestId("root-menu").style.zIndex)).toBe(LAYER.popover);
-    expect(Number(screen.getByTestId("sheet-menu").style.zIndex)).toBeGreaterThan(dialogZ);
+    expect(screen.getByRole("dialog").className).toContain("z-(--layer-dialog)");
+    expect(Number(screen.getByTestId("sheet-menu").style.zIndex)).toBe(LAYER.popover);
+    expect(LAYER.popover).toBeGreaterThan(LAYER.dialog);
   });
 });

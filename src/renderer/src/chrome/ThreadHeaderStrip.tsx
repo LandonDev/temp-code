@@ -7,7 +7,7 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import type { ThreadRules } from "@server/shared/rules";
-import { EASE_OUT, SPRING_LAYOUT } from "../lib/ease";
+import { DUR, EASE_OUT, FADE_OUT, SPRING_LAYOUT } from "../lib/ease";
 import { GLIDE_MAX_ROWS, useListGlide } from "../lib/listGlide";
 import { HARNESSES, sessionDisplayTitle, type HarnessId } from "../lib/session";
 import type { ThreadType } from "../lib/tcserver/types";
@@ -119,7 +119,7 @@ export function ThreadHeaderStrip({
           initial={reduce ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={reduce ? undefined : { opacity: 0 }}
-          transition={{ duration: 0.12, ease: EASE_OUT, layout: SPRING_LAYOUT }}
+          transition={{ duration: DUR.fast, ease: EASE_OUT, layout: SPRING_LAYOUT }}
           className="shrink-0"
           data-tauri-drag-region="false"
           ref={chip.id === activeId ? events.activeRef : undefined}
@@ -394,7 +394,7 @@ function ArchivedShelf({
                     key={thread.id}
                     type="button"
                     layout={shown.length <= GLIDE_MAX_ROWS}
-                    exit={reduce ? undefined : { opacity: 0, height: 0 }}
+                    exit={reduce ? undefined : FADE_OUT}
                     transition={SPRING_LAYOUT}
                     onClick={() => restore(thread.id)}
                     className="group/arch flex w-full items-center gap-2.5 overflow-hidden rounded-lg px-2 py-1.5 text-left hover:bg-content/5"

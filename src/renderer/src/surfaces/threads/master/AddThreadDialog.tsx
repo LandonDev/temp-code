@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Reasoning } from "@server/shared/catalog";
 import { DialogFooter, ErrorLine, errorText } from "../../../chrome/ConfirmDialog";
 import { Modal } from "../../../chrome/Modal";
@@ -120,7 +120,6 @@ export function AddThreadDialog({
   const [brief, setBrief] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const briefRef = useRef<HTMLTextAreaElement>(null);
 
   const environments = useEnvironments();
   const statuses = useEnvironmentStatuses();
@@ -133,10 +132,6 @@ export function AddThreadDialog({
   const efforts = effortChoices(choice.harness, choice.model, host);
   const contexts = (resolveModel(choice.harness, choice.model, host).settings ?? []).find((s) => s.id === "context")?.options;
   const effort = efforts.some((e) => e.value === settings.effort) ? (settings.effort as Reasoning) : efforts[0]?.value;
-
-  useEffect(() => {
-    briefRef.current?.focus();
-  }, []);
 
   // A host with no copy yet is asked once whether it can take one (a dry run);
   // one with no checkout stays disabled with its note.
@@ -215,7 +210,7 @@ export function AddThreadDialog({
       >
         <div className="flex flex-col px-4 pt-3 pb-2">
           <textarea
-            ref={briefRef}
+            autoFocus
             value={brief}
             onChange={(e) => setBrief(e.target.value)}
             onKeyDown={(e) => {

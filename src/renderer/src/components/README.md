@@ -13,9 +13,9 @@ DESIGN.md wins.
 | --- | --- | --- |
 | Any button, icon button, row action | `Button` (button.tsx) | Flat. `default` is the one primary per surface; `secondary` gray; `ghost` for icon and row buttons; `outline` only inside forms; `destructive` red; `link` inline. Never a raw `<button>` with classes. |
 | A toggle button, a segmented bar | `Toggle`, `ToggleGroup` (toggle.tsx, toggle-group.tsx) | `spacing={0}` joins a group into one bar. |
-| A modal | `Dialog` (dialog.tsx) | Centred, `size` sm/default/md/lg. CRUD and every form opens in one. |
-| A confirm | `AlertDialog*` (dialog.tsx) | Only for destructive, irreversible actions. One title, one line, Cancel + the verb. |
-| A side form, a long picker | `Sheet` (sheet.tsx) | Enters from an edge. The right panel is not a Sheet. |
+| A modal | `Dialog` (dialog.tsx) | Centred, `size` sm/default/md/lg; `full` for a viewer (an image, a rendered page). CRUD and every form opens in one. |
+| A confirm | `AlertDialog*` (dialog.tsx); from code, `useConfirm()` (chrome/ConfirmDialog.tsx) | Only for destructive, irreversible actions. One title, one line, Cancel + the verb. Never `window.confirm`. |
+| A side form, a long picker | `Sheet` (sheet.tsx) | Enters from an edge; `width` in px on a side sheet (440 by default). The right panel is not a Sheet. |
 | A menu from a trigger | `DropdownMenu` (dropdown-menu.tsx) | `size="sm"` in dense chrome. Rows: glyph, label, shortcut. |
 | A right-click menu | `ContextMenu` (context-menu.tsx) | Same rows at the `sm` size, opened at the pointer. |
 | Floating content from a trigger | `Popover` (popover.tsx) | Pickers, account lists, previews. Scales from its anchor. |
@@ -24,6 +24,7 @@ DESIGN.md wins.
 | An option picker from a list | `ChoiceSelect` (../choice-select.tsx) | The one adapter from `{ value, label }[]` to `Select`; an empty value (Auto) round-trips. Nothing maps `SelectItem`s by hand. |
 | A settings or app page | `Page`, `PageSection`, `PageRow` (../page.tsx) | 672px column, 24px inset, one 16px title; sections 24px apart under a 12px muted heading; rows with a hairline between neighbours. A page never draws its own header or section heading. |
 | A text field | `Input`, `Textarea` (input.tsx, textarea.tsx) | 32px, hairline border, ring inside. |
+| A labelled field in a dialog or sheet | `Field`, `FieldRow` (chrome/DialogField.tsx) | Label, control, hint; `FieldRow` for a choice at the row's end. |
 | A setting on or off | `Switch` (switch.tsx) | The only toggle for a setting. |
 | A choice in a list | `Checkbox` (checkbox.tsx) | |
 | Tabs, a segmented control | `Tabs` (tabs.tsx) | `variant="default"` segmented, `variant="line"` underlined. |

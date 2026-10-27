@@ -514,21 +514,6 @@ header[data-tauri-drag-region] button {
   height: 100%;
 }
 
-@keyframes approval-toast-in {
-  from {
-    opacity: 0;
-    transform: translateY(-8px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.approval-toast {
-  animation: approval-toast-in 150ms var(--ease-out);
-}
-
 .shimmer-text {
   background-image:
     linear-gradient(
@@ -739,111 +724,28 @@ header[data-tauri-drag-region] button {
 }
 
 .popover-open {
-  animation: popover-open 140ms var(--ease-out) both;
+  animation: popover-open var(--dur-base) var(--ease-out) both;
 }
 
-/* The reverse, played on a ghost copy after the menu unmounts: a quarter of
-   the travel back toward the anchor. */
-@keyframes popover-close {
-  to {
-    opacity: 0;
-    transform: translate(
-        calc(var(--popover-shift, 0px) / 4),
-        calc(var(--popover-lift, 0px) / 4)
-      )
-      scale(0.98);
-  }
-}
-
-.popover-close {
-  animation: popover-close 100ms var(--ease-out) both;
-}
-
-.popover-open[data-popover-side="bottom"],
-.popover-close[data-popover-side="bottom"] {
+.popover-open[data-popover-side="bottom"] {
   --popover-lift: -8px;
 }
 
-.popover-open[data-popover-side="top"],
-.popover-close[data-popover-side="top"] {
+.popover-open[data-popover-side="top"] {
   --popover-lift: 8px;
 }
 
-.popover-open[data-popover-side="right"],
-.popover-close[data-popover-side="right"] {
+.popover-open[data-popover-side="right"] {
   --popover-shift: -8px;
 }
 
-.popover-open[data-popover-side="left"],
-.popover-close[data-popover-side="left"] {
+.popover-open[data-popover-side="left"] {
   --popover-shift: 8px;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .popover-open,
-  .popover-close {
-    animation: none;
-  }
-}
-
-/* Centered modals: a short lift rather than a fade. Glass already sits on
-   its own compositor layer, so opacity alone barely reads. */
-@keyframes modal-backdrop-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes modal-panel-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes modal-backdrop-out {
-  to {
-    opacity: 0;
-  }
-}
-
-@keyframes modal-panel-out {
-  to {
-    opacity: 0;
-    transform: translateY(4px) scale(0.98);
-  }
-}
-
-.modal-backdrop {
-  animation: modal-backdrop-in 160ms var(--ease-out) both;
-}
-
-.modal-panel {
-  animation: modal-panel-in 180ms var(--ease-out) both;
-}
-
-/* Played on a ghost copy after the dialog unmounts. */
-.modal-closing .modal-backdrop {
-  animation: modal-backdrop-out 120ms var(--ease-out) both;
-}
-
-.modal-closing .modal-panel {
-  animation: modal-panel-out 120ms var(--ease-out) both;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .modal-backdrop,
-  .modal-panel,
-  .modal-closing .modal-backdrop,
-  .modal-closing .modal-panel {
-    animation: none;
+  .popover-open {
+    animation: z-fade-quick var(--dur-fast) var(--ease-out) both;
   }
 }
 
@@ -1302,9 +1204,41 @@ header[data-tauri-drag-region] button {
   text-overflow: ellipsis;
 }
 
+/* Reduced motion: an overlay keeps a --dur-fast fade and nothing else. It
+   never travels or scales, and never appears in one frame. */
+@media (prefers-reduced-motion: reduce) {
+  :is(
+    [data-slot="dialog-overlay"],
+    [data-slot="sheet-overlay"],
+    [data-slot="dialog-content"],
+    [data-slot="alert-dialog-content"],
+    [data-slot="sheet-content"],
+    [data-slot="popover-content"],
+    [data-slot="dropdown-menu-content"],
+    [data-slot="dropdown-menu-sub-content"],
+    [data-slot="context-menu-content"],
+    [data-slot="context-menu-sub-content"],
+    [data-slot="select-content"],
+    [data-slot="tooltip-content"]
+  ) {
+    --tw-enter-scale: 1;
+    --tw-exit-scale: 1;
+    --tw-enter-translate-x: 0;
+    --tw-enter-translate-y: 0;
+    --tw-exit-translate-x: 0;
+    --tw-exit-translate-y: 0;
+    animation-duration: var(--dur-fast);
+    transition-property: opacity;
+    transition-duration: var(--dur-fast);
+  }
+  [data-slot="sheet-content"]:is([data-starting-style], [data-ending-style]) {
+    --tw-translate-x: 0;
+    --tw-translate-y: 0;
+  }
+}
+
 /* Reduced motion: every keyframe class stops; the static end state stays. */
 @media (prefers-reduced-motion: reduce) {
-  .approval-toast,
   .shimmer-text,
   .mascot-active,
   .mascot-rest,

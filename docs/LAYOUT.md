@@ -478,8 +478,8 @@ in the whole pane, with Back.
   Send does what the composer would there (a turn when idle, steer or queue
   while it runs) and closes the dialog; the row follows from the store.
   Escape or a click outside closes it and the draft stays with the thread.
-  A popover or the composer's `@`/`/` list open above any Modal takes
-  Escape first (`escapeOwnedAbove`).
+  A popover or the composer's `@`/`/` list open inside a Modal takes
+  Escape first: each stops the key before the dialog hears it.
 - **The foot** (`master/BatchFoot.tsx`, the step rules in `master/steps.ts`)
   stays put under the scrolling list: "When the threads are done", the
   master's summary line when it wrote one, the rules as one sentence
@@ -535,8 +535,8 @@ in the whole pane, with Back.
   host's link with `masterId`, `startedBy` (the master, so the thread's
   settles report to it) and `after` plus the brief as the first message;
   the row arrives from the push. Its model
-  menu, like every Popover opened inside a Modal, reads the dialog's layer
-  (`LayerContext` in lib/layers.ts) and sits above the sheet.
+  menu, like every Popover, sits on the popover layer (95, above the
+  dialog's 90; lib/layers.ts mirrors the `--layer-*` tokens).
 - **Everywhere else** a child is an ordinary root thread in the rail with
   its activity line ("Queued · waiting for <sibling>") and its own working
   strip with one quiet Start now; only the strip and its shelf leave it out.

@@ -1806,7 +1806,8 @@ the rail's foot (`chrome/HostRows.tsx`, with two or more hosts), and the View me
 act on is disabled. The rules per row, the confirm copy with its live count
 and the toast line are `src/renderer/src/lib/threadBatch.ts` (unit-tested);
 the menus' rows are `threadBatchMenu.ts`; the dialog and toast are
-`chrome/ThreadBatchDialog.tsx` and `chrome/ThreadBatchToasts.tsx`. Pause,
+`chrome/ThreadBatchDialog.tsx` and `chrome/ThreadBatchToasts.tsx` (a sonner
+toast per batch, through `chrome/toastSync.ts`). Pause,
 Stop and Archive confirm; Resume and Mark all read do not. The server side
 is `session.batch {action, ids, cleanup?}` (operate), answered by
 `SessionRegistry.batch` through `src/main/server/sessionBatch.ts`: ids
@@ -2183,8 +2184,8 @@ this is the short one.
   publish, Stop is `batch.stopStep { stepId }`, and the dialog
   (`master/rulesEdit.ts`) reorders, renames, adds a built-in kind or a
   shell command with a cwd and removes steps; no step name is written in
-  the renderer. A Popover opened inside a Modal reads the dialog's layer
-  (`LayerContext`, lib/layers.ts) and sits above it. `lib/threadBatch.ts`
+  the renderer. A Popover sits on the popover layer, above every dialog
+  (lib/layers.ts mirrors the `--layer-*` tokens). `lib/threadBatch.ts`
   exports `hasRunningTurn` so the rows and Pause all use the fleet
   switches' rule. The phone draws a queued root with the label "Queued"
   (StatusDot.swift), never under Home's Running (`HomeModel.isLive`); the

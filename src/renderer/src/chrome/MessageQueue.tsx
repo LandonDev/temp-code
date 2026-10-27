@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { AnimatePresence, Reorder, useReducedMotion } from 'motion/react'
+import { DUR, EASE_OUT, FADE_OUT } from '../lib/ease'
 import type { QueuedMessage } from '../lib/tcserver/types'
 import { queueTune, type QueueTune } from '../lib/tcserver/commands'
 import { useSessionMeta } from '../lib/tcserver/store'
@@ -59,8 +60,8 @@ export function MessageQueue({
               key={m.id}
               value={m.id}
               initial={reduce ? false : { opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={reduce ? undefined : { opacity: 0, scale: 0.98, transition: { duration: 0.1 } }}
+              animate={{ opacity: 1, y: 0, transition: { duration: DUR.base, ease: EASE_OUT } }}
+              exit={reduce ? undefined : FADE_OUT}
               className="group/q relative"
             >
               <div className="flex items-start gap-1.5 rounded-lg border border-content/10 bg-content/5 py-1.5 pr-1.5 pl-1">

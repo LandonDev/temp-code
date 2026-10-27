@@ -37,8 +37,16 @@ function SheetContent({
   children,
   side = "right",
   showCloseButton = true,
+  width,
+  style,
   ...props
-}: SheetPrimitive.Popup.Props & { side?: "top" | "right" | "bottom" | "left"; showCloseButton?: boolean }) {
+}: SheetPrimitive.Popup.Props & {
+  side?: "top" | "right" | "bottom" | "left";
+  showCloseButton?: boolean;
+  /** A left or right sheet's width in px, in place of the default 440. */
+  width?: number;
+}) {
+  const sized = width !== undefined && (side === "left" || side === "right");
   return (
     <SheetPortal>
       <SheetOverlay />
@@ -53,6 +61,7 @@ function SheetContent({
           "data-[side=right]:inset-y-3 data-[side=right]:right-3 data-[side=right]:w-[440px] data-[side=right]:max-w-[calc(100%-1.5rem)] data-[side=right]:data-ending-style:translate-x-4 data-[side=right]:data-starting-style:translate-x-4",
           className,
         )}
+        style={sized ? (state) => ({ ...(typeof style === "function" ? style(state) : style), width }) : style}
         {...props}
       >
         {children}

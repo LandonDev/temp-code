@@ -12,6 +12,7 @@ import {
   useState,
 } from "react";
 import { Sidebar } from "./chrome/Sidebar";
+import { confirmAction } from "./chrome/ConfirmDialog";
 import { HiddenApprovalToasts } from "./chrome/ApprovalToasts";
 import { MoveToasts } from "./chrome/ThreadHostChip";
 import { ThreadBatchDialog } from "./chrome/ThreadBatchDialog";
@@ -1094,7 +1095,7 @@ export default function App() {
   }, [active?.cwd, onOpenTerminal, projectCwd]);
 
   const onCloseTab = useCallback(
-    (id: string, opts?: { confirmedTerminalIds?: string[] }) => {
+    async (id: string, opts?: { confirmedTerminalIds?: string[] }) => {
       const current = workspaceTabsStore.getState().tabs;
       const index = current.findIndex((t) => t.id === id);
       if (index < 0) return;
@@ -1122,7 +1123,7 @@ export default function App() {
       );
       if (
         unsaved.length > 0 &&
-        !window.confirm("Close this tab with unsaved files?")
+        !(await confirmAction({ title: "Close this tab?", body: "Its unsaved files lose their changes.", action: "Close", danger: true }))
       ) {
         return;
       }
@@ -1282,7 +1283,7 @@ export default function App() {
       if (index < 0) return;
       const file = pane.files[index];
       const confirmDiscard = () =>
-        window.confirm(`Close ${basename(file.path)} without saving?`);
+        confirmAction({ title: `Close ${basename(file.path)} without saving?`, body: "Its changes will be lost.", action: "Close", danger: true });
 
       const finishClose = () => {
         const files = pane.files.filter((entry) => entry.id !== fileId);
@@ -1382,8 +1383,8 @@ export default function App() {
       if (isFilesystemTab(file) && dirtyFiles.has(fileId)) {
         // Autosave on: write now and close quietly; only a failed write asks.
         void (loadAutoSave() ? flushEditor(file.path) : Promise.resolve(false)).then(
-          (saved) => {
-            if (saved || confirmDiscard()) finishClose();
+          async (saved) => {
+            if (saved || (await confirmDiscard())) finishClose();
           },
         );
         return;
@@ -1394,7 +1395,7 @@ export default function App() {
   );
 
   const onClearTabSession = useCallback(
-    (id: string) => {
+    async (id: string) => {
       const tab = tabs.find((entry) => entry.id === id);
       if (!tab || isBlankWorkspaceTab(tab, sessionStore.getSnapshot())) return;
 
@@ -1407,7 +1408,7 @@ export default function App() {
       );
       if (
         unsaved.length > 0 &&
-        !window.confirm("Close this conversation with unsaved files?")
+        !(await confirmAction({ title: "Close this conversation?", body: "Its unsaved files lose their changes.", action: "Close", danger: true }))
       ) {
         return;
       }
@@ -2024,7 +2025,7 @@ export default function App() {
         ? sessionDisplayTitle(summary.title, summary.harness)
         : "this session";
 
-      if (!options?.confirmed && !window.confirm(`Delete “${label}”?`)) return;
+      if (!options?.confirmed && !(await confirmAction({ title: `Delete “${label}”?`, action: "Delete", danger: true }))) return;
       forgetLastSession(sessionId);
 
       if (open?.busy) {

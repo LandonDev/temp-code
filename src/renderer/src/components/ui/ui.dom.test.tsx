@@ -2,7 +2,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Button } from "./button";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogTitle, AlertDialogTrigger } from "./dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogTitle, AlertDialogTrigger, Dialog, DialogContent, DialogTitle } from "./dialog";
+import { Sheet, SheetContent, SheetTitle } from "./sheet";
 import { Switch } from "./switch";
 import { linkMarkOf, STATUS_TONE, STATUS_WORD, StatusMark, statusNeedsYou, threadStateOf, type ThreadState } from "./status";
 import { Kbd } from "./kbd";
@@ -46,6 +47,48 @@ describe("AlertDialog", () => {
     expect(dialog.textContent).toContain("Delete the thread?");
     expect(dialog.querySelector("[data-slot=dialog-close]")).toBeNull();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+  });
+});
+
+describe("Dialog", () => {
+  it("size full fills the window less 24px a side, with no surface of its own and its close button", () => {
+    render(
+      <Dialog open>
+        <DialogContent size="full">
+          <DialogTitle>Image</DialogTitle>
+        </DialogContent>
+      </Dialog>,
+    );
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.getAttribute("data-size")).toBe("full");
+    for (const name of ["inset-6", "w-[calc(100vw-48px)]", "h-[calc(100vh-48px)]", "max-w-none", "bg-transparent", "ring-0", "shadow-none"]) {
+      expect(dialog.classList.contains(name)).toBe(true);
+    }
+    expect(dialog.classList.contains("bg-popover")).toBe(false);
+    expect(dialog.querySelector("[data-slot=dialog-close]")).toBeTruthy();
+  });
+});
+
+describe("Sheet", () => {
+  it("takes a width in px on a side sheet, and keeps the default without one", () => {
+    render(
+      <Sheet open>
+        <SheetContent side="right" width={672}>
+          <SheetTitle>Agent</SheetTitle>
+        </SheetContent>
+      </Sheet>,
+    );
+    expect(screen.getByRole("dialog").style.width).toBe("672px");
+    cleanup();
+    render(
+      <Sheet open>
+        <SheetContent side="right">
+          <SheetTitle>Project</SheetTitle>
+        </SheetContent>
+      </Sheet>,
+    );
+    expect(screen.getByRole("dialog").style.width).toBe("");
+    expect(screen.getByRole("dialog").className).toContain("w-[440px]");
   });
 });
 

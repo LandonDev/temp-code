@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
+import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../lib/tcserver/commands", () => ({ sessionBatch: vi.fn() }));
 vi.mock("../lib/connection/registry", () => ({ registry: { environment: () => undefined } }));
+vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { error: vi.fn(), dismiss: vi.fn() }) }));
 
 import * as commands from "../lib/tcserver/commands";
 import { sessionStore } from "../lib/tcserver/store";
@@ -20,7 +22,6 @@ const sel = { catalog: { workspaces: [], projects: [] }, lastSeen: {}, floor: 0,
 
 beforeEach(() => {
   resetThreadBatchForTests();
-  vi.useFakeTimers();
   vi.spyOn(sessionStore, "metas").mockReturnValue(list);
   vi.spyOn(sessionStore, "isDraft").mockReturnValue(false);
   vi.spyOn(sessionStore, "metaOf").mockImplementation((id) => list.find((m) => m.id === id) ?? null);
@@ -29,23 +30,30 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.mocked(toast).mockClear();
+  vi.mocked(toast.error).mockClear();
+  vi.mocked(toast.dismiss).mockClear();
 });
 
+type Options = { id: string; duration: number; description?: string; onDismiss: () => void; onAutoClose?: () => void; action?: { label: string; onClick: () => void } };
+const options = (call: unknown[]) => call[1] as Options;
+
 describe("ThreadBatchToasts", () => {
-  it("fades a clean result after a while", async () => {
+  it("shows a clean result as a sonner toast that leaves on its own", async () => {
     vi.mocked(commands.sessionBatch).mockResolvedValue({ attempted: ["a", "b", "c"], succeeded: ["a", "b", "c"], failed: [] });
     render(<ThreadBatchToasts onOpen={() => {}} />);
     await act(() => runThreadBatch("pause", sel));
-    const toast = screen.getByRole("status");
-    expect(toast.textContent).toContain("Paused 3");
-    expect(toast.getAttribute("data-batch-notice")).toBe("ok");
-    act(() => {
-      vi.advanceTimersByTime(8_100);
-    });
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(vi.mocked(toast)).toHaveBeenCalledTimes(1);
+    const [title] = vi.mocked(toast).mock.calls[0];
+    const opts = options(vi.mocked(toast).mock.calls[0]);
+    expect(title).toBe("Paused 3");
+    expect(opts.duration).toBe(8_000);
+    expect(toast.error).not.toHaveBeenCalled();
+    act(() => opts.onAutoClose?.());
+    expect(toast.dismiss).toHaveBeenCalledWith(opts.id);
   });
 
-  it("keeps a failure on screen, names it, and the link opens the thread", async () => {
+  it("keeps a failure until it is read, names it, and Open opens the thread", async () => {
     vi.mocked(commands.sessionBatch).mockResolvedValue({
       attempted: ["a", "b", "c"],
       succeeded: ["b"],
@@ -57,24 +65,21 @@ describe("ThreadBatchToasts", () => {
     const onOpen = vi.fn();
     render(<ThreadBatchToasts onOpen={onOpen} />);
     await act(() => runThreadBatch("stop", sel));
-    const toast = screen.getByRole("status");
-    expect(toast.getAttribute("data-batch-notice")).toBe("failed");
-    expect(toast.querySelector("span")!.textContent).toBe("Stopped 1 · 2 failed: Search (harness not responding) and 1 more");
-    expect(screen.getByRole("button", { name: "Deploy" })).toBeTruthy();
-    act(() => {
-      vi.advanceTimersByTime(60_000);
-    });
-    expect(screen.getByRole("status")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    const [title] = vi.mocked(toast.error).mock.calls[0];
+    const opts = options(vi.mocked(toast.error).mock.calls[0]);
+    expect(title).toBe("Stopped 1");
+    expect(opts.description).toBe("2 failed: Search (harness not responding) and 1 more");
+    expect(opts.duration).toBe(Infinity);
+    opts.action!.onClick();
     expect(onOpen).toHaveBeenCalledWith("a", "local");
-    expect(screen.queryByRole("status")).toBeNull();
   });
 
-  it("Dismiss removes it", async () => {
+  it("a dismissed toast drops its notice", async () => {
     vi.mocked(commands.sessionBatch).mockResolvedValue({ attempted: ["a"], succeeded: [], failed: [{ sessionId: "a", error: "x" }] });
     render(<ThreadBatchToasts onOpen={() => {}} />);
     await act(() => runThreadBatch("resume", sel));
-    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
-    expect(screen.queryByRole("status")).toBeNull();
+    const opts = options(vi.mocked(toast).mock.calls[0]);
+    act(() => opts.onDismiss());
+    expect(toast.dismiss).toHaveBeenCalledWith(opts.id);
   });
 });

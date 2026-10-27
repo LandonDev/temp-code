@@ -1,21 +1,27 @@
-import { useState, type ReactNode } from "react";
-import { Modal } from "./Modal";
-import { MatrixSpinner } from "../surfaces/threads/bits";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
+import { Button, buttonVariants } from "@renderer/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@renderer/components/ui/dialog";
+import { Spinner } from "@renderer/components/ui/spinner";
+import { useClosingDialog, useModalClose } from "./Modal";
 
-/** The dialog button kit: ghost secondary, filled primary, filled danger. */
-export const GHOST =
-  "pressable rounded-md px-3 py-1.5 text-[12px] text-content/70 hover:bg-content/8 hover:text-content disabled:cursor-default disabled:opacity-40";
-export const PRIMARY =
-  "pressable flex items-center gap-2 rounded-md bg-content px-3 py-1.5 text-[12px] font-medium text-background-base hover:bg-content/70 disabled:cursor-default disabled:opacity-50";
-export const DANGER =
-  "pressable flex items-center gap-2 rounded-md bg-danger/20 px-3 py-1.5 text-[12px] font-medium text-danger hover:bg-danger/30 disabled:cursor-default disabled:opacity-50";
+/** The dialog button kit, for buttons a dialog lays out by hand. */
+export const GHOST = buttonVariants({ variant: "ghost" });
+export const PRIMARY = buttonVariants();
+export const DANGER = buttonVariants({ variant: "destructive" });
 
 export const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export function ErrorLine({ error }: { error: string | null }) {
-  return error ? (
-    <p className="whitespace-pre-wrap text-[11px] leading-4 text-danger">{error}</p>
-  ) : null;
+  return error ? <p className="whitespace-pre-wrap text-xs text-destructive">{error}</p> : null;
 }
 
 /** Modal footer: a hairline, Cancel at left of the confirm, the confirm
@@ -38,25 +44,26 @@ export function DialogFooter({
   disabled?: boolean;
   onConfirm?: () => void;
 }) {
+  const close = useModalClose();
   return (
-    <div className="flex items-center justify-end gap-2 border-t border-content/10 px-4 py-3">
+    <div className="flex items-center justify-end gap-2 border-t border-border px-4 py-3">
       {note ? (
-        <span data-footer-note className="mr-auto min-w-0 truncate text-[11px] text-content/40">
+        <span data-footer-note className="me-auto min-w-0 truncate text-xs text-muted-foreground">
           {note}
         </span>
       ) : null}
-      <button type="button" onClick={onCancel} className={GHOST}>
+      <Button variant="secondary" onClick={() => (close ? close(onCancel) : onCancel())}>
         Cancel
-      </button>
-      <button
+      </Button>
+      <Button
         type={onConfirm ? "button" : "submit"}
+        variant={danger ? "destructive" : "default"}
         onClick={onConfirm}
         disabled={pending || disabled}
-        className={danger ? DANGER : PRIMARY}
       >
-        {pending ? <MatrixSpinner cell={1.5} /> : null}
+        {pending ? <Spinner /> : null}
         {confirmLabel}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -73,7 +80,7 @@ export function ConfirmDialog({
   onConfirm,
 }: {
   title: string;
-  body: string;
+  body?: string;
   /** One specific fact under the body (what this move carries), a notch stronger than it. */
   note?: string;
   confirmLabel: string;
@@ -83,6 +90,7 @@ export function ConfirmDialog({
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { root } = useClosingDialog(onCancel, pending);
   const confirm = async () => {
     setPending(true);
     setError(null);
@@ -94,23 +102,75 @@ export function ConfirmDialog({
     }
   };
   return (
-    <Modal onClose={onCancel} busy={pending} title={title} size="sm">
-      <div className="flex flex-col gap-2 px-4 py-3">
-        <p className="text-[12px] leading-snug text-content/50">{body}</p>
-        {note ? (
-          <p data-confirm-note className="text-[12px] leading-snug text-content/70">
-            {note}
-          </p>
-        ) : null}
+    <AlertDialog {...root}>
+      <AlertDialogContent aria-busy={pending || undefined}>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          {body ? <AlertDialogDescription>{body}</AlertDialogDescription> : null}
+          {note ? (
+            <p data-confirm-note className="text-sm text-foreground">
+              {note}
+            </p>
+          ) : null}
+        </AlertDialogHeader>
         <ErrorLine error={error} />
-      </div>
-      <DialogFooter
-        onCancel={onCancel}
-        onConfirm={confirm}
-        confirmLabel={confirmLabel}
-        danger={danger}
-        pending={pending}
-      />
-    </Modal>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+          <AlertDialogAction variant={danger ? "destructive" : "default"} disabled={pending} onClick={() => void confirm()}>
+            {pending ? <Spinner /> : null}
+            {confirmLabel}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+export type ConfirmRequest = { title: string; body?: string; action: string; danger?: boolean };
+
+type Pending = ConfirmRequest & { id: number; resolve: (ok: boolean) => void };
+
+let queue: Pending[] = [];
+let nextId = 0;
+const listeners = new Set<() => void>();
+const publish = (next: Pending[]) => {
+  queue = next;
+  for (const listener of listeners) listener();
+};
+
+/** Ask before an irreversible step; resolves true on the verb, false on
+ *  Cancel, Escape or the backdrop. Requests queue and show one at a time. */
+export function confirmAction(request: ConfirmRequest): Promise<boolean> {
+  return new Promise((resolve) => publish([...queue, { ...request, id: nextId++, resolve }]));
+}
+
+export function useConfirm() {
+  return confirmAction;
+}
+
+/** Renders the request at the head of the queue; mounted once beside the app. */
+export function ConfirmHost() {
+  const head = useSyncExternalStore(
+    (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    () => queue[0],
+  );
+  if (!head) return null;
+  const settle = (ok: boolean) => {
+    publish(queue.filter((entry) => entry !== head));
+    head.resolve(ok);
+  };
+  return (
+    <ConfirmDialog
+      key={head.id}
+      title={head.title}
+      body={head.body}
+      confirmLabel={head.action}
+      danger={head.danger}
+      onCancel={() => settle(false)}
+      onConfirm={() => settle(true)}
+    />
   );
 }

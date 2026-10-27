@@ -125,7 +125,7 @@ export function SymbolPicker({ projectId, onOpen, onClose }: Props) {
 
   return createPortal(
     <div className="fixed inset-0" style={{ zIndex: LAYER.dialog }}>
-      <div className="modal-backdrop absolute inset-0 bg-black/40" onMouseDown={onClose} />
+      <div className="absolute inset-0 bg-black/40" onMouseDown={onClose} />
       <div
         role="dialog"
         aria-label="Go to Symbol"

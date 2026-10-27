@@ -30,9 +30,8 @@ The README's table is the authority on which component renders which class
 of element; nothing is rendered twice by two different things.
 
 Retired by this standard, migrated area by area, never patched further:
-`chrome/Modal.tsx`, `chrome/Popover.tsx`, `chrome/Drawer.tsx`,
-`chrome/ConfirmDialog.tsx`, `lib/layers.ts` (Base UI stacks its own
-portals), `surfaces/settingsBits.tsx`, `chrome/RailAction.tsx`,
+`chrome/Popover.tsx`, `chrome/Drawer.tsx`, `lib/layers.ts` (Base UI stacks
+its own portals), `surfaces/settingsBits.tsx`, `chrome/RailAction.tsx`,
 `chrome/ComposerAction.tsx`, `motion/Button.tsx`, `motion/Tabs.tsx`,
 `motion/TextShimmer.tsx`, `aliax/components/ui/*`, `radix-ui`, the four
 custom toast stacks (sonner), the nine spinner builds (`Spinner`), the
@@ -194,7 +193,10 @@ pane. Nothing else floats at the side of a thread.
 A modal (`Dialog`) is for a form, a CRUD action or a decision that needs the
 whole screen's attention; it never holds a list that could be a panel. A
 confirm (`AlertDialog`) is for destructive, irreversible actions only, with
-one title, one line and two buttons. A sheet is for a long form or picker
+one title, one line and two buttons; code that must ask first awaits
+`useConfirm()` (chrome/ConfirmDialog.tsx), never `window.confirm`.
+`chrome/Modal.tsx` and `chrome/ConfirmDialog.tsx` are thin shells on
+`Dialog` and `AlertDialog` for their existing callers. A sheet is for a long form or picker
 that would not fit a dialog. A menu (`DropdownMenu`, `ContextMenu`) is
 verbs; a popover is content (a picker, a preview, a list of accounts). A
 popover scales from its trigger; a menu scales from its trigger; a context
