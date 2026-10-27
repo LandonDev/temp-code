@@ -97,3 +97,41 @@ instead), `code-block` and `file-diff` (we have Shiki and DiffBody),
 `reasoning-steps` (demo-timed), `chat-input` (ElevenLabs and voice deps),
 `conversation` (iMessage bubbles), `command-menu` (kmenu), `resizable`
 (our pane tree), `sidebar`, `card`, `badge`, `sound`, `orb`.
+
+## Verification
+
+Run `bun run typecheck` and the component's DOM tests with `NODE_ENV=test`.
+For a static view, run this from the repo root:
+
+```sh
+bun run ui:preview src/renderer/src/components/ui/button.tsx#Button --props '{"children":"Save"}' --width 480
+```
+
+The harness (`scripts/ui-preview.ts`) writes `/tmp/ui-preview/Button.html`
+and `/tmp/ui-preview/Button.light.html`. Show each file with `html_preview`.
+Each page links to the other theme; separate documents preserve both
+`html.theme-light` and `dark:` selectors. `--width` sets the render column
+in pixels (default 480).
+
+The pages embed `out/renderer/assets/*.css` from an existing build. If none
+exists, the script prints one line and still writes both pages without the
+built stylesheet. It does not build the app. CSS imports in a component are
+stubbed; styles come from the build.
+
+Place `button.fixtures.tsx` beside `button.tsx` to preview all its fixtures:
+
+```tsx
+export default [
+  { name: 'Default', props: { children: 'Save' } },
+  { name: 'Disabled', props: { children: 'Save', disabled: true } }
+]
+```
+
+The same command renders each fixture under an 11px muted label. Fixture
+props override `--props`. For required callbacks, pass `"fn"`, such as
+`--props '{"children":"Save","onClick":"fn"}'`; the harness replaces that
+string with a noop, including in nested props. Rendering needs no `window`.
+Static markup does not run effects or events and does not show portals;
+check those with a DOM test.
+
+Test the harness with `NODE_ENV=test bunx vitest run scripts/ui-preview.test.ts`.

@@ -15,6 +15,7 @@
     "check:swift-contract": "bun scripts/gen-swift-contract.ts --check",
     "check:bundle": "bun scripts/check-bundle-size.ts",
     "bundle:map": "bun scripts/bundle-map.ts",
+    "ui:preview": "bun scripts/ui-preview.ts",
     "ios:test": "./scripts/ios-test.sh",
     "ios:test:client": "bun scripts/ios-client-test.ts",
     "ios:device": "./scripts/ios-device.sh",
