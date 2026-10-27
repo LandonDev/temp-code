@@ -36,6 +36,7 @@ import { secondOpinionTargets } from "../lib/secondOpinion";
 import { HARNESS_TITLE, type HarnessId } from "../lib/session";
 import { HarnessIcon } from "./HarnessIcon";
 import { Popover } from "./Popover";
+import { IconAction } from "../surfaces/transcript/IconAction";
 
 type Props = {
   from: HarnessId;
@@ -45,6 +46,8 @@ type Props = {
   disabledTitle?: string;
   description?: string;
   menuLabel?: string;
+  /** False until the row's first hover: the trigger renders without its tooltip. */
+  armed?: boolean;
 };
 
 const MENU_WIDTH = 240;
@@ -55,13 +58,14 @@ const SUBMENU_OVERLAP = -4;
 /** Neither menu is inside the other, so a click in one is not a click away. */
 const SELF = "[data-provider-target]";
 
-export function HandoffButton({ from, onPick }: Pick<Props, "from" | "onPick">) {
+export function HandoffButton({ from, onPick, armed }: Pick<Props, "from" | "onPick" | "armed">) {
   return (
     <SecondOpinionButton
       from={from}
       onPick={onPick}
+      armed={armed}
       icon={Replace}
-      title="Handoff"
+      title="Hand off"
       disabledTitle="Install another provider to hand off"
       description="Hand this session to another agent to continue the work."
       menuLabel="Hand this session to another agent"
@@ -77,6 +81,7 @@ export function SecondOpinionButton({
   disabledTitle = "Install another provider for a second opinion",
   description = "Send this turn to another agent to review the work.",
   menuLabel = "Send this turn to another agent",
+  armed = true,
 }: Props) {
   const availabilityVersion = useSyncExternalStore(
     subscribeHarnessAvailability,
@@ -218,26 +223,17 @@ export function SecondOpinionButton({
 
   return (
     <>
-      <button
+      <IconAction
         ref={button}
-        type="button"
-        title={label}
-        aria-label={label}
+        label={label}
+        armed={armed}
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={disabled}
-        className={`rounded-md p-1 disabled:pointer-events-none disabled:opacity-40 ${
-          open
-            ? "bg-content/8 text-content/70"
-            : "text-content/40 hover:bg-content/8 hover:text-content/70"
-        }`}
-        onClick={() => {
-          if (disabled) return;
-          setOpen((value) => !value);
-        }}
+        onClick={() => setOpen((value) => !value)}
       >
-        <Icon className="size-3.5" strokeWidth={1.75} />
-      </button>
+        <Icon className="size-3.5" />
+      </IconAction>
       {open ? (
         <>
           <Popover

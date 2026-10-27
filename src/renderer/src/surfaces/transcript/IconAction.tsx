@@ -1,6 +1,6 @@
 /* A9 (closing lines and code blocks): the transcript's icon buttons. */
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useState, type ReactNode } from "react";
+import { useState, type ComponentProps, type ReactNode } from "react";
 import { Button } from "@renderer/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { SPRING_LAYOUT } from "@renderer/lib/ease";
@@ -39,27 +39,22 @@ export function SwapIcon({ swapped, from, to }: { swapped: boolean; from: ReactN
  */
 export function IconAction({
   label,
-  onClick,
   children,
   className,
-  disabled,
   armed = true,
-}: {
+  ...rest
+}: Omit<ComponentProps<typeof Button>, "children"> & {
   label: string;
-  onClick?: () => void;
   children: ReactNode;
-  className?: string;
-  disabled?: boolean;
   armed?: boolean;
 }) {
   const button = (
     <Button
+      {...rest}
       variant="ghost"
       size="icon-xs"
       aria-label={label}
-      disabled={disabled}
-      className={cn("text-muted-foreground hover:text-foreground", className)}
-      onClick={onClick}
+      className={cn("text-muted-foreground hover:text-foreground aria-expanded:text-foreground", className)}
     />
   );
   if (!armed) return <Button {...button.props}>{children}</Button>;
