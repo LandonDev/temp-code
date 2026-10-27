@@ -57,9 +57,10 @@ with its props until A11's dialogs leave it; build nothing new on it.
 Hand-made and staying hand-made (they are the product, not a primitive):
 the transcript's rows and its markdown pipeline (streamdown, the worker,
 the Shiki code block, DiffBody), the composer field, the rail, the tab
-strip, the editor (CodeMirror), the terminal (xterm), the charts (recharts
-in Aliax). Each is built from the components above wherever it has a
-button, a menu, a field or a state word. The rail's one row is `RailRow`
+strip, the editor (CodeMirror), the terminal (xterm), the charts
+(`aliax/charts`: the grid, axes, marks, legend and tooltip every Stats
+chart shares, on recharts and the `--chart-1..4` tokens). Each is built
+from the components above wherever it has a button, a menu, a field or a state word. The rail's one row is `RailRow`
 (chrome/RailRow.tsx, with `RailHeading`): a ghost `Button`, a 16px glyph, a
 13px label, one trailing mark and one hover action, used by the rail, its
 foot and the settings list.

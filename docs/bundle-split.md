@@ -28,7 +28,7 @@ on intent so the skeleton is rarely seen.
 | Chunk | Holds | Mount point | Warmed by |
 | --- | --- | --- | --- |
 | settings | SettingsView and every pane (Hosts, Appshots…), qrcode | App.tsx | the Settings buttons (title bar, rail, sidebar, environment switcher, connection line) |
-| aliax | AliaxPagesView, the Accounts and Stats pages, recharts, lucide | App.tsx | the Accounts and Stats rail actions |
+| aliax | AliaxPagesView, the Accounts and Stats pages, recharts | App.tsx | the Accounts and Stats rail actions |
 | diff | the edit row's DiffBody | EditRow.tsx | the changes toggles (title bar diff stats, file tree); the first thread on screen, after idle |
 | editor | FileEditor, CodeMirror and its language packages, editorSearch (the find keys), editorGit | FilePane.tsx; App.tsx through `surfaces/editorFind.ts` | hovering the file tree |
 | terminal | TerminalView, xterm | FilePane.tsx, ProjectTerminalDock.tsx | the New Terminal button and the cwd picker's row |

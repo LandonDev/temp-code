@@ -32,8 +32,7 @@ of element; nothing is rendered twice by two different things.
 Retired by this standard, migrated area by area, never patched further:
 `chrome/Popover.tsx`, `chrome/Drawer.tsx`, `lib/layers.ts` (Base UI stacks
 its own portals), `surfaces/settingsBits.tsx`, `chrome/RailAction.tsx`,
-`chrome/ComposerAction.tsx`, `motion/Button.tsx`,
-`aliax/components/ui/*`, `radix-ui`, the four
+`chrome/ComposerAction.tsx`, `motion/Button.tsx`, the four
 custom toast stacks (sonner), the nine spinner builds (`Spinner`), the
 twenty status-to-colour maps (`StatusMark`), the 228 `title=` attributes
 (`Tooltip`), the 390 raw `<button>`s (`Button`). ReUI, BeUI and Beautiful
@@ -41,7 +40,7 @@ UI are no longer sources; their registries are gone from components.json.
 
 Hand-made and staying so: the transcript's rows and markdown pipeline, the
 composer's field, the rail, the tab strip, the editor, the terminal, the
-charts. They are built from the components above wherever they have a
+charts (`aliax/charts`, on recharts and the `--chart-1..4` tokens). They are built from the components above wherever they have a
 button, a menu, a field or a status.
 
 ## Tokens

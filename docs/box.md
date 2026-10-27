@@ -474,8 +474,8 @@ temp-code `src/main/server/remote/{peers,accountSync}.ts`):
   filed only under the account the response names (a mismatch is refused by
   name, nothing filed), and the refresh grant is dropped only after the
   token is verified and saved; a refusal leaves the account a healthy owned
-  profile holding the rotated grant. "Convert all to one-year tokens" on the
-  Claude panel walks every account not yet converted (and every token inside
+  profile holding the rotated grant. "Convert all to one-year tokens" in the
+  Claude Code section's menu on the Accounts page walks every account not yet converted (and every token inside
   its last 30 days), each row showing its progress; a row whose session has
   lapsed opens the ordinary in-app sign-in with the address pre-filled. An
   account whose grant the box refreshes (handed over before the conversion)
@@ -658,10 +658,11 @@ A pinned account is routed regardless.
   the box's; each side merges the other's under its environment id and
   never its copy of a third host's. A new throttle in a peer's push re-picks
   the open threads here as if the local gateway had seen it.
-- **Where it shows.** The account chip's menu and the Claude panel in
-  Settings carry a short bar per account (what is left of the tightest
-  limit, "rate limited · 40s" inside a cooldown, "no answer yet" before any
-  answer) with the refill or pick-again moment and the rate on hover. The
+- **Where it shows.** The account chip's menu carries a short bar per account
+  (what is left of the tightest limit, "rate limited · 40s" inside a
+  cooldown, "no answer yet" before any answer) with the refill or pick-again
+  moment and the rate on hover; the Accounts page draws the same reading as
+  each row's Rate bar, its detail in the row's usage popover. The
   rows follow the store at most every 5 s; picks read it live.
 - **Across a relaunch.** `<data>/headroom.json` (on the box
   `/srv/agents/temp-code-data/headroom.json`) is written 5 s after a change
