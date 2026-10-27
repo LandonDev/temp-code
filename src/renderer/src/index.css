@@ -274,12 +274,12 @@ html:not(.is-mac) ::-webkit-scrollbar-track {
 }
 
 html:not(.is-mac) ::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--color-content) 16%, transparent);
+  background: color-mix(in srgb, var(--foreground) 16%, transparent);
   border-radius: 9999px;
 }
 
 html:not(.is-mac) ::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--color-content) 32%, transparent);
+  background: color-mix(in srgb, var(--foreground) 32%, transparent);
 }
 
 html:not(.is-mac) ::-webkit-scrollbar-corner {
@@ -374,10 +374,10 @@ html.theme-switching *::after {
 /* Every popover, menu, dialog, toast and tooltip: one fill (`--color-overlay`,
  * near-opaque) over one 20px blur, plus the hairline, so they all lift the
  * same amount. Pair it with `.glass-surface` for the layer promotion.
- * `bg-content/10` stays for the highlighted row inside, never for the surface. */
+ * `bg-foreground/10` stays for the highlighted row inside, never for the surface. */
 .floating-surface {
   background: var(--color-overlay);
-  border: 1px solid color-mix(in srgb, var(--color-content) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
   backdrop-filter: blur(20px) saturate(1.4);
   -webkit-backdrop-filter: blur(20px) saturate(1.4);
 }
@@ -396,7 +396,7 @@ html.theme-switching *::after {
   }
 
   .floating-surface {
-    background: var(--color-background-base);
+    background: var(--background);
   }
 }
 
@@ -429,8 +429,8 @@ input,
   margin: 0.4em 0;
   padding: 0.15em 0 0.15em 0.75em;
   border-left: 2px solid
-    color-mix(in srgb, var(--color-content) 16%, transparent);
-  color: color-mix(in srgb, var(--color-content) 55%, transparent);
+    color-mix(in srgb, var(--foreground) 16%, transparent);
+  color: color-mix(in srgb, var(--foreground) 55%, transparent);
 }
 
 .workspace-surface[aria-hidden="true"] {
@@ -475,15 +475,15 @@ html.is-resizing * {
 
 .markdown-source-field {
   color: transparent;
-  caret-color: var(--color-content);
+  caret-color: var(--foreground);
   -webkit-text-fill-color: transparent;
 }
 
 .markdown-source-field::placeholder {
-  color: color-mix(in srgb, var(--color-content) 35%, transparent);
+  color: color-mix(in srgb, var(--foreground) 35%, transparent);
   -webkit-text-fill-color: color-mix(
     in srgb,
-    var(--color-content) 35%,
+    var(--foreground) 35%,
     transparent
   );
 }
@@ -650,7 +650,7 @@ header[data-tauri-drag-region] button {
 .monaco-editor,
 .monaco-editor .margin,
 .monaco-diff-editor {
-  --vscode-editor-background: var(--color-background-base);
+  --vscode-editor-background: var(--background);
 }
 /* A model edit that arrived from disk (an agent or shell write). */
 .monaco-editor .model-change-line {
@@ -665,7 +665,7 @@ header[data-tauri-drag-region] button {
 @keyframes reveal-flash {
   0%,
   30% {
-    background-color: color-mix(in srgb, var(--color-content) 16%, transparent);
+    background-color: color-mix(in srgb, var(--foreground) 16%, transparent);
   }
   100% {
     background-color: transparent;
@@ -743,7 +743,7 @@ header[data-tauri-drag-region] button {
   text-overflow: ellipsis;
   white-space: pre;
   opacity: 1 !important;
-  color: color-mix(in srgb, var(--color-content) 55%, transparent);
+  color: color-mix(in srgb, var(--foreground) 55%, transparent);
 }
 .monaco-editor .suggest-widget .monaco-list-row > .contents > .main > .right {
   flex: 0 0 auto !important;
@@ -754,7 +754,7 @@ header[data-tauri-drag-region] button {
   font-size: 100% !important;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: color-mix(in srgb, var(--color-content) 50%, transparent) !important;
+  color: color-mix(in srgb, var(--foreground) 50%, transparent) !important;
   margin-right: 6px;
 }
 /* Kind-coloured names. */
@@ -834,14 +834,14 @@ header[data-tauri-drag-region] button {
 .monaco-editor .suggest-widget .suggest-status-bar {
   font-size: 10.5px;
   padding: 2px 10px;
-  color: color-mix(in srgb, var(--color-content) 50%, transparent);
-  background: color-mix(in srgb, var(--color-content) 4%, var(--color-background-base));
-  border-top: 1px solid color-mix(in srgb, var(--color-content) 8%, transparent);
+  color: color-mix(in srgb, var(--foreground) 50%, transparent);
+  background: color-mix(in srgb, var(--foreground) 4%, var(--background));
+  border-top: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
 }
 /* Hover card (errors, docs) and code lenses on tokens. */
 .monaco-editor .monaco-hover {
   border-radius: 8px !important;
-  border: 1px solid color-mix(in srgb, var(--color-content) 14%, transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--foreground) 14%, transparent) !important;
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
   overflow: hidden;
 }
@@ -852,11 +852,11 @@ header[data-tauri-drag-region] button {
   padding: 2px 0;
 }
 .monaco-editor .monaco-hover .hover-row + .hover-row {
-  border-top: 1px solid color-mix(in srgb, var(--color-content) 8%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
 }
 .monaco-editor .monaco-hover .hover-row.status-bar {
-  border-top: 1px solid color-mix(in srgb, var(--color-content) 8%, transparent);
-  background: color-mix(in srgb, var(--color-content) 4%, var(--color-background-base));
+  border-top: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
+  background: color-mix(in srgb, var(--foreground) 4%, var(--background));
 }
 .monaco-editor .monaco-hover .hover-row.status-bar .action-container .action-label {
   color: var(--color-accent);
@@ -864,21 +864,21 @@ header[data-tauri-drag-region] button {
 }
 .monaco-editor .codelens-decoration,
 .monaco-editor .codelens-decoration a {
-  color: color-mix(in srgb, var(--color-content) 40%, transparent) !important;
+  color: color-mix(in srgb, var(--foreground) 40%, transparent) !important;
 }
 .monaco-editor .codelens-decoration a:hover {
-  color: color-mix(in srgb, var(--color-content) 70%, transparent) !important;
+  color: color-mix(in srgb, var(--foreground) 70%, transparent) !important;
 }
 /* Parameter info (⌘P) and the usages / hierarchy popup. */
 .monaco-editor .tc-param-info,
 .monaco-editor .tc-usages {
-  background: color-mix(in srgb, var(--color-content) 5%, var(--color-background-base));
-  border: 1px solid color-mix(in srgb, var(--color-content) 14%, transparent);
+  background: color-mix(in srgb, var(--foreground) 5%, var(--background));
+  border: 1px solid color-mix(in srgb, var(--foreground) 14%, transparent);
   border-radius: 8px;
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--color-content);
+  color: var(--foreground);
   z-index: 50;
   overflow: hidden;
 }
@@ -889,7 +889,7 @@ header[data-tauri-drag-region] button {
 .monaco-editor .tc-param-info-row {
   padding: 4px 12px;
   white-space: pre;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-content) 6%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--foreground) 6%, transparent);
 }
 .monaco-editor .tc-param-info-row:last-child {
   border-bottom: none;
@@ -899,7 +899,7 @@ header[data-tauri-drag-region] button {
 }
 .monaco-editor .tc-param-info-empty,
 .monaco-editor .tc-param-info-dimmed {
-  color: color-mix(in srgb, var(--color-content) 40%, transparent);
+  color: color-mix(in srgb, var(--foreground) 40%, transparent);
 }
 .monaco-editor .tc-param-info-empty {
   font-style: italic;
@@ -916,7 +916,7 @@ header[data-tauri-drag-region] button {
   align-items: baseline;
   gap: 12px;
   padding: 7px 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-content) 8%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
   font-family: var(--font-sans);
 }
 .monaco-editor .tc-usages-header b,
@@ -926,7 +926,7 @@ header[data-tauri-drag-region] button {
 .monaco-editor .tc-usages-count,
 .monaco-editor .tc-usages-line,
 .monaco-editor .tc-usages-footer {
-  color: color-mix(in srgb, var(--color-content) 50%, transparent);
+  color: color-mix(in srgb, var(--foreground) 50%, transparent);
 }
 .monaco-editor .tc-usages-count {
   margin-left: auto;
@@ -945,14 +945,14 @@ header[data-tauri-drag-region] button {
   white-space: pre;
 }
 .monaco-editor .tc-usages-file {
-  color: color-mix(in srgb, var(--color-content) 70%, transparent);
+  color: color-mix(in srgb, var(--foreground) 70%, transparent);
 }
 .monaco-editor .tc-usages-selected {
   background: color-mix(in srgb, var(--color-accent) 22%, transparent);
 }
 .monaco-editor .tc-usages-footer {
   padding: 5px 12px;
-  border-top: 1px solid color-mix(in srgb, var(--color-content) 8%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
   font-size: 11px;
   white-space: nowrap;
   overflow: hidden;
