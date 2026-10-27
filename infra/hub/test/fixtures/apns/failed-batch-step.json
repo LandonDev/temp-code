@@ -7,7 +7,7 @@
     "seq": 41,
     "title": "Master",
     "subtitle": "temp-code",
-    "body": "Batch stopped: gate failed · at vitest",
+    "body": "Batch stopped: gate failed at vitest",
     "kind": "batch",
     "hostName": "box",
     "ts": 1760000000000
@@ -17,7 +17,7 @@
       "alert": {
         "title": "Master",
         "subtitle": "temp-code",
-        "body": "Batch stopped: gate failed · at vitest"
+        "body": "Batch stopped: gate failed at vitest"
       },
       "sound": "default",
       "thread-id": "thread-1",

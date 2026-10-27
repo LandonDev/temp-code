@@ -7,7 +7,7 @@
     "seq": 41,
     "title": "Ship it",
     "subtitle": "temp-code",
-    "body": "Waiting for you",
+    "body": "Needs you",
     "kind": "waiting",
     "hostName": "box",
     "ts": 1760000000000
@@ -17,7 +17,7 @@
       "alert": {
         "title": "Ship it",
         "subtitle": "temp-code",
-        "body": "Waiting for you"
+        "body": "Needs you"
       },
       "sound": "default",
       "thread-id": "thread-1",

@@ -7,7 +7,7 @@
     "seq": 41,
     "title": "Ship it",
     "subtitle": "temp-code",
-    "body": "Done in 12m · 7 tasks",
+    "body": "Done in 12m",
     "kind": "finished",
     "hostName": "box",
     "ts": 1760000000000
@@ -17,7 +17,7 @@
       "alert": {
         "title": "Ship it",
         "subtitle": "temp-code",
-        "body": "Done in 12m · 7 tasks"
+        "body": "Done in 12m"
       },
       "thread-id": "thread-1",
       "summary-arg": "temp-code",

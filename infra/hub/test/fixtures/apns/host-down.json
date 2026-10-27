@@ -3,14 +3,14 @@
     "event": "host_down",
     "hostId": "box",
     "title": "box",
-    "body": "Host box has not been heard from in 3 min",
+    "body": "Not heard from in 3m",
     "ts": 1760000300000
   },
   "payload": {
     "aps": {
       "alert": {
         "title": "box",
-        "body": "Host box has not been heard from in 3 min"
+        "body": "Not heard from in 3m"
       },
       "sound": "default",
       "thread-id": "box",

@@ -7,7 +7,7 @@
     "seq": 41,
     "title": "Plan: notifications",
     "subtitle": "temp-code",
-    "body": "Plan complete — waiting for you to start the build",
+    "body": "Ready to build",
     "kind": "plan",
     "hostName": "box",
     "ts": 1760000000000
@@ -17,7 +17,7 @@
       "alert": {
         "title": "Plan: notifications",
         "subtitle": "temp-code",
-        "body": "Plan complete — waiting for you to start the build"
+        "body": "Ready to build"
       },
       "thread-id": "thread-1",
       "summary-arg": "temp-code",

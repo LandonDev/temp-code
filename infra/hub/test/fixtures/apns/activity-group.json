@@ -18,7 +18,7 @@
           "type": "chat",
           "ts": 1759999900000,
           "title": "Fix the flaky login test",
-          "reason": "Needs approval: Bash — bun test"
+          "reason": "Run bun test?"
         },
         {
           "id": "thread-1",
@@ -63,7 +63,7 @@
             "type": "chat",
             "ts": 1759999900000,
             "title": "Fix the flaky login test",
-            "reason": "Needs approval: Bash — bun test"
+            "reason": "Run bun test?"
           },
           {
             "id": "thread-1",

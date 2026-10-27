@@ -3,14 +3,14 @@
     "event": "host_up",
     "hostId": "box",
     "title": "box",
-    "body": "Host box is back",
+    "body": "Back online",
     "ts": 1760000600000
   },
   "payload": {
     "aps": {
       "alert": {
         "title": "box",
-        "body": "Host box is back"
+        "body": "Back online"
       },
       "thread-id": "box",
       "summary-arg": "box",

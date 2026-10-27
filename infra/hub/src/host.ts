@@ -99,11 +99,8 @@ export class HostState extends DurableObject<Env> {
     return {
       event,
       hostId: host.hostId,
-      title: `${host.name ?? host.hostId} ${event === 'host_up' ? 'is back' : 'is down'}`,
-      body:
-        event === 'host_up'
-          ? 'Host heartbeat resumed.'
-          : 'No host heartbeat for over three minutes.',
+      title: host.name ?? host.hostId,
+      body: event === 'host_up' ? 'Back online' : 'Not heard from in 3m',
       ts
     }
   }

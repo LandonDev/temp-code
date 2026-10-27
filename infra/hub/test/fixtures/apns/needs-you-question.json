@@ -7,7 +7,7 @@
     "seq": 41,
     "title": "Ship it",
     "subtitle": "temp-code",
-    "body": "Asked: Tabs or spaces? · Keep the old API?",
+    "body": "Tabs or spaces?",
     "kind": "question",
     "hostName": "box",
     "ts": 1760000000000
@@ -17,7 +17,7 @@
       "alert": {
         "title": "Ship it",
         "subtitle": "temp-code",
-        "body": "Asked: Tabs or spaces? · Keep the old API?"
+        "body": "Tabs or spaces?"
       },
       "sound": "default",
       "thread-id": "thread-1",

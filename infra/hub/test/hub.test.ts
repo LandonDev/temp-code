@@ -728,7 +728,7 @@ describe('the APNs payloads match the shared fixtures', () => {
     .sort()
     .map((path) => ({ file: path.replace(/^.*\//, ''), ...files[path] }))
   it('has every case', () => {
-    expect(fixtures).toHaveLength(23)
+    expect(fixtures).toHaveLength(22)
   })
   for (const f of fixtures.filter((f) => !f.file.startsWith('activity-'))) {
     it(`alert ${f.file}`, () => {

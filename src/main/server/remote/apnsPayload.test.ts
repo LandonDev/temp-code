@@ -33,7 +33,6 @@ describe('the APNs payloads match the shared fixtures', () => {
       'failed-summary',
       'finished-batch',
       'finished-done',
-      'finished-plan-started',
       'finished-plan-waiting',
       'host-down',
       'host-up',

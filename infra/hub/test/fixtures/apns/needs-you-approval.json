@@ -7,7 +7,7 @@
     "seq": 41,
     "title": "Ship it",
     "subtitle": "temp-code",
-    "body": "Needs approval: Bash — bun test",
+    "body": "Run bun test?",
     "kind": "approval",
     "requestId": "req-7",
     "hostName": "box",
@@ -18,7 +18,7 @@
       "alert": {
         "title": "Ship it",
         "subtitle": "temp-code",
-        "body": "Needs approval: Bash — bun test"
+        "body": "Run bun test?"
       },
       "sound": "default",
       "thread-id": "thread-1",

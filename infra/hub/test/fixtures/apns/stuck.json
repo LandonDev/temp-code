@@ -7,7 +7,7 @@
     "seq": 41,
     "title": "Ship it",
     "subtitle": "temp-code",
-    "body": "Quiet for 12 min while working",
+    "body": "No output for 12m",
     "kind": "stuck",
     "hostName": "box",
     "ts": 1760000000000
@@ -17,7 +17,7 @@
       "alert": {
         "title": "Ship it",
         "subtitle": "temp-code",
-        "body": "Quiet for 12 min while working"
+        "body": "No output for 12m"
       },
       "thread-id": "thread-1",
       "summary-arg": "temp-code",
