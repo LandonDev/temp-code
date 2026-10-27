@@ -13,6 +13,7 @@ import { asHarness, useSessionMeta } from "../../../lib/tcserver/store";
 import type { BoardDigest } from "@server/shared/contract-batch";
 import type { SessionMeta } from "../../../lib/tcserver/types";
 import { hasRunningTurn } from "../../../lib/threadBatch";
+import { marksAtRest } from "../../../lib/threadStripModel";
 import { modelLabel } from "../../../lib/threads/agents";
 import { AGENT_GLYPHS, THREAD_GLYPHS } from "../threadTypes";
 import { agentTail, useRowAgents, type AgentLine, type RowAgents } from "./agentSummary";
@@ -184,10 +185,15 @@ export function MasterRowView({
       {/* Line two: the status glyph with its detail; the tally at the end. */}
       <span />
       <span className="mt-0.5 flex h-4 min-w-0 items-center gap-2" data-row-status>
-        {/* Amber and red say their detail in the state's tone; every other
+        {/* Amber and red say their detail in the state's tone; a settled row
+            draws no glyph, its detail alone ("Landed 12:08"); every other
             state's detail is the muted line under the title. */}
         {statusNeedsYou(state) ? (
           <StatusMark state={state} word={detail || false} aria-label={statusLabel} className="min-w-0" />
+        ) : !marksAtRest(state) ? (
+          <span aria-label={statusLabel} className="min-w-0 truncate text-xs text-muted-foreground tabular-nums" data-row-detail>
+            {detail}
+          </span>
         ) : (
           <StatusMark state={state} word={false} detail={detail || undefined} aria-label={statusLabel} className="min-w-0" />
         )}

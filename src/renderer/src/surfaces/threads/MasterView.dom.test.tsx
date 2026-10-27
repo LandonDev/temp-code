@@ -442,7 +442,7 @@ describe("the master view", () => {
     expect(screen.queryByText("This Mac")).toBeNull();
   });
 
-  it("every row's glyph is the status vocabulary's mark", async () => {
+  it("every row but a settled one draws the status vocabulary's mark", async () => {
     seed([
       meta({ id: "c-wait", title: "A", status: "waiting", createdAt: 1 }),
       meta({ id: "c-run", title: "B", status: "running", createdAt: 2 }),
@@ -459,7 +459,18 @@ describe("the master view", () => {
         row.querySelector("[data-row-status] [data-slot=status-mark]")?.getAttribute("data-state"),
       ]),
     );
-    expect(states).toEqual({ waiting: "waiting", running: "working", error: "failed", paused: "paused", queued: "queued", idle: "done" });
+    expect(states).toEqual({ waiting: "waiting", running: "working", error: "failed", paused: "paused", queued: "queued", idle: undefined });
+  });
+
+  it("a done row says its detail alone, no glyph, and keeps the state word for readers", async () => {
+    seed([meta({ id: "c-done", title: "Design foundations", status: "idle", createdAt: 2, updatedAt: new Date(2026, 9, 21, 12, 8).getTime() })]);
+    renderView();
+    await flush();
+    const status = screen.getByRole("button", { name: /Design foundations/ }).querySelector("[data-row-status]")!;
+    expect(status.querySelector("[data-slot=status-mark]")).toBeNull();
+    const detail = status.querySelector("[data-row-detail]")!;
+    expect(detail.textContent).toBe("Landed 12:08");
+    expect(detail.getAttribute("aria-label")).toBe("Done, Landed 12:08");
   });
 
   it("draws no section that is empty", async () => {
@@ -1026,7 +1037,9 @@ describe("the master view", () => {
     const dialog = screen.getByRole("dialog");
     const ids = () => [...dialog.querySelectorAll("[data-rule-step]")].map((li) => li.getAttribute("data-rule-step"));
     expect(ids()).toEqual(["land", "gate", "release"]);
-    expect(within(dialog).getByRole("button", { name: "Move Merging up" }).hasAttribute("disabled")).toBe(true);
+    // Land is pinned first: no controls of its own, and the row under it cannot pass it.
+    expect(within(dialog).queryByRole("button", { name: "Move Merging up" })).toBeNull();
+    expect(within(dialog).getByRole("button", { name: "Move Gate up" }).hasAttribute("disabled")).toBe(true);
     fireEvent.click(within(dialog).getByRole("button", { name: "Move Release up" }));
     expect(ids()).toEqual(["land", "release", "gate"]);
     fireEvent.click(within(dialog).getByRole("button", { name: "Remove Gate" }));
@@ -1163,7 +1176,9 @@ describe("the board's static preview", () => {
     render(<BoardPreview />);
     expect(headers().map((h) => h.textContent)).toEqual(["Needs you", "Working", "Queued", "Done"]);
     const states = [...document.querySelectorAll("[data-row-status] > [data-slot=status-mark]")].map((m) => m.getAttribute("data-state"));
-    expect(states).toEqual(["waiting", "working", "paused", "queued", "done"]);
+    // The done row says its detail alone.
+    expect(states).toEqual(["waiting", "working", "paused", "queued"]);
+    expect(document.querySelectorAll("[data-row-status] > [data-row-detail]")).toHaveLength(1);
     expect(document.querySelector("[data-agents-tail]")?.textContent).toBe("1 done");
     expect(document.querySelector("[data-step='smoke'] [data-console='smoke']")?.textContent?.split("\n")).toHaveLength(8);
     expect(document.body.textContent).not.toMatch(/[·•—]/);
