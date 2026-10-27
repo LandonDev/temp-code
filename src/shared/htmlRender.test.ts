@@ -128,8 +128,9 @@ describe('the bootstrap passes Escape up', () => {
     const posted: unknown[] = []
     const win = {
       parent: { postMessage: (data: unknown) => posted.push(data) },
-      addEventListener: (type: string, f: (e: unknown) => void) => {
-        if (type === 'keydown') keydown.push(f)
+      addEventListener: (type: string, f: (e: unknown) => void, capture?: boolean) => {
+        // Capture phase: a page control's stopPropagation cannot keep Escape from the relay.
+        if (type === 'keydown' && capture === true) keydown.push(f)
       }
     }
     const doc = { getElementById: () => ({ textContent: '' }), addEventListener: () => {} }
