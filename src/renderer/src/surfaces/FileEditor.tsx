@@ -26,7 +26,10 @@ import {
   keymap,
   lineNumbers,
 } from "@codemirror/view";
-import { AlertCircle, RotateCcw } from "../chrome/icons";
+import { RotateCcw } from "../chrome/icons";
+import { Button } from "../components/ui/button";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
+import { Skeleton } from "../components/ui/skeleton";
 import { minimalSetup } from "codemirror";
 import {
   useCallback,
@@ -354,38 +357,18 @@ export function FileEditor({
   const shown = displayPath(path, cwd);
   const slash = shown.lastIndexOf("/");
   const folder = slash > 0 ? shown.slice(0, slash) : null;
-  if (loadState.status === "loading") {
-    return (
-      <div className="grid h-full place-items-center text-[12px] text-content/40">
-        Opening {basename(path)}…
-      </div>
-    );
-  }
+  if (loadState.status === "loading") return <EditorLoading name={basename(path)} />;
 
   if (loadState.status === "error") {
     return (
-      <div className="grid h-full place-items-center p-6">
-        <div className="max-w-md text-center">
-          <AlertCircle className="mx-auto mb-3 size-5 text-danger" />
-          <p className="text-[13px] text-content">
-            Couldn’t open {basename(path)}
-          </p>
-          <p className="mt-1 text-[12px] leading-5 text-content/50">
-            {openFailureText(
-              loadState.message,
-              host === registry.primaryEnvironmentId ? null : (registry.environment(host)?.name ?? "that host"),
-            )}
-          </p>
-          <button
-            type="button"
-            onClick={() => setReloadKey((value) => value + 1)}
-            className="mx-auto mt-4 flex h-7 items-center gap-1.5 rounded-md bg-content/10 px-2.5 text-[12px] text-content hover:bg-content/15"
-          >
-            <RotateCcw className="size-3" strokeWidth={1.75} />
-            Retry
-          </button>
-        </div>
-      </div>
+      <EditorOpenError
+        name={basename(path)}
+        line={openFailureText(
+          loadState.message,
+          host === registry.primaryEnvironmentId ? null : (registry.environment(host)?.name ?? "that host"),
+        )}
+        onRetry={() => setReloadKey((value) => value + 1)}
+      />
     );
   }
 
@@ -447,6 +430,41 @@ export function FileEditor({
         editor
       )}
     </div>
+  );
+}
+
+/** Widths of the loading lines, fixed so nothing shifts between renders. */
+const LOADING_LINES = [60, 82, 45, 70, 90, 38, 66, 52];
+
+/** A file on its way: the header's slot, then bars in the shape of code. */
+export function EditorLoading({ name }: { name: string }) {
+  return (
+    <div role="status" aria-busy="true" aria-label={`Opening ${name}`} className="flex h-full min-h-0 flex-col">
+      <div className="h-8 shrink-0 border-b border-border" />
+      <div className="flex flex-col gap-2 px-3 pt-3">
+        {LOADING_LINES.map((width, i) => (
+          <Skeleton key={i} data-loading-line="" className="h-3" style={{ width: `${width}%` }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** A file that did not open: what, why, and Retry. */
+export function EditorOpenError({ name, line, onRetry }: { name: string; line: string; onRetry: () => void }) {
+  return (
+    <Empty className="h-full">
+      <EmptyHeader>
+        <EmptyTitle>Couldn’t open {name}</EmptyTitle>
+        <EmptyDescription>{line}</EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent>
+        <Button variant="secondary" size="sm" onClick={onRetry}>
+          <RotateCcw />
+          Retry
+        </Button>
+      </EmptyContent>
+    </Empty>
   );
 }
 
