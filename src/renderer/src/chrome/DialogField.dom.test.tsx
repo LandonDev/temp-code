@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Input } from "@renderer/components/ui/input";
 import { Switch } from "@renderer/components/ui/switch";
-import { Field, FieldRow } from "./DialogField";
+import { CheckRow, Field, FieldRow } from "./DialogField";
 
 afterEach(cleanup);
 
@@ -43,5 +43,24 @@ describe("FieldRow", () => {
     expect(row.lastElementChild?.getAttribute("data-slot")).toBe("item-actions");
     expect(screen.getByRole("switch", { name: "Apply to new threads" })).toBeTruthy();
     expect(screen.getByText("Kept, but nothing is prepended.")).toBeTruthy();
+  });
+});
+
+describe("CheckRow", () => {
+  it("is a checkbox named by its label; a disabled one does not change", () => {
+    const set = vi.fn();
+    render(
+      <>
+        <CheckRow label="Remove the worktree folder" checked onCheckedChange={set} />
+        <CheckRow label="Delete origin/x" checked={false} disabled onCheckedChange={set} />
+      </>,
+    );
+    const box = screen.getByRole("checkbox", { name: "Remove the worktree folder" });
+    expect(box.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(box);
+    expect(set).toHaveBeenCalledWith(false, expect.anything());
+    set.mockClear();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Delete origin/x" }));
+    expect(set).not.toHaveBeenCalled();
   });
 });

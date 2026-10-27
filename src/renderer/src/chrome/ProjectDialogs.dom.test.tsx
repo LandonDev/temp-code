@@ -202,7 +202,8 @@ describe('ProjectTeardownDialog on a linked project', () => {
   it('delete takes this copy only, unless the copy on the box is ticked', async () => {
     const done = vi.fn()
     const first = render(<ProjectTeardownDialog project={MAC} action="delete" onClose={() => {}} onDone={done} />)
-    const also = screen.getByRole('switch', { name: 'Also delete the copy on box' })
+    expect(screen.getByRole('alertdialog')).toBeTruthy()
+    const also = screen.getByRole('checkbox', { name: 'Also delete the copy on box' })
     expect(also.getAttribute('aria-checked')).toBe('false')
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Delete project' }))
@@ -215,7 +216,7 @@ describe('ProjectTeardownDialog on a linked project', () => {
 
     calls = []
     render(<ProjectTeardownDialog project={MAC} action="delete" onClose={() => {}} onDone={done} />)
-    fireEvent.click(screen.getByRole('switch', { name: 'Also delete the copy on box' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Also delete the copy on box' }))
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Delete project' }))
     })
@@ -228,7 +229,7 @@ describe('ProjectTeardownDialog on a linked project', () => {
 
   it('an unlinked project offers no copy to delete', () => {
     render(<ProjectTeardownDialog project={SOLO} action="delete" onClose={() => {}} onDone={() => {}} />)
-    expect(screen.queryByRole('switch')).toBeNull()
+    expect(screen.queryByRole('checkbox')).toBeNull()
     expect(footerNote()).toBeNull()
   })
 })

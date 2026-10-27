@@ -1,4 +1,5 @@
 import { useState, type JSX } from "react";
+import { CheckRow } from "./DialogField";
 import { DialogFooter } from "./ConfirmDialog";
 import { Modal } from "./Modal";
 import { useSessionMetas } from "../lib/tcserver/store";
@@ -39,13 +40,10 @@ function Confirm({ request }: { request: BatchRequest }): JSX.Element {
   };
   return (
     <Modal onClose={cancelThreadBatch} title={copy.title} size="sm">
-      <div className="flex flex-col gap-2 px-4 py-3" data-batch-confirm={request.action}>
-        <p className="text-[12px] leading-snug text-content/50">{copy.body}</p>
+      <div className="flex flex-col gap-4 px-4 py-4" data-batch-confirm={request.action}>
+        <p className="text-sm text-muted-foreground">{copy.body}</p>
         {copy.cleanup ? (
-          <label className="flex items-center gap-2 text-[12px] text-content/70">
-            <input type="checkbox" checked={cleanup} onChange={(e) => setCleanup(e.target.checked)} />
-            <span className="min-w-0 truncate">{copy.cleanup}</span>
-          </label>
+          <CheckRow label={copy.cleanup} checked={cleanup} onCheckedChange={setCleanup} />
         ) : null}
       </div>
       <DialogFooter

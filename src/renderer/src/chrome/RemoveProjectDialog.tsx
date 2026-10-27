@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
-import { DANGER, GHOST } from "./ConfirmDialog";
-import { Modal } from "./Modal";
-import { prettyCwd } from "../lib/paths";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { projectSessionCount } from "../lib/projectData";
 
 type Props = {
@@ -10,6 +8,12 @@ type Props = {
   onCancel: () => void;
   onConfirm: () => void;
 };
+
+/** The one line under the title: what stays, and how many threads go once counted. */
+export function removeProjectLine(sessions: number | null): string {
+  if (!sessions) return "Files on disk stay.";
+  return `Files on disk stay. ${sessions} saved conversation${sessions === 1 ? " is" : "s are"} removed.`;
+}
 
 /**
  * Removing drops the workspace from the rail along with its projects and
@@ -30,25 +34,13 @@ export function RemoveProjectDialog({ name, path, onCancel, onConfirm }: Props) 
   }, [path]);
 
   return (
-    <Modal onClose={onCancel} title={`Remove “${name}”?`} description={prettyCwd(path)} size="sm">
-      <div className="flex flex-col gap-1 px-4 py-3">
-        <p className="text-[12px] leading-snug text-content/50">
-          Its projects and threads leave the app; files on disk stay.
-        </p>
-        <p className="min-h-4 text-[12px] leading-4 text-content/40 tabular-nums">
-          {sessions
-            ? `${sessions} saved conversation${sessions === 1 ? "" : "s"} will be removed.`
-            : ""}
-        </p>
-      </div>
-      <div className="flex items-center justify-end gap-2 border-t border-content/10 px-4 py-3">
-        <button type="button" onClick={onCancel} className={GHOST}>
-          Cancel
-        </button>
-        <button type="button" onClick={onConfirm} className={DANGER}>
-          Remove
-        </button>
-      </div>
-    </Modal>
+    <ConfirmDialog
+      title={`Remove “${name}”?`}
+      body={removeProjectLine(sessions)}
+      confirmLabel="Remove"
+      danger
+      onCancel={onCancel}
+      onConfirm={onConfirm}
+    />
   );
 }

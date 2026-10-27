@@ -5,11 +5,24 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
-import { Modal } from "./Modal";
+import { Modal, ModalPanel, useClosingDialog } from "./Modal";
+import { CheckRow } from "./DialogField";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  Dialog,
+} from "@renderer/components/ui/dialog";
+import { Spinner } from "@renderer/components/ui/spinner";
 import { ChevronRight } from "./icons";
 import { BUILD_EMPTY, BuildFields, buildOrNull } from "./rail/buildSettings";
 import { ConfirmDialog, DialogFooter as Footer, ErrorLine, GHOST, errorText } from "./ConfirmDialog";
-import { INPUT_CLASS, Toggle } from "../surfaces/settingsBits";
+import { INPUT_CLASS } from "../surfaces/settingsBits";
 import { TurnPassFields, loadTurnPass, saveTurnPass } from "./TurnPassFields";
 import { PlanSettingsFields, PlanSettingsSummary } from "./PlanSettingsFields";
 import { savePlanSettings, samePlanSettings, usePlanSettings } from "../lib/tcserver/plans";
@@ -842,6 +855,7 @@ export function ProjectTeardownDialog({
   const blocked = deleting ? null : at.blocked;
   const others = deleting ? at.copies.filter((c) => c.environmentId !== project.environmentId) : [];
   const [also, setAlso] = useState<ReadonlySet<string>>(() => new Set());
+  const { root, closeThen } = useClosingDialog(onClose, pending);
 
   const confirm = async () => {
     if (pending) return;
@@ -853,19 +867,19 @@ export function ProjectTeardownDialog({
     try {
       if (deleting) await deleteLinked(project, [...also], cleanup);
       else await archiveLinked(project, true, cleanup);
-      onDone();
+      setPending(false);
+      closeThen(onDone);
     } catch (err) {
       setError(errorText(err));
       setPending(false);
     }
   };
 
-  const mono = (text: string) => <code className="font-mono text-[11px]">{text}</code>;
+  const mono = (text: string) => <code className="font-mono text-xs">{text}</code>;
   const boxes = cleanable
     ? [
         {
           key: "worktree",
-          text: "Remove the worktree folder",
           label: "Remove the worktree folder",
           checked: worktree || localBranch,
           disabled: localBranch,
@@ -873,80 +887,90 @@ export function ProjectTeardownDialog({
         },
         {
           key: "local",
-          text: `Delete branch ${project.branch ?? ""}`,
           label: <>Delete branch {mono(project.branch ?? "")}</>,
           checked: localBranch,
           set: setLocalBranch,
         },
         {
           key: "remote",
-          text: `Delete origin/${project.branch ?? ""}`,
           label: <>Delete {mono(`origin/${project.branch ?? ""}`)}</>,
           checked: remoteBranch,
           set: setRemoteBranch,
         },
       ]
     : [];
-  const copyBoxes = others.map((copy) => {
-    const text = `Also delete the copy on ${liveHostFacts.nameOf(copy.environmentId)}`;
-    const offline = !liveHostFacts.isOpen(copy.environmentId);
-    return {
-      key: `copy:${copy.environmentId}:${copy.id}`,
-      text,
-      label: text,
-      checked: also.has(copy.id),
-      disabled: offline,
-      set: (on: boolean) =>
-        setAlso((prev) => {
-          const next = new Set(prev);
-          if (on) next.add(copy.id);
-          else next.delete(copy.id);
-          return next;
-        }),
-    };
-  });
+  const copyBoxes = others.map((copy) => ({
+    key: `copy:${copy.environmentId}:${copy.id}`,
+    label: `Also delete the copy on ${liveHostFacts.nameOf(copy.environmentId)}`,
+    checked: also.has(copy.id),
+    disabled: !liveHostFacts.isOpen(copy.environmentId),
+    set: (on: boolean) =>
+      setAlso((prev) => {
+        const next = new Set(prev);
+        if (on) next.add(copy.id);
+        else next.delete(copy.id);
+        return next;
+      }),
+  }));
   const rows = [...boxes, ...copyBoxes];
+  const checks = rows.length ? (
+    <div className="flex flex-col">
+      {rows.map((b) => (
+        <CheckRow key={b.key} label={b.label} checked={b.checked} disabled={b.disabled} onCheckedChange={b.set} />
+      ))}
+    </div>
+  ) : null;
+
+  // Deleting is irreversible: an alert, Cancel and the red verb. Archiving
+  // is undone from the archive list, so it stays an ordinary dialog.
+  if (deleting) {
+    return (
+      <AlertDialog {...root}>
+        <AlertDialogContent aria-busy={pending || undefined}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {project.name}?</AlertDialogTitle>
+            <AlertDialogDescription>Its threads are deleted for good.</AlertDialogDescription>
+          </AlertDialogHeader>
+          {checks}
+          <ErrorLine error={error} />
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" disabled={pending} onClick={() => void confirm()}>
+              {pending ? <Spinner /> : null}
+              Delete project
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    );
+  }
 
   return (
-    <Modal
-      onClose={onClose}
-      busy={pending}
-      title={`${deleting ? "Delete" : "Archive"} ${project.name}?`}
-      size="sm"
-    >
-      <div className="flex flex-col gap-3 px-4 py-3">
-        <p className="text-[12px] leading-snug text-content/50">
-          {deleting
-            ? "Its threads are deleted for good."
-            : "The project leaves the sidebar. Its threads stay; restore it anytime."}
-        </p>
-        {rows.length ? (
-        <div className="flex flex-col">
-          {rows.map((b) => (
-            <div
-              key={b.key}
-              className={`flex h-7 items-center justify-between gap-3 text-[12px] text-content/70 ${
-                b.disabled ? "pointer-events-none opacity-40" : ""
-              }`}
-            >
-              <span className="min-w-0 truncate">{b.label}</span>
-              <Toggle label={b.text} on={b.checked} onChange={b.set} />
-            </div>
-          ))}
-        </div>
+    <Dialog {...root}>
+      <ModalPanel
+        onClose={onClose}
+        busy={pending}
+        title={`Archive ${project.name}?`}
+        description="Its threads stay; restore it anytime."
+        size="sm"
+      >
+        {checks || error ? (
+          <div className="flex flex-col gap-4 px-4 py-4">
+            {checks}
+            <ErrorLine error={error} />
+          </div>
         ) : null}
-        <ErrorLine error={error} />
-      </div>
-      <Footer
-        onCancel={onClose}
-        onConfirm={confirm}
-        confirmLabel={deleting ? "Delete project" : "Archive"}
-        danger={deleting || any}
-        pending={pending}
-        disabled={!!blocked}
-        note={blocked ?? undefined}
-      />
-    </Modal>
+        <Footer
+          onCancel={() => closeThen(onClose)}
+          onConfirm={() => void confirm()}
+          confirmLabel="Archive"
+          danger={any}
+          pending={pending}
+          disabled={!!blocked}
+          note={blocked ?? undefined}
+        />
+      </ModalPanel>
+    </Dialog>
   );
 }
 

@@ -1,4 +1,5 @@
 import { cloneElement, isValidElement, useId, type ReactElement, type ReactNode } from "react";
+import { Checkbox } from "@renderer/components/ui/checkbox";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@renderer/components/ui/item";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { cn } from "../lib/cn";
@@ -80,5 +81,33 @@ export function Tip({ label, side, children }: { label: ReactNode; side?: "top" 
       <TooltipTrigger render={children} />
       <TooltipContent side={side}>{label}</TooltipContent>
     </Tooltip>
+  );
+}
+
+/**
+ * One decision in a confirm (clean up the worktree, delete the branch): a
+ * Checkbox and its label, never a Switch. The label names the checkbox.
+ */
+export function CheckRow({
+  label,
+  checked,
+  disabled,
+  onCheckedChange,
+  className,
+}: {
+  label: ReactNode;
+  checked: boolean;
+  disabled?: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  className?: string;
+}) {
+  const id = useId();
+  return (
+    <label data-slot="dialog-check-row" className={cn("flex min-h-7 items-center gap-2 text-[13px] text-foreground", disabled && "opacity-50", className)}>
+      <Checkbox checked={checked} disabled={disabled} onCheckedChange={onCheckedChange} aria-labelledby={id} />
+      <span id={id} className="min-w-0 truncate">
+        {label}
+      </span>
+    </label>
   );
 }

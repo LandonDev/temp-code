@@ -107,8 +107,8 @@ describe("ThreadBatchDialog", () => {
 
     setResourceCleanup({ count: (ids) => ids.length * 2 });
     await act(() => requestThreadBatch("archiveDone", box, sel));
-    const checkbox = screen.getByRole("checkbox") as HTMLInputElement;
-    expect(checkbox.checked).toBe(true);
+    const checkbox = screen.getByRole("checkbox");
+    expect(checkbox.getAttribute("aria-checked")).toBe("true");
     expect(screen.getByText("and remove their 2 worktrees and simulators")).toBeTruthy();
     fireEvent.click(checkbox);
     await act(async () => {
