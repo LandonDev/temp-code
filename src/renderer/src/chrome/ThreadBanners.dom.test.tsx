@@ -41,19 +41,21 @@ describe("the needs-you banner", () => {
     metas.push(meta("Notes feature"));
     notes.set("Notes feature", { text: "## State\n\n- [ ] blocked: which port for the panel?\n- next\n", updatedAt: 1, path: null });
     render(<ThreadBanners projectId="p1" onOpen={() => {}} />);
-    expect(screen.getByRole("alert").textContent).toContain("Notes feature needs you");
-    expect(screen.getByRole("alert").textContent).toContain("· blocked: which port for the panel?");
+    const banner = screen.getByRole("alert");
+    expect(banner.textContent).toBe("Needs youNotes featureblocked: which port for the panel?Open");
+    expect(banner.textContent).not.toContain("·");
+    expect(banner.querySelector('[data-slot="status-mark"]')?.getAttribute("data-state")).toBe("waiting");
   });
 
   it("says nothing extra without notes, and counts when several wait", () => {
     metas.push(meta("One"));
     const { unmount } = render(<ThreadBanners projectId="p1" onOpen={() => {}} />);
-    expect(screen.getByRole("alert").textContent).toBe("One needs youOpen");
+    expect(screen.getByRole("alert").textContent).toBe("Needs youOneOpen");
     unmount();
     metas.push(meta("Two"));
     notes.set("One", { text: "## State\n\n- stuck\n", updatedAt: 1, path: null });
     render(<ThreadBanners projectId="p1" onOpen={() => {}} />);
-    expect(screen.getByRole("alert").textContent).toBe("2 threads need youOpen first");
+    expect(screen.getByRole("alert").textContent).toBe("Needs you2 threadsOpen first");
   });
 });
 
@@ -70,7 +72,7 @@ describe("the stale-watching banner", () => {
     const onOpen = vi.fn();
     render(<ThreadBanners projectId="p1" activeSessionId="here" onOpen={onOpen} />);
     const banner = screen.getByRole("status");
-    expect(banner.textContent).toContain("2 threads watching for over 30 min");
+    expect(banner.textContent).toBe("Watching2 threadsfor over 30 minStop allOpen");
     screen.getByText("Open").click();
     expect(onOpen).toHaveBeenCalledWith("b");
     screen.getByText("Stop all").click();
@@ -82,5 +84,23 @@ describe("the stale-watching banner", () => {
     metas.push(meta("fresh", { status: "watching", background: { tasks: [], agents: [], batch: null, watchingSince: Date.now() } }));
     const { container } = render(<ThreadBanners projectId="p1" onOpen={() => {}} />);
     expect(container.textContent).toBe("");
+  });
+});
+
+describe("the paused and recovery banners", () => {
+  it("say Paused with the subject and the batch, with Stop and Continue, and no wash", () => {
+    metas.push(meta("Master", { status: "paused", treeHasPaused: true }), meta("Child", { status: "paused", treeHasPaused: true, masterId: "Master" }));
+    render(<ThreadBanners projectId="p1" onOpen={() => {}} />);
+    const banner = screen.getByRole("status");
+    expect(banner.textContent).toBe("PausedMasterand 1 batch thread with itStopContinue");
+    expect(banner.className).not.toMatch(/bg-|text-warning/);
+  });
+
+  it("says Failed with the thread and offers Continue beside the model chevron", () => {
+    metas.push(meta("Search", { status: "error", treeCanContinue: true }));
+    render(<ThreadBanners projectId="p1" onOpen={() => {}} />);
+    const banner = screen.getByRole("alert");
+    expect(banner.textContent).toBe("FailedSearchContinue");
+    expect(screen.getByRole("button", { name: "Continue on another model" })).toBeTruthy();
   });
 });

@@ -11,7 +11,10 @@ import { sessionFromMeta, useSessionMetas } from "../lib/tcserver/store";
 import type { SessionMeta } from "../lib/tcserver/types";
 import { stateLine } from "@shared/notes";
 import { useThreadNotes } from "../lib/threadNotes";
-import { ChevronDown, CircleAlert, Eye, MessageSquare, Pause } from "./icons";
+import { Button } from "../components/ui/button";
+import { StatusMark, type ThreadState } from "../components/ui/status";
+import { cn } from "../lib/cn";
+import { ChevronDown } from "./icons";
 import { ModelPicker } from "./ModelPicker";
 import { ModelSettings } from "./ModelSettings";
 import { Popover } from "./Popover";
@@ -86,25 +89,30 @@ export function staleWatchers(
     .sort((a, b) => (a.background?.watchingSince ?? 0) - (b.background?.watchingSince ?? 0));
 }
 
-/** The stale-watching banner's line. */
-export function staleText(stale: readonly Pick<SessionMeta, "title" | "background">[], now: number): string {
-  if (stale.length !== 1) return `${stale.length} threads watching for over 30 min`;
+/** A banner's subject and what it says about it. */
+export type BannerLine = { subject: string; detail: string | null };
+
+/** The stale-watching banner's line: the thread and how long it has watched (amber), or the count. */
+export function staleText(stale: readonly Pick<SessionMeta, "title" | "background">[], now: number): BannerLine {
+  if (stale.length !== 1) return { subject: `${stale.length} threads`, detail: "for over 30 min" };
   const since = stale[0].background?.watchingSince ?? now;
-  return `${stale[0].title} has been watching for ${duration(Math.max(0, now - since))}`;
+  return { subject: stale[0].title, detail: duration(Math.max(0, now - since)) };
 }
 
-/** The paused strip's line: the thread (or the count), the batch threads paused with their master, and the Mac jobs waiting with it when any. */
-export function pausedText(paused: readonly Pick<SessionMeta, "title">[], held: number, batchPaused = 0): string {
-  const head = paused.length === 1 ? `${paused[0].title} is paused` : `${paused.length} threads paused`;
+/** The paused banner's line: the thread (or the count), the batch threads paused with their master, and the Mac jobs waiting with it when any. */
+export function pausedText(paused: readonly Pick<SessionMeta, "title">[], held: number, batchPaused = 0): BannerLine {
+  const subject = paused.length === 1 ? paused[0].title : `${paused.length} threads`;
   const batch = batchPaused > 0 ? `, and ${batchPaused} batch thread${batchPaused === 1 ? "" : "s"} with it` : "";
-  return `${head}${batch}${heldSuffix(held)}`;
+  return { subject, detail: `${batch}${heldSuffix(held)}`.replace(/^, /, "") || null };
 }
 
 /**
- * One line under the title bar per thread state the user must act on:
+ * One row under the title bar per thread state the user must act on:
  * paused trees (Continue / Stop) and trees whose last turn failed (Continue)
- * across every workspace, plus threads waiting on an answer in the open
- * project that are not the one on screen (Open).
+ * across every workspace, threads waiting on an answer in the open project
+ * that are not the one on screen (Open), and roots watching too long (Open,
+ * Stop all). Each row leads with the state's mark and word, then the subject
+ * and a muted detail; no wash, the mark carries the tone.
  */
 export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
   const metas = useSessionMetas();
@@ -155,6 +163,7 @@ export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
   const continueLabel = recovery.length === 1 ? "Continue" : "Continue all";
   const stopWatchers = () => run("watching", () => each(stale, stopAll));
 
+  const several = (list: readonly SessionMeta[]): string => (list.length === 1 ? list[0].title : `${list.length} threads`);
   return (
     <section className="shrink-0" aria-label="Thread alerts" aria-live="polite">
       {needsYou.length === 1 ? (
@@ -162,18 +171,14 @@ export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
       ) : needsYou.length > 1 ? (
         <Banner
           kind="needs-you"
-          text={`${needsYou.length} threads need you`}
+          line={{ subject: several(needsYou), detail: null }}
           primary={{ label: "Open first", onClick: () => onOpen(needsYou[0].id) }}
         />
       ) : null}
       {recovery.length > 0 ? (
         <Banner
           kind="recovery"
-          text={
-            recovery.length === 1
-              ? `${recovery[0].title} stopped on an error`
-              : `${recovery.length} threads stopped on an error`
-          }
+          line={{ subject: several(recovery), detail: null }}
           failed={failed.recovery}
           disabled={busy !== null}
           primary={{
@@ -193,7 +198,8 @@ export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
       {stale.length > 0 ? (
         <Banner
           kind="watching"
-          text={staleText(stale, now)}
+          line={staleText(stale, now)}
+          amber={stale.length === 1}
           failed={failed.watching}
           disabled={busy !== null}
           secondary={{ label: busy === "watching" ? "Stopping…" : "Stop all", onClick: () => void stopWatchers() }}
@@ -203,7 +209,7 @@ export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
       {paused.length > 0 ? (
         <Banner
           kind="paused"
-          text={pausedText(paused, held, batchPaused)}
+          line={pausedText(paused, held, batchPaused)}
           failed={failed.paused}
           disabled={busy !== null}
           secondary={{
@@ -230,14 +236,11 @@ function NeedsYouBanner({ thread, onOpen }: { thread: SessionMeta; onOpen: (sess
   return (
     <Banner
       kind="needs-you"
-      text={`${thread.title} needs you`}
-      detail={state}
+      line={{ subject: thread.title, detail: state }}
       primary={{ label: "Open", onClick: () => onOpen(thread.id) }}
     />
   );
 }
-
-const DESTRUCTIVE_BUTTON = "border-danger/25 bg-danger/10 hover:bg-danger/20";
 
 /** The split half of the error banner's Continue: restart every errored
  *  thread on another model or effort. Opens on the first thread's own. */
@@ -276,18 +279,19 @@ function ContinueAs({
 
   return (
     <>
-      <button
+      <Button
         ref={trigger}
-        type="button"
+        variant="secondary"
+        size="icon-xs"
         onClick={toggle}
         disabled={disabled}
         aria-label="Continue on another model"
         aria-expanded={open}
         aria-haspopup="dialog"
-        className={`-ml-px grid h-[22px] place-items-center rounded-l-none rounded-r-md border px-1 transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none disabled:cursor-default disabled:opacity-60 ${DESTRUCTIVE_BUTTON}`}
+        className="rounded-l-none border-l border-border"
       >
-        <ChevronDown className="size-3" strokeWidth={2} aria-hidden="true" />
-      </button>
+        <ChevronDown aria-hidden="true" />
+      </Button>
       {open ? (
         <Popover
           anchor={trigger}
@@ -335,10 +339,18 @@ function ContinueAs({
   );
 }
 
+const BANNER_STATE: Record<Kind, ThreadState> = {
+  "needs-you": "waiting",
+  recovery: "failed",
+  paused: "paused",
+  watching: "watching",
+};
+
+/** One 32px row under the title bar: the state's mark and word, the subject, a muted detail, the actions at the end. */
 function Banner({
   kind,
-  text,
-  detail,
+  line,
+  amber = false,
   failed = 0,
   disabled = false,
   primary,
@@ -346,9 +358,9 @@ function Banner({
   menu,
 }: {
   kind: Kind;
-  text: string;
-  /** A dimmer second half of the line (the waiting thread's State). */
-  detail?: string | null;
+  line: BannerLine;
+  /** The detail is the person's problem (a watch gone stale). */
+  amber?: boolean;
   failed?: number;
   disabled?: boolean;
   primary: Action;
@@ -356,41 +368,33 @@ function Banner({
   /** Split-button half beside the primary (a chevron and its popover). */
   menu?: ReactNode;
 }) {
-  const destructive = kind === "recovery";
-  const Icon = kind === "paused" ? Pause : kind === "recovery" ? CircleAlert : kind === "watching" ? Eye : MessageSquare;
-  const tint = destructive
-    ? "border-danger/20 bg-danger/8 text-danger"
-    : "border-warning/20 bg-warning/8 text-warning";
-  const button = destructive ? DESTRUCTIVE_BUTTON : "border-warning/25 bg-warning/10 hover:bg-warning/20";
   return (
     <div
       role={kind === "paused" || kind === "watching" ? "status" : "alert"}
-      className={`flex min-h-7 items-center gap-2 border-b px-3 py-1 text-xs ${tint}`}
+      className="flex h-8 items-center gap-2 border-b border-border px-3 text-xs"
     >
-      <Icon className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-      <span className="min-w-0 shrink-0 truncate font-medium">{text}</span>
-      {detail ? <span className="min-w-0 truncate text-current/70">· {detail}</span> : null}
-      {failed > 0 ? <span className="shrink-0 text-current/70">· {failed} failed</span> : null}
-      <span className="ml-auto flex shrink-0 items-center gap-1.5">
+      <StatusMark state={BANNER_STATE[kind]} className="shrink-0" />
+      <span className="min-w-0 truncate font-medium text-foreground">{line.subject}</span>
+      {line.detail ? (
+        <span className={cn("min-w-0 truncate", amber ? "text-warning tabular-nums" : "text-muted-foreground")}>{line.detail}</span>
+      ) : null}
+      {failed > 0 ? <span className="shrink-0 text-muted-foreground">{failed} failed</span> : null}
+      <span className="ml-auto flex shrink-0 items-center gap-1">
         {secondary ? (
-          <button
-            type="button"
-            onClick={secondary.onClick}
-            disabled={disabled}
-            className="rounded-md border border-danger/25 bg-danger/10 px-2 py-0.5 text-[11px] font-medium text-danger transition-colors hover:bg-danger/20 focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none disabled:cursor-default disabled:opacity-60"
-          >
+          <Button variant="ghost" size="xs" onClick={secondary.onClick} disabled={disabled}>
             {secondary.label}
-          </button>
+          </Button>
         ) : null}
         <span className="flex items-center">
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            size="xs"
             onClick={primary.onClick}
             disabled={disabled}
-            className={`h-[22px] rounded-md border px-2 text-[11px] font-medium transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none disabled:cursor-default disabled:opacity-60 ${menu ? "rounded-r-none" : ""} ${button}`}
+            className={menu ? "rounded-r-none" : undefined}
           >
             {primary.label}
-          </button>
+          </Button>
           {menu}
         </span>
       </span>

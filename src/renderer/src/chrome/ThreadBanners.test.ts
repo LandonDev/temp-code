@@ -84,13 +84,16 @@ describe("bannerThreads", () => {
 
 describe("pausedText", () => {
   it("names the one paused thread, or counts them, and the Mac jobs waiting with it", () => {
-    expect(pausedText([{ title: "Build" }], 0)).toBe("Build is paused");
-    expect(pausedText([{ title: "Build" }], 2)).toBe("Build is paused, and 2 Mac jobs with it");
-    expect(pausedText([{ title: "A" }, { title: "B" }], 1)).toBe("2 threads paused, and 1 Mac job with it");
+    expect(pausedText([{ title: "Build" }], 0)).toEqual({ subject: "Build", detail: null });
+    expect(pausedText([{ title: "Build" }], 2)).toEqual({ subject: "Build", detail: "and 2 Mac jobs with it" });
+    expect(pausedText([{ title: "A" }, { title: "B" }], 1)).toEqual({ subject: "2 threads", detail: "and 1 Mac job with it" });
   });
   it("counts the batch threads paused with their master before the Mac jobs", () => {
-    expect(pausedText([{ title: "Master" }], 0, 3)).toBe("Master is paused, and 3 batch threads with it");
-    expect(pausedText([{ title: "Master" }], 2, 1)).toBe("Master is paused, and 1 batch thread with it, and 2 Mac jobs with it");
+    expect(pausedText([{ title: "Master" }], 0, 3)).toEqual({ subject: "Master", detail: "and 3 batch threads with it" });
+    expect(pausedText([{ title: "Master" }], 2, 1)).toEqual({
+      subject: "Master",
+      detail: "and 1 batch thread with it, and 2 Mac jobs with it",
+    });
   });
 });
 
@@ -117,7 +120,7 @@ describe("staleWatchers", () => {
 
   it("names one thread with its age and counts several", () => {
     const one = watching("Deploy watch", now - (2 * 3_600_000 + 14 * 60_000));
-    expect(staleText([one], now)).toBe("Deploy watch has been watching for 2h 14m");
-    expect(staleText([one, one], now)).toBe("2 threads watching for over 30 min");
+    expect(staleText([one], now)).toEqual({ subject: "Deploy watch", detail: "2h 14m" });
+    expect(staleText([one, one], now)).toEqual({ subject: "2 threads", detail: "for over 30 min" });
   });
 });
