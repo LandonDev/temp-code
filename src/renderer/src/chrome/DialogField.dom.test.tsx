@@ -64,3 +64,30 @@ describe("CheckRow", () => {
     expect(set).not.toHaveBeenCalled();
   });
 });
+
+describe("error lines", () => {
+  it("a Field's error takes the hint's place, in red, and marks the control invalid", () => {
+    render(
+      <Field label="Name" hint="Shown in the rail." error="A name is required.">
+        <Input />
+      </Field>,
+    );
+    const input = screen.getByLabelText("Name");
+    const line = screen.getByText("A name is required.");
+    expect(input.getAttribute("aria-describedby")).toBe(line.id);
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(line.className).toContain("text-destructive");
+    expect(screen.queryByText("Shown in the rail.")).toBeNull();
+  });
+
+  it("a FieldRow's error sits under its description and describes the control", () => {
+    render(
+      <FieldRow label="Apply to new threads" description="Kept, but nothing is prepended." error="Saving failed.">
+        <Switch checked={false} />
+      </FieldRow>,
+    );
+    const control = screen.getByRole("switch", { name: "Apply to new threads" });
+    expect(control.getAttribute("aria-describedby")).toBe(screen.getByText("Saving failed.").id);
+    expect(screen.getByText("Kept, but nothing is prepended.")).toBeTruthy();
+  });
+});

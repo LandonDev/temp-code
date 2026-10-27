@@ -4,23 +4,26 @@ import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@ren
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { cn } from "../lib/cn";
 
-type Control = ReactElement<{ id?: string; "aria-describedby"?: string; "aria-labelledby"?: string }>;
+type Control = ReactElement<{ id?: string; "aria-describedby"?: string; "aria-labelledby"?: string; "aria-invalid"?: boolean }>;
 
 /**
  * A labelled field in a dialog or sheet: the 12px muted label, 4px, the
- * control, and an optional hint 2px under it. The label and hint are wired
- * to the control (`id`, `aria-describedby`); `aside` sits at the label
- * line's end (a word count, a link).
+ * control, and an optional hint 2px under it; an `error` takes the hint's
+ * place in red and marks the control invalid. The label and the line under
+ * it are wired to the control (`id`, `aria-describedby`); `aside` sits at
+ * the label line's end (a word count, a link).
  */
 export function Field({
   label,
   hint,
+  error,
   aside,
   className,
   children,
 }: {
   label: ReactNode;
   hint?: ReactNode;
+  error?: ReactNode;
   aside?: ReactNode;
   className?: string;
   children: Control;
@@ -28,6 +31,7 @@ export function Field({
   const auto = useId();
   const id = isValidElement(children) ? (children.props.id ?? auto) : auto;
   const hintId = `${id}-hint`;
+  const line = error || hint;
   return (
     <div data-slot="dialog-field" className={cn("flex min-w-0 flex-col gap-1", className)}>
       <div className="flex items-baseline justify-between gap-2">
@@ -36,10 +40,14 @@ export function Field({
         </label>
         {aside}
       </div>
-      {cloneElement(children, { id, "aria-describedby": hint ? hintId : children.props["aria-describedby"] })}
-      {hint ? (
-        <p id={hintId} className="-mt-0.5 text-xs text-muted-foreground">
-          {hint}
+      {cloneElement(children, {
+        id,
+        "aria-describedby": line ? hintId : children.props["aria-describedby"],
+        ...(error ? { "aria-invalid": true } : {}),
+      })}
+      {line ? (
+        <p id={hintId} className={cn("-mt-0.5 text-xs", error ? "text-destructive" : "text-muted-foreground")}>
+          {line}
         </p>
       ) : null}
     </div>
@@ -48,28 +56,42 @@ export function Field({
 
 /**
  * A choice in a dialog: the label at the row's start, the control (a
- * ToggleGroup, a Select, a Switch) at its end. Rows of one group sit
- * against each other; groups are 16px apart.
+ * ToggleGroup, a Select, a Switch) at its end, an optional description
+ * under the label and an `error` line in red under that. Rows of one group
+ * sit against each other; groups are 16px apart.
  */
 export function FieldRow({
   label,
   description,
+  error,
   className,
   children,
 }: {
   label: ReactNode;
   description?: ReactNode;
+  error?: ReactNode;
   className?: string;
   children: Control;
 }) {
   const id = useId();
+  const errorId = `${id}-error`;
   return (
     <Item size="sm" data-slot="dialog-field-row" className={cn("px-0", className)}>
       <ItemContent className="min-w-0">
         <ItemTitle id={id}>{label}</ItemTitle>
         {description ? <ItemDescription>{description}</ItemDescription> : null}
+        {error ? (
+          <ItemDescription id={errorId} className="line-clamp-none text-destructive">
+            {error}
+          </ItemDescription>
+        ) : null}
       </ItemContent>
-      <ItemActions className="shrink-0">{cloneElement(children, { "aria-labelledby": children.props["aria-labelledby"] ?? id })}</ItemActions>
+      <ItemActions className="shrink-0">
+        {cloneElement(children, {
+          "aria-labelledby": children.props["aria-labelledby"] ?? id,
+          ...(error ? { "aria-describedby": errorId, "aria-invalid": true } : {}),
+        })}
+      </ItemActions>
     </Item>
   );
 }
