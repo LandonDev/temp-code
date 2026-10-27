@@ -3,7 +3,7 @@
  * The host glyph (chrome/HostGlyph.tsx) wherever agents and Inbox items are
  * listed outside the rail: the fleet panel's row and detail, the
  * orchestrator's spawn row (a cross-host child before its row is known),
- * and the Inbox card, which drew the host's name before.
+ * and the Inbox row, which drew the host's name before.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render } from "@testing-library/react";
@@ -39,7 +39,7 @@ vi.mock("./AgentTranscript", () => ({ AgentTranscript: () => null }));
 import { AgentRow } from "./threads/fleet/AgentRow";
 import { AgentDetail } from "./threads/fleet/AgentDetail";
 import { AgentSpawnRow, hostOfAgentId } from "./AgentSpawnRow";
-import { InboxCard } from "./InboxView";
+import { InboxRow } from "./InboxView";
 
 const agent = (over: Partial<SessionMeta> = {}): SessionMeta =>
   ({
@@ -101,7 +101,7 @@ describe("the host glyph beside agents and Inbox items", () => {
     }
   });
 
-  it("the Inbox card draws the host's glyph where it wrote the name", () => {
+  it("the Inbox row draws the host's glyph where it wrote the name", () => {
     const item = {
       kind: "pr",
       number: 7,
@@ -118,7 +118,7 @@ describe("the host glyph beside agents and Inbox items", () => {
       environmentId: "env_box",
     } as never;
     const card = render(
-      <InboxCard item={item} active={false} workspaceId={null} environmentId="env_box" projectKey="app" logoPath={null} mascotName={null} mascotColor="" onSelect={() => {}} />,
+      <InboxRow item={item} active={false} environmentId="env_box" showSource onSelect={() => {}} />,
     );
     expect(glyphOf(card.container)?.getAttribute("title")).toBe("The box");
     expect(card.container.textContent).not.toContain("The box");

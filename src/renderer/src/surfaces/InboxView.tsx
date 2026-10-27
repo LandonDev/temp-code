@@ -13,7 +13,6 @@ import {
   RefreshCw,
   Search,
 } from "../chrome/icons";
-import { MatrixSpinner } from "./threads/bits";
 import {
   useEffect,
   useMemo,
@@ -34,6 +33,17 @@ import { OverlayNav } from "../chrome/TitleBar";
 import { WindowControls } from "../chrome/WindowControls";
 import { useDragResize } from "../hooks/useDragResize";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
+import { Button } from "../components/ui/button";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
+import { Input } from "../components/ui/input";
+import { Item } from "../components/ui/item";
+import { Skeleton } from "../components/ui/skeleton";
+import { Spinner } from "../components/ui/spinner";
+import { StatusMark } from "../components/ui/status";
+import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
+import { cn } from "../lib/cn";
+import { inboxRowModel } from "../lib/inboxRow";
 import { useTabGroupLogos } from "../hooks/useTabGroupLogos";
 import {
   githubPrDiff,
@@ -192,54 +202,6 @@ function InboxProjectMark({
   );
 }
 
-/** The one word a pull request row carries when it has news. */
-function prNote(item: InboxItem): { text: string; className: string } | null {
-  if (item.provider !== "github" || item.kind !== "pr") return null;
-  if (item.draft) return { text: "Draft", className: "text-content/50" };
-  if (item.state !== "open") return null;
-  if (item.reviewDecision === "CHANGES_REQUESTED") {
-    return { text: "Changes requested", className: "text-danger" };
-  }
-  if (item.checks === "FAILURE" || item.checks === "ERROR") {
-    return { text: "Checks failed", className: "text-danger" };
-  }
-  if (item.reviewDecision === "APPROVED") return { text: "Approved", className: "text-success" };
-  return null;
-}
-
-function InboxSourceTab({
-  source,
-  selected,
-  onSelect,
-}: {
-  source: InboxSource;
-  selected: boolean;
-  onSelect: (source: InboxSource) => void;
-}) {
-  const label = source === "linear" ? "Linear" : "GitHub";
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={selected}
-      onClick={() => onSelect(source)}
-      className={`flex h-6 min-w-0 flex-1 items-center justify-center rounded-md px-2 text-[12px] leading-none ${
-        selected
-          ? "bg-content/10 text-content"
-          : "text-content/50 hover:bg-content/5 hover:text-content"
-      }`}
-    >
-      <span className="flex items-center gap-1.5">
-        <InboxProviderMark
-          provider={source}
-          className="block size-3.5 shrink-0"
-        />
-        <span className="leading-none">{label}</span>
-      </span>
-    </button>
-  );
-}
-
 function InboxDetailTab({
   label,
   selected,
@@ -290,9 +252,6 @@ export function InboxView({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const logos = useTabGroupLogos();
-  const [groupMascots] = useState(loadTabGroupMascots);
-  const [groupColors] = useState(loadTabGroupColors);
-  const [groupCustomColors] = useState(loadTabGroupCustomColors);
 
   const [searchInput, setSearchInput] = useState("");
   // Every paired host's inbox, merged; rows name the host when there is more than one.
@@ -490,8 +449,9 @@ export function InboxView({
     [activeFilters, items, searchInput, source],
   );
 
-  const searchNarrowed = searchInput.trim().length > 0;
-  const narrowedByUser = searchNarrowed || filtersActive;
+  const narrowedByUser = searchInput.trim().length > 0 || filtersActive;
+  // The repo or team on each row only when the list holds more than one.
+  const showSource = source === "linear" || (effectiveScope === "all" && ghWorkspaces.length > 1);
 
   const selected =
     visibleItems.find((item) => inboxItemKey(item) === selectedKey) ??
@@ -543,114 +503,107 @@ export function InboxView({
       className={
         sidebar
           ? "flex min-h-0 min-w-0 flex-1 flex-col"
-          : "relative flex h-full min-h-0 shrink-0 flex-col border-r border-content/10"
+          : "relative flex h-full min-h-0 shrink-0 flex-col border-r border-border"
       }
     >
-      <div
-        role="tablist"
-        aria-label="Inbox source"
-        className="flex h-9 shrink-0 items-center gap-px border-b border-content/10 px-2"
-      >
-        <InboxSourceTab
-          source="github"
-          selected={source === "github"}
-          onSelect={onSourceChange}
-        />
-        <InboxSourceTab
-          source="linear"
-          selected={source === "linear"}
-          onSelect={onSourceChange}
-        />
-      </div>
-      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-content/10 px-2">
-        <div className="relative flex h-7 min-w-0 flex-1 items-center">
-          <Search className="pointer-events-none absolute left-2 size-3.5 shrink-0 text-content/50" strokeWidth={1.75} />
-          <input
-            value={searchInput}
-            onChange={(event) => setSearchInput(event.target.value)}
-            placeholder="Filter inbox"
-            aria-label="Filter inbox"
-            spellCheck={false}
-            autoComplete="off"
-            className="h-7 w-full rounded-md bg-transparent pl-7 pr-2 text-[12px] text-content outline-none placeholder:text-content/40"
-          />
+      <div className="flex shrink-0 flex-col gap-2 border-b border-border p-2">
+        <Tabs value={source} onValueChange={(next) => onSourceChange(next as InboxSource)}>
+          <TabsList aria-label="Inbox source" className="w-full">
+            <TabsTrigger value="github">
+              <InboxProviderMark provider="github" className="size-3.5" />
+              GitHub
+            </TabsTrigger>
+            <TabsTrigger value="linear">
+              <InboxProviderMark provider="linear" className="size-3.5" />
+              Linear
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <div className="flex items-center gap-1">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute start-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+              placeholder="Filter inbox"
+              aria-label="Filter inbox"
+              spellCheck={false}
+              autoComplete="off"
+              className="ps-8"
+            />
+          </div>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="Filters"
+                  aria-expanded={!!filterMenu}
+                  aria-haspopup="menu"
+                  onClick={onFilterButtonClick}
+                  className={filtersActive || filterMenu ? "text-foreground" : "text-muted-foreground"}
+                />
+              }
+            >
+              <ListFilter />
+            </TooltipTrigger>
+            <TooltipContent>Filters</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="Refresh"
+                  onClick={() => setRefresh((value) => value + 1)}
+                  className="text-muted-foreground"
+                />
+              }
+            >
+              {loading || revalidating ? <Spinner className="size-3" /> : <RefreshCw />}
+            </TooltipTrigger>
+            <TooltipContent>Refresh</TooltipContent>
+          </Tooltip>
         </div>
-        <button
-          type="button"
-          title="Filter inbox"
-          aria-label="Filter inbox"
-          aria-expanded={!!filterMenu}
-          aria-haspopup="menu"
-          onClick={onFilterButtonClick}
-          className={`pressable grid size-6 shrink-0 place-items-center rounded-md text-content/40 hover:bg-content/10 hover:text-content ${
-            filterMenu || filtersActive ? "bg-content/10 text-content" : ""
-          }`}
-        >
-          <ListFilter className="size-3.5" strokeWidth={1.75} />
-        </button>
-        <button
-          type="button"
-          aria-label="Refresh"
-          onClick={() => setRefresh((value) => value + 1)}
-          className="pressable grid size-6 shrink-0 place-items-center rounded-md text-content/40 hover:bg-content/10 hover:text-content"
-        >
-          {loading || revalidating ? (
-            <MatrixSpinner cell={1.5} />
-          ) : (
-            <RefreshCw className="size-3.5" strokeWidth={1.75} />
-          )}
-        </button>
       </div>
       <div
         ref={listLock}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-none"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-none"
       >
         {sourceError && visibleItems.length === 0 ? (
-          <p className="px-3 py-2 text-[12px] text-danger">{sourceError}</p>
+          <p className="px-3 py-2 text-[12px] text-destructive">{sourceError}</p>
         ) : loading && items.length === 0 ? (
-          <div className="flex justify-center py-10">
-            <MatrixSpinner />
-          </div>
+          <InboxRowsSkeleton />
         ) : visibleItems.length === 0 ? (
-          <p className="px-3 py-2 text-[12px] text-content/50">
-            {narrowedByUser
-              ? searchNarrowed
-                ? source === "linear"
-                  ? "No matching Linear issues"
-                  : "No matching issues or pull requests"
-                : source === "linear"
-                  ? "No Linear issues match these filters"
-                  : "No issues or pull requests match these filters"
-              : source === "linear"
-                ? "No Linear issues"
-                : ghWorkspaces.length === 0
-                  ? "Add a GitHub repository as a workspace to fill the inbox"
-                  : "No issues or pull requests"}
-          </p>
+          <Empty>
+            <EmptyHeader>
+              <EmptyTitle>
+                {narrowedByUser
+                  ? "No matching issues"
+                  : source === "linear"
+                    ? "No Linear issues"
+                    : ghWorkspaces.length === 0
+                      ? "No GitHub workspaces"
+                      : "No issues or pull requests"}
+              </EmptyTitle>
+              {!narrowedByUser && source === "github" && ghWorkspaces.length === 0 ? (
+                <EmptyDescription>Add a GitHub repository as a workspace.</EmptyDescription>
+              ) : null}
+            </EmptyHeader>
+          </Empty>
         ) : (
           <ul className="flex flex-col gap-0.5 p-1.5">
             {visibleItems.map((item) => {
               const key = inboxItemKey(item);
-              const workspace = item.workspaceId
-                ? workspaceOptions.find((option) => option.id === item.workspaceId)
-                : undefined;
-              const projectKey = workspace?.name ?? projectName(item.projectPath);
               return (
                 <li key={key}>
-                  <InboxCard
+                  <InboxRow
                     item={item}
                     active={selected != null && key === inboxItemKey(selected)}
-                    workspaceId={workspace?.id ?? null}
                     environmentId={item.environmentId ?? null}
-                    projectKey={projectKey}
-                    logoPath={resolveTabGroupLogo(projectKey, logos)}
-                    mascotName={resolveTabGroupMascot(projectKey, groupMascots)}
-                    mascotColor={resolveTabGroupColor(
-                      projectKey,
-                      groupColors,
-                      groupCustomColors,
-                      projectKey,
-                    )}
+                    showSource={showSource}
                     onSelect={() => {
                       markInboxItemSeen({
                         key,
@@ -665,25 +618,24 @@ export function InboxView({
           </ul>
         )}
         {authMessage && visibleItems.length > 0 ? (
-          <p className="px-3 py-2 text-[12px] text-danger">{authMessage}</p>
+          <p className="px-3 py-2 text-[12px] text-destructive">{authMessage}</p>
         ) : null}
         {repoErrors.length > 0 && !(sourceError && visibleItems.length === 0)
           ? repoErrors.map((repo) => (
-              <p key={repo.repo} className="px-3 py-1 text-[11px] text-content/50">
+              <p key={repo.repo} className="px-3 py-1 text-[12px] text-muted-foreground">
                 {repo.repo}: {repo.error}
               </p>
             ))
           : null}
         {source === "github" && currentWorkspaceId && ghWorkspaces.length > 1 && !loading ? (
-          <button
-            type="button"
-            onClick={() =>
-              setScope((value) => (value === "all" ? "current" : "all"))
-            }
-            className="mx-1 mb-1 h-7 w-[calc(100%-0.5rem)] rounded-md px-2 text-left text-[12px] text-content/50 hover:bg-content/5 hover:text-content active:bg-content/10"
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setScope((value) => (value === "all" ? "current" : "all"))}
+            className="mx-1.5 mb-1.5 justify-start self-start text-muted-foreground"
           >
             {scope === "all" ? "This workspace only" : "Show all workspaces"}
-          </button>
+          </Button>
         ) : null}
       </div>
       {sidebar ? null : (
@@ -692,7 +644,7 @@ export function InboxView({
           aria-orientation="vertical"
           aria-label="Resize inbox list"
           className={`absolute inset-y-0 -right-px z-10 w-1.5 cursor-col-resize touch-none ${
-            resize.dragging ? "bg-content/15" : "hover:bg-content/10"
+            resize.dragging ? "bg-foreground/10" : "hover:bg-foreground/10"
           }`}
           onPointerDown={resize.onPointerDown}
           onDoubleClick={resize.onDoubleClick}
@@ -718,7 +670,7 @@ export function InboxView({
       <div
         role="region"
         aria-label="Inbox"
-        className="flex min-h-0 min-w-0 flex-1 flex-col text-content"
+        className="flex min-h-0 min-w-0 flex-1 flex-col text-foreground"
       >
         {list}
         {filtersPortal}
@@ -731,10 +683,10 @@ export function InboxView({
       role="region"
       aria-label="Inbox"
       data-app-inbox
-      className="flex min-h-0 min-w-0 flex-1 flex-col text-content"
+      className="flex min-h-0 min-w-0 flex-1 flex-col text-foreground"
     >
       <div
-        className="flex h-10 shrink-0 select-none items-center border-b border-content/10"
+        className="flex h-10 shrink-0 select-none items-center border-b border-border"
         data-tauri-drag-region="deep"
       >
         {IS_MAC && !besideRail ? <div className="w-[78px] shrink-0" /> : null}
@@ -742,11 +694,8 @@ export function InboxView({
           <OverlayNav onBack={onClose} onToggleSidebar={onToggleSidebar} />
         )}
         <div className="flex min-w-0 flex-1 items-center gap-2 px-3 text-[13px]">
-          <Inbox
-            className="size-3.5 shrink-0 text-content/40"
-            strokeWidth={1.75}
-          />
-          <span className="min-w-0 truncate text-content">Inbox</span>
+          <Inbox className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 truncate font-medium">Inbox</span>
         </div>
         {IS_MAC ? null : <WindowControls />}
       </div>
@@ -841,120 +790,89 @@ function InboxDetailBody({
   );
 }
 
-export function InboxCard({
+/** One inbox row, two lines: the kind glyph, the title (medium while
+ *  unseen, the rail's unread rule) and the time; then the ref, the source
+ *  when shown, the author, the host's glyph, and failed checks at the end.
+ *  Labels, avatars and the provider mark are the detail pane's. */
+export function InboxRow({
   item,
   active,
-  workspaceId,
   environmentId,
-  projectKey,
-  logoPath,
-  mascotName,
-  mascotColor,
+  showSource,
   onSelect,
 }: {
   item: InboxItem;
   active: boolean;
-  workspaceId: string | null;
   /** The host the row came from; its glyph shows when more than one is paired. */
   environmentId?: string | null;
-  projectKey: string;
-  logoPath: string | null;
-  mascotName: string | null;
-  mascotColor: string;
+  showSource: boolean;
   onSelect: () => void;
 }) {
   useInboxSeenTick();
-  const KindIcon = item.kind === "pr" ? GitPullRequest : CircleDot;
-  const time = formatRelativeTime(item.updatedAt);
-  const linear = item.provider === "linear";
-  const source = linear ? item.teamName || item.repo : item.repo || projectKey;
-  const author = item.author?.login?.trim() ?? "";
-  const note = prNote(item);
-  const unseen = isInboxEntryUnseen({
-    key: inboxItemKey(item),
-    updatedAt: item.updatedAt,
-  });
-
+  const unseen = isInboxEntryUnseen({ key: inboxItemKey(item), updatedAt: item.updatedAt });
+  const row = inboxRowModel(item, { unseen, showSource });
+  const KindIcon = row.kind === "pr" ? GitPullRequest : CircleDot;
   return (
-    <button
-      type="button"
-      title={item.title}
-      aria-current={active ? "true" : undefined}
-      aria-label={unseen ? `${item.title}, new` : undefined}
-      onClick={onSelect}
-      className={`flex w-full flex-col rounded-md border px-2.5 py-2 text-left ${
-        active
-          ? "border-transparent bg-content/10 text-content"
-          : "border-transparent text-content/70 hover:bg-content/5 hover:text-content"
-      }`}
+    <Item
+      size="sm"
+      className={cn(
+        "flex-col flex-nowrap items-stretch gap-0.5 rounded-md px-2.5 py-2 text-left transition-none",
+        active ? "bg-muted" : "hover:bg-foreground/5",
+      )}
+      render={
+        <button
+          type="button"
+          aria-current={active ? "true" : undefined}
+          aria-label={unseen ? `${item.title}, new` : undefined}
+          onClick={onSelect}
+        />
+      }
     >
-      <span className="flex items-center gap-2">
-        <span className="flex min-w-0 flex-1 items-center gap-1.5">
-          <InboxProviderMark
-            provider={item.provider}
-            className="size-3.5 shrink-0"
-          />
-          <KindIcon
-            className="size-3 shrink-0 text-content/40"
-            strokeWidth={1.75}
-          />
-          <span className="min-w-0 truncate text-[11px] text-content/50">
-            {item.kind === "pr" ? "Pull request" : "Issue"} ·{" "}
-            {inboxItemRef(item)}
-          </span>
+      <span className="flex min-w-0 items-center gap-2">
+        <KindIcon className="size-3.5 shrink-0 text-muted-foreground" />
+        <span
+          data-row-title
+          className={cn("min-w-0 flex-1 truncate text-[13px] text-foreground", unseen ? "font-medium" : "font-normal")}
+        >
+          {row.title}
         </span>
-        {time || unseen ? (
-          <span className="flex shrink-0 items-center gap-1.5">
-            {time ? (
-              <span className="text-[11px] tabular-nums text-content/40">
-                {time}
-              </span>
-            ) : null}
-            {unseen ? (
-              <span aria-hidden className="size-1.5 rounded-full bg-accent" />
-            ) : null}
+        {row.time ? (
+          <span className="shrink-0 text-[12px] text-muted-foreground tabular-nums">{row.time}</span>
+        ) : null}
+      </span>
+      <span className="flex min-w-0 items-center gap-3 ps-[22px] text-[12px] text-muted-foreground">
+        {row.line.map((fact, index) => (
+          <span key={index} className={index === 0 ? "shrink-0 tabular-nums" : "min-w-0 truncate"}>
+            {fact}
+          </span>
+        ))}
+        <HostGlyph environmentId={environmentId} />
+        {row.status ? (
+          // StatusMark has no detail slot yet; "checks" sits beside it in its tone.
+          <span className="ms-auto flex shrink-0 items-center gap-1.5 text-xs font-medium text-destructive">
+            <StatusMark state={row.status.state} />
+            <span>{row.status.detail}</span>
           </span>
         ) : null}
       </span>
-      <span className="mt-1 line-clamp-1 text-[13px] font-semibold leading-snug text-content">
-        {item.title}
-      </span>
-      <span className="mt-1 flex min-w-0 items-center gap-2">
-        <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[11px] text-content/40">
-          {linear || !workspaceId ? null : (
-            <InboxProjectMark
-              project={{ id: workspaceId, name: projectKey, logoPath, mascotName, mascotColor }}
-            />
-          )}
-          <span className="min-w-0 truncate">{source}</span>
-          <HostGlyph environmentId={environmentId} />
-          {author ? (
-            <>
-              <span aria-hidden>·</span>
-              <InboxPerson
-                name={author}
-                avatarUrl={inboxPersonAvatarUrl(item.provider, author, item.author?.avatarUrl)}
-                size={14}
-                className="min-w-0 shrink"
-              />
-            </>
-          ) : null}
-          {note ? (
-            <>
-              <span aria-hidden>·</span>
-              <span className={`shrink-0 ${note.className}`}>{note.text}</span>
-            </>
-          ) : null}
-        </span>
-        {item.labels.length > 0 ? (
-          <span className="flex min-w-0 shrink-0 items-center gap-1">
-            {item.labels.slice(0, 2).map((label) => (
-              <InboxLabel key={label.name} label={label} compact />
-            ))}
-          </span>
-        ) : null}
-      </span>
-    </button>
+    </Item>
+  );
+}
+
+/** Five rows in the row's shape while the first list loads. */
+function InboxRowsSkeleton() {
+  return (
+    <div aria-label="Loading inbox" className="flex flex-col gap-0.5 p-1.5">
+      {[0, 1, 2, 3, 4].map((index) => (
+        <div key={index} className="flex flex-col gap-1.5 px-2.5 py-2">
+          <div className="flex items-center gap-2">
+            <Skeleton className="size-3.5 rounded-sm" />
+            <Skeleton className="h-3.5 flex-1" />
+          </div>
+          <Skeleton className="ms-[22px] h-3 w-1/2" />
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -1348,7 +1266,7 @@ function InboxDetail({
                 }}
                 className="pressable inline-flex h-7 items-center gap-2 rounded-md bg-content px-3 text-[12px] font-medium text-background-base hover:bg-content/70 disabled:cursor-default disabled:opacity-50"
               >
-                {starting ? <MatrixSpinner cell={1.5} /> : null}
+                {starting ? <Spinner className="size-3" /> : null}
                 Send to agent
               </button>
               {linear ? (
@@ -1404,7 +1322,7 @@ function InboxDetail({
       {isPr && tab === "code" ? (
         diffLoading ? (
           <div className="flex justify-center py-10">
-            <MatrixSpinner />
+            <Spinner />
           </div>
         ) : diffError ? (
           <p className="text-[12px] text-danger">{diffError}</p>
@@ -1418,7 +1336,7 @@ function InboxDetail({
         )
       ) : loading ? (
         <div className="flex justify-center py-10">
-          <MatrixSpinner />
+          <Spinner />
         </div>
       ) : error ? (
         <p className="text-[12px] text-danger">{error}</p>
