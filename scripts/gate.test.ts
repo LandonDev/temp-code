@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { STEPS, TIER_PATHS, formatReport, gateDir, matchPath, parseArgs, readStoredHash, runSteps, selectSteps, shouldSkipTypecheck, storeHash, tiersForPaths, typecheckHash, type Step, macOnlySkips, judgeReport, stepArgs } from './gate'
+import { STEPS, TIER_PATHS, formatReport, gateDir, matchPath, parseArgs, readStoredHash, runSteps, selectSteps, shouldSkipTypecheck, storeHash, tiersForPaths, typecheckHash, type Step, macOnlySkips, judgeReport, spawnStep, stepArgs } from './gate'
 
 describe('the step list', () => {
   it('has unique names, a tier and a lane on every step, and the hook-facing steps in the commit tier', () => {
@@ -274,6 +274,27 @@ describe('the vitest step and its JSON report', () => {
     // The summary seen earlier in the output, evicted from the kept tail by later lines: the exit still stands.
     expect(judgeReport(1, 'shutdown line', report({ success: true }), true)).toEqual({ exitCode: 1, tail: 'shutdown line' })
     expect(judgeReport(1, 'shutdown line', report({ success: true }), false).exitCode).toBe(0)
+  })
+
+  it('spawnStep reads the summary off whole lines: one split across two chunks still keeps the exit', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tc-gate-spawn-'))
+    try {
+      // A vitest stand-in: a green JSON report, the summary written in two chunks, an unhandled error, exit 1.
+      const script = [
+        "const out = process.argv.find((a) => a.startsWith('--outputFile=')).slice('--outputFile='.length)",
+        "require('fs').writeFileSync(out, JSON.stringify({ success: true, numTotalTests: 1, numPassedTests: 1, numFailedTests: 0, testResults: [] }))",
+        "process.stdout.write(' Test ')",
+        "setTimeout(() => process.stdout.write('Files  1 passed (1)\\n     Errors  1 error\\n', () => process.exit(1)), 80)"
+      ].join('\n')
+      // `--` ends node's own option parsing: the reporter flags the step appends reach the script.
+      const step: Step = { name: 'vitest', tier: 'commit', cmd: process.execPath, args: ['-e', script, '--'], lane: 'vitest', why: '', json: true }
+      const run = spawnStep({ repo: dir, logDir: join(dir, 'logs'), verbose: false })
+      const { exitCode, tail } = await run(step, new AbortController().signal)
+      expect(exitCode).toBe(1)
+      expect(tail).toContain('Errors  1 error')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it('a red report names its failures when the output printed nothing, and keeps the output when it did', () => {

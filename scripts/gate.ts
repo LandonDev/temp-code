@@ -494,12 +494,13 @@ export function spawnStep(opts: { repo: string; logDir: string; verbose: boolean
       let printedSummary = false
       const onData = (chunk: Buffer): void => {
         const text = chunk.toString()
-        if (jsonFile && VITEST_SUMMARY.test(text)) printedSummary = true
         appendFileSync(logFile, text)
         if (opts.verbose) for (const l of text.split('\n').filter(Boolean)) process.stdout.write(`[${step.name}] ${l}\n`)
         partial += text
         const parts = partial.split('\n')
         partial = parts.pop() ?? ''
+        // The summary is read off whole lines: a chunk boundary may fall inside it.
+        if (jsonFile && !printedSummary) printedSummary = parts.some((l) => VITEST_SUMMARY.test(l))
         lines.push(...parts)
         if (lines.length > tailLines) lines.splice(0, lines.length - tailLines)
       }
@@ -517,7 +518,8 @@ export function spawnStep(opts: { repo: string; logDir: string; verbose: boolean
       child.on('close', (code, sig) => {
         signal.removeEventListener('abort', onAbort)
         if (partial) lines.push(partial)
-        const judged = judgeReport(code ?? (sig ? 1 : null), lines.slice(-tailLines).join('\n'), readJsonReport(jsonFile), printedSummary)
+        const tailText = lines.slice(-tailLines).join('\n')
+        const judged = judgeReport(code ?? (sig ? 1 : null), tailText, readJsonReport(jsonFile), printedSummary || VITEST_SUMMARY.test(tailText))
         resolvePromise({ exitCode: judged.exitCode, tail: `${judged.tail}\n(full log: ${logFile})` })
       })
     })
