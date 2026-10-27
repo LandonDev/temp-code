@@ -3,6 +3,8 @@
  * split into sections, the task checklist, the report's frontmatter.
  */
 
+import { stripFrontmatter } from "@server/shared/projectPlan";
+
 export type Section = { heading: string | null; level: number; body: string };
 
 /** Split markdown into heading-led sections, ignoring headings in fences. */
@@ -13,7 +15,8 @@ export function splitSections(md: string): Section[] {
   const push = (): void => {
     if (cur.body.trim()) out.push(cur);
   };
-  for (const line of md.split("\n")) {
+  // The frontmatter (a project plan's status) is the file's metadata, never a section.
+  for (const line of stripFrontmatter(md).split("\n")) {
     if (/^(```|~~~)/.test(line.trim())) fence = !fence;
     const m = fence ? null : /^(#{1,3})\s+(.+)/.exec(line);
     if (m) {

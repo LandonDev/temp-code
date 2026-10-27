@@ -17,6 +17,7 @@ import {
 } from "../../lib/projectPlan";
 import type { Session } from "../../lib/session";
 import { RevisePlanDialog } from "./RevisePlanDialog";
+import { AgentMarkdown } from "../AgentMarkdown";
 
 /**
  * The project plan's live pieces (docs/PROJECT-PLAN.md): the milestone
@@ -66,7 +67,12 @@ export function MilestoneList({
               <span className="text-muted-foreground tabular-nums">{m.index}</span>
               <span className={m.done ? "text-muted-foreground" : "text-foreground"}>{m.title}</span>
             </ItemTitle>
-            {m.scope ? <ItemDescription className="line-clamp-none">{m.scope}</ItemDescription> : null}
+            {m.scope ? (
+              // Scope is markdown (`code`, links): the app's own renderer, at the description's size and ink.
+              <ItemDescription className="line-clamp-none [&_.agent-markdown]:text-xs [&_.agent-markdown]:leading-normal" data-milestone-scope>
+                <AgentMarkdown text={m.scope} size="compact" className="agent-reasoning" />
+              </ItemDescription>
+            ) : null}
             {m.dependencies ? (
               <ItemDescription className="line-clamp-none">
                 <span className="font-medium">Depends on</span> {m.dependencies}

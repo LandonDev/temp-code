@@ -71,6 +71,11 @@ function frontmatterOf(md: string): { fields: Record<string, string>; rest: stri
   return { fields, rest: md.slice(m[0].length) }
 }
 
+/** The document without its frontmatter block: what the plan view renders. */
+export function stripFrontmatter(md: string): string {
+  return frontmatterOf(md).rest
+}
+
 const MILESTONE_HEADING = /^###\s+(?:\[([ xX])\]\s+)?(?:(\d+)[.)]\s+)?(.+?)\s*$/
 
 /** `- Scope: …`, `**Scope:** …`, `Scope: …` — the first line that names the field. */

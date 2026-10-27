@@ -59,7 +59,9 @@ export function PlanView(props: ThreadViewProps) {
   const { session } = props;
   const running = session.status === "running" || session.status === "starting";
   const waiting = session.status === "waiting";
-  const doc = usePlanFile(session.planPath, running);
+  // A ticked milestone rewrites the file here: read it again at once.
+  const [revision, setRevision] = useState(0);
+  const doc = usePlanFile(session.planPath, running, undefined, revision);
   // A project plan (docs/PROJECT-PLAN.md): the same document view, with
   // the milestones live and the options card instead of Start.
   const projectPlan = session.threadType === "project-plan";
@@ -174,9 +176,9 @@ export function PlanView(props: ThreadViewProps) {
   const board = (
     <>
       <div className="@container relative flex min-h-0 flex-1">
-        {collapsed && sections.some((s) => s.heading) ? (
+        {collapsed && rendered.some(({ s }) => s.heading) ? (
           <Outline
-            sections={sections}
+            entries={rendered}
             active={activeSection}
             onJump={(i) =>
               sectionRefs.current[i]?.scrollIntoView({ behavior: "smooth" })
@@ -206,7 +208,10 @@ export function PlanView(props: ThreadViewProps) {
                   <MilestoneList
                     doc={doc}
                     projectId={session.projectId}
-                    onTicked={() => session.projectId && void loadProjectPlan(session.projectId)}
+                    onTicked={() => {
+                      setRevision((n) => n + 1);
+                      if (session.projectId) void loadProjectPlan(session.projectId);
+                    }}
                   />
                 ) : null}
               </div>
@@ -252,18 +257,20 @@ export function PlanView(props: ThreadViewProps) {
  *  beside the centred 672px document: (69rem − 42rem) / 2 holds the 16px
  *  inset, the 176px outline and a 24px gap. */
 function Outline({
-  sections,
+  entries,
   active,
   onJump,
 }: {
-  sections: Section[];
+  /** The sections the page renders, by their index in the document: a
+   *  project plan's milestones are one entry, its live list. */
+  entries: readonly { s: Section; i: number }[];
   active: number;
   onJump: (i: number) => void;
 }) {
   return (
     <nav aria-label="Outline" className="absolute top-6 bottom-4 left-4 hidden w-44 overflow-y-auto @min-[69rem]:block">
       <div className="flex flex-col">
-        {sections.map((s, i) =>
+        {entries.map(({ s, i }) =>
           s.heading === null ? null : (
             <Button
               key={i}

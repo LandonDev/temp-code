@@ -13,6 +13,8 @@ export function usePlanFile(
   path: string | null | undefined,
   running: boolean,
   cadence: { running: number; idle: number } = { running: 1500, idle: 8000 },
+  /** Bump to read the file again now (a change made here, such as a ticked milestone). */
+  revision = 0,
 ): string | null {
   const [doc, setDoc] = useState<string | null>(null);
   const shown = usePaneVisible();
@@ -32,6 +34,6 @@ export function usePlanFile(
       alive = false;
       clearInterval(t);
     };
-  }, [path, shown, running, cadence.running, cadence.idle]);
+  }, [path, shown, running, cadence.running, cadence.idle, revision]);
   return doc;
 }

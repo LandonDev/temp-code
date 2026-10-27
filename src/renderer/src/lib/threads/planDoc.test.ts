@@ -35,6 +35,12 @@ describe("planDoc", () => {
     expect(splitSections("")).toEqual([]);
   });
 
+  it("never makes a section of the frontmatter", () => {
+    const sections = splitSections("---\nstatus: complete\nupdated: 2026-10-27\n---\n# Acme\n\n## Goals\ngo\n");
+    expect(sections.map((s) => s.heading)).toEqual(["Acme", "Goals"]);
+    expect(sections.map((s) => s.body).join("")).not.toContain("status: complete");
+  });
+
   it("reads the task checklist under the tasks heading", () => {
     expect(planTasks(splitSections(PLAN))).toEqual(["First thing", "Second thing", "Third thing"]);
     expect(planTasks(splitSections("# A\n\n## Notes\n- b\n"))).toEqual([]);

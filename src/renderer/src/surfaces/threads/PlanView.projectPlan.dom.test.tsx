@@ -110,6 +110,16 @@ describe("PlanView for a project plan", () => {
     expect(document.querySelector("[data-project-plan-card]")).toBeNull();
   });
 
+  it("renders no section from the frontmatter, and the outline lists the milestones once", () => {
+    doc = `---\nstatus: complete\n---\n${PLAN}`;
+    const plan = (status: string) => <PlanView {...props(session({ status } as Partial<Session>))} />;
+    const view = render(plan("running"));
+    view.rerender(plan("idle"));
+    expect([...document.querySelectorAll("[data-md]")].map((m) => m.textContent).join("")).not.toContain("status: complete");
+    const outline = screen.getByRole("navigation", { name: "Outline" });
+    expect([...outline.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Acme", "Goals", "Milestones", "Risks"]);
+  });
+
   it("an ordinary plan's header has Start build and counts its tasks", () => {
     doc = "# Plan\n\n## Tasks\n- [ ] a\n- [ ] b\n";
     render(<PlanView {...props(session({ threadType: "planning", planPath: "/repo/.temp-code/plan-x.md" }))} />);
