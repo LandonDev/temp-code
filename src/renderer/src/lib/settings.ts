@@ -5,104 +5,90 @@ const SECTION_KEY = "monocode.settingsSection";
 
 export type StaticSettingsSectionId =
   | "general"
-  | "defaults"
   | "appearance"
   | "editor"
   | "keybindings"
+  | "remote"
+  | "defaults"
   | "providers"
   | "orchestration"
-  | "build"
   | "reviews"
+  | "build"
   | "appshots"
-  | "remote"
-  | "environments"
   | "archive";
 
 /** A fixed page, or one workspace's own page (`ws:<workspace id>`). */
 export type SettingsSectionId = StaticSettingsSectionId | `ws:${string}`;
 
+/** The nav's groups, in order; the workspaces follow them. */
+export const SETTINGS_GROUPS = [
+  { id: "app", label: "App" },
+  { id: "threads", label: "Threads" },
+] as const;
+
+export type SettingsGroupId = (typeof SETTINGS_GROUPS)[number]["id"];
+
 export const SETTINGS_SECTIONS: {
   id: StaticSettingsSectionId;
+  group: SettingsGroupId;
   label: string;
   description: string;
 }[] = [
-  {
-    id: "general",
-    label: "General",
-    description: "App-wide behavior, tool summaries, and the release you are running.",
-  },
+  { id: "general", group: "app", label: "General", description: "How the app behaves, and the release you run." },
+  { id: "appearance", group: "app", label: "Appearance", description: "Theme and the editor's type size." },
+  { id: "editor", group: "app", label: "Editor", description: "Saving, completions and the language servers." },
+  { id: "keybindings", group: "app", label: "Keybindings", description: "Every shortcut the app handles." },
+  { id: "remote", group: "app", label: "Hosts", description: "This machine and every host it is paired with." },
   {
     id: "defaults",
+    group: "threads",
     label: "Thread defaults",
-    description:
-      "What a new thread starts with. Each workspace can override these from its own page.",
+    description: "What a new thread starts with. A workspace can override it.",
   },
-  {
-    id: "appearance",
-    label: "Appearance",
-    description: "Theme, translucency, and the tint applied to the chrome.",
-  },
-  {
-    id: "editor",
-    label: "Editor",
-    description: "Saving, formatting, ghost text, and the language servers behind the editor.",
-  },
-  {
-    id: "keybindings",
-    label: "Keybindings",
-    description:
-      "Every shortcut the workspace handles, from the app menu and the key handler.",
-  },
-  {
-    id: "providers",
-    label: "Providers",
-    description:
-      "Agent CLIs TempCode can drive, and the model new sessions start with.",
-  },
+  { id: "providers", group: "threads", label: "Providers", description: "The agent CLIs this machine can run." },
   {
     id: "orchestration",
+    group: "threads",
     label: "Orchestration",
     description:
       "What threads that spawn subagents may do themselves, which models they may spawn, and where each kind of work goes.",
   },
   {
-    id: "build",
-    label: "Build",
-    description:
-      "The command the Build rail tab runs for a workspace, and the files it produces. Projects can override it in their settings.",
-  },
-  {
     id: "reviews",
+    group: "threads",
     label: "Reviews",
     description:
       "A second model reads an implementation thread's branch before it lands on the project branch. Projects can override this from their settings.",
   },
   {
+    id: "build",
+    group: "threads",
+    label: "Build",
+    description:
+      "The command the Build rail tab runs for a workspace, and the files it produces. Projects can override it in their settings.",
+  },
+  {
     id: "appshots",
+    group: "threads",
     label: "Appshots",
     description:
       "Double-tap ⌘ over another app to drop its window, image and text, into a chat.",
   },
   {
-    id: "remote",
-    label: "Remote access",
-    description:
-      "Phones, browsers and bots that may reach this server through the tunnel, and the port they come in on.",
-  },
-  {
-    id: "environments",
-    label: "Environments",
-    description:
-      "The machines this window can run threads on: this one, and every host it is paired with.",
-  },
-  {
     id: "archive",
+    group: "threads",
     label: "Archive",
-    description: "Archived projects and threads from every project. Restore one to keep working in it.",
+    description:
+      "Archived projects and threads from every project. Restore one to keep working in it.",
   },
 ];
 
 export const SETTINGS_SECTION_DEFAULT: SettingsSectionId = "general";
+
+/** The page a stored id names now: Environments became part of Hosts. */
+export function normalizeSettingsSection(value: unknown): unknown {
+  return value === "environments" ? "remote" : value;
+}
 
 export function isSettingsSectionId(
   value: unknown,
@@ -141,7 +127,7 @@ export function settingsSectionDescription(id: SettingsSectionId): string {
 
 export function loadSettingsSection(): SettingsSectionId {
   try {
-    const raw = localStorage.getItem(SECTION_KEY);
+    const raw = normalizeSettingsSection(localStorage.getItem(SECTION_KEY));
     return isSettingsSectionId(raw) ? raw : SETTINGS_SECTION_DEFAULT;
   } catch {
     return SETTINGS_SECTION_DEFAULT;

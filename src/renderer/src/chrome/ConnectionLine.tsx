@@ -43,7 +43,7 @@ export function ConnectionLine({ environmentId }: { environmentId: string }) {
       />
       <span className="min-w-0 flex-1 truncate">{text}</span>
       {unauthorized ? (
-        <button type="button" {...settingsChunk.intent} onClick={() => shell.openSettings("environments")} className="pressable shrink-0 rounded px-1.5 py-0.5 hover:bg-content/10 hover:text-content">
+        <button type="button" {...settingsChunk.intent} onClick={() => shell.openSettings("remote")} className="pressable shrink-0 rounded px-1.5 py-0.5 hover:bg-content/10 hover:text-content">
           Pair again
         </button>
       ) : degraded.kind !== "connecting" ? (

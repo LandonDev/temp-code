@@ -113,7 +113,7 @@ export function EnvironmentSwitcher({ variant = "header" }: { variant?: "header"
               {...settingsChunk.intent}
               onClick={() => {
                 setOpen(false);
-                shell.openSettings("environments");
+                shell.openSettings("remote");
               }}
               className="flex h-8 w-full items-center rounded-md px-2 text-left text-[12px] text-content/60 hover:bg-content/10 hover:text-content"
             >

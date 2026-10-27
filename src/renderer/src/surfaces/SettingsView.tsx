@@ -12,6 +12,8 @@ import { ReviewsPage } from "./ReviewSettings";
 import { RemoteSettings } from "./RemoteSettings";
 import { EnvironmentsSettings } from "./EnvironmentsSettings";
 import { shell, useShell } from "../stores/shell";
+import { isWebMode } from "../lib/nativeWeb";
+import { Page } from "../components/page";
 import { GeneralPage } from "./settings/General";
 import { ThreadDefaultsPage } from "./settings/ThreadDefaults";
 import { AppearancePage, useAppearanceSettings } from "./settings/Appearance";
@@ -74,13 +76,7 @@ export function SettingsView({
         className="flex h-10 shrink-0 select-none items-center border-b border-content/10"
         data-tauri-drag-region="deep"
       >
-        <div className="flex min-w-0 flex-1 items-center gap-2 px-3 text-[13px]">
-          <span className="shrink-0 text-content/40">Settings</span>
-          <span aria-hidden className="shrink-0 text-content/20">
-            /
-          </span>
-          <span className="min-w-0 truncate text-content">{title}</span>
-        </div>
+        <div className="flex-1" />
         {section === "appearance" ? (
           <button
             type="button"
@@ -99,66 +95,93 @@ export function SettingsView({
         ref={lockOverscroll}
         className="min-h-0 flex-1 overflow-y-auto overscroll-none"
       >
-        <div className="mx-auto w-full max-w-5xl px-8 py-8">
-          <PageHeader
-            title={title}
-            description={
-              workspaceId
-                ? workspace
-                  ? prettyCwd(workspace.path)
-                  : "This workspace was removed."
-                : settingsSectionDescription(section)
-            }
-          />
+        <Page
+          title={title}
+          description={
+            workspaceId
+              ? workspace
+                ? prettyCwd(workspace.path)
+                : "This workspace was removed."
+              : settingsSectionDescription(section)
+          }
+        >
+          {/* A page not yet built on PageSection renders inside one block, so the
+              frame's 24px section gap never lands between its rows. */}
           {section === "general" ? (
-            <GeneralPage onOpenWhatsNew={onOpenWhatsNew} />
+            <div>
+              <GeneralPage onOpenWhatsNew={onOpenWhatsNew} />
+            </div>
           ) : null}
-          {section === "defaults" ? <ThreadDefaultsPage /> : null}
-          {workspace ? <WorkspacePage key={workspace.id} workspaceId={workspace.id} /> : null}
+          {section === "defaults" ? (
+            <div>
+              <ThreadDefaultsPage />
+            </div>
+          ) : null}
+          {workspace ? (
+            <div>
+              <WorkspacePage key={workspace.id} workspaceId={workspace.id} />
+            </div>
+          ) : null}
           {section === "appearance" ? (
-            <AppearancePage appearance={appearance} />
+            <div>
+              <AppearancePage appearance={appearance} />
+            </div>
           ) : null}
-          {section === "editor" ? <EditorPage /> : null}
-          {section === "keybindings" ? <KeybindingsPage /> : null}
-          {section === "providers" ? <ProvidersPage /> : null}
-          {section === "orchestration" ? <OrchestrationPage /> : null}
-          {section === "build" ? <BuildPage /> : null}
-          {section === "reviews" ? <ReviewsPage /> : null}
-          {section === "appshots" ? <AppshotsPage /> : null}
-          {section === "remote" ? <RemoteSettings onOpenSession={onOpenSession} /> : null}
-          {section === "environments" ? <EnvironmentsSettings /> : null}
+          {section === "editor" ? (
+            <div>
+              <EditorPage />
+            </div>
+          ) : null}
+          {section === "keybindings" ? (
+            <div>
+              <KeybindingsPage />
+            </div>
+          ) : null}
+          {section === "providers" ? (
+            <div>
+              <ProvidersPage />
+            </div>
+          ) : null}
+          {section === "orchestration" ? (
+            <div>
+              <OrchestrationPage />
+            </div>
+          ) : null}
+          {section === "build" ? (
+            <div>
+              <BuildPage />
+            </div>
+          ) : null}
+          {section === "reviews" ? (
+            <div>
+              <ReviewsPage />
+            </div>
+          ) : null}
+          {section === "appshots" ? (
+            <div>
+              <AppshotsPage />
+            </div>
+          ) : null}
+          {section === "remote" ? (
+            <div>
+              <RemoteSettings onOpenSession={onOpenSession} />
+              {/* Until A16 merges the two, Hosts shows both; /ui sees one environment and cannot add another. */}
+              {isWebMode() ? null : <EnvironmentsSettings />}
+            </div>
+          ) : null}
           {section === "archive" ? (
-            <ArchivePage
-              onOpenSession={onOpenSession}
-              onArchiveSession={onArchiveSession}
-              onDeleteSession={onDeleteSession}
-              onRestoreProject={onRestoreProject}
-              onDeleteProject={onDeleteProject}
-            />
+            <div>
+              <ArchivePage
+                onOpenSession={onOpenSession}
+                onArchiveSession={onArchiveSession}
+                onDeleteSession={onDeleteSession}
+                onRestoreProject={onRestoreProject}
+                onDeleteProject={onDeleteProject}
+              />
+            </div>
           ) : null}
-        </div>
+        </Page>
       </div>
     </div>
-  );
-}
-
-function PageHeader({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <header className="pb-4">
-      <h1 className="text-2xl font-semibold leading-tight tracking-[-0.02em] text-content">
-        {title}
-      </h1>
-      {description ? (
-        <p className="mt-1 max-w-xl text-[13px] text-content/40">
-          {description}
-        </p>
-      ) : null}
-    </header>
   );
 }

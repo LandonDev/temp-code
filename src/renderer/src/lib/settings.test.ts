@@ -2,6 +2,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   COMPOSER_RUNNER_DEFAULT,
   GRID_ARCADE_ENABLED_DEFAULT,
+  isSettingsSectionId,
+  loadSettingsSection,
+  SETTINGS_GROUPS,
+  SETTINGS_SECTIONS,
+  settingsSectionLabel,
   LIVE_AGENTS_ENABLED_DEFAULT,
   loadComposerRunner,
   loadGridArcadeEnabled,
@@ -120,5 +125,30 @@ describe("grid arcade enabled setting", () => {
     expect(loadGridArcadeEnabled()).toBe(false);
     saveGridArcadeEnabled(true);
     expect(loadGridArcadeEnabled()).toBe(true);
+  });
+});
+
+describe("settings sections", () => {
+  it("puts every section in exactly one known group", () => {
+    const groups = new Set(SETTINGS_GROUPS.map((group) => group.id));
+    for (const section of SETTINGS_SECTIONS) expect(groups.has(section.group)).toBe(true);
+    const ids = SETTINGS_SECTIONS.map((section) => section.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("lists each group's pages together, in the groups' order", () => {
+    const order = SETTINGS_SECTIONS.map((section) => SETTINGS_GROUPS.findIndex((group) => group.id === section.group));
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
+  it("names the remote page Hosts", () => {
+    expect(settingsSectionLabel("remote")).toBe("Hosts");
+  });
+
+  it("loads a saved environments page as Hosts", () => {
+    mockLocalStorage();
+    localStorage.setItem("monocode.settingsSection", "environments");
+    expect(loadSettingsSection()).toBe("remote");
+    expect(isSettingsSectionId("environments")).toBe(false);
   });
 });

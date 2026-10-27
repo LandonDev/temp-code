@@ -1,6 +1,5 @@
 import {
   Globe,
-  Laptop,
   Archive,
   ArrowLeft,
   Bot,
@@ -18,17 +17,14 @@ import {
 } from "./icons";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import {
+  SETTINGS_GROUPS,
   SETTINGS_SECTIONS,
   workspaceSettingsSection,
   type SettingsSectionId,
   type StaticSettingsSectionId,
 } from "../lib/settings";
 import { useWorkspaces } from "../lib/tcserver/workspaces";
-import { isWebMode } from "../lib/nativeWeb";
 import { registry, useEnvironments } from "../lib/connection";
-
-/** The page at /ui sees one environment and cannot add another; the section would be dead there. */
-const sections = () => SETTINGS_SECTIONS.filter((item) => item.id !== "environments" || !isWebMode());
 
 const SECTION_ICONS: Record<StaticSettingsSectionId, IconComponent> = {
   general: SlidersHorizontal,
@@ -42,7 +38,6 @@ const SECTION_ICONS: Record<StaticSettingsSectionId, IconComponent> = {
   reviews: GitCompare,
   appshots: Camera,
   remote: Globe,
-  environments: Laptop,
   archive: Archive,
 };
 
@@ -70,26 +65,30 @@ export function SettingsNav({ section, onSelect, onClose }: Props) {
         aria-label="Settings"
         className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto overscroll-none px-2 pb-2"
       >
-        {sections().map((item) => (
-          <NavRow
-            key={item.id}
-            label={item.label}
-            icon={SECTION_ICONS[item.id]}
-            active={item.id === section}
-            onClick={() => onSelect(item.id)}
-          />
-        ))}
-        {workspaces.length ? (
-          <div className="px-2 pb-1 pt-4 text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">
-            Workspaces
+        {SETTINGS_GROUPS.map((group, index) => (
+          <div key={group.id} role="group" aria-labelledby={`settings-group-${group.id}`} className="flex flex-col gap-px">
+            <GroupHeading id={`settings-group-${group.id}`} first={index === 0}>
+              {group.label}
+            </GroupHeading>
+            {SETTINGS_SECTIONS.filter((item) => item.group === group.id).map((item) => (
+              <NavRow
+                key={item.id}
+                label={item.label}
+                icon={SECTION_ICONS[item.id]}
+                active={item.id === section}
+                onClick={() => onSelect(item.id)}
+              />
+            ))}
           </div>
-        ) : null}
+        ))}
+        {workspaces.length ? <GroupHeading>Workspaces</GroupHeading> : null}
         {workspaces.map((workspace) => {
           const id = workspaceSettingsSection(workspace.id);
           return (
             <NavRow
               key={id}
-              label={hostOf(workspace.environmentId) ? `${workspace.name} · ${hostOf(workspace.environmentId)}` : workspace.name}
+              label={workspace.name}
+              detail={hostOf(workspace.environmentId)}
               icon={Folder}
               active={id === section}
               onClick={() => onSelect(id)}
@@ -104,13 +103,25 @@ export function SettingsNav({ section, onSelect, onClose }: Props) {
   );
 }
 
+/** A group's name over its pages: 12px medium muted, never uppercase. */
+function GroupHeading({ id, first = false, children }: { id?: string; first?: boolean; children: string }) {
+  return (
+    <div id={id} className={`px-2 pb-1 text-xs font-medium text-muted-foreground ${first ? "pt-1" : "pt-4"}`}>
+      {children}
+    </div>
+  );
+}
+
 function NavRow({
   label,
+  detail,
   icon: Icon,
   active = false,
   onClick,
 }: {
   label: string;
+  /** A muted word after the label: the host a workspace lives on. */
+  detail?: string | null;
   icon: IconComponent;
   active?: boolean;
   onClick: () => void;
@@ -129,6 +140,7 @@ function NavRow({
       <Icon className="size-4 shrink-0 opacity-70" strokeWidth={1.75} />
       <span className="min-w-0 flex-1 truncate text-sm font-medium leading-tight">
         {label}
+        {detail ? <span className="ml-2 font-normal text-muted-foreground">{detail}</span> : null}
       </span>
     </button>
   );
