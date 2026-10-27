@@ -277,6 +277,36 @@ untouched; asking for a terminal (⌘J, the thread menu's Terminal, New
 Terminal, the pane's Terminal button) puts the pane away. Dev server
 consoles are never terminal tabs.
 
+### File tabs: one header row over the editor
+
+A file opens as a tab in a file pane (surfaces/FilePane.tsx), the editor
+in CodeMirror (surfaces/FileEditor.tsx). A changed file opens as a review
+tab: the same editor in diff mode, editable, with stage and revert on each
+hunk. The tab names the file and shows its dirty mark (chrome/SurfaceTabs.tsx);
+nothing under it repeats them.
+
+- **The note**, when the app shows a file instead of handing it to the
+  editor ("Mac copy differs: on branch X here", "No Mac copy", a launcher
+  that failed), is one `Alert` above everything (surfaces/FileNoteBar.tsx):
+  info for a read-only preview, error for a launcher that fell back or an
+  action that failed, "Read-only" after the text, the one action at the end.
+- **The header** (surfaces/FileHeader.tsx) is one 32px row on every file
+  tab: the folder in mono, cut from the left; on a review tab `+n −n`;
+  then "Saving…" or "Save failed" while that is so, Preview and Source on a
+  Markdown file, and on a review tab the change stepper ("2/5" between
+  Previous and Next). There is no footer and nothing floats over the text.
+- **The body**: the editor, or for Markdown the preview and the source
+  swapped in place. Loading is a `Skeleton` of code lines under the
+  header's slot; a file that will not open is one `Empty` with Retry.
+- **The diff** tints added and removed lines success and destructive at
+  10% beside the gutter mark, never with a left bar (editorGit.ts
+  `gitThemeSpec`); the hunk bar is a floating layer.
+- **⌘F** is surfaces/FindBar.tsx on Kobra components, rendered into
+  CodeMirror's panel at the top right: the field with its count inside, the
+  case, word and regex toggles, Previous, Next and Close, and the replace
+  row under it while replace shows. It opens from the keyboard, so it has no
+  motion.
+
 ## Thread views
 
 ### Chat
