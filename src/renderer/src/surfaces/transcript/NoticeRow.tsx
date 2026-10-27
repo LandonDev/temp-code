@@ -69,11 +69,7 @@ export function ErrorRowView({ block }: { block: Block }) {
     block,
   );
   if (!sessionId) return null;
-  return (
-    <div className="py-1">
-      <ErrorChip sessionId={sessionId} row={row} busy={session?.busy} />
-    </div>
-  );
+  return <ErrorChip sessionId={sessionId} row={row} busy={session?.busy} />;
 }
 
 /** A batch's line on the master or a child: a merge it made, or its end. */

@@ -1,15 +1,16 @@
 import { useEffect, useState } from "react";
 import { continueSession } from "../lib/tcserver/commands";
 import type { ErrorRow } from "../lib/turnOutcome";
-import { AlertCircle, StopCircle } from "../chrome/icons";
-import { CHIP } from "./chip";
+import { Button } from "../components/ui/button";
+import { StatusMark } from "../components/ui/status";
+import { NoticeLine } from "./transcript/NoticeLine";
 import { FailureCard } from "./FailureCard";
 
 /**
- * The row a turn ends on when it did not finish: a quiet gray Stopped for
+ * The row a turn ends on when it did not finish: a quiet Stopped line for
  * the user's own Stop; the failure card (FailureCard.tsx) when the host
  * classified the error, naming what happened and the account with the
- * actions that fit; and red Failed with the harness's words for a row
+ * actions that fit; and a Failed line with the harness's words for a row
  * written before the verdict existed. Continue shows on that last one
  * only, when the server says the tree can pick the work back up; it reads
  * "Continuing…" until the thread turns busy and the fold clears the row.
@@ -33,44 +34,32 @@ export function ErrorChip({
   }
 
   if (row.stopped) {
-    return (
-      <div
-        role="status"
-        className="flex min-h-[34px] items-center gap-2 py-2 font-sans text-[12px] text-content/40"
-      >
-        <StopCircle className="size-3.5 shrink-0" strokeWidth={1.75} />
-        <span>Stopped</span>
-      </div>
-    );
+    return <NoticeLine role="status" glyph={<StatusMark state="stopped" word={false} />} lead="Stopped" />;
   }
 
   return (
-    <div
+    <NoticeLine
       role="alert"
-      className="flex min-h-[34px] min-w-0 items-start gap-2 py-2 font-sans text-[12px] text-danger"
+      data-state="failed"
+      glyph={<StatusMark state="failed" word={false} />}
+      lead="Failed"
+      tone="strong"
+      details={[row.message]}
     >
-      <AlertCircle className="mt-0.5 size-3.5 shrink-0" strokeWidth={1.75} />
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className="min-w-0 break-words">
-          <span className="font-medium">Failed</span>
-          {row.message ? <span className="text-danger"> · {row.message}</span> : null}
-        </span>
-        {row.showContinue ? (
-          <span>
-            <button
-              type="button"
-              disabled={continuing}
-              className={CHIP}
-              onClick={() => {
-                setContinuing(true);
-                void continueSession(sessionId).catch(() => setContinuing(false));
-              }}
-            >
-              {continuing ? "Continuing…" : "Continue"}
-            </button>
-          </span>
-        ) : null}
-      </div>
-    </div>
+      {row.showContinue ? (
+        <Button
+          size="sm"
+          variant="secondary"
+          className="mt-1 mb-2"
+          disabled={continuing}
+          onClick={() => {
+            setContinuing(true);
+            void continueSession(sessionId).catch(() => setContinuing(false));
+          }}
+        >
+          {continuing ? "Continuing…" : "Continue"}
+        </Button>
+      ) : null}
+    </NoticeLine>
   );
 }

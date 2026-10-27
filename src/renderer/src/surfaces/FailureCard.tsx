@@ -1,12 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { motion, useReducedMotion } from "motion/react";
 import type { Failure } from "@server/shared/events";
 import { SERVICE_OF, isRoutedProvider } from "@server/shared/accounts";
-import { AlertCircle } from "../chrome/icons";
 import { AccountsPopover } from "../chrome/AccountsPopover";
 import { LOCAL_ENVIRONMENT_ID } from "../lib/connection/registry";
 import { scopeOf } from "../lib/accountScope";
-import { ENTER } from "../lib/ease";
 import {
   failureActions,
   failureNote,
@@ -20,7 +17,9 @@ import { useSessionMeta } from "../lib/tcserver/store";
 import { useProjects, useWorkspaces } from "../lib/tcserver/workspaces";
 import { useSlowClock } from "../lib/turnClock";
 import { useAccounts } from "../stores/accounts";
-import { CHIP } from "./chip";
+import { Button } from "../components/ui/button";
+import { Spinner } from "../components/ui/spinner";
+import { StatusMark } from "../components/ui/status";
 
 /**
  * The row a failed turn ends on, with the host's verdict: one line naming
@@ -56,7 +55,6 @@ export function FailureCardView({
   /** The Pick another account button, for the popover to anchor on. */
   pickAccountRef?: React.RefObject<HTMLButtonElement | null>;
 }) {
-  const reduce = useReducedMotion() === true;
   const pendingLabel = (id: FailureActionId): string => {
     switch (id) {
       case "retry":
@@ -70,44 +68,46 @@ export function FailureCardView({
     }
   };
   return (
-    <motion.div
+    <div
       role="alert"
       data-failure-kind={failure.kind}
-      initial={reduce ? false : ENTER.initial}
-      animate={ENTER.animate}
-      transition={ENTER.transition}
-      className="flex min-w-0 items-start gap-2 py-2 font-sans text-[12px]"
+      className="my-2 min-w-0 rounded-lg border border-border bg-card p-3 font-sans"
     >
-      <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-danger" strokeWidth={1.75} />
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className="min-w-0 break-words font-medium leading-4 text-content">{failure.summary}</span>
-        <span className="min-w-0 break-words leading-4 text-content/60">{failure.cause}</span>
-        {note ? <span className="min-w-0 break-words leading-4 text-content/60">{note}</span> : null}
-        <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5">
-          {actions.map((action) => {
+      <div className="flex min-w-0 items-start gap-2">
+        <span className="flex h-5 shrink-0 items-center">
+          <StatusMark state="failed" word={false} />
+        </span>
+        <span className="min-w-0 break-words text-[13px] font-medium leading-5 text-foreground">{failure.summary}</span>
+      </div>
+      <div className="min-w-0 pl-5.5">
+        <p className="mt-0.5 min-w-0 break-words text-[13px] leading-5 text-muted-foreground">{failure.cause}</p>
+        {note ? <p className="mt-1 min-w-0 break-words text-xs text-muted-foreground">{note}</p> : null}
+        <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2">
+          {actions.map((action, i) => {
             const pending = state.pending === action.id;
             return (
-              <button
+              <Button
                 key={action.id}
                 ref={action.id === "pick-account" ? pickAccountRef : undefined}
-                type="button"
+                size="sm"
+                variant={i === 0 ? "default" : "secondary"}
                 data-failure-action={action.id}
                 disabled={busy || state.pending !== null}
-                className={CHIP}
                 onClick={() => onAction(action.id)}
               >
+                {pending ? <Spinner className="size-3.5" /> : null}
                 {pending ? pendingLabel(action.id) || action.label : action.label}
-              </button>
+              </Button>
             );
           })}
-          {state.outcome ? (
-            <span className="min-w-0 truncate text-[11px] text-content/50" aria-live="polite">
-              {state.outcome}
-            </span>
-          ) : null}
-        </span>
+        </div>
+        {state.outcome ? (
+          <p className="mt-2 min-w-0 break-words text-xs text-muted-foreground" aria-live="polite">
+            {state.outcome}
+          </p>
+        ) : null}
       </div>
-    </motion.div>
+    </div>
   );
 }
 

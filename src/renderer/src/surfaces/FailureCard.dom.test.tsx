@@ -14,6 +14,7 @@ vi.mock("../lib/tcserver/commands", () => ({
 }));
 
 import { FailureCard, FailureCardView, canSignInHere } from "./FailureCard";
+import { ErrorChip } from "./ErrorChip";
 
 const failure = (kind: FailureKind, over: Partial<Failure> = {}): Failure => ({
   kind,
@@ -64,6 +65,10 @@ describe("FailureCardView per kind", () => {
         expect(labels.length).toBeLessThanOrEqual(3);
         expect(labels.at(-1)).toBe("Retry");
         expect(labels).toEqual(failureActions(kind, ctx).map((a) => a.label));
+        for (const b of root.querySelectorAll("button[data-failure-action]")) {
+          expect(b.getAttribute("data-slot")).toBe("button");
+        }
+        expect(root.querySelector("button[data-failure-action]")?.getAttribute("data-variant")).toBe("default");
         if (kind === "oauth_expired" && !signInHere) expect(text).toContain(SIGN_IN_ELSEWHERE_NOTE);
         else expect(text).not.toContain(SIGN_IN_ELSEWHERE_NOTE);
         fireEvent.click(root.querySelector("button[data-failure-action=retry]")!);
@@ -176,6 +181,33 @@ describe("FailureCard wired", () => {
     fireEvent.click(probe.container.querySelector("button[data-failure-action=pick-model]")!);
     expect(heard).toHaveBeenCalledTimes(1);
     window.removeEventListener(OPEN_MODEL_PICKER, heard);
+    probe.unmount();
+  });
+});
+
+describe("ErrorChip", () => {
+  it("a stop is one Stopped line in the stopped state", () => {
+    const probe = mountProbe(<ErrorChip sessionId="s1" row={{ stopped: true, message: "", showContinue: false, failure: null }} />);
+    expect(probe.container.textContent).toBe("Stopped");
+    expect(probe.container.querySelector('[data-state="stopped"]')).not.toBeNull();
+    expect(probe.container.querySelector("button")).toBeNull();
+    probe.unmount();
+  });
+
+  it("a legacy failure is a Failed line with its words and Continue under it", async () => {
+    continueSession.mockReset();
+    continueSession.mockReturnValue(new Promise(() => {}));
+    const probe = mountProbe(<ErrorChip sessionId="s1" row={{ stopped: false, message: "socket hang up", showContinue: true, failure: null }} />);
+    expect(probe.container.textContent).toContain("Failed");
+    expect(probe.container.textContent).toContain("socket hang up");
+    expect(probe.container.textContent).not.toContain("·");
+    const button = probe.container.querySelector("button")!;
+    expect(button.getAttribute("data-variant")).toBe("secondary");
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(continueSession).toHaveBeenCalledWith("s1");
+    expect(probe.container.querySelector("button")?.textContent).toBe("Continuing…");
     probe.unmount();
   });
 });
