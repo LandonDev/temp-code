@@ -1,25 +1,23 @@
-import { createPortal } from "react-dom";
-import { useEffect, useRef, useState, type JSX } from "react";
+import { useEffect, useState, type JSX } from "react";
 import type { SessionMovePreview } from "@server/shared/contract-session-move";
 import { registry, useEnvironments, useEnvironmentStatuses } from "../lib/connection";
-import { LAYER } from "../lib/layers";
 import { copiesOf, ensureLinkedArgs, ensureLinkedOn, rememberLinkHost } from "../lib/projectHostChoice";
 import { sessionStore, useQueue, useSession, useSessionMeta } from "../lib/tcserver/store";
 import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import {
   dismissMoveNotice,
-  moveNoticeLines,
+  moveNoticeException,
   movePreviewLine,
   moveTargets,
   moveThread,
   previewMove,
   useMoveNotices,
   useMoving,
-  type MoveNotice,
 } from "../lib/threadMove";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { retargetDraft } from "./DraftHostPicker";
+import { useToastSync } from "./toastSync";
 import type { ExplorerMenuItem } from "./ExplorerMenu";
 
 /**
@@ -162,47 +160,22 @@ async function retargetDraftTo(
   rememberLinkHost(project.linkId, to);
 }
 
-const NOTICE_MS = 12_000;
+const NOTICE_MS = 8_000;
 
-/** The result of each move, top right; a success fades on its own, a failure waits to be read. */
-export function MoveToasts(): JSX.Element | null {
-  const notices = useMoveNotices();
-  if (notices.length === 0) return null;
-  return createPortal(
-    <div aria-live="polite" style={{ zIndex: LAYER.toast }} className="pointer-events-none fixed bottom-3 right-3 flex w-[min(380px,calc(100vw-24px))] flex-col gap-2">
-      {notices.map((n) => (
-        <MoveToast key={n.key} notice={n} />
-      ))}
-    </div>,
-    document.body,
+/** One sonner toast per finished move: "Moved "<title>" to box", with a
+ *  second line only when something stayed behind or the move failed, and
+ *  then it waits to be read; otherwise it leaves on its own. */
+export function MoveToasts(): null {
+  useToastSync(
+    useMoveNotices(),
+    (n) => `move:${n.key}`,
+    (toast, n, id) => {
+      const done = () => dismissMoveNotice(n.key);
+      const description = n.error ? n.error.split("\n")[0] : moveNoticeException(n);
+      const title = n.error ? `Couldn't move "${n.title}" to ${n.toName}` : `Moved "${n.title}" to ${n.toName}`;
+      const show = n.error ? toast.error : toast;
+      show(title, { id, description: description ?? undefined, duration: description ? Infinity : NOTICE_MS, onDismiss: done, onAutoClose: done });
+    },
   );
-}
-
-function MoveToast({ notice }: { notice: MoveNotice }): JSX.Element {
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (notice.error) return;
-    timer.current = setTimeout(() => dismissMoveNotice(notice.key), NOTICE_MS);
-    return () => {
-      if (timer.current) clearTimeout(timer.current);
-    };
-  }, [notice.key, notice.error]);
-  const lines = moveNoticeLines(notice);
-  return (
-    <article role="status" data-move-notice={notice.error ? "error" : "ok"} className="pointer-events-auto overflow-hidden rounded-xl px-3.5 py-3 shadow-xl glass-surface floating-surface">
-      <div className="flex items-start gap-2">
-        <span className={`min-w-0 flex-1 text-[13px] font-semibold leading-snug ${notice.error ? "text-danger" : "text-content"}`}>
-          {notice.error ? `Could not move "${notice.title}" to ${notice.toName}` : `Moved "${notice.title}" to ${notice.toName}`}
-        </span>
-        <button type="button" className="shrink-0 text-[11px] text-content/40 hover:text-content" onClick={() => dismissMoveNotice(notice.key)}>
-          Dismiss
-        </button>
-      </div>
-      {lines.map((line) => (
-        <p key={line} className="mt-1.5 text-[12px] leading-relaxed text-content/70">
-          {line}
-        </p>
-      ))}
-    </article>
-  );
+  return null;
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Environment } from "./connection/types";
 import type { SessionMoveResult } from "@server/shared/contract-session-move";
-import { moveNoticeLines, movePreviewLine, moveTargets, threadBlocker, type MovableThread } from "./threadMove";
+import { moveNoticeException, movePreviewLine, moveTargets, threadBlocker, type MovableThread } from "./threadMove";
 
 const env = (id: string, name: string): Environment => ({ id, name, routes: [], credentialRef: null });
 const ENVS = [env("local", "This Mac"), env("env_box", "box"), env("env_b2", "box two")];
@@ -89,59 +89,23 @@ const landed = (over: Partial<NonNullable<SessionMoveResult["branch"]>> = {}): N
   ...over,
 });
 
-describe("moveNoticeLines: the branch", () => {
-  it("names where the branch landed and how the commits crossed", () => {
-    expect(moveNoticeLines({ result: moved({ branch: landed() }), fromName: "This Mac", toName: "box", error: null })).toEqual(["Branch ios/home in a worktree on box at /srv/work/shop/.claude/worktrees/ios-home, through origin."]);
-    const bundle = landed({ transport: "bundle", pushError: "the repo has no origin", landing: { ...landed().landing, mode: "checkout", cwd: "/srv/work/shop", created: false } });
-    expect(moveNoticeLines({ result: moved({ branch: bundle }), fromName: "This Mac", toName: "box", error: null })).toEqual(["Branch ios/home checked out in the project on box, over the link (the repo has no origin)."]);
-    const detached = landed({ branch: null, landing: { ...landed().landing, branch: null, mode: "detached", note: "ios/home here has commits of its own, so the thread runs on a detached checkout at 0123456789" } });
-    expect(moveNoticeLines({ result: moved({ branch: detached }), fromName: "This Mac", toName: "box", error: null })).toEqual([
-      "commit 0123456789 in a detached worktree on box at /srv/work/shop/.claude/worktrees/ios-home, through origin.",
-      "Ios/home here has commits of its own, so the thread runs on a detached checkout at 0123456789.",
-    ]);
+describe("moveNoticeException", () => {
+  const n = (result: SessionMoveResult) => moveNoticeException({ result, fromName: "This Mac" });
+
+  it("says nothing when the move did what was asked", () => {
+    expect(n(moved({ branch: landed() }))).toBeNull();
+    expect(n(moved({ dirty: ["a.ts"], branch: landed({ dirty: ["a.ts"], landing: { ...landed().landing, patch: "applied" } }) }))).toBeNull();
+    expect(n(moved({ checkpointsStayed: true, transcript: "missing" }))).toBeNull();
+    expect(moveNoticeException({ result: null, fromName: "This Mac" })).toBeNull();
   });
 
-  it("says whether the uncommitted changes applied, were kept as a patch, or stayed", () => {
-    const applied = landed({ dirty: ["a.ts", "b.ts"], landing: { ...landed().landing, patch: "applied" } });
-    expect(moveNoticeLines({ result: moved({ dirty: ["a.ts", "b.ts"], branch: applied }), fromName: "This Mac", toName: "box", error: null })[1]).toBe("2 uncommitted files carried and applied.");
-    const kept = landed({ dirty: ["a.ts"], landing: { ...landed().landing, patch: "kept", patchPath: "/srv/work/shop/.claude/worktrees/ios-home/.temp-code/moved-changes.patch", note: "the uncommitted changes did not apply (x); the patch is at …" } });
-    expect(moveNoticeLines({ result: moved({ dirty: ["a.ts"], branch: kept }), fromName: "This Mac", toName: "box", error: null })).toEqual([
-      "Branch ios/home in a worktree on box at /srv/work/shop/.claude/worktrees/ios-home, through origin.",
-      "1 uncommitted file carried, but the patch did not apply; it is at /srv/work/shop/.claude/worktrees/ios-home/.temp-code/moved-changes.patch.",
-    ]);
-    const skipped = landed({ dirty: ["big.bin"], patchSkipped: "the uncommitted changes are 70 MiB, over the 64 MiB a move carries" });
-    expect(moveNoticeLines({ result: moved({ dirty: ["big.bin"], branch: skipped }), fromName: "This Mac", toName: "box", error: null })[1]).toBe("Uncommitted changes stayed on This Mac: the uncommitted changes are 70 MiB, over the 64 MiB a move carries.");
+  it("names a patch that did not apply, and where it is", () => {
+    const kept = landed({ dirty: ["a.ts"], landing: { ...landed().landing, patch: "kept", patchPath: "/srv/work/shop/.temp-code/moved-changes.patch" } });
+    expect(n(moved({ dirty: ["a.ts"], branch: kept }))).toBe("The patch didn't apply; it's at /srv/work/shop/.temp-code/moved-changes.patch");
   });
 
-  it("a folder that is not a checkout: the dirty list stayed, as before", () => {
-    expect(moveNoticeLines({ result: moved({ dirty: ["a.ts"] }), fromName: "This Mac", toName: "box", error: null })).toEqual(["Uncommitted changes stayed on This Mac: a.ts. The folder is not a git checkout, so nothing carried them."]);
-  });
-});
-
-describe("moveNoticeLines", () => {
-  it("warns about the dirty tree, the undo history and a missing transcript", () => {
-    const lines = moveNoticeLines({
-      fromName: "This Mac",
-      toName: "box",
-      error: null,
-      result: {
-        sessionId: "t",
-        sessionIds: ["t"],
-        from: "a",
-        to: "b",
-        cwd: "/srv/agents/work/x",
-        events: 10,
-        files: 2,
-        transcript: "missing",
-        dirty: ["a.ts", "b.ts", "c.ts", "d.ts", "e.ts", "f.ts"],
-        dirtyMore: 4,
-        checkpointsStayed: true,
-      },
-    });
-    expect(lines).toEqual([
-      "Uncommitted changes stayed on This Mac: a.ts, b.ts, c.ts, d.ts, e.ts and 5 more. The folder is not a git checkout, so nothing carried them.",
-      "Undo history stayed on This Mac.",
-      "The harness transcript was not on This Mac; the next message replays the dialogue as context.",
-    ]);
+  it("says the changes stayed when the patch was skipped or the folder is no checkout", () => {
+    expect(n(moved({ dirty: ["big.bin"], branch: landed({ dirty: ["big.bin"], patchSkipped: "over 64 MiB" }) }))).toBe("Uncommitted changes stayed on This Mac");
+    expect(n(moved({ dirty: ["a.ts"] }))).toBe("Uncommitted changes stayed on This Mac");
   });
 });

@@ -1034,7 +1034,12 @@ box thread. The item is disabled with its reason while the thread (or any
 subagent) is working, paused, waiting on an approval or has queued messages,
 while either link is down, or when the saved key is not admin. Rows in the
 sidebar carry a small host badge once the window talks to two or more hosts.
-While a move runs the chip says `Moving to box…`; the result is a toast.
+While a move runs the chip says `Moving to box…`; the result is one sonner
+toast, `Moved "<title>" to box` (or `Couldn't move "<title>" to box` with the
+error's first line under it), that leaves after 8 s. When something did not
+come along it says so in a second line and waits to be read: `The patch
+didn't apply; it's at <path>`, or `Uncommitted changes stayed on This Mac`
+(`moveNoticeException` in lib/threadMove.ts).
 
 Only the Mac starts a move, because only the Mac dials (the peer link of
 `remote/peers.ts`). `session.move {sessionId, to, from?}` is local-only on the
@@ -1067,8 +1072,7 @@ files in 2 MiB chunks; every frame carries the running digest of the bundle
 (a hash chain over each part's bytes), so a corrupted part is refused on
 arrival and the commit compares one value.
 
-What does not cross: checkpoints (baselines of the source's tree; the toast
-says "Undo history stayed on This Mac"). Event payloads keep the paths they
+What does not cross: checkpoints (baselines of the source's tree). Event payloads keep the paths they
 recorded, as in the history move.
 
 **The branch travels too.** Before any part goes, the source reads the
@@ -1128,11 +1132,10 @@ chip shows the branch after the host name.
   `<cwd>/.temp-code/moved-changes.patch` (`.temp-code/` excluded locally),
   the result says `patch: 'kept'`, and the thread gets one quiet row
   ("Moved here with branch … the patch is at …", a `status` event with a
-  `detail`) once it is live on the receiver. The toast names where the branch
-  landed, how the commits crossed and what happened to the changes
-  (`moveNoticeLines`).
-- A cwd that is not a git checkout moves as before: no branch, the dirty
-  list named in the toast as what stayed.
+  `detail`) once it is live on the receiver; the toast's second line names
+  the patch's path.
+- A cwd that is not a git checkout moves as before: no branch, and the
+  toast says the uncommitted changes stayed.
 
 Landing: the receiver remaps the cwd and an absolute `plan_path` through
 pathMap.ts with its own `harness.sync.pathMap` (default

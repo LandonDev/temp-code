@@ -138,37 +138,16 @@ export function movePreviewLine(p: SessionMovePreview | null | "error"): string 
   return p.dirty ? `${what} · ${files(p.dirty)} will be carried` : what;
 }
 
-/** The lines a finished move's notice carries under its heading. */
-export function moveNoticeLines(n: Pick<MoveNotice, "result" | "fromName" | "toName" | "error">): string[] {
-  if (n.error) return [n.error];
+/** The one fact a finished move's toast carries under its title, when the
+ *  person needs it: changes that did not come along. Everything else the
+ *  move did is what they asked for, so it goes unsaid. */
+export function moveNoticeException(n: Pick<MoveNotice, "result" | "fromName">): string | null {
   const r = n.result;
-  if (!r) return [];
-  const lines: string[] = [];
+  if (!r) return null;
   const b = r.branch;
-  if (b) {
-    const name = b.branch ?? `commit ${b.head.slice(0, 10)}`;
-    const where =
-      b.landing.mode === "checkout"
-        ? `checked out in the project on ${n.toName}`
-        : b.landing.mode === "reuse"
-          ? `already checked out on ${n.toName} at ${b.landing.cwd}`
-          : `in a ${b.landing.mode === "detached" ? "detached " : ""}worktree on ${n.toName} at ${b.landing.cwd}`;
-    const via = b.transport === "origin" ? ", through origin" : b.transport === "bundle" ? `, over the link${b.pushError ? ` (${b.pushError})` : ""}` : "";
-    lines.push(`${b.branch ? "Branch " : ""}${name} ${where}${via}.`);
-    const carried = r.dirty.length + r.dirtyMore;
-    if (b.landing.patch === "applied") lines.push(`${files(carried)} carried and applied.`);
-    else if (b.landing.patch === "kept") lines.push(`${files(carried)} carried, but the patch did not apply; it is at ${b.landing.patchPath}.`);
-    else if (b.patchSkipped) lines.push(`Uncommitted changes stayed on ${n.fromName}: ${b.patchSkipped}.`);
-    if (b.landing.note && b.landing.patch !== "kept") lines.push(`${b.landing.note[0].toUpperCase()}${b.landing.note.slice(1)}.`);
-  } else if (r.dirty.length) {
-    const shown = r.dirty.slice(0, 5).join(", ");
-    const more = r.dirty.length - 5 + r.dirtyMore;
-    lines.push(`Uncommitted changes stayed on ${n.fromName}: ${shown}${more > 0 ? ` and ${more} more` : ""}. The folder is not a git checkout, so nothing carried them.`);
-  }
-  if (r.checkpointsStayed) lines.push(`Undo history stayed on ${n.fromName}.`);
-  if (r.transcript === "missing") lines.push(`The harness transcript was not on ${n.fromName}; the next message replays the dialogue as context.`);
-  if (r.pendingRelease) lines.push(`${n.toName} finishes taking the thread when it next answers.`);
-  return lines;
+  if (b?.landing.patch === "kept") return `The patch didn't apply; it's at ${b.landing.patchPath}`;
+  if (b?.patchSkipped || (!b && r.dirty.length + r.dirtyMore > 0)) return `Uncommitted changes stayed on ${n.fromName}`;
+  return null;
 }
 
 /** What the confirm says about the thread's branch, asked of the host that holds the thread through the desktop's server. */
