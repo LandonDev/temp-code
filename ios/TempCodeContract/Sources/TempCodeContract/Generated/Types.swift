@@ -634,6 +634,7 @@ public struct SessionMeta: Codable, Hashable, Sendable {
     public let activityKind: ActivityKind?
     public let background: Background?
     public let awaiting: [String]?
+    public let lastEventAt: Int?
     public let tasks: Tasks?
     public let goal: Goal?
     public let context: Context?
@@ -654,7 +655,7 @@ public struct SessionMeta: Codable, Hashable, Sendable {
     public let createdAt: Int
     public let updatedAt: Int
 
-    public init(id: String, parentId: String?, projectId: String?, workspaceId: String?, threadType: ThreadType?, planPath: String?, provider: ProviderId, model: String, reasoning: Reasoning, agentType: AgentType, title: String, cwd: String, status: SessionStatus, pinned: Bool, archived: Bool, permission: PermissionPolicy, fast: Bool, ultrafast: Bool, context1m: Bool, busySince: Int?, pausedAt: Int?, frozenActiveElapsed: Int?, nativeId: String?, account: String? = nil, activity: String? = nil, activityKind: ActivityKind? = nil, background: Background? = nil, awaiting: [String]? = nil, tasks: Tasks? = nil, goal: Goal? = nil, context: Context? = nil, canContinue: Bool? = nil, failure: Failure? = nil, treeCanContinue: Bool? = nil, treeHasLiveWork: Bool? = nil, treeHasPaused: Bool? = nil, treeFrozenActiveElapsed: Int? = nil, threadRules: JSONValue? = nil, planCompletedAt: Int? = nil, implementationId: String? = nil, planThreadId: String? = nil, startedBy: String? = nil, isMaster: Bool? = nil, masterId: String? = nil, after: String? = nil, createdAt: Int, updatedAt: Int) {
+    public init(id: String, parentId: String?, projectId: String?, workspaceId: String?, threadType: ThreadType?, planPath: String?, provider: ProviderId, model: String, reasoning: Reasoning, agentType: AgentType, title: String, cwd: String, status: SessionStatus, pinned: Bool, archived: Bool, permission: PermissionPolicy, fast: Bool, ultrafast: Bool, context1m: Bool, busySince: Int?, pausedAt: Int?, frozenActiveElapsed: Int?, nativeId: String?, account: String? = nil, activity: String? = nil, activityKind: ActivityKind? = nil, background: Background? = nil, awaiting: [String]? = nil, lastEventAt: Int? = nil, tasks: Tasks? = nil, goal: Goal? = nil, context: Context? = nil, canContinue: Bool? = nil, failure: Failure? = nil, treeCanContinue: Bool? = nil, treeHasLiveWork: Bool? = nil, treeHasPaused: Bool? = nil, treeFrozenActiveElapsed: Int? = nil, threadRules: JSONValue? = nil, planCompletedAt: Int? = nil, implementationId: String? = nil, planThreadId: String? = nil, startedBy: String? = nil, isMaster: Bool? = nil, masterId: String? = nil, after: String? = nil, createdAt: Int, updatedAt: Int) {
         self.id = id
         self.parentId = parentId
         self.projectId = projectId
@@ -683,6 +684,7 @@ public struct SessionMeta: Codable, Hashable, Sendable {
         self.activityKind = activityKind
         self.background = background
         self.awaiting = awaiting
+        self.lastEventAt = lastEventAt
         self.tasks = tasks
         self.goal = goal
         self.context = context
@@ -705,7 +707,7 @@ public struct SessionMeta: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, parentId, projectId, workspaceId, threadType, planPath, provider, model, reasoning, agentType, title, cwd, status, pinned, archived, permission, fast, ultrafast, context1m, busySince, pausedAt, frozenActiveElapsed, nativeId, account, activity, activityKind, background, awaiting, tasks, goal, context, canContinue, failure, treeCanContinue, treeHasLiveWork, treeHasPaused, treeFrozenActiveElapsed, threadRules, planCompletedAt, implementationId, planThreadId, startedBy, isMaster, masterId, after, createdAt, updatedAt
+        case id, parentId, projectId, workspaceId, threadType, planPath, provider, model, reasoning, agentType, title, cwd, status, pinned, archived, permission, fast, ultrafast, context1m, busySince, pausedAt, frozenActiveElapsed, nativeId, account, activity, activityKind, background, awaiting, lastEventAt, tasks, goal, context, canContinue, failure, treeCanContinue, treeHasLiveWork, treeHasPaused, treeFrozenActiveElapsed, threadRules, planCompletedAt, implementationId, planThreadId, startedBy, isMaster, masterId, after, createdAt, updatedAt
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -738,6 +740,7 @@ public struct SessionMeta: Codable, Hashable, Sendable {
         try container.encodeIfPresent(activityKind, forKey: .activityKind)
         try container.encodeIfPresent(background, forKey: .background)
         try container.encodeIfPresent(awaiting, forKey: .awaiting)
+        try container.encodeIfPresent(lastEventAt, forKey: .lastEventAt)
         try container.encodeIfPresent(tasks, forKey: .tasks)
         try container.encodeIfPresent(goal, forKey: .goal)
         try container.encodeIfPresent(context, forKey: .context)
@@ -1570,6 +1573,8 @@ public struct BatchState: Codable, Hashable, Sendable {
             case stopped
             case failed
             case unreachable
+            case paused
+            case noTurn
             /// A value this build does not know; `rawValue` keeps it.
             case unknown(String)
 
@@ -1579,6 +1584,8 @@ public struct BatchState: Codable, Hashable, Sendable {
                 case "stopped": self = .stopped
                 case "failed": self = .failed
                 case "unreachable": self = .unreachable
+                case "paused": self = .paused
+                case "no-turn": self = .noTurn
                 default: self = .unknown(rawValue)
                 }
             }
@@ -1589,6 +1596,8 @@ public struct BatchState: Codable, Hashable, Sendable {
                 case .stopped: "stopped"
                 case .failed: "failed"
                 case .unreachable: "unreachable"
+                case .paused: "paused"
+                case .noTurn: "no-turn"
                 case .unknown(let value): value
                 }
             }

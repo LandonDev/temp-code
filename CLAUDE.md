@@ -2045,7 +2045,11 @@ this is the short one.
   16 GiB on macOS), perProcess the median harness RSS read every 60 s (450
   MB until five readings); admission also pauses while available memory is
   under 10% of the budget (MemAvailable on Linux, `kern.memorystatus_level`
-  on macOS: os.freemem() there counts only never-used pages). Every live
+  on macOS: os.freemem() there counts only never-used pages). Slots are
+  counted by handle: every harness up or booting counts (`handles` ∪
+  `starting`), whatever its row says, and a running or watching row with
+  no harness (a zombie the liveness sweep has not reached, a master Stop
+  idled) holds none. That is, every live
   harness counts, roots and subagents, in starting, running, waiting or
   watching (unarchived), plus every row still holding a handle; warm
   processes and queued rows never do. The count and the queue come from the
@@ -2059,8 +2063,8 @@ this is the short one.
   message waits at the front of the thread's queue); `startQueued` (the
   scheduler; `session.start { sessionId }`, operate, the strip's Start now,
   past `after` and past the cap) sends it through the same path; a focused
-  send is admitted over the cap, up to two (`scheduler.focused`, false
-  until a later step wires it). `tick` runs oldest-first (createdAt, then
+  send is admitted over the cap, up to two (`scheduler.focused`, wired
+  to the host's FocusSet). `tick` runs oldest-first (createdAt, then
   the order the scheduler queued them in) on every meta change and removal and after boot once the BootResumer is done
   (`holdUntil`); a pass reserves the slots of the starts it picks before
   launching them, and while rows wait on the cap it puts down the

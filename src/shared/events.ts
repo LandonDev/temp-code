@@ -558,6 +558,9 @@ export interface SessionMeta {
    *  (orchestration.ts); absent when none. A queued message waits for
    *  the wait, or steers into it. */
   awaiting?: string[]
+  /** When the thread's log last moved (epoch ms), transient like
+   *  `activity`: a watching row that has not moved for hours says so. */
+  lastEventAt?: number | null
   /** How far through its CURRENT task list the thread is — server-folded
    *  from the log so a tab shows it without opening the thread. Null when
    *  this pass has no list yet. `current` names the in-progress task. */

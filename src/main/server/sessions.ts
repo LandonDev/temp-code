@@ -513,6 +513,8 @@ export class SessionRegistry {
   private queuedLines = new Map<string, string>()
   /** wait_for_agent calls waiting for the person's next steer into the thread's turn (nextSteer). */
   private steerWaiters = new Map<string, Set<(text: string) => void>>()
+  /** Masters the person stopped while they watched: idle for real (no slot) until the next turn starts. */
+  private readonly stopWatching = new Set<string>()
   /** The user row (its seq) the first-output watchdog re-queued once; a second silence on it fails the turn. */
   private readonly silenced = new Map<string, number>()
   /** Threads whose next idle is an error: the message went unanswered twice. */
@@ -708,8 +710,10 @@ export class SessionRegistry {
 
   /** Every id holding a running slot (admission.ts): a live harness, or a row in a live status. */
   liveIds(): Set<string> {
-    // The index's live rows (unarchived, in a live status) and every harness up or booting; no table read.
-    return new Set<string>([...this.handles.keys(), ...this.starting.keys(), ...this.indexOf().live.keys()])
+    // Slots are counted by handle: every harness up or booting, whatever its
+    // row says; a running or watching row with no harness (a zombie the
+    // sweep has not reached, a master Stop idled) holds none. No table read.
+    return new Set<string>([...this.handles.keys(), ...this.starting.keys()])
   }
 
   /** How long a thread sits idle before its harness may give its slot to the queue. */
@@ -1144,11 +1148,14 @@ export class SessionRegistry {
   /** One pass of the liveness sweep; returns the threads it flipped to stopped. */
   sweepLiveness(graceMs = HARNESS_GONE_GRACE_MS, now = Date.now()): string[] {
     const flipped: string[] = []
-    // The index, copied: markStopped writes rows while this walks.
+    // The index, copied: markStopped writes rows while this walks. A
+    // watching row is a candidate too: its harness is idle behind background
+    // work or an open batch, and one whose process died used to watch for
+    // ever (no sweep looked, its reports re-parked on the dead handle).
     for (const s of [...this.indexOf().byId.values()]) {
       if (s.archived) continue
       const candidate =
-        (s.status === 'running' || s.status === 'starting') &&
+        (s.status === 'running' || s.status === 'starting' || s.status === 'watching') &&
         !this.starting.has(s.id) &&
         !this.resumePending.has(s.id) &&
         !this.store.movingTo(s.id)
@@ -1164,7 +1171,14 @@ export class SessionRegistry {
       }
       if (now - since < graceMs) continue
       this.harnessGoneSince.delete(s.id)
-      this.markStopped(s.id, now)
+      if (s.status === 'watching' && !this.masterKeepsWatching(s.id)) {
+        // Its background work died with the process: nothing left to wait on.
+        void this.dropHandle(s.id)
+      } else {
+        // A master kept watching by its batch reads stopped; Resume brings it
+        // back (the restart nudge, then watching again while the batch is open).
+        this.markStopped(s.id, now, s.status === 'watching' ? 'The harness behind this master is gone; Resume brings it back' : undefined)
+      }
       flipped.push(s.id)
     }
     return flipped
@@ -1173,7 +1187,7 @@ export class SessionRegistry {
   /** The harness behind a running turn is gone for good: the row reads
    *  stopped with its working time frozen (Resume carries it on), the dead
    *  handle is dropped, and the transcript gets the line that says why. */
-  private markStopped(sessionId: string, now: number): void {
+  private markStopped(sessionId: string, now: number, detail = 'The harness behind this turn is gone'): void {
     const meta = this.store.getSession(sessionId)
     if (!meta) return
     const handle = this.handles.get(sessionId)
@@ -1183,7 +1197,7 @@ export class SessionRegistry {
     }
     this.denyPendingApprovals(sessionId)
     const frozen = Math.max(0, meta.busySince ? now - meta.busySince : (meta.frozenActiveElapsed ?? 0))
-    this.append(sessionId, { type: 'status', status: 'stopped', detail: 'The harness behind this turn is gone' })
+    this.append(sessionId, { type: 'status', status: 'stopped', detail })
     this.activities.delete(sessionId)
     this.watching.delete(sessionId)
     const next = this.store.updateSession(sessionId, {
@@ -1919,6 +1933,8 @@ export class SessionRegistry {
     if (!!thread.isMaster === master) return
     const next = this.store.updateSession(sessionId, { isMaster: master })
     if (next) this.notifyMeta(next)
+    // Unpinned, a master watching its batch has nothing to watch: idle.
+    if (!master && thread.status === 'watching') this.append(sessionId, { type: 'status', status: 'idle' })
   }
 
   /** An existing root thread joins a master's batch (batch.ts adopt): its
@@ -2440,6 +2456,8 @@ export class SessionRegistry {
     // The send's phase line (sendSpans.ts) opens here; a send that ends up
     // queued instead of in a harness is dropped from it.
     this.spans.begin(sessionId)
+    // A turn starts: a master the person stopped watching may watch again after it.
+    this.stopWatching.delete(sessionId)
     // A paused tree accepts no harness input. User work stays ordered in the
     // same queue and releases only after the resumed turn settles.
     if (this.isTreePaused(sessionId)) {
@@ -2779,8 +2797,10 @@ export class SessionRegistry {
     }
     // Watching: the harness is idle behind its background tasks, so there
     // is no turn to interrupt. Stop means drop the process, tasks and all;
-    // dropHandle settles the row idle.
+    // dropHandle settles the row idle, and a master's open batch does not
+    // rewrite it to watching until its next turn.
     if (meta?.status === 'watching') {
+      this.stopWatching.add(sessionId)
       await this.dropHandle(sessionId)
       return
     }
@@ -3024,6 +3044,7 @@ export class SessionRegistry {
 
   async killBackground(sessionId: string): Promise<void> {
     const tree = this.sessionTree(this.rootSessionOf(sessionId)).filter((s) => s.status === 'watching')
+    for (const s of tree) this.stopWatching.add(s.id)
     await Promise.allSettled(tree.map((s) => this.dropHandle(s.id)))
   }
 
@@ -4090,6 +4111,8 @@ export class SessionRegistry {
         this.signIns.delete(sessionId)
       }
     }
+    // Every row moves the thread's clock: the meta's lastEventAt ("nothing for 3 h").
+    this.lastActivity.set(sessionId, Math.max(this.lastActivity.get(sessionId) ?? 0, row.ts))
     for (const listener of this.subscribers.get(sessionId) ?? []) listener(row)
     for (const listener of this.eventListeners) listener(row)
     if (settleToReport) notifyParentOfSettle(this, settleToReport)
@@ -4288,6 +4311,11 @@ export class SessionRegistry {
     return this.store.hasCompletedTurn(sessionId)
   }
 
+  /** Has the person (or a starter) written into the thread (batch.ts: an idle child with a user turn but no completed one is stuck)? */
+  hasUserText(sessionId: string): boolean {
+    return this.store.hasUserText(sessionId)
+  }
+
   /** Is the thread a master (the pin on its row)? */
   isMaster(sessionId: string): boolean {
     const meta = this.store.getSession(sessionId)
@@ -4295,9 +4323,11 @@ export class SessionRegistry {
   }
 
   /** A master with an open batch (children not all done, or the engine
-   *  still at work) takes `watching` in place of `idle`. */
+   *  still at work) takes `watching` in place of `idle`; one the person
+   *  stopped (Stop, Kill background tasks) idles for real until its next
+   *  turn, after which an open batch makes its idle a watching again. */
   private masterKeepsWatching(sessionId: string): boolean {
-    return this.isMaster(sessionId) && (batches()?.open(sessionId) ?? false)
+    return !this.stopWatching.has(sessionId) && this.isMaster(sessionId) && (batches()?.open(sessionId) ?? false)
   }
 
   /** The batch closed with nothing coming (batch.ts review): a master left
@@ -4395,6 +4425,36 @@ export class SessionRegistry {
       this.providerTicker.unref?.()
     }
   }
+
+  /** A watching master's real reason, from its batch: a blocked child
+   *  ("Blocked: <title> errored"), a step running ("Gate running since
+   *  14:02"), else null (watchLine's words). Never re-entered: the batch's
+   *  state reads the children's rows, never the master's. */
+  private batchReason(session: SessionMeta): string | null {
+    if (!session.isMaster || session.parentId || this.decoratingBatch.has(session.id)) return null
+    const engine = batches()
+    if (!engine) return null
+    this.decoratingBatch.add(session.id)
+    try {
+      const state = engine.get(session.id)
+      if (state.blocked) {
+        const who = this.store.getSession(state.blocked.sessionId)?.title ?? state.blocked.sessionId
+        return `Blocked: ${who} ${state.blocked.why}`
+      }
+      const running = state.steps.find((s) => s.status === 'running')
+      if (running) {
+        const at = running.startedAt ? new Date(running.startedAt) : null
+        const hhmm = at ? `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}` : null
+        return `${running.name} running${hhmm ? ` since ${hhmm}` : ''}`
+      }
+      return null
+    } catch {
+      return null
+    } finally {
+      this.decoratingBatch.delete(session.id)
+    }
+  }
+  private readonly decoratingBatch = new Set<string>()
 
   /** The provider-wait line for a running row: the oldest open request past the threshold, else null. */
   private providerWaitLine(sessionId: string, now = Date.now()): string | null {
@@ -4777,15 +4837,26 @@ export class SessionRegistry {
     if (this.draining.has(sessionId)) return false
     if (!this.pendingReports.get(sessionId)?.length) return false
     this.draining.add(sessionId)
+    this.stopWatching.delete(sessionId)
     let taken: AgentReport[] = []
     void (async () => {
-      const handle = await this.handleFor(sessionId)
+      let handle = await this.handleFor(sessionId)
       const { items, text } = this.takeReports(sessionId)
       taken = items
       this.lastActivity.set(sessionId, Date.now())
       void this.armBaseline(sessionId)
       const notices = this.takeNotices(sessionId)
-      await handle.send(`${notices ? `${notices}\n\n` : ''}${text}`)
+      const body = `${notices ? `${notices}\n\n` : ''}${text}`
+      try {
+        await handle.send(body)
+      } catch (err) {
+        // The handle's harness is gone (a dead watching master): a fresh one
+        // takes the reports, as send() does for a person's message.
+        if (!(err instanceof Error && err.message.includes('harness gone'))) throw err
+        await this.dropHandle(sessionId)
+        handle = await this.handleFor(sessionId)
+        await handle.send(body)
+      }
     })()
       .catch(() => this.parkReports(sessionId, taken))
       .finally(() => this.draining.delete(sessionId))
@@ -4877,9 +4948,10 @@ export class SessionRegistry {
       ...session,
       ...(awaiting?.size ? { awaiting: [...awaiting.keys()] } : {}),
       background,
+      lastEventAt: this.lastActivity.get(session.id) ?? null,
       activity:
         session.status === 'watching'
-          ? watchLine(background)
+          ? (this.batchReason(session) ?? watchLine(background))
           : session.status === 'queued'
             ? (this.queuedLines.get(session.id) ?? 'Queued')
             : // A request out at the provider past the threshold, with nothing finer known: say so.

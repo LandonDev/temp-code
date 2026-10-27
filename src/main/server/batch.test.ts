@@ -787,6 +787,41 @@ describe('Batches: publish and deploy', () => {
     await review
   })
 
+  it('a gate, a release or a land running at the restart is failed with the master told, and the batch can close', async () => {
+    const w = world()
+    w.store.setSetting(
+      'batch:m',
+      JSON.stringify({ masterId: 'm', rules: { land: 'as-they-finish', steps: [S.land, S.gate, S.release], then: 'notify' }, steps: [{ id: 'gate', status: 'running', detail: 'typecheck', at: 1, log: [] }], landed: ['a'] })
+    )
+    const b = w.make()
+    await b.resumeAfterBoot()
+    expect(steps(b.get('m')).gate).toEqual(['failed', 'the host restarted during the step'])
+    expect(w.reports[0]).toMatchObject({ status: 'failed', text: expect.stringContaining('was running when this host restarted') })
+    // No step runs any more: with every child done the batch would close (sessions-liveness P3).
+    expect(b.get('m').steps.some((s) => s.status === 'running')).toBe(false)
+  })
+
+  it('a paused child and one whose turn ended without completing block the batch, each with its own words', async () => {
+    const w = world()
+    const b = w.make()
+    b.landed(w.landed('a'))
+    w.set('b', { status: 'paused' })
+    await b.review('m')
+    expect(b.get('m').blocked).toEqual({ sessionId: 'b', why: 'paused' })
+    expect(w.reports.at(-1)).toMatchObject({ status: 'blocked', text: expect.stringContaining('batch thread "T b" (b) is paused: Resume it or remove it') })
+    // Idle with a user turn but no completed one: no-turn.
+    w.registry.hasUserText = () => true
+    w.registry.hasCompletedTurn = (id) => id !== 'b'
+    w.set('b', { status: 'idle' })
+    await b.review('m')
+    expect(b.get('m').blocked).toEqual({ sessionId: 'b', why: 'no-turn' })
+    expect(w.reports.at(-1)).toMatchObject({ status: 'blocked', text: expect.stringContaining('ended its turn without completing: send it a message or remove it') })
+    // A completed turn clears it.
+    w.registry.hasCompletedTurn = () => true
+    await b.review('m')
+    expect(b.get('m').blocked).toBeNull()
+  })
+
   it('a publish that was running at the restart is failed with a pointer to the Mac', async () => {
     const w = world()
     w.store.setSetting(

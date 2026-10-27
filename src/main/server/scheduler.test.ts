@@ -330,6 +330,20 @@ describe('the running cap', () => {
     expect(registry.eventsAfter(a, 0).filter((r) => r.event.type === 'user-text')).toHaveLength(2)
   })
 
+  it('a watching row with no harness holds no slot: slots are counted by handle', async () => {
+    capAt(1)
+    const a = await plain('a')
+    emits.get(a)!({ type: 'status', status: 'watching' })
+    expect(registry.liveIds().has(a)).toBe(true)
+    // Stop drops the harness; the row's status alone never holds the slot.
+    await registry.interrupt(a)
+    await settle()
+    expect(registry.liveIds().has(a)).toBe(false)
+    const b = await plain('b')
+    await settle()
+    expect(status(b)).toBe('running')
+  })
+
   it('a waiting or watching thread keeps its slot; an idle one with anything queued keeps its harness', async () => {
     capAt(1)
     const a = await plain('a')

@@ -214,6 +214,8 @@ export interface BatchesDeps {
   /** this host's environment id, stamped on the local children of `batch.get` */
   environmentId?: string
   registry: Pick<SessionRegistry, 'batchChildren' | 'get' | 'getProject' | 'append'> & {
+    /** has the person written into the thread: an idle child with a user turn but no completed one blocks as `no-turn` */
+    hasUserText?: (id: string) => boolean
     /** has the thread finished a turn: an idle child counts as done only then (a fresh thread between its first row and its first turn is idle too) */
     hasCompletedTurn?(sessionId: string): boolean
     setArchived?(sessionId: string, archived: boolean): Promise<void>
@@ -263,14 +265,20 @@ export interface BatchesDeps {
 
 const ROW_PREFIX = 'batch:'
 const DONE = new Set<SessionMeta['status']>(['done'])
-const BLOCKS: Partial<Record<SessionMeta['status'], 'errored' | 'stopped'>> = { error: 'errored', stopped: 'stopped' }
-/** What blocks the end on one child: errored, stopped, or idle on a turn
- *  that ended in a failure (a usage limit, a refused route: the row's
+const BLOCKS: Partial<Record<SessionMeta['status'], 'errored' | 'stopped' | 'paused'>> = { error: 'errored', stopped: 'stopped', paused: 'paused' }
+type BlockWhy = 'errored' | 'stopped' | 'failed' | 'paused' | 'no-turn'
+/** What blocks the end on one child: errored, stopped, paused, or idle on a
+ *  turn that ended in a failure (a usage limit, a refused route: the row's
  *  `failure`). An idle child after a capped turn did no work; counting it
- *  done once ended a batch with nothing new, every time the child retried. */
-function blockOf(m: { status: SessionMeta['status']; local?: SessionMeta | null }): 'errored' | 'stopped' | 'failed' | null {
+ *  done once ended a batch with nothing new, every time the child retried.
+ *  `noTurn` says whether an idle child has a user turn but no completed one
+ *  (an interrupted or max-turns ending): it blocks too, as `no-turn`. */
+function blockOf(m: { id: string; status: SessionMeta['status']; local?: SessionMeta | null }, noTurn?: (m: { id: string; local?: SessionMeta | null }) => boolean): BlockWhy | null {
   if (m.local && m.local.status === 'idle' && m.local.failure) return 'failed'
-  return BLOCKS[m.status] ?? null
+  const base = BLOCKS[m.status]
+  if (base) return base
+  if (m.local && m.local.status === 'idle' && noTurn?.(m)) return 'no-turn'
+  return null
 }
 /** A thread on another host is done when its host said so, or when it went idle (its host reports a settle only after a turn). */
 const REMOTE_DONE = new Set<SessionMeta['status']>(['done', 'idle'])
@@ -405,11 +413,15 @@ export class Batches {
         if (master) this.tell(master, 'failed', `The batch's publish was running on the Mac when this host restarted; check the Mac's publish log, then call batch_rules to run the end of the batch again.`)
         continue
       }
-      const shell = row.steps.find((s) => s.kind === 'shell' && s.status === 'running')
-      if (shell) {
-        this.end(row, shell.id, 'failed', 'the host restarted during the step')
+      // Any other step running at the restart (a shell command, the gate,
+      // the release, the land) is lost with the process: failed, the master
+      // told, so the batch never stays open on a step nobody runs. A deploy
+      // is the one step the host can follow after a restart (below).
+      const lost = row.steps.find((s) => s.status === 'running' && s.kind !== 'deploy' && s.kind !== 'publish')
+      if (lost) {
+        this.end(row, lost.id, 'failed', 'the host restarted during the step')
         this.save(row)
-        if (master) this.tell(master, 'failed', `The batch's step "${shell.name}" was running when this host restarted; call batch_rules to run the end of the batch again.`)
+        if (master) this.tell(master, 'failed', `The batch's step "${lost.name}" was running when this host restarted; call batch_rules to run the end of the batch again.`)
         continue
       }
       const deploy = this.byKind(row, 'deploy')
@@ -981,9 +993,13 @@ export class Batches {
     }
     const down = this.unreachable.get(masterId)
     const away = down?.size ? members.find((m) => m.remote && down.has(m.remote.environmentId) && !this.memberDone(m)) : undefined
-    const blocker = members.find((m) => blockOf(m))
+    // An idle child with a user turn but no completed one ended without
+    // completing (interrupted, max turns): nobody would ever move it.
+    const noTurn = (m: { id: string; local?: SessionMeta | null }): boolean =>
+      !!m.local && (this.deps.registry.hasUserText?.(m.id) ?? false) && !(this.deps.registry.hasCompletedTurn?.(m.id) ?? true)
+    const blocker = members.find((m) => blockOf(m, noTurn))
     const blocked: BatchState['blocked'] = blocker
-      ? { sessionId: blocker.id, why: blockOf(blocker)! }
+      ? { sessionId: blocker.id, why: blockOf(blocker, noTurn)! }
       : away
         ? { sessionId: away.id, why: 'unreachable', environmentId: away.environmentId! }
         : null
@@ -1002,7 +1018,15 @@ export class Batches {
           'blocked',
           blocked.why === 'unreachable'
             ? `The batch cannot finish yet: batch thread "${who.title}" (${who.id})${where} is out of reach (the link to its host is down). It stays in the batch; the batch's steps run once the host is back and every thread is done.`
-            : `The batch cannot finish: batch thread "${who.title}" (${who.id})${where} ${blocked.why === 'failed' ? `failed: ${who.local?.failure?.summary ?? 'its last turn ended in an error'}` : blocked.why}. Fix it (a message, a new thread) or remove it (archive); the batch's steps run once every thread is done.`
+            : `The batch cannot finish: batch thread "${who.title}" (${who.id})${where} ${
+                blocked.why === 'failed'
+                  ? `failed: ${who.local?.failure?.summary ?? 'its last turn ended in an error'}`
+                  : blocked.why === 'paused'
+                    ? 'is paused: Resume it or remove it'
+                    : blocked.why === 'no-turn'
+                      ? 'ended its turn without completing: send it a message or remove it'
+                      : blocked.why
+              }. Fix it (a message, a new thread) or remove it (archive); the batch's steps run once every thread is done.`
         )
       }
       return

@@ -362,6 +362,7 @@ export const SessionMetaSchema = z.object({
   activityKind: z.enum(['think', 'investigate', 'edit']).nullable().optional(),
   background: BackgroundWorkSchema.nullable().optional(),
   awaiting: z.array(z.string()).optional(),
+  lastEventAt: z.number().int().nullable().optional(),
   tasks: z
     .object({
       done: z.number().int(),
