@@ -106,6 +106,7 @@ export function StartBuildDialog({
     >
       <DialogContent
         size="default"
+        className="max-h-[calc(100vh-2rem)] overflow-y-auto"
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();

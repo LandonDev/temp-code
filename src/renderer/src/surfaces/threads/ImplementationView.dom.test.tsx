@@ -5,7 +5,8 @@ import type { Block, Session } from "../../lib/session";
 import type { TodoItem } from "../../lib/tcserver/todos";
 
 vi.mock("../../hooks/usePlanFile", () => ({ usePlanFile: () => null }));
-vi.mock("../../lib/tcserver/store", () => ({ useLiveEdits: () => ({}) }));
+let liveEdits: Record<string, unknown> = {};
+vi.mock("../../lib/tcserver/store", () => ({ useLiveEdits: () => liveEdits }));
 vi.mock("../../lib/threads/agents", () => ({ useMetaById: () => null }));
 vi.mock("../../lib/models", () => ({ resolveModel: (_h: string, m: string) => ({ name: m }) }));
 vi.mock("../AgentMarkdown", () => ({ AgentMarkdown: ({ text }: { text: string }) => <div data-md>{text}</div> }));
@@ -164,5 +165,29 @@ describe("the implementation board", () => {
     await act(async () => {});
     expect(document.querySelector('[data-change-row="src/a.ts"]')).toBeTruthy();
     expect(document.querySelectorAll('[data-slot="task-list"]')).toHaveLength(2);
+  });
+
+  it("an earlier pass keeps the shell's changes under the task that made them", async () => {
+    liveEdits = {
+      "gen/out.ts": { path: "gen/out.ts", kind: "changed", adds: 3, dels: 0, diff: "@@ -1 +1 @@\n-a\n+b", state: "settled", startedTs: 1_005, ts: 1_100 },
+    };
+    view(
+      session({
+        status: "running",
+        blocks: [
+          first,
+          { id: "sh", role: "tool", text: "", round: 0, todo: 0, ts: 1_000, doneTs: 2_000, tool: { name: "Bash" } } as unknown as Block,
+          edit("e0", "src/a.ts", 0, 0),
+          { id: "u1", role: "user", text: "Now test it", round: 1 } as Block,
+          edit("e1", "src/a.test.ts", 0, 1),
+        ],
+        rounds: [[todo("Write a", "completed")]],
+        todos: [todo("Test a", "in_progress")],
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Pass 1/ }));
+    await act(async () => {});
+    expect(document.querySelector('[data-change-row="gen/out.ts"]')).toBeTruthy();
+    liveEdits = {};
   });
 });

@@ -10,7 +10,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/too
 import { usePlanFile } from "../../hooks/usePlanFile";
 import { resolveModel } from "../../lib/models";
 import type { Block, Session } from "../../lib/session";
-import { useLiveEdits } from "../../lib/tcserver/store";
+import { useLiveEdits, type LiveEditState } from "../../lib/tcserver/store";
 import { emptyThread } from "../../lib/tcserver/todos";
 import { useMetaById } from "../../lib/threads/agents";
 import { planHeading } from "../../lib/threads/planDoc";
@@ -243,6 +243,7 @@ export function ImplementationView(props: ThreadViewProps) {
                   passNum={passNums[i]}
                   data={r}
                   record={passRecord(r, passCost(costs, i))}
+                  diskOnly={diskOnly}
                   onOpenFile={props.onOpenFile}
                   onOpenDiff={props.onOpenDiff}
                 />
@@ -363,6 +364,7 @@ function PastPass({
   passNum,
   data,
   record,
+  diskOnly,
   onOpenFile,
   onOpenDiff,
 }: {
@@ -371,13 +373,15 @@ function PastPass({
   passNum: number;
   data: RoundData;
   record: PassRecord;
+  /** Shell-made changes; each files under the task that ran when it began. */
+  diskOnly: LiveEditState[];
   onOpenFile: ThreadViewProps["onOpenFile"];
   onOpenDiff: (path?: string) => void;
 }) {
   const done = data.todos.filter((t) => t.status === "completed").length;
   const stat = changeStat(data.work);
   const facts = recordFacts(record, session.harness);
-  const groups = useMemo(() => changesByTask(data, [], false, false), [data]);
+  const groups = useMemo(() => changesByTask(data, diskOnly, false, false), [data, diskOnly]);
   return (
     <Collapsible data-pass={passNum}>
       <CollapsibleTrigger className="group/pass flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left outline-none transition-colors duration-(--dur-fast) hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none">

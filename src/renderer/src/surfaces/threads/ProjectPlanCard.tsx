@@ -66,14 +66,14 @@ export function MilestoneList({
               <span className="text-muted-foreground tabular-nums">{m.index}</span>
               <span className={m.done ? "text-muted-foreground" : "text-foreground"}>{m.title}</span>
             </ItemTitle>
-            {m.scope ? <ItemDescription>{m.scope}</ItemDescription> : null}
+            {m.scope ? <ItemDescription className="line-clamp-none">{m.scope}</ItemDescription> : null}
             {m.dependencies ? (
-              <ItemDescription>
+              <ItemDescription className="line-clamp-none">
                 <span className="font-medium">Depends on</span> {m.dependencies}
               </ItemDescription>
             ) : null}
             {m.doneWhen ? (
-              <ItemDescription>
+              <ItemDescription className="line-clamp-none">
                 <span className="font-medium">Done when</span> {m.doneWhen}
               </ItemDescription>
             ) : null}

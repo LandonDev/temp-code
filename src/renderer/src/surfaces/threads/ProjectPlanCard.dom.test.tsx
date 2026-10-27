@@ -167,6 +167,8 @@ describe("MilestoneList", () => {
     expect(boxes[1].getAttribute("aria-label")).toBe("Milestone 2: API");
     expect(screen.getByText("schema test passes")).toBeTruthy();
     expect(screen.getByText("Depends on")).toBeTruthy();
+    // A long field is read whole: nothing clamps it.
+    expect(screen.getByText("tables").className).not.toMatch(/line-clamp-\d/);
     fireEvent.click(boxes[1]);
     await act(async () => {});
     expect(actions.tickMilestone).toHaveBeenCalledWith("p1", 2, true);

@@ -84,6 +84,8 @@ describe("the Start dialog", () => {
     expect(screen.getByRole("button", { name: "Implement" }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByRole("button", { name: "Orchestrate" })).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/\b[23] threads\b/);
+    // Taller than a small window, it scrolls instead of hiding its footer.
+    expect((document.querySelector('[data-slot="dialog-content"]') as HTMLElement).className).toMatch(/overflow-y-auto/);
   });
 
   it("Start starts exactly one implementation thread by default, and closes", async () => {
