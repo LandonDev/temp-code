@@ -1,47 +1,36 @@
-import { useId, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { cn } from "../../../lib/cn";
+import { PageSection } from "../../../components/page";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "../../../components/ui/item";
 
+type DataAttributes = Record<`data-${string}`, string | number | undefined>;
+
 /**
- * A group of rows under a 12px muted heading, with the group's actions at
- * the heading's end, and one row of it. The shapes match A14's page frame
- * (components/page.tsx `PageSection`, `PageRow`) so the swap, when it lands,
- * is one import here.
+ * The page frame's section (components/page.tsx `PageSection`: a 12px muted
+ * heading, the actions at its end) carrying the `data-*` hooks the Hosts
+ * page's tests and scripts/e2e-environments-ui.ts read.
  */
 export function Group({
   title,
   action,
   className,
   children,
-  ...rest
-}: {
-  title?: ReactNode;
-  action?: ReactNode;
-  className?: string;
-  children: ReactNode;
-} & Record<`data-${string}`, string | number | undefined>) {
-  const id = useId();
-  const hasHead = Boolean(title || action);
+  ...data
+}: { title?: ReactNode; action?: ReactNode; className?: string; children: ReactNode } & DataAttributes) {
   return (
-    <section aria-labelledby={title ? id : undefined} className={cn("min-w-0", className)} {...rest}>
-      {hasHead ? (
-        <div className="flex min-h-7 items-center gap-3">
-          {title ? (
-            <h3 id={id} className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
-              {title}
-            </h3>
-          ) : (
-            <span className="flex-1" />
-          )}
-          {action}
-        </div>
-      ) : null}
-      <div className={cn("flex flex-col", hasHead ? "mt-1" : null)}>{children}</div>
-    </section>
+    <div className={cn("min-w-0", className)} {...data}>
+      <PageSection title={title} action={action}>
+        {children}
+      </PageSection>
+    </div>
   );
 }
 
-/** One row: title, a muted description under it, the control at the end; an error as a red line, never clamped. */
+/**
+ * The frame's row (`PageRow`: title, a muted description, the control at the
+ * end, a hairline only between neighbouring rows) with its `data-*` hooks,
+ * and a description that may run to more than two lines.
+ */
 export function Row({
   title,
   description,
@@ -49,7 +38,7 @@ export function Row({
   media,
   className,
   children,
-  ...rest
+  ...data
 }: {
   title: ReactNode;
   description?: ReactNode;
@@ -57,13 +46,12 @@ export function Row({
   media?: ReactNode;
   className?: string;
   children?: ReactNode;
-} & Record<`data-${string}`, string | number | undefined>) {
+} & DataAttributes) {
   return (
     <Item
-      size="sm"
-      role="listitem"
-      className={cn("rounded-none border-x-0 border-b-0 border-t-border px-0 py-2.5 first:border-t-transparent", className)}
-      {...rest}
+      data-slot="page-row"
+      className={cn("rounded-none border-x-0 border-b-0 border-t-transparent px-0 py-3 [[data-slot=page-row]+&]:border-t-border", className)}
+      {...data}
     >
       {media ? <ItemMedia>{media}</ItemMedia> : null}
       <ItemContent className="min-w-0">
