@@ -5,6 +5,7 @@ import { Button } from "../../components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { cn } from "../../lib/cn";
 import { useCountUp } from "../../motion";
+import { Counts } from "./Counts";
 
 /**
  * `[glyph]  Verb  object  +46 −3  extras  ▸`, 32px tall, the caret right
@@ -78,7 +79,7 @@ export function ActionLine({
       <span className="pointer-events-none flex min-w-0 items-center gap-2">
         {verb ? <span className={cn("shrink-0 text-muted-foreground", action && LIFT)}>{verb}</span> : null}
         {objectText}
-        {adds || dels ? <Counts adds={adds ?? 0} dels={dels ?? 0} ticking={ticking} /> : null}
+        {adds || dels ? <TickingCounts adds={adds ?? 0} dels={dels ?? 0} ticking={ticking} /> : null}
       </span>
       {/* Extras are buttons of their own; a click between them is the line's. */}
       {trailing ? (
@@ -144,14 +145,7 @@ function ObjectText({
   );
 }
 
-/** `+46 −3` in green and red, tabular, ticking while the edit streams. */
-function Counts({ adds, dels, ticking }: { adds: number; dels: number; ticking: boolean }) {
-  const a = useCountUp(adds, ticking);
-  const d = useCountUp(dels, ticking);
-  return (
-    <span className="flex shrink-0 items-center gap-1 text-[13px] tabular-nums">
-      {adds ? <span className="text-success">+{a}</span> : null}
-      {dels ? <span className="text-destructive">−{d}</span> : null}
-    </span>
-  );
+/** The edit's counts, ticking toward their value while it streams (A7's Counts draws them). */
+function TickingCounts({ adds, dels, ticking }: { adds: number; dels: number; ticking: boolean }) {
+  return <Counts added={useCountUp(adds, ticking)} removed={useCountUp(dels, ticking)} />;
 }

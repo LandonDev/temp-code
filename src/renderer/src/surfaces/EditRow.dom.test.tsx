@@ -41,6 +41,7 @@ describe('EditRow', () => {
     expect(getByText('a.ts')).toBeTruthy()
     expect(getByText('+1').className).toContain('text-success')
     expect(getByText('−1').className).toContain('text-destructive')
+    expect(getByText('+1').closest('[data-slot="counts"]')).not.toBeNull()
     expect(container.querySelector('.border')).toBeNull()
   })
 
