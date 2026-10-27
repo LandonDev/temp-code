@@ -8,7 +8,7 @@ import { Square } from "../chrome/icons";
 import { DevStarter, useDevStarter } from "../chrome/rail/DevServerPanel";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "../components/ui/item";
+import { Item, ItemActions, ItemContent, ItemGroup, ItemTitle } from "../components/ui/item";
 import { ScrollArea } from "../components/ui/scroll-area";
 import { Spinner } from "../components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
@@ -180,7 +180,7 @@ function ServerRow({ server, picked }: { server: LiveServer; picked: boolean }) 
         if (event.key === "Enter" && event.target === event.currentTarget) devPane.pick(server.key);
       }}
     >
-      <ItemContent className="min-w-0">
+      <ItemContent className="min-w-0 gap-0.5">
         {server.thread ? (
           <Tooltip>
             <TooltipTrigger render={title} />
@@ -189,22 +189,24 @@ function ServerRow({ server, picked }: { server: LiveServer; picked: boolean }) 
         ) : (
           title
         )}
-        {open?.movedFrom ? <ItemDescription>{open.movedFrom} is taken here</ItemDescription> : null}
-      </ItemContent>
-      <ItemActions className="gap-1">
         {open ? (
-          <Button
-            variant="link"
-            size="xs"
-            className="px-1 tabular-nums text-muted-foreground hover:text-foreground"
-            onClick={(event) => {
-              event.stopPropagation();
-              openUrl(open.url);
-            }}
-          >
-            {open.label} :{open.port}
-          </Button>
+          <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+            <Button
+              variant="link"
+              size="xs"
+              className="h-auto px-0 text-xs font-normal tabular-nums text-muted-foreground hover:text-foreground"
+              onClick={(event) => {
+                event.stopPropagation();
+                openUrl(open.url);
+              }}
+            >
+              {open.label} :{open.port}
+            </Button>
+            {open.movedFrom ? <span className="truncate">{open.movedFrom} is taken here</span> : null}
+          </div>
         ) : null}
+      </ItemContent>
+      <ItemActions>
         <Tooltip>
           <TooltipTrigger
             render={
