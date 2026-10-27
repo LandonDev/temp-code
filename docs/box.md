@@ -2278,7 +2278,12 @@ because they always asked the thread's host (`attachment.read`).
   404. `/asset/file/…` on the fixed port mirrors it for the box's own `/ui`.
 - **A file that is not there** says so with the host's name: the editor's
   line reads "No such file on The box." (`openFailureText`); any other
-  refusal keeps the host's words.
+  refusal keeps the host's words. The media viewer asks the asset handler
+  with a HEAD when an image, video or audio element fails: a 404 says the
+  same line (`missingFileText`, which `openFailureText` uses too), a 503 or
+  no answer says "The box is out of reach.", both with Retry (a fresh
+  token), and anything else says the file's format or codec is not
+  supported here.
 - Tests: pathHost.test.ts (the rule, the copy), MediaViewer.dom.test.tsx
   (the gate asks the host the tab names), openInEditor.test.ts (the label
   off the thread), media.test.ts (the stamped URL, `media.read`),
