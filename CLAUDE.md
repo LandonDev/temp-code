@@ -426,6 +426,11 @@ routed to (aliax-core's `forward`). Two listeners:
 - The installed codex version is read once at boot (drivers/codexVersion.ts)
   and catalog rows with `minCodexVersion` above it are hidden everywhere
   (picker, spawn table, app tools). GPT-6.1 Sol and GPT-6 Sol need 0.162.1.
+- Speed tiers come from each CLI, never assumed: codex's `model/list`
+  serviceTiers (drivers/codexTiers.ts) and claude's `supportedModels()`
+  supportsFastMode, asked on the first claude init of a boot and cached as
+  `claude.speedTiers` (drivers/claudeTiers.ts); the model menu offers only
+  the listed tiers, and the drivers send a tier only when it is listed.
 - A dev instance is not the marker owner, so core does not refresh codex
   tokens there: an account whose stored token lapsed answers 401
   ("token_expired") until the owner uses it. Pin test threads to an account

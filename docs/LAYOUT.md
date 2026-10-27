@@ -336,25 +336,35 @@ into the close button on hover (or on a clean active tab), the active tab
 underlined. No change counts (the Changes panel has them); drag to reorder
 keeps its 2px accent drop marker.
 
-### Prompt bar (all thread types)
+### Composer (all thread types)
 
-BUI *Prompt Bar*, rounded style: floating, `rounded-xl`, `bg-popover`, soft
-shadow (it's a floating layer), max-w-2xl centered. Model picker inline;
-`/` commands later. Send↔Stop swaps via BeUI *Action Swap* (blur swap
-motion, replaces the StatefulButton hack). Under it a meta row: branch ·
-cwd, 11px muted (Cursor's `main · This Mac`). On implementation and
-orchestration threads the bar idles smaller (single line) and grows on
-focus — steering, not chatting.
+The box is Claude desktop's: `rounded-xl` on `COMPOSER_SURFACE` (the card
+fill and a hairline that steps to `border-input` while the field has focus;
+the checkpoint strip above it shares it), attachments as `Attachment` chips
+over the 15px field, and one 32px row under it that never scrolls
+(chrome/ComposerBar.tsx). Left: `+` (Attach files, Mention a file or thread,
+Skills and commands; the last two type `@` or `/` at the caret) and the
+model button, which reads the model and the effort ("Opus 5.5  High") and
+opens the model menu: providers, search, the list, then the model's
+settings as rows (Effort, Context with the thread's percent, Speed only for
+the tiers the serving CLI lists, any other setting). Right: the permission
+mode as a quiet select (none for fx) and the send button, whose glyph is
+what Enter would do.
 
-An unsent draft of a project linked across hosts carries the host chip
-beside the project picker (chrome/DraftHostPicker.tsx): the host's glyph,
-its name and a chevron, 12px muted like the branch picker. Its menu lists
-every connected host; picking one moves the draft there. A host with no
-copy of the project reads "New copy" and gets one on pick
-(`project.ensureLinked`); a host with no checkout is disabled and says why.
-The chip leaves once the first message goes out. The default host is the
-one of the thread on screen when it is in the project, else the one last
-used for it, else this machine (lib/projectHostChoice.ts).
+Under the box, only on the shell's new-thread screen and until a thread's
+first message, one quiet row holds project, host, branch and type. After
+it they live in the header, the right panel's Branch section and the
+thread menu's Type submenu. The goal is the thread menu's "Goal…"
+(chrome/GoalDialog.tsx); usage and accounts are the rail's meter (A3); the
+context ring and its breakdown are gone, the percent is on the model menu.
+
+The host in that row (chrome/DraftHostPicker.tsx) shows for a draft of a
+project linked across hosts: the host's glyph and name, and a menu of every
+connected host; picking one moves the draft there. A host with no copy
+reads "New copy" and gets one on pick (`project.ensureLinked`); a host with
+no checkout is disabled and says why. The default host is the one of the
+thread on screen when it is in the project, else the one last used for it,
+else this machine (lib/projectHostChoice.ts).
 
 ### Bottom dock: terminals, or the Dev servers tab
 
