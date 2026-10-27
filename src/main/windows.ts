@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { appIndexUrl } from './appScheme'
+import { badgeText, shouldBounce } from './dockBadge'
 import { killPtysForOwner } from './pty'
 import { QuitGate } from './quitGate'
 import { bootMark } from './server/boot'
@@ -135,7 +136,8 @@ const closeSubscribers = new Set<number>()
 const destroying = new Set<number>()
 /** Renderers that want the last word before the app exits. */
 const quitSubscribers = new Set<number>()
-/** Unread counts per window; the dock shows their sum. */
+/** Needs-you counts per window; every window reports the same hosts, so the
+ *  dock shows the largest. */
 const badges = new Map<number, number>()
 let lastBadgeTotal = 0
 /** Called when a slot is gone for good so its snapshot goes with it. */
@@ -300,11 +302,11 @@ export function openSavedWindows(): void {
 
 function applyBadge(allowBounce: boolean): void {
   if (process.platform !== 'darwin' || !app.dock) return
-  let total = 0
-  for (const n of badges.values()) total += n
-  app.dock.setBadge(total <= 0 ? '' : total > 99 ? '99+' : String(total))
+  const reports = [...badges.values()]
+  const total = Math.max(0, ...reports)
+  app.dock.setBadge(badgeText(reports))
   const active = BrowserWindow.getAllWindows().some((w) => w.isFocused())
-  if (allowBounce && total > lastBadgeTotal && !active) app.dock.bounce('informational')
+  if (allowBounce && shouldBounce(lastBadgeTotal, total, active)) app.dock.bounce('informational')
   lastBadgeTotal = total
 }
 
