@@ -1,10 +1,5 @@
 import { Search } from "../../chrome/icons";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HarnessIcon } from "../../chrome/HarnessIcon";
 import { RemoveProjectDialog } from "../../chrome/RemoveProjectDialog";
 import { prettyCwd, projectName } from "../../lib/paths";
@@ -20,7 +15,16 @@ import { loadTabGroupLabels, resolveTabGroupLabel } from "../../lib/tabGroups";
 import { useSessionMetas } from "../../lib/tcserver/store";
 import { useProjects } from "../../lib/tcserver/workspaces";
 import type { SessionMeta } from "@shared/events";
-import { Modal } from "../../chrome/Modal";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../../components/ui/dialog";
 import { useWorkspaces, workspaceLabelKey } from "../../lib/tcserver/workspaces";
 import {
   Heading,
@@ -28,7 +32,7 @@ import {
   SecondaryButton,
   Toggle,
 } from "../settingsBits";
-import { DANGER, GHOST } from "../../chrome/ConfirmDialog";
+import { DANGER } from "../../chrome/ConfirmDialog";
 
 function useArchivedProjects(): ArchivedProject[] {
   const [items, setItems] = useState(loadArchivedProjects);
@@ -247,33 +251,47 @@ export function ArchivePage({
           }}
         />
       ) : null}
-      {deletingThread ? (
-        <Modal
-          onClose={() => setDeletingThread(null)}
-          title={`Delete ${clampTitle(
-            sessionDisplayTitle(deletingThread.title, deletingThread.provider),
-          )}?`}
-          description="The thread and its whole transcript are gone for good."
-          size="sm"
-        >
-          <div className="flex items-center justify-end gap-2 border-t border-content/10 px-4 py-3">
-            <button type="button" onClick={() => setDeletingThread(null)} className={GHOST}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                onDeleteSession(deletingThread.id, { confirmed: true });
-                setDeletingThread(null);
-              }}
-              className={DANGER}
-            >
-              Delete thread
-            </button>
-          </div>
-        </Modal>
-      ) : null}
+      <DeleteThreadDialog
+        thread={deletingThread}
+        onCancel={() => setDeletingThread(null)}
+        onConfirm={(thread) => {
+          onDeleteSession(thread.id, { confirmed: true });
+          setDeletingThread(null);
+        }}
+      />
     </>
+  );
+}
+
+/** Deleting a thread is irreversible: one title, one line, Cancel and the verb.
+ *  The last thread shown stays on the dialog while it closes. */
+export function DeleteThreadDialog({
+  thread,
+  onCancel,
+  onConfirm,
+}: {
+  thread: SessionMeta | null;
+  onCancel: () => void;
+  onConfirm: (thread: SessionMeta) => void;
+}) {
+  const shown = useRef(thread);
+  if (thread) shown.current = thread;
+  const meta = shown.current;
+  return (
+    <AlertDialog open={thread !== null} onOpenChange={(open) => (open ? null : onCancel())}>
+      <AlertDialogContent>
+        <DialogHeader>
+          <DialogTitle>Delete {meta ? clampTitle(sessionDisplayTitle(meta.title, meta.provider)) : "thread"}?</DialogTitle>
+          <DialogDescription>The thread and its whole transcript are gone for good.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" onClick={() => meta && onConfirm(meta)}>
+            Delete thread
+          </AlertDialogAction>
+        </DialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 

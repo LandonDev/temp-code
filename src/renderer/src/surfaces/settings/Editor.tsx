@@ -14,14 +14,21 @@ import {
 import { registry } from "../../lib/connection";
 import { retryBlockedEnsures } from "../../lib/monaco/lspGate";
 import { chooseEditorSetting, useEditorConfig } from "../../lib/editorConfig";
-import { Modal } from "../../chrome/Modal";
-import { GHOST, PRIMARY } from "../../chrome/ConfirmDialog";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../../components/ui/dialog";
+import { Spinner } from "../../components/ui/spinner";
 import { ChoiceSelect } from "../../components/choice-select";
 import { PageRow, PageSection } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
 import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
-import { MatrixSpinner } from "../threads/bits";
 import { Keys, MOD_CAP } from "./keys";
 
 type IdeaEngine = { dist: boolean; accepted: boolean; build: string };
@@ -311,36 +318,32 @@ export function EditorPage() {
       </PageSection>
 
       <LanguageServers />
-      {gateOpen ? (
-        <Modal
-          onClose={() => setGateOpen(false)}
-          title="JetBrains EULA"
-          description={`intellij-server ${eula?.build ?? ""}`.trim()}
-          size="md"
-        >
-          <div className="px-4 py-3">
-            {eula ? (
-              <pre className="max-h-80 overflow-y-auto rounded-[10px] border border-content/10 p-3 text-[11px] leading-relaxed whitespace-pre-wrap text-content/70">
-                {eula.text}
-              </pre>
-            ) : note ? (
-              <p className="text-[12px] text-danger">{note}</p>
-            ) : (
-              <p className="flex items-center gap-2 text-[12px] text-content/50">
-                <MatrixSpinner cell={1.5} /> Downloading the engine to read its license…
-              </p>
-            )}
-          </div>
-          <div className="flex items-center justify-end gap-2 border-t border-content/10 px-4 py-3">
-            <button type="button" onClick={() => setGateOpen(false)} className={GHOST}>
-              Cancel
-            </button>
-            <button type="button" disabled={!eula} onClick={accept} className={PRIMARY}>
+      <Dialog open={gateOpen} onOpenChange={setGateOpen}>
+        <DialogContent size="md">
+          <DialogHeader>
+            <DialogTitle>JetBrains EULA</DialogTitle>
+            {eula ? <DialogDescription>intellij-server {eula.build}</DialogDescription> : null}
+          </DialogHeader>
+          {eula ? (
+            <pre className="max-h-80 overflow-y-auto rounded-lg bg-muted/50 p-3 text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
+              {eula.text}
+            </pre>
+          ) : note ? (
+            <p className="text-xs text-destructive">{note}</p>
+          ) : (
+            <p className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Spinner className="size-3.5" />
+              Downloading the engine to read its license…
+            </p>
+          )}
+          <DialogFooter>
+            <DialogClose render={<Button variant="secondary" />}>Cancel</DialogClose>
+            <Button disabled={!eula} onClick={accept}>
               Accept and enable
-            </button>
-          </div>
-        </Modal>
-      ) : null}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

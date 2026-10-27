@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const host = vi.hoisted(() => ({
   lsp: null as null | ((rows: unknown[]) => void),
+  eula: null as null | ((eula: { build: string; text: string }) => void),
   editor: null as null | { editor: string; effective: string | null; installed: Record<string, boolean> },
 }));
 
@@ -13,7 +14,9 @@ vi.mock("../../lib/connection", () => ({
       request: (method: string) =>
         method === "lsp.status"
           ? new Promise((resolve) => (host.lsp = resolve))
-          : Promise.resolve({ java: { found: true, version: "21", jdtls: true, path: "/usr/lib/jvm/21" } }),
+          : method === "idea.eula"
+            ? new Promise((resolve) => (host.eula = resolve))
+            : Promise.resolve({ java: { found: true, version: "21", jdtls: true, path: "/usr/lib/jvm/21" } }),
     }),
   },
 }));
@@ -79,5 +82,22 @@ describe("Editor", () => {
   it("words a server's figures", () => {
     expect(lspFigures({ state: "starting", idleMs: 0 } as never)).toEqual(["Starting…"]);
     expect(lspFigures({ state: "running", idleMs: 0 } as never)).toEqual(["Running"]);
+  });
+
+  it("reads the EULA in a dialog: a spinner while it downloads, then the text, Cancel and the verb", async () => {
+    render(<EditorPage />);
+    await act(async () => {});
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Accept EULA" }));
+    });
+    const dialog = await screen.findByRole("dialog");
+    expect(screen.getByRole("heading", { name: "JetBrains EULA" })).toBeTruthy();
+    expect(dialog.querySelector("[data-slot=spinner]")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Accept and enable" }) as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => host.eula?.({ build: "263.1", text: "You may use it." }));
+    expect(screen.getByText("You may use it.")).toBeTruthy();
+    expect(screen.getByText("intellij-server 263.1")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Accept and enable" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByRole("button", { name: "Cancel" }).dataset.variant).toBe("secondary");
   });
 });
