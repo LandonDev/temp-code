@@ -85,16 +85,16 @@ export function AccountPinFields({
 }) {
   const { snapshot } = useAccounts(environmentId);
   return (
-    <>
+    <div className="flex flex-col">
       {ROUTED_PROVIDERS.map((provider) => {
         const profiles = snapshot.providers[provider].profiles;
         const current = value[provider] ?? "";
         const known = current === "" || profiles.some((p) => p.name === current);
         return (
-          <Field key={provider} label={HARNESS_LABEL[provider]}>
+          <FieldRow key={provider} label={providerName(provider)}>
             <ChoiceSelect
-              label={HARNESS_LABEL[provider]}
-              className="w-full"
+              label={providerName(provider)}
+              size="sm"
               value={current}
               disabled={profiles.length === 0 && current === ""}
               options={[
@@ -109,12 +109,17 @@ export function AccountPinFields({
                 onChange(next);
               }}
             />
-          </Field>
+          </FieldRow>
         );
       })}
-    </>
+    </div>
   );
 }
+
+const providerName = (provider: (typeof ROUTED_PROVIDERS)[number]) => {
+  const label = HARNESS_LABEL[provider];
+  return label.charAt(0).toUpperCase() + label.slice(1);
+};
 
 /** "Inherit (workspace: a@x)" / "Inherit (auto)" for a project under `workspace`. */
 export function projectInheritLabel(workspace: WorkspaceMeta, profiles: { name: string; email?: string; nickname?: string; createdAt: number; active: boolean }[]) {
