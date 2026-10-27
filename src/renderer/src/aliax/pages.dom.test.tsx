@@ -144,10 +144,9 @@ afterEach(() => {
 
 describe('AccountsPage', () => {
   it('renders each service section with the live usage from the shared snapshot', async () => {
-    const { container } = render(<AccountsPage />)
+    render(<AccountsPage />)
     await act(flush)
 
-    expect(container.querySelector('.aliax-root')).toBeNull()
     expect(screen.getByRole('heading', { level: 1, name: 'Accounts' })).toBeTruthy()
     expect(screen.getByText('Claude Code')).toBeTruthy()
     expect(screen.getByText('Codex')).toBeTruthy()
@@ -211,14 +210,26 @@ describe('AccountsPage', () => {
 })
 
 describe('StatsPage', () => {
-  it('renders with an empty stats bundle', async () => {
-    const { container } = render(<StatsPage />)
+  it('says there is nothing to show for an empty bundle', async () => {
+    render(<StatsPage />)
     await act(flush)
     await act(flush)
-    expect(container.querySelector('.aliax-root')).not.toBeNull()
     expect(aliax.stats).toHaveBeenCalled()
+    expect(screen.getByRole('heading', { level: 1, name: 'Stats' })).toBeTruthy()
     expect(screen.getByText('Nothing to show yet')).toBeTruthy()
-    expect(aliax.listServices).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('No Claude Code or Codex session logs on this machine.')).toBeTruthy()
+  })
+
+  it('says how far indexing has got, and Reindex reindexes', async () => {
+    aliax.statsStatus.mockResolvedValue({ indexing: true, filesDone: 120, filesTotal: 3400, rows: 0 })
+    render(<StatsPage />)
+    await act(flush)
+    await act(flush)
+    expect(screen.getByText('Indexing 120 of 3,400 session logs', { selector: 'p' })).toBeTruthy()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Reindex' }))
+    })
+    expect(aliax.statsReindex).toHaveBeenCalledTimes(1)
   })
 
   it('renders every chart from a populated bundle', async () => {
@@ -274,8 +285,20 @@ describe('StatsPage', () => {
     await act(flush)
     await act(flush)
     expect(screen.queryByText('Nothing to show yet')).toBeNull()
-    expect(screen.getByText('Least headroom')).toBeTruthy()
-    expect(container.querySelectorAll('[data-chart]').length).toBeGreaterThan(0)
+    const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
+    expect(headings).toEqual([
+      'Claude Code 5-hour limit',
+      'Daily output',
+      'Model mix',
+      'Top projects',
+      'Cache hit rate',
+      'When you burn limit',
+      'Tools used'
+    ])
+    expect(screen.queryByText('Least headroom')).toBeNull()
+    expect(screen.queryByText('Subscriptions')).toBeNull()
+    expect(screen.getByText(/^From 40 turns in your local session logs, updated /)).toBeTruthy()
+    expect(container.querySelectorAll('[data-chart]').length).toBe(6)
     expect(errors).not.toHaveBeenCalled()
   })
 })

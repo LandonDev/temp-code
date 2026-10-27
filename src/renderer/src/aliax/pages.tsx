@@ -1,9 +1,9 @@
 import { registry, useEnvironments } from "../lib/connection";
-import { useMemo, useRef, useState, type ReactNode } from "react";
-import { motion, useReducedMotion } from "motion/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { ServiceId } from "aliax-core/shared/types";
 import type { AccountProvider } from "@shared/accounts";
+import type { StatsBundle, StatsStatus } from "@shared/aliaxStats";
 import { CANCELLED, SIGN_IN_REFRESHED } from "@shared/signInWords";
 import { RefreshCw } from "@renderer/chrome/icons";
 import { Page } from "@renderer/components/page";
@@ -11,12 +11,10 @@ import { Button } from "@renderer/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@renderer/components/ui/dialog";
 import { Spinner } from "@renderer/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
-import { TooltipProvider as AliaxTooltipProvider } from "@aliax/components/ui/tooltip";
-import { EASE_OUT } from "@aliax/lib/ease";
+import { compact, localDayTime } from "@aliax/lib/viz";
 import { AccountsSkeleton, AccountsView } from "@aliax/views/accounts";
 import { StatsView } from "@aliax/views/stats";
 import { useAliax } from "./useAliax";
-import "./aliax.css";
 
 type Result = { ok: boolean; error?: string; notes?: string[]; name?: string };
 
@@ -188,28 +186,64 @@ export function AccountsPage(): React.JSX.Element {
   );
 }
 
-/** Stats keeps Aliax's own frame until its chart module lands. */
-function AliaxRoot({ children }: { children: ReactNode }) {
-  const reduce = useReducedMotion();
-  return (
-    <AliaxTooltipProvider delayDuration={400}>
-      <div className="aliax-root flex h-full min-h-0 flex-col">
-        <main className="flex-1 overflow-y-auto pt-8">
-          <motion.div
-            initial={reduce ? false : { opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.22, ease: EASE_OUT }}
-            className="mx-auto flex h-full w-full max-w-[62rem] flex-col px-8 pb-24"
-          >
-            {children}
-          </motion.div>
-        </main>
-      </div>
-    </AliaxTooltipProvider>
-  );
-}
-
+/**
+ * History from the local session logs. The page owns the loading: the
+ * bundle and the index status at mount, a 2.5 s poll while the first index
+ * pass runs, and Reindex.
+ */
 export function StatsPage(): React.JSX.Element {
-  const { views, usage } = useAliax();
-  return <AliaxRoot>{views === null ? null : <StatsView usage={usage} services={views} />}</AliaxRoot>;
+  const [data, setData] = useState<StatsBundle | null>(null);
+  const [status, setStatus] = useState<StatsStatus | null>(null);
+  const [reindexing, setReindexing] = useState(false);
+
+  const load = useCallback(async () => {
+    const [bundle, next] = await Promise.all([window.aliax.stats(), window.aliax.statsStatus()]);
+    setData(bundle);
+    setStatus(next);
+  }, []);
+
+  useEffect(() => {
+    void load();
+    // The first index pass walks thousands of files; poll until it settles.
+    const timer = setInterval(async () => {
+      const next = await window.aliax.statsStatus();
+      setStatus(next);
+      if (!next.indexing) {
+        setData(await window.aliax.stats());
+        clearInterval(timer);
+      }
+    }, 2500);
+    return () => clearInterval(timer);
+  }, [load]);
+
+  const reindex = async () => {
+    setReindexing(true);
+    try {
+      await window.aliax.statsReindex();
+      await load();
+    } finally {
+      setReindexing(false);
+    }
+  };
+
+  const description = status?.indexing
+    ? `Indexing ${status.filesDone.toLocaleString()} of ${status.filesTotal.toLocaleString()} session logs`
+    : data && data.totals.turns > 0
+      ? `From ${compact(data.totals.turns)} turns in your local session logs, updated ${localDayTime(data.generatedAt)}`
+      : undefined;
+
+  return (
+    <Page
+      title="Stats"
+      description={description}
+      actions={
+        <Button variant="ghost" size="sm" disabled={reindexing} onClick={() => void reindex()}>
+          {reindexing ? <Spinner className="size-3.5" /> : <RefreshCw strokeWidth={1.75} />}
+          Reindex
+        </Button>
+      }
+    >
+      <StatsView data={data} status={status} />
+    </Page>
+  );
 }

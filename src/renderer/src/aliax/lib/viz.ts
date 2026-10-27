@@ -1,60 +1,4 @@
-import type { ChartConfig } from '@aliax/components/evilcharts/ui/recharts-chart'
-
-/**
- * Categorical slots, assigned in fixed order and never cycled. These exact
- * steps pass all six palette checks against this app's card surface (#2b2b2b):
- * lightness band, chroma floor, colour-vision separation, normal-vision floor
- * and contrast. Do not substitute brighter hues without re-validating.
- */
-export const SERIES = [
-  '#3987e5',
-  '#d95926',
-  '#199e70',
-  '#9085e9',
-  '#c98500',
-  '#d55181'
-] as const
-
-/** Magnitude, not identity: one hue, light to dark. */
-export const SEQUENTIAL = [
-  '#0d366b',
-  '#184f95',
-  '#1c5cab',
-  '#256abf',
-  '#2a78d6',
-  '#3987e5',
-  '#5598e7',
-  '#6da7ec'
-] as const
-
-/** Reserved for state; never used as a series colour. */
-export const STATUS = {
-  good: '#199e70',
-  warning: '#c98500',
-  serious: '#d95926',
-  critical: '#e34948'
-} as const
-
-/**
- * Build an EvilCharts config, taking colours in fixed slot order.
- *
- * The return type keeps each entry's literal key so the charts' own
- * config-vs-data key check still applies; a dynamic `string[]` of series
- * necessarily widens to a plain ChartConfig.
- */
-export function config<const E extends readonly { key: string; label: string; color?: string }[]>(
-  entries: E
-): { [K in E[number]['key']]: { label: string; colors: { light: string[]; dark: string[] } } } {
-  const out: Record<string, { label: string; colors: { light: string[]; dark: string[] } }> = {}
-  entries.forEach((e, i) => {
-    const c = e.color ?? SERIES[i % SERIES.length]
-    out[e.key] = { label: e.label, colors: { light: [c], dark: [c] } }
-  })
-  return out as never
-}
-
-/** Widen a config for charts whose series come from data rather than literals. */
-export const anyConfig = (c: unknown): ChartConfig => c as ChartConfig
+// The words and numbers the Stats page prints; colours are tokens (aliax/charts/palette.ts).
 
 export const compact = (n: number): string => {
   if (!Number.isFinite(n)) return '0'
@@ -63,6 +7,15 @@ export const compact = (n: number): string => {
   if (abs >= 1e6) return `${(n / 1e6).toFixed(1)}M`
   if (abs >= 1e3) return `${(n / 1e3).toFixed(1)}k`
   return String(Math.round(n))
+}
+
+/** An axis tick: whole numbers past ten of a unit, so ticks stay short ("150k", "2.5M"). */
+export const compactTick = (n: number): string => {
+  const abs = Math.abs(n)
+  const unit = abs >= 1e9 ? [1e9, 'B'] : abs >= 1e6 ? [1e6, 'M'] : abs >= 1e3 ? [1e3, 'k'] : null
+  if (!unit) return String(Math.round(n))
+  const v = n / (unit[0] as number)
+  return `${Math.abs(v) >= 10 ? Math.round(v) : Math.round(v * 10) / 10}${unit[1]}`
 }
 
 /** Day labels are built from a local-midnight date, so they never slip a day. */

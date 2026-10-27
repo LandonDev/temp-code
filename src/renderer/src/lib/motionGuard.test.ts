@@ -17,16 +17,6 @@ const ROOT = resolve(__dirname, "..");
 
 /** .ts/.tsx files allowed literal timings: the owning area and how many. */
 const ALLOWED: Record<string, { owner: string; count: number }> = {
-  "aliax/components/evilcharts/charts/recharts-pie-chart.tsx": { owner: "A4", count: 1 },
-  "aliax/components/evilcharts/charts/recharts-radial-chart.tsx": { owner: "A4", count: 2 },
-  "aliax/components/evilcharts/charts/recharts-sankey-chart.tsx": { owner: "A4", count: 6 },
-  "aliax/components/motion/loader.tsx": { owner: "A4", count: 2 },
-  "aliax/components/ui/dialog.tsx": { owner: "A4", count: 1 },
-  "aliax/components/ui/dropdown-menu.tsx": { owner: "A4", count: 2 },
-  "aliax/components/ui/progress.tsx": { owner: "A4", count: 1 },
-  "aliax/lib/ease.ts": { owner: "A4", count: 5 },
-  "aliax/pages.tsx": { owner: "A4", count: 1 },
-  "aliax/views/accounts.tsx": { owner: "A4", count: 2 },
   "chrome/AttachmentChip.tsx": { owner: "A10", count: 1 },
   "chrome/ComposerInput.tsx": { owner: "A10", count: 3 },
   "chrome/ModelSettings.tsx": { owner: "A10", count: 1 },
