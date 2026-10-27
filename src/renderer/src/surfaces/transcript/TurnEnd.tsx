@@ -4,7 +4,6 @@ import { Check, Copy, FilePlusCorner } from "../../chrome/icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { HandoffButton, SecondOpinionButton } from "../../chrome/SecondOpinionButton";
 import { STATUS_WORD, StatusMark } from "../../components/ui/status";
-import { TextShimmer } from "../../components/ui/text-shimmer";
 import { cn } from "../../lib/cn";
 import { copyText } from "../../lib/clipboard";
 import { playCue } from "../../lib/sounds";
@@ -17,6 +16,7 @@ import { storeTitleOf, threadMentionsToTitles } from "../../lib/threadMentions";
 import { needsApproval, turnCopyText } from "../transcriptActivity";
 import { IconAction, SwapIcon, useArmOnIntent } from "./IconAction";
 import { spanWords } from "./thinking";
+import { ThinkingTail } from "./ThinkingRow";
 
 /** A turn's closing row: the thinking tail while it starts, its duration
  *  line once it is over, the live state while it runs or waits. */
@@ -44,9 +44,7 @@ export function TurnEnd({
   return (
     <>
       {!settled && showsThinkingTail(turn.blocks) ? (
-        <div className="flex h-[26px] items-center font-sans text-sm">
-          <TextShimmer>Thinking</TextShimmer>
-        </div>
+        <ThinkingTail />
       ) : null}
       {durationMs != null && settled ? (
         <TurnDuration
@@ -222,7 +220,7 @@ export function formatWorkingDuration(elapsedMs: number | null, done = false): s
 }
 
 /**
- * A live turn with nothing to show yet ends in a "Thinking" shimmer: after
+ * A live turn with nothing to show yet ends in the thinking row's tail: after
  * the prompt, behind an empty reasoning block, or before the first word of
  * the answer. The next content takes that slot, so nothing jumps.
  */

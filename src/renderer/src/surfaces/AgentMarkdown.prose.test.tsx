@@ -55,4 +55,16 @@ describe("AgentMarkdown prose", () => {
     expect(code.getAttribute("role")).toBeNull();
     expect(code.getAttribute("tabindex")).toBeNull();
   });
+
+  it("a pill never splits into two halves: short code stays whole, long code wraps as whole pills", () => {
+    const short = render(<AgentMarkdown text="Run `bun test cart` now." />);
+    const pill = short.container.querySelector("code")!;
+    expect(pill.className).toContain("box-decoration-clone");
+    expect(pill.className).toContain("whitespace-nowrap");
+    short.unmount();
+    const long = render(<AgentMarkdown text={"See `" + "x".repeat(60) + "` there."} />);
+    const wide = long.container.querySelector("code")!;
+    expect(wide.className).toContain("box-decoration-clone");
+    expect(wide.className).not.toContain("whitespace-nowrap");
+  });
 });

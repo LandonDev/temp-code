@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { useState } from "react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { Collapsible, CollapsibleContent } from "../../components/ui/collapsible";
 import { afterEach, describe, expect, it } from "vitest";
 import { Button } from "../../components/ui/button";
 import type { Block } from "../../lib/session";
@@ -14,6 +16,35 @@ describe("NoticeLine", () => {
     const spans = [...container.querySelectorAll('[data-slot="notice-line"] > div > div > span')].map((s) => s.textContent);
     expect(spans).toEqual(["Context compacted", "48k → 12k", "6s"]);
     expect(container.textContent).not.toMatch(/[·|•]/);
+  });
+
+  it("is the action rows' size: 14px on a 32px line", () => {
+    const { container } = render(<NoticeLine lead="Pass" />);
+    const line = container.querySelector('[data-slot="notice-line"]')!;
+    expect(line.className).toContain("text-sm");
+    expect(line.firstElementChild!.className).toContain("min-h-8");
+  });
+
+  it("a line that opens is its own trigger, with a bare chevron", () => {
+    const Fold = () => {
+      const [open, setOpen] = useState(false);
+      return (
+        <Collapsible open={open} onOpenChange={setOpen}>
+          <NoticeLine lead="Typecheck failed" fold={{ open, label: open ? "Hide the log" : "Show the log" }}>
+            <CollapsibleContent>the log</CollapsibleContent>
+          </NoticeLine>
+        </Collapsible>
+      );
+    };
+    const { container } = render(<Fold />);
+    const trigger = screen.getByRole("button", { name: "Show the log" });
+    expect(trigger.className).toContain("absolute inset-0");
+    expect(trigger.className).toContain("focus-visible:ring-ring");
+    expect(trigger.getAttribute("data-slot")).not.toBe("button");
+    expect(container.querySelectorAll("button").length).toBe(1);
+    fireEvent.click(trigger);
+    expect(screen.getByRole("button", { name: "Hide the log" }).getAttribute("aria-expanded")).toBe("true");
+    expect(container.textContent).toContain("the log");
   });
 
   it("keeps actions in the hover group", () => {

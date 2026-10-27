@@ -60,7 +60,7 @@ export function approvalDetailOf(block: Block, cwd?: string): ApprovalDetail | n
     const phrases = commandPhrases(command, cwd);
     return {
       kind: "shell",
-      doing: phrases.length > 0 ? cap(phrases.slice(0, 2).join(" · ")) : "Run a command",
+      doing: phrases.length > 0 ? cap(phrases.slice(0, 2).join(", ")) : "Run a command",
       command: bareCommand(command),
     };
   }

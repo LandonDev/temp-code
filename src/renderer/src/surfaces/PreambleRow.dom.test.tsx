@@ -13,6 +13,7 @@ describe('PreambleRow', () => {
     const button = getByRole('button')
     expect(button.textContent).toBe('Project rules212 words')
     expect(button.textContent).not.toContain('·')
+    expect(button.className).toContain('px-2 py-1')
     expect(button.getAttribute('aria-expanded')).toBe('false')
     expect(queryByText(/Never touch prod/)).toBeNull()
     fireEvent.click(button)

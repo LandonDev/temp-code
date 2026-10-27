@@ -3,6 +3,13 @@ import { answer as answerQuestion } from "../lib/tcserver/commands";
 import { QuestionCard as Card, type Question } from "../components/ui/question-card";
 import { StatusMark } from "../components/ui/status";
 import { NoticeLine } from "./transcript/NoticeLine";
+import { cn } from "../lib/cn";
+
+/** The transcript's one card shape (the failure card's): full width, the lg
+ *  radius, a 12px inset and a 13px medium title. */
+const CARD_SHAPE = "my-2 max-w-none rounded-lg p-3 [&_h3]:text-[13px] [&_h3]:font-medium [&_h3]:tracking-normal";
+/** One question has no progress to show: the header's ring and its count go. */
+const NO_PROGRESS = "[&>div:first-child>span:last-child]:hidden";
 
 /** The free-text option a question offers unless it says otherwise. */
 const OTHER = "Other";
@@ -38,7 +45,7 @@ export function QuestionCard({
   const title = question.questions[0]?.header ?? "Questions";
   return (
     <Card
-      className="my-2"
+      className={cn(CARD_SHAPE, question.questions.length === 1 && NO_PROGRESS)}
       title={title}
       questions={cardQuestions(question, title)}
       onSubmitAnswers={(answers) => onAnswer(question.requestId, answers)}

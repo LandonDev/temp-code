@@ -150,6 +150,10 @@ function MarkdownLink({
 
 type MarkdownCodeProps = ComponentProps<"code"> & { node?: unknown };
 
+/** Inline code this short never breaks: a split pill reads as two. Longer
+ *  code may wrap, each piece drawn as a whole pill (box-decoration-clone). */
+const SHORT_TOKEN = 40;
+
 function MarkdownCode({
   children,
   className,
@@ -168,7 +172,9 @@ function MarkdownCode({
     const code = (
       <code
         {...props}
-        className={`rounded-md bg-muted px-1.5 py-0.5 font-mono text-[0.875em] text-foreground ${
+        className={`rounded-md bg-muted px-1.5 py-0.5 font-mono text-[0.875em] text-foreground box-decoration-clone ${
+          text.length <= SHORT_TOKEN ? "whitespace-nowrap" : ""
+        } ${
           open ? "cursor-pointer decoration-muted-foreground underline-offset-2 hover:underline" : ""
         } ${className ?? ""}`}
         role={open ? "link" : undefined}

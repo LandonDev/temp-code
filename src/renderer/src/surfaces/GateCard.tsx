@@ -4,7 +4,7 @@ import { failedGateStep, typecheckErrorCount } from "@server/shared/gate";
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import { StatusMark } from "../components/ui/status";
 import type { Block } from "../lib/session";
-import { NoticeCaret, NoticeLine } from "./transcript/NoticeLine";
+import { NoticeLine } from "./transcript/NoticeLine";
 
 /**
  * A gate run on one notice line (shared/gate.ts): a batch child's typecheck
@@ -26,7 +26,7 @@ export function GateCard({ block }: { block: Block }) {
       lead={leadOf(gate)}
       tone={gate.ok ? "muted" : "strong"}
       details={detailOf(gate)}
-      trailing={foldable ? <NoticeCaret open={open} label={open ? "Hide the log" : "Show the log"} /> : undefined}
+      fold={foldable ? { open, label: open ? "Hide the log" : "Show the log" } : undefined}
     >
       {foldable ? (
         <CollapsibleContent>

@@ -6,7 +6,7 @@ const copyText = vi.fn((_: string) => Promise.resolve());
 vi.mock("../../lib/clipboard", () => ({ copyText: (text: string) => copyText(text) }));
 vi.mock("../../lib/sounds", () => ({ playCue: () => {} }));
 
-import { TurnDuration } from "./TurnEnd";
+import { TurnDuration, TurnEnd } from "./TurnEnd";
 
 afterEach(() => {
   cleanup();
@@ -64,5 +64,24 @@ describe("TurnDuration", () => {
     const paused = render(<TurnDuration elapsedMs={63_000} live paused />);
     expect(paused.container.textContent).toBe("Pausedworked 1m 3s");
     expect(paused.container.querySelector('[data-state="paused"]')).not.toBeNull();
+  });
+});
+
+describe("TurnEnd's thinking tail", () => {
+  it("is the thinking row's shape: the glyph slot and a 32px row", () => {
+    const user = { id: "u", role: "user" as const, text: "go" };
+    const { container } = render(
+      <TurnEnd
+        turn={{ id: "t", index: 0, isLast: false, settled: false, blocks: [user], userBlock: user, durationMs: undefined, startedAt: undefined }}
+        harnessOf={() => undefined}
+        turnState={null}
+      />,
+    );
+    const tail = container.querySelector('[data-slot="thinking-tail"]')!;
+    expect(tail).not.toBeNull();
+    expect(tail.className).toContain("min-h-8");
+    expect(tail.className).not.toMatch(/h-\[/);
+    expect(tail.querySelector("svg")).not.toBeNull();
+    expect(tail.textContent).toBe("Thinking");
   });
 });

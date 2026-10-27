@@ -12,7 +12,7 @@ in the first line: TranscriptBlock (the per-block switch), UserMessage,
 ActionGroup (A7, turn structure); ActivityRow, ToolCall, ActionRow,
 ActionLine, CommandCard, ToolGlyph and actionModel (A8, action rows);
 ThinkingRow with thinking.ts, TurnEnd, SystemRow, NoticeRow (every typed
-notice through one switch), NoticeLine, PlanHandoffRow, Approval,
+notice through one switch), NoticeLine, PlanHandoffRow, ApprovalCard,
 IconAction and markdown.css (A9).
 `transcript/types.ts` holds the callback types, so nothing under
 `transcript/` imports AgentTranscript.tsx.
@@ -77,7 +77,8 @@ foreground, the same words the group line uses); the components only draw it.
   `StatusMark`'s words. No clock time.
 - **Notices** draw on `transcript/NoticeLine.tsx`: a 14 px glyph slot that
   lines up with the action rows' tool icon, the lead, each detail its own
-  muted span, an optional caret and hover actions. Gate, compaction, pass,
+  muted span and hover actions, at the action rows' 14 px on 32 px; a line
+  that opens is its own trigger with a bare chevron, as a row is. Gate, compaction, pass,
   handoff, plan hand-off, batch, account-gone, a stopped turn and any plain
   system text are lines; a held review (`ReviewCard.tsx`) and a failure
   (`FailureCard.tsx`) are the only cards. A plain notice keeps its kind on

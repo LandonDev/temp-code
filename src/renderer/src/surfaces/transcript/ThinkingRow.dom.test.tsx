@@ -28,6 +28,7 @@ describe("ActivityThinkingRow", () => {
     const view = render(<ActivityThinkingRow block={thought()} endTs={14_000} expandable />);
     const trigger = screen.getByRole("button");
     expect(trigger.textContent).toBe("Thought for 4s");
+    expect(trigger.className).toContain("focus-visible:ring-ring");
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     expect(view.container.textContent).not.toContain("Now I check");
     fireEvent.click(trigger);

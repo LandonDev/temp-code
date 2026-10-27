@@ -17,7 +17,7 @@ export function PreambleRow({ text, words }: { text: string; words: number }) {
     <Collapsible open={open} onOpenChange={setOpen} className="mb-1.5 flex flex-col" data-preamble-row>
       <CollapsibleTrigger
         onClick={stop}
-        className="-ml-1 flex w-fit items-center gap-2 rounded-md px-1 py-0.5 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent"
+        className="-ml-2 flex w-fit items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
       >
         <ChevronRight
           className={cn(

@@ -11,7 +11,7 @@ import { modelLabel } from "../lib/threads/agents";
 import type { OpenFileFn } from "../lib/search";
 import { SelectSessionContext } from "./AgentMarkdown";
 import { useOpenAgentDetail } from "./agentDetailContext";
-import { NoticeCaret, NoticeLine } from "./transcript/NoticeLine";
+import { NoticeLine } from "./transcript/NoticeLine";
 import { useTranscriptSession } from "./transcriptSession";
 
 type Review = NonNullable<Block["review"]>;
@@ -55,7 +55,7 @@ export function ReviewCard({
         glyph={glyph}
         lead={leadOf(review.outcome, label)}
         details={detailOf(review)}
-        trailing={minor ? <NoticeCaret open={minorOpen} label={minorOpen ? "Hide minor findings" : "Show minor findings"} /> : undefined}
+        fold={minor ? { open: minorOpen, label: minorOpen ? "Hide minor findings" : "Show minor findings" } : undefined}
         actions={
           openThread ? (
             <Button variant="ghost" size="xs" className="-my-0.5 text-muted-foreground hover:text-foreground" onClick={openThread}>

@@ -16,7 +16,7 @@ describe("GateCard", () => {
   it("a red typecheck names the branch and the error count, its log behind the caret", () => {
     const log = "src/a.ts(3,1): error TS2322: wrong\nsrc/b.ts(9,2): error TS2345: also wrong\nFound 2 errors in 2 files.";
     const { container } = render(<GateCard block={block({ step: "typecheck", branch: "feature", ok: false, log, at: 1 })} />);
-    expect(parts(container)).toEqual(["Typecheck failed", "feature", "2 errors", ""]);
+    expect(parts(container)).toEqual(["Typecheck failed", "feature", "2 errors"]);
     expect(container.querySelector('[data-state="failed"]')).not.toBeNull();
     expect(container.textContent).not.toMatch(/[·|•]/);
     expect(container.querySelector("pre")).toBeNull();

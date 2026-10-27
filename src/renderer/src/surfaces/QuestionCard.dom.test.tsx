@@ -102,4 +102,27 @@ describe("QuestionCard", () => {
     expect(option(one, "B").getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByTestId("two").querySelector('[aria-pressed="true"]')).toBeNull();
   });
+
+  it("is the failure card's shape: full width, rounded-lg, p-3, a 13px medium title", () => {
+    const view = render(<QuestionCard question={meta([spec("Which?", ["A"], { header: "File" })])} onAnswer={() => {}} />);
+    const card = view.container.querySelector<HTMLElement>('[data-slot="question-card"]')!;
+    for (const cls of ["max-w-none", "rounded-lg", "p-3", "[&_h3]:text-[13px]", "[&_h3]:font-medium"]) {
+      expect(card.className.split(" ")).toContain(cls);
+    }
+    for (const cls of ["max-w-lg", "rounded-xl", "p-4"]) expect(card.className.split(" ")).not.toContain(cls);
+  });
+
+  it("hides the progress ring for a single question, and only then", () => {
+    const hide = "[&>div:first-child>span:last-child]:hidden";
+    const one = render(<QuestionCard question={meta([spec("Which?", ["A"])])} onAnswer={() => {}} />);
+    const card = one.container.querySelector<HTMLElement>('[data-slot="question-card"]')!;
+    expect(card.className.split(" ")).toContain(hide);
+    // The selector lands on the span that holds the ring and its count.
+    const target = card.querySelector(":scope > div:first-child > span:last-child")!;
+    expect(target.querySelector('button[aria-label="Reset the answers"]')).not.toBeNull();
+    expect(target.textContent).toContain("0 of 1 answered");
+    one.unmount();
+    const two = render(<QuestionCard question={meta([spec("A?", ["A"]), spec("B?", ["B"])])} onAnswer={() => {}} />);
+    expect(two.container.querySelector<HTMLElement>('[data-slot="question-card"]')!.className.split(" ")).not.toContain(hide);
+  });
 });

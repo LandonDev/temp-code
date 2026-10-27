@@ -13,6 +13,17 @@ import { latestLine, thoughtLabel, thoughtMs } from "./thinking";
 const ROW = "flex min-h-8 min-w-0 items-center gap-2 font-sans text-sm";
 const GLYPH = <Sparkles className="size-3.5 shrink-0 text-muted-foreground" />;
 
+/** A live turn's tail before its first content: the thinking row's live
+ *  shape with no sentence yet, so the row that replaces it does not jump. */
+export function ThinkingTail() {
+  return (
+    <div aria-label="Thinking" data-slot="thinking-tail" className={ROW}>
+      {GLYPH}
+      <TextShimmer className="shrink-0">Thinking</TextShimmer>
+    </div>
+  );
+}
+
 /**
  * A thought, as one row of the paragraph's action list. While it streams:
  * "Thinking" shimmering and the newest finished sentence after it. Once it
@@ -70,7 +81,12 @@ export function ActivityThinkingRow({
       }}
       className="min-w-0"
     >
-      <CollapsibleTrigger className={cn(ROW, "w-fit text-muted-foreground outline-none hover:text-foreground focus-visible:text-foreground")}>
+      <CollapsibleTrigger
+        className={cn(
+          ROW,
+          "w-fit rounded-md text-muted-foreground outline-none hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+        )}
+      >
         {GLYPH}
         <span className="truncate">{label}</span>
         <ChevronRight
