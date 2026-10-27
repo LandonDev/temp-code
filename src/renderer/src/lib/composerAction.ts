@@ -40,14 +40,13 @@ export function composerActionLabel(intent: ComposerIntent): string {
   }
 }
 
-/** The hover hint while a turn runs: which key does which. */
+/** The second line of the button's tooltip while a turn runs: the other
+ *  key and what it does ("⌘⏎ steers" while Enter queues, and back). */
 export function composerActionHint(
   intent: ComposerIntent,
-  midTurnDefault: MidTurnDefault,
   mod: string,
-): string | undefined {
-  if (intent !== "queue" && intent !== "steer") return undefined;
-  return midTurnDefault === "queue"
-    ? `Enter queues · ${mod}Enter steers the running turn`
-    : `Enter steers the running turn · ${mod}Enter queues`;
+): { keys: string; verb: string } | undefined {
+  if (intent === "queue") return { keys: `${mod}⏎`, verb: "steers" };
+  if (intent === "steer") return { keys: `${mod}⏎`, verb: "queues" };
+  return undefined;
 }

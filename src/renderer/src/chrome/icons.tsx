@@ -5,6 +5,10 @@ import {
   type IconSvgElement,
 } from "@hugeicons/react";
 import Add01Icon from "@hugeicons/core-free-icons/Add01Icon";
+import AtIcon from "@hugeicons/core-free-icons/AtIcon";
+import Attachment01Icon from "@hugeicons/core-free-icons/Attachment01Icon";
+import CornerDownRightIcon from "@hugeicons/core-free-icons/CornerDownRightIcon";
+import SlashIcon from "@hugeicons/core-free-icons/SlashIcon";
 import AddSquareIcon from "@hugeicons/core-free-icons/AddSquareIcon";
 import AlertCircleIcon from "@hugeicons/core-free-icons/AlertCircleIcon";
 import AppWindowIcon from "@hugeicons/core-free-icons/AppWindowIcon";
@@ -196,6 +200,10 @@ export const ArchiveRestore = wrap(ArchiveRestoreIcon, "ArchiveRestore");
 export const ArrowDownCircle = wrap(CircleArrowDown01Icon, "ArrowDownCircle");
 export const ArrowLeft = wrap(ArrowLeft01Icon, "ArrowLeft");
 export const ArrowUp = wrap(ArrowUp01Icon, "ArrowUp");
+export const AtSign = wrap(AtIcon, "AtSign");
+export const CornerDownRight = wrap(CornerDownRightIcon, "CornerDownRight");
+export const Paperclip = wrap(Attachment01Icon, "Paperclip");
+export const Slash = wrap(SlashIcon, "Slash");
 export const ArrowDownLong = wrap(ArrowDown02Icon, "ArrowDownLong");
 export const ArrowUpLong = wrap(ArrowUp02Icon, "ArrowUpLong");
 export const ArrowTurnForward = wrap(ArrowTurnForwardIcon, "ArrowTurnForward");

@@ -76,7 +76,7 @@ import {
   subscribeMidTurnDefault,
   subscribeNotesEnabled
 } from '../lib/settings'
-import { ComposerAction } from './ComposerAction'
+import { SendButton } from './ComposerBar'
 import { decideComposerAction, type ComposerIntent } from '../lib/composerAction'
 import {
   ComposerInput,
@@ -1040,9 +1040,8 @@ export function Composer({
             </div>
 
             <div className="flex shrink-0 items-center gap-1">
-              <ComposerAction
+              <SendButton
                 intent={intent}
-                midTurnDefault={midTurnDefault}
                 disabled={!!blocked || (intent !== 'pause' && !hasValue)}
                 onSubmit={(invert) => submit(inputRef.current?.value() ?? '', invert)}
                 onPause={() => onPause?.()}

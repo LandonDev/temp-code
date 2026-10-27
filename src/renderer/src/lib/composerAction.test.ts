@@ -27,10 +27,10 @@ describe("decideComposerAction", () => {
     expect(decideComposerAction({ ...base, paused: true, hasText: false })).toBe("queue");
   });
 
-  it("hints name both keys only mid-turn", () => {
-    expect(composerActionHint("send", "queue", "⌘")).toBeUndefined();
-    expect(composerActionHint("pause", "queue", "⌘")).toBeUndefined();
-    expect(composerActionHint("queue", "queue", "⌘")).toBe("Enter queues · ⌘Enter steers the running turn");
-    expect(composerActionHint("steer", "steer", "⌘")).toBe("Enter steers the running turn · ⌘Enter queues");
+  it("mid-turn, the hint names the other key and what it does", () => {
+    expect(composerActionHint("send", "⌘")).toBeUndefined();
+    expect(composerActionHint("pause", "⌘")).toBeUndefined();
+    expect(composerActionHint("queue", "⌘")).toEqual({ keys: "⌘⏎", verb: "steers" });
+    expect(composerActionHint("steer", "Ctrl+")).toEqual({ keys: "Ctrl+⏎", verb: "queues" });
   });
 });
