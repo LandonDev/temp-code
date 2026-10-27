@@ -2,11 +2,11 @@ import { BrowserWindow, ipcMain, shell } from 'electron'
 import { existsSync, renameSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { accounts, adapter, vault, type ActionResult, type ServiceId } from 'aliax-core'
+import { accounts, adapter, credentials, vault, type ActionResult, type ServiceId } from 'aliax-core'
 import { appSessionEmail } from 'aliax-core/adapters/claude'
 import * as login from './aliax/login'
 import { mintInWindow } from './aliax/staticMint'
-import { CANCELLED, cliRepairNote, signInNotes } from '@shared/signInWords'
+import { CANCELLED, cliInstallNote, cliRepairNote, cliTakesSignIn, holdsGrant, signInNotes } from '@shared/signInWords'
 import { StaticTokens } from './aliax/staticTokens'
 import type { AccountSync } from './server/remote/accountSync'
 import { indexAll, indexProgress } from './aliax/stats/indexer'
@@ -72,6 +72,9 @@ export function notifyAccountsChanged(): void {
  * Sign in and store the new account WITHOUT making it live. Adding is a
  * library action; switching stays an explicit, separate choice.
  */
+/** The Claude CLI's credential item (aliax-core's adapter reads the same one). */
+const CLAUDE_CREDENTIALS = 'Claude Code-credentials'
+
 async function loginStart(serviceId: ServiceId, loginHint?: string): Promise<ActionResult> {
   switch (serviceId) {
     case 'claude-code': {
@@ -98,14 +101,18 @@ async function loginStart(serviceId: ServiceId, loginHint?: string): Promise<Act
       const liveId = await a.liveAccountId().catch(() => null)
       // Not when Claude sign-ins are handed to another host: the grant just
       // minted goes there, and the CLI here keeps refreshing its own.
-      if (
-        name &&
-        !sync?.homes().claude &&
-        liveId === captured.accountId &&
-        (wasExpired || (await a.liveCredentialExpired?.().catch(() => false)))
-      ) {
-        const repaired = await accounts.activate(serviceId, name)
-        notes.push(cliRepairNote(repaired))
+      const sameAccount = liveId === captured.accountId
+      const take = cliTakesSignIn({
+        handedOff: !!sync?.homes().claude,
+        // No account and no stored grant at all; a failed read counts as signed in.
+        liveSignedIn: liveId !== null || (await holdsGrant(() => credentials().read(CLAUDE_CREDENTIALS))),
+        sameAccount,
+        liveExpired: sameAccount && (wasExpired || !!(await a.liveCredentialExpired?.().catch(() => false)))
+      })
+      if (name && take) {
+        const result = await accounts.activate(serviceId, name)
+        const note = take === 'repair' ? cliRepairNote(result) : cliInstallNote(result)
+        if (note) notes.push(note)
       }
       return { ok: true, name, notes }
     }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CANCELLED, cliRepairNote, exchangeRefused, NO_ACCOUNT, NO_ANSWER, signInNotes, UNREACHABLE } from './signInWords'
+import { CANCELLED, cliInstallNote, cliRepairNote, cliTakesSignIn, exchangeRefused, holdsGrant, NO_ACCOUNT, NO_ANSWER, signInNotes, UNREACHABLE } from './signInWords'
 
 describe('the words a Claude sign-in sends', () => {
   it('says only "cancelled" for a closed window or Cancel', () => {
@@ -27,5 +27,30 @@ describe('the words a Claude sign-in sends', () => {
   it('names the CLI repair and its failure', () => {
     expect(cliRepairNote({ ok: true })).toBe('CLI sign-in repaired')
     expect(cliRepairNote({ ok: false, error: 'locked' })).toBe("The CLI's sign-in is still expired (locked)")
+  })
+})
+
+describe('cliTakesSignIn', () => {
+  const base = { handedOff: false, liveSignedIn: false, sameAccount: false, liveExpired: false }
+  it('installs the first sign-in when the CLI is signed in nowhere', () => {
+    expect(cliTakesSignIn(base)).toBe('install')
+    expect(cliInstallNote({ ok: true })).toBeNull()
+    expect(cliInstallNote({ ok: false, error: 'locked' })).toBe('The CLI is still signed out (locked)')
+  })
+  it('repairs a dead sign-in of the same account and never switches away from another', () => {
+    expect(cliTakesSignIn({ ...base, liveSignedIn: true, sameAccount: true, liveExpired: true })).toBe('repair')
+    expect(cliTakesSignIn({ ...base, liveSignedIn: true, sameAccount: true })).toBeNull()
+    expect(cliTakesSignIn({ ...base, liveSignedIn: true })).toBeNull()
+  })
+  it('leaves the CLI alone while sign-ins are handed to another host', () => {
+    expect(cliTakesSignIn({ ...base, handedOff: true })).toBeNull()
+  })
+})
+
+describe('holdsGrant', () => {
+  it('is no only when the store answers that nothing is there', async () => {
+    expect(await holdsGrant(async () => null)).toBe(false)
+    expect(await holdsGrant(async () => '{"claudeAiOauth":{}}')).toBe(true)
+    expect(await holdsGrant(async () => { throw new Error('keychain locked') })).toBe(true)
   })
 })
