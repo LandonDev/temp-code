@@ -1515,9 +1515,9 @@ rows, Mark all read first: a project's menu (the rail's row and the project
 header; for a workspace linked across hosts the row's menu acts on every
 copy, one `session.batch` per host), a host's submenu (in the rail's Hosts
 row when more than one host is paired, `HostsRow` in chrome/HostRows.tsx), and the
-View menu for every host at once (Pause All Threads, Resume All Threads, Stop
-All Threads, Archive Finished Threads). No shortcuts: menu rows only. A row
-with nothing to act on is disabled, not hidden. The phone has the same four
+Threads menu for every host at once (Pause All, Resume All, Stop All,
+Archive Done). No shortcuts: menu rows only. A row with nothing to act on is
+disabled, not hidden, in the native menu too (the window's `menu:state`). The phone has the same four
 rows in its host and project menus (ios/TempCode/Sources/Shell/FleetSwitches.swift
 over the client package's ThreadBatch.swift, the rules and copy ported
 verbatim), with a medium sheet for the confirm and a status line for the
@@ -2380,7 +2380,7 @@ client is `scripts/box/tc-local.mjs`). This admin RPC answers with `path`,
 `intervalUs` defaults to 1000. Only one capture runs at a time; another
 request fails with `a profile is running`.
 
-On the Mac, choose Help → "Profile the host (10 s)". It profiles the main
+On the Mac, choose Help → "Profile the Host for 10 Seconds". It profiles the main
 process and reveals the file in Finder when done. Both paths write to
 `<userData>/logs/profiles/<timestamp>.cpuprofile` and keep the newest ten
 files. The box uses `/srv/agents/temp-code-data/logs/profiles/`.

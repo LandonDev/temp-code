@@ -5,8 +5,9 @@
  *   - DOM: App.tsx's window-capture keydown calls `createKeyResolver()`
  *     and dispatches whatever it returns.
  *   - Native menu: `src/shared/menuTree.ts` items carry the same ids and
- *     arrive over `native:menu` (`listen(id)` in lib/native.ts);
- *     `menuCommandAllowed` applies the same overlay guard.
+ *     arrive over `native:menu` (`listen(id)` in lib/native.ts), and the
+ *     in-app bar of a browser on /ui (chrome/MenuBar.tsx) reads the same
+ *     table; `menuCommandAllowed` applies the same overlay guard.
  *
  * Handlers live in App.tsx (they close over its state); `window.__app`
  * (lib/appFacade.ts, dev builds) exposes `run(id)` for CDP tests, so a
@@ -30,7 +31,8 @@
  *   ⌘⇧F find_in_project  ⌘⇧N new_window  ⌘= / ⌘- / ⌘0 zoom
  *   ⌘⌥] next_environment  ⌘⌥[ prev_environment  ⌘⌥1–9 activate_environment
  *   Tab and pane chords: lib/tabKeys.ts (⌘W ⌘D ⌘⇧D ⌘J ⌘[ ⌘] ⌘1–9 ⌘` …)
- *   Open Project has no key; it stays in the File menu.
+ *   Open Project has no key yet; it stays in the File menu (⌘O once A12
+ *   flips the resolver, Go to Symbol to ⌘⇧O).
  */
 
 import { insideMonaco, isEditorChord } from "./editorKeys";

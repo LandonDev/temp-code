@@ -1371,7 +1371,7 @@ names the far child).
 docs/box.md "The shape that scales" has the before numbers, each step's
 proof and the sizing rules; the pieces, by name:
 - `doctor.profile` (admin): an in-process CPU profile of the main process
-  into `<userData>/logs/profiles/`; Help → "Profile the host (10 s)" on
+  into `<userData>/logs/profiles/`; Help → "Profile the Host for 10 Seconds" on
   the Mac, `tc-local doctor.profile` on the box; read it with
   scripts/profile-summary.ts, the stall log with scripts/stalls-summary.ts.
   `currentLag()` and `untilLoopIdle()` in stalls.ts are what the lane and
@@ -1883,12 +1883,27 @@ proof and the sizing rules; the pieces, by name:
   put a pairing link or a key in a file or a log; the scripts scrub their
   output.
 
+## The menu bar: one table
+src/shared/menuTree.ts is the menu as data, read by main (src/main/menu.ts),
+the in-app bar and the tests: TempCode, File, Edit, View, Go (navigation),
+Threads (Switch Model, Mark All Read, the fleet switches), Window and Help
+(Show Logs opens `<userData>/logs`, the host profile, Developer Tools). Ids
+are command ids of lib/appCommands.ts; `MAIN_MENU_IDS` act in main. Each
+window sends what it shows over `menu:state` (lib/nativeMenuState.ts:
+Show/Hide on the three toggles, idle rows greyed) and main rebuilds the menu
+from the focused window's state when it changes. A `pageKey` row (New
+Terminal, ⌃`) shows its key but leaves it to the page. The in-app bar
+(chrome/MenuBar.tsx, `inAppMenus`) mounts only in web mode off macOS: a
+desktop window off macOS has the native bar. Go to Symbol is ⌘⇧O in the
+menu; the renderer's resolver still maps ⌘O to it until A12 flips it and
+gives Open Project ⌘O in the same commit.
+
 ## The fleet switches: one click for every thread of a scope
 Pause all, Resume all, Stop all and Archive done sit beside Mark all read in
 a project's menu (rail row and project header; on a project linked across
 hosts they act on every copy, one `session.batch` per host), a host's
 submenu in the rail's Hosts row (`HostsRow` in chrome/HostRows.tsx, with two
-or more hosts), and the View menu for everything. Roots only, subagents follow their parent; a row with nothing to
+or more hosts), and the Threads menu for everything. Roots only, subagents follow their parent; a row with nothing to
 act on is disabled. The rules per row, the confirm copy with its live count
 and the toast line are `src/renderer/src/lib/threadBatch.ts` (unit-tested);
 the menus' rows are `threadBatchMenu.ts`; the dialog and toast are
