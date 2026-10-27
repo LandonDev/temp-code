@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HeaderModel } from "../lib/threadHeaderModel";
-import { ThreadHeaderStrip, chipStatus, type ChipThread, type StripChip } from "./ThreadHeaderStrip";
+import { ChipHoverLabel, ThreadHeaderStrip, chipStatus, type ChipThread, type StripChip } from "./ThreadHeaderStrip";
 
 const thread = (id: string, title: string): ChipThread => ({
   id,
@@ -170,5 +170,17 @@ describe("ThreadHeaderStrip chip", () => {
     const paused: StripChip = { ...working, thread: { ...working.thread, treeHasPaused: true } };
     expect(chipStatus(paused, {}).state).toBe("paused");
     expect(chipStatus(chip("i", "Idle"), { i: true }).state).toBe("plan-ready");
+  });
+
+  it("the hover label is the title and the status mark: the word, what it is about and the tally", () => {
+    const working: StripChip = {
+      ...chip("a", "Alpha"),
+      status: "running",
+      thread: { ...thread("a", "Alpha"), status: "running", activity: "Running bun", tasks: { done: 3, total: 7 } },
+    };
+    const { container } = render(<ChipHoverLabel title="Alpha" status={chipStatus(working, {})} />);
+    const line = container.querySelector('[data-slot="status-mark"]')!;
+    expect(line.getAttribute("data-state")).toBe("working");
+    expect(container.textContent).toBe("AlphaWorkingrunning bun3/7");
   });
 });

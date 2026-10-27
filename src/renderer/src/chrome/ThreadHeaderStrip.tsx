@@ -11,7 +11,7 @@ import type { ThreadRules } from "@server/shared/rules";
 import { Button } from "../components/ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/ui/context-menu";
 import { Input } from "../components/ui/input";
-import { STATUS_WORD, StatusMark } from "../components/ui/status";
+import { StatusMark } from "../components/ui/status";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
 import { pendingApprovalForSession } from "../lib/approvalToast";
 import { HARNESSES, sessionDisplayTitle, type HarnessId } from "../lib/session";
@@ -28,6 +28,10 @@ import {
 } from "../lib/threadStripModel";
 import type { ActivityKind } from "../lib/session";
 import { THREAD_GLYPHS } from "../surfaces/threads/bits";
+import { ThreadStatusMark } from "./TabIndicator";
+
+/** The tooltip is inverted (foreground on background), so the hover line takes its muted tone whole. */
+const HOVER_LINE = "font-normal text-background/70 **:data-[slot=status-detail]:text-background/70";
 
 /**
  * The deck title bar's thread strip: the selected project's live root
@@ -193,6 +197,16 @@ export function chipStatus(chip: StripChip, planReady: ReadyMap): ThreadStatus {
   });
 }
 
+/** The chip's hover label: the title, then its status line (the word, what it is about, the tally). */
+export function ChipHoverLabel({ title, status }: { title: string; status: ThreadStatus }) {
+  return (
+    <>
+      <span>{title}</span>
+      <ThreadStatusMark status={status} className={HOVER_LINE} />
+    </>
+  );
+}
+
 /** The roving focus along the row: arrows, Home and End move between chips. */
 function moveFocus(event: ReactKeyboardEvent<HTMLButtonElement>): void {
   const keys: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, Home: -Infinity, End: Infinity };
@@ -284,12 +298,7 @@ function Chip({
             {marksAtRest(status.state) ? <StatusMark state={status.state} word={false} /> : null}
           </TooltipTrigger>
           <TooltipContent side="bottom" className="flex-col items-start gap-0.5 text-left">
-            <span>{title}</span>
-            <span className="flex gap-2 font-normal text-background/70">
-              <span>{STATUS_WORD[status.state]}</span>
-              {status.detail ? <span className="min-w-0 truncate">{status.detail}</span> : null}
-              {status.tally ? <span className="tabular-nums">{status.tally}</span> : null}
-            </span>
+            <ChipHoverLabel title={title} status={status} />
           </TooltipContent>
         </Tooltip>
       </ContextMenuTrigger>

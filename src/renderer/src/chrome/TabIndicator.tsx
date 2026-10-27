@@ -1,8 +1,8 @@
-import { Pause } from "./icons";
+import type { BackgroundWork } from "@shared/events";
+import { StatusMark } from "../components/ui/status";
 import type { ActivityKind } from "../lib/session";
 import type { SessionStatus } from "../lib/tcserver/types";
-import { useClock } from "../lib/turnClock";
-import { MatrixSpinner, duration } from "../surfaces/threads/bits";
+import { marksAtRest, threadStatus, type ThreadStatus } from "../lib/threadStripModel";
 
 /** What a tab's focused thread is up to, computed in App from the session. */
 export type TabThread = {
@@ -23,135 +23,52 @@ export type TabThread = {
   failure?: string | null;
   /** waiting: the pending approval's label, what the thread waits on ("Bash: bun test") */
   waitingOn?: string | null;
+  /** waiting: an undecided question in the transcript */
+  asking?: boolean;
+  /** what a watching thread waits on */
+  background?: BackgroundWork | null;
   /** background tasks and live subagents the thread waits on, counted */
   backgroundWork?: number;
 };
 
 /**
- * Tab-edge status, one glance apart: working → matrix spinner + elapsed +
- * the activity verb; needs you → amber, in words; failed → red, the host's
- * one-line verdict when it has one (else the word); plan
- * written, no build started → violet "Plan ready" (even while the thread
- * still watches background work); watching → dimmed; finished while you
- * were elsewhere → blue dot. An implementation thread's tally sits at
- * the edge in every state. Only a working indicator subscribes to the
- * shared second hand, so idle tabs never re-render on the tick.
+ * The tab edge: the status glyph alone, and nothing for a thread at rest
+ * (idle, done). No clock, no verb, no tally: the hover line and the strip
+ * above the composer say those, so a working tab never re-renders on a tick.
  */
 export function TabIndicator({ thread }: { thread: TabThread }) {
-  const { status, tasks } = thread;
-  const working = status === "running" || status === "starting";
-  const now = useClock(working);
-  const tally = tasks ? (
-    <span
-      className={`shrink-0 text-[11px] tabular-nums ${
-        tasks.done === tasks.total ? "text-success" : "text-content/50"
-      }`}
-      title={`${tasks.done} of ${tasks.total} tasks done`}
-    >
-      {tasks.done}/{tasks.total}
-    </span>
-  ) : null;
+  const { state } = threadStatus(thread);
+  return marksAtRest(state) ? <StatusMark state={state} word={false} /> : null;
+}
 
-  const body = ((): React.ReactNode => {
-    if (working) {
-      const ms = Math.max(0, now - thread.since);
-      const verb = thread.activity?.split(" ")[0] ?? "";
-      return (
-        <span className="flex shrink-0 items-center gap-1" title={thread.activity ?? undefined}>
-          <MatrixSpinner cell={1.8} tint={thread.activityKind} />
-          <span
-            className={`shrink-0 text-right text-[11px] whitespace-nowrap tabular-nums text-content/40 ${
-              ms < 3000 ? "opacity-0" : ""
-            }`}
-          >
-            {duration(ms)}
-          </span>
-          {!tally && verb ? (
-            <span className="w-14 shrink-0 truncate text-left text-[11px] text-content/50">{verb}</span>
-          ) : null}
-        </span>
-      );
-    }
-    if (status === "paused") {
-      return (
-        <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-warning">
-          <Pause className="size-3 fill-current" strokeWidth={1.75} />
-          Paused
-          <span className="font-normal tabular-nums text-current/70">
-            {duration(Math.max(0, thread.frozenElapsed ?? 0))}
-          </span>
-        </span>
-      );
-    }
-    if (status === "waiting") {
-      return (
-        <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-warning">
-          <span className="size-1.5 motion-safe:animate-pulse rounded-full bg-warning" />
-          Needs you
-        </span>
-      );
-    }
-    if (status === "error") {
-      return (
-        <span
-          className="max-w-48 shrink-0 truncate text-[11px] font-medium text-danger"
-          title={thread.failure ?? undefined}
-        >
-          {thread.failure || "Failed"}
-        </span>
-      );
-    }
-    if (status === "stopped") {
-      return (
-        <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-content/50" title="The harness behind this turn is gone">
-          <span className="size-1.5 rounded-[1.5px] bg-current" />
-          Stopped
-        </span>
-      );
-    }
-    if (status === "queued") {
-      // The host's line says why: "Queued · 3rd in line" or "Queued · waiting for X".
-      const why = thread.activity?.startsWith("Queued") ? thread.activity : "Waiting for a slot on the host";
-      return (
-        <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-content/50" title={why}>
-          <span className="size-1.5 rounded-full bg-current opacity-60" />
-          Queued
-        </span>
-      );
-    }
-    // A written plan outranks a background wait: the plan is what the tab
-    // is for, and the wait (a Monitor, a cron) still shows on hover.
-    if (thread.planReady) {
-      return (
-        <span
-          className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-violet"
-          title={status === "watching" ? (thread.activity ?? "Watching background work") : undefined}
-        >
-          <span className="size-1.5 rounded-full bg-violet" />
-          Plan ready
-        </span>
-      );
-    }
-    if (status === "watching") {
-      return (
-        <span
-          className="flex shrink-0 items-center gap-1 text-[11px] text-content/50"
-          title={thread.activity ?? undefined}
-        >
-          <span className="size-1.5 motion-safe:animate-pulse rounded-full bg-content/40" />
-          Watching
-        </span>
-      );
-    }
-    if (thread.unread) return <span className="size-1.5 shrink-0 rounded-full bg-info" />;
-    return null;
-  })();
-
-  if (!body && !tally) return null;
+/**
+ * A thread's status as one line: the mark with its word, what the state is
+ * about, and the round's tally 8px after it. The strip, the chip's hover
+ * line and the banners draw this; the tones are StatusMark's alone.
+ */
+export function ThreadStatusMark({
+  status,
+  word = true,
+  className,
+}: {
+  status: ThreadStatus;
+  word?: boolean;
+  className?: string;
+}) {
+  const { detail, tally } = status;
   return (
-    <span className="flex shrink-0 items-center gap-1.5">
-      {body}
-      {tally}
-    </span>
+    <StatusMark
+      state={status.state}
+      word={word}
+      className={className}
+      detail={
+        detail || tally ? (
+          <>
+            {detail}
+            {tally ? <span className={detail ? "ms-2" : undefined}>{tally}</span> : null}
+          </>
+        ) : null
+      }
+    />
   );
 }

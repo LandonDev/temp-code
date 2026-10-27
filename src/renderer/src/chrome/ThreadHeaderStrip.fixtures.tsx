@@ -80,6 +80,26 @@ export default [
     },
   },
   {
+    name: "Every state at rest: plan ready, paused, failed, queued, stopped, a paused tree",
+    props: {
+      ...common,
+      planReady: { p: true },
+      model: {
+        activeId: "d",
+        dormant: [],
+        live: [
+          chip("d", "Done and seen", { status: "done" }),
+          chip("p", "Plan A19: master board", {}, { threadType: "planning" }),
+          chip("z", "Pause the gate", { status: "paused" }),
+          chip("f", "Fix the box deploy", { status: "error" }, { failure: { summary: "Usage cap" } }),
+          chip("q", "Wait for the cap", { status: "queued" }, { activity: "Queued · 120 of 120 running" }),
+          chip("s", "Old turn", { status: "stopped" }),
+          chip("t", "Orchestrate A17", { status: "running" }, { threadType: "orchestration", treeHasPaused: true }),
+        ],
+      },
+    },
+  },
+  {
     name: "An empty project",
     props: {
       ...common,

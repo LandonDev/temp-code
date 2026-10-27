@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, render } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
+import type { SessionStatus } from '../lib/tcserver/types'
 import { clockForTest } from '../lib/turnClock'
-import { mountProbe, Probe } from '../test/renderProbe'
-import { TabIndicator, type TabThread } from './TabIndicator'
+import { threadStatus } from '../lib/threadStripModel'
+import { TabIndicator, ThreadStatusMark, type TabThread } from './TabIndicator'
 
 const thread = (over: Partial<TabThread> = {}): TabThread => ({
   type: 'chat',
@@ -11,111 +13,71 @@ const thread = (over: Partial<TabThread> = {}): TabThread => ({
   ...over,
 })
 
-describe('TabIndicator clock', () => {
-  // Fake timers drive the shared interval and move Date.now() with it.
-  beforeEach(() => vi.useFakeTimers())
-  afterEach(() => vi.useRealTimers())
+const mark = (container: HTMLElement) => container.querySelector('[data-slot="status-mark"]')
 
-  it('an idle tab never subscribes to the second hand', () => {
-    const probe = mountProbe(
-      <Probe id="idle">
-        <TabIndicator thread={thread({ status: 'waiting' })} />
-      </Probe>,
-    )
-    expect(clockForTest.listeners()).toBe(0)
-    probe.act(() => vi.advanceTimersByTime(2000))
-    expect(probe.renders('idle')).toBe(1)
-    probe.unmount()
+afterEach(cleanup)
+
+describe('TabIndicator', () => {
+  it('never subscribes to the second hand, whatever the state', () => {
+    for (const status of ['running', 'starting', 'paused', 'waiting', 'watching', 'queued'] as SessionStatus[]) {
+      const { unmount } = render(<TabIndicator thread={thread({ status, activity: 'Reading files' })} />)
+      expect(clockForTest.listeners()).toBe(0)
+      unmount()
+    }
   })
 
-  it('a working tab ticks alone and lets go when it settles', () => {
-    const probe = mountProbe(
-      <>
-        <Probe id="working">
-          <TabIndicator thread={thread({ status: 'running', activity: 'Reading files' })} />
-        </Probe>
-        <Probe id="idle">
-          <TabIndicator thread={thread()} />
-        </Probe>
-      </>,
-    )
-    expect(clockForTest.listeners()).toBe(1)
-    // Subscribing refreshes the clock, so the mount may settle with one extra commit.
-    const settled = probe.renders('working')
-    probe.act(() => vi.advanceTimersByTime(1000))
-    probe.act(() => vi.advanceTimersByTime(1000))
-    expect(probe.renders('working') - settled).toBe(2)
-    expect(probe.renders('idle')).toBe(1)
-    expect(probe.container.textContent).toContain('Reading')
+  it('draws the glyph alone, named by its aria-label', () => {
+    const cases: [Partial<TabThread>, string, string][] = [
+      [{ status: 'running', activity: 'Running bun', tasks: { done: 3, total: 7 } }, 'working', 'Working'],
+      [{ status: 'waiting', waitingOn: 'Bash: bun test' }, 'waiting', 'Needs you'],
+      [{ status: 'paused', frozenElapsed: 60_000 }, 'paused', 'Paused'],
+      [{ status: 'error', failure: 'Usage cap' }, 'failed', 'Failed'],
+      [{ status: 'queued', activity: 'Queued · 3rd in line' }, 'queued', 'Queued'],
+      [{ status: 'stopped' }, 'stopped', 'Stopped'],
+      [{ status: 'watching', activity: 'Waiting on 2 monitors' }, 'watching', 'Watching'],
+    ]
+    for (const [over, state, word] of cases) {
+      const { container, unmount } = render(<TabIndicator thread={thread(over)} />)
+      expect(mark(container)?.getAttribute('data-state')).toBe(state)
+      expect(mark(container)?.getAttribute('aria-label')).toBe(word)
+      // No clock, no verb, no tally, no failure text at the edge.
+      expect(container.textContent).toBe('')
+      unmount()
+    }
+  })
 
-    probe.rerender(
-      <>
-        <Probe id="working">
-          <TabIndicator thread={thread({ status: 'idle' })} />
-        </Probe>
-        <Probe id="idle">
-          <TabIndicator thread={thread()} />
-        </Probe>
-      </>,
-    )
-    expect(clockForTest.listeners()).toBe(0)
-    probe.unmount()
+  it('draws nothing for idle and done, unread or not', () => {
+    for (const status of ['idle', 'done'] as SessionStatus[]) {
+      const { container, unmount } = render(<TabIndicator thread={thread({ status, unread: true })} />)
+      expect(container.innerHTML).toBe('')
+      unmount()
+    }
+  })
+
+  it('draws the plan-ready glyph for a written plan, even while it watches', () => {
+    const { container } = render(<TabIndicator thread={thread({ status: 'watching', planReady: true })} />)
+    expect(mark(container)?.getAttribute('data-state')).toBe('plan-ready')
+    expect(mark(container)?.getAttribute('aria-label')).toBe('Plan ready')
   })
 })
 
-describe('TabIndicator plan ready vs watching', () => {
-  const text = (over: Partial<TabThread>) => {
-    const probe = mountProbe(<TabIndicator thread={thread(over)} />)
-    const out = probe.container.textContent
-    const title = probe.container.querySelector('[title]')?.getAttribute('title') ?? null
-    probe.unmount()
-    return { out, title }
-  }
-
-  it('a planning thread with a written plan reads Plan ready even while it watches background work', () => {
-    const { out, title } = text({
-      type: 'planning',
-      status: 'watching',
-      planReady: true,
-      activity: 'Wait in the background for the delivery note',
-    })
-    expect(out).toBe('Plan ready')
-    expect(title).toBe('Wait in the background for the delivery note')
-  })
-
-  it('a watching planning thread with no plan yet reads Watching', () => {
-    expect(text({ type: 'planning', status: 'watching' }).out).toBe('Watching')
-  })
-
-  it('a watching non-planning thread reads Watching', () => {
-    expect(text({ type: 'implementation', status: 'watching' }).out).toBe('Watching')
-  })
-
-  it('running, paused, waiting and failed still outrank a written plan', () => {
-    expect(text({ type: 'planning', status: 'running', planReady: true }).out).not.toContain('Plan ready')
-    expect(text({ type: 'planning', status: 'paused', planReady: true }).out).toContain('Paused')
-    expect(text({ type: 'planning', status: 'waiting', planReady: true }).out).toBe('Needs you')
-    expect(text({ type: 'planning', status: 'error', planReady: true }).out).toBe('Failed')
-  })
-
-  it("a failed tab prints the host's one-line verdict in place of the word", () => {
-    const summary = 'Anthropic session for me@example.com expired and could not be refreshed'
-    expect(text({ status: 'error', failure: summary }).out).toBe(summary)
-    expect(text({ status: 'error', failure: null }).out).toBe('Failed')
-    // The verdict belongs to the failed state alone.
-    expect(text({ status: 'waiting', failure: summary }).out).toBe('Needs you')
-  })
-})
-
-describe('TabIndicator: a queued thread', () => {
-  it('reads Queued, still, and never subscribes to the second hand', () => {
-    const probe = mountProbe(
-      <Probe id="queued">
-        <TabIndicator thread={thread({ status: 'queued' })} />
-      </Probe>,
+describe('ThreadStatusMark', () => {
+  it('says the word, the detail and the tally, separated by margin only', () => {
+    const { container } = render(
+      <ThreadStatusMark status={threadStatus({ status: 'running', activity: 'Running bun', tasks: { done: 3, total: 7 } })} />,
     )
-    expect(probe.container.textContent).toContain('Queued')
-    expect(clockForTest.listeners()).toBe(0)
-    probe.unmount()
+    expect(container.textContent).toBe('Workingrunning bun3/7')
+    expect(container.textContent).not.toMatch(/[·|•]/)
+    expect(container.querySelector('[data-slot="status-detail"] span')?.className).toBe('ms-2')
+  })
+
+  it('draws a tally alone without a margin, and only the word with neither', () => {
+    const tally = render(<ThreadStatusMark status={{ state: 'working', detail: null, tally: '1/2' }} />)
+    expect(tally.container.textContent).toBe('Working1/2')
+    expect(tally.container.querySelector('[data-slot="status-detail"] span')?.className).toBe('')
+    cleanup()
+    const bare = render(<ThreadStatusMark status={{ state: 'paused', detail: null, tally: null }} />)
+    expect(bare.container.textContent).toBe('Paused')
+    expect(bare.container.querySelector('[data-slot="status-detail"]')).toBeNull()
   })
 })
