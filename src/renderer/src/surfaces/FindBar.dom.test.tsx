@@ -101,4 +101,20 @@ describe("FindBar", () => {
     for (const button of container.querySelectorAll("button")) expect(button.tabIndex).toBe(-1);
     expect(container.querySelector("[title]")).toBeNull();
   });
+
+  it("wraps instead of squeezing at a narrow width: the fields keep a minimum, the controls move as one group", () => {
+    const { container } = render(<FindBar {...props({ replaceVisible: true })} />);
+    const [findField, replaceField] = container.querySelectorAll<HTMLElement>('[data-slot="input-group"]');
+    for (const field of [findField, replaceField]) {
+      expect(field.className).toContain("min-w-36");
+      expect(field.className).not.toContain("min-w-0");
+      expect(field.parentElement!.className).toContain("flex-wrap");
+    }
+    expect(findField.contains(container.querySelector("[data-count]"))).toBe(true);
+    const controls = container.querySelector<HTMLElement>("[data-find-controls]")!;
+    expect(controls.className).toContain("shrink-0");
+    for (const label of ["Match case", "Match whole word", "Use regular expression", "Previous match", "Next match", "Close"]) {
+      expect(controls.contains(byLabel(container, label))).toBe(true);
+    }
+  });
 });

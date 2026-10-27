@@ -109,8 +109,8 @@ export function FindBar(props: FindBarProps) {
           }
         />
         <div className="flex min-w-0 flex-col gap-1">
-          <div className="flex items-center gap-1">
-            <InputGroup className={cn("h-7 w-60 gap-1 pe-2", missed && "border-destructive")}>
+          <div className="flex flex-wrap items-center gap-1">
+            <InputGroup className={cn("h-7 w-60 min-w-36 gap-1 pe-2", missed && "border-destructive")}>
               <GroupInput
                 ref={props.searchRef}
                 main-field="true"
@@ -131,46 +131,48 @@ export function FindBar(props: FindBarProps) {
                 {count.text}
               </span>
             </InputGroup>
-            {FLAGS.map(({ flag, face, label, keys }) => (
+            <div data-find-controls className="flex shrink-0 items-center gap-1">
+              {FLAGS.map(({ flag, face, label, keys }) => (
+                <Hint
+                  key={flag}
+                  label={label}
+                  keys={keys}
+                  face={face}
+                  control={
+                    <Toggle
+                      size="sm"
+                      tabIndex={-1}
+                      aria-label={label}
+                      pressed={props[flag]}
+                      onPressedChange={() => props.onToggle(flag)}
+                      className="font-mono text-[11px]"
+                    />
+                  }
+                />
+              ))}
               <Hint
-                key={flag}
-                label={label}
-                keys={keys}
-                face={face}
-                control={
-                  <Toggle
-                    size="sm"
-                    tabIndex={-1}
-                    aria-label={label}
-                    pressed={props[flag]}
-                    onPressedChange={() => props.onToggle(flag)}
-                    className="font-mono text-[11px]"
-                  />
-                }
+                label="Previous match"
+                keys={`${MOD}${SHIFT}G`}
+                face={<ChevronUp />}
+                control={<Button variant="ghost" size="icon-xs" tabIndex={-1} aria-label="Previous match" onClick={props.onPrev} />}
               />
-            ))}
-            <Hint
-              label="Previous match"
-              keys={`${MOD}${SHIFT}G`}
-              face={<ChevronUp />}
-              control={<Button variant="ghost" size="icon-xs" tabIndex={-1} aria-label="Previous match" onClick={props.onPrev} />}
-            />
-            <Hint
-              label="Next match"
-              keys={`${MOD}G`}
-              face={<ChevronDown />}
-              control={<Button variant="ghost" size="icon-xs" tabIndex={-1} aria-label="Next match" onClick={props.onNext} />}
-            />
-            <Hint
-              label="Close"
-              keys="Esc"
-              face={<X />}
-              control={<Button variant="ghost" size="icon-xs" tabIndex={-1} aria-label="Close" onClick={props.onClose} />}
-            />
+              <Hint
+                label="Next match"
+                keys={`${MOD}G`}
+                face={<ChevronDown />}
+                control={<Button variant="ghost" size="icon-xs" tabIndex={-1} aria-label="Next match" onClick={props.onNext} />}
+              />
+              <Hint
+                label="Close"
+                keys="Esc"
+                face={<X />}
+                control={<Button variant="ghost" size="icon-xs" tabIndex={-1} aria-label="Close" onClick={props.onClose} />}
+              />
+            </div>
           </div>
           {replaceVisible ? (
-            <div className="flex items-center gap-1">
-              <InputGroup className="h-7 w-60">
+            <div className="flex flex-wrap items-center gap-1">
+              <InputGroup className="h-7 w-60 min-w-36">
                 <GroupInput
                   ref={props.replaceRef}
                   aria-label="Replace"
@@ -181,12 +183,14 @@ export function FindBar(props: FindBarProps) {
                   {...FIELD_ATTRS}
                 />
               </InputGroup>
-              <Button variant="ghost" size="xs" tabIndex={-1} onClick={props.onReplaceNext}>
-                Replace
-              </Button>
-              <Button variant="ghost" size="xs" tabIndex={-1} onClick={props.onReplaceAll}>
-                Replace all
-              </Button>
+              <div className="flex shrink-0 items-center gap-1">
+                <Button variant="ghost" size="xs" tabIndex={-1} onClick={props.onReplaceNext}>
+                  Replace
+                </Button>
+                <Button variant="ghost" size="xs" tabIndex={-1} onClick={props.onReplaceAll}>
+                  Replace all
+                </Button>
+              </div>
             </div>
           ) : null}
         </div>
