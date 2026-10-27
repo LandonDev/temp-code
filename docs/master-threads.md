@@ -488,7 +488,7 @@ rows, the foot and the add sheet are the UI thread's
 (surfaces/threads/master/**). The choices, from the mock:
 
 - **Borrowed.** The board | sash | chat recipe (SplitShell) every board
-  thread uses, the chat on the right folding to an edge tab. A child row
+  thread uses, the chat on the right folding from a header toggle. A child row
   shares the fleet's status glyph (`StatusGlyph`, fleet/rowBits.tsx). The
   unfolded row is the agent detail's feed, docked in place instead of a
   modal. The settle rows in the chat are the reports the master already

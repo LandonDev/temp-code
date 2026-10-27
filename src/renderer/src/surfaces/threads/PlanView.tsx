@@ -1,64 +1,30 @@
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { DUR, EASE_OUT, SPRING_LAYOUT } from "../../lib/ease";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { ThreadRules } from "@server/shared/rules";
-import { AccessPicker } from "../../chrome/AccessPicker";
-import {
-  ChevronLeft,
-  ChevronRight,
-  CircleDot,
-  GitFork,
-  ListChecks,
-  Play,
-  SlidersHorizontal,
-  X,
-} from "../../chrome/icons";
-import { ModelPicker } from "../../chrome/ModelPicker";
-import { ModelSettings } from "../../chrome/ModelSettings";
-import { ThreadTune, normalizeTune, tuneSummary } from "../../chrome/ThreadTune";
-import { Popover } from "../../chrome/Popover";
-import {
-  mergeModelSettings,
-  nativeModelId,
-  resolveModel,
-} from "../../lib/models";
-import {
-  type HarnessId,
-  type RuntimeMode,
-  type Session,
-} from "../../lib/session";
-import { policyForMode } from "../../lib/tcserver/access";
-import { implementPlan } from "../../lib/tcserver/plans";
+import { Play } from "../../chrome/icons";
+import { Button } from "../../components/ui/button";
+import { StatusMark, threadStateOf } from "../../components/ui/status";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { sessionStore } from "../../lib/tcserver/store";
 import type { SessionMeta, ThreadType } from "../../lib/tcserver/types";
-import {
-  planTasks,
-  splitSections,
-  type Section,
-} from "../../lib/threads/planDoc";
+import { planTasks, splitSections, type Section } from "../../lib/threads/planDoc";
 import { usePlanFile } from "../../hooks/usePlanFile";
 import { projectPlanComplete } from "@server/shared/projectPlan";
 import { loadProjectPlan, useProjectPlan } from "../../lib/projectPlan";
-import { MilestoneList, ProjectPlanCard } from "./ProjectPlanCard";
-import { Pin } from "../../chrome/icons";
+import { MilestoneList, ProjectPlanCard, ProjectPlanPin } from "./ProjectPlanCard";
 import { AgentMarkdown } from "../AgentMarkdown";
-import { MatrixSpinner } from "./spinners";
-import { PaneHeader } from "./PaneHeader";
-import { THREAD_GLYPHS, THREAD_LABELS, THREAD_TINTS } from "./threadTypes";
-import { timeAgo } from "../../lib/duration";
+import { THREAD_LABELS } from "./threadTypes";
 import { SplitShell } from "./SplitShell";
+import { StartBuildDialog } from "./StartBuildDialog";
 import type { ThreadViewProps } from "./ThreadView";
 
 /**
- * Planning thread, in three phases. It opens as a normal chat — the
- * conversation is the whole surface while the plan is being shaped. The
- * moment the plan document has content, the document grows in on the
- * left and the chat continues alongside on the right — an even split, with
- * a draggable divider (double-click resets). Once the plan has handed off,
- * the chat collapses to a slim bar on the right edge; one click brings it
- * back. A thread stopped on a question always forces the chat open.
- * Starting the build lives in the plan pane's header — the plan is what
- * you approve, so that is where its action sits.
+ * Planning thread, in three phases. It opens as a normal chat while the
+ * plan is being shaped. The moment the plan document has content, the
+ * document takes the left of the split (draggable, double-click resets)
+ * and the chat continues on the right. Once the plan has handed off, or
+ * the turn settles with the plan written, the chat folds; the header's
+ * toggle brings it back, and a question always forces it open. The
+ * header carries the plan's one action: Start build until the handoff,
+ * then the build it handed to.
  */
 
 const subscribeMetas = (cb: () => void): (() => void) =>
@@ -120,31 +86,6 @@ export function PlanView(props: ThreadViewProps) {
     return `${done} of ${planState.milestones.length} milestone${planState.milestones.length === 1 ? "" : "s"} done`;
   }, [projectPlan, planState]);
 
-  // Revision wash: a settled section whose content changed flashes once.
-  // The streaming tail (last section while running) is growth, not revision.
-  const prevRef = useRef<Section[]>([]);
-  const [flash, setFlash] = useState<Record<number, number>>({});
-  useEffect(() => {
-    const prev = prevRef.current;
-    prevRef.current = sections;
-    if (prev.length === 0) return;
-    const changed = sections
-      .map((s, i) => ({ s, i }))
-      .filter(({ s, i }) => {
-        if (running && i >= sections.length - 1) return false;
-        const p = prev[i];
-        return p !== undefined && p.body !== s.body;
-      })
-      .map(({ i }) => i);
-    if (changed.length) {
-      setFlash((f) => {
-        const next = { ...f };
-        for (const i of changed) next[i] = (next[i] ?? 0) + 1;
-        return next;
-      });
-    }
-  }, [sections, running]);
-
   // Outline: refs per section, active = last heading above the fold
   // (follows the stream while the agent writes).
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -202,38 +143,29 @@ export function PlanView(props: ThreadViewProps) {
   }
   const collapsed = hasDoc && !chatOpen;
 
+  const [starting, setStarting] = useState(false);
+  const headerDetail = projectPlan
+    ? milestoneDetail
+    : tasks.length > 0
+      ? `${tasks.length} task${tasks.length === 1 ? "" : "s"}`
+      : null;
+  const headerActions = projectPlan ? (
+    <ProjectPlanPin
+      projectId={session.projectId}
+      pinned={planState?.pinned ?? false}
+      onChanged={() => session.projectId && void loadProjectPlan(session.projectId)}
+    />
+  ) : spawned ? (
+    <HandoffButton spawned={spawned} onOpen={() => props.onOpenSession?.(spawned.id)} />
+  ) : !running && !waiting ? (
+    <Button size="sm" onClick={() => setStarting(true)}>
+      <Play />
+      Start build
+    </Button>
+  ) : null;
+
   const board = (
     <>
-      {/* Plan pane header: identity on the left, its action on the
-          right — Start until the handoff, then the running thread. */}
-      <PaneHeader
-        label={projectPlan ? "Project plan" : "Plan"}
-        detail={
-          projectPlan
-            ? milestoneDetail
-            : [tasks.length > 0 ? `${tasks.length} tasks` : null, session.planCompletedAt && !spawned ? "complete" : null]
-                .filter(Boolean)
-                .join(" · ") || null
-        }
-      >
-        {projectPlan ? (
-          planState?.pinned ? (
-            <span
-              title="Kept as the project's plan"
-              className="flex items-center gap-1 px-2 text-[11px] text-content/50"
-            >
-              <Pin className="size-3 text-info" strokeWidth={1.75} />
-              Project's plan
-            </span>
-          ) : null
-        ) : spawned ? (
-          <HandoffChip spawned={spawned} onOpen={() => props.onOpenSession?.(spawned.id)} />
-        ) : (
-          <AnimatePresence>
-            {!running && !waiting ? <StartButton key="start" session={session} tasks={tasks} /> : null}
-          </AnimatePresence>
-        )}
-      </PaneHeader>
       <div className="relative flex min-h-0 flex-1">
         {collapsed && sections.some((s) => s.heading) ? (
           <Outline
@@ -248,20 +180,16 @@ export function PlanView(props: ThreadViewProps) {
           ref={scrollRef}
           className="min-h-0 flex-1 overflow-y-auto select-text"
         >
-          <div className="mx-auto w-full max-w-3xl px-6 py-5">
+          <div className="mx-auto w-full max-w-2xl px-6 pt-6 pb-12">
             {rendered.map(({ s, i, milestones }) => (
               <div
-                key={`${i}:${flash[i] ?? 0}`}
+                key={i}
                 ref={(el) => {
                   sectionRefs.current[i] = el;
                 }}
-                className={`-mx-3 rounded-lg px-3 ${
-                  (flash[i] ?? 0) > 0
-                    ? "z-plan-wash"
-                    : ""
-                }`}
               >
                 <AgentMarkdown
+                  className="text-[15px] leading-[1.6]"
                   text={s.body}
                   streaming={running && i === sections.length - 1}
                   cwd={session.cwd}
@@ -291,24 +219,7 @@ export function PlanView(props: ThreadViewProps) {
     </>
   );
 
-  const chat = (
-    <>
-      {hasDoc ? (
-        <PaneHeader label="Conversation">
-          <button
-            type="button"
-            onClick={() => setChatOpen(false)}
-            title="Hide conversation"
-            aria-label="Hide conversation"
-            className="pressable grid size-6 place-items-center rounded-md text-content/50 hover:bg-content/5 hover:text-content"
-          >
-            <ChevronRight className="size-3.5" strokeWidth={1.75} />
-          </button>
-        </PaneHeader>
-      ) : null}
-      {props.renderChat()}
-    </>
-  );
+  const chat = props.renderChat();
 
   return (
     <div className="relative flex min-h-0 flex-1">
@@ -318,9 +229,14 @@ export function PlanView(props: ThreadViewProps) {
         chat={chat}
         hasBoard={hasDoc}
         collapsed={collapsed}
-        onOpenChat={() => setChatOpen(true)}
-        status={session.status}
+        onToggleChat={setChatOpen}
+        title={projectPlan ? "Project plan" : "Plan"}
+        detail={headerDetail}
+        actions={headerActions}
       />
+      {!projectPlan && !spawned ? (
+        <StartBuildDialog session={session} tasks={tasks} open={starting} onOpenChange={setStarting} />
+      ) : null}
     </div>
   );
 }
@@ -336,20 +252,22 @@ function Outline({
   onJump: (i: number) => void;
 }) {
   return (
-    <nav className="absolute top-6 bottom-4 left-4 hidden w-44 overflow-y-auto min-[1360px]:block">
-      <div className="flex flex-col gap-px">
+    <nav aria-label="Outline" className="absolute top-6 bottom-4 left-4 hidden w-44 overflow-y-auto min-[1360px]:block">
+      <div className="flex flex-col">
         {sections.map((s, i) =>
           s.heading === null ? null : (
-            <button
+            <Button
               key={i}
-              type="button"
+              variant="ghost"
+              size="xs"
               onClick={() => onJump(i)}
-              className={`truncate rounded-md px-1.5 py-1 text-left text-xs leading-4 transition-colors ${
-                s.level >= 3 ? "pl-4" : s.level === 2 ? "pl-2.5" : ""
-              } ${i === active ? "text-content" : "text-content/40 hover:text-content/50"}`}
+              aria-current={i === active ? "location" : undefined}
+              className={`justify-start truncate font-normal ${
+                s.level >= 3 ? "pl-6" : s.level === 2 ? "pl-4" : ""
+              } ${i === active ? "text-foreground" : "text-muted-foreground"}`}
             >
-              {s.heading}
-            </button>
+              <span className="truncate">{s.heading}</span>
+            </Button>
           ),
         )}
       </div>
@@ -357,280 +275,22 @@ function Outline({
   );
 }
 
-/** After Start: the pane header points at the thread working the plan. */
-function HandoffChip({
-  spawned,
-  onOpen,
-}: {
-  spawned: SessionMeta;
-  onOpen: () => void;
-}) {
+/** The build's kind, as a noun. */
+const BUILD_NOUN: Partial<Record<ThreadType, string>> = {
+  implementation: "Implementation",
+  orchestration: "Orchestration",
+};
+
+/** After Start: the header points at the thread working the plan. */
+function HandoffButton({ spawned, onOpen }: { spawned: SessionMeta; onOpen: () => void }) {
   const type: ThreadType = spawned.threadType ?? "implementation";
-  const Glyph = THREAD_GLYPHS[type];
-  const live = spawned.status === "running" || spawned.status === "starting";
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="pressable group flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-content/50 hover:bg-content/5 hover:text-content"
-    >
-      <Glyph className={`size-3.5 ${THREAD_TINTS[type]}`} strokeWidth={1.75} />
-      {THREAD_LABELS[type]} {live ? "running" : "finished"} ·{" "}
-      {timeAgo(spawned.updatedAt)}
-      <ChevronRight
-        className="size-3.5 opacity-0 transition-opacity group-hover:opacity-100"
-        strokeWidth={1.75}
-      />
-    </button>
-  );
-}
-
-type BuildType = "implementation" | "orchestration";
-
-const ACTION_ROW =
-  "group/act flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-content/5 active:bg-content/10";
-const ACTION_TILE =
-  "flex size-8 shrink-0 items-center justify-center rounded-lg bg-content/5";
-
-/** The plan pane's one action: hand the approved plan to ONE builder — who
- *  (model + effort), as a single implementation thread, or as an
- *  orchestrator that splits it across subagents itself. A plan never
- *  starts more than one thread. */
-export function StartButton({ session, tasks }: { session: Session; tasks: string[] }) {
-  const reduce = useReducedMotion();
-  const trigger = useRef<HTMLButtonElement>(null);
-  const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState<BuildType | null>(null);
-  // The build's setup defaults to the planning thread's — change it here.
-  const [choice, setChoice] = useState<{ harness: HarnessId; model: string }>({
-    harness: session.harness,
-    model: session.model,
-  });
-  const [settings, setSettings] = useState<Record<string, string>>(
-    session.modelSettings,
-  );
-  const [mode, setMode] = useState<RuntimeMode>(session.runtimeMode);
-  // The build's finish line, derived from the plan; editable, clearable —
-  // empty starts the thread with no goal.
-  const [goal, setGoal] = useState(
-    tasks.length > 0
-      ? "Every task in the plan's checklist is checked off and typecheck passes"
-      : "The plan is fully implemented and typecheck passes",
-  );
-  // Per-run orchestration tune: instructions and conduct overrides for
-  // this one thread, over the Settings defaults.
-  const [view, setView] = useState<"main" | "tune">("main");
-  const [tune, setTune] = useState<ThreadRules>({});
-
-  const start = async (type: BuildType): Promise<void> => {
-    if (busy) return;
-    setBusy(type);
-    try {
-      const rules = normalizeTune(tune);
-      // One build: the server's own start (plan.implement) — the function
-      // the auto-start runs, so the links, the handoff row and the archive
-      // are the same whichever way the build began. Never more than one.
-      await implementPlan(session.environmentId, session.id, {
-        threadType: type,
-        provider: choice.harness,
-        model: nativeModelId(choice.model),
-        reasoning: settings.effort,
-        context1m: settings.context === "1m",
-        permission: policyForMode(mode),
-        goal: goal.trim() || undefined,
-        ...(type === "orchestration" && rules ? { threadRules: rules } : {}),
-      });
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  return (
-    <motion.div
-      initial={reduce ? false : { opacity: 0, scale: 0.96 }}
-      animate={{ opacity: 1, scale: 1, transition: SPRING_LAYOUT }}
-      exit={reduce ? undefined : { opacity: 0, scale: 0.98, transition: { duration: DUR.fast, ease: EASE_OUT } }}
-    >
-      <button
-        ref={trigger}
-        type="button"
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        onClick={() => setOpen((o) => !o)}
-        className="pressable flex items-center gap-1.5 rounded-md bg-content px-3 py-1 text-[12px] font-medium text-background-base hover:bg-content/90"
-      >
-        <Play className="size-3.5 fill-current" strokeWidth={1.75} />
-        Start implementation
-      </button>
-      {open ? (
-        <Popover
-          anchor={trigger}
-          side="bottom"
-          align="end"
-          width={340}
-          autoFocus
-          tabIndex={-1}
-          role="dialog"
-          aria-label="Start building"
-          ignore="[data-model-picker], [data-model-settings], [data-access-picker]"
-          onDismiss={() => setOpen(false)}
-        >
-          {view === "tune" ? (
-            <div className="py-2">
-              <div className="flex items-center gap-1 px-2">
-                <button
-                  type="button"
-                  onClick={() => setView("main")}
-                  aria-label="Back"
-                  className="pressable grid size-6 place-items-center rounded-md text-content/50 hover:bg-content/5 hover:text-content"
-                >
-                  <ChevronLeft className="size-3.5" strokeWidth={1.75} />
-                </button>
-                <span className="text-[13px] font-medium">Orchestration options</span>
-              </div>
-              <ThreadTune
-                tune={tune}
-                onChange={setTune}
-                environmentId={session.environmentId}
-                workspaceId={session.workspaceId ?? null}
-              />
-              <div className="px-3">
-                <button
-                  type="button"
-                  disabled={busy !== null}
-                  onClick={() => void start("orchestration")}
-                  className="pressable mt-1 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-content text-[13px] font-medium text-background-base hover:bg-content/90 disabled:opacity-40"
-                >
-                  {busy === "orchestration" ? <MatrixSpinner cell={2} /> : "Orchestrate"}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <>
-              {/* Who builds it, and under what rules — the same knobs a new
-              chat gets: model, effort, access. */}
-              <div className="border-b border-content/10 px-3 pt-2.5 pb-2">
-                <p className="text-[13px] font-medium">Start building</p>
-                <div className="mt-1.5 -ml-1 flex flex-wrap items-center gap-1">
-                  <ModelPicker
-                    harness={choice.harness}
-                    model={choice.model}
-                    environmentId={session.environmentId}
-                    onChange={(h, m) => {
-                      setChoice({ harness: h, model: m });
-                      setSettings(mergeModelSettings(resolveModel(h, m, session.environmentId), settings));
-                    }}
-                  />
-                  <ModelSettings
-                    harness={choice.harness}
-                    model={choice.model}
-                    environmentId={session.environmentId}
-                    values={settings}
-                    onChange={setSettings}
-                  />
-                  <AccessPicker value={mode} onChange={setMode} />
-                </div>
-              </div>
-
-              {/* The finish line the build works toward — clear it to
-              start without a goal. */}
-              <div className="flex items-center gap-2 border-b border-content/10 px-3 py-2">
-                <CircleDot
-                  className={`size-3.5 shrink-0 ${goal.trim() ? "text-accent" : "text-content/40"}`}
-                  strokeWidth={1.75}
-                />
-                <input
-                  value={goal}
-                  onChange={(e) => setGoal(e.target.value)}
-                  placeholder="Keep working until… (optional)"
-                  aria-label="Goal"
-                  className="min-w-0 flex-1 bg-transparent text-[12px] outline-none placeholder:text-content/40"
-                />
-                {goal ? (
-                  <button
-                    type="button"
-                    onClick={() => setGoal("")}
-                    aria-label="Clear goal"
-                    className="pressable grid size-5 shrink-0 place-items-center rounded-md text-content/40 hover:text-content"
-                  >
-                    <X className="size-3.5" strokeWidth={1.75} />
-                  </button>
-                ) : null}
-              </div>
-
-              <div className="p-1">
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => void start("implementation")}
-                  onKeyDown={(e) => e.key === "Enter" && void start("implementation")}
-                  className={`${ACTION_ROW} ${busy ? "pointer-events-none opacity-60" : ""}`}
-                >
-                  <span className={ACTION_TILE}>
-                    {busy === "implementation" ? (
-                      <MatrixSpinner cell={2} />
-                    ) : (
-                      <ListChecks className="size-4 text-success" strokeWidth={1.75} />
-                    )}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[13px] font-medium">Implement</span>
-                    <span className="block text-xs text-content/50">One thread works the plan's tasks</span>
-                  </span>
-                </div>
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => void start("orchestration")}
-                  onKeyDown={(e) => e.key === "Enter" && void start("orchestration")}
-                  className={`${ACTION_ROW} ${busy ? "pointer-events-none opacity-60" : ""}`}
-                >
-                  <span className={ACTION_TILE}>
-                    {busy === "orchestration" ? (
-                      <MatrixSpinner cell={2} />
-                    ) : (
-                      <GitFork className="size-4 text-violet" strokeWidth={1.75} />
-                    )}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[13px] font-medium">Orchestrate</span>
-                    <span className="block text-xs text-content/50">
-                      {tuneSummary(tune) ?? "Split across subagents in parallel"}
-                    </span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setView("tune");
-                    }}
-                    title="Instructions & rule overrides"
-                    aria-label="Orchestration options"
-                    className={`pressable grid size-6 shrink-0 place-items-center rounded-md text-content/50 hover:bg-content/5 hover:text-content ${
-                      tuneSummary(tune) ? "opacity-100" : "opacity-0 group-hover/act:opacity-100"
-                    }`}
-                  >
-                    <SlidersHorizontal className="size-3.5" strokeWidth={1.75} />
-                  </button>
-                </div>
-              </div>
-
-              {tasks.length > 0 ? (
-                <div className="rounded-b-xl border-t border-content/10 bg-content/5 px-3 py-2">
-                  {tasks.slice(0, 3).map((t, i) => (
-                    <p key={i} className="truncate text-xs leading-[18px] text-content/50">
-                      {i + 1}. {t}
-                    </p>
-                  ))}
-                  {tasks.length > 3 ? (
-                    <p className="text-xs leading-[18px] text-content/40">+{tasks.length - 3} more</p>
-                  ) : null}
-                </div>
-              ) : null}
-            </>
-          )}
-        </Popover>
-      ) : null}
-    </motion.div>
+    <Tooltip>
+      <TooltipTrigger render={<Button variant="ghost" size="sm" onClick={onOpen} />}>
+        {BUILD_NOUN[type] ?? THREAD_LABELS[type]}
+        <StatusMark className="ml-2" state={threadStateOf(spawned.status, { settled: true })} />
+      </TooltipTrigger>
+      <TooltipContent>Open the build</TooltipContent>
+    </Tooltip>
   );
 }

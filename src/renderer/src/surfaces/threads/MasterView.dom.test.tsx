@@ -184,6 +184,7 @@ vi.mock("./ThreadView", () => ({
   ),
 }));
 vi.mock("./SplitShell", () => ({
+  ChatToggle: () => null,
   SplitShell: ({ board, chat }: { board: React.ReactNode; chat: React.ReactNode }) => (
     <div>
       <div data-board>{board}</div>

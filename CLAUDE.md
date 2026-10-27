@@ -1867,7 +1867,8 @@ threadBatch.test.ts), one `session.batch` per host.
   `deliverAgentReport`; a person-started plan is the notifier's finished
   notice ("Plan complete — implementation started: …" or "…waiting for you
   to start the build") and the tab's "Plan ready" mark. With auto-start off
-  the plan view's single Start button, the phone's Start a build sheet (its
+  the plan view's single Start build button (it opens the Start dialog,
+  surfaces/threads/StartBuildDialog.tsx), the phone's Start a build sheet (its
   confirm is `plan.implement` since thread 25) and `plan.implement` over the
   wire start the build through the same function.
   Sending into a completed plan whose build has not started reopens it.
@@ -1890,11 +1891,12 @@ threadBatch.test.ts), one `session.batch` per host.
   frontmatter (`ProjectPlans.complete`) instead of stamping `planCompletedAt`,
   so the plan flow's settle rule (`isPlanSettle`, planning threads only)
   never fires and a project plan NEVER starts a build on its own, whatever
-  `plans.autoImplement` says. A complete plan ends with the options card: Plan
-  the next milestone (a planning thread linked to the first undone
-  milestone, then the ordinary single Start), an orchestration thread for
-  that milestone, Revise the plan (a new turn), Keep as the project's plan
-  (the header chip reads "Plan · 3 of 7 milestones done"). A landed
+  `plans.autoImplement` says. A complete plan ends with three buttons: Plan
+  milestone N (a planning thread linked to the first undone milestone, then
+  the ordinary single Start), Orchestrate milestone N, Revise… (a dialog
+  whose text goes in as a new turn); the view header's "Project's plan"
+  toggle keeps it as the project's plan (the header chip then reads "Plan ·
+  3 of 7 milestones done"). A landed
   `project.mergeInto` ticks the milestone of every linked build
   (`ProjectPlans.landed`, src/main/server/projectPlan.ts); the checkbox in
   the plan view ticks by hand. State over `projectPlan.*` RPCs

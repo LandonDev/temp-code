@@ -49,23 +49,25 @@ big for one build is a project plan's job: split it into milestones.
 
 ## The options
 
-When the plan is complete the plan view ends with a card, and the project
-header's plan chip (see below) offers the same options:
+When the plan is complete the plan view ends with three buttons, and the
+project header's plan chip (see below) lists the same actions with the pin:
 
-- **Plan the next milestone** starts a planning thread for the first
-  milestone not done, briefed with the plan file and the milestone's
-  scope, dependencies and done-when (`milestonePlanningBrief`), titled
+- **Plan milestone N** starts a planning thread for the first milestone
+  not done, briefed with the plan file and the milestone's scope,
+  dependencies and done-when (`milestonePlanningBrief`), titled
   `M<N> · <title>`, and linked to the milestone (`projectPlan.link`). That
   plan then flows through the ordinary single-build Start.
-- **Start an orchestration thread for milestone N** starts the orchestrator
-  straight from the project plan with the milestone's "Done when" as its
-  goal, linked the same way.
-- **Revise the plan** sends a new turn into the project-plan thread (the
-  card asks what should change; empty means re-survey and update) and opens
-  it. The thread edits the document in place and calls `plan_complete`
-  again.
-- **Keep as the project's plan** pins it (`projectPlan.pin`): the project
-  header's chip then reads "Plan · 3 of 7 milestones done".
+- **Orchestrate milestone N** starts the orchestrator straight from the
+  project plan with the milestone's "Done when" as its goal, linked the
+  same way.
+- **Revise…** asks in a dialog what should change (empty means re-survey
+  and update) and sends it as a new turn into the project-plan thread. The
+  thread edits the document in place and calls `plan_complete` again.
+
+With every milestone done the two milestone buttons give way to "Every
+milestone is done". **Keep as the project's plan** is the view header's
+"Project's plan" toggle (`projectPlan.pin`): pressed, the project header's
+chip reads "Plan · 3 of 7 milestones done".
 
 ## Milestone ticks
 
@@ -88,9 +90,9 @@ the ticks live only in the file.
 ## Where it shows
 
 - **Desktop**: a project-plan thread opens in the plan view (ThreadView →
-  PlanView): the document with `## Milestones` rendered as the live list,
-  the pane header counting milestones done and marking a kept plan, the
-  options card after a complete document. While the selected project has a
+  PlanView): the document with `## Milestones` rendered as the live list
+  (a checkbox per milestone), the header counting milestones done with the
+  "Project's plan" toggle, the three buttons after a complete document. While the selected project has a
   project plan, the thread header carries a plan chip after the `+`
   (src/renderer/src/chrome/ProjectPlanChip.tsx): "Plan", or the milestone
   count once kept; it opens the plan and its popover holds the options.

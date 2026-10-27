@@ -863,39 +863,9 @@ header[data-tauri-drag-region] button {
   }
 }
 
-/* z-plan-wash and the old implementation board's rules below leave with
-   their last users (area A22, thread views). */
-@keyframes z-plan-wash {
-  0% {
-    background-color: color-mix(in srgb, var(--color-violet) 22%, transparent);
-  }
-  100% {
-    background-color: transparent;
-  }
-}
-
-.z-plan-wash {
-  animation: z-plan-wash 1.4s var(--ease-out);
-}
-
-/* The board takes its width at once and fades in; a width tween relays
-   out the transcript beside it on every frame. */
-.z-board {
-  transition: opacity 200ms var(--ease-out);
-}
-
-.z-board[data-dragging="true"] {
-  transition: none;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .z-matrix-cell,
-  .z-plan-wash {
+  .z-matrix-cell {
     animation: none;
-  }
-
-  .z-board {
-    transition: none;
   }
 }
 

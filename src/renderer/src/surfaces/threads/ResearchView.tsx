@@ -1,8 +1,11 @@
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence } from "motion/react";
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { OpenFileFn } from "../../lib/search";
-import { ENTER } from "../../lib/ease";
-import { ChevronRight, Search } from "../../chrome/icons";
+import { FileText, Search } from "../../chrome/icons";
+import { Button } from "../../components/ui/button";
+import { Item, ItemContent, ItemTitle } from "../../components/ui/item";
+import { StatusMark, threadStateOf } from "../../components/ui/status";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { usePlanFile } from "../../hooks/usePlanFile";
 import type { Block, Session } from "../../lib/session";
 import { sessionStore } from "../../lib/tcserver/store";
@@ -17,8 +20,6 @@ import {
   type SourceRow,
 } from "../../lib/threads/researchBoard";
 import { AgentMarkdown } from "../AgentMarkdown";
-import { MatrixSpinner } from "./spinners";
-import { PaneHeader } from "./PaneHeader";
 import { AgentDetail } from "./fleet/AgentDetail";
 import { OpenAgentDetailContext } from "../agentDetailContext";
 import { SplitShell } from "./SplitShell";
@@ -27,10 +28,10 @@ import type { ThreadViewProps } from "./ThreadView";
 /**
  * Research thread: the SOURCES are the view. It opens as a normal chat;
  * the moment research activity lands (a source boarded, the report file
- * born) a live board slides in on the left — report pin on top, then one
- * group per research angle with its queries and the sources they surfaced
- * streaming in beneath. The chat docks right, stays mounted when folded,
- * and folds itself once the report is complete.
+ * born) the board takes the left: the report on top, then one group per
+ * research angle with its queries and the sources they surfaced streaming
+ * in beneath. The chat sits right, stays mounted when folded, and folds
+ * itself once the report is complete.
  */
 
 const NO_BLOCKS: Block[] = [];
@@ -72,7 +73,7 @@ export function Favicon({ url }: { url: string }) {
   const [failed, setFailed] = useState(false);
   if (!host || failed) {
     return (
-      <span className="flex size-4 shrink-0 items-center justify-center rounded-md bg-content/8 text-[11px] leading-none font-semibold text-content/50 uppercase">
+      <span className="flex size-4 shrink-0 items-center justify-center rounded-sm bg-muted text-[11px] leading-none font-semibold text-muted-foreground uppercase">
         {host[0] ?? "?"}
       </span>
     );
@@ -82,7 +83,7 @@ export function Favicon({ url }: { url: string }) {
       src={`https://www.google.com/s2/favicons?domain=${host}&sz=64`}
       onError={() => setFailed(true)}
       alt=""
-      className="size-4 shrink-0 rounded-md"
+      className="size-4 shrink-0 rounded-sm outline-1 -outline-offset-1 outline-image-outline"
     />
   );
 }
@@ -140,24 +141,39 @@ export function ResearchView(props: ThreadViewProps) {
   // A boarded angle group opens the agent's detail in place.
   const [openAgentId, setOpenAgentId] = useState<string | null>(null);
 
-  const counts =
-    board.sources > 0 || board.searches > 0
-      ? `${board.sources} source${board.sources === 1 ? "" : "s"} · ${board.searches} search${
-          board.searches === 1 ? "" : "es"
-        }`
-      : null;
   // Coverage counts spawned angles only, never the root's own group.
-  const detail = agents.length
-    ? [`${done} of ${agents.length} angle${agents.length === 1 ? "" : "s"} done`, counts]
-        .filter(Boolean)
-        .join(" · ")
-    : counts;
+  const facts = [
+    agents.length ? `${done} of ${agents.length} angle${agents.length === 1 ? "" : "s"}` : null,
+    board.sources > 0 || board.searches > 0 ? `${board.sources} source${board.sources === 1 ? "" : "s"}` : null,
+    board.sources > 0 || board.searches > 0 ? `${board.searches} search${board.searches === 1 ? "" : "es"}` : null,
+  ].filter((f): f is string => f !== null);
+  const detail = facts.length ? (
+    <>
+      {facts.map((f, i) => (
+        <span key={i} className={i ? "ml-2" : undefined}>
+          {f}
+        </span>
+      ))}
+    </>
+  ) : null;
+  const reportPath = hasDoc ? session.planPath : null;
+  const actions = reportPath ? (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button variant="ghost" size="icon-sm" aria-label="Open the report" onClick={() => onOpenFile(reportPath)} />
+        }
+      >
+        <FileText />
+      </TooltipTrigger>
+      <TooltipContent>Open the report</TooltipContent>
+    </Tooltip>
+  ) : null;
 
   const boardPane = (
     <>
-      <PaneHeader label="Research" detail={detail} />
       <div className="min-h-0 flex-1 overflow-y-auto select-text">
-        <div className="mx-auto w-full max-w-3xl px-6 py-5">
+        <div className="mx-auto w-full max-w-2xl px-6 pt-6 pb-12">
           {hasDoc ? (
             <ReportPane
               session={session}
@@ -168,7 +184,9 @@ export function ResearchView(props: ThreadViewProps) {
             />
           ) : null}
           {angles.length > 0 ? (
-            <div className={hasDoc ? "mt-6 border-t border-content/10 pt-5" : undefined}>
+            <section aria-label="Angles" className={hasDoc ? "mt-6" : undefined}>
+              <h3 className="mb-2 text-xs font-medium text-muted-foreground">Angles</h3>
+              <div className="-mx-2 flex flex-col gap-4">
               {angles.map((angle) => (
                 <AngleGroup
                   key={angle.agentId}
@@ -178,31 +196,15 @@ export function ResearchView(props: ThreadViewProps) {
                   onOpenFile={onOpenFile}
                 />
               ))}
-            </div>
+              </div>
+            </section>
           ) : null}
         </div>
       </div>
     </>
   );
 
-  const chatPane = (
-    <>
-      {hasBoard ? (
-        <PaneHeader label="Conversation">
-          <button
-            type="button"
-            onClick={() => setChatOpen(false)}
-            title="Hide conversation"
-            aria-label="Hide conversation"
-            className="pressable grid size-6 place-items-center rounded-md text-content/50 hover:bg-content/5 hover:text-content"
-          >
-            <ChevronRight className="size-3.5" strokeWidth={1.75} />
-          </button>
-        </PaneHeader>
-      ) : null}
-      {renderChat()}
-    </>
-  );
+  const chatPane = renderChat();
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1">
@@ -212,8 +214,10 @@ export function ResearchView(props: ThreadViewProps) {
         chat={chatPane}
         hasBoard={hasBoard}
         collapsed={collapsed}
-        onOpenChat={() => setChatOpen(true)}
-        status={status}
+        onToggleChat={setChatOpen}
+        title="Research"
+        detail={detail}
+        actions={actions}
       />
       </OpenAgentDetailContext.Provider>
       <AnimatePresence>
@@ -233,8 +237,8 @@ export function ResearchView(props: ThreadViewProps) {
   );
 }
 
-/** The report: a pin (title + state) while it is being researched and
- *  written, the full document rendered inline once complete. */
+/** The report: its title and state while it is being researched and
+ *  written, the whole document once complete. */
 function ReportPane({
   session,
   report,
@@ -250,50 +254,36 @@ function ReportPane({
   onOpenFile: OpenFileFn;
 }) {
   const complete = report.status === "complete";
-  const reduce = useReducedMotion();
-  const onOpen = (): void => {
-    if (session.planPath) onOpenFile(session.planPath);
-  };
+  const state = running ? "working" : threadStateOf(session.status);
   return (
-    <motion.div
-      initial={reduce ? false : ENTER.initial}
-      animate={ENTER.animate}
-      transition={ENTER.transition}
-    >
-      <button
-        type="button"
-        onClick={onOpen}
-        title="Open the report file"
-        className="group flex w-full items-baseline gap-2 px-2 text-left"
-      >
-        <p className="min-w-0 truncate text-sm leading-snug font-medium tracking-[-0.01em] group-hover:underline">
-          {report.title ?? session.title}
-        </p>
-        {!complete ? (
-          <span className="flex shrink-0 items-center gap-1.5 text-xs text-content/50">
-            {running ? <MatrixSpinner cell={2} /> : null}
-            in progress
-          </span>
-        ) : liveAngles > 0 ? (
-          <span className="flex shrink-0 items-center gap-1.5 text-xs text-content/50">
-            <MatrixSpinner cell={2} />
-            complete · {liveAngles} angle{liveAngles === 1 ? "" : "s"} still running
-          </span>
-        ) : null}
-      </button>
-      {complete ? (
-        <div className="mt-2 px-2 text-[13px]">
+    <div>
+      <h2 className="text-base font-semibold tracking-[-0.01em] text-foreground">{report.title ?? session.title}</h2>
+      {!complete ? (
+        <>
+          {state !== "idle" && state !== "done" ? (
+            <StatusMark className="mt-2" state={state} detail={state === "working" ? "writing" : undefined} />
+          ) : null}
+          {report.summary ? <p className="mt-2 text-[13px] text-muted-foreground">{report.summary}</p> : null}
+        </>
+      ) : (
+        <>
+          {liveAngles > 0 ? (
+            <StatusMark
+              className="mt-2"
+              state="working"
+              detail={`${liveAngles} angle${liveAngles === 1 ? "" : "s"} still running`}
+            />
+          ) : null}
           <AgentMarkdown
+            className="mt-4 text-[15px] leading-[1.6]"
             text={report.body}
             streaming={false}
             cwd={session.cwd}
             onOpenFile={onOpenFile}
           />
-        </div>
-      ) : report.summary ? (
-        <p className="mt-1 px-2 text-xs leading-snug text-content/50">{report.summary}</p>
-      ) : null}
-    </motion.div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -311,9 +301,8 @@ function angleStatus(blocks: Block[]): string {
   return "reading";
 }
 
-/** One research angle: the agent's label, a live status line while it
- *  works, its findings file's state beneath, and its queries with sources
- *  streaming in under that. */
+/** One research angle: the agent's label with its state while it works,
+ *  its findings beneath, and its queries with the sources streaming in. */
 function AngleGroup({
   angle,
   self,
@@ -334,50 +323,45 @@ function AngleGroup({
   );
   const fileDoc = usePlanFile(filePath, live);
   const findings = useMemo(() => (fileDoc ? parseReport(fileDoc) : null), [fileDoc]);
+  const head = (
+    <>
+      <ItemContent>
+        <ItemTitle>{label}</ItemTitle>
+      </ItemContent>
+      {live ? <StatusMark state="working" detail={angleStatus(agent.blocks)} /> : null}
+    </>
+  );
   return (
-    <div className="mb-5 last:mb-0">
-      <button
-        type="button"
-        onClick={onOpen}
-        disabled={self}
-        className={`group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left ${
-          self ? "" : "transition-colors hover:bg-content/5 active:bg-content/10"
-        }`}
-      >
-        <span className="min-w-0 truncate text-[12px] font-medium">{label}</span>
-        {live ? (
-          <span className="flex shrink-0 items-center gap-1.5 text-xs text-content/50">
-            <MatrixSpinner cell={2} />
-            {angleStatus(agent.blocks)}…
-          </span>
-        ) : null}
-        {!self ? (
-          <ChevronRight
-            className="ml-auto size-3.5 shrink-0 text-content/40 opacity-0 transition-opacity group-hover:opacity-100"
-            strokeWidth={1.75}
-          />
-        ) : null}
-      </button>
-      {findings && filePath ? (
-        <button
-          type="button"
-          onClick={() => onOpenFile(filePath)}
-          title="Open the findings file"
-          className="flex w-full items-baseline gap-2 rounded-md px-2 py-0.5 text-left text-xs transition-colors hover:bg-content/5"
-        >
-          <span className="shrink-0 text-content/50">
-            {findings.status === "complete" ? "done" : "in progress"}
-          </span>
-          {findings.summary ? (
-            <span className="min-w-0 truncate text-content/70">{findings.summary}</span>
-          ) : null}
-        </button>
+    <div data-angle>
+      {self ? (
+        <Item size="xs">{head}</Item>
+      ) : (
+        <Item size="xs" render={<button type="button" onClick={onOpen} />} className="text-left hover:bg-muted">
+          {head}
+        </Item>
+      )}
+      {findings?.summary && filePath ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={() => onOpenFile(filePath)}
+                className="h-auto w-full justify-start py-0.5 text-left font-normal whitespace-normal text-muted-foreground"
+              />
+            }
+          >
+            <span className="line-clamp-2">{findings.summary}</span>
+          </TooltipTrigger>
+          <TooltipContent>Open the findings</TooltipContent>
+        </Tooltip>
       ) : null}
       {angle.queries.map((q, i) => (
         <div key={i}>
           {q.query ? (
-            <div className="mt-1.5 flex items-center gap-1.5 px-2 text-xs text-content/50">
-              <Search className="size-3.5 shrink-0" strokeWidth={1.75} />
+            <div className="mt-1 flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground">
+              <Search className="size-3 shrink-0" />
               <span className="truncate">{q.query}</span>
             </div>
           ) : null}
@@ -390,26 +374,29 @@ function AngleGroup({
   );
 }
 
-/** One consulted source: favicon, name, the address small at right, and
+/** One consulted source: favicon, name, the host at the row's end, and
  *  beneath them the claim it supports when the agent cited one. */
 function SourceLink({ src }: { src: SourceRow }) {
+  const host = hostOf(src.url);
   return (
-    <button
-      type="button"
-      onClick={() => window.open(src.url, "_blank")}
-      title={src.url}
-      className="flex w-full flex-col gap-0.5 rounded-md py-1 pr-2 pl-6 text-left transition-colors hover:bg-content/5 active:bg-content/10"
-    >
-      <span className="flex w-full items-center gap-2">
-        <Favicon url={src.url} />
-        <span className="min-w-0 flex-1 truncate text-[12px]">{src.title ?? hostOf(src.url)}</span>
-        <span className="max-w-[45%] shrink-0 truncate text-xs text-content/40">
-          {src.title ? src.url.replace(/^https?:\/\/(www\.)?/, "") : ""}
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            onClick={() => window.open(src.url, "_blank")}
+            className="h-auto min-h-7 w-full flex-col items-stretch justify-start gap-0.5 py-1 pr-2 pl-6 text-left font-normal whitespace-normal"
+          />
+        }
+      >
+        <span className="flex w-full items-center gap-2">
+          <Favicon url={src.url} />
+          <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">{src.title ?? host}</span>
+          {src.title ? <span className="max-w-[45%] shrink-0 truncate text-xs text-muted-foreground">{host}</span> : null}
         </span>
-      </span>
-      {src.claim ? (
-        <span className="line-clamp-2 pl-6 text-xs leading-snug text-content/60">{src.claim}</span>
-      ) : null}
-    </button>
+        {src.claim ? <span className="line-clamp-2 pl-6 text-xs text-muted-foreground">{src.claim}</span> : null}
+      </TooltipTrigger>
+      <TooltipContent>{src.url}</TooltipContent>
+    </Tooltip>
   );
 }

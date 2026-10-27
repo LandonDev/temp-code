@@ -333,53 +333,77 @@ State* (shimmer + elapsed while waiting). User messages render as
 Cursor-style bordered rounded fields, not colored bubbles. Column
 max-w-3xl centered.
 
+### The board views: one frame
+
+Plan, research, project plan, implementation and master share
+`SplitShell` (surfaces/threads/SplitShell.tsx): the board on the left at a
+dragged split (30 to 70 %, double-click resets to 50), the chat on the
+right. The board has one 36px header: a short title, one muted state line in
+`tabular-nums` (facts set apart by margin, never a middle dot), the view's
+actions, and last the conversation `Toggle` (`ChatToggle`, pressed while
+the chat shows). Folding is a toggle, not a tween: the board takes the full
+width at once, the chat stays mounted (`inert`, parked at its last width)
+and fades back in over `--dur-fast` when shown again. Each view's document
+is one column, `max-w-2xl`, at 15px/1.6. A view without a board is the chat
+alone, with no header.
+
 ### Planning — a document, not a conversation
 
-The main view IS the plan file. The agent writes a real markdown plan
-(`.temp-code/plans/<thread>.md` in the project) and the view renders it
-document-first: typographic markdown (prose styles from `DESIGN.md`), full
-width up to max-w-3xl, streaming in as it's written (BUI *Streaming Text*
-mechanics on the document body). The agent's questions/back-and-forth appear
-as a slim collapsible side-channel below the document — the plan stays the
-hero. Header row: plan title + status (drafting / ready) + one primary
-action: **Start →** opens an anchored popover choosing Implementation or
-Orchestration; the new thread is created seeded from the plan file, and its
-todo list is parsed from the plan's task section. Since the plan is a file
-on disk, it survives threads and is editable later (see ADE ambitions).
+The main view IS the plan file (`.temp-code/plan-<thread>.md`), rendered
+as the document column and streaming as it is written. The chat sits
+beside it while the plan takes shape and folds once the plan is written or
+handed off; a question forces it open. Header: "Plan" and the task count;
+before the handoff one primary **Start build** opens `StartBuildDialog`
+(Implement or Orchestrate, model, effort, access, the goal prefilled from
+the plan, the orchestration rules only for Orchestrate; Start calls
+`plan.implement`, one build). After the handoff the header names the build
+("Implementation" and its `StatusMark`) and opens it. On a wide pane with
+the chat folded, a heading outline sits at the left edge.
 
-### Implementation — the todos ARE the view
+### Implementation — the tasks and the changes
 
 ```
-┌ goal line (from plan file when seeded) ───┐
-│ ✓ 1. Wire schema            12s           │
-│ ◉ 2. Build driver           ▾ running     │
-│ │   ▸ Read src/drivers/…       0.4s       │
-│ │   ▸ Edit codex.ts            1.2s       │
-│ │   $ bun test drivers         running…   │
-│ │   "The handshake needs…" (quiet note)   │
-│ ○ 3. Verify e2e                           │
-│ ○ 4. Commit                               │
-├───────────────────────────────────────────┤
-│ prompt bar (compact)                      │
-└───────────────────────────────────────────┘        right panel: Changes
+┌ plan heading (or the request) ───── [plan] [planned in] [chat] ┐
+│ Pass 1  Move the notes            1/1 +40 −12  ›                │
+│ Dec 31  Opus 5.5  High  200k  $1.20                             │
+│                                                                 │
+│ Now make the gate run beside the build                          │
+│ ┌ ◔ Tasks                                  2/3 ┐                │
+│ │ ✓ Gate in parallel                          │                 │
+│ │ ○ Run the publish gate                      │                 │
+│ └─────────────────────────────────────────────┘                 │
+│ ◉ Needs you  Bash: bun run gate                                 │
+│                                                                 │
+│ Changes                                                         │
+│ Gate in parallel                                                │
+│ gate.ts                                       +18 −4  ›         │
+│                                                                 │
+│ closing report (15px)                                           │
+│ [Start pass 3]                                                  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-The whole view is the todo list — no separate feed. BUI *Task Rows* (list
-view) gives the rows; each row is an **expandable trace** using BUI
-*Thinking*'s Steps variant as the interior pattern: while a todo runs it
-auto-expands and its tool calls stream inside it as step lines (icon + verb +
-target + duration — Tool Chips, one-line form), with assistant prose as
-quiet muted notes between steps. Completed todos collapse to
-`✓ title · duration` (spring height, `SPRING_LAYOUT`); click any row to
-re-expand its trace. Exactly one row is open by accident of work, and the
-running row is the bright thing on screen — hierarchy by dimming everything
-settled. Events map to todos by the harness's todo state: whatever todo is
-`in_progress` when an event arrives owns it (pre-first-todo events go to an
-implicit "setup" row).
+The board is the pass's `TaskList`, then one line per approval or question
+waiting on the person (opening the chat) and the last failure (or
+Stopped), then the files each task changed (`ChangeRows`: a row per file
+under its task's name, shell-made ones marked `shell`, each opening its
+diff preview in place with Open diff under it), then the closing report.
+Earlier passes fold into rows above (number, request, tally, diffstat and
+the run's record), each opening its tasks and changes; a pure Q&A pass has
+no row. A finished pass offers **Start pass N**, which arms the next
+message as a new pass; folding the chat while a pass is armed puts it back.
+Live subagents and the working tree's changes are the right panel's
+Agents and Changes; the transcript keeps every tool call. The pure folds
+are `implementationBoard.ts`.
 
-- **Changes**: the right panel's section. File rows appear as edits land:
-  filename, `+n −m` in tabular nums (success/destructive colors). Click
-  opens the diff.
+### Research — the report and its sources
+
+Header: "Research" with the angles, sources and searches as separate
+words, and a button opening the report file. The report's title, its
+`StatusMark` and summary while it is written, its body once complete;
+then the angles, each opening its agent, live ones saying what they do,
+their findings opening the file, and under each query its sources (the
+favicon, the title, the host, the claim; the address in a tooltip).
 
 ### Orchestration — the chat under a header
 
@@ -421,8 +445,8 @@ type (CLAUDE.md "Master threads", docs/master-threads.md for the why); a
 project may have any number of masters, each with its own batch, and the
 tab's or the rail row's menu makes one ("Make master thread" / "Not a
 master", `session.setMaster`). The board | sash | chat recipe (SplitShell):
-the batch on the left, the master's own chat on the right, folding to the
-edge tab. Until the first child the chat is the whole view. A child of the
+the batch on the left, the master's own chat on the right, folding from
+the toggle at the end of the board's own header. Until the first child the chat is the whole view. A child of the
 batch is never a tab: it lives on the board, and a click puts its full view
 in the whole pane, with Back.
 

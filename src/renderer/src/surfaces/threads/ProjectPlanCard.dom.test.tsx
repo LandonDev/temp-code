@@ -13,7 +13,7 @@ const actions = vi.hoisted(() => ({
 }));
 vi.mock("../../lib/projectPlan", () => actions);
 
-import { MilestoneList, ProjectPlanCard } from "./ProjectPlanCard";
+import { MilestoneList, ProjectPlanCard, ProjectPlanOptions } from "./ProjectPlanCard";
 
 const DOC = `---
 status: complete
@@ -73,21 +73,22 @@ afterEach(() => {
 });
 
 describe("ProjectPlanCard", () => {
-  it("offers the four options and names the next milestone", () => {
+  it("is three buttons naming the next milestone, with no pin", () => {
     render(<ProjectPlanCard session={session} doc={DOC} state={state()} />);
-    expect(screen.getByText("The plan is complete")).toBeTruthy();
-    expect(screen.getByText("1 of 3 milestones done")).toBeTruthy();
-    expect(screen.getByText("Plan the next milestone")).toBeTruthy();
-    expect(screen.getByText("2. API")).toBeTruthy();
-    expect(screen.getByText("Start an orchestration thread for milestone 2")).toBeTruthy();
-    expect(screen.getByText("Revise the plan")).toBeTruthy();
-    expect(screen.getByText("Keep as the project's plan")).toBeTruthy();
+    const card = document.querySelector("[data-project-plan-card]") as HTMLElement;
+    expect([...card.querySelectorAll("button")].map((b) => b.textContent)).toEqual([
+      "Plan milestone 2",
+      "Orchestrate milestone 2",
+      "Revise…",
+    ]);
+    expect(screen.queryByText(/project's plan/)).toBeNull();
+    expect(screen.queryByText("The plan is complete")).toBeNull();
   });
 
-  it("Plan the next milestone starts a planning thread for the first undone milestone and opens it", async () => {
+  it("Plan milestone N starts a planning thread for the first undone milestone and opens it", async () => {
     const onStarted = vi.fn();
     render(<ProjectPlanCard session={session} doc={DOC} state={state()} onStarted={onStarted} />);
-    fireEvent.click(screen.getByText("Plan the next milestone"));
+    fireEvent.click(screen.getByRole("button", { name: "Plan milestone 2" }));
     await act(async () => {});
     expect(actions.startMilestonePlanning).toHaveBeenCalledTimes(1);
     const [s, m] = actions.startMilestonePlanning.mock.calls[0] as unknown as [Session, { index: number; title: string }];
@@ -97,10 +98,10 @@ describe("ProjectPlanCard", () => {
     expect(onStarted).toHaveBeenCalledWith("plan-m2");
   });
 
-  it("Start an orchestration thread for milestone N orchestrates that milestone", async () => {
+  it("Orchestrate milestone N orchestrates that milestone", async () => {
     const onStarted = vi.fn();
     render(<ProjectPlanCard session={session} doc={DOC} state={state()} onStarted={onStarted} />);
-    fireEvent.click(screen.getByText("Start an orchestration thread for milestone 2"));
+    fireEvent.click(screen.getByRole("button", { name: "Orchestrate milestone 2" }));
     await act(async () => {});
     expect(actions.startMilestoneOrchestration).toHaveBeenCalledTimes(1);
     expect((actions.startMilestoneOrchestration.mock.calls[0] as unknown as [Session, { index: number }])[1].index).toBe(2);
@@ -108,45 +109,62 @@ describe("ProjectPlanCard", () => {
     expect(actions.startMilestonePlanning).not.toHaveBeenCalled();
   });
 
-  it("Revise the plan asks what should change and sends it as a turn in the plan thread", async () => {
+  it("Revise… asks in a dialog and sends the field's text as a turn in the plan thread", async () => {
     const onChanged = vi.fn();
     render(<ProjectPlanCard session={session} doc={DOC} state={state()} onChanged={onChanged} />);
-    fireEvent.click(screen.getByText("Revise the plan"));
-    const field = screen.getByLabelText("What should change");
-    fireEvent.change(field, { target: { value: "drop milestone 3" } });
-    fireEvent.submit(field.closest("form")!);
+    fireEvent.click(screen.getByRole("button", { name: "Revise…" }));
+    await act(async () => {});
+    expect(screen.getByText("Revise the plan")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("What should change"), { target: { value: "drop milestone 3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await act(async () => {});
     expect(actions.reviseProjectPlan).toHaveBeenCalledWith(session, "drop milestone 3");
     expect(onChanged).toHaveBeenCalled();
   });
 
-  it("Keep as the project's plan pins it, and reads as unpin once pinned", async () => {
-    const view = render(<ProjectPlanCard session={session} doc={DOC} state={state()} />);
-    fireEvent.click(screen.getByText("Keep as the project's plan"));
+  it("an empty Revise sends the re-survey turn", async () => {
+    render(<ProjectPlanCard session={session} doc={DOC} state={state()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Revise…" }));
     await act(async () => {});
-    expect(actions.pinProjectPlan).toHaveBeenCalledWith("p1", true);
-    view.rerender(<ProjectPlanCard session={session} doc={DOC} state={state({ pinned: true })} />);
-    expect(screen.getByText("Stop keeping as the project's plan")).toBeTruthy();
-    fireEvent.click(screen.getByText("Stop keeping as the project's plan"));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await act(async () => {});
-    expect(actions.pinProjectPlan).toHaveBeenLastCalledWith("p1", false);
+    expect(actions.reviseProjectPlan).toHaveBeenCalledWith(session, "");
   });
 
-  it("with every milestone done, the two start options are disabled and say so", () => {
+  it("with every milestone done, the two milestone buttons are gone and it says so", () => {
     const done = DOC.replace("### [ ] 2. API", "### [x] 2. API").replace("### [ ] 3. UI", "### [x] 3. UI");
     render(<ProjectPlanCard session={session} doc={done} state={state()} />);
     expect(screen.getByText("Every milestone is done")).toBeTruthy();
-    expect((screen.getByText("Plan the next milestone").closest("button") as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByText("Start an orchestration thread").closest("button") as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: /^Plan milestone/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Orchestrate milestone/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Revise…" })).toBeTruthy();
+  });
+});
+
+describe("ProjectPlanOptions compact", () => {
+  it("lists the four actions as rows, the pin among them", async () => {
+    const view = render(<ProjectPlanOptions session={session} doc={DOC} state={state()} compact />);
+    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual([
+      "Plan milestone 2",
+      "Orchestrate milestone 2",
+      "Revise the plan",
+      "Keep as the project's plan",
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "Keep as the project's plan" }));
+    await act(async () => {});
+    expect(actions.pinProjectPlan).toHaveBeenCalledWith("p1", true);
+    view.rerender(<ProjectPlanOptions session={session} doc={DOC} state={state({ pinned: true })} compact />);
+    expect(screen.getByRole("button", { name: "Stop keeping as the project's plan" })).toBeTruthy();
   });
 });
 
 describe("MilestoneList", () => {
-  it("renders every milestone with its tick and fields, and a click ticks it by hand", async () => {
+  it("renders every milestone with its tick and fields, and the checkbox ticks it by hand", async () => {
     const onTicked = vi.fn();
     render(<MilestoneList doc={DOC} projectId="p1" onTicked={onTicked} />);
     const boxes = screen.getAllByRole("checkbox");
     expect(boxes.map((b) => b.getAttribute("aria-checked"))).toEqual(["true", "false", "false"]);
+    expect(boxes[1].getAttribute("aria-label")).toBe("Milestone 2: API");
     expect(screen.getByText("schema test passes")).toBeTruthy();
     expect(screen.getByText("Depends on")).toBeTruthy();
     fireEvent.click(boxes[1]);

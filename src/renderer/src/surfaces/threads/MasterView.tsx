@@ -4,7 +4,7 @@ import { ConfirmDialog } from "../../chrome/ConfirmDialog";
 import { ExplorerMenu } from "../../chrome/ExplorerMenu";
 import { MoveThreadConfirm } from "../../chrome/ThreadHostChip";
 import { ArchiveThreadDialog } from "../../chrome/ThreadResourcesDialog";
-import { ChevronDown, ChevronRight, MoreHorizontal, Plus } from "../../chrome/icons";
+import { ChevronDown, MoreHorizontal, Plus } from "../../chrome/icons";
 import { registry } from "../../lib/connection";
 import { useEnvironments, useEnvironmentStatuses } from "../../lib/connection/status";
 import * as commands from "../../lib/tcserver/commands";
@@ -16,7 +16,6 @@ import { useMasterIds } from "../../lib/masterThread";
 import { sessionStore, useQueue, useSessionMetasWhen } from "../../lib/tcserver/store";
 import { loadThreadResources, useThreadResources } from "../../lib/threadResources";
 import { moveTargets, useMoving } from "../../lib/threadMove";
-import { PaneHeader } from "./PaneHeader";
 import { chatOf } from "./chatSlots";
 import { AddThreadDialog } from "./master/AddThreadDialog";
 import { AdoptThreadDialog } from "./master/AdoptThreadDialog";
@@ -42,13 +41,13 @@ import {
   type BoardRowRef,
   type RowHost,
 } from "./master/useMasterModel";
-import { SplitShell } from "./SplitShell";
+import { ChatToggle, SplitShell } from "./SplitShell";
 import type { ThreadViewProps } from "./ThreadView";
 
 /**
  * A master thread (CLAUDE.md "Master threads", docs/LAYOUT.md "Master"):
  * the batch board on the left, the master's own chat on the right on the
- * SplitShell recipe, the chat folding to the edge tab as elsewhere. The
+ * SplitShell recipe, the chat folding from the header toggle as elsewhere. The
  * rows are the batch's children on every host the renderer knows, each
  * with its host's dot and name when it is not the master's, under the
  * offline tint while that host is out of reach; every action reaches the
@@ -335,6 +334,9 @@ export function MasterView(props: ThreadViewProps) {
           Thread
           <ChevronDown className="-mr-0.5 size-3 text-content/50" strokeWidth={1.75} />
         </button>
+        <span className="ml-1 flex">
+          <ChatToggle open={chatOpen} onToggle={setChatOpen} />
+        </span>
       </div>
       <BoardDigestContext.Provider value={digests}>
         <AgentSummaryContext.Provider value={summaries}>
@@ -378,22 +380,7 @@ export function MasterView(props: ThreadViewProps) {
     </div>
   );
 
-  const chat = (
-    <>
-      <PaneHeader label="Conversation">
-        <button
-          type="button"
-          onClick={() => setChatOpen(false)}
-          title="Hide conversation"
-          aria-label="Hide conversation"
-          className={QUIET_ICON}
-        >
-          <ChevronRight className="size-3.5" strokeWidth={1.75} />
-        </button>
-      </PaneHeader>
-      {chatOf(props)}
-    </>
-  );
+  const chat = chatOf(props);
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1">
@@ -402,9 +389,7 @@ export function MasterView(props: ThreadViewProps) {
         chat={chat}
         hasBoard
         collapsed={!chatOpen}
-        onOpenChat={() => setChatOpen(true)}
-        status={meta?.status ?? session.status}
-        edgeTitle="Show conversation"
+        onToggleChat={setChatOpen}
       />
       {menu ? (
         <ExplorerMenu
