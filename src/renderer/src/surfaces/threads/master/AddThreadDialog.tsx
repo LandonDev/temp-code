@@ -29,7 +29,7 @@ import { linkedHosts } from "./boardActions";
  * the brief as its first message; the row then arrives from the push.
  */
 
-const TYPES: ThreadType[] = ["implementation", "planning", "orchestration", "research", "project-plan"];
+const TYPES: ThreadType[] = ["chat", "implementation", "planning", "orchestration", "research", "project-plan"];
 const NO_AFTER = "";
 
 export type AddThreadMaster = Pick<

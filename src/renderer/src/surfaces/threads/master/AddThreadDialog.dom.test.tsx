@@ -200,4 +200,17 @@ describe("AddThreadDialog", () => {
     expect(onAdded).toHaveBeenCalledWith({ id: "new" });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it("offers every type with Chat first, starts on Implement, and adds a chat", async () => {
+    render(<AddThreadDialog master={master} siblings={[]} onClose={() => {}} onAdded={() => {}} />);
+    await flush();
+    const types = within(screen.getByRole("group", { name: "Type" })).getAllByRole("button");
+    expect(types.map((b) => b.textContent)).toEqual(["Chat", "Implement", "Plan", "Orchestrate", "Research", "Project plan"]);
+    expect(types[1].getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(types[0]);
+    fireEvent.change(screen.getByLabelText("Brief"), { target: { value: "Talk it through." } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await flush();
+    expect(h.startThread.mock.calls[0][0]).toMatchObject({ threadType: "chat", masterId: "m" });
+  });
 });
