@@ -100,10 +100,14 @@ describe('menu template', () => {
     const send = vi.fn()
     vi.mocked(BrowserWindow.getFocusedWindow).mockReturnValue({ isDestroyed: () => false, webContents: { send } } as never)
     const click = menu('File').find((r) => r.id === 'new_terminal')!.click as (...args: unknown[]) => void
-    click({}, undefined, { triggeredByAccelerator: true })
+    click({}, undefined, { triggeredByAccelerator: true, ctrlKey: true })
     expect(send).not.toHaveBeenCalled()
     click({}, undefined, { triggeredByAccelerator: false })
-    expect(send).toHaveBeenCalledWith('native:menu', 'new_terminal')
+    expect(send).toHaveBeenCalledTimes(1)
+    // Return on the item while navigating the menu by keyboard.
+    click({}, undefined, { triggeredByAccelerator: true, ctrlKey: false })
+    expect(send).toHaveBeenCalledTimes(2)
+    expect(send).toHaveBeenLastCalledWith('native:menu', 'new_terminal')
   })
 })
 
