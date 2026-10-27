@@ -277,7 +277,7 @@ function RowActions({
           <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`More for ${name}`} />}>
             <MoreHorizontal />
           </DropdownMenuTrigger>
-          <DropdownMenuContent size="sm" align="end">
+          <DropdownMenuContent align="end">
             <DropdownMenuItem variant="destructive" onClick={onDelete}>
               {verb}…
             </DropdownMenuItem>
