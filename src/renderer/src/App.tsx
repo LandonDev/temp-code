@@ -3382,6 +3382,7 @@ export default function App() {
                   }
                   style={show ? { gridArea: "dock" } : undefined}
                   aria-hidden={!show}
+                  inert={!show || undefined}
                 >
                   <ProjectTerminalDock
                     dock={dock}
@@ -3425,6 +3426,8 @@ export default function App() {
                 <div
                   key={tab.id}
                   aria-hidden={tab.id !== shownTabId}
+                  // A parked tab keeps its state mounted; Tab never lands in it.
+                  inert={tab.id !== shownTabId || undefined}
                   className={
                     tab.id === shownTabId
                       ? "absolute inset-0 flex h-full min-h-0 flex-col"
