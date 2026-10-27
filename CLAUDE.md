@@ -749,8 +749,8 @@ routed to (aliax-core's `forward`). Two listeners:
   menu and the file tree's menu (`⌥⏎`) say "Open on the Mac" for a path on
   another host and "Open in <editor>" locally. `src/main/editorLaunch.ts`
   launches IDEA (`--line N path`), VS Code (`-g path:N`) or Xcode
-  (`xed -l N path`) per the `editor.command` setting (Settings → General →
-  Editor; Auto = first installed; Swift under `ios/` prefers Xcode when it
+  (`xed -l N path`) per the `editor.command` setting (Settings → Editor →
+  Open files in; Auto = first installed; Swift under `ios/` prefers Xcode when it
   is chosen or IDEA is absent). A remote path is translated through the
   harness sync's path map inverted (`src/shared/openOnMac.ts`, box
   `/srv/agents/work/<X>` ↔ Mac `~/IdeaProjects/<X>`), both hosts hash the

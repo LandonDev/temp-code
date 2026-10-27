@@ -205,6 +205,15 @@ from its edge. Every one of them exits in `--dur-fast`, back a quarter of
 the way it came, and keeps its direction. Under reduced motion they cross-
 fade in `--dur-fast`; nothing appears in one frame.
 
+A page (Settings, Accounts, Stats) is `Page`, `PageSection` and `PageRow`
+from `components/page.tsx`: a 672px column with a 24px inset, one 16px
+semibold title with a 12px muted line under it, sections 24px apart, each
+under a 12px medium muted heading with 8px to its first row, rows 12px top
+and bottom with a hairline between neighbours and never a box. A row's
+control is one `Switch`, one `ChoiceSelect`, one `Input` or one `Button`;
+a loading value is a `Skeleton` in its shape, an error a red 12px line
+under its row. Switching pages does not animate.
+
 ## Iconography
 
 `@renderer/chrome/icons` (Hugeicons under lucide names), 16px in rows and

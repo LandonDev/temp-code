@@ -2171,7 +2171,7 @@ forward.
   and **Open in <editor>** (IntelliJ IDEA, VS Code or Xcode) when it is;
   it is absent when no editor is installed here. No animation: the editor
   takes focus, the app does not move.
-- **The editor.** Settings → General → Editor: Auto (the first of IDEA,
+- **The editor.** Settings → Editor → Open files in: Auto (the first of IDEA,
   VS Code and Xcode installed), or one of them; the `editor.command`
   setting in the settings table (src/main/editorLaunch.ts). The launcher
   is asked of the login shell (`whence -p idea` / `type -P code`), else the

@@ -25,7 +25,7 @@ DESIGN.md wins.
 | A settings or app page | `Page`, `PageSection`, `PageRow` (../page.tsx) | 672px column, 24px inset, one 16px title; sections 24px apart under a 12px muted heading; rows with a hairline between neighbours. A page never draws its own header or section heading. |
 | A text field | `Input`, `Textarea` (input.tsx, textarea.tsx) | 32px, hairline border, ring inside. A field with a glyph or buttons in it (search) is `InputGroup` with `leading`/`trailing` around a `GroupInput`. |
 | A labelled field in a dialog or sheet | `Field`, `FieldRow` (chrome/DialogField.tsx) | Label, control, hint; `FieldRow` for a choice at the row's end. |
-| A setting on or off | `Switch` (switch.tsx) | The only toggle for a setting. |
+| A setting on or off | `Switch` (switch.tsx); `SettingSwitch` (../setting-switch.tsx) in a settings row | The only toggle for a setting. `SettingSwitch` names it and plays the switch cue. |
 | A choice in a list | `Checkbox` (checkbox.tsx) | |
 | Tabs, a segmented control | `Tabs` (tabs.tsx) | `variant="default"` segmented, `variant="line"` underlined. |
 | A list row, a settings row | `Item` (item.tsx) | Media, title + description, actions. Settings pages are columns of these. |
@@ -47,6 +47,9 @@ DESIGN.md wins.
 | A live short line | `StreamingText` (streaming-text.tsx) | Words fade in. Not the transcript's prose. |
 | A file in or on a turn | `Attachment` (attachment.tsx) | Media, name, one line, an action. |
 | The frame of one message | `Message` (message.tsx) | The user bubble itself is the transcript's. |
+
+`surfaces/settingsBits.tsx` is a retired shim over these components, kept
+with its props until A11's dialogs leave it; build nothing new on it.
 
 Hand-made and staying hand-made (they are the product, not a primitive):
 the transcript's rows and its markdown pipeline (streamdown, the worker,
