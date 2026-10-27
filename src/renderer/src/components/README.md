@@ -19,7 +19,7 @@ DESIGN.md wins.
 | A menu from a trigger | `DropdownMenu` (dropdown-menu.tsx) | `size="sm"` in dense chrome. Rows: glyph, label, shortcut. |
 | A right-click menu | `ContextMenu` (context-menu.tsx) | Same rows at the `sm` size, opened at the pointer. |
 | Floating content from a trigger | `Popover` (popover.tsx) | Pickers, account lists, previews. Scales from its anchor. |
-| A label on hover | `Tooltip` (tooltip.tsx) | Replaces every `title=`. Each carries its delay; a `TooltipProvider` around a toolbar lets neighbours share one. |
+| A label on hover | `Tooltip` (tooltip.tsx) | Replaces every `title=`. Each carries its delay; a `TooltipProvider` around a toolbar lets neighbours share one. `TOOLTIP_DELAY` and `TOOLTIP_CLOSE_DELAY` are the numbers a hover popover reuses. |
 | An option picker | `Select` (select.tsx) | Bordered trigger, list aligned on the chosen item. |
 | An option picker from a list | `ChoiceSelect` (../choice-select.tsx) | The one adapter from `{ value, label }[]` to `Select`; an empty value (Auto) round-trips. Nothing maps `SelectItem`s by hand. |
 | A settings or app page | `Page`, `PageSection`, `PageRow` (../page.tsx) | 672px column, 24px inset, one 16px title; sections 24px apart under a 12px muted heading; rows with a hairline between neighbours. A page never draws its own header or section heading. |
@@ -32,7 +32,7 @@ DESIGN.md wins.
 | A divider | `Separator` (separator.tsx) | Spacing first; a separator only where spacing cannot tell groups apart. |
 | A disclosure | `Collapsible` (collapsible.tsx) | Height eases through `.collapsible-resize`. |
 | A scrolling panel | `ScrollArea` (scroll-area.tsx) | Panels and lists; the transcript keeps its native scroller. |
-| A determinate bar | `Progress` (progress.tsx) | Usage meter, tallies. |
+| A determinate bar | `Progress` (progress.tsx) | Usage meter, tallies. `fill` is foreground, muted or warning; the fill is a transform, so a live update never relayouts. |
 | Loading, indeterminate | `Spinner` (spinner.tsx) | 16px arc, with a word. The nine other spinners are retired. |
 | Loading, a shape | `Skeleton` (skeleton.tsx) | Shaped like what it stands in for. |
 | Something is happening (text) | `TextShimmer` (text-shimmer.tsx) | The one shimmer. |

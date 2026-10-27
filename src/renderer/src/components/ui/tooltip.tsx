@@ -1,11 +1,17 @@
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 import { cn } from "@renderer/lib/cn";
 
+/** The hover delay before a label opens, and the grace after the pointer
+ *  leaves during which a neighbour's label moves instead of reopening. A
+ *  Popover opened on hover reads these rather than writing a number. */
+export const TOOLTIP_DELAY = 400;
+export const TOOLTIP_CLOSE_DELAY = 120;
+
 /** Tooltips open after a short delay, from the trigger, as one dark label.
  *  Each Tooltip carries its own delay; a TooltipProvider around a toolbar
  *  makes neighbours share one so the label moves instead of reopening.
  *  Never a Tooltip beside a title=. */
-function TooltipProvider({ delay = 400, closeDelay = 120, ...props }: TooltipPrimitive.Provider.Props) {
+function TooltipProvider({ delay = TOOLTIP_DELAY, closeDelay = TOOLTIP_CLOSE_DELAY, ...props }: TooltipPrimitive.Provider.Props) {
   return <TooltipPrimitive.Provider data-slot="tooltip-provider" delay={delay} closeDelay={closeDelay} {...props} />;
 }
 
@@ -13,7 +19,7 @@ function Tooltip<Payload>({ ...props }: TooltipPrimitive.Root.Props<Payload>) {
   return <TooltipPrimitive.Root data-slot="tooltip" {...props} />;
 }
 
-function TooltipTrigger<Payload>({ delay = 400, closeDelay = 120, ...props }: TooltipPrimitive.Trigger.Props<Payload>) {
+function TooltipTrigger<Payload>({ delay = TOOLTIP_DELAY, closeDelay = TOOLTIP_CLOSE_DELAY, ...props }: TooltipPrimitive.Trigger.Props<Payload>) {
   return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" delay={delay} closeDelay={closeDelay} {...props} />;
 }
 

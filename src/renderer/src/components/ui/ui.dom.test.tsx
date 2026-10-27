@@ -9,6 +9,8 @@ import { linkMarkOf, STATUS_TONE, STATUS_WORD, StatusMark, statusNeedsYou, threa
 import { Kbd } from "./kbd";
 import { Skeleton } from "./skeleton";
 import { GroupInput, InputGroup } from "./input";
+import { Progress } from "./progress";
+import { TOOLTIP_CLOSE_DELAY, TOOLTIP_DELAY } from "./tooltip";
 
 vi.mock("@renderer/hooks/paneVisibility", () => ({ usePaneVisible: () => true }));
 
@@ -203,6 +205,28 @@ describe("InputGroup", () => {
     expect(screen.getByRole("button", { name: "Clear" })).toBeTruthy();
     expect(group.className).toContain("focus-field");
     expect((screen.getByLabelText("Search") as HTMLInputElement).className).not.toContain("border");
+  });
+});
+
+describe("Progress", () => {
+  it("fills by a transform in the named colour", () => {
+    const { rerender } = render(<Progress value={25} aria-label="room" />);
+    const bar = () => document.querySelector("[data-slot=progress-indicator]") as HTMLElement;
+    expect(bar().style.transform).toBe("scaleX(0.25)");
+    expect(bar().style.width).toBe("100%");
+    expect(bar().className).toContain("bg-primary");
+    rerender(<Progress value={10} fill="warning" aria-label="room" />);
+    expect(bar().style.transform).toBe("scaleX(0.1)");
+    expect(bar().className).toContain("bg-warning");
+    rerender(<Progress value={50} fill="muted" aria-label="room" />);
+    expect(bar().className).toContain("bg-muted-foreground");
+  });
+});
+
+describe("Tooltip delays", () => {
+  it("are one number each, exported for a hover popover to reuse", () => {
+    expect(TOOLTIP_DELAY).toBe(400);
+    expect(TOOLTIP_CLOSE_DELAY).toBe(120);
   });
 });
 
