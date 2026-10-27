@@ -38,8 +38,10 @@ import {
   openSavedWindows,
   registerDock,
   registerWindows,
-  requestQuit
+  requestQuit,
+  targetWindow
 } from './windows'
+import { setSignInParent } from './aliax/signInWindow'
 
 // First statement of the bundle: everything before this mark is Electron's
 // own init plus the compile of out/main/index.js (through boot.js). `start=`
@@ -130,6 +132,8 @@ app.whenReady().then(async () => {
   }
   registerAssetProtocol()
   registerAppProtocol()
+  // A sign-in window opens over the app window in front.
+  setSignInParent(targetWindow)
   // Agent HTML pages: stored under userData, previewed in the hidden window.
   setHtmlRenderRoot(pagesRoot())
   setHtmlPreviewer(htmlPreviewer)

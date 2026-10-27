@@ -1,5 +1,5 @@
 import { net, shell } from 'electron'
-import { claudeWebLogin } from './claude-web-login'
+import { cancelClaudeWebLogin, claudeWebLogin } from './claude-web-login'
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { promisify } from 'node:util'
@@ -27,11 +27,13 @@ function pkce(): { verifier: string; challenge: string } {
  * jar persists, so the Google login is a one-time cost and later adds get the
  * account chooser.
  *
- * Returns null when the user closes the window without approving.
+ * Returns null when the user closes the window or presses Cancel; throws the
+ * line the sign-in dialog shows when claude.ai never loaded.
  */
 export async function claudeSignIn(loginHint?: string): Promise<Captured | null> {
   const result = await claudeWebLogin(loginHint)
-  if (!result) return null
+  if (result.kind === 'closed') return null
+  if (result.kind === 'failed') throw new Error(result.line)
 
   const res = await net.fetch(CLAUDE_TOKEN_URL, {
     method: 'POST',
@@ -81,8 +83,9 @@ export async function claudeSignIn(loginHint?: string): Promise<Captured | null>
   }
 }
 
+/** Cancel in the app's sign-in dialog closes the window, which answers `closed`. */
 export function claudeLoginCancel(): void {
-  // the sign-in window owns cancellation; closing it resolves the flow
+  cancelClaudeWebLogin()
 }
 
 // ---- Cursor: deep-link login with server-side polling ----

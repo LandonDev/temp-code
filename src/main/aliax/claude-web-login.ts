@@ -1,6 +1,7 @@
-import { BrowserWindow, session } from 'electron'
+import { session, type BrowserWindow } from 'electron'
 import { createHash, randomBytes } from 'node:crypto'
 import { CLAUDE_CLIENT_ID, type PlainCookie } from 'aliax-core'
+import { openSignInWindow } from './signInWindow'
 
 /**
  * Anthropic moved this page from console.anthropic.com to platform.claude.com;
@@ -45,13 +46,25 @@ export interface WebLoginResult {
   cookies: PlainCookie[]
 }
 
+/** How a sign-in ended: the code, the window closed (or Cancel), or one line saying why not. */
+export type WebLoginOutcome = ({ kind: 'code' } & WebLoginResult) | { kind: 'closed' } | { kind: 'failed'; line: string }
+
+/** The sign-in window on screen, so Cancel in the app can close it. */
+let open: BrowserWindow | null = null
+
+/** Close the open sign-in window; its sign-in answers `closed`. */
+export function cancelClaudeWebLogin(): void {
+  if (open && !open.isDestroyed()) open.destroy()
+  open = null
+}
+
 /**
  * One sign-in that yields both halves of an account. The window loads Claude's
  * OAuth consent page: signing in happens on claude.ai (giving us its session
  * cookies) and approving redirects with the authorization code (giving us the
  * CLI tokens). No second browser trip and nothing to paste.
  */
-export async function claudeWebLogin(loginHint?: string): Promise<WebLoginResult | null> {
+export async function claudeWebLogin(loginHint?: string): Promise<WebLoginOutcome> {
   const verifier = randomBytes(32).toString('base64url')
   const challenge = createHash('sha256').update(verifier).digest('base64url')
 
@@ -70,14 +83,11 @@ export async function claudeWebLogin(loginHint?: string): Promise<WebLoginResult
 
   const ses = session.fromPartition(LOGIN_PARTITION)
   ses.setUserAgent(BROWSER_UA)
-  const win = new BrowserWindow({
-    width: 520,
-    height: 760,
-    title: 'Sign in to Claude',
-    autoHideMenuBar: true,
-    webPreferences: { partition: LOGIN_PARTITION, nodeIntegration: false, contextIsolation: true }
-  })
+  // One sign-in at a time: a second one closes the first, which answers `closed`.
+  cancelClaudeWebLogin()
+  const { win, failed } = openSignInWindow({ partition: LOGIN_PARTITION })
   win.webContents.setUserAgent(BROWSER_UA)
+  open = win
 
   const readSession = async (): Promise<PlainCookie[]> => {
     const all = await ses.cookies.get({ domain: 'claude.ai' }).catch(() => [])
@@ -95,41 +105,44 @@ export async function claudeWebLogin(loginHint?: string): Promise<WebLoginResult
       }))
   }
 
-  return new Promise<WebLoginResult | null>((resolve) => {
+  return new Promise<WebLoginOutcome>((resolve) => {
     let settled = false
-    const done = (value: WebLoginResult | null): void => {
+    /** Settle once; the window goes the moment the outcome is known. */
+    const done = (value: WebLoginOutcome | Promise<WebLoginOutcome>): void => {
       if (settled) return
       settled = true
-      resolve(value)
+      if (open === win) open = null
       if (!win.isDestroyed()) win.destroy()
+      resolve(value)
     }
 
-    const onNavigate = async (target: string): Promise<void> => {
+    const onNavigate = (target: string): void => {
       const hit = codeFrom(target)
       // Not the landing page, or it is but carries no code yet: keep waiting
-      // rather than resolving null, or a redirect hop would cancel the sign-in.
-      if (!hit) return
-      done({
-        code: hit.code,
-        state: hit.state ?? verifier,
-        verifier,
-        redirectUri: CLAUDE_REDIRECT,
-        cookies: await readSession()
-      })
+      // rather than settling, or a redirect hop would cancel the sign-in.
+      if (!hit || settled) return
+      // The cookies live in the session, not the window, so it closes first.
+      done(
+        readSession().then((cookies) => ({
+          kind: 'code' as const,
+          code: hit.code,
+          state: hit.state ?? verifier,
+          verifier,
+          redirectUri: CLAUDE_REDIRECT,
+          cookies
+        }))
+      )
     }
 
     // Every navigation shape: a server redirect, a full load, and a client-side
     // route change, since the landing page may arrive by any of them.
-    win.webContents.on('will-redirect', (_e, target) => void onNavigate(target))
-    win.webContents.on('did-navigate', (_e, target) => void onNavigate(target))
-    win.webContents.on('did-navigate-in-page', (_e, target) => void onNavigate(target))
-    win.webContents.on('did-finish-load', () => void onNavigate(win.webContents.getURL()))
-    win.on('closed', () => {
-      if (!settled) {
-        settled = true
-        resolve(null)
-      }
-    })
-    win.loadURL(url.toString())
+    win.webContents.on('will-redirect', (_e, target) => onNavigate(target))
+    win.webContents.on('did-navigate', (_e, target) => onNavigate(target))
+    win.webContents.on('did-navigate-in-page', (_e, target) => onNavigate(target))
+    win.webContents.on('did-finish-load', () => onNavigate(win.webContents.getURL()))
+    win.on('closed', () => done({ kind: 'closed' }))
+    void failed.then((line) => done({ kind: 'failed', line }))
+    // A failed load is reported through `failed`; the rejection itself says nothing more.
+    win.loadURL(url.toString()).catch(() => {})
   })
 }

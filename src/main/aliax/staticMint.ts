@@ -1,4 +1,5 @@
 import { BrowserWindow, session } from 'electron'
+import { openSignInWindow, SIGN_IN_WINDOW } from './signInWindow'
 import { createHash, randomBytes } from 'node:crypto'
 import { CLAUDE_AUTHORIZE_URL, CLAUDE_CLIENT_ID, CLAUDE_REDIRECT_URL, STATIC_SCOPES, type PlainCookie } from 'aliax-core'
 import { providerUrl } from '../aliax'
@@ -134,17 +135,14 @@ export async function mintInWindow(input: SessionMintInput): Promise<SessionMint
   for (const record of cookieRecords(input.cookies ?? [], origin)) {
     await ses.cookies.set(record).catch(() => {})
   }
-  const win = new BrowserWindow({
-    width: 520,
-    height: 760,
-    show: input.visible,
-    title: 'Sign in to Claude',
-    autoHideMenuBar: true,
-    // A window never shown is backgrounded by Chromium: the page reports itself hidden, animation
-    // frames stop and timers crawl, and claude.ai's consent page then never renders its button (a
-    // hidden run waited out its 45 s, 2026-10-20). Throttling off, the page runs as if shown.
-    webPreferences: { partition, nodeIntegration: false, contextIsolation: true, backgroundThrottling: false }
-  })
+  // A window never shown is backgrounded by Chromium: the page reports itself hidden, animation
+  // frames stop and timers crawl, and claude.ai's consent page then never renders its button (a
+  // hidden run waited out its 45 s, 2026-10-20). Throttling off, the page runs as if shown.
+  const webPreferences = { partition, nodeIntegration: false, contextIsolation: true, backgroundThrottling: false }
+  // A visible run is the sign-in window (shown on its first paint, a load failure one line); a
+  // hidden one keeps its own timer.
+  const shown = input.visible ? openSignInWindow({ partition, webPreferences }) : null
+  const win = shown?.win ?? new BrowserWindow({ ...SIGN_IN_WINDOW, show: false, webPreferences })
   win.webContents.setUserAgent(BROWSER_UA)
   if (input.visible) open = win
 
@@ -216,7 +214,12 @@ export async function mintInWindow(input: SessionMintInput): Promise<SessionMint
       if (open === win) open = null
       resolve(input.visible ? { kind: 'closed' } : { kind: 'needs-sign-in', detail: 'the window closed before a code arrived' })
     })
-    win.loadURL(req.url).catch((err: Error) => done({ kind: 'needs-sign-in', detail: `the consent page did not load (${err.message})` }))
+    if (shown) {
+      void shown.failed.then((line) => done({ kind: 'needs-sign-in', detail: line }))
+      win.loadURL(req.url).catch(() => {})
+    } else {
+      win.loadURL(req.url).catch((err: Error) => done({ kind: 'needs-sign-in', detail: `the consent page did not load (${err.message})` }))
+    }
     if (!input.visible) void emulateFocus(win)
   })
 }
