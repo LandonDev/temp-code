@@ -1,18 +1,21 @@
 import type { ComponentProps, ReactNode } from "react";
+import { PageRow } from "../components/page";
+import { Button } from "../components/ui/button";
+import { INPUT_FIELD_CLASS, Input as FieldInput } from "../components/ui/input";
+import { Switch } from "../components/ui/switch";
+import { cn } from "../lib/cn";
 import { playCue } from "../lib/sounds";
 
-/** The row, switch and picker primitives every settings page is built from. */
+/**
+ * Retired (docs/DESIGN.md): the old settings kit, kept as a shim over the
+ * components so every importer takes the new look at once. Build nothing new
+ * on it: use `Page`, `PageSection`, `PageRow`, `Switch`, `ChoiceSelect`,
+ * `Input` and `Button`. A14 deletes this file once A11's dialogs have left it.
+ */
 
+/** A section heading in the page style: 12px medium muted, 24px above it. */
 export function Heading({ title, first = false }: { title: string; first?: boolean }) {
-  return (
-    <h2
-      className={`pb-1 text-[15px] font-semibold text-content ${
-        first ? "" : "pt-8"
-      }`}
-    >
-      {title}
-    </h2>
-  );
+  return <h2 className={cn("pb-2 text-xs font-medium text-muted-foreground", first ? null : "pt-6")}>{title}</h2>;
 }
 
 export function Row({
@@ -25,22 +28,13 @@ export function Row({
   children?: ReactNode;
 }) {
   return (
-    <div className="flex items-start gap-6 border-b border-content/5 py-4 last:border-b-0">
-      <div className="min-w-0 flex-1">
-        <div className="text-[13px] font-medium text-content">{label}</div>
-        {description ? (
-          <p className="mt-1 text-[12px] leading-relaxed text-content/40">
-            {description}
-          </p>
-        ) : null}
-      </div>
-      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-        {children}
-      </div>
-    </div>
+    <PageRow title={label} description={description}>
+      {children}
+    </PageRow>
   );
 }
 
+/** One of a few, as a joined bar; the radio roles stay. */
 export function Segmented<T extends string>({
   label,
   value,
@@ -53,27 +47,23 @@ export function Segmented<T extends string>({
   onChange: (value: T) => void;
 }) {
   return (
-    <div
-      role="radiogroup"
-      aria-label={label}
-      className="flex gap-0.5 rounded-md border border-content/10 p-0.5 text-[12px]"
-    >
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          role="radio"
-          aria-checked={value === option.value}
-          onClick={() => onChange(option.value)}
-          className={`pressable rounded-[4px] px-3 py-1 ${
-            value === option.value
-              ? "bg-content/10 text-content"
-              : "text-content/50 hover:text-content"
-          }`}
-        >
-          {option.label}
-        </button>
-      ))}
+    <div role="radiogroup" aria-label={label} className="inline-flex gap-0.5 rounded-lg border border-input p-0.5">
+      {options.map((option) => {
+        const checked = value === option.value;
+        return (
+          <Button
+            key={option.value}
+            variant="ghost"
+            size="xs"
+            role="radio"
+            aria-checked={checked}
+            onClick={() => onChange(option.value)}
+            className={cn("px-2.5", checked ? "bg-muted text-foreground hover:bg-muted" : "text-muted-foreground hover:text-foreground")}
+          >
+            {option.label}
+          </Button>
+        );
+      })}
     </div>
   );
 }
@@ -88,28 +78,18 @@ export function Toggle({
   onChange: (on: boolean) => void;
 }) {
   return (
-    <button
-      type="button"
-      role="switch"
+    <Switch
       aria-label={label}
-      aria-checked={on}
-      onClick={() => {
+      checked={on}
+      onCheckedChange={(next) => {
         playCue("switch");
-        onChange(!on);
+        onChange(next);
       }}
-      className={`pressable relative h-5 w-9 shrink-0 rounded-full transition-colors ${
-        on ? "bg-accent" : "bg-content/20"
-      }`}
-    >
-      <span
-        className={`absolute top-0.5 left-0.5 size-4 rounded-full bg-white transition-transform ${
-          on ? "translate-x-4" : "translate-x-0"
-        }`}
-      />
-    </button>
+    />
   );
 }
 
+/** A native select drawn like `SelectTrigger`: the dialogs' tests drive it with change events. */
 export function Select({
   label,
   value,
@@ -131,7 +111,10 @@ export function Select({
       value={value}
       disabled={disabled}
       onChange={(event) => onChange(event.target.value)}
-      className={`${INPUT_CLASS} hover:border-content/20 ${className ?? "max-w-52"}`}
+      className={cn(
+        "focus-field h-8 rounded-lg border border-input bg-transparent ps-2.5 pe-2 text-[13px] text-foreground hover:bg-muted/60 disabled:cursor-not-allowed disabled:opacity-50",
+        className ?? "max-w-52",
+      )}
     >
       {options.map((option) => (
         <option key={option.value} value={option.value}>
@@ -154,25 +137,15 @@ export function SecondaryButton({
   children: ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`pressable flex shrink-0 items-center gap-1.5 rounded-md border border-content/10 px-2.5 py-1 text-[12px] ${
-        danger
-          ? "text-danger hover:border-danger/40 hover:bg-danger/10"
-          : "text-content/70 hover:bg-content/10 hover:text-content"
-      } disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent`}
-    >
+    <Button variant={danger ? "destructive" : "secondary"} size="sm" onClick={onClick} disabled={disabled}>
       {children}
-    </button>
+    </Button>
   );
 }
 
-export const INPUT_CLASS =
-  "rounded-lg border border-content/10 bg-content/5 px-2 py-1.5 text-[12px] text-content outline-none placeholder:text-content/40 focus:border-content/20 disabled:cursor-default disabled:opacity-40";
+export const INPUT_CLASS = INPUT_FIELD_CLASS;
 
-/** The kit's text input: every settings form and dialog field takes this shape. */
+/** The field at its natural width unless the caller sizes it. */
 export function Input({ className, ...props }: ComponentProps<"input">) {
-  return <input {...props} className={className ? `${INPUT_CLASS} ${className}` : INPUT_CLASS} />;
+  return <FieldInput {...props} className={cn("w-auto", className)} />;
 }

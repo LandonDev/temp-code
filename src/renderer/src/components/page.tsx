@@ -77,7 +77,8 @@ function PageSection({
 
 /**
  * One setting: media, title, a muted description under it, the control at
- * the end. A hairline sits above every row but the first in its section.
+ * the end. A hairline sits above a row that follows another row, so the
+ * first row of a section, or the first after a heading, has none.
  * `error` is a red line under the description, never clamped.
  */
 function PageRow({
@@ -99,7 +100,7 @@ function PageRow({
     <Item
       data-slot="page-row"
       className={cn(
-        "rounded-none border-x-0 border-b-0 border-t-border px-0 py-3 first:border-t-transparent",
+        "rounded-none border-x-0 border-b-0 border-t-transparent px-0 py-3 [[data-slot=page-row]+&]:border-t-border",
         className,
       )}
     >

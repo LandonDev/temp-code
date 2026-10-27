@@ -46,7 +46,7 @@ describe("PageSection", () => {
 });
 
 describe("PageRow", () => {
-  it("draws a hairline above every row but the first", () => {
+  it("draws a hairline only between neighbouring rows", () => {
     render(
       <PageSection title="Extras">
         <PageRow title="Sounds" />
@@ -58,8 +58,8 @@ describe("PageRow", () => {
     expect(rows).toHaveLength(3);
     expect(rows[0]).toBe(rows[0].parentElement?.firstElementChild);
     for (const row of rows) {
-      expect(row.className).toContain("border-t-border");
-      expect(row.className).toContain("first:border-t-transparent");
+      expect(row.className).toContain("border-t-transparent");
+      expect(row.className).toContain("[[data-slot=page-row]+&]:border-t-border");
       expect(row.className).toContain("border-b-0");
     }
   });
