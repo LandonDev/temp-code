@@ -884,21 +884,25 @@ routed to (aliax-core's `forward`). Two listeners:
   http://localhost:5174 on the Mac (5173 is taken there)" in the shell
   call's result (claude's PostToolUse hook; a whispered `<dev-server>` line
   otherwise, portTail.ts); the call's transcript row ends with "Open on the
-  Mac :5174", the Resources panel has Open and Stop. The rail's Dev tab
-  (chrome/rail/DevServerPanel.tsx) starts one: the host detects targets
+  Mac :5174", the Resources panel has Open and Stop. The bottom dock's
+  Dev servers tab starts one (its starter, chrome/rail/DevServerPanel.tsx):
+  the host detects targets
   (devTargets.ts: package.json dev scripts at the root and in workspaces
   with the lockfile's runner, Expo apps, Xcode/XcodeGen apps as Mac-only)
   and runs one in its own process group (devRuns.ts, `devServer.*`,
   `dev-run` pushes, `devServer.runs` for every running run) on this Mac or
-  the box's copy of the project. What runs lives in ONE Dev servers pane in
-  the bottom dock (surfaces/DevServersPane.tsx on chrome/DockFrame.tsx, the
-  terminal dock's shell; rules `liveServers` in lib/devServers.ts, state
-  lib/devPane.ts): every server live on a connected host now (a running run,
-  or a ledger `port` row still listening that passes the shared rules), with
-  its console, "Open on the Mac :5174" and Stop; a row leaves the moment its
-  host drops it. Closed by default and never opened on its own (the thread
-  menu's Dev server row toggles it, the terminal dock's Dev Servers
-  button and a Run open it); while open it takes the terminal dock's place.
+  the box's copy of the project. What runs lives in that ONE tab of the
+  bottom dock (surfaces/DevServersPane.tsx on chrome/DockFrame.tsx; rules
+  `liveServers` in lib/devServers.ts, state lib/devPane.ts): every server
+  live on a connected host now (a running run, or a ledger `port` row still
+  listening that passes the shared rules), with its console, "Open on the
+  Mac :5174" and Stop; a row leaves the moment its host drops it. The dock
+  is bottom only and has one bar (chrome/DockBar.tsx: the project's
+  terminals and the Dev servers tab as line tabs, New terminal, Hide); the
+  tab shows only when a host can serve the project, a server runs or the
+  pane is open. Closed by default and never opened on its own (the thread
+  menu's Dev server row toggles it, the bar's tab and a Run open it);
+  while open it takes the terminals' place at the dock's height.
   Dev server consoles are never terminal tabs; old saved `devLog` tabs are
   dropped on load. docs/box.md "Dev servers on the box"; proof `bun run script:e2e-port-forward` (seam
   `session.proofShellCall`, `TEMP_CODE_E2E_STATUS=1`). The subdomain proxy

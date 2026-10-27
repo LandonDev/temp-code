@@ -153,7 +153,7 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   localStorage (`monocode.rightPanel`; the width a new thread inherits is
   the last one dragged to). `rightPanel.open/close/toggle/set/setWidth`
   write it; `rightPanel.show(section)` opens a section on the thread on
-  screen (⌃D's Debug, the Dev servers pane's Start); `useRightPanel(id)`
+  screen (⌃D's Debug); `useRightPanel(id)`
   reads it.
 - **Sections.** `sectionsFor(facts)` is pure, one line per section, in the
   header's order: Activity when background tasks, live subagents, a
@@ -266,30 +266,38 @@ The chip leaves once the first message goes out. The default host is the
 one of the thread on screen when it is in the project, else the one last
 used for it, else this machine (lib/projectHostChoice.ts).
 
-### Bottom dock: terminals, or the Dev servers pane
+### Bottom dock: terminals, or the Dev servers tab
 
-One dock slot sits beside the main view (bottom by default; the terminal
-dock can move to any side). It holds one of two things at a time, both in
-the same shell (chrome/DockFrame.tsx: the hairline facing the content, the
-sash, double-click for the default size):
+One dock slot sits under the main view; it is bottom only (a dock saved on
+another side comes back at the bottom at the default height). It holds one
+of two things at a time, both in the same shell (chrome/DockFrame.tsx: the
+hairline on its top edge, the sash, double-click for the default size) and
+under the same 36px bar (chrome/DockBar.tsx): the project's terminals as
+`Tabs variant="line"` (the terminal glyph, the title, the cwd on hover, a
+close on the active or hovered tab, middle click closes, drag to reorder),
+then a "Dev servers" tab with the live count beside it, then New terminal
+(⌘\`) and Hide (⌘J). The Dev servers tab shows only when a host can serve
+the project, a server runs or the pane is open. Switching is instant.
 
-- **The terminal dock** (surfaces/ProjectTerminalDock.tsx): one per project,
-  a strip of shell tabs, then New Terminal, Dev Servers, Move and Hide.
-- **The Dev servers pane** (surfaces/DevServersPane.tsx), always at the
-  bottom: a "Dev servers" header (Start a Dev Server, Terminal, Hide), a
-  288px list of the dev servers live on the hosts right now, and the picked
-  one's console filling the rest in the terminal's mono type. A row is its
-  title, the host glyph with two hosts, and on hover or when picked "Open on
-  the Mac :5174" and Stop. It lists only what a host still lists; a row the
-  host drops leaves at once, nothing animates in or out. With nothing live
-  it is one muted line, "No dev servers running". Closed until opened (the
-  thread menu's Dev server row, the terminal dock's Dev Servers button,
-  Run in the panel's Dev section); open and its height persist.
+- **Terminals** (surfaces/ProjectTerminalDock.tsx): one dock per project,
+  the picked terminal below the bar.
+- **Dev servers** (surfaces/DevServersPane.tsx): a 288px column, the
+  starter (one 36px row: the target `Select` and Run, the hosts as a
+  `ToggleGroup` with two or more, an error line) above `Item` rows of the
+  dev servers live on the hosts right now, and the picked one's console
+  filling the rest. A row is its title with the host glyph, "Open on the
+  Mac :5174" under it (and "5173 is taken here" when the port moved), Stop
+  at its end. It lists only what a host still lists; a row the host drops
+  leaves at once, nothing animates in or out. With nothing live the
+  console's place is one `Empty`: "No dev servers running" over the
+  command Run would start. Closed until opened (the thread menu's Dev
+  server row, the bar's tab, a Run); open and its height persist, and
+  it takes the terminals' height. In this state a terminal tab switches
+  to the terminals; Hide closes the pane and the terminals under it.
 
-While the pane is open the terminal dock is hidden, its own open flag
-untouched; asking for a terminal (⌘J, the thread menu's Terminal, New
-Terminal, the pane's Terminal button) puts the pane away. Dev server
-consoles are never terminal tabs.
+Asking for a terminal (⌘J, the thread menu's Terminal, New terminal, a
+terminal tab) puts the pane away. Dev server consoles are never terminal
+tabs.
 
 ### File tabs: one header row over the editor
 

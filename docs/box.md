@@ -1680,24 +1680,30 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
   server's own top process ("bun run dev"). `bun scripts/port-sweep-dry-
   run.ts` on the box prints every listener with its verdict and records
   nothing.
-- **The Dev servers pane** (src/renderer/src/surfaces/DevServersPane.tsx,
-  rules in lib/devServers.ts `liveServers`, state in lib/devPane.ts). One
-  pane in the bottom dock, in the terminal's type and density but not a
-  terminal tab: a "Dev servers" header with Start a Dev Server (the rail's
-  Dev tab), Terminal and Hide; a list of the servers live on every
+- **The Dev servers tab** (src/renderer/src/surfaces/DevServersPane.tsx,
+  rules in lib/devServers.ts `liveServers`, state in lib/devPane.ts). The
+  bottom dock's other occupant, under the dock's one bar
+  (chrome/DockBar.tsx: the project's terminals and a "Dev servers" tab as
+  line tabs, with the live count beside it, then New terminal and Hide);
+  the tab shows only when a host can serve the project, a server runs or
+  the pane is open (`devTabOf`). Its body is a 288px column, the starter
+  (chrome/rail/DevServerPanel.tsx: the target, Run, and with two or more
+  hosts the host to run on) above a list of the servers live on every
   connected host right now, newest first; the picked one's console beside
   it (surfaces/DevConsole.tsx). A row is a running Dev Server run (each
   host's `devServer.runs` at link-up, then its `dev-run` pushes) or a `port`
   row on a thread's ledger that is not removed and still passes the shared
   rules, titled by the run's target ("web · dev") or the thread's project and
   port ("cosmicweb :3007"), with the host glyph when two hosts are paired,
-  "Open on the Mac :5174" when it opens here, and Stop. The host dropping a
-  server takes its row out at once: no "Exited" rows, no history. The pane
-  is closed until the person opens it (the thread header's Dev server
-  button toggles it, the terminal dock has a Dev Servers button, a Run in
-  the rail's Dev tab opens it on that run); nothing opens it on its own. It
-  takes the dock's place while open (the terminal dock keeps its own open
-  flag and comes back when the pane hides or the terminal is asked for),
+  "Open on the Mac :5174" under it when it opens here, and Stop. The host
+  dropping a server takes its row out at once: no "Exited" rows, no
+  history. With nothing live the console's place says what Run would start.
+  The pane is closed until the person opens it (the thread menu's Dev
+  server row toggles it, the bar's Dev servers tab opens it, a Run opens
+  it on that run); nothing opens it on its own. It takes the dock's place
+  while open, at the dock's height (the terminal dock keeps its own open
+  flag and comes back when a terminal tab is picked or a terminal is asked
+  for; Hide closes both),
   and remembers open and its height in localStorage `monocode.devPane`.
   The console reads an agent's server's log from the file its process
   writes (portLog.ts: fd 1 or 2 of the listener or the shell above it; a
