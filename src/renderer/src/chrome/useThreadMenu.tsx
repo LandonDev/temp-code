@@ -177,7 +177,8 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
     dialogs = (
       <TuneDialog
         environmentId={session.environmentId}
-        title={`${THREAD_LABELS[session.threadType ?? "chat"]} options · ${titleOf(id)}`}
+        title={`${THREAD_LABELS[session.threadType ?? "chat"]} options`}
+        thread={titleOf(id)}
         initial={session.threadRules}
         workspaceId={session.workspaceId ?? null}
         onCancel={close}

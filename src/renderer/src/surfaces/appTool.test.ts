@@ -48,9 +48,11 @@ describe("appView", () => {
       threadId: undefined,
     });
     expect(appView(call("app_list_threads", { allProjects: true }), titleOf)?.detail).toBe("all projects");
-    expect(appView(call("app_start_thread", { threadType: "chat" }, '{"title":"Fresh"}'), titleOf)?.detail).toBe(
-      "Fresh · chat",
-    );
+    // The type joins the verb, the title is the detail: no middle dot between them.
+    expect(appView(call("app_start_thread", { threadType: "planning" }, '{"title":"Fresh"}'), titleOf)).toMatchObject({
+      label: "New planning thread",
+      detail: "Fresh",
+    });
   });
   it("names HTML page calls by what they showed, never by path or JSON", () => {
     expect(appView(call("mcp__app__html_preview", { html: "<p/>" }), titleOf)).toEqual({

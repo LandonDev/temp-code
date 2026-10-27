@@ -51,9 +51,3 @@ export function reviewerModel(s: Pick<ReviewSettings, "provider" | "model">, env
   return model.harness === s.provider ? model : null;
 }
 
-export function reviewSummary(s: ReviewSettings, environmentId?: string): string {
-  if (!s.beforeMerge) return "Off";
-  const model = reviewerModel(s, environmentId)?.name ?? s.model;
-  return `${model} · ${s.blockOn === "any" ? "any finding" : "confirmed"} · ${s.maxMinutes} min`;
-}
-

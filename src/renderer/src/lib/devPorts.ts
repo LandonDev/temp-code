@@ -36,13 +36,13 @@ export function portOpen(hostPort: number, environmentId: string, forwards: read
 export const rowOpen = (row: ThreadResource, localId: string | null): PortOpen | null =>
   row.kind === 'port' ? portOpen(Number(row.identifier), row.environmentId, row.forwards, localId) : null
 
-/** What a port row says under its label: "localhost:5174 here · 5173 is taken here", or why it is not forwarded. */
-export function portLine(row: ThreadResource, localId: string | null): string | null {
-  if (row.kind !== 'port') return null
+/** What a port row says under its label, one fact each ("localhost:5174", "5173 is taken here"), or why it is not forwarded. */
+export function portParts(row: ThreadResource, localId: string | null): string[] {
+  if (row.kind !== 'port') return []
   const open = rowOpen(row, localId)
-  if (open) return `localhost:${open.port}${open.movedFrom ? ` · ${open.movedFrom} is taken here` : ''}`
+  if (open) return [`localhost:${open.port}`, ...(open.movedFrom ? [`${open.movedFrom} is taken here`] : [])]
   const err = row.forwards?.find((f) => f.environmentId === localId)?.error
-  return err ? `Not forwarded: ${err}` : row.environmentId === localId ? null : 'Not forwarded to this Mac'
+  return err ? [`Not forwarded: ${err}`] : row.environmentId === localId ? [] : ['Not forwarded to this Mac']
 }
 
 /** The live port a shell call opened, by its call id (a subagent's row is filed under its root, so every thread is searched). */

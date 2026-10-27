@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { MacBridgeRequest } from '@server/shared/contract-macbridge'
 import { mountProbe } from '../test/renderProbe'
 import { macBridgeStore } from '../lib/macBridge'
-import { MacBridgeRunningList, countLine, countParts } from './MacBridgeRunning'
+import { MacBridgeRunningList, countParts } from './MacBridgeRunning'
 
 const facts = (el: Element) => [...(el.querySelector('[data-slot=facts]')?.children ?? [])].map((c) => c.textContent)
 const count = (root: Element) => facts(root.querySelector('[data-mac-bridge-count]')!)
@@ -131,15 +131,6 @@ describe('MacBridgeRunningList', () => {
   it('countParts', () => {
     expect(countParts(2, 1, 'box', 1)).toEqual(['2 commands running on this Mac from box', '1 waiting', '1 paused'])
     expect(countParts(0, 0, 'box', 2)).toEqual(['2 calls paused with their thread from box'])
-  })
-
-  it('countLine', () => {
-    expect(countLine(2, 0, 'box')).toBe('2 commands running on this Mac from box')
-    expect(countLine(1, 3)).toBe('1 command running on this Mac · 3 waiting')
-    expect(countLine(0, 1, 'box')).toBe('1 command waiting for this Mac from box')
-    expect(countLine(2, 1, 'box', 1)).toBe('2 commands running on this Mac from box · 1 waiting · 1 paused')
-    expect(countLine(0, 0, undefined, 1)).toBe('1 call paused with its thread')
-    expect(countLine(0, 0, 'box', 2)).toBe('2 calls paused with their thread from box')
   })
 
   it("a paused thread's held calls are Paused rows after the others, without Stop; Stop all skips them", () => {

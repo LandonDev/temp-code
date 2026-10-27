@@ -7,7 +7,7 @@ import { resolveModel } from "../lib/models";
 import { useRulesScope } from "../lib/tcserver/rules";
 import { parseReviewScope, reviewerModel, reviewerModelOptions, type ReviewScope } from "../lib/reviewScope";
 
-export { reviewSummary, type ReviewScope } from "../lib/reviewScope";
+export { type ReviewScope } from "../lib/reviewScope";
 import { ChoiceSelect } from "../components/choice-select";
 import { PageRow } from "../components/page";
 import { SettingSwitch } from "../components/setting-switch";

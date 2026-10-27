@@ -34,7 +34,7 @@ describe("labels", () => {
     const inherited = scopeOf({ provider: "claude", projectId: "p" }, [project], [ws])!;
     const auto = scopeOf({ provider: "claude" }, [], [])!;
     expect(sourceLine(inherited)).toBe("From workspace Site");
-    expect(sourceLine(auto)).toBe("Auto · picked by model");
+    expect(sourceLine(auto)).toBe("Auto, picked by model");
   });
   it("the control shows the nickname, else the email's local part, else nothing while unknown", () => {
     expect(shortName(profiles[1])).toBe("Main");

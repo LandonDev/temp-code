@@ -46,11 +46,12 @@ export async function confirmCloseTerminals(files: FilePaneTab[]): Promise<boole
       { title: "TempCode", kind: "warning" },
     );
   }
-  const lines = running
-    .map(({ file, process }) => `• ${terminalTabLabel(file)} (${process})`)
-    .join("\n");
-  return ask(
-    `These terminals are still running:\n${lines}\n\nClose them anyway?`,
-    { title: "TempCode", kind: "warning" },
-  );
+  return ask(closeTerminalsLine(running.map(({ process }) => process)), { title: "TempCode", kind: "warning" });
+}
+
+/** The confirm for several busy terminals, one line: "Close 3 terminals? bun dev and 2 more are still running." */
+export function closeTerminalsLine(processes: readonly string[]): string {
+  const [first, ...rest] = processes;
+  const busy = rest.length === 0 ? `${first} is` : `${first} and ${rest.length} more are`;
+  return `Close ${processes.length} terminals? ${busy} still running.`;
 }

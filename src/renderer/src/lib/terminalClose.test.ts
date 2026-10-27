@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { newTerminalFile } from "./layout";
-import { confirmCloseTerminal, confirmCloseTerminals } from "./terminalClose";
+import { closeTerminalsLine, confirmCloseTerminal, confirmCloseTerminals } from "./terminalClose";
 
 const getPtyStatus = vi.fn();
 const ask = vi.fn();
@@ -58,8 +58,15 @@ describe("confirmCloseTerminals", () => {
     ask.mockResolvedValue(true);
     await expect(confirmCloseTerminals([first, second])).resolves.toBe(true);
     expect(ask).toHaveBeenCalledWith(
-      "These terminals are still running:\n• dev (vite)\n• test (jest)\n\nClose them anyway?",
+      "Close 2 terminals? vite and 1 more are still running.",
       dialogOptions,
     );
+  });
+});
+
+describe("closeTerminalsLine", () => {
+  it("is one line, no list: the first process and how many more", () => {
+    expect(closeTerminalsLine(["bun dev", "vite", "jest"])).toBe("Close 3 terminals? bun dev and 2 more are still running.");
+    expect(closeTerminalsLine(["bun dev", "vite"])).toBe("Close 2 terminals? bun dev and 1 more are still running.");
   });
 });

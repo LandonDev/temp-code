@@ -15,7 +15,7 @@ import {
   rowState,
   useThreadResources
 } from '../lib/threadResources'
-import { openUrl, portLine, rowOpen } from '../lib/devPorts'
+import { openUrl, portParts, rowOpen } from '../lib/devPorts'
 import { useLiveDevServers } from '../lib/devServers'
 import { DevServerRow } from './DevServerRow'
 import { macBridgeStore } from '../lib/macBridge'
@@ -40,7 +40,8 @@ const DESTRUCTIVE_GHOST = 'text-destructive hover:bg-destructive/10 hover:text-d
 function ResourceRow({ row, onRemove, pending }: { row: ThreadResource; onRemove: () => void; pending: boolean }) {
   const localId = useStore(macBridgeStore, (s) => s.localId)
   // A dev server's line is where it opens here; the ledger's note only when it has one.
-  const state = rowState(row) ?? portLine(row, localId)
+  const state = rowState(row)
+  const facts = state ? [state] : portParts(row, localId)
   const open = rowOpen(row, localId)
   const waiting = !!row.removeRequestedAt && !row.removedAt
   const busy = pending || waiting
@@ -55,7 +56,11 @@ function ResourceRow({ row, onRemove, pending }: { row: ThreadResource; onRemove
         <div data-slot="item-description" className="flex min-w-0 flex-wrap gap-x-2 text-xs text-muted-foreground">
           <span>{hostName(row.environmentId)}</span>
           <span>{KIND_LABEL[row.kind]}</span>
-          {state ? <span className="min-w-0">{state}</span> : null}
+          {facts.map((fact) => (
+            <span key={fact} className="min-w-0">
+              {fact}
+            </span>
+          ))}
         </div>
       </ItemContent>
       <ItemActions>

@@ -54,7 +54,7 @@ export function scopeOf(
 /** One line on where the thread's account comes from. */
 export function sourceLine(scope: AccountScope): string {
   if (scope.inherited) return `From ${scope.inherited.level} ${scope.inherited.from}`;
-  return "Auto · picked by model";
+  return "Auto, picked by model";
 }
 
 /** The nickname, else the email's local part, else the profile name. */

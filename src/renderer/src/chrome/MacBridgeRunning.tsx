@@ -116,7 +116,3 @@ export function countParts(running: number, waiting: number, hostName?: string, 
   return paused ? [...parts, `${paused} paused`] : parts
 }
 
-/** The same facts on one line, for the Mac approvals dialog. */
-export function countLine(running: number, waiting: number, hostName?: string, paused = 0): string {
-  return countParts(running, waiting, hostName, paused).join(' · ')
-}

@@ -110,8 +110,8 @@ export function appView(block: Block, titleOf: TitleOf): AppView | null {
       }
       const type = str(i.threadType);
       return {
-        label: "New thread",
-        detail: [title, type].filter(Boolean).join(" · "),
+        label: type ? `New ${type} thread` : "New thread",
+        detail: title,
         phrase: title ? `started thread “${trim(title, 24)}”` : "started a thread",
       };
     }

@@ -48,19 +48,6 @@ export function normalizeTune(tune: ThreadRules): ThreadRules | null {
   return out;
 }
 
-export function tuneSummary(tune: ThreadRules | null | undefined): string | null {
-  if (!tune || isEmptyTune(tune)) return null;
-  const parts: string[] = [];
-  const c = tune.conduct ?? {};
-  if (c.delegation) parts.push(`${c.delegation} delegation`);
-  for (const s of SWITCHES) if (c[s.key] !== undefined) parts.push(`${s.label.toLowerCase()} ${c[s.key] ? "on" : "off"}`);
-  for (const cap of CAPS)
-    if (c[cap.key] !== undefined) parts.push(`${cap.label.toLowerCase()} ${c[cap.key] === 0 ? "unlimited" : c[cap.key]}`);
-  if (tune.instructions?.trim()) parts.push("custom instructions");
-  return parts.join(" · ");
-}
-
-/** Sets one conduct key, dropping it when it lands on the base value. */
 export function setConduct<K extends keyof ConductOverride>(
   tune: ThreadRules,
   base: OrchestrationRules["conduct"],
@@ -169,12 +156,15 @@ function Label({ text, overridden, onReset }: { text: string; overridden: boolea
 export function TuneDialog({
   environmentId,
   title,
+  thread,
   initial,
   workspaceId,
   onCancel,
   onSave,
 }: {
   title: string;
+  /** The thread's name, under the title. */
+  thread: string;
   initial: ThreadRules | null | undefined;
   environmentId: string;
   workspaceId: string | null;
@@ -186,7 +176,7 @@ export function TuneDialog({
     <Modal
       onClose={onCancel}
       title={title}
-      description="Changes apply from the next message."
+      description={thread}
       size="md"
     >
       <ThreadTune environmentId={environmentId} tune={tune} onChange={setTune} workspaceId={workspaceId} />

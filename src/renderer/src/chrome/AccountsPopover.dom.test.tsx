@@ -49,7 +49,7 @@ describe("AccountsPopover", () => {
     const list = await screen.findByRole("listbox", { name: "claude accounts" });
     const options = within(list).getAllByRole("option");
     expect(options.map((o) => o.getAttribute("aria-selected"))).toEqual(["false", "true"]);
-    expect(list.textContent).toContain("Auto · picked by model");
+    expect(list.textContent).toContain("Auto, picked by model");
     fireEvent.keyDown(list, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("listbox", { name: "claude accounts" })).toBeNull());
     expect(onOpenChange).toHaveBeenLastCalledWith(false);
