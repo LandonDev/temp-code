@@ -30,6 +30,14 @@ export const lightboxChunk = defineChunk("lightbox", () => import("../chrome/Lig
 export const releaseNotesChunk = defineChunk("releaseNotes", () => import("./ReleaseNotesSurface"));
 /** The thread's right panel with its section bodies (RightPanel). */
 export const rightPanelChunk = defineChunk("rightPanel", () => import("./RightPanel"));
+/** The full-body search view with its filter menu (SearchView). */
+export const searchChunk = defineChunk("search", () => import("./SearchView"));
+/** The inbox view and the classic layout's detail pane (InboxView, InboxDetailPane). */
+export const inboxChunk = defineChunk("inbox", () => import("./InboxView"));
+/** The all-notes view (NotesView, focusNote). */
+export const notesChunk = defineChunk("notes", () => import("./NotesView"));
+/** The options select every dialog and settings page uses (ChoiceSelect on the Base UI select). */
+export const selectChunk = defineChunk("select", () => import("../components/choice-select-body"));
 
 /** Every chunk, for the tests and the idle warm-up. */
 export const allChunks = {
@@ -44,4 +52,8 @@ export const allChunks = {
   lightboxChunk,
   releaseNotesChunk,
   rightPanelChunk,
+  searchChunk,
+  inboxChunk,
+  notesChunk,
+  selectChunk,
 };

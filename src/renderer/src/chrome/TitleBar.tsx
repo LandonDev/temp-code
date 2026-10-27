@@ -1399,6 +1399,12 @@ function TitleBarComponent({
           className={`relative min-w-0 overflow-hidden ${
             deckLayout ? "flex flex-1" : "h-full shrink"
           }`}
+          // A chevron sits over the strip's edge; the strip pads that end by the
+          // chevron's width (24px + 4px inset + 4px), so no chip sits under it.
+          style={{
+            ["--strip-pad-l" as string]: tabOverflow.left ? "32px" : undefined,
+            ["--strip-pad-r" as string]: tabOverflow.right ? "32px" : undefined,
+          }}
           onWheel={
             deckLayout
               ? undefined
@@ -1431,7 +1437,7 @@ function TitleBarComponent({
           ) : (
             <div
               ref={setTabStripRef}
-              className="scrollbar-none flex h-full min-w-0 cursor-default items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none px-2"
+              className="scrollbar-none flex h-full min-w-0 cursor-default items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none pl-[var(--strip-pad-l,8px)] pr-[var(--strip-pad-r,8px)]"
             >
             {segments.map((segment, segmentIndex) => {
               const showSegmentStart =

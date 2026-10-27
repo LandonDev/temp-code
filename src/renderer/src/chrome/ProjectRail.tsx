@@ -104,6 +104,7 @@ import { Shimmer } from "../surfaces/Shimmer";
 import { TabGroupMenu, type TabGroupMenuExtraItem } from "./TabGroupMenu";
 import { TerminalSpinner } from "./TerminalSpinner";
 import { aliaxChunk, settingsChunk } from "../surfaces/chunks";
+import { inboxChunk } from "../surfaces/chunks";
 import { BootResumeNote } from "./BootResumeNote";
 
 const REVEAL_LABEL = IS_MAC
@@ -492,6 +493,7 @@ export function ProjectRail({
               label="Inbox"
               icon={Inbox}
               onClick={onOpenInbox}
+              {...inboxChunk.intent}
               active={inboxActive}
               dot={inboxUnseen}
               ariaLabel={inboxUnseen ? "Inbox, new items" : "Inbox"}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { toast } from 'sonner'
+import { loadToast } from './toastSync'
 import type { MacBridgeRequest } from '@server/shared/contract-macbridge'
 import { Button } from '../components/ui/button'
 import { Checkbox } from '../components/ui/checkbox'
@@ -164,6 +164,11 @@ const short = (text: string, max = 80): string => (text.length > max ? `${text.s
  * `shown` is the set of toast ids up now, kept by the caller.
  */
 export function syncMacBridgeToasts(queue: MacBridgeQueue, shown: Set<string>): void {
+  // sonner loads on the first toast (toastSync.ts), off the first paint.
+  void loadToast().then((toast) => syncToasts(toast, queue, shown))
+}
+
+function syncToasts(toast: Awaited<ReturnType<typeof loadToast>>, queue: MacBridgeQueue, shown: Set<string>): void {
   const live = new Set<string>()
   for (const request of queue.pending) {
     const id = `mac-bridge:${request.environmentId}`

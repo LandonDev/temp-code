@@ -100,9 +100,12 @@ import { ProjectMascot } from "./ProjectMascot";
 import { SidebarUpdateFooter } from "./SidebarUpdate";
 import { UsageMeter } from "./UsageMeter";
 import { SourceControl } from "./SourceControl";
-import { InboxView } from "../surfaces/InboxView";
+import { inboxChunk } from "../surfaces/chunks";
+import { SurfaceSkeleton } from "../surfaces/SurfaceSkeleton";
 import { settingsChunk } from "../surfaces/chunks";
 import type { OpenFileFn } from "../lib/search";
+
+const InboxView = inboxChunk.surface("InboxView", <SurfaceSkeleton kind="pane" label="Loading inbox" />);
 
 const MIN_WIDTH = 260;
 const MAX_WIDTH = 560;
@@ -856,6 +859,7 @@ function SidebarProjectPicker({
             label={inboxUnseen ? "Inbox, new items" : "Inbox"}
             active={inboxActive}
             onClick={onOpenInbox}
+              {...inboxChunk.intent}
           >
             <span className="relative">
               <Inbox className="size-3.5" strokeWidth={1.75} />

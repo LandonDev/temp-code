@@ -17,6 +17,11 @@ const EXPECTED: Record<keyof typeof allChunks, string[]> = {
   mediaChunk: ["MediaGate", "MediaReview"],
   lightboxChunk: ["Lightbox"],
   releaseNotesChunk: ["ReleaseNotesSurface"],
+  rightPanelChunk: ["RightPanel"],
+  searchChunk: ["SearchView"],
+  inboxChunk: ["InboxView", "InboxDetailPane"],
+  notesChunk: ["NotesView", "focusNote"],
+  selectChunk: ["ChoiceSelect"],
 };
 
 describe("surfaces/chunks", () => {

@@ -112,7 +112,7 @@ export function ThreadHeaderStrip({
           aria-orientation="horizontal"
           data-strip="live"
           data-tauri-drag-region="false"
-          className="scrollbar-none flex h-10 min-w-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none px-1.5"
+          className="scrollbar-none flex h-10 min-w-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none pl-[var(--strip-pad-l,6px)] pr-[var(--strip-pad-r,6px)]"
         >
           {held.chips.map((chip) => (
             <Chip

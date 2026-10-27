@@ -96,9 +96,10 @@ describe('MacBridgeThreadCards', () => {
 })
 
 describe('MacBridgeToasts', () => {
-  it('raises one toast per host with its id, updates it as the queue moves, and dismisses it when answered', () => {
+  it('raises one toast per host with its id, updates it as the queue moves, and dismisses it when answered', async () => {
     requests = [req('r1'), req('r2', { createdAt: 2, argv: ['git', 'status'] })]
     const view = render(<MacBridgeToasts />)
+    await flush()
     expect(toasts.toast).toHaveBeenCalledTimes(1)
     const [title, options] = toasts.toast.mock.calls[0]!
     expect(title).toBe('box wants to run on this Mac')
@@ -107,12 +108,14 @@ describe('MacBridgeToasts', () => {
     // The first is answered: the same toast now carries the second.
     requests = [req('r2', { createdAt: 2, argv: ['git', 'status'] })]
     view.rerender(<MacBridgeToasts />)
+    await flush()
     expect(toasts.toast).toHaveBeenCalledTimes(2)
     expect(toasts.toast.mock.calls[1]![1]).toMatchObject({ id: 'mac-bridge:env_box' })
     expect(toasts.toast.dismiss).not.toHaveBeenCalled()
 
     requests = []
     view.rerender(<MacBridgeToasts />)
+    await flush()
     expect(toasts.toast.dismiss).toHaveBeenCalledWith('mac-bridge:env_box')
   })
 
@@ -124,10 +127,11 @@ describe('MacBridgeToasts', () => {
     expect(card.container.innerHTML).toBe('')
   })
 
-  it('raises no toast for a request of the thread on screen', () => {
+  it('raises no toast for a request of the thread on screen', async () => {
     onScreen = ['s1']
     requests = [req('r1')]
     render(<MacBridgeToasts />)
+    await flush()
     expect(toasts.toast).not.toHaveBeenCalled()
   })
 })

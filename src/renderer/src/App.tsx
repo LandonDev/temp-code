@@ -296,16 +296,18 @@ import {
 import { PaneTree } from "./surfaces/PaneTree";
 import { SessionActionsContext, type SessionActions } from "./surfaces/threadChat";
 import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
-import { aliaxChunk, settingsChunk, terminalChunk } from "./surfaces/chunks";
+import { aliaxChunk, inboxChunk, notesChunk, searchChunk, settingsChunk, terminalChunk } from "./surfaces/chunks";
 import { devPane, devPaneStore, useDevPane } from "./lib/devPane";
 import { SurfaceSkeleton } from "./surfaces/SurfaceSkeleton";
-import { SearchView } from "./surfaces/SearchView";
-import { InboxView, InboxDetailPane } from "./surfaces/InboxView";
-import { NotesView, focusNote } from "./surfaces/NotesView";
 // Lazy surfaces (surfaces/chunks.ts): none of these is on the first-paint path.
 const DevServersPane = terminalChunk.surface("DevServersPane", <SurfaceSkeleton kind="terminal" label="Loading dev servers" />);
 const SettingsView = settingsChunk.surface("SettingsView", <SurfaceSkeleton kind="page" label="Loading settings" />);
 const AliaxPagesView = aliaxChunk.surface("AliaxPagesView", <SurfaceSkeleton kind="page" label="Loading accounts" />);
+// The full-body views ride their own chunks: none is in the first paint.
+const SearchView = searchChunk.surface("SearchView", <SurfaceSkeleton kind="page" label="Loading search" />);
+const InboxView = inboxChunk.surface("InboxView", <SurfaceSkeleton kind="page" label="Loading inbox" />);
+const InboxDetailPane = inboxChunk.surface("InboxDetailPane", <SurfaceSkeleton kind="pane" label="Loading inbox" />);
+const NotesView = notesChunk.surface("NotesView", <SurfaceSkeleton kind="page" label="Loading notes" />);
 import { inboxComposerCard, type InboxItem } from "./lib/githubTasks";
 import {
   linearIssueDetails,
@@ -1871,7 +1873,7 @@ export default function App() {
 
   /** A note found by search: shown on its own host when the notes view opens. */
   const onOpenNoteFromSearch = useCallback((environmentId: string, noteId: string) => {
-    focusNote(environmentId, noteId);
+    void notesChunk.load().then((m) => m.focusNote(environmentId, noteId));
     shell.openNotes();
   }, []);
 

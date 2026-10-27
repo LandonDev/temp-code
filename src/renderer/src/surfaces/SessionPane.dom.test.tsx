@@ -19,7 +19,7 @@ vi.mock("../chrome/SessionReview", () => ({ SessionReview: () => null }));
 vi.mock("../lib/recents", () => ({ looksLikeProject: () => true }));
 vi.mock("./AgentTranscript", () => ({ AgentTranscript: () => null }));
 vi.mock("./chunks", () => ({ diffChunk: {}, threadViewsChunk: {} }));
-vi.mock("../lib/lazyChunk", () => ({ preloadWhenIdle: () => {} }));
+vi.mock("../lib/lazyChunk", async (importOriginal) => ({ ...(await importOriginal<typeof import("../lib/lazyChunk")>()), preloadWhenIdle: () => {} }));
 vi.mock("./EmptySession", () => ({ EmptySession: () => <div data-testid="empty-session" /> }));
 vi.mock("./threads/ThreadView", () => ({ ThreadView: () => <div data-testid="thread-view" /> }));
 vi.mock("./threads/WorkingStrip", () => ({ WorkingStrip: () => null }));

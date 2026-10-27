@@ -1,50 +1,10 @@
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Skeleton } from "./ui/skeleton";
+import { selectChunk } from "../surfaces/chunks";
+import type { ChoiceSelect as Body } from "./choice-select-body";
 
-export type Choice<T extends string> = { value: T; label: string };
+export type { Choice } from "./choice-select-body";
 
-/**
- * The one adapter from an options array to `Select`: every options list in
- * the app goes through it, so nothing maps `SelectItem`s by hand. An empty
- * string is an ordinary value (Auto, Provider default) and round-trips.
- */
-function ChoiceSelect<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-  disabled,
-  size = "default",
-  className,
-}: {
-  label: string;
-  value: T;
-  options: readonly Choice<T>[];
-  onChange: (value: T) => void;
-  disabled?: boolean;
-  size?: "sm" | "default";
-  className?: string;
-}) {
-  return (
-    <Select
-      items={options}
-      value={value}
-      disabled={disabled}
-      onValueChange={(next) => {
-        if (next !== null && next !== value) onChange(next as T);
-      }}
-    >
-      <SelectTrigger aria-label={label} size={size} className={className}>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {options.map((option) => (
-          <SelectItem key={option.value} value={option.value}>
-            {option.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-}
-
-export { ChoiceSelect };
+/** The Base UI select rides its own chunk (dialogs and settings open it on a
+ *  click, never in the first paint); until it lands the field is a still
+ *  block of its size. */
+export const ChoiceSelect = selectChunk.surface("ChoiceSelect", <Skeleton className="h-8 w-40" />) as typeof Body;

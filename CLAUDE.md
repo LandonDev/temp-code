@@ -267,8 +267,11 @@ app replaces itself from the feed, and only from the feed.
 - Verification for a renderer change: `bun run typecheck`, the tests you
   touched (every new behaviour gets a jsdom test), and a static render
   through `bun run ui:preview <module>#<Export> --props '<json>'`
-  (scripts/ui-preview.ts: the component inside the built stylesheet in dark
-  and light, written to /tmp/ui-preview, shown with `html_preview`); one
+  (scripts/ui-preview.ts: the component rendered by the client renderer in a
+  jsdom document, under tsconfig.web.json so every renderer alias resolves,
+  inside the built stylesheet in dark and light, written to /tmp/ui-preview,
+  shown with `html_preview`; a `*.fixtures.tsx` beside the component renders
+  each fixture); one
   electron-vite build per branch for `bun run check:bundle`, never the
   full suite or a dev instance. The renderer's prettier style differs from
   the root config: never run prettier or `--fix` on src/renderer.
@@ -310,8 +313,9 @@ app replaces itself from the feed, and only from the feed.
   `out/bundle-map.json` (`bun run bundle:map` prints it) and
   `scripts/check-bundle-size.ts` (`bun run check:bundle`, in `bun run
   build` and the release gate) fails when the index chunk's static closure
-  passes 5.75 MiB + 16 KiB (raised from 5 MiB on 2026-10-27 for the Base UI primitives the
-  standard puts in the first paint) or holds one of the lazy modules. `/ui` serves the chunks
+  passes 5 MiB + 16 KiB or holds one of the lazy modules (the Base UI primitives
+  stay out of the entry: the tooltip defers its primitive, menus and select ride
+  the search, inbox and notes chunks; only the dialog is in the first paint). `/ui` serves the chunks
   as immutable module scripts behind the cookie (remote/ui.ts).
 - Proof: `bun run script:e2e-launch-timing` (scripts/e2e-launch-timing.ts)
   packs an isolated copy under /private/tmp/tc-launch-timing and launches it

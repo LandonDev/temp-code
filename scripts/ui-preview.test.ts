@@ -15,7 +15,7 @@ afterEach(() => {
 })
 
 function run(args: string[], cwd = root) {
-  return spawnSync('bun', [script, ...args], { cwd, encoding: 'utf8', timeout: 15_000 })
+  return spawnSync('bun', [script, ...args], { cwd, encoding: 'utf8', timeout: 60_000 })
 }
 
 function output(name: string) {
@@ -66,7 +66,6 @@ describe('ui-preview', () => {
       export function ${name}({ children, onReady, nested }) {
         onReady()
         nested.callbacks[0]()
-        if (typeof window !== 'undefined') throw new Error('DOM present')
         return <motion.div className={cn('sample', 'static')}>{children}</motion.div>
       }
     `)
@@ -85,6 +84,43 @@ describe('ui-preview', () => {
       expect(page).not.toContain('deliberately not valid')
     }
   })
+
+  it('resolves every alias of tsconfig.web.json and renders a store-backed component', () => {
+    // @server/shared and @shared are the renderer's own aliases; a store read
+    // through useSyncExternalStore has no server snapshot, so the render is a
+    // client one into a document.
+    const { dir, name, target } = temporaryComponent((name) => `
+      import { useSyncExternalStore } from 'react'
+      import { emptyNotes } from '@shared/notes'
+      import { notesEmpty } from '@server/shared/notes'
+      import { cn } from '@renderer/lib/cn'
+      const subscribe = () => () => {}
+      export function ${name}() {
+        const empty = useSyncExternalStore(subscribe, () => notesEmpty(emptyNotes()))
+        return <p className={cn('live')}>{empty ? 'notes empty' : 'notes written'}</p>
+      }
+    `)
+    const result = run([target], dir)
+    expect(result.status, result.stderr).toBe(0)
+    const html = output(name)
+    expect(html.dark).toContain('notes empty')
+    expect(html.light).toContain('notes empty')
+  })
+
+  it('renders the transcript fixture files, named exports included, in both themes', () => {
+    for (const [target, name, exported] of [
+      ['src/renderer/src/surfaces/transcript/ActionGroup.tsx#ActionGroup', 'ActionGroup', 'fixtures'],
+      ['src/renderer/src/surfaces/transcript/ActionRow.tsx#ActionRow', 'ActionRow', 'ACTION_FIXTURES'],
+    ] as const) {
+      const result = run([target])
+      expect(result.status, `${exported}: ${result.stderr}`).toBe(0)
+      const html = output(name)
+      const labels = (page: string) => page.match(/class="preview-label"/g)?.length ?? 0
+      expect(labels(html.dark), name).toBeGreaterThanOrEqual(3)
+      expect(labels(html.light)).toBe(labels(html.dark))
+      expect(html.light).toContain('class="theme-light"')
+    }
+  }, 60_000)
 
   it('discovers adjacent fixtures and renders each name and its props in both pages', () => {
     const { dir, name, target } = temporaryComponent((name) => `

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Button } from "./button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogTitle, AlertDialogTrigger, Dialog, DialogContent, DialogTitle } from "./dialog";
 import { Sheet, SheetContent, SheetTitle } from "./sheet";
@@ -10,7 +10,7 @@ import { Kbd } from "./kbd";
 import { Skeleton } from "./skeleton";
 import { GroupInput, InputGroup } from "./input";
 import { Progress } from "./progress";
-import { TOOLTIP_CLOSE_DELAY, TOOLTIP_DELAY } from "./tooltip";
+import { TOOLTIP_CLOSE_DELAY, TOOLTIP_DELAY, Tooltip, TooltipContent, TooltipTrigger, tooltipChunk, warmTooltips } from "./tooltip";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table";
 
 vi.mock("@renderer/hooks/paneVisibility", () => ({ usePaneVisible: () => true }));
@@ -221,6 +221,27 @@ describe("Progress", () => {
     expect(bar().className).toContain("bg-warning");
     rerender(<Progress value={50} fill="muted" aria-label="room" />);
     expect(bar().className).toContain("bg-muted-foreground");
+  });
+});
+
+describe("Tooltip", () => {
+  it("is its trigger alone until the primitive loads, then the real tooltip", async () => {
+    render(
+      <Tooltip>
+        <TooltipTrigger render={<button type="button" />}>Save</TooltipTrigger>
+        <TooltipContent>Saves the file</TooltipContent>
+      </Tooltip>,
+    );
+    const trigger = screen.getByRole("button", { name: "Save" });
+    expect(tooltipChunk.loaded()).toBeNull();
+    expect(trigger.getAttribute("data-slot")).toBeNull();
+    await act(async () => {
+      fireEvent.pointerEnter(trigger);
+      warmTooltips();
+      await tooltipChunk.load();
+    });
+    expect(tooltipChunk.loaded()).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Save" }).getAttribute("data-slot")).toBe("tooltip-trigger");
   });
 });
 

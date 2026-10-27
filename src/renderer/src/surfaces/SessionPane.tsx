@@ -18,7 +18,8 @@ import { ENTER } from "../lib/ease";
 import { sessionStore } from "../lib/tcserver/store";
 import { looksLikeProject, type RecentProject } from "../lib/recents";
 import { sessionDisplayTitle, type LoadState, type Session } from "../lib/session";
-import { diffChunk, rightPanelChunk, threadViewsChunk } from "./chunks";
+import { diffChunk, inboxChunk, notesChunk, rightPanelChunk, searchChunk, selectChunk, threadViewsChunk } from "./chunks";
+import { tooltipChunk } from "../components/ui/tooltip";
 import { preloadWhenIdle } from "../lib/lazyChunk";
 import { EmptySession } from "./EmptySession";
 import { SurfaceSkeleton } from "./SurfaceSkeleton";
@@ -79,6 +80,11 @@ export const SessionPane = memo(function SessionPane({
     preloadWhenIdle(diffChunk);
     preloadWhenIdle(threadViewsChunk);
     preloadWhenIdle(rightPanelChunk);
+    preloadWhenIdle(tooltipChunk);
+    preloadWhenIdle(searchChunk);
+    preloadWhenIdle(inboxChunk);
+    preloadWhenIdle(notesChunk);
+    preloadWhenIdle(selectChunk);
   }, []);
 
   // A thread is empty only when its host answered with no rows (a draft has
