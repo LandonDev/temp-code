@@ -19,7 +19,7 @@ describe("RemoveProjectDialog", () => {
     expect(screen.getByText("Remove “Alpha”?")).toBeTruthy();
     expect(alert.textContent).toContain("Files on disk stay.");
     await act(async () => resolveCount(12));
-    expect(screen.getByText("Files on disk stay. 12 saved conversations are removed.")).toBeTruthy();
+    expect(screen.getByText("Files on disk stay. Its 12 threads are deleted.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Remove" }));
@@ -27,8 +27,8 @@ describe("RemoveProjectDialog", () => {
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
-  it("words one conversation and none", () => {
-    expect(removeProjectLine(1)).toBe("Files on disk stay. 1 saved conversation is removed.");
+  it("words one thread and none", () => {
+    expect(removeProjectLine(1)).toBe("Files on disk stay. Its thread is deleted.");
     expect(removeProjectLine(0)).toBe("Files on disk stay.");
     expect(removeProjectLine(null)).toBe("Files on disk stay.");
   });

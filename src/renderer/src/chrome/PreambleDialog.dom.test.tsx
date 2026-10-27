@@ -64,6 +64,13 @@ afterEach(() => {
 });
 
 describe("PreambleDialog", () => {
+  it("its placeholder is one line of prose, never a bullet list", () => {
+    render(<PreambleDialog scope={{ kind: "project", project: project(), workspace: WS }} onClose={() => {}} />);
+    const lines = field().placeholder.split("\n");
+    expect(lines).toEqual(["The rules every new thread in this project starts with."]);
+    expect(lines.some((l) => l.startsWith("- "))).toBe(false);
+  });
+
   it("the word count follows typing", () => {
     render(<PreambleDialog scope={{ kind: "project", project: project({ preamble: "one two" }), workspace: WS }} onClose={() => {}} />);
     const count = () => document.querySelector("[data-preamble-count]")?.textContent;

@@ -12,7 +12,7 @@ type Props = {
 /** The one line under the title: what stays, and how many threads go once counted. */
 export function removeProjectLine(sessions: number | null): string {
   if (!sessions) return "Files on disk stay.";
-  return `Files on disk stay. ${sessions} saved conversation${sessions === 1 ? " is" : "s are"} removed.`;
+  return sessions === 1 ? "Files on disk stay. Its thread is deleted." : `Files on disk stay. Its ${sessions} threads are deleted.`;
 }
 
 /**

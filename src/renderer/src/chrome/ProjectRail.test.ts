@@ -30,6 +30,11 @@ describe("projectMenuExtraItems", () => {
     expect(items.find((i) => i.id === "batch-pause")?.disabled).toBe(false);
   });
 
+  it("names the root workspace's removal Remove…, as its dialog does", () => {
+    const items = projectMenuExtraItems(false, true, null).flatMap((r) => (r.kind === "item" ? [r] : []));
+    expect(items.find((i) => i.id === "delete")?.label).toBe("Remove…");
+  });
+
   it("disables every switch before the counts are known", () => {
     const items = projectMenuExtraItems(true, false, null).flatMap((r) => (r.kind === "item" ? [r] : []));
     expect(items.filter((i) => i.id.startsWith("batch-")).every((i) => i.disabled)).toBe(true);

@@ -125,10 +125,12 @@ describe("Archive page", () => {
     expect(h.onDeleteSession).toHaveBeenCalledWith("t1", { confirmed: true });
   });
 
-  it("opens the remove dialog for a project's Delete…", async () => {
+  it("opens the remove dialog for a project's Remove…", async () => {
     state.projects = [{ path: "/w/old" }];
     render(<ArchivePage {...handlers()} />);
-    await clickDelete(rowOf("old"));
+    await act(async () => {
+      fireEvent.click(within(rowOf("old")).getByRole("button", { name: "Remove old…" }));
+    });
     expect(screen.getByRole("dialog").textContent).toBe("Remove old");
   });
 

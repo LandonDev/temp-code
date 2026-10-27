@@ -43,6 +43,13 @@ function open(over: Partial<Parameters<typeof CustomizeGroupDialog>[0]> = {}) {
 }
 
 describe("CustomizeGroupDialog", () => {
+  it("names the project or group it customizes under its title", () => {
+    open({ label: "Alpha" });
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.getAttribute("aria-describedby")).toBeTruthy();
+    expect(document.getElementById(dialog.getAttribute("aria-describedby")!)?.textContent).toBe("Alpha");
+  });
+
   it("Save applies the name, the colour and the mascot together", async () => {
     const { onSave, onClose } = open();
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Alpha" } });

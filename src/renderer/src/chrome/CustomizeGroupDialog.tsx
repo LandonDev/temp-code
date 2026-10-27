@@ -57,7 +57,7 @@ const CUSTOM = "custom";
 export function CustomizeGroupDialog(props: Props) {
   const [pending, setPending] = useState(false);
   return (
-    <Modal onClose={props.onClose} busy={pending} title="Customize" size="sm">
+    <Modal onClose={props.onClose} busy={pending} title="Customize" description={props.label} size="sm">
       <CustomizeForm {...props} pending={pending} setPending={setPending} />
     </Modal>
   );

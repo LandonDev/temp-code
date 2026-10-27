@@ -106,7 +106,8 @@ const REVEAL_LABEL = IS_MAC
     : "Open Containing Folder";
 
 /** The project menu's rows after the label, colour and mascot: pin, reveal,
- *  Mark all read, the fleet switches, then archive and delete. */
+ *  Mark all read, the fleet switches, then archive and remove (the folder
+ *  stays; its threads go). */
 export function projectMenuExtraItems(
   pinned: boolean,
   canRemove: boolean,
@@ -125,7 +126,7 @@ export function projectMenuExtraItems(
     items.push(
       { kind: "sep" },
       { kind: "item", id: "archive", label: "Archive", icon: Archive },
-      { kind: "item", id: "delete", label: "Delete", icon: Trash2, danger: true },
+      { kind: "item", id: "delete", label: "Remove…", icon: Trash2, danger: true },
     );
   }
   return items;

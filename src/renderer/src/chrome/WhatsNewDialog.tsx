@@ -1,7 +1,6 @@
 import { formatReleaseDate, releaseNotesTitle } from "../lib/releaseNotes";
 import { presentReleaseNotes, type ReleaseNotesPresentation } from "../lib/releaseNotesParse";
 import { AgentMarkdown } from "../surfaces/AgentMarkdown";
-import { ScrollArea } from "@renderer/components/ui/scroll-area";
 import { Modal } from "./Modal";
 
 type Props = {
@@ -72,11 +71,9 @@ export function WhatsNewDialog({ version, markdown, onClose }: Props) {
       title="What's new"
       description={whatsNewLine(version, date)}
       size="md"
-      className="h-[min(72vh,640px)]"
+      className="max-h-[min(72vh,640px)]"
     >
-      <ScrollArea className="h-full">
-        <WhatsNewBody version={version} markdown={markdown} />
-      </ScrollArea>
+      <WhatsNewBody version={version} markdown={markdown} />
     </Modal>
   );
 }

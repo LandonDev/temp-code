@@ -24,9 +24,7 @@ const AgentMarkdown = lazy(() =>
   import("../surfaces/AgentMarkdown").then((m) => ({ default: m.AgentMarkdown })),
 );
 
-const PLACEHOLDER = `- Work in your own worktree: \`{{worktree}}\`.
-- Typecheck, tests and build green before you merge.
-- Never touch what is not yours.`;
+const PLACEHOLDER = "The rules every new thread in this project starts with.";
 
 const words = (n: number) => `${n} word${n === 1 ? "" : "s"}`;
 

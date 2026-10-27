@@ -138,6 +138,7 @@ export function ArchivePage({
             >
               <RowActions
                 name={archivedProjectLabel(project.path)}
+                verb="Remove"
                 onRestore={onRestoreProject ? () => onRestoreProject(project.path) : undefined}
                 onDelete={onDeleteProject ? () => setDeleting(project) : undefined}
               />
@@ -247,8 +248,19 @@ export function DeleteThreadDialog({
   );
 }
 
-/** Restore and Delete…, shown while the row is hovered or holds focus. */
-function RowActions({ name, onRestore, onDelete }: { name: string; onRestore?: () => void; onDelete?: () => void }) {
+/** Restore and the removing verb (Delete… for a thread, Remove… for a
+ *  workspace whose folder stays), shown while the row is hovered or holds focus. */
+function RowActions({
+  name,
+  verb = "Delete",
+  onRestore,
+  onDelete,
+}: {
+  name: string;
+  verb?: "Delete" | "Remove";
+  onRestore?: () => void;
+  onDelete?: () => void;
+}) {
   return (
     <span className="flex items-center gap-1 opacity-0 transition-opacity duration-(--dur-fast) group-hover/item:opacity-100 group-focus-within/item:opacity-100">
       {onRestore ? (
@@ -257,8 +269,8 @@ function RowActions({ name, onRestore, onDelete }: { name: string; onRestore?: (
         </Button>
       ) : null}
       {onDelete ? (
-        <Button variant="ghost" size="sm" aria-label={`Delete ${name}…`} onClick={onDelete}>
-          Delete…
+        <Button variant="ghost" size="sm" aria-label={`${verb} ${name}…`} onClick={onDelete}>
+          {verb}…
         </Button>
       ) : null}
     </span>
