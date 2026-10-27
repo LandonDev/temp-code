@@ -207,6 +207,7 @@ import { sessionStore } from "../../lib/tcserver/store";
 import { resetNotesStore } from "../../lib/threadNotes";
 import { SessionActionsContext, type SessionActions } from "../threadChat";
 import { MasterView } from "./MasterView";
+import { BoardPreview } from "./master/board.preview";
 
 const meta = (over: Partial<SessionMeta>): SessionMeta =>
   ({
@@ -1129,6 +1130,18 @@ describe("the master view", () => {
     expect(within(head).getByRole("button", { name: /^Thread$/ })).toBeTruthy();
     // The foot no longer repeats the summary.
     expect(document.querySelector("[data-batch-foot]")?.textContent).not.toContain("Gate, release, publish");
+  });
+});
+
+describe("the board's static preview", () => {
+  it("draws the fixture's five rows in the four sections and the shell step's console, all in the vocabulary", () => {
+    render(<BoardPreview />);
+    expect(headers().map((h) => h.textContent)).toEqual(["Needs you", "Working", "Queued", "Done"]);
+    const states = [...document.querySelectorAll("[data-row-status] > [data-slot=status-mark]")].map((m) => m.getAttribute("data-state"));
+    expect(states).toEqual(["waiting", "working", "paused", "queued", "done"]);
+    expect(document.querySelector("[data-agents-tail]")?.textContent).toBe("1 done");
+    expect(document.querySelector("[data-step='smoke'] [data-console='smoke']")?.textContent?.split("\n")).toHaveLength(8);
+    expect(document.body.textContent).not.toMatch(/[·•—]/);
   });
 });
 

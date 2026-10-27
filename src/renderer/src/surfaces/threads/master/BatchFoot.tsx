@@ -63,7 +63,7 @@ export function BatchFoot({
   };
 
   return (
-    <div className="flex shrink-0 flex-col border-t border-border bg-background px-3 py-3" data-batch-foot data-foot-mode={active ? "console" : "idle"}>
+    <div className="flex shrink-0 flex-col border-t border-border bg-background px-5 py-3" data-batch-foot data-foot-mode={active ? "console" : "idle"}>
       <div className="flex h-6 items-center gap-2">
         <h3 className="flex-1 text-xs font-medium text-muted-foreground">When done</h3>
         <Button variant="ghost" size="xs" onClick={() => setEditing(true)}>
@@ -102,7 +102,7 @@ export function BatchFoot({
 /** The foot's shape before the answer: the heading and three step rows. */
 function FootSkeleton() {
   return (
-    <div className="flex shrink-0 flex-col border-t border-border bg-background px-3 py-3" data-batch-foot data-foot-mode="loading" aria-busy="true">
+    <div className="flex shrink-0 flex-col border-t border-border bg-background px-5 py-3" data-batch-foot data-foot-mode="loading" aria-busy="true">
       <div className="flex h-6 items-center">
         <Skeleton className="h-3 w-16" />
       </div>

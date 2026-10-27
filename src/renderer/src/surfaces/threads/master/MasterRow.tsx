@@ -183,7 +183,13 @@ export function MasterRowView({
       {/* Line two: the status glyph with its detail; the tally at the end. */}
       <span />
       <span className="mt-0.5 flex h-4 min-w-0 items-center gap-2" data-row-status>
-        <StatusMark state={state} word={detail || false} className="min-w-0" />
+        {/* Amber and red say their detail in the state's tone; every other
+            state's detail is the muted line under the title. */}
+        {statusNeedsYou(state) ? (
+          <StatusMark state={state} word={detail || false} className="min-w-0" />
+        ) : (
+          <StatusMark state={state} word={false} detail={detail || undefined} className="min-w-0" />
+        )}
         {tally ? <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground" data-tally>{tally}</span> : null}
       </span>
 
