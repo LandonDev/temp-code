@@ -71,10 +71,19 @@ describe("ThreadBatchToasts", () => {
     const [title] = vi.mocked(toast.error).mock.calls[0];
     const opts = options(vi.mocked(toast.error).mock.calls[0]);
     expect(title).toBe("Stopped 1");
-    expect(opts.description).toBe("2 failed: Search (harness not responding) and 1 more");
+    expect(opts.description).toBe("2 failed: Search (harness not responding)");
     expect(opts.duration).toBe(Infinity);
     opts.action!.onClick();
     expect(onOpen).toHaveBeenCalledWith("a", "local");
+    // The second failure is its own toast under the lead, with its error and Open.
+    expect(vi.mocked(toast.error)).toHaveBeenCalledTimes(2);
+    const second = options(vi.mocked(toast.error).mock.calls[1]);
+    expect(second.id).toBe(`${opts.id}:c`);
+    expect(second.description).toBe("link down");
+    second.action!.onClick();
+    expect(onOpen).toHaveBeenLastCalledWith("c", "local");
+    opts.onDismiss();
+    expect(toast.dismiss).toHaveBeenCalledWith(`${opts.id}:c`);
   });
 
   it("a dismissed toast drops its notice", async () => {

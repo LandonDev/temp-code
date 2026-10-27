@@ -25,13 +25,27 @@ export function ThreadBatchToasts({ onOpen }: Props): null {
         toast(title, { id, duration: NOTICE_MS, onDismiss: done, onAutoClose: done });
         return;
       }
-      const more = rest.length > 0 ? ` and ${rest.length} more` : "";
+      // Every failed thread stays reachable: the lead toast names the first,
+      // each remaining failure is its own toast under it with its error and
+      // Open; dismissing the lead takes the rest with it.
+      const restIds = rest.map((f) => `${id}:${f.sessionId}`);
       toast.error(title, {
         id,
-        description: `${notice.failed.length} failed: ${first.title} (${first.error})${more}`,
+        description: `${notice.failed.length} failed: ${first.title} (${first.error})`,
         duration: Infinity,
-        onDismiss: done,
+        onDismiss: () => {
+          for (const restId of restIds) toast.dismiss(restId);
+          done();
+        },
         action: { label: "Open", onClick: () => onOpen(first.sessionId, first.environmentId) },
+      });
+      rest.forEach((f, index) => {
+        toast.error(f.title, {
+          id: restIds[index],
+          description: f.error,
+          duration: Infinity,
+          action: { label: "Open", onClick: () => onOpen(f.sessionId, f.environmentId) },
+        });
       });
     },
   );

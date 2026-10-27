@@ -111,15 +111,23 @@ export const SessionPane = memo(function SessionPane({
     if (!focused || !visible) return;
     noteActiveSession(session.id);
     serverCommands.focusSignal.pane(session.environmentId, session.id);
-    // The right panel's toggle, ⌘⇧R and "show Changes" act on this thread,
-    // whether or not its panel is open (a closed panel is not mounted).
+    // Among visible panes the focused one is the panel's thread.
     rightPanel.focus(session.id);
     return () => {
       noteActiveSession(null);
       serverCommands.focusSignal.left(session.id);
-      if (rightPanel.focused() === session.id) rightPanel.focus(null);
     };
   }, [focused, session.environmentId, session.id, visible]);
+  // The right panel's toggle, ⌘⇧R, "show Changes" and "Debug this file" act
+  // on the thread on screen, whether or not its panel is open (a closed panel
+  // is not mounted) and while an editor or the dock holds the focus.
+  useEffect(() => {
+    if (!visible) return;
+    if (!rightPanel.focused()) rightPanel.focus(session.id);
+    return () => {
+      if (rightPanel.focused() === session.id) rightPanel.focus(null);
+    };
+  }, [session.id, visible]);
 
   // A click inside the pane that already owns focus and the composer asks
   // App for nothing; the action would be a no-op and the render a waste.

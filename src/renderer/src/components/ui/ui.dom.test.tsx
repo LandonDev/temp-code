@@ -10,7 +10,7 @@ import { Kbd } from "./kbd";
 import { Skeleton } from "./skeleton";
 import { GroupInput, InputGroup } from "./input";
 import { Progress } from "./progress";
-import { TOOLTIP_CLOSE_DELAY, TOOLTIP_DELAY, Tooltip, TooltipContent, TooltipTrigger, tooltipChunk, warmTooltips } from "./tooltip";
+import { TOOLTIP_CLOSE_DELAY, TOOLTIP_DELAY, Tooltip, TooltipContent, TooltipTrigger, resetTooltips, tooltipChunk, warmTooltips } from "./tooltip";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table";
 
 vi.mock("@renderer/hooks/paneVisibility", () => ({ usePaneVisible: () => true }));
@@ -225,7 +225,39 @@ describe("Progress", () => {
 });
 
 describe("Tooltip", () => {
+  it("does not swap under a focused field, even across a re-render, until focus leaves", async () => {
+    resetTooltips();
+    function Row({ title }: { title: string }) {
+      return (
+        <Tooltip>
+          <TooltipTrigger render={<span />}>
+            <input aria-label="Rename" defaultValue={title} />
+          </TooltipTrigger>
+          <TooltipContent>Rename the thread</TooltipContent>
+        </Tooltip>
+      );
+    }
+    const { rerender } = render(<Row title="a" />);
+    const field = screen.getByLabelText("Rename") as HTMLInputElement;
+    field.focus();
+    fireEvent.change(field, { target: { value: "typed" } });
+    await act(async () => {
+      warmTooltips();
+      await tooltipChunk.load();
+    });
+    rerender(<Row title="b" />);
+    expect(screen.getByLabelText("Rename")).toBe(field);
+    expect(field.value).toBe("typed");
+    await act(async () => {
+      field.blur();
+      fireEvent.focusOut(field);
+      await Promise.resolve();
+    });
+    expect(screen.getByLabelText("Rename").closest("[data-slot=tooltip-trigger]")).not.toBeNull();
+  });
+
   it("is its trigger alone until the primitive loads, then the real tooltip", async () => {
+    resetTooltips();
     render(
       <Tooltip>
         <TooltipTrigger render={<button type="button" />}>Save</TooltipTrigger>
@@ -233,7 +265,6 @@ describe("Tooltip", () => {
       </Tooltip>,
     );
     const trigger = screen.getByRole("button", { name: "Save" });
-    expect(tooltipChunk.loaded()).toBeNull();
     expect(trigger.getAttribute("data-slot")).toBeNull();
     await act(async () => {
       fireEvent.pointerEnter(trigger);

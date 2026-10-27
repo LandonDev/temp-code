@@ -41,20 +41,32 @@ function focusHeld(): boolean {
 /** Wakes every cold tooltip on screen; while a control has focus the swap
  *  waits for the focus to leave, so a rename in progress keeps its text. */
 function wake(): void {
+  if (published) return;
   if (focusHeld()) {
     document.addEventListener("focusout", () => queueMicrotask(wake), { once: true });
     return;
   }
+  published = tooltipChunk.loaded();
   for (const listener of listeners) listener();
+}
+
+/** Test seam: forget the published primitive. */
+export function resetTooltips(): void {
+  published = null;
 }
 
 /** Loads the primitive and wakes every cold tooltip on screen. */
 export function warmTooltips(): void {
-  if (tooltipChunk.loaded()) return;
-  tooltipChunk.load().then(wake, () => {});
+  if (published) return;
+  if (tooltipChunk.loaded()) wake();
+  else tooltipChunk.load().then(wake, () => {});
 }
+/** The primitive the tooltips render with: set by `wake` alone, so a cold
+ *  tooltip re-rendering after the chunk loaded does not swap on its own. */
+let published: typeof Primitive | null = null;
+const read = (): typeof Primitive | null => published;
 function usePrimitive(): typeof Primitive | null {
-  return useSyncExternalStore(subscribe, tooltipChunk.loaded, tooltipChunk.loaded);
+  return useSyncExternalStore(subscribe, read, read);
 }
 
 function TooltipProvider(props: TooltipPrimitive.Provider.Props) {
