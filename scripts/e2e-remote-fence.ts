@@ -25,6 +25,7 @@ import { join } from 'node:path'
 import { configure } from 'aliax-core'
 import { WebSocket } from 'ws'
 import { startServer } from '../src/main/server/index'
+import { SESSION_NEEDS_CLIENT } from '../src/main/server/remote/auth'
 import type { ServerFrame } from '../src/shared/contract'
 
 const root = mkdtempSync(join(tmpdir(), 'tc-fence-'))
@@ -260,6 +261,13 @@ check('hello with a key carries the hostname and version', typeof known.body.nam
 const page = await api('GET', '/pair')
 const nonce = /script-src 'nonce-([^']+)'/.exec(String(page.body))?.[1]
 check('the /pair page has a nonced script-src and no unsafe-inline for scripts', !!nonce && String(page.body).includes(`<script nonce="${nonce}">`) && !/script-src[^;]*unsafe-inline/.test(String(page.body)))
+
+// ── A bot link on the pair page: no session, and the code is still good for a key ──
+const botPairing = await api('POST', '/api/pairings', { headers: bearer(admin), body: { name: 'bot', audience: 'mcp', caps: ['read'] } })
+const asSession = await api('POST', '/api/pair', { body: { code: botPairing.body.code, kind: 'session' } })
+check('a session on an MCP pairing is 400 with SESSION_NEEDS_CLIENT', asSession.status === 400 && asSession.body.error === SESSION_NEEDS_CLIENT, JSON.stringify(asSession.body))
+const asKey = await api('POST', '/api/pair', { body: { code: botPairing.body.code, kind: 'key' } })
+check('the same code then redeems as a bot key', asKey.status === 200 && /^tc_/.test(asKey.body.key) && asKey.body.audience === 'mcp', String(asKey.status))
 
 for (const s of [reader, operator, local]) s.ws.close()
 await server.close()

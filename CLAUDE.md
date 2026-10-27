@@ -626,13 +626,29 @@ routed to (aliax-core's `forward`). Two listeners:
   a per-response nonce, no `'unsafe-inline'` for scripts (L3).
   `POST /api/pair` with `kind: 'key'` answers the raw key once; with
   `kind: 'session'` it sets the HttpOnly `tc_session` cookie that `/ui` and
-  cookie upgrades of `/ws` use. Bearer clients mint a 30 s ticket at
+  cookie upgrades of `/ws` use. The page (remote/pairPage.ts, on the app's
+  tokens: `PAIR_TOKENS`, held equal to index.css by its test) shows the
+  link's code and one Pair button, redeems nothing on load and strips the
+  fragment before its first request; a bot pairing is refused a session
+  before its code is spent (`SESSION_NEEDS_CLIENT`, 400), so the page
+  redeems it as a key and shows that once with Copy. Any 401 reads one
+  sentence: the wire never says whether a code existed. Bearer clients mint a 30 s ticket at
   `POST /api/ticket` and upgrade `/ws?ticket=…`; nothing else ever rides in
   a socket URL. Revoking a key closes its sockets and sessions at once.
 - `/ui` serves the BUILT renderer (out/renderer, so `electron-vite build`
   first in a dev tree) behind the cookie; the bundle detects a missing
   `window.api` and runs in web mode (src/renderer/src/lib/nativeWeb.ts: no
-  terminal, no Aliax pages, its own `web` workspace slot). `/asset/<host>/…`
+  terminal, no Aliax pages, its own `web` workspace slot). A desktop-only
+  control goes through `desktopOnly(handler)` (undefined at /ui, so its row
+  is not drawn: the terminal's entry points, Choose logo…, the Updates
+  row); a desktop-only surface reached anyway shows `DESKTOP_ONLY_LINE`
+  ("Available in the desktop app") in `Empty`; Open project browses the
+  host's folders (`folderPickOn` in lib/fs.ts). A signed-out tab: `/ui`
+  answers a refused cookie `302 /pair?signed-out` (no cookie: `/pair`), and
+  the cookie route asks `/api/hello` before its socket (`checkCookie` in
+  lib/connection/registry.ts; a hello without `key` is `unauthorized:
+  signed out`), on which tcserver/link.ts replaces the page with
+  `/pair?signed-out`. `/asset/<host>/…`
   mirrors `tempcode-asset://` for logos, media and agent pages.
 - Webhook targets (remote/addressGuard.ts, R2 M3): a key's webhook URL and
   a hub subscription URL must be https to a public host; loopback, RFC 1918,

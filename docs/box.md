@@ -363,7 +363,13 @@ Remote access: `remote.publicOrigin` is `https://tempcode.landonhale.com`.
 Cloudflare Access fronts `/ui` only; `/healthz`, `/api/*`, `/pair` and `/ws`
 reach the listener directly, and every one of those routes carries its own
 authentication. To let a device in, mint a pairing on the box and open its
-link within ten minutes:
+link within ten minutes. The link's page (`/pair`, src/main/server/remote/pairPage.ts)
+shows the code and one Pair button and redeems nothing until it is pressed; a
+client link signs the browser in and lands on `/ui/`, a bot (`mcp`) link shows
+its key once with Copy. A refused code reads "This code is invalid or has
+expired. Make a new one in Settings → Hosts on your computer." A `/ui` tab whose
+session lapsed or was revoked goes to `/pair?signed-out` ("Signed out.")
+instead of reconnecting:
 
 ```sh
 tc-local remote.pairings.create '{"name":"Landon phone","audience":"client","caps":["operate","approve"]}'

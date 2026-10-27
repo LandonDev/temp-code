@@ -207,12 +207,12 @@ try {
     }
     await page.send('Page.navigate', { url: `${ORIGIN}/pair#${CODES[1]}` })
     await until(
-      `document.getElementById('code')?.value === ${JSON.stringify(CODES[1])}`,
+      `document.getElementById('code')?.textContent === ${JSON.stringify(CODES[1])}`,
       20_000,
-      'the pair page with the code prefilled'
+      'the pair page showing the code'
     )
-    check('Chrome loads /pair through the tunnel with the code prefilled', true)
-    await page.eval(`document.getElementById('f').requestSubmit()`)
+    check('Chrome loads /pair through the tunnel showing the code', true)
+    await page.eval(`document.getElementById('go').click()`)
     await until(
       `location.pathname === '/ui/' || location.hostname.endsWith('cloudflareaccess.com')`,
       20_000,

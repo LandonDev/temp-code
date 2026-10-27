@@ -14,6 +14,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Cdp, REPO, attach, prepareEnv, sh, sleep } from './lib/packagedApp'
+import { PAIR_INVALID_LINE } from '../src/main/server/remote/pairPage'
 
 prepareEnv()
 const DEBUG_PORT = Number(process.env.TC_UI_DEBUG_PORT ?? 9228)
@@ -129,10 +130,32 @@ try {
     }
     throw new Error(`timed out: ${label}`)
   }
+  const line = (): Promise<string> => page.eval<string>(`document.getElementById('line')?.textContent ?? ''`)
+
+  // A wrong code: the one sentence, and an empty field to type the next one into.
+  await page.send('Page.navigate', { url: `${base}/pair#ZZZZZ-ZZZZZ` })
+  await until(`document.getElementById('code')?.textContent === 'ZZZZZ-ZZZZZ'`, 15_000, 'the pair page with the wrong code')
+  await page.eval(`document.getElementById('go').click()`)
+  await until(`document.getElementById('line')?.textContent === ${JSON.stringify(PAIR_INVALID_LINE)}`, 15_000, 'the refused-code line')
+  check('a wrong code says the one sentence and leaves an empty field', await page.eval<boolean>(`document.getElementById('code').tagName === 'INPUT' && document.getElementById('code').value === ''`))
+
+  // A bot (MCP) link: refused a session before the code is spent, redeemed as a key, shown once.
+  const bot = (await desktopRequest('remote.pairings.create', { name: 'Bot (e2e)', audience: 'mcp', caps: ['read'] })) as { code: string }
+  await page.send('Page.navigate', { url: `${base}/pair#${bot.code}` })
+  await until(`document.getElementById('code')?.textContent === ${JSON.stringify(bot.code)}`, 15_000, 'the pair page with the bot code')
+  await page.eval(`document.getElementById('go').click()`)
+  await until(`/^tc_/.test(document.getElementById('key')?.textContent ?? '')`, 15_000, 'the bot key')
+  const botKey = await page.eval<string>(`document.getElementById('key').textContent`)
+  check('a bot link shows its key once, named for the pairing', (await line()) === 'Shown once.' && (await page.eval<string>(`document.getElementById('title').textContent`)) === 'Bot (e2e)')
+  check('the bot link\'s fragment is gone before the key shows', (await page.eval<string>('location.hash')) === '')
+  await page.send('Page.reload')
+  await until(`document.getElementById('code')?.tagName === 'INPUT'`, 15_000, 'the reloaded pair page')
+  check('after a reload the key is nowhere on the page', !(await page.eval<string>('document.documentElement.outerHTML')).includes(botKey))
+
   await page.send('Page.navigate', { url: `${base}/pair#${pairing.code}` })
-  await until(`document.getElementById('code')?.value === ${JSON.stringify(pairing.code)}`, 15_000, 'pair page with the code prefilled')
-  check('the /pair page prefills the code from the fragment', true)
-  await page.eval(`document.getElementById('f').requestSubmit()`)
+  await until(`document.getElementById('code')?.textContent === ${JSON.stringify(pairing.code)}`, 15_000, 'pair page showing the code')
+  check('the /pair page shows the code from the fragment with one button', await page.eval<boolean>(`document.querySelectorAll('button').length === 1 && document.getElementById('go').textContent === 'Pair'`))
+  await page.eval(`document.getElementById('go').click()`)
   await until(`location.pathname === '/ui/'`, 15_000, 'landing on /ui/')
   check('sign-in lands on /ui/', true)
   await until(`!!window.__monocode?.registry?.primary()?.connected`, 30_000, 'the browser socket to open')
@@ -235,6 +258,13 @@ try {
   const shot2 = (await page.send('Page.captureScreenshot', { format: 'png' })) as { data: string }
   writeFileSync('/tmp/tc-remote-ui-assets.png', Buffer.from(shot2.data, 'base64'))
   check('asset screenshot written', true, '/tmp/tc-remote-ui-assets.png')
+
+  // ── signed out: a revoked session sends the tab, and /ui, to /pair?signed-out ──
+  const chromeSession = ((await desktopRequest('remote.sessions.list', {})) as { id: string; keyName: string }[]).find((s) => /^Chrome/.test(s.keyName))
+  await desktopRequest('remote.sessions.revoke', { id: chromeSession!.id })
+  check('/ui with a revoked cookie is 302 → /pair?signed-out', (await curl(['-o', '/dev/null', '-w', '%{http_code} %{redirect_url}', '-H', `Cookie: ${cookieHeader}`, `${base}/ui/`])) === `302 ${base}/pair?signed-out`)
+  await until(`location.pathname === '/pair' && location.search === '?signed-out'`, 60_000, 'the open tab to land on /pair?signed-out')
+  check('the open tab goes to /pair?signed-out and says so', (await line()) === 'Signed out.')
 
   page.close()
   desk.close()

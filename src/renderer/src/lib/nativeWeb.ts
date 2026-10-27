@@ -3,9 +3,11 @@
  * there is no preload, so `window.api` is absent. This object has the same
  * shape and gives every Electron-only command a browser answer: dialogs go
  * through confirm/alert, links open in a tab, the terminal says it needs the
- * desktop app, and window chrome, updates and appshots are inert. The slot
- * is `web`, so the browser keeps its own workspace snapshot and never
- * overwrites the desktop layout.
+ * desktop app, and window chrome, updates and appshots are inert. Those
+ * refusals are the last resort: the controls that would reach them are not
+ * drawn (`desktopOnly`), and a desktop-only surface reached anyway says
+ * `DESKTOP_ONLY_LINE`. The slot is `web`, so the browser keeps its own
+ * workspace snapshot and never overwrites the desktop layout.
  */
 import { logoAssetUrl } from "@server/shared/assets";
 
