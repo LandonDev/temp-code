@@ -175,9 +175,10 @@ export function EditRow({
     (running && liveRows ? liveRows : parsedRows).some((r) => r.type === 'add' || r.type === 'del') ||
     !!omitted
 
-  // Opening is the caret's alone, remembered per session and call.
+  // Opening is the caret's, remembered per session and call; an edit waiting
+  // on approval shows its diff, open, above Allow and Deny.
   const [userOpen, setUserOpen] = usePersistedOpen(editOpenKey(sessionId, block))
-  const open = hasDiff && (editMode || !!userOpen)
+  const open = hasDiff && (action.pending || editMode || !!userOpen)
   useEffect(() => {
     if (open && omitted && !omitted.loading && !omitted.failed) void sessionStore.loadRowBodies(block)
   }, [open, omitted, block])
@@ -214,7 +215,7 @@ export function EditRow({
         ticking={running}
         open={open}
         onToggle={
-          hasDiff
+          hasDiff && !action.pending
             ? () => {
                 if (open) setEditMode(false)
                 setUserOpen(!open)

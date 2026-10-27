@@ -49,9 +49,12 @@ foreground, the same words the group line uses); the components only draw it.
   that names a thread links its title to that thread; a spawn row opens the
   agent. The body opens in place under the line through `Collapsible`.
 - **Approvals.** A call waiting on the person draws its line in the live
-  tense with no caret and no body of its own; the approval card mounts
-  directly under the line, and the row is an ordinary row again once
-  decided. An edit waiting on approval takes this row too.
+  tense with the waiting mark and no caret, its own body open under it (the
+  command card, the details, an edit's diff per file) so what it asks is
+  read once, and A9's `ApprovalCard` (Allow and Deny) under that; once
+  decided the card is its one verdict line and the row an ordinary row
+  again. An edit's bookkeeping row leaves the card to its parent
+  (`ActionRow approval={false}`), so one call has one card.
 - **One card, never two.** The border is the group's list around the rows
   (`ActionGroup`), which also gives each row its side padding, so a lone
   row lines up with the prose. A lone row's open body is a card of its own

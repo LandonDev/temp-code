@@ -36,7 +36,7 @@ export interface Action {
   agent: boolean;
   failed: boolean;
   running: boolean;
-  /** Waiting on the person's approval: the approval card is the body. */
+  /** Waiting on the person's approval: the body shows open above Allow and Deny. */
   pending: boolean;
 }
 
@@ -78,7 +78,6 @@ export function actionOf(block: Block, cwd?: string, app: AppView | null = null,
     pending,
   };
 
-  if (pending) return { ...base, opens: "none" };
   if (block.question) return { ...base, opens: "none" };
 
   if (display?.app) {

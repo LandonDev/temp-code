@@ -4,9 +4,9 @@ import type { OpenFileFn } from "../../lib/search";
 import { EditRow } from "../EditRow";
 import { splitEditCards } from "../editCards";
 import { isEditBlock } from "../editModel";
-import { isThinkingBlock, needsApproval } from "../transcriptActivity";
+import { isThinkingBlock } from "../transcriptActivity";
 import { ActivityThinkingRow } from "./ThinkingRow";
-import { ApprovalControls } from "./Approval";
+import { ApprovalCard } from "./ApprovalCard";
 import { ActionRow } from "./ActionRow";
 import type { ApprovalHandler } from "./types";
 
@@ -40,16 +40,16 @@ export function ActivityRow({
       <ActivityThinkingRow block={block} cwd={cwd} expandable={expanded} endTs={endTs} onOpenFile={onOpenFile} />
     );
   }
-  if (isEditBlock(block) && !needsApproval(block) && !block.question) {
+  // An edit, waiting or not, is one row per file; one approval card under them all.
+  if (isEditBlock(block) && !block.question) {
     const { cards, internal } = splitEditCards(block);
     return (
       <>
         {cards.map((card) => (
           <EditRow key={card.id} block={card} cwd={cwd} onOpenFile={onOpenDiff ?? onOpenFile} />
         ))}
-        {internal ? <ActionRow block={internal} cwd={cwd} onOpenFile={onOpenFile} /> : null}
-        {/* A decided board leaves its one-line verdict under the edit it judged. */}
-        <ApprovalControls block={block} onApproval={onApproval} />
+        {internal ? <ActionRow block={internal} cwd={cwd} onOpenFile={onOpenFile} approval={false} /> : null}
+        <ApprovalCard block={block} onApproval={onApproval} />
       </>
     );
   }

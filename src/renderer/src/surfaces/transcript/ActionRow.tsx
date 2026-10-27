@@ -15,14 +15,14 @@ import { useTranscriptHost } from "../transcriptSession";
 import { ActionLine } from "./ActionLine";
 import { CommandCard } from "./CommandCard";
 import { useAction, type Action } from "./actionModel";
-import { ApprovalControls } from "./Approval";
+import { ApprovalCard } from "./ApprovalCard";
 import { ToolGlyph } from "./ToolGlyph";
 import type { ApprovalHandler } from "./types";
 
 /**
  * One call as one quiet line. A read opens its file; a command, a search,
  * a tool open their body in place under the line; a call waiting on the
- * person carries the approval card where its body would open.
+ * person shows its body open, with the approval card under it.
  */
 export function ActionRow({
   block,
@@ -30,9 +30,12 @@ export function ActionRow({
   live,
   onOpenFile,
   onApproval,
+  approval = true,
 }: {
   block: Block;
   cwd?: string;
+  /** False when the call's approval card is drawn by the row's parent (an edit's bookkeeping row). */
+  approval?: boolean;
   /** The tense to speak in; the call's own state when not given. */
   live?: boolean;
   onOpenFile?: OpenFileFn;
@@ -43,6 +46,8 @@ export function ActionRow({
   const threadHost = useTranscriptHost();
   const openThread = useThreadOpener(action);
   const hasBody = action.opens !== "file" && action.opens !== "none";
+  // While the call waits on the person its body shows what it asks, and stays open.
+  const shown = open || (action.pending && hasBody);
   const filePath = action.opens === "file" && action.path ? resolveWorkspacePath(action.path, cwd) : undefined;
   const openFile =
     filePath && onOpenFile
@@ -64,8 +69,8 @@ export function ActionRow({
       label={label}
       onObject={openThread}
       trailing={<Extras block={block} />}
-      open={open}
-      onToggle={hasBody ? () => setOpen((value) => !value) : undefined}
+      open={shown}
+      onToggle={hasBody && !action.pending ? () => setOpen((value) => !value) : undefined}
       onActivate={openFile}
     />
   );
@@ -80,7 +85,7 @@ export function ActionRow({
         line
       )}
       {hasBody ? (
-        <Collapsible open={open} onOpenChange={setOpen}>
+        <Collapsible open={shown} onOpenChange={setOpen}>
           <CollapsibleContent>
             <div className="pb-2">
               <div data-row-body className={BODY_FRAME}>
@@ -94,10 +99,8 @@ export function ActionRow({
           </CollapsibleContent>
         </Collapsible>
       ) : null}
-      {/* Where the approval card mounts: what the call asks and Allow / Deny
-          while it waits, its verdict once decided. A9's ApprovalCard takes
-          this spot with the same props. */}
-      <ApprovalControls block={block} onApproval={onApproval} />
+      {/* Allow and Deny under the body while the call waits, its verdict once decided. */}
+      {approval ? <ApprovalCard block={block} onApproval={onApproval} /> : null}
       {block.question ? <QuestionCard question={block.question} /> : null}
     </div>
   );

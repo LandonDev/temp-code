@@ -6,6 +6,7 @@ import { SelectSessionContext } from "../AgentMarkdown";
 import { AgentSpawnRow } from "../AgentSpawnRow";
 import { ActionRow } from "./ActionRow";
 import { ActivityRow } from "./ActivityRow";
+import { diffChunk } from "../chunks";
 
 // FileRefMenu asks the native bridge which editor opens a file; jsdom has none.
 vi.mock("../../lib/editorConfig", () => ({ useEditorConfig: () => null }));
@@ -175,15 +176,20 @@ describe("ActionRow", () => {
     expect(getByRole("button", { name: "Show formatted" })).toBeTruthy();
   });
 
-  it("a call waiting on approval says its live verb and carries the card once, with no body of its own", () => {
+  it("a call waiting on approval shows its command open above Allow and Deny, with no caret", () => {
     const onApproval = vi.fn();
     const block = call("Bash", { command: "git push", description: "Push master" }, { status: "pending", approval: { requestId: 7 } });
     const { container, getAllByRole, getByRole, queryByRole } = render(<ActionRow block={block} onApproval={onApproval} />);
     expect(container.textContent).toContain("Pushing");
     expect(container.querySelector('[data-glyph] [data-state="waiting"]')).not.toBeNull();
     expect(queryByRole("button", { expanded: false })).toBeNull();
+    expect(queryByRole("button", { expanded: true })).toBeNull();
+    const pre = container.querySelector("pre")!;
+    expect(pre.textContent).toBe("$ git push");
+    const allow = getByRole("button", { name: "Allow" });
+    expect(pre.compareDocumentPosition(allow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(getAllByRole("button", { name: "Allow" })).toHaveLength(1);
-    fireEvent.click(getByRole("button", { name: "Allow" }));
+    fireEvent.click(allow);
     expect(onApproval).toHaveBeenCalledWith(7, "allow");
   });
 
@@ -194,13 +200,19 @@ describe("ActionRow", () => {
     expect(queryByRole("button", { name: "Allow" })).toBeNull();
   });
 
-  it("an edit waiting on approval is an action row, not an edit row", () => {
+  it("an edit waiting on approval shows its diff open above one approval card", async () => {
     const block = call("Edit", { file_path: "/repo/a.ts", old_string: "a", new_string: "b" }, { status: "pending", approval: { requestId: 3 } });
     const { container, getAllByRole } = render(<ActivityRow block={block} cwd="/repo" />);
+    await act(async () => {
+      await diffChunk.load();
+    });
     expect(container.textContent).toContain("Editing");
     expect(container.querySelector('[data-glyph] [data-state="waiting"]')).not.toBeNull();
+    expect(container.textContent).toMatch(/−\s*a/);
+    expect(container.textContent).toMatch(/\+\s*b/);
     expect(getAllByRole("button", { name: "Allow" })).toHaveLength(1);
   });
+
 
   it("a spawn row opens its agent and says where it stands", () => {
     const onSelect = vi.fn();

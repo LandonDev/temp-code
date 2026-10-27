@@ -4,8 +4,9 @@ import { type Block } from "../../lib/session";
 import type { OpenFileFn } from "../../lib/search";
 import { EditRow } from "../EditRow";
 import { splitEditCards } from "../editCards";
-import { isIncompleteTool, needsApproval, toolCallLabel, toolCallState } from "../transcriptActivity";
+import { isIncompleteTool, toolCallLabel, toolCallState } from "../transcriptActivity";
 import { ActionRow } from "./ActionRow";
+import { ApprovalCard } from "./ApprovalCard";
 import type { ApprovalHandler } from "./types";
 
 /**
@@ -34,16 +35,17 @@ export function ToolCall({
   const label = toolCallLabel(block, cwd);
   const editTool = isEditTool(block.tool?.kind, block.text || block.tool?.title, preview);
 
-  // One row per file an edit touched, app bookkeeping as a plain row. An
-  // edit still waiting on approval is an action row: its card shows the ask.
-  if (editTool && !plain && !block.question && !needsApproval(block)) {
+  // One row per file an edit touched, app bookkeeping as a plain row, the
+  // approval under them while it waits (each file's diff open above it).
+  if (editTool && !plain && !block.question) {
     const { cards, internal } = splitEditCards(block);
     return (
       <>
         {cards.map((card) => (
           <EditRow key={card.id} block={card} cwd={cwd} onOpenFile={onOpenDiff ?? onOpenFile} />
         ))}
-        {internal ? <ActionRow block={internal} cwd={cwd} onOpenFile={onOpenFile} /> : null}
+        {internal ? <ActionRow block={internal} cwd={cwd} onOpenFile={onOpenFile} approval={false} /> : null}
+        <ApprovalCard block={block} onApproval={onApproval} />
       </>
     );
   }
