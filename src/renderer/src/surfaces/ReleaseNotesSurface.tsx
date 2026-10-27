@@ -1,8 +1,9 @@
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
-import {
-  releaseNotesMarkdown,
-  type ReleaseNotesTabSource,
-} from "../lib/releaseNotes";
+import type { ReleaseNotesTabSource } from "../lib/releaseNotes";
+import { releaseNotesMarkdown } from "../lib/releaseNotesParse";
+
+/** App asks for a version's notes through this chunk (`releaseNotesChunk.load()`). */
+export { releaseNotesForVersion } from "../lib/releaseNotesParse";
 import { AgentMarkdown } from "./AgentMarkdown";
 import { EmptyState } from "./SurfaceSkeleton";
 

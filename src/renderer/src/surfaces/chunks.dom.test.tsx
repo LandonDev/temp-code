@@ -16,7 +16,7 @@ const EXPECTED: Record<keyof typeof allChunks, string[]> = {
   htmlRenderChunk: ["HtmlRenderRow", "HtmlRenderDocument", "HtmlRenderViewer"],
   mediaChunk: ["MediaGate", "MediaReview"],
   lightboxChunk: ["Lightbox"],
-  releaseNotesChunk: ["ReleaseNotesSurface"],
+  releaseNotesChunk: ["ReleaseNotesSurface", "releaseNotesForVersion"],
   rightPanelChunk: ["RightPanel"],
   searchChunk: ["SearchView"],
   inboxChunk: ["InboxView", "InboxDetailPane"],

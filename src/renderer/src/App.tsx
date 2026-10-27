@@ -86,9 +86,6 @@ import {
   type SplitDir,
   type WorkspaceTab,
 } from "./lib/layout";
-import {
-  releaseNotesForVersion,
-} from "./lib/releaseNotes";
 import { orderByIds } from "./lib/reorder";
 import {
   applyDockGridStyle,
@@ -283,7 +280,7 @@ import {
 import { PaneTree } from "./surfaces/PaneTree";
 import { SessionActionsContext, type SessionActions } from "./surfaces/threadChat";
 import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
-import { aliaxChunk, inboxChunk, notesChunk, searchChunk, settingsChunk, terminalChunk } from "./surfaces/chunks";
+import { aliaxChunk, inboxChunk, notesChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk } from "./surfaces/chunks";
 import { devPane, devPaneStore, useDevPane } from "./lib/devPane";
 import { useNativeMenuState } from "./lib/nativeMenuState";
 import { SurfaceSkeleton } from "./surfaces/SurfaceSkeleton";
@@ -681,15 +678,17 @@ export default function App() {
       shell.showWhatsNew({ version, markdown });
       return;
     }
-    const document = releaseNotesForVersion(version);
-    if (!document) {
-      void message(
-        "Release notes for this version are not available in this build.",
-        { title: "TempCode" },
-      );
-      return;
-    }
-    shell.showWhatsNew({ version: document.source.version });
+    void releaseNotesChunk.load().then(({ releaseNotesForVersion }) => {
+      const document = releaseNotesForVersion(version);
+      if (!document) {
+        void message(
+          "Release notes for this version are not available in this build.",
+          { title: "TempCode" },
+        );
+        return;
+      }
+      shell.showWhatsNew({ version: document.source.version });
+    });
   }, []);
 
   const onNew = useCallback(() => {

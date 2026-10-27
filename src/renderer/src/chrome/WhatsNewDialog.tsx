@@ -1,9 +1,5 @@
-import {
-  formatReleaseDate,
-  presentReleaseNotes,
-  releaseNotesTitle,
-  type ReleaseNotesPresentation,
-} from "../lib/releaseNotes";
+import { formatReleaseDate, releaseNotesTitle } from "../lib/releaseNotes";
+import { presentReleaseNotes, type ReleaseNotesPresentation } from "../lib/releaseNotesParse";
 import { AgentMarkdown } from "../surfaces/AgentMarkdown";
 import { ScrollArea } from "@renderer/components/ui/scroll-area";
 import { Modal } from "./Modal";

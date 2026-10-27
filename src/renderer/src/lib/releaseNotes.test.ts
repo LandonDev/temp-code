@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  formatReleaseDate,
-  presentReleaseNotes,
-  releaseNotesForVersion,
-  releaseNotesMarkdown,
-  releaseNotesTitle,
-} from "./releaseNotes";
+import { formatReleaseDate, releaseNotesTitle } from "./releaseNotes";
+import { presentReleaseNotes, releaseNotesForVersion, releaseNotesMarkdown } from "./releaseNotesParse";
 
 const fixture = `# Changelog
 
