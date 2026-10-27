@@ -929,8 +929,9 @@ routed to (aliax-core's `forward`). Two listeners:
   parsers in threadResourcesParse.ts record nothing a command did not
   demonstrably create: git's `Preparing worktree` line, simctl's UDID,
   `TEMP_CODE_USER_DATA`), filed under the top-level thread with the id of the
-  host the resource lives on. The thread menu's "Resources…" panel removes
-  one at a time; archiving a thread with rows asks "and remove N resources on
+  host the resource lives on. The thread menu's "Resources…" is a removal
+  form (a checkbox per row, Remove N; disabled when the thread has nothing
+  but dev servers, which Activity and the dev servers pane hold); archiving a thread with rows asks "and remove N resources on
   the Mac" (on by default; `session.archive { removeResources }` through
   the renderer's `archiveThread()` in lib/threadResources.ts; the fleet's
   Archive done goes through `session.batch { cleanup }` and the registry's
@@ -971,7 +972,8 @@ routed to (aliax-core's `forward`). Two listeners:
   http://localhost:5174 on the Mac (5173 is taken there)" in the shell
   call's result (claude's PostToolUse hook; a whispered `<dev-server>` line
   otherwise, portTail.ts); the call's transcript row ends with "Open on the
-  Mac :5174", the Resources panel has Open and Stop. The bottom dock's
+  Mac :5174", and the Activity section and the dev servers pane have Open
+  and Stop. The bottom dock's
   Dev servers tab starts one (its starter, surfaces/DevStarter.tsx):
   the host detects targets, only what a person would pick
   (devTargets.ts: the root's dev script with the lockfile's runner, then
@@ -995,8 +997,7 @@ routed to (aliax-core's `forward`). Two listeners:
   connected host now (a running run, or a ledger `port` row still listening
   that passes the shared rules; a port a run holds is listed once), under
   the thread it belongs to, in plain words ("Vite dev server") with its
-  address, "Open on the Mac :5174" and Stop (chrome/DevServerRow.tsx, the
-  same row in the thread's Resources); a row leaves the moment its host
+  address, "Open on the Mac :5174" and Stop (chrome/DevServerRow.tsx); a row leaves the moment its host
   drops it. The dock
   is bottom only and has one bar (chrome/DockBar.tsx: the project's
   terminals and the Dev servers tab as line tabs, New terminal, Hide); the
@@ -2011,9 +2012,11 @@ proof and the sizing rules; the pieces, by name:
 
 ## The menu bar: one table
 src/shared/menuTree.ts is the menu as data, read by main (src/main/menu.ts),
-the in-app bar and the tests: TempCode, File, Edit, View, Go (navigation),
-Threads (Switch Model, Mark All Read, the fleet switches), Window and Help
-(Show Logs opens `<userData>/logs`, the host profile, Developer Tools). Ids
+the in-app bar and the tests: TempCode, File, Edit, View (Force Reload,
+keyless, reloads the focused window past its cache from main), Go
+(navigation), Threads (Switch Model, Mark All Read, the fleet switches),
+Window and Help (What's New opens the running build's notes, Show Logs opens
+`<userData>/logs`, the host profile, Developer Tools). Ids
 are command ids of lib/appCommands.ts; `MAIN_MENU_IDS` act in main. Each
 window sends what it shows over `menu:state` (lib/nativeMenuState.ts:
 Show/Hide on the three toggles, idle rows greyed) and main rebuilds the menu

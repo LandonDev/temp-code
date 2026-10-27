@@ -103,7 +103,7 @@ A panel's inset is 12px; a dialog's 20px. Never a value off the grid.
 ### Radius ladder
 
 `sm` 4px a key cap, a checkbox; `md` 6px a row's hover, a small button;
-`lg` 8px a button, a field, a menu at the `sm` size, a card inside content;
+`lg` 8px a button, a field, a menu row, a card inside content;
 `xl` 12px a popover, a card that stands alone, the composer; `2xl` 16px a
 dialog, a sheet; `full` a switch, an avatar, a pill. Nested radii are
 concentric: the inner radius is the outer minus the padding.
@@ -223,7 +223,12 @@ A modal (`Dialog`) is for a form, a CRUD action or a decision that needs the
 whole screen's attention; it never holds a list that could be a panel. A
 confirm (`AlertDialog`) is for destructive, irreversible actions only, with
 one title, one line and two buttons; code that must ask first awaits
-`useConfirm()` (chrome/ConfirmDialog.tsx), never `window.confirm`.
+`useConfirm()` (chrome/ConfirmDialog.tsx), never `window.confirm`. A
+confirm never holds a checkbox: a destructive decision with options is a
+form `Dialog` with its `CheckRow`s and the red verb in its footer (Delete
+project with cleanup or other copies). A thread's resources are a removal
+form of that kind; its dev servers live in the Activity section and the
+dev servers pane, never in a dialog.
 `chrome/Modal.tsx` and `chrome/ConfirmDialog.tsx` are thin shells on
 `Dialog` and `AlertDialog` for their existing callers. A sheet is for a long form or picker
 that would not fit a dialog. A menu (`DropdownMenu`, `ContextMenu`) is
@@ -231,7 +236,8 @@ verbs; a popover is content (a picker, a preview, a list of accounts). A
 menu's rows are `MenuRow` data rendered by `RowsMenu` (from a trigger) or
 `RowsContextMenu` (one per list, at the pointer), each row a 14px glyph, a
 label and the key cap of a real binding (`shortcutFor`); the window's menu
-bar alone is words and keys. A thread offers the same rows on every
+bar alone is words and keys. Menus come in one size: the row of "Spacing",
+in the dropdown and the context menu alike. A thread offers the same rows on every
 surface (lib/threadMenu.ts). Menus and popovers load with their first use,
 out of the first paint (chrome/menuRows.tsx). A label on hover is `Tip` or
 `TruncateTip`, never a `title=`. A

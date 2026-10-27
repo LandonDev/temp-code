@@ -1623,11 +1623,15 @@ a thread that holds something.
   archive lands. Ids only, never a caller path, so the fence has nothing to
   check. The host pushes `{ push: 'resources', sessionId, resources }` after
   every change.
-- **Renderer**: the thread menu's "Resources…" (count once known) opens the
-  dialog (chrome/ThreadResourcesDialog.tsx): one row per resource, its label
-  in mono with the identifier on its tooltip, host, kind and the last outcome
-  under it, Remove (Stop for a dev server), "Waiting" while the host is
-  offline, Remove all; "Nothing recorded" when there are none. Archive on a
+- **Renderer**: the thread menu's "Resources…" (count once known, disabled
+  at none) opens a removal form (chrome/ThreadResourcesDialog.tsx): one
+  unchecked checkbox per worktree, simulator or dev instance, its kind, its
+  label in mono with the identifier on its tooltip, host and last outcome,
+  and one red "Remove N"; a row its host is still removing cannot be picked,
+  a loading line shows until the ledger answers, and the form closes once a
+  removal leaves nothing. Dev servers are not in it: the Activity section
+  and the dev servers pane list and stop them, and the menu's count leaves
+  them out. Archive on a
   thread with rows asks first: "and remove 2 resources on the Mac" as a
   checkbox, on by default, the resources as plain lines under it. A single archive calls
   `archiveThread(sessionId, { removeResources })` (lib/threadResources.ts);
@@ -1735,8 +1739,8 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
   run's, listed once), titled in plain words ("Vite dev server", read past
   the package runner: `commandWords`), with its address, the host glyph
   when two hosts are paired, "Open on the Mac :5174" when it opens here,
-  and Stop (chrome/DevServerRow.tsx; a thread's Resources dialog shows the
-  same rows from the same list). A port the shared rules say is not a dev
+  and Stop (chrome/DevServerRow.tsx; a thread's Activity section lists its
+  own). A port the shared rules say is not a dev
   server (the gate's or a test run's worker) is never announced to the
   thread. The host dropping a server takes its row out at once: no
   "Exited" rows, no
@@ -1779,8 +1783,8 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
 - **Where it shows.** A shell call's transcript row ends with "Open on the
   Mac :5174" for the port its command opened (src/renderer/src/surfaces/
   CallPortLink.tsx; "Open in browser" for a Mac thread's own server); the
-  Resources panel lists the port with where it opens here, Open and Stop;
-  and the thread hears the Mac's URL: claude in the shell call's own result
+  Activity section and the dev servers pane list the port with where it
+  opens here, Open and Stop; and the thread hears the Mac's URL: claude in the shell call's own result
   through a PostToolUse hook ("Forwarded to http://localhost:5174 on the
   Mac (5173 is taken there)"), other harnesses as a `<dev-server>` line
   whispered into the turn once the Mac bound it (src/main/server/
@@ -1817,7 +1821,7 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
   backpressure, allocation, the switch, a link drop, a 3 MiB body), and the
   renderer's devPorts, devServers (the pane's rules: which rows show, removal
   on drop, nothing opens it), DevServersPane, DevStarter,
-  workspaceSnapshot (old tabs dropped) and ThreadResourcesDialog.
+  and workspaceSnapshot (old tabs dropped).
 - Not built yet: the host-based subdomain proxy behind the cookie, the
   phone's road to a box dev server.
 

@@ -91,7 +91,7 @@ In the classic strip one right-click menu serves the tabs and the group
 chips: a tab's thread rows then its group rows, a group's Customize… and
 its verbs.
 
-The ⋯ menu (chrome/ThreadMenu.tsx, a `RowsMenu` at the `sm` size) has
+The ⋯ menu (chrome/ThreadMenu.tsx, a `RowsMenu`) has
 three groups. First a quiet line, not an item: the host's glyph and name
 when the window has two or more hosts, and the thread's cost at the end in
 `tabular-nums` when it is above zero; absent when it would say nothing.
