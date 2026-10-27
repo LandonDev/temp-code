@@ -27,7 +27,8 @@ export function DevServersPane({
 }: {
   onSizePaint: (size: number) => void;
   onSizeCommit: (size: number) => void;
-  onShowTerminal: () => void;
+  /** Absent at /ui, where there is no terminal to switch to. */
+  onShowTerminal?: () => void;
 }) {
   const size = useDevPane((s) => s.size);
   const picked = useDevPane((s) => s.picked);
@@ -51,15 +52,17 @@ export function DevServersPane({
           <IconButton label="Start a Dev Server" onClick={() => rightPanel.show("dev")}>
             <Play className="size-3.5" strokeWidth={1.75} />
           </IconButton>
-          <IconButton
-            label="Terminal"
-            onClick={() => {
-              devPane.close();
-              onShowTerminal();
-            }}
-          >
-            <Terminal className="size-3.5" strokeWidth={1.75} />
-          </IconButton>
+          {onShowTerminal ? (
+            <IconButton
+              label="Terminal"
+              onClick={() => {
+                devPane.close();
+                onShowTerminal();
+              }}
+            >
+              <Terminal className="size-3.5" strokeWidth={1.75} />
+            </IconButton>
+          ) : null}
           <IconButton label="Hide Dev Servers" onClick={devPane.close}>
             <ChevronDown className="size-3.5" strokeWidth={1.75} />
           </IconButton>

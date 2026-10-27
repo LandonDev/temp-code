@@ -3756,7 +3756,7 @@ export default function App() {
                     dockDragSize.current = null;
                     devPane.size(size);
                   }}
-                  onShowTerminal={onShowProjectTerminal}
+                  onShowTerminal={desktopOnly(onShowProjectTerminal)}
                 />
               </div>
             ) : null}

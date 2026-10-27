@@ -163,7 +163,11 @@ export function MenuBar({
     ],
   );
 
-  const getMenuItems = (key: MenuKey): ExplorerMenuItem[] => {
+  // A row whose handler is absent (the terminal at /ui) is not drawn.
+  const absent = new Set([...(onNewTerminal ? [] : ["new_terminal"]), ...(onToggleTerminal ? [] : ["toggle_terminal"])]);
+  const getMenuItems = (key: MenuKey): ExplorerMenuItem[] =>
+    menuItemsFor(key).filter((item) => item.kind !== "item" || !absent.has(item.id));
+  const menuItemsFor = (key: MenuKey): ExplorerMenuItem[] => {
     switch (key) {
       case "file":
         return [
@@ -211,7 +215,7 @@ export function MenuBar({
   const MENUS: { key: MenuKey; label: string }[] = [
     { key: "file", label: "File" },
     { key: "view", label: "View" },
-    { key: "terminal", label: "Terminal" },
+    ...(onNewTerminal || onToggleTerminal ? [{ key: "terminal" as const, label: "Terminal" }] : []),
   ];
 
   return (

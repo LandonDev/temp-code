@@ -20,7 +20,8 @@ const request = (env: string) => async (method: string, params: unknown) => {
 vi.mock('./DevConsole', () => ({
   DevConsole: ({ source }: { source: { runId?: string; resourceId?: string } }) => <div data-console={source.runId ?? source.resourceId} />
 }))
-vi.mock('../lib/tcserver/workspaces', () => ({
+vi.mock('../lib/tcserver/workspaces', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/tcserver/workspaces')>()),
   useProjects: () => [{ id: 'p9', environmentId: 'env_box', cwd: '/srv/agents/work/cosmicweb', workspaceId: 'w', name: 'cosmicweb' }],
   useWorkspaces: () => []
 }))
@@ -87,6 +88,12 @@ describe('DevServersPane', () => {
     probe?.unmount()
     probe = null
     vi.restoreAllMocks()
+  })
+
+  it('has no Terminal button without a terminal to show (the page at /ui)', () => {
+    probe = mountProbe(<DevServersPane onSizePaint={() => {}} onSizeCommit={() => {}} />)
+    expect(probe.container.querySelector('[aria-label="Terminal"]')).toBeNull()
+    expect(probe.container.querySelector('[aria-label="Hide Dev Servers"]')).not.toBeNull()
   })
 
   it('says one quiet line when nothing runs', () => {
