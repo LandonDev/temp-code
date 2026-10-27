@@ -1,4 +1,4 @@
-import { cloneElement, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type Ref } from "react";
+import { cloneElement, useLayoutEffect, useState, type ReactElement, type ReactNode, type Ref } from "react";
 import { Kbd } from "./ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
@@ -36,6 +36,29 @@ export function Tip({
 }
 
 /**
+ * Whether a truncating element cuts its text, measured on mount, on a new
+ * text and on every resize. `ref` goes on the element; a callback, so an
+ * element that mounts again (after an inline rename) is measured again.
+ */
+export function useTruncated(text: string): { ref: (el: HTMLElement | null) => void; cut: boolean } {
+  const [el, ref] = useState<HTMLElement | null>(null);
+  const [cut, setCut] = useState(false);
+  useLayoutEffect(() => {
+    if (!el) {
+      setCut(false);
+      return;
+    }
+    const measure = () => setCut(el.scrollWidth > el.clientWidth);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [el, text]);
+  return { ref, cut };
+}
+
+/**
  * Text that may be cut off, with the whole of it on hover only while it is
  * cut. `children` is the truncating element (a DOM element, or a component
  * that puts its ref on one).
@@ -49,18 +72,7 @@ export function TruncateTip({
   side?: Side;
   children: ReactElement<{ ref?: Ref<HTMLElement> }>;
 }) {
-  const ref = useRef<HTMLElement | null>(null);
-  const [cut, setCut] = useState(false);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const measure = () => setCut(el.scrollWidth > el.clientWidth);
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [text]);
+  const { ref, cut } = useTruncated(text);
   return (
     <Tooltip disabled={!cut}>
       <TooltipTrigger render={cloneElement(children, { ref })} />

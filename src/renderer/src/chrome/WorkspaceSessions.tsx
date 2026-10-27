@@ -37,6 +37,7 @@ import { STATUS_WORD, StatusMark, type ThreadState } from "../components/ui/stat
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
+import { useTruncated } from "../components/tip";
 import { cn } from "../lib/cn";
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import { projectFolds, projectFoldsStore, projectOpen, useProjectOpen } from "../lib/projectFolds";
@@ -332,9 +333,21 @@ export function ThreadRowView({
   const planReady = !!useContext(PlanReadyContext)[row.id];
   const verdict = word && row.failure && rowState(row) === "failed" ? row.failure : null;
   const mark = rowMark(row, planReady);
+  const shownTitle = row.title || (child && !row.masterId ? "Subagent" : "Untitled");
   // Hover and focus put More over the glyph, so the row itself says the
   // word and its detail: the pointer anywhere on it, or the keyboard on it.
-  const tip = !word && !editing && marksAtRest(mark.state) ? mark.label : null;
+  const state = !word && !editing && marksAtRest(mark.state) ? mark.label : null;
+  // A cut title is the row's one tooltip too: the whole title, the word under it.
+  const { ref: titleRef, cut } = useTruncated(shownTitle);
+  const tip =
+    cut && !editing ? (
+      <span className="flex flex-col text-left">
+        <span>{shownTitle}</span>
+        {state ? <span className="font-normal text-background/60">{state}</span> : null}
+      </span>
+    ) : (
+      state
+    );
   const element = (
     <div
       role="button"
@@ -365,12 +378,14 @@ export function ThreadRowView({
         title
       ) : verdict ? (
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="truncate">{row.title || "Untitled"}</span>
+          <span ref={titleRef} className="truncate">
+            {shownTitle}
+          </span>
           <span className="truncate text-[12px] text-muted-foreground">{verdict}</span>
         </span>
       ) : (
-        <span className={cn("min-w-0 truncate", live ? "shrink" : "flex-1", row.unread && "font-medium text-foreground")}>
-          {row.title || (child && !row.masterId ? "Subagent" : "Untitled")}
+        <span ref={titleRef} className={cn("min-w-0 truncate", live ? "shrink" : "flex-1", row.unread && "font-medium text-foreground")}>
+          {shownTitle}
         </span>
       )}
       {!editing ? (

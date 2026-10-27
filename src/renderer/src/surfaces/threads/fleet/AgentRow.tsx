@@ -1,4 +1,5 @@
 import { HostGlyph } from "../../../chrome/HostGlyph";
+import { TruncateTip } from "../../../components/tip";
 import { ItemButton } from "../../../components/ui/item";
 import { StatusMark } from "../../../components/ui/status";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
@@ -46,7 +47,9 @@ export function AgentRowView({
       )}
     >
       {Glyph ? <Glyph className="size-4 shrink-0 text-muted-foreground" /> : null}
-      <span className="max-w-1/2 shrink-0 truncate font-medium text-foreground">{meta.title || "Subagent"}</span>
+      <TruncateTip text={meta.title || "Subagent"}>
+        <span className="max-w-1/2 shrink-0 truncate font-medium text-foreground">{meta.title || "Subagent"}</span>
+      </TruncateTip>
       <HostGlyph environmentId={meta.environmentId} className="shrink-0" />
       {marksAtRest(status.state) ? (
         <span className="ml-auto flex min-w-0 justify-end">
