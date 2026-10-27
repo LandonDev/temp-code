@@ -79,17 +79,12 @@ function accountRoom(report: UsageReport, accounts: ProviderAccounts, general: S
     const until = limit.until !== undefined && limit.until > now ? limit.until : null
     return { room: 0, resetsAt: until, throttled, throttledUntil }
   }
-  let room = 1
-  let resetsAt: number | null = null
-  for (const w of report.windows) {
-    if (general && !general.has(w.label)) continue
-    if (!isLive(w, now)) continue
-    const r = roomOfWindow(w)
-    if (r < room) {
-      room = r
-      resetsAt = w.resetsAt !== undefined && w.resetsAt > now ? w.resetsAt : null
-    }
-  }
+  const live = report.windows.filter((w) => (!general || general.has(w.label)) && isLive(w, now))
+  const room = Math.min(1, ...live.map(roomOfWindow))
+  // The room rises only once every window at the minimum has refilled: the latest of their resets.
+  const binding = room < 1 ? live.filter((w) => roomOfWindow(w) === room) : []
+  const resets = binding.map((w) => (w.resetsAt !== undefined && w.resetsAt > now ? w.resetsAt : null))
+  const resetsAt = resets.length === 0 || resets.includes(null) ? null : Math.max(...(resets as number[]))
   return { room, resetsAt, throttled, throttledUntil }
 }
 

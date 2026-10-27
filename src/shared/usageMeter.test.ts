@@ -113,6 +113,13 @@ describe('meterFor', () => {
     expect(meterFor('claude', full, NOW)!.resetsAt).toBeNull()
   })
 
+  it('waits for the last of two tied windows before it promises a refill', () => {
+    const s = snapshot([report('a', [['5h', 100, NOW + HOUR], ['Weekly', 100, NOW + 72 * HOUR]])])
+    expect(meterFor('claude', s, NOW)!.resetsAt).toBe(NOW + 72 * HOUR)
+    const unknown = snapshot([report('a', [['5h', 100, NOW + HOUR], ['Weekly', 100]])])
+    expect(meterFor('claude', unknown, NOW)!.resetsAt).toBeNull()
+  })
+
   it('reads a window whose reset passed as full', () => {
     const s = snapshot([report('a', [['5h', 100, NOW - 1], ['Weekly', 20, NOW + HOUR]])])
     const m = meterFor('claude', s, NOW)!
