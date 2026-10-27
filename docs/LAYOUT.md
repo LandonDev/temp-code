@@ -80,8 +80,8 @@ something runs; a failure is a toast), Dev server checked while the Dev
 servers pane is open (only when a host can serve the project), Terminal
 with ⌘\`, Recent threads (the settled threads, freshest first, at most
 12, each with its age) and Archived threads… (a `Popover` from the ⋯ button
-with a search field past six; Restore on hover). The branch is the right
-panel's Branch section, not the header's.
+with a search field past six; Restore on hover). The branch is the top row
+of the right panel's Changes section, not the header's.
 
 ### Sidebar
 
@@ -160,24 +160,71 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   watching master's wait or a running dev server exist; Agents when the
   thread has subagents of its own (a master's batch lives on its board,
   never here); Changes when its cwd is a project
-  checkout; Notes for every root; Files, Branch, Build and Dev for a
-  project thread, and Debug for one on a dev build (or with the debug
-  setting on, once one exists). The default is Activity if it exists, else Agents when
+  checkout; Notes for every root; Files, Build and Dev for a
+  project thread, and Debug for one on a dev build or once "Debug this
+  file" asked for it on the thread. The default is Activity if it exists, else Agents when
   the thread has subagents (live or done), else Changes, else Notes; a remembered section that no
   longer exists falls back to the default.
 - **Frame.** A docked column, 320px by default, 260 to 480 by the sash on
   its left edge, on `bg-sidebar` with the `border-border` hairline; a 36px
   header of `Tabs variant="line"` and a close button; the section's body
-  below (`FleetList`, `NotesBody`, `ChangesPanel`, `FileTree`,
-  `BranchPanel`, `BuildPanel`, `DevServerPanel`, `DebugPanel`, and a
-  placeholder Activity listing what the meta says runs until area A6 lands
-  the live list). It toggles, never tweens its width; the body fades in
+  below (`ActivitySection`, `FleetList`, `NotesBody`, `ChangesPanel`,
+  `FileTree`, `BuildPanel`, `DevServerPanel`, `DebugPanel`). It toggles, never tweens its width; the body fades in
   over `--dur-fast`. Closed is closed: the thread header's button, ⌘⇧R and
   View › Show Panel reopen it on its last section. An agent's
   detail (`fleet.detailId`, surfaces/threads/fleet/AgentDetail.tsx) is a
   672px `Sheet` from the window's right edge (what it holds: "Orchestration"
   below). Its transcript mounts once the slide in has finished, and Open
   closes it before splitting the agent beside its parent.
+- **Bodies.** No section has a border, a card or a header bar of its own;
+  the panel's header is the only one. A section is a column with a 12px
+  inset, 28px rows (`Item size="xs"`, hover `bg-foreground/5`, selected
+  `bg-muted` with `aria-current`), groups 16px apart under a 12px medium
+  muted heading only where two groups meet, nothing in a row animating.
+  Each body is a container (hooks, requests) over a pure `…View` that its
+  jsdom test and `<Name>.fixtures.tsx` render.
+  - **Agents** (`FleetList`): A18's rows in a scroll area; none is one
+    Empty, "No subagents".
+  - **Changes** (`chrome/rail/ChangesPanel.tsx`): the one place a
+    checkout's changes are listed. Its top row is the branch (its upstream
+    on hover), Sync with `↓2 ↑1` or Publish, Create PR or PR #n, and a ⋯
+    menu (Pull, Push, Stash changes, Stage all, Unstage all); a push to the
+    default branch confirms. Then the index: Staged and Changes headed
+    only when both have rows, each row the file's type icon, its name with
+    the folder after it, Unstage or Discard and Stage on hover or focus,
+    and `+n −n` (New, Deleted); a click opens the diff against HEAD, the
+    right-click menu adds Open in <editor>, and a modified file folds open
+    into hunks (the caret takes the icon's place on hover), each stageable
+    (`hunksOf` in surfaces/editorGit.ts, reached through `import()`). Under
+    them the Against group (`ChangesAgainst.tsx`, what the Branch section
+    was): a `Select` of the target, `↑3 ↓1`, a ⋯ menu with Update from,
+    Rebase onto and Merge into (a local target only), the files changed
+    since the merge base opening the diff against it, and one fold line,
+    "3 commits ahead  1 behind", over the commits; a landed move is a
+    toast, conflicts one `Alert` with nothing changed. The commit field is
+    pinned at the foot while there are changes: the generate button inside
+    it, Commit (⌘↩) with a menu for Commit & push and Commit, push & create
+    PR. Loading is skeleton rows, nothing is one Empty, "No changes", a
+    failure one red line.
+  - **Notes** (`NotesBody`): the state line ("Updated 2m ago", "Saving…",
+    "Not saved" in red), Copy as brief and a pencil at the top; the pencil
+    swaps the rendered notes (`AgentMarkdown size="compact"`) for the
+    source in place and becomes Done (Escape too); a thread write while the
+    person types is one line with Load theirs. None is one Empty with
+    "Start the notes".
+  - **Files** (`FileTree`): New file, New folder and Collapse all as icon
+    buttons over the tree; no root row (the project is the panel's
+    context; its actions are the background's right-click menu), no diff
+    counts (Changes has them).
+  - **Build** (`BuildPanel`): the target `Select` and Build or Cancel; one
+    status row (`StatusMark`: Working with the time, Done, Failed with the
+    exit code, Stopped) over the command; "2 behind origin" with Fetch only
+    when a fetch is due; the log; the outputs as rows that reveal the file.
+    No command is one Empty with "Set one" (the workspace's Build settings).
+  - **Debug** (`DebugPanel`): with no session one muted line, "⌃D in a
+    Java file starts a session here"; while one runs, the step controls,
+    its `StatusMark` (Working, Paused) and Stop, then Call stack, Variables
+    and Console, and the Evaluate field, live only while paused.
 
 ### The viewers
 

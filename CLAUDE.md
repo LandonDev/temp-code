@@ -307,7 +307,7 @@ app replaces itself from the feed, and only from the feed.
   warm machine never shows the skeleton); the first thread on screen warms
   the diff and thread-view chunks in an idle slot (`preloadWhenIdle`).
   A module in a lazy chunk must never be imported statically from the main
-  chunk (the rail's ChangesPanel and App.tsx's editor find keys reach the
+  chunk (the right panel's Changes section and App.tsx's editor find keys reach the
   editor chunk through `import()` and `surfaces/editorFind.ts`); the
   transcript's highlighter loads each grammar's chunk on first use
   (lib/highlightLanguages.ts). `electron-vite build` writes the chunk map to
