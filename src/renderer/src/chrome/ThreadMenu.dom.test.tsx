@@ -18,6 +18,7 @@ const facts = (over: Partial<ThreadMenuFacts> = {}): ThreadMenuFacts => ({
   parentId: null,
   master: false,
   resources: 0,
+  removable: 0,
   goal: null,
   moves: [],
   ...over,
@@ -152,7 +153,7 @@ describe("MenuRows", () => {
   });
 
   it("the ⋯ menu and the chip's right-click render the same rows", async () => {
-    const items = threadMenuRows(facts({ resources: 2, master: true }));
+    const items = threadMenuRows(facts({ resources: 2, removable: 2, master: true }));
     const labels = (root: HTMLElement) =>
       [...root.querySelectorAll('[role^="menuitem"]')].map((el) => el.textContent);
     render(

@@ -6,7 +6,7 @@ import { sessionStore } from "../lib/tcserver/store";
 import type { ThreadRules } from "@server/shared/rules";
 import type { SessionMeta, ThreadType } from "../lib/tcserver/types";
 import { threadMenuRows, type ThreadMenuExtra } from "../lib/threadMenu";
-import { archiveThread, liveResources, loadThreadResources, startThreadResources, useThreadResources } from "../lib/threadResources";
+import { archiveThread, isRemovable, liveResources, loadThreadResources, startThreadResources, useThreadResources } from "../lib/threadResources";
 import { workspaceTabsStore } from "../stores/workspace";
 import { workspaceActions } from "../stores/workspaceActions";
 import { SessionActionsContext } from "../surfaces/threadChat";
@@ -105,6 +105,7 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
         parentId: t.parentId ?? null,
         master: masterIds.has(id),
         resources: own ? resources.length : 0,
+        removable: own ? resources.filter(isRemovable).length : 0,
         goal,
         bridge:
           own && bridgeableEnvironment(environmentId)

@@ -41,8 +41,12 @@ export type ThreadMenuFacts = {
   projectId: string | null;
   parentId: string | null;
   master: boolean;
-  /** Live resources on the ledger (worktrees, simulators, dev instances). */
+  /** Live resources on the ledger (worktrees, simulators, dev instances,
+   *  dev servers): Archive asks about them. */
   resources: number;
+  /** The rows Resources… can remove: the ledger less its dev servers, which
+   *  live in Activity and the dev servers pane. 0 disables the row. */
+  removable: number;
   /** null: no Goal… row (the harness keeps no goal, or no composer is on
    *  screen to answer); else checked while a goal runs. */
   goal: boolean | null;
@@ -121,7 +125,13 @@ export function threadMenuRows(facts: ThreadMenuFacts, extra: ThreadMenuExtra = 
     });
     if (on) rows.push({ kind: "item", id: "mac-bridge-rules", label: "Mac approvals…", icon: Lock });
   }
-  rows.push({ kind: "item", id: "resources", label: "Resources…", icon: Blocks, ...(facts.resources ? { hint: String(facts.resources) } : {}) });
+  rows.push({
+    kind: "item",
+    id: "resources",
+    label: "Resources…",
+    icon: Blocks,
+    ...(facts.removable ? { hint: String(facts.removable) } : { disabled: true }),
+  });
   if (facts.projectId && !facts.parentId) rows.push({ kind: "item", id: "master", label: masterMenuLabel(facts.master), icon: Star });
   rows.push({ kind: "sep" }, ...facts.moves, { kind: "sep" });
 

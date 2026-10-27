@@ -1,18 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import type { ThreadResource } from '@server/shared/contract-resources'
-import { tooltipChunk, warmTooltips } from '@renderer/components/ui/tooltip'
 import { mountProbe } from '../test/renderProbe'
 import { threadResourcesStore } from '../lib/threadResources'
-import { macBridgeStore } from '../lib/macBridge'
-import { sessionStore } from '../lib/tcserver/store'
 
 const archive = vi.hoisted(() => ({ fn: null as null | ((id: string, opts: unknown) => Promise<void>) }))
+const removal = vi.hoisted(() => ({ fn: vi.fn() }))
 vi.mock('../lib/threadResources', async (importOriginal) => {
   const real = await importOriginal<typeof import('../lib/threadResources')>()
-  return { ...real, archiveThread: (id: string, opts: { removeResources: boolean }) => (archive.fn ? archive.fn(id, opts) : real.archiveThread(id, opts)) }
+  return {
+    ...real,
+    archiveThread: (id: string, opts: { removeResources: boolean }) => (archive.fn ? archive.fn(id, opts) : real.archiveThread(id, opts)),
+    removeThreadResources: (...args: unknown[]) => removal.fn(...args)
+  }
 })
-import { ArchiveThreadDialog, ThreadResourceList } from './ThreadResourcesDialog'
+import { ArchiveThreadDialog, ThreadResourcesDialog } from './ThreadResourcesDialog'
 
 vi.mock('../lib/tcserver/store', async (importOriginal) => {
   const real = await importOriginal<typeof import('../lib/tcserver/store')>()
@@ -37,112 +39,104 @@ const row = (over: Partial<ThreadResource>): ThreadResource => ({
   ...over
 })
 
-describe('ThreadResourceList', () => {
+describe('ThreadResourcesDialog', () => {
   let probe: ReturnType<typeof mountProbe> | null = null
-  beforeEach(() => threadResourcesStore.setState({ bySession: {} }))
+  beforeEach(() => {
+    threadResourcesStore.setState({ bySession: {} })
+    removal.fn.mockReset()
+  })
   afterEach(() => {
     probe?.unmount()
     probe = null
   })
+  const flush = () => probe!.act(async () => void (await new Promise((r) => setTimeout(r, 0))))
+  const checkbox = (name: RegExp) => screen.getByRole('checkbox', { name })
+  const removeButton = () => screen.getByRole('button', { name: /^Remove/ }) as HTMLButtonElement
+  const open = (onClose = vi.fn()) => {
+    probe = mountProbe(<ThreadResourcesDialog sessionId="s1" title="Coins page" onClose={onClose} />)
+    return onClose
+  }
 
-  it('lists the live rows with host, kind and label (the identifier on its tooltip), hides removed ones, and shows the empty line otherwise', async () => {
+  it('is a removal form: one unchecked box per live row, no dev servers, Remove N counting the picks', async () => {
     threadResourcesStore.setState({
       bySession: {
         s1: [
           row({}),
           row({ id: 'r2', kind: 'simulator', identifier: 'ABCDEF00-0000-4000-8000-000000000000', label: 'tc-ios-home', branch: null }),
-          row({ id: 'r3', removedAt: 9, note: 'branch x deleted' })
+          row({ id: 'r3', removedAt: 9, note: 'branch x deleted' }),
+          row({ id: 'p1', kind: 'port', identifier: '5173', label: 'npx vite', branch: null })
         ]
       }
     })
-    probe = mountProbe(<ThreadResourceList sessionId="s1" empty />)
-    const rows = [...probe.container.querySelectorAll('[data-resource]')]
+    open()
+    await flush()
+    expect(document.body.textContent).toContain('Resources')
+    expect(document.body.textContent).toContain('Coins page')
+    const rows = [...document.body.querySelectorAll('[data-resource]')]
     expect(rows.map((r) => r.getAttribute('data-resource'))).toEqual(['r1', 'r2'])
-    expect(rows[0].textContent).toContain('worktree')
-    expect(rows[0].textContent).toContain('ios/home')
-    // The identifier is the label's tooltip, not a title attribute.
-    expect(probe.container.querySelector('[title]')).toBeNull()
-    // The label is the tooltip's trigger; once the primitive has loaded, a hover opens it.
-    const label = () => probe!.container.querySelector('[data-resource=r1] [data-slot=item-title], [data-resource=r1] [data-slot=tooltip-trigger]') as HTMLElement
-    expect(label().textContent).toBe('ios/home')
-    expect(rows[0].querySelector('[data-slot=item-description]')?.textContent).toBe('macworktree')
-    await probe.act(async () => {
-      warmTooltips()
-      await tooltipChunk.load()
-    })
-    fireEvent.pointerEnter(label(), { pointerType: 'mouse' })
-    fireEvent.mouseEnter(label())
-    fireEvent.mouseMove(label())
-    await waitFor(() => expect(screen.getByText('/Users/landon/IdeaProjects/tc-ios/home')).toBeTruthy(), { timeout: 1500 })
-    expect(rows[1].textContent).toContain('simulator')
-    expect(rows[1].textContent).toContain('tc-ios-home')
-    expect(rows.every((r) => r.querySelector('button')?.textContent === 'Remove')).toBe(true)
-    expect(probe.container.textContent).toContain('Remove all')
-
-    probe.act(() => probe!.rerender(<ThreadResourceList sessionId="s2" empty />))
-    expect(probe.container.querySelectorAll('[data-resource]')).toHaveLength(0)
-    expect(probe.container.querySelector('[data-slot=empty-title]')?.textContent).toBe('Nothing recorded')
-
-    probe.act(() => probe!.rerender(<ThreadResourceList sessionId="s2" />))
-    expect(probe.container.textContent).toBe('')
+    expect(document.body.textContent).not.toContain('npx vite')
+    expect(document.body.textContent).not.toContain('Remove all')
+    expect(document.body.querySelector('[title]')).toBeNull()
+    const boxes = screen.getAllByRole('checkbox')
+    expect(boxes.map((b) => b.getAttribute('aria-checked'))).toEqual(['false', 'false'])
+    expect(removeButton().textContent).toBe('Remove')
+    expect(removeButton().disabled).toBe(true)
+    expect(removeButton().getAttribute('data-variant')).toBe('destructive')
+    fireEvent.click(checkbox(/ios\/home/))
+    expect(removeButton().textContent).toBe('Remove 1')
+    fireEvent.click(checkbox(/tc-ios-home/))
+    expect(removeButton().textContent).toBe('Remove 2')
+    expect(removeButton().disabled).toBe(false)
   })
 
-  it('lists the thread’s live dev servers as the Dev servers pane does, and none the host dropped', () => {
-    macBridgeStore.setState({ localId: 'env_mac' })
-    const env = vi.spyOn(sessionStore, 'environmentOf').mockReturnValue('env_box')
-    const port = (over: Partial<ThreadResource>) =>
-      row({
-        kind: 'port',
-        environmentId: 'env_box',
-        identifier: '5173',
-        label: 'npx vite',
-        branch: null,
-        pid: 42,
-        callId: 'c1',
-        forwards: [{ environmentId: 'env_mac', hostName: 'Mac', macPort: 5174, error: null }],
-        ...over
-      })
-    threadResourcesStore.setState({ bySession: { s1: [port({}), port({ id: 'gone', identifier: '3000', removedAt: 9 })] } })
-    probe = mountProbe(<ThreadResourceList sessionId="s1" />)
-    const servers = [...probe.container.querySelectorAll('[data-dev-server]')] as HTMLElement[]
-    expect(servers.map((r) => r.getAttribute('data-dev-server'))).toEqual(['env_box/r1'])
-    expect(servers[0].textContent).toContain('Vite dev server')
-    expect(servers[0].textContent).toContain('localhost:5173')
-    expect([...servers[0].querySelectorAll('button')].map((b) => b.textContent || b.getAttribute('aria-label'))).toEqual(['Open on the Mac :5174', 'Stop'])
-    expect(probe.container.querySelector('[data-resource]')).toBeNull()
-    macBridgeStore.setState({ localId: null })
-    env.mockRestore()
+  it('shows a loading line until the ledger answers, never an empty state', async () => {
+    open()
+    expect(screen.getByRole('status').textContent).toBe('Loading…')
+    await flush()
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(document.body.textContent).toContain('Nothing left to remove.')
   })
 
-  it('a row waiting on its host shows Waiting and the reason, with Remove held; a note from the last attempt shows under the row', () => {
-    threadResourcesStore.setState({
-      bySession: {
-        s1: [
-          row({ removeRequestedAt: 5, note: 'host offline, waiting for its link' }),
-          row({ id: 'r2', note: 'branch ios/home kept: 2 commits ahead of its upstream' })
-        ]
-      }
-    })
-    probe = mountProbe(<ThreadResourceList sessionId="s1" />)
-    const [waiting, noted] = [...probe.container.querySelectorAll('[data-resource]')]
-    const button = waiting.querySelector('button') as HTMLButtonElement
-    expect(button.textContent).toBe('Waiting')
-    expect(button.disabled).toBe(true)
-    expect(waiting.textContent).toContain('host offline, waiting for its link')
-    expect((noted.querySelector('button') as HTMLButtonElement).disabled).toBe(false)
-    expect(noted.textContent).toContain('branch ios/home kept: 2 commits ahead of its upstream')
-  })
-
-  it('Remove goes to the host; without a link for the thread the error shows inline and the row stays', async () => {
-    threadResourcesStore.setState({ bySession: { s1: [row({})] } })
-    probe = mountProbe(<ThreadResourceList sessionId="s1" />)
-    const button = probe.container.querySelector('[data-resource] button') as HTMLButtonElement
-    await probe.act(async () => {
-      button.click()
+  it('removes the picked rows on their host and closes once the push leaves nothing', async () => {
+    threadResourcesStore.setState({ bySession: { s1: [row({}), row({ id: 'r2', label: 'ios/other' })] } })
+    removal.fn.mockResolvedValue([
+      { id: 'r1', outcome: 'removed' },
+      { id: 'r2', outcome: 'removed' }
+    ])
+    const onClose = open()
+    await flush()
+    fireEvent.click(checkbox(/ios\/home/))
+    fireEvent.click(checkbox(/ios\/other/))
+    await probe!.act(async () => {
+      fireEvent.click(removeButton())
       await Promise.resolve()
     })
-    expect(probe.container.textContent).toContain('unknown session: s1')
-    expect(probe.container.querySelectorAll('[data-resource]')).toHaveLength(1)
+    expect(removal.fn).toHaveBeenCalledWith('s1', ['r1', 'r2'])
+    expect(onClose).not.toHaveBeenCalled()
+    await probe!.act(async () => {
+      threadResourcesStore.setState({ bySession: { s1: [row({ removedAt: 9 }), row({ id: 'r2', removedAt: 9 })] } })
+    })
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+  })
+
+  it('a failure shows inline and keeps its row picked; a row its host is still removing cannot be picked', async () => {
+    threadResourcesStore.setState({
+      bySession: { s1: [row({}), row({ id: 'r2', label: 'ios/other', removeRequestedAt: 5, note: 'host offline, waiting for its link' })] }
+    })
+    removal.fn.mockResolvedValue([{ id: 'r1', outcome: 'failed', note: 'worktree is dirty' }])
+    open()
+    await flush()
+    const waiting = checkbox(/ios\/other/)
+    expect(waiting.getAttribute('aria-disabled') ?? (waiting as HTMLButtonElement).disabled.toString()).toBe('true')
+    expect(document.body.textContent).toContain('host offline, waiting for its link')
+    fireEvent.click(checkbox(/ios\/home/))
+    await probe!.act(async () => {
+      fireEvent.click(removeButton())
+      await Promise.resolve()
+    })
+    expect(document.body.textContent).toContain('worktree is dirty')
+    expect(checkbox(/ios\/home/).getAttribute('aria-checked')).toBe('true')
+    expect(removeButton().textContent).toBe('Remove 1')
   })
 })
 

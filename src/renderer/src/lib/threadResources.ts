@@ -42,6 +42,10 @@ export function useThreadResources(sessionId: string | null | undefined): Thread
 }
 const EMPTY: ThreadResource[] = []
 
+/** A row the Resources… form lists and removes: never a dev server, which
+ *  Activity and the dev servers pane already show and stop. */
+export const isRemovable = (row: ThreadResource): boolean => row.kind !== 'port'
+
 export function liveResources(sessionId: string): ThreadResource[] {
   return (store.getState().bySession[sessionId] ?? EMPTY).filter((r) => !r.removedAt)
 }

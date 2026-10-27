@@ -9,6 +9,7 @@ const facts = (over: Partial<ThreadMenuFacts> = {}): ThreadMenuFacts => ({
   parentId: null,
   master: false,
   resources: 0,
+  removable: 0,
   goal: null,
   moves: [],
   ...over,
@@ -102,9 +103,19 @@ describe("threadMenuRows: the master pin", () => {
 
 describe("threadMenuRows: resources, the bridge and the host moves", () => {
   it("counts resources and asks before archiving them", () => {
-    expect(row(threadMenuRows(facts({ resources: 2 })), "resources")).toMatchObject({ hint: "2" });
+    expect(row(threadMenuRows(facts({ resources: 2, removable: 2 })), "resources")).toMatchObject({ hint: "2" });
     expect(row(threadMenuRows(facts({ resources: 2 })), "archive")).toMatchObject({ label: "Archive…" });
     expect(row(threadMenuRows(facts()), "archive")).toMatchObject({ label: "Archive" });
+  });
+
+  it("disables Resources… when there is nothing it could remove, a dev server alone included", () => {
+    expect(row(threadMenuRows(facts()), "resources")).toMatchObject({ disabled: true });
+    // A thread holding only a dev server: Archive still asks, Resources… has nothing to list.
+    const onlyServer = threadMenuRows(facts({ resources: 1, removable: 0 }));
+    expect(row(onlyServer, "resources")).toMatchObject({ disabled: true });
+    expect(row(onlyServer, "resources")).not.toHaveProperty("hint");
+    expect(row(onlyServer, "archive")).toMatchObject({ label: "Archive…" });
+    expect(row(threadMenuRows(facts({ resources: 1, removable: 1 })), "resources")).not.toHaveProperty("disabled");
   });
 
   it("shows the Mac bridge on, offline and inherited", () => {

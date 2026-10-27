@@ -1,156 +1,160 @@
 import { useEffect, useState } from 'react'
-import { useStore } from 'zustand'
 import type { ThreadResource } from '@server/shared/contract-resources'
-import { Button } from '@renderer/components/ui/button'
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@renderer/components/ui/empty'
-import { Item, ItemActions, ItemContent, ItemGroup, ItemTitle } from '@renderer/components/ui/item'
-import { Spinner } from '@renderer/components/ui/spinner'
 import {
   KIND_LABEL,
   archiveThread,
   hostName,
+  isRemovable,
   loadThreadResources,
   removalClause,
   removeThreadResources,
   rowState,
   useThreadResources
 } from '../lib/threadResources'
-import { openUrl, portParts, rowOpen } from '../lib/devPorts'
-import { useLiveDevServers } from '../lib/devServers'
-import { DevServerRow } from './DevServerRow'
-import { macBridgeStore } from '../lib/macBridge'
+import { LoadingLine } from '../surfaces/SurfaceSkeleton'
 import { DialogFooter, ErrorLine, errorText } from './ConfirmDialog'
 import { CheckRow } from './DialogField'
 import { Tip } from '../components/tip'
-import { Modal, useModalClose } from './Modal'
+import { Modal, ModalBody, useModalClose } from './Modal'
 
 /**
  * Thread resources (docs/box.md "Thread resources"): the thread menu's
- * "Resources…" panel, one row per worktree, simulator or dev instance the
- * thread created, with where it lives and Remove; and the archive confirm
+ * "Resources…" removal form, one checkbox per worktree, simulator or dev
+ * instance the thread created, and one red Remove N; and the archive dialog
  * that offers to remove them with the thread. Both read the same store
- * (lib/threadResources.ts), so a removal's outcome lands on the row as the
- * host reports it. Its dev servers are the Dev servers pane's rows for this
- * thread (lib/devServers.ts `liveServers`, chrome/DevServerRow.tsx): the
- * same list from the same source, and nothing a host no longer lists.
+ * (lib/threadResources.ts), so a removal's outcome lands as the host reports
+ * it. Dev servers are not here: Activity and the dev servers pane list and
+ * stop them.
  */
 
-const DESTRUCTIVE_GHOST = 'text-destructive hover:bg-destructive/10 hover:text-destructive'
-
-function ResourceRow({ row, onRemove, pending }: { row: ThreadResource; onRemove: () => void; pending: boolean }) {
-  const localId = useStore(macBridgeStore, (s) => s.localId)
-  // A dev server's line is where it opens here; the ledger's note only when it has one.
+/** One row of the form: its kind, its label (the identifier on hover), and
+ *  where it lives with its state, muted. A row its host is still removing
+ *  cannot be picked again. */
+function ResourceCheck({ row, checked, disabled, onChange }: { row: ThreadResource; checked: boolean; disabled: boolean; onChange: (on: boolean) => void }) {
   const state = rowState(row)
-  const facts = state ? [state] : portParts(row, localId)
-  const open = rowOpen(row, localId)
-  const waiting = !!row.removeRequestedAt && !row.removedAt
-  const busy = pending || waiting
   return (
-    <Item size="sm" role="listitem" className="px-0" data-resource={row.id}>
-      <ItemContent className="min-w-0">
-        <Tip label={row.identifier}>
-          <ItemTitle className="max-w-full font-mono text-xs">
-            <span className="truncate">{row.label}</span>
-          </ItemTitle>
-        </Tip>
-        <div data-slot="item-description" className="flex min-w-0 flex-wrap gap-x-2 text-xs text-muted-foreground">
-          <span>{hostName(row.environmentId)}</span>
-          <span>{KIND_LABEL[row.kind]}</span>
-          {facts.map((fact) => (
-            <span key={fact} className="min-w-0">
-              {fact}
-            </span>
-          ))}
-        </div>
-      </ItemContent>
-      <ItemActions>
-        {open ? (
-          <Tip label={open.url}>
-            <Button variant="ghost" size="xs" onClick={() => openUrl(open.url)}>
-              {open.label}
-            </Button>
+    <CheckRow
+      checked={checked}
+      disabled={disabled}
+      onCheckedChange={onChange}
+      label={
+        <span className="flex min-w-0 items-baseline gap-2" data-resource={row.id}>
+          <span className="shrink-0 text-muted-foreground">{KIND_LABEL[row.kind]}</span>
+          <Tip label={row.identifier}>
+            <span className="min-w-0 truncate font-mono text-xs">{row.label}</span>
           </Tip>
-        ) : null}
-        <Button variant="ghost" size="xs" disabled={busy} onClick={onRemove} className={DESTRUCTIVE_GHOST}>
-          {busy ? <Spinner className="size-3" /> : null}
-          {waiting ? 'Waiting' : row.kind === 'port' ? 'Stop' : 'Remove'}
-        </Button>
-      </ItemActions>
-    </Item>
+          <span className="shrink-0 text-xs text-muted-foreground">{hostName(row.environmentId)}</span>
+          {state ? <span className="min-w-0 truncate text-xs text-muted-foreground">{state}</span> : null}
+        </span>
+      }
+    />
   )
 }
 
-/** The rows of one thread with Remove per row and Remove all, its live dev
- *  servers above them; `empty` shows "Nothing recorded" when there are none. */
-export function ThreadResourceList({ sessionId, empty }: { sessionId: string; empty?: boolean }) {
-  const rows = useThreadResources(sessionId).filter((r) => r.kind !== 'port')
-  const servers = useLiveDevServers().filter((s) => s.sessionId === sessionId)
-  const [pending, setPending] = useState<Set<string>>(() => new Set())
+/** The thread menu's "Resources…": pick what goes, then Remove N. */
+export function ThreadResourcesDialog({ sessionId, title, onClose }: { sessionId: string; title: string; onClose: () => void }) {
+  const [pending, setPending] = useState(false)
+  return (
+    <Modal onClose={onClose} busy={pending} title="Resources" description={title} size="sm">
+      <ResourcesForm sessionId={sessionId} onClose={onClose} pending={pending} setPending={setPending} />
+    </Modal>
+  )
+}
+
+function ResourcesForm({
+  sessionId,
+  onClose,
+  pending,
+  setPending
+}: {
+  sessionId: string
+  onClose: () => void
+  pending: boolean
+  setPending: (on: boolean) => void
+}) {
+  const close = useModalClose()
+  const rows = useThreadResources(sessionId).filter(isRemovable)
+  const [loaded, setLoaded] = useState(false)
+  const [picked, setPicked] = useState<ReadonlySet<string>>(() => new Set())
+  const [removed, setRemoved] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const remove = async (ids?: string[]) => {
+
+  useEffect(() => {
+    let live = true
+    void loadThreadResources(sessionId).finally(() => live && setLoaded(true))
+    return () => {
+      live = false
+    }
+  }, [sessionId])
+
+  // A removal that leaves nothing behind closes the form: its work is done.
+  const empty = rows.length === 0
+  useEffect(() => {
+    if (removed && empty) close ? close(onClose) : onClose()
+  }, [removed, empty]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const waiting = (row: ThreadResource) => !!row.removeRequestedAt && !row.removedAt
+  const chosen = rows.filter((r) => picked.has(r.id) && !waiting(r)).map((r) => r.id)
+  const toggle = (id: string, on: boolean) =>
+    setPicked((prev) => {
+      const next = new Set(prev)
+      if (on) next.add(id)
+      else next.delete(id)
+      return next
+    })
+
+  const confirm = async () => {
+    if (pending || !chosen.length) return
+    setPending(true)
     setError(null)
-    const marked = ids ?? rows.map((r) => r.id)
-    setPending((p) => new Set([...p, ...marked]))
     try {
-      const results = await removeThreadResources(sessionId, ids)
+      const results = await removeThreadResources(sessionId, chosen)
       const failed = results.filter((r) => r.outcome === 'failed')
       if (failed.length) setError(failed.map((f) => f.note ?? 'failed').join('\n'))
+      setPicked(new Set(failed.map((f) => f.id)))
+      setRemoved(true)
     } catch (err) {
       setError(errorText(err))
     } finally {
-      setPending((p) => {
-        const next = new Set(p)
-        for (const id of marked) next.delete(id)
-        return next
-      })
+      setPending(false)
     }
   }
-  if (rows.length === 0 && servers.length === 0)
-    return empty ? (
-      <Empty className="p-4">
-        <EmptyHeader>
-          <EmptyTitle>Nothing recorded</EmptyTitle>
-          <EmptyDescription>Worktrees, simulators and dev servers this thread creates show here.</EmptyDescription>
-        </EmptyHeader>
-      </Empty>
-    ) : null
-  return (
-    <div className="flex flex-col gap-2" data-thread-resources={sessionId}>
-      {servers.length ? (
-        <ItemGroup aria-label="Dev servers">
-          {servers.map((server) => (
-            <DevServerRow key={server.key} server={server} />
-          ))}
-        </ItemGroup>
-      ) : null}
-      {rows.length ? (
-        <ItemGroup>
-          {rows.map((row) => (
-            <ResourceRow key={row.id} row={row} pending={pending.has(row.id)} onRemove={() => void remove([row.id])} />
-          ))}
-        </ItemGroup>
-      ) : null}
-      {rows.length > 1 ? (
-        <div className="flex justify-end">
-          <Button variant="ghost" size="xs" className={DESTRUCTIVE_GHOST} onClick={() => void remove()}>
-            Remove all
-          </Button>
-        </div>
-      ) : null}
-      <ErrorLine error={error} />
-    </div>
-  )
-}
 
-/** The thread menu's "Resources…". */
-export function ThreadResourcesDialog({ sessionId, title, onClose }: { sessionId: string; title: string; onClose: () => void }) {
-  useEffect(() => void loadThreadResources(sessionId), [sessionId])
   return (
-    <Modal onClose={onClose} title="Resources" description={title} size="md">
-      <div className="px-4 py-4">
-        <ThreadResourceList sessionId={sessionId} empty />
-      </div>
-    </Modal>
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        void confirm()
+      }}
+    >
+      <ModalBody className="gap-2" data-thread-resources={sessionId}>
+        {empty && !loaded ? (
+          <LoadingLine label="Loading…" />
+        ) : empty ? (
+          <p className="py-1 text-[13px] text-muted-foreground">Nothing left to remove.</p>
+        ) : (
+          <div className="flex flex-col">
+            {rows.map((row) => (
+              <ResourceCheck
+                key={row.id}
+                row={row}
+                checked={picked.has(row.id) && !waiting(row)}
+                disabled={pending || waiting(row)}
+                onChange={(on) => toggle(row.id, on)}
+              />
+            ))}
+          </div>
+        )}
+        <ErrorLine error={error} />
+      </ModalBody>
+      <DialogFooter
+        onCancel={onClose}
+        confirmLabel={chosen.length ? `Remove ${chosen.length}` : 'Remove'}
+        danger
+        pending={pending}
+        disabled={!chosen.length}
+      />
+    </form>
   )
 }
 
@@ -199,7 +203,7 @@ function ArchiveBody({
   return (
     <>
       {resources.length ? (
-        <div className="flex flex-col gap-1 px-4 py-4">
+        <div className="flex flex-col gap-1 px-5 py-4">
           <CheckRow label={removalClause(resources)} checked={remove} disabled={pending} onCheckedChange={setRemove} />
           <div className="flex flex-col gap-0.5 pl-6 text-xs text-muted-foreground" data-archive-resources>
             {resources.map((r) => (
@@ -214,7 +218,7 @@ function ArchiveBody({
           <ErrorLine error={error} />
         </div>
       ) : error ? (
-        <div className="px-4 py-4">
+        <div className="px-5 py-4">
           <ErrorLine error={error} />
         </div>
       ) : (
