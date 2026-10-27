@@ -197,12 +197,21 @@ export function MasterView(props: ThreadViewProps) {
   // The first complete paint: the answer is in and its rows are on screen.
   const openedAt = useRef(performance.now());
   const painted = useRef(false);
+  const paintFrame = useRef<number | null>(null);
   useEffect(() => {
     if (painted.current || !loaded || openId || !hasBoard) return;
     painted.current = true;
     const n = layout.rows.length;
-    requestAnimationFrame(() => reportBoardPaint(session.id, n, performance.now() - openedAt.current));
+    paintFrame.current = requestAnimationFrame(() => reportBoardPaint(session.id, n, performance.now() - openedAt.current));
   }, [loaded, openId, hasBoard, layout, session.id]);
+  // A board that leaves before its frame paints reports nothing: the line is
+  // about a paint the person saw.
+  useEffect(
+    () => () => {
+      if (paintFrame.current !== null) cancelAnimationFrame(paintFrame.current);
+    },
+    [],
+  );
 
   const openRef = useRef<(id: string, focus?: boolean) => void>(() => {});
   openRef.current = (id: string, focus = false) => {
