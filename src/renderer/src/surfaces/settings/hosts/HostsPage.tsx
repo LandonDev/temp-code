@@ -14,10 +14,10 @@ import { isWebMode } from "../../../lib/nativeWeb";
 import { loadSavedEnvironments } from "../../../lib/tcserver/link";
 import { environment as environmentSelection } from "../../../stores/environment";
 import { MacBridgeRememberedSection } from "../../../chrome/MacBridgeRemember";
-import { MacDevicesSection } from "../../MacDevices";
 import { HostAdmission } from "./Admission";
 import { Clients } from "./Clients";
 import { HostDeploy, LocalRelease, useJobPolling } from "./Deploy";
+import { DevicesGroup, useDevicesPolling } from "./Devices";
 import { AddHostDialog } from "./dialogs/AddHostDialog";
 import { NewKeyDialog } from "./dialogs/NewKeyDialog";
 import { PairDialog } from "./dialogs/PairDialog";
@@ -147,6 +147,7 @@ export function HostsPage({ onOpenSession }: { onOpenSession?: (sessionId: strin
     !web,
   );
   useMacBridgePolling(!web);
+  useDevicesPolling();
 
   if (!remote.data) return <PageSkeleton error={remote.error} />;
   const { status, keys, pairings, sessions, harness, memory, attachments } = remote.data;
@@ -196,7 +197,7 @@ export function HostsPage({ onOpenSession }: { onOpenSession?: (sessionId: strin
                 </Group>
                 {harness ? <LocalSync harness={harness} memory={memory} onAct={(method, params) => void remote.act(method, params)} /> : null}
                 {web ? null : <MacBridgeRememberedSection />}
-                <MacDevicesSection onOpenSession={onOpenSession} />
+                {section.devices ? <DevicesGroup host={section.devices} onOpenSession={onOpenSession} /> : null}
               </>
             ) : (
               <>
@@ -210,6 +211,7 @@ export function HostsPage({ onOpenSession }: { onOpenSession?: (sessionId: strin
                   <HostSync environmentId={section.id} harness={harness} memory={memory} onSync={(id, h, m) => void remote.sync(id, h, m)} />
                 ) : null}
                 {section.bridge ? <MacBridgeGroup host={section.bridge} /> : null}
+                {section.devices ? <DevicesGroup host={section.devices} onOpenSession={onOpenSession} /> : null}
               </>
             )}
           </HostSection>
