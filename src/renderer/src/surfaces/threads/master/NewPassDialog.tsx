@@ -1,11 +1,13 @@
 import { useEffect, useRef } from "react";
-import { Modal } from "../../../chrome/Modal";
-import { statusNeedsYou, statusToneClass } from "../../../components/ui/status";
+import { Skeleton } from "@renderer/components/ui/skeleton";
+import { StatusMark } from "@renderer/components/ui/status";
+import { Modal, useModalClose } from "../../../chrome/Modal";
 import { useMetaById, useSessionById } from "../../../lib/threads/agents";
 import { useSessionActions, ThreadComposer } from "../../threadChat";
-import { StatusGlyph } from "../fleet/rowBits";
 import { passLine } from "./rowBody";
 import { useBoardDigest } from "./useMasterModel";
+
+type Props = { sessionId: string; landed: boolean; onClose: () => void };
 
 /**
  * New pass on a board row (docs/LAYOUT.md "Master"): the thread's title,
@@ -16,14 +18,26 @@ import { useBoardDigest } from "./useMasterModel";
  * follows the thread's status from the store; Escape (or a click outside)
  * closes it and the draft stays with the thread, as a tab's does.
  */
-export function NewPassDialog({ sessionId, landed, onClose }: { sessionId: string; landed: boolean; onClose: () => void }) {
+export function NewPassDialog(props: Props) {
+  const meta = useMetaById(props.sessionId);
+  if (!meta) return null;
+  return (
+    <Modal onClose={props.onClose} title={meta.title || "Untitled"} size="lg">
+      <Body {...props} />
+    </Modal>
+  );
+}
+
+function Body({ sessionId, landed, onClose }: Props) {
   const meta = useMetaById(sessionId);
   const session = useSessionById(sessionId);
   const actions = useSessionActions();
   const digest = useBoardDigest(sessionId);
+  const close = useModalClose();
   const body = useRef<HTMLDivElement>(null);
 
-  // The panel lands focus on its close button; the caret belongs in the field.
+  // The composer loads after the frame opens, so it cannot be the frame's
+  // initial focus; the caret moves into it once it is there.
   const ready = !!session;
   useEffect(() => {
     if (!ready) return;
@@ -34,32 +48,27 @@ export function NewPassDialog({ sessionId, landed, onClose }: { sessionId: strin
   if (!meta) return null;
   const line = passLine(meta, digest, landed);
   return (
-    <Modal onClose={onClose} title={meta.title || "Untitled"} size="lg">
-      <div ref={body} data-new-pass={sessionId} data-new-pass-host={meta.environmentId}>
-        <p className="mt-0.5 flex h-4 items-center gap-1.5 px-4 text-[12px] leading-4" data-new-pass-line>
-          <span className="flex size-3.5 shrink-0 items-center justify-center">
-            <StatusGlyph status={meta.status} />
-          </span>
-          <span className={`min-w-0 truncate ${statusNeedsYou(line.state) ? statusToneClass(line.state) : "text-content/50"}`}>{line.detail}</span>
-        </p>
-        <div className="px-2.5 pt-3 pb-2.5">
-          {session ? (
-            <ThreadComposer
-              session={session}
-              actions={actions}
-              visible
-              focused={false}
-              hotkeys={false}
-              onFocus={NOOP}
-              onOpenDiff={NOOP}
-              onSent={onClose}
-            />
-          ) : (
-            <div className="h-[92px] rounded-lg border border-content/10 bg-content/5" aria-busy="true" data-new-pass-loading />
-          )}
-        </div>
+    <div ref={body} data-new-pass={sessionId} data-new-pass-host={meta.environmentId}>
+      <p className="mt-1 flex h-4 items-center px-4" data-new-pass-line>
+        <StatusMark state={line.state} detail={line.detail} />
+      </p>
+      <div className="px-4 pt-4 pb-4">
+        {session ? (
+          <ThreadComposer
+            session={session}
+            actions={actions}
+            visible
+            focused={false}
+            hotkeys={false}
+            onFocus={NOOP}
+            onOpenDiff={NOOP}
+            onSent={() => (close ? close(onClose) : onClose())}
+          />
+        ) : (
+          <Skeleton className="h-[92px] w-full rounded-xl" aria-busy="true" data-new-pass-loading />
+        )}
       </div>
-    </Modal>
+    </div>
   );
 }
 

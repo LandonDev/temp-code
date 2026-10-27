@@ -1,11 +1,10 @@
 import {
   useEffect,
-  useRef,
   useState,
   type FormEvent,
   type ReactNode,
 } from "react";
-import { Modal, ModalPanel, useClosingDialog } from "./Modal";
+import { ModalPanel, useClosingDialog } from "./Modal";
 import { CheckRow, Field, FieldRow } from "./DialogField";
 import {
   AlertDialog,
@@ -19,19 +18,21 @@ import {
   Dialog,
 } from "@renderer/components/ui/dialog";
 import { Spinner } from "@renderer/components/ui/spinner";
+import { ScrollArea } from "@renderer/components/ui/scroll-area";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@renderer/components/ui/sheet";
+import { Skeleton } from "@renderer/components/ui/skeleton";
+import { ChoiceSelect } from "../components/choice-select";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@renderer/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@renderer/components/ui/toggle-group";
-import { ChevronRight } from "./icons";
 import { BUILD_EMPTY, BuildFields, buildOrNull } from "./rail/buildSettings";
-import { ConfirmDialog, DialogFooter as Footer, ErrorLine, GHOST, errorText } from "./ConfirmDialog";
-import { INPUT_CLASS } from "../surfaces/settingsBits";
+import { ConfirmDialog, DialogFooter as Footer, ErrorLine, errorText } from "./ConfirmDialog";
 import { TurnPassFields, loadTurnPass, saveTurnPass } from "./TurnPassFields";
-import { PlanSettingsFields, PlanSettingsSummary } from "./PlanSettingsFields";
+import { PlanSettingsFields } from "./PlanSettingsFields";
 import { savePlanSettings, samePlanSettings, usePlanSettings } from "../lib/tcserver/plans";
 import type { PlanSettings } from "@server/shared/plans";
-import { ReviewFields, loadReviewScope, reviewSummary, saveReviewSettings, type ReviewScope } from "./ReviewFields";
+import { ReviewFields, loadReviewScope, saveReviewSettings, type ReviewScope } from "./ReviewFields";
 import { DEFAULT_REVIEW_SETTINGS, type ReviewSettings } from "@server/shared/review";
 import { registry } from "../lib/connection";
 import { useAccounts } from "../stores/accounts";
@@ -39,7 +40,7 @@ import { shortName } from "../lib/accountScope";
 import { HARNESS_LABEL } from "../lib/session";
 import { ROUTED_PROVIDERS, type AccountPins } from "@server/shared/accounts";
 import type { BuildConfig } from "@server/shared/build";
-import { TURN_PASS_OFF, passActions, passEnabled, type TurnPass } from "@server/shared/turnpass";
+import { TURN_PASS_OFF, passEnabled, type TurnPass } from "@server/shared/turnpass";
 import { prettyCwd } from "../lib/paths";
 import {
   createProject,
@@ -58,41 +59,29 @@ import type {
   WorkspaceMeta,
 } from "../lib/tcserver/types";
 
-const INPUT = `w-full ${INPUT_CLASS}`;
-const LABEL = "text-[11px] font-medium text-content/50";
-
-function Hint({ children }: { children: ReactNode }) {
-  return <p className="text-[11px] leading-4 text-content/40">{children}</p>;
-}
-
 const baseName = (path: string) => path.replace(/\/+$/, "").split("/").pop() || path;
 
 const samePass = (a: TurnPass | null, b: TurnPass | null) =>
   a === b || (!!a && !!b && a.verify === b.verify && a.build === b.build && a.commit === b.commit);
-
-const passSummary = (pass: TurnPass) => passActions(pass).join(", ") || "Off";
 
 const samePins = (a: AccountPins, b: AccountPins) =>
   ROUTED_PROVIDERS.every((p) => (a[p] ?? "") === (b[p] ?? ""));
 
 /**
  * One select per gateway provider: the project's own account, or inherit
- * (the workspace's pin when it has one, else auto). Shared by the project
- * dialog and the workspace page, which differ only in what "inherit" means.
+ * (the workspace's pin when it has one, else auto).
  */
 export function AccountPinFields({
   environmentId,
   value,
   onChange,
   inheritLabel,
-  compact = false,
 }: {
   environmentId: string;
   value: AccountPins;
   onChange: (next: AccountPins) => void;
   /** What an unset provider falls back to, e.g. "Inherit (workspace: a@x)". */
   inheritLabel: (provider: (typeof ROUTED_PROVIDERS)[number]) => string;
-  compact?: boolean;
 }) {
   const { snapshot } = useAccounts(environmentId);
   return (
@@ -103,25 +92,23 @@ export function AccountPinFields({
         const known = current === "" || profiles.some((p) => p.name === current);
         return (
           <Field key={provider} label={HARNESS_LABEL[provider]}>
-            <select
+            <ChoiceSelect
+              label={HARNESS_LABEL[provider]}
+              className="w-full"
               value={current}
               disabled={profiles.length === 0 && current === ""}
-              onChange={(e) => {
+              options={[
+                { value: "", label: inheritLabel(provider) },
+                ...profiles.map((p) => ({ value: p.name, label: shortName(p) })),
+                ...(known ? [] : [{ value: current, label: `${current} (not in Aliax)` }]),
+              ]}
+              onChange={(name) => {
                 const next = { ...value };
-                if (e.target.value) next[provider] = e.target.value;
+                if (name) next[provider] = name;
                 else delete next[provider];
                 onChange(next);
               }}
-              className={compact ? INPUT : INPUT}
-            >
-              <option value="">{inheritLabel(provider)}</option>
-              {profiles.map((p) => (
-                <option key={p.name} value={p.name}>
-                  {shortName(p)}
-                </option>
-              ))}
-              {known ? null : <option value={current}>{current} (not in Aliax)</option>}
-            </select>
+            />
           </Field>
         );
       })}
@@ -137,38 +124,6 @@ export function projectInheritLabel(workspace: WorkspaceMeta, profiles: { name: 
     const profile = profiles.find((p) => p.name === name);
     return `Inherit (workspace: ${profile ? shortName(profile) : name})`;
   };
-}
-
-/** A collapsed section with a one-line summary; opens in place. */
-function Disclosure({
-  label,
-  summary,
-  children,
-}: {
-  label: string;
-  summary: ReactNode;
-  children: ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="flex flex-col gap-3 border-t border-content/10 pt-3">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 text-left"
-      >
-        <ChevronRight
-          className={`size-3 shrink-0 text-content/40 transition-transform ${open ? "rotate-90" : ""}`}
-        />
-        <span className={LABEL}>{label}</span>
-        <span className="min-w-0 flex-1 truncate text-right text-[11px] text-content/40">
-          {summary}
-        </span>
-      </button>
-      {open ? children : null}
-    </div>
-  );
 }
 
 /** One project's review override, plus the global set it would follow. */
@@ -208,16 +163,6 @@ function useTurnPass(workspaceId: string, projectId?: string) {
     };
   }, [workspaceId, projectId]);
   return { pass, setPass, inherited };
-}
-
-/** Modal steals focus to its close button on mount; take it back a frame later. */
-function useFocusOnMount<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
-  useEffect(() => {
-    const id = requestAnimationFrame(() => ref.current?.focus());
-    return () => cancelAnimationFrame(id);
-  }, []);
-  return ref;
 }
 
 function useBranches(workspaceId: string, enabled: boolean): BranchList | null {
@@ -566,7 +511,6 @@ function ProjectSettingsBody({
   const [baseRef, setBaseRef] = useState("@head");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const nameRef = useFocusOnMount<HTMLInputElement>();
   const worktree = project.mode === "worktree";
   const branches = useBranches(workspace.id, worktree);
   const exists = branchExists(branches, branch.trim());
@@ -635,24 +579,8 @@ function ProjectSettingsBody({
       (nextBuild?.outputs ?? "") !== (savedBuild?.outputs ?? ""));
   const passDirty = savedPass !== undefined && !samePass(pass ?? null, savedPass);
   const pinsDirty = !samePins(pins, home.accountPins ?? {});
+  const { root, closeThen } = useClosingDialog(onClose, pending);
   const dirty = nameDirty || branchDirty || buildDirty || passDirty || pinsDirty || plansDirty || reviewDirty;
-  const pinsSummary =
-    ROUTED_PROVIDERS.map((p) => {
-      const name = pins[p];
-      if (!name) return null;
-      const profile = snapshot.providers[p].profiles.find((x) => x.name === name);
-      return `${HARNESS_LABEL[p]} ${profile ? shortName(profile) : name}`;
-    })
-      .filter(Boolean)
-      .join(" · ") || "Inherit";
-  const buildSummary = buildOverride
-    ? buildOverride.command || "Custom"
-    : wsBuild
-      ? `${wsBuild.command} · workspace`
-      : detected
-        ? `${detected.command} · detected`
-        : "None";
-
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!dirty || pending || blocked) return;
@@ -678,128 +606,84 @@ function ProjectSettingsBody({
           config: nextBuild,
         });
       }
-      onClose();
+      setPending(false);
+      closeThen(onClose);
     } catch (err) {
       setError(errorText(err));
       setPending(false);
     }
   };
 
+  const linkButton = (label: string, onClick: () => void) => (
+    <Button type="button" variant="link" size="xs" className="h-auto self-start px-0 text-xs text-muted-foreground" onClick={onClick}>
+      {label}
+    </Button>
+  );
+
   return (
-    <Modal
-      onClose={onClose}
-      busy={pending}
-      title="Project settings"
-      description={`${worktree ? "Worktree" : "Local"} · ${prettyCwd(project.cwd)}`}
-      size="sm"
-    >
-      <form onSubmit={submit}>
-        <div className="flex flex-col gap-3 px-4 py-3">
-          <Field label="Name">
-            <input
-              ref={nameRef}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className={INPUT}
-            />
-          </Field>
-          {worktree ? (
-            <>
-              <BranchField
-                value={branch}
-                onChange={setBranch}
-                branches={branches}
-              />
-              {branchDirty ? (
-                exists ? (
-                  <Hint>Switches to the existing branch.</Hint>
+    <Sheet {...root}>
+      <SheetContent side="right" showCloseButton={!pending} aria-busy={pending || undefined}>
+        <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
+          <SheetHeader>
+            <SheetTitle>Project settings</SheetTitle>
+            <SheetDescription className="flex min-w-0 gap-2 text-xs">
+              <span className="shrink-0">{worktree ? "Worktree" : "Local"}</span>
+              <span className="min-w-0 truncate">{prettyCwd(project.cwd)}</span>
+            </SheetDescription>
+          </SheetHeader>
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="flex flex-col gap-6 px-4 pb-6">
+              <div className="flex flex-col gap-4">
+                <Field label="Name">
+                  <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} />
+                </Field>
+                {worktree ? (
+                  <>
+                    <BranchField
+                      value={branch}
+                      onChange={setBranch}
+                      branches={branches}
+                      hint={branchDirty && exists ? "Switches to the existing branch." : undefined}
+                    />
+                    {branchDirty && !exists ? <BaseRefField value={baseRef} onChange={setBaseRef} branches={branches} /> : null}
+                  </>
+                ) : null}
+              </div>
+              <Section label="Completed turn">
+                <TurnPassFields value={shownPass} onChange={setPass} compact />
+                {pass ? linkButton("Use workspace setting", () => setPass(null)) : null}
+              </Section>
+              <Section label="Reviews">
+                <ReviewFields value={shownReview} onChange={setReview} environmentId={home.environmentId} compact />
+                {review ? linkButton("Use global setting", () => setReview(null)) : null}
+              </Section>
+              <Section label="Accounts">
+                <AccountPinFields
+                  environmentId={home.environmentId}
+                  value={pins}
+                  onChange={setPins}
+                  inheritLabel={projectInheritLabel(homeWorkspace, [...snapshot.providers.claude.profiles, ...snapshot.providers.codex.profiles])}
+                />
+              </Section>
+              <Section label="Plans">
+                {shownPlans ? (
+                  <PlanSettingsFields value={shownPlans} onChange={setPlans} environmentId={home.environmentId} compact />
                 ) : (
-                  <BaseRefField
-                    value={baseRef}
-                    onChange={setBaseRef}
-                    branches={branches}
-                  />
-                )
-              ) : null}
-            </>
-          ) : null}
-          <Disclosure
-            label="Completed turn"
-            summary={`${passSummary(shownPass)}${pass ? "" : " · workspace"}`}
-          >
-            <TurnPassFields value={shownPass} onChange={setPass} compact />
-            {pass ? (
-              <button type="button" onClick={() => setPass(null)} className={`${GHOST} self-start`}>
-                Use workspace setting
-              </button>
-            ) : null}
-          </Disclosure>
-          <Disclosure
-            label="Reviews"
-            summary={`${reviewSummary(shownReview, home.environmentId)}${review ? "" : " · global"}`}
-          >
-            <ReviewFields value={shownReview} onChange={setReview} environmentId={home.environmentId} compact />
-            {review ? (
-              <button type="button" onClick={() => setReview(null)} className={`${GHOST} self-start`}>
-                Use global setting
-              </button>
-            ) : null}
-          </Disclosure>
-          <Disclosure label="Accounts" summary={pinsSummary}>
-            <AccountPinFields
-              environmentId={home.environmentId}
-              value={pins}
-              onChange={setPins}
-              inheritLabel={projectInheritLabel(homeWorkspace, [...snapshot.providers.claude.profiles, ...snapshot.providers.codex.profiles])}
-              compact
-            />
-          </Disclosure>
-          <Disclosure
-            label="Plans"
-            summary={shownPlans ? <PlanSettingsSummary settings={shownPlans} extra={plans ? undefined : "global"} /> : "…"}
-          >
-            {shownPlans ? (
-              <PlanSettingsFields
-                value={shownPlans}
-                onChange={setPlans}
-                environmentId={home.environmentId}
-                compact
-              />
-            ) : null}
-            {plans ? (
-              <button type="button" onClick={() => setPlans(null)} className={`${GHOST} self-start`}>
-                Use global setting
-              </button>
-            ) : null}
-          </Disclosure>
-          <Disclosure label="Build" summary={buildSummary}>
-            <BuildFields
-              value={buildOverride ?? wsBuild ?? BUILD_EMPTY}
-              onChange={setBuildOverride}
-              detected={detected}
-              compact
-            />
-            {buildOverride ? (
-              <button
-                type="button"
-                onClick={() => setBuildOverride(null)}
-                className={`${GHOST} self-start`}
-              >
-                Use workspace setting
-              </button>
-            ) : null}
-          </Disclosure>
-          <ErrorLine error={error} />
-        </div>
-        <Footer
-          onCancel={onClose}
-          confirmLabel="Save"
-          pending={pending}
-          disabled={!dirty || !!blocked}
-          note={note}
-        />
-      </form>
-    </Modal>
+                  <Skeleton className="h-16 w-full rounded-lg" />
+                )}
+                {plans ? linkButton("Use global setting", () => setPlans(null)) : null}
+              </Section>
+              <Section label="Build">
+                <BuildFields value={buildOverride ?? wsBuild ?? BUILD_EMPTY} onChange={setBuildOverride} detected={detected} compact />
+                {buildOverride ? linkButton("Use workspace setting", () => setBuildOverride(null)) : null}
+              </Section>
+              <ErrorLine error={error} />
+            </div>
+          </ScrollArea>
+          <Footer onCancel={() => closeThen(onClose)} confirmLabel="Save" pending={pending} disabled={!dirty || !!blocked} note={note} />
+        </form>
+      </SheetContent>
+    </Sheet>
   );
 }
 

@@ -5,6 +5,7 @@ import {
   type ReleaseNotesPresentation,
 } from "../lib/releaseNotes";
 import { AgentMarkdown } from "../surfaces/AgentMarkdown";
+import { ScrollArea } from "@renderer/components/ui/scroll-area";
 import { Modal } from "./Modal";
 
 type Props = {
@@ -44,7 +45,7 @@ export function WhatsNewBody({
   const title = releaseNotesTitle(version);
 
   return (
-    <article aria-label={title} className="px-4 py-3">
+    <article aria-label={title} className="px-4 py-4">
       {notes?.markdown ? (
         <AgentMarkdown
           className="whats-new-md"
@@ -52,12 +53,17 @@ export function WhatsNewBody({
           streaming={false}
         />
       ) : (
-        <p className="text-[13px] text-content/50">
+        <p className="text-sm text-muted-foreground">
           Release notes for this version are not available in this build.
         </p>
       )}
     </article>
   );
+}
+
+/** The frame's one line: the release and its date two spaces apart, no dot. */
+export function whatsNewLine(version: string, date: string | null): string {
+  return date ? `Release ${version}  ${date}` : `Release ${version}`;
 }
 
 export function WhatsNewDialog({ version, markdown, onClose }: Props) {
@@ -68,11 +74,13 @@ export function WhatsNewDialog({ version, markdown, onClose }: Props) {
     <Modal
       onClose={onClose}
       title="What's new"
-      description={`Release ${version}${date ? ` · ${date}` : ""}`}
+      description={whatsNewLine(version, date)}
       size="md"
       className="h-[min(72vh,640px)]"
     >
-      <WhatsNewBody version={version} markdown={markdown} />
+      <ScrollArea className="h-full">
+        <WhatsNewBody version={version} markdown={markdown} />
+      </ScrollArea>
     </Modal>
   );
 }

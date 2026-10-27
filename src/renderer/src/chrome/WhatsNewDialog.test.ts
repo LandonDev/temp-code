@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { WhatsNewBody } from "./WhatsNewDialog";
+import { WhatsNewBody, whatsNewLine } from "./WhatsNewDialog";
 
 describe("WhatsNewBody", () => {
   it("renders the version notes without the changelog heading", () => {
@@ -36,5 +36,12 @@ describe("WhatsNewBody with feed notes", () => {
 
     expect(markup).toContain("Bug fixes.");
     expect(markup).not.toContain("not available in this build");
+  });
+});
+
+describe("whatsNewLine", () => {
+  it("sets the date two spaces after the release, never a dot", () => {
+    expect(whatsNewLine("1.0.305", "Oct 27")).toBe("Release 1.0.305  Oct 27");
+    expect(whatsNewLine("1.0.305", null)).toBe("Release 1.0.305");
   });
 });

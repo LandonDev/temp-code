@@ -8,6 +8,9 @@ import type { ProjectMeta, WorkspaceMeta } from '../lib/tcserver/types'
 import { NewProjectDialog, ProjectSettingsDialog, ProjectTeardownDialog } from './ProjectDialogs'
 import { PreambleDialog } from './PreambleDialog'
 
+// jsdom has no Web Animations; the settings sheet's scroll area asks for them.
+if (!Element.prototype.getAnimations) Element.prototype.getAnimations = () => []
+
 // Two hosts: this Mac (the `local` slot, host id env_mac, darwin) and the
 // box (env_box, linux). One project linked across both, one only on the Mac.
 const BOX = 'env_box'
@@ -175,6 +178,19 @@ describe('PreambleDialog on a linked project', () => {
     fireEvent.change(screen.getByDisplayValue('box rules'), { target: { value: 'new rules' } })
     expect(saveButton().disabled).toBe(true)
     expect(footerNote()).toBe('box is offline')
+  })
+})
+
+describe('ProjectSettingsDialog as a sheet', () => {
+  it('slides in from the right with the name focused and every section open, no folds', async () => {
+    render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
+    const sheet = screen.getByRole('dialog')
+    expect(sheet.getAttribute('data-side')).toBe('right')
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Name')))
+    const headings = [...sheet.querySelectorAll('h3')].map((h) => h.textContent)
+    expect(headings).toEqual(['Completed turn', 'Reviews', 'Accounts', 'Plans', 'Build'])
+    expect(sheet.querySelector('[aria-expanded]:not([data-slot=select-trigger])')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Use workspace setting' })).toBeNull()
   })
 })
 
