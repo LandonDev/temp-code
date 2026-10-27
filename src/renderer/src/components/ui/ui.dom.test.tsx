@@ -75,6 +75,31 @@ describe("Dialog", () => {
 });
 
 describe("Sheet", () => {
+  it("enters on keyframes from its edge, fading alone under reduced motion", () => {
+    render(
+      <Sheet open>
+        <SheetContent side="right">
+          <SheetTitle>Project</SheetTitle>
+        </SheetContent>
+      </Sheet>,
+    );
+    const classes = screen.getByRole("dialog").className.split(/\s+/);
+    for (const c of [
+      "data-open:animate-in",
+      "data-open:fade-in-0",
+      "duration-(--dur-drawer)",
+      "ease-(--ease-drawer)",
+      "data-closed:animate-out",
+      "data-closed:duration-(--dur-slow)",
+      "motion-safe:data-[side=right]:data-open:slide-in-from-right-4",
+      "motion-safe:data-[side=right]:data-closed:slide-out-to-right-4",
+    ])
+      expect(classes).toContain(c);
+    // Every slide is motion-safe, so reduced motion keeps only the fade.
+    expect(classes.filter((c) => c.includes("slide-") && !c.startsWith("motion-safe:"))).toEqual([]);
+    expect(classes.some((c) => c.includes("starting-style"))).toBe(false);
+  });
+
   it("takes a width in px on a side sheet, and keeps the default without one", () => {
     render(
       <Sheet open>
