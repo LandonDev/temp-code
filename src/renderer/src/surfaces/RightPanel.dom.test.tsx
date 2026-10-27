@@ -24,7 +24,10 @@ vi.mock("../lib/tcserver/workspaces", () => ({
 }));
 vi.mock("../lib/tcserver/projects", () => ({ projectForCwd: (cwd: string) => (cwd === "/p" ? { id: "p1", environmentId: "local", cwd: "/p", name: "P" } : undefined) }));
 vi.mock("../lib/devServers", () => ({ useDevRunning: () => state.devRunning }));
-vi.mock("../lib/activity", () => ({ useActivity: () => ({ rows: [], meta: null }) }));
+// The joined activity rows: one per background task on the meta is enough for the frame.
+vi.mock("../lib/activity", () => ({
+  useActivity: () => ({ rows: (state.meta?.background?.tasks ?? []).map((task) => ({ id: task.id, kind: task.kind, label: task.label })), meta: state.meta }),
+}));
 vi.mock("../hooks/useGitFileStatuses", () => ({ useGitFileStatuses: () => ({}) }));
 vi.mock("./threads/fleet/FleetPanel", () => ({ FleetList: () => <div data-testid="agents-body">agents</div> }));
 vi.mock("./threads/ActivitySection", () => ({
