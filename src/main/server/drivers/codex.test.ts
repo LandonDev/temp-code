@@ -192,6 +192,10 @@ describe('codex app-server boot', () => {
     expect(spawned[0].killed).toBe(true)
     spawned[0].emit('exit', 0)
     expect(events.filter((e) => e.type === 'error')).toHaveLength(1)
+    // The next message is never written into the dead process: the handle
+    // says the harness is gone, and the registry boots a fresh one on that.
+    expect(handle.alive?.()).toBe(false)
+    await expect(handle.send('again')).rejects.toThrow('harness gone')
     await handle.dispose()
   })
 

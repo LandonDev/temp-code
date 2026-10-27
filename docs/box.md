@@ -1844,7 +1844,9 @@ every host:
   written, so its calls carry no call mark and get the orphan sweep alone.
   A codex app-server carries `TEMP_CODE_THREAD` in its environment (a warm
   one `warm:<id>` until a thread adopts it) and has no per-call mark.
-- **The orphan sweep.** Every 10 s the host reads one `ps` of its own user;
+- **The orphan sweep.** Every 10 s the host reads one `ps` of its own user
+  (a process's environment once, from `/proc` on Linux and `ps -E` on
+  macOS, which has no /proc);
   a process whose parent is gone (ppid 1) that carries a thread's mark
   (`TEMP_CODE_THREAD`, the gateway's `~t=` scope in ANTHROPIC_BASE_URL, or
   CLAUDE_PID, which names the thread while its harness lives) and is not a

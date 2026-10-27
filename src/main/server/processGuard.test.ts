@@ -6,6 +6,7 @@ import {
   KILL_GRACE_MS,
   ORPHAN_GRACE_MS,
   ProcessGuard,
+  environFromPsE,
   markersOf,
   parseGuardPs,
   unwrapBashCommand,
@@ -275,6 +276,14 @@ describe('the marks', () => {
     expect(markersOf(env({ ANTHROPIC_BASE_URL: 'http://127.0.0.1:1/claude/~t=t9;a=x', TEMP_CODE_THREAD: 't1' }))).toMatchObject({ threadId: 't1', callId: null })
     expect(markersOf(env({ ANTHROPIC_BASE_URL: 'http://127.0.0.1:1/claude/~t=t9;a=x' }))).toMatchObject({ threadId: 't9', callId: null })
     expect(markersOf(env({ CLAUDE_PID: '77' }))).toEqual({ threadId: null, callId: null, claudePid: 77 })
+  })
+
+  it("environFromPsE reads the marks off macOS's ps -E line, where the environment follows the command", () => {
+    const line = `/bin/bash -c eval 'bun test' PATH=/usr/bin TEMP_CODE_THREAD=t1 TEMP_CODE_CALL=toolu_01 CLAUDE_PID=77 ANTHROPIC_BASE_URL=http://127.0.0.1:1/claude/~t=t1;a=x HOME=/Users/me\n`
+    expect(markersOf(environFromPsE(line))).toEqual({ threadId: 't1', callId: 'toolu_01', claudePid: 77 })
+    expect(environFromPsE('node server.js HOME=/Users/me\n')).toBe('')
+    expect(markersOf(environFromPsE('node server.js HOME=/Users/me\n'))).toEqual({ threadId: null, callId: null, claudePid: null })
+    expect(environFromPsE('')).toBeNull()
   })
 
   it('parseGuardPs reads the ps rows', () => {

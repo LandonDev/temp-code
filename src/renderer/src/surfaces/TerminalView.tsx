@@ -412,8 +412,10 @@ function ShellTerminal({ id, cwd, active, onMetaChange }: Props) {
         });
     };
     refresh();
-    // A parked pane or tab arms no interval at all; it reads once on return.
-    if (!statusPollAllowed(active, paneVisible, document.hidden)) return;
+    // A parked pane or another tab arms no interval at all (it reads once
+    // on return); a hidden window keeps the listener, so showing it reads
+    // again and the interval's reads resume.
+    if (!active || !paneVisible) return;
     const interval = setInterval(refresh, 1000);
     document.addEventListener("visibilitychange", refresh);
     return () => {

@@ -67,9 +67,11 @@ bun run gate [--tier commit|publish|all] [--since <ref>] [--full]
   exited 1 with nothing printed (2026-10-27). The gate's step adds the JSON
   reporter beside the default one (`<git-dir>/temp-code-gate/logs/vitest.json`)
   and reads it when the exit and the output disagree (scripts/gate.ts
-  `judgeReport`): a reporter that died after a green run passes the step, a
-  red report names its failures when nothing was printed, and no report with
-  no output says the workers never started.
+  `judgeReport`): a reporter that died before its summary after a green run
+  passes the step, a red report names its failures when nothing was printed,
+  no report with no output says the workers never started, and an output
+  that ends in vitest's own summary keeps its exit (the JSON `success`
+  counts failed tests alone, never an unhandled error).
 - **vitest** keeps its cache in `node_modules/.vite/vitest`; the gate never
   passes `--no-cache` or clears it.
 - **The Xcode** for `ios` and `ios-client` is scripts/ios-xcode.sh's pick

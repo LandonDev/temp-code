@@ -962,6 +962,10 @@ export const codexDriver: HarnessDriver = {
 
     return {
       async send(text: string, attachments: Attachment[] = []): Promise<void> {
+        // A dead app-server (a turn/start deadline killed it, a crash, a
+        // dispose) must not swallow the message: the registry drops the
+        // handle and boots a fresh one on this word.
+        if (disposed || conn.exited) throw new Error('harness gone: the codex app-server has exited')
         setStatus('running')
         if (firstTurnGate) {
           await firstTurnGate

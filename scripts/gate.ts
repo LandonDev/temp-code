@@ -422,8 +422,11 @@ export function readJsonReport(file: string | null): JsonReport | null {
 }
 
 /**
- * A step with a JSON report (vitest): the report decides when the step's
- * exit and its output disagree. On the box (2026-10-27) `vitest run` exited
+ * A step with a JSON report (vitest): the report decides when the reporter
+ * died before its summary and the exit and the output disagree. An output
+ * that ends in vitest's own summary stands as it is: the JSON report's
+ * `success` counts failed tests alone, never an unhandled error, so a run
+ * that printed "Errors 1 error" keeps its exit 1. On the box (2026-10-27) `vitest run` exited
  * 1 with nothing printed while the same files passed under another reporter
  * or pool: a report saying every test passed makes the step pass and the
  * tail say so; a report with failures names them when the output did not;
@@ -432,6 +435,9 @@ export function readJsonReport(file: string | null): JsonReport | null {
  */
 export function judgeReport(exitCode: number | null, tail: string, report: JsonReport | null): { exitCode: number | null; tail: string } {
   if (exitCode === 0) return { exitCode, tail }
+  // The reporter lived to print its summary: the exit is vitest's own word
+  // (failed tests, or an unhandled error the JSON report does not count).
+  if (/\bTest Files\b/.test(tail)) return { exitCode, tail }
   if (report?.success === true) {
     const n = report.numPassedTests ?? report.numTotalTests ?? 0
     const note = `vitest exited ${exitCode ?? 'by signal'} after the tests ran; its JSON report says all ${n} passed, so the step passes`

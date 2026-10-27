@@ -190,9 +190,13 @@ export class ThreadPorts {
     }
     const scan = await this.deps.scanner.get(0)
     const ports = byPort(scan.listeners)
+    const harness = this.deps.harnessPid(sessionId) ?? -1
     for (const ann of announced) {
       const l = ports.get(ann.port)
       if (!l) continue
+      // An announcement from a test run, a typecheck or the gate (a preview
+      // server a script started) is the runner's, whatever it printed.
+      if (underRunner(this.ancestry(scan, l.pid, harness))) continue
       this.record(sessionId, ann.port, l.pid, callId, portLabel(ann.port, { url: ann.url }))
     }
     if (a) this.fromTree(sessionId, a, scan, callId, command)

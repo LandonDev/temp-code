@@ -74,6 +74,20 @@ describe('ThreadPorts', () => {
     expect(rows.map((r) => [r.identifier, r.pid, r.callId, r.label])).toEqual([['3000', 300, 'c1', 'bun run serve']])
   })
 
+  it("never files an announced port whose listener runs under a test run or the gate", async () => {
+    call('root', 'c1', 'bunx vitest run --browser')
+    await flush()
+    // vitest (pid 300) under the harness, a preview server (pid 301) under it, announcing itself.
+    parents.set(300, HARNESS)
+    args.set(300, 'node /srv/agents/work/x/node_modules/vitest/vitest.mjs run --browser')
+    parents.set(301, 300)
+    args.set(301, 'node /srv/agents/work/x/node_modules/vite/bin/vite.js preview')
+    listeners.push({ port: 63315, pid: 301, address: '127.0.0.1', command: 'node' })
+    const rows = await ports.settle('root', 'c1', '  ➜  Local:   http://localhost:63315/\n')
+    expect(rows).toEqual([])
+    expect(ledger.listAll({ kind: 'port' })).toEqual([])
+  })
+
   it('never files a test run’s worker as a dev server', async () => {
     call('root', 'c1', 'NODE_ENV=test bunx vitest run src/x.test.ts')
     await flush()

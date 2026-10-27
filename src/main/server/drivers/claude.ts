@@ -461,7 +461,8 @@ export function checkForgottenTasks(ctx: DriverCtx, state: StreamState): void {
   // job is done is as forgotten as a dead process.
   const live: (readonly [string, string])[] = [
     ...[...state.tasks].map(([id, t]) => [id, t.description] as const),
-    ...state.crons.map((c) => [`cron:${c.id}`, c.label] as const)
+    // The Stop hook stores a cron as `cron:<id>` already (its clock is keyed the same way).
+    ...state.crons.map((c) => [c.id, c.label] as const)
   ]
   const stale = live.filter(([id]) => {
     const last = state.checked.get(id)

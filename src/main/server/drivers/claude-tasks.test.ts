@@ -79,7 +79,8 @@ it('a session cron counts as a task in the forgotten check, with its own clock',
   const sent: string[] = []
   state.sendCheck = (text) => sent.push(text)
   state.watching = true
-  state.crons = [{ id: '0', label: 'every 5 min' }]
+  // The ids as the Stop hook stores them, clock and list alike.
+  state.crons = [{ id: 'cron:0', label: 'every 5 min' }]
   state.since.set('cron:0', Date.now() - 11 * 60_000)
   checkForgottenTasks(ctx, state)
   expect(sent).toHaveLength(1)
@@ -88,11 +89,31 @@ it('a session cron counts as a task in the forgotten check, with its own clock',
   // A young cron is never questioned.
   state.watching = true
   state.working = false
-  state.crons = [{ id: '1', label: 'nightly' }]
+  state.crons = [{ id: 'cron:1', label: 'nightly' }]
   state.since.set('cron:1', Date.now())
   sent.length = 0
   checkForgottenTasks(ctx, state)
   expect(sent).toEqual([])
+})
+
+it("a cron the Stop hook stored is questioned by the forgotten check once its own clock is old", async () => {
+  const sent: string[] = []
+  state.sendCheck = (text) => sent.push(text)
+  const hook = stopHookFor(ctx, state)
+  startTurn()
+  await hook(stopInput([{ schedule: '*/5 * * * *', recurring: true }]))
+  handleMessage(ctx, state, result())
+  expect(state.crons.map((c) => c.id)).toEqual(['cron:0'])
+  // Fresh: nothing to ask. Eleven minutes on, the hook's own key is what the check reads.
+  state.watching = true
+  checkForgottenTasks(ctx, state)
+  expect(sent).toEqual([])
+  state.since.set('cron:0', Date.now() - 11 * 60_000)
+  state.working = false
+  state.watching = true
+  checkForgottenTasks(ctx, state)
+  expect(sent).toHaveLength(1)
+  expect(sent[0]).toContain('cron:0')
 })
 
 it('a turn that ends with a live task settles to watching, not idle', () => {

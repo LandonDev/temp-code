@@ -171,6 +171,8 @@ type Entry = {
   /** Pushes held back while a history fetch is in flight; they fold after
    *  it so a live row never lands ahead of the older rows it follows. */
   held: EventRow[] | null;
+  /** Held since the host's `resync` push, before the replay's own hold: the replay runs through it. */
+  resyncHold?: boolean;
   /** The part of the log before the tail that painted first: the rows
    *  before `beforeSeq` are still to come, and every row folded since the
    *  tail landed waits in `since` so the refold includes it. */
@@ -1184,6 +1186,7 @@ class SessionStore {
     entry.lastSeq = 0;
     entry.nextId = 1;
     entry.held = null;
+    entry.resyncHold = false;
     entry.rows = null;
     this.stopTimers(entry);
     entry.wanted = false;
@@ -1457,7 +1460,9 @@ class SessionStore {
     return {
       cursor: () => entry.lastSeq,
       begin: () => {
-        entry.held = [];
+        // Rows held since a resync push stay held: they fold after the page.
+        entry.held ??= [];
+        entry.resyncHold = false;
       },
       page: (page: EventsPage) => {
         if (this.entries.get(id) !== entry) return;
@@ -1483,12 +1488,26 @@ class SessionStore {
     };
   }
 
+  /** A transcript still held from a resync push whose replay never came (the host dropped, the entry left the kept set): its rows fold now. */
+  private releaseResyncHolds(environmentId: string): void {
+    for (const entry of this.entries.values()) {
+      if (!entry.resyncHold || entry.meta?.environmentId !== environmentId) continue;
+      const held = entry.held;
+      entry.held = null;
+      entry.resyncHold = false;
+      for (const row of held ?? []) this.applyPush(entry, row);
+    }
+  }
+
   private async replayGap(entry: Entry, why: string): Promise<void> {
     const link = this.linkOf(entry);
     const subs = this.subsOf(entry);
-    if (!link || !subs) return;
+    if (!link || !subs) {
+      if (entry.resyncHold) this.releaseResyncHolds(entry.meta?.environmentId ?? "");
+      return;
+    }
     const id = entry.session.id;
-    if (entry.held) return;
+    if (entry.held && !entry.resyncHold) return;
     this.noteLoad(why);
     // A first load paints the last turns first; the rest folds behind them.
     // The cursor decides, never the loaded flag: a pane restored from a
@@ -1763,12 +1782,21 @@ class SessionStore {
       case "resync": {
         const attached = this.attached.get(environmentId);
         if (attached) {
+          // The host shed this socket's pushes and asks for a replay: every
+          // loaded transcript holds what arrives from here, so no row folds
+          // past the ones the host dropped before the replay reads the cursor.
+          for (const entry of this.entries.values()) {
+            if (!entry.loaded || entry.held || entry.meta?.environmentId !== environmentId) continue;
+            entry.held = [];
+            entry.resyncHold = true;
+          }
           attached.listed = (attached.listed ?? Promise.resolve())
             .catch(() => undefined)
             .then(() => {
               if (this.attached.get(environmentId) === attached && attached.link.connected) return this.resync(attached.link);
             })
-            .catch(() => undefined);
+            .catch(() => undefined)
+            .then(() => this.releaseResyncHolds(environmentId));
         }
         break;
       }

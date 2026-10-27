@@ -40,9 +40,10 @@ import { parseEnviron } from './portSweep'
  *     the call's tool result says so (`tail`). RSS is the per-process
  *     reading admission.ts samples the harnesses with, the same `ps` column.
  *
- * Everything here reads one `ps` per tick (shared for a second) and
- * `/proc/<pid>/environ` once per process; the deps are injectable so the
- * rules run over fake trees in processGuard.test.ts.
+ * Everything here reads one `ps` per tick (shared for a second) and a
+ * process's environment once (`/proc/<pid>/environ` on Linux, `ps -E` on
+ * macOS, which has no /proc); the deps are injectable so the rules run over
+ * fake trees in processGuard.test.ts.
  */
 
 export interface GuardProc {
@@ -127,6 +128,21 @@ export function markersOf(environ: string | null): GuardMarkers & { claudePid: n
     else if (entry.startsWith(`${CALL_MARK}=`)) callId = entry.slice(CALL_MARK.length + 1) || null
   }
   return { threadId, callId, claudePid: base.claudePid }
+}
+
+/** The environment keys the guard reads; on macOS `ps -E` prints them after the command line. */
+const MARK_KEYS = [THREAD_MARK, CALL_MARK, 'CLAUDE_PID', 'ANTHROPIC_BASE_URL'] as const
+
+/** `ps -E -o command= -p <pid>` (macOS: the command line, then `KEY=value` pairs) → a NUL-separated environ of the keys the guard reads. */
+export function environFromPsE(text: string): string | null {
+  const line = text.trim()
+  if (!line) return null
+  const out: string[] = []
+  for (const key of MARK_KEYS) {
+    const m = new RegExp(`(?:^|\\s)${key}=(\\S+)`).exec(line)
+    if (m) out.push(`${key}=${m[1]}`)
+  }
+  return out.length ? `${out.join('\0')}\0` : ''
 }
 
 /** `ps -u <uid> -o pid=,ppid=,pgid=,rss=,args=` → rows. */
@@ -355,10 +371,21 @@ const psRows = (): Promise<string> =>
     execFile('ps', args, { timeout: 5_000, maxBuffer: 8 * 1024 * 1024 }, (_err, stdout) => resolve(String(stdout ?? '')))
   })
 
+/** macOS has no /proc: `ps -E` shows a process's environment after its command line (one child per process the guard has to decide about; the markers cache keeps it to once per process). */
+const darwinEnviron = (pid: number): Promise<string | null> =>
+  new Promise((resolve) => {
+    execFile('ps', ['-E', '-o', 'command=', '-p', String(pid)], { timeout: 5_000, maxBuffer: 1024 * 1024 }, (err, stdout) => resolve(err ? null : environFromPsE(String(stdout ?? ''))))
+  })
+
 export function hostGuardDeps(): Pick<ProcessGuardDeps, 'scan' | 'environ' | 'kill'> {
   return {
     scan: async () => parseGuardPs(await psRows()),
-    environ: (pid) => (process.platform === 'linux' ? readFile(`/proc/${pid}/environ`, 'utf8').catch(() => null) : Promise.resolve(null)),
+    environ: (pid) =>
+      process.platform === 'linux'
+        ? readFile(`/proc/${pid}/environ`, 'utf8').catch(() => null)
+        : process.platform === 'darwin'
+          ? darwinEnviron(pid)
+          : Promise.resolve(null),
     kill: (pid, signal) => {
       try {
         process.kill(pid, signal)

@@ -1068,6 +1068,30 @@ describe("the mounted set", () => {
     expect(sessionStore.get("s1")?.blocks).toHaveLength(9000);
   });
 
+  it("a resync replays the rows the host shed: a push that lands first waits, nothing folds past the gap", async () => {
+    link.metas = [wireMeta({ id: "s1" })];
+    const rows: EventRow[] = [];
+    for (let i = 1; i <= 5; i++) rows.push(row("s1", i, { type: "user-text", text: `q${i}` }));
+    link.events.set("s1", rows);
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    sessionStore.setMounted(["s1"]);
+    await sessionStore.ensureLoaded("s1", "test");
+    expect(sessionStore.get("s1")?.blocks.map((b) => b.text)).toEqual(["q1", "q2", "q3", "q4", "q5"]);
+    // The host dropped row 6 for this unfocused thread, drained, and asked for a resync; row 7 arrives before the replay runs.
+    link.events.set("s1", [...rows, row("s1", 6, { type: "user-text", text: "q6" }), row("s1", 7, { type: "user-text", text: "q7" })]);
+    link.push({ push: "resync" });
+    link.push({ push: "event", row: row("s1", 7, { type: "user-text", text: "q7" }) });
+    expect(sessionStore.get("s1")?.blocks).toHaveLength(5);
+    for (let i = 0; i < 6; i++) await tick();
+    expect(sessionStore.get("s1")?.blocks.map((b) => b.text)).toEqual(["q1", "q2", "q3", "q4", "q5", "q6", "q7"]);
+    const replay = link.calls.filter((c) => c.method === "session.events").at(-1)?.params as { afterSeq?: number };
+    expect(replay.afterSeq).toBe(5);
+    // A push after the replay folds at once again.
+    link.push({ push: "event", row: row("s1", 8, { type: "user-text", text: "q8" }) });
+    expect(sessionStore.get("s1")?.blocks.at(-1)?.text).toBe("q8");
+  });
+
   it("a batch of 1,000 metas builds one snapshot and notifies once per frame", async () => {
     link.metas = [wireMeta({ id: "s1" })];
     sessionStore.attach(link);

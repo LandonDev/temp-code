@@ -268,6 +268,11 @@ describe('the vitest step and its JSON report', () => {
     expect(judgeReport(null, 'RUN v3', report({ success: true })).tail).toBe('RUN v3\nvitest exited by signal after the tests ran; its JSON report says all 3 passed, so the step passes')
   })
 
+  it("a run whose reporter printed its summary keeps its exit: the JSON report does not count an unhandled error", () => {
+    const summary = 'Test Files  530 passed (530)\n      Tests  4966 passed (4966)\n     Errors  1 error'
+    expect(judgeReport(1, summary, report({ success: true }))).toEqual({ exitCode: 1, tail: summary })
+  })
+
   it('a red report names its failures when the output printed nothing, and keeps the output when it did', () => {
     const red = report({
       success: false,
