@@ -29,7 +29,7 @@ const grep = (pattern: string) => call("Grep", { pattern }, { id: `g:${pattern}`
 
 describe("groupPhrase", () => {
   it("joins phrases with commas, the first capitalized, the rest lowercase", () => {
-    expect(groupPhrase([write("src/diag.ts"), bash("make")], CWD)).toBe("Created diag.ts, ran make");
+    expect(groupPhrase([write("src/diag.ts"), bash("make")], CWD)).toBe("Created diag.ts, ran a command");
     expect(
       groupPhrase([read("src/lib/a.ts"), read("src/lib/b.ts"), read("src/lib/c.ts"), edit("src/types.ts")], CWD),
     ).toBe("Read 3 files in src/lib, edited types.ts");

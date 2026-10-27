@@ -1,12 +1,14 @@
 // A8 (action rows): the one line every action row draws.
 import { cloneElement, type ReactNode } from "react";
 import { ChevronRight } from "../../chrome/icons";
+import { Button } from "../../components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { cn } from "../../lib/cn";
 import { useCountUp } from "../../motion";
 
 /**
- * `[glyph]  Verb  object  +46 −3  extras  ▸`, 32px tall. The list around
+ * `[glyph]  Verb  object  +46 −3  extras  ▸`, 32px tall, the caret right
+ * after the words as on the group line. The list around
  * the rows gives them their side padding (ActionGroup), so a lone row lines
  * up with the prose. Hover lifts the verb and the caret to foreground, as
  * the group line does. The line's own action (open the
@@ -62,18 +64,18 @@ export function ActionLine({
       )}
     >
       {action ? (
-        <button
-          type="button"
+        <Button
+          variant="ghost"
           aria-label={label}
           aria-expanded={opens ? !!open : undefined}
           onClick={action}
-          className="absolute inset-0 cursor-default rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="absolute inset-0 h-auto rounded-md hover:bg-transparent active:bg-transparent aria-expanded:bg-transparent active:not-aria-[haspopup]:scale-100 focus-visible:ring-2 focus-visible:ring-ring"
         />
       ) : (
         <span className="sr-only">{label}</span>
       )}
       {glyph}
-      <span className="pointer-events-none flex min-w-0 flex-1 items-center gap-2">
+      <span className="pointer-events-none flex min-w-0 items-center gap-2">
         {verb ? <span className={cn("shrink-0 text-muted-foreground", action && LIFT)}>{verb}</span> : null}
         {objectText}
         {adds || dels ? <Counts adds={adds ?? 0} dels={dels ?? 0} ticking={ticking} /> : null}
@@ -120,25 +122,23 @@ function ObjectText({
   const tip = title && title !== object ? title : undefined;
   const cls = "min-w-0 truncate text-foreground";
   const link = onObject ? (
-    <button
-      type="button"
+    <Button
+      variant="link"
       aria-label={label}
       onClick={(event) => {
         event.stopPropagation();
         onObject();
       }}
-      className={cn(
-        cls,
-        "pointer-events-auto relative cursor-default text-left underline-offset-2 outline-none hover:underline focus-visible:underline",
-      )}
+      className="pointer-events-auto relative h-auto min-w-0 justify-start px-0 text-sm font-normal underline-offset-2 active:not-aria-[haspopup]:scale-100 focus-visible:underline"
     />
   ) : null;
-  if (!tip) return link ? cloneElement(link, undefined, object) : <span className={cls}>{object}</span>;
+  const text = <span className={cls}>{object}</span>;
+  if (!tip) return link ? cloneElement(link, undefined, text) : text;
   // A plain object takes the hover for its tooltip, so it passes its click on.
   const trigger = link ?? <span className={cn(cls, "pointer-events-auto relative")} onClick={onLine} />;
   return (
     <Tooltip>
-      <TooltipTrigger render={trigger}>{object}</TooltipTrigger>
+      <TooltipTrigger render={trigger}>{link ? text : object}</TooltipTrigger>
       <TooltipContent>{tip}</TooltipContent>
     </Tooltip>
   );

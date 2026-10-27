@@ -29,15 +29,19 @@ foreground, the same words the group line uses); the components only draw it.
 
 - **The glyph** (`transcript/ToolGlyph.tsx`): one 14 px box, the kind's
   icon from the `GLYPH` record, the connector's mark or the subagent's
-  provider in its place, the `Spinner` while the call runs, the failed mark
-  in `destructive` when it failed or was denied (nothing else on the line
-  turns red), the waiting mark in amber while it asks for approval.
+  provider in its place, and while the call runs, fails (or was denied) or
+  asks for approval the `StatusMark` of working, failed or waiting with no
+  word (nothing else on the line turns red). The words hug their text, so
+  the caret sits right after them, as on the group line. A command whose
+  gist would only repeat it ("Ran bun run typecheck") says "Ran a command";
+  more than two clauses end "and N more".
 - **What it opens.** A read or a list opens its file in the editor at the
   line it started from (Claude's Read `offset` is that line), with no caret
   and nothing in the transcript. A command opens its card
-  (`transcript/CommandCard.tsx`: the tool's name, `$ ` and the command in
-  mono with the light tint of `lib/shellTokens.ts`, twelve lines then Show
-  all, what it printed under it). An edit opens its diff (`EditRow.tsx`,
+  (`transcript/CommandCard.tsx`: the tool's name, `$ ` in line with it and
+  the command in mono, tinted by ink alone through `lib/shellTokens.ts`
+  (no status colours), twelve lines then Show all, what it printed under
+  it, nothing when it printed nothing). An edit opens its diff (`EditRow.tsx`,
   `DiffBody.tsx`), on the caret only, never on its own while it streams;
   its counts tick instead. Anything else opens its details
   (`ToolDetails.tsx`: the invocation, key and value rows for JSON, the
@@ -48,9 +52,11 @@ foreground, the same words the group line uses); the components only draw it.
   tense with no caret and no body of its own; the approval card mounts
   directly under the line, and the row is an ordinary row again once
   decided. An edit waiting on approval takes this row too.
-- **No borders of their own.** The one border is the group's list around
-  the rows (`ActionGroup`), which also gives each row its side padding, so
-  a lone row lines up with the prose. Hover lifts the verb and the caret to
+- **One card, never two.** The border is the group's list around the rows
+  (`ActionGroup`), which also gives each row its side padding, so a lone
+  row lines up with the prose. A lone row's open body is a card of its own
+  (`BODY_FRAME` in ActionRow.tsx: hairline, rounded-lg, p-3), which a
+  `bg-card` ancestor cancels, so inside the list it draws nothing. Hover lifts the verb and the caret to
   foreground, as the group line does.
 - `transcript/ActionRow.fixtures.tsx` holds one of each row for a static
   look; `ToolRow.dom.test.tsx` and `EditRow.dom.test.tsx` prove the

@@ -113,13 +113,13 @@ describe("toolPhrase", () => {
       "Searched for foo",
     );
     expect(toolPhrase(call("Bash", { command: "ls src && wc -l a.ts && git log" }))).toBe(
-      "Listed src, counted lines in a.ts +1 more",
+      "Listed src, counted lines in a.ts and 1 more",
     );
     expect(toolPhrase(call("shell", { command: ["/bin/zsh", "-lc", "bun run build"] }))).toBe(
-      "Ran bun run build",
+      "Ran a command",
     );
     expect(toolPhrase(call("Bash", { command: "osascript -e 'tell app'" }))).toBe(
-      "Ran osascript",
+      "Ran a command",
     );
     expect(toolPhrase(call("Bash", { command: "" }))).toBe("Ran a command");
   });
@@ -226,13 +226,27 @@ describe("toolPhraseParts", () => {
   });
 
   it("splits a run phrase on its first word", () => {
-    expect(parts(call("Bash", { command: "npx convex dev" }))).toEqual({ verb: "Ran", object: "convex" });
+    expect(parts(call("Bash", { command: "npx convex dev --once" }))).toEqual({ verb: "Ran", object: "convex dev" });
+    expect(parts(call("Bash", { command: "npx vitest run src" }))).toEqual({ verb: "Ran", object: "the tests" });
     expect(parts(call("Bash", { command: "npm i" }))).toEqual({ verb: "Installed", object: "dependencies" });
     expect(parts(call("Bash", { command: "" }))).toEqual({ verb: "Ran", object: "a command" });
     expect(parts(call("Bash", { command: "git status && git diff" }))).toEqual({
       verb: "Checked",
       object: "git status, viewed the diff",
     });
+  });
+
+  it("a run whose words would only repeat the command says a command", () => {
+    expect(parts(call("Bash", { command: "bun run typecheck" }))).toEqual({ verb: "Ran", object: "a command" });
+    expect(parts(call("Bash", { command: "osascript -e 'x'" }))).toEqual({ verb: "Ran", object: "a command" });
+    expect(parts(call("Bash", { command: "npm test" }))).toEqual({ verb: "Ran", object: "the tests" });
+    expect(parts(call("Bash", { command: "git status" }))).toEqual({ verb: "Checked", object: "git status" });
+  });
+
+  it("more clauses than two read as and N more, never a plus", () => {
+    expect(toolPhrase(call("Bash", { command: "ls src && wc -l a.ts && git log && git diff" }), CWD, false)).toBe(
+      "Listed src, counted lines in a.ts and 2 more",
+    );
   });
 
   it("toolPhrase is the parts joined, and never carries a middle dot", () => {
@@ -253,8 +267,10 @@ describe("toolPhraseParts", () => {
 describe("commandPhrases", () => {
   it("unwraps the shell and skips pipe noise", () => {
     expect(commandPhrases(`/bin/zsh -lc 'cd /x && git diff | cat'`)).toEqual(["view the diff"]);
-    expect(commandPhrases("FOO=1 env npm run check:web")).toEqual(["run npm run check:web"]);
+    expect(commandPhrases("FOO=1 env npm run check:web")).toEqual(["run a command"]);
     expect(commandPhrases("echo hi > out.txt")).toEqual(["write out.txt"]);
+    expect(commandPhrases("npx convex dev --once 2>&1 | tail -20 && git commit -m x")).toEqual(["run convex dev", "commit"]);
+    expect(commandPhrases("npm test &> log.txt")).toEqual(["run the tests"]);
   });
 });
 

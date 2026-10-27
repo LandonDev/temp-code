@@ -196,6 +196,9 @@ function segments(cmd: string): string[] {
     } else if (c === "'" || c === '"' || c === "`") {
       quote = c;
       cur += c;
+    } else if (c === "&" && (cmd[i - 1] === ">" || cmd[i - 1] === "<" || cmd[i + 1] === ">")) {
+      // A redirect (`2>&1`, `&>out`), not a separator.
+      cur += c;
     } else if (c === "\n" || c === ";" || c === "|" || c === "&") {
       if ((c === "|" || c === "&") && cmd[i + 1] === c) i++;
       out.push(cur);
@@ -286,6 +289,9 @@ function tense(p: string, live: boolean): string {
   return [verb, ...rest].join(" ");
 }
 
+/** `> file` and `>> file`; not a descriptor (`2>&1`) or stderr alone (`2> x`). */
+const FILE_REDIRECT = /(?<![\d&])>>?\s*([^&\s]\S*)/;
+
 /** One shell segment → a present-tense phrase, or null for pipe noise. */
 function segmentPhrase(seg: string, cwd?: string): string | null {
   const words = seg.split(/\s+/);
@@ -367,7 +373,8 @@ function segmentPhrase(seg: string, cwd?: string): string | null {
       return sub ? `run ${cmd} ${sub}` : `run ${cmd}`;
     case "npx":
     case "bunx":
-      return sub ? `run ${base(sub)}` : `run ${cmd}`;
+      // The package is the command: "npx convex dev" reads as "convex dev" would.
+      return sub ? segmentPhrase(words.slice(i + 1).filter((w) => !w.startsWith("-")).join(" "), cwd) : `run ${cmd}`;
     case "cargo":
     case "go":
     case "mvn":
@@ -420,7 +427,7 @@ function segmentPhrase(seg: string, cwd?: string): string | null {
       return "change permissions";
     case "echo":
     case "printf": {
-      const redirect = />>?\s*(\S+)/.exec(seg);
+      const redirect = FILE_REDIRECT.exec(seg);
       return redirect ? `write ${rel(redirect[1])}` : null;
     }
     case "open":
@@ -444,9 +451,11 @@ function segmentPhrase(seg: string, cwd?: string): string | null {
     case "gh":
     case "docker":
       return sub ? `run ${cmd} ${sub}` : `run ${cmd}`;
-    default:
-      if (/>>?\s*\S+/.test(seg)) return `write ${rel(/>>?\s*(\S+)/.exec(seg)![1])}`;
+    default: {
+      const out = FILE_REDIRECT.exec(seg);
+      if (out) return `write ${rel(out[1])}`;
       return cmd ? `run ${cmd}${/^[a-z][\w:-]*$/i.test(sub) ? ` ${sub}` : ""}` : null;
+    }
   }
 }
 
@@ -454,10 +463,19 @@ function segmentPhrase(seg: string, cwd?: string): string | null {
 export function commandPhrases(raw: string, cwd?: string): string[] {
   const out: string[] = [];
   for (const seg of segments(unwrap(raw))) {
-    const p = segmentPhrase(seg, cwd);
+    let p = segmentPhrase(seg, cwd);
+    // "Ran bun run typecheck" says nothing the command card does not.
+    if (p?.startsWith("run ") && echoesCommand(p.slice(4), seg)) p = "run a command";
     if (p && !out.includes(p)) out.push(p);
   }
   return out;
+}
+
+/** The words are the segment's own leading words, as typed. */
+function echoesCommand(words: string, seg: string): boolean {
+  const typed = seg.split(/\s+/).filter((w) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(w) && w !== "env" && w !== "sudo");
+  const said = words.split(" ");
+  return said.length <= typed.length && said.every((w, n) => w === (n === 0 ? base(typed[0]) : unquote(typed[n])));
 }
 
 /** A title the fold already turned into "Read x" / "Find x", for a call with no command. */
@@ -491,7 +509,7 @@ function runParts(block: Block, cwd: string | undefined, live: boolean): PhraseP
   const clauses = runClauses(block, cwd, live);
   if (clauses.length === 0) return { verb: live ? "Running" : "Ran", object: "a command" };
   const extra = clauses.length - 2;
-  return splitVerb(clauses.slice(0, 2).join(", ") + (extra > 0 ? ` +${extra} more` : ""));
+  return splitVerb(clauses.slice(0, 2).join(", ") + (extra > 0 ? ` and ${extra} more` : ""));
 }
 
 /** "Ran the tests" → verb "Ran", object "the tests"; the phrase's first word. */

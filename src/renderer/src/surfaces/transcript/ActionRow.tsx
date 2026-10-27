@@ -83,11 +83,13 @@ export function ActionRow({
         <Collapsible open={open} onOpenChange={setOpen}>
           <CollapsibleContent>
             <div className="pb-2">
+              <div data-row-body className={BODY_FRAME}>
               {action.opens === "command" ? (
                 <CommandCard block={block} failed={action.failed} />
               ) : (
                 <ToolDetails block={block} />
               )}
+              </div>
             </div>
           </CollapsibleContent>
         </Collapsible>
@@ -100,6 +102,14 @@ export function ActionRow({
     </div>
   );
 }
+
+/**
+ * A row's open body is a card of its own (hairline, rounded-lg, p-3) when
+ * the row stands alone; inside the group's list, which is already that
+ * card, it draws nothing, so no card sits within a card.
+ */
+export const BODY_FRAME =
+  "rounded-lg border border-border bg-card p-3 in-[.bg-card]:rounded-none in-[.bg-card]:border-0 in-[.bg-card]:bg-transparent in-[.bg-card]:p-0";
 
 /** The thread an app call names: the agent's detail when it is a subagent, else the pane. */
 function useThreadOpener(action: Action): (() => void) | undefined {

@@ -73,7 +73,7 @@ export const ToolDetails = memo(function ToolDetails({
               aria-label={raw ? "Show formatted" : "Show raw"}
               aria-pressed={raw}
               onClick={() => setRaw(!raw)}
-              className="absolute right-0 top-0 z-10 text-muted-foreground opacity-0 transition-[opacity,background-color] group-hover/details:opacity-100 focus-visible:opacity-100"
+              className="absolute right-0 top-0 z-10 text-muted-foreground opacity-0 transition-[opacity,background-color] duration-(--dur-fast) ease-(--ease-out) group-hover/details:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
             />
           }
         >
@@ -141,21 +141,23 @@ export function InvocationBlock({ text, children, className }: { text?: string; 
   );
 }
 
-/** What came back: muted mono under the block, red when the call failed. */
+/** What came back: muted mono under the block, red when the call failed; nothing when empty. */
 export function ToolOutputLines({ text, error }: { text: string; error: boolean }) {
   const { shown, more } = outputLines(text);
+  // An empty output is no output: nothing, not a word saying so.
+  if (!shown.join("").trim()) return null;
   return (
     <div className="mt-2 min-w-0">
       <pre
         className={cn(
-          "font-mono text-xs leading-[18px] whitespace-pre-wrap [overflow-wrap:anywhere]",
+          "font-mono text-xs leading-5 whitespace-pre-wrap [overflow-wrap:anywhere]",
           error ? "text-destructive" : "text-muted-foreground",
         )}
       >
-        {shown.join("\n") || "(no output)"}
+        {shown.join("\n")}
       </pre>
       {more > 0 ? (
-        <div className="text-[11px] leading-[18px] tabular-nums text-muted-foreground">
+        <div className="text-[11px] leading-5 tabular-nums text-muted-foreground">
           {more} more {more === 1 ? "line" : "lines"}
         </div>
       ) : null}
@@ -167,7 +169,7 @@ function KVRows({ obj, titleOf }: { obj: Record<string, unknown>; titleOf: Title
   return (
     <div className="flex flex-col gap-0.5">
       {Object.entries(obj).map(([k, v]) => (
-        <div key={k} className="flex gap-2 leading-[18px]">
+        <div key={k} className="flex gap-2 leading-5">
           <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{k}</span>
           <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[13px] text-foreground">
             {kvDisplay(k, v, titleOf)}
@@ -189,7 +191,7 @@ function PrettyJson({ value, titleOf }: { value: unknown; titleOf: TitleOf }) {
           v && typeof v === "object" ? (
             <KVRows key={n} obj={rec(v)} titleOf={titleOf} />
           ) : (
-            <div key={n} className="text-[13px] leading-[18px] text-foreground">
+            <div key={n} className="text-[13px] leading-5 text-foreground">
               {scalar(v)}
             </div>
           ),
@@ -201,5 +203,5 @@ function PrettyJson({ value, titleOf }: { value: unknown; titleOf: TitleOf }) {
     );
   }
   if (value && typeof value === "object") return <KVRows obj={rec(value)} titleOf={titleOf} />;
-  return <div className="text-[13px] leading-[18px] text-foreground">{scalar(value)}</div>;
+  return <div className="text-[13px] leading-5 text-foreground">{scalar(value)}</div>;
 }

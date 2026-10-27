@@ -1,3 +1,5 @@
+import { Button } from "../components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { openUrl, useCallPortOpen } from "../lib/devPorts";
 
 /**
@@ -11,18 +13,28 @@ export function CallPortLink({ callId }: { callId: string | undefined }) {
   const open = useCallPortOpen(callId);
   if (!open) return null;
   return (
-    <button
-      type="button"
-      data-call-port={open.port}
-      title={open.movedFrom ? `${open.url} · ${open.movedFrom} is taken here` : open.url}
-      onClick={(e) => {
-        e.stopPropagation();
-        openUrl(open.url);
-      }}
-      className="pressable shrink-0 rounded-[5px] px-1 text-[12px] text-content/55 hover:bg-content/8 hover:text-content"
-    >
-      {open.label}
-      <span className="ml-1 tabular-nums text-content/40">:{open.port}</span>
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="xs"
+            data-call-port={open.port}
+            onClick={(e) => {
+              e.stopPropagation();
+              openUrl(open.url);
+            }}
+            className="px-1 font-normal text-muted-foreground hover:text-foreground"
+          />
+        }
+      >
+        {open.label}
+        <span className="tabular-nums text-muted-foreground">:{open.port}</span>
+      </TooltipTrigger>
+      <TooltipContent>
+        {open.url}
+        {open.movedFrom ? <span className="ml-2">{open.movedFrom} is taken here</span> : null}
+      </TooltipContent>
+    </Tooltip>
   );
 }

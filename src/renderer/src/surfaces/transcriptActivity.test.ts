@@ -540,7 +540,7 @@ describe("actionGroupOf", () => {
       { cwd: CWD },
     );
     expect(g).toMatchObject({ kind: "edit", adds: 49, dels: 1, failed: 0, lone: null });
-    expect(g.phrase).toBe("Read types.ts, created diag.ts, ran convex and 1 more");
+    expect(g.phrase).toBe("Read types.ts, created diag.ts, ran convex dev and 1 more");
   });
 
   it("breaks a tie towards the kind earlier in edit, run, research, other", () => {

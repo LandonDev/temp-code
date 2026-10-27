@@ -3,13 +3,14 @@ import { useState } from "react";
 import { Button } from "../../components/ui/button";
 import { shellTokens, type ShellTone } from "../../lib/shellTokens";
 import type { Block } from "../../lib/session";
-import { invocationBody, isSettled, rawInput, toolOutput } from "../../lib/toolDetails";
+import { invocationBody, rawInput, toolOutput } from "../../lib/toolDetails";
 import { humanName } from "../../lib/toolPhrase";
-import { InvocationBlock, OmittedNote, ToolOutputLines, useRowBodies } from "../ToolDetails";
+import { OmittedNote, ToolOutputLines, useRowBodies } from "../ToolDetails";
 
+/** Ink only: colour in the transcript means a status, so the command has none. */
 const TONE: Record<ShellTone, string> = {
-  command: "text-info",
-  string: "text-success",
+  command: "text-foreground",
+  string: "text-foreground/70",
   operator: "text-muted-foreground",
   flag: "text-foreground/70",
   text: "text-foreground",
@@ -19,8 +20,10 @@ const TONE: Record<ShellTone, string> = {
 export const COMMAND_LINE_CAP = 12;
 
 /**
- * The tool's name, the command in mono with a light tint, then what it
- * printed. Nothing while it runs: live output is the right panel's.
+ * The tool's name, the command in mono with a light tint under it, its `$`
+ * in line with the name, then what it printed. Nothing while it runs: live
+ * output is the right panel's. The frame around it is the row's body
+ * (ActionRow): a card on its own, nothing inside the group's list.
  */
 export function CommandCard({ block, failed }: { block: Block; failed: boolean }) {
   const omitted = useRowBodies(block);
@@ -34,14 +37,14 @@ export function CommandCard({ block, failed }: { block: Block; failed: boolean }
   return (
     <div className="flex min-w-0 flex-col">
       <div className="mb-1 text-xs text-muted-foreground">{name}</div>
-      <InvocationBlock>
+      <pre className="min-w-0 font-mono text-[13px] leading-5 whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]">
         <span className="text-muted-foreground">$ </span>
         {shellTokens(shown).map((token, i) => (
           <span key={i} className={TONE[token.tone]}>
             {token.text}
           </span>
         ))}
-      </InvocationBlock>
+      </pre>
       {capped ? (
         <Button variant="link" size="xs" className="self-start px-0 text-muted-foreground" onClick={() => setAll(true)}>
           Show all
@@ -51,8 +54,6 @@ export function CommandCard({ block, failed }: { block: Block; failed: boolean }
         <OmittedNote bytes={omitted.bytes} failed={!!omitted.failed} />
       ) : out ? (
         <ToolOutputLines text={out.text} error={failed || out.error} />
-      ) : isSettled(block) ? (
-        <ToolOutputLines text="" error={failed} />
       ) : null}
     </div>
   );

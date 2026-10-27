@@ -51,7 +51,7 @@ describe("ActionGroup", () => {
     const line = trigger(container)!;
     expect(line).not.toBeNull();
     expect(line.getAttribute("aria-expanded")).toBe("false");
-    expect(line.textContent).toContain("Read types.ts, created diag.ts, ran convex and 2 more");
+    expect(line.textContent).toContain("Read types.ts, created diag.ts, ran convex dev and 2 more");
     expect(line.textContent).toContain("+49");
     expect(line.textContent).toContain("−1");
     expect(container.querySelector("[data-kind]")?.getAttribute("data-kind")).toBe("edit");

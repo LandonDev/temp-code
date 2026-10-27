@@ -64,6 +64,7 @@ describe("ActionRow", () => {
     const { getByLabelText, getByText } = render(
       <ActionRow block={call("Bash", { command: "npm test" }, { status: "failed" })} />,
     );
+    expect(getByLabelText("Failed").getAttribute("data-slot")).toBe("status-mark");
     expect(getByLabelText("Failed").getAttribute("class")).toContain("text-destructive");
     expect(getByText("Ran").className).toContain("text-muted-foreground");
     expect(getByText("Ran").className).not.toContain("destructive");
@@ -109,7 +110,9 @@ describe("ActionRow", () => {
     expect(getByText("Bash")).toBeTruthy();
     const pre = container.querySelector("pre")!;
     expect(pre.textContent).toBe("$ cd x && npm test 2>&1 | tail -40");
-    expect(getByText("npm").className).toContain("text-info");
+    // Ink only: a status colour never tints a command.
+    expect(getByText("npm").className).toContain("text-foreground");
+    expect(pre.innerHTML).not.toMatch(/text-(success|info|destructive|warning)/);
     expect(container.textContent).toContain("line 24");
     expect(container.textContent).not.toContain("line 25");
     expect(getByText("6 more lines")).toBeTruthy();
@@ -124,12 +127,29 @@ describe("ActionRow", () => {
     expect(getByText("1 failed").className).toContain("text-destructive");
   });
 
-  it("a settled run with nothing printed says so", async () => {
-    const { getByRole, getByText } = render(<ActionRow block={call("Bash", { command: "true" })} />);
+  it("a settled run with nothing printed shows nothing under the command", async () => {
+    const { getByRole, container } = render(<ActionRow block={call("Bash", { command: "true" })} />);
     await act(async () => {
       fireEvent.click(getByRole("button", { expanded: false }));
     });
-    expect(getByText("(no output)")).toBeTruthy();
+    expect(container.querySelectorAll("pre")).toHaveLength(1);
+    expect(container.textContent).not.toContain("no output");
+  });
+
+  it("an open body is a card of its own, which the group's list cancels", async () => {
+    const { getByRole, container } = render(<ActionRow block={call("Bash", { command: "npm test" }, { detail: "ok" })} />);
+    await act(async () => {
+      fireEvent.click(getByRole("button", { name: "Ran the tests" }));
+    });
+    const body = container.querySelector("[data-row-body]")!;
+    expect(body.className).toContain("border-border");
+    expect(body.className).toContain("in-[.bg-card]:border-0");
+  });
+
+  it("the caret follows the words, not the column's edge", () => {
+    const { container } = render(<ActionRow block={call("Bash", { command: "npm test" })} />);
+    const words = container.querySelector("[data-glyph]")!.nextElementSibling!;
+    expect(words.className).not.toContain("flex-1");
   });
 
   it("a body still on the server says it is loading", async () => {

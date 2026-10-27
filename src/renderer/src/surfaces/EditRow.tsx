@@ -283,7 +283,7 @@ function CornerButton({
             size="icon-xs"
             aria-label={label}
             onClick={onClick}
-            className="absolute right-0 top-0 z-10 text-muted-foreground opacity-0 transition-[opacity,background-color] group-hover/body:opacity-100 focus-visible:opacity-100"
+            className="absolute right-0 top-0 z-10 text-muted-foreground opacity-0 transition-[opacity,background-color] duration-(--dur-fast) ease-(--ease-out) group-hover/body:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
           />
         }
       >

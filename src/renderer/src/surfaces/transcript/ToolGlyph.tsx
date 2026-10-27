@@ -1,7 +1,6 @@
 // A8 (action rows): the one 14px glyph a row leads with.
 import {
   Bot,
-  CircleAlert,
   FilePlusCorner,
   FileText,
   Folder,
@@ -16,7 +15,6 @@ import {
   Wrench,
   type IconComponent,
 } from "../../chrome/icons";
-import { Spinner } from "../../components/ui/spinner";
 import { StatusMark } from "../../components/ui/status";
 import type { Block } from "../../lib/session";
 import { useMetaById } from "../../lib/threads/agents";
@@ -47,9 +45,9 @@ export const GLYPH: Record<GlyphKey, IconComponent> = {
 };
 
 /**
- * The row's glyph, in order: the spinner while it runs, the waiting mark
- * while it asks, the failed mark, the connector's or the subagent's mark,
- * else the kind's icon. Always one 14px box, so the verbs line up.
+ * The row's glyph, in order: the waiting, working or failed StatusMark
+ * (the one status map), the connector's or the subagent's mark, else the
+ * kind's icon. Always one 14px box, so the verbs line up.
  */
 export function ToolGlyph({ action, block }: { action: Action; block: Block }) {
   return (
@@ -61,10 +59,8 @@ export function ToolGlyph({ action, block }: { action: Action; block: Block }) {
 
 function GlyphBody({ action, block }: { action: Action; block: Block }) {
   if (action.pending) return <StatusMark state="waiting" word={false} />;
-  if (action.running) return <Spinner className="size-3.5" />;
-  if (action.failed) {
-    return <CircleAlert aria-label="Failed" className="size-3.5 text-destructive" strokeWidth={1.5} />;
-  }
+  if (action.running) return <StatusMark state="working" word={false} />;
+  if (action.failed) return <StatusMark state="failed" word={false} />;
   if (action.connector) return <ConnectorMark app={action.connector} />;
   if (action.agent) return <AgentGlyph block={block} />;
   const Icon = GLYPH[action.glyph];
