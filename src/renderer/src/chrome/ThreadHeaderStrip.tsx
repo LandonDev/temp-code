@@ -324,6 +324,9 @@ function dropChip(id: string, paneId: string, edge: PaneEdge): void {
   if (session && !sessionStore.isOpen(id)) sessionStore.mutate((open) => [...open, session]);
   focus.projectTerminal(false);
   focus.composer(true);
+  // A pane already on the page whose composer held the flag never hears it
+  // again: give its field the caret, off the chip.
+  document.querySelector<HTMLElement>(`[data-session-drop="${id}"] [data-composer-input]`)?.focus();
 }
 
 function Chip({

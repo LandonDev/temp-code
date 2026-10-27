@@ -256,6 +256,23 @@ describe("ThreadHeaderStrip chip drag", () => {
     restore();
   });
 
+  it("moving the thread whose composer already holds the keyboard puts the caret back in that composer", () => {
+    const restore = paneUnderPointer();
+    const pane = document.createElement("div");
+    pane.dataset.sessionDrop = "b";
+    pane.innerHTML = '<div data-composer-input tabindex="0"></div>';
+    document.body.append(pane);
+    focusStore.setState({ composerFocused: true, projectTerminalFocused: false });
+    mount();
+    tab("Beta").focus();
+    fireEvent.pointerDown(tab("Beta"), { button: 0, clientX: 380, clientY: 150 });
+    fireEvent.pointerMove(window, { clientX: 390, clientY: 150 });
+    fireEvent.pointerUp(window, { clientX: 390, clientY: 150 });
+    expect(document.activeElement).toBe(pane.firstElementChild);
+    pane.remove();
+    restore();
+  });
+
   it("a release outside every pane drops nothing", () => {
     const restore = paneUnderPointer();
     const { onSelect } = mount();
