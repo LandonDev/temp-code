@@ -2,7 +2,7 @@ import { sessionStore } from "../lib/tcserver/store";
 import { ChevronRight } from "./icons";
 import { Button } from "../components/ui/button";
 import { Spinner } from "../components/ui/spinner";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type Ref } from "react";
 import {
   keepSessionChanges,
   sessionCheckpointStatus,
@@ -14,7 +14,9 @@ import { invalidateProjectFiles } from "../lib/fileIndex";
 import { invalidateWatchedFiles } from "../lib/fileWatch";
 import { basename, notifyGitChanged, subscribeGitChanged } from "../lib/fs";
 import { Counts } from "../surfaces/transcript/Counts";
+import { confirmAction } from "./ConfirmDialog";
 import { FileTypeIcon } from "./FileTypeIcon";
+import { loadToast } from "./toastSync";
 
 export const STATUS_DEBOUNCE_MS = 500;
 
@@ -38,6 +40,7 @@ export function SessionReview({
   const [acting, setActing] = useState<"keep" | "undo" | null>(null);
   const filesRef = useRef(files);
   filesRef.current = files;
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(() => {
     if (!environmentId || !cwd || cwd === "~") {
@@ -85,23 +88,53 @@ export function SessionReview({
 
   if (files.length === 0) return null;
 
-  const run = (action: "keep" | "undo") => {
+  const run = async (action: "keep" | "undo") => {
     if (busy || acting != null || !environmentId) return;
-    setActing(action);
-    const op =
-      action === "keep"
-        ? keepSessionChanges(environmentId, sessionId)
-        : undoSessionChanges(environmentId, sessionId);
+    const root = rootRef.current;
+    // Read before the pressed button disables (which drops its focus).
+    const hadFocus = !!root && root.contains(document.activeElement);
+    const input = root
+      ?.closest("[data-composer]")
+      ?.querySelector<HTMLElement>("[data-composer-input]");
     const previous = filesRef.current.map((file) => file.path);
-    void op
-      .then((status) => {
-        setFiles(status.files);
-        notifyGitChanged();
-        invalidateWatchedFiles(previous);
-        invalidateProjectFiles(cwd);
-      })
-      .catch(() => load())
-      .finally(() => setActing(null));
+    if (action === "undo") {
+      const one = previous.length === 1;
+      const ok = await confirmAction({
+        title: one
+          ? `Undo ${basename(filesRef.current[0]?.relative ?? "")}?`
+          : `Undo ${previous.length} files?`,
+        body: one
+          ? "It goes back to before this thread changed it."
+          : "They go back to before this thread changed them.",
+        action: "Undo",
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    setActing(action);
+    try {
+      const status =
+        action === "keep"
+          ? await keepSessionChanges(environmentId, sessionId)
+          : await undoSessionChanges(environmentId, sessionId);
+      setFiles(status.files);
+      notifyGitChanged();
+      invalidateWatchedFiles(previous);
+      invalidateProjectFiles(cwd);
+      // The strip leaves with nothing to keep; a keyboard user lands back
+      // in the composer's field rather than on the page.
+      if (status.files.length === 0 && hadFocus) input?.focus();
+    } catch (e) {
+      const description = e instanceof Error ? e.message : String(e);
+      void loadToast().then((toast) =>
+        toast.error(action === "undo" ? "Undo failed" : "Keep failed", {
+          description,
+        }),
+      );
+      load();
+    } finally {
+      setActing(null);
+    }
   };
 
   return (
@@ -110,8 +143,9 @@ export function SessionReview({
       busy={busy}
       acting={acting}
       onReview={onOpenDiff}
-      onUndo={() => run("undo")}
-      onKeep={() => run("keep")}
+      rootRef={rootRef}
+      onUndo={() => void run("undo")}
+      onKeep={() => void run("keep")}
     />
   );
 }
@@ -123,6 +157,7 @@ type ViewProps = {
   onReview: (path?: string) => void;
   onUndo: () => void;
   onKeep: () => void;
+  rootRef?: Ref<HTMLDivElement>;
 };
 
 /** The strip on the composer's top edge: what the thread changed since the
@@ -135,6 +170,7 @@ export function SessionReviewView({
   onReview,
   onUndo,
   onKeep,
+  rootRef,
 }: ViewProps) {
   const first = files[0];
   if (!first) return null;
@@ -145,7 +181,7 @@ export function SessionReviewView({
   const label = one ? name : `${files.length} files`;
   const disabled = busy || acting != null;
   return (
-    <div className="px-2">
+    <div ref={rootRef} className="px-2">
       <div
         className="flex h-8 items-center gap-1 rounded-t-lg border border-b-0 border-border bg-card px-1"
         data-session-review

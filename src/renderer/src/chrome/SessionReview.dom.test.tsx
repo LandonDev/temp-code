@@ -1,15 +1,19 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { status, pushListeners } = vi.hoisted(() => ({
-  status: vi.fn(() => Promise.resolve({ files: [] })),
+const { status, pushListeners, keep, undo, confirm, toastError } = vi.hoisted(() => ({
+  status: vi.fn(() => Promise.resolve({ files: [] as unknown[] })),
   pushListeners: [] as ((sessionId: string) => void)[],
+  keep: vi.fn(),
+  undo: vi.fn(),
+  confirm: vi.fn(),
+  toastError: vi.fn(),
 }))
 
 vi.mock('../lib/checkpoint', () => ({
   sessionCheckpointStatus: status,
-  keepSessionChanges: vi.fn(),
-  undoSessionChanges: vi.fn(),
+  keepSessionChanges: keep,
+  undoSessionChanges: undo,
   // The host's `checkpoint-changed` push, as lib/checkpoint hands it on.
   subscribeCheckpointChanged: (l: (sessionId: string) => void) => {
     pushListeners.push(l)
@@ -20,6 +24,8 @@ vi.mock('../lib/fs', async () => {
   const real = await vi.importActual<typeof import('../lib/gitChanged')>('../lib/gitChanged')
   return { basename: (p: string) => p.split('/').pop() ?? p, ...real }
 })
+vi.mock('./ConfirmDialog', () => ({ confirmAction: confirm }))
+vi.mock('./toastSync', () => ({ loadToast: () => Promise.resolve({ error: toastError }) }))
 vi.mock('../lib/fileIndex', () => ({ invalidateProjectFiles: vi.fn() }))
 vi.mock('../lib/fileWatch', () => ({ invalidateWatchedFiles: vi.fn() }))
 
@@ -181,5 +187,113 @@ describe('SessionReview strip', () => {
   it('renders nothing with no changes', () => {
     const { container } = render(view([]))
     expect(container.innerHTML).toBe('')
+  })
+})
+
+describe('SessionReview Undo and Keep', () => {
+  const files = [file('src/a.ts', 30, 9), file('src/b.ts', 12, 0), file('docs/c.md', 4, 3)]
+  const mounted = async (wrap = false) => {
+    vi.useFakeTimers()
+    status.mockImplementation(() => Promise.resolve({ files }))
+    const strip = <SessionReview sessionId="s1" cwd="/w/one" onOpenDiff={() => undefined} />
+    const utils = render(
+      wrap ? (
+        <div data-composer>
+          {strip}
+          <textarea data-composer-input />
+        </div>
+      ) : (
+        strip
+      ),
+    )
+    await act(() => vi.advanceTimersByTimeAsync(STATUS_DEBOUNCE_MS))
+    vi.useRealTimers()
+    return utils
+  }
+  afterEach(() => {
+    cleanup()
+    for (const fn of [keep, undo, confirm, toastError]) fn.mockReset()
+    status.mockReset()
+    status.mockImplementation(() => Promise.resolve({ files: [] }))
+  })
+
+  it('Undo asks first, and a no calls nothing', async () => {
+    await mounted()
+    confirm.mockResolvedValue(false)
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Undo' })))
+    expect(confirm).toHaveBeenCalledWith({
+      title: 'Undo 3 files?',
+      body: 'They go back to before this thread changed them.',
+      action: 'Undo',
+      danger: true,
+    })
+    expect(undo).not.toHaveBeenCalled()
+  })
+
+  it('a yes undoes the thread’s changes, naming the thread only', async () => {
+    await mounted()
+    confirm.mockResolvedValue(true)
+    undo.mockResolvedValue({ files: [] })
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Undo' })))
+    expect(undo).toHaveBeenCalledTimes(1)
+    expect(undo.mock.calls[0]).toEqual(['local', 's1'])
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull()
+  })
+
+  it('one file names it in the question', async () => {
+    vi.useFakeTimers()
+    status.mockImplementation(() => Promise.resolve({ files: [file('src/chrome/SessionReview.tsx', 1, 1)] }))
+    render(<SessionReview sessionId="s1" cwd="/w/one" onOpenDiff={() => undefined} />)
+    await act(() => vi.advanceTimersByTimeAsync(STATUS_DEBOUNCE_MS))
+    vi.useRealTimers()
+    confirm.mockResolvedValue(false)
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Undo' })))
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Undo SessionReview.tsx?', body: 'It goes back to before this thread changed it.' }),
+    )
+  })
+
+  it('Keep keeps at once, with no question', async () => {
+    await mounted()
+    keep.mockResolvedValue({ files: [] })
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Keep' })))
+    expect(confirm).not.toHaveBeenCalled()
+    expect(keep.mock.calls).toEqual([['local', 's1']])
+  })
+
+  it('while one runs both are disabled and the pressed one is busy', async () => {
+    await mounted()
+    let settle: (v: unknown) => void = () => undefined
+    keep.mockReturnValue(new Promise((resolve) => (settle = resolve)))
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Keep' })))
+    const keepButton = screen.getByRole('button', { name: 'Keep' }) as HTMLButtonElement
+    const undoButton = screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement
+    expect(keepButton.disabled).toBe(true)
+    expect(undoButton.disabled).toBe(true)
+    expect(keepButton.getAttribute('aria-busy')).toBe('true')
+    expect(undoButton.getAttribute('aria-busy')).toBeNull()
+    await act(async () => settle({ files }))
+    expect((screen.getByRole('button', { name: 'Keep' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('a failed undo says so and reads the status again', async () => {
+    await mounted()
+    confirm.mockResolvedValue(true)
+    undo.mockRejectedValue(new Error('git refused'))
+    const before = status.mock.calls.length
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Undo' })))
+    await act(async () => undefined)
+    expect(toastError).toHaveBeenCalledWith('Undo failed', { description: 'git refused' })
+    expect(status.mock.calls.length).toBe(before + 1)
+  })
+
+  it('a keyboard Keep that empties the strip leaves focus in the composer', async () => {
+    const { container } = await mounted(true)
+    keep.mockResolvedValue({ files: [] })
+    const keepButton = screen.getByRole('button', { name: 'Keep' })
+    keepButton.focus()
+    expect(document.activeElement).toBe(keepButton)
+    await act(async () => fireEvent.click(keepButton))
+    expect(document.activeElement).toBe(container.querySelector('[data-composer-input]'))
   })
 })
