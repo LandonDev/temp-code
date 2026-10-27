@@ -10,9 +10,10 @@ import {
   FilePlus,
   FolderPlus,
   FoldVertical,
-  GitCompare,
-  Search,
 } from "./icons";
+import { Button } from "@renderer/components/ui/button";
+import { Skeleton } from "@renderer/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import {
   createContext,
   useContext,
@@ -58,11 +59,10 @@ import {
 import { displayPath, parentPath, rebasePath } from "../lib/paths";
 import { IS_MAC, MOD } from "../lib/platform";
 import type { GitStatusMap } from "../hooks/useGitFileStatuses";
-import { useProjectDiffStats } from "../hooks/useProjectDiffStats";
 import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { useConfirm } from "./ConfirmDialog";
-import { diffChunk, editorChunk, mediaChunk } from "../surfaces/chunks";
+import { editorChunk, mediaChunk } from "../surfaces/chunks";
 
 /** A pointer over the tree is about to open a file: warm the editor and media chunks. */
 function warmFileSurfaces(): void {
@@ -75,7 +75,7 @@ const GIT_STATUS_COLOR: Record<string, string> = {
   modified: "text-warning",
   added: "text-success",
   untracked: "text-success",
-  deleted: "text-danger",
+  deleted: "text-destructive",
 };
 
 type Props = {
@@ -84,10 +84,7 @@ type Props = {
   onOpenTerminal?: (cwd: string) => void;
   onFileMoved?: (from: string, to: string) => void;
   onFileDeleted?: (path: string) => void;
-  onSearch?: () => void;
   gitStatuses?: GitStatusMap;
-  onShowSourceControl?: () => void;
-  sourceControlActive?: boolean;
 };
 
 type Creating = { id: number; parent: string; isDir: boolean };
@@ -244,10 +241,7 @@ export function FileTree({
   onOpenTerminal,
   onFileMoved,
   onFileDeleted,
-  onSearch,
   gitStatuses,
-  sourceControlActive = false,
-  onShowSourceControl,
 }: Props) {
   const environmentId = environmentOfCwd(cwd) ?? registry.primary().environmentId;
   const editorConfig = useEditorConfig();
@@ -269,7 +263,6 @@ export function FileTree({
   const rootRef = useRef<HTMLDivElement>(null);
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
   const name = basename(cwd);
-  const rootOpen = expanded.has(cwd);
 
   const toggle = (path: string) => {
     setExpanded((prev) => {
@@ -614,13 +607,13 @@ export function FileTree({
       case "End":
         return land(rows[rows.length - 1]);
       case "ArrowRight":
-        if (!isDir) return;
+        if (!isDir || isRoot) return;
         e.preventDefault();
         if (expanded.has(path)) land(rows[at + 1]);
         else toggle(path);
         return;
       case "ArrowLeft":
-        if (isDir && expanded.has(path)) {
+        if (isDir && !isRoot && expanded.has(path)) {
           e.preventDefault();
           toggle(path);
           return;
@@ -628,6 +621,7 @@ export function FileTree({
         if (!isRoot) land(rows.find((row) => row.dataset.path === parentPath(path)));
         return;
       case "Enter":
+        if (isRoot) return;
         e.preventDefault();
         if (isDir) toggle(path);
         else onOpenFile(path);
@@ -712,116 +706,66 @@ export function FileTree({
   }, [cwd, epoch]);
 
   return (
-    <TreeCtx.Provider
-      value={{
-        expanded,
-        selectedPath,
-        creating,
-        renaming,
-        cutPath: clip?.mode === "cut" ? clip.path : null,
-        epoch,
-        gitStatuses,
-        onToggle: toggle,
-        onSelect,
-        onOpenFile,
-        onCreateCommit,
-        onCreateCancel,
-        onRenameCommit,
-        onRenameCancel,
-        onItemContextMenu,
-      }}
-    >
-      <div
-        ref={rootRef}
-        tabIndex={-1}
-        className="flex h-full min-h-0 flex-col outline-none"
-        onKeyDown={onKeyDown}
-        onContextMenu={onBackgroundMenu}
-        onPointerEnter={warmFileSurfaces}
+    <TooltipProvider>
+      <TreeCtx.Provider
+        value={{
+          expanded,
+          selectedPath,
+          creating,
+          renaming,
+          cutPath: clip?.mode === "cut" ? clip.path : null,
+          epoch,
+          gitStatuses,
+          onToggle: toggle,
+          onSelect,
+          onOpenFile,
+          onCreateCommit,
+          onCreateCancel,
+          onRenameCommit,
+          onRenameCancel,
+          onItemContextMenu,
+        }}
       >
         <div
-          className="flex h-9 shrink-0 items-center gap-px overflow-visible border-b border-content/10 px-2"
-          onContextMenu={(e) => e.stopPropagation()}
+          ref={rootRef}
+          tabIndex={-1}
+          className="flex h-full min-h-0 flex-col outline-none"
+          onKeyDown={onKeyDown}
+          onContextMenu={onBackgroundMenu}
+          onPointerEnter={warmFileSurfaces}
         >
-          <HeaderIcon label="New File" onClick={() => startCreate(false)}>
-            <FilePlus className="size-3.5" strokeWidth={1.75} />
-          </HeaderIcon>
-          <HeaderIcon label="New Folder" onClick={() => startCreate(true)}>
-            <FolderPlus className="size-3.5" strokeWidth={1.75} />
-          </HeaderIcon>
-          <HeaderIcon
-            label="Collapse All"
-            onClick={() => {
-              setCreating(null);
-              setRenaming(null);
-              const next = new Set([cwd]);
-              saveExpanded(cwd, next);
-              setExpanded(next);
-            }}
+          <div
+            className="flex h-8 shrink-0 items-center justify-end gap-0.5 px-1.5"
+            onContextMenu={(e) => e.stopPropagation()}
           >
-            <FoldVertical className="size-3.5" strokeWidth={1.75} />
-          </HeaderIcon>
-          {onSearch ? (
-            <HeaderIcon
-              label={`Search in files (${MOD}Shift+F)`}
-              onClick={onSearch}
+            <HeaderButton label="New file" onClick={() => startCreate(false)}>
+              <FilePlus className="size-3.5" strokeWidth={1.75} />
+            </HeaderButton>
+            <HeaderButton label="New folder" onClick={() => startCreate(true)}>
+              <FolderPlus className="size-3.5" strokeWidth={1.75} />
+            </HeaderButton>
+            <HeaderButton
+              label="Collapse all"
+              onClick={() => {
+                setCreating(null);
+                setRenaming(null);
+                const next = new Set([cwd]);
+                saveExpanded(cwd, next);
+                setExpanded(next);
+              }}
             >
-              <Search className="size-3.5" strokeWidth={1.75} />
-            </HeaderIcon>
-          ) : null}
-          {onShowSourceControl ? (
-            <FileTreeDiffButton
-              cwd={cwd}
-              active={sourceControlActive}
-              onClick={onShowSourceControl}
-            />
-          ) : null}
-        </div>
-        <div className="flex h-8 shrink-0 items-center">
-          <button
-            type="button"
-            role="treeitem"
-            data-path={cwd}
-            aria-expanded={rootOpen}
-            aria-selected={selectedPath === cwd}
-            title={cwd}
-            onClick={() => {
-              onSelect(cwd);
-              toggle(cwd);
-            }}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              openMenu(
-                { path: cwd, isDir: true, isRoot: true },
-                e.clientX,
-                e.clientY,
-              );
-            }}
-            className="flex min-w-0 flex-1 items-center gap-1 h-full pl-2 text-left outline-none"
+              <FoldVertical className="size-3.5" strokeWidth={1.75} />
+            </HeaderButton>
+          </div>
+          <div
+            ref={lockOverscroll}
+            className="min-h-0 flex-1 overflow-y-auto overscroll-none pt-1"
           >
-            <span className="grid size-4 shrink-0 place-items-center text-content/50">
-              {rootOpen ? (
-                <ChevronDown className="size-3.5" strokeWidth={1.75} />
-              ) : (
-                <ChevronRight className="size-3.5" strokeWidth={1.75} />
-              )}
-            </span>
-            <span className="min-w-0 truncate text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">
-              {name}
-            </span>
-          </button>
-        </div>
-        <div
-          ref={lockOverscroll}
-          className="min-h-0 flex-1 overflow-y-auto overscroll-none"
-        >
-          {opError ? (
-            <p className="px-3 py-1 text-[12px] leading-4 text-danger">
-              {opError}
-            </p>
-          ) : null}
-          {rootOpen ? (
+            {opError ? (
+              <p className="px-3 py-1 text-[12px] leading-4 text-destructive">
+                {opError}
+              </p>
+            ) : null}
             <div role="tree" aria-label={`${name} files`}>
               <TreeChildren
                 parent={cwd}
@@ -831,113 +775,60 @@ export function FileTree({
                 error={error}
               />
             </div>
-          ) : null}
+          </div>
         </div>
-      </div>
-      {menu ? (
-        <ExplorerMenu
-          x={menu.x}
-          y={menu.y}
-          items={explorerItems(
-            menu.target,
-            clip,
-            !!onOpenTerminal,
-            editorLabelFor(menu.target.path, editorConfig),
-          )}
-          onPick={(id) => {
-            const target = menu.target;
-            setMenu(null);
-            void runAction(id, target);
-          }}
-          onClose={() => setMenu(null)}
-        />
-      ) : null}
-    </TreeCtx.Provider>
+        {menu ? (
+          <ExplorerMenu
+            x={menu.x}
+            y={menu.y}
+            items={explorerItems(
+              menu.target,
+              clip,
+              !!onOpenTerminal,
+              editorLabelFor(menu.target.path, editorConfig),
+            )}
+            onPick={(id) => {
+              const target = menu.target;
+              setMenu(null);
+              void runAction(id, target);
+            }}
+            onClose={() => setMenu(null)}
+          />
+        ) : null}
+      </TreeCtx.Provider>
+    </TooltipProvider>
   );
 }
 
-function HeaderIcon({
+/** A header action: a ghost icon button named by its tooltip. The mouse
+ *  press keeps focus in the tree so the keys still walk the rows. */
+function HeaderButton({
   label,
   onClick,
-  active = false,
   children,
 }: {
   label: string;
-  onClick?: () => void;
-  active?: boolean;
+  onClick: () => void;
   children: ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      aria-pressed={active || undefined}
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={onClick}
-      className={`flex h-6 min-w-0 flex-1 items-center justify-center self-center rounded-md ${
-        active
-          ? "bg-content/10 text-content"
-          : "text-content/50 hover:bg-content/5 hover:text-content"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function FileTreeDiffButton({
-  cwd,
-  active,
-  onClick,
-}: {
-  cwd: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  const enabled = Boolean(cwd) && cwd !== "~";
-  const stats = useProjectDiffStats(cwd, enabled);
-  const files = stats?.files ?? 0;
-  const additions = stats?.additions ?? 0;
-  const deletions = stats?.deletions ?? 0;
-  const empty = files <= 0 && additions <= 0 && deletions <= 0;
-  const label = empty
-    ? active
-      ? "Hide changes"
-      : "Show changes"
-    : [
-        `${files} ${files === 1 ? "file" : "files"} changed`,
-        additions > 0 ? `+${additions}` : "",
-        deletions > 0 ? `-${deletions}` : "",
-      ]
-        .filter(Boolean)
-        .join(" ");
-  const badge = files > 99 ? "99+" : String(files);
-
-  return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      aria-pressed={active}
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={onClick}
-      {...diffChunk.intent}
-      className={`relative flex h-6 min-w-0 flex-1 items-center justify-center self-center rounded-md ${
-        active
-          ? "bg-content/10 text-content"
-          : "text-content/50 hover:bg-content/5 hover:text-content"
-      }`}
-    >
-      <span className="relative">
-        <GitCompare className="size-3.5" strokeWidth={1.75} />
-        {files > 0 ? (
-          <span className="pointer-events-none absolute -top-1.5 -right-2 grid min-h-3.5 min-w-3.5 place-items-center rounded-full bg-accent px-0.5 text-[7px] font-semibold leading-none text-white tabular-nums">
-            {badge}
-          </span>
-        ) : null}
-      </span>
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="text-muted-foreground hover:text-foreground"
+            aria-label={label}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={onClick}
+          />
+        }
+      >
+        {children}
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -975,16 +866,18 @@ function TreeChildren({
   return (
     <>
       {error ? (
-        <p className="truncate pr-2 text-[12px] text-content/50" style={pad}>
+        <p className="truncate pr-2 text-[12px] text-muted-foreground" style={pad}>
           {error}
         </p>
       ) : null}
       {show && ctx.creating?.isDir ? row : null}
-      {loading && !error ? (
-        <p className="pr-2 text-[12px] text-content/50" style={pad}>
-          …
-        </p>
-      ) : null}
+      {loading && !error
+        ? Array.from({ length: depth === 0 ? 3 : 1 }, (_, i) => (
+            <div key={i} data-slot="tree-skeleton" className="flex h-7.5 items-center pr-2" style={pad}>
+              <Skeleton className="h-3" style={{ width: `${[60, 44, 52][i]}%` }} />
+            </div>
+          ))
+        : null}
       {folders.map((child) => (
         <TreeNode key={child.path} entry={child} depth={depth} />
       ))}
@@ -1073,42 +966,47 @@ function TreeNode({ entry, depth }: { entry: FsEntry; depth: number }) {
           onCancel={onRenameCancel}
         />
       ) : (
-        <button
-          type="button"
-          role="treeitem"
-          data-path={entry.path}
-          title={entry.path}
-          aria-expanded={entry.isDir ? open : undefined}
-          aria-selected={selected}
-          onClick={onClick}
-          onContextMenu={(e) => onItemContextMenu(entry, e)}
-          style={{ paddingLeft: 8 + depth * 12 }}
-          className={`flex h-7.5 w-full cursor-default items-center gap-1 pr-2 text-left text-[14px] leading-none outline-none ${
-            selected
-              ? "bg-content/10 text-content"
-              : "text-content hover:bg-content/5"
-          } ${cutPath === entry.path ? "opacity-50" : ""}`}
-        >
-          <span className="grid size-4 shrink-0 place-items-center text-content/50">
-            {entry.isDir ? (
-              open ? (
-                <ChevronDown className="size-3.5" strokeWidth={1.75} />
-              ) : (
-                <ChevronRight className="size-3.5" strokeWidth={1.75} />
-              )
-            ) : null}
-          </span>
-          <span className="shrink-0">
-            <FileTypeIcon name={entry.name} isDir={entry.isDir} isOpen={open} />
-          </span>
-          <span
-            className={`min-w-0 truncate ${
-              entry.ignored ? "italic text-content/50" : (gitColor ?? "")
-            }`}
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                role="treeitem"
+                data-path={entry.path}
+                aria-expanded={entry.isDir ? open : undefined}
+                aria-selected={selected}
+                aria-current={selected || undefined}
+                onClick={onClick}
+                onContextMenu={(e) => onItemContextMenu(entry, e)}
+                style={{ paddingLeft: 8 + depth * 12 }}
+                className={`flex h-7.5 w-full cursor-default items-center gap-1 pr-2 text-left text-[14px] leading-none text-foreground outline-none ${
+                  selected ? "bg-muted" : "hover:bg-foreground/5"
+                } ${cutPath === entry.path ? "opacity-50" : ""}`}
+              />
+            }
           >
-            {entry.name}
-          </span>
-        </button>
+            <span className="grid size-4 shrink-0 place-items-center text-muted-foreground">
+              {entry.isDir ? (
+                open ? (
+                  <ChevronDown className="size-3.5" strokeWidth={1.75} />
+                ) : (
+                  <ChevronRight className="size-3.5" strokeWidth={1.75} />
+                )
+              ) : null}
+            </span>
+            <span className="shrink-0">
+              <FileTypeIcon name={entry.name} isDir={entry.isDir} isOpen={open} />
+            </span>
+            <span
+              className={`min-w-0 truncate ${
+                entry.ignored ? "italic text-muted-foreground" : (gitColor ?? "")
+              }`}
+            >
+              {entry.name}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{entry.path}</TooltipContent>
+        </Tooltip>
       )}
       {entry.isDir && open ? (
         <TreeChildren
@@ -1193,9 +1091,9 @@ function NameRow({
     <div>
       <div
         style={{ paddingLeft: 8 + depth * 12 }}
-        className="flex h-7.5 w-full items-center gap-1 bg-content/10 pr-2"
+        className="flex h-7.5 w-full items-center gap-1 bg-muted pr-2"
       >
-        <span className="grid size-4 shrink-0 place-items-center text-content/50">
+        <span className="grid size-4 shrink-0 place-items-center text-muted-foreground">
           {isDir ? (
             <ChevronRight className="size-3.5" strokeWidth={1.75} />
           ) : null}
@@ -1229,7 +1127,7 @@ function NameRow({
             }
           }}
           onBlur={() => finish(issue === null || issue.severity !== "error")}
-          className="h-5 min-w-0 flex-1 rounded-md bg-content/10 px-1 text-[14px] leading-none text-content outline-none ring-1 ring-accent"
+          className="h-5 min-w-0 flex-1 rounded-md bg-background px-1 text-[14px] leading-none text-foreground outline-none ring-1 ring-ring"
         />
       </div>
       {showIssue ? (
@@ -1286,7 +1184,7 @@ function NameIssueView({
   return (
     <p
       className={`pr-2 pb-1 text-[12px] leading-4 ${
-        error ? "text-danger" : "text-warning"
+        error ? "text-destructive" : "text-warning"
       }`}
       style={{ paddingLeft: 28 + depth * 12 }}
     >
