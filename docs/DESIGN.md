@@ -182,7 +182,9 @@ rows say exactly this:
 The word may be followed by what the state is about, muted after it:
 "Working  typecheck", "Needs you  approve Bash", "Watching  3 subagents",
 "Failed  usage cap". A watching thread always says what it watches; a row
-that cannot say is a bug. `threadStatus` (lib/threadStripModel.ts) is the one
+that cannot say is a bug. A thread idle or done whose subagents still work
+is watching them ("Watching  a subagent") on the strip, the tab, the chip
+and the rail alike, and the fleet header counts watching on its own. `threadStatus` (lib/threadStripModel.ts) is the one
 place that decides a thread's state and its detail, the tree's overrides
 included, and `ThreadStatusMark` (chrome/TabIndicator.tsx) draws it with the
 round's tally 8px after the detail. A watching thread on one task names it

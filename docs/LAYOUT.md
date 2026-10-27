@@ -584,13 +584,19 @@ alone, with no header.
 The main view IS the plan file (`.temp-code/plan-<thread>.md`), rendered
 as the document column and streaming as it is written. The chat sits
 beside it while the plan takes shape and folds once the plan is written or
-handed off; a question forces it open. Header: "Plan" and the task count;
+handed off; a question forces it open. Header: "Plan" and the task count,
+which once the plan is written and settled with no build yet is the Plan
+ready mark with the count as its detail;
 before the handoff one primary **Start build** opens `StartBuildDialog`
 (Implement or Orchestrate, model, effort, access, the goal prefilled from
 the plan, the orchestration rules only for Orchestrate; Start calls
 `plan.implement`, one build). After the handoff the header names the build
-("Implementation" and its `StatusMark`) and opens it. On a wide pane with
-the chat folded, a heading outline sits at the left edge.
+("Implementation" and its `StatusMark`) and opens it. With the chat folded,
+a heading outline sits at the left edge when the board leaves it room
+beside the centred 672px document (a container query on the board,
+`@min-[69rem]`, never the window's width); it lists the sections the page
+renders, so a project plan's milestones are one entry. The frontmatter is
+never a section. A task list draws its checkboxes with no bullet.
 
 ### Implementation — the tasks and the changes
 
@@ -649,8 +655,9 @@ favicon, the title, the host, the claim; the address in a tooltip).
 
 - **The thread is the chat.** Above the transcript, inset to its column,
   sits `FleetHeader` (fleet/FleetHeader.tsx): the goal (the latest user
-  line) at 15px, and one 13px muted sentence under it, "2 working, 1 needs
-  you, 3 done" (`fleetSentence`), needs you in amber and failed in red.
+  line) at 15px, and one 13px muted sentence under it, "2 working, 1
+  watching, 1 needs you, 3 done" (`fleetSentence`), needs you in amber and
+  failed in red.
   Nothing before the first agent. There is no board, no edge tab and no
   "Orchestrator log".
 - **The agents are rows in the right panel's Agents section** (`FleetList`,
@@ -677,7 +684,8 @@ A thread whose `isMaster` flag is on routes to `MasterView` whatever its
 type (CLAUDE.md "Master threads", docs/master-threads.md for the why); a
 project may have any number of masters, each with its own batch, and the
 tab's or the rail row's menu makes one ("Make master thread" / "Not a
-master", `session.setMaster`). The board | sash | chat recipe (SplitShell):
+master", `session.setMaster`; disabled on an unsent draft with "Send a
+message first", since the host pins only a thread it knows). The board | sash | chat recipe (SplitShell):
 the batch on the left, the master's own chat on the right, folding from
 the toggle at the end of the view header. Until the first child the chat is the whole view. A child of the
 batch is never a tab: it lives on the board, and a click puts its full view
@@ -703,7 +711,7 @@ in the whole pane, with Back.
 │     ◌ waiting for Home                                                 │
 │ Done                                                                   │
 │  ☷  Design foundations                    ✺ Claude Fable 5.1  high 1M │
-│     ✓ Landed 12:08                                                4/4 │
+│     Landed 12:08                                                  4/4 │
 ├────────────────────────────────────────────────────────────────────────┤
 │ When done                                                         Edit │
 │ ✓ Land        2 of 7 landed                                     1m 30s │
@@ -766,7 +774,9 @@ in the whole pane, with Back.
   while the row sits in Done or Queued), the host's glyph, and at the end
   the provider's mark, the model's name, then its effort and context. Line
   two: `StatusMark`'s glyph for the thread's state (`threadStateOf`, an
-  idle row being done) with what the state is about, and the task tally
+  idle row being done) with what the state is about (a done row draws no
+  glyph, its detail alone in the text column, the state word kept in its
+  accessible name), and the task tally
   (`3/7`, `tabular-nums`, no bar) at the end once the thread has a list.
   The detail: working, an implementation's task in hand (its `in_progress`
   todo), else the activity; waiting, the open question, else "approve"
@@ -825,7 +835,9 @@ in the whole pane, with Back.
   by the thread's id through the store's link for it.
 - **Click** opens the thread's full view in the board's place
   (`master/ChildPane.tsx`, given the row's `environmentId`): the whole
-  pane, board and master chat gone, becomes the thread's own view, the one
+  pane, board and master chat gone, becomes the thread's own view (its
+  header at once, titled from the row, and the transcript's skeleton until
+  the thread's rows load), the one
   its type gets as a tab (the implementation board, the plan document, the
   fleet), over its transcript, working strip and the composer a tab has
   (`surfaces/threadChat.tsx`, shared with SessionPane: model and reasoning,
@@ -889,6 +901,9 @@ in the whole pane, with Back.
   once, shown while a merge step is in the list), then the steps in order,
   one row each: its number, its name in a field, its kind or a shell step's
   command muted, and Up, Down, Remove as ghost icon buttons with tooltips.
+  Land is pinned first, as the host runs it: its row has its number and
+  name only, the row under it cannot move above it, the list opens with it
+  on top (made when missing) and the select never offers it.
   Under them the "Add a step…" select: a built-in
   kind (Merge the branches, Gate the merged tree, Release, Publish the Mac
   release, Deploy to the box) lands at once with its name; Shell command
@@ -902,7 +917,7 @@ in the whole pane, with Back.
 - **New thread…** opens the add sheet (Modal md, `master/AddThreadDialog.tsx`):
   "Add a thread to <batch>", the brief first (focused; ⌘↩ adds), then one
   `FieldRow` per choice, label left and control right: Type (a
-  `ChoiceToggle`), Model (the app's picker, every catalog model), Effort
+  `ChoiceToggle` of every type, Chat first, Implement chosen), Model (the app's picker, every catalog model), Effort
   (a `ChoiceToggle` of the model's own ladder, whole), Context (200k / 1M,
   Claude only), Host (a `ChoiceToggle` over the master's own host and every saved host whose link is
   open, `linkedHosts`, the master's first, the row hidden with one host;

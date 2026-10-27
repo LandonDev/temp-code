@@ -106,8 +106,8 @@ counts it, docs/box.md "A master's batch across hosts"), and in
 caller gave no `masterId`, which is what `session.create` from a thread
 and the plan flow's auto-started build go through (planFlow.ts also
 passes the plan's `masterId`, `after` and `startedBy` explicitly). From
-the board, "+ Thread" opens the add sheet (type, model, effort, context,
-host, after, brief) and passes `masterId` and `startedBy` = the master
+the board, "+ Thread" opens the add sheet (type, every one with Chat
+first, model, effort, context, host, after, brief) and passes `masterId` and `startedBy` = the master
 itself, on whichever linked host was picked. Why the starter and not
 the project: the case that broke was a planner the master had started
 calling `app_start_thread` for its build (hand-off `how: manual`); the
@@ -471,9 +471,11 @@ watching master idle it for real (a one-shot `stopWatching` that
 report drain), so it holds no running slot; unpinning a watching master
 idles it. Slots are counted by handle (`liveIds`: a harness up or booting),
 never by a row's status. `decorate` gives a watching master its real reason
-from its batch ahead of the watch line ("Blocked: A errored", "Gate running
-since 14:02"), and every meta carries `lastEventAt`, the last row's time, so
-a row can say how long it has been still.
+from its batch ahead of the watch line ("Blocked: A errored", "Blocked: A
+ended its turn without completing", "Gate running since 14:02"; the
+blocked words are `blockedWords` in src/shared/batchWords.ts, the board's
+foot and the phone's), and every meta carries `lastEventAt`, the last
+row's time, so a row can say how long it has been still.
 
 A person's message reaches any live thread at once (`steerLive`, S1). To a
 watching master it starts a turn (the idle path in `send`). To a thread
@@ -546,6 +548,15 @@ rows, the foot and the add sheet are the UI thread's
   away from the master's host carries that host's glyph, and sits under the offline tint while
   that host is out of reach. Every action, the menus and the archive go to
   the row's own host; the add sheet starts a child on any linked host.
+- **Land stays first.** The rules dialog pins the land step at the top,
+  as the engine runs it: no move or remove of its own, nothing moves above
+  it, and the add picker never offers it.
+- **A done row says only what it did.** "Landed 12:08" or the summary, no
+  glyph: a mark that only says "nothing is happening" is noise
+  (docs/DESIGN.md "Status vocabulary").
+- **An opened child shows at once.** Back and the title draw from the
+  board's row; the transcript's skeleton holds the body until the thread's
+  rows land.
 - **Left out on purpose.** No cost column, no per-row progress bars or task
   lists (the child pane has the list; the row says the task in hand and
   `3/7`), no counts, no badges on the title. The type is the row's glyph,

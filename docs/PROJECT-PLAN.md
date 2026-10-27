@@ -32,7 +32,10 @@ big for one build is a project plan's job: split it into milestones.
   `###` heading under Milestones, `### [ ] 1. <title>`, followed by
   `- Scope: …`, `- Dependencies: …` and `- Done when: …`. The parser
   (`parseProjectPlan`) reads the sections, the milestones with their three
-  fields, and the frontmatter status.
+  fields, and the frontmatter status. The plan view never renders the
+  frontmatter (`stripFrontmatter`), lists the milestones once in its
+  outline, renders each milestone's scope as markdown, and reads the file
+  again the moment a milestone is ticked.
 - **`plan_complete`** is the app tool a planning or project-plan thread
   calls once the document is done (claude: the in-process `app` toolset;
   codex: the stdio bridge → `app.planComplete`). For a project plan it

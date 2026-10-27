@@ -1340,6 +1340,10 @@ names the far child).
   phone's subset. The desktop transcript prints no background-task rows
   (fold.ts); the `background-task` settle event is still emitted for the
   digest and the phone.
+- A root idle or done whose `background.agents` is non-empty reads
+  Watching "a subagent" / "N subagents" wherever `threadStatus` or the
+  rail's `rowState` decides (`settledWithAgents`, lib/threadStripModel.ts),
+  and the fleet header counts watching on its own ("1 watching, 1 done").
 - Renderer: `lib/activity.ts` joins the meta's `background`, the thread's
   dev servers (its tree's ledger rows) and its running Mac calls into
   `activityRows` (subagents as one summary row, a master's batch as one,
@@ -2083,7 +2087,9 @@ threadBatch.test.ts), one `session.batch` per host.
   else `parentId`) is woken with a `<subagent-report>` through
   `deliverAgentReport`; a person-started plan whose build waits for them is
   the notifier's "Ready to build" (nothing once the build started: it says
-  Done itself) and the tab's "Plan ready" mark. With auto-start off
+  Done itself) and the "Plan ready" mark on its tab, its rail row (the
+  rail reads `usePlanReady` once, `PlanReadyContext`) and the plan view's
+  header (with the task count). With auto-start off
   the plan view's single Start build button (it opens the Start dialog,
   surfaces/threads/StartBuildDialog.tsx), the phone's Start a build sheet (its
   confirm is `plan.implement` since thread 25) and `plan.implement` over the
@@ -2129,7 +2135,8 @@ this is the short one.
   `SessionMeta.isMaster`; "Make master thread" / "Not the master" on the
   thread's context menu, rail row and tab; RPC `session.setMaster
   { sessionId, master }`, admin, a subagent refused, answered as the
-  thread's meta push). Several threads of one project may be, each with
+  thread's meta push; the row is disabled on an unsent draft with "Send a
+  message first", since the host pins only a thread it knows). Several threads of one project may be, each with
   its own batch keyed by its id. `projects.master_thread_id` is read once
   into the flag when the column is added and ignored since (the column
   stays; `ProjectMeta.masterThreadId` left the wire). Its tab reads one
@@ -2360,7 +2367,9 @@ this is the short one.
   Kill background tasks on a watching master idle it for real (a one-shot
   `stopWatching`), unpinning idles it, and `liveIds` counts handles and
   boots only. `decorate` gives a watching master its batch's reason ahead
-  of the watch line ("Blocked: A errored") and every meta carries
+  of the watch line ("Blocked: A errored", "Blocked: A ended its turn
+  without completing": `blockedWords` in src/shared/batchWords.ts, which the
+  board's foot and the phone say too) and every meta carries
   `lastEventAt`.
 - **A message to a live thread goes straight in.** To a watching master it
   starts a turn at once (the idle path). To any thread mid-turn and not
@@ -2414,8 +2423,8 @@ this is the short one.
   the type glyph (its word in a tooltip), the title, the host glyph and the
   model mark; then `StatusMark`'s glyph with what the state is about (the
   task in hand, the question or "approve Bash" in amber, the failure in
-  red, "Landed 12:08", a settled research thread's summary) and the task
-  tally `3/7` at the end; the sections read Needs you, Working, Queued,
+  red; a done row draws no glyph, only its detail, "Landed 12:08" or a
+  settled research thread's summary) and the task tally `3/7` at the end; the sections read Needs you, Working, Queued,
   Done with no counts, and the board holds no task list or progress bar.
   On hover the model mark gives way to Message, the state's one verb
   (Pause, Resume, Start now) and ⋯, the row's menu, where Stop, Archive
@@ -2436,7 +2445,8 @@ this is the short one.
   child's full view in the whole pane with one Back control
   (`master/ChildPane.tsx`, given the row's host; Escape and ⌘↩ outside
   the composer go back; the board keeps its scroll; the header is Back and
-  the title), over the same
+  the title, drawn at once from the board's row, the body the transcript's
+  skeleton until the rows load), over the same
   transcript, strip and composer a tab has (`surfaces/threadChat.tsx`:
   `ThreadComposer` and `useThreadChat`, shared with SessionPane; App's
   handlers through `SessionActionsContext`). A right-click on a row or a
@@ -2453,7 +2463,7 @@ this is the short one.
   live count and the resources checkbox: `batch.archive` on the master's
   host, then each other host's `session.batch` for the rows its answer
   left, `remoteArchivePlan` in `master/boardActions.ts`), + Thread a menu
-  with New thread… (the add sheet: Host over the master's host and every
+  with New thread… (the add sheet: every type, Chat first; Host over the master's host and every
   linked one, `linkedHosts`; `session.create` on that host with
   `masterId` and `startedBy` = the master) and Add existing thread…
   (the project's roots in no batch on this host and its paired copies,
@@ -2471,7 +2481,8 @@ this is the short one.
   step the rules name that the host has not seen is pending at the end),
   Stop is `batch.stopStep { stepId }`, and the dialog
   (`master/rulesEdit.ts`) reorders, renames, adds a built-in kind or a
-  shell command with a cwd and removes steps; no step name is written in
+  shell command with a cwd and removes steps, land pinned first with no
+  move or remove of its own (`normalizeSteps`, `pinned`); no step name is written in
   the renderer. A menu or popover sits on the popover layer
   (`--layer-popover`), above every dialog. `lib/threadBatch.ts`
   exports `hasRunningTurn` so the rows and Pause all use the fleet
