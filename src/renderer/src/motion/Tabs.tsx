@@ -143,14 +143,20 @@ export function TabsTrigger({
   if (variant === "soft") {
     // Quiet chip tabs: the active one carries a soft wash that swaps in
     // 120 ms, never a measured glide, so ⌘1..9 and ⌘] cost no layout.
-    // Pointer taps commit on down; click is keyboard-only.
+    // Pointer taps commit on down; click is keyboard-only. Only the primary
+    // button without Control selects: a right press (or a Control-click on
+    // the Mac) is the chip's menu, and selecting first could re-scope the
+    // strip out from under the contextmenu that follows.
     return (
       <div className="relative">
         <button
           type="button"
           role="tab"
           aria-selected={active}
-          onPointerDown={() => setValue(value)}
+          onPointerDown={(event) => {
+            if (event.button !== 0 || event.ctrlKey) return;
+            setValue(value);
+          }}
           onClick={() => {
             if (current !== value) setValue(value);
           }}

@@ -152,6 +152,7 @@ export function ThreadHeaderStrip({
           onWheel={wheelToX}
           role="tablist"
           data-strip="live"
+          data-tauri-drag-region="false"
           className="scrollbar-none flex h-full min-w-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none px-1.5"
         >
           {row(model.live, false)}
@@ -167,6 +168,7 @@ export function ThreadHeaderStrip({
           onWheel={wheelToX}
           role="tablist"
           data-strip="shelf"
+          data-tauri-drag-region="false"
           className="scrollbar-none flex h-7 min-w-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none px-1.5 pb-1"
         >
           {row(model.dormant, true)}
