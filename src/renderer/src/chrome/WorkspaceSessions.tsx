@@ -8,27 +8,23 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
-  type TransitionEvent,
 } from "react";
 import { measureElement, useVirtualizer, type VirtualizerOptions } from "@tanstack/react-virtual";
 import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
 import { HostGlyph } from "./HostGlyph";
 import { PreambleDialog } from "./PreambleDialog";
 import {
-  ArchiveRestore,
   ChevronRight,
-  GitBranch,
   MoreHorizontal,
   Pause,
   Plus,
-  Trash2,
 } from "./icons";
 import {
   ConfirmDialog,
   ProjectSettingsDialog,
   ProjectTeardownDialog,
 } from "./ProjectDialogs";
-import { duration, timeAgo } from "../lib/format";
+import { duration } from "../lib/format";
 import { agentSummaryParts, modelLabel, type AgentSummary } from "../lib/threads/agents";
 import { AGENT_GLYPHS, THREAD_GLYPHS, THREAD_TINTS } from "../surfaces/threads/threadTypes";
 import { MatrixSpinner } from "../surfaces/threads/spinners";
@@ -36,13 +32,13 @@ import { STATUS_WORD, StatusMark, type ThreadState } from "../components/ui/stat
 import { Button } from "../components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { cn } from "../lib/cn";
+import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
+import { projectFolds, projectFoldsStore, projectOpen, useProjectOpen } from "../lib/projectFolds";
 import {
   cardTasks,
-  cardTooltip,
   pausedElapsed,
   projectCardStatus,
   projectRunAction,
-  quietSummary,
   runningElapsed,
   stoppableThreads,
   type CardThread,
@@ -53,8 +49,11 @@ import {
   liveLines,
   type BatchLine,
   type MasterBlock,
+  groupMark,
+  groupUnread,
   nextPage,
   rowState,
+  type GroupMark,
   sessionItemIndex,
   sidebarItems,
   windowRows,
@@ -67,7 +66,7 @@ import { deleteProject } from "../lib/tcserver/projects";
 import { archiveLinked, projectHomeNow, renameLinked } from "../lib/projectHome";
 import { sessionPrefetch } from "../lib/sessionPrefetch";
 import { useSessionMetas } from "../lib/tcserver/store";
-import { useClock, useSlowClock } from "../lib/turnClock";
+import { useClock } from "../lib/turnClock";
 import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import { subagentRows, subagentRowsOpen, useSubagentRows } from "../stores/subagentRows";
@@ -113,38 +112,7 @@ const MENU_WIDTH = 228;
 
 // --- clocks ---------------------------------------------------------------
 
-/** "3m" since `at`, refreshed every half minute. Only this span re-renders on the tick. */
-function Ago({ at }: { at: number }) {
-  const now = useSlowClock(true);
-  return <>{timeAgo(at, now)}</>;
-}
-
 // --- small parts -----------------------------------------------------------
-
-/** The grid transition in index.css runs 200 ms; a closed fold with no
- *  transition (reduced motion) still empties itself after this long. */
-const FOLD_MS = 240;
-
-/** A collapsing section. Its children mount when it opens and unmount once
- *  the closing transition has run, so a closed fold holds no DOM at all. */
-export function Fold({ open, children }: { open: boolean; children: ReactNode }) {
-  const [mounted, setMounted] = useState(open);
-  if (open && !mounted) setMounted(true);
-  useEffect(() => {
-    if (open || !mounted) return;
-    const timer = setTimeout(() => setMounted(false), FOLD_MS);
-    return () => clearTimeout(timer);
-  }, [open, mounted]);
-  const onEnd = (e: TransitionEvent<HTMLDivElement>) => {
-    if (!open && e.target === e.currentTarget && e.propertyName === "grid-template-rows")
-      setMounted(false);
-  };
-  return (
-    <div className="ws-fold" data-open={open} onTransitionEnd={onEnd}>
-      <div inert={!open}>{mounted ? children : null}</div>
-    </div>
-  );
-}
 
 /** The row behind which a windowed list keeps the rest. */
 function MoreRow({ hidden, onMore }: { hidden: number; onMore: () => void }) {
@@ -157,29 +125,6 @@ function MoreRow({ hidden, onMore }: { hidden: number; onMore: () => void }) {
     >
       {hidden} more
     </Button>
-  );
-}
-
-function Stat({
-  dot,
-  tint,
-  pulse,
-  count,
-  word,
-}: {
-  dot: string;
-  tint: string;
-  pulse?: boolean;
-  count: number;
-  word: string;
-}) {
-  return (
-    <span className={`flex shrink-0 items-center gap-1 ${tint}`}>
-      <span
-        className={`size-1.5 rounded-full ${dot} ${pulse ? "motion-safe:animate-pulse" : ""}`}
-      />
-      {count} {word}
-    </span>
   );
 }
 
@@ -981,9 +926,89 @@ export function LiveLines({
   );
 }
 
-// --- project card ----------------------------------------------------------
+// --- project rows ----------------------------------------------------------
 
-type CardProps = {
+/** A fold's chevron: 14px, muted, a quarter turn when open. */
+function FoldChevron({ open, className }: { open: boolean; className?: string }) {
+  return (
+    <ChevronRight
+      aria-hidden
+      className={cn(
+        "size-3.5 shrink-0 text-muted-foreground transition-transform duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-none",
+        open && "rotate-90",
+        className,
+      )}
+      strokeWidth={1.5}
+    />
+  );
+}
+
+/**
+ * A project row, presentational: the chevron, the name (heavier while a
+ * thread in it is unread) and one word at the end, the project's loudest
+ * state (Needs you, Failed, Working, Paused; nothing when quiet). Its
+ * threads fold under it.
+ */
+export function ProjectRowView({
+  name,
+  open,
+  selected = false,
+  unread = false,
+  mark,
+  title,
+  onClick,
+  onMenu,
+  onRename,
+}: {
+  name: string;
+  open: boolean;
+  selected?: boolean;
+  unread?: boolean;
+  mark: GroupMark<ThreadRow> | null;
+  /** In place of the name: the rename field. */
+  title?: ReactNode;
+  onClick?: () => void;
+  onMenu?: (at: { x: number; y: number }) => void;
+  onRename?: () => void;
+}) {
+  const editing = title != null;
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-expanded={open}
+      aria-current={selected || undefined}
+      data-project-row
+      onClick={() => !editing && onClick?.()}
+      onDoubleClick={onRename}
+      onKeyDown={(e) => e.key === "Enter" && !editing && onClick?.()}
+      onContextMenu={
+        onMenu
+          ? (e) => {
+              e.preventDefault();
+              onMenu({ x: e.clientX, y: e.clientY });
+            }
+          : undefined
+      }
+      className={cn(ROW, "h-8 hover:bg-foreground/5", selected || unread ? "text-foreground" : "text-muted-foreground hover:text-foreground")}
+    >
+      <span aria-hidden className="grid size-4 shrink-0 place-items-center">
+        <FoldChevron open={open} />
+      </span>
+      {editing ? title : <span className={cn("min-w-0 flex-1 truncate", unread && "font-medium")}>{name}</span>}
+      {!editing ? (
+        <>
+          {mark ? <StatusMark state={mark.state} className={cn("shrink-0", onMenu && YIELDS)} /> : null}
+          {onMenu ? (
+            <MoreAction className="absolute top-1/2 right-1 -translate-y-1/2" onOpen={(el) => onMenu(menuAt(el))} />
+          ) : null}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+type ProjectRowProps = {
   group: ProjectGroup;
   selected: boolean;
   lastSeen: Record<string, number>;
@@ -1000,10 +1025,10 @@ type CardProps = {
   onDelete: (project: ProjectMeta) => void;
 };
 
-/** temp-code's project card: always the summary, never a thread list. The
- *  strip above the pane is where the threads live; this card only says how
- *  the project is doing and selects it the moment the pointer lands. */
-const ProjectCard = memo(function ProjectCard({
+/** A project and, unless the person folded it, its threads under it (open
+ *  by default, the close remembered: lib/projectFolds.ts). A click selects
+ *  the project and flips the fold; a double-click renames it. */
+export const ProjectRow = memo(function ProjectRow({
   group,
   selected,
   lastSeen,
@@ -1018,32 +1043,20 @@ const ProjectCard = memo(function ProjectCard({
   onPreamble: openPreamble,
   onArchive: archive,
   onDelete: remove,
-}: CardProps) {
-  const { project, threads, latest, archivedCount } = group;
-  const onSelect = () => selectProject(project.id);
-  const onNewChat = () => newChat(project.id);
-  const onRename = (name: string) => renameTo(project.id, name);
-  const onSettings = () => openSettings(project);
-  const onPreamble = () => openPreamble(project);
-  const onArchive = () => archive(project);
-  const onDelete = () => remove(project);
-  const onMore = () => more(project.id);
+}: ProjectRowProps) {
+  const { project, threads } = group;
+  const open = useProjectOpen(project.id);
   const [renaming, setRenaming] = useState(false);
+  const mark = useMemo(() => groupMark(threads), [threads]);
+  const unread = useMemo(() => groupUnread(threads), [threads]);
   const status = projectCardStatus(cardThreads(threads), rows.activeSessionId ?? null, lastSeen, seenFloor);
   const runAction = projectRunAction(status);
   const stoppable = stoppableThreads(status);
   const teardown = project.mode === "worktree" && Boolean(project.branch);
-  const dormant = dormantThreads(threads, lastSeen, seenFloor, rows.focusedTree);
-  const dormantGroups = dormantByType(dormant);
-  const showSummary =
-    status.waiting > 0 ||
-    status.failed > 0 ||
-    status.paused.length > 0 ||
-    status.dormant > 0 ||
-    archivedCount > 0 ||
-    threads.length === 0;
 
   const menu = (at: { x: number; y: number }) => {
+    const dormant = dormantThreads(threads, lastSeen, seenFloor, rows.focusedTree);
+    const dormantGroups = dormantByType(dormant);
     const items: ExplorerMenuItem[] = [
       { kind: "item", id: "chat", label: "New chat" },
       { kind: "item", id: "rename", label: "Rename" },
@@ -1084,10 +1097,10 @@ const ProjectCard = memo(function ProjectCard({
       ...at,
       items,
       onPick: (id) => {
-        if (id === "chat") onNewChat();
+        if (id === "chat") newChat(project.id);
         else if (id === "rename") setRenaming(true);
-        else if (id === "settings") onSettings();
-        else if (id === "preamble") onPreamble();
+        else if (id === "settings") openSettings(project);
+        else if (id === "preamble") openPreamble(project);
         else if (id === "resume")
           void Promise.allSettled(status.paused.map((t) => resume(t.id)));
         else if (id === "pause")
@@ -1101,106 +1114,82 @@ const ProjectCard = memo(function ProjectCard({
             (dormantGroups.find((g) => g.type === id.slice("archive-dormant:".length))?.threads ?? [])
               .map((t) => archiveThread(t.id, true)),
           );
-        else if (id === "archive") onArchive();
-        else if (id === "delete") onDelete();
+        else if (id === "archive") archive(project);
+        else if (id === "delete") remove(project);
       },
     });
   };
 
   return (
-    <section
-      aria-current={selected || undefined}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        menu({ x: e.clientX, y: e.clientY });
-      }}
-      className="group/row relative rounded-md border border-content/10"
-    >
-      <div
-        role="button"
-        tabIndex={0}
-        title={cardTooltip(status, archivedCount)}
-        onPointerDown={() => !renaming && !selected && onSelect()}
-        onKeyDown={(e) => e.key === "Enter" && !renaming && onSelect()}
-        onDoubleClick={() => setRenaming(true)}
-        className={`relative flex w-full cursor-default flex-col gap-1 rounded-md px-2 py-2 text-left transition-colors ${
-          selected ? "bg-content/10" : "hover:bg-content/5"
-        }`}
-      >
-        <div className="flex w-full items-center gap-2">
-          {renaming ? (
+    <Collapsible open={open} onOpenChange={() => projectFolds.toggle(project.id)}>
+      <ProjectRowView
+        name={project.name}
+        open={open}
+        selected={selected}
+        unread={unread}
+        mark={mark}
+        onClick={() => {
+          if (!selected) selectProject(project.id);
+          projectFolds.toggle(project.id);
+        }}
+        onMenu={menu}
+        onRename={() => setRenaming(true)}
+        title={
+          renaming ? (
             <InlineRename
               value={project.name}
               className="text-[13px]"
               onCommit={(n) => {
                 setRenaming(false);
-                onRename(n);
+                renameTo(project.id, n);
               }}
               onCancel={() => setRenaming(false)}
             />
-          ) : (
-            <>
-              <span
-                className={`min-w-0 flex-1 truncate text-[13px] leading-5 ${
-                  selected ? "text-content" : "text-content/70"
-                }`}
-              >
-                {project.name}
-              </span>
-              {latest > 0 ? (
-                <span className="shrink-0 text-[11px] tabular-nums text-content/40 group-hover/row:opacity-0">
-                  <Ago at={latest} />
-                </span>
-              ) : null}
-            </>
-          )}
-        </div>
-
-        <div className="flex w-full items-center gap-1 text-[11px] leading-4 text-content/50">
-          <GitBranch className="size-3 shrink-0" strokeWidth={1.75} />
-          <span className="min-w-0 truncate">{project.branch ?? "local checkout"}</span>
-          <span className="shrink-0 text-content/40">
-            · {project.mode === "worktree" ? "worktree" : "local"}
-          </span>
-        </div>
-
-        <LiveLines
-          status={status}
-          roots={threads}
-          activeId={rows.activeSessionId ?? null}
+          ) : undefined
+        }
+      />
+      <CollapsibleContent>
+        <ThreadList
+          threads={threads}
+          actions={rows}
           requested={requested}
-          onMore={onMore}
+          onMore={() => more(project.id)}
+          className="flex flex-col"
         />
-
-        {showSummary ? (
-          <div className="flex w-full items-center gap-2 text-[11px] leading-4 tabular-nums">
-            {status.waiting > 0 ? (
-              <Stat dot="bg-warning" tint="text-warning" pulse count={status.waiting} word="need you" />
-            ) : null}
-            {status.failed > 0 ? (
-              <Stat dot="bg-danger" tint="text-danger" count={status.failed} word="failed" />
-            ) : null}
-            {status.paused.length > 0 ? (
-              <span className="flex shrink-0 items-center gap-1 text-warning">
-                <Pause className="size-3 fill-current" strokeWidth={1.75} />
-                {status.paused.length} paused
-              </span>
-            ) : null}
-            <span className="truncate text-content/40">
-              {quietSummary(status, archivedCount)}
-            </span>
-          </div>
-        ) : null}
-      </div>
-      {!renaming ? (
-        <MoreAction
-          className="absolute top-1.5 right-1"
-          onOpen={(el) => menu(menuAt(el))}
-        />
-      ) : null}
-    </section>
+      </CollapsibleContent>
+    </Collapsible>
   );
 });
+
+/** A section's heading over its rows: 28px, 12px medium muted, sentence
+ *  case; the heading flips the fold, `trailing` sits at its end. */
+function SectionHeading({
+  label,
+  open,
+  onToggle,
+  trailing,
+}: {
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+  trailing?: ReactNode;
+}) {
+  return (
+    <div className="flex h-7 items-center gap-1 pr-1">
+      <Button
+        variant="ghost"
+        size="xs"
+        aria-expanded={open}
+        onClick={onToggle}
+        className="h-7 min-w-0 flex-1 justify-start gap-1 px-3 text-[12px] font-medium text-muted-foreground hover:bg-transparent hover:text-foreground"
+      >
+        <span className="truncate">{label}</span>
+        <FoldChevron open={open} className="size-3" />
+      </Button>
+      {trailing}
+    </div>
+  );
+}
 
 // --- archived --------------------------------------------------------------
 
@@ -1226,78 +1215,53 @@ const ArchivedProjects = memo(function ArchivedProjects({
   onDelete: (project: ProjectMeta) => void;
 }) {
   const { open, shown } = state;
-  const setOpen = (update: (o: boolean) => boolean) =>
-    setState((prev) => ({ ...prev, open: update(prev.open) }));
-  const setShown = (update: (s: string | null) => string | null) =>
-    setState((prev) => ({ ...prev, shown: update(prev.shown) }));
+  const toggle = () => setState((prev) => ({ ...prev, open: !prev.open }));
+  const show = (id: string) => setState((prev) => ({ ...prev, shown: prev.shown === id ? null : id }));
   return (
-    <div>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        className="pressable flex h-7 w-full items-center gap-1.5 rounded-md px-2 text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase tabular-nums hover:text-content"
-      >
-        <ChevronRight
-          className={`size-3.5 transition-transform duration-150 ${open ? "rotate-90" : ""}`}
-          strokeWidth={2}
-        />
-        Archived · {groups.length}
-      </button>
-      <Fold open={open}>
-        <div className="flex flex-col gap-px">
-          {groups.map(({ project, threads }) => (
-            <div key={project.id}>
-              <div className="group/arch relative flex h-7 items-center gap-2 rounded-md px-2 transition-colors hover:bg-content/5">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setShown((s) => (s === project.id ? null : project.id))
-                  }
-                  className="min-w-0 flex-1 truncate text-left text-[13px] text-content/70"
-                >
-                  {project.name}
-                </button>
-                <span className="text-[11px] tabular-nums text-content/40 group-hover/arch:opacity-0">
-                  {threads.length}
-                </span>
-                <div className="absolute inset-y-0 right-0.5 flex items-center gap-0.5 opacity-0 group-hover/arch:opacity-100 focus-within:opacity-100">
-                  <button
-                    type="button"
-                    aria-label="Restore"
-                    onClick={() => onRestore(project)}
-                    className="pressable flex size-6 items-center justify-center rounded-md text-content/50 hover:bg-content/10 hover:text-content"
-                  >
-                    <ArchiveRestore className="size-3.5" strokeWidth={1.75} />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Delete"
-                    onClick={() => onDelete(project)}
-                    className="pressable flex size-6 items-center justify-center rounded-md text-content/50 hover:bg-danger/15 hover:text-danger"
-                  >
-                    <Trash2 className="size-3.5" strokeWidth={1.75} />
-                  </button>
-                </div>
-              </div>
-              <Fold open={shown === project.id}>
-                <ThreadList
-                  threads={threads}
-                  actions={rows}
-                  requested={pageOf(pages, `archived:${project.id}`)}
-                  onMore={() => onMore(`archived:${project.id}`)}
-                  className="flex flex-col gap-px pl-2"
-                />
-              </Fold>
-            </div>
-          ))}
-        </div>
-      </Fold>
-    </div>
+    <Collapsible open={open} onOpenChange={toggle}>
+      <SectionHeading
+        label="Archived"
+        open={open}
+        onToggle={toggle}
+        trailing={<span className="pr-2 text-[12px] tabular-nums text-muted-foreground">{groups.length}</span>}
+      />
+      <CollapsibleContent>
+        {groups.map(({ project, threads }) => (
+          <Collapsible key={project.id} open={shown === project.id} onOpenChange={() => show(project.id)}>
+            <ProjectRowView
+              name={project.name}
+              open={shown === project.id}
+              mark={null}
+              onClick={() => show(project.id)}
+              onMenu={(at) =>
+                rows.openMenu({
+                  ...at,
+                  items: [
+                    { kind: "item", id: "restore", label: "Restore" },
+                    { kind: "sep" },
+                    { kind: "item", id: "delete", label: "Delete project…", danger: true },
+                  ],
+                  onPick: (id) => (id === "restore" ? onRestore(project) : onDelete(project)),
+                })
+              }
+            />
+            <CollapsibleContent>
+              <ThreadList
+                threads={threads}
+                actions={rows}
+                requested={pageOf(pages, `archived:${project.id}`)}
+                onMore={() => onMore(`archived:${project.id}`)}
+                className="flex flex-col"
+              />
+            </CollapsibleContent>
+          </Collapsible>
+        ))}
+      </CollapsibleContent>
+    </Collapsible>
   );
 });
 
-/** The loose chats under the cards, folded as one. */
+/** The loose chats under the projects, folded as one. */
 const ChatsSection = memo(function ChatsSection({
   threads,
   rows,
@@ -1316,54 +1280,55 @@ const ChatsSection = memo(function ChatsSection({
   onNewChat: (projectId: string | null) => void;
 }) {
   return (
-    <div>
-      <div className="group/chats flex h-7 items-center gap-1 pl-2 pr-1">
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={open}
-          className="pressable flex h-7 min-w-0 flex-1 items-center gap-1.5 text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase hover:text-content"
-        >
-          <ChevronRight
-            className={`size-3.5 transition-transform duration-150 ${open ? "rotate-90" : ""}`}
-            strokeWidth={2}
-          />
-          Chats
-        </button>
-        <button
-          type="button"
-          aria-label="New chat"
-          onClick={() => onNewChat(null)}
-          className="pressable flex size-6 items-center justify-center rounded-md text-content/50 opacity-0 group-hover/chats:opacity-100 hover:bg-content/10 hover:text-content focus:opacity-100"
-        >
-          <Plus className="size-3.5" strokeWidth={1.75} />
-        </button>
-      </div>
-      <Fold open={open}>
-        <ThreadList
-          threads={threads}
-          actions={rows}
-          requested={requested}
-          onMore={onMore}
-          className="flex flex-col gap-px"
-        />
-      </Fold>
-    </div>
+    <Collapsible open={open} onOpenChange={onToggle}>
+      <SectionHeading
+        label="Chats"
+        open={open}
+        onToggle={onToggle}
+        trailing={
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="New chat"
+                  onClick={() => onNewChat(null)}
+                  className="text-muted-foreground hover:text-foreground"
+                />
+              }
+            >
+              <Plus className="size-3.5" strokeWidth={1.5} />
+            </TooltipTrigger>
+            <TooltipContent side="right">New chat</TooltipContent>
+          </Tooltip>
+        }
+      />
+      <CollapsibleContent>
+        <ThreadList threads={threads} actions={rows} requested={requested} onMore={onMore} className="flex flex-col" />
+      </CollapsibleContent>
+    </Collapsible>
   );
 });
 
-const ROW_PX = 28;
+const ROW_PX = 32;
+const HEADING_PX = 28;
 
 /** Heights for the virtualizer's first pass; every item is then measured.
- *  The chats section opens by default, so it counts its first page. */
+ *  An open project and the chats section count their first page. */
 const estimateItem = (item: SidebarItem): number => {
   switch (item.kind) {
     case "project":
-      return 72;
+      return (
+        ROW_PX +
+        (projectOpen(projectFoldsStore.getState(), item.group.project.id)
+          ? ROW_PX * Math.min(item.group.threads.length, SESSION_LIST_PAGE)
+          : 0)
+      );
     case "chats":
-      return 24 + ROW_PX * Math.min(item.threads.length, SESSION_LIST_PAGE);
+      return HEADING_PX + ROW_PX * Math.min(item.threads.length, SESSION_LIST_PAGE);
     case "archived":
-      return 24;
+      return HEADING_PX;
     case "empty":
       return ROW_PX;
   }
@@ -1510,7 +1475,7 @@ export default function WorkspaceSessions({
     estimateSize,
     getItemKey,
     overscan: 4,
-    gap: 8,
+    gap: 4,
     measureElement: measureRow,
   });
 
@@ -1540,7 +1505,7 @@ export default function WorkspaceSessions({
     switch (item.kind) {
       case "project":
         return (
-          <ProjectCard
+          <ProjectRow
             group={item.group}
             selected={groupHolds(item.group, selectedProjectId)}
             lastSeen={lastSeen}
@@ -1584,14 +1549,15 @@ export default function WorkspaceSessions({
         );
       case "empty":
         return (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={onNewProject}
-            className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] text-content/50 hover:bg-content/5 hover:text-content"
+            className="h-8 w-full justify-start gap-2 px-3 font-normal text-muted-foreground hover:text-foreground"
           >
-            <Plus className="size-3.5" />
+            <Plus className="size-4" strokeWidth={1.5} />
             New project
-          </button>
+          </Button>
         );
     }
   };

@@ -4,11 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent } from '@testing-library/react'
 import { projectCardStatus } from '../lib/projectCardModel'
 import { SESSION_LIST_PAGE } from '../lib/sessionListWindow'
-import type { SessionMeta } from '../lib/tcserver/types'
+import type { ProjectMeta, SessionMeta } from '../lib/tcserver/types'
 import { mountProbe } from '../test/renderProbe'
 import { threadRow, type ThreadRow } from '../lib/workspaceSessions'
 import { nextPage } from '../lib/sidebarRows'
-import { Fold, LiveLines, ThreadList, masterMenuItem } from './WorkspaceSessions'
+import { LiveLines, ProjectRow, ThreadList, masterMenuItem } from './WorkspaceSessions'
+import { projectFolds } from '../lib/projectFolds'
 import { subagentRowsStore } from '../stores/subagentRows'
 import { registry } from '../lib/connection'
 
@@ -63,103 +64,104 @@ const rowCount = (root: HTMLElement) => root.querySelectorAll('[role="button"]')
 const moreButton = (root: HTMLElement) =>
   Array.from(root.querySelectorAll('button')).find((b) => /\bmore$/.test(b.textContent ?? ''))
 
-describe('Fold', () => {
-  beforeEach(() => vi.useFakeTimers())
-  afterEach(() => vi.useRealTimers())
+const project = (id = 'p1') =>
+  ({ environmentId: 'local', id, workspaceId: 'w1', name: `Project ${id}`, mode: 'local', branch: 'main', cwd: '/wt/p1', archived: false, createdAt: 1 }) as ProjectMeta
 
-  it('a collapsed project holds no rows', () => {
+const projectRow = (threads: ThreadRow[]) => (
+  <ProjectRow
+    group={{ project: project(), threads, latest: 100, archivedCount: 0 }}
+    selected={false}
+    lastSeen={{}}
+    seenFloor={0}
+    rows={{ ...actions, focusedTree: new Set<string>() }}
+    requested={SESSION_LIST_PAGE}
+    onMore={() => {}}
+    onSelect={() => {}}
+    onNewChat={() => {}}
+    onRename={() => {}}
+    onSettings={() => {}}
+    onPreamble={() => {}}
+    onArchive={() => {}}
+    onDelete={() => {}}
+  />
+)
+
+const threadRows = (root: HTMLElement) => root.querySelectorAll('[role="button"]:not([data-project-row])').length
+const headerOf = (root: HTMLElement) => root.querySelector<HTMLElement>('[data-project-row]')!
+
+describe('a project row', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    projectFolds.reload()
+  })
+
+  it("says the project's loudest state in one word, and nothing when it is quiet", () => {
+    const word = (threads: ThreadRow[]) => {
+      const probe = mountProbe(projectRow(threads))
+      const mark = headerOf(probe.container).querySelector('[data-slot="status-word"]')?.textContent ?? null
+      probe.unmount()
+      return mark
+    }
+    expect(word([threadRow(meta('w', { status: 'waiting' }), {}), threadRow(meta('r', { status: 'running' }), {})])).toBe('Needs you')
+    expect(word([threadRow(meta('f', { status: 'error' }), {}), threadRow(meta('r', { status: 'running' }), {})])).toBe('Failed')
+    expect(word([threadRow(meta('r', { status: 'running' }), {})])).toBe('Working')
+    expect(word([threadRow(meta('p', { status: 'paused' }), {})])).toBe('Paused')
+    expect(word([threadRow(meta('d', { status: 'done' }), { d: 500 })])).toBeNull()
+  })
+
+  it('is open by default and lists its threads; closed, it holds none and stays closed across a remount', async () => {
+    const threads = rows(3)
+    const probe = mountProbe(projectRow(threads))
+    expect(headerOf(probe.container).getAttribute('aria-expanded')).toBe('true')
+    expect(threadRows(probe.container)).toBe(3)
+    await act(async () => {
+      fireEvent.click(headerOf(probe.container))
+    })
+    expect(headerOf(probe.container).getAttribute('aria-expanded')).toBe('false')
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20))
+    })
+    expect(threadRows(probe.container)).toBe(0)
+    probe.unmount()
+    const again = mountProbe(projectRow(threads))
+    expect(threadRows(again.container)).toBe(0)
+    await act(async () => {
+      fireEvent.click(headerOf(again.container))
+    })
+    expect(threadRows(again.container)).toBe(3)
+    again.unmount()
+  })
+
+  it('reopening mid-close keeps its rows', async () => {
+    const probe = mountProbe(projectRow(rows(2)))
+    await act(async () => {
+      fireEvent.click(headerOf(probe.container))
+      fireEvent.click(headerOf(probe.container))
+    })
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20))
+    })
+    expect(headerOf(probe.container).getAttribute('aria-expanded')).toBe('true')
+    expect(threadRows(probe.container)).toBe(2)
+    probe.unmount()
+  })
+
+  it('has no border, and the column separates nothing with dots', () => {
     const probe = mountProbe(
-      <Fold open={false}>
-        <ThreadList threads={rows(5)} actions={actions} className="" />
-      </Fold>
+      projectRow([
+        threadRow(meta('r', { status: 'running', activity: 'Running bun', tasks: { done: 1, total: 3 } as SessionMeta['tasks'] }), {}),
+        threadRow(meta('d', { status: 'done' }), {})
+      ])
     )
-    expect(rowCount(probe.container)).toBe(0)
-    expect(probe.container.querySelector('.ws-fold')?.getAttribute('data-open')).toBe('false')
+    expect(probe.container.querySelector('[class*="border"]')).toBeNull()
+    expect(probe.container.textContent).not.toMatch(/ · |•/)
     probe.unmount()
   })
 
-  it('mounts its rows on open and drops them once the closing transition ends', () => {
-    const list = <ThreadList threads={rows(5)} actions={actions} className="" />
-    const probe = mountProbe(<Fold open={false}>{list}</Fold>)
-    probe.rerender(<Fold open>{list}</Fold>)
-    expect(rowCount(probe.container)).toBe(5)
-
-    probe.rerender(<Fold open={false}>{list}</Fold>)
-    // Still there while the grid collapses; the opacity transition ending first changes nothing.
-    expect(rowCount(probe.container)).toBe(5)
-    const fold = probe.container.querySelector('.ws-fold')!
-    act(() => {
-      fireEvent.transitionEnd(fold, { propertyName: 'opacity' })
-    })
-    expect(rowCount(probe.container)).toBe(5)
-    act(() => {
-      fireEvent.transitionEnd(fold, { propertyName: 'grid-template-rows' })
-    })
-    expect(rowCount(probe.container)).toBe(0)
-    probe.unmount()
-  })
-
-  it('empties itself on a timer when no transition runs', () => {
-    const list = <ThreadList threads={rows(3)} actions={actions} className="" />
-    const probe = mountProbe(<Fold open>{list}</Fold>)
-    probe.rerender(<Fold open={false}>{list}</Fold>)
-    expect(rowCount(probe.container)).toBe(3)
-    act(() => {
-      vi.advanceTimersByTime(400)
-    })
-    expect(rowCount(probe.container)).toBe(0)
-    // Reopening brings the rows straight back.
-    probe.rerender(<Fold open>{list}</Fold>)
-    expect(rowCount(probe.container)).toBe(3)
-    probe.unmount()
-  })
-})
-
-describe('Fold edge cases', () => {
-  it('reopening mid-close keeps the rows', () => {
-    vi.useFakeTimers()
-    const list = <ThreadList threads={rows(3)} actions={actions} className="" />
-    const probe = mountProbe(<Fold open>{list}</Fold>)
-    probe.rerender(<Fold open={false}>{list}</Fold>)
-    act(() => {
-      vi.advanceTimersByTime(200)
-    })
-    probe.rerender(<Fold open>{list}</Fold>)
-    act(() => {
-      vi.advanceTimersByTime(1000)
-    })
-    expect(rowCount(probe.container)).toBe(3)
-    fireEvent.transitionEnd(probe.container.firstElementChild!, { propertyName: 'grid-template-rows' })
-    expect(rowCount(probe.container)).toBe(3)
-    vi.useRealTimers()
-    probe.unmount()
-  })
-
-  it("a nested fold's transitionend leaves its parent alone", () => {
-    const probe = mountProbe(
-      <Fold open>
-        <Fold open={false}>
-          <ThreadList threads={rows(2)} actions={actions} className="" />
-        </Fold>
-        <ThreadList threads={rows(3)} actions={actions} className="" />
-      </Fold>
-    )
-    const outer = probe.container.firstElementChild!
-    const inner = outer.querySelector('[data-open="false"]')!
-    expect(rowCount(probe.container)).toBe(3)
-    fireEvent.transitionEnd(inner, { propertyName: 'grid-template-rows' })
-    expect(rowCount(probe.container)).toBe(3)
-    probe.unmount()
-  })
-
-  it('a closed fold is inert while its rows linger', () => {
-    const list = <ThreadList threads={rows(2)} actions={actions} className="" />
-    const probe = mountProbe(<Fold open>{list}</Fold>)
-    const inner = () => probe.container.firstElementChild!.firstElementChild as HTMLElement
-    expect(inner().hasAttribute('inert')).toBe(false)
-    probe.rerender(<Fold open={false}>{list}</Fold>)
-    expect(inner().hasAttribute('inert')).toBe(true)
-    expect(rowCount(probe.container)).toBe(2)
+  it('an unread thread makes the name heavier', () => {
+    const probe = mountProbe(projectRow([threadRow(meta('d', { status: 'done', updatedAt: 200 }), { d: 100 })]))
+    const name = Array.from(headerOf(probe.container).querySelectorAll('span')).find((s) => s.textContent === 'Project p1')!
+    expect(name.className).toContain('font-medium')
     probe.unmount()
   })
 })
