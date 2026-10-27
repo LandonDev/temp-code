@@ -26,7 +26,8 @@ export type SidebarItem =
   | { kind: "empty"; key: "empty" };
 
 /** Cards first, then chats and archived when there are any, else the empty
- *  hint. The home has no cards to offer, so its chats section always shows. */
+ *  hint. The home has no projects, so it never shows the hint: an empty home
+ *  is the column's header over nothing. */
 export function sidebarItems(
   groups: WorkspaceSessionGroups,
   home = false,
@@ -36,11 +37,11 @@ export function sidebarItems(
     key: group.project.id,
     group,
   }));
-  if (groups.chats.length || home)
+  if (groups.chats.length)
     items.push({ kind: "chats", key: "chats", threads: groups.chats });
   if (groups.archived.length)
     items.push({ kind: "archived", key: "archived", groups: groups.archived });
-  if (!items.length) items.push({ kind: "empty", key: "empty" });
+  if (!items.length && !home) items.push({ kind: "empty", key: "empty" });
   return items;
 }
 
