@@ -10,7 +10,7 @@ import { Input } from "../../../components/ui/input";
 import { Switch } from "../../../components/ui/switch";
 import { errorText } from "../../../chrome/ConfirmDialog";
 import { pickFolder } from "../../../lib/fs";
-import { setMacBridgeLimits, setMacBridgeShared, setMacBridgeShowRunning, useMacBridgeHosts } from "../../../lib/macBridge";
+import { setMacBridgeLimits, setMacBridgeShared, useMacBridgeHosts } from "../../../lib/macBridge";
 import { isWebMode } from "../../../lib/nativeWeb";
 import { setForwarding, useHostForwards } from "../../../lib/portForwards";
 import { CommitField } from "./CommitField";
@@ -19,8 +19,7 @@ import { DANGER_GHOST, Group, Row } from "./Group";
 import { usageParts } from "./parts";
 
 /**
- * A host's Mac bridge settings: whether a command admitted without asking
- * shows as a card, whether its dev servers are forwarded here, how many
+ * A host's Mac bridge settings: whether its dev servers are forwarded here, how many
  * commands and threads it may run at once, and the folders it reads without
  * asking. Each change saves at once; Done closes.
  */
@@ -54,18 +53,6 @@ export function MacBridgeHostDialog({ host: initial, onClose }: { host: MacBridg
         </DialogHeader>
         <div className="flex flex-col gap-4">
           <Group>
-            {runs ? (
-              <Row
-                title="Show running commands"
-                description={host.showRunning ? "A command allowed without asking shows as a card" : "A command allowed without asking shows only on the Hosts page, with Stop"}
-              >
-                <Switch
-                  aria-label={`Show commands running from ${host.name}`}
-                  checked={host.showRunning}
-                  onCheckedChange={(on) => void run(() => setMacBridgeShowRunning(id, on))}
-                />
-              </Row>
-            ) : null}
             {fwd ? (
               <Row title="Forward dev servers">
                 <Switch aria-label={`Forward ${host.name}'s dev servers to this Mac`} checked={fwd.enabled} onCheckedChange={(on) => void run(() => setForwarding(id, on))} />

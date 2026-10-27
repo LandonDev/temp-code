@@ -6,7 +6,8 @@ import type { MacBridgeHostPolicy } from "@server/shared/contract-macbridge";
 /**
  * A host's Mac bridge settings dialog: the caps commit and snap back, the
  * commands cap only under a policy that runs commands, a shared folder is
- * added and removed, and the switches call their setters.
+ * added and removed, forwarding calls its setter, and there is no "Show
+ * running commands" switch (a running call is never a card).
  */
 
 const calls: { method: string; args: unknown[] }[] = [];
@@ -19,7 +20,6 @@ vi.mock("../../../lib/macBridge", () => ({
   useMacBridgeHosts: () => [],
   setMacBridgeLimits: record("limits"),
   setMacBridgeShared: record("shared"),
-  setMacBridgeShowRunning: record("showRunning"),
 }));
 vi.mock("../../../lib/portForwards", () => ({
   useHostForwards: () => ({ environmentId: "env_box", enabled: true, forwards: [] }),
@@ -76,10 +76,9 @@ describe("MacBridgeHostDialog", () => {
     expect(calls.at(-1)).toEqual({ method: "limits", args: ["env_box", { maxThreads: 0 }] });
   });
 
-  it("hides the commands cap and the running switch under Read", () => {
+  it("hides the commands cap under Read", () => {
     render(<MacBridgeHostDialog host={host({ policy: "read" })} onClose={() => {}} />);
     expect(screen.queryByLabelText("Commands and jobs running at once from box")).toBeNull();
-    expect(screen.queryByText("Show running commands")).toBeNull();
     expect(screen.getByLabelText("Threads box may start on this Mac at once")).toBeTruthy();
   });
 
@@ -94,16 +93,13 @@ describe("MacBridgeHostDialog", () => {
     expect(calls.at(-1)).toEqual({ method: "shared", args: ["env_box", []] });
   });
 
-  it("calls the setters from the switches, and Done closes", async () => {
+  it("forwarding calls its setter, no switch shows running commands, and Done closes", async () => {
     const onClose = vi.fn();
     render(<MacBridgeHostDialog host={host()} onClose={onClose} />);
-    fireEvent.click(screen.getByLabelText("Show commands running from box"));
+    expect(screen.queryByText("Show running commands")).toBeNull();
     fireEvent.click(screen.getByLabelText("Forward box's dev servers to this Mac"));
     await flush();
-    expect(calls).toEqual([
-      { method: "showRunning", args: ["env_box", false] },
-      { method: "forwarding", args: ["env_box", false] },
-    ]);
+    expect(calls).toEqual([{ method: "forwarding", args: ["env_box", false] }]);
     fireEvent.click(screen.getByText("Done"));
     expect(onClose).toHaveBeenCalled();
   });

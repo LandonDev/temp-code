@@ -20,7 +20,6 @@ vi.mock("../../../lib/macBridge", () => ({
   useMacBridgeHosts: () => [],
   setMacBridgeLimits: async () => {},
   setMacBridgeShared: async () => {},
-  setMacBridgeShowRunning: async () => {},
 }));
 vi.mock("../../../chrome/MacBridgeRunning", () => ({ MacBridgeRunningList: () => null }));
 vi.mock("../../../lib/portForwards", () => ({ useHostForwards: () => null, setForwarding: async () => {} }));

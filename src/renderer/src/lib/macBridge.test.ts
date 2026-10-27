@@ -48,10 +48,11 @@ const req = (
 });
 
 describe("shownRequests", () => {
-  it("leaves quiet requests out and orders by age", () => {
+  it("keeps only the requests that wait for a decision, oldest first", () => {
     const list = shownRequests([
       req("b", { createdAt: 2 }),
       req("q", { createdAt: 1, status: "running", quiet: true }),
+      req("r", { createdAt: 0, status: "running" }),
       req("a", { createdAt: 1 }),
     ]);
     expect(list.map((r) => r.id)).toEqual(["a", "b"]);
@@ -68,7 +69,6 @@ describe("queueOf", () => {
     ]);
     expect(queue.pending.map((r) => r.id)).toEqual(["a", "x"]);
     expect(queue.more).toEqual({ env_box: 2 });
-    expect(queue.running).toEqual([]);
   });
 
   it("the next card shows once the first is decided", () => {
@@ -79,20 +79,14 @@ describe("queueOf", () => {
     expect(after.more).toEqual({});
   });
 
-  it("running commands fold into one line per host; quiet ones never appear", () => {
+  it("a running command is never a card, quiet or not: the Activity section and the Hosts page list it", () => {
     const queue = queueOf([
       req("r1", { createdAt: 1, status: "running" }),
-      req("r2", { createdAt: 2, status: "running", sessionId: "s2" }),
       req("quiet", { createdAt: 3, status: "running", quiet: true }),
       req("o", { createdAt: 4, status: "running", environmentId: "env_other", hostName: "other" }),
       req("p", { createdAt: 5 }),
     ]);
-    expect(queue.running.map((g) => [g.hostName, g.requests.map((r) => r.id)])).toEqual([
-      ["box", ["r1", "r2"]],
-      ["other", ["o"]],
-    ]);
-    expect(queue.pending.map((r) => r.id)).toEqual(["p"]);
-    expect(queue.more).toEqual({});
+    expect(queue).toEqual({ pending: [expect.objectContaining({ id: "p" })], more: {} });
   });
 
   it("a screenful of requests still draws a bounded set", () => {
@@ -102,8 +96,6 @@ describe("queueOf", () => {
     const queue = queueOf(many);
     expect(queue.pending).toHaveLength(1);
     expect(queue.more).toEqual({ env_box: 19 });
-    expect(queue.running).toHaveLength(1);
-    expect(queue.running[0].requests).toHaveLength(20);
   });
 });
 
@@ -133,10 +125,8 @@ describe("held requests (the load guard)", () => {
       req("h", { createdAt: 2, status: "held", held: held(1) }),
       req("p", { createdAt: 3 }),
     ];
-    expect(shownRequests(all).map((r) => r.id)).toEqual(["r", "p"]);
-    const queue = queueOf(all);
-    expect(queue.pending.map((r) => r.id)).toEqual(["p"]);
-    expect(queue.running[0].requests.map((r) => r.id)).toEqual(["r"]);
+    expect(shownRequests(all).map((r) => r.id)).toEqual(["p"]);
+    expect(queueOf(all).pending.map((r) => r.id)).toEqual(["p"]);
   });
 
   it("inFlightRequests lists the running ones first, then the held ones in line order, quiet included, for a host or a thread", () => {
@@ -161,10 +151,8 @@ describe("a paused thread's held calls (status paused)", () => {
       req("w", { createdAt: 2 }),
       req("r", { createdAt: 3, status: "running" }),
     ];
-    expect(shownRequests(all).map((r) => r.id)).toEqual(["w", "r"]);
-    const queue = queueOf(all);
-    expect(queue.pending.map((r) => r.id)).toEqual(["w"]);
-    expect(queue.running.flatMap((g) => g.requests.map((r) => r.id))).toEqual(["r"]);
+    expect(shownRequests(all).map((r) => r.id)).toEqual(["w"]);
+    expect(queueOf(all).pending.map((r) => r.id)).toEqual(["w"]);
   });
 
   it("are rows of the in-flight list after the running and the held ones, in age order, by host or thread", () => {

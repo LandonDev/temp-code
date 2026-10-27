@@ -19,9 +19,8 @@ vi.mock('../lib/macBridge', async (original) => ({
   useAllMacBridgeRequests: () => requests,
   decideMacBridge: async (...args: unknown[]) => {
     decided.push(args)
-  },
-  stopMacBridgeAll: async () => {}
-}))
+  }
+  }))
 vi.mock('../lib/macBridgeRules', async (original) => ({
   ...(await original<typeof import('../lib/macBridgeRules')>()),
   loadMacBridgeRules: async () => {},
@@ -117,10 +116,12 @@ describe('MacBridgeToasts', () => {
     expect(toasts.toast.dismiss).toHaveBeenCalledWith('mac-bridge:env_box')
   })
 
-  it('a running group is one toast with Stop all', () => {
+  it('a running command raises no toast and no card: it is an Activity row and a Hosts page row', () => {
     requests = [req('a', { status: 'running' }), req('b', { status: 'running', argv: ['ls'] })]
     render(<MacBridgeToasts />)
-    expect(toasts.toast).toHaveBeenCalledWith('2 commands running from box', expect.objectContaining({ id: 'mac-bridge-run:env_box', action: expect.objectContaining({ label: 'Stop all' }) }))
+    expect(toasts.toast).not.toHaveBeenCalled()
+    const card = render(<MacBridgeThreadCards environmentId="env_box" sessionId="s1" />)
+    expect(card.container.innerHTML).toBe('')
   })
 
   it('raises no toast for a request of the thread on screen', () => {

@@ -4,18 +4,15 @@ import type { MacBridgeRequest } from '@server/shared/contract-macbridge'
 import { Button } from '../components/ui/button'
 import { Checkbox } from '../components/ui/checkbox'
 import { Facts } from '../surfaces/settings/hosts/Facts'
-import { DANGER_GHOST } from '../surfaces/settings/hosts/Group'
 import { leafIds } from '../lib/layout'
 import {
   decideMacBridge,
   queueOf,
   quoteArgv,
   startMacBridge,
-  stopMacBridgeAll,
   useAllMacBridgeRequests,
   useMacBridgeRequests,
-  type MacBridgeQueue,
-  type MacBridgeRunningGroup
+  type MacBridgeQueue
 } from '../lib/macBridge'
 import { loadMacBridgeRules, startMacBridgeRules, useRunRemember } from '../lib/macBridgeRules'
 import { useWorkspaceTabs } from '../stores/workspace'
@@ -32,10 +29,9 @@ import { RunRememberSelect } from './MacBridgeRemember'
  * carries the requests of threads not on screen as sonner toasts.
  *
  * Never a screenful: `queueOf` (lib/macBridge.ts) keeps one waiting card per
- * host with "and N more", decided in order, and folds the running commands
- * into one line per host with Stop all. A quiet request (admitted without a
- * prompt while the host's "Show running commands" is off) gets no card at
- * all; the host's Mac bridge on Settings → Hosts lists it, with Stop.
+ * host with "and N more", decided in order. A card is only ever a decision:
+ * a call that runs is a row of the thread's Activity section and of the
+ * host's Mac bridge on Settings → Hosts, each with Stop.
  */
 
 const METHOD_TEXT: Record<MacBridgeRequest['method'], string> = {
@@ -144,71 +140,14 @@ function MacBridgeCard({
   )
 }
 
-/** "bun test running from box", or "3 commands running from box". */
-export const runningTitle = (group: MacBridgeRunningGroup): string =>
-  group.requests.length === 1
-    ? `${requestCode(group.requests[0]!)} running from ${group.hostName}`
-    : `${group.requests.length} commands running from ${group.hostName}`
-
-/** One host's running commands, folded: the command when there is one, the count past that, one Stop (all). */
-function MacBridgeRunningLine({ group, showThread }: { group: MacBridgeRunningGroup; showThread: boolean }) {
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  const one = group.requests.length === 1 ? group.requests[0] : null
-  const stop = async () => {
-    setBusy(true)
-    setError(null)
-    try {
-      await stopMacBridgeAll(group.requests)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(false)
-    }
-  }
-  return (
-    <div
-      className="flex flex-col rounded-xl border border-border bg-card px-3 py-1.5 text-[13px]"
-      role="group"
-      aria-label="Commands running on this Mac"
-      data-mac-bridge-running={group.environmentId}
-      data-mac-bridge-running-count={group.requests.length}
-    >
-      <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-muted-foreground">
-          {one ? (
-            <>
-              <span className="font-mono text-xs text-foreground">{requestCode(one)}</span> running from {group.hostName}
-            </>
-          ) : (
-            <>
-              <span className="font-medium text-foreground">{group.requests.length} commands</span> running from {group.hostName}
-            </>
-          )}
-        </span>
-        {showThread && one?.threadTitle ? (
-          <span className="max-w-40 shrink-0 truncate text-xs text-muted-foreground">{one.threadTitle}</span>
-        ) : null}
-        <Button variant="ghost" size="xs" className={DANGER_GHOST} disabled={busy} onClick={() => void stop()}>
-          {one ? 'Stop' : 'Stop all'}
-        </Button>
-      </div>
-      {error ? <div className="text-xs text-destructive">{error}</div> : null}
-    </div>
-  )
-}
-
-/** Above a box thread's composer: that thread's requests, the running line first (short), then the waiting card. */
+/** Above a box thread's composer: that thread's waiting card. */
 export function MacBridgeThreadCards({ environmentId, sessionId }: { environmentId: string; sessionId: string }) {
   useEffect(() => startMacBridge(), [])
   const requests = useMacBridgeRequests(environmentId, sessionId)
   const queue = useMemo(() => queueOf(requests), [requests])
-  if (requests.length === 0) return null
+  if (queue.pending.length === 0) return null
   return (
     <div className="flex flex-col gap-2 px-1 pb-2">
-      {queue.running.map((g) => (
-        <MacBridgeRunningLine key={g.environmentId} group={g} showThread={false} />
-      ))}
       {queue.pending.map((r) => (
         <MacBridgeCard key={r.id} request={r} more={queue.more[r.environmentId] ?? 0} showThread={false} />
       ))}
@@ -221,22 +160,11 @@ const short = (text: string, max = 80): string => (text.length > max ? `${text.s
 /**
  * The requests of threads not on screen, as sonner toasts: one per host for
  * its waiting request (Allow, Deny; the remember choice is the thread
- * card's alone) and one per host while commands run from it (Stop all),
- * updated as the queue moves and dismissed when nothing is left for it.
+ * card's alone), updated as the queue moves and dismissed when nothing waits.
  * `shown` is the set of toast ids up now, kept by the caller.
  */
 export function syncMacBridgeToasts(queue: MacBridgeQueue, shown: Set<string>): void {
   const live = new Set<string>()
-  for (const group of queue.running) {
-    const id = `mac-bridge-run:${group.environmentId}`
-    live.add(id)
-    toast(runningTitle(group), {
-      id,
-      duration: Infinity,
-      description: group.requests.length === 1 ? group.requests[0]!.threadTitle || undefined : undefined,
-      action: { label: group.requests.length === 1 ? 'Stop' : 'Stop all', onClick: () => void stopMacBridgeAll(group.requests).catch(() => {}) }
-    })
-  }
   for (const request of queue.pending) {
     const id = `mac-bridge:${request.environmentId}`
     live.add(id)
@@ -276,6 +204,6 @@ export function MacBridgeToasts() {
   const queue = useMemo(() => queueOf(hidden), [hidden])
   const shown = useRef(new Set<string>())
   useEffect(() => syncMacBridgeToasts(queue, shown.current), [queue])
-  useEffect(() => () => syncMacBridgeToasts({ running: [], pending: [], more: {} }, shown.current), [])
+  useEffect(() => () => syncMacBridgeToasts({ pending: [], more: {} }, shown.current), [])
   return null
 }
