@@ -85,6 +85,7 @@ import type { WorkspaceMark } from "../lib/sidebarRows";
 import { RemoveProjectDialog } from "./RemoveProjectDialog";
 import { DevModeSlot, TabVisitNav } from "./TitleBar";
 import { UpdateRow, useUpdateRowState } from "./UpdateRow";
+import { SignInRow, useSignInTarget } from "./SignInRow";
 import { UsageMeter } from "./UsageMeter";
 import { shell, useShell, type AliaxPageId } from "../stores/shell";
 import { SettingsNav } from "./SettingsRail";
@@ -866,12 +867,14 @@ export function workspaceRowAriaLabel(name: string, busy: boolean, needsYou = fa
   return name;
 }
 
-export type RailFootRowId = "update" | "hosts" | "inbox" | "search" | "accounts" | "stats" | "settings";
+export type RailFootRowId = "signIn" | "update" | "hosts" | "inbox" | "search" | "accounts" | "stats" | "settings";
 
-/** The foot's rows, in order: the update when there is one to act on, the
- *  hosts with two or more, then Inbox, Search, Accounts, Stats, Settings. */
-export function railFootRows(facts: { update: boolean; hosts: number }): RailFootRowId[] {
+/** The foot's rows, in order: the sign-in while this machine has no account,
+ *  the update when there is one to act on, the hosts with two or more, then
+ *  Inbox, Search, Accounts, Stats, Settings. */
+export function railFootRows(facts: { signIn: boolean; update: boolean; hosts: number }): RailFootRowId[] {
   const rows: RailFootRowId[] = [];
+  if (facts.signIn) rows.push("signIn");
   if (facts.update) rows.push("update");
   if (facts.hosts >= 2) rows.push("hosts");
   rows.push("inbox", "search", "accounts", "stats", "settings");
@@ -903,9 +906,12 @@ export function RailFoot({
   const inboxUnseen = useInboxUnseen();
   const environments = useEnvironments();
   const update = useUpdateRowState();
-  const ids = railFootRows({ update: update !== null, hosts: environments.length });
+  const signIn = useSignInTarget();
+  const ids = railFootRows({ signIn: signIn !== null, update: update !== null, hosts: environments.length });
   const row = (id: RailFootRowId) => {
     switch (id) {
+      case "signIn":
+        return signIn ? <SignInRow key={id} provider={signIn} /> : null;
       case "update":
         return <UpdateRow key={id} state={update} onOpenWhatsNew={onOpenWhatsNew} />;
       case "hosts":

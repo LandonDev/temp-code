@@ -38,12 +38,17 @@ describe("projectMenuExtraItems", () => {
 
 describe("railFootRows", () => {
   it("is Inbox, Search, Accounts, Stats, Settings with one host and nothing to update", () => {
-    expect(railFootRows({ update: false, hosts: 1 })).toEqual(["inbox", "search", "accounts", "stats", "settings"]);
+    expect(railFootRows({ signIn: false, update: false, hosts: 1 })).toEqual(["inbox", "search", "accounts", "stats", "settings"]);
   });
 
   it("puts the update first and the hosts after it, the hosts only with two or more", () => {
-    expect(railFootRows({ update: true, hosts: 2 })).toEqual(["update", "hosts", "inbox", "search", "accounts", "stats", "settings"]);
-    expect(railFootRows({ update: true, hosts: 1 })[0]).toBe("update");
-    expect(railFootRows({ update: false, hosts: 3 })[0]).toBe("hosts");
+    expect(railFootRows({ signIn: false, update: true, hosts: 2 })).toEqual(["update", "hosts", "inbox", "search", "accounts", "stats", "settings"]);
+    expect(railFootRows({ signIn: false, update: true, hosts: 1 })[0]).toBe("update");
+    expect(railFootRows({ signIn: false, update: false, hosts: 3 })[0]).toBe("hosts");
+  });
+
+  it("leads with the sign-in, before the update, and leaves it out when there is an account", () => {
+    expect(railFootRows({ signIn: true, update: true, hosts: 1 })).toEqual(["signIn", "update", "inbox", "search", "accounts", "stats", "settings"]);
+    expect(railFootRows({ signIn: false, update: true, hosts: 1 })).not.toContain("signIn");
   });
 });
