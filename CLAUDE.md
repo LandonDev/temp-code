@@ -464,7 +464,10 @@ routed to (aliax-core's `forward`). Two listeners:
   installs that token as its live sign-in (the refresh route rotates the
   grant the CLI holds), and a lapsed live sign-in whose account holds a
   static token is repaired at boot and every six hours
-  (`StaticTokens.repairLive`). Sign
+  (`StaticTokens.repairLive`). The "Sign in to Claude" window
+  (src/main/aliax/signInWindow.ts) appears once claude.ai has painted,
+  closes the moment the code arrives, and a failure is one line in the
+  app's sign-in dialog (src/main/aliax/signInWords.ts). Sign
   in on the Mac; the box never does (docs/box.md "Accounts: sign in on the
   Mac once"). A handoff is
   two-phase under aliax-core's per-profile lock (`src/lock.ts`, shared with

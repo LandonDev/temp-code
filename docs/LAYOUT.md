@@ -41,6 +41,20 @@ component builds each surface, and how**. Nothing here is built yet.
 - The right side is one panel per root thread, closed by default; "The
   right side" below.
 
+### Window title and the dock
+
+The window's title names what it shows (src/renderer/src/lib/windowTitle.ts,
+written to `document.title` from App.tsx): a page that covers the window
+alone ("Settings", "Search", "Inbox", "Notes", "Accounts", "Stats"), else the
+focused thread's title ("New thread" untitled), file's name or "Terminal",
+then " — " and the project's name; "TempCode" with nothing open. No app
+suffix: macOS names the app already. The dock badge has one meaning: the
+threads that need you (an approval or a question) on every host, subagents
+included, archived out; never unread, failed or plan-ready. Every window
+reports the same count and the dock shows the largest (src/main/dockBadge.ts);
+it bounces once when the count rises with no window focused. No dock
+progress bar.
+
 ## Region by region
 
 ### Titlebar
