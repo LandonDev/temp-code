@@ -9,7 +9,7 @@ import { hostScope, requestThreadBatch } from "../lib/threadBatch";
 import { batchActionOfMenuId, batchCounts, batchExplorerItems } from "../lib/threadBatchMenu";
 import { selectionFor } from "../lib/threadBatchSelection";
 import { shell } from "../stores/shell";
-import { statusText } from "../surfaces/EnvironmentsSettings";
+import { statusText } from "../lib/hostConnection";
 import { DeployDriftMark } from "./DeployDrift";
 import { toneOf } from "./EnvironmentSwitcher";
 import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";

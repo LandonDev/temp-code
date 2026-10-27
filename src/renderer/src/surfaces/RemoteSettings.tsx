@@ -1,24 +1,19 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import QRCode from "qrcode";
-import type { Capability } from "@server/shared/capabilities";
-import type {
-  RemoteAudience,
-  RemoteKey,
-  RemotePairing,
-  RemoteSession,
-  RemoteStatus,
-} from "@server/shared/contract-remote";
+import type { RemoteKey, RemotePairing, RemoteSession, RemoteStatus } from "@server/shared/contract-remote";
 import type { HarnessSyncStatus } from "@server/shared/contract-harness";
 import type { MemorySyncStatus } from "@server/shared/contract-memory";
 import type { AttachmentSettings } from "@server/shared/contract-attachments";
 import { forgetAttachmentSettings } from "../lib/attachmentUpload";
-import { DialogFooter, ErrorLine, errorText } from "../chrome/ConfirmDialog";
-import { Check, Copy } from "../chrome/icons";
+import { ErrorLine, errorText } from "../chrome/ConfirmDialog";
 import { DeployDriftMark } from "../chrome/DeployDrift";
-import { Modal } from "../chrome/Modal";
 import { timeAgo } from "../lib/format";
 import { LOCAL_ENVIRONMENT_ID, registry } from "../lib/connection";
-import { Heading, INPUT_CLASS, Input, Row, SecondaryButton, Segmented, Toggle } from "./settingsBits";
+import { Heading, Input, Row, SecondaryButton, Toggle } from "./settingsBits";
+import { capsText } from "../lib/hostConnection";
+import { CopyButton } from "./settings/hosts/CopyButton";
+import { Countdown } from "./settings/hosts/dialogs/fields";
+import { NewKeyDialog } from "./settings/hosts/dialogs/NewKeyDialog";
+import { PairDialog } from "./settings/hosts/dialogs/PairDialog";
 import { MatrixSpinner } from "./threads/bits";
 import { harnessLine } from "./harnessLine";
 import { memoryLine } from "./memoryLine";
@@ -35,16 +30,6 @@ import { AdmissionSettings } from "./AdmissionSettings";
  * pairings are made in modals; a secret is shown once, in the response.
  */
 
-const GRANTABLE: { cap: Capability; label: string }[] = [
-  { cap: "operate", label: "Operate" },
-  { cap: "approve", label: "Approve" },
-  { cap: "admin", label: "Admin" },
-];
-
-const capsText = (caps: Capability[]): string => {
-  const granted = GRANTABLE.filter(({ cap }) => caps.includes(cap)).map(({ cap }) => cap);
-  return granted.length === 0 ? "read only" : granted.join(", ");
-};
 const kindText = (key: RemoteKey): string =>
   key.audience === "mcp" ? "Bot (MCP)" : key.kind === "browser" ? "Browser" : "Key";
 
@@ -361,26 +346,6 @@ function shortAgent(ua: string): string {
   return m ? m[0].split("/")[0].replace("CriOS", "Chrome").replace("OPR", "Opera").replace("Edg", "Edge") : "";
 }
 
-function CopyButton({ text, label }: { text: string; label: string }) {
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const t = window.setTimeout(() => setCopied(false), 1200);
-    return () => window.clearTimeout(t);
-  }, [copied]);
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      onClick={() => void navigator.clipboard.writeText(text).then(() => setCopied(true))}
-      className="pressable grid size-7 place-items-center rounded-md text-content/50 hover:bg-content/10 hover:text-content"
-    >
-      {copied ? <Check className="size-3.5" strokeWidth={2.25} /> : <Copy className="size-3.5" strokeWidth={1.75} />}
-    </button>
-  );
-}
-
 function hostOf(url: string): string {
   try {
     return new URL(url).host;
@@ -490,253 +455,3 @@ function TextField({
   );
 }
 
-function Countdown({ prefix, at }: { prefix: string; at: number }) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const t = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(t);
-  }, []);
-  const left = Math.max(0, Math.round((at - now) / 1000));
-  return (
-    <>
-      {prefix} {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}
-    </>
-  );
-}
-
-function CapsPicker({
-  value,
-  audience,
-  onChange,
-}: {
-  value: Capability[];
-  audience: RemoteAudience;
-  onChange: (caps: Capability[]) => void;
-}) {
-  return (
-    <div className="flex gap-0.5 rounded-md border border-content/10 p-0.5 text-[12px]" role="group" aria-label="Capabilities">
-      {GRANTABLE.map(({ cap, label }) => {
-        const on = value.includes(cap);
-        const blocked = audience === "mcp" && cap !== "operate";
-        return (
-          <button
-            key={cap}
-            type="button"
-            role="checkbox"
-            aria-checked={on}
-            disabled={blocked}
-            title={blocked ? "Bots never approve or administer" : undefined}
-            onClick={() => onChange(on ? value.filter((c) => c !== cap) : [...value, cap])}
-            className={`pressable rounded-[4px] px-3 py-1 disabled:cursor-default disabled:opacity-30 ${
-              on ? "bg-content/10 text-content" : "text-content/50 hover:text-content"
-            }`}
-          >
-            {label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-const FIELD = "flex flex-col gap-1.5 text-[12px] text-content/50";
-
-function Secret({ label, value }: { label: string; value: string }) {
-  return (
-    <div className={FIELD}>
-      {label}
-      <div className="flex items-center gap-1">
-        <code className={`${INPUT_CLASS} min-w-0 flex-1 select-all break-all`}>{value}</code>
-        <CopyButton text={value} label={`Copy ${label.toLowerCase()}`} />
-      </div>
-    </div>
-  );
-}
-
-function NewKeyDialog({ onClose, onChanged }: { onClose: () => void; onChanged: () => Promise<void> }) {
-  const [name, setName] = useState("");
-  const [audience, setAudience] = useState<RemoteAudience>("client");
-  const [caps, setCaps] = useState<Capability[]>(["operate"]);
-  const [webhookUrl, setWebhookUrl] = useState("");
-  const [webhookSecret, setWebhookSecret] = useState("");
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [created, setCreated] = useState<{ key: RemoteKey; token: string; webhookSecret?: string } | null>(null);
-
-  const create = async () => {
-    setPending(true);
-    setError(null);
-    try {
-      const url = webhookUrl.trim();
-      const secret = webhookSecret.trim();
-      setCreated(
-        await rpc<{ key: RemoteKey; token: string; webhookSecret?: string }>("remote.keys.create", {
-          name: name.trim(),
-          audience,
-          caps,
-          ...(url ? { webhookUrl: url } : {}),
-          ...(url && secret ? { webhookSecret: secret } : {}),
-        }),
-      );
-      await onChanged();
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setPending(false);
-    }
-  };
-  const pickAudience = (next: RemoteAudience) => {
-    setAudience(next);
-    if (next === "mcp") setCaps((c) => c.filter((cap) => cap === "operate"));
-  };
-
-  return (
-    <Modal onClose={onClose} busy={pending} title={created ? "Key created" : "New key"} size="sm">
-      {created ? (
-        <>
-          <div className="flex flex-col gap-3 px-4 py-3">
-            <p className="text-[12px] leading-snug text-content/50">
-              Copy it now. It is not shown again.
-            </p>
-            <Secret label="Key" value={created.token} />
-            {created.webhookSecret ? <Secret label="Webhook signing secret" value={created.webhookSecret} /> : null}
-          </div>
-          <DialogFooter onCancel={onClose} confirmLabel="Done" onConfirm={onClose} />
-        </>
-      ) : (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void create();
-          }}
-        >
-          <div className="flex flex-col gap-3 px-4 py-3">
-            <label className={FIELD}>
-              Name
-              <Input value={name} autoFocus onChange={(e) => setName(e.target.value)} placeholder={audience === "mcp" ? "grok" : "iphone"} />
-            </label>
-            <div className={FIELD}>
-              For
-              <Segmented
-                label="Audience"
-                value={audience}
-                options={[
-                  { value: "client", label: "App" },
-                  { value: "mcp", label: "Bot (MCP)" },
-                ]}
-                onChange={pickAudience}
-              />
-            </div>
-            <div className={FIELD}>
-              May
-              <CapsPicker value={caps} audience={audience} onChange={setCaps} />
-            </div>
-            <label className={FIELD}>
-              Webhook URL
-              <Input
-                value={webhookUrl}
-                onChange={(e) => setWebhookUrl(e.target.value)}
-                placeholder="https://bot.example.com/hook (optional)"
-                spellCheck={false}
-                autoComplete="off"
-              />
-            </label>
-            {webhookUrl.trim() ? (
-              <label className={FIELD}>
-                Signing secret
-                <Input
-                  value={webhookSecret}
-                  onChange={(e) => setWebhookSecret(e.target.value)}
-                  placeholder="generated when empty"
-                  spellCheck={false}
-                  autoComplete="off"
-                />
-              </label>
-            ) : null}
-            <ErrorLine error={error} />
-          </div>
-          <DialogFooter onCancel={onClose} confirmLabel="Create" pending={pending} disabled={!name.trim()} />
-        </form>
-      )}
-    </Modal>
-  );
-}
-
-type Pairing = { pairing: RemotePairing; code: string; url: string };
-
-function PairDialog({ onClose, onChanged }: { onClose: () => void; onChanged: () => Promise<void> }) {
-  const [name, setName] = useState("");
-  const [caps, setCaps] = useState<Capability[]>(["operate"]);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [made, setMade] = useState<Pairing | null>(null);
-  const [qr, setQr] = useState<string | null>(null);
-
-  const create = async () => {
-    setPending(true);
-    setError(null);
-    try {
-      const next = await rpc<Pairing>("remote.pairings.create", { name: name.trim(), audience: "client", caps });
-      setMade(next);
-      setQr(await QRCode.toDataURL(next.url, { margin: 1, width: 192, color: { dark: "#000000", light: "#ffffff" } }));
-      await onChanged();
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setPending(false);
-    }
-  };
-  const cancel = async () => {
-    if (made) await rpc("remote.pairings.revoke", { id: made.pairing.id }).catch(() => undefined);
-    await onChanged();
-    onClose();
-  };
-
-  return (
-    <Modal onClose={onClose} busy={pending} title="Pair a device" size="sm">
-      {made ? (
-        <>
-          <div className="flex flex-col gap-3 px-4 py-3">
-            <div className="flex items-start gap-4">
-              {qr ? <img src={qr} alt="Pairing QR code" className="size-32 shrink-0 rounded-md bg-white p-1" /> : null}
-              <div className="flex min-w-0 flex-1 flex-col gap-3">
-                <div className={FIELD}>
-                  Code
-                  <div className="flex items-center gap-1">
-                    <code className="text-[18px] tracking-[0.12em] text-content">{made.code}</code>
-                    <CopyButton text={made.code} label="Copy code" />
-                  </div>
-                </div>
-                <div className="text-[12px] text-content/50">
-                  <Countdown prefix={`${capsText(made.pairing.caps)} · expires in`} at={made.pairing.expiresAt} />
-                </div>
-              </div>
-            </div>
-            <Secret label="Link" value={made.url} />
-          </div>
-          <DialogFooter onCancel={() => void cancel()} confirmLabel="Done" onConfirm={onClose} />
-        </>
-      ) : (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void create();
-          }}
-        >
-          <div className="flex flex-col gap-3 px-4 py-3">
-            <label className={FIELD}>
-              Name
-              <Input value={name} autoFocus onChange={(e) => setName(e.target.value)} placeholder="iPhone" />
-            </label>
-            <div className={FIELD}>
-              May
-              <CapsPicker value={caps} audience="client" onChange={setCaps} />
-            </div>
-            <ErrorLine error={error} />
-          </div>
-          <DialogFooter onCancel={onClose} confirmLabel="Create code" pending={pending} disabled={!name.trim()} />
-        </form>
-      )}
-    </Modal>
-  );
-}

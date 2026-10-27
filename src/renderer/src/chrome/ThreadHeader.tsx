@@ -15,7 +15,7 @@ import { ConfirmDialog } from "./ProjectDialogs";
 import { PanelRight } from "./icons";
 import { ThreadHeaderStrip, chipTitle, type ArchivedThread, type ChipThread, type StripChip } from "./ThreadHeaderStrip";
 import { TuneDialog } from "./ThreadTune";
-import { MacBridgeRulesDialog } from "./MacBridgeRemember";
+import { MacBridgeRulesDialog } from "./MacBridgeRulesDialog";
 import { ArchiveThreadDialog, ThreadResourcesDialog } from "./ThreadResourcesDialog";
 import { liveResources, loadThreadResources, startThreadResources, useThreadResources } from "../lib/threadResources";
 import { ThreadHostChip } from "./ThreadHostChip";

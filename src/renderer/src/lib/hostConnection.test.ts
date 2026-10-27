@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { IDLE_STATUS, type EnvironmentStatus } from "../lib/connection/types";
-import { capsText, hostErrorText, kindOf, originText, statusText } from "./EnvironmentsSettings";
+import { IDLE_STATUS, type EnvironmentStatus } from "./connection/types";
+import { capsText, hostErrorText, kindOf, originText, statusText } from "./hostConnection";
 
 const at = (transport: EnvironmentStatus["transport"], extra: Partial<EnvironmentStatus> = {}): EnvironmentStatus => ({ ...IDLE_STATUS, transport, ...extra });
 
-describe("environments pane helpers", () => {
+describe("host connection words", () => {
   it("words each transport state, with the retry countdown", () => {
     const now = 1_000_000;
     expect(statusText(at("open", { fresh: true }), now)).toBe("connected");

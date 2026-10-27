@@ -14,7 +14,7 @@ import { requestEnvironmentSwitch } from "../lib/environmentSwitch";
 import { MOD } from "../lib/platform";
 import { shell } from "../stores/shell";
 import { useCurrentEnvironmentId } from "../stores/environment";
-import { statusText } from "../surfaces/EnvironmentsSettings";
+import { statusText } from "../lib/hostConnection";
 import { settingsChunk } from "../surfaces/chunks";
 
 /**

@@ -1,6 +1,6 @@
 import { registry, useEnvironmentDegraded, useEnvironmentStatus, useEnvironments, useSlowEnvironments, type Environment } from "../lib/connection";
 import { EnvironmentSwitcher, toneOf } from "./EnvironmentSwitcher";
-import { statusText } from "../surfaces/EnvironmentsSettings";
+import { statusText } from "../lib/hostConnection";
 
 /**
  * The sidebar header's connection state. One environment: a dot for this
