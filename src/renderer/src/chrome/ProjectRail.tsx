@@ -6,6 +6,7 @@ import { useHostsOffline } from "./hostOffline";
 import {
   Archive,
   FolderOpen,
+  FolderPlus,
   ChartBar,
   Inbox,
   ListChecks,
@@ -19,7 +20,7 @@ import {
   Settings,
   Trash2,
 } from "./icons";
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { useDragResize } from "../hooks/useDragResize";
 import { useInboxUnseen } from "../hooks/useInboxUnseen";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
@@ -416,6 +417,9 @@ export function ProjectRail({
 
   // The draggable rows: a linked row moves as one, by its lead folder.
   const pinnedIds = rows.pinned.map((item) => item.path);
+  // With nothing in the list, its own row adds the first workspace and the
+  // heading drops its +, so the action is on screen once.
+  const noWorkspaces = rows.pinned.length === 0 && rows.projects.length === 0;
   const projectIds = rows.projects.map((item) => item.path);
   const pinnedSortable = useSortable(pinnedIds, onReorderPinned, {
     axis: "y",
@@ -510,8 +514,10 @@ export function ProjectRail({
               label="Workspaces"
               items={rows.projects}
               statusKey={statusKey}
-              emptyLabel="No workspaces yet"
-              onAdd={() => onOpenProject()}
+              onAdd={noWorkspaces ? undefined : () => onOpenProject()}
+              emptyRow={
+                noWorkspaces ? <RailRow icon={FolderPlus} label="Add workspace…" onClick={() => onOpenProject()} /> : null
+              }
               cwd={cwd}
               busy={busy}
               needsYou={needsYou}
@@ -629,7 +635,7 @@ function ProjectSection({
   items,
   statusKey,
   indexOf,
-  emptyLabel,
+  emptyRow,
   onAdd,
   cwd,
   busy,
@@ -655,7 +661,8 @@ function ProjectSection({
   statusKey: (path: string) => string;
   /** The row's place in the sortable's whole list; defaults to its place in `items`. */
   indexOf?: (item: RailItem) => number;
-  emptyLabel?: string;
+  /** The row that stands in for an empty list (Add workspace…). */
+  emptyRow?: ReactNode;
   onAdd?: () => void;
   cwd: string;
   busy: Set<string>;
@@ -681,10 +688,8 @@ function ProjectSection({
       <RailHeading action={onAdd ? { label: "Add workspace", icon: Plus, onClick: onAdd } : undefined}>
         {label}
       </RailHeading>
-      {items.length === 0 && emptyLabel ? (
-        <p className="px-3 py-2 text-[12px] text-muted-foreground">{emptyLabel}</p>
-      ) : null}
       <div className="flex flex-col">
+        {emptyRow}
         {items.map((item, index) => (
           <WorkspaceRow
             key={item.path}

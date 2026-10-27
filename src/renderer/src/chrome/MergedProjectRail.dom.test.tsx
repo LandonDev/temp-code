@@ -137,7 +137,13 @@ describe("the linked workspace's thread rows", () => {
 });
 
 describe("the rail", () => {
-  async function mountRail(environments: Environment[], statuses: Record<string, EnvironmentStatus> = {}, onSelectProject = (_: string) => {}) {
+  const RECENTS = [{ path: BOX_PATH, openedAt: 3 }, { path: MAC_PATH, openedAt: 2 }, { path: ONLY_BOX, openedAt: 1 }];
+  async function mountRail(
+    environments: Environment[],
+    statuses: Record<string, EnvironmentStatus> = {},
+    onSelectProject = (_: string) => {},
+    { recents = RECENTS, onOpenProject = (_?: string) => {} }: { recents?: typeof RECENTS; onOpenProject?: (environmentId?: string) => void } = {},
+  ) {
     pairHosts(environments, statuses);
     for (const e of environments) {
       workspaceStore.attach(new FakeLink(e.id));
@@ -147,9 +153,9 @@ describe("the rail", () => {
     probe = mountProbe(
       <ProjectRail
         cwd="~"
-        recents={[{ path: BOX_PATH, openedAt: 3 }, { path: MAC_PATH, openedAt: 2 }, { path: ONLY_BOX, openedAt: 1 }]}
+        recents={recents}
         onSelectProject={onSelectProject}
-        onOpenProject={() => {}}
+        onOpenProject={onOpenProject}
         onOpenChats={() => {}}
       />,
     );
@@ -201,5 +207,35 @@ describe("the rail", () => {
     const root = await mountRail([LOCAL, BOX], { env_box: status("offline") });
     const dim = [...root.querySelectorAll('nav[aria-label="Workspaces"] [data-host-offline]')];
     expect(dim.map((row) => row.querySelector("button")?.textContent)).toEqual(["only-box"]);
+  });
+
+  const addRow = (root: HTMLElement) =>
+    [...root.querySelectorAll("nav [data-rail-row] button")].filter((b) => b.textContent === "Add workspace…");
+  const headingAdd = (root: HTMLElement) => root.querySelector('nav button[aria-label="Add workspace"]');
+
+  it("with no workspace, stands one Add workspace… row under a heading with no +", async () => {
+    const onOpenProject = vi.fn();
+    const root = await mountRail([LOCAL], {}, undefined, { recents: [], onOpenProject });
+    expect(addRow(root)).toHaveLength(1);
+    expect(headingAdd(root)).toBeNull();
+    expect(root.textContent).not.toContain("No workspaces yet");
+    fireEvent.click(addRow(root)[0]);
+    expect(onOpenProject).toHaveBeenCalledTimes(1);
+    expect(onOpenProject.mock.calls[0]).toEqual([]);
+  });
+
+  it("with a workspace, the heading keeps its + and the row is gone", async () => {
+    const root = await mountRail([LOCAL]);
+    expect(addRow(root)).toHaveLength(0);
+    expect(headingAdd(root)).not.toBeNull();
+  });
+
+  it("with every workspace pinned, the same, and no empty line", async () => {
+    localStorage.setItem("monocode.projectRailPinned", JSON.stringify([MAC_PATH]));
+    const root = await mountRail([LOCAL], {}, undefined, { recents: [{ path: MAC_PATH, openedAt: 2 }] });
+    expect(headers(root)).toContain("Pinned");
+    expect(addRow(root)).toHaveLength(0);
+    expect(headingAdd(root)).not.toBeNull();
+    expect(root.textContent).not.toContain("No workspaces yet");
   });
 });
