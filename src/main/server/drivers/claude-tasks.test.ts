@@ -5,7 +5,7 @@ import type { DriverCtx } from './types'
 
 vi.mock('electron', () => ({ nativeImage: {} }))
 
-const { handleMessage, newStreamState, permittedWebTools, stopHookFor } = await import('./claude')
+const { handleMessage, kindOf, newStreamState, permittedWebTools, stopHookFor } = await import('./claude')
 
 /**
  * Background work over the SDK stream: the task level and edges, the Stop
@@ -54,6 +54,7 @@ const started = (task_id: string, description: string, is_backgrounded?: boolean
 
 const statuses = (): string[] => events.flatMap((e) => (e.type === 'status' ? [e.status] : []))
 const taskLists = (): string[][] => events.flatMap((e) => (e.type === 'background-tasks' ? [e.tasks] : []))
+const itemLists = () => events.flatMap((e) => (e.type === 'background-tasks' ? [e.items ?? []] : []))
 
 /** A sent turn: the driver's send() sets working before the stream replies. */
 const startTurn = (): void => {
@@ -330,6 +331,49 @@ it('no check without a sender or while nothing is watched', () => {
   userTurn()
   expect(statuses().at(-1)).toBe('watching')
   expect(state.working).toBe(false)
+})
+
+it('kindOf maps raw task types and friendly hook types', () => {
+  expect(kindOf('local_bash')).toBe('shell')
+  expect(kindOf('shell')).toBe('shell')
+  expect(kindOf('local_agent')).toBe('agent')
+  expect(kindOf('subagent')).toBe('agent')
+  expect(kindOf('monitor')).toBe('monitor')
+  expect(kindOf('local_workflow')).toBe('workflow')
+  expect(kindOf('mcp_task')).toBe('other')
+  expect(kindOf(undefined)).toBe('other')
+})
+
+it('items carry kind, startedAt and the call id from task_started', () => {
+  vi.useFakeTimers()
+  vi.setSystemTime(1_000)
+  startTurn()
+  handleMessage(ctx, state, level([{ task_id: 't1', description: 'upload the build' }]))
+  handleMessage(ctx, state, msg({ type: 'system', subtype: 'task_started', task_id: 't1', description: 'upload the build', task_type: 'local_bash', tool_use_id: 'call-7' }))
+  expect(itemLists().at(-1)).toEqual([
+    { id: 't1', label: 'upload the build', kind: 'shell', startedAt: 1_000, callId: 'call-7' }
+  ])
+  expect(taskLists().at(-1)).toEqual(['upload the build'])
+})
+
+it('the Stop hook adds the command and re-emits on an items-only change; a cron is an item', async () => {
+  vi.useFakeTimers()
+  vi.setSystemTime(2_000)
+  startTurn()
+  handleMessage(ctx, state, level([{ task_id: 't1', description: 'serve the app' }]))
+  const lists = taskLists().length
+  const hook = stopHookFor(ctx, state)
+  vi.setSystemTime(3_000)
+  await hook(stopInput([{ schedule: '*/5 * * * *', recurring: true }], [{ id: 't1', description: 'serve the app', command: 'bun run dev' } as never]))
+  expect(taskLists().length).toBe(lists + 1)
+  expect(itemLists().at(-1)).toEqual([
+    { id: 't1', label: 'serve the app', kind: 'shell', startedAt: 2_000, command: 'bun run dev' },
+    { id: 'cron:0', label: 'scheduled wake-up (*/5 * * * *)', kind: 'cron', startedAt: 3_000 }
+  ])
+  // The same report again changes nothing, so nothing is emitted.
+  vi.setSystemTime(4_000)
+  await hook(stopInput([{ schedule: '*/5 * * * *', recurring: true }], [{ id: 't1', description: 'serve the app', command: 'bun run dev' } as never]))
+  expect(taskLists().length).toBe(lists + 1)
 })
 
 it('web tools run without a prompt under Auto-edits only', () => {

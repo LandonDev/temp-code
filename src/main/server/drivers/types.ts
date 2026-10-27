@@ -59,6 +59,9 @@ export interface DriverHandle {
    *  supports it; other attachments ride along as path references. */
   send: (text: string, attachments?: Attachment[]) => Promise<void>
   interrupt: () => void
+  /** Stop one background task by the CLI's id (claude's query.stopTask);
+   *  its settle arrives as the usual task notification. */
+  stopTask?: (taskId: string) => Promise<void>
   /** Answer a pending approval-request. Returns whether the request was
    *  still pending here — false lets the registry handle a stale one
    *  (asked by a previous process of this harness). */

@@ -242,6 +242,8 @@ describe('PortSweep', () => {
     await sweep.sweep()
     expect(ledger.live(ME, 'port', '8081')).toMatchObject({ sessionId: 'a', callId: 'c1', label: 'npx expo start --tunnel' })
     expect(sweep.fileOfCall('c1')).toBe('/tmp/cc/tasks/b1.output')
+    expect(sweep.fileOfTask('b1')).toBe('/tmp/cc/tasks/b1.output')
+    expect(sweep.fileOfTask('b2')).toBeNull()
   })
 
   it('guesses the call by the port it names when the rule gives none', async () => {

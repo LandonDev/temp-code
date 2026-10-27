@@ -7,6 +7,7 @@ export type {
   ServerResponse,
   QueuedMessage,
   SessionBatchResult,
+  TaskLog,
 } from "@server/shared/contract";
 export type {
   AgentEvent,

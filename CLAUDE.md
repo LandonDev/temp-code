@@ -1113,6 +1113,33 @@ names the far child).
   compaction block, digests, plan hand-off), session-search.test.ts,
   app-bridge.test.ts, the renderer's threadNotes.test.ts,
   NotesPanel.dom.test.tsx and ThreadBanners.dom.test.tsx.
+## Background work and watching: a structured wait on the session row
+- The claude driver keeps every live background task as an item
+  (`BackgroundTaskSchema` in src/shared/events.ts: id, the model's label,
+  `kind` shell | monitor | agent | workflow | cron | other from
+  `kindOf(task_type | type)`, `startedAt`, the Stop hook's `command`, the
+  starting call's `callId`; a session cron is `cron:<id>`) and emits
+  `background-tasks { tasks, items }` whenever the items move (`tasks`, the
+  labels alone, stays for old rows, the phone and the MCP facade). The
+  registry folds it into `SessionMeta.background` (transient, like
+  `activity`): `tasks`, `agents` (live subagent ids), `batch { out, total }`
+  for a pinned master's local children, and `watchingSince` (set when a
+  status moves the row into watching). A child's status change re-pushes its
+  non-root parent and its master. The activity line is `watchLine`:
+  "Waiting on <label>" for one task, else "Waiting on <watchPhrase>"
+  ("3 subagents, a monitor"; src/shared/watch.ts, with `STALE_WATCH_MS`
+  30 min and `isStaleWatch`), "Waiting on the batch's steps" for a master
+  with nothing out.
+- `session.stopTask { sessionId, taskId }` (operate) stops one task through
+  the SDK's `query.stopTask` (`DriverHandle.stopTask`); `session.taskLog
+  { sessionId, taskId, from? }` (read) answers `TaskLog` from
+  src/main/server/taskLog.ts: the task's output file (portSweep's
+  `fileOfCall`, else `fileOfTask`), tailed by portLog.ts `readTail`, else
+  the call's output in the transcript, else `none`. Neither is in the
+  phone's subset. The desktop transcript prints no background-task rows
+  (fold.ts); the `background-task` settle event is still emitted for the
+  digest and the phone.
+
 ## Review before merge: an optional second model between the gate and the merge
 - Off by default. Settings → Reviews holds the global set; a project's
   settings dialog (Reviews disclosure) overrides it whole, with "Use global

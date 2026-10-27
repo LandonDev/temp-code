@@ -53,6 +53,25 @@ async function linuxFiles(pid: number): Promise<string[]> {
   return out
 }
 
+/** A file's text from `from` on: the last FIRST_BYTES on a first read
+ *  (`from` undefined), at most READ_BYTES at a time, and from the end
+ *  again when the file shrank (truncated or replaced). A missing file
+ *  reads as nothing new. Shared with taskLog.ts. */
+export async function readTail(path: string, from: number | undefined): Promise<{ data: string; next: number }> {
+  const size = (await stat(path).catch(() => null))?.size ?? 0
+  const start = from === undefined || from > size ? Math.max(0, size - FIRST_BYTES) : from
+  const end = Math.min(size, start + READ_BYTES)
+  if (end <= start) return { data: '', next: start }
+  const fh = await open(path, 'r')
+  try {
+    const buf = Buffer.alloc(end - start)
+    const { bytesRead } = await fh.read(buf, 0, buf.length, start)
+    return { data: buf.subarray(0, bytesRead).toString('utf8'), next: start + bytesRead }
+  } finally {
+    await fh.close()
+  }
+}
+
 export class PortLogs {
   private readonly paths = new Map<string, string>()
 
@@ -88,21 +107,7 @@ export class PortLogs {
     if (!row || row.kind !== 'port') throw new Error(`unknown dev server: ${resourceId}`)
     const ended = row.removedAt === null ? {} : { endedAt: row.removedAt, note: row.note }
     const path = await this.fileOf(row).catch(() => null)
-    if (path) {
-      const size = (await stat(path).catch(() => null))?.size ?? 0
-      // A file that shrank was truncated or replaced: start it over.
-      const start = from === undefined || from > size ? Math.max(0, size - FIRST_BYTES) : from
-      const end = Math.min(size, start + READ_BYTES)
-      if (end <= start) return { source: 'file', path, data: '', next: start, ...ended }
-      const fh = await open(path, 'r')
-      try {
-        const buf = Buffer.alloc(end - start)
-        const { bytesRead } = await fh.read(buf, 0, buf.length, start)
-        return { source: 'file', path, data: buf.subarray(0, bytesRead).toString('utf8'), next: start + bytesRead, ...ended }
-      } finally {
-        await fh.close()
-      }
-    }
+    if (path) return { source: 'file', path, ...(await readTail(path, from)), ...ended }
     const output = this.deps.callOutput(row)
     if (output === null) return { source: 'none', path: null, data: '', next: 0, ...ended }
     const at = from === undefined || from > output.length ? 0 : from

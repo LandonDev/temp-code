@@ -11,6 +11,42 @@ import type { ThreadType } from './domain'
  * provider-native payload.
  */
 
+/** What a live background task is: from the CLI's task_type or the Stop
+ *  hook's friendly type (drivers/claude.ts `kindOf`); `cron` is a session
+ *  cron the thread set for itself. */
+export const BackgroundTaskKindSchema = z.enum(['shell', 'monitor', 'agent', 'workflow', 'cron', 'other'])
+export type BackgroundTaskKind = z.infer<typeof BackgroundTaskKindSchema>
+
+/** One live background task a thread waits on. */
+export const BackgroundTaskSchema = z.object({
+  /** The CLI's task id; `cron:<id>` for a session cron. */
+  id: z.string(),
+  /** The model's own description, as it wrote it. */
+  label: z.string(),
+  kind: BackgroundTaskKindSchema,
+  /** When the driver first saw it. */
+  startedAt: z.number().int(),
+  /** Shell tasks: the command line (from the Stop hook). */
+  command: z.string().optional(),
+  /** The tool call that started it (task_started.tool_use_id). */
+  callId: z.string().optional()
+})
+export type BackgroundTask = z.infer<typeof BackgroundTaskSchema>
+
+/** Everything a thread waits on, as SessionMeta.background carries it
+ *  (transient, like `activity`): its own tasks, its live subagents and,
+ *  for a master, its local batch. */
+export const BackgroundWorkSchema = z.object({
+  tasks: z.array(BackgroundTaskSchema),
+  /** Live subagent ids (children in a live status). */
+  agents: z.array(z.string()),
+  /** A master's local batch: children still out of the unarchived total. */
+  batch: z.object({ out: z.number().int(), total: z.number().int() }).nullable(),
+  /** When the current watching stretch began; null while not watching. */
+  watchingSince: z.number().int().nullable()
+})
+export type BackgroundWork = z.infer<typeof BackgroundWorkSchema>
+
 export const SessionStatusSchema = z.enum([
   'starting',
   'idle',
@@ -267,13 +303,19 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     status: z.string()
   }),
 
-  // Background work the harness is waiting on (descriptions of live
-  // non-ambient tasks and session crons; replace semantics, empty = none).
-  // Folded by the registry into the 'Waiting on …' header line; no block.
-  z.object({ type: z.literal('background-tasks'), tasks: z.array(z.string()) }),
+  // Background work the harness is waiting on (live non-ambient tasks and
+  // session crons; replace semantics, empty = none). `tasks` is the
+  // descriptions alone (old rows, the phone, the MCP facade); `items` the
+  // structured list the registry folds into SessionMeta.background and the
+  // 'Waiting on …' line. No block.
+  z.object({
+    type: z.literal('background-tasks'),
+    tasks: z.array(z.string()),
+    items: z.array(BackgroundTaskSchema).optional()
+  }),
 
-  // One background task settled — the transcript's record of why the
-  // thread woke.
+  // One background task settled. The digest and the phone read it; the
+  // desktop transcript prints nothing (live work is the Activity section).
   z.object({
     type: z.literal('background-task'),
     taskId: z.string(),
@@ -496,6 +538,10 @@ export interface SessionMeta {
   /** The activity's family, tinting the busy spinner: investigating
    *  (reads/searches), editing (writes/commands), or thinking. */
   activityKind?: 'think' | 'investigate' | 'edit' | null
+  /** What the thread waits on in the background (tasks, live subagents, a
+   *  master's batch, the watching stretch) — transient like `activity`;
+   *  absent or null when there is nothing and the thread is not watching. */
+  background?: BackgroundWork | null
   /** How far through its CURRENT task list the thread is — server-folded
    *  from the log so a tab shows it without opening the thread. Null when
    *  this pass has no list yet. `current` names the in-progress task. */

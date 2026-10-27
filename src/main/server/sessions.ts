@@ -21,7 +21,17 @@ import { batchChildIds, runSessionBatch, type SessionBatchAction } from './sessi
 import { ThreadScheduler } from './scheduler'
 import type { Admission } from './admission'
 import { CATALOG, resolveModel, visibleModels, type ProviderId } from '@shared/catalog'
-import type { AgentEvent, Attachment, EventRow, Failure, SessionMeta, SessionStatus } from '@shared/events'
+import type {
+  AgentEvent,
+  Attachment,
+  BackgroundTask,
+  BackgroundWork,
+  EventRow,
+  Failure,
+  SessionMeta,
+  SessionStatus
+} from '@shared/events'
+import { watchPhrase } from '@shared/watch'
 import { classifyFailure, type GatewayRefusal } from './failureKind'
 import {
   LIVE_STATUSES,
@@ -264,15 +274,19 @@ export function foreignReference(text: string, tokens: string[], name: string, r
   return replaceTokens(text, tokens, `@${rel} (thread "${read.title}"${from} on ${read.hostName})`)
 }
 
-/** The header line of a watching thread: what it waits on. */
+/** The header line of a watching thread: what it waits on. One task is
+ *  named in the model's words; anything more is counted (watchPhrase). */
 const WATCH_LINE_MAX = 120
-export function watchLine(tasks: string[] | undefined): string {
-  const line =
-    !tasks?.length
-      ? 'Waiting on background work'
-      : tasks.length === 1
-        ? `Waiting on ${tasks[0]}`
-        : `Waiting on ${tasks.length} tasks: ${tasks.join(', ')}`
+export function watchLine(bg: BackgroundWork | null | undefined): string {
+  const phrase = watchPhrase(bg)
+  const lone = bg && bg.tasks.length === 1 && !bg.agents.length && !(bg.batch && bg.batch.out > 0)
+  const line = lone
+    ? `Waiting on ${bg.tasks[0].label}`
+    : phrase
+      ? `Waiting on ${phrase}`
+      : bg?.batch
+        ? "Waiting on the batch's steps"
+        : 'Waiting on background work'
   return line.length > WATCH_LINE_MAX ? `${line.slice(0, WATCH_LINE_MAX - 1)}…` : line
 }
 
@@ -499,7 +513,10 @@ export class SessionRegistry {
   /** What a watching thread waits on (background task and cron
    *  descriptions from the driver's background-tasks event) — transient
    *  like activities; decorate() turns it into the "Waiting on …" line. */
-  private watching = new Map<string, string[]>()
+  private watching = new Map<string, BackgroundTask[]>()
+  /** When each watching thread's current watching stretch began: set when
+   *  a status moves the row INTO watching, gone on any other status. */
+  private watchingSince = new Map<string, number>()
   /** Per-session derived folds (task tally, goal, trailing error) — the
    *  persisted session_folds rows, loaded once at construction and kept
    *  current by append(). list() reads these and never the event log. */
@@ -2904,6 +2921,14 @@ export class SessionRegistry {
    *  harness of every watching member of the tree (its monitors, crons and
    *  background shells die with the process) and settle those rows idle.
    *  A running turn is never touched; Stop is for that. */
+  /** Stop one background task of a live thread (session.stopTask). The
+   *  CLI's stopped notification retires it through the usual path. */
+  async stopTask(sessionId: string, taskId: string): Promise<void> {
+    const handle = this.handles.get(sessionId)
+    if (!handle?.stopTask) throw new Error('no live harness')
+    await handle.stopTask(taskId)
+  }
+
   async killBackground(sessionId: string): Promise<void> {
     const tree = this.sessionTree(this.rootSessionOf(sessionId)).filter((s) => s.status === 'watching')
     await Promise.allSettled(tree.map((s) => this.dropHandle(s.id)))
@@ -3798,9 +3823,11 @@ export class SessionRegistry {
     // (idle, error, done) ends the wait whatever the driver last listed.
     let watchMoved = false
     if (event.type === 'background-tasks') {
-      const prevList = this.watching.get(sessionId) ?? []
-      watchMoved = prevList.join('\n') !== event.tasks.join('\n')
-      if (event.tasks.length) this.watching.set(sessionId, event.tasks)
+      // An old driver's row (replayed) has only the strings: each is a task.
+      const items =
+        event.items ?? event.tasks.map((label, i) => ({ id: `task:${i}`, label, kind: 'other' as const, startedAt: row.ts }))
+      watchMoved = JSON.stringify(this.watching.get(sessionId) ?? []) !== JSON.stringify(items)
+      if (items.length) this.watching.set(sessionId, items)
       else this.watching.delete(sessionId)
     } else if (
       event.type === 'status' &&
@@ -3825,8 +3852,13 @@ export class SessionRegistry {
             ? (cur?.busySince ?? null)
             : null
           : (cur?.busySince ?? row.ts)
+      if (event.status !== 'watching') this.watchingSince.delete(sessionId)
+      else if (cur?.status !== 'watching' || !this.watchingSince.has(sessionId)) this.watchingSince.set(sessionId, row.ts)
       const next = this.store.updateSession(sessionId, { status: event.status, busySince })
       if (next) this.notifyMeta(next)
+      // The parent's live subagents and a master's batch count change with
+      // this row's status: push them again (the root already went out above).
+      if (next && cur?.status !== next.status) this.notifyWaiters(next)
       // The ledger of threads mid-turn (resumeAfterBoot.ts): a row while a
       // harness works the turn, gone the moment it settles, so a boot after
       // any kind of death knows exactly what to bring back.
@@ -4539,6 +4571,36 @@ export class SessionRegistry {
       .finally(() => this.draining.delete(sessionId))
   }
 
+  /** A child's status moved: its non-root parent and its master read it in
+   *  their `background` (notifyMeta already pushed the root). */
+  private notifyWaiters(child: SessionMeta): void {
+    const parent = child.parentId ? this.row(child.parentId) : null
+    if (parent?.parentId) this.notifyMeta(parent)
+    const master = !child.parentId && child.masterId ? this.row(child.masterId) : null
+    if (master) this.notifyMeta(master)
+  }
+
+  /** What a thread waits on in the background: its own tasks, its live
+   *  subagents, a pinned master's local batch, the watching stretch. Null
+   *  when there is nothing and the thread is not watching. */
+  private backgroundOf(session: SessionMeta, index: SessionIndex): BackgroundWork | null {
+    const tasks = this.watching.get(session.id) ?? []
+    const agents = (index.byParent.get(session.id) ?? [])
+      .filter((c) => !c.archived && LIVE_STATUSES.has(c.status))
+      .map((c) => c.id)
+    let batch: BackgroundWork['batch'] = null
+    if (session.isMaster && !session.parentId) {
+      const kids = (index.byMaster.get(session.id) ?? []).filter((c) => !c.archived)
+      if (kids.length) {
+        const out = kids.filter((c) => LIVE_STATUSES.has(c.status) || c.status === 'queued' || c.status === 'paused')
+        batch = { out: out.length, total: kids.length }
+      }
+    }
+    const watching = session.status === 'watching'
+    if (!watching && !tasks.length && !agents.length && !batch) return null
+    return { tasks, agents, batch, watchingSince: watching ? (this.watchingSince.get(session.id) ?? null) : null }
+  }
+
   /** Everything the tab strip needs that isn't in the stored row: what the
    *  thread is doing, and how far through its task list it is. */
   private decorate(session: SessionMeta, index: SessionIndex = this.indexOf()): SessionMeta {
@@ -4553,11 +4615,13 @@ export class SessionRegistry {
       const meta = index.byId.get(id)
       return !!meta && this.canContinueError(meta)
     })
+    const background = this.backgroundOf(session, index)
     return {
       ...session,
+      background,
       activity:
         session.status === 'watching'
-          ? watchLine(this.watching.get(session.id))
+          ? watchLine(background)
           : session.status === 'queued'
             ? (this.queuedLines.get(session.id) ?? 'Queued')
             : (act?.text ?? null),

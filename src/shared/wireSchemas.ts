@@ -80,6 +80,7 @@ import {
 } from './domain'
 import {
   AgentEventSchema,
+  BackgroundWorkSchema,
   FailureSchema,
   AttachmentSchema,
   NoticeKindSchema,
@@ -358,6 +359,7 @@ export const SessionMetaSchema = z.object({
   account: z.string().nullable().optional(),
   activity: z.string().nullable().optional(),
   activityKind: z.enum(['think', 'investigate', 'edit']).nullable().optional(),
+  background: BackgroundWorkSchema.nullable().optional(),
   tasks: z
     .object({
       done: z.number().int(),

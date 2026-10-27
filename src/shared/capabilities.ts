@@ -124,6 +124,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'session.subscribe': 'read',
   'session.unsubscribe': 'read',
   'session.context': 'read',
+  'session.taskLog': 'read',
   'queue.list': 'read',
 
   // operate
@@ -227,6 +228,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'session.clearGoal': 'operate',
   'session.compact': 'operate',
   'session.killBackground': 'operate',
+  'session.stopTask': 'operate',
   'session.pin': 'operate',
   'queue.add': 'operate',
   'queue.remove': 'operate',

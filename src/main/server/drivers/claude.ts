@@ -15,7 +15,7 @@ import { access, open, readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { nativeImage } from 'electron'
-import type { Attachment, PermissionPolicy } from '@shared/events'
+import type { Attachment, BackgroundTask, BackgroundTaskKind, PermissionPolicy } from '@shared/events'
 import { limitField } from '../limitText'
 import { currentLag } from '../stalls'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
@@ -171,13 +171,14 @@ interface StreamState {
   contextTokens: number
   /** one recovery compact per overflow; a compact that lands re-arms */
   compactRecoveryTried: boolean
-  /** live non-ambient background tasks, id → description: the last
-   *  background_tasks_changed level (replace semantics) */
-  tasks: Map<string, string>
-  /** every non-ambient task id → description ever seen (task_started or
-   *  the level), so a task_notification can be named after the level
-   *  already dropped the task; deleted on notification */
-  known: Map<string, string>
+  /** live non-ambient background tasks, id → what is known of it: the
+   *  last background_tasks_changed level (replace semantics) */
+  tasks: Map<string, TaskInfo>
+  /** every non-ambient task id → what was ever seen of it (task_started,
+   *  the level, the Stop hook), so a task_notification can be named after
+   *  the level already dropped the task and a later level keeps the call
+   *  id and command an earlier source gave; deleted on notification */
+  known: Map<string, TaskInfo>
   /** ids the CLI flagged ambient (housekeeping): never user-visible */
   ambient: Set<string>
   /** ids that started in the FOREGROUND (a blocking Bash) and were moved
@@ -197,7 +198,7 @@ interface StreamState {
   sendCheck: ((text: string) => void) | null
   /** session crons (CronCreate, ScheduleWakeup, /loop) from the last Stop
    *  hook input — they never appear in the task level */
-  crons: string[]
+  crons: { id: string; label: string }[]
   /** armed when the task set empties while idle: settles idle unless a
    *  wake turn starts first */
   settleTimer: NodeJS.Timeout | null
@@ -229,6 +230,14 @@ export function newStreamState(): StreamState {
   }
 }
 
+/** What the driver knows of one background task. */
+export interface TaskInfo {
+  description: string
+  kind: BackgroundTaskKind
+  command?: string
+  callId?: string
+}
+
 // ── background work ───────────────────────────────────────────────────
 // A thread whose turn ended with a run_in_background Bash, a Monitor, a
 // CI poll or a cron still live is not done: the CLI wakes itself when the
@@ -240,9 +249,40 @@ export function newStreamState(): StreamState {
  *  own wake turn before settling idle (covers a task stopped by hand). */
 const SETTLE_AFTER_MS = 5_000
 
-/** Everything the thread is waiting on, for the header line. */
-function liveDescriptions(state: StreamState): string[] {
-  return [...state.tasks.values(), ...state.crons]
+/** A task's kind from the level's raw `task_type` (local_bash,
+ *  local_agent, …) or the Stop hook's friendly `type` (shell, subagent, …). */
+export function kindOf(type: string | undefined): BackgroundTaskKind {
+  if (!type) return 'other'
+  if (/bash|shell/i.test(type)) return 'shell'
+  if (/agent/i.test(type)) return 'agent'
+  if (/monitor/i.test(type)) return 'monitor'
+  if (/workflow/i.test(type)) return 'workflow'
+  return 'other'
+}
+
+/** Everything the thread is waiting on, structured (tasks, then crons). */
+function liveItems(state: StreamState): BackgroundTask[] {
+  const now = Date.now()
+  const items: BackgroundTask[] = []
+  for (const [id, t] of state.tasks) {
+    items.push({
+      id,
+      label: t.description,
+      kind: t.kind,
+      startedAt: state.since.get(id) ?? now,
+      ...(t.command ? { command: t.command } : {}),
+      ...(t.callId ? { callId: t.callId } : {})
+    })
+  }
+  for (const c of state.crons) {
+    items.push({ id: c.id, label: c.label, kind: 'cron', startedAt: state.since.get(c.id) ?? now })
+  }
+  return items
+}
+
+/** The live set as one comparable string: what liveSetChanged re-emits on. */
+function liveKey(state: StreamState): string {
+  return JSON.stringify(liveItems(state))
 }
 
 function clearSettle(state: StreamState): void {
@@ -258,7 +298,7 @@ function emitWatching(ctx: DriverCtx, state: StreamState): void {
 
 /** The turn is over: watch when work is still live, else idle. */
 function settleTurn(ctx: DriverCtx, state: StreamState): void {
-  if (liveDescriptions(state).length > 0) {
+  if (state.tasks.size + state.crons.length > 0) {
     emitWatching(ctx, state)
   } else {
     clearSettle(state)
@@ -277,13 +317,16 @@ function wakeTurn(ctx: DriverCtx, state: StreamState): void {
   ctx.emit({ type: 'status', status: 'running' })
 }
 
-/** The live set changed (task level or cron list). Publishes the new
- *  descriptions and, while idle, moves between watching and idle. */
+/** The live set changed (task level, cron list, or what is known of a
+ *  task). Publishes the new items and, while idle, moves between watching
+ *  and idle. `before` is liveKey() from before the change. */
 function liveSetChanged(ctx: DriverCtx, state: StreamState, before: string): void {
-  const live = liveDescriptions(state)
-  if (live.join('\n') !== before) ctx.emit({ type: 'background-tasks', tasks: live })
+  const items = liveItems(state)
+  if (JSON.stringify(items) !== before) {
+    ctx.emit({ type: 'background-tasks', tasks: items.map((i) => i.label), items })
+  }
   if (state.working) return
-  if (live.length > 0) {
+  if (items.length > 0) {
     if (!state.watching) emitWatching(ctx, state)
   } else if (state.watching) {
     clearSettle(state)
@@ -302,7 +345,7 @@ function retireTask(ctx: DriverCtx, state: StreamState, id: string): void {
   state.since.delete(id)
   state.checked.delete(id)
   if (!state.tasks.has(id)) return
-  const before = liveDescriptions(state).join('\n')
+  const before = liveKey(state)
   state.tasks.delete(id)
   liveSetChanged(ctx, state, before)
 }
@@ -312,16 +355,35 @@ function holdsThread(state: StreamState, id: string): boolean {
   return !state.ambient.has(id) && !state.foreground.has(id)
 }
 
-/** Replace the live set (level semantics) from any source. */
-function replaceTasks(state: StreamState, tasks: { id: string; description: string }[]): void {
-  state.tasks = new Map(
-    tasks.filter((t) => holdsThread(state, t.id)).map((t) => [t.id, t.description])
-  )
-  const now = Date.now()
-  for (const [id, description] of state.tasks) {
-    state.known.set(id, description)
-    if (!state.since.has(id)) state.since.set(id, now)
+/** What a source says of one task; absent fields keep what was known. */
+interface TaskReport {
+  id: string
+  description: string
+  type?: string
+  command?: string
+}
+
+/** Merge a report into what was known of the task. */
+function learn(state: StreamState, r: { id: string } & Partial<TaskInfo> & { type?: string }): TaskInfo {
+  const prev = state.known.get(r.id)
+  const kind = r.type ? kindOf(r.type) : r.kind
+  const info: TaskInfo = {
+    description: r.description ?? prev?.description ?? 'background task',
+    kind: kind && kind !== 'other' ? kind : (prev?.kind ?? kind ?? 'other'),
+    ...((r.command ?? prev?.command) ? { command: r.command ?? prev?.command } : {}),
+    ...((r.callId ?? prev?.callId) ? { callId: r.callId ?? prev?.callId } : {})
   }
+  state.known.set(r.id, info)
+  return info
+}
+
+/** Replace the live set (level semantics) from any source. */
+function replaceTasks(state: StreamState, tasks: TaskReport[]): void {
+  const now = Date.now()
+  state.tasks = new Map(
+    tasks.filter((t) => holdsThread(state, t.id)).map((t) => [t.id, learn(state, t)])
+  )
+  for (const id of state.tasks.keys()) if (!state.since.has(id)) state.since.set(id, now)
 }
 
 // ── the forgotten-task check ──────────────────────────────────────────
@@ -350,7 +412,7 @@ function checkForgottenTasks(ctx: DriverCtx, state: StreamState): void {
   state.touched.clear()
   if (!state.watching || !state.sendCheck) return
   const now = Date.now()
-  const stale = [...state.tasks].filter(([id]) => {
+  const stale = [...state.tasks].map(([id, t]) => [id, t.description] as const).filter(([id]) => {
     const last = state.checked.get(id)
     return (
       now - (state.since.get(id) ?? now) >= CHECK_AFTER_MS &&
@@ -386,18 +448,23 @@ export function stopHookFor(
 ): (input: HookInput) => Promise<HookJSONOutput> {
   return async (input) => {
     if (input.hook_event_name !== 'Stop') return { continue: true }
-    const before = liveDescriptions(state).join('\n')
+    const before = liveKey(state)
     if (Array.isArray(input.background_tasks)) {
       replaceTasks(
         state,
         input.background_tasks
           .filter((t) => t.status === 'running' || t.status === 'pending')
-          .map((t) => ({ id: t.id, description: t.description }))
+          .map((t) => ({ id: t.id, description: t.description, type: t.type, command: t.command }))
       )
     }
-    state.crons = (input.session_crons ?? []).map(
-      (c) => `${c.recurring ? 'scheduled' : 'one-shot'} wake-up (${c.schedule})`
-    )
+    const now = Date.now()
+    state.crons = (input.session_crons ?? []).map((c) => ({
+      id: `cron:${c.id}`,
+      label: `${c.recurring ? 'scheduled' : 'one-shot'} wake-up (${c.schedule})`
+    }))
+    const cronIds = new Set(state.crons.map((c) => c.id))
+    for (const id of [...state.since.keys()]) if (id.startsWith('cron:') && !cronIds.has(id)) state.since.delete(id)
+    for (const id of cronIds) if (!state.since.has(id)) state.since.set(id, now)
     liveSetChanged(ctx, state, before)
     return { continue: true }
   }
@@ -495,18 +562,29 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
         // labelled after the level dropped its task. Not the only source:
         // the Stop hook re-reads the set at every turn end (see
         // stopHookFor) and the edges below retire tasks one by one.
-        const before = liveDescriptions(state).join('\n')
+        const before = liveKey(state)
         for (const t of msg.tasks) if (t.ambient) state.ambient.add(t.task_id)
         replaceTasks(
           state,
-          msg.tasks.map((t) => ({ id: t.task_id, description: t.description }))
+          msg.tasks.map((t) => ({ id: t.task_id, description: t.description, type: t.task_type }))
         )
         liveSetChanged(ctx, state, before)
       } else if (msg.subtype === 'task_started') {
         if (msg.ambient) state.ambient.add(msg.task_id)
         else {
           if (msg.is_backgrounded === false) state.foreground.add(msg.task_id)
-          state.known.set(msg.task_id, msg.description)
+          const before = liveKey(state)
+          const info = learn(state, {
+            id: msg.task_id,
+            description: msg.description,
+            type: msg.task_type,
+            callId: msg.tool_use_id
+          })
+          // The level usually precedes this edge: carry the call id onto the live row.
+          if (state.tasks.has(msg.task_id)) {
+            state.tasks.set(msg.task_id, info)
+            liveSetChanged(ctx, state, before)
+          }
         }
       } else if (msg.subtype === 'task_notification') {
         // One settled task — the transcript's record of why the thread
@@ -515,7 +593,7 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
           emit({
             type: 'background-task',
             taskId: msg.task_id,
-            description: state.known.get(msg.task_id) ?? 'background task',
+            description: state.known.get(msg.task_id)?.description ?? 'background task',
             status: msg.status
           })
         }
@@ -1408,7 +1486,7 @@ export const claudeDriver: HarnessDriver = {
           state.watching = false
           clearSettle(state)
           if (midTurn) emit({ type: 'error', message: 'harness stream ended mid-turn' })
-          else emit({ type: 'background-tasks', tasks: [] })
+          else emit({ type: 'background-tasks', tasks: [], items: [] })
           emit({ type: 'status', status: 'idle' })
         }
       } catch (err) {
@@ -1451,6 +1529,11 @@ export const claudeDriver: HarnessDriver = {
       },
       interrupt(): void {
         void q.interrupt()
+      },
+      async stopTask(taskId: string): Promise<void> {
+        if (dead) throw new Error('harness gone')
+        // The CLI's stopped notification retires the task (retireTask).
+        await q.stopTask(taskId)
       },
       approve(requestId: string, allow: boolean): boolean {
         const finish = pendingApprovals.get(requestId)

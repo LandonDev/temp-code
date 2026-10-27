@@ -174,10 +174,65 @@ public struct AgentReportEvent: Codable, Hashable, Sendable {
 }
 
 public struct BackgroundTasksEvent: Codable, Hashable, Sendable {
-    public let tasks: [String]
+    public struct Item: Codable, Hashable, Sendable {
+        public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+            case shell
+            case monitor
+            case agent
+            case workflow
+            case cron
+            case other
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
 
-    public init(tasks: [String]) {
+            public init(rawValue: String) {
+                switch rawValue {
+                case "shell": self = .shell
+                case "monitor": self = .monitor
+                case "agent": self = .agent
+                case "workflow": self = .workflow
+                case "cron": self = .cron
+                case "other": self = .other
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .shell: "shell"
+                case .monitor: "monitor"
+                case .agent: "agent"
+                case .workflow: "workflow"
+                case .cron: "cron"
+                case .other: "other"
+                case .unknown(let value): value
+                }
+            }
+        }
+
+        public let id: String
+        public let label: String
+        public let kind: Kind
+        public let startedAt: Int
+        public let command: String?
+        public let callId: String?
+
+        public init(id: String, label: String, kind: Kind, startedAt: Int, command: String? = nil, callId: String? = nil) {
+            self.id = id
+            self.label = label
+            self.kind = kind
+            self.startedAt = startedAt
+            self.command = command
+            self.callId = callId
+        }
+    }
+
+    public let tasks: [String]
+    public let items: [Item]?
+
+    public init(tasks: [String], items: [Item]? = nil) {
         self.tasks = tasks
+        self.items = items
     }
 }
 

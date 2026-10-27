@@ -659,11 +659,8 @@ export function foldEvent(
       blocks = withAgent(blocks, { id: e.agentId, title: e.title, status: e.status });
       break;
     case "background-task":
-      // Why the thread woke; the wake turn shows what it made of it.
-      blocks = appendStatusBlock(blocks, `Background task ${e.status}: ${e.description}`, fresh("s"));
-      break;
     case "background-tasks":
-      // The live set rides the session's activity line, not the transcript.
+      // No row: live work is the right panel's Activity section, its settle the wake turn.
       break;
     case "plan-handoff": {
       // The plan's quiet record of its build: a row that links to the thread.

@@ -307,6 +307,14 @@ export class PortSweep {
     return found
   }
 
+  /** The output file the CLI named for a background task (`…/tasks/<taskId>.output`), as a call's text noted it. */
+  fileOfTask(taskId: string): string | null {
+    const tail = `/tasks/${taskId}.output`
+    let found: string | null = null
+    for (const path of this.files.keys()) if (path.endsWith(tail)) found = path
+    return found
+  }
+
   /** A shell call settled: sweep once its server has had a moment to bind. */
   callEnded(): void {
     if (this.soon) return

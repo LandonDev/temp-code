@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { openDb, Store } from './db'
 import { SessionRegistry, watchLine } from './sessions'
 import type { DriverCtx } from './drivers/types'
-import type { AgentEvent } from '../../shared/events'
+import type { AgentEvent, BackgroundTask, BackgroundWork } from '../../shared/events'
 
 /**
  * The 'watching' status through the registry: a fake claude driver whose
@@ -14,6 +14,7 @@ import type { AgentEvent } from '../../shared/events'
 const emits = new Map<string, (e: AgentEvent) => void>()
 const sends = new Map<string, string[]>()
 const disposed: string[] = []
+const stopped: string[] = []
 vi.mock('./drivers', () => ({
   BUILT_IN_DRIVERS: {
     claude: {
@@ -27,6 +28,9 @@ vi.mock('./drivers', () => ({
             ctx.emit({ type: 'status', status: 'running' })
           },
           interrupt: () => {},
+          stopTask: async (taskId: string) => {
+            stopped.push(`${id}:${taskId}`)
+          },
           dispose: async () => {
             disposed.push(id)
           }
@@ -48,6 +52,7 @@ beforeEach(async () => {
   emits.clear()
   sends.clear()
   disposed.length = 0
+  stopped.length = 0
 })
 afterEach(async () => {
   vi.useRealTimers()
@@ -81,20 +86,101 @@ it('watching shows the tasks it waits on and keeps its handle through the sweep'
   await vi.advanceTimersByTimeAsync(60_000)
   expect(disposed).toEqual([])
   emit(id, { type: 'background-tasks', tasks: ['upload the build', 'poll CI'] })
-  expect(registry.get(id)?.activity).toBe('Waiting on 2 tasks: upload the build, poll CI')
+  expect(registry.get(id)?.activity).toBe('Waiting on 2 background tasks')
   emit(id, { type: 'status', status: 'idle' })
   expect(registry.get(id)).toMatchObject({ status: 'idle', activity: null })
   await vi.advanceTimersByTimeAsync(60_000)
   expect(disposed).toEqual([id])
 })
 
-it('watchLine names one task, counts several, and clips the line', () => {
+const task = (label: string, kind: BackgroundTask['kind'] = 'shell'): BackgroundTask => ({
+  id: label,
+  label,
+  kind,
+  startedAt: 0
+})
+const work = (over: Partial<BackgroundWork>): BackgroundWork => ({
+  tasks: [],
+  agents: [],
+  batch: null,
+  watchingSince: null,
+  ...over
+})
+
+it('watchLine names one task, counts the rest, and clips the line', () => {
   expect(watchLine(undefined)).toBe('Waiting on background work')
-  expect(watchLine(['x'])).toBe('Waiting on x')
-  expect(watchLine(['a', 'b'])).toBe('Waiting on 2 tasks: a, b')
-  const long = watchLine(['y'.repeat(200)])
+  expect(watchLine(work({}))).toBe('Waiting on background work')
+  expect(watchLine(work({ tasks: [task('x')] }))).toBe('Waiting on x')
+  expect(watchLine(work({ tasks: [task('a'), task('b')] }))).toBe('Waiting on 2 commands')
+  expect(watchLine(work({ agents: ['c1', 'c2', 'c3'], tasks: [task('m', 'monitor')] }))).toBe(
+    'Waiting on 3 subagents, a monitor'
+  )
+  expect(watchLine(work({ batch: { out: 2, total: 3 } }))).toBe('Waiting on 2 batch threads')
+  expect(watchLine(work({ batch: { out: 0, total: 3 } }))).toBe("Waiting on the batch's steps")
+  const long = watchLine(work({ tasks: [task('y'.repeat(200))] }))
   expect(long.length).toBe(120)
   expect(long.endsWith('…')).toBe(true)
+})
+
+it('the meta carries the structured tasks and the watching stretch', async () => {
+  const id = await live()
+  const items: BackgroundTask[] = [{ id: 't1', label: 'serve the app', kind: 'shell', startedAt: 5, command: 'bun run dev', callId: 'c1' }]
+  emit(id, { type: 'background-tasks', tasks: ['serve the app'], items })
+  expect(registry.get(id)?.background).toMatchObject({ tasks: items, agents: [], batch: null, watchingSince: null })
+  const before = Date.now()
+  emit(id, { type: 'status', status: 'watching' })
+  const since = registry.get(id)?.background?.watchingSince
+  expect(since).toBeGreaterThanOrEqual(before)
+  // Watching again (a repeat status) keeps the stretch's start.
+  emit(id, { type: 'status', status: 'watching' })
+  expect(registry.get(id)?.background?.watchingSince).toBe(since)
+  // A wake ends the stretch.
+  emit(id, { type: 'status', status: 'running' })
+  expect(registry.get(id)?.background?.watchingSince).toBeNull()
+  emit(id, { type: 'background-tasks', tasks: [], items: [] })
+  emit(id, { type: 'status', status: 'idle' })
+  expect(registry.get(id)?.background).toBeNull()
+})
+
+it("a parent's background lists its live child", async () => {
+  const parent = await live()
+  const child = await live(parent)
+  expect(registry.get(parent)?.background?.agents).toEqual([child])
+  emit(child, { type: 'status', status: 'idle' })
+  await settle()
+  expect(registry.get(parent)?.background ?? null).toBeNull()
+})
+
+it("a master's batch counts the children still out, and a child settling re-pushes the master", async () => {
+  const master = await registry.create({ cwd: root, provider: 'claude' })
+  store.updateSession(master.id, { status: 'watching' })
+  registry.setMaster(master.id, true)
+  const kids: string[] = []
+  for (let i = 0; i < 3; i++) {
+    const k = await registry.create({ cwd: root, provider: 'claude', masterId: master.id })
+    kids.push(k.id)
+  }
+  await registry.send(kids[0], 'go')
+  await registry.send(kids[1], 'go')
+  await settle()
+  store.updateSession(kids[2], { status: 'idle' })
+  expect(registry.get(master.id)).toMatchObject({
+    background: { batch: { out: 2, total: 3 } },
+    activity: 'Waiting on 2 batch threads'
+  })
+  const pushed: string[] = []
+  registry.onMeta((m) => {
+    if (m.id === master.id) pushed.push(m.activity ?? '')
+  })
+  emit(kids[0], { type: 'status', status: 'idle' })
+  expect(pushed.at(-1)).toBe('Waiting on a batch thread')
+})
+
+it('stopTask reaches the live handle, and refuses without one', async () => {
+  const id = await live()
+  await registry.stopTask(id, 't1')
+  expect(stopped).toEqual([`${id}:t1`])
+  await expect(registry.stopTask('nope', 't1')).rejects.toThrow('no live harness')
 })
 
 it('a persisted watching row resets to idle at boot', async () => {

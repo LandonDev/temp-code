@@ -298,7 +298,7 @@ describe("foldEvent", () => {
     expect(s.busy).toBe(false);
   });
 
-  it("watching closes the turn without busy, and a settled task lands as a system line", () => {
+  it("watching closes the turn without busy, and a settled task adds no row", () => {
     let s = foldAll(rows([{ type: "user-text", text: "run it in the background" }]), CWD);
     expect(s.busy).toBe(true);
     s = step(s, { type: "background-tasks", tasks: ["upload the build"] });
@@ -306,8 +306,9 @@ describe("foldEvent", () => {
     s = step(s, { type: "status", status: "watching" });
     expect(s.busy).toBe(false);
     expect(s.thread.turnOpen).toBe(false);
+    const before = s.blocks.length;
     s = step(s, { type: "background-task", taskId: "t1", description: "upload the build", status: "completed" });
-    expect(s.blocks.at(-1)).toMatchObject({ role: "system", text: "Background task completed: upload the build" });
+    expect(s.blocks).toHaveLength(before);
     s = step(s, { type: "status", status: "running" });
     expect(s.busy).toBe(true);
   });

@@ -60,6 +60,7 @@ import { OfflineError, ThreadResources } from './threadResources'
 import { SharedScanner, ThreadPorts } from './threadPorts'
 import { PortTail } from './portTail'
 import { PortSweep } from './portSweep'
+import { readTaskLog, type TaskLogDeps } from './taskLog'
 import { DevRuns } from './devRuns'
 import { PortLogs } from './portLog'
 import { PortForwardHost } from './remote/portForward'
@@ -879,6 +880,18 @@ export async function startServer(
       return output
     }
   })
+  // A background task's output for the Activity section (taskLog.ts).
+  const taskLogDeps: TaskLogDeps = {
+    task: (sessionId, taskId) => registry.get(sessionId)?.background?.tasks.find((t) => t.id === taskId) ?? null,
+    fileOfCall: (callId) => portSweep.fileOfCall(callId),
+    fileOfTask: (taskId) => portSweep.fileOfTask(taskId),
+    callOutput: (sessionId, callId) => {
+      let output: string | null = null
+      for (const r of registry.lastEvents(sessionId, 5_000))
+        if (r.event.type === 'tool-result' && r.event.callId === callId) output = r.event.output
+      return output
+    }
+  }
   devPortOffers.bound = (ids) => devRuns.bound(ids)
   resources.decorate = (r) => (r.kind === 'port' && r.environmentId === environmentId ? { ...r, forwards: portHost.forwardsOf(r.id) } : r)
   resources.onChange(() => portHost.refresh())
@@ -2445,6 +2458,17 @@ export async function startServer(
           case 'session.killBackground':
             await registry.killBackground(req.params.sessionId)
             sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'session.stopTask':
+            await registry.stopTask(req.params.sessionId, req.params.taskId)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'session.taskLog':
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await readTaskLog(taskLogDeps, req.params.sessionId, req.params.taskId, req.params.from)
+            })
             break
           case 'queue.list':
             sendFrame({ id: req.id, ok: true, result: registry.queueList(req.params.sessionId) })

@@ -477,6 +477,93 @@ public struct SessionMeta: Codable, Hashable, Sendable {
             }
         }
     }
+    public struct Background: Codable, Hashable, Sendable {
+        public struct Task: Codable, Hashable, Sendable {
+            public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+                case shell
+                case monitor
+                case agent
+                case workflow
+                case cron
+                case other
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "shell": self = .shell
+                    case "monitor": self = .monitor
+                    case "agent": self = .agent
+                    case "workflow": self = .workflow
+                    case "cron": self = .cron
+                    case "other": self = .other
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .shell: "shell"
+                    case .monitor: "monitor"
+                    case .agent: "agent"
+                    case .workflow: "workflow"
+                    case .cron: "cron"
+                    case .other: "other"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let id: String
+            public let label: String
+            public let kind: Kind
+            public let startedAt: Int
+            public let command: String?
+            public let callId: String?
+
+            public init(id: String, label: String, kind: Kind, startedAt: Int, command: String? = nil, callId: String? = nil) {
+                self.id = id
+                self.label = label
+                self.kind = kind
+                self.startedAt = startedAt
+                self.command = command
+                self.callId = callId
+            }
+        }
+        public struct Batch: Codable, Hashable, Sendable {
+            public let out: Int
+            public let total: Int
+
+            public init(out: Int, total: Int) {
+                self.out = out
+                self.total = total
+            }
+        }
+
+        public let tasks: [Task]
+        public let agents: [String]
+        public let batch: Batch?
+        public let watchingSince: Int?
+
+        public init(tasks: [Task], agents: [String], batch: Batch?, watchingSince: Int?) {
+            self.tasks = tasks
+            self.agents = agents
+            self.batch = batch
+            self.watchingSince = watchingSince
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case tasks, agents, batch, watchingSince
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(tasks, forKey: .tasks)
+            try container.encode(agents, forKey: .agents)
+            try container.encode(batch, forKey: .batch)
+            try container.encode(watchingSince, forKey: .watchingSince)
+        }
+    }
     public struct Tasks: Codable, Hashable, Sendable {
         public let done: Int
         public let total: Int
@@ -545,6 +632,7 @@ public struct SessionMeta: Codable, Hashable, Sendable {
     public let account: String?
     public let activity: String?
     public let activityKind: ActivityKind?
+    public let background: Background?
     public let tasks: Tasks?
     public let goal: Goal?
     public let context: Context?
@@ -565,7 +653,7 @@ public struct SessionMeta: Codable, Hashable, Sendable {
     public let createdAt: Int
     public let updatedAt: Int
 
-    public init(id: String, parentId: String?, projectId: String?, workspaceId: String?, threadType: ThreadType?, planPath: String?, provider: ProviderId, model: String, reasoning: Reasoning, agentType: AgentType, title: String, cwd: String, status: SessionStatus, pinned: Bool, archived: Bool, permission: PermissionPolicy, fast: Bool, ultrafast: Bool, context1m: Bool, busySince: Int?, pausedAt: Int?, frozenActiveElapsed: Int?, nativeId: String?, account: String? = nil, activity: String? = nil, activityKind: ActivityKind? = nil, tasks: Tasks? = nil, goal: Goal? = nil, context: Context? = nil, canContinue: Bool? = nil, failure: Failure? = nil, treeCanContinue: Bool? = nil, treeHasLiveWork: Bool? = nil, treeHasPaused: Bool? = nil, treeFrozenActiveElapsed: Int? = nil, threadRules: JSONValue? = nil, planCompletedAt: Int? = nil, implementationId: String? = nil, planThreadId: String? = nil, startedBy: String? = nil, isMaster: Bool? = nil, masterId: String? = nil, after: String? = nil, createdAt: Int, updatedAt: Int) {
+    public init(id: String, parentId: String?, projectId: String?, workspaceId: String?, threadType: ThreadType?, planPath: String?, provider: ProviderId, model: String, reasoning: Reasoning, agentType: AgentType, title: String, cwd: String, status: SessionStatus, pinned: Bool, archived: Bool, permission: PermissionPolicy, fast: Bool, ultrafast: Bool, context1m: Bool, busySince: Int?, pausedAt: Int?, frozenActiveElapsed: Int?, nativeId: String?, account: String? = nil, activity: String? = nil, activityKind: ActivityKind? = nil, background: Background? = nil, tasks: Tasks? = nil, goal: Goal? = nil, context: Context? = nil, canContinue: Bool? = nil, failure: Failure? = nil, treeCanContinue: Bool? = nil, treeHasLiveWork: Bool? = nil, treeHasPaused: Bool? = nil, treeFrozenActiveElapsed: Int? = nil, threadRules: JSONValue? = nil, planCompletedAt: Int? = nil, implementationId: String? = nil, planThreadId: String? = nil, startedBy: String? = nil, isMaster: Bool? = nil, masterId: String? = nil, after: String? = nil, createdAt: Int, updatedAt: Int) {
         self.id = id
         self.parentId = parentId
         self.projectId = projectId
@@ -592,6 +680,7 @@ public struct SessionMeta: Codable, Hashable, Sendable {
         self.account = account
         self.activity = activity
         self.activityKind = activityKind
+        self.background = background
         self.tasks = tasks
         self.goal = goal
         self.context = context
@@ -614,7 +703,7 @@ public struct SessionMeta: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, parentId, projectId, workspaceId, threadType, planPath, provider, model, reasoning, agentType, title, cwd, status, pinned, archived, permission, fast, ultrafast, context1m, busySince, pausedAt, frozenActiveElapsed, nativeId, account, activity, activityKind, tasks, goal, context, canContinue, failure, treeCanContinue, treeHasLiveWork, treeHasPaused, treeFrozenActiveElapsed, threadRules, planCompletedAt, implementationId, planThreadId, startedBy, isMaster, masterId, after, createdAt, updatedAt
+        case id, parentId, projectId, workspaceId, threadType, planPath, provider, model, reasoning, agentType, title, cwd, status, pinned, archived, permission, fast, ultrafast, context1m, busySince, pausedAt, frozenActiveElapsed, nativeId, account, activity, activityKind, background, tasks, goal, context, canContinue, failure, treeCanContinue, treeHasLiveWork, treeHasPaused, treeFrozenActiveElapsed, threadRules, planCompletedAt, implementationId, planThreadId, startedBy, isMaster, masterId, after, createdAt, updatedAt
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -645,6 +734,7 @@ public struct SessionMeta: Codable, Hashable, Sendable {
         try container.encodeIfPresent(account, forKey: .account)
         try container.encodeIfPresent(activity, forKey: .activity)
         try container.encodeIfPresent(activityKind, forKey: .activityKind)
+        try container.encodeIfPresent(background, forKey: .background)
         try container.encodeIfPresent(tasks, forKey: .tasks)
         try container.encodeIfPresent(goal, forKey: .goal)
         try container.encodeIfPresent(context, forKey: .context)

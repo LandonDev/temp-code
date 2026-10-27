@@ -13,6 +13,7 @@ import type {
   QueuedMessage,
   ServerAttachment,
   SessionBatchResult,
+  TaskLog,
   SessionMeta,
   WireSessionMeta,
   ThreadRules,
@@ -464,6 +465,19 @@ export async function killBackground(sessionId: string): Promise<void> {
   const link = linkFor(sessionId);
   if (sessionStore.isDraft(sessionId)) return;
   await link.request("session.killBackground", { sessionId });
+}
+
+/** Stop one background task of a live thread (the Activity section's Stop). */
+export async function stopTask(sessionId: string, taskId: string): Promise<void> {
+  const link = linkFor(sessionId);
+  if (sessionStore.isDraft(sessionId)) return;
+  await link.request("session.stopTask", { sessionId, taskId }, UI);
+}
+
+/** One background task's output from `from` on (the Activity section's log fold). */
+export async function taskLog(sessionId: string, taskId: string, from?: number): Promise<TaskLog> {
+  const link = linkFor(sessionId);
+  return link.request<TaskLog>("session.taskLog", { sessionId, taskId, ...(from === undefined ? {} : { from }) });
 }
 
 export async function setGoal(sessionId: string, condition: string): Promise<void> {

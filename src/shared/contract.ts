@@ -1026,6 +1026,20 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('session.killBackground'),
     params: z.object({ sessionId: z.string() })
   }),
+  // Stop one live background task (SessionMeta.background.tasks[].id) of a
+  // thread with a live harness; the task's settle arrives as usual.
+  z.object({
+    id: z.string(),
+    method: z.literal('session.stopTask'),
+    params: z.object({ sessionId: z.string(), taskId: z.string() })
+  }),
+  // → TaskLog: one background task's output from `from` on (taskLog.ts):
+  // the file the CLI writes it to, else the call's output in the transcript.
+  z.object({
+    id: z.string(),
+    method: z.literal('session.taskLog'),
+    params: z.object({ sessionId: z.string(), taskId: z.string(), from: z.number().int().min(0).optional() })
+  }),
   // Live context-window usage breakdown (claude: the /context data);
   // null when the provider has no live handle or no accounting.
   z.object({
@@ -1220,6 +1234,14 @@ export interface LoopLag {
 export interface InFlightRequest {
   method: string
   ageMs: number
+}
+
+/** session.taskLog: one background task's output from `from` on, and the offset to ask from next. */
+export interface TaskLog {
+  /** file: the file the CLI writes the task to; transcript: the starting call's output; none: nothing yet. */
+  source: 'file' | 'transcript' | 'none'
+  data: string
+  next: number
 }
 
 export interface DoctorProfileResult {
