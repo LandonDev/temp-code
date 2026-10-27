@@ -458,6 +458,69 @@ public struct ContextEvent: Codable, Hashable, Sendable {
     }
 }
 
+public struct PhaseEvent: Codable, Hashable, Sendable {
+    public enum Phase: RawRepresentable, Codable, Hashable, Sendable {
+        case cliStarting
+        case initializing
+        case waitingProvider
+        case retrying
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "cli-starting": self = .cliStarting
+            case "initializing": self = .initializing
+            case "waiting-provider": self = .waitingProvider
+            case "retrying": self = .retrying
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .cliStarting: "cli-starting"
+            case .initializing: "initializing"
+            case .waitingProvider: "waiting-provider"
+            case .retrying: "retrying"
+            case .unknown(let value): value
+            }
+        }
+    }
+    public struct Retry: Codable, Hashable, Sendable {
+        public let attempt: Double
+        public let delayMs: Double
+        public let reason: String?
+
+        public init(attempt: Double, delayMs: Double, reason: String? = nil) {
+            self.attempt = attempt
+            self.delayMs = delayMs
+            self.reason = reason
+        }
+    }
+
+    public let phase: Phase?
+    public let detail: String?
+    public let retry: Retry?
+
+    public init(phase: Phase?, detail: String? = nil, retry: Retry? = nil) {
+        self.phase = phase
+        self.detail = detail
+        self.retry = retry
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case phase, detail, retry
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(phase, forKey: .phase)
+        try container.encodeIfPresent(detail, forKey: .detail)
+        try container.encodeIfPresent(retry, forKey: .retry)
+    }
+}
+
 public struct GoalEvent: Codable, Hashable, Sendable {
     public enum Phase: RawRepresentable, Codable, Hashable, Sendable {
         case set
@@ -613,6 +676,7 @@ public enum AgentEvent: Codable, Hashable, Sendable {
     case compaction(CompactionEvent)
     case usage(UsageEvent)
     case context(ContextEvent)
+    case phase(PhaseEvent)
     case goal(GoalEvent)
     case planHandoff(PlanHandoffEvent)
     case agentSpawned(AgentSpawnedEvent)
@@ -649,6 +713,7 @@ public enum AgentEvent: Codable, Hashable, Sendable {
         case "compaction": self = .compaction(try CompactionEvent(from: decoder))
         case "usage": self = .usage(try UsageEvent(from: decoder))
         case "context": self = .context(try ContextEvent(from: decoder))
+        case "phase": self = .phase(try PhaseEvent(from: decoder))
         case "goal": self = .goal(try GoalEvent(from: decoder))
         case "plan-handoff": self = .planHandoff(try PlanHandoffEvent(from: decoder))
         case "agent-spawned": self = .agentSpawned(try AgentSpawnedEvent(from: decoder))
@@ -681,6 +746,7 @@ public enum AgentEvent: Codable, Hashable, Sendable {
         case .compaction(let value): try Self.encode(tag: "compaction", value, to: encoder)
         case .usage(let value): try Self.encode(tag: "usage", value, to: encoder)
         case .context(let value): try Self.encode(tag: "context", value, to: encoder)
+        case .phase(let value): try Self.encode(tag: "phase", value, to: encoder)
         case .goal(let value): try Self.encode(tag: "goal", value, to: encoder)
         case .planHandoff(let value): try Self.encode(tag: "plan-handoff", value, to: encoder)
         case .agentSpawned(let value): try Self.encode(tag: "agent-spawned", value, to: encoder)

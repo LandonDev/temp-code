@@ -5,7 +5,7 @@ import type { DriverCtx } from './types'
 
 vi.mock('electron', () => ({ nativeImage: {} }))
 
-const { handleMessage, kindOf, newStreamState, permittedWebTools, stopHookFor } = await import('./claude')
+const { checkForgottenTasks, handleMessage, kindOf, newStreamState, permittedWebTools, stopHookFor } = await import('./claude')
 
 /**
  * Background work over the SDK stream: the task level and edges, the Stop
@@ -60,6 +60,40 @@ const itemLists = () => events.flatMap((e) => (e.type === 'background-tasks' ? [
 const startTurn = (): void => {
   state.working = true
 }
+
+it("the CLI's own retry is a phase on the meta, cleared by the first content, never a row", () => {
+  startTurn()
+  handleMessage(ctx, state, msg({ type: 'system', subtype: 'api_retry', attempt: 3, max_retries: 10, retry_delay_ms: 32_000, error_status: 429, error: 'rate_limit' }))
+  expect(events.at(-1)).toEqual({ type: 'phase', phase: 'retrying', retry: { attempt: 3, delayMs: 32_000, reason: 'HTTP 429' } })
+  handleMessage(ctx, state, msg({ type: 'system', subtype: 'api_retry', attempt: 4, max_retries: 10, retry_delay_ms: 64_000, error_status: null, error: 'timeout' }))
+  expect(events.at(-1)).toEqual({ type: 'phase', phase: 'retrying', retry: { attempt: 4, delayMs: 64_000, reason: 'no response' } })
+  handleMessage(ctx, state, msg({ type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hi' } } }))
+  expect(events.filter((e) => e.type === 'phase').map((e) => (e as { phase: unknown }).phase)).toEqual(['retrying', 'retrying', null])
+  // A message pushed and answered: sentAt clears on the first message back.
+  state.sentAt = 5
+  handleMessage(ctx, state, assistant([]))
+  expect(state.sentAt).toBeNull()
+})
+
+it('a session cron counts as a task in the forgotten check, with its own clock', () => {
+  const sent: string[] = []
+  state.sendCheck = (text) => sent.push(text)
+  state.watching = true
+  state.crons = [{ id: '0', label: 'every 5 min' }]
+  state.since.set('cron:0', Date.now() - 11 * 60_000)
+  checkForgottenTasks(ctx, state)
+  expect(sent).toHaveLength(1)
+  expect(sent[0]).toContain('cron:0 — every 5 min')
+  expect(events.at(-1)).toMatchObject({ type: 'status', status: 'running', detail: 'Checking background tasks' })
+  // A young cron is never questioned.
+  state.watching = true
+  state.working = false
+  state.crons = [{ id: '1', label: 'nightly' }]
+  state.since.set('cron:1', Date.now())
+  sent.length = 0
+  checkForgottenTasks(ctx, state)
+  expect(sent).toEqual([])
+})
 
 it('a turn that ends with a live task settles to watching, not idle', () => {
   startTurn()

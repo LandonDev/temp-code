@@ -124,15 +124,16 @@ import { batches } from './batch'
 import { foldTodo, newTodoFold, tallyOf, type TaskTally, type TodoFold } from './todos'
 import { liveDiffOnStatus } from './livediff'
 import { recordSendSpan, timed, whenLoopIdle } from './stalls'
+import { FIRST_OUTPUT_GAVE_UP, FIRST_OUTPUT_SILENCE } from './drivers/silence'
 import { SendSpans } from './sendSpans'
 import { applyRowChange, buildSessionIndex, type SessionIndex } from './sessionIndex'
 import {
   appendJournal,
   INLINE_DIGEST_MAX_CHARS,
+  threadDigestTail,
   removeMirror,
   scheduleMirror,
   seedJournal,
-  threadDigest,
   writeDigestFile,
   writeThreadDigest
 } from './mirror'
@@ -291,9 +292,36 @@ export function watchLine(bg: BackgroundWork | null | undefined): string {
   return line.length > WATCH_LINE_MAX ? `${line.slice(0, WATCH_LINE_MAX - 1)}…` : line
 }
 
+/** The words of a turn's phase before its first content (events.ts `phase`). */
+export function phaseLine(event: Extract<AgentEvent, { type: 'phase' }>): string | null {
+  switch (event.phase) {
+    case 'cli-starting':
+      return 'Starting the CLI'
+    case 'initializing':
+      return 'Initializing'
+    case 'waiting-provider':
+      return 'Waiting for the provider'
+    case 'retrying': {
+      const r = event.retry
+      if (!r) return 'Retrying'
+      const wait = r.delayMs > 0 ? ` in ${Math.max(1, Math.round(r.delayMs / 1000))} s` : ''
+      if (r.reason?.startsWith('of ')) return `Reconnecting · retry ${r.attempt} ${r.reason}`
+      const why = r.reason === 'HTTP 429' ? 'Rate limited' : r.reason === 'HTTP 529' || r.reason === 'HTTP 503' ? 'Provider overloaded' : 'Retrying'
+      return `${why} · retry ${r.attempt}${wait}`
+    }
+    default:
+      return null
+  }
+}
+
 function activityOf(event: AgentEvent): Activity | null | undefined {
   if (event.type === 'status') {
     return event.status === 'running' ? { text: 'Thinking', kind: 'think' } : null
+  }
+  // A phase is the turn's own word for its wait; cleared, the turn is back to thinking.
+  if (event.type === 'phase') {
+    const text = phaseLine(event)
+    return { text: text ?? 'Thinking', kind: 'think' }
   }
   if (event.type === 'tool-call' && !event.partial && !event.parentCallId) {
     if (event.display?.app) {
@@ -442,6 +470,12 @@ export function isSettleReport(from: SessionMeta['status'] | undefined, to: Sess
   return false
 }
 
+/** A request at the provider this long with nothing back reads "Waiting for the provider" on the row. */
+export const PROVIDER_WAIT_MS = 15_000
+/** Every foreign thread reference of one send resolves inside this, together. */
+export const FOREIGN_REFS_BUDGET_MS = 15_000
+const PROVIDER_TICK_MS = 5_000
+
 export class SessionRegistry {
   private catalogListeners = new Set<(kind: 'workspaces' | 'projects') => void>()
 
@@ -479,6 +513,13 @@ export class SessionRegistry {
   private queuedLines = new Map<string, string>()
   /** wait_for_agent calls waiting for the person's next steer into the thread's turn (nextSteer). */
   private steerWaiters = new Map<string, Set<(text: string) => void>>()
+  /** The user row (its seq) the first-output watchdog re-queued once; a second silence on it fails the turn. */
+  private readonly silenced = new Map<string, number>()
+  /** Threads whose next idle is an error: the message went unanswered twice. */
+  private readonly silenceFailed = new Set<string>()
+  /** The gateway's open requests per thread, id → when it went out (providerRequest). */
+  private readonly providerOpen = new Map<string, Map<number, number>>()
+  private providerTicker: NodeJS.Timeout | null = null
   /** The agent ids a live wait_for_agent of each thread covers, with how many waits name each (setAwaiting). */
   private readonly awaiting = new Map<string, Map<string, number>>()
   /** The thread scheduler: `after` and the running cap (CLAUDE.md "Master threads"). */
@@ -2635,10 +2676,28 @@ export class SessionRegistry {
     // environmentId) is read from its host (thread.read) into the same
     // file, or named as unreachable.
     const here = meta.projectId ? this.store.getProject(meta.projectId) : null
-    for (const ref of attachments?.filter((a) => a.kind === 'thread' && a.sessionId) ?? []) {
+    const threadRefs = attachments?.filter((a) => a.kind === 'thread' && a.sessionId) ?? []
+    // Threads on other hosts are read at once, all of them under ONE budget
+    // (each read has its own link timeout; serial reads once cost 15 s
+    // apiece): a host that does not answer in time names the thread as
+    // unreachable rather than holding the send.
+    const foreignReads = new Map<Attachment, Promise<ForeignThreadRead | null>>()
+    if (this.readForeignThread) {
+      let timer: NodeJS.Timeout | null = null
+      const budget = new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), FOREIGN_REFS_BUDGET_MS)
+        timer.unref?.()
+      })
+      for (const ref of threadRefs) {
+        if (!ref.environmentId) continue
+        foreignReads.set(ref, Promise.race([this.readForeignThread(meta, ref.environmentId, ref.sessionId!).catch(() => null), budget]))
+      }
+      if (foreignReads.size) await Promise.allSettled([...foreignReads.values()])
+      if (timer) clearTimeout(timer)
+    }
+    for (const ref of threadRefs) {
       const tokens = [`@thread:${ref.sessionId}`, ...(ref.environmentId ? [`@thread:${ref.environmentId}:${ref.sessionId}`] : [])]
-      const foreign =
-        ref.environmentId && this.readForeignThread ? await this.readForeignThread(meta, ref.environmentId, ref.sessionId!) : null
+      const foreign = (await foreignReads.get(ref)) ?? null
       if (foreign) {
         out = foreignReference(out, tokens, ref.name, foreign, here?.cwd ?? null)
         continue
@@ -2650,7 +2709,8 @@ export class SessionRegistry {
         const rel = writeThreadDigest(this, refMeta, here.cwd)
         out = replaceTokens(out, tokens, `@${rel} (thread "${refMeta.title}"${refProject ? ` from project "${refProject.name}"` : ''})`)
       } else {
-        let digest = threadDigest(this, refMeta)
+        // The rows the cap keeps, read from the log's end; never the whole log.
+        let digest = threadDigestTail(this, refMeta, INLINE_DIGEST_MAX_CHARS)
         if (digest.length > INLINE_DIGEST_MAX_CHARS) {
           digest = `_[earlier turns trimmed]_\n\n…${digest.slice(-INLINE_DIGEST_MAX_CHARS)}`
         }
@@ -3738,6 +3798,12 @@ export class SessionRegistry {
     // wake it; batch.ts open() says when the batch is done and the next idle
     // is a real one. Below, such a watching counts as idle for the queue,
     // the completed-turn pass and the boot ledger.
+    // A second silence on one message (the first-output watchdog): the idle
+    // the driver settles with is an error, with the row that says why.
+    if (event.type === 'status' && event.status === 'idle' && this.silenceFailed.delete(sessionId)) {
+      this.append(sessionId, { type: 'error', message: FIRST_OUTPUT_GAVE_UP })
+      event = { type: 'status', status: 'error' }
+    }
     const masterWatch = event.type === 'status' && event.status === 'idle' && this.masterKeepsWatching(sessionId)
     if (masterWatch) event = { type: 'status', status: 'watching' }
     // Research boards: web tool calls anywhere in a research thread's agent
@@ -3745,6 +3811,16 @@ export class SessionRegistry {
     // returned above, so every tool-call here is final).
     if (event.type === 'tool-call') this.harvestResearchCall(sessionId, event)
     else if (event.type === 'tool-result') this.harvestResearchTitle(sessionId, event)
+    // A turn's phase before its first content is activity, never a row:
+    // folded onto the meta and pushed, then dropped.
+    if (event.type === 'phase') {
+      const act = activityOf(event)
+      if (act === null) this.activities.delete(sessionId)
+      else if (act) this.activities.set(sessionId, act)
+      const meta = this.row(sessionId)
+      if (meta) this.notifyMeta(meta)
+      return
+    }
     // Live context accounting is meta, not transcript: fold it onto the
     // session row and push, never into the log.
     if (event.type === 'context') {
@@ -3988,6 +4064,7 @@ export class SessionRegistry {
       this.erroredTurns.add(sessionId)
       this.passPending.delete(sessionId)
       if (event.limit && !event.stopped) this.onLimitError(sessionId, event.limit.window)
+      if (event.message === FIRST_OUTPUT_SILENCE) this.recoverSilence(sessionId)
     }
     // A limited session settling lets its pending switch continue the tree;
     // one moving again by other means no longer waits on it.
@@ -4268,6 +4345,64 @@ export class SessionRegistry {
       .catch(() => {})
     this.resolveSteerWaiters(sessionId, text)
     return true
+  }
+
+  /** The first-output watchdog settled the turn with nothing back: the
+   *  message it carried goes to the front of the queue once, so the idle
+   *  that follows sends it into a fresh harness; a second silence on the
+   *  same message leaves the row errored (harness_crashed) instead. */
+  private recoverSilence(sessionId: string): void {
+    const last = this.store.lastUserRow(sessionId)
+    if (!last || last.event.type !== 'user-text') return
+    if (this.silenced.get(sessionId) === last.seq) {
+      this.silenced.delete(sessionId)
+      this.silenceFailed.add(sessionId)
+      return
+    }
+    this.silenced.set(sessionId, last.seq)
+    this.queueAdd(sessionId, last.event.text, { attachments: last.event.attachments, echoed: { first: last.first } }, true)
+  }
+
+  /** The gateway's word on a request of this thread: `since` when one went
+   *  out, null when it ended (answered, failed, cut). An open request past
+   *  PROVIDER_WAIT_MS reads "Waiting for the provider · 25 s" on the row
+   *  while nothing finer is known (decorate); a ticker re-pushes such rows
+   *  every 5 s so the seconds move. */
+  providerRequest(sessionId: string, id: number, since: number | null): void {
+    let open = this.providerOpen.get(sessionId)
+    if (since !== null) {
+      if (!open) this.providerOpen.set(sessionId, (open = new Map()))
+      open.set(id, since)
+    } else if (open) {
+      open.delete(id)
+      if (open.size === 0) this.providerOpen.delete(sessionId)
+    }
+    const meta = this.row(sessionId)
+    if (meta) this.notifyMeta(meta)
+    if (this.providerOpen.size > 0 && !this.providerTicker) {
+      this.providerTicker = setInterval(() => {
+        const now = Date.now()
+        for (const [id, requests] of this.providerOpen) {
+          if (![...requests.values()].some((t) => now - t >= PROVIDER_WAIT_MS)) continue
+          const row = this.row(id)
+          if (row) this.notifyMeta(row)
+        }
+        if (this.providerOpen.size === 0 && this.providerTicker) {
+          clearInterval(this.providerTicker)
+          this.providerTicker = null
+        }
+      }, PROVIDER_TICK_MS)
+      this.providerTicker.unref?.()
+    }
+  }
+
+  /** The provider-wait line for a running row: the oldest open request past the threshold, else null. */
+  private providerWaitLine(sessionId: string, now = Date.now()): string | null {
+    const open = this.providerOpen.get(sessionId)
+    if (!open?.size) return null
+    const oldest = Math.min(...open.values())
+    const waited = now - oldest
+    return waited >= PROVIDER_WAIT_MS ? `Waiting for the provider · ${Math.round(waited / 1000)} s` : null
   }
 
   /** The person spoke into the thread's turn: every wait_for_agent in
@@ -4747,7 +4882,10 @@ export class SessionRegistry {
           ? watchLine(background)
           : session.status === 'queued'
             ? (this.queuedLines.get(session.id) ?? 'Queued')
-            : (act?.text ?? null),
+            : // A request out at the provider past the threshold, with nothing finer known: say so.
+              (session.status === 'running' || session.status === 'starting') && (!act || act.text === 'Thinking')
+              ? (this.providerWaitLine(session.id) ?? act?.text ?? null)
+              : (act?.text ?? null),
       activityKind: act?.kind ?? null,
       tasks: this.tasksOf(session.id),
       goal: this.goalOf(session.id),

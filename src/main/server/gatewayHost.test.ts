@@ -405,6 +405,17 @@ describe('PortControl', () => {
     expect(asks.filter((a) => a.m === 'substitute')).toHaveLength(1)
   })
 
+  it("a forwarded request's start and end cross to main per thread; an unscoped one says nothing", () => {
+    const { control, told } = setup(() => null)
+    control.onRequestStart({ id: 3, thread: 'T1', ts: 1_000 })
+    control.onRequestEnd({ id: 3, thread: 'T1', ts: 1_000 })
+    control.onRequestStart({ id: 4, thread: null, ts: 1_001 })
+    expect(told).toEqual([
+      { e: 'request', phase: 'start', info: { id: 3, thread: 'T1', ts: 1_000 } },
+      { e: 'request', phase: 'end', info: { id: 3, thread: 'T1', ts: 1_000 } }
+    ])
+  })
+
   it('a fetch that got no answer crosses to main as a network event', () => {
     const { control, told } = setup(() => null)
     control.onNetwork({ service: 'claude', path: '/~t=T1;a=A/v1/messages', account: 'A', error: 'fetch failed' })

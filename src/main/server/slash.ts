@@ -14,12 +14,21 @@ import { listCommands } from './commands'
 // `name` or `ns:name` (claude's account-synced `anthropic-skills:<name>`).
 const TOKEN = /(?<=^|\s)\/([\w-]+(?::[\w-]+)?)(?=$|\s)/g
 
+/** Does the text hold a `/word` token where a command could be (a line's
+ *  start or after whitespace)? A path in a sentence (`src/a.ts`), a URL or
+ *  a date has slashes but no token, and command discovery (a login shell,
+ *  the skills tree) costs seconds on a cold host: it runs only for one. */
+export function hasSlashToken(text: string): boolean {
+  TOKEN.lastIndex = 0
+  return TOKEN.test(text)
+}
+
 export async function expandSlashRefs(
   provider: ProviderId,
   cwd: string,
   text: string
 ): Promise<string> {
-  if (!text.includes('/')) return text
+  if (!hasSlashToken(text)) return text
   const commands = await listCommands(provider, cwd).catch(() => [])
   if (!commands.length) return text
   const byName = new Map(commands.map((c) => [c.name, c] as const))

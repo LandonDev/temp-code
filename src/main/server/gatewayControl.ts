@@ -1,5 +1,5 @@
 import { accounts, localAccounts, vault, type ForwardHooks, type LimitInfo } from 'aliax-core'
-import type { ControlPlane, FailedOverInfo, NetworkInfo, ResponseInfo, RoutingHooks, ScopedRequest } from './gatewayCore'
+import type { ControlPlane, FailedOverInfo, NetworkInfo, RequestInfo, ResponseInfo, RoutingHooks, ScopedRequest } from './gatewayCore'
 
 /**
  * The gateway's host in this very process: aliax-core's own reads of the
@@ -71,5 +71,13 @@ export class InProcessControl implements ControlPlane {
 
   onNetwork(info: NetworkInfo): void {
     this.hooks.onNetwork?.(info)
+  }
+
+  onRequestStart(info: RequestInfo): void {
+    this.hooks.onRequestStart?.(info)
+  }
+
+  onRequestEnd(info: RequestInfo): void {
+    this.hooks.onRequestEnd?.(info)
   }
 }

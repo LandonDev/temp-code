@@ -19,6 +19,7 @@ import type { Attachment, BackgroundTask, BackgroundTaskKind, PermissionPolicy }
 import { limitField } from '../limitText'
 import { currentLag } from '../stalls'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
+import { FIRST_OUTPUT_SILENCE } from './silence'
 import { parsePartialJson } from './partial-json'
 import { toolDisplay } from './display'
 import {
@@ -199,6 +200,12 @@ interface StreamState {
   /** session crons (CronCreate, ScheduleWakeup, /loop) from the last Stop
    *  hook input — they never appear in the task level */
   crons: { id: string; label: string }[]
+  /** the turn's phase before its first content (events.ts `phase`), null between */
+  phase: 'cli-starting' | 'initializing' | 'waiting-provider' | 'retrying' | null
+  /** system/init has arrived once (the first send boots the CLI lazily) */
+  initialized: boolean
+  /** when the last message was pushed and the CLI has not spoken since (the first-output watchdog) */
+  sentAt: number | null
   /** armed when the task set empties while idle: settles idle unless a
    *  wake turn starts first */
   settleTimer: NodeJS.Timeout | null
@@ -226,8 +233,44 @@ export function newStreamState(): StreamState {
     sendCheck: null,
     crons: [],
     settleTimer: null,
-    watching: false
+    watching: false,
+    phase: null,
+    initialized: false,
+    sentAt: null
   }
+}
+
+/** The phase a turn is in before its first content (events.ts `phase`): emitted only when it changes. */
+export function setPhase(ctx: DriverCtx, state: StreamState, phase: StreamState['phase'], extra: { detail?: string; retry?: { attempt: number; delayMs: number; reason?: string } } = {}): void {
+  if (state.phase === phase && !extra.retry) return
+  state.phase = phase
+  ctx.emit({ type: 'phase', phase, ...extra })
+}
+
+/** A message was pushed `FIRST_OUTPUT_MS` ago and the CLI has said nothing since. */
+export const FIRST_OUTPUT_MS = 60_000
+export function firstOutputOverdue(state: Pick<StreamState, 'sentAt'>, now: number): boolean {
+  return state.sentAt !== null && now - state.sentAt >= FIRST_OUTPUT_MS
+}
+
+/** Whether the handle's process is still there: not recovered or ended, and the CLI not exited or killed. */
+export function aliveOf(dead: boolean, cli: { exitCode: number | null; killed: boolean } | null): boolean {
+  if (dead) return false
+  return cli === null || (cli.exitCode === null && !cli.killed)
+}
+
+/** How often a watching thread's forgotten tasks are checked without a turn. */
+export const FORGOTTEN_CHECK_MS = 10 * 60 * 1000
+
+/** The forgotten-task check on a timer while the thread watches: a CLI
+ *  that lists dead processes for hours is asked about them without a turn
+ *  of its own. Returns the stop. */
+export function startForgottenTimer(ctx: DriverCtx, state: StreamState, everyMs = FORGOTTEN_CHECK_MS): () => void {
+  const timer = setInterval(() => {
+    if (state.watching && !state.working) checkForgottenTasks(ctx, state)
+  }, everyMs)
+  timer.unref?.()
+  return () => clearInterval(timer)
 }
 
 /** What the driver knows of one background task. */
@@ -407,12 +450,18 @@ function ago(ms: number): string {
 }
 
 /** Called once the turn settled: question the old, untouched tasks. */
-function checkForgottenTasks(ctx: DriverCtx, state: StreamState): void {
+export function checkForgottenTasks(ctx: DriverCtx, state: StreamState): void {
   const touched = new Set(state.touched)
   state.touched.clear()
   if (!state.watching || !state.sendCheck) return
   const now = Date.now()
-  const stale = [...state.tasks].map(([id, t]) => [id, t.description] as const).filter(([id]) => {
+  // Session crons are tasks here too: one that fires for hours after its
+  // job is done is as forgotten as a dead process.
+  const live: (readonly [string, string])[] = [
+    ...[...state.tasks].map(([id, t]) => [id, t.description] as const),
+    ...state.crons.map((c) => [`cron:${c.id}`, c.label] as const)
+  ]
+  const stale = live.filter(([id]) => {
     const last = state.checked.get(id)
     return (
       now - (state.since.get(id) ?? now) >= CHECK_AFTER_MS &&
@@ -458,6 +507,7 @@ export function stopHookFor(
       )
     }
     const now = Date.now()
+    for (const c of input.session_crons ?? []) if (c.id && !state.since.has(`cron:${c.id}`)) state.since.set(`cron:${c.id}`, Date.now())
     state.crons = (input.session_crons ?? []).map((c) => ({
       id: `cron:${c.id}`,
       label: `${c.recurring ? 'scheduled' : 'one-shot'} wake-up (${c.schedule})`
@@ -521,6 +571,7 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
   // message re-arms the overdue-result watch below.
   state.armedAt = null
   state.nudged = false
+  state.sentAt = null
   ctx.mark?.('first-message')
   switch (msg.type) {
     case 'system':
@@ -529,6 +580,15 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
       if (msg.subtype === 'init') {
         ctx.setNativeId(msg.session_id)
         ctx.mark?.('init')
+        state.initialized = true
+        if (state.phase === 'cli-starting' || state.phase === 'initializing') setPhase(ctx, state, null)
+      } else if ((msg as { subtype: string }).subtype === 'api_retry') {
+        // The CLI retries a refused request itself (a 429, a 5xx, a
+        // timeout): the strip says so instead of "Thinking" for a minute.
+        const r = msg as unknown as { attempt: number; max_retries?: number; retry_delay_ms: number; error_status?: number | null; error?: string }
+        setPhase(ctx, state, 'retrying', {
+          retry: { attempt: r.attempt, delayMs: r.retry_delay_ms, reason: r.error_status != null ? `HTTP ${r.error_status}` : 'no response' }
+        })
       }
       // Compaction lifecycle: status 'compacting' opens the distinct UI,
       // the boundary closes it with the numbers, a failed result closes
@@ -618,6 +678,7 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
       } else if (ev.type === 'content_block_start') {
         if (ev.content_block.type === 'tool_use') {
           ctx.mark?.('first-content')
+          if (state.phase) setPhase(ctx, state, null)
           // Early visibility: the chip appears while input is still streaming.
           emit({
             type: 'tool-call',
@@ -661,6 +722,7 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
         const blockIndex = ev.index
         if (ev.delta.type === 'text_delta') {
           ctx.mark?.('first-content')
+          if (state.phase) setPhase(ctx, state, null)
           emit({
             type: 'assistant-text',
             text: ev.delta.text,
@@ -713,6 +775,7 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
     }
     case 'assistant': {
       ctx.mark?.('first-content')
+      if (state.phase) setPhase(ctx, state, null)
       // Synthetic messages are the CLI dressing an API refusal up as
       // assistant text. Report them as the errors they are — rendering
       // "Prompt is too long" as if the model said it confused everyone.
@@ -1399,6 +1462,7 @@ export const claudeDriver: HarnessDriver = {
       cli = spawned.proc
       // The send's phase line says whether the process was adopted warm or spawned cold.
       ctx.mark?.('handle', spawned.warmId ? 'warm' : 'cold')
+      if (!spawned.warmId) setPhase(ctx, state, 'cli-starting')
       return cli as unknown as SpawnedProcess
     }
     const q = query({ prompt: input, options })
@@ -1414,7 +1478,21 @@ export const claudeDriver: HarnessDriver = {
     const NUDGE_AFTER_MS = 45_000
     const RECOVER_AFTER_MS = 90_000
     const watchdog = setInterval(() => {
-      if (disposed || !state.working || state.armedAt === null) return
+      if (disposed) return
+      // A message pushed with nothing back at all for FIRST_OUTPUT_MS: the
+      // CLI took the text and went silent. Settle, put the process down;
+      // the registry re-queues the message once into a fresh harness.
+      if (firstOutputOverdue(state, Date.now())) {
+        state.working = false
+        state.watching = false
+        state.sentAt = null
+        state.armedAt = null
+        emit({ type: 'error', message: FIRST_OUTPUT_SILENCE })
+        emit({ type: 'status', status: 'idle' })
+        abort.abort()
+        return
+      }
+      if (!state.working || state.armedAt === null) return
       const quiet = Date.now() - state.armedAt
       if (quiet >= RECOVER_AFTER_MS) {
         state.working = false
@@ -1428,6 +1506,10 @@ export const claudeDriver: HarnessDriver = {
         void q.getContextUsage().catch(() => {})
       }
     }, 5_000)
+
+    // While the thread watches, its forgotten tasks are checked on a timer,
+    // not only at a turn's end.
+    const stopForgotten = startForgottenTimer(watchedCtx, state)
 
     // A recovered or ended harness can't take another message — send()
     // reports it so the registry boots a fresh process (resume carries the
@@ -1525,6 +1607,7 @@ export const claudeDriver: HarnessDriver = {
       } finally {
         dead = true
         clearInterval(watchdog)
+        stopForgotten()
         goalWatch.close()
       }
     })()
@@ -1537,6 +1620,9 @@ export const claudeDriver: HarnessDriver = {
         // The harness only runs a LEADING /command natively; mid-message
         // and additional skill references get expanded server-side.
         input.push(await expandSlashRefs('claude', session.cwd, text), attachments)
+        state.sentAt = Date.now()
+        // Until the CLI's init has come once, the wait is its boot.
+        if (!state.initialized && state.phase !== 'cli-starting') setPhase(ctx, state, 'initializing')
       },
       interrupt(): void {
         void q.interrupt()
@@ -1598,7 +1684,7 @@ export const claudeDriver: HarnessDriver = {
         return usage
       },
       alive(): boolean {
-        return !dead
+        return aliveOf(dead, cli)
       },
       pid(): number | null {
         return cli && cli.exitCode === null && !cli.killed ? (cli.pid ?? null) : null

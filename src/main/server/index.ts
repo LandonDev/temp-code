@@ -1099,6 +1099,13 @@ export async function startServer(
         if (info.thread) registry.noteRefusal(info.thread, { status: 429, code: null, account: info.account })
         return accounts.pickNext(info)
       },
+      // A request out at the provider: the thread's row says so past 15 s (sessions.ts providerRequest).
+      onRequestStart: (info) => {
+        if (info.thread) registry.providerRequest(info.thread, info.id, info.ts)
+      },
+      onRequestEnd: (info) => {
+        if (info.thread) registry.providerRequest(info.thread, info.id, null)
+      },
       // A dead sign-in answers 401 for good and core only fails over on 429:
       // the account leaves routing until it answers again, the request
       // replays under the best account with room, and with none left the

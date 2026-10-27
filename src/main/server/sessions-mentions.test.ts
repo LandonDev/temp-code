@@ -125,3 +125,21 @@ it('replaceTokens swaps the qualified token before the bare one, and appends whe
   expect(replaceTokens(`a @thread:${BOX}:${FAR} b @thread:${FAR}`, tokens, 'X')).toBe('a X b X')
   expect(replaceTokens('nothing', tokens, 'X')).toBe('nothing\n\nX')
 })
+
+it('references to threads on other hosts are read together under one budget, not one after another', async () => {
+  const FAR2 = `${FAR}2`
+  registry.readForeignThread = async (_caller: SessionMeta, environmentId: string, sessionId: string) => {
+    reads.push({ caller: '', environmentId, sessionId })
+    await new Promise((r) => setTimeout(r, 120))
+    return { ok: true, hostName: 'box', sessionId, title: `far ${sessionId}`, projectName: null, digest: `digest of ${sessionId}` }
+  }
+  const here = await registry.create({ cwd: root, provider: 'claude', title: 'Loose' })
+  const started = Date.now()
+  await registry.send(here.id, `see @thread:${BOX}:${FAR} and @thread:${BOX}:${FAR2}`, { attachments: [ref(FAR, BOX), ref(FAR2, BOX)] })
+  const took = Date.now() - started
+  expect(reads.map((r) => r.sessionId)).toEqual([FAR, FAR2])
+  expect(took).toBeLessThan(230)
+  const sent = sends.get(here.id)!.at(-1)!
+  expect(sent).toContain(`digest of ${FAR}`)
+  expect(sent).toContain(`digest of ${FAR2}`)
+})

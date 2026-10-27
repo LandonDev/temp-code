@@ -2,7 +2,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { configure, EXPIRY_MARGIN_MS, limitLabel, type Credential, type LimitInfo, type ServiceId, type UsageReport } from 'aliax-core'
 import { PROVIDER_OF } from '@shared/accounts'
-import { GatewayCore, type ControlPlane, type FailedOverInfo, type NetworkInfo, type ResponseInfo, type ScopedRequest } from './gatewayCore'
+import { GatewayCore, type ControlPlane, type FailedOverInfo, type NetworkInfo, type RequestInfo, type ResponseInfo, type ScopedRequest } from './gatewayCore'
 import {
   answer,
   Calls,
@@ -163,6 +163,14 @@ export class PortControl implements ControlPlane {
 
   onNetwork(info: NetworkInfo): void {
     this.tell({ e: 'network', info })
+  }
+
+  onRequestStart(info: RequestInfo): void {
+    if (info.thread) this.tell({ e: 'request', phase: 'start', info })
+  }
+
+  onRequestEnd(info: RequestInfo): void {
+    if (info.thread) this.tell({ e: 'request', phase: 'end', info })
   }
 
   private isOut(serviceId: ServiceId, name: string): boolean {

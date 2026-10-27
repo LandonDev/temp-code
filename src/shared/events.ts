@@ -408,6 +408,18 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     window: z.number().optional()
   }),
 
+  // Where a turn is before its first content: the CLI spawning cold, its
+  // init handshake, a wait on the provider, the CLI's own retry of a
+  // refused request. Activity, never a row: the registry folds it onto
+  // SessionMeta.activity and drops the event; null clears it.
+  z.object({
+    type: z.literal('phase'),
+    phase: z.enum(['cli-starting', 'initializing', 'waiting-provider', 'retrying']).nullable(),
+    detail: z.string().optional(),
+    /** the CLI's own retry: which attempt, how long it waits, why */
+    retry: z.object({ attempt: z.number(), delayMs: z.number(), reason: z.string().optional() }).optional()
+  }),
+
   // Goal lifecycle (claude /goal, codex thread goals): the harness confirms
   // every transition — the app never emits these optimistically.
   z.object({

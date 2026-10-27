@@ -576,6 +576,10 @@ export class GatewayHost {
       case 'network':
         this.control.onNetwork?.(event.info)
         return
+      case 'request':
+        if (event.phase === 'start') this.control.onRequestStart?.(event.info)
+        else this.control.onRequestEnd?.(event.info)
+        return
       case 'observeLimit':
         this.control.observeLimit(event.serviceId, event.name, event.limit)
         return

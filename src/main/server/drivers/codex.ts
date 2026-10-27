@@ -528,8 +528,14 @@ export const codexDriver: HarnessDriver = {
       lastGoal = { condition: goal.objective, status }
     }
 
+    let retrying = false
     const onNotify = (method: string, params: Record<string, unknown>): void => {
       ctx.mark?.('first-message')
+      // Anything after a retry notice but the next one: the retry is over.
+      if (retrying && method !== 'error') {
+        retrying = false
+        emit({ type: 'phase', phase: null })
+      }
       switch (method) {
         case 'thread/goal/updated':
           goalUpdated(params)
@@ -677,6 +683,10 @@ export const codexDriver: HarnessDriver = {
           if (params.willRetry === true || RECONNECTING.test(message)) {
             if (!retryLogged) console.log(`[codex] ${session.id}: ${message}${nested?.additionalDetails ? ` (${String(nested.additionalDetails)})` : ''}; retrying`)
             retryLogged = true
+            // The strip says so ("Reconnecting · retry 2 of 5") until the next item lands.
+            const m = /(\d+)\s*\/\s*(\d+)/.exec(message)
+            retrying = true
+            emit({ type: 'phase', phase: 'retrying', detail: message.slice(0, 200), ...(m ? { retry: { attempt: Number(m[1]), delayMs: 0, reason: `of ${m[2]}` } } : {}) })
             break
           }
           emit({ type: 'error', message, ...limitField('codex', message) })

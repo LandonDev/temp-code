@@ -529,6 +529,28 @@ export function threadDigest(reg: SessionRegistry, refMeta: SessionMeta): string
   return renderMirror(refMeta, reg.eventsAfter(refMeta.id, 0), projectName, reg.notes.textFor(refMeta.id))
 }
 
+/** How many rows an inline digest reads at once from the end of the log. */
+export const DIGEST_TAIL_PAGE = 400
+
+/**
+ * A digest that reads the log from its END in pages until the rendered
+ * text covers `maxChars` (INLINE_DIGEST_MAX_CHARS for an inline reference):
+ * a reference to a 10,000-row thread reads the rows the cap keeps, never
+ * the whole log. The caller trims the text to the cap as before.
+ */
+export function threadDigestTail(reg: Pick<SessionRegistry, 'getProject' | 'notes' | 'lastEvents'>, refMeta: SessionMeta, maxChars: number): string {
+  const projectName = refMeta.projectId ? (reg.getProject(refMeta.projectId)?.name ?? null) : null
+  const notes = reg.notes.textFor(refMeta.id)
+  let limit = DIGEST_TAIL_PAGE
+  for (;;) {
+    const rows = reg.lastEvents(refMeta.id, limit)
+    const text = renderMirror(refMeta, rows, projectName, notes)
+    // Enough text, or the whole log: stop. Else read a longer tail.
+    if (text.length >= maxChars || rows.length < limit) return text
+    limit *= 2
+  }
+}
+
 /** Write a fresh digest of a referenced thread into the CURRENT project's
  *  refs/ — a local copy every harness sandbox can read, cross-project or
  *  not. Returns the project-relative path. */

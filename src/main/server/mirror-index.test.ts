@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openDb, Store } from './db'
-import { cancelMirrors, mirrorName, mirrorSession, scheduleMirror, renderMirror, renderMirrorOffLoop, writeThreadsIndex } from './mirror'
+import { cancelMirrors, DIGEST_TAIL_PAGE, mirrorName, mirrorSession, scheduleMirror, renderMirror, renderMirrorOffLoop, threadDigestTail, writeThreadsIndex } from './mirror'
 import type { AgentEvent, SessionMeta } from '@shared/events'
 
 vi.mock('node:fs', async (original) => {
@@ -223,4 +223,35 @@ it('the index waits for a queued render when a previous window is still renderin
   await vi.advanceTimersByTimeAsync(0)
   expect(indexes()).toHaveLength(2)
   expect(readFileSync(join(dir, '.temp-code', 'threads', 'INDEX.md'), 'utf8')).toContain('Latest title')
+})
+
+describe('threadDigestTail', () => {
+  it('reads a long log from its end in pages until the cap is covered, never the whole log', () => {
+    const rows = Array.from({ length: 10_000 }, (_, i) => ({
+      sessionId: 's',
+      seq: i + 1,
+      ts: i,
+      event: i % 2 === 0 ? { type: 'user-text', text: `question ${i + 1} ${'x'.repeat(40)}` } : { type: 'assistant-text', text: `answer ${i + 1} ${'y'.repeat(40)}`, delta: false }
+    })) as never[]
+    const asked: number[] = []
+    const reg = {
+      getProject: () => null,
+      notes: { textFor: () => null },
+      lastEvents: (_id: string, limit: number) => {
+        asked.push(limit)
+        return rows.slice(-limit)
+      }
+    }
+    const meta = { id: 's', title: 'Long', projectId: null, createdAt: 0, updatedAt: 0, status: 'idle', threadType: 'chat' } as unknown as SessionMeta
+    const digest = threadDigestTail(reg as never, meta, 12_000)
+    expect(asked).toEqual([DIGEST_TAIL_PAGE])
+    expect(digest).toContain('answer 10000')
+    expect(digest).not.toContain('question 1 ')
+    expect(digest.length).toBeGreaterThanOrEqual(12_000)
+    // A short log is read whole, once.
+    asked.length = 0
+    const short = { ...reg, lastEvents: (_id: string, limit: number) => (asked.push(limit), rows.slice(0, 5)) }
+    expect(threadDigestTail(short as never, meta, 12_000)).toContain('question 1 ')
+    expect(asked).toEqual([DIGEST_TAIL_PAGE])
+  })
 })

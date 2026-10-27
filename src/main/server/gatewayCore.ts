@@ -76,6 +76,17 @@ export interface RoutingHooks {
   onUnauthorized?: (info: ScopedRequest) => string | null
   /** The upstream fetch rejected (no answer at all): the limits log keeps a `network` record of it. */
   onNetwork?: (info: NetworkInfo) => void
+  /** A forwarded request went out; the registry starts the thread's provider wait on it. */
+  onRequestStart?: (info: RequestInfo) => void
+  /** That request is done, however it ended; the wait clears. */
+  onRequestEnd?: (info: RequestInfo) => void
+}
+
+/** One forwarded request going out (`start`) or done (`end`, answered, failed or cut): the host pairs them per thread. */
+export interface RequestInfo {
+  id: number
+  thread: string | null
+  ts: number
 }
 
 /** A request that got no upstream answer: the fetch itself failed (DNS, TLS, a reset, a timeout). */
@@ -150,6 +161,8 @@ export interface ControlPlane {
   onError(message: string): void
   /** The upstream fetch rejected; absent on a host that keeps no record. */
   onNetwork?(info: NetworkInfo): void
+  onRequestStart?(info: RequestInfo): void
+  onRequestEnd?(info: RequestInfo): void
 }
 
 export interface GatewayCoreOptions {
@@ -357,12 +370,19 @@ export class GatewayCore {
     }
     const startedAt = Date.now()
     if (this.trace) console.log(traceLine(this.label, 'start', rec))
+    const request: RequestInfo = { id: rec.id, thread: rec.thread, ts: startedAt }
+    c.onRequestStart?.(request)
     // The upstream fetch fills the trace record in: whether the request rode
     // a socket that had carried one before, and over which protocol.
     const trace = newTrace()
-    const out = await upstreamTrace.run(trace, () =>
-      parsed.scope && serviceId ? this.forwardScoped(req, res, parsed.service, serviceId, parsed.scope) : this.forward(req, res)
-    )
+    let out: Awaited<ReturnType<typeof forward>>
+    try {
+      out = await upstreamTrace.run(trace, () =>
+        parsed.scope && serviceId ? this.forwardScoped(req, res, parsed.service, serviceId, parsed.scope) : this.forward(req, res)
+      )
+    } finally {
+      c.onRequestEnd?.(request)
+    }
     if (this.trace) {
       const reused = trace.reused === null ? 'n/a' : trace.queued ? 'true (queued)' : String(trace.reused)
       console.log(traceLine(this.label, 'finish', { ...rec, status: out.status, reused, protocol: trace.protocol, ms: Date.now() - startedAt }))

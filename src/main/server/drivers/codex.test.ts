@@ -211,6 +211,12 @@ describe('codex app-server boot', () => {
     expect(events.filter((e) => e.type === 'error').map((e) => (e as { message: string }).message)).toEqual(['workspace routing discovery unauthorized (401)'])
     const retries = log.mock.calls.map((c) => String(c[0])).filter((l) => l.includes('Reconnecting'))
     expect(retries).toEqual(['[codex] sess-1: Reconnecting... 2/5 (workspace routing discovery unauthorized (401)); retrying'])
+    // The strip hears each retry as a phase, cleared by the next item.
+    expect(events.filter((e) => e.type === 'phase')).toEqual([
+      { type: 'phase', phase: 'retrying', detail: 'Reconnecting... 2/5', retry: { attempt: 2, delayMs: 0, reason: 'of 5' } },
+      { type: 'phase', phase: 'retrying', detail: 'Reconnecting... 3/5', retry: { attempt: 3, delayMs: 0, reason: 'of 5' } },
+      { type: 'phase', phase: null }
+    ])
     // The next turn logs again.
     notify('error', retry(1))
     expect(log.mock.calls.map((c) => String(c[0])).filter((l) => l.includes('Reconnecting'))).toHaveLength(2)
