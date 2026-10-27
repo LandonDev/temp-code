@@ -43,6 +43,7 @@ import { routedEndpointFor } from '../endpoint'
 import { gateway } from '../gateway'
 import { spawnOrAdoptClaude } from './claudeWarm'
 import { claudeFastFor, noteClaudeInit } from './claudeTiers'
+import { unwrapBashCommand, wrapBashCommand } from '../processGuard'
 
 // Dev override: a small window (e.g. 45_000 → compaction arms at ~12k)
 // makes a real compaction reachable in one short thread for UI work.
@@ -1225,6 +1226,33 @@ export const claudeDriver: HarnessDriver = {
       }
     }
 
+    // Every Bash call of a thread in full access runs marked for the host's
+    // process guard (processGuard.ts): the thread and the call exported into
+    // the call's shell, so the host can end its processes when the call
+    // ends, sweep its orphans and cap its memory. A PreToolUse hook with
+    // updatedInput and no decision: the permission flow runs on the marked
+    // command as it would have on the plain one. A prompting thread's rules
+    // match the command as written, so it carries no call mark.
+    const guardHook = async (hookInput: unknown, toolUseID: string | undefined): Promise<HookJSONOutput> => {
+      const input = (hookInput as { tool_input?: unknown }).tool_input
+      if (!toolUseID || !input || typeof input !== 'object') return { continue: true }
+      const command = (input as { command?: unknown }).command
+      if (typeof command !== 'string' || !command) return { continue: true }
+      return {
+        continue: true,
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          updatedInput: { ...(input as Record<string, unknown>), command: wrapBashCommand(command, toolUseID, session.id) }
+        }
+      }
+    }
+    /** A Bash call's input as the model wrote it: the approval card never shows the guard's marks. */
+    const shownInput = (toolName: string, input: unknown): unknown => {
+      if (toolName !== 'Bash' || !input || typeof input !== 'object') return input
+      const o = input as Record<string, unknown>
+      return typeof o.command === 'string' ? { ...o, command: unwrapBashCommand(o.command) } : input
+    }
+
     // The undo baseline is taken off the send path (sessions.ts
     // armBaseline), so the first tool that can write waits for it here:
     // the snapshot must never freeze the agent's own edit as "before". A
@@ -1258,7 +1286,7 @@ export const claudeDriver: HarnessDriver = {
         type: 'approval-request',
         requestId,
         toolName,
-        input: toolInput,
+        input: shownInput(toolName, toolInput),
         title: opts.title,
         callId: opts.toolUseID
       })
@@ -1338,7 +1366,8 @@ export const claudeDriver: HarnessDriver = {
       hooks: {
         PreToolUse: [
           { matcher: 'AskUserQuestion', hooks: [askUserQuestionHook] },
-          { matcher: 'Edit|Write|MultiEdit|NotebookEdit|Bash', hooks: [baselineHook] }
+          { matcher: 'Edit|Write|MultiEdit|NotebookEdit|Bash', hooks: [baselineHook] },
+          ...(session.permission === 'auto' ? [{ matcher: 'Bash', hooks: [guardHook] }] : [])
         ],
         PostToolUse: [{ matcher: 'Bash', hooks: [bashTailHook] }],
         // Session crons only surface here (see stopHookFor).

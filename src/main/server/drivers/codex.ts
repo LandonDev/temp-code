@@ -16,6 +16,7 @@ import { routedEndpointFor } from '../endpoint'
 import { gateway } from '../gateway'
 import { observeCodexSnapshot } from '../gatewayObserve'
 import { serviceTierFor } from './codexTiers'
+import { THREAD_MARK } from '../processGuard'
 
 /**
  * Codex driver — `codex app-server`, protocol v2 (verified live against
@@ -262,15 +263,16 @@ const CODEX_CLIENT_INFO = { name: 'temp-code', title: 'temp-code', version: '0.1
 export const codexWarm = new WarmPool<AppServerConn>({
   driver: 'codex',
   enabled: () => process.env.TEMP_CODE_WARM_HARNESS !== '0',
+  // The guard's thread mark is per thread: a warm app-server carries its own warm id until a thread adopts it.
+  rebind: [THREAD_MARK],
   spawn: async (id, spec, onExit) => {
-    const conn = new AppServerConn(spec.command, spec.env, spec.cwd ?? process.cwd(), () => {}, () => {}, () => onExit())
+    const conn = new AppServerConn(spec.command, { ...spec.env, [THREAD_MARK]: `warm:${id}` }, spec.cwd ?? process.cwd(), () => {}, () => {}, () => onExit())
     try {
       await conn.request('initialize', { clientInfo: CODEX_CLIENT_INFO })
     } catch (e) {
       conn.kill()
       throw e
     }
-    void id
     return conn
   },
   kill: (conn) => conn.kill()
@@ -356,7 +358,9 @@ export const codexDriver: HarnessDriver = {
 
     const binPath = await resolveBinary('codex')
     if (!binPath) throw new Error('codex CLI not found — install it and log in (`codex login`)')
-    const env = await harnessEnv()
+    // The thread's mark for the host's process guard (processGuard.ts): every
+    // shell the app-server runs inherits it, so its orphans are the thread's.
+    const env = { ...(await harnessEnv()), [THREAD_MARK]: session.id }
 
     let currentTurnId: string | null = null
 

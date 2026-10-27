@@ -928,6 +928,18 @@ routed to (aliax-core's `forward`). Two listeners:
   dropped on load. docs/box.md "Dev servers on the box"; proof `bun run script:e2e-port-forward` (seam
   `session.proofShellCall`, `TEMP_CODE_E2E_STATUS=1`). The subdomain proxy
   for the phone is not built yet.
+- Tool processes are guarded (src/main/server/processGuard.ts; docs/box.md
+  "Tool processes: a mark per call, an orphan sweep, a memory cap"): a
+  claude thread in full access runs every Bash call with `TEMP_CODE_THREAD`
+  and `TEMP_CODE_CALL` exported into its shell (the driver's PreToolUse
+  hook, `wrapBashCommand`; the approval card shows the command as written),
+  and the host SIGTERMs then SIGKILLs what still carries the call's mark
+  when the call ends (never a harness, a ledger pid or a backgrounded
+  call); every 10 s an orphan sweep kills a process of this user with no
+  parent left that carries a thread's mark (`TEMP_CODE_THREAD`, `~t=`,
+  CLAUDE_PID) 60 s after it was orphaned, one log line each; and a call
+  whose processes pass `tools.memoryCapMb` (8 GiB) is killed with its tool
+  result saying so. A codex app-server carries `TEMP_CODE_THREAD` alone.
 - Pause and Stop reach the Mac
   (`src/main/server/macPause.ts`, every mac.* call passes its gate): a
   thread pausing (subagents with it, by the parentId chain) has its calls

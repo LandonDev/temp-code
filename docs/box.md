@@ -1795,6 +1795,45 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
 - Not built yet: the host-based subdomain proxy behind the cookie, the
   phone's road to a box dev server.
 
+### Tool processes: a mark per call, an orphan sweep, a memory cap
+
+On 2026-10-27 a test run left 22 vitest workers behind, their parent
+killed, 62 GB between them, and the box swapped for ten hours. The host
+now guards agent tool processes (src/main/server/processGuard.ts), on
+every host:
+- **A call's processes end with the call.** A claude thread in full access
+  runs every Bash call with `TEMP_CODE_THREAD` and `TEMP_CODE_CALL`
+  exported into the call's shell (the driver's PreToolUse hook,
+  `wrapBashCommand`; the approval card and the transcript show the command
+  as written), and every descendant inherits them. The harness already
+  gives each call's shell a session and process group of its own, so no
+  `setsid` is needed, and no `exec`: the harness appends its own cwd
+  tracking after the command. When the call ends (its result, a timeout,
+  Stop, the harness gone) the host SIGTERMs every process still carrying
+  the call's mark, a whole group when the group is the call's own, and
+  SIGKILLs what is left at the next sweep after 5 s. Never a harness, never
+  a pid on the ledger (a `port` row's dev server), never a call the thread
+  backgrounded (`run_in_background`, or a background task the harness
+  lists). A prompting thread's permission rules match the command as
+  written, so its calls carry no call mark and get the orphan sweep alone.
+  A codex app-server carries `TEMP_CODE_THREAD` in its environment (a warm
+  one `warm:<id>` until a thread adopts it) and has no per-call mark.
+- **The orphan sweep.** Every 10 s the host reads one `ps` of its own user;
+  a process whose parent is gone (ppid 1) that carries a thread's mark
+  (`TEMP_CODE_THREAD`, the gateway's `~t=` scope in ANTHROPIC_BASE_URL, or
+  CLAUDE_PID, which names the thread while its harness lives) and is not a
+  ledger pid or a backgrounded call's is killed 60 s after it was first
+  seen orphaned, with one log line: `[guard] orphan thread=<id> pid=<pid>
+  rss=<MB>MB <command>`.
+- **The memory cap.** The processes of one call whose RSS together passes
+  `tools.memoryCapMb` (8 GiB by default; a settings row) are killed, the
+  log says `[guard] cap thread=… call=… rss=…MB over …MB: N processes
+  killed`, and the call's tool result ends "The host killed this command's
+  processes: 9.0 GiB in use, over the 8.0 GiB cap per call". RSS is the
+  same `ps` column admission reads.
+Unit tests: processGuard.test.ts, over fake process trees; the first case
+is the incident's tinypool worker.
+
 ### Threads across hosts
 
 iOS builds, the simulator, screenshots, computer use and every Mac app

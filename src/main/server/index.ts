@@ -59,6 +59,7 @@ import { MacThreadTokens, MacTools, macToolsHooks, rebootWhenSettled } from './m
 import { OfflineError, ThreadResources } from './threadResources'
 import { SharedScanner, ThreadPorts } from './threadPorts'
 import { PortTail } from './portTail'
+import { DEFAULT_CALL_CAP_BYTES, MEMORY_CAP_SETTING, ProcessGuard, hostGuardDeps } from './processGuard'
 import { notDevServer } from '@shared/devServerRules'
 import { PortSweep } from './portSweep'
 import { readTaskLog, type TaskLogDeps } from './taskLog'
@@ -922,7 +923,27 @@ export async function startServer(
       ...devRuns.running().flatMap((run) => (run.sessionId === row.sessionId ? run.ports.map((p) => p.port) : []))
     ]
   })
-  registry.toolResultTail = (sessionId, callId, output) => portTail.tail(sessionId, callId, output)
+  // The process guard (processGuard.ts): a call's processes end with the call, a thread's
+  // orphans are swept, and a call past the memory cap is killed with its result saying so.
+  const guard = new ProcessGuard({
+    ...hostGuardDeps(),
+    ledgerPids: () => new Set(resources.listAll({ kind: 'port', environmentId }).flatMap((r) => (r.pid ? [r.pid] : []))),
+    backgroundCalls: (id) => new Set((registry.get(id)?.background?.tasks ?? []).flatMap((t) => (t.callId ? [t.callId] : []))),
+    harnessPids: () => new Set(registry.harnessPids()),
+    threadOfHarness: (pid) => [...registry.liveIds()].find((id) => registry.harnessPid(id) === pid) ?? null,
+    capBytes: () => {
+      const mb = Number(store.getSetting(MEMORY_CAP_SETTING))
+      return mb > 0 ? mb * 1024 * 1024 : DEFAULT_CALL_CAP_BYTES
+    },
+    ownPid: process.pid
+  })
+  registry.onEvent((row) => guard.observeEvent(row))
+  threadPorts.onCallEnd((sessionId, callId) => void guard.callEnded(sessionId, callId))
+  guard.start()
+  registry.toolResultTail = async (sessionId, callId, output) => {
+    const lines = [guard.tail(callId), await portTail.tail(sessionId, callId, output)].filter((l): l is string => !!l)
+    return lines.length ? lines.join('\n') : null
+  }
   threadPorts.onCallEnd((_sessionId, callId) => portTail.callEnded(resources.listAll({ kind: 'port', environmentId }).filter((r) => r.callId === callId).map((r) => r.id)))
   portHost.onBound((ids) => {
     portTail.bound(ids)
@@ -2966,6 +2987,7 @@ export async function startServer(
       await remoteRestart
       await remote?.close()
       stopStallMonitor()
+      guard.stop()
       laneGate.dispose()
       clearTimeout(warmKickoff)
       clearInterval(warmTimer)
