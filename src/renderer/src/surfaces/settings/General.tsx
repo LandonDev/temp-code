@@ -4,6 +4,7 @@ import { ChoiceSelect } from "../../components/choice-select";
 import { PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { Progress } from "../../components/ui/progress";
 import { Spinner } from "../../components/ui/spinner";
@@ -159,7 +160,8 @@ export function GeneralPage({
       {/* The page at /ui updates with its host; the browser has nothing to install. */}
       {isWebMode() ? null : (
         <PageSection title="About">
-          <UpdateRow onOpenWhatsNew={onOpenWhatsNew} />
+          <UpdateRow />
+          <ReleaseNotesRow onOpenWhatsNew={onOpenWhatsNew} />
         </PageSection>
       )}
     </>
@@ -167,7 +169,7 @@ export function GeneralPage({
 }
 
 function LinearSettings() {
-  const [token, setToken] = useState("");
+  const [connecting, setConnecting] = useState(false);
   // null until the host answers: the key field and Connect would otherwise
   // show for a connected account and then flip to Disconnect.
   const [connected, setConnected] = useState<boolean | null>(null);
@@ -199,23 +201,14 @@ function LinearSettings() {
     };
   }, [loadTeams]);
 
-  const onSave = async () => {
-    if (!token.trim() || busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await saveLinearToken(registry.primary().environmentId, token);
-      setToken("");
-      setConnected(true);
-      clearInboxCache();
-      notifyLinearChange();
-      await loadTeams();
-    } catch (err: unknown) {
-      setConnected(false);
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
+  // The dialog awaits this; a refusal stays in the dialog as its red line.
+  const onConnect = async (token: string) => {
+    await saveLinearToken(registry.primary().environmentId, token);
+    setConnected(true);
+    setConnecting(false);
+    clearInboxCache();
+    notifyLinearChange();
+    await loadTeams();
   };
 
   const onDisconnect = async () => {
@@ -254,7 +247,8 @@ function LinearSettings() {
           <PageRow
             media={<InboxProviderMark provider="linear" className="size-4" />}
             title="API key"
-            description="Create a personal key in Linear, under Settings, Security and access."
+            // Connected, the title and Disconnect say it all.
+            description={connected ? undefined : "Create a personal key in Linear, under Settings, Security and access."}
             error={error}
           >
             {connected ? (
@@ -263,29 +257,14 @@ function LinearSettings() {
                 Disconnect
               </Button>
             ) : (
-              <>
-                <Input
-                  type="password"
-                  value={token}
-                  onChange={(event) => setToken(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") void onSave();
-                  }}
-                  placeholder="lin_api_…"
-                  aria-label="Linear API key"
-                  autoComplete="off"
-                  spellCheck={false}
-                  className="w-52"
-                />
-                <Button variant="secondary" size="sm" onClick={() => void onSave()} disabled={busy || !token.trim()}>
-                  {busy ? <Spinner className="size-3.5" /> : null}
-                  Connect
-                </Button>
-              </>
+              <Button variant="secondary" size="sm" onClick={() => setConnecting(true)}>
+                Connect…
+              </Button>
             )}
           </PageRow>
         )}
       </PageSection>
+      <ConnectLinearDialog open={connecting} onClose={() => setConnecting(false)} onConnect={onConnect} />
       {connected && teams.length > 0 ? (
         <PageSection title="Teams in the inbox">
           {teams.map((team) => (
@@ -303,11 +282,79 @@ function LinearSettings() {
   );
 }
 
-function UpdateRow({
-  onOpenWhatsNew,
+/** The key field behind Linear's Connect…: Enter or Connect checks it with
+ *  the host; a refusal stays here as the red line, success closes it. */
+function ConnectLinearDialog({
+  open,
+  onClose,
+  onConnect,
 }: {
-  onOpenWhatsNew: (version: string, markdown?: string) => void;
+  open: boolean;
+  onClose: () => void;
+  onConnect: (token: string) => Promise<void>;
 }) {
+  const [token, setToken] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open) {
+      setToken("");
+      setError(null);
+    }
+  }, [open]);
+  const submit = async () => {
+    if (!token.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onConnect(token.trim());
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog open={open} onOpenChange={(next) => (next || busy ? undefined : onClose())}>
+      <DialogContent size="sm">
+        <DialogHeader>
+          <DialogTitle>Connect Linear</DialogTitle>
+          <DialogDescription>Create a personal key in Linear, under Settings, Security and access.</DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-1.5">
+          <Input
+            autoFocus
+            type="password"
+            value={token}
+            onChange={(event) => setToken(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void submit();
+              }
+            }}
+            placeholder="lin_api_…"
+            aria-label="Linear API key"
+            autoComplete="off"
+            spellCheck={false}
+          />
+          {error ? <p className="text-xs text-destructive">{error}</p> : null}
+        </div>
+        <DialogFooter>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button onClick={() => void submit()} disabled={busy || !token.trim()}>
+            {busy ? <Spinner className="size-3.5" /> : null}
+            Connect
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function UpdateRow() {
   const snapshot = useUpdateSnapshot();
   const downloading = snapshot.phase === "downloading";
   const ready = snapshot.phase === "ready";
@@ -332,13 +379,6 @@ function UpdateRow({
               ? "Dev build — updates apply to the installed app."
               : "Up to date.";
 
-  // With an update waiting, What's new shows the feed's notes for it;
-  // otherwise the notes this build shipped with.
-  const onWhatsNew = () =>
-    hasUpdate && snapshot.availableVersion && snapshot.notes
-      ? onOpenWhatsNew(snapshot.availableVersion, snapshot.notes)
-      : onOpenWhatsNew(BUNDLED_RELEASE.version, BUNDLED_RELEASE.notes);
-
   const retry = canRetry(snapshot);
   const actionable = (hasUpdate && canApply) || ready || retry;
 
@@ -361,19 +401,22 @@ function UpdateRow({
           </>
         )
       }
-      error={failed ? status : undefined}
+      error={
+        failed ? (
+          <>
+            {status}
+            {canApply ? (
+              <>
+                {" "}
+                <Button variant="link" size="xs" className="h-auto px-0 text-xs" onClick={() => void openUrl(MANUAL_DOWNLOAD_URL)}>
+                  Download the installer
+                </Button>
+              </>
+            ) : null}
+          </>
+        ) : undefined
+      }
     >
-      {failed && canApply ? (
-        <Button variant="secondary" size="sm" onClick={() => void openUrl(MANUAL_DOWNLOAD_URL)}>
-          Download the installer
-        </Button>
-      ) : (
-        <span className="contents" {...releaseNotesChunk.intent}>
-          <Button variant="secondary" size="sm" onClick={onWhatsNew}>
-            What's new
-          </Button>
-        </span>
-      )}
       <Button
         variant={actionable ? "default" : "secondary"}
         size="sm"
@@ -383,6 +426,30 @@ function UpdateRow({
         {busy ? <Spinner className="size-3.5" /> : null}
         {updateActionLabel(snapshot.phase, { canApply, retry })}
       </Button>
+    </PageRow>
+  );
+}
+
+/** The release notes: a waiting update's from the feed, else the ones this
+ *  build shipped with (its version is already on the Release row). */
+function ReleaseNotesRow({
+  onOpenWhatsNew,
+}: {
+  onOpenWhatsNew: (version: string, markdown?: string) => void;
+}) {
+  const snapshot = useUpdateSnapshot();
+  const waiting = snapshot.phase === "available" && snapshot.availableVersion && snapshot.notes ? snapshot : null;
+  const open = () =>
+    waiting
+      ? onOpenWhatsNew(waiting.availableVersion!, waiting.notes!)
+      : onOpenWhatsNew(BUNDLED_RELEASE.version, BUNDLED_RELEASE.notes);
+  return (
+    <PageRow title="Release notes" description={waiting ? `For ${waiting.availableVersion}` : undefined}>
+      <span className="contents" {...releaseNotesChunk.intent}>
+        <Button variant="secondary" size="sm" onClick={open}>
+          Open
+        </Button>
+      </span>
     </PageRow>
   );
 }

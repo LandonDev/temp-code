@@ -27,6 +27,11 @@ vi.mock("../../lib/updateStore", () => ({
 }));
 vi.mock("../../lib/sounds", () => ({ loadSoundsEnabled: () => true, saveSoundsEnabled: vi.fn(), playCue: vi.fn() }));
 vi.mock("../chunks", () => ({ releaseNotesChunk: { intent: {} } }));
+vi.mock("../../lib/native", async (original) => ({
+  ...(await original<typeof import("../../lib/native")>()),
+  isWebMode: () => false,
+  openUrl: vi.fn(),
+}));
 vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
 
 const { GeneralPage, updateActionLabel } = await import("./General");
@@ -84,16 +89,37 @@ describe("General", () => {
     expect(notes.getAttribute("aria-checked")).toBe("false");
   });
 
-  it("shows a spinner while Linear connects, and the refusal under the row", async () => {
+  it("connects Linear in a dialog: Enter checks the key, a refusal stays in the dialog", async () => {
     let refuse: (error: Error) => void = () => {};
     linear.save.mockReturnValue(new Promise((_, reject) => (refuse = reject)));
     page();
     await act(async () => {});
-    fireEvent.change(screen.getByLabelText("Linear API key"), { target: { value: "lin_api_x" } });
-    fireEvent.click(screen.getByRole("button", { name: /Connect/ }));
-    expect(screen.getByRole("button", { name: /Connect/ }).querySelector("[data-slot=spinner]")).toBeTruthy();
+    // The row has one control and no field of its own.
+    expect(screen.queryByLabelText("Linear API key")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Connect…" }));
+    const field = await screen.findByLabelText("Linear API key");
+    expect(screen.getByRole("dialog", { name: "Connect Linear" })).toBeTruthy();
+    fireEvent.change(field, { target: { value: "lin_api_x" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(linear.save).toHaveBeenCalledWith("local", "lin_api_x");
+    expect(screen.getByRole("button", { name: /Connect$/ }).querySelector("[data-slot=spinner]")).toBeTruthy();
     await act(async () => refuse(new Error("That key was refused.")));
     expect(screen.getByText("That key was refused.").className).toContain("text-destructive");
+    expect(screen.getByRole("dialog", { name: "Connect Linear" })).toBeTruthy();
+  });
+
+  it("closes the dialog once the key is taken, and the row's control becomes Disconnect", async () => {
+    linear.save.mockResolvedValue(undefined);
+    page();
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Connect…" }));
+    fireEvent.change(await screen.findByLabelText("Linear API key"), { target: { value: "lin_api_x" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByRole("button", { name: "Disconnect" })).toBeTruthy();
+    expect(screen.queryByText(/Create a personal key/)).toBeNull();
   });
 
   it("lists the teams with a box each, hidden ones unchecked", async () => {
@@ -118,13 +144,56 @@ describe("General", () => {
     expect(updateActionLabel("error", { canApply: true, retry: true })).toBe("Retry");
   });
 
-  it("draws the release row with its version and a primary action when there is one", async () => {
+  it("draws the release row with its version and one updater button in every phase", async () => {
+    const phases: Record<string, unknown>[] = [
+      { phase: "idle", currentVersion: "1.0.300", canApply: true },
+      { phase: "checking", currentVersion: "1.0.300", canApply: true },
+      { phase: "available", currentVersion: "1.0.300", availableVersion: "1.0.301", canApply: true },
+      { phase: "downloading", currentVersion: "1.0.300", availableVersion: "1.0.301", percent: 10, canApply: true },
+      { phase: "ready", currentVersion: "1.0.300", availableVersion: "1.0.301", canApply: true },
+    ];
+    for (const snapshot of phases) {
+      update.snapshot = snapshot;
+      page();
+      await act(async () => {});
+      const row = document.querySelector("[data-slot=page-row] [class*=font-mono]")?.closest("[data-slot=page-row]") as HTMLElement;
+      expect(row.textContent).toContain("1.0.300");
+      expect(row.querySelectorAll("button")).toHaveLength(1);
+      cleanup();
+    }
     update.snapshot = { phase: "ready", currentVersion: "1.0.300", availableVersion: "1.0.301", canApply: true };
     page();
     await act(async () => {});
-    expect(screen.getByText("1.0.300")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Restart" }).dataset.variant).toBe("default");
-    expect(screen.getByRole("button", { name: "What's new" }).dataset.variant).toBe("secondary");
+  });
+
+  it("ends a failed update's line with a link to the installer", async () => {
+    update.snapshot = { phase: "error", currentVersion: "1.0.300", error: "The signature did not match.", canApply: true };
+    page();
+    await act(async () => {});
+    const native = await import("../../lib/native");
+    const link = screen.getByRole("button", { name: "Download the installer" });
+    expect(link.dataset.variant).toBe("link");
+    expect(link.closest("[class*=text-destructive]")?.textContent).toContain("The signature did not match.");
+    fireEvent.click(link);
+    expect(native.openUrl).toHaveBeenCalled();
+  });
+
+  it("opens the bundled release notes, or a waiting update's from the feed", async () => {
+    const open = vi.fn();
+    render(<GeneralPage onOpenWhatsNew={open} />);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    expect(open).toHaveBeenCalledWith(expect.any(String), expect.anything());
+    expect(open.mock.calls[0][0]).not.toBe("1.0.301");
+    cleanup();
+    open.mockClear();
+    update.snapshot = { phase: "available", currentVersion: "1.0.300", availableVersion: "1.0.301", notes: "Faster.", canApply: true };
+    render(<GeneralPage onOpenWhatsNew={open} />);
+    await act(async () => {});
+    expect(screen.getByText("For 1.0.301")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    expect(open).toHaveBeenCalledWith("1.0.301", "Faster.");
   });
 
   it("shows the download's progress", async () => {
