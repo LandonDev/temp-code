@@ -26,6 +26,17 @@ const ids = (c: StripChip): string[] =>
   chipMenuItems(c).flatMap((i) => (i.kind === "item" ? [i.id] : []));
 
 describe("chipMenuItems", () => {
+  it("offers Goal… on a root thread of a goal-taking harness whose composer is on screen, checked while one runs", () => {
+    const goalIds = (c: StripChip, running = false) =>
+      chipMenuItems(c, undefined, 0, false, [], { running }).flatMap((i) => (i.kind === "item" ? [i] : []));
+    const root = goalIds(chip("idle", { provider: "claude" }), true).find((i) => i.id === "goal");
+    expect(root).toMatchObject({ label: "Goal…", checked: true });
+    expect(goalIds(chip("idle", { provider: "codex" })).find((i) => i.id === "goal")).toMatchObject({ checked: false });
+    expect(goalIds(chip("idle", { provider: "claude", parentId: "p" })).some((i) => i.id === "goal")).toBe(false);
+    expect(goalIds(chip("idle", { provider: "cursor" })).some((i) => i.id === "goal")).toBe(false);
+    expect(ids(chip("idle", { provider: "claude" }))).not.toContain("goal");
+  });
+
   it("offers Compact only when no turn is in flight", () => {
     expect(ids(chip("idle"))).toContain("compact");
     expect(ids(chip("running"))).not.toContain("compact");

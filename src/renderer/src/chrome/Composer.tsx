@@ -40,7 +40,7 @@ import type { HandoffComposerCard } from '../lib/handoff'
 import { looksLikeProject, type RecentProject } from '../lib/recents'
 import type { Attachment, HarnessId, RuntimeMode, ThreadGoal } from '../lib/session'
 import { harnessSupportsAttachments } from '../lib/session'
-import { GoalControl } from './GoalControl'
+import { GoalDialog } from './GoalDialog'
 import { CommandPopover, type AtMatch, type PopoverMatches } from './CommandPopover'
 import { ComposerRunner } from './ComposerRunner'
 import { AttachmentChip, openAttachmentImages } from './AttachmentChip'
@@ -130,7 +130,7 @@ type Props = {
   busy?: boolean
   /** The turn is paused: Enter queues and the row waits for Continue. */
   paused?: boolean
-  /** The thread's standing goal, edited from the bottom bar. */
+  /** The thread's standing goal, edited in the goal dialog (the thread menu's Goal…). */
   goal?: ThreadGoal | null
   hotkeys?: boolean
   onFocus: () => void
@@ -801,6 +801,9 @@ export function Composer({
     >
       {children}
       <Lightbox />
+      {sessionId ? (
+        <GoalDialog sessionId={sessionId} goal={goal} onClose={() => inputRef.current?.focus()} />
+      ) : null}
       <div className="relative overflow-visible">
         <CommandPopover
           matches={matches}
@@ -949,24 +952,15 @@ export function Composer({
             fieldOf={fieldOf}
             onClose={() => inputRef.current?.focus()}
             model={
-              <>
-                <ModelPicker
-                  harness={harness}
-                  model={model}
-                  environmentId={environmentId}
-                  hotkeys={hotkeys && enabled}
-                  onChange={changeModel}
-                  onClose={() => inputRef.current?.focus()}
-                  settings={{ values: modelSettings, onChange: changeModelSettings, context }}
-                />
-                {sessionId ? (
-                  <GoalControl
-                    sessionId={sessionId}
-                    goal={goal}
-                    onClose={() => inputRef.current?.focus()}
-                  />
-                ) : null}
-              </>
+              <ModelPicker
+                harness={harness}
+                model={model}
+                environmentId={environmentId}
+                hotkeys={hotkeys && enabled}
+                onChange={changeModel}
+                onClose={() => inputRef.current?.focus()}
+                settings={{ values: modelSettings, onChange: changeModelSettings, context }}
+              />
             }
             send={
               <SendButton

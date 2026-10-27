@@ -13,6 +13,7 @@ import { ProjectPlanChip } from "./ProjectPlanChip";
 import { ConfirmDialog } from "./ProjectDialogs";
 import { ThreadHeaderStrip, chipTitle, type ArchivedThread, type ChipThread, type StripChip } from "./ThreadHeaderStrip";
 import { MenuRows, ThreadMenu, type ThreadMenuItem } from "./ThreadMenu";
+import { goalDialog } from "./GoalDialog";
 import { TuneDialog } from "./ThreadTune";
 import { MacBridgeRulesDialog } from "./MacBridgeRulesDialog";
 import { ArchiveThreadDialog, ThreadResourcesDialog } from "./ThreadResourcesDialog";
@@ -59,6 +60,8 @@ export type ThreadHeaderProps = {
 };
 
 const TUNABLE: ReadonlySet<ThreadType> = new Set(["orchestration", "research"]);
+/** The harnesses that keep a goal (claude /goal, codex thread/goal/set). */
+const GOAL_HARNESSES: ReadonlySet<string> = new Set(["claude", "codex"]);
 
 /** The Mac bridge's switch for a thread on another host (lib/macBridge.ts); absent for this Mac's own threads. */
 export type ChipBridge = { state: MacBridgeThreadState | null };
@@ -70,11 +73,17 @@ export function chipMenuItems(
   master = false,
   /** The thread's "Move to <host>…" rows (useThreadHost), before Archive. */
   moves: readonly ExplorerMenuItem[] = [],
+  /** The thread's goal when its composer is on screen to open the dialog;
+   *  absent leaves Goal… out. Checked while a goal runs. */
+  goal?: { running: boolean },
 ): ThreadMenuItem[] {
   const t = chip.thread;
   const items: ThreadMenuItem[] = [{ kind: "item", id: "rename", label: "Rename" }];
   if (t.threadType && TUNABLE.has(t.threadType))
     items.push({ kind: "item", id: "tune", label: `${THREAD_LABELS[t.threadType]} options…` });
+  // The goal (chrome/GoalDialog.tsx): a root thread whose harness takes one.
+  if (goal && !t.parentId && GOAL_HARNESSES.has(t.provider ?? ""))
+    items.push({ kind: "item", id: "goal", label: "Goal…", checked: goal.running });
   const paused = chip.status === "paused" || !!t.treeHasPaused;
   const stopped = chip.status === "stopped";
   const working = !!t.treeHasLiveWork || chip.status === "running" || chip.status === "starting";
@@ -203,7 +212,8 @@ export function ThreadHeader({
     const own = chip.id === target;
     const bridge: ChipBridge | undefined =
       own && targetEnv && bridgeableEnvironment(targetEnv) ? { state: bridgeState } : undefined;
-    return chipMenuItems(chip, bridge, own ? resources.length : 0, masterIds.has(chip.id), own ? host.moves : []);
+    const goal = own ? { running: !!sessionStore.get(chip.id)?.goal } : undefined;
+    return chipMenuItems(chip, bridge, own ? resources.length : 0, masterIds.has(chip.id), own ? host.moves : [], goal);
   };
 
   const pick = (chip: StripChip, id: string) => {
@@ -211,6 +221,7 @@ export function ThreadHeader({
     if (id.startsWith("type:")) onSetType(chip.id, id.slice("type:".length) as ThreadType);
     else if (id === "rename") setRenamingId(chip.id);
     else if (id === "tune") setTuning(chip);
+    else if (id === "goal") goalDialog.open(chip.id);
     // With resources on the ledger the archive asks whether they go too (ArchiveThreadDialog).
     else if (id === "archive") (liveResources(chip.id).length ? setArchiving(chip) : onArchive(chip.id));
     else if (id === "resources") setResourcesFor(chip);

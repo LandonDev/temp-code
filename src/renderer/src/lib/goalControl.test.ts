@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { goalEnterSubmits, goalStateOf, goalTriggerLabel } from "./goalControl";
+import { goalEnterSubmits, goalStateOf } from "./goalControl";
 
 const goal = { condition: "tests pass", iterations: 2, setAt: 1 };
 
@@ -10,7 +10,7 @@ describe("goalStateOf", () => {
   });
 
   it("offers Update and Clear while a goal runs, only when the draft changed", () => {
-    expect(goalStateOf(goal, "tests pass")).toMatchObject({ active: true, primary: "Update", primaryDisabled: true, canClear: true, checked: "Checked 2×" });
+    expect(goalStateOf(goal, "tests pass")).toMatchObject({ active: true, primary: "Update", primaryDisabled: true, canClear: true, checked: "Checked 2 times" });
     expect(goalStateOf(goal, "tests pass twice")).toMatchObject({ primaryDisabled: false });
   });
 
@@ -20,13 +20,6 @@ describe("goalStateOf", () => {
 
   it("hides the count before the first check", () => {
     expect(goalStateOf({ ...goal, iterations: 0 }, "").checked).toBeNull();
-  });
-});
-
-describe("goalTriggerLabel", () => {
-  it("names the goal on the button", () => {
-    expect(goalTriggerLabel(null)).toBe("Set a goal");
-    expect(goalTriggerLabel(goal)).toBe("Goal: tests pass");
   });
 });
 
