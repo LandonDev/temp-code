@@ -1038,8 +1038,10 @@ While a move runs the chip says `Moving to box…`; the result is one sonner
 toast, `Moved "<title>" to box` (or `Couldn't move "<title>" to box` with the
 error's first line under it), that leaves after 8 s. When something did not
 come along it says so in a second line and waits to be read: `The patch
-didn't apply; it's at <path>`, or `Uncommitted changes stayed on This Mac`
-(`moveNoticeException` in lib/threadMove.ts).
+didn't apply; it's at <path>`, the branch's landing note (it ran at a
+different commit, or a dirty checkout kept its own), or `Uncommitted changes
+stayed on This Mac` (`moveNoticeException` in lib/threadMove.ts), with a
+close button.
 
 Only the Mac starts a move, because only the Mac dials (the peer link of
 `remote/peers.ts`). `session.move {sessionId, to, from?}` is local-only on the

@@ -104,6 +104,11 @@ describe("moveNoticeException", () => {
     expect(n(moved({ dirty: ["a.ts"], branch: kept }))).toBe("The patch didn't apply; it's at /srv/work/shop/.temp-code/moved-changes.patch");
   });
 
+  it("names a branch that landed somewhere other than asked", () => {
+    const diverged = landed({ landing: { ...landed().landing, mode: "checkout", note: "ios/home here has commits of its own; the thread is on it at 0123456789, not abcdef0123" } });
+    expect(n(moved({ branch: diverged }))).toBe("Ios/home here has commits of its own; the thread is on it at 0123456789, not abcdef0123");
+  });
+
   it("says the changes stayed when the patch was skipped or the folder is no checkout", () => {
     expect(n(moved({ dirty: ["big.bin"], branch: landed({ dirty: ["big.bin"], patchSkipped: "over 64 MiB" }) }))).toBe("Uncommitted changes stayed on This Mac");
     expect(n(moved({ dirty: ["a.ts"] }))).toBe("Uncommitted changes stayed on This Mac");

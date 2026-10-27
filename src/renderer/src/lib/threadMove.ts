@@ -139,13 +139,15 @@ export function movePreviewLine(p: SessionMovePreview | null | "error"): string 
 }
 
 /** The one fact a finished move's toast carries under its title, when the
- *  person needs it: changes that did not come along. Everything else the
- *  move did is what they asked for, so it goes unsaid. */
+ *  person needs it: changes that did not come along, or a branch that landed
+ *  somewhere other than asked. Everything else the move did is what they
+ *  asked for, so it goes unsaid. */
 export function moveNoticeException(n: Pick<MoveNotice, "result" | "fromName">): string | null {
   const r = n.result;
   if (!r) return null;
   const b = r.branch;
   if (b?.landing.patch === "kept") return `The patch didn't apply; it's at ${b.landing.patchPath}`;
+  if (b?.landing.note) return `${b.landing.note[0].toUpperCase()}${b.landing.note.slice(1)}`;
   if (b?.patchSkipped || (!b && r.dirty.length + r.dirtyMore > 0)) return `Uncommitted changes stayed on ${n.fromName}`;
   return null;
 }

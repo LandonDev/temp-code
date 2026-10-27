@@ -59,6 +59,7 @@ describe("MoveToasts", () => {
     expect(title).toBe('Moved "Fix the build" to box');
     expect(opts.description).toBe("Uncommitted changes stayed on This Mac");
     expect(opts.duration).toBe(Infinity);
+    expect(opts).toMatchObject({ closeButton: true });
     act(() => opts.onDismiss());
     expect(view.getByTestId("n").textContent).toBe("0");
   });

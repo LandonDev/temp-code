@@ -174,7 +174,7 @@ export function MoveToasts(): null {
       const description = n.error ? n.error.split("\n")[0] : moveNoticeException(n);
       const title = n.error ? `Couldn't move "${n.title}" to ${n.toName}` : `Moved "${n.title}" to ${n.toName}`;
       const show = n.error ? toast.error : toast;
-      show(title, { id, description: description ?? undefined, duration: description ? Infinity : NOTICE_MS, onDismiss: done, onAutoClose: done });
+      show(title, { id, description: description ?? undefined, duration: description ? Infinity : NOTICE_MS, closeButton: !!description, onDismiss: done, onAutoClose: done });
     },
   );
   return null;
