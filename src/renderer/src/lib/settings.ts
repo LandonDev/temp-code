@@ -56,8 +56,7 @@ export const SETTINGS_SECTIONS: {
     id: "reviews",
     group: "threads",
     label: "Reviews",
-    description:
-      "A second model reads an implementation thread's branch before it lands on the project branch. Projects can override this from their settings.",
+    description: "A second model reads a branch before it lands. A project can override this from its settings.",
   },
   {
     id: "build",

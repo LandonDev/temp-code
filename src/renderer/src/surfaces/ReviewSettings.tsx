@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import type { ReviewSettings } from "@server/shared/review";
-import { ReviewFields, loadReviewScope, saveReviewSettings, type ReviewScope } from "../chrome/ReviewFields";
+import { ReviewFields, ReviewSkeleton, loadReviewScope, saveReviewSettings, type ReviewScope } from "../chrome/ReviewFields";
+import { PageSection } from "../components/page";
 import { registry } from "../lib/connection";
-import { MatrixSpinner } from "./threads/bits";
 
 /**
  * Settings › Reviews: the global set a project follows unless its own
@@ -32,16 +32,10 @@ export function ReviewsPage() {
     );
   };
 
-  if (!scope && !error) return <MatrixSpinner />;
   return (
-    <section>
-      <p className="pb-2 text-[12px] leading-relaxed text-content/40">
-        When a thread lands its branch with merge_branch, a second model reads the diff first.
-        No blocking findings and the merge goes through; blocking ones hold it in the thread,
-        where you can merge anyway. Each project can override this set from its own settings.
-      </p>
-      {scope ? <ReviewFields value={scope.settings} onChange={change} environmentId={environmentId} /> : null}
-      {error ? <p className="pt-2 text-[12px] text-danger">{error}</p> : null}
-    </section>
+    <PageSection>
+      {scope ? <ReviewFields value={scope.settings} onChange={change} environmentId={environmentId} /> : error ? null : <ReviewSkeleton />}
+      {error ? <p className="pt-2 text-[12px] text-destructive">{error}</p> : null}
+    </PageSection>
   );
 }

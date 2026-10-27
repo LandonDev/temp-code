@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { ReviewSettings } from "@server/shared/review";
 import { registry } from "../lib/connection";
 import { HARNESS_TITLE, type HarnessId } from "../lib/session";
@@ -8,7 +8,11 @@ import { useRulesScope } from "../lib/tcserver/rules";
 import { parseReviewScope, reviewerModel, reviewerModelOptions, type ReviewScope } from "../lib/reviewScope";
 
 export { reviewSummary, type ReviewScope } from "../lib/reviewScope";
-import { Input, Row, Segmented, Select, Toggle } from "../surfaces/settingsBits";
+import { ChoiceSelect } from "../components/choice-select";
+import { PageRow } from "../components/page";
+import { SettingSwitch } from "../components/setting-switch";
+import { Input } from "../components/ui/input";
+import { Skeleton } from "../components/ui/skeleton";
 
 /**
  * Review before merge (shared/review.ts): the fields, shared by the global
@@ -26,14 +30,28 @@ export const BLOCK_OPTIONS: { value: ReviewSettings["blockOn"]; label: string }[
 ];
 
 const COPY = {
-  before: {
-    label: "Review before merge",
-    hint: "An implementation thread's branch is reviewed by a second model before it lands on the project branch.",
-  },
-  model: { label: "Reviewer", hint: "Models the orchestration rules approve and this machine can run." },
-  blockOn: { label: "Hold the merge on", hint: "Confirmed defects the reviewer verified, or anything it reports." },
-  minutes: { label: "Time limit", hint: "Past it the merge proceeds and the thread says the review timed out." },
+  before: { label: "Review before merge", hint: undefined },
+  model: { label: "Reviewer", hint: "Models the orchestration rules approve." },
+  blockOn: { label: "Hold the merge on", hint: "Confirmed means the reviewer verified it." },
+  minutes: { label: "Time limit", hint: "Past it the merge goes ahead." },
 };
+
+/** Four rows standing in for the fields while `review.get` answers. */
+export function ReviewSkeleton() {
+  return (
+    <div data-testid="review-skeleton" aria-hidden className="flex flex-col">
+      {[0, 1, 2, 3].map((i) => (
+        <div key={i} className="flex items-center gap-3 py-3">
+          <div className="flex flex-1 flex-col gap-1.5">
+            <Skeleton className="h-3.5 w-32" />
+            <Skeleton className="h-3 w-48" />
+          </div>
+          <Skeleton className="h-7 w-28" />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export async function loadReviewScope(environmentId: string, projectId: string | null): Promise<ReviewScope> {
   const raw = await registry.linkOf(environmentId).request("review.get", { projectId });
@@ -87,34 +105,33 @@ export function ReviewFields({
     else setMinutes(String(value.maxMinutes));
   };
 
-  const toggle = <Toggle label={COPY.before.label} on={value.beforeMerge} onChange={(beforeMerge) => set({ beforeMerge })} />;
-  const provider = (
-    <Select
-      label="Provider"
-      value={value.provider}
-      options={REVIEWER_PROVIDERS.map((id) => ({ value: id, label: HARNESS_TITLE[id] }))}
-      onChange={(p) => set({ provider: p as ReviewSettings["provider"], model: "" })}
-      className={compact ? "max-w-28" : "max-w-32"}
-    />
-  );
-  const modelSelect = (
-    <Select label="Model" value={current} options={modelOptions} onChange={(m) => set({ model: m })} className={compact ? "max-w-40" : "max-w-52"} />
-  );
-  const reasoning =
-    ladder.length > 1 ? (
-      <Select
-        label="Reasoning"
-        value={value.reasoning}
-        options={ladder.map((level) => ({ value: level, label: EFFORT_LABELS[level] }))}
-        onChange={(reasoning) => set({ reasoning: reasoning as ReviewSettings["reasoning"] })}
-        className={compact ? "max-w-28" : "max-w-32"}
+  const toggle = <SettingSwitch label={COPY.before.label} on={value.beforeMerge} onChange={(beforeMerge) => set({ beforeMerge })} />;
+  const reviewer = (
+    <div className="flex flex-wrap justify-end gap-2">
+      <ChoiceSelect
+        size="sm"
+        label="Provider"
+        value={value.provider}
+        options={REVIEWER_PROVIDERS.map((id) => ({ value: id, label: HARNESS_TITLE[id] }))}
+        onChange={(p) => set({ provider: p as ReviewSettings["provider"], model: "" })}
       />
-    ) : null;
+      <ChoiceSelect size="sm" label="Model" value={current} options={modelOptions} onChange={(m) => set({ model: m })} />
+      {ladder.length > 1 ? (
+        <ChoiceSelect
+          size="sm"
+          label="Reasoning"
+          value={value.reasoning}
+          options={ladder.map((level) => ({ value: level, label: EFFORT_LABELS[level] }))}
+          onChange={(reasoning) => set({ reasoning: reasoning as ReviewSettings["reasoning"] })}
+        />
+      ) : null}
+    </div>
+  );
   const blockOn = (
-    <Segmented label={COPY.blockOn.label} value={value.blockOn} options={BLOCK_OPTIONS} onChange={(blockOn) => set({ blockOn })} />
+    <ChoiceSelect label={COPY.blockOn.label} value={value.blockOn} options={BLOCK_OPTIONS} onChange={(blockOn) => set({ blockOn })} />
   );
   const limit = (
-    <label className="flex items-center gap-1.5 text-[12px] text-content/50">
+    <span className="flex items-center gap-2 text-[12px] text-muted-foreground">
       <Input
         aria-label={COPY.minutes.label}
         inputMode="numeric"
@@ -127,55 +144,41 @@ export function ReviewFields({
         className="w-16 text-right tabular-nums"
       />
       min
-    </label>
+    </span>
   );
 
-  if (compact) {
-    return (
-      <div className="flex flex-col gap-2.5">
-        <CompactRow {...COPY.before}>{toggle}</CompactRow>
-        {value.beforeMerge ? (
-          <>
-            <CompactRow {...COPY.model}>
-              <div className="flex flex-wrap justify-end gap-1.5">
-                {provider}
-                {modelSelect}
-                {reasoning}
-              </div>
-            </CompactRow>
-            <CompactRow {...COPY.blockOn}>{blockOn}</CompactRow>
-            <CompactRow {...COPY.minutes}>{limit}</CompactRow>
-          </>
-        ) : null}
-      </div>
-    );
-  }
+  const Row = compact ? CompactRow : PageFieldRow;
   return (
-    <>
-      <Row label={COPY.before.label} description={COPY.before.hint}>
-        {toggle}
-      </Row>
-      <Row label={COPY.model.label} description={COPY.model.hint}>
-        {provider}
-        {modelSelect}
-        {reasoning}
-      </Row>
-      <Row label={COPY.blockOn.label} description={COPY.blockOn.hint}>
-        {blockOn}
-      </Row>
-      <Row label={COPY.minutes.label} description={COPY.minutes.hint}>
-        {limit}
-      </Row>
-    </>
+    <div data-slot="review-fields" className={compact ? "flex flex-col gap-3" : "flex flex-col"}>
+      <Row {...COPY.before}>{toggle}</Row>
+      {value.beforeMerge ? (
+        <>
+          <Row {...COPY.model}>{reviewer}</Row>
+          <Row {...COPY.blockOn}>{blockOn}</Row>
+          <Row {...COPY.minutes}>{limit}</Row>
+        </>
+      ) : null}
+    </div>
   );
 }
 
-function CompactRow({ label, hint, children }: { label: string; hint: string; children: React.ReactNode }) {
+type FieldRowProps = { label: string; hint?: string; children: ReactNode };
+
+function PageFieldRow({ label, hint, children }: FieldRowProps) {
+  return (
+    <PageRow title={label} description={hint}>
+      {children}
+    </PageRow>
+  );
+}
+
+/** The project sheet's row: a 13px title, its 12px hint, the control at the end. */
+function CompactRow({ label, hint, children }: FieldRowProps) {
   return (
     <div className="flex items-center gap-4">
       <div className="min-w-0 flex-1">
-        <div className="text-[12px] font-medium text-content">{label}</div>
-        <div className="text-[11px] leading-4 text-content/40">{hint}</div>
+        <div className="text-[13px] font-medium text-foreground">{label}</div>
+        {hint ? <div className="text-[12px] text-muted-foreground">{hint}</div> : null}
       </div>
       {children}
     </div>

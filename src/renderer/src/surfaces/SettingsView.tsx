@@ -132,11 +132,7 @@ export function SettingsView({
               <BuildPage />
             </div>
           ) : null}
-          {section === "reviews" ? (
-            <div>
-              <ReviewsPage />
-            </div>
-          ) : null}
+          {section === "reviews" ? <ReviewsPage /> : null}
           {section === "appshots" ? (
             <div>
               <AppshotsPage />
