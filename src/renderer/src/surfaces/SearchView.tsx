@@ -347,24 +347,27 @@ export function SearchView({
   // cache paints at once, the host's answer replaces it. An offline host is
   // skipped, and nothing waits on a host to paint the other kinds.
   const browseNotes = browsing && loadNotesEnabled() && (parsed.types === null || parsed.types.includes("note"));
+  // The asked hosts that are online, as one string: a host coming online
+  // reads its notes, a heartbeat that changes nothing does not.
+  const onlineHosts = askedHosts
+    .filter((env) => isOnline(env, statuses.get(env.id)))
+    .map((env) => env.id)
+    .join("\n");
   useEffect(() => {
-    if (!open || !browseNotes) return;
+    if (!open || !browseNotes || !onlineHosts) return;
     let cancelled = false;
-    const hosts = askedHosts.filter((env) => isOnline(env, statuses.get(env.id)));
     const land = (host: string, list: Note[]) => {
       if (!cancelled) setNotes((prev) => new Map(prev).set(host, list));
     };
-    for (const env of hosts) {
-      const cached = peekNotes(env.id);
-      if (cached) land(env.id, cached);
-      void loadNotes(env.id).then((list) => land(env.id, list), () => {});
+    for (const host of onlineHosts.split("\n")) {
+      const cached = peekNotes(host);
+      if (cached) land(host, cached);
+      void loadNotes(host).then((list) => land(host, list), () => {});
     }
     return () => {
       cancelled = true;
     };
-    // `statuses` changes on every heartbeat; online is read when the browse starts.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [askedHosts, browseNotes, open]);
+  }, [browseNotes, onlineHosts, open]);
 
   const browsed = useMemo(() => {
     if (!browsing) return null;

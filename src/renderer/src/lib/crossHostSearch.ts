@@ -405,7 +405,11 @@ function foldedRow({ name, lines }: { name?: FileHit; lines: ContentHit[] }): Fi
   const more = byLine.size > 1 ? { more: byLine.size - 1 } : {};
   if (!first) return name!;
   if (!name) return { ...first, ...more };
-  return { ...name, line: first.line, column: first.column, ...more };
+  const at = { line: first.line, column: first.column, ...more };
+  if (first.host === name.host) return { ...name, ...at };
+  // The line matched on the paired host's copy: the row opens that copy.
+  const alsoOn = [...new Set([name.host!, ...(name.alsoOn ?? []), ...(first.alsoOn ?? [])])].filter((host) => host !== first.host);
+  return { ...name, host: first.host, path: first.path, mtime: first.mtime, newer: first.newer, alsoOn, ...at };
 }
 
 // ── per-host hit builders (pure; the surface feeds them the wire rows) ──

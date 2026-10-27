@@ -222,6 +222,12 @@ describe("foldFileHits", () => {
     expect(foldFileHits([name], pairs)).toEqual([name]);
   });
 
+  it("a name row whose first line matched on the paired copy opens that copy", () => {
+    const name = file("local", "/Users/me/app/src/a.ts", { alsoOn: ["box"], newer: false });
+    const out = foldFileHits([name, content("box", "/work/app/src/a.ts", 4, { mtime: 9 })], pairs);
+    expect(out).toEqual([{ ...name, host: "box", path: "/work/app/src/a.ts", mtime: 9, newer: undefined, alsoOn: ["local"], line: 4, column: 1 }]);
+  });
+
   it("folds a paired project's lines from both hosts into one row", () => {
     const out = foldFileHits(
       [content("local", "/Users/me/app/src/a.ts", 3, { alsoOn: ["box"], newer: false }), content("box", "/work/app/src/a.ts", 9)],

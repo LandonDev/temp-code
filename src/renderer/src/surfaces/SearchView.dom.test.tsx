@@ -361,6 +361,22 @@ describe("SearchView across hosts", () => {
     view.unmount();
   });
 
+  it("a notes browse reads a host's notes once it comes online", async () => {
+    h.statuses = new Map();
+    const view = render(<SearchView open cwd="/Users/me/app" recents={recents} initialQuery="type:note" {...props()} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    expect(rows(view)).toHaveLength(0);
+    h.statuses = new Map([["env_box", { transport: "open", fresh: true }]]);
+    view.rerender(<SearchView open cwd="/Users/me/app" recents={recents} initialQuery="type:note" {...props()} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    expect(kinds(view)).toEqual(["note"]);
+    view.unmount();
+  });
+
   it("a bare type:file lists this project's recent files", async () => {
     h.recentFiles = ["/Users/me/app/README.md", "/Users/me/app/src/gateway.ts"];
     const view = render(<SearchView open cwd="/Users/me/app" recents={recents} {...props()} />);
