@@ -259,7 +259,13 @@ counts green and red, a caret per row. A lone command opens a card headed by
 its tool name with the command in mono and its output under it. File changes
 keep their counts on the line and their diff behind the caret. No background-
 task lines: live work is the right panel's Activity section. No timestamps
-in the flow; the closing line says what the turn took and nothing else.
+in the flow; the closing line says what the turn took and nothing else. A thought is one row
+of that list: "Thinking" shimmering with its newest sentence while it
+streams, then "Thought for 4s ▸", which opens the text. The closing line
+reads "Worked for 2m 4s", its copy, note, hand-off and second-opinion
+buttons showing on hover. Every notice (a gate, a review, a compaction, a
+pass, a batch) is one muted line with a glyph, a lead and its details; only
+a held review and a failure are cards.
 
 ## Restraint
 

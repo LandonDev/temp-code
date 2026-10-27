@@ -10,8 +10,10 @@ The window and `RowView` live in AgentTranscript.tsx; every row component
 lives under `surfaces/transcript/`, one file per area with its owner named
 in the first line: TranscriptBlock (the per-block switch), UserMessage,
 ActionGroup (A7, turn structure); ActivityRow, ToolCall, ActionRow,
-ActionLine, CommandCard, ToolGlyph and actionModel (A8, action rows); ThinkingRow, TurnEnd, SystemRow, NoticeRow
-(every typed notice through one switch), Approval and markdown.css (A9).
+ActionLine, CommandCard, ToolGlyph and actionModel (A8, action rows);
+ThinkingRow with thinking.ts, TurnEnd, SystemRow, NoticeRow (every typed
+notice through one switch), NoticeLine, PlanHandoffRow, Approval,
+IconAction and markdown.css (A9).
 `transcript/types.ts` holds the callback types, so nothing under
 `transcript/` imports AgentTranscript.tsx.
 
@@ -53,6 +55,31 @@ foreground, the same words the group line uses); the components only draw it.
 - `transcript/ActionRow.fixtures.tsx` holds one of each row for a static
   look; `ToolRow.dom.test.tsx` and `EditRow.dom.test.tsx` prove the
   behaviour.
+
+## Thinking, closing lines and notices
+
+- **A thought** is one row of the paragraph's action list
+  (`transcript/ThinkingRow.tsx`, words in `transcript/thinking.ts`):
+  "Thinking" in `TextShimmer` with the newest finished sentence while it
+  streams, "Thought for 4s" once it ends, opening the text on a
+  `Collapsible`. The duration runs from the block's `ts` to the `endTs` the
+  row is given (the next block, or the turn's end).
+- **The closing line** (`transcript/TurnEnd.tsx`): "Worked for 2m 4s" and
+  four hover-only icon actions (`transcript/IconAction.tsx`: a ghost
+  `icon-xs` Button in a Tooltip armed on the line's first hover, so a long
+  settled transcript mounts no tooltip roots); a live turn speaks
+  `StatusMark`'s words. No clock time.
+- **Notices** draw on `transcript/NoticeLine.tsx`: a 14 px glyph slot that
+  lines up with the action rows' tool icon, the lead, each detail its own
+  muted span, an optional caret and hover actions. Gate, compaction, pass,
+  handoff, plan hand-off, batch, account-gone, a stopped turn and any plain
+  system text are lines; a held review (`ReviewCard.tsx`) and a failure
+  (`FailureCard.tsx`) are the only cards. A plain notice keeps its kind on
+  the block (`Block.notice`, from fold.ts), so `NoticeRow` draws it typed.
+- **Prose and code** (`AgentMarkdown.tsx`, `CodeBlock.tsx`,
+  `transcript/markdown.css`): 15/1.6 prose (`size="compact"` is 14/24 for
+  panels), one plain inline-code pill, a quiet code block coloured by
+  weight on `lib/transcriptCodeTheme.ts`, whose colours are the ink tokens.
 
 ## Rules
 
