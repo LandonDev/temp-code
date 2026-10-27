@@ -343,7 +343,8 @@ app replaces itself from the feed, and only from the feed.
   build` and the release gate) fails when the index chunk's static closure
   passes 5 MiB + 16 KiB or holds one of the lazy modules (the Base UI primitives
   stay out of the entry: the tooltip defers its primitive, menus and select ride
-  the search, inbox and notes chunks; only the dialog is in the first paint). `/ui` serves the chunks
+  the search, inbox and notes chunks; only the dialog is in the first paint). It also fails when a chunk renders a string tag that is no HTML, SVG or custom element: the React Compiler inlines a lowercase component alias into the JSX tag (`jsx("current")`, an empty element), which only the built bundle shows.
+  `/ui` serves the chunks
   as immutable module scripts behind the cookie (remote/ui.ts).
 - Proof: `bun run script:e2e-launch-timing` (scripts/e2e-launch-timing.ts)
   packs an isolated copy under /private/tmp/tc-launch-timing and launches it

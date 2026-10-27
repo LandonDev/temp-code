@@ -108,26 +108,30 @@ export function defineChunk<M extends object>(name: string, load: () => Promise<
       const makeLazy = () =>
         lazy(() => (module ? settled(pick(module)) : start().then(pick)) as Promise<{ default: ComponentType<AnyProps> }>);
       // One lazy per surface, shared by every mount; a retry replaces it.
-      let current: LazyExoticComponent<ComponentType<AnyProps>> = makeLazy();
+      // Capitalized and opted out of the React Compiler: it inlines a
+      // lowercase alias into the JSX tag (`jsx("current")`) and memoizes a
+      // captured variable as a constant, so a retry would render the old lazy.
+      let Current: LazyExoticComponent<ComponentType<AnyProps>> = makeLazy();
       const retry = () => {
-        current = makeLazy();
+        Current = makeLazy();
         if (!module) promise = null;
       };
       function Surface(props: AnyProps) {
+        "use no memo";
         // The lazy this mount renders, read again after each retry.
         const [, setAttempt] = useState(0);
-        const Lazy = current;
+        const Rendered = Current;
         return (
           <ChunkBoundary
             name={`${name}.${String(key)}`}
             fallback={fallback}
             onRetry={() => {
-              if (Lazy === current) retry();
+              if (Rendered === Current) retry();
               setAttempt((n) => n + 1);
             }}
           >
             <Suspense fallback={fallback}>
-              <Lazy {...props} />
+              <Current {...props} />
             </Suspense>
           </ChunkBoundary>
         );

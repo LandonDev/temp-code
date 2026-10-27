@@ -80,7 +80,7 @@ surfaces that belong in the first paint, not a chunk's worth: xterm alone is
 0.3 MiB, CodeMirror 0.8, recharts 0.9) or when any module of
 `NEVER_IN_ENTRY` (the packages and surfaces above) is in that closure — a
 single static import from the main chunk would fold a chunk back in long
-before the budget noticed. It runs in `bun run build` and in the release
+before the budget noticed. It also fails when a chunk renders a string tag that is no HTML, SVG or custom element: the React Compiler inlines a lowercase component alias into the JSX tag (`jsx("current")`, an empty element), which only the built bundle shows. It runs in `bun run build` and in the release
 gate (scripts/release.ts) right after the build.
 
 ## Serving

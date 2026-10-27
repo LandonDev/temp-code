@@ -7,14 +7,21 @@
  *      parses before the rail paints) stays under BUDGET_BYTES;
  *   2. none of the lazy surfaces (surfaces/chunks.ts) is in that closure — a
  *      static import from the main chunk would silently fold a chunk back in
- *      long before the budget noticed.
+ *      long before the budget noticed;
+ *   3. no chunk renders a string tag that is not an HTML or SVG element (or a
+ *      custom element): the React Compiler inlines a lowercase component
+ *      alias into the JSX tag (`jsx("current")`), which mounts an empty DOM
+ *      element only the built bundle shows.
  *
- * Reads out/bundle-map.json (the bundleMap plugin in electron.vite.config.ts).
+ * Reads out/bundle-map.json (the bundleMap plugin in electron.vite.config.ts)
+ * and out/renderer/assets/*.js.
  * `bun scripts/bundle-map.ts` prints the map when this fails.
  *
  *   bun scripts/check-bundle-size.ts            # check
  *   bun scripts/check-bundle-size.ts --print    # the numbers, no verdict
  */
+import { readdirSync, readFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { entryChunk, loadBundleMap, staticClosure } from './bundle-map'
 
 /** Measured 2026-10-21 after the split: 4.56 MiB for the closure (8.07 MiB
@@ -73,9 +80,54 @@ export const NEVER_IN_ENTRY = [
   'src/renderer/src/aliax/pages.tsx'
 ]
 
-export type Verdict = { ok: boolean; closureBytes: number; chunks: string[]; leaked: string[]; lines: string[] }
+/** Every HTML and SVG element name, lower-cased (SVG is matched case-insensitively,
+ *  so `foreignObject` and `linearGradient` pass). */
+export const KNOWN_TAGS = new Set(
+  (
+    // HTML
+    'a abbr address area article aside audio b base bdi bdo blockquote body br button canvas caption cite code col ' +
+    'colgroup data datalist dd del details dfn dialog div dl dt em embed fieldset figcaption figure footer form h1 h2 ' +
+    'h3 h4 h5 h6 head header hgroup hr html i iframe img input ins kbd label legend li link main map mark menu meta ' +
+    'meter nav noscript object ol optgroup option output p param picture pre progress q rp rt ruby s samp script search ' +
+    'section select slot small source span strong style sub summary sup table tbody td template textarea tfoot th thead ' +
+    'time title tr track u ul var video wbr ' +
+    // SVG
+    'svg animate animatemotion animatetransform circle clippath defs desc ellipse feblend fecolormatrix ' +
+    'fecomponenttransfer fecomposite feconvolvematrix fediffuselighting fedisplacementmap fedistantlight fedropshadow ' +
+    'feflood fefunca fefuncb fefuncg fefuncr fegaussianblur feimage femerge femergenode femorphology feoffset ' +
+    'fepointlight fespecularlighting fespotlight fetile feturbulence filter foreignobject g image line lineargradient ' +
+    'marker mask metadata mpath path pattern polygon polyline radialgradient rect set stop switch symbol text textpath ' +
+    'tspan use view ' +
+    // MathML roots KaTeX renders
+    'math semantics mrow mi mn mo ms mtext annotation ' +
+    // Vendor: parse5's fragment parser makes a placeholder node with createElement("documentmock").
+    'documentmock'
+  ).split(' ')
+)
 
-export function checkBundle(map = loadBundleMap(), budget = BUDGET_BYTES): Verdict {
+const TAG_CALL = /\b(?:jsxs?|createElement)\("([^"]+)"/g
+
+/** The string tags in `source` that are neither a known element nor a custom
+ *  element (a name with a dash). */
+export function badJsxTags(source: string): string[] {
+  const bad = new Set<string>()
+  for (const [, tag] of source.matchAll(TAG_CALL)) {
+    if (!tag.includes('-') && !KNOWN_TAGS.has(tag.toLowerCase())) bad.add(tag)
+  }
+  return [...bad]
+}
+
+/** Each renderer chunk under `dir` with the bad tags it renders. */
+export function scanAssets(dir = resolve('out/renderer/assets')): { file: string; tags: string[] }[] {
+  return readdirSync(dir)
+    .filter((f) => f.endsWith('.js'))
+    .map((file) => ({ file, tags: badJsxTags(readFileSync(join(dir, file), 'utf8')) }))
+    .filter((r) => r.tags.length > 0)
+}
+
+export type Verdict = { ok: boolean; closureBytes: number; chunks: string[]; leaked: string[]; badTags: string[]; lines: string[] }
+
+export function checkBundle(map = loadBundleMap(), budget = BUDGET_BYTES, assets = scanAssets()): Verdict {
   const [entryFile] = entryChunk(map)
   const closure = staticClosure(map, entryFile)
   const closureBytes = closure.reduce((n, f) => n + map.chunks[f].bytes, 0)
@@ -94,7 +146,15 @@ export function checkBundle(map = loadBundleMap(), budget = BUDGET_BYTES): Verdi
   ]
   if (closureBytes > budget) lines.push(`FAIL: the first-paint closure is over budget by ${((closureBytes - budget) / 1024).toFixed(1)} kB`)
   for (const l of leaked) lines.push(`FAIL: ${l} is in the entry chunk; a static import pulled a lazy surface back in`)
-  return { ok: closureBytes <= budget && leaked.length === 0, closureBytes, chunks: closure, leaked, lines }
+  const badTags: string[] = []
+  for (const { file, tags } of assets) {
+    for (const tag of tags) {
+      badTags.push(`${file}: ${tag}`)
+      lines.push(`FAIL: ${file} renders "${tag}" as a DOM tag; a lowercase component binding was inlined into JSX (React Compiler)`)
+    }
+  }
+  const ok = closureBytes <= budget && leaked.length === 0 && badTags.length === 0
+  return { ok, closureBytes, chunks: closure, leaked, badTags, lines }
 }
 
 if (import.meta.main) {
