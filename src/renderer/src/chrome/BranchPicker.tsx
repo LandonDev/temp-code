@@ -18,9 +18,13 @@ import {
   notifyGitChanged,
   type GitBranchInfo,
 } from "../lib/fs";
-import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { useProjectBranchesState } from "../hooks/useProjectBranches";
-import { Popover } from "./Popover";
+import { TruncateTip } from "../components/tip";
+import { Button } from "../components/ui/button";
+import { GroupInput, InputGroup } from "../components/ui/input";
+import { ScrollArea } from "../components/ui/scroll-area";
+import { cn } from "../lib/cn";
+import { LazyPopover } from "./menuRows";
 import { SwitchBranchDialog } from "./SwitchBranchDialog";
 
 type Props = {
@@ -31,8 +35,6 @@ type Props = {
   onClose?: () => void;
 };
 
-const MENU_WIDTH = 280;
-
 type Row =
   | { kind: "create"; name: string }
   | { kind: "branch"; branch: GitBranchInfo };
@@ -40,9 +42,6 @@ type Row =
 type PendingSwitch =
   | { kind: "create"; name: string }
   | { kind: "checkout"; name: string; remote: string | null };
-
-const MENU_MIN_HEIGHT = 180;
-const MENU_MAX_HEIGHT = 280;
 
 export function BranchPicker({
   cwd,
@@ -61,7 +60,6 @@ export function BranchPicker({
   const [blockedBusy, setBlockedBusy] = useState<"stash" | "commit" | null>(
     null,
   );
-  const root = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -94,10 +92,6 @@ export function BranchPicker({
     setQuery("");
     setError(null);
     setActive(0);
-  }, [open]);
-
-  useEffect(() => {
-    if (open) search.current?.focus();
   }, [open]);
 
   useEffect(() => {
@@ -247,64 +241,95 @@ export function BranchPicker({
       ? `detached ${current}`
       : current
     : "No repo";
-  const title = awaitingBranch
-    ? "Loading branch…"
-    : missingGit
-      ? "No git repository"
-      : label;
   const interactive = enabled && !awaitingBranch && !missingGit;
+
+  const trigger = (
+    <Button
+      variant="ghost"
+      size="xs"
+      aria-label={
+        awaitingBranch
+          ? "Loading branch"
+          : missingGit
+            ? "No git repository"
+            : `Branch ${label}`
+      }
+      disabled={!interactive || !!blocked}
+      className={cn(
+        "min-w-0 font-normal text-muted-foreground hover:text-foreground aria-expanded:text-foreground",
+        missingGit && "disabled:opacity-100",
+      )}
+    >
+      <GitBranch className="size-3.5 shrink-0" strokeWidth={1.75} />
+      {awaitingBranch ? (
+        <span className="relative truncate font-mono text-[12px]">
+          {/*
+            A real text node, hidden rather than absent, so the pending
+            line box is produced exactly the way the loaded one is — the
+            toolbar's height cannot depend on which branch we are in.
+            "main" also keeps the reserved width near a typical branch.
+          */}
+          <span className="invisible">main</span>
+          <span className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-current opacity-50" />
+        </span>
+      ) : (
+        <TruncateTip text={label}>
+          <span className="truncate font-mono text-[12px]">{label}</span>
+        </TruncateTip>
+      )}
+    </Button>
+  );
 
   return (
     <div className="flex max-w-[45%] shrink-0 items-center gap-2.5">
-      <div ref={root} className="relative min-w-0">
-        <button
-          type="button"
-          title={title}
-          aria-label={
-            awaitingBranch
-              ? "Loading branch"
-              : missingGit
-                ? "No git repository"
-                : `Branch ${label}`
-          }
-          aria-expanded={missingGit ? undefined : open}
-          aria-haspopup={missingGit ? undefined : "dialog"}
-          disabled={!interactive}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => {
-            if (!interactive || blocked) return;
-            if (open) {
-              dismiss(true);
-              return;
-            }
-            setOpen(true);
+      <div className="relative min-w-0">
+        <LazyPopover
+          trigger={trigger}
+          open={open}
+          onOpenChange={(next) => {
+            if (next) setOpen(true);
+            else dismiss(true);
           }}
-          className={
-            missingGit
-              ? "flex min-w-0 cursor-default items-center gap-1.5 text-content/50"
-              : `flex min-w-0 items-center gap-1.5 ${
-                  open ? "text-content" : "text-content/50 hover:text-content"
-                } disabled:opacity-40 disabled:hover:text-content/50`
-          }
+          side="top"
+          align="start"
+          label="Branch picker"
+          initialFocus={search}
+          finalFocus={onClose ? false : undefined}
+          className="max-h-70 min-h-45 w-70 gap-0 p-1"
         >
-          <GitBranch className="size-3.5 shrink-0" strokeWidth={1.75} />
-          <span className="relative truncate font-mono text-[12px]">
-            {awaitingBranch ? (
-              <>
-                {/*
-                  A real text node, hidden rather than absent, so the pending
-                  line box is produced exactly the way the loaded one is — the
-                  toolbar's height cannot depend on which branch we are in.
-                  "main" also keeps the reserved width near a typical branch.
-                */}
-                <span className="invisible">main</span>
-                <span className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-current opacity-50" />
-              </>
-            ) : (
-              label
-            )}
-          </span>
-        </button>
+          <InputGroup leading={<Search className="size-3.5" />} className="mb-1 shrink-0">
+            <GroupInput
+              ref={search}
+              value={query}
+              placeholder="Search or create a branch"
+              aria-label="Search or create a branch"
+              spellCheck={false}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              disabled={busy}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setActive(0);
+                setError(null);
+              }}
+              onKeyDown={onSearchKey}
+            />
+          </InputGroup>
+          <BranchList
+            rows={rows}
+            active={active}
+            busy={busy}
+            emptyLabel={query.trim() ? "No matching branches" : "No branches"}
+            onActive={setActive}
+            onPick={pick}
+          />
+          {error ? (
+            <p className="mt-1 max-h-16 shrink-0 overflow-y-auto whitespace-pre-wrap px-2 py-1.5 text-xs text-destructive">
+              {error}
+            </p>
+          ) : null}
+        </LazyPopover>
         {blocked ? (
           <SwitchBranchDialog
             cwd={cwd}
@@ -331,56 +356,6 @@ export function BranchPicker({
             }}
           />
         ) : null}
-        {open ? (
-          <Popover
-            anchor={root}
-            side="top"
-            width={MENU_WIDTH}
-            minHeight={MENU_MIN_HEIGHT}
-            maxHeight={MENU_MAX_HEIGHT}
-            onDismiss={(reason) => dismiss(reason === "escape")}
-            role="dialog"
-            aria-label="Branch picker"
-            data-branch-picker
-            className="flex flex-col overflow-hidden"
-          >
-            <label className="flex shrink-0 items-center gap-2 border-b border-content/10 px-2 py-2.5 text-content/50">
-              <Search className="size-3.5 shrink-0" strokeWidth={1.75} />
-              <input
-                ref={search}
-                type="text"
-                value={query}
-                placeholder="Search or create a branch..."
-                aria-label="Search or create a branch"
-                spellCheck={false}
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-                disabled={busy}
-                className="min-w-0 flex-1 bg-transparent text-[12px] text-content outline-none placeholder:text-content/40 disabled:cursor-default disabled:opacity-40"
-                onChange={(e) => {
-                  setQuery(e.target.value);
-                  setActive(0);
-                  setError(null);
-                }}
-                onKeyDown={onSearchKey}
-              />
-            </label>
-            <BranchList
-              rows={rows}
-              active={active}
-              busy={busy}
-              emptyLabel={query.trim() ? "No matching branches" : "No branches"}
-              onActive={setActive}
-              onPick={pick}
-            />
-            {error ? (
-              <p className="max-h-16 shrink-0 overflow-y-auto whitespace-pre-wrap border-t border-content/10 px-2.5 py-2 text-[11px] leading-4 text-danger">
-                {error}
-              </p>
-            ) : null}
-          </Popover>
-        ) : null}
       </div>
     </div>
   );
@@ -401,83 +376,62 @@ function BranchList({
   onActive: (index: number) => void;
   onPick: (row: Row) => void;
 }) {
-  const lockOverscroll = useLockOverscroll<HTMLDivElement>();
-  const activeRef = useRef<HTMLButtonElement>(null);
+  const activeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     activeRef.current?.scrollIntoView({ block: "nearest" });
   }, [active]);
 
   if (rows.length === 0) {
-    return (
-      <div className="px-3 py-4 text-[12px] text-content/50">{emptyLabel}</div>
-    );
+    return <div className="px-2 py-1.5 text-xs text-muted-foreground">{emptyLabel}</div>;
   }
 
   return (
-    <div
-      ref={lockOverscroll}
-      role="listbox"
-      aria-label="Branches"
-      className="min-h-0 flex-1 overflow-y-auto overscroll-none px-1.5 py-1.5"
-    >
-      {rows.map((row, index) => {
-        const highlighted = index === active;
-        const selected = row.kind === "branch" && row.branch.current;
-        return (
-          <button
-            key={
-              row.kind === "create"
-                ? `create:${row.name}`
-                : `${row.branch.remote ?? "local"}:${row.branch.name}`
-            }
-            ref={highlighted ? activeRef : undefined}
-            type="button"
-            role="option"
-            aria-selected={selected}
-            disabled={busy}
-            onMouseDown={(e) => e.preventDefault()}
-            onMouseEnter={() => onActive(index)}
-            onClick={() => onPick(row)}
-            className={
-              row.kind === "create"
-                ? `mb-1 flex h-7 w-full min-w-0 items-center gap-3 rounded-lg px-2 text-left disabled:cursor-default disabled:opacity-40 ${
-                    highlighted ? "bg-content/10 text-content" : "text-content hover:bg-content/5"
-                  }`
-                : `flex h-7 w-full items-center gap-3 rounded-lg px-2 text-left disabled:cursor-default disabled:opacity-40 ${
-                    highlighted ? "bg-content/10 text-content" : "text-content hover:bg-content/5"
-                  }`
-            }
-          >
-            {row.kind === "create" ? (
-              <>
-                <Plus className="size-3.5 shrink-0" strokeWidth={1.75} />
-                <span className="min-w-0 truncate text-[12px]">
-                  Create and checkout {row.name}
-                </span>
-              </>
-            ) : (
-              <>
-                <GitBranch
-                  className="size-3.5 shrink-0 text-content/50"
-                  strokeWidth={1.75}
-                />
-                <span className="min-w-0 flex-1 truncate font-mono text-[12px]">
-                  {row.branch.name}
-                </span>
-                {row.branch.remote ? (
-                  <span className="shrink-0 text-[11px] text-content/40">
-                    {row.branch.remote}
-                  </span>
-                ) : null}
-                {selected ? (
-                  <Check className="size-3.5 shrink-0" strokeWidth={2.25} />
-                ) : null}
-              </>
-            )}
-          </button>
-        );
-      })}
-    </div>
+    <ScrollArea className="min-h-0 flex-1">
+      <div role="listbox" aria-label="Branches">
+        {rows.map((row, index) => {
+          const highlighted = index === active;
+          const selected = row.kind === "branch" && row.branch.current;
+          return (
+            <div
+              key={
+                row.kind === "create"
+                  ? `create:${row.name}`
+                  : `${row.branch.remote ?? "local"}:${row.branch.name}`
+              }
+              ref={highlighted ? activeRef : undefined}
+              role="option"
+              aria-selected={selected}
+              aria-disabled={busy}
+              onMouseDown={(e) => e.preventDefault()}
+              onMouseEnter={() => onActive(index)}
+              onClick={() => {
+                if (!busy) onPick(row);
+              }}
+              className={cn(
+                "flex h-7 cursor-default items-center gap-2 rounded-md px-2 text-[13px]",
+                busy ? "opacity-50" : highlighted && "bg-muted",
+              )}
+            >
+              {row.kind === "create" ? (
+                <>
+                  <Plus className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.5} />
+                  <span className="min-w-0 truncate">Create and checkout {row.name}</span>
+                </>
+              ) : (
+                <>
+                  <GitBranch className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.5} />
+                  <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{row.branch.name}</span>
+                  {row.branch.remote ? (
+                    <span className="shrink-0 text-xs text-muted-foreground">{row.branch.remote}</span>
+                  ) : null}
+                  {selected ? <Check className="size-3.5 shrink-0" /> : null}
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </ScrollArea>
   );
 }

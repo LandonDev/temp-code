@@ -20,7 +20,7 @@ import {
   Settings,
   Trash2,
 } from "./icons";
-import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useDragResize } from "../hooks/useDragResize";
 import { useInboxUnseen } from "../hooks/useInboxUnseen";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
@@ -65,7 +65,7 @@ import {
   saveTabGroupMascot,
 } from "../lib/tabGroups";
 import { threadsToMarkRead } from "../lib/markRead";
-import { batchActionOfMenuId, batchCounts, batchMenuExtraItems, type BatchCounts } from "../lib/threadBatchMenu";
+import { batchActionOfMenuId, batchCounts, batchMenuRows, type BatchCounts } from "../lib/threadBatchMenu";
 import { requestThreadBatch, type BatchScope } from "../lib/threadBatch";
 import { selectionFor } from "../lib/threadBatchSelection";
 import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
@@ -89,8 +89,12 @@ import { SignInRow, useSignInTarget } from "./SignInRow";
 import { UsageMeter } from "./UsageMeter";
 import { shell, useShell, type AliaxPageId } from "../stores/shell";
 import { SettingsNav } from "./SettingsRail";
-import { TabGroupMenu, type TabGroupMenuExtraItem } from "./TabGroupMenu";
-import { aliaxChunk, inboxChunk, searchChunk, settingsChunk } from "../surfaces/chunks";
+import { CUSTOMIZE, groupMenuRows } from "./TabGroupMenu";
+import { RowsContextMenu, type MenuRow } from "./menuRows";
+import { aliaxChunk, inboxChunk, searchChunk, settingsChunk, customizeChunk } from "../surfaces/chunks";
+
+/** The Customize dialog loads with the click (its menu warms it). */
+const CustomizeGroupDialog = customizeChunk.surface("CustomizeGroupDialog");
 import { Kbd } from "../components/ui/kbd";
 import { StatusMark } from "../components/ui/status";
 
@@ -106,19 +110,21 @@ export function projectMenuExtraItems(
   pinned: boolean,
   canRemove: boolean,
   counts: BatchCounts | null,
-): TabGroupMenuExtraItem[] {
-  const items: TabGroupMenuExtraItem[] = [
+): MenuRow[] {
+  const items: MenuRow[] = [
     pinned
-      ? { id: "unpin", label: "Unpin workspace", icon: PinOff }
-      : { id: "pin", label: "Pin workspace", icon: Pin },
-    { id: "reveal", label: REVEAL_LABEL, icon: FolderOpen },
-    { id: "read", label: "Mark all read", icon: ListChecks, sepBefore: true },
-    ...batchMenuExtraItems(counts),
+      ? { kind: "item", id: "unpin", label: "Unpin workspace", icon: PinOff }
+      : { kind: "item", id: "pin", label: "Pin workspace", icon: Pin },
+    { kind: "item", id: "reveal", label: REVEAL_LABEL, icon: FolderOpen },
+    { kind: "sep" },
+    { kind: "item", id: "read", label: "Mark all read", icon: ListChecks },
+    ...batchMenuRows(counts),
   ];
   if (canRemove) {
     items.push(
-      { id: "archive", label: "Archive", icon: Archive, sepBefore: true },
-      { id: "delete", label: "Delete", icon: Trash2, danger: true },
+      { kind: "sep" },
+      { kind: "item", id: "archive", label: "Archive", icon: Archive },
+      { kind: "item", id: "delete", label: "Delete", icon: Trash2, danger: true },
     );
   }
   return items;
@@ -202,12 +208,10 @@ export function ProjectRail({
   const [groupCustomColors, setGroupCustomColors] = useState(
     loadTabGroupCustomColors,
   );
-  const [projectMenu, setProjectMenu] = useState<{
-    x: number;
-    y: number;
-    path: string;
-    projectKey: string;
-  } | null>(null);
+  // The project whose menu is open (its ⋯ reads expanded) and whose Customize dialog is.
+  const [menuPath, setMenuPath] = useState<string | null>(null);
+  const [customizing, setCustomizing] = useState<{ path: string; projectKey: string } | null>(null);
+  const projectMenu = useRef<((at: { x: number; y: number; id: string | null }) => void) | null>(null);
   const [removing, setRemoving] = useState<{
     path: string;
     name: string;
@@ -279,30 +283,21 @@ export function ProjectRail({
     });
   }, [allProjects]);
 
-  useEffect(() => {
-    if (!projectMenu) return;
-    const onScroll = () => setProjectMenu(null);
-    const scrollParent = scrollRef.current ?? window;
-    scrollParent.addEventListener("scroll", onScroll, true);
-    return () => scrollParent.removeEventListener("scroll", onScroll, true);
-  }, [projectMenu]);
 
-  const openProjectMenu = (path: string, x: number, y: number) => {
-    setProjectMenu({
-      x,
-      y,
-      path,
-      projectKey: labelKey(path),
+  const openProjectMenu = (path: string, x: number, y: number) => projectMenu.current?.({ x, y, id: path });
+
+  /** A project's menu: Customize… (the look), then pin, reveal, the fleet switches, archive and delete. */
+  const projectMenuRows = (path: string | null): MenuRow[] | null => {
+    if (!path) return null;
+    const projectKey = labelKey(path);
+    return groupMenuRows({
+      actions: false,
+      extra: projectMenuExtraItems(
+        pinnedPaths.some((pinned) => (rowOf(path)?.paths ?? [path]).some((p) => sameProjectPath(pinned, p))),
+        Boolean(onRemoveProject),
+        batchCounts(metas, { catalog, lastSeen, floor: seenFloor, scope: projectScope(path, projectKey) }),
+      ),
     });
-  };
-
-  const onProjectContextMenu = (
-    path: string,
-    event: MouseEvent<HTMLElement>,
-  ) => {
-    event.preventDefault();
-    event.stopPropagation();
-    openProjectMenu(path, event.clientX, event.clientY);
   };
 
   const onProjectRename = (projectKey: string, label: string) => {
@@ -374,10 +369,11 @@ export function ProjectRail({
     savePinnedProjects(next);
   };
 
-  const onProjectMenuPick = (action: string) => {
-    if (!projectMenu) return;
-    const { path, projectKey } = projectMenu;
-    if (action === "pin" || action === "unpin") onTogglePin(path);
+  const onProjectMenuPick = (action: string, path: string | null) => {
+    if (!path) return;
+    const projectKey = labelKey(path);
+    if (action === CUSTOMIZE) setCustomizing({ path, projectKey });
+    else if (action === "pin" || action === "unpin") onTogglePin(path);
     else if (action === "reveal") void revealPath(path);
     else if (action === "read") markRead(path);
     else if (batchActionOfMenuId(action)) {
@@ -468,6 +464,17 @@ export function ProjectRail({
             }}
             className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-none pb-2"
           >
+            <RowsContextMenu
+              label="Workspace actions"
+              rowsFor={projectMenuRows}
+              onPick={onProjectMenuPick}
+              onOpenChange={(open, path) => {
+                setMenuPath(open ? path : null);
+                if (open) customizeChunk.preload();
+              }}
+              openRef={projectMenu}
+            >
+            <div className="contents">
             {onOpenChats ? (
               <div className="shrink-0 px-2">
                 <RailRow
@@ -500,9 +507,8 @@ export function ProjectRail({
                 sortable={pinnedSortable}
                 searchActive={overlayOpen}
                 onSelect={onSelectProject}
-                onContextMenu={onProjectContextMenu}
                 onOpenMenu={openProjectMenu}
-                menuPath={projectMenu?.path ?? null}
+                menuPath={menuPath}
                 groupLabels={groupLabels}
                 groupColors={groupColors}
                 groupCustomColors={groupCustomColors}
@@ -528,15 +534,16 @@ export function ProjectRail({
               sortable={projectSortable}
               searchActive={overlayOpen}
               onSelect={onSelectProject}
-              onContextMenu={onProjectContextMenu}
               onOpenMenu={openProjectMenu}
-              menuPath={projectMenu?.path ?? null}
+              menuPath={menuPath}
               groupLabels={groupLabels}
               groupColors={groupColors}
               groupCustomColors={groupCustomColors}
               groupLogos={groupLogos}
               groupMascots={groupMascots}
             />
+            </div>
+            </RowsContextMenu>
           </div>
           <RailFoot
             activeSessionId={activeSessionId}
@@ -548,60 +555,25 @@ export function ProjectRail({
           />
         </>
       )}
-      {projectMenu ? (
-        <TabGroupMenu
-          environmentId={environmentOfCwd(projectMenu.path) ?? registry.primary().environmentId}
-          x={projectMenu.x}
-          y={projectMenu.y}
-          groupId={projectMenu.projectKey}
-          label={resolveTabGroupLabel(
-            projectMenu.projectKey,
-            groupLabels,
-            basename(projectMenu.path),
-          )}
-          colorIndex={resolveTabGroupColorIndex(
-            projectMenu.projectKey,
-            groupColors,
-            groupCustomColors,
-          )}
-          customColor={resolveTabGroupCustomColor(
-            projectMenu.projectKey,
-            groupCustomColors,
-          )}
-          currentColor={resolveTabGroupColor(
-            projectMenu.projectKey,
-            groupColors,
-            groupCustomColors,
-            projectMenu.projectKey,
-          )}
-          logoPath={resolveTabGroupLogo(projectMenu.projectKey, groupLogos)}
-          logoProject={projectMenu.projectKey}
-          mascotName={resolveTabGroupMascot(
-            projectMenu.projectKey,
-            groupMascots,
-          )}
-          mascotProject={projectMenu.projectKey}
-          onRename={onProjectRename}
-          onColorChange={onProjectColorChange}
-          onCustomColorChange={onProjectCustomColorChange}
-          onMascotChange={onProjectMascotChange}
-          onLogoChange={() => {}}
-          onPick={() => {}}
-          onClose={() => setProjectMenu(null)}
-          showActions={false}
-          extraItems={projectMenuExtraItems(
-            pinnedPaths.some((pinned) =>
-              (rowOf(projectMenu.path)?.paths ?? [projectMenu.path]).some((p) => sameProjectPath(pinned, p)),
-            ),
-            Boolean(onRemoveProject),
-            batchCounts(metas, {
-              catalog,
-              lastSeen,
-              floor: seenFloor,
-              scope: projectScope(projectMenu.path, projectMenu.projectKey),
-            }),
-          )}
-          onExtraPick={onProjectMenuPick}
+      {customizing ? (
+        <CustomizeGroupDialog
+          environmentId={environmentOfCwd(customizing.path) ?? registry.primary().environmentId}
+          groupId={customizing.projectKey}
+          label={resolveTabGroupLabel(customizing.projectKey, groupLabels, basename(customizing.path))}
+          colorIndex={resolveTabGroupColorIndex(customizing.projectKey, groupColors, groupCustomColors)}
+          customColor={resolveTabGroupCustomColor(customizing.projectKey, groupCustomColors)}
+          currentColor={resolveTabGroupColor(customizing.projectKey, groupColors, groupCustomColors, customizing.projectKey)}
+          logoPath={resolveTabGroupLogo(customizing.projectKey, groupLogos)}
+          logoProject={customizing.projectKey}
+          mascotName={resolveTabGroupMascot(customizing.projectKey, groupMascots)}
+          mascotProject={customizing.projectKey}
+          onSave={(look) => {
+            onProjectRename(customizing.projectKey, look.name);
+            if (look.customColor) onProjectCustomColorChange(customizing.projectKey, look.customColor);
+            else onProjectColorChange(customizing.projectKey, look.colorIndex);
+            onProjectMascotChange(customizing.projectKey, look.mascot);
+          }}
+          onClose={() => setCustomizing(null)}
         />
       ) : null}
       {removing ? (
@@ -647,7 +619,6 @@ function ProjectSection({
   sortable,
   searchActive,
   onSelect,
-  onContextMenu,
   onOpenMenu,
   menuPath,
   groupLabels,
@@ -674,7 +645,6 @@ function ProjectSection({
   sortable: SortableHandle;
   searchActive: boolean;
   onSelect: (path: string) => void;
-  onContextMenu: (path: string, event: MouseEvent<HTMLElement>) => void;
   onOpenMenu: (path: string, x: number, y: number) => void;
   /** The folder whose menu is open: its ⋯ stays shown. */
   menuPath: string | null;
@@ -704,7 +674,6 @@ function ProjectSection({
             sortable={sortable}
             index={indexOf ? indexOf(item) : index}
             onSelect={onSelect}
-            onContextMenu={onContextMenu}
             onOpenMenu={onOpenMenu}
             menuOpen={menuPath !== null && item.paths.some((p) => sameProjectPath(p, menuPath))}
             groupLabels={groupLabels}
@@ -735,7 +704,6 @@ function WorkspaceRow({
   sortable,
   index,
   onSelect,
-  onContextMenu,
   onOpenMenu,
   menuOpen,
   groupLabels,
@@ -754,7 +722,6 @@ function WorkspaceRow({
   sortable: SortableHandle;
   index: number;
   onSelect: (path: string) => void;
-  onContextMenu: (path: string, event: MouseEvent<HTMLElement>) => void;
   onOpenMenu: (path: string, x: number, y: number) => void;
   menuOpen: boolean;
   groupLabels: Record<string, string>;
@@ -831,7 +798,7 @@ function WorkspaceRow({
           if (sortable.consumeClick()) return;
           onSelect(item.path);
         }}
-        onContextMenu={(event) => onContextMenu(item.path, event)}
+        data-menu-id={item.path}
       >
         {showStart ? (
           <div className="pointer-events-none absolute inset-x-2 top-0 z-20 h-0.5 rounded-full bg-accent" />

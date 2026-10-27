@@ -4,6 +4,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { Input } from "../components/ui/input";
 import { hexToHsv, hsvToHex, normalizeHex, type Hsv } from "../lib/colorUtils";
 
 type Props = {
@@ -11,7 +12,10 @@ type Props = {
   onChange: (hex: string) => void;
 };
 
-export function ColorPickerPopover({ value, onChange }: Props) {
+/** A custom colour: the saturation and brightness field, the hue strip and
+ *  the hex value, laid out inline (the Customize dialog shows it under its
+ *  colour row). */
+export function ColorPicker({ value, onChange }: Props) {
   const [hsv, setHsv] = useState<Hsv>(() => hexToHsv(value));
   const svRef = useRef<HTMLDivElement>(null);
   const hueRef = useRef<HTMLDivElement>(null);
@@ -89,7 +93,7 @@ export function ColorPickerPopover({ value, onChange }: Props) {
   const hueColor = hsvToHex(hsv.h, 100, 100);
 
   return (
-    <div className="mt-2">
+    <div className="flex flex-col gap-2">
       <div
         ref={svRef}
         role="slider"
@@ -120,7 +124,7 @@ export function ColorPickerPopover({ value, onChange }: Props) {
         aria-valuemin={0}
         aria-valuemax={360}
         aria-valuenow={Math.round(hsv.h)}
-        className="relative mt-2 h-3 w-full cursor-ew-resize touch-none rounded-full"
+        className="relative h-3 w-full cursor-ew-resize touch-none rounded-full"
         style={{
           background:
             "linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)",
@@ -136,19 +140,15 @@ export function ColorPickerPopover({ value, onChange }: Props) {
         />
       </div>
 
-      <div className="mt-2 flex items-center gap-2">
-        <span
-          className="size-7 shrink-0 rounded-md border border-content/10"
-          style={{ background: preview }}
-          aria-hidden
-        />
-        <input
+      <div className="flex items-center gap-2">
+        <span className="size-7 shrink-0 rounded-md ring-1 ring-border" style={{ background: preview }} aria-hidden />
+        <Input
           type="text"
           value={preview}
           spellCheck={false}
           aria-label="Hex color"
           onChange={(e) => onHexInput(e.target.value)}
-          className="min-w-0 flex-1 rounded-lg border border-content/10 bg-content/5 px-2 py-1.5 font-mono text-[12px] text-content outline-none focus:border-content/20"
+          className="min-w-0 flex-1 font-mono text-[12px]"
         />
       </div>
     </div>

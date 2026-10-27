@@ -27,7 +27,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
@@ -61,7 +60,7 @@ import {
   segmentTabs,
   type TabGroupSegment,
 } from "../lib/tabGroups";
-import { TabGroupMenu, type TabGroupMenuAction } from "./TabGroupMenu";
+import { CUSTOMIZE, groupActionOf, groupMenuRows, type TabGroupMenuAction } from "./TabGroupMenu";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { CwdPicker } from "./CwdPicker";
 import { RowsContextMenu, tidy, type MenuRow } from "./menuRows";
@@ -84,7 +83,10 @@ import type { RecentProject } from "../lib/recents";
 import { useShell } from "../stores/shell";
 import { sessionPrefetch, tabSessionIds } from "../lib/sessionPrefetch";
 import type { IntentProps } from "../lib/lazyChunk";
-import { diffChunk, settingsChunk, terminalChunk } from "../surfaces/chunks";
+import { diffChunk, settingsChunk, terminalChunk, customizeChunk } from "../surfaces/chunks";
+
+/** The Customize dialog loads with the click (its menu warms it). */
+const CustomizeGroupDialog = customizeChunk.surface("CustomizeGroupDialog");
 
 export type Tab = {
   id: string;
@@ -116,14 +118,14 @@ export type Tab = {
 
 /** The group menu's "New …" rows for the four non-chat thread types;
  *  "New tab in group" stays the chat. */
-const NEW_THREAD_ITEMS = (["planning", "implementation", "research", "orchestration"] as const).map(
-  (type) => ({
-    id: `new:${type}`,
-    label: `New ${THREAD_LABELS[type].toLowerCase()} thread`,
-    icon: THREAD_GLYPHS[type],
-    sepBefore: type === "planning",
-  }),
-);
+const NEW_THREAD_ROWS: MenuRow[] = (["planning", "implementation", "research", "orchestration"] as const).map((type) => ({
+  kind: "item",
+  id: `new:${type}`,
+  label: `New ${THREAD_LABELS[type].toLowerCase()} thread`,
+  icon: THREAD_GLYPHS[type],
+}));
+
+const GROUP_MENU = "group:";
 
 /** The thread a tab shows: its focused pane's, else its first. */
 function tabThreadId(tabId: string): string | null {
@@ -479,7 +481,7 @@ function GroupLabel({
   logoPath,
   canDrag,
   onToggle,
-  onContextMenu,
+  menuId,
   onPointerDown,
   consumeClick,
   dropTarget,
@@ -494,7 +496,8 @@ function GroupLabel({
   logoPath?: string | null;
   canDrag: boolean;
   onToggle: () => void;
-  onContextMenu: (event: ReactMouseEvent<HTMLButtonElement>) => void;
+  /** The strip's one context menu reads the group's menu from this. */
+  menuId: string;
   onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   consumeClick: () => boolean;
   dropTarget?: TabDropTarget | null;
@@ -504,9 +507,6 @@ function GroupLabel({
     <button
       ref={labelRef}
       type="button"
-      title={
-        collapsed ? `Expand ${project}` : `Collapse ${project}`
-      }
       aria-label={collapsed ? `Expand ${project}` : `Collapse ${project}`}
       aria-expanded={!collapsed}
       data-tauri-drag-region="false"
@@ -514,7 +514,7 @@ function GroupLabel({
         if (consumeClick()) return;
         onToggle();
       }}
-      onContextMenu={onContextMenu}
+      data-menu-id={menuId}
       onPointerDown={onPointerDown}
       className={`relative sticky left-0 z-20 flex h-7 max-w-36 shrink-0 cursor-default items-center gap-1.5 self-center rounded-md px-2 pr-3 text-[11px] font-medium hover:brightness-110 ${
         canDrag ? "touch-none" : ""
@@ -571,7 +571,6 @@ function TabGroupBlock({
   onSelect,
   onClose,
   onToggleCollapse,
-  onGroupContextMenu,
   deckLayout = false,
 }: {
   segmentIndex: number;
@@ -592,7 +591,6 @@ function TabGroupBlock({
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
   onToggleCollapse: () => void;
-  onGroupContextMenu: (event: ReactMouseEvent<HTMLButtonElement>) => void;
   deckLayout?: boolean;
 }) {
   const activeInGroup = segment.tabs.some((tab) => tab.id === activeId);
@@ -657,7 +655,7 @@ function TabGroupBlock({
         dropTarget={dropTarget}
         labelRef={(el) => sortable.setGroupDropRef(segment.key, el)}
         onToggle={onToggleCollapse}
-        onContextMenu={onGroupContextMenu}
+        menuId={`${GROUP_MENU}${segment.key}`}
         consumeClick={segmentDrag.consumeClick}
         onPointerDown={(event) => {
           if (!canDragGroup) return;
@@ -991,12 +989,8 @@ function TitleBarComponent({
     label: string;
     tabIds: string[];
   } | null>(null);
-  const [groupMenu, setGroupMenu] = useState<{
-    x: number;
-    y: number;
-    groupId: string;
-    tabIds: string[];
-  } | null>(null);
+  // The group whose Customize dialog is open.
+  const [customizing, setCustomizing] = useState<string | null>(null);
   const threadMenu = useThreadMenu({ onScreen: (id) => tabThreadId(activeId) === id });
 
   const groupSummaries = segments.flatMap((segment) => {
@@ -1014,8 +1008,8 @@ function TitleBarComponent({
     ];
   });
 
-  const groupMenuTabs = groupMenu
-    ? tabs.filter((tab) => tab.groupId === groupMenu.groupId)
+  const groupMenuTabs = customizing
+    ? tabs.filter((tab) => tab.groupId === customizing)
     : [];
   const groupMenuShared = sharedGroupProject(groupMenuTabs);
   const groupMenuWorkspaceTabs = workspaceTabsStore.getState().tabs.filter((tab) =>
@@ -1039,54 +1033,21 @@ function TitleBarComponent({
     });
   }, []);
 
-  const onGroupContextMenu = useCallback(
-    (
-      segment: Extract<TabGroupSegment, { kind: "group" }>,
-      event: ReactMouseEvent<HTMLButtonElement>,
-    ) => {
-      event.preventDefault();
-      event.stopPropagation();
-      setGroupMenu({
-        x: event.clientX,
-        y: event.clientY,
-        groupId: segment.key,
-        tabIds: segment.tabs.map((tab) => tab.id),
-      });
-    },
-    [],
-  );
-
-  const onGroupMenuPick = useCallback(
-    (action: TabGroupMenuAction) => {
-      if (!groupMenu) return;
-      const { groupId, tabIds } = groupMenu;
-      setGroupMenu(null);
-      if (action === "new-tab") onGroupNewTab?.(groupId);
-      else if (action === "new-window") onGroupMoveToNewWindow?.(tabIds);
-      else if (action === "close-group") onGroupClose?.(tabIds);
-      else if (action === "ungroup") onUngroup?.(groupId);
-      else if (action === "delete-group") {
-        const shared =
-          tabs.find((tab) => tab.groupId === groupId)?.project ?? "Group";
-        setConfirmGroupClose({
-          label: resolveTabGroupLabel(groupId, groupLabels, shared),
-          tabIds,
-        });
-      }
-    },
-    [
-      groupLabels,
-      groupMenu,
-      onGroupClose,
-      onGroupMoveToNewWindow,
-      onGroupNewTab,
-      onUngroup,
-      tabs,
-    ],
-  );
+  const onGroupMenuPick = (action: TabGroupMenuAction, groupId: string) => {
+    const tabIds = tabs.filter((tab) => tab.groupId === groupId).map((tab) => tab.id);
+    if (action === "new-tab") onGroupNewTab?.(groupId);
+    else if (action === "new-window") onGroupMoveToNewWindow?.(tabIds);
+    else if (action === "close-group") onGroupClose?.(tabIds);
+    else if (action === "ungroup") onUngroup?.(groupId);
+    else if (action === "delete-group") {
+      const shared = tabs.find((tab) => tab.groupId === groupId)?.project ?? "Group";
+      setConfirmGroupClose({ label: resolveTabGroupLabel(groupId, groupLabels, shared), tabIds });
+    }
+  };
 
   /** A tab's right-click: its focused thread's rows (lib/threadMenu.ts), then the group rows. */
   const tabMenuRows = (tabId: string | null): MenuRow[] | null => {
+    if (tabId?.startsWith(GROUP_MENU)) return groupMenuRows({ actions: true, extra: onGroupNewTab ? NEW_THREAD_ROWS : [] });
     const tab = tabId ? tabs.find((entry) => entry.id === tabId) : undefined;
     if (!tab) return null;
     const threadId = tabThreadId(tab.id);
@@ -1107,6 +1068,14 @@ function TitleBarComponent({
 
   const onTabMenuPick = (id: string, tabId: string | null) => {
     if (!tabId) return;
+    if (tabId.startsWith(GROUP_MENU)) {
+      const groupId = tabId.slice(GROUP_MENU.length);
+      const action = groupActionOf(id);
+      if (id === CUSTOMIZE) setCustomizing(groupId);
+      else if (action) onGroupMenuPick(action, groupId);
+      else if (id.startsWith("new:")) onGroupNewTab?.(groupId, id.slice(4) as ThreadType);
+      return;
+    }
     if (id === "new-group") onAddToNewGroup?.(tabId);
     else if (id === "remove") onRemoveFromGroup?.(tabId);
     else if (id.startsWith("add:")) onAddToGroup?.(tabId, id.slice(4));
@@ -1385,7 +1354,11 @@ function TitleBarComponent({
               label="Tab actions"
               rowsFor={tabMenuRows}
               onPick={onTabMenuPick}
-              onOpenChange={(open, tabId) => threadMenu.onOpenChange(tabId ? tabThreadId(tabId) : null, open)}
+              onOpenChange={(open, tabId) => {
+                if (!tabId) return;
+                if (tabId.startsWith(GROUP_MENU)) customizeChunk.preload();
+                else threadMenu.onOpenChange(tabThreadId(tabId), open);
+              }}
             >
             <div
               ref={setTabStripRef}
@@ -1444,9 +1417,6 @@ function TitleBarComponent({
                     onSelect={onSelect}
                     onClose={onClose}
                     onToggleCollapse={() => toggleGroupCollapse(segment.key)}
-                    onGroupContextMenu={(event) =>
-                      onGroupContextMenu(segment, event)
-                    }
                     deckLayout={deckLayout}
                   />
                 );
@@ -1502,57 +1472,26 @@ function TitleBarComponent({
           )}
         </div>
 
-        {groupMenu ? (
-          <TabGroupMenu
+        {customizing ? (
+          <CustomizeGroupDialog
             environmentId={groupMenuSession?.environmentId ?? environmentOfCwd(groupMenuCwd) ?? registry.primary().environmentId}
-            x={groupMenu.x}
-            y={groupMenu.y}
-            groupId={groupMenu.groupId}
-            label={resolveTabGroupLabel(
-              groupMenu.groupId,
-              groupLabels,
-              groupMenuShared || "Group",
-            )}
-            colorIndex={resolveTabGroupColorIndex(
-              groupMenu.groupId,
-              groupColors,
-              groupCustomColors,
-            )}
-            customColor={resolveTabGroupCustomColor(
-              groupMenu.groupId,
-              groupCustomColors,
-            )}
-            currentColor={resolveTabGroupColor(
-              groupMenu.groupId,
-              groupColors,
-              groupCustomColors,
-              groupMenuShared || groupMenu.groupId,
-            )}
-            logoPath={
-              groupMenuShared
-                ? resolveTabGroupLogo(groupMenuShared, groupLogos)
-                : null
-            }
-            logoProject={groupMenuShared}
-            mascotName={resolveTabGroupMascot(groupMenu.groupId, groupMascots)}
-            mascotProject={groupMenuShared || groupMenu.groupId}
-            onRename={onGroupRename}
-            onColorChange={onGroupColorChange}
-            onCustomColorChange={onGroupCustomColorChange}
-            onMascotChange={onGroupMascotChange}
-            onLogoChange={onGroupLogoChange}
-            onPick={onGroupMenuPick}
-            extraItems={
-              onGroupNewTab
-                ? NEW_THREAD_ITEMS
-                : undefined
-            }
-            onExtraPick={(id) => {
-              const groupId = groupMenu.groupId;
-              setGroupMenu(null);
-              if (id.startsWith("new:")) onGroupNewTab?.(groupId, id.slice(4) as ThreadType);
+            groupId={customizing}
+            label={resolveTabGroupLabel(customizing, groupLabels, groupMenuShared || "Group")}
+            colorIndex={resolveTabGroupColorIndex(customizing, groupColors, groupCustomColors)}
+            customColor={resolveTabGroupCustomColor(customizing, groupCustomColors)}
+            currentColor={resolveTabGroupColor(customizing, groupColors, groupCustomColors, groupMenuShared || customizing)}
+            logoPath={groupMenuShared ? resolveTabGroupLogo(groupMenuShared, groupLogos) : null}
+            logoProject={groupMenuShared || null}
+            mascotName={resolveTabGroupMascot(customizing, groupMascots)}
+            mascotProject={groupMenuShared || customizing}
+            onSave={(look) => {
+              onGroupRename(customizing, look.name);
+              if (look.customColor) onGroupCustomColorChange(customizing, look.customColor);
+              else onGroupColorChange(customizing, look.colorIndex);
+              onGroupMascotChange(customizing, look.mascot);
             }}
-            onClose={() => setGroupMenu(null)}
+            onLogoChange={onGroupLogoChange}
+            onClose={() => setCustomizing(null)}
           />
         ) : null}
 

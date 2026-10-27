@@ -12,12 +12,6 @@ import { KEYBINDING_GROUPS } from "./settings";
 
 const ROOT = join(__dirname, "..");
 
-/** Files whose hand-typed hints are not yet on `shortcutFor`, with who moves them. */
-const NOT_YET: readonly string[] = [
-  // A12 slice 4: the group menu loses its ⌘T and ⌘W.
-  "chrome/TabGroupMenu.tsx",
-];
-
 function sources(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = join(dir, entry.name);
@@ -43,14 +37,7 @@ describe("menu and tip shortcuts", () => {
   });
 
   it("no hand-typed shortcut on a row or a tip", () => {
-    const typed = files
-      .filter(({ file }) => !NOT_YET.includes(file))
-      .flatMap(({ file, text }) => [...text.matchAll(/\bshortcut(?::|=\{?)\s*[`"']/g)].map(() => file));
+    const typed = files.flatMap(({ file, text }) => [...text.matchAll(/\bshortcut(?::|=\{?)\s*[`"']/g)].map(() => file));
     expect([...new Set(typed)]).toEqual([]);
-  });
-
-  it("the not-yet list names only files that still type one", () => {
-    const stale = NOT_YET.filter((file) => !/\bshortcut(?::|=\{?)\s*[`"']/.test(files.find((f) => f.file === file)?.text ?? ""));
-    expect(stale).toEqual([]);
   });
 });

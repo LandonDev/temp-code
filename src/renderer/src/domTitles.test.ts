@@ -15,11 +15,6 @@ const ROOT = __dirname;
 
 /** Files not yet swept, each with who sweeps it. Empty when the sweep is done. */
 const NOT_YET: readonly string[] = [
-  // A12 slice 4: the pickers and the group menu.
-  "chrome/AccountsPopover.tsx",
-  "chrome/BranchPicker.tsx",
-  "chrome/CwdPicker.tsx",
-  "chrome/TabGroupMenu.tsx",
   // A12 slice 6: the title= sweep.
   "chrome/HostGlyph.tsx",
   "chrome/TitleBar.tsx",

@@ -11,17 +11,8 @@ import {
   RefreshCw,
   Search,
 } from "../chrome/icons";
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type MouseEvent as ReactMouseEvent,
-} from "react";
-import {
-  InboxFiltersMenu,
-  INBOX_FILTER_MENU_WIDTH,
-} from "../chrome/InboxFiltersMenu";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { InboxFiltersMenu } from "../chrome/InboxFiltersMenu";
 import { HostGlyph } from "../chrome/HostGlyph";
 import { InboxProviderMark } from "../chrome/InboxProviderMark";
 import { ProjectLogoIcon } from "../chrome/ProjectLogoIcon";
@@ -240,9 +231,7 @@ export function InboxView({
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [filters, setFilters] = useState(loadInboxFilters);
   const [source, setSource] = useState(loadInboxSource);
-  const [filterMenu, setFilterMenu] = useState<{ x: number; y: number } | null>(
-    null,
-  );
+  const [filterMenu, setFilterMenu] = useState(false);
   const [linearHiddenTeamIds, setLinearHiddenTeamIds] = useState(
     loadHiddenLinearTeamIds,
   );
@@ -357,13 +346,10 @@ export function InboxView({
   useEffect(() => {
     if (sidebar) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      // The filter menu closes itself on Escape; the inbox stays.
+      if (event.key !== "Escape" || filterMenu) return;
       event.preventDefault();
       event.stopPropagation();
-      if (filterMenu) {
-        setFilterMenu(null);
-        return;
-      }
       onCloseRef.current?.();
     };
     window.addEventListener("keydown", onKey, true);
@@ -455,18 +441,6 @@ export function InboxView({
     saveInboxSource(next);
   };
 
-  const onFilterButtonClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
-    if (filterMenu) {
-      setFilterMenu(null);
-      return;
-    }
-    const rect = event.currentTarget.getBoundingClientRect();
-    setFilterMenu({
-      x: rect.right - INBOX_FILTER_MENU_WIDTH,
-      y: rect.bottom + 4,
-    });
-  };
-
   const list = (
     <div
       ref={sidebar ? undefined : resize.setPaneRef}
@@ -502,24 +476,23 @@ export function InboxView({
               className="ps-8"
             />
           </div>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label="Filters"
-                  aria-expanded={!!filterMenu}
-                  aria-haspopup="menu"
-                  onClick={onFilterButtonClick}
-                  className={filtersActive || filterMenu ? "text-foreground" : "text-muted-foreground"}
-                />
-              }
-            >
-              <ListFilter />
-            </TooltipTrigger>
-            <TooltipContent>Filters</TooltipContent>
-          </Tooltip>
+          <InboxFiltersMenu
+            trigger={
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Filters"
+                className={filtersActive || filterMenu ? "text-foreground" : "text-muted-foreground"}
+              >
+                <ListFilter />
+              </Button>
+            }
+            workspaces={effectiveScope === "all" ? workspaceOptions : []}
+            source={source}
+            filters={activeFilters}
+            onChange={onFiltersChange}
+            onOpenChange={setFilterMenu}
+          />
           <Tooltip>
             <TooltipTrigger
               render={
@@ -623,18 +596,6 @@ export function InboxView({
     </div>
   );
 
-  const filtersPortal = filterMenu ? (
-    <InboxFiltersMenu
-      x={filterMenu.x}
-      y={filterMenu.y}
-      workspaces={effectiveScope === "all" ? workspaceOptions : []}
-      source={source}
-      filters={activeFilters}
-      onChange={onFiltersChange}
-      onClose={() => setFilterMenu(null)}
-    />
-  ) : null;
-
   if (sidebar) {
     return (
       <div
@@ -643,7 +604,6 @@ export function InboxView({
         className="flex min-h-0 min-w-0 flex-1 flex-col text-foreground"
       >
         {list}
-        {filtersPortal}
       </div>
     );
   }
@@ -686,7 +646,6 @@ export function InboxView({
           />
         </div>
       </div>
-      {filtersPortal}
     </div>
   );
 }

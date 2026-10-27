@@ -147,7 +147,7 @@ function Row({ item, onPick, kind }: { item: MenuRow; onPick: (id: string) => vo
   );
   if (item.checked !== undefined) {
     return (
-      <Check data-menu-row={item.id} checked={item.checked} disabled={item.disabled} closeOnClick onCheckedChange={() => onPick(item.id)}>
+      <Check data-menu-row={item.id} checked={item.checked} disabled={item.disabled} closeOnClick={!item.keepOpen} onCheckedChange={() => onPick(item.id)}>
         {body}
       </Check>
     );
@@ -173,6 +173,7 @@ export function DropdownRows({
   defaultOpen,
   open,
   modal,
+  finalFocus,
 }: RowsMenuProps & { defaultOpen?: boolean }) {
   const opener = <DropdownMenuTrigger render={trigger} />;
   return (
@@ -188,7 +189,7 @@ export function DropdownRows({
       ) : (
         opener
       )}
-      <DropdownMenuContent size={size} align={align} side={side} className={className} aria-label={label}>
+      <DropdownMenuContent size={size} align={align} side={side} className={className} aria-label={label} finalFocus={finalFocus}>
         <OpenRows kind="dropdown" rows={rows} onPick={onPick} />
       </DropdownMenuContent>
     </DropdownMenu>
@@ -257,6 +258,8 @@ export function PopoverBody({
   sideOffset,
   className,
   label,
+  initialFocus,
+  finalFocus,
   children,
   defaultOpen,
 }: LazyPopoverProps & { defaultOpen?: boolean }) {
@@ -270,7 +273,7 @@ export function PopoverBody({
       ) : (
         opener
       )}
-      <PopoverContent anchor={anchor ?? undefined} align={align} side={side} sideOffset={sideOffset} className={className} aria-label={label}>
+      <PopoverContent anchor={anchor ?? undefined} align={align} side={side} sideOffset={sideOffset} className={className} aria-label={label} initialFocus={initialFocus} finalFocus={finalFocus}>
         {children}
       </PopoverContent>
     </Popover>

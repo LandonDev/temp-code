@@ -7,12 +7,12 @@ import { sessionStore } from "../lib/tcserver/store";
 import type { SessionMeta, WorkspaceMeta } from "../lib/tcserver/types";
 import { workspaceStore } from "../lib/tcserver/workspaces";
 import { resetThreadBatchForTests, useBatchPending } from "../lib/threadBatch";
-import { batchMenuExtraItems, batchMenuRows } from "../lib/threadBatchMenu";
+import { batchMenuRows } from "../lib/threadBatchMenu";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
 import { MenuRows } from "./menuBody";
 import { HostsRow } from "./HostRows";
-import { ProjectRail } from "./ProjectRail";
-import { TabGroupMenu } from "./TabGroupMenu";
+import { ProjectRail, projectMenuExtraItems } from "./ProjectRail";
+import { groupMenuRows } from "./TabGroupMenu";
 
 afterEach(() => {
   cleanup();
@@ -26,45 +26,26 @@ afterEach(() => {
 const noop = () => {};
 
 describe("the fleet switches as menu rows", () => {
-  it("project menu: a row with nothing to act on is inert, a live one picks and closes", () => {
-    const onExtraPick = vi.fn();
-    const onClose = vi.fn();
+  it("project menu: Customize… first, a row with nothing to act on is inert, a live one picks", () => {
+    const onPick = vi.fn();
     render(
-      <TabGroupMenu
-        environmentId="local"
-        x={10}
-        y={10}
-        groupId="g"
-        label="temp-code"
-        colorIndex={null}
-        customColor={null}
-        currentColor="#888"
-        logoPath={null}
-        mascotName={null}
-        mascotProject="g"
-        onRename={noop}
-        onColorChange={noop}
-        onCustomColorChange={noop}
-        onMascotChange={noop}
-        onLogoChange={noop}
-        onPick={noop}
-        onClose={onClose}
-        showActions={false}
-        extraItems={batchMenuExtraItems({ pause: 3, resume: 0, stop: 3, archiveDone: 0 })}
-        onExtraPick={onExtraPick}
-      />,
+      <DropdownMenu defaultOpen>
+        <DropdownMenuTrigger>open</DropdownMenuTrigger>
+        <DropdownMenuContent aria-label="Workspace actions">
+          <MenuRows
+            kind="dropdown"
+            items={groupMenuRows({ actions: false, extra: projectMenuExtraItems(false, true, { pause: 3, resume: 0, stop: 3, archiveDone: 0 }) })}
+            onPick={onPick}
+          />
+        </DropdownMenuContent>
+      </DropdownMenu>,
     );
-    const resume = screen.getByRole("menuitem", { name: "Resume all" }) as HTMLButtonElement;
-    expect(resume.disabled).toBe(true);
-    fireEvent.click(resume);
-    expect(onExtraPick).not.toHaveBeenCalled();
-    const stop = screen.getByRole("menuitem", { name: "Stop all" }) as HTMLButtonElement;
-    expect(stop.disabled).toBe(false);
-    expect(stop.className).toContain("text-danger");
-    fireEvent.click(screen.getByRole("menuitem", { name: "Pause all" }));
-    expect(onExtraPick).toHaveBeenCalledWith("batch-pause");
-    expect(onClose).toHaveBeenCalled();
+    expect(screen.getAllByRole("menuitem")[0]!.textContent).toBe("Customize…");
+    expect(screen.getByRole("menuitem", { name: "Resume all" }).getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getByRole("menuitem", { name: "Stop all" }).getAttribute("data-variant")).toBe("destructive");
     expect(screen.getByRole("menuitem", { name: "Archive done" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Pause all" }));
+    expect(onPick).toHaveBeenCalledWith("batch-pause");
   });
 
   it("the rows: Mark all read first, then the switches, zero rows disabled", () => {
@@ -164,7 +145,7 @@ describe("the fleet switches as mounted", () => {
     const options = screen.getAllByRole("button", { name: "Workspace options" });
     expect(options).toHaveLength(1);
     fireEvent.click(options[0]);
-    expect((screen.getByRole("menuitem", { name: "Resume all" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((await screen.findByRole("menuitem", { name: "Resume all" })).getAttribute("aria-disabled")).toBe("true");
     fireEvent.click(screen.getByRole("menuitem", { name: "Pause all" }));
     const pending = JSON.parse(screen.getByTestId("pending").textContent ?? "null");
     expect(pending).toMatchObject({ action: "pause", scope: { kind: "project", path: MAC, paths: [MAC, BOX], name: "app" } });

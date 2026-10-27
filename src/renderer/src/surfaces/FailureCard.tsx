@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useState, type ReactElement, type ReactNode } from "react";
 import type { Failure } from "@server/shared/events";
 import { SERVICE_OF, isRoutedProvider } from "@server/shared/accounts";
 import { AccountsPopover } from "../chrome/AccountsPopover";
@@ -43,7 +43,7 @@ export function FailureCardView({
   state,
   onAction,
   busy,
-  pickAccountRef,
+  renderAction,
 }: {
   failure: Failure;
   actions: FailureAction[];
@@ -52,8 +52,8 @@ export function FailureCardView({
   onAction: (id: FailureActionId) => void;
   /** The thread is working again: the buttons rest while the card is on its way out. */
   busy?: boolean;
-  /** The Pick another account button, for the popover to anchor on. */
-  pickAccountRef?: React.RefObject<HTMLButtonElement | null>;
+  /** Wraps an action's button (Pick another account in its accounts popover). */
+  renderAction?: (id: FailureActionId, button: ReactElement) => ReactNode;
 }) {
   const pendingLabel = (id: FailureActionId): string => {
     switch (id) {
@@ -85,10 +85,9 @@ export function FailureCardView({
         <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2">
           {actions.map((action, i) => {
             const pending = state.pending === action.id;
-            return (
+            const button = (
               <Button
                 key={action.id}
-                ref={action.id === "pick-account" ? pickAccountRef : undefined}
                 size="sm"
                 variant={i === 0 ? "default" : "secondary"}
                 data-failure-action={action.id}
@@ -99,6 +98,8 @@ export function FailureCardView({
                 {pending ? pendingLabel(action.id) || action.label : action.label}
               </Button>
             );
+            const wrapped = renderAction?.(action.id, button);
+            return wrapped ? <Fragment key={action.id}>{wrapped}</Fragment> : button;
           })}
         </div>
         {state.outcome ? (
@@ -126,7 +127,6 @@ export function FailureCard({ sessionId, failure, busy }: { sessionId: string; f
   const note = failureNote(failure.kind, ctx);
   const [state, setState] = useState<FailureCardState>({ pending: null, outcome: null });
   const [picking, setPicking] = useState(false);
-  const pickRef = useRef<HTMLButtonElement>(null);
   const { snapshot } = useAccounts(environmentId);
   const projects = useProjects();
   const workspaces = useWorkspaces();
@@ -161,11 +161,8 @@ export function FailureCard({ sessionId, failure, busy }: { sessionId: string; f
           .catch((err: unknown) => settle(errorLine(err)));
         return;
       case "pick-account":
-        if (!accounts || accounts.profiles.length === 0) {
-          settle("No saved accounts on this host.");
-          return;
-        }
-        setPicking((open) => !open);
+        // With accounts the button is the accounts popover's trigger.
+        if (!scope || !accounts || accounts.profiles.length === 0) settle("No saved accounts on this host.");
         return;
       case "sign-in": {
         if (!window.aliax || !isRoutedProvider(provider)) return;
@@ -183,27 +180,27 @@ export function FailureCard({ sessionId, failure, busy }: { sessionId: string; f
   };
 
   return (
-    <div className="relative">
-      <FailureCardView
-        failure={failure}
-        actions={actions}
-        note={note}
-        state={state}
-        onAction={onAction}
-        busy={busy}
-        pickAccountRef={pickRef}
-      />
-      {picking && scope && accounts ? (
-        <AccountsPopover
-          anchor={pickRef}
-          provider={scope.provider}
-          accounts={accounts}
-          scope={scope}
-          now={now}
-          onDismiss={() => setPicking(false)}
-        />
-      ) : null}
-    </div>
+    <FailureCardView
+      failure={failure}
+      actions={actions}
+      note={note}
+      state={state}
+      onAction={onAction}
+      busy={busy}
+      renderAction={(id, button) =>
+        id === "pick-account" && scope && accounts && accounts.profiles.length > 0 ? (
+          <AccountsPopover
+            trigger={button}
+            open={picking}
+            onOpenChange={setPicking}
+            provider={scope.provider}
+            accounts={accounts}
+            scope={scope}
+            now={now}
+          />
+        ) : null
+      }
+    />
   );
 }
 

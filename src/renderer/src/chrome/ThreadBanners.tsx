@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { isStaleWatch } from "@shared/watch";
 import { stopAll } from "../lib/activity";
 import { heldSuffix, useMacHeldTotal } from "../lib/macBridge";
@@ -15,8 +15,8 @@ import { Button } from "../components/ui/button";
 import { StatusMark, type ThreadState } from "../components/ui/status";
 import { cn } from "../lib/cn";
 import { ChevronDown } from "./icons";
+import { LazyPopover } from "./menuRows";
 import { ModelPicker } from "./ModelPicker";
-import { Popover } from "./Popover";
 
 type Props = {
   /** Scopes the needs-you banner to one project; null shows every root.
@@ -254,18 +254,17 @@ function ContinueAs({
   disabled: boolean;
   onContinue: (settings: serverCommands.QueueRunSettings) => void;
 }) {
-  const trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [choice, setChoice] = useState<{ harness: HarnessId; model: string }>({ harness: "claude", model: "" });
   const [settings, setSettings] = useState<Record<string, string>>({});
 
-  const toggle = () => {
-    if (!open) {
+  const onOpenChange = (next: boolean) => {
+    if (next) {
       const session = sessionFromMeta(from);
       setChoice({ harness: session.harness, model: session.model });
       setSettings(session.modelSettings);
     }
-    setOpen(!open);
+    setOpen(next);
   };
   const submit = () => {
     setOpen(false);
@@ -277,58 +276,42 @@ function ContinueAs({
   };
 
   return (
-    <>
-      <Button
-        ref={trigger}
-        variant="secondary"
-        size="icon-xs"
-        onClick={toggle}
-        disabled={disabled}
-        aria-label="Continue on another model"
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        className="rounded-l-none border-l border-border"
-      >
-        <ChevronDown aria-hidden="true" />
-      </Button>
-      {open ? (
-        <Popover
-          anchor={trigger}
-          side="bottom"
-          align="end"
-          width={300}
-          autoFocus
-          tabIndex={-1}
-          role="dialog"
-          aria-label="Continue as"
-          ignore="[data-model-picker], [data-slot=select-content]"
-          onDismiss={() => setOpen(false)}
+    <LazyPopover
+      trigger={
+        <Button
+          variant="secondary"
+          size="icon-xs"
+          disabled={disabled}
+          aria-label="Continue on another model"
+          className="rounded-l-none border-l border-border"
         >
-          <div className="px-3 pt-2.5 pb-3 text-content">
-            <p className="text-[13px] font-medium">Continue as</p>
-            <div className="mt-1.5 -ml-1 flex flex-wrap items-center gap-1">
-              <ModelPicker
-                harness={choice.harness}
-                model={choice.model}
-                environmentId={from.environmentId}
-                onChange={(harness, model) => {
-                  setChoice({ harness, model });
-                  setSettings(mergeModelSettings(resolveModel(harness, model, from.environmentId), settings));
-                }}
-                settings={{ values: settings, onChange: setSettings }}
-              />
-            </div>
-            <button
-              type="button"
-              onClick={submit}
-              className="pressable mt-2.5 flex h-8 w-full items-center justify-center rounded-lg bg-content text-[13px] font-medium text-background-base hover:bg-content/90"
-            >
-              {label}
-            </button>
-          </div>
-        </Popover>
-      ) : null}
-    </>
+          <ChevronDown aria-hidden="true" />
+        </Button>
+      }
+      open={open}
+      onOpenChange={onOpenChange}
+      side="bottom"
+      align="end"
+      label="Continue as"
+      className="w-75 gap-0 px-3 pt-2.5 pb-3"
+    >
+      <p className="text-[13px] font-medium">Continue as</p>
+      <div className="mt-1.5 -ml-1 flex flex-wrap items-center gap-1">
+        <ModelPicker
+          harness={choice.harness}
+          model={choice.model}
+          environmentId={from.environmentId}
+          onChange={(harness, model) => {
+            setChoice({ harness, model });
+            setSettings(mergeModelSettings(resolveModel(harness, model, from.environmentId), settings));
+          }}
+          settings={{ values: settings, onChange: setSettings }}
+        />
+      </div>
+      <Button className="mt-2.5 w-full" onClick={submit}>
+        {label}
+      </Button>
+    </LazyPopover>
   );
 }
 

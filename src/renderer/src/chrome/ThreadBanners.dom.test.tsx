@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionMeta } from "../lib/tcserver/types";
 
@@ -11,11 +11,10 @@ vi.mock("../lib/tcserver/store", () => ({
   useSessionMetas: () => metas,
   sessionFromMeta: (m: SessionMeta) => ({ harness: m.provider, model: m.model, modelSettings: {} }),
 }));
-const { killBackground } = vi.hoisted(() => ({ killBackground: vi.fn(() => Promise.resolve()) }));
-vi.mock("../lib/tcserver/commands", () => ({ resume: vi.fn(), interrupt: vi.fn(), continueSession: vi.fn(), reasoningOf: () => "medium", killBackground }));
+const { killBackground, continueSession } = vi.hoisted(() => ({ killBackground: vi.fn(() => Promise.resolve()), continueSession: vi.fn(() => Promise.resolve()) }));
+vi.mock("../lib/tcserver/commands", () => ({ resume: vi.fn(), interrupt: vi.fn(), continueSession, reasoningOf: () => "medium", killBackground }));
 vi.mock("../lib/threadNotes", () => ({ useThreadNotes: (_env: string, id: string) => notes.get(id) }));
 vi.mock("./ModelPicker", () => ({ ModelPicker: () => null }));
-vi.mock("./Popover", () => ({ Popover: () => null }));
 
 import { ThreadBanners } from "./ThreadBanners";
 
@@ -101,5 +100,19 @@ describe("the paused and recovery banners", () => {
     const banner = screen.getByRole("alert");
     expect(banner.textContent).toBe("FailedSearchContinue");
     expect(screen.getByRole("button", { name: "Continue on another model" })).toBeTruthy();
+  });
+
+  it("the chevron opens Continue as on the thread's own model; its button continues; Escape closes", async () => {
+    metas.push(meta("Search", { status: "error", treeCanContinue: true }));
+    render(<ThreadBanners projectId="p1" onOpen={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Continue on another model" }));
+    let popup = await screen.findByRole("dialog", { name: "Continue as" });
+    fireEvent.click(within(popup).getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(continueSession).toHaveBeenCalledWith("Search", { provider: "claude", model: "m", reasoning: "medium" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Continue as" })).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "Continue on another model" }));
+    popup = await screen.findByRole("dialog", { name: "Continue as" });
+    fireEvent.keyDown(popup, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Continue as" })).toBeNull());
   });
 });

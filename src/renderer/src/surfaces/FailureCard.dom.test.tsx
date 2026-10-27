@@ -120,6 +120,14 @@ describe("FailureCard wired", () => {
     delete (window as { aliax?: unknown }).aliax;
   });
 
+  it("Pick another account with no saved accounts says so instead of opening", () => {
+    const probe = mountProbe(<FailureCard sessionId="s1" failure={failure("account_unknown")} />);
+    fireEvent.click(probe.container.querySelector("button[data-failure-action=pick-account]")!);
+    expect(probe.container.textContent).toContain("No saved accounts on this host.");
+    expect(document.querySelector("[data-account-picker]")).toBeNull();
+    probe.unmount();
+  });
+
   it("without the desktop bridge the sign-in is a note; Retry continues the thread", async () => {
     expect(canSignInHere("local")).toBe(false);
     const probe = mountProbe(<FailureCard sessionId="s1" failure={failure("oauth_expired")} />);

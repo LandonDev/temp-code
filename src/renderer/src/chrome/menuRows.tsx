@@ -1,5 +1,7 @@
 import {
   cloneElement,
+  type MutableRefObject,
+  type ComponentType,
   useEffect,
   useRef,
   useState,
@@ -33,12 +35,20 @@ import type * as Body from "./menuBody";
 
 export type MenuRowsKind = "dropdown" | "context";
 
+/** A row's 14px glyph: a chrome icon, or a mark that sizes itself (a
+ *  project's logo, a provider's mark). */
+export type MenuIcon = IconComponent | ComponentType<{ strokeWidth?: number }>;
+
+/** Where focus goes when a popup opens or closes (Base UI's `initialFocus`
+ *  and `finalFocus`): false leaves it where it is. */
+export type FocusTarget = boolean | { current: HTMLElement | null };
+
 export type MenuRow =
   | {
       kind: "item";
       id: string;
       label: string;
-      icon?: IconComponent;
+      icon?: MenuIcon;
       /** One chord's caps, from `shortcutFor`; never typed by hand. */
       shortcut?: string;
       /** A second line under the label (a disabled move's reason). */
@@ -49,12 +59,14 @@ export type MenuRow =
       danger?: boolean;
       /** Set: a checkbox row, ticked while true. */
       checked?: boolean;
+      /** A checkbox row that leaves the menu open (a filter among several). */
+      keepOpen?: boolean;
     }
   | { kind: "sep" }
   | { kind: "label"; label: string }
   /** A line that is not a verb (the ⋯ menu's host and cost). */
   | { kind: "note"; id: string; content: ReactNode }
-  | { kind: "sub"; id: string; label: string; icon?: IconComponent; items: MenuRow[]; disabled?: boolean };
+  | { kind: "sub"; id: string; label: string; icon?: MenuIcon; items: MenuRow[]; disabled?: boolean };
 
 /** No separator first, last or twice in a row, and none under a label. */
 export function tidy(rows: readonly MenuRow[]): MenuRow[] {
@@ -149,6 +161,8 @@ export type RowsMenuProps = {
   open?: boolean;
   /** Non-modal: the page behind stays live (the menu bar's other titles). */
   modal?: boolean;
+  /** Where focus goes on close; the trigger by default. */
+  finalFocus?: FocusTarget;
 };
 
 /** A menu of verbs dropped from a trigger (`DropdownMenu`). */
@@ -201,6 +215,9 @@ export type RowsContextMenuProps = {
   /** Mount the body only from the first right-click on (a file link: a
    *  transcript holds hundreds, and few are ever right-clicked). */
   lazyMount?: boolean;
+  /** Set to a function that opens the menu at a point for an id: a row's
+   *  ⋯ and a request from elsewhere open the same menu the right-click does. */
+  openRef?: MutableRefObject<((at: { x: number; y: number; id: string | null }) => void) | null>;
 };
 
 /** Where a right-click asked for the menu: the point, the row's id, the row itself. */
@@ -222,6 +239,26 @@ export function RowsContextMenu(props: RowsContextMenuProps) {
     pending.current = null;
     opener.current(at);
   }, [B, used]);
+  const open = (at: MenuAt) => {
+    if (opener.current) opener.current(at);
+    else {
+      pending.current = at;
+      setUsed(true);
+      if (menuChunk.loaded()) wakeNow();
+      else menuChunk.load().then(wakeNow, () => {});
+    }
+  };
+  if (props.openRef) {
+    props.openRef.current = (at) => {
+      const row = at.id ? document.querySelector<HTMLElement>(`[data-menu-id="${CSS.escape(at.id)}"]`) : null;
+      if (!props.rowsFor(at.id)?.length) return;
+      // From the keyboard there is no pointer: under the row it came from.
+      if (at.x === 0 && at.y === 0 && row) {
+        const rect = row.getBoundingClientRect();
+        open({ ...at, x: rect.left, y: rect.bottom, row });
+      } else open({ ...at, row });
+    };
+  }
   const child = props.disabled
     ? props.children
     : chain(props.children, {
@@ -244,14 +281,7 @@ export function RowsContextMenu(props: RowsContextMenuProps) {
             x = rect.left;
             y = rect.bottom;
           }
-          const at = { x, y, id, row };
-          if (opener.current) opener.current(at);
-          else {
-            pending.current = at;
-            setUsed(true);
-            if (menuChunk.loaded()) wakeNow();
-            else menuChunk.load().then(wakeNow, () => {});
-          }
+          open({ x, y, id, row });
         },
       });
   return (
@@ -276,6 +306,10 @@ export type LazyPopoverProps = {
   className?: string;
   /** The popup's accessible name. */
   label?: string;
+  /** Where focus goes on open (a picker's search field); the popup by default. */
+  initialFocus?: FocusTarget;
+  /** Where focus goes on close; the trigger by default. */
+  finalFocus?: FocusTarget;
   /** Rendered only while open; never imports a menu or popover primitive. */
   children: ReactNode;
 };

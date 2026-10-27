@@ -24,6 +24,11 @@ export async function pickImageFile(): Promise<string | null> {
 export async function pickAndSetProjectLogo(environmentId: string, project: string): Promise<string | null> {
   const sourcePath = await pickImageFile();
   if (!sourcePath) return null;
+  return setProjectLogo(environmentId, project, sourcePath);
+}
+
+/** Saves an image already picked (the Customize dialog holds it until Save). */
+export async function setProjectLogo(environmentId: string, project: string, sourcePath: string): Promise<string> {
   const path = await invokeOn<string>(environmentId, "save_project_logo", {
     project,
     sourcePath,

@@ -1,9 +1,10 @@
-import type { RefObject } from "react";
+import type { ReactElement } from "react";
 import type { PlanInfo, ProfileView, UsageReport, UsageWindow } from "aliax-core/shared/types";
+import { Tip } from "../components/tip";
 import { Skeleton } from "../components/ui/skeleton";
 import { Check, Pin } from "./icons";
 import { HeadroomLine } from "./HeadroomLine";
-import { Popover } from "./Popover";
+import { LazyPopover } from "./menuRows";
 import {
   cycleMs,
   displayName,
@@ -36,23 +37,26 @@ const REM = 16;
  * With a thread in scope a line says where its account comes from, a check
  * marks the account it spends from and a pin marks its project's or
  * workspace's pin. Without a scope (Cursor, or no thread) the check is
- * Aliax's global pin.
+ * Aliax's global pin. The list floats from its trigger (the failure card's
+ * Pick another account).
  */
 export function AccountsPopover({
-  anchor,
+  trigger,
+  open,
+  onOpenChange,
   provider,
   accounts,
   scope,
   now,
-  onDismiss,
 }: {
-  anchor: RefObject<HTMLElement | null>;
+  trigger: ReactElement;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   provider: AccountProvider;
   accounts: ProviderAccounts;
   /** The thread the list describes; null shows the global pin. */
   scope: AccountScope | null;
   now: number;
-  onDismiss: () => void;
 }) {
   // Every row reserves the same columns so bars line up down the list.
   const slots = Math.min(
@@ -63,39 +67,36 @@ export function AccountsPopover({
   const checked = scope ? scope.shown : accounts.pinned;
 
   return (
-    <Popover
-      anchor={anchor}
+    <LazyPopover
+      trigger={trigger}
+      open={open}
+      onOpenChange={onOpenChange}
       side="top"
       align="start"
-      width={width}
-      autoFocus
-      onDismiss={onDismiss}
-      role="listbox"
-      aria-label={`${provider} accounts`}
-      aria-readonly
-      data-account-picker
-      tabIndex={-1}
-      className="overflow-y-auto p-1.5"
+      label={`${provider} accounts`}
+      className="max-h-(--available-height) w-auto gap-0 overflow-y-auto p-1.5"
     >
-      {scope ? (
-        <p className="px-2.5 pb-1.5 pt-1 text-[11px] text-content/50">{sourceLine(scope)}</p>
-      ) : null}
-      {accounts.profiles.map((profile) => (
-        <AccountRow
-          key={profile.name}
-          profile={profile}
-          report={reportOf(accounts.reports, profile.name)}
-          headroom={accounts.headroom?.[profile.name]}
-          checked={profile.name === checked}
-          inherited={scope && profile.name === scope.inherited?.name ? scope.inherited.level : null}
-          now={now}
-          slots={slots}
-        />
-      ))}
-      {accounts.note ? (
-        <p className="px-2.5 pb-1 pt-2 text-[11px] text-content/50">{accounts.note}</p>
-      ) : null}
-    </Popover>
+      <div role="listbox" aria-label={`${provider} accounts`} aria-readonly data-account-picker style={{ width: `${width / REM}rem` }}>
+        {scope ? (
+          <p className="px-2.5 pb-1.5 pt-1 text-[11px] text-content/50">{sourceLine(scope)}</p>
+        ) : null}
+        {accounts.profiles.map((profile) => (
+          <AccountRow
+            key={profile.name}
+            profile={profile}
+            report={reportOf(accounts.reports, profile.name)}
+            headroom={accounts.headroom?.[profile.name]}
+            checked={profile.name === checked}
+            inherited={scope && profile.name === scope.inherited?.name ? scope.inherited.level : null}
+            now={now}
+            slots={slots}
+          />
+        ))}
+        {accounts.note ? (
+          <p className="px-2.5 pb-1 pt-2 text-[11px] text-content/50">{accounts.note}</p>
+        ) : null}
+      </div>
+    </LazyPopover>
   );
 }
 
@@ -269,11 +270,8 @@ function UsageCell({ group, now }: { group: UsageWindow[]; now: number }) {
   const refills = head.resetsAt !== undefined && head.resetsAt > now;
   const period = head.periodMs ?? cycleMs(head.label);
   const pace = onPaceLeft(head, now);
-  const title = refills
-    ? `Refills ${resetLabel(head.resetsAt as number)}${pace !== null ? `\nAn even burn leaves ${Math.round(pace)}% by now` : ""}`
-    : undefined;
-  return (
-    <span className="flex flex-col gap-2" title={title} data-cell={head.label}>
+  const cell = (
+    <span className="flex flex-col gap-2" data-cell={head.label}>
       {group.map((w) => (
         <WindowLine key={w.label} w={w} now={now} />
       ))}
@@ -289,6 +287,19 @@ function UsageCell({ group, now }: { group: UsageWindow[]; now: number }) {
         ) : null}
       </span>
     </span>
+  );
+  if (!refills) return cell;
+  return (
+    <Tip
+      label={
+        <span className="flex flex-col gap-0.5">
+          <span>Refills {resetLabel(head.resetsAt as number)}</span>
+          {pace !== null ? <span>An even burn leaves {Math.round(pace)}% by now</span> : null}
+        </span>
+      }
+    >
+      {cell}
+    </Tip>
   );
 }
 

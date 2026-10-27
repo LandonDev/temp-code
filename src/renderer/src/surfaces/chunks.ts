@@ -42,6 +42,9 @@ export const selectChunk = defineChunk("select", () => import("../components/cho
 /** Every menu, context menu and popover's body (chrome/menuBody.tsx); chrome/menuRows.tsx swaps them in. */
 export const menuChunk = defineChunk("menus", () => import("../chrome/menuBody"));
 
+/** A project's or tab group's Customize dialog, opened from its menu (CustomizeGroupDialog). */
+export const customizeChunk = defineChunk("customize", () => import("../chrome/CustomizeGroupDialog"));
+
 /** Every chunk, for the tests and the idle warm-up. */
 export const allChunks = {
   settingsChunk,
@@ -60,4 +63,5 @@ export const allChunks = {
   notesChunk,
   selectChunk,
   menuChunk,
+  customizeChunk,
 };

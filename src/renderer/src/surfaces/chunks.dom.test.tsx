@@ -23,6 +23,7 @@ const EXPECTED: Record<keyof typeof allChunks, string[]> = {
   notesChunk: ["NotesView", "focusNote"],
   selectChunk: ["ChoiceSelect"],
   menuChunk: ["DropdownRows", "ContextRows", "PopoverBody", "MenuRows"],
+  customizeChunk: ["CustomizeGroupDialog"],
 };
 
 describe("surfaces/chunks", () => {

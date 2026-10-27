@@ -1,6 +1,9 @@
 import { MessageSquarePlus } from "../chrome/icons";
-import { useEffect, useRef } from "react";
-import { Popover } from "../chrome/Popover";
+import { useEffect, useMemo, useRef } from "react";
+import { Tip } from "../components/tip";
+import { Button } from "../components/ui/button";
+import { TooltipProvider } from "../components/ui/tooltip";
+import { LazyPopover } from "../chrome/menuRows";
 import { type TranscriptSelection } from "../lib/transcriptSelection";
 
 type Props = {
@@ -9,59 +12,73 @@ type Props = {
   onDismiss: () => void;
 };
 
-export function TranscriptSelectionMenu({
-  selection,
-  onAddToChat,
-  onDismiss,
-}: Props) {
+/** Actions on text selected in a reply, floating above the selection. */
+export function TranscriptSelectionMenu({ selection, onAddToChat, onDismiss }: Props) {
   const onDismissRef = useRef(onDismiss);
   onDismissRef.current = onDismiss;
 
   // Scrolling or resizing moves the text out from under the menu, so the
   // selection it acts on is gone; drop it rather than chase the range.
+  // Escape drops the selection itself, not just the menu.
   useEffect(() => {
     if (!selection) return;
     const dismiss = () => onDismissRef.current();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      window.getSelection()?.removeAllRanges();
+      dismiss();
+    };
     window.addEventListener("scroll", dismiss, true);
     window.addEventListener("resize", dismiss);
+    document.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("scroll", dismiss, true);
       window.removeEventListener("resize", dismiss);
+      document.removeEventListener("keydown", onKey);
     };
   }, [selection]);
 
-  if (!selection) return null;
+  // The last selection keeps the toolbar whole while it fades out.
+  const shown = useRef(selection);
+  if (selection) shown.current = selection;
+  const last = shown.current;
+  const anchor = useMemo(() => (last ? { getBoundingClientRect: () => last.rect } : null), [last]);
 
   return (
-    <Popover
-      anchor={selection.rect}
+    <LazyPopover
+      anchor={anchor}
+      open={!!selection}
+      onOpenChange={(open) => {
+        if (!open) onDismissRef.current();
+      }}
       side="top"
       align="center"
-      onDismiss={(reason) => {
-        if (reason === "escape") window.getSelection()?.removeAllRanges();
-        onDismiss();
-      }}
-      role="toolbar"
-      aria-label="Selected text actions"
-      className="p-1"
+      label="Selected text actions"
+      initialFocus={false}
+      finalFocus={false}
+      className="w-auto flex-row gap-0.5 p-1"
     >
-      <button
-        type="button"
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => {
-          onAddToChat(selection.text);
-          window.getSelection()?.removeAllRanges();
-          onDismiss();
-        }}
-        className="flex h-7 items-center gap-1.5 rounded-lg px-2 font-sans text-[13px] leading-none text-content outline-none ring-accent/40 hover:bg-content/5 focus-visible:ring-2"
-      >
-        <MessageSquarePlus
-          aria-hidden="true"
-          className="size-3.5"
-          strokeWidth={1.75}
-        />
-        Add to chat
-      </button>
-    </Popover>
+      {shown.current ? (
+        <TooltipProvider>
+          <div role="toolbar" aria-label="Selected text actions" className="flex items-center gap-0.5">
+            <Tip label="Add to chat" side="top">
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Add to chat"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  if (shown.current) onAddToChat(shown.current.text);
+                  window.getSelection()?.removeAllRanges();
+                  onDismiss();
+                }}
+              >
+                <MessageSquarePlus />
+              </Button>
+            </Tip>
+          </div>
+        </TooltipProvider>
+      ) : null}
+    </LazyPopover>
   );
 }

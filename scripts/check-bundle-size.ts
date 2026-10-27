@@ -58,6 +58,7 @@ export const NEVER_IN_ENTRY = [
   'src/renderer/src/chrome/Lightbox.tsx',
   // Every menu, context menu and popover body rides menuChunk (chrome/menuRows.tsx).
   'src/renderer/src/chrome/menuBody.tsx',
+  'src/renderer/src/chrome/CustomizeGroupDialog.tsx',
   'src/renderer/src/aliax/pages.tsx'
 ]
 
