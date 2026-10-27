@@ -58,9 +58,11 @@ export function NotesBody({ session }: { session: Session }) {
   );
 
   const beginEdit = (): void => {
-    const text = doc?.text && doc.text.trim() ? doc.text : emptyNotes();
+    // A draft whose save failed comes back as it was, still to be saved.
+    const retry = saving === "failed" && !!draft;
+    const text = retry ? draft : doc?.text && doc.text.trim() ? doc.text : emptyNotes();
     baseRef.current = doc?.text ?? "";
-    dirtyRef.current = false;
+    dirtyRef.current = retry;
     setDraft(text);
     setSaving("idle");
     setEditing(true);
@@ -166,7 +168,7 @@ export function NotesView({
   const has = text.trim().length > 0 && !notesEmpty(text);
   const state = loading ? null : notesStateLine(saving, updatedAt);
 
-  if (!loading && !has && !editing) {
+  if (!loading && !has && !editing && saving !== "failed") {
     return (
       <Empty className="p-6">
         <EmptyHeader>

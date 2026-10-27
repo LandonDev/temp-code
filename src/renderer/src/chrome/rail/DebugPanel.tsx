@@ -92,11 +92,29 @@ export function DebugView({
     if (viewport) viewport.scrollTop = viewport.scrollHeight;
   }, [output]);
 
+  const consoleGroup = (heading: string | null) => (
+    <Group heading={heading} fill>
+      <div ref={consoleBox} className="flex min-h-0 flex-1 flex-col">
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="px-3 py-1 font-mono text-xs leading-relaxed text-muted-foreground" data-slot="debug-console">
+            {output.map((line, i) => (
+              <div key={i} className="break-all whitespace-pre-wrap">
+                {line}
+              </div>
+            ))}
+          </div>
+        </ScrollArea>
+      </div>
+    </Group>
+  );
+
+  // A session that ended keeps its console (its last words, a final error) under the hint.
   if (phase === "idle") {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         {error ? <ErrorLine text={error} /> : null}
         <p className="px-3 py-3 text-xs text-muted-foreground">⌃D in a Java file starts a session here</p>
+        {output.length > 0 ? consoleGroup("Console") : null}
       </div>
     );
   }
@@ -152,19 +170,7 @@ export function DebugView({
             </ScrollArea>
           </Group>
         ) : null}
-        <Group heading={stacked ? "Console" : null} fill>
-          <div ref={consoleBox} className="flex min-h-0 flex-1 flex-col">
-            <ScrollArea className="min-h-0 flex-1">
-              <div className="px-3 py-1 font-mono text-xs leading-relaxed text-muted-foreground" data-slot="debug-console">
-                {output.map((line, i) => (
-                  <div key={i} className="break-all whitespace-pre-wrap">
-                    {line}
-                  </div>
-                ))}
-              </div>
-            </ScrollArea>
-          </div>
-        </Group>
+        {consoleGroup(stacked ? "Console" : null)}
         <form
           onSubmit={(e) => {
             e.preventDefault();

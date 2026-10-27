@@ -135,7 +135,13 @@ describe("ChangesPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open the diff of src/a.ts" }));
     expect(h.review).toHaveBeenCalledWith("/p/src/a.ts", "HEAD");
     expect(onOpenDiff).toHaveBeenCalledWith("/p/src/a.ts");
-    expect((screen.getByRole("button", { name: "src/gone.ts, deleted" }) as HTMLButtonElement).disabled).toBe(true);
+    const gone = screen.getByRole("button", { name: "src/gone.ts, deleted" });
+    expect(gone.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(gone);
+    expect(onOpenDiff).toHaveBeenCalledTimes(1);
+    // Focusable, so its Stage and Discard have a keyboard path.
+    gone.focus();
+    expect(document.activeElement).toBe(gone);
     expect(screen.getByText("Deleted")).toBeTruthy();
   });
 
@@ -198,6 +204,22 @@ describe("ChangesPanel", () => {
     fireEvent.keyDown(field, { key: "Enter", metaKey: true });
     await flush();
     expect(h.git.gitCommit).toHaveBeenLastCalledWith("local", "/p", "Second");
+  });
+
+  it("text typed while a commit runs is kept", async () => {
+    h.index = indexOf({ files: [file("a.ts", { staged: true, unstaged: false })] });
+    let finish = () => {};
+    h.git.gitCommit.mockImplementationOnce(() => new Promise<void>((r) => (finish = r)));
+    mount();
+    await flush();
+    const field = screen.getByLabelText("Commit message") as HTMLTextAreaElement;
+    fireEvent.change(field, { target: { value: "First" } });
+    fireEvent.click(screen.getByRole("button", { name: "Commit" }));
+    await flush();
+    fireEvent.change(field, { target: { value: "Next one" } });
+    finish();
+    await flush();
+    expect(field.value).toBe("Next one");
   });
 
   it("Commit's menu commits and pushes, or pushes and opens a pull request", async () => {

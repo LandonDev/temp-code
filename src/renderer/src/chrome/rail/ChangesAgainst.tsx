@@ -64,6 +64,8 @@ export function ChangesAgainst({
   const buildRunning = useBuild(projectId)?.run?.status === "running";
   const [target, setTarget] = useState<string | null>(() => localStorage.getItem(targetKey(projectId)));
   const [error, setError] = useState<string | null>(null);
+  // A move's refusal ("commit or stash first") outlives the refresh after it.
+  const [moveError, setMoveError] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<string[] | null>(null);
   const [moving, setMoving] = useState<AgainstMove | null>(null);
 
@@ -115,6 +117,7 @@ export function ChangesAgainst({
   const pick = (t: string): void => {
     localStorage.setItem(targetKey(projectId), t);
     setConflicts(null);
+    setMoveError(null);
     setTarget(t);
   };
 
@@ -122,7 +125,7 @@ export function ChangesAgainst({
     if (!target || moving) return;
     setMoving(kind);
     setConflicts(null);
-    setError(null);
+    setMoveError(null);
     try {
       const r: MergeResult = kind === "land" ? await mergeInto(projectId, target) : await mergeFrom(projectId, target, kind === "rebase" ? "rebase" : "merge");
       if (r.ok) {
@@ -134,7 +137,7 @@ export function ChangesAgainst({
         setConflicts(r.conflicts);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setMoveError(err instanceof Error ? err.message : String(err));
     }
     notifyGitChanged();
     await Promise.all([refresh(target), fetchLog(projectId).catch(() => undefined)]);
@@ -159,7 +162,7 @@ export function ChangesAgainst({
       moving={moving}
       blocked={buildRunning}
       conflicts={conflicts}
-      error={error}
+      error={moveError ?? error}
       onPick={pick}
       onMove={(kind) => void move(kind)}
       onOpen={openAgainstBase}

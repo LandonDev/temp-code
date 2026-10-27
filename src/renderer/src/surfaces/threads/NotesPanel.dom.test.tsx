@@ -147,6 +147,24 @@ describe("NotesBody", () => {
     expect(screen.getByText("Not saved").className).toContain("text-destructive");
   });
 
+  it("a first draft that failed to save stays: Not saved, and the pencil brings it back to retry", async () => {
+    request.mockImplementationOnce(() => Promise.resolve({ text: "", updatedAt: null, path: null }));
+    render(<NotesBody session={session} />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Start the notes" }));
+    fireEvent.change(screen.getByLabelText("Notes source"), { target: { value: "## Goal\n\nfirst\n" } });
+    request.mockImplementationOnce(() => Promise.reject(new Error("offline")));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    await flush();
+    expect(screen.queryByText("No notes yet")).toBeNull();
+    expect(screen.getByText("Not saved")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Edit notes" }));
+    expect((screen.getByLabelText("Notes source") as HTMLTextAreaElement).value).toBe("## Goal\n\nfirst\n");
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    await flush();
+    expect(request).toHaveBeenLastCalledWith("session.notes.set", { sessionId: "s1", text: "## Goal\n\nfirst\n" });
+  });
+
   it("loading shows skeleton lines, not words", () => {
     request.mockImplementationOnce(() => new Promise(() => {}));
     render(<NotesBody session={session} />);

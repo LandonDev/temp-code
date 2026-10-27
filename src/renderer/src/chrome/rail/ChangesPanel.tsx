@@ -344,7 +344,8 @@ export function ChangesPanel({
       const ok = await run("commit", async () => {
         await gitCommit(environmentId, cwd, text);
         // The commit landed: the field's work is done even if the push fails.
-        setMessage("");
+        // Text typed while git ran is a new message, not this one.
+        setMessage((current) => (current.trim() === text ? "" : current));
         if (then !== "none") await gitPush(environmentId, cwd);
         if (then === "pr") await openCreatedPr();
       });
@@ -669,11 +670,12 @@ function FileRow({
         )}
       </ItemMedia>
       <ItemContent className="min-w-0">
+        {/* A deleted file has no diff to open, but its row still takes focus: its actions show on focus. */}
         <button
           type="button"
-          disabled={deleted}
+          aria-disabled={deleted || undefined}
           onClick={() => actions.open(file)}
-          className="flex min-w-0 items-center text-left outline-none before:absolute before:inset-0 before:content-[''] focus-visible:before:rounded-lg focus-visible:before:ring-2 focus-visible:before:ring-ring disabled:cursor-default"
+          className="flex min-w-0 items-center text-left outline-none before:absolute before:inset-0 before:content-[''] focus-visible:before:rounded-lg focus-visible:before:ring-2 focus-visible:before:ring-ring aria-disabled:cursor-default"
           aria-label={deleted ? `${file.relative}, deleted` : `Open the diff of ${file.relative}`}
         >
           <FileName relative={file.relative} muted={deleted} />

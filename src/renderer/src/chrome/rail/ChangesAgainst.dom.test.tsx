@@ -123,6 +123,16 @@ describe("ChangesAgainst", () => {
     expect(h.toast).not.toHaveBeenCalled();
   });
 
+  it("a refused move keeps its reason after the comparison refreshes", async () => {
+    h.merge.mockImplementationOnce(() => Promise.reject(new Error("Commit or stash your changes first")));
+    mount();
+    await flush();
+    move("Update from master");
+    await flush();
+    await flush();
+    expect(screen.getByText("Commit or stash your changes first")).toBeTruthy();
+  });
+
   it("an up-to-date branch says so", async () => {
     h.compare = compareOf({ ahead: 0, behind: 0, ours: [], theirs: [], files: [] });
     mount();

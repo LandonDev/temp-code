@@ -51,6 +51,13 @@ describe("DebugPanel", () => {
     expect(screen.queryByLabelText("Evaluate expression")).toBeNull();
   });
 
+  it("keeps an ended session's console under the hint", () => {
+    seed({ debugPhase: "idle", debugFrames: [], debugVariables: [], debugOutput: ["Exception in thread main"] });
+    render(<DebugPanel />);
+    expect(screen.getByText("⌃D in a Java file starts a session here")).toBeTruthy();
+    expect(screen.getByText("Exception in thread main")).toBeTruthy();
+  });
+
   it("keeps the step controls and the evaluate field off while the session runs", () => {
     seed({ debugPhase: "running", debugFrames: [], debugVariables: [] });
     render(<DebugPanel />);
