@@ -19,7 +19,9 @@ const BOARD_IDS = new Set(["rename", "resume", "pause", "compact", "killBackgrou
 
 export function rowMenuItems(meta: SessionMeta, master: boolean, moves: readonly MoveTarget[]): ExplorerMenuItem[] {
   const chip = { id: meta.id, thread: meta, status: meta.status } as unknown as StripChip;
-  const own = chipMenuItems(chip, undefined, 0, master).filter((item) => item.kind === "sep" || BOARD_IDS.has(item.id));
+  const own = chipMenuItems(chip, undefined, 0, master).filter(
+    (item): item is ExplorerMenuItem => item.kind === "sep" || (item.kind === "item" && BOARD_IDS.has(item.id)),
+  );
   const archive = own.findIndex((item) => item.kind === "item" && item.id === "archive");
   const moveRows: ExplorerMenuItem[] = moves.flatMap((t): ExplorerMenuItem[] => [
     { kind: "item", id: `move:${t.environmentId}`, label: `Move to ${t.name}…`, disabled: !t.ok },

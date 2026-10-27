@@ -104,3 +104,21 @@ describe("chipMenuItems: host moves", () => {
     expect(ids(chip("idle")).some((id) => id.startsWith("move:"))).toBe(false);
   });
 });
+
+describe("chipMenuItems: Type", () => {
+  it("offers every thread type as a submenu after Rename, the thread's own checked", () => {
+    const items = chipMenuItems(chip("idle", { threadType: "planning" }));
+    const type = items[1];
+    expect(type).toMatchObject({ kind: "sub", id: "type", label: "Type" });
+    if (type?.kind !== "sub") throw new Error("no Type submenu");
+    expect(type.items.map((i) => (i.kind === "item" ? i.id : "sep"))).toEqual([
+      "type:chat",
+      "type:planning",
+      "type:project-plan",
+      "type:implementation",
+      "type:orchestration",
+      "type:research",
+    ]);
+    expect(type.items.filter((i) => i.kind === "item" && i.checked).map((i) => i.kind === "item" && i.id)).toEqual(["type:planning"]);
+  });
+});

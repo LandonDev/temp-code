@@ -73,6 +73,7 @@ export type HeaderEvents = Pick<
   | "onNew"
   | "onPauseAll"
   | "onToggleRail"
+  | "onSetType"
 >;
 
 type StateProps =

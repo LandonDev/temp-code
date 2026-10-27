@@ -5,6 +5,9 @@ import {
   ContextMenuCheckboxItem,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
 } from "../components/ui/context-menu";
 import {
   DropdownMenu,
@@ -41,6 +44,9 @@ import { chipTitle, type ArchivedThread, type StripChip } from "./ThreadHeaderSt
 
 export type MenuRowsKind = "dropdown" | "context";
 
+/** A thread's row: an item, a separator, or a submenu of items (Type). */
+export type ThreadMenuItem = ExplorerMenuItem | { kind: "sub"; id: string; label: string; items: ExplorerMenuItem[] };
+
 /** The one renderer for a thread's rows, in the ⋯ menu and the chip's
  *  right-click alike, so the two never drift. */
 export function MenuRows({
@@ -48,17 +54,30 @@ export function MenuRows({
   onPick,
   kind,
 }: {
-  items: readonly ExplorerMenuItem[];
+  items: readonly ThreadMenuItem[];
   onPick: (id: string) => void;
   kind: MenuRowsKind;
 }) {
   const Row = kind === "dropdown" ? DropdownMenuItem : ContextMenuItem;
   const Check = kind === "dropdown" ? DropdownMenuCheckboxItem : ContextMenuCheckboxItem;
   const Sep = kind === "dropdown" ? DropdownMenuSeparator : ContextMenuSeparator;
+  const Sub = kind === "dropdown" ? DropdownMenuSub : ContextMenuSub;
+  const SubTrigger = kind === "dropdown" ? DropdownMenuSubTrigger : ContextMenuSubTrigger;
+  const SubContent = kind === "dropdown" ? DropdownMenuSubContent : ContextMenuSubContent;
   return (
     <>
       {items.map((item, index) => {
         if (item.kind === "sep") return <Sep key={`sep-${index}`} />;
+        if (item.kind === "sub") {
+          return (
+            <Sub key={item.id}>
+              <SubTrigger>{item.label}</SubTrigger>
+              <SubContent>
+                <MenuRows items={item.items} onPick={onPick} kind={kind} />
+              </SubContent>
+            </Sub>
+          );
+        }
         const label = item.description ? (
           <span className="flex min-w-0 flex-col gap-0.5">
             <span>{item.label}</span>
@@ -112,7 +131,7 @@ export type ThreadMenuProps = {
   /** The active thread's cost in dollars, when known. */
   cost: number | null;
   /** The active thread's rows (chipMenuItems plus its host moves); empty without one. */
-  rows: readonly ExplorerMenuItem[];
+  rows: readonly ThreadMenuItem[];
   onPick: (id: string) => void;
   /** The menu opened: load what the thread's rows need (bridge, resources). */
   onOpen?: () => void;

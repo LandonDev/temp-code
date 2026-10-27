@@ -6,13 +6,13 @@ import type { ThreadRules } from "@server/shared/rules";
 import type { ThreadType } from "../lib/tcserver/types";
 import type { HeaderModel } from "../lib/threadHeaderModel";
 import type { ReadyMap } from "../lib/threadStripModel";
-import { THREAD_LABELS } from "../surfaces/threads/bits";
+import { THREAD_LABELS, THREAD_TYPES } from "../surfaces/threads/bits";
 import type { ExplorerMenuItem } from "./ExplorerMenu";
 import { NewThreadChooser } from "./NewThreadChooser";
 import { ProjectPlanChip } from "./ProjectPlanChip";
 import { ConfirmDialog } from "./ProjectDialogs";
 import { ThreadHeaderStrip, chipTitle, type ArchivedThread, type ChipThread, type StripChip } from "./ThreadHeaderStrip";
-import { MenuRows, ThreadMenu } from "./ThreadMenu";
+import { MenuRows, ThreadMenu, type ThreadMenuItem } from "./ThreadMenu";
 import { TuneDialog } from "./ThreadTune";
 import { MacBridgeRulesDialog } from "./MacBridgeRulesDialog";
 import { ArchiveThreadDialog, ThreadResourcesDialog } from "./ThreadResourcesDialog";
@@ -54,6 +54,8 @@ export type ThreadHeaderProps = {
   onNew: (threadType: ThreadType, tune: ThreadRules | null) => void;
   onPauseAll: () => Promise<unknown>;
   onToggleRail: () => void;
+  /** The thread menu's Type rows (App's onThreadTypeChange). */
+  onSetType: (id: string, threadType: ThreadType) => void;
 };
 
 const TUNABLE: ReadonlySet<ThreadType> = new Set(["orchestration", "research"]);
@@ -68,9 +70,17 @@ export function chipMenuItems(
   master = false,
   /** The thread's "Move to <host>…" rows (useThreadHost), before Archive. */
   moves: readonly ExplorerMenuItem[] = [],
-): ExplorerMenuItem[] {
+): ThreadMenuItem[] {
   const t = chip.thread;
-  const items: ExplorerMenuItem[] = [{ kind: "item", id: "rename", label: "Rename" }];
+  const items: ThreadMenuItem[] = [{ kind: "item", id: "rename", label: "Rename" }];
+  // The type, here once the composer's picker has left (a thread with a message).
+  const type = t.threadType ?? "chat";
+  items.push({
+    kind: "sub",
+    id: "type",
+    label: "Type",
+    items: THREAD_TYPES.map((each) => ({ kind: "item", id: `type:${each}`, label: THREAD_LABELS[each], checked: each === type })),
+  });
   if (t.threadType && TUNABLE.has(t.threadType))
     items.push({ kind: "item", id: "tune", label: `${THREAD_LABELS[t.threadType]} options…` });
   const paused = chip.status === "paused";
@@ -145,6 +155,7 @@ export function ThreadHeader({
   onNew,
   onPauseAll,
   onToggleRail,
+  onSetType,
   onShowTerminal,
   onNewTerminal,
   projectTerminalActive = false,
@@ -186,7 +197,7 @@ export function ThreadHeader({
   const activeChip = model.live.find((c) => c.id === model.activeId) ?? null;
 
   /** The one list for a thread: its chip's right-click and the ⋯ menu alike. */
-  const rowsFor = (chip: StripChip): ExplorerMenuItem[] => {
+  const rowsFor = (chip: StripChip): ThreadMenuItem[] => {
     const own = chip.id === target;
     const bridge: ChipBridge | undefined =
       own && targetEnv && bridgeableEnvironment(targetEnv) ? { state: bridgeState } : undefined;
@@ -195,7 +206,8 @@ export function ThreadHeader({
 
   const pick = (chip: StripChip, id: string) => {
     if (host.pick(id)) return;
-    if (id === "rename") setRenamingId(chip.id);
+    if (id.startsWith("type:")) onSetType(chip.id, id.slice("type:".length) as ThreadType);
+    else if (id === "rename") setRenamingId(chip.id);
     else if (id === "tune") setTuning(chip);
     // With resources on the ledger the archive asks whether they go too (ArchiveThreadDialog).
     else if (id === "archive") (liveResources(chip.id).length ? setArchiving(chip) : onArchive(chip.id));

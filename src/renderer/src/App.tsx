@@ -3145,10 +3145,12 @@ export default function App() {
               const id = rightPanel.focused();
               if (id) rightPanel.toggle(id);
             },
+            onSetType: onThreadTypeChange,
           }
         : undefined,
     [
       deckLayout,
+      onThreadTypeChange,
       onSelectHistorySession,
       onRenameHistorySession,
       onHeaderArchive,

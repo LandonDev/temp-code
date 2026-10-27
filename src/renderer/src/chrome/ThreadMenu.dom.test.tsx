@@ -124,6 +124,14 @@ describe("ThreadMenu", () => {
 });
 
 describe("MenuRows", () => {
+  it("the Type submenu picks a type by its row id", async () => {
+    const props = menu({ rows: chipMenuItems(chip("a", "A", 1)) });
+    const list = await openMenu();
+    fireEvent.click(within(list).getByText("Type"));
+    fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Plan" }));
+    expect(props.onPick).toHaveBeenCalledWith("type:planning");
+  });
+
   it("the ⋯ menu and the chip's right-click render the same rows", async () => {
     const items = chipMenuItems(chip("a", "A", 1), undefined, 2, true);
     const labels = (root: HTMLElement) =>

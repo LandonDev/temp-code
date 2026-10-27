@@ -25,6 +25,7 @@ const header: ThreadHeaderProps = {
   onNew: () => {},
   onPauseAll: () => Promise.resolve(),
   onToggleRail: () => {},
+  onSetType: () => {},
 };
 
 function bar(over: Partial<ComponentProps<typeof TitleBar>> = {}) {
