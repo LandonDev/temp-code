@@ -27,7 +27,7 @@ describe('DeployDriftMark', () => {
     const { container } = render(<DeployDriftMark environmentId="env_box" />)
     const mark = container.querySelector('[data-deploy-drift]')!
     expect(mark.textContent).toBe('+3')
-    expect(mark.getAttribute('title')).toBe(
+    expect(mark.getAttribute('aria-label')).toBe(
       "3 releases behind master (runs v1.0.270, master is v1.0.273). Deploy with: ssh box 'box-update master'"
     )
     expect(mark.className).toContain('tabular-nums')
@@ -37,7 +37,7 @@ describe('DeployDriftMark', () => {
     hello = { build: build(272, 'darwin') }
     resetDeployDriftForTest({ release: 273, version: '1.0.273', fetchedAt: 1 })
     const { container } = render(<DeployDriftMark environmentId="local" />)
-    expect(container.querySelector('[data-deploy-drift]')?.getAttribute('title')).toBe(
+    expect(container.querySelector('[data-deploy-drift]')?.getAttribute('aria-label')).toBe(
       '1 release behind master (runs v1.0.272, master is v1.0.273). Publish with: bun run release:publish'
     )
   })

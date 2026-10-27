@@ -8,10 +8,8 @@ import { useWorkspaces } from "../lib/tcserver/workspaces";
 import { workspaceOfSection } from "../lib/settings";
 import { AppshotsPage } from "./AppshotsSettings";
 import { ReviewsPage } from "./ReviewSettings";
-import { RemoteSettings } from "./RemoteSettings";
-import { EnvironmentsSettings } from "./EnvironmentsSettings";
+import { HostsPage } from "./settings/hosts/HostsPage";
 import { shell, useShell } from "../stores/shell";
-import { isWebMode } from "../lib/nativeWeb";
 import { Page } from "../components/page";
 import { GeneralPage } from "./settings/General";
 import { ThreadDefaultsPage } from "./settings/ThreadDefaults";
@@ -133,13 +131,7 @@ export function SettingsView({
               <AppshotsPage />
             </div>
           ) : null}
-          {section === "remote" ? (
-            <div>
-              <RemoteSettings onOpenSession={onOpenSession} />
-              {/* Until A16 merges the two, Hosts shows both; /ui sees one environment and cannot add another. */}
-              {isWebMode() ? null : <EnvironmentsSettings />}
-            </div>
-          ) : null}
+          {section === "remote" ? <HostsPage onOpenSession={onOpenSession} /> : null}
           {section === "archive" ? (
             <div>
               <ArchivePage

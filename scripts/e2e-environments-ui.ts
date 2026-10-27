@@ -2,7 +2,7 @@
  * The multi-environment UI for real (thread K2). Two isolated instances of
  * the BUILT tree (electron-vite preview, fresh userData each, their own
  * debug and remote ports): A is the desktop, B a second host. A adds B
- * through Settings → Environments over CDP (the fields and buttons, never
+ * through Settings → Hosts over CDP (the fields and buttons, never
  * the registry), a wrong key shows one clear error, the switcher moves the
  * window to B, a thread on B takes a turn from the composer, the inbox
  * merges both hosts, B is killed and A's thread shows the degraded line
@@ -166,13 +166,13 @@ async function connectWindow(inst: Inst, label: string): Promise<Cdp> {
   await until(cdp, `window.__monocode.registry.statusOf('local').fresh === true`, 60_000, `${label} first list`)
   return cdp
 }
-/** Settings → Environments, from wherever the window is. */
+/** Settings → Hosts, from wherever the window is. */
 async function openEnvironmentsPane(cdp: Cdp): Promise<void> {
   await key(cdp, 'Escape', 'Escape')
   await key(cdp, ',', 'Comma', META, 188)
   await until(cdp, `!!document.querySelector('[data-app-settings]')`, 10_000, 'Settings')
-  await clickText(cdp, 'Environments')
-  await until(cdp, `!!document.querySelector('[data-environment-row="local"]')`, 10_000, 'the Environments pane')
+  await clickText(cdp, 'Hosts')
+  await until(cdp, `!!document.querySelector('[data-environment-row="local"]')`, 10_000, 'the Hosts page')
 }
 const closeSettings = async (cdp: Cdp): Promise<void> => {
   await key(cdp, 'Escape', 'Escape')
@@ -203,7 +203,7 @@ try {
   // ── A adds B through the pane ──────────────────────────────────────
   await openEnvironmentsPane(a)
   check('A: the pane lists this machine first', (await bodyText(a)).includes('This Mac'))
-  check('A: the pane opens the Add dialog', await clickText(a, 'Add environment'))
+  check('A: the pane opens the Add dialog', await clickText(a, 'Add host'))
   await until(a, `!!document.querySelector('[data-environment-field="link"]')`, 5_000, 'the Add dialog')
   await clickText(a, 'Key')
   await until(a, `!!document.querySelector('[data-environment-field="key"]')`, 5_000, 'the key fields')
@@ -217,12 +217,12 @@ try {
   await typeInto(a, '[data-environment-field="name"]', 'B')
   await clickText(a, 'Add')
   await until(a, `!!document.querySelector('[data-environment-row=${JSON.stringify(bHello)}]')`, 30_000, "B's row in the pane")
-  await until(a, `document.querySelector('[data-environment-row=${JSON.stringify(bHello)}]').innerText.includes('connected')`, 30_000, 'B connected in the pane')
+  await until(a, `document.querySelector('[data-environment-row=${JSON.stringify(bHello)}]').innerText.toLowerCase().includes('connected')`, 30_000, 'B connected in the pane')
   const listed = (await rpc(a, 'local', 'remote.environments.list', {})) as { id: string; name: string; caps: string[]; keyName: string }[]
   check('A: the pane added B under its own id, named B, with the key\'s caps', listed.length === 1 && listed[0].id === bHello && listed[0].name === 'B' && listed[0].caps.includes('operate'), JSON.stringify(listed.map((e) => ({ id: e.id, name: e.name, caps: e.caps }))))
   check('A: the list never carries the key', !JSON.stringify(listed).includes(bKey.token.split('.')[1] ?? '@@'))
   const row = (await a.eval(`document.querySelector('[data-environment-row=${JSON.stringify(bHello)}]').innerText`)) as string
-  check('A: the row shows origin, status and capabilities', row.includes(`127.0.0.1:${B.remote}`) && row.includes('connected') && row.includes('operate'), row.replace(/\n/g, ' · '))
+  check('A: the row shows origin, status and capabilities', row.includes(`127.0.0.1:${B.remote}`) && row.toLowerCase().includes('connected') && row.includes('operate'), row.replace(/\n/g, ' · '))
   await shot(a, SHOTS.pane)
 
   // ── the switcher moves the window to B ─────────────────────────────
@@ -302,7 +302,7 @@ try {
     const made = JSON.parse(await sh(['ssh', '-o', 'BatchMode=yes', 'box', `tc-local remote.pairings.create '{"name":"K2 e2e","audience":"client","caps":["read"]}'`], { quiet: true })) as { url: string; code: string }
     check('box: a pairing code was minted over ssh', typeof made?.url === 'string' && made.url.includes('/pair#'))
     await openEnvironmentsPane(a)
-    await clickText(a, 'Add environment')
+    await clickText(a, 'Add host')
     await until(a, `!!document.querySelector('[data-environment-field="link"]')`, 5_000, 'the Add dialog')
     await typeInto(a, '[data-environment-field="link"]', made.url)
     await typeInto(a, '[data-environment-field="name"]', 'box')

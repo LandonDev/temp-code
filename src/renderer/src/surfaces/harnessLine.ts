@@ -23,7 +23,9 @@ export function setsText(sets: Record<string, number> | null): string {
     .join(", ");
 }
 
-export function ago(at: number, now: number): string {
+/** "just now", "3m ago", "2d ago", or the date past a week ("Oct 3"). */
+export function ago(at: number, now = Date.now()): string {
   const t = timeAgo(at, now);
-  return t === "now" ? "just now" : `${t} ago`;
+  if (t === "now") return "just now";
+  return /^\d+[mhd]$/.test(t) ? `${t} ago` : t;
 }
