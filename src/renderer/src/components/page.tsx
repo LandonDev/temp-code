@@ -138,4 +138,14 @@ function PageRowsSkeleton({ rows = 2 }: { rows?: number }) {
   );
 }
 
-export { Page, PageSection, PageRow, PageRowsSkeleton };
+/** A section with nothing in it: one muted 12px line in a row's place. The
+ *  section's heading is already the title, so this is never `Empty`. */
+function PageEmpty({ className, children, ...rest }: ComponentPropsWithoutRef<"p">) {
+  return (
+    <p {...rest} data-slot="page-empty" className={cn("py-3 text-xs text-muted-foreground", className)}>
+      {children}
+    </p>
+  );
+}
+
+export { Page, PageSection, PageRow, PageRowsSkeleton, PageEmpty };

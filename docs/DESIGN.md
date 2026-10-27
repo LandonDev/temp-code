@@ -275,6 +275,9 @@ when it is an action. A list with nothing in it shows one `Empty`: a title,
 one line, at most one action; never an illustration or a dashed box. A
 list the person narrowed (a typed filter, the filter menu) says so in that
 line and offers Clear filters as its action. A
+section of a settings page with nothing in it shows one muted line in a
+row's place (`PageEmpty`), never `Empty`: the section's heading is already
+the title. A
 thread with no messages shows the composer and nothing else. Inside a picker
 or menu, no match is one muted row, never `Empty`. A lazy surface falls back
 to a `SurfaceSkeleton` kind, and a small section's wait is `LoadingLine`

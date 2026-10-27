@@ -70,8 +70,22 @@ describe("DevicesBlock", () => {
     expect(sim!.querySelector("[data-holder]")!.textContent).toBe("iOS: Home, running");
     expect(facts(ipad!)).toEqual(["Shutdown"]);
     expect(ipad!.querySelector("[data-holder]")).toBeNull();
-    expect(facts(phone!)).toEqual(["Landon’s iPhone", "iOS 27.2", "Connected", "USB"]);
+    // A named phone: its name is the title, the model and the OS under it.
+    expect(phone!.querySelector("[data-slot=item-title]")!.textContent).toContain("Landon’s iPhone");
+    expect(facts(phone!)).toEqual(["iPhone 17 Pro Max", "iOS 27.2", "Connected", "USB"]);
     expect(root.textContent).not.toContain("·");
+  });
+
+  it("a phone whose name is its model says the model once", () => {
+    const { root } = mount({
+      report: report({
+        simulators: [],
+        phones: [{ udid: "P1", name: "iPhone 17 Pro Max", model: "iPhone 17 Pro Max", os: "iOS 27.2", connection: "paired", holder: null }],
+      }),
+    });
+    const [phone] = rows(root);
+    expect(phone!.textContent!.split("iPhone 17 Pro Max")).toHaveLength(2);
+    expect(facts(phone!)).toEqual(["iOS 27.2", "Paired"]);
   });
 
   it("a Mac with no Load limit row on the page (a linked Mac, or the Mac serving a web page) keeps its load in the heading", () => {
@@ -119,6 +133,7 @@ describe("DevicesBlock", () => {
   it("the empty state is one muted line", () => {
     const { root } = mount({ report: report({ simulators: [], phones: [] }) });
     expect(root.querySelector("[data-empty]")!.textContent).toBe("No simulators");
+    expect(root.querySelector("[data-empty]")!.getAttribute("data-slot")).toBe("page-empty");
     expect(rows(root)).toHaveLength(0);
     expect(facts(root.querySelector("[data-summary]"))).toEqual(["Xcode-beta 27.0"]);
   });

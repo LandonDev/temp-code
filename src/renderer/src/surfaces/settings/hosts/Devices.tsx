@@ -8,6 +8,7 @@ import {
   type Phone,
   type Simulator,
 } from "@server/shared/contract-hostdevices";
+import { PageEmpty } from "../../../components/page";
 import { Button } from "../../../components/ui/button";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { ConfirmDialog, errorText } from "../../../chrome/ConfirmDialog";
@@ -107,9 +108,7 @@ export function DevicesBlock({ host, report, error, onOpenSession, onShutdown, o
       {report ? (
         <>
           {report.simulators.length === 0 ? (
-            <p className="py-1.5 text-xs text-muted-foreground" data-empty>
-              No simulators
-            </p>
+            <PageEmpty data-empty>No simulators</PageEmpty>
           ) : null}
           {report.simulators.map((sim) => (
             <DeviceRow
@@ -136,8 +135,9 @@ export function DevicesBlock({ host, report, error, onOpenSession, onShutdown, o
             <DeviceRow
               key={phone.udid}
               udid={phone.udid}
-              name={phone.model}
-              detail={<Facts parts={[phone.name, phone.os]} />}
+              name={phone.name}
+              // The model only when the owner's name for it says something else.
+              detail={<Facts parts={phone.model && phone.model !== phone.name ? [phone.model, phone.os] : [phone.os]} />}
               state={phoneState(phone)}
               holder={phone.holder}
               onOpenSession={onOpenSession}

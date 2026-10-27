@@ -1,4 +1,5 @@
 import type { RemoteKey, RemotePairing, RemoteSession } from "@server/shared/contract-remote";
+import { PageEmpty } from "../../../components/page";
 import { Button } from "../../../components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
 import { confirmAction } from "../../../chrome/ConfirmDialog";
@@ -55,7 +56,7 @@ export function Clients({
         </DropdownMenu>
       }
     >
-      {empty ? <p className="py-1.5 text-xs text-muted-foreground">No clients</p> : null}
+      {empty ? <PageEmpty>No clients</PageEmpty> : null}
       {pairings.map((p) => (
         <Row
           key={p.id}

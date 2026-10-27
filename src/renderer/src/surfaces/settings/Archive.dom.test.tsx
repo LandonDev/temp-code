@@ -53,9 +53,12 @@ const handlers = () => ({
   onDeleteProject: vi.fn(),
 });
 
-async function clickDelete(row: HTMLElement) {
+async function clickDelete(row: HTMLElement, verb = "Delete") {
   await act(async () => {
-    fireEvent.click(within(row).getByRole("button", { name: /^Delete .*…$/ }));
+    fireEvent.click(within(row).getByRole("button", { name: /^More for / }));
+  });
+  await act(async () => {
+    fireEvent.click(screen.getByRole("menuitem", { name: `${verb}…` }));
   });
 }
 
@@ -72,8 +75,19 @@ afterEach(cleanup);
 describe("Archive page", () => {
   it("shows an empty state for each list", () => {
     render(<ArchivePage {...handlers()} />);
-    expect(screen.getByText("No archived projects.")).toBeTruthy();
-    expect(screen.getByText("No archived threads. Right-click a tab to archive it.")).toBeTruthy();
+    const lines = [...document.querySelectorAll("[data-slot=page-empty]")].map((p) => p.textContent);
+    expect(lines).toEqual(["No archived projects", "No archived threads"]);
+  });
+
+  it("shows Restore and ⋯ on a row, with Delete… in the menu", async () => {
+    state.metas = [meta("t1", "Fix the build", "p1")];
+    render(<ArchivePage {...handlers()} />);
+    const row = rowOf("Fix the build");
+    expect(within(row).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual([
+      "Restore Fix the build",
+      "More for Fix the build",
+    ]);
+    expect(within(row).queryByRole("button", { name: /Delete/ })).toBeNull();
   });
 
   it("restores a thread and opens it", async () => {
@@ -128,9 +142,7 @@ describe("Archive page", () => {
   it("opens the remove dialog for a project's Remove…", async () => {
     state.projects = [{ path: "/w/old" }];
     render(<ArchivePage {...handlers()} />);
-    await act(async () => {
-      fireEvent.click(within(rowOf("old")).getByRole("button", { name: "Remove old…" }));
-    });
+    await clickDelete(rowOf("old"), "Remove");
     expect(screen.getByRole("dialog").textContent).toBe("Remove old");
   });
 

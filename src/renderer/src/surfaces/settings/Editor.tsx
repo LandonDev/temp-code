@@ -25,7 +25,7 @@ import {
 } from "../../components/ui/dialog";
 import { Spinner } from "../../components/ui/spinner";
 import { ChoiceSelect } from "../../components/choice-select";
-import { PageRow, PageSection } from "../../components/page";
+import { PageEmpty, PageRow, PageSection } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
 import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -103,7 +103,7 @@ function LanguageServers() {
           ))}
         </div>
       ) : rows.length === 0 ? (
-        <p className="py-3 text-xs text-muted-foreground">None running</p>
+        <PageEmpty>None running</PageEmpty>
       ) : (
         rows.map((row) => {
           const project = projectNames.get(row.projectId) ?? row.projectId;

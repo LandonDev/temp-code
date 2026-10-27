@@ -15,9 +15,11 @@ import { useSessionMetas } from "../../lib/tcserver/store";
 import { useProjects } from "../../lib/tcserver/workspaces";
 import type { SessionMeta } from "@shared/events";
 import { useWorkspaces, workspaceLabelKey } from "../../lib/tcserver/workspaces";
-import { PageRow, PageSection } from "../../components/page";
+import { PageEmpty, PageRow, PageSection } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
 import { Button } from "../../components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
+import { MoreHorizontal } from "../../chrome/icons";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -128,7 +130,7 @@ export function ArchivePage({
 
       <PageSection title="Archived projects">
         {archivedProjects.length === 0 ? (
-          <p className="py-3 text-[12px] text-muted-foreground">No archived projects.</p>
+          <PageEmpty>No archived projects</PageEmpty>
         ) : (
           archivedProjects.map((project) => (
             <PageRow
@@ -149,7 +151,7 @@ export function ArchivePage({
 
       <PageSection title="Archived threads">
         {archived.length === 0 ? (
-          <p className="py-3 text-[12px] text-muted-foreground">No archived threads. Right-click a tab to archive it.</p>
+          <PageEmpty>No archived threads</PageEmpty>
         ) : (
           <>
             <Input
@@ -164,7 +166,7 @@ export function ArchivePage({
               className="mb-1"
             />
             {shown.length === 0 ? (
-              <p className="py-3 text-[12px] text-muted-foreground">No archived thread matches</p>
+              <PageEmpty>No archived thread matches</PageEmpty>
             ) : (
               shown.slice(0, limit).map((meta) => (
                 <PageRow
@@ -248,8 +250,10 @@ export function DeleteThreadDialog({
   );
 }
 
-/** Restore and the removing verb (Delete… for a thread, Remove… for a
- *  workspace whose folder stays), shown while the row is hovered or holds focus. */
+/** Restore, then a ⋯ menu holding the removing verb (Delete… for a thread,
+ *  Remove… for a workspace whose folder stays): one verb on the row, the
+ *  destructive one a step away. Shown on hover, on focus and while the
+ *  menu is open. */
 function RowActions({
   name,
   verb = "Delete",
@@ -262,16 +266,23 @@ function RowActions({
   onDelete?: () => void;
 }) {
   return (
-    <span className="flex items-center gap-1 opacity-0 transition-opacity duration-(--dur-fast) group-hover/item:opacity-100 group-focus-within/item:opacity-100">
+    <span className="flex items-center gap-1 opacity-0 transition-opacity duration-(--dur-fast) group-hover/item:opacity-100 group-focus-within/item:opacity-100 has-[[data-popup-open]]:opacity-100">
       {onRestore ? (
         <Button variant="ghost" size="sm" aria-label={`Restore ${name}`} onClick={onRestore}>
           Restore
         </Button>
       ) : null}
       {onDelete ? (
-        <Button variant="ghost" size="sm" aria-label={`${verb} ${name}…`} onClick={onDelete}>
-          {verb}…
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`More for ${name}`} />}>
+            <MoreHorizontal />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent size="sm" align="end">
+            <DropdownMenuItem variant="destructive" onClick={onDelete}>
+              {verb}…
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       ) : null}
     </span>
   );
