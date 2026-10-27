@@ -1,10 +1,13 @@
 import { registry } from "../lib/connection";
 import { useEffect, useState } from "react";
+import { ErrorLine } from "./ConfirmDialog";
+import { FieldRow } from "./DialogField";
 import { ChoiceSelect } from "../components/choice-select";
 import { PageRow, PageRowsSkeleton, PageSection } from "../components/page";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Button } from "../components/ui/button";
 import { Spinner } from "../components/ui/spinner";
+import { Dialog } from "../components/ui/dialog";
+import { ModalPanel, useClosingDialog } from "./Modal";
 import {
   BUILT_IN_SCOPE,
   EFFORT_LABELS,
@@ -153,24 +156,6 @@ function OverridingWorkspaces({ environmentId }: { environmentId: string }) {
   );
 }
 
-/** A labelled picker in the dialog: the label 12px medium muted above it. */
-function Field({
-  label,
-  ...picker
-}: {
-  label: string;
-  value: string;
-  options: { value: string; label: string }[];
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
-      <ChoiceSelect label={label} className="w-full" {...picker} />
-    </div>
-  );
-}
-
 /** The sidebar's quick editor for one workspace: edits stay local until Save. */
 export function ThreadDefaultsDialog({
   workspace,
@@ -183,6 +168,7 @@ export function ThreadDefaultsDialog({
   const [value, setValue] = useState<ThreadDefaults | null>(scope?.defaults ?? null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { root, closeThen } = useClosingDialog(onClose, pending);
   useEffect(() => {
     if (scope) setValue((current) => current ?? scope.defaults);
   }, [scope]);
@@ -192,7 +178,8 @@ export function ThreadDefaultsDialog({
     setError(null);
     try {
       await workspaceStore.saveDefaults(workspace.environmentId, workspace.id, next);
-      onClose();
+      setPending(false);
+      closeThen(onClose);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setPending(false);
@@ -200,50 +187,61 @@ export function ThreadDefaultsDialog({
   };
 
   return (
-    <Dialog open onOpenChange={(open) => (open || pending ? null : onClose())}>
-      <DialogContent size="sm">
+    <Dialog {...root}>
+      <ModalPanel onClose={onClose} title="Thread defaults" description={workspace.name} size="sm" busy={pending}>
         <form
-          className="grid gap-4"
           onSubmit={(e) => {
             e.preventDefault();
             if (value) void save(value);
           }}
         >
-          <DialogHeader>
-            <DialogTitle>Thread defaults</DialogTitle>
-            <DialogDescription>{workspace.name}</DialogDescription>
-          </DialogHeader>
-          {value ? <DialogFields value={value} onChange={setValue} environmentId={workspace.environmentId} /> : <PageRowsSkeleton rows={3} />}
-          <p className="text-xs text-muted-foreground">{scopeHint(workspace.id, scope ?? BUILT_IN_SCOPE)}</p>
-          {error ? <p className="text-xs text-destructive">{error}</p> : null}
-          <DialogFooter>
+          <div className="flex flex-col gap-4 px-4 py-4">
+            {value ? (
+              <DialogFields value={value} onChange={setValue} environmentId={workspace.environmentId} hint={scopeHint(workspace.id, scope ?? BUILT_IN_SCOPE)} />
+            ) : (
+              <PageRowsSkeleton rows={4} />
+            )}
+            <ErrorLine error={error} />
+          </div>
+          <div className="flex items-center justify-end gap-2 border-t border-border px-4 py-3">
             {scope?.overridden ? (
-              <Button type="button" variant="ghost" disabled={pending} onClick={() => void save(null)} className="me-auto">
+              <Button variant="ghost" disabled={pending} onClick={() => void save(null)} className="me-auto">
                 Remove override
               </Button>
             ) : null}
-            <Button type="button" variant="secondary" onClick={onClose}>
+            <Button variant="secondary" onClick={() => closeThen(onClose)}>
               Cancel
             </Button>
             <Button type="submit" disabled={pending || !value}>
-              {pending ? <Spinner className="size-3.5" /> : null}
+              {pending ? <Spinner /> : null}
               Save
             </Button>
-          </DialogFooter>
+          </div>
         </form>
-      </DialogContent>
+      </ModalPanel>
     </Dialog>
   );
 }
 
-function DialogFields({ value, onChange, environmentId }: { value: ThreadDefaults; onChange: Change; environmentId?: string }) {
+/** The dialog's rows: the label at the start, the picker at the end; the scope hint under the last. */
+function DialogFields({ value, onChange, environmentId, hint }: { value: ThreadDefaults; onChange: Change; environmentId?: string; hint?: string }) {
   const rows = useDefaultsRows(value, onChange, environmentId);
   return (
-    <>
-      <Field label="Provider" {...rows.provider} />
-      <Field label="Model" {...rows.model} />
-      {rows.ladder.length > 1 ? <Field label="Reasoning" {...rows.reasoning} /> : null}
-      <Field label="Security" {...rows.permission} />
-    </>
+    <div className="flex flex-col">
+      <FieldRow label="Provider">
+        <ChoiceSelect label="Provider" size="sm" {...rows.provider} />
+      </FieldRow>
+      <FieldRow label="Model">
+        <ChoiceSelect label="Model" size="sm" {...rows.model} />
+      </FieldRow>
+      {rows.ladder.length > 1 ? (
+        <FieldRow label="Reasoning">
+          <ChoiceSelect label="Reasoning" size="sm" {...rows.reasoning} />
+        </FieldRow>
+      ) : null}
+      <FieldRow label="Security" description={hint}>
+        <ChoiceSelect label="Security" size="sm" {...rows.permission} />
+      </FieldRow>
+    </div>
   );
 }

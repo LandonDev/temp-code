@@ -5,7 +5,7 @@ import { IDLE_STATUS, type EnvironmentStatus } from '../lib/connection/types'
 import type { Link } from '../lib/connection'
 import { workspaceStore } from '../lib/tcserver/workspaces'
 import type { ProjectMeta, WorkspaceMeta } from '../lib/tcserver/types'
-import { ProjectSettingsDialog, ProjectTeardownDialog } from './ProjectDialogs'
+import { NewProjectDialog, ProjectSettingsDialog, ProjectTeardownDialog } from './ProjectDialogs'
 import { PreambleDialog } from './PreambleDialog'
 
 // Two hosts: this Mac (the `local` slot, host id env_mac, darwin) and the
@@ -231,5 +231,33 @@ describe('ProjectTeardownDialog on a linked project', () => {
     render(<ProjectTeardownDialog project={SOLO} action="delete" onClose={() => {}} onDone={() => {}} />)
     expect(screen.queryByRole('checkbox')).toBeNull()
     expect(footerNote()).toBeNull()
+  })
+})
+
+describe('NewProjectDialog', () => {
+  it('focuses the name, picks the mode from the toggle, and creates once the exit has played', async () => {
+    const created = vi.fn()
+    render(<NewProjectDialog workspace={MAC_WS} onClose={() => {}} onCreated={created} />)
+    const name = screen.getByLabelText('Name')
+    await waitFor(() => expect(document.activeElement).toBe(name))
+    const worktree = screen.getByRole('button', { name: 'Worktree' })
+    const local = screen.getByRole('button', { name: 'Local' })
+    expect(worktree.getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByLabelText('Branch')).toBeTruthy()
+    expect(screen.getByText('Own branch and folder, isolated from your checkout.')).toBeTruthy()
+
+    fireEvent.click(local)
+    expect(local.getAttribute('aria-pressed')).toBe('true')
+    expect(screen.queryByLabelText('Branch')).toBeNull()
+    // Pressing the chosen mode again keeps it: a mode is never unset.
+    fireEvent.click(local)
+    expect(local.getAttribute('aria-pressed')).toBe('true')
+
+    fireEvent.change(name, { target: { value: 'Search' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+    })
+    await waitFor(() => expect(created).toHaveBeenCalledTimes(1))
+    expect(writes().find((c) => c.method === 'project.create')?.params).toEqual({ workspaceId: 'w_mac', name: 'Search', mode: 'local' })
   })
 })

@@ -1,10 +1,13 @@
 import { WandSparkles } from "./icons";
-import { useEffect, useRef, useState } from "react";
-import { GHOST, PRIMARY, errorText } from "./ConfirmDialog";
-import { Modal } from "./Modal";
+import { useRef, useState } from "react";
+import { Button } from "@renderer/components/ui/button";
+import { Spinner } from "@renderer/components/ui/spinner";
+import { Textarea } from "@renderer/components/ui/textarea";
+import { ErrorLine, errorText } from "./ConfirmDialog";
+import { Tip } from "./DialogField";
+import { Modal, useModalClose } from "./Modal";
 import { generateCommitMessage } from "../lib/harness";
 import { MOD } from "../lib/platform";
-import { MatrixSpinner } from "../surfaces/threads/spinners";
 
 type Busy = "stash" | "commit" | null;
 
@@ -19,37 +22,38 @@ type Props = {
   onCancel: () => void;
 };
 
-export function SwitchBranchDialog({
+export function SwitchBranchDialog(props: Props) {
+  const [generating, setGenerating] = useState(false);
+  return (
+    <Modal
+      onClose={props.onCancel}
+      busy={Boolean(props.busy) || generating}
+      title="Uncommitted changes"
+      description={`Stash or commit them before ${props.creating ? "creating" : "switching to"} “${props.branch}”.`}
+      size="sm"
+    >
+      <Body {...props} generating={generating} setGenerating={setGenerating} />
+    </Modal>
+  );
+}
+
+function Body({
   cwd,
-  branch,
-  creating = false,
   busy,
   error,
   onStash,
   onCommit,
   onCancel,
-}: Props) {
+  generating,
+  setGenerating,
+}: Props & { generating: boolean; setGenerating: (on: boolean) => void }) {
+  const close = useModalClose();
   const [message, setMessage] = useState("");
-  const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
-  const messageRef = useRef<HTMLTextAreaElement>(null);
+  const field = useRef<HTMLTextAreaElement>(null);
   const trimmed = message.trim();
   const waiting = Boolean(busy) || generating;
   const canCommit = trimmed.length > 0 && !waiting;
-
-  // The modal focuses its close button on mount; the message field wins
-  // on the next frame.
-  useEffect(() => {
-    const id = requestAnimationFrame(() => messageRef.current?.focus());
-    return () => cancelAnimationFrame(id);
-  }, []);
-
-  useEffect(() => {
-    const el = messageRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-  }, [message]);
 
   const generate = async () => {
     if (waiting) return;
@@ -61,30 +65,23 @@ export function SwitchBranchDialog({
       setGenerateError(errorText(err));
     } finally {
       setGenerating(false);
-      messageRef.current?.focus();
+      field.current?.focus();
     }
   };
 
-  const shown = error || generateError;
-
   return (
-    <Modal
-      onClose={onCancel}
-      busy={waiting}
-      title="Uncommitted changes"
-      description={`Stash or commit them before ${creating ? "creating" : "switching to"} “${branch}”.`}
-      size="sm"
-    >
-      <div className="flex flex-col gap-2 px-4 py-3">
+    <>
+      <div className="flex flex-col gap-4 px-4 py-4">
         <div className="relative">
-          <textarea
-            ref={messageRef}
+          <Textarea
+            ref={field}
+            autoFocus
             rows={1}
             value={message}
             placeholder={`Message (${MOD}↩ to commit)`}
             disabled={waiting}
             aria-label="Commit message"
-            className="max-h-40 w-full resize-none overflow-y-auto rounded-lg border border-content/10 bg-content/5 py-1.5 pr-8 pl-2 text-[12px] leading-5 text-content outline-none placeholder:text-content/40 focus:border-content/20 disabled:cursor-default disabled:opacity-40"
+            className="max-h-40 min-h-8 resize-none overflow-y-auto py-1.5 pe-9"
             onChange={(event) => setMessage(event.target.value)}
             onKeyDown={(event) => {
               if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && canCommit) {
@@ -93,43 +90,34 @@ export function SwitchBranchDialog({
               }
             }}
           />
-          <button
-            type="button"
-            title="Generate commit message"
-            aria-label="Generate commit message"
-            disabled={waiting}
-            onClick={() => void generate()}
-            className="pressable absolute top-1.5 right-1.5 grid size-5 place-items-center rounded-sm text-content/50 hover:bg-content/10 hover:text-content disabled:cursor-default disabled:opacity-40"
-          >
-            {generating ? (
-              <MatrixSpinner cell={1.5} />
-            ) : (
-              <WandSparkles className="size-3.5" strokeWidth={1.75} />
-            )}
-          </button>
+          <Tip label="Generate commit message">
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Generate commit message"
+              disabled={waiting}
+              onClick={() => void generate()}
+              className="absolute end-1 top-1 text-muted-foreground"
+            >
+              {generating ? <Spinner /> : <WandSparkles />}
+            </Button>
+          </Tip>
         </div>
-        {shown ? (
-          <p className="whitespace-pre-wrap text-[11px] leading-4 text-danger">{shown}</p>
-        ) : null}
+        <ErrorLine error={error || generateError} />
       </div>
-      <div className="flex items-center justify-end gap-2 border-t border-content/10 px-4 py-3">
-        <button type="button" disabled={waiting} onClick={onCancel} className={GHOST}>
+      <div className="flex items-center justify-end gap-2 border-t border-border px-4 py-3">
+        <Button variant="ghost" disabled={waiting} onClick={() => (close ? close(onCancel) : onCancel())}>
           Cancel
-        </button>
-        <button
-          type="button"
-          disabled={!canCommit}
-          onClick={() => onCommit(trimmed)}
-          className={`${GHOST} flex items-center gap-2`}
-        >
-          {busy === "commit" ? <MatrixSpinner cell={1.5} /> : null}
+        </Button>
+        <Button variant="secondary" disabled={!canCommit} onClick={() => onCommit(trimmed)}>
+          {busy === "commit" ? <Spinner /> : null}
           Commit & switch
-        </button>
-        <button type="button" disabled={waiting} onClick={onStash} className={PRIMARY}>
-          {busy === "stash" ? <MatrixSpinner cell={1.5} /> : null}
+        </Button>
+        <Button disabled={waiting} onClick={onStash}>
+          {busy === "stash" ? <Spinner /> : null}
           Stash & switch
-        </button>
+        </Button>
       </div>
-    </Modal>
+    </>
   );
 }

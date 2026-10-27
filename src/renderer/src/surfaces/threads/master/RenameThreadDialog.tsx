@@ -1,49 +1,51 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import { Input } from "@renderer/components/ui/input";
 import { DialogFooter, ErrorLine, errorText } from "../../../chrome/ConfirmDialog";
-import { Modal } from "../../../chrome/Modal";
+import { Modal, useModalClose } from "../../../chrome/Modal";
 import * as commands from "../../../lib/tcserver/commands";
-import { Input } from "../../settingsBits";
+
+type Props = { sessionId: string; title: string; onClose: () => void };
 
 /** Rename from a board row's menu: the board has no inline title to edit. */
-export function RenameThreadDialog({ sessionId, title, onClose }: { sessionId: string; title: string; onClose: () => void }) {
-  const [draft, setDraft] = useState(title);
+export function RenameThreadDialog(props: Props) {
   const [pending, setPending] = useState(false);
+  return (
+    <Modal onClose={props.onClose} busy={pending} title="Rename thread" size="sm">
+      <RenameForm {...props} pending={pending} setPending={setPending} />
+    </Modal>
+  );
+}
+
+function RenameForm({ sessionId, title, onClose, pending, setPending }: Props & { pending: boolean; setPending: (on: boolean) => void }) {
+  const close = useModalClose();
+  const [draft, setDraft] = useState(title);
   const [error, setError] = useState<string | null>(null);
   const next = draft.trim();
-  const field = useRef<HTMLInputElement>(null);
-  // The panel lands focus on its close button; the caret belongs in the field.
-  useEffect(() => {
-    const id = requestAnimationFrame(() => {
-      field.current?.focus();
-      field.current?.select();
-    });
-    return () => cancelAnimationFrame(id);
-  }, []);
+  const done = () => (close ? close(onClose) : onClose());
   const save = async () => {
-    if (!next || next === title) return onClose();
+    if (!next || next === title) return done();
     setPending(true);
     try {
       await commands.rename(sessionId, next);
-      onClose();
+      setPending(false);
+      done();
     } catch (err) {
       setError(errorText(err));
       setPending(false);
     }
   };
   return (
-    <Modal onClose={onClose} busy={pending} title="Rename thread" size="sm">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void save();
-        }}
-      >
-        <div className="flex flex-col gap-2 px-4 pt-3 pb-4">
-          <Input ref={field} aria-label="Title" value={draft} onChange={(e) => setDraft(e.target.value)} />
-          <ErrorLine error={error} />
-        </div>
-        <DialogFooter onCancel={onClose} confirmLabel="Rename" pending={pending} disabled={!next} />
-      </form>
-    </Modal>
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        void save();
+      }}
+    >
+      <div className="flex flex-col gap-4 px-4 py-4">
+        <Input autoFocus onFocus={(e) => e.currentTarget.select()} aria-label="Title" value={draft} onChange={(e) => setDraft(e.target.value)} />
+        <ErrorLine error={error} />
+      </div>
+      <DialogFooter onCancel={onClose} confirmLabel="Rename" pending={pending} disabled={!next} />
+    </form>
   );
 }

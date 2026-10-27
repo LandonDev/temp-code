@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { Modal, ModalPanel, useClosingDialog } from "./Modal";
-import { CheckRow } from "./DialogField";
+import { CheckRow, Field, FieldRow } from "./DialogField";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,6 +19,10 @@ import {
   Dialog,
 } from "@renderer/components/ui/dialog";
 import { Spinner } from "@renderer/components/ui/spinner";
+import { Button } from "@renderer/components/ui/button";
+import { Input } from "@renderer/components/ui/input";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@renderer/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@renderer/components/ui/toggle-group";
 import { ChevronRight } from "./icons";
 import { BUILD_EMPTY, BuildFields, buildOrNull } from "./rail/buildSettings";
 import { ConfirmDialog, DialogFooter as Footer, ErrorLine, GHOST, errorText } from "./ConfirmDialog";
@@ -56,14 +60,6 @@ import type {
 
 const INPUT = `w-full ${INPUT_CLASS}`;
 const LABEL = "text-[11px] font-medium text-content/50";
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className={LABEL}>{label}</span>
-      {children}
-    </label>
-  );
-}
 
 function Hint({ children }: { children: ReactNode }) {
   return <p className="text-[11px] leading-4 text-content/40">{children}</p>;
@@ -263,38 +259,37 @@ function BranchField({
   onChange,
   branches,
   placeholder,
+  hint,
 }: {
   value: string;
   onChange: (v: string) => void;
   branches: BranchList | null;
   placeholder?: string;
+  hint?: string;
 }) {
   const suggestions = suggestionsFor(branches, value);
   return (
-    <Field label="Branch">
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        spellCheck={false}
-        autoCapitalize="off"
-        className={`${INPUT} font-mono`}
-      />
+    <div className="flex flex-col gap-1.5">
+      <Field label="Branch" hint={hint}>
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          spellCheck={false}
+          autoCapitalize="off"
+          className="font-mono"
+        />
+      </Field>
       {suggestions.length ? (
-        <div className="flex flex-wrap gap-1 pt-1">
+        <div className="flex flex-wrap gap-1">
           {suggestions.map((b) => (
-            <button
-              key={b}
-              type="button"
-              onClick={() => onChange(b)}
-              className="rounded-md bg-content/8 px-1.5 py-0.5 font-mono text-[11px] text-content/70 hover:bg-content/12 hover:text-content"
-            >
+            <Button key={b} type="button" variant="ghost" size="xs" className="font-mono text-muted-foreground" onClick={() => onChange(b)}>
               {b}
-            </button>
+            </Button>
           ))}
         </div>
       ) : null}
-    </Field>
+    </div>
   );
 }
 
@@ -307,36 +302,53 @@ function BaseRefField({
   onChange: (v: string) => void;
   branches: BranchList | null;
 }) {
+  const head = branches?.current ? `Current HEAD (${branches.current})` : "Current HEAD";
+  const groups = (
+    [
+      ["Local", branches?.locals ?? []],
+      ["Remote", branches?.remotes ?? []],
+    ] as const
+  ).filter(([, names]) => names.length);
+  const items = [{ value: "@head", label: head }, ...groups.flatMap(([, names]) => names.map((b) => ({ value: b, label: b })))];
   return (
     <Field label="Start from">
-      <select
+      <Select
+        items={items}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={INPUT}
+        onValueChange={(next) => {
+          if (typeof next === "string") onChange(next);
+        }}
       >
-        <option value="@head">
-          {branches?.current
-            ? `Current HEAD (${branches.current})`
-            : "Current HEAD"}
-        </option>
-        {(
-          [
-            ["Local", branches?.locals ?? []],
-            ["Remote", branches?.remotes ?? []],
-          ] as const
-        ).map(([group, names]) =>
-          names.length ? (
-            <optgroup key={group} label={group}>
+        <SelectTrigger className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            <SelectItem value="@head">{head}</SelectItem>
+          </SelectGroup>
+          {groups.map(([group, names]) => (
+            <SelectGroup key={group}>
+              <SelectLabel>{group}</SelectLabel>
               {names.map((b) => (
-                <option key={b} value={b}>
+                <SelectItem key={`${group}:${b}`} value={b}>
                   {b}
-                </option>
+                </SelectItem>
               ))}
-            </optgroup>
-          ) : null,
-        )}
-      </select>
+            </SelectGroup>
+          ))}
+        </SelectContent>
+      </Select>
     </Field>
+  );
+}
+
+/** A section of a form without a fold: the 12px muted heading over its fields. */
+function Section({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <section className="flex flex-col gap-2">
+      <h3 className="text-xs font-medium text-muted-foreground">{label}</h3>
+      {children}
+    </section>
   );
 }
 
@@ -357,6 +369,7 @@ export function NewWorkspaceDialog({
   const [pass, setPass] = useState<TurnPass>(TURN_PASS_OFF);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { root, closeThen } = useClosingDialog(onClose, pending);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -367,7 +380,8 @@ export function NewWorkspaceDialog({
       // This machine's folder dialog, or another host's folders over its link.
       const workspace = await createWorkspace(environmentId ?? registry.primary().environmentId, path);
       if (passEnabled(pass)) await saveTurnPass(workspace.id, pass);
-      onCreated(workspace);
+      setPending(false);
+      closeThen(() => onCreated(workspace));
     } catch (err) {
       setError(errorText(err));
       setPending(false);
@@ -375,25 +389,19 @@ export function NewWorkspaceDialog({
   };
 
   return (
-    <Modal
-      onClose={onClose}
-      busy={pending}
-      title={`Add ${baseName(path)}`}
-      description={prettyCwd(path)}
-      size="sm"
-    >
-      <form onSubmit={submit}>
-        <div className="flex flex-col gap-3 px-4 py-3">
-          <div>
-            <span className={LABEL}>Completed turn</span>
-            <Hint>What threads here do after each turn settles.</Hint>
+    <Dialog {...root}>
+      <ModalPanel onClose={onClose} busy={pending} title={`Add ${baseName(path)}`} description={prettyCwd(path)} size="sm">
+        <form onSubmit={submit}>
+          <div className="flex flex-col gap-4 px-4 py-4">
+            <Section label="Completed turn">
+              <TurnPassFields value={pass} onChange={setPass} compact />
+            </Section>
+            <ErrorLine error={error} />
           </div>
-          <TurnPassFields value={pass} onChange={setPass} compact />
-          <ErrorLine error={error} />
-        </div>
-        <Footer onCancel={onClose} confirmLabel="Add workspace" pending={pending} />
-      </form>
-    </Modal>
+          <Footer onCancel={() => closeThen(onClose)} confirmLabel="Add workspace" pending={pending} />
+        </form>
+      </ModalPanel>
+    </Dialog>
   );
 }
 
@@ -414,12 +422,12 @@ export function NewProjectDialog({
   const [baseRef, setBaseRef] = useState("@head");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const nameRef = useFocusOnMount<HTMLInputElement>();
   const branches = useBranches(workspace.id, workspace.git);
   const exists = branchExists(branches, branch.trim());
   const { inherited } = useTurnPass(workspace.id);
   const [pass, setPass] = useState<TurnPass | null>(null);
   const shownPass = pass ?? inherited ?? TURN_PASS_OFF;
+  const { root, closeThen } = useClosingDialog(onClose, pending);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -441,7 +449,8 @@ export function NewProjectDialog({
       if (pass && !samePass(pass, inherited)) {
         await saveTurnPass(workspace.id, pass, project.id);
       }
-      onCreated(project);
+      setPending(false);
+      closeThen(() => onCreated(project));
     } catch (err) {
       setError(errorText(err));
       setPending(false);
@@ -449,90 +458,54 @@ export function NewProjectDialog({
   };
 
   return (
-    <Modal
-      onClose={onClose}
-      busy={pending}
-      title="New project"
-      description={workspace.name}
-      size="sm"
-    >
-      <form onSubmit={submit}>
-        <div className="flex flex-col gap-3 px-4 py-3">
-          <Field label="Name">
-            <input
-              ref={nameRef}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="What are you working on?"
-              className={INPUT}
-            />
-          </Field>
-          <div className="flex flex-col gap-1">
-            <span className={LABEL}>Mode</span>
-            <div
-              role="radiogroup"
-              aria-label="Mode"
-              className="grid grid-cols-2 gap-0.5 rounded-md border border-content/10 p-0.5"
+    <Dialog {...root}>
+      <ModalPanel onClose={onClose} busy={pending} title="New project" description={workspace.name} size="sm">
+        <form onSubmit={submit}>
+          <div className="flex flex-col gap-4 px-4 py-4">
+            <Field label="Name">
+              <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="What are you working on?" />
+            </Field>
+            <FieldRow
+              label="Mode"
+              description={mode === "worktree" ? "Own branch and folder, isolated from your checkout." : `Works directly in ${workspace.name}.`}
             >
-              {(["worktree", "local"] as const).map((m) => {
-                const disabled = m === "worktree" && !workspace.git;
-                return (
-                  <button
-                    key={m}
-                    type="button"
-                    role="radio"
-                    aria-checked={mode === m}
-                    disabled={disabled}
-                    onClick={() => setMode(m)}
-                    className={`pressable h-7 rounded-[4px] text-[12px] font-medium capitalize ${
-                      mode === m
-                        ? "bg-content/10 text-content"
-                        : "text-content/50 hover:text-content"
-                    } ${disabled ? "cursor-default opacity-40" : ""}`}
-                  >
-                    {m}
-                  </button>
-                );
-              })}
-            </div>
-            <Hint>
-              {mode === "worktree"
-                ? "Own branch and folder, isolated from your checkout."
-                : `Works directly in ${workspace.name}.`}
-            </Hint>
-          </div>
-          {mode === "worktree" ? (
-            <>
-              <BranchField
-                value={branch}
-                onChange={setBranch}
-                branches={branches}
-                placeholder="Branch (automatic)"
-              />
-              {exists ? (
-                <Hint>Opens the existing branch.</Hint>
-              ) : (
-                <BaseRefField
-                  value={baseRef}
-                  onChange={setBaseRef}
+              <ToggleGroup
+                spacing={0}
+                variant="outline"
+                size="sm"
+                value={[mode]}
+                onValueChange={(next) => {
+                  const picked = next.at(-1);
+                  if (picked === "worktree" || picked === "local") setMode(picked);
+                }}
+              >
+                <ToggleGroupItem value="worktree" disabled={!workspace.git}>
+                  Worktree
+                </ToggleGroupItem>
+                <ToggleGroupItem value="local">Local</ToggleGroupItem>
+              </ToggleGroup>
+            </FieldRow>
+            {mode === "worktree" ? (
+              <>
+                <BranchField
+                  value={branch}
+                  onChange={setBranch}
                   branches={branches}
+                  placeholder="Branch (automatic)"
+                  hint={exists ? "Opens the existing branch." : undefined}
                 />
-              )}
-            </>
-          ) : null}
-          <Disclosure label="Completed turn" summary={passSummary(shownPass)}>
-            <TurnPassFields value={shownPass} onChange={setPass} compact />
-          </Disclosure>
-          <ErrorLine error={error} />
-        </div>
-        <Footer
-          onCancel={onClose}
-          confirmLabel="Create"
-          pending={pending}
-          disabled={!name.trim()}
-        />
-      </form>
-    </Modal>
+                {exists ? null : <BaseRefField value={baseRef} onChange={setBaseRef} branches={branches} />}
+              </>
+            ) : null}
+            <Section label="Completed turn">
+              <TurnPassFields value={shownPass} onChange={setPass} compact />
+            </Section>
+            <ErrorLine error={error} />
+          </div>
+          <Footer onCancel={() => closeThen(onClose)} confirmLabel="Create" pending={pending} disabled={!name.trim()} />
+        </form>
+      </ModalPanel>
+    </Dialog>
   );
 }
 
