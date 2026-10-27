@@ -44,7 +44,8 @@ import { perfMark } from "./lib/perfMarks";
 import { IS_MAC } from "./lib/platform";
 import { updateStore } from "./lib/updateStore";
 import { displayAttachments, prepareAttachments } from "./lib/attachments";
-import { basename, notifyGitChanged, pickFolder, restoreSessionCheckout } from "./lib/fs";
+import { basename, folderPickOn, notifyGitChanged, pickFolder, restoreSessionCheckout } from "./lib/fs";
+import { desktopOnly } from "./lib/nativeWeb";
 import { isGitSnapshotHeld } from "./lib/gitIndexStore";
 import { nudgeReachesScreen } from "./lib/nudgeScope";
 import {
@@ -2326,9 +2327,11 @@ export default function App() {
   );
   const pickProject = useCallback(
     async (environmentId?: string) => {
-      // Another machine has no dialog here: browse its folders over its link.
-      if (environmentId && environmentId !== registry.primaryEnvironmentId) {
-        setRemoteFolderPick(environmentId);
+      // Another machine (or the page's own host, at /ui) has no dialog here:
+      // browse its folders over its link.
+      const remote = folderPickOn(environmentId, registry.primaryEnvironmentId, isWebMode());
+      if (remote) {
+        setRemoteFolderPick(remote);
         return;
       }
       const path = await pickFolder();
@@ -3418,9 +3421,9 @@ export default function App() {
         case "activate_tab": return go(() => a.onActivate(cmd.index ?? 0));
         case "split_right": return go(() => a.onSplit("right"));
         case "split_down": return go(() => a.onSplit("down"));
-        case "new_terminal": return go(a.onNewTerminal);
-        case "new_terminal_tab": return go(a.onNewTerminalTab);
-        case "toggle_terminal": return go(a.onToggleProjectTerminal);
+        case "new_terminal": return go(desktopOnly(a.onNewTerminal) ?? (() => undefined));
+        case "new_terminal_tab": return go(desktopOnly(a.onNewTerminalTab) ?? (() => undefined));
+        case "toggle_terminal": return go(desktopOnly(a.onToggleProjectTerminal) ?? (() => undefined));
         case "focus_left": return go(() => a.onFocusDir("left"));
         case "focus_right": return go(() => a.onFocusDir("right"));
         case "focus_up": return go(() => a.onFocusDir("up"));
@@ -3616,7 +3619,7 @@ export default function App() {
         onRenameSession={onRenameHistorySession}
         onDeleteSession={onDeleteHistorySession}
         onOpenFile={onOpenFile}
-        onOpenTerminal={(cwd) => onOpenTerminal(cwd)}
+        onOpenTerminal={desktopOnly((cwd: string) => onOpenTerminal(cwd))}
         onFileMoved={onFileMoved}
         onFileDeleted={onFileDeleted}
         onGoBack={onRailBack}
@@ -3631,7 +3634,7 @@ export default function App() {
         onOpenProject={deckLayout ? pickProject : undefined}
         onRemoveProject={deckLayout ? onRemoveProject : undefined}
         onNew={onNew}
-        onNewTerminal={deckLayout ? onNewTerminal : undefined}
+        onNewTerminal={deckLayout ? desktopOnly(onNewTerminal) : undefined}
         onSearch={onOpenSearch}
         onOpenInbox={onOpenInbox}
         onOpenNotes={onOpenNotes}
@@ -3650,8 +3653,8 @@ export default function App() {
         {!IS_MAC ? (
           <MenuBar
             onNew={onNew}
-            onNewTerminal={onNewTerminal}
-            onToggleTerminal={onToggleProjectTerminal}
+            onNewTerminal={desktopOnly(onNewTerminal)}
+            onToggleTerminal={desktopOnly(onToggleProjectTerminal)}
             onGoToFile={onGoToFile}
             onCommand={(id) => {
               if (isAppCommandId(id)) execute({ id });
@@ -3676,8 +3679,8 @@ export default function App() {
           onGoBack={onVisitBack}
           onGoForward={onVisitForward}
           onNew={onNew}
-          onNewTerminal={onNewTerminal}
-          onShowTerminal={onShowProjectTerminal}
+          onNewTerminal={desktopOnly(onNewTerminal)}
+          onShowTerminal={desktopOnly(onShowProjectTerminal)}
           onOpenSettings={onOpenSettings}
           onOpenInbox={onOpenInbox}
           onOpenNotes={notesEnabled ? onOpenNotes : undefined}

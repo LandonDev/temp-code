@@ -21,6 +21,15 @@ export function isWebMode(): boolean {
   return typeof window !== "undefined" && typeof (window as { api?: unknown }).api === "undefined";
 }
 
+/** What a desktop-only surface says when the browser reaches it anyway. */
+export const DESKTOP_ONLY_LINE = "Available in the desktop app";
+
+/** The handler on the desktop, undefined at /ui: a menu row or button whose
+ *  handler is undefined is not drawn, so web mode shows no dead control. */
+export function desktopOnly<T>(handler: T): T | undefined {
+  return isWebMode() ? undefined : handler;
+}
+
 /** `wss://host/ws` (or ws:// on plain http) on this page's own origin. */
 export function webSocketUrl(): string {
   return `${location.origin.replace(/^http/, "ws")}/ws`;

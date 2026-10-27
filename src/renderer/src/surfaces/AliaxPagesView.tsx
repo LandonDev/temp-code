@@ -3,6 +3,8 @@ import { OverlayNav } from "../chrome/TitleBar";
 import { WindowControls } from "../chrome/WindowControls";
 import { IS_MAC } from "../lib/platform";
 import { isWebMode } from "../lib/native";
+import { DESKTOP_ONLY_LINE } from "../lib/nativeWeb";
+import { Empty, EmptyTitle } from "../components/ui/empty";
 import type { AliaxPageId } from "../stores/shell";
 import { AccountsPage, StatsPage } from "@aliax/pages";
 
@@ -46,9 +48,9 @@ export function AliaxPagesView({ page, besideRail = false, onClose, onToggleSide
       </div>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {isWebMode() ? (
-          <div className="flex flex-1 items-center justify-center text-[13px] text-content/40">
-            Available in the desktop app
-          </div>
+          <Empty>
+            <EmptyTitle>{DESKTOP_ONLY_LINE}</EmptyTitle>
+          </Empty>
         ) : page === "accounts" ? (
           <AccountsPage />
         ) : (

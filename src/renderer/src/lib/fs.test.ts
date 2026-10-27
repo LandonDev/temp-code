@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { isCheckoutBlockedByChanges } from "./fs";
+import { folderPickOn, isCheckoutBlockedByChanges } from "./fs";
+
+describe("folderPickOn", () => {
+  it("browses another host over its link, this machine natively, and the page's own host at /ui", () => {
+    expect(folderPickOn("env_box", "local", false)).toBe("env_box");
+    expect(folderPickOn(undefined, "local", false)).toBeNull();
+    expect(folderPickOn("local", "local", false)).toBeNull();
+    expect(folderPickOn(undefined, "web", true)).toBe("web");
+    expect(folderPickOn("web", "web", true)).toBe("web");
+  });
+});
 
 describe("isCheckoutBlockedByChanges", () => {
   it("detects git's tracked-file checkout error", () => {

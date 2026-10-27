@@ -25,6 +25,7 @@ import { Popover } from "./Popover";
 import { ProjectLogoIcon } from "./ProjectLogoIcon";
 import { ProjectMascot } from "./ProjectMascot";
 import { MOD } from "../lib/platform";
+import { desktopOnly } from "../lib/nativeWeb";
 
 export type TabGroupMenuAction =
   | "new-tab"
@@ -148,6 +149,20 @@ export function TabGroupMenu({
 
   const shownMascot = projectMascot(mascotProject, mascotName).name;
 
+  // The page at /ui has no file dialog: a logo is chosen on the desktop;
+  // removing one still works over the link.
+  const pickLogo = desktopOnly((project: string) => {
+    void (async () => {
+      try {
+        const path = await pickAndSetProjectLogo(environmentId, project);
+        if (path) onLogoChange();
+      } catch (error) {
+        console.error("Failed to save project logo:", error);
+      } finally {
+        onClose();
+      }
+    })();
+  });
   const commitName = () => {
     onRename(groupId, name.trim());
   };
@@ -182,35 +197,30 @@ export function TabGroupMenu({
         className="mb-2 w-full rounded-lg border border-content/10 bg-content/5 px-2.5 py-1.5 text-[13px] text-content outline-none ring-accent/40 focus:ring-1"
       />
 
-      {logoProject ? (
+      {logoProject && (pickLogo || logoPath) ? (
         <div className="mb-2 flex items-center gap-2 px-0.5">
-          <button
-            type="button"
-            title={logoPath ? "Change project logo" : "Add project logo"}
-            aria-label={logoPath ? "Change project logo" : "Add project logo"}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => {
-              void (async () => {
-                try {
-                  const path = await pickAndSetProjectLogo(environmentId, logoProject);
-                  if (path) onLogoChange();
-                } catch (error) {
-                  console.error("Failed to save project logo:", error);
-                } finally {
-                  onClose();
-                }
-              })();
-            }}
-            className="grid size-9 shrink-0 place-items-center rounded-lg border border-content/10 bg-content/5 hover:bg-content/10"
-          >
-            <ProjectLogoIcon
-              path={logoPath}
-              className="size-5"
-              imageClassName="size-5"
-              fallback={ImagePlus}
-              fallbackStrokeWidth={1.75}
-            />
-          </button>
+          {pickLogo ? (
+            <button
+              type="button"
+              title={logoPath ? "Change project logo" : "Add project logo"}
+              aria-label={logoPath ? "Change project logo" : "Add project logo"}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => pickLogo(logoProject)}
+              className="grid size-9 shrink-0 place-items-center rounded-lg border border-content/10 bg-content/5 hover:bg-content/10"
+            >
+              <ProjectLogoIcon
+                path={logoPath}
+                className="size-5"
+                imageClassName="size-5"
+                fallback={ImagePlus}
+                fallbackStrokeWidth={1.75}
+              />
+            </button>
+          ) : (
+            <span className="grid size-9 shrink-0 place-items-center">
+              <ProjectLogoIcon path={logoPath} className="size-5" imageClassName="size-5" />
+            </span>
+          )}
           <div className="min-w-0 flex-1">
             <p className="text-[11px] text-content/50">Project logo</p>
             <p className="truncate text-[12px] text-content/70">

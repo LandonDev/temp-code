@@ -43,6 +43,7 @@ import { DeferredMount } from "./DeferredMount";
 import { ChatColumn, type ChatOpts, type ChatSlots } from "./threads/chatSlots";
 import { WorkingStrip } from "./threads/WorkingStrip";
 import { rightPanel } from "../lib/rightPanel";
+import { desktopOnly } from "../lib/nativeWeb";
 
 /**
  * A thread's chat column, wherever it is drawn: the pane (SessionPane), a
@@ -210,7 +211,7 @@ function boundTo(actions: SessionActions, id: string) {
     onHandoffCardDismiss: () => actions.onHandoffCardDismiss?.(id),
     onCwdChange: (cwd: string) => actions.onCwdChange(id, cwd),
     onBranchChange: () => actions.onBranchChange(id),
-    onNewTerminal: () => actions.onNewTerminal(id),
+    onNewTerminal: desktopOnly(() => actions.onNewTerminal(id)),
     onModelChange: (harness: HarnessId, model: string) => actions.onModelChange(id, harness, model),
     onModelSettingsChange: (settings: Record<string, string>) => actions.onModelSettingsChange(id, settings),
     onRuntimeModeChange: (mode: RuntimeMode) => actions.onRuntimeModeChange(id, mode),

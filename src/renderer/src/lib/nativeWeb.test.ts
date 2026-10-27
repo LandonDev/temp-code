@@ -15,6 +15,15 @@ afterEach(() => {
 });
 
 describe("web mode", () => {
+  it("desktopOnly drops a handler at /ui and keeps it on the desktop", async () => {
+    const web = await import("./nativeWeb");
+    const handler = () => {};
+    vi.stubGlobal("window", { location: { origin: "https://tc.example" } });
+    expect(web.desktopOnly(handler)).toBeUndefined();
+    vi.stubGlobal("window", { api: {} });
+    expect(web.desktopOnly(handler)).toBe(handler);
+    expect(web.DESKTOP_ONLY_LINE).toBe("Available in the desktop app");
+  });
   it("is on when window.api is absent and off when preload set it", async () => {
     vi.stubGlobal("window", { location: { origin: "https://tc.example" } });
     const web = await import("./nativeWeb");

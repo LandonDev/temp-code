@@ -43,7 +43,7 @@ import { loadSoundsEnabled, saveSoundsEnabled } from "../../lib/sounds";
 import { registry } from "../../lib/connection";
 import { updateStore, useUpdateSnapshot } from "../../lib/updateStore";
 import { MANUAL_DOWNLOAD_URL, canRetry } from "../../lib/updater";
-import { openUrl } from "../../lib/native";
+import { isWebMode, openUrl } from "../../lib/native";
 import { releaseNotesChunk } from "../chunks";
 import { Keys } from "./keys";
 
@@ -174,9 +174,12 @@ export function GeneralPage({
         />
       </PageSection>
 
-      <PageSection title="About">
-        <UpdateRow onOpenWhatsNew={onOpenWhatsNew} />
-      </PageSection>
+      {/* The page at /ui updates with its host; the browser has nothing to install. */}
+      {isWebMode() ? null : (
+        <PageSection title="About">
+          <UpdateRow onOpenWhatsNew={onOpenWhatsNew} />
+        </PageSection>
+      )}
     </>
   );
 }

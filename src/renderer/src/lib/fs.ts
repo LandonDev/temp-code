@@ -270,6 +270,16 @@ export function homeDir(): Promise<string> {
   return invoke<string>("home_dir");
 }
 
+/**
+ * Where Open project browses: another host's folders over its link (the
+ * environment id), or null for this machine's native picker. The page at
+ * /ui has no native picker, so there its own host is browsed too.
+ */
+export function folderPickOn(environmentId: string | undefined, primaryId: string, web: boolean): string | null {
+  if (environmentId && environmentId !== primaryId) return environmentId;
+  return web ? primaryId : null;
+}
+
 export async function pickFolder(title = "Open project"): Promise<string | null> {
   const selected = await open({
     directory: true,

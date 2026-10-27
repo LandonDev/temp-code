@@ -121,6 +121,12 @@ describe("ThreadMenu", () => {
     fireEvent.click(within(list).getByText("Terminal"));
     expect(props.terminal.onNew).toHaveBeenCalled();
   });
+
+  it("with no terminal handler (the page at /ui) there is no Terminal row", async () => {
+    menu({ terminal: { onNew: undefined, onShow: undefined, active: true } });
+    const list = await openMenu();
+    expect(within(list).queryByText("Terminal")).toBeNull();
+  });
 });
 
 describe("MenuRows", () => {

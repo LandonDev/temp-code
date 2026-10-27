@@ -22,6 +22,8 @@ import {
   type TerminalFitMode,
 } from "../lib/terminalLayout";
 import { IS_MAC } from "../lib/platform";
+import { DESKTOP_ONLY_LINE, isWebMode } from "../lib/nativeWeb";
+import { Empty, EmptyTitle } from "../components/ui/empty";
 import "@xterm/xterm/css/xterm.css";
 
 // The Dev servers pane and its read-only console ride the same chunk as the shell (xterm).
@@ -113,7 +115,19 @@ function oscColors() {
   return isLightScheme() ? OSC_LIGHT : OSC_DARK;
 }
 
-export function TerminalView({ id, cwd, active, onMetaChange }: Props) {
+/** A terminal tab. The page at /ui has no shell to spawn (a tab restored
+ *  from an old web layout lands here), so it says so instead. */
+export function TerminalView(props: Props) {
+  if (isWebMode())
+    return (
+      <Empty>
+        <EmptyTitle>{DESKTOP_ONLY_LINE}</EmptyTitle>
+      </Empty>
+    );
+  return <ShellTerminal {...props} />;
+}
+
+function ShellTerminal({ id, cwd, active, onMetaChange }: Props) {
   const outerRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
