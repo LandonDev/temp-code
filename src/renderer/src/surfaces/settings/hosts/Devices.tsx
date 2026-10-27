@@ -76,10 +76,10 @@ export function DevicesBlock({ host, report, error, onOpenSession, onShutdown, o
   }, []);
 
   // The heading says what the rows cannot: the phones' state and the Xcode in use. The simulator count is the
-  // rows themselves, and the load is the Load limit row's.
+  // rows themselves; this Mac's load is its Load limit row's, a linked Mac's (web mode) has no other home.
   const summaryParts = report
     ? [
-        ...splitFacts(devicesSummary(report)).filter((part) => !/^(No simulators|\d+ simulators?|load )/.test(part)),
+        ...splitFacts(devicesSummary(report)).filter((part) => !/^(No simulators|\d+ simulators?)/.test(part) && !(host.local && part.startsWith("load "))),
         ...(report.xcode ? [`${report.xcode.name}${report.xcode.version ? ` ${report.xcode.version}` : ""}`] : []),
         ...(report.xcode?.from === "developerDir" ? ["DEVELOPER_DIR"] : []),
         ...report.problems,

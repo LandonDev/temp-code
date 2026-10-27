@@ -73,6 +73,11 @@ describe("DevicesBlock", () => {
     expect(root.textContent).not.toContain("·");
   });
 
+  it("a linked Mac keeps its load in the heading: it has no Load limit row on this page", () => {
+    const { root } = mount({ host: { ...host, local: false } });
+    expect(facts(root.querySelector("[data-summary]"))).toEqual(["iPhone 17 Pro Max connected", "load 2.1 / 10 cores", "Xcode-beta 27.0"]);
+  });
+
   it("the holder links to its thread", () => {
     const { props } = mount();
     fireEvent.click(screen.getByRole("button", { name: "iOS: Home, running" }));

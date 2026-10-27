@@ -70,6 +70,8 @@ describe("HostAdmission", () => {
     expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
     // The memory the cap is sized from is the running facts' tooltip, not a line.
     expect(facts(container)).toEqual([["118 of 120 running", "7 queued"]]);
+    // Its tooltip opens from the keyboard too.
+    expect(container.querySelector("[data-admission] [tabindex='0']")).not.toBeNull();
     // On the default: the field shows it as its placeholder, and there is nothing to go back to.
     const field = screen.getByLabelText("Running cap") as HTMLInputElement;
     expect(field.value).toBe("");

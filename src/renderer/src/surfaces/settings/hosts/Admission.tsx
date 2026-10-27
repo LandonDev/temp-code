@@ -70,7 +70,7 @@ export function HostAdmission({ environmentId }: { environmentId: string }) {
       description={
         // What the default cap is sized from is a hover away, not a line.
         <Tooltip>
-          <TooltipTrigger render={<span className="cursor-default" />}>
+          <TooltipTrigger render={<span tabIndex={0} className="cursor-default rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" />}>
             <Facts parts={runningParts(state)} />
           </TooltipTrigger>
           <TooltipContent>
