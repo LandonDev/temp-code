@@ -63,9 +63,33 @@ export interface UpstreamOptions {
   idlePoolMs?: number
   /** Least time between two pre-connects of one account. Default 60 s. */
   preconnectEveryMs?: number
-  /** Per-request timeouts on the pools (headers, and the gap between body bytes). Default 10 min. */
+  /** Time to response headers, including the pool queue. Default 60 s. */
+  headersTimeoutMs?: number
+  /** Longest gap between body chunks. Default 120 s. */
+  bodyIdleMs?: number
+  /** Total request deadline, including the body. Default 10 min. */
   requestTimeoutMs?: number
   now?: () => number
+}
+
+export class UpstreamTimeout extends Error {
+  constructor(public readonly stage: 'headers' | 'body' | 'total', public readonly timeoutMs: number) {
+    super(`Upstream ${stage} timed out after ${timeoutMs} ms`)
+    this.name = 'UpstreamTimeout'
+  }
+}
+
+const envMs = (name: string, fallback: number): number => {
+  const value = Number(process.env[name])
+  return Number.isFinite(value) && value > 0 ? value : fallback
+}
+
+/** Undici nests its timeout code under fetch's TypeError. */
+function timeoutError(error: unknown, headersMs: number, bodyMs: number): unknown {
+  const code = (error as { code?: string; cause?: { code?: string } } | null)?.cause?.code ?? (error as { code?: string } | null)?.code
+  if (code === 'UND_ERR_HEADERS_TIMEOUT') return new UpstreamTimeout('headers', headersMs)
+  if (code === 'UND_ERR_BODY_TIMEOUT') return new UpstreamTimeout('body', bodyMs)
+  return error
 }
 
 export type PreconnectOutcome =
@@ -160,6 +184,8 @@ export class Upstream {
   private readonly idlePoolMs: number
   private readonly preconnectEveryMs: number
   private readonly requestTimeoutMs: number
+  private readonly headersTimeoutMs: number
+  private readonly bodyIdleMs: number
 
   constructor(private readonly options: UpstreamOptions) {
     this.now = options.now ?? Date.now
@@ -170,6 +196,8 @@ export class Upstream {
     this.idlePoolMs = options.idlePoolMs ?? this.ttl * 2
     this.preconnectEveryMs = options.preconnectEveryMs ?? 60_000
     this.requestTimeoutMs = options.requestTimeoutMs ?? 600_000
+    this.headersTimeoutMs = options.headersTimeoutMs ?? envMs('TEMP_CODE_UPSTREAM_HEADERS_MS', 60_000)
+    this.bodyIdleMs = options.bodyIdleMs ?? envMs('TEMP_CODE_UPSTREAM_BODY_IDLE_MS', 120_000)
     subscribeOnce()
   }
 
@@ -177,7 +205,7 @@ export class Upstream {
   fetch: Fetch = (input, init) => {
     const origin = originOf(input)
     const target = this.rewrite(input)
-    if (!origin || !this.pooled(origin)) return this.options.chromiumFetch(target, init)
+    if (!origin || !this.pooled(origin)) return this.withDeadlines(this.options.chromiumFetch, target, init)
     const entry = this.entryFor(new URL(target).origin, authKey(init?.headers))
     return this.send(entry, target, init)
   }
@@ -274,10 +302,10 @@ export class Upstream {
       keepAliveMaxTimeout: this.ttl,
       keepAliveTimeoutThreshold: 2_000,
       allowH2: true,
-      headersTimeout: this.requestTimeoutMs,
-      bodyTimeout: this.requestTimeoutMs
+      headersTimeout: this.headersTimeoutMs,
+      bodyTimeout: this.bodyIdleMs
     })
-    entry = { key, origin, pool, dispatcher: tracing(pool), lastUsed: this.now() }
+    entry = { key, origin, pool, dispatcher: tracing(pool, this.headersTimeoutMs, this.bodyIdleMs), lastUsed: this.now() }
     this.pools.set(key, entry)
     if (!this.sweeper) {
       this.sweeper = setInterval(() => this.sweep(), Math.max(1_000, Math.min(this.ttl, 60_000)))
@@ -295,7 +323,87 @@ export class Upstream {
       trace.queued = false
     }
     // undici's RequestInit is the fetch spec's with its own Dispatcher type; the shapes core sends match.
-    return undiciFetch(url, { ...(init as object), dispatcher: entry.dispatcher } as Parameters<typeof undiciFetch>[1]) as unknown as Promise<Response>
+    return this.withDeadlines(
+      (target, options) => undiciFetch(target, { ...(options as object), dispatcher: entry.dispatcher } as Parameters<typeof undiciFetch>[1]) as unknown as Promise<Response>,
+      url,
+      init
+    )
+  }
+
+  /** Keep the deadlines alive until the body ends or its reader cancels. */
+  private async withDeadlines(fetch: Fetch, url: string, init?: RequestInit): Promise<Response> {
+    const abort = new AbortController()
+    let body: TransformStreamDefaultController<Uint8Array> | undefined
+    let idle: ReturnType<typeof setTimeout> | undefined
+    let rejectAbort: (reason: unknown) => void = () => {}
+    const aborted = new Promise<never>((_resolve, reject) => { rejectAbort = reject })
+    const cancel = (reason: unknown): void => {
+      if (abort.signal.aborted) return
+      abort.abort(reason)
+      body?.error(reason)
+      rejectAbort(reason)
+    }
+    const timer = (stage: UpstreamTimeout['stage'], ms: number): ReturnType<typeof setTimeout> => {
+      const handle = setTimeout(() => cancel(new UpstreamTimeout(stage, ms)), ms)
+      handle.unref?.()
+      return handle
+    }
+    const headers = timer('headers', this.headersTimeoutMs)
+    const total = timer('total', this.requestTimeoutMs)
+    const onAbort = (): void => cancel(init?.signal?.reason)
+    const cleanup = (): void => {
+      clearTimeout(headers)
+      clearTimeout(total)
+      clearTimeout(idle)
+      init?.signal?.removeEventListener('abort', onAbort)
+    }
+    const resetIdle = (): void => {
+      clearTimeout(idle)
+      idle = timer('body', this.bodyIdleMs)
+    }
+    init?.signal?.addEventListener('abort', onAbort, { once: true })
+    try {
+      if (init?.signal?.aborted) onAbort()
+      const response = await Promise.race([
+        aborted,
+        Promise.resolve().then(() => {
+          if (abort.signal.aborted) throw abort.signal.reason
+          return fetch(url, { ...init, signal: abort.signal })
+        }).then((response) => {
+          // A fetch implementation may ignore the signal and reply late.
+          if (abort.signal.aborted) {
+            void response.body?.cancel(abort.signal.reason).catch(() => {})
+            throw abort.signal.reason
+          }
+          return response
+        })
+      ])
+      clearTimeout(headers)
+      if (!response.body) {
+        cleanup()
+        return response
+      }
+      const stream = new TransformStream<Uint8Array, Uint8Array>({
+        start(controller) { body = controller },
+        transform(chunk, controller) {
+          resetIdle()
+          controller.enqueue(chunk)
+        },
+        flush() { cleanup() }
+      })
+      resetIdle()
+      // Keep the typed error when undici's own deadline fires first. A
+      // reader cancellation also cancels the source and clears all timers.
+      void response.body.pipeTo(stream.writable, { signal: abort.signal, preventAbort: true }).catch((error) => {
+        const reason = abort.signal.aborted ? abort.signal.reason : timeoutError(error, this.headersTimeoutMs, this.bodyIdleMs)
+        cancel(reason)
+        cleanup()
+      })
+      return new Response(stream.readable, { status: response.status, statusText: response.statusText, headers: response.headers })
+    } catch (error) {
+      cleanup()
+      throw abort.signal.aborted ? abort.signal.reason : timeoutError(error, this.headersTimeoutMs, this.bodyIdleMs)
+    }
   }
 }
 
@@ -305,7 +413,7 @@ export class Upstream {
  * socket of the cap running) is created later, outside this window: it
  * rides a socket that is busy now, so it counts as reused.
  */
-function tracing(pool: Pool): Dispatcher {
+function tracing(pool: Pool, headersTimeout: number, bodyTimeout: number): Dispatcher {
   return new Proxy(pool, {
     get(target, prop) {
       if (prop !== 'dispatch') {
@@ -317,7 +425,7 @@ function tracing(pool: Pool): Dispatcher {
         pending = record
         created = false
         try {
-          const dispatched = target.dispatch(opts, handler)
+          const dispatched = target.dispatch({ ...opts, headersTimeout, bodyTimeout }, handler)
           if (record && !created) {
             record.queued = true
             record.reused = true

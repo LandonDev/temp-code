@@ -1,7 +1,7 @@
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { Upstream, authKey, newTrace, upstreamTrace, type UpstreamTrace } from './upstream'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { Upstream, UpstreamTimeout, authKey, newTrace, upstreamTrace, type UpstreamTrace } from './upstream'
 
 /** A keep-alive origin that counts sockets and remembers each request's line and auth. */
 function origin(): Promise<{ server: Server; url: string; connections: number; requests: { method: string; url: string; auth: string | null }[] }> {
@@ -54,6 +54,7 @@ describe('upstream pools', () => {
   afterEach(async () => {
     await Promise.all(ups.map((u) => u.close()))
     ups = []
+    vi.unstubAllEnvs()
     a.server.closeAllConnections()
     await new Promise((ok) => a.server.close(ok))
   })
@@ -167,9 +168,145 @@ describe('upstream pools', () => {
     expect(up.status()).toHaveLength(0)
   })
 
+  it('the pooled path honours the header and body-idle env deadlines with typed errors', async () => {
+    vi.stubEnv('TEMP_CODE_UPSTREAM_HEADERS_MS', '30')
+    vi.stubEnv('TEMP_CODE_UPSTREAM_BODY_IDLE_MS', '30')
+    const up = make()
+    a.server.removeAllListeners('request')
+    a.server.on('request', (_req, res) => {
+      res.on('error', () => {})
+      if (_req.url === '/body') res.write('first')
+    })
+    await expect(up.fetch(`${a.url}/headers`)).rejects.toMatchObject({ name: 'UpstreamTimeout', stage: 'headers', timeoutMs: 30 })
+    const res = await up.fetch(`${a.url}/body`)
+    await expect(res.text()).rejects.toMatchObject({ name: 'UpstreamTimeout', stage: 'body', timeoutMs: 30 })
+  })
+
   it('never puts the token in a pool key', () => {
     expect(authKey({ authorization: 'Bearer secret-token' })).toMatch(/^[0-9a-f]{12}$/)
     expect(authKey(new Headers({ Authorization: 'Bearer secret-token' }))).toBe(authKey({ authorization: 'Bearer secret-token' }))
     expect(authKey(undefined)).toBe('anon')
+  })
+})
+
+
+describe('upstream Chromium deadlines', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllEnvs()
+  })
+
+  it('no headers in time aborts with the stage, even if Chromium ignores the signal', async () => {
+    vi.useFakeTimers()
+    let signal: AbortSignal | undefined
+    const up = new Upstream({
+      chromiumFetch: async (_url, init) => {
+        signal = init?.signal ?? undefined
+        return new Promise<Response>(() => {})
+      },
+      headersTimeoutMs: 10
+    })
+    const failed = expect(up.fetch('https://chatgpt.com/')).rejects.toMatchObject({ name: 'UpstreamTimeout', stage: 'headers', timeoutMs: 10 })
+    await vi.advanceTimersByTimeAsync(10)
+    await failed
+    expect(signal?.aborted).toBe(true)
+    expect(signal?.reason).toBeInstanceOf(UpstreamTimeout)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('a body idle past the limit aborts and cancels the provider body', async () => {
+    vi.useFakeTimers()
+    let signal: AbortSignal | undefined
+    const cancelled = vi.fn()
+    const up = new Upstream({
+      chromiumFetch: async (_url, init) => {
+        signal = init?.signal ?? undefined
+        return new Response(new ReadableStream({
+          start(c) { c.enqueue(new TextEncoder().encode('first')) },
+          cancel: cancelled
+        }))
+      },
+      bodyIdleMs: 12
+    })
+    const res = await up.fetch('https://chatgpt.com/')
+    const reader = res.body!.getReader()
+    expect(new TextDecoder().decode((await reader.read()).value)).toBe('first')
+    const failed = expect(reader.read()).rejects.toMatchObject({ stage: 'body', timeoutMs: 12 })
+    await vi.advanceTimersByTimeAsync(12)
+    await failed
+    expect(signal?.aborted).toBe(true)
+    expect(cancelled).toHaveBeenCalledWith(expect.objectContaining({ stage: 'body' }))
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('each chunk renews the idle deadline, while the total deadline still bounds a live stream', async () => {
+    vi.useFakeTimers()
+    let source!: ReadableStreamDefaultController<Uint8Array>
+    const up = new Upstream({
+      chromiumFetch: async () => new Response(new ReadableStream({ start(c) { source = c } })),
+      bodyIdleMs: 10,
+      requestTimeoutMs: 25
+    })
+    const res = await up.fetch('https://chatgpt.com/')
+    const reader = res.body!.getReader()
+    for (let n = 0; n < 3; n++) {
+      await vi.advanceTimersByTimeAsync(8)
+      source.enqueue(new Uint8Array([n]))
+      expect((await reader.read()).value).toEqual(new Uint8Array([n]))
+    }
+    const failed = expect(reader.read()).rejects.toMatchObject({ stage: 'total', timeoutMs: 25 })
+    await vi.advanceTimersByTimeAsync(1)
+    await failed
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('body completion, a bodyless answer and reader cancellation clear every deadline', async () => {
+    vi.useFakeTimers()
+    const up = new Upstream({ chromiumFetch: async () => new Response('done', { status: 201, headers: { 'x-provider': 'yes' } }) })
+    const res = await up.fetch('https://chatgpt.com/')
+    expect(res.status).toBe(201)
+    expect(res.headers.get('x-provider')).toBe('yes')
+    expect(await res.text()).toBe('done')
+    expect(vi.getTimerCount()).toBe(0)
+    const bodyless = new Upstream({ chromiumFetch: async () => new Response(null, { status: 204 }) })
+    expect((await bodyless.fetch('https://chatgpt.com/')).status).toBe(204)
+    expect(vi.getTimerCount()).toBe(0)
+    const cancelled = vi.fn()
+    const streaming = new Upstream({ chromiumFetch: async () => new Response(new ReadableStream({ cancel: cancelled })) })
+    const streamingRes = await streaming.fetch('https://chatgpt.com/')
+    await streamingRes.body!.cancel('downstream gone')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(cancelled).toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('honours a caller abort before headers and during the body', async () => {
+    vi.useFakeTimers()
+    const waiting = new Upstream({ chromiumFetch: async () => new Promise<Response>(() => {}) })
+    const before = new AbortController()
+    before.abort(new Error('already stopped'))
+    await expect(waiting.fetch('https://chatgpt.com/', { signal: before.signal })).rejects.toThrow('already stopped')
+    const during = new AbortController()
+    const streaming = new Upstream({ chromiumFetch: async () => new Response(new ReadableStream()) })
+    const response = await streaming.fetch('https://chatgpt.com/', { signal: during.signal })
+    const failed = expect(response.text()).rejects.toThrow('caller stopped')
+    during.abort(new Error('caller stopped'))
+    await failed
+    await vi.advanceTimersByTimeAsync(0)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('cancels a late response after a header timeout', async () => {
+    vi.useFakeTimers()
+    let finish!: (res: Response) => void
+    const cancelled = vi.fn()
+    const up = new Upstream({ chromiumFetch: async () => new Promise<Response>((resolve) => { finish = resolve }), headersTimeoutMs: 5 })
+    const failed = expect(up.fetch('https://chatgpt.com/')).rejects.toMatchObject({ stage: 'headers' })
+    await vi.advanceTimersByTimeAsync(5)
+    await failed
+    finish(new Response(new ReadableStream({ cancel: cancelled })))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(cancelled).toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(0)
   })
 })

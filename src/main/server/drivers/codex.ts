@@ -94,6 +94,13 @@ export class AppServerExit extends Error {
   }
 }
 
+export class AppServerTimeout extends Error {
+  constructor(public readonly method: string, public readonly timeoutMs: number) {
+    super(`codex app-server ${method} timed out after ${timeoutMs} ms`)
+    this.name = 'AppServerTimeout'
+  }
+}
+
 interface RpcFrame {
   id?: number | string
   method?: string
@@ -115,7 +122,7 @@ export class AppServerConn {
   private stderrBytes = 0
   private pending = new Map<
     number | string,
-    { resolve: (v: unknown) => void; reject: (e: Error) => void }
+    { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }
   >()
 
   private onNotify: (method: string, params: Record<string, unknown>) => void
@@ -159,6 +166,7 @@ export class AppServerConn {
         const p = this.pending.get(msg.id)
         if (p) {
           this.pending.delete(msg.id)
+          clearTimeout(p.timer)
           if (msg.error) p.reject(new Error(msg.error.message ?? 'app-server error'))
           else p.resolve(msg.result)
         }
@@ -201,16 +209,31 @@ export class AppServerConn {
   private settle(code: number | null): void {
     if (this.settled) return
     this.settled = true
-    for (const p of this.pending.values()) p.reject(new AppServerExit(code, this.stderrTail))
+    for (const p of this.pending.values()) {
+      clearTimeout(p.timer)
+      p.reject(new AppServerExit(code, this.stderrTail))
+    }
     this.pending.clear()
     this.onExit(code)
   }
 
-  request(method: string, params?: unknown): Promise<unknown> {
+  request(method: string, params?: unknown, { timeoutMs = method === 'turn/start' ? 60_000 : 30_000 }: { timeoutMs?: number } = {}): Promise<unknown> {
+    if (this.settled) return Promise.reject(new AppServerExit(null, this.stderrTail))
     const id = this.nextId++
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject })
-      this.proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n')
+      const timer = setTimeout(() => {
+        this.pending.delete(id)
+        reject(new AppServerTimeout(method, timeoutMs))
+      }, timeoutMs)
+      timer.unref?.()
+      this.pending.set(id, { resolve, reject, timer })
+      try {
+        this.proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n')
+      } catch (error) {
+        this.pending.delete(id)
+        clearTimeout(timer)
+        reject(error)
+      }
     })
   }
 
@@ -890,7 +913,7 @@ export const codexDriver: HarnessDriver = {
         break
       } catch (err) {
         const backoff = bootOptions.backoffMs[attempt - 1]
-        if (!(err instanceof AppServerExit) || backoff === undefined) {
+        if (!(err instanceof AppServerExit || err instanceof AppServerTimeout) || backoff === undefined) {
           disposed = true // expected exit, don't also report it as a crash
           throw new Error(`codex app-server handshake failed: ${err instanceof Error ? err.message : String(err)}`)
         }
@@ -950,6 +973,10 @@ export const codexDriver: HarnessDriver = {
             effort: EFFORT[session.reasoning]
           })
           .catch((err) => {
+            if (err instanceof AppServerTimeout) {
+              disposed = true
+              conn.kill()
+            }
             emit({ type: 'error', message: err instanceof Error ? err.message : String(err) })
             setStatus('idle')
           })

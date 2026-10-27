@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { emptyAccounts, type AccountsSnapshot } from '@shared/accounts'
 import type { AgentEvent } from '@shared/events'
+import { networkRefusalOf } from './failureKind'
 import { chooseAccount } from './accountRouting'
 import { openDb, Store } from './db'
 import { LIMIT_CONTINUE_DELAY_MS, SessionRegistry, type AccountRouter } from './sessions'
@@ -597,4 +598,17 @@ it('reroute forgets the sticky account, takes the fresh pick and respawns there 
   await expect(registry.reroute(id)).resolves.toEqual({ account: 'b@x.com', moved: false })
   await registry.send(id, 'again')
   expect(routes.at(-1)).toEqual({ id, route: { account: 'b@x.com', pin: false } })
+})
+
+
+it('a provider body deadline keeps its stage on the failure row when the harness only reports a cut stream', async () => {
+  registry.limits = limits(null)
+  const { id, emit } = await running()
+  const network = networkRefusalOf({ service: 'claude', path: `/claude/~t=${encodeURIComponent(id)};a=a%40x.com/v1/messages`, account: 'a@x.com', error: 'Upstream body timed out after 120000 ms' })!
+  registry.noteRefusal(network.thread, network.refusal)
+  emit({ type: 'error', message: 'stream disconnected before completion' })
+  expect(registry.get(id)?.failure).toMatchObject({ kind: 'network', summary: 'The provider stopped sending data for 120 s' })
+  // The stage is consumed with that error, rather than leaking into a later turn.
+  emit({ type: 'error', message: 'another failure' })
+  expect(registry.get(id)?.failure?.kind).toBe('unknown')
 })

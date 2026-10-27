@@ -8,6 +8,7 @@ import {
   pickNext,
   pinnedProfile,
   readMarker,
+  tiersFor,
   vault,
   type Limit,
   type LimitInfo,
@@ -31,7 +32,7 @@ import {
   type PeerState,
   type ProviderAccounts, type MintProgress } from '@shared/accounts'
 import type { SessionMeta } from '@shared/events'
-import { chooseAccount, type ResolvedPin, type RouteOptions } from './accountRouting'
+import { chooseAccount, eligible, type ResolvedPin, type RouteOptions } from './accountRouting'
 import type { HeadroomStore } from './headroom'
 import { whenLoopIdle } from './stalls'
 
@@ -371,16 +372,16 @@ export class AccountsService {
       snapshot: this.snap,
       load: isRoutedProvider(meta.provider) ? (opts?.load ?? this.deps.load(meta.provider)) : {},
       out: isRoutedProvider(meta.provider) ? this.outFor(meta.provider) : [],
-      headroom: isRoutedProvider(meta.provider) ? this.headroomFor(meta.provider) : undefined,
+      headroom: isRoutedProvider(meta.provider) ? this.headroomFor(meta.provider, meta.model ?? null) : undefined,
       now: this.deps.now()
     })
   }
 
   /** The gateway's picture of a provider's accounts for a pick, read live (the snapshot's copy is for the rows); undefined routes the older way (no store). */
-  private headroomFor(provider: AccountProvider): Record<string, AccountHeadroom> | undefined {
+  private headroomFor(provider: AccountProvider, model: string | null = null): Record<string, AccountHeadroom> | undefined {
     const store = this.deps.headroom()
     if (!store) return undefined
-    return store.summary(SERVICE_OF[provider], this.snap.providers[provider].profiles.map((p) => p.name), this.deps.now())
+    return store.summary(SERVICE_OF[provider], this.snap.providers[provider].profiles.map((p) => p.name), this.deps.now(), model)
   }
 
   /**
@@ -453,7 +454,7 @@ export class AccountsService {
       snapshot: this.snap,
       load: this.deps.load(provider),
       out: this.outFor(provider),
-      headroom: this.headroomFor(provider),
+      headroom: this.headroomFor(provider, model),
       now: this.deps.now()
     })
     return route && route.account !== account ? route.account : null
@@ -470,17 +471,23 @@ export class AccountsService {
   async pickNext(info: LimitInfo): Promise<string | null> {
     const provider = PROVIDER_OF[info.serviceId]
     const snap = (await this.list()).providers[provider]
+    const now = this.deps.now()
+    const out = this.outFor(provider)
+    const headroom = this.headroomFor(provider, info.model ?? null)
+    const tiers = tiersFor(info.serviceId, info.model)
+    const usable = (name: string): boolean => eligible(name, { out, reports: snap.reports, headroom, tiers, now })
+    const excluded = snap.profiles.filter((p) => !usable(p.name)).map((p) => p.name)
     return pickNext({
       serviceId: info.serviceId,
       model: info.model,
       scoped: info.thread !== undefined,
       window: info.limit.window,
-      profiles: snap.profiles,
+      profiles: snap.profiles.filter((p) => usable(p.name)),
       reports: snap.reports,
-      tried: info.tried,
+      tried: [...new Set([...info.tried, ...out, ...excluded])],
       load: this.deps.load(provider),
       poll: (name) => this.deps.usageOf(info.serviceId, name).catch(() => null),
-      now: this.deps.now()
+      now
     })
   }
 

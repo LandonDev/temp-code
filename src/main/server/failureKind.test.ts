@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { classifyFailure, describeFailure, failureKindOf, refusalCodeOf, type FailureContext } from './failureKind'
+import { UpstreamTimeout } from './upstream'
+import { classifyFailure, describeFailure, failureKindOf, networkRefusalOf, refusalCodeOf, type FailureContext } from './failureKind'
 
 const ctx = (over: Partial<FailureContext> = {}): FailureContext => ({
   message: '',
@@ -95,6 +96,30 @@ describe('failureKindOf on captured messages', () => {
     expect(failureKindOf(ctx({ message: 'bad gateway', gateway: { status: 502, code: null, account: null } }))).toBe('network')
   })
 
+  it('a credential deadline is network with the gateway summary, from text or its refusal code', () => {
+    for (const context of [
+      ctx({ message: 'API Error: 503 credential_timeout' }),
+      ctx({ message: 'request failed', gateway: { status: 503, code: 'credential_timeout', account: null } })
+    ]) {
+      expect(classifyFailure(context)).toMatchObject({ kind: 'network', summary: 'The gateway could not get a credential in time' })
+    }
+    expect(refusalCodeOf('{"error":{"type":"credential_timeout"}}')).toBe('credential_timeout')
+    expect(refusalCodeOf('API Error: credential_timeout')).toBe('credential_timeout')
+  })
+
+  it.each([
+    ['headers', 60_000, 'No answer from the provider in 60 s'],
+    ['body', 120_000, 'The provider stopped sending data for 120 s'],
+    ['total', 600_000, 'The provider request took longer than 600 s']
+  ] as const)('an upstream %s deadline remains network after its error crosses as text', (stage, ms, summary) => {
+    const error = new UpstreamTimeout(stage, ms)
+    expect(classifyFailure(ctx({ message: `Aliax could not reach codex: ${error.message}`, provider: 'codex' }))).toMatchObject({ kind: 'network', summary })
+  })
+
+  it('a Codex RPC deadline is a network failure', () => {
+    expect(failureKindOf(ctx({ provider: 'codex', message: 'codex app-server turn/start timed out after 60000 ms' }))).toBe('network')
+  })
+
   it('the harness process gone', () => {
     for (const message of [
       'harness stream ended mid-turn',
@@ -135,5 +160,18 @@ describe('refusalCodeOf', () => {
     expect(refusalCodeOf('<html>token_expired</html>')).toBe('token_expired')
     expect(refusalCodeOf('<html>nothing</html>')).toBeNull()
     expect(refusalCodeOf(undefined)).toBeNull()
+  })
+})
+
+
+describe('networkRefusalOf', () => {
+  const info = { service: 'codex', path: '/codex/~t=thread%201;a=acct/responses', account: 'acct', error: 'Upstream headers timed out after 60000 ms' }
+  it('reads the scoped thread and keeps only the timeout stage and deadline for the registry', () => {
+    const result = networkRefusalOf(info)
+    expect(result).toEqual({ thread: 'thread 1', refusal: { status: 502, account: 'acct', code: null, timeout: { stage: 'headers', timeoutMs: 60_000 } } })
+    expect(classifyFailure(ctx({ message: 'stream ended', gateway: result!.refusal }))).toMatchObject({ kind: 'network', summary: 'No answer from the provider in 60 s' })
+    expect(networkRefusalOf({ ...info, error: 'credential_timeout: host did not reply' })?.refusal.code).toBe('credential_timeout')
+    expect(networkRefusalOf({ ...info, error: 'fetch failed' })?.refusal).toEqual({ status: 502, account: 'acct', code: null })
+    expect(networkRefusalOf({ ...info, path: '/codex/responses' })).toBeNull()
   })
 })

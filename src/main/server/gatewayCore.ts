@@ -24,6 +24,7 @@ import {
 } from 'aliax-core'
 import { SERVICE_OF, type AccountProvider } from '@shared/accounts'
 import { newTrace, upstreamTrace } from './upstream'
+import { GatewayControlTimeout } from './gatewayWire'
 
 /**
  * The gateway's byte path, wherever it runs: the listeners, the scope
@@ -324,7 +325,13 @@ export class GatewayCore {
   private serve(req: IncomingMessage, res: ServerResponse, entry?: { scope: RouteScope }): void {
     this.handle(req, res, entry?.scope).catch((e) => {
       this.noteError((e as Error).message)
-      fail(res, 500, (e as Error).message)
+      if (e instanceof GatewayControlTimeout && e.method === 'credentialFor') {
+        this.options.control.onError(e.message)
+        const parsed = splitPath(req.url ?? '/')
+        this.options.control.onNetwork?.({ service: parsed.service, path: req.url ?? '/', account: parsed.scope?.account ?? null, error: e.message })
+        res.writeHead(503, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ error: { type: 'credential_timeout', message: 'The gateway could not get a credential in time' } }))
+      } else fail(res, 500, (e as Error).message)
     })
   }
 

@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { PassThrough, Writable } from 'node:stream'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentEvent, SessionMeta } from '@shared/events'
+import { failureKindOf } from '../failureKind'
 import type { DriverCtx } from './types'
 
 /**
@@ -62,7 +63,7 @@ vi.mock('../endpoint', () => ({ routedEndpointFor: async () => ({ url: null, acc
 vi.mock('../apptools', () => ({ bridgeMcpConfig: () => null }))
 vi.mock('../gatewayObserve', () => ({ observeCodexSnapshot: () => undefined }))
 
-const { codexDriver, bootOptions, setCodexBootFailureLog, withoutImageBytes } = await import('./codex')
+const { codexDriver, codexWarm, bootOptions, setCodexBootFailureLog, withoutImageBytes } = await import('./codex')
 
 /** Answers the handshake and every later request; starts thread `t1`. */
 const healthy: Script = (proc, frame) => {
@@ -118,6 +119,10 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  codexWarm.retire()
+  for (const proc of spawned) proc.emit('exit', 0)
+  vi.useRealTimers()
+  vi.unstubAllEnvs()
   setCodexBootFailureLog(null)
   bootOptions.backoffMs = [1500, 4000]
 })
@@ -153,6 +158,41 @@ describe('codex app-server boot', () => {
     expect(spawned[1].killed).toBe(false)
     expect(nativeIds).toEqual(['t1'])
     expect(events.filter((e) => e.type === 'error')).toEqual([])
+  })
+
+  it('a living app-server that misses its handshake deadline is killed and booted again', async () => {
+    vi.useFakeTimers()
+    vi.stubEnv('TEMP_CODE_WARM_HARNESS', '0')
+    scripts.push(() => {}, healthy)
+    const started = codexDriver.start(ctx())
+    await vi.advanceTimersByTimeAsync(30_001)
+    const handle = await started
+    expect(spawned).toHaveLength(2)
+    expect(spawned[0].killed).toBe(true)
+    expect(nativeIds).toEqual(['t1'])
+    expect(events.filter((e) => e.type === 'error')).toEqual([])
+    await handle.dispose()
+  })
+
+  it('a turn/start deadline emits a network error, idles the thread and kills the stalled process', async () => {
+    vi.useFakeTimers()
+    vi.stubEnv('TEMP_CODE_WARM_HARNESS', '0')
+    scripts.push((proc, frame) => {
+      if (frame.method !== 'turn/start') healthy(proc, frame)
+    })
+    const handle = await codexDriver.start(ctx())
+    await vi.advanceTimersByTimeAsync(20_000) // the existing first-turn MCP startup gate
+    await handle.send('hello')
+    await vi.advanceTimersByTimeAsync(60_000)
+    const errors = events.filter((e) => e.type === 'error')
+    expect(errors).toEqual([{ type: 'error', message: 'codex app-server turn/start timed out after 60000 ms' }])
+    const error = errors[0] as { message: string }
+    expect(failureKindOf({ message: error.message, provider: 'codex', model: null, account: null, accountKnown: null, modelVisible: true })).toBe('network')
+    expect(events.filter((e) => e.type === 'status').at(-1)).toMatchObject({ status: 'idle' })
+    expect(spawned[0].killed).toBe(true)
+    spawned[0].emit('exit', 0)
+    expect(events.filter((e) => e.type === 'error')).toHaveLength(1)
+    await handle.dispose()
   })
 
   it("codex's own retries are a log line, not rows; the error that ends the turn is a row", async () => {

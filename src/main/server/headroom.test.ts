@@ -115,6 +115,23 @@ describe('HeadroomStore', () => {
     expect(s.throttled('claude-code', ['a', 'b'])).toEqual([])
   })
 
+  it('a Fable 429 leaves Opus pickable on the same account; unknown models use the account-wide cooldown', () => {
+    clock = NOW
+    const s = store()
+    const b = store('env_b')
+    b.observe({ service: 'claude-code', account: 'a', model: 'claude-fable-5-1', status: 429, headers: headers({ 'retry-after': '45' }) })
+    s.merge('env_b', b.own())
+    expect(s.view('claude-code', 'a', NOW, 'claude-fable-5-1').throttledUntil).toBe(NOW + 45_000)
+    expect(s.throttled('claude-code', ['a'], NOW, 'claude-opus-5-5')).toEqual([])
+    expect(s.summary('claude-code', ['a'], NOW, 'claude-opus-5-5').a.throttledUntil).toBeUndefined()
+    expect(s.view('claude-code', 'a').throttledUntil).toBe(NOW + 45_000)
+    // An answer whose model is unknown pauses all models on the account.
+    s.observe({ service: 'claude-code', account: 'a', model: null, status: 529, headers: headers({}) })
+    expect(s.view('claude-code', 'a', NOW, 'claude-opus-5-5').throttledUntil).toBe(NOW + OVERLOADED_MS)
+    expect(s.view('claude-code', 'a', NOW + OVERLOADED_MS, 'claude-opus-5-5').throttledUntil).toBeUndefined()
+    expect(s.view('claude-code', 'a', NOW + OVERLOADED_MS, 'claude-fable-5-1').throttledUntil).toBe(NOW + 45_000)
+  })
+
   it('an overloaded answer pauses the account briefly', () => {
     clock = NOW
     const s = store()

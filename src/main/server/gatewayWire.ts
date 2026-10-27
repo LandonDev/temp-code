@@ -140,18 +140,36 @@ export class WireGone extends Error {
   }
 }
 
-/** Asks by id over one wire, each settled by the matching reply. */
+export class GatewayControlTimeout extends Error {
+  constructor(public readonly method: string, public readonly timeoutMs: number) {
+    super(`${method === 'credentialFor' ? 'credential_timeout' : 'gateway_control_timeout'}: Gateway control ${method} timed out after ${timeoutMs} ms`)
+    this.name = 'GatewayControlTimeout'
+  }
+}
+
+/** Asks by id over one wire, each settled by its reply or deadline. */
 export class Calls<C> {
   private next = 1
-  private readonly pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>()
+  private readonly pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>()
 
   constructor(private readonly wire: Pick<Wire, 'post'>) {}
 
-  call<T>(call: C): Promise<T> {
+  call<T>(call: C, { timeoutMs = 30_000 }: { timeoutMs?: number } = {}): Promise<T> {
     const id = this.next++
     return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve: resolve as (value: unknown) => void, reject })
-      this.wire.post({ t: 'ask', id, call } as WireMessage)
+      const timer = setTimeout(() => {
+        this.pending.delete(id)
+        reject(new GatewayControlTimeout((call as { m: string }).m, timeoutMs))
+      }, timeoutMs)
+      timer.unref?.()
+      this.pending.set(id, { resolve: resolve as (value: unknown) => void, reject, timer })
+      try {
+        this.wire.post({ t: 'ask', id, call } as WireMessage)
+      } catch (error) {
+        this.pending.delete(id)
+        clearTimeout(timer)
+        reject(error)
+      }
     })
   }
 
@@ -159,6 +177,7 @@ export class Calls<C> {
     const p = this.pending.get(reply.id)
     if (!p) return
     this.pending.delete(reply.id)
+    clearTimeout(p.timer)
     if (reply.ok) p.resolve(reply.value)
     else p.reject(new Error(reply.error))
   }
@@ -166,7 +185,10 @@ export class Calls<C> {
   failAll(error: Error): void {
     const all = [...this.pending.values()]
     this.pending.clear()
-    for (const p of all) p.reject(error)
+    for (const p of all) {
+      clearTimeout(p.timer)
+      p.reject(error)
+    }
   }
 }
 

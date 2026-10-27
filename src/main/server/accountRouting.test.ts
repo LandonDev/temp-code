@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { emptyAccounts, type AccountHeadroom, type AccountsSnapshot } from '@shared/accounts'
-import { chooseAccount, resolvePin } from './accountRouting'
+import { chooseAccount, eligible, resolvePin } from './accountRouting'
 
 const NOW = 1_800_000_000_000
 const full = (label: string) => ({ label, usedPercent: 100, resetsAt: NOW + 3_600_000 })
@@ -240,5 +240,21 @@ describe('chooseAccount, scored (the registry passes the gateway\'s headroom)', 
     expect(chooseAccount({ ...base, model: 'claude-opus-5-5', current: 'fresh@x.com', snapshot: snap, headroom: {} }).current).toBe('spent@x.com')
     expect(chooseAccount({ ...base, model: 'claude-fable-5-1', current: null, snapshot: snap, headroom: {} }).current).toBe('fresh@x.com')
     expect(chooseAccount({ ...base, current: null, snapshot: snap, headroom: {}, out: ['fresh@x.com'] }).current).toBeNull()
+  })
+})
+
+
+describe('eligible', () => {
+  const input = { reports: [{ profileName: 'a', windows: [fine('5h'), full('Fable')] }], tiers: ['5h', 'Weekly'], now: NOW }
+  it('one predicate checks out marks, expired sign-ins, spent tiers and live cooldowns', () => {
+    expect(eligible('a', input)).toBe(true)
+    expect(eligible('a', { ...input, out: ['a'] })).toBe(false)
+    expect(eligible('a', { ...input, tiers: [...input.tiers, 'Fable'] })).toBe(false)
+    expect(eligible('a', { ...input, reports: [{ profileName: 'a', expired: true, windows: [] }] })).toBe(false)
+    const headroom = { a: { room: 1, ratePerMin: 0, seenAt: NOW, throttledUntil: NOW + 1000 } }
+    expect(eligible('a', { ...input, headroom })).toBe(false)
+    expect(eligible('a', { ...input, headroom, now: NOW + 1000 })).toBe(true)
+    expect(eligible('unknown', input)).toBe(true)
+    expect(eligible('a', { ...input, tiers: ['Fable'], now: NOW + 3_600_000 })).toBe(true)
   })
 })

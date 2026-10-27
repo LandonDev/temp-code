@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { configure, pinProfile, pinnedProfile, vault, type ServiceView, type UsageReport } from 'aliax-core'
+import { HeadroomStore } from './headroom'
 import { AccountsService, accountsPusher, ACCOUNTS_PUSH_MS, OUT_RETRY_MS, RESET_GRACE_MS, type AccountsDeps } from './accounts'
 import type { AccountHeadroom, AccountsSnapshot } from '@shared/accounts'
 
@@ -156,6 +157,33 @@ describe('AccountsService', () => {
     expect(await svc.pickNext({ ...info, model: 'claude-fable-5-1' })).toBeNull()
     // The pin (unscoped): the same rule on the weekly clock.
     expect(await svc.pickNext({ ...info, model: 'claude-sonnet-5-5', thread: undefined })).toBe('b@x.com')
+  })
+
+  it('a 429 failover never lands on an out account or one inside its cooldown', async () => {
+    ;({ cleanup } = fixture())
+    vault.upsertProfile('claude-code', { name: 'c@x.com', accountId: '4', email: 'c@x.com', createdAt: 4 })
+    vault.saveSecret('claude-code', 'c@x.com', '{}')
+    let now = 1_800_000_000_000
+    const headroom = new HeadroomStore({ environmentId: 'test', now: () => now })
+    const usageOf = vi.fn(async () => null)
+    const { svc } = service({ headroom: () => headroom, now: () => now, usageOf })
+    await svc.list()
+    svc.markOut('claude-code', 'b@x.com')
+    headroom.observe({ service: 'claude-code', account: 'c@x.com', model: 'claude-fable-5-1', status: 429, headers: new Headers({ 'retry-after': '45' }) })
+    const info = { service: 'claude', serviceId: 'claude-code' as const, model: 'claude-fable-5-1', limit: { window: '5h' as const }, tried: ['a@x.com'], account: 'a@x.com', thread: 'T' }
+    expect(await svc.pickNext(info)).toBeNull()
+    expect(usageOf).not.toHaveBeenCalled()
+    expect(info.tried).toEqual(['a@x.com'])
+    // Opus can use the same account, from both the spawn and failover paths.
+    expect(await svc.pickNext({ ...info, model: 'claude-opus-5-5' })).toBe('c@x.com')
+    expect(svc.routeFor({ provider: 'claude', model: 'claude-opus-5-5', account: 'c@x.com', updatedAt: now } as never, null).current).toBe('c@x.com')
+    expect(usageOf).toHaveBeenCalledTimes(1)
+    expect(usageOf).toHaveBeenCalledWith('claude-code', 'c@x.com')
+    now += 45_000
+    expect(await svc.pickNext(info)).toBe('c@x.com')
+    svc.markAnswered('claude-code', 'b@x.com')
+    headroom.observe({ service: 'claude-code', account: 'c@x.com', model: 'claude-fable-5-1', status: 429, headers: new Headers({ 'retry-after': '45' }) })
+    expect(await svc.pickNext(info)).toBe('b@x.com')
   })
 
   it('routeFor names the pin, else the sticky account, else the best pick for the model, from the cached snapshot', async () => {

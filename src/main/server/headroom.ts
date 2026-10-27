@@ -280,22 +280,22 @@ export class HeadroomStore {
   }
 
   /** The merged picture of one account across hosts. */
-  view(service: ServiceId, account: string, now = this.now()): AccountHeadroom {
+  view(service: ServiceId, account: string, now = this.now(), model: string | null = null): AccountHeadroom {
     const key = accountKey(service, account)
     const observations = [...this.hosts.values()].map((m) => m.get(key)).filter((o): o is HostObservation => !!o)
-    return mergeViews(observations, now)
+    return mergeViews(observations, now, model)
   }
 
   /** Every account any host has seen for a service, for the snapshot the renderer paints. */
-  summary(service: ServiceId, accounts: string[], now = this.now()): Record<string, AccountHeadroom> {
+  summary(service: ServiceId, accounts: string[], now = this.now(), model: string | null = null): Record<string, AccountHeadroom> {
     const out: Record<string, AccountHeadroom> = {}
-    for (const name of accounts) out[name] = this.view(service, name, now)
+    for (const name of accounts) out[name] = this.view(service, name, now, model)
     return out
   }
 
   /** The accounts of a service a 429 or 529 keeps out right now. */
-  throttled(service: ServiceId, accounts: string[], now = this.now()): string[] {
-    return accounts.filter((a) => (this.view(service, a, now).throttledUntil ?? 0) > now)
+  throttled(service: ServiceId, accounts: string[], now = this.now(), model: string | null = null): string[] {
+    return accounts.filter((a) => (this.view(service, a, now, model).throttledUntil ?? 0) > now)
   }
 
   private touched(): void {
@@ -360,8 +360,10 @@ function trim(obs: HostObservation, now: number): HostObservation {
   }
 }
 
-/** The merged view: the newest observation wins each field, rates add, the furthest throttle holds. */
-export function mergeViews(observations: HostObservation[], now: number): AccountHeadroom {
+/** Newest fields, summed rates, and the furthest cooldown for this model.
+ *  With no model, use the account's furthest cooldown. Unknown-model events
+ *  apply to every model, since the provider gave no narrower scope. */
+export function mergeViews(observations: HostObservation[], now: number, model: string | null = null): AccountHeadroom {
   if (observations.length === 0) return { room: null, ratePerMin: 0, seenAt: null }
   const byNewest = [...observations].sort((a, b) => b.seenAt - a.seenAt)
   let room: number | null = null
@@ -380,7 +382,10 @@ export function mergeViews(observations: HostObservation[], now: number): Accoun
   let ratePerMin = 0
   for (const o of observations) ratePerMin += o.recent.filter((t) => now - t < RATE_WINDOW_MS).length
   let throttledUntil: number | undefined
-  for (const o of observations) for (const t of o.throttles) if (t.until > now && (throttledUntil === undefined || t.until > throttledUntil)) throttledUntil = t.until
+  for (const o of observations) for (const t of o.throttles) {
+    if (model && t.model && t.model !== model) continue
+    if (t.until > now && (throttledUntil === undefined || t.until > throttledUntil)) throttledUntil = t.until
+  }
   const out: AccountHeadroom = { room, ratePerMin, seenAt: byNewest[0].seenAt }
   if (resetsAt !== undefined) out.resetsAt = resetsAt
   if (throttledUntil !== undefined) out.throttledUntil = throttledUntil

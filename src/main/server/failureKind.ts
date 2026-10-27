@@ -1,5 +1,7 @@
 import type { Failure, FailureKind, LimitWindow } from '@shared/events'
 import type { ProviderId } from '@shared/catalog'
+import { splitPath } from 'aliax-core'
+import type { NetworkInfo } from './gatewayCore'
 
 /**
  * Why a turn failed, decided here in main and never re-derived in a
@@ -15,6 +17,25 @@ export interface GatewayRefusal {
   /** The error code the upstream body named (`token_expired`, `invalid_grant`, …). */
   code: string | null
   account: string | null
+  /** A gateway deadline, kept even when the harness only reports a cut stream. */
+  timeout?: { stage: 'headers' | 'body' | 'total'; timeoutMs: number }
+}
+
+function upstreamTimeoutOf(message: string): GatewayRefusal['timeout'] {
+  const match = /Upstream (headers|body|total) timed out after (\d+) ms/i.exec(message)
+  return match ? { stage: match[1].toLowerCase() as 'headers' | 'body' | 'total', timeoutMs: Number(match[2]) } : undefined
+}
+
+/** Carry the gateway's stage to the registry without keeping the error text. */
+export function networkRefusalOf(info: NetworkInfo): { thread: string; refusal: GatewayRefusal } | null {
+  const { scope } = splitPath(info.path)
+  if (!scope) return null
+  const timeout = upstreamTimeoutOf(info.error)
+  const credential = /credential_timeout/i.test(info.error)
+  return {
+    thread: scope.thread,
+    refusal: { status: credential ? 503 : 502, code: credential ? 'credential_timeout' : null, account: info.account, ...(timeout ? { timeout } : {}) }
+  }
 }
 
 export interface FailureContext {
@@ -79,6 +100,7 @@ export function failureKindOf(ctx: FailureContext): FailureKind {
   // explains every 401 and every "no account" the harness reported.
   if (ctx.account && ctx.accountKnown === false) return 'account_unknown'
   const gateway = ctx.gateway ?? null
+  if (gateway?.timeout || gateway?.code === 'credential_timeout' || /credential_timeout/i.test(text)) return 'network'
   if (gateway?.status === 401 && gateway.code && TOKEN_EXPIRED.test(gateway.code)) return 'token_expired'
   if (TOKEN_EXPIRED.test(text)) return 'token_expired'
   if (OAUTH_EXPIRED.test(text) || gateway?.status === 401 || gateway?.status === 403) return 'oauth_expired'
@@ -159,11 +181,25 @@ export function describeFailure(kind: FailureKind, ctx: FailureContext): { summa
             ? 'The installed Codex CLI is older than the model needs (0.162.1 or newer), or the provider refused the model.'
             : 'The provider refused the model, or the catalog here does not offer it.'
       }
-    case 'network':
+    case 'network': {
+      if (ctx.gateway?.code === 'credential_timeout' || /credential_timeout/i.test(ctx.message)) {
+        return { summary: 'The gateway could not get a credential in time', cause: 'The host did not answer the credential request within its deadline.' }
+      }
+      const timeout = ctx.gateway?.timeout ?? upstreamTimeoutOf(ctx.message)
+      if (timeout) {
+        const seconds = timeout.timeoutMs / 1000
+        const summary = timeout.stage === 'headers'
+          ? `No answer from the provider in ${seconds} s`
+          : timeout.stage === 'body'
+            ? `The provider stopped sending data for ${seconds} s`
+            : `The provider request took longer than ${seconds} s`
+        return { summary, cause: 'The gateway ended the request when its deadline passed.' }
+      }
       return {
         summary: `Could not reach ${provider}`,
         cause: 'The connection dropped or was refused: a network change here, or an outage on their side.'
       }
+    }
     case 'harness_crashed':
       return {
         summary: `The ${harness} process died mid-turn`,
@@ -189,7 +225,7 @@ export function refusalCodeOf(body: string | undefined): string | null {
     const code = inner?.code ?? inner?.type ?? parsed.code ?? parsed.type ?? (typeof parsed.error === 'string' ? parsed.error : null)
     return typeof code === 'string' ? code : null
   } catch {
-    const m = /token_expired|invalid_grant|authentication_error|rate_limit_error|overloaded_error|not_found_error|insufficient_quota/i.exec(body)
+    const m = /credential_timeout|token_expired|invalid_grant|authentication_error|rate_limit_error|overloaded_error|not_found_error|insufficient_quota/i.exec(body)
     return m ? m[0].toLowerCase() : null
   }
 }

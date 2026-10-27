@@ -1,4 +1,4 @@
-import { DEFAULT_THREAD_CAP, hasRoom, pickFromCache, scopedSpent, tiersFor } from 'aliax-core'
+import { DEFAULT_THREAD_CAP, hasRoom, pickFromCache, scopedSpent, tiersFor, type UsageReport } from 'aliax-core'
 import { isRoutedProvider, SERVICE_OF, type AccountHeadroom, type AccountRoute, type AccountsSnapshot } from '@shared/accounts'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
 import type { SessionMeta } from '@shared/events'
@@ -82,6 +82,21 @@ export interface Choice {
   vanished?: { pin?: string; sticky?: string }
 }
 
+export interface EligibilityInput {
+  out?: string[]
+  reports: UsageReport[]
+  headroom?: Record<string, AccountHeadroom>
+  tiers: string[]
+  now: number
+}
+
+/** The same health, usage and cooldown rule for a spawn and a failover. */
+export function eligible(name: string, { out = [], reports, headroom, tiers, now }: EligibilityInput): boolean {
+  return !out.includes(name) &&
+    hasRoom(reports.find((r) => r.profileName === name), tiers, now) &&
+    (headroom?.[name]?.throttledUntil ?? 0) <= now
+}
+
 /**
  * Room is judged from the cached snapshot alone: many subagents may spawn
  * at once and must not each force a poll. The gateway still confirms with a
@@ -123,11 +138,11 @@ export function chooseAccount({ pin, current: given, stored = null, model, provi
   const goneSticky = gone(current) ? current : gone(stored ?? given) ? (stored ?? given) : null
   const vanished = gone(pin) || goneSticky ? { ...(gone(pin) ? { pin } : {}), ...(goneSticky ? { sticky: goneSticky } : {}) } : undefined
   const withVanished = (choice: Choice): Choice => (vanished ? { ...choice, vanished } : choice)
-  const room = (name: string): boolean => !out.includes(name) && hasRoom(snap.reports.find((r) => r.profileName === name), tiers, now)
+  const room = (name: string): boolean => eligible(name, { out, reports: snap.reports, headroom, tiers, now })
   const effectiveLoad = snap.pinned ? { ...load, [snap.pinned]: (load[snap.pinned] ?? 0) + 1 } : load
   if (headroom) return withVanished(chooseScored({ pin, current: given, model, serviceId, snap, known, room, load: effectiveLoad, headroom, lastActiveAt, fresh, now }))
   const pick = (tried: string[]): string | null =>
-    pickFromCache({ serviceId, model, scoped: true, profiles: snap.profiles, reports: snap.reports, tried: [...tried, ...out], load: effectiveLoad, cap: DEFAULT_THREAD_CAP, now })
+    pickFromCache({ serviceId, model, scoped: true, profiles: snap.profiles.filter((p) => room(p.name)), reports: snap.reports, tried: [...tried, ...out], load: effectiveLoad, cap: DEFAULT_THREAD_CAP, now })
 
   if (known(pin)) {
     const expected = room(pin) ? pin : known(current) && room(current) ? current : (pick([pin]) ?? pin)
@@ -173,8 +188,7 @@ interface ScoredInput {
  * while usable, else the best of the rest, else the pin.
  */
 function chooseScored({ pin, current, model, serviceId, snap, known, room, load, headroom, lastActiveAt, fresh, now }: ScoredInput): Choice {
-  const throttled = (name: string): boolean => (headroom[name]?.throttledUntil ?? 0) > now
-  const usable = (name: string | null): name is string => known(name) && room(name) && !throttled(name)
+  const usable = (name: string | null): name is string => known(name) && room(name)
   const ranked = (except: string[]) =>
     rankAccounts({ serviceId, model, names: snap.profiles.map((p) => p.name).filter((n) => usable(n) && !except.includes(n)), reports: snap.reports, headroom, load, now })
   if (known(pin)) {

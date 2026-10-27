@@ -18,7 +18,7 @@ import { HeadroomStore } from './headroom'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { createServer } from 'node:http'
 import { visibleCatalog } from '@shared/catalog'
-import { refusalCodeOf } from './failureKind'
+import { networkRefusalOf, refusalCodeOf } from './failureKind'
 import { ClientRequestSchema, type ClientRequest, type ServerFrame, type ServerPush, type ServerResponse } from '@shared/contract'
 import type { SessionChanges } from '@shared/wire'
 import {
@@ -1085,6 +1085,11 @@ export async function startServer(
     outMarks: () => accounts.outMarks(),
     hooks: {
       ...observed,
+      onNetwork: (info) => {
+        observed.onNetwork?.(info)
+        const record = networkRefusalOf(info)
+        if (record) registry.noteRefusal(record.thread, record.refusal)
+      },
       onResponse: (info) => {
         observed.onResponse?.(info)
         if (info.account && isRoutedProvider(info.service)) headroomChanged()
