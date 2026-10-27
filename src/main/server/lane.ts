@@ -22,7 +22,8 @@ import { currentLag } from './stalls'
  * its answer: five windows polling one cwd's git status cost one run. Only
  * a read joins (from any socket); a write or a per-socket subscription
  * always runs, in its turn, so a subscribe, unsubscribe, subscribe never
- * loses the last one. Nothing waits past BULK_MAX_WAIT_MS.
+ * loses the last one. After BULK_MAX_WAIT_MS, lag no longer holds a request; at most twice
+ * the normal cap may run.
  */
 
 export type Lane = 'interactive' | 'normal' | 'bulk'
@@ -176,7 +177,8 @@ export class LaneGate {
     while (this.waiting.length > 0) {
       const head = this.waiting[0]
       const overdue = now - head.enqueuedAt >= this.maxWaitMs
-      if (!overdue && (this.running >= this.maxRunning || this.lag() >= this.lagMs)) break
+      if (this.running >= (overdue ? this.maxRunning * 2 : this.maxRunning)) break
+      if (!overdue && this.lag() >= this.lagMs) break
       this.waiting.shift()
       this.start(head)
     }
@@ -188,7 +190,7 @@ export class LaneGate {
         this.timer = null
         this.pump()
       },
-      Math.max(0, Math.min(BULK_POLL_MS, untilDue))
+      Math.max(1, Math.min(BULK_POLL_MS, untilDue > 0 ? untilDue : BULK_POLL_MS))
     )
     this.timer.unref?.()
   }

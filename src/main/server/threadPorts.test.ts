@@ -1,8 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EventRow, SessionMeta } from '@shared/events'
 import { openDb } from './db'
 import { ThreadResources } from './threadResources'
-import { LIVE_MS, SharedScanner, ThreadPorts, type Scan } from './threadPorts'
+import { childBudget, onBudgetedSpawn } from './spawnBudget'
+import { LIVE_MS, scanHost, SharedScanner, ThreadPorts, type Scan } from './threadPorts'
 import type { Listener } from './threadPortsParse'
 import { removeResource, type ResourceRunner } from './threadResourcesRemove'
 
@@ -199,4 +200,54 @@ describe('ThreadPorts upkeep', () => {
     ports.close()
     db.close()
   })
+})
+
+it('baselines for a burst of threads share the 500 ms scan', async () => {
+  let now = 0
+  const scan = vi.fn(async (): Promise<Scan> => ({ listeners: [], parents: new Map() }))
+  const scanner = new SharedScanner(scan, () => now)
+  const resources = { record: vi.fn(), listAll: () => [], live: () => null, ended: vi.fn(), setPid: vi.fn() }
+  const ports = new ThreadPorts({ resources: resources as never, environmentId: ME, harnessPid: () => HARNESS, scanner })
+  try {
+    ports.callStarted('one', 'c1', 'echo one')
+    ports.callStarted('two', 'c2', 'echo two')
+    await scanner.get()
+    expect(scan).toHaveBeenCalledTimes(1)
+    now = 501
+    ports.callStarted('three', 'c3', 'echo three')
+    await scanner.get()
+    expect(scan).toHaveBeenCalledTimes(2)
+  } finally { ports.close() }
+})
+
+it('scanner children wait for helper slots', async () => {
+  const releases = await Promise.all(Array.from({ length: childBudget.concurrency }, () => childBudget.acquire()))
+  const spawned: string[] = []
+  const off = onBudgetedSpawn((file) => spawned.push(file))
+  const scanning = scanHost('linux')
+  try {
+    await Promise.resolve()
+    expect(spawned).toEqual([])
+    expect(childBudget.waiting).toBe(2)
+  } finally { for (const release of releases) release() }
+  await scanning
+  off()
+  expect(spawned.sort()).toEqual(['ps', 'ss'])
+})
+
+it('shares an in-flight scan even when its cache age has expired', async () => {
+  let now = 0
+  let finish!: (scan: Scan) => void
+  const scan = vi.fn(() => new Promise<Scan>((resolve) => { finish = resolve }))
+  const scanner = new SharedScanner(scan, () => now)
+  const first = scanner.get()
+  now = 1000
+  expect(scanner.get()).toBe(first)
+  expect(scanner.get(0)).toBe(first)
+  expect(scan).toHaveBeenCalledTimes(1)
+  finish({ listeners: [], parents: new Map() })
+  await first
+  void scanner.get()
+  expect(scan).toHaveBeenCalledTimes(2)
+  finish({ listeners: [], parents: new Map() })
 })

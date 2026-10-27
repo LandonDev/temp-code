@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFileBudgeted } from './spawnBudget'
 import type { ThreadResource } from '@shared/contract-resources'
 import { notDevServer } from '@shared/devServerRules'
 import type { EventRow } from '@shared/events'
@@ -32,10 +32,13 @@ export interface Scan {
   started?: Map<number, number>
 }
 
-const run = (cmd: string, args: string[]): Promise<string> =>
-  new Promise((resolve) => {
-    execFile(cmd, args, { timeout: 5_000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => resolve(err && !stdout ? '' : String(stdout)))
-  })
+const run = async (cmd: string, args: string[]): Promise<string> => {
+  try {
+    return (await execFileBudgeted(cmd, args, { timeout: 5_000, maxBuffer: 4 * 1024 * 1024 })).stdout
+  } catch (error) {
+    return String((error as { stdout?: string }).stdout ?? '')
+  }
+}
 
 /** The host's TCP listeners and process tree: ss on Linux, lsof on macOS, ps on both. */
 export async function scanHost(platform: NodeJS.Platform = process.platform): Promise<Scan> {
@@ -49,13 +52,17 @@ export async function scanHost(platform: NodeJS.Platform = process.platform): Pr
 /** One scan shared by everyone who asks within `maxAgeMs` (the watcher and the dev runs). */
 export class SharedScanner {
   private last: { at: number; scan: Promise<Scan> } | null = null
+  private pending: Promise<Scan> | null = null
   constructor(
     private readonly scan: () => Promise<Scan> = () => scanHost(),
     private readonly now: () => number = Date.now
   ) {}
   get(maxAgeMs = 500): Promise<Scan> {
+    if (this.pending) return this.pending
     if (this.last && this.now() - this.last.at < maxAgeMs) return this.last.scan
     const scan = this.scan().catch(() => ({ listeners: [], parents: new Map() }))
+    this.pending = scan
+    void scan.then(() => { if (this.pending === scan) this.pending = null })
     this.last = { at: this.now(), scan }
     return scan
   }
@@ -149,7 +156,7 @@ export class ThreadPorts {
 
   private async takeBaseline(sessionId: string, a: Active): Promise<void> {
     const pid = this.deps.harnessPid(sessionId)
-    const scan = await this.deps.scanner.get(0)
+    const scan = await this.deps.scanner.get()
     if (a.baseline) return
     a.baseline = new Set(pid ? this.under(scan, pid).map((l) => l.port) : [])
   }

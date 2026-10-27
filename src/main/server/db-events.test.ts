@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { openDb, Store } from './db'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { EVENT_PAGE_BYTES, openDb, Store } from './db'
 import type { AgentEvent, SessionMeta } from '@shared/events'
 
 let db: ReturnType<typeof openDb>
@@ -146,5 +146,35 @@ describe('events limit', () => {
     expect(seqs(store.events('lim', { afterSeq: 10, beforeSeq: 25, limit: 10 }))).toEqual([11, 12, 13, 14, 15, 16, 17, 18, 19, 20])
     expect(seqs(store.events('lim', { afterSeq: 20, beforeSeq: 25, limit: 10 }))).toEqual([21, 22, 23, 24])
     expect(store.events('lim', { afterSeq: 0 })).toHaveLength(30)
+  })
+})
+
+describe('event page byte budget', () => {
+  it('caps tail and forward payload pages; a newest oversized row stays whole', async () => {
+    store.insertSession(meta('bytes'))
+    for (let i = 0; i < 6; i++) store.appendEvent('bytes', { type: 'user-text', text: 'é'.repeat(400_000) })
+    const tail = await store.eventsAsync('bytes', { tail: 300 })
+    expect(seqs(tail)).toEqual([2, 3, 4, 5, 6])
+    const bytes = (rows: typeof tail): number => rows.reduce((n, r) => n + Buffer.byteLength(JSON.stringify(r.event)), 0)
+    expect(bytes(tail)).toBeLessThanOrEqual(EVENT_PAGE_BYTES)
+    // Legacy callers use a short page as EOF; they remain whole until
+    // their forwarding and pagination migrate to the async API.
+    expect(store.events('bytes', { limit: 300 })).toHaveLength(6)
+    const head = await store.eventsAsync('bytes', { limit: 300 })
+    expect(seqs(head)).toEqual([1, 2, 3, 4, 5])
+    store.appendEvent('bytes', { type: 'user-text', text: 'x'.repeat(EVENT_PAGE_BYTES + 1) })
+    const oversized = await store.eventsAsync('bytes', { tail: 300 })
+    expect(seqs(oversized)).toEqual([7])
+    expect(bytes(oversized)).toBeGreaterThan(EVENT_PAGE_BYTES)
+  })
+
+  it('eventsRange binds the caller limit in SQL, never materializing a whole log', () => {
+    seed('sql-limit', 10)
+    store.flushEvents()
+    const prepare = vi.spyOn(db, 'prepare')
+    expect(seqs(store.eventsRange('sql-limit', 4, 2))).toEqual([5, 6])
+    const call = prepare.mock.calls.find(([sql]) => sql.includes('SELECT seq, ts, payload'))
+    expect(call?.[0]).toMatch(/ORDER BY seq LIMIT \?$/)
+    prepare.mockRestore()
   })
 })

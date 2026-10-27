@@ -1,9 +1,10 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openDb, Store } from './db'
-import { EventReader } from './dbWorkers'
+import type { Worker } from 'node:worker_threads'
+import { EventReader, READER_RESTART_MS } from './dbWorkers'
 import type { SessionMeta } from '@shared/events'
 
 /**
@@ -25,6 +26,7 @@ beforeEach(() => {
   db = openDb(path)
 })
 afterEach(async () => {
+  vi.useRealTimers()
   for (const r of readers.splice(0)) await r.stop()
   db.close()
   rmSync(root, { recursive: true, force: true })
@@ -136,4 +138,75 @@ describe('reader worker', () => {
     expect(none.available).toBe(false)
     await none.stop()
   })
+})
+
+it('routes tail discovery and payload reads through the reader and matches the writer', async () => {
+  const reader = await start()
+  const store = new Store(db, { reader })
+  seed(store)
+  const query = vi.spyOn(reader, 'query')
+  for (const id of ['a', 'c']) {
+    for (const opts of [{ tail: 2 }, { afterSeq: 0, limit: 2 }, { afterSeq: 1, tail: 1 }]) {
+      expect(await store.eventsAsync(id, opts)).toEqual(store.events(id, opts))
+    }
+  }
+  expect(query.mock.calls.some(([sql]) => sql.includes('json_extract'))).toBe(true)
+  expect(query.mock.calls.some(([sql]) => sql.includes('WITH RECURSIVE page'))).toBe(true)
+  expect(query.mock.calls.some(([sql]) => sql.includes('cold.events'))).toBe(true)
+})
+
+it('replaces a failed reader once after a five-second backoff', async () => {
+  const reader = await start()
+  const internals = reader as unknown as { worker: Worker | null }
+  const worker = internals.worker!
+  const failed = worker.listeners('error')[0] as (error: Error) => void
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  await worker.terminate()
+  expect(reader.available).toBe(false)
+  // Node may report both error and exit for one failure.
+  failed(new Error('same failure'))
+  expect(vi.getTimerCount()).toBe(1)
+  await vi.advanceTimersByTimeAsync(READER_RESTART_MS - 1)
+  expect(internals.worker).toBeNull()
+  await vi.advanceTimersByTimeAsync(1)
+  expect(internals.worker).not.toBeNull()
+  expect(internals.worker).not.toBe(worker)
+  vi.useRealTimers()
+  await vi.waitFor(() => expect(reader.available).toBe(true))
+  expect(await reader.query('SELECT 42 AS n', [])).toEqual([{ n: 42 }])
+})
+
+it('stop cancels a pending reader replacement', async () => {
+  const reader = await start()
+  const internals = reader as unknown as { worker: Worker | null }
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  await internals.worker!.terminate()
+  await reader.stop()
+  await vi.advanceTimersByTimeAsync(READER_RESTART_MS * 2)
+  expect(internals.worker).toBeNull()
+  expect(reader.available).toBe(false)
+})
+
+it('a page retries on the current tier if the session moves while the reader answers', async () => {
+  const reader = await start()
+  const store = new Store(db, { reader })
+  seed(store)
+  const expected = store.events('a', { tail: 3 })
+  const query = reader.query.bind(reader)
+  let moved = false
+  vi.spyOn(reader, 'query').mockImplementation(async (sql, params) => {
+    const rows = await query(sql, params)
+    if (!moved) { moved = true; store.moveToCold('a') }
+    return rows as never
+  })
+  expect(await store.eventsAsync('a', { tail: 3 })).toEqual(expected)
+  expect(store.isCold('a')).toBe(true)
+})
+
+it('a failed page query falls back to the writer', async () => {
+  const reader = await start()
+  const store = new Store(db, { reader })
+  seed(store)
+  vi.spyOn(reader, 'query').mockRejectedValue(new Error('reader stopped'))
+  expect(await store.eventsAsync('a', { tail: 3 })).toEqual(store.events('a', { tail: 3 }))
 })

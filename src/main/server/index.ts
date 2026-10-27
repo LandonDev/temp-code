@@ -223,7 +223,7 @@ import {
   resolveBuildDir
 } from './build'
 import { closeAllLiveWatchers, onLiveEdit } from './livediff'
-import { eventsPage, eventsWindowMs, frameJson, profileFor, PushCoalescer, remoteDeflateOptions, sessionPage } from './wire'
+import { eventsPage, eventsWindowMs, frameJson, profileFor, PushCoalescer, SocketBudget, remoteDeflateOptions, sessionPage } from './wire'
 import { FocusSet } from './focus'
 import { bulkKey, LaneGate, laneOf } from './lane'
 import { ListChangeLog } from './listChanges'
@@ -1360,13 +1360,26 @@ export async function startServer(
     /** Closed: a bulk request of this socket still waiting in the lane gate is dropped. */
     let socketClosed = false
     const dropped = new Set<string>()
+    let socketBudget: SocketBudget | null = null
     const sendFrame = (frame: ServerFrame): void => {
       if (ws.readyState !== ws.OPEN) return
       if ('id' in frame && dropped.delete(frame.id)) {
         console.log(`[server] dropped the answer to ${frame.id} (TEMP_CODE_DROP_ANSWERS)`)
         return
       }
-      ws.send(frameJson(frame))
+      if (!socketBudget) {
+        socketBudget = new SocketBudget({
+          buffered: () => ws.bufferedAmount,
+          focused: (id) => focus.isFocusedBy(connection, id),
+          resync: () => sendFrame({ push: 'resync' }),
+          close: (code, reason) => ws.close(code, reason)
+        })
+        ws.once('close', () => socketBudget?.dispose())
+      }
+      const allowed = socketBudget.filter(frame)
+      if (!allowed) return
+      ws.send(frameJson(allowed))
+      socketBudget.poll()
       if (!backpressureLogged && ws.bufferedAmount > BACKPRESSURE_BYTES) {
         backpressureLogged = true
         recordBackpressure(connection, ws.bufferedAmount)

@@ -3,7 +3,7 @@ import { sessionStore, type Link } from "./store";
 import { ConnectionLostError } from "../connection";
 import { newSession } from "../session";
 import type { EventRow, ServerPush, SessionMeta } from "./types";
-import type { EventsPage, OmittedBody, SessionPage } from "@server/shared/wire";
+import type { EventsPage, OmittedBody, SessionPage, SessionChanges } from "@server/shared/wire";
 
 /**
  * The store over a remote socket: pages of the list, bounded pages of the
@@ -75,6 +75,7 @@ class RemoteLink implements Link {
   full = new Map<string, EventRow>();
   /** When set, a resume (afterSeq alone) answers this page. */
   resume: EventsPage | null = null;
+  changes: SessionChanges | null = null;
   /** Rows per tail or older page. */
   pageRows = 4;
   /** While set, every session.events answer waits here until released. */
@@ -92,6 +93,7 @@ class RemoteLink implements Link {
     return this.answer<T>(method, params);
   }
   private answer<T>(method: string, params?: unknown): Promise<T> {
+    if (method === "session.changes") return Promise.resolve(this.changes as T);
     if (method === "session.list") {
       const p = (params ?? {}) as { cursor?: string; archived?: boolean };
       if (p.archived) return Promise.resolve({ sessions: [], cursor: null } as T);
@@ -551,4 +553,23 @@ describe("remote profile: a master woken only by reports", () => {
     await sessionStore.ensureLoaded("new");
     expect(sessionStore.get("new")!.load).toMatchObject({ phase: "loaded", empty: true });
   });
+});
+
+it("resync reconciles the list cursor and replays mounted logs without reconnecting", async () => {
+  link.pages = [[wireMeta({ id: "s1" })]];
+  link.changes = { reset: true, seq: 1, generation: "g", sessions: [], removed: [] };
+  link.events.set("s1", turns("s1", 1));
+  await boot(link);
+  await sessionStore.ensureLoaded("s1");
+  const lists = link.count("session.list");
+  link.changes = { reset: false, seq: 3, generation: "g", sessions: [wireMeta({ id: "s1", title: "changed while lagging" })], removed: [] };
+  link.events.set("s1", turns("s1", 2));
+  link.push({ push: "resync" });
+  await vi.waitFor(() => {
+    expect(sessionStore.get("s1")?.title).toBe("changed while lagging");
+    expect(sessionStore.get("s1")?.blocks).toHaveLength(4);
+  });
+  expect(link.count("session.list")).toBe(lists);
+  expect(link.calls.filter((c) => c.method === "session.changes").at(-1)?.params).toEqual({ afterSeq: 1, generation: "g" });
+  expect(link.connected).toBe(true);
 });

@@ -1,16 +1,24 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openDb, Store } from './db'
-import { mirrorName, mirrorSession, renderMirror, renderMirrorOffLoop, writeThreadsIndex } from './mirror'
+import { cancelMirrors, mirrorName, mirrorSession, scheduleMirror, renderMirror, renderMirrorOffLoop, writeThreadsIndex } from './mirror'
 import type { AgentEvent, SessionMeta } from '@shared/events'
+
+vi.mock('node:fs', async (original) => {
+  const fs = await original<typeof import('node:fs')>()
+  return { ...fs, renameSync: vi.fn(fs.renameSync) }
+})
 
 let dir: string
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'tc-mirror-index-'))
 })
 afterEach(() => {
+  cancelMirrors()
+  vi.useRealTimers()
+  vi.clearAllMocks()
   rmSync(dir, { recursive: true, force: true })
 })
 
@@ -153,4 +161,66 @@ describe('renderMirrorOffLoop', () => {
     expect(readFileSync(join(dir, '.temp-code', 'threads', 'INDEX.md'), 'utf8')).toContain('"Mirror me"')
     db.close()
   })
+})
+
+it('three settles in a window render each session once and share one index write', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+  const db = openDb(':memory:')
+  const store = new Store(db)
+  const a = { ...thread, id: 'a', cwd: dir }
+  const b = { ...thread, id: 'b', cwd: dir }
+  store.insertSession(a)
+  store.insertSession(b)
+  store.appendEvent('a', { type: 'user-text', text: 'first' })
+  store.appendEvent('b', { type: 'user-text', text: 'second' })
+  const readLogRows = vi.fn((id, opts) => store.readRows(id, opts))
+  const reg = { get: (id: string) => id === 'a' ? a : b, getProject: () => ({ cwd: dir }), readLogRows }
+  try {
+    scheduleMirror(reg as never, 'a')
+    scheduleMirror(reg as never, 'b')
+    await vi.advanceTimersByTimeAsync(1000)
+    scheduleMirror(reg as never, 'a')
+    await vi.advanceTimersByTimeAsync(999)
+    expect(readLogRows).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1001)
+    expect(readLogRows).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(2000)
+    const writes = vi.mocked(renameSync).mock.calls.map((args) => String(args[1]))
+    expect(writes.filter((path) => path.endsWith('/INDEX.md'))).toHaveLength(1)
+    expect(writes.filter((path) => path.endsWith(mirrorName(a)))).toHaveLength(1)
+    expect(writes.filter((path) => path.endsWith(mirrorName(b)))).toHaveLength(1)
+    expect(readFileSync(join(dir, '.temp-code', 'threads', 'INDEX.md'), 'utf8')).toContain('threads/a-')
+  } finally {
+    cancelMirrors()
+    db.close()
+  }
+})
+
+it('the index waits for a queued render when a previous window is still rendering', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  let meta = { ...thread, cwd: dir }
+  let releaseFirst!: () => void
+  let releaseSecond!: () => void
+  const first = new Promise<void>((resolve) => { releaseFirst = resolve })
+  const second = new Promise<void>((resolve) => { releaseSecond = resolve })
+  let reads = 0
+  const reg = {
+    get: () => meta,
+    getProject: () => ({ cwd: dir }),
+    readLogRows: async () => { await (++reads === 1 ? first : second); return [] }
+  }
+  const indexes = (): string[] => vi.mocked(renameSync).mock.calls.map((args) => String(args[1])).filter((path) => path.endsWith('/INDEX.md'))
+  scheduleMirror(reg as never, 'm')
+  await vi.advanceTimersByTimeAsync(2000)
+  meta = { ...meta, title: 'Latest title' }
+  scheduleMirror(reg as never, 'm')
+  await vi.advanceTimersByTimeAsync(2000)
+  releaseFirst()
+  await vi.advanceTimersByTimeAsync(0)
+  expect(reads).toBe(2)
+  expect(indexes()).toHaveLength(0)
+  releaseSecond()
+  await vi.advanceTimersByTimeAsync(0)
+  expect(indexes()).toHaveLength(2)
+  expect(readFileSync(join(dir, '.temp-code', 'threads', 'INDEX.md'), 'utf8')).toContain('Latest title')
 })

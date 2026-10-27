@@ -110,6 +110,8 @@ export interface CrossHostThreadsDeps {
     | 'send'
     | 'get'
     | 'eventsAfter'
+    | 'eventsRange'
+    | 'lastEvents'
     | 'interrupt'
     | 'answer'
     | 'approve'
@@ -428,13 +430,12 @@ export class CrossHostThreads {
       case 'thread.events': {
         const a = ThreadEventsArgsSchema.parse(args)
         const meta = this.own(caller, a.sessionId)
-        const all = this.deps.registry.eventsAfter(a.sessionId, a.afterSeq ?? 0)
-        const rows = all.slice(0, a.limit ?? 200)
+        const rows = this.deps.registry.eventsRange(a.sessionId, a.afterSeq ?? 0, a.limit ?? 200)
         const dirs = (this.deps.attachmentDirs ?? ((m: SessionMeta) => attachmentDirsOf(m)))(meta)
         const result: ThreadEventsResult = {
           sessionId: a.sessionId,
           rows: rows.map((r) => ({ seq: r.seq, ts: r.ts, event: trimEvent(r.event as unknown as Record<string, unknown>) })),
-          lastSeq: all.length ? all[all.length - 1].seq : (a.afterSeq ?? 0),
+          lastSeq: Math.max(a.afterSeq ?? 0, this.deps.registry.lastEvents(a.sessionId, 1)[0]?.seq ?? 0),
           status: meta.status,
           attachments: listAttachments(dirs)
         }

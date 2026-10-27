@@ -705,6 +705,10 @@ public final class EnvironmentClient {
         case .hello:
             // The transport answers `open()` with the hello; it arrives as `SessionEvent.opened`.
             break
+        case .resync:
+            async let shell: Void = refreshShell()
+            await subscriptions.resumeAll(tail: coldOpenTail, first: visibleThread)
+            await shell
         case .presence(let value):
             relayObserver?(self, value.hosts, true)
         case .workspaces(let value):

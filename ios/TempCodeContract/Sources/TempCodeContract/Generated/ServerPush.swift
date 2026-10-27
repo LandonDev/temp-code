@@ -35,6 +35,10 @@ public struct HelloPush: Codable, Hashable, Sendable {
     }
 }
 
+public struct ResyncPush: Codable, Hashable, Sendable {
+    public init() {}
+}
+
 public struct WorkspacesPush: Codable, Hashable, Sendable {
     public let workspaces: [WorkspaceMeta]
 
@@ -203,6 +207,7 @@ public struct PresencePush: Codable, Hashable, Sendable {
 
 public enum ServerPush: Codable, Hashable, Sendable {
     case hello(HelloPush)
+    case resync(ResyncPush)
     case workspaces(WorkspacesPush)
     case projects(ProjectsPush)
     case events(EventsPush)
@@ -232,6 +237,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
         let tag = try decoder.container(keyedBy: Tag.self).decode(String.self, forKey: .push)
         switch tag {
         case "hello": self = .hello(try HelloPush(from: decoder))
+        case "resync": self = .resync(try ResyncPush(from: decoder))
         case "workspaces": self = .workspaces(try WorkspacesPush(from: decoder))
         case "projects": self = .projects(try ProjectsPush(from: decoder))
         case "events": self = .events(try EventsPush(from: decoder))
@@ -257,6 +263,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
     public func encode(to encoder: any Encoder) throws {
         switch self {
         case .hello(let value): try Self.encode(tag: "hello", value, to: encoder)
+        case .resync(let value): try Self.encode(tag: "resync", value, to: encoder)
         case .workspaces(let value): try Self.encode(tag: "workspaces", value, to: encoder)
         case .projects(let value): try Self.encode(tag: "projects", value, to: encoder)
         case .events(let value): try Self.encode(tag: "events", value, to: encoder)

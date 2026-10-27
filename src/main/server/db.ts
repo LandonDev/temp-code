@@ -249,6 +249,9 @@ export function openDb(path: string): DatabaseSync {
     // The task fold itself, as of its own seq (folds.ts serializeTodo): where
     // a warm-up after a launch starts reading the log instead of seq 0.
     `ALTER TABLE session_folds ADD COLUMN todo TEXT`,
+    // -1 means this pre-upgrade fold has not checked its log yet.
+    `ALTER TABLE session_folds ADD COLUMN has_user_text INTEGER NOT NULL DEFAULT -1`,
+    `ALTER TABLE session_folds ADD COLUMN has_completed_turn INTEGER NOT NULL DEFAULT -1`,
     // A plan's completion and the handoff links (plans.ts): when the
     // planner called plan_complete, the build started from the plan, the
     // plan a build came from, and the thread that started this one.
@@ -500,6 +503,8 @@ export const LARGE_BINDING = 64 * 1024
 
 /** How many events a tail walks back over at most, whatever the budget. */
 const TAIL_SCAN = 6000
+/** Payload bytes per page; a single large row always remains whole. */
+export const EVENT_PAGE_BYTES = 4 * 1024 * 1024
 
 /** First seq of a `budget`-row tail over `scan` (newest first): the row
  *  of the newest `budget` blocks, so the tail begins on a boundary.
@@ -550,6 +555,8 @@ export interface ResumeAfterBootRow {
   /** When a shutdown handler refreshed the row; null for a row the turn itself wrote. */
   shutdownAt: number | null
 }
+
+type PageRaw = { seq: number; ts: number; payload: string }
 
 export class Store {
   /** Session search runs on the reader worker while it is up (dbWorkers.ts). */
@@ -640,6 +647,7 @@ export class Store {
     payload: string
     /** The row's turn text for the FTS index, null when it is not a turn. */
     text: string | null
+    type: AgentEvent['type']
     table: 'events' | 'cold.events'
   }[] = []
   private flushScheduled = false
@@ -1022,6 +1030,7 @@ export class Store {
     const tier = this.stmt(`SELECT cold FROM sessions WHERE id = ?`)
     for (const id of ids) {
       this.nextSeq.delete(id)
+      this.stmt(`UPDATE session_folds SET has_user_text = -1, has_completed_turn = -1 WHERE session_id = ?`).run(id)
       if (this.moving === id) this.moving = null
       const r = tier.get(id) as { cold: number } | undefined
       if (r?.cold) this.coldIds.add(id)
@@ -1111,7 +1120,7 @@ export class Store {
     // A row for a cold session lands in the cold file, where its log is.
     const table = this.eventsTable(sessionId)
     const payload = JSON.stringify(event)
-    this.pendingEvents.push({ sessionId, seq, ts, payload, text: turnText(event), table })
+    this.pendingEvents.push({ sessionId, seq, ts, payload, text: turnText(event), type: event.type, table })
     if (!this.flushScheduled) {
       this.flushScheduled = true
       setImmediate(() => this.flushEvents())
@@ -1157,6 +1166,22 @@ export class Store {
             this.nextSeq.set(row.sessionId, seq + 1)
             row.seq = seq
           }
+        }
+        const flags = new Map<string, { user: number; completed: number }>()
+        for (const row of rows) {
+          const type = row.type
+          if (type !== 'user-text' && type !== 'turn-complete') continue
+          const flag = flags.get(row.sessionId) ?? { user: -1, completed: -1 }
+          if (type === 'user-text') flag.user = 1
+          else flag.completed = 1
+          flags.set(row.sessionId, flag)
+        }
+        for (const [id, flag] of flags) {
+          this.stmt(`INSERT INTO session_folds (session_id, folded_seq, fold_version, has_user_text, has_completed_turn)
+            VALUES (?, 0, 0, ?, ?) ON CONFLICT(session_id) DO UPDATE SET
+            has_user_text = MAX(has_user_text, excluded.has_user_text),
+            has_completed_turn = MAX(has_completed_turn, excluded.has_completed_turn)`)
+            .run(id, flag.user, flag.completed)
         }
         this.turnIndex.insertLanded(rows)
         this.db.exec('COMMIT')
@@ -1504,22 +1529,39 @@ export class Store {
    *  thread between its first user row and its first turn has not. */
   hasCompletedTurn(sessionId: string): boolean {
     this.flushEvents()
-    const r = this
-      .stmt(
-        `SELECT 1 AS x FROM ${this.eventsTable(sessionId)} WHERE session_id = ? AND payload LIKE '%"turn-complete"%' LIMIT 1`
-      )
-      .get(sessionId)
-    return !!r
+    return this.eventFlags(sessionId).has_completed_turn === 1
   }
 
   hasUserText(sessionId: string): boolean {
     this.flushEvents()
-    const r = this
-      .stmt(
-        `SELECT 1 AS x FROM ${this.eventsTable(sessionId)} WHERE session_id = ? AND payload LIKE '%"user-text"%' LIMIT 1`
-      )
-      .get(sessionId)
-    return !!r
+    return this.eventFlags(sessionId).has_user_text === 1
+  }
+
+  /** A legacy or imported log fills both flags once, on its first read. */
+  private eventFlags(sessionId: string): { has_user_text: number; has_completed_turn: number } {
+    type Flags = { has_user_text: number; has_completed_turn: number }
+    const saved = this.stmt(`SELECT has_user_text, has_completed_turn FROM session_folds WHERE session_id = ?`).get(sessionId) as Flags | undefined
+    if (saved && saved.has_user_text >= 0 && saved.has_completed_turn >= 0) return saved
+    const flags = this.stmt(`SELECT
+      COALESCE(MAX(json_extract(payload, '$.type') = 'user-text'), 0) AS has_user_text,
+      COALESCE(MAX(json_extract(payload, '$.type') = 'turn-complete'), 0) AS has_completed_turn
+      FROM ${this.eventsTable(sessionId)} WHERE session_id = ?`).get(sessionId) as Flags
+    this.stmt(`INSERT INTO session_folds (session_id, folded_seq, fold_version, has_user_text, has_completed_turn)
+      VALUES (?, 0, 0, ?, ?) ON CONFLICT(session_id) DO UPDATE SET
+      has_user_text = excluded.has_user_text, has_completed_turn = excluded.has_completed_turn`)
+      .run(sessionId, flags.has_user_text, flags.has_completed_turn)
+    return flags
+  }
+
+  /** The most recent user row, and whether it is the log's first user row.
+   * Only two matching rows cross SQL, even for a long transcript. */
+  lastUserRow(sessionId: string): (EventRow & { first: boolean }) | null {
+    this.flushEvents()
+    const rows = this.stmt(`SELECT seq, ts, payload FROM ${this.eventsTable(sessionId)}
+      WHERE session_id = ? AND json_extract(payload, '$.type') = 'user-text' ORDER BY seq DESC LIMIT 2`)
+      .all(sessionId) as unknown as { seq: number; ts: number; payload: string }[]
+    const row = rows[0]
+    return row ? { sessionId, seq: row.seq, ts: row.ts, event: JSON.parse(row.payload) as AgentEvent, first: rows.length === 1 } : null
   }
 
   /** The project preamble the session's first message carried, or null
@@ -1576,49 +1618,103 @@ export class Store {
     sessionId: string,
     opts: { afterSeq?: number; beforeSeq?: number; tail?: number; limit?: number } = {}
   ): EventRow[] {
+    // Legacy callers infer EOF from row counts. Keep their contract until
+    // the async forwarding sites and the renderer's EOF check migrate.
+    return this.eventPageSync(sessionId, opts, false)
+  }
+
+  private eventPageSync(
+    sessionId: string,
+    opts: { afterSeq?: number; beforeSeq?: number; tail?: number; limit?: number },
+    bounded: boolean
+  ): EventRow[] {
     this.flushEvents()
+    const read = this.eventPageQueries(sessionId, this.eventsTable(sessionId), opts, bounded)
+    let step = read.next()
+    while (!step.done) {
+      const { sql, params, tail } = step.value
+      const run = (): PageRaw[] => this.stmt(sql).all(...params) as unknown as PageRaw[]
+      step = read.next(tail ? timed('events tail scan', run) : run())
+    }
+    return step.value
+  }
+
+  /** A 4 MiB page, with both boundary discovery and payload reads on the
+   * reader. A single row stays whole. A move or worker failure retries
+   * against the writer's current tier with the same cap. */
+  async eventsAsync(
+    sessionId: string,
+    opts: { afterSeq?: number; beforeSeq?: number; tail?: number; limit?: number } = {}
+  ): Promise<EventRow[]> {
+    this.flushEvents()
+    if (!this.reader?.available) return this.eventPageSync(sessionId, opts, true)
     const table = this.eventsTable(sessionId)
+    const read = this.eventPageQueries(sessionId, table, opts, true)
+    try {
+      let step = read.next()
+      while (!step.done) {
+        const { sql, params } = step.value
+        step = read.next(await this.reader.query<PageRaw>(sql, params))
+      }
+      if (this.moving === sessionId || table !== this.eventsTable(sessionId)) return this.eventPageSync(sessionId, opts, true)
+      return step.value
+    } catch {
+      return this.eventPageSync(sessionId, opts, true)
+    }
+  }
+
+  private *eventPageQueries(
+    sessionId: string,
+    table: string,
+    opts: { afterSeq?: number; beforeSeq?: number; tail?: number; limit?: number },
+    bounded: boolean
+  ): Generator<{ sql: string; params: (string | number)[]; tail?: boolean }, EventRow[], PageRaw[]> {
     const afterSeq = opts.afterSeq ?? 0
     const beforeSeq = opts.beforeSeq ?? Number.MAX_SAFE_INTEGER
     let fromSeq = afterSeq + 1
     if (opts.tail && opts.tail > 0) {
-      const scan = timed('events tail scan', () =>
-        this
-          .stmt(
-            `SELECT seq, json_extract(payload, '$.type') AS type,
-                    json_extract(payload, '$.callId') AS callId,
-                    json_extract(payload, '$.msgId') AS msgId,
-                    json_extract(payload, '$.blockIndex') AS blockIndex
-               FROM ${table}
-               WHERE session_id = ? AND seq > ? AND seq < ?
-               ORDER BY seq DESC LIMIT ?`
-          )
-          .all(sessionId, afterSeq, beforeSeq, TAIL_SCAN) as unknown as {
-          seq: number
-          type: string
-          callId: string | null
-          msgId: string | null
-          blockIndex: number | null
-        }[]
-      )
-      const start = tailStart(scan, opts.tail)
+      const scan = yield {
+        tail: true,
+        sql: `SELECT seq, json_extract(payload, '$.type') AS type,
+          json_extract(payload, '$.callId') AS callId,
+          json_extract(payload, '$.msgId') AS msgId,
+          json_extract(payload, '$.blockIndex') AS blockIndex
+          FROM ${table} WHERE session_id = ? AND seq > ? AND seq < ? ORDER BY seq DESC LIMIT ?`,
+        params: [sessionId, afterSeq, beforeSeq, TAIL_SCAN]
+      }
+      const start = tailStart(scan as unknown as Parameters<typeof tailStart>[0], opts.tail)
       if (start !== null) fromSeq = start
     }
-    const rows = this
-      .stmt(
-        `SELECT seq, ts, payload FROM ${table} WHERE session_id = ? AND seq >= ? AND seq < ? ORDER BY seq LIMIT ?`
-      )
-      .all(sessionId, fromSeq, beforeSeq, opts.limit && opts.limit > 0 ? opts.limit : -1) as unknown as {
-      seq: number
-      ts: number
-      payload: string
-    }[]
-    return rows.map((r) => ({
-      sessionId,
-      seq: r.seq,
-      ts: r.ts,
-      event: JSON.parse(r.payload) as AgentEvent
-    }))
+    if (!bounded) {
+      const rows = yield {
+        sql: `SELECT seq, ts, payload FROM ${table} WHERE session_id = ? AND seq >= ? AND seq < ? ORDER BY seq LIMIT ?`,
+        params: [sessionId, fromSeq, beforeSeq, opts.limit && opts.limit > 0 ? opts.limit : -1]
+      }
+      return rows.map((r) => ({ sessionId, seq: r.seq, ts: r.ts, event: JSON.parse(r.payload) as AgentEvent }))
+    }
+    const descending = !!opts.tail && opts.tail > 0
+    const direction = descending ? 'DESC' : 'ASC'
+    const comparison = descending ? '<' : '>'
+    const limit = opts.limit && opts.limit > 0 ? opts.limit : Number.MAX_SAFE_INTEGER
+    // Seek the next row by primary key and stop as soon as the byte cap is
+    // reached. Unlike a window over the whole range, this never reads the
+    // rest of a long log just to return its first page.
+    const rows = yield {
+      sql: `WITH RECURSIVE page(seq, ts, payload, bytes, n) AS (
+        SELECT seq, ts, payload, length(CAST(payload AS BLOB)), 1 FROM (
+          SELECT seq, ts, payload FROM ${table}
+          WHERE session_id = ? AND seq >= ? AND seq < ? ORDER BY seq ${direction} LIMIT 1
+        )
+        UNION ALL
+        SELECT e.seq, e.ts, e.payload, p.bytes + length(CAST(e.payload AS BLOB)), p.n + 1
+        FROM page p JOIN ${table} e ON e.session_id = ? AND e.seq = (
+          SELECT seq FROM ${table} WHERE session_id = ? AND seq ${comparison} p.seq AND seq >= ? AND seq < ?
+          ORDER BY seq ${direction} LIMIT 1
+        ) WHERE p.bytes < ? AND p.n < ?
+      ) SELECT seq, ts, payload FROM page WHERE n = 1 OR bytes <= ? ORDER BY seq`,
+      params: [sessionId, fromSeq, beforeSeq, sessionId, sessionId, fromSeq, beforeSeq, EVENT_PAGE_BYTES, limit, EVENT_PAGE_BYTES]
+    }
+    return rows.map((r) => ({ sessionId, seq: r.seq, ts: r.ts, event: JSON.parse(r.payload) as AgentEvent }))
   }
 
   /** The highest seq of a session's log, 0 when it has none: the counter

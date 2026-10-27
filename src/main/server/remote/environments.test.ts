@@ -3,6 +3,7 @@ import { CONTRACT_VERSION } from '@shared/capabilities'
 import {
   addEnvironment,
   HostError,
+  HOST_TIMEOUT_MS,
   kindOf,
   listEnvironments,
   mintTicket,
@@ -213,4 +214,20 @@ describe('update and remove', () => {
     expect(removeEnvironment(store, HOST_ID)).toBe(false)
     expect(listEnvironments(store)).toEqual([])
   })
+})
+
+it('host requests time out after four seconds by default', async () => {
+  vi.useFakeTimers()
+  try {
+    const store = fakeStore()
+    const ctx = { store, environmentId: SELF_ID, fetch: vi.fn((_url, init) =>
+      new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new Error('aborted'))))) as typeof fetch }
+    expect(HOST_TIMEOUT_MS).toBe(4000)
+    const request = addEnvironment(ctx, { url: 'https://h', key: 'k' })
+    const rejected = expect(request).rejects.toThrow(/did not answer in time/)
+    await vi.advanceTimersByTimeAsync(3999)
+    expect(ctx.fetch).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    await rejected
+  } finally { vi.useRealTimers() }
 })

@@ -279,10 +279,10 @@ export interface ReaderOptions {
 
 /**
  * The host side of the reader worker. `available` is false until the
- * worker is ready and for good once it ends: every pending query rejects
- * then, and the Store runs that query and every later one on the writer.
- * No restart. Start it after the writer opened WAL: the read-only open
- * needs the `-shm` file the writer creates.
+ * worker is ready or while it restarts: pending queries reject on failure
+ * and the Store uses the writer during the five-second backoff. Start it
+ * after the writer opened WAL: the read-only open needs the `-shm` file
+ * the writer creates.
  */
 export class EventReader {
   private worker: Worker | null = null
@@ -291,9 +291,9 @@ export class EventReader {
   private up = false
   private stopped: Promise<void> | null = null
   readonly ready: Promise<boolean>
+  private restart: ReturnType<typeof setTimeout> | null = null
 
-  constructor(path: string, options: ReaderOptions = {}) {
-    const log = options.log ?? ((line) => console.log(line))
+  constructor(private readonly path: string, private readonly options: ReaderOptions = {}) {
     if (path === ':memory:') {
       this.ready = Promise.resolve(false)
       return
@@ -302,19 +302,38 @@ export class EventReader {
     this.ready = new Promise<boolean>((resolve) => {
       resolveReady = resolve
     })
+    this.start(resolveReady)
+  }
+
+  private start(resolveReady: (ok: boolean) => void = () => {}): void {
+    if (this.stopped) return
+    const log = this.options.log ?? ((line: string) => console.log(line))
+    const retry = (): void => {
+      if (this.stopped || this.restart) return
+      this.restart = setTimeout(() => {
+        this.restart = null
+        this.start()
+      }, READER_RESTART_MS)
+      this.restart.unref()
+    }
     let worker: Worker
     try {
       worker = new Worker(READER_WORKER_SOURCE, {
         eval: true,
-        workerData: { file: path, cold: coldPathFor(path), cacheSize: options.cacheSize ?? 20 }
+        workerData: { file: this.path, cold: coldPathFor(this.path), cacheSize: this.options.cacheSize ?? 20 }
       })
     } catch (error) {
       log(`[db] reader worker not started: ${(error as Error).message}`)
+      retry()
       resolveReady(false)
       return
     }
     this.worker = worker
+    let ended = false
     const gone = (why: string): void => {
+      if (ended || this.worker !== worker) return
+      ended = true
+      this.worker = null
       const was = this.up
       this.up = false
       resolveReady(false)
@@ -322,9 +341,12 @@ export class EventReader {
         this.pending.delete(id)
         p.reject(new Error(`reader worker ${why}`))
       }
-      if (was && !this.stopped) log(`[db] reader worker ${why}; search runs on the writer`)
+      if (was && !this.stopped) log(`[db] reader worker ${why}; retrying in 5 s`)
+      void worker.terminate()
+      retry()
     }
     worker.on('message', (message: ReaderMessage) => {
+      if (ended || this.worker !== worker) return
       if ('id' in message) {
         const p = this.pending.get(message.id)
         if (!p) return
@@ -343,8 +365,8 @@ export class EventReader {
           resolveReady(true)
           return
         case 'unavailable':
-          log(`[db] reader worker unavailable: ${message.reason}; search runs on the writer`)
-          resolveReady(false)
+          log(`[db] reader worker unavailable: ${message.reason}; reads run on the writer`)
+          gone(`unavailable: ${message.reason}`)
           return
         case 'error':
           gone(`failed: ${message.message}`)
@@ -378,6 +400,8 @@ export class EventReader {
    *  can run for seconds, and shutdown does not sit behind it. */
   stop(): Promise<void> {
     return (this.stopped ??= (async () => {
+      if (this.restart) clearTimeout(this.restart)
+      this.restart = null
       const worker = this.worker
       this.worker = null
       this.up = false
@@ -394,3 +418,6 @@ export class EventReader {
 
 /** How long stop() waits for the reader's current statement to end. */
 export const STOP_WAIT_MS = 2000
+
+/** Delay before one replacement is started for a failed reader. */
+export const READER_RESTART_MS = 5_000

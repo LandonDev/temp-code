@@ -791,13 +791,12 @@ export class SessionRegistry {
       }
       // Nothing held (the host restarted since): the last user row is the
       // message; its stamp is read back the way an echoed send does.
-      const users = this.store.eventsAfter(sessionId, 0).filter((r) => r.event.type === 'user-text')
-      const row = users.at(-1)
+      const row = this.store.lastUserRow(sessionId)
       if (!row || row.event.type !== 'user-text') {
         this.append(sessionId, { type: 'status', status: 'idle' })
         return false
       }
-      await this.send(sessionId, row.event.text, { attachments: row.event.attachments, echoed: { first: users.length === 1 } })
+      await this.send(sessionId, row.event.text, { attachments: row.event.attachments, echoed: { first: row.first } })
       return true
     } finally {
       this.startingQueued.delete(sessionId)

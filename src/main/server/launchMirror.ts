@@ -30,6 +30,8 @@ type HostRow = {
 type SessionRow = { environment_id: string; summary: string }
 
 export class LaunchMirror {
+  private writes: Promise<void> = Promise.resolve()
+  private readonly epochs = new Map<string, number>()
   constructor(private readonly db: DatabaseSync) {
     db.exec(`
       CREATE TABLE IF NOT EXISTS launch_mirror_hosts (
@@ -94,58 +96,71 @@ export class LaunchMirror {
     return rows.map((r) => r.environment_id)
   }
 
-  /** Apply one write, then prune the host: archived summaries past
-   *  MIRROR_ARCHIVED_KEEP_MS and anything past the cap, oldest first. */
-  write(write: MirrorWrite, now = Date.now()): void {
+  /** Serialize writes; each transaction lands at most 200 summaries. The
+   * cursor lands last so an interrupted write replays from the old cursor. */
+  write(write: MirrorWrite, now = Date.now()): Promise<void> {
+    const epoch = this.epochs.get(write?.environmentId) ?? 0
+    const run = this.writes.then(() => this.apply(write, now, epoch))
+    this.writes = run.catch(() => {})
+    return run
+  }
+
+  private async apply(write: MirrorWrite, now: number, epoch: number): Promise<void> {
     if (typeof write?.environmentId !== 'string' || !write.environmentId) return
     const env = write.environmentId
-    this.db.exec('BEGIN')
-    try {
-      const existing = this.db.prepare(`SELECT 1 FROM launch_mirror_hosts WHERE environment_id = ?`).get(env)
-      if (!existing) {
-        this.db
-          .prepare(`INSERT INTO launch_mirror_hosts (environment_id, written_at) VALUES (?, ?)`)
-          .run(env, now)
+    const forgotten = (): boolean => (this.epochs.get(env) ?? 0) !== epoch
+    if (forgotten()) return
+    const upserts = Array.isArray(write.upserts) ? write.upserts.filter(validSummary) : []
+    const transaction = (work: () => void): void => {
+      this.db.exec('BEGIN')
+      try {
+        work()
+        this.db.exec('COMMIT')
+      } catch (err) {
+        this.db.exec('ROLLBACK')
+        throw err
       }
-      if (write.cursor !== undefined) {
-        this.db
-          .prepare(`UPDATE launch_mirror_hosts SET cursor_seq = ?, cursor_generation = ? WHERE environment_id = ?`)
-          .run(write.cursor?.seq ?? null, write.cursor?.generation ?? null, env)
-      }
-      if (Array.isArray(write.workspaces)) {
-        this.db.prepare(`UPDATE launch_mirror_hosts SET workspaces = ? WHERE environment_id = ?`).run(JSON.stringify(write.workspaces), env)
-      }
-      if (Array.isArray(write.projects)) {
-        this.db.prepare(`UPDATE launch_mirror_hosts SET projects = ? WHERE environment_id = ?`).run(JSON.stringify(write.projects), env)
-      }
-      this.db.prepare(`UPDATE launch_mirror_hosts SET written_at = ? WHERE environment_id = ?`).run(now, env)
-      const upserts = Array.isArray(write.upserts) ? write.upserts.filter(validSummary) : []
+    }
+    transaction(() => {
+      this.db.prepare(`INSERT OR IGNORE INTO launch_mirror_hosts (environment_id, written_at) VALUES (?, ?)`).run(env, now)
       if (write.full) {
         const keep = new Set(upserts.map((s) => s.id))
         const ids = this.db.prepare(`SELECT id FROM launch_mirror_sessions WHERE environment_id = ?`).all(env) as unknown as { id: string }[]
         const del = this.db.prepare(`DELETE FROM launch_mirror_sessions WHERE environment_id = ? AND id = ?`)
         for (const { id } of ids) if (!keep.has(id)) del.run(env, id)
       }
-      if (upserts.length > 0) {
-        const put = this.db.prepare(
-          `INSERT OR REPLACE INTO launch_mirror_sessions (environment_id, id, archived, updated_at, summary) VALUES (?, ?, ?, ?, ?)`
-        )
-        for (const s of upserts) put.run(env, s.id, s.archived ? 1 : 0, s.updatedAt, JSON.stringify(s))
-      }
-      if (Array.isArray(write.removed) && write.removed.length > 0) {
+    })
+    const put = this.db.prepare(
+      `INSERT OR REPLACE INTO launch_mirror_sessions (environment_id, id, archived, updated_at, summary) VALUES (?, ?, ?, ?, ?)`
+    )
+    for (let start = 0; start < upserts.length; start += 200) {
+      if (forgotten()) return
+      transaction(() => {
+        for (const s of upserts.slice(start, start + 200)) put.run(env, s.id, s.archived ? 1 : 0, s.updatedAt, JSON.stringify(s))
+      })
+      if (start + 200 < upserts.length) await new Promise<void>((resolve) => setImmediate(resolve))
+    }
+    if (forgotten()) return
+    transaction(() => {
+      if (Array.isArray(write.removed)) {
         const del = this.db.prepare(`DELETE FROM launch_mirror_sessions WHERE environment_id = ? AND id = ?`)
         for (const id of write.removed) if (typeof id === 'string') del.run(env, id)
       }
+      if (Array.isArray(write.workspaces))
+        this.db.prepare(`UPDATE launch_mirror_hosts SET workspaces = ? WHERE environment_id = ?`).run(JSON.stringify(write.workspaces), env)
+      if (Array.isArray(write.projects))
+        this.db.prepare(`UPDATE launch_mirror_hosts SET projects = ? WHERE environment_id = ?`).run(JSON.stringify(write.projects), env)
       this.prune(env, now)
-      this.db.exec('COMMIT')
-    } catch (err) {
-      this.db.exec('ROLLBACK')
-      throw err
-    }
+      if (write.cursor !== undefined)
+        this.db.prepare(`UPDATE launch_mirror_hosts SET cursor_seq = ?, cursor_generation = ? WHERE environment_id = ?`)
+          .run(write.cursor?.seq ?? null, write.cursor?.generation ?? null, env)
+      this.db.prepare(`UPDATE launch_mirror_hosts SET written_at = ? WHERE environment_id = ?`).run(now, env)
+    })
   }
 
   /** A host that is no longer saved: its slice leaves whole. */
   forget(environmentId: string): void {
+    this.epochs.set(environmentId, (this.epochs.get(environmentId) ?? 0) + 1)
     this.db.prepare(`DELETE FROM launch_mirror_sessions WHERE environment_id = ?`).run(environmentId)
     this.db.prepare(`DELETE FROM launch_mirror_hosts WHERE environment_id = ?`).run(environmentId)
   }

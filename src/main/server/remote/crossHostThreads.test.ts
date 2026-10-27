@@ -98,6 +98,8 @@ function fakeRegistry() {
     },
     get: (id: string) => sessions.get(id) ?? null,
     list: () => [...sessions.values()].filter((m) => !m.archived),
+    eventsRange: (id: string, after: number, limit: number) => (events.get(id) ?? []).filter((r) => r.seq > after).slice(0, limit),
+    lastEvents: (id: string, limit: number) => (events.get(id) ?? []).slice(-limit),
     eventsAfter: (id: string, after: number) => (events.get(id) ?? []).filter((r) => r.seq > after),
     async interrupt(): Promise<void> {},
     async answer(id: string, requestId: string, a: string[][] | null): Promise<void> {
@@ -260,10 +262,13 @@ describe('CrossHostThreads', () => {
     const { svc, registry } = service()
     const { sessionId } = (await svc.handle('thread.start', { caller, args: startArgs }, ctx)) as { sessionId: string }
     for (let i = 0; i < 5; i++) registry.append(sessionId, { type: 'assistant-text', text: 'z'.repeat(5_000) } as AgentEvent)
+    const range = vi.spyOn(registry, 'eventsRange')
+    vi.spyOn(registry, 'eventsAfter').mockImplementation(() => { throw new Error('whole log read') })
     const r = (await svc.handle('thread.events', { caller, args: { sessionId, afterSeq: 1, limit: 2 } }, ctx)) as { rows: { seq: number; event: { text: string } }[]; lastSeq: number }
     expect(r.rows.map((x) => x.seq)).toEqual([2, 3])
     expect(r.rows[0].event.text.length).toBeLessThan(4_100)
     expect(r.lastSeq).toBe(6)
+    expect(range).toHaveBeenCalledWith(sessionId, 1, 2)
     const list = (await svc.handle('thread.list', { caller, args: {} }, ctx)) as { sessionId: string; parentSessionId: string | null }[]
     expect(list.map((s) => s.sessionId)).toEqual([sessionId])
   })

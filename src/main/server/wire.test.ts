@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openDb, Store } from './db'
 import {
+  SocketBudget,
+  SOCKET_MAX_BYTES,
   boundRows,
   encodedBytes,
   eventsPage,
@@ -13,6 +15,7 @@ import {
   eventsWindowMs,
   LAGGING_EVENTS_MS
 } from './wire'
+import { BACKPRESSURE_BYTES } from './stalls'
 import { isOmittedBody } from '@shared/wire'
 import {
   BODY_OMIT_BYTES,
@@ -835,5 +838,52 @@ describe('frameJson', () => {
     const first = projectRow(row)
     expect(first).not.toBe(row)
     expect(projectRow(row)).toBe(first)
+  })
+})
+
+describe('SocketBudget', () => {
+  afterEach(() => vi.useRealTimers())
+  it('drops unfocused pushes above the budget while preserving focused rows and answers', () => {
+    let buffered = BACKPRESSURE_BYTES
+    const budget = new SocketBudget({ buffered: () => buffered, focused: (id) => id === 'focus', resync: vi.fn(), close: vi.fn() })
+    const background = { push: 'session', session: meta('background') } as const
+    expect(budget.filter(background)).toBe(background)
+    buffered++
+    expect(budget.filter(background)).toBeNull()
+    const answer = { id: 'a', ok: true, result: 42 } as const
+    expect(budget.filter(answer)).toBe(answer)
+    const focused = { push: 'event', row: { ...row(1, { type: 'user-text', text: 'hi' }), sessionId: 'focus' } } as const
+    expect(budget.filter(focused)).toBe(focused)
+    expect(budget.filter({ push: 'sessions', sessions: [meta('background'), meta('focus')] }))
+      .toEqual({ push: 'sessions', sessions: [meta('focus')] })
+    budget.dispose()
+  })
+
+  it('sends one resync when the queue drains below half, even with no later push', async () => {
+    vi.useFakeTimers()
+    let buffered = BACKPRESSURE_BYTES + 1
+    const resync = vi.fn()
+    const budget = new SocketBudget({ buffered: () => buffered, focused: () => false, resync, close: vi.fn() })
+    budget.filter({ push: 'events', sessionId: 's', rows: [] })
+    buffered = BACKPRESSURE_BYTES / 2
+    await vi.advanceTimersByTimeAsync(100)
+    expect(resync).not.toHaveBeenCalled()
+    buffered--
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(resync).toHaveBeenCalledTimes(1)
+    budget.dispose()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('closes once with 1013 past 64 MiB, including focused traffic or answers', () => {
+    let buffered = SOCKET_MAX_BYTES
+    const close = vi.fn()
+    const budget = new SocketBudget({ buffered: () => buffered, focused: () => true, resync: vi.fn(), close })
+    const answer = { id: 'a', ok: true, result: 42 } as const
+    expect(budget.filter(answer)).toBe(answer)
+    buffered++
+    expect(budget.poll()).toBe(false)
+    expect(budget.filter(answer)).toBeNull()
+    expect(close).toHaveBeenCalledExactlyOnceWith(1013, expect.any(String))
   })
 })

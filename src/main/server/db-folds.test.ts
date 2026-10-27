@@ -119,3 +119,37 @@ describe('session_folds', () => {
     expect(store.childrenOf('grandkid')).toEqual([])
   })
 })
+
+describe('persisted event flags', () => {
+  it('tracks appends and preserves flags when a fold is replaced', () => {
+    store.insertSession(meta('a'))
+    expect(store.hasUserText('a')).toBe(false)
+    expect(store.hasCompletedTurn('a')).toBe(false)
+    store.appendEvent('a', { type: 'user-text', text: 'go' })
+    expect(store.hasUserText('a')).toBe(true)
+    expect(store.hasCompletedTurn('a')).toBe(false)
+    store.appendEvent('a', { type: 'turn-complete', costUsd: 0 })
+    store.flushEvents()
+    store.putFold(fold('a'))
+    expect(store.hasCompletedTurn('a')).toBe(true)
+    expect(store.hasUserText('a')).toBe(true)
+    expect(db.prepare('SELECT has_user_text, has_completed_turn FROM session_folds WHERE session_id = ?').get('a'))
+      .toEqual({ has_user_text: 1, has_completed_turn: 1 })
+  })
+
+  it('backfills a legacy cold log once; type names inside text do not count', () => {
+    store.insertSession(meta('a'))
+    store.appendEvent('a', { type: 'assistant-text', text: '"user-text" "turn-complete"', delta: false })
+    store.flushEvents()
+    store.moveToCold('a')
+    store.putFold(fold('a'))
+    expect(store.hasUserText('a')).toBe(false)
+    expect(store.hasCompletedTurn('a')).toBe(false)
+    db.prepare(`INSERT INTO cold.events (session_id, seq, ts, payload) VALUES (?, ?, ?, ?)`).run('a', 2, 1, JSON.stringify({ type: 'user-text', text: 'legacy' }))
+    // A known negative stays cheap until the importer invalidates the fold.
+    expect(store.hasUserText('a')).toBe(false)
+    store.forgetSessions(['a'])
+    expect(store.hasUserText('a')).toBe(true)
+    expect(store.hasCompletedTurn('a')).toBe(false)
+  })
+})

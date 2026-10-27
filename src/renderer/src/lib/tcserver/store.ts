@@ -1656,6 +1656,18 @@ class SessionStore {
 
   private onPush(push: ServerPush, environmentId: string): void {
     switch (push.push) {
+      case "resync": {
+        const attached = this.attached.get(environmentId);
+        if (attached) {
+          attached.listed = (attached.listed ?? Promise.resolve())
+            .catch(() => undefined)
+            .then(() => {
+              if (this.attached.get(environmentId) === attached && attached.link.connected) return this.resync(attached.link);
+            })
+            .catch(() => undefined);
+        }
+        break;
+      }
       case "session": {
         this.pushed.session += 1;
         const fresh = !this.entries.has(push.session.id);

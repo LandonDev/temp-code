@@ -191,9 +191,9 @@ app.whenReady().then(async () => {
     const hosts = server!.launchMirror.read(['local', ...environments.map((row) => row.id)])
     e.returnValue = { environments, hosts } satisfies LaunchMirrorSnapshot
   })
-  ipcMain.on('launch-mirror:write', (_e, write: MirrorWrite) => {
+  ipcMain.on('launch-mirror:write', async (_e, write: MirrorWrite) => {
     try {
-      server!.launchMirror.write(write)
+      await server!.launchMirror.write(write)
     } catch (err) {
       console.error('[launch-mirror] write failed', err)
     }

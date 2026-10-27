@@ -176,3 +176,21 @@ describe('LaneGate', () => {
     gate.dispose()
   })
 })
+
+it('overdue requests bypass lag but stop at twice the running cap', async () => {
+  vi.useFakeTimers()
+  const gate = new LaneGate({ lag: () => 500 })
+  const done = Array.from({ length: 12 }, () => deferred<void>())
+  const started: number[] = []
+  const asks = done.map((d, i) => gate.run('bulk', null, () => { started.push(i); return d.promise }))
+  await vi.advanceTimersByTimeAsync(BULK_MAX_WAIT_MS)
+  expect(started).toEqual([0, 1, 2, 3])
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(gate.stats()).toEqual({ running: 4, held: 8 })
+  done[0].resolve()
+  await flush()
+  expect(started).toEqual([0, 1, 2, 3, 4])
+  for (const d of done) d.resolve()
+  await Promise.all(asks)
+  gate.dispose()
+})

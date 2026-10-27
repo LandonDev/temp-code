@@ -165,3 +165,35 @@ describe('Peers', () => {
     expect(peers.get('env_a')).toBe(second)
   })
 })
+
+it('shares a pending ticket mint and skips minting while the host link is open', async () => {
+  const host = await fakeHost('env_a')
+  cleanup.push(host.close)
+  const env = { id: 'env_a', name: 'A', routes: [{ url: `ws://127.0.0.1:${host.port}/ws`, kind: 'loopback' as const }], addedAt: 1, caps: ['admin' as const], keyName: 'k' }
+  const store = storeWith({ [`${ENVIRONMENTS_PREFIX}env_a`]: JSON.stringify({ ...env, key: 'tc_x.secret' }) })
+  const link = new PeerLink(env, { store, environmentId: 'env_me', fetch: ticketFetch as unknown as typeof fetch }, {})
+  cleanup.push(async () => link.close())
+  await Promise.all([link.connect(), link.connect(), link.connect()])
+  expect(link.connected).toBe(true)
+  await link.connect()
+  link.retry()
+  expect(ticketFetch).toHaveBeenCalledTimes(1)
+  expect(host.tickets).toEqual(['t-1'])
+})
+
+it('closing during ticket mint leaves the host link closed', async () => {
+  const host = await fakeHost('env_a')
+  cleanup.push(host.close)
+  const env = { id: 'env_a', name: 'A', routes: [{ url: `ws://127.0.0.1:${host.port}/ws`, kind: 'loopback' as const }], addedAt: 1, caps: ['admin' as const], keyName: 'k' }
+  const store = storeWith({ [`${ENVIRONMENTS_PREFIX}env_a`]: JSON.stringify({ ...env, key: 'tc_x.secret' }) })
+  let release!: () => void
+  const held = new Promise<void>((resolve) => { release = resolve })
+  const fetch = vi.fn(async () => { await held; return new Response(JSON.stringify({ ticket: 'late', expiresIn: 30_000 })) })
+  const link = new PeerLink(env, { store, environmentId: 'env_me', fetch: fetch as unknown as typeof globalThis.fetch }, {})
+  const connecting = link.connect()
+  link.close()
+  release()
+  await connecting
+  expect(link.connected).toBe(false)
+  expect(host.tickets).toEqual([])
+})

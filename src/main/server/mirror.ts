@@ -41,6 +41,8 @@ const INDEX_NAME = 'INDEX.md'
 /** A burst of turn-completes (orchestrator fleets) writes once. */
 const MIRROR_DEBOUNCE_MS = 2_000
 
+const indexTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const indexSessions = new Map<string, Set<string>>()
 const timers = new Map<string, ReturnType<typeof setTimeout>>()
 
 const kebab = (s: string): string =>
@@ -405,6 +407,35 @@ async function mirrorSessionNow(
 export function cancelMirrors(): void {
   for (const t of timers.values()) clearTimeout(t)
   timers.clear()
+  for (const t of indexTimers.values()) clearTimeout(t)
+  indexTimers.clear()
+  indexSessions.clear()
+}
+
+/** Mirrors in one project's settle window share one index write. */
+function scheduleThreadsIndex(dir: string, sessionId: string): void {
+  const prior = indexTimers.get(dir)
+  if (prior) clearTimeout(prior)
+  const sessions = indexSessions.get(dir) ?? new Set<string>()
+  sessions.add(sessionId)
+  indexSessions.set(dir, sessions)
+  const timer = setTimeout(() => {
+    indexTimers.delete(dir)
+    indexSessions.delete(dir)
+    // The session timers are armed first. Wait for their renders before
+    // writing one index for the project's whole settle window.
+    void Promise.all([...sessions].map(async (id) => {
+      for (;;) {
+        const pending = rendering.get(id)
+        if (!pending) return
+        await pending
+      }
+    })).then(() => {
+      try { writeThreadsIndex(dir) } catch { /* best-effort context */ }
+    })
+  }, MIRROR_DEBOUNCE_MS)
+  timer.unref?.()
+  indexTimers.set(dir, timer)
 }
 
 /** Debounced per session — an orchestrator burst writes once. */
@@ -415,9 +446,12 @@ export function scheduleMirror(reg: SessionRegistry, sessionId: string): void {
     sessionId,
     setTimeout(() => {
       timers.delete(sessionId)
-      void mirrorSession(reg, sessionId)
+      void mirrorSession(reg, sessionId, { index: false })
     }, MIRROR_DEBOUNCE_MS)
   )
+  const meta = reg.get(sessionId)
+  const cwd = meta && contextCwd(reg, meta)
+  if (cwd) scheduleThreadsIndex(join(cwd, '.temp-code', 'threads'), sessionId)
 }
 
 /** A mirror written after the thread's last change needs no rewrite.

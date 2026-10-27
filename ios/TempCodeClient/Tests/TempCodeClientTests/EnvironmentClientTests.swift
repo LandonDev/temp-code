@@ -141,6 +141,37 @@ private func seqs(_ rows: [EventRow]) -> [Int] { rows.map(\.seq) }
         #expect(try await cache.cursor("env_test", sessionId: "s1") == 60)
     }
 
+    @Test func `a resync reconciles the list and open thread on the same socket`() async throws {
+        let rig = try ClientRig()
+        await rig.client.start()
+        let fake = await rig.sockets.socket(0)
+        fake.hello()
+        await rig.answerShell(fake, sessions: [clientSession("s1")])
+        #expect(await rig.wait { rig.client.status.fresh })
+        await rig.client.openThread("s1")
+        let subscribe = try #require(await rig.waitForRequest(fake, "session.subscribe"))
+        fake.answer(id: subscribe.id, result: "null")
+        let events = try #require(await rig.waitForRequest(fake, "session.events"))
+        fake.answer(id: events.id, result: json(EventsPage(rows: [textRow("s1", seq: 1)], moreBefore: false, moreAfter: false, reset: false)))
+        #expect(await rig.wait { rig.client.threads["s1"]?.rows.count == 1 })
+
+        fake.deliver(#"{"push":"resync"}"#)
+        let changes = try #require(await rig.waitForRequest(fake, "session.changes", count: 2))
+        #expect(changes.params == .object(["afterSeq": .number(1), "generation": .string("g0")]))
+        let workspaces = try #require(await rig.waitForRequest(fake, "workspace.list", count: 2))
+        fake.answer(id: workspaces.id, result: json([sampleWorkspace("w1")]))
+        let projects = try #require(await rig.waitForRequest(fake, "project.list", count: 2))
+        fake.answer(id: projects.id, result: json([sampleProject("p1")]))
+        fake.answer(id: changes.id, result: json(SessionChanges(reset: false, seq: 2, generation: "g0", sessions: [clientSession("s1", title: "Renamed")], removed: [])))
+        let replay = try #require(await rig.waitForRequest(fake, "session.events", count: 2))
+        #expect(replay.params == .object(["sessionId": .string("s1"), "afterSeq": .number(1)]))
+        fake.answer(id: replay.id, result: json(EventsPage(rows: [textRow("s1", seq: 2)], moreBefore: false, moreAfter: false, reset: false)))
+        #expect(await rig.wait { rig.client.session("s1")?.title == "Renamed" && rig.client.threads["s1"]?.rows.count == 2 })
+        #expect(rig.client.listCursor == ListCursor(seq: 2, generation: "g0"))
+        #expect(rig.sent(fake, "session.subscribe").count == 1)
+        #expect(rig.client.status.fresh)
+    }
+
     @Test func `a cold thread opens with a tail and pushes append without duplicates`() async throws {
         let rig = try ClientRig()
         await rig.client.start()

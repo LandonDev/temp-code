@@ -1289,6 +1289,8 @@ export interface QueuedMessage {
 export type QueueAddResult = { kind: 'queued'; item: QueuedMessage } | { kind: 'steered'; id: string }
 
 export type ServerPush =
+  // A slow socket dropped background pushes; resume lists and mounted logs.
+  | { push: 'resync' }
   // First frame on every socket: which environment answered, the contract
   // it speaks and what this caller may do (plan 5jtfkIC45Cbr).
   | {

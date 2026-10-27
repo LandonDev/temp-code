@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer'
+import { BACKPRESSURE_BYTES } from './stalls'
 import type { IncomingHttpHeaders } from 'node:http'
 import type { AgentEvent, EventRow, SessionMeta, ToolPreview } from '@shared/events'
 import type { ServerFrame, ServerPush } from '@shared/contract'
@@ -24,9 +25,9 @@ import {
  * The remote wire profile, server side: which profile a connection asked
  * for, the projection that keeps large bodies off the wire, the bounded
  * pages of the log and the session list, and the per-connection coalescer
- * that turns a burst of pushes into one frame per kind. Every function is
- * pure over its inputs so wire.perf.test.ts can run the real path over a
- * synthetic workload; index.ts calls the same functions per connection.
+ * that turns a burst of pushes into one frame per kind. Projection helpers
+ * are pure so wire.perf.test.ts can run the real path over a synthetic
+ * workload; SocketBudget tracks each connection's buffer and recovery.
  */
 
 /** Which wire profile a connection gets: the one seam between this
@@ -686,5 +687,76 @@ export class PushCoalescer {
     const items = this.builds
     this.builds = []
     this.emit({ push: 'builds', items })
+  }
+}
+
+/** An upper bound on queued bytes, including focused traffic and answers. */
+export const SOCKET_MAX_BYTES = 64 * 1024 * 1024
+
+export interface SocketBudgetOptions {
+  buffered: () => number
+  focused: (sessionId: string) => boolean
+  resync: () => void
+  close: (code: number, reason: string) => void
+}
+
+/** Background transcript and meta pushes may be replayed after a slow
+ * socket drains. Answers and host/control pushes always pass. */
+export class SocketBudget {
+  private lagging = false
+  private closed = false
+  private timer: ReturnType<typeof setInterval> | null = null
+  constructor(private readonly options: SocketBudgetOptions) {}
+
+  /** Called after sends too, so one large frame cannot escape the cap. */
+  poll(): boolean {
+    if (this.closed) return false
+    const bytes = this.options.buffered()
+    if (bytes > SOCKET_MAX_BYTES) {
+      this.dispose()
+      this.options.close(1013, 'socket send queue exceeded 64 MiB')
+      return false
+    }
+    if (this.lagging && bytes < BACKPRESSURE_BYTES / 2) {
+      this.lagging = false
+      if (this.timer) clearInterval(this.timer)
+      this.timer = null
+      this.options.resync()
+    }
+    return true
+  }
+
+  filter(frame: ServerFrame): ServerFrame | null {
+    if (!this.poll()) return null
+    if (!('push' in frame) || this.options.buffered() <= BACKPRESSURE_BYTES) return frame
+    const focused = this.options.focused
+    let next: ServerFrame | null = frame
+    switch (frame.push) {
+      case 'session': if (!focused(frame.session.id)) next = null; break
+      case 'sessions': {
+        const sessions = frame.sessions.filter((s) => focused(s.id))
+        if (sessions.length !== frame.sessions.length) next = sessions.length ? { ...frame, sessions } : null
+        break
+      }
+      case 'event': if (!focused(frame.row.sessionId)) next = null; break
+      case 'events': if (!focused(frame.sessionId)) next = null; break
+      // Only replayable log/list pushes are shed. Keep control and peer
+      // traffic intact, including key and relay messages.
+      default: break
+    }
+    if (next !== frame) {
+      this.lagging = true
+      if (!this.timer) {
+        this.timer = setInterval(() => this.poll(), 100)
+        this.timer.unref?.()
+      }
+    }
+    return next
+  }
+
+  dispose(): void {
+    this.closed = true
+    if (this.timer) clearInterval(this.timer)
+    this.timer = null
   }
 }

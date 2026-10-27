@@ -1000,6 +1000,7 @@ export const HelloPushSchema = push('hello', {
   via: z.string().optional(),
   presence: HostPresenceSchema.optional()
 })
+export const ResyncPushSchema = push('resync', {})
 /** A relayed host's presence changed: the whole list (contract-relay.ts). */
 export const PresencePushSchema = push('presence', { hosts: z.array(HostPresenceSchema) })
 export const WorkspacesPushSchema = push('workspaces', { workspaces: z.array(WorkspaceMetaSchema) })
@@ -1091,6 +1092,7 @@ export const MacBridgeHeldPushSchema = push('macBridge.held', { sessionId: z.str
  */
 export const RemotePushSchema = z.discriminatedUnion('push', [
   HelloPushSchema,
+  ResyncPushSchema,
   WorkspacesPushSchema,
   ProjectsPushSchema,
   EventsPushSchema,
@@ -1170,6 +1172,7 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof BuildRunSchema, BuildRun>>,
   Expect<Mirror<typeof HostPresenceSchema, HostPresence>>,
   Expect<Mirror<typeof HelloPushSchema, PushOf<'hello'>>>,
+  Expect<Mirror<typeof ResyncPushSchema, PushOf<'resync'>>>,
   Expect<Mirror<typeof PresencePushSchema, PushOf<'presence'>>>,
   Expect<Mirror<typeof WorkspacesPushSchema, PushOf<'workspaces'>>>,
   Expect<Mirror<typeof ProjectsPushSchema, PushOf<'projects'>>>,

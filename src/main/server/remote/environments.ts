@@ -14,7 +14,7 @@ import { ENVIRONMENT_ID } from './environment'
  */
 
 export const ENVIRONMENTS_PREFIX = 'remote.environments.'
-export const HOST_TIMEOUT_MS = 8_000
+export const HOST_TIMEOUT_MS = 4_000
 
 export type EnvironmentsStore = Pick<Store, 'getSetting' | 'setSetting' | 'settingsWithPrefix'>
 

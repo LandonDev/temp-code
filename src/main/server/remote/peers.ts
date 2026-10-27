@@ -49,6 +49,7 @@ export class PeerLink {
   private seq = 0
   private timer: NodeJS.Timeout | null = null
   private closed = false
+  private connecting: Promise<void> | null = null
   attempts = 0
   connected = false
   lastError: string | null = null
@@ -73,11 +74,19 @@ export class PeerLink {
   }
 
   /** Try every route once, best first; schedule a retry when none opened. */
-  async connect(): Promise<void> {
-    if (this.closed || this.ws) return
+  connect(): Promise<void> {
+    if (this.closed || this.ws) return Promise.resolve()
+    if (this.connecting) return this.connecting
+    const run = this.connectRoutes().finally(() => { this.connecting = null })
+    this.connecting = run
+    return run
+  }
+
+  private async connectRoutes(): Promise<void> {
     for (const route of this.env.routes) {
       try {
         const { ticket } = await mintTicket(this.ctx, this.env.id, route.url)
+        if (this.closed || this.ws) return
         await this.open(`${route.url}?ticket=${encodeURIComponent(ticket)}`)
         this.attempts = 0
         this.lastError = null
@@ -111,6 +120,13 @@ export class PeerLink {
         if ('push' in frame) {
           if (frame.push === 'hello') {
             if (settled) return
+            if (this.closed) {
+              settled = true
+              clearTimeout(hello)
+              ws.close()
+              reject(new Error('link closed'))
+              return
+            }
             settled = true
             clearTimeout(hello)
             if (frame.environmentId !== this.env.id) {
