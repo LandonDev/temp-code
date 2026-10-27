@@ -58,6 +58,13 @@ describe("actionOf", () => {
     expect(actionOf(call("Read", { file_path: "/repo/a.ts" }), CWD).line).toBeUndefined();
   });
 
+  it("a failed or waiting read opens its details, so the error or the ask is there", () => {
+    expect(actionOf(call("Read", { file_path: "/repo/a.ts" }, { status: "failed", detail: "ENOENT" }), CWD).opens).toBe("details");
+    expect(
+      actionOf(call("Read", { file_path: "/repo/a.ts" }, { status: "pending", approval: { requestId: 1 } }), CWD).opens,
+    ).toBe("details");
+  });
+
   it("a read with no path has nothing to open but its details", () => {
     expect(actionOf(call("Read", {}), CWD).opens).toBe("details");
   });

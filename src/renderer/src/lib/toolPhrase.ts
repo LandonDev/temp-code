@@ -519,13 +519,28 @@ function splitVerb(phrase: string): PhraseParts {
   return { verb: phrase.slice(0, at), object: phrase.slice(at + 1) };
 }
 
-function patchPaths(block: Block): string[] {
-  const i = inputOf(block);
-  const raw = typeof block.tool?.input === "string" ? block.tool.input : str(i.patch);
-  const found = [...raw.matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)].map((m) => m[1].trim());
+type PatchFile = { path: string; op: "add" | "update" | "delete" };
+
+/** The files a patch touches and what it does to each: the server's change
+ *  array (codex), else the raw patch text's headers, else the named path. */
+function patchFiles(block: Block): PatchFile[] {
+  const input = block.tool?.input;
+  if (Array.isArray(input)) {
+    return input.flatMap((c) => {
+      const change = c && typeof c === "object" ? (c as Record<string, unknown>) : {};
+      const kind = change.kind && typeof change.kind === "object" ? (change.kind as Record<string, unknown>) : {};
+      const type = str(kind.type);
+      const path = str(change.path);
+      return path ? [{ path, op: type === "add" ? "add" : type === "delete" ? "delete" : "update" } as PatchFile] : [];
+    });
+  }
+  const raw = typeof input === "string" ? input : str(inputOf(block).input) || str(inputOf(block).patch);
+  const found = [...raw.matchAll(/^\*\*\* (Add|Update|Delete) File: (.+)$/gm)].map(
+    (m) => ({ path: m[2].trim(), op: m[1].toLowerCase() }) as PatchFile,
+  );
   if (found.length) return found;
   const p = pathOf(block);
-  return p ? [p] : [];
+  return p ? [{ path: p, op: "update" }] : [];
 }
 
 /** A file call's object: the basename, the shown path in `title`. */
@@ -567,10 +582,15 @@ export function toolPhraseParts(block: Block, cwd?: string, live = isLive(block)
         ? fileParts(live ? "Deleting" : "Deleted", pathOf(block), cwd)
         : fileParts(live ? "Editing" : "Edited", pathOf(block), cwd);
     case "patch": {
-      const paths = patchPaths(block);
+      const files = patchFiles(block);
+      if (files.length === 1) {
+        const op = files[0].op;
+        const verb =
+          op === "add" ? (live ? "Creating" : "Created") : op === "delete" ? (live ? "Deleting" : "Deleted") : live ? "Editing" : "Edited";
+        return fileParts(verb, files[0].path, cwd);
+      }
       const verb = live ? "Editing" : "Edited";
-      if (paths.length === 1) return fileParts(verb, paths[0], cwd);
-      return { verb, object: paths.length === 0 ? "files" : `${paths.length} files` };
+      return { verb, object: files.length === 0 ? "files" : `${files.length} files` };
     }
     case "search":
     case "glob": {

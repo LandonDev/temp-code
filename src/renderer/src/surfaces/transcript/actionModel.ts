@@ -124,7 +124,8 @@ export function actionOf(block: Block, cwd?: string, app: AppView | null = null,
       (typeof i.path === "string" && i.path) ||
       block.tool?.preview?.path ||
       "";
-    if (!path) return base;
+    // A failed read keeps its error, a waiting one what it asks: both open their details.
+    if (!path || failed || pending) return { ...base, path: path || undefined };
     // Claude's Read offset is the 1-based line it starts at.
     const offset = num(i.offset);
     const startLine = block.tool?.preview?.startLine;

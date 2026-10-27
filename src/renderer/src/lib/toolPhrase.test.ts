@@ -221,6 +221,15 @@ describe("toolPhraseParts", () => {
     expect(parts(b)).toMatchObject({ verb: "Edited", object: "a.ts" });
   });
 
+  it("codex's change array names the file and what happened to it", () => {
+    const change = (path: string, type: string) => ({ path, kind: { type }, diff: "" });
+    expect(parts(call("apply_patch", [change(`${CWD}/src/a.ts`, "update")]))).toMatchObject({ verb: "Edited", object: "a.ts" });
+    expect(parts(call("apply_patch", [change(`${CWD}/new.ts`, "add")]))).toMatchObject({ verb: "Created", object: "new.ts" });
+    expect(parts(call("apply_patch", [change(`${CWD}/old.ts`, "delete")]), true)).toMatchObject({ verb: "Deleting", object: "old.ts" });
+    expect(parts(call("apply_patch", [change("a.ts", "update"), change("b.ts", "add")]))).toMatchObject({ verb: "Edited", object: "2 files" });
+    expect(parts(call("apply_patch", { input: "*** Add File: src/n.ts\n+x\n" }))).toMatchObject({ verb: "Created", object: "n.ts" });
+  });
+
   it("a file's title is its shown path", () => {
     expect(parts(call("Read", { file_path: file })).title).toBe("src/lib/a.ts");
   });
