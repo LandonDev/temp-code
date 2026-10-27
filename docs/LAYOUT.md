@@ -303,15 +303,21 @@ note.
 
 ### Thread strip
 
-chrome/ThreadHeaderStrip.tsx: the selected project's live root threads as
-one row of chips, a hand-made `role="tablist"` (DESIGN.md keeps the tab
-strip hand-made). The thread on screen always has its chip; settled threads
-leave the row and are reached from the ⋯ menu's Recent threads.
+chrome/ThreadHeaderStrip.tsx: the scope's live root threads as one row of
+chips, a hand-made `role="tablist"` (DESIGN.md keeps the tab strip
+hand-made). The scope is the selected project, or with no project selected
+the loose chats of the workspace (its Chats) or of the home (the chats
+outside every workspace): `StripScope` and `stripRootThreads` in
+lib/threadStripModel.ts. A loose strip keeps the project rules: stable
+order, Recent threads, the whole ⋯ menu, ⌘1–9; only the archived shelf is
+project-only. The thread on screen always has its chip, in the scope or not
+(`onScreenId` in `buildHeaderModel`); settled threads leave the row and are
+reached from the ⋯ menu's Recent threads.
 
 - **Order.** Stable, like a browser's tabs: a chip keeps its place, a new
   one joins at the end (oldest first when several arrive together), and a
   status change never moves one (`orderChips` in lib/threadHeaderModel.ts).
-  The order is saved per project in localStorage (`monocode.stripOrder`,
+  The order is saved per project (a loose strip under `loose:<workspace>`) in localStorage (`monocode.stripOrder`,
   `stripOrderStore` in stores/header.ts, 64 ids per project, a project not
   shown for 30 days dropped on load) under the link id, so the copies of a
   linked project share one order; the title bar orders the model before it

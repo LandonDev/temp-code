@@ -48,7 +48,12 @@ import {
   stripScopeKey,
   type HeaderTab,
 } from "../lib/threadHeaderModel";
-import { inProjectScope, projectRootThreads, runningRoots } from "../lib/threadStripModel";
+import {
+  inProjectScope,
+  runningRoots,
+  stripRootThreads,
+  type StripScope,
+} from "../lib/threadStripModel";
 import { copiesOf } from "../lib/projectHostChoice";
 import { usePlanReady } from "../hooks/usePlanReady";
 import { turnStartOf } from "../surfaces/threads/WorkingStrip";
@@ -144,12 +149,12 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
     () => new Map(nextTitleTabs.map((tab) => [tab.id, tab.project])),
     [nextTitleTabs],
   );
-  // The strip is the selected project's root threads, open in a tab or not;
-  // a local draft joins until the server knows it.
+  // The strip is the scope's root threads, open in a tab or not; a local
+  // draft joins until the server knows it.
   const chipThreads = useMemo<ChipThread[]>(() => {
     const known = new Set(sessionMetas.map((meta) => meta.id));
     const drafts = sessions
-      .filter((session) => session.projectId && !known.has(session.id))
+      .filter((session) => !known.has(session.id))
       .map(
         (session): ChipThread => ({
           id: session.id,
@@ -157,6 +162,8 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
           threadType: session.threadType ?? null,
           provider: session.harness,
           projectId: session.projectId ?? null,
+          workspaceId: session.workspaceId ?? null,
+          cwd: session.cwd,
           parentId: session.parentId ?? null,
           archived: false,
           status: "idle",
@@ -167,33 +174,45 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
       );
     return drafts.length > 0 ? [...sessionMetas, ...drafts] : sessionMetas;
   }, [sessionMetas, sessions]);
-  const headerTabs = useMemo<HeaderTab[]>(
-    () =>
-      deckTabs.map((tab) => {
-        const ids = leafIds(tab.layout);
-        const focused = tab.focusedId;
-        return {
-          id: tab.id,
-          sessionIds:
-            focused && ids.includes(focused)
-              ? [focused, ...ids.filter((id) => id !== focused)]
-              : ids,
-        };
-      }),
-    [deckTabs],
+  // The selected project's threads, else the scope's loose chats.
+  const stripScope = useMemo<StripScope>(
+    () => (selectedProjectId ? { project: projectScope } : { loose: headerWorkspaceId, catalog }),
+    [catalog, headerWorkspaceId, projectScope, selectedProjectId],
   );
+  // The active tab joins even when the scope filtered it out: the thread on
+  // screen always has its chip.
+  const headerTabs = useMemo<HeaderTab[]>(() => {
+    const active = tabs.find((tab) => tab.id === activeTabId && !tabArchived(tab, shells));
+    const shown = active && !deckTabs.includes(active) ? [...deckTabs, active] : deckTabs;
+    return shown.map((tab) => {
+      const ids = leafIds(tab.layout);
+      const focused = tab.focusedId;
+      return {
+        id: tab.id,
+        sessionIds:
+          focused && ids.includes(focused)
+            ? [focused, ...ids.filter((id) => id !== focused)]
+            : ids,
+      };
+    });
+  }, [activeTabId, deckTabs, shells, tabs]);
+  const onScreenId = useMemo(() => {
+    const focused = headerTabs.find((tab) => tab.id === activeTabId)?.sessionIds[0];
+    return focused ? rootOf(chipThreads, focused) : null;
+  }, [activeTabId, chipThreads, headerTabs]);
   const builtModel = useMemo(
     () =>
       buildHeaderModel({
         threads: chipThreads,
         tabs: headerTabs,
-        selectedProjectId: projectScope,
+        scope: stripScope,
         activeTabId,
+        onScreenId,
         lastSeen,
         seenFloor,
         planReady,
       }),
-    [activeTabId, chipThreads, headerTabs, lastSeen, seenFloor, planReady, projectScope],
+    [activeTabId, chipThreads, headerTabs, lastSeen, onScreenId, seenFloor, planReady, stripScope],
   );
   // The strip keeps a stable order per project, like a browser's tabs.
   const orderKey = stripScopeKey(
@@ -247,8 +266,8 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
 
   const cost = sessions.find((session) => session.id === activeSessionId)?.thread?.cost ?? null;
   const running = useMemo(
-    () => runningRoots(projectRootThreads(chipThreads, projectScope)).length,
-    [chipThreads, projectScope],
+    () => runningRoots(stripRootThreads(chipThreads, stripScope)).length,
+    [chipThreads, stripScope],
   );
   const headerProps = useMemo<ThreadHeaderProps>(
     () => ({
@@ -282,6 +301,14 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
 }
 
 export const ShellTitleBar = memo(ShellTitleBarComponent);
+
+/** The root of `id`'s thread, by the parentId chain over the threads known. */
+function rootOf(threads: readonly ChipThread[], id: string): string {
+  const byId = new Map(threads.map((t) => [t.id, t]));
+  let at = byId.get(id);
+  for (let hops = 0; at?.parentId && byId.has(at.parentId) && hops < 64; hops++) at = byId.get(at.parentId);
+  return at?.id ?? id;
+}
 
 function titleTabsEqual(a: TitleTab[], b: TitleTab[]): boolean {
   if (a.length !== b.length) return false;

@@ -1,17 +1,17 @@
 import {
   isUnread,
-  projectRootThreads,
   splitThreads,
+  stripRootThreads,
   type ReadyMap,
   type SeenMap,
-  type ProjectScope,
+  type StripScope,
   type StripThread,
 } from "./threadStripModel";
 import type { SessionStatus } from "./tcserver/types";
 
 /**
  * The header model: which chips the strip shows for the selected project
- * and how each maps onto the workspace's tabs. A chip is a root thread; a
+ * (or the scope's loose chats) and how each maps onto the workspace's tabs. A chip is a root thread; a
  * WorkspaceTab is a pane layout that may hold that thread (plus files,
  * terminals, other threads). Selecting a chip activates its tab when one
  * is open, otherwise the caller opens the thread. A thread with no tab
@@ -46,14 +46,19 @@ export type HeaderModel<T extends StripThread = StripThread> = {
 export function buildHeaderModel<T extends StripThread>(input: {
   threads: readonly T[];
   tabs: readonly HeaderTab[];
-  selectedProjectId: ProjectScope;
+  scope: StripScope;
   activeTabId: string | null;
+  /** The active tab's focused root: it always has a chip, in the scope or not. */
+  onScreenId?: string | null;
   lastSeen: SeenMap;
   /** Threads with no lastSeen entry count as seen up to this time. */
   seenFloor?: number;
   planReady: ReadyMap;
 }): HeaderModel<T> {
-  const roots = projectRootThreads(input.threads, input.selectedProjectId);
+  const roots = stripRootThreads(input.threads, input.scope);
+  const onScreen = input.onScreenId
+    ? input.threads.find((t) => t.id === input.onScreenId && !t.parentId && !t.archived)
+    : undefined;
   const tabOf = tabIndex(input.tabs);
   const floor = input.seenFloor ?? 0;
   const { live, dormant } = splitThreads(roots, input.lastSeen, input.planReady, floor);
@@ -70,9 +75,10 @@ export function buildHeaderModel<T extends StripThread>(input: {
       updatedAt: thread.updatedAt,
     };
   };
+  const outside = onScreen && !roots.includes(onScreen) ? [chip(onScreen, false)] : [];
   const model = {
     live: live.map((t) => chip(t, true)),
-    dormant: dormant.map((t) => chip(t, false)),
+    dormant: [...dormant.map((t) => chip(t, false)), ...outside],
   };
   // The active tab's focused thread, else the first of its threads with a chip.
   const chips = [...model.live, ...model.dormant];

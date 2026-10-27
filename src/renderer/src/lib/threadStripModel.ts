@@ -1,12 +1,15 @@
 import type { BackgroundWork } from "@shared/events";
 import { watchPhrase } from "@shared/watch";
 import { threadStateOf, type ThreadState } from "../components/ui/status";
+import type { Catalog } from "./projectContext";
+import { workspaceIdOf } from "./tcserver/workspaces";
 import type { SessionMeta, SessionStatus, ThreadType } from "./tcserver/types";
 
 /**
  * temp-code's thread strip rules, as pure functions over server metas.
  * The strip shows the selected project's root threads — every one of them,
- * open in a tab or not — and never a loose chat. Live chips (working,
+ * open in a tab or not — or, with no project selected, the scope's loose
+ * chats (the workspace's Chats, or the home's). Live chips (working,
  * paused, recoverable, needs-you, unread, plan-ready) hold the top row,
  * the rest settle on the shelf; each row is freshest activity first.
  * Being open or selected earns nothing, and a blank thread is not forced
@@ -18,7 +21,10 @@ export type StripThread = Pick<
   "id" | "status" | "updatedAt" | "projectId" | "parentId" | "archived"
 > &
   Partial<
-    Pick<SessionMeta, "treeHasLiveWork" | "treeHasPaused" | "treeCanContinue" | "masterId">
+    Pick<
+      SessionMeta,
+      "treeHasLiveWork" | "treeHasPaused" | "treeCanContinue" | "masterId" | "workspaceId" | "cwd"
+    >
   > & {
     /** Minted locally, not on the server yet; always live. */
     draft?: boolean;
@@ -42,7 +48,7 @@ export function inProjectScope(projectId: string | null | undefined, scope: Proj
 }
 
 /** Root, unarchived threads of `projectId` (or of every copy in the set), freshest first.
- *  No project → nothing: loose chats never sit on the strip, and a batch child never does. */
+ *  No project → nothing (the loose scope is `stripRootThreads`'s); a batch child never sits here. */
 export function projectRootThreads<T extends StripThread>(
   threads: readonly T[],
   projectId: ProjectScope,
@@ -50,6 +56,29 @@ export function projectRootThreads<T extends StripThread>(
   if (!projectId) return [];
   return threads
     .filter((t) => inProjectScope(t.projectId, projectId) && !t.parentId && !t.archived && !isBatchChild(t))
+    .sort(freshestFirst);
+}
+
+/** What a strip holds: a project's roots (every copy of a linked one), or
+ *  the loose chats of a workspace (`loose: null`: the home's, outside every
+ *  workspace). */
+export type StripScope =
+  | { project: ProjectScope }
+  | { loose: string | null; catalog: Catalog };
+
+/** The scope's root, unarchived threads, freshest first; never a batch child. */
+export function stripRootThreads<T extends StripThread>(threads: readonly T[], scope: StripScope): T[] {
+  if ("project" in scope) return projectRootThreads(threads, scope.project);
+  const { catalog, loose } = scope;
+  return threads
+    .filter(
+      (t) =>
+        !t.projectId &&
+        !t.parentId &&
+        !t.archived &&
+        !isBatchChild(t) &&
+        workspaceIdOf({ ...t, cwd: t.cwd ?? "" }, catalog.projects, catalog.workspaces) === loose,
+    )
     .sort(freshestFirst);
 }
 

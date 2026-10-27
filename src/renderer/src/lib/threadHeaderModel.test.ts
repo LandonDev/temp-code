@@ -39,7 +39,7 @@ describe("buildHeaderModel", () => {
     const model = buildHeaderModel({
       threads,
       tabs,
-      selectedProjectId: "p1",
+      scope: { project: "p1" },
       activeTabId: "t-run",
       lastSeen,
       planReady: {},
@@ -52,7 +52,7 @@ describe("buildHeaderModel", () => {
 
   it("two roots sharing the active tab: the focused one is the active chip", () => {
     const model = (sessionIds: string[]) =>
-      buildHeaderModel({ threads, tabs: [{ id: "t-split", sessionIds }], selectedProjectId: "p1", activeTabId: "t-split", lastSeen, planReady: {} });
+      buildHeaderModel({ threads, tabs: [{ id: "t-split", sessionIds }], scope: { project: "p1" }, activeTabId: "t-split", lastSeen, planReady: {} });
     expect(model(["wait", "run"]).activeId).toBe("wait");
     expect(model(["run", "wait"]).activeId).toBe("run");
     expect(model(["child", "wait", "run"]).activeId).toBe("wait");
@@ -62,7 +62,7 @@ describe("buildHeaderModel", () => {
     const model = buildHeaderModel({
       threads: [thread("x", { status: "running", treeHasPaused: true }), thread("y", { updatedAt: 200 })],
       tabs: [],
-      selectedProjectId: "p1",
+      scope: { project: "p1" },
       activeTabId: null,
       lastSeen: { x: 100, y: 100 },
       planReady: {},
@@ -75,12 +75,12 @@ describe("buildHeaderModel", () => {
 
   it("has no chips without a project and no active chip when a file tab is up", () => {
     expect(
-      buildHeaderModel({ threads, tabs, selectedProjectId: null, activeTabId: "t-run", lastSeen, planReady: {} }),
+      buildHeaderModel({ threads, tabs, scope: { project: null }, activeTabId: "t-run", lastSeen, planReady: {} }),
     ).toEqual({ live: [], dormant: [], activeId: null });
     const model = buildHeaderModel({
       threads,
       tabs,
-      selectedProjectId: "p1",
+      scope: { project: "p1" },
       activeTabId: "t-files",
       lastSeen,
       planReady: {},
@@ -92,7 +92,7 @@ describe("buildHeaderModel", () => {
     const model = buildHeaderModel({
       threads,
       tabs,
-      selectedProjectId: "p1",
+      scope: { project: "p1" },
       activeTabId: "t-seen",
       lastSeen,
       planReady: {},
@@ -102,11 +102,56 @@ describe("buildHeaderModel", () => {
   });
 });
 
+describe("buildHeaderModel: the loose scope", () => {
+  const catalog = {
+    workspaces: [
+      { id: "w1", path: "/w1" },
+      { id: "w2", path: "/w2" },
+    ],
+    projects: [{ id: "p1", workspaceId: "w1" }],
+  } as unknown as import("./projectContext").Catalog;
+  const loose = [
+    thread("chat-w1", { projectId: null, workspaceId: "w1", cwd: "/w1", status: "running" }),
+    thread("chat-path", { projectId: null, workspaceId: null, cwd: "/w2", status: "waiting" }),
+    thread("chat-home", { projectId: null, workspaceId: null, cwd: "/tmp", status: "running" }),
+    thread("chat-sub", { projectId: null, workspaceId: "w1", cwd: "/w1", parentId: "chat-w1" }),
+    thread("chat-batch", { projectId: null, workspaceId: "w1", cwd: "/w1", masterId: "m" }),
+    thread("chat-gone", { projectId: null, workspaceId: "w1", cwd: "/w1", archived: true }),
+    thread("proj", { workspaceId: "w1", cwd: "/w1", status: "running" }),
+  ];
+  const build = (looseId: string | null, extra: { activeTabId?: string; onScreenId?: string } = {}) =>
+    buildHeaderModel({
+      threads: loose,
+      tabs: [{ id: "t-proj", sessionIds: ["proj"] }],
+      scope: { loose: looseId, catalog },
+      activeTabId: extra.activeTabId ?? null,
+      onScreenId: extra.onScreenId,
+      lastSeen: {},
+      planReady: {},
+    });
+
+  it("holds a workspace's loose chats, by id or by path, and nothing of its projects", () => {
+    expect(headerOrder(build("w1")).map((c) => c.id)).toEqual(["chat-w1"]);
+    expect(headerOrder(build("w2")).map((c) => c.id)).toEqual(["chat-path"]);
+  });
+
+  it("holds the home's chats outside every workspace", () => {
+    expect(headerOrder(build(null)).map((c) => c.id)).toEqual(["chat-home"]);
+  });
+
+  it("gives the thread on screen its chip when it is outside the scope", () => {
+    const model = build("w2", { activeTabId: "t-proj", onScreenId: "proj" });
+    expect(model.activeId).toBe("proj");
+    expect(stripChips(model).map((c) => c.id)).toEqual(["chat-path", "proj"]);
+    expect(model.dormant.find((c) => c.id === "proj")?.tabId).toBe("t-proj");
+  });
+});
+
 describe("headerOrder and headerNeighbour", () => {
   const model = buildHeaderModel({
     threads,
     tabs,
-    selectedProjectId: "p1",
+    scope: { project: "p1" },
     activeTabId: null,
     lastSeen,
     planReady: {},
@@ -123,7 +168,7 @@ describe("headerOrder and headerNeighbour", () => {
     const lone = buildHeaderModel({
       threads: [thread("only")],
       tabs: [],
-      selectedProjectId: "p1",
+      scope: { project: "p1" },
       activeTabId: null,
       lastSeen: {},
       planReady: {},
@@ -168,7 +213,7 @@ describe("stripChips", () => {
     const model = buildHeaderModel({
       threads,
       tabs,
-      selectedProjectId: "p1",
+      scope: { project: "p1" },
       activeTabId: "t-seen",
       lastSeen: { seen: 100, unread: 10 },
       planReady: {},

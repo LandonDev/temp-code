@@ -50,7 +50,7 @@ describe("projectRootThreads", () => {
     expect(archivedRootThreads(all, "p1").map((t) => t.id)).toEqual([]);
   });
 
-  it("shows nothing when no project is selected: loose chats stay off the strip", () => {
+  it("holds nothing without a project: the loose scope is stripRootThreads's", () => {
     expect(projectRootThreads([thread("loose", { projectId: null })], null)).toEqual([]);
   });
 
