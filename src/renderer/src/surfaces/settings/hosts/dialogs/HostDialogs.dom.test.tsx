@@ -20,7 +20,7 @@ vi.mock("../rpc", () => ({
 }));
 vi.mock("qrcode", () => ({ default: { toDataURL: async () => "data:image/png;base64,AA==" } }));
 
-const { tooltipChunk } = await import("@renderer/components/ui/tooltip");
+const { tooltipChunk, warmTooltips } = await import("@renderer/components/ui/tooltip");
 const { NewKeyDialog } = await import("./NewKeyDialog");
 const { PairDialog } = await import("./PairDialog");
 const { RoutesDialog } = await import("./RoutesDialog");
@@ -28,7 +28,10 @@ const { RenameHostDialog } = await import("./RenameHostDialog");
 const { AddHostDialog } = await import("./AddHostDialog");
 
 // Tooltips load their primitive on the first hover; load it once up front.
-beforeAll(() => tooltipChunk.load());
+beforeAll(async () => {
+  await tooltipChunk.load();
+  warmTooltips();
+});
 
 const writeText = vi.fn(async () => undefined);
 beforeEach(() => {
