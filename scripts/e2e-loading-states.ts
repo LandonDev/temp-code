@@ -203,7 +203,7 @@ const startProbe = (cdp: Cdp, key: string, sessionId: string, marker: string): P
         pane: !!pane,
         same: !!pane && pane === state.first,
         skeleton: !!pane && !!pane.querySelector('[data-surface-skeleton="transcript"]'),
-        empty: text.includes('What should we work on'),
+        empty: !!pane && !!pane.querySelector('[data-empty-session]'),
         // The transcript's own rows: the composer's queue strip may show the
         // same text while the thread's first message waits in its queue.
         rows: !!pane && [...pane.querySelectorAll('[data-block]')].some((el) => (el.textContent || '').includes(${JSON.stringify(marker)})),

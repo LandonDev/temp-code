@@ -187,15 +187,7 @@ export const SessionPane = memo(function SessionPane({
       {isEmpty ? (
         <>
           <div className="relative min-h-0 flex-1">
-            <EmptySession
-              cwd={session.cwd}
-              arcade={focused && visible}
-              composer={dockComposer ? undefined : composerOf()}
-              threadType={session.threadType ?? "chat"}
-              onThreadTypeChange={
-                session.parentId ? undefined : (type) => actions.onThreadTypeChange(session.id, type)
-              }
-            />
+            <EmptySession composer={dockComposer ? undefined : composerOf()} />
           </div>
           {dockComposer ? (
             <div className="mx-auto w-full max-w-4xl shrink-0">{composerOf()}</div>
