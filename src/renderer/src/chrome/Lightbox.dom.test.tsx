@@ -5,7 +5,14 @@
  * back through the store.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+const reads = vi.hoisted(() => new Map<string, { resolve: (url: string) => void; reject: (e: Error) => void }>())
+vi.mock('../lib/tcserver/commands', () => ({
+  readAttachment: (_env: string, path: string) =>
+    new Promise<string>((resolve, reject) => reads.set(path, { resolve, reject })),
+}))
+
 import { Lightbox } from './Lightbox'
 import { closeLightbox, isLightboxOpen, openLightbox } from './lightboxStore'
 
@@ -76,5 +83,29 @@ describe('Lightbox', () => {
     )
     act(() => openLightbox(items, 0))
     expect(screen.getAllByRole('dialog')).toHaveLength(1)
+  })
+})
+
+describe('Lightbox loading and failure', () => {
+  it('says Loading… while the image is read, then shows it', async () => {
+    render(<Lightbox />)
+    act(() => openLightbox([{ environmentId: 'local', name: 'shot.png', path: '/att/shot.png' }]))
+    expect(screen.getByText('Loading…')).toBeTruthy()
+    await act(async () => reads.get('/att/shot.png')!.resolve('data:image/png;base64,AA=='))
+    expect(screen.getByRole('img', { name: 'shot.png' })).toBeTruthy()
+    expect(screen.queryByText('Loading…')).toBeNull()
+  })
+
+  it('says it could not open the image when the read fails or the image will not load, instead of spinning', async () => {
+    render(<Lightbox />)
+    act(() => openLightbox([{ environmentId: 'local', name: 'gone.png', path: '/att/gone.png' }]))
+    await act(async () => reads.get('/att/gone.png')!.reject(new Error('ENOENT')))
+    await waitFor(() => expect(screen.getByText('Couldn’t open gone.png')).toBeTruthy())
+    expect(screen.queryByText('Loading…')).toBeNull()
+
+    act(() => closeLightbox())
+    act(() => openLightbox([{ environmentId: 'local', name: 'broken.png', src: 'data:image/png;base64,AA==' }]))
+    fireEvent.error(screen.getByRole('img', { name: 'broken.png' }))
+    expect(screen.getByText('Couldn’t open broken.png')).toBeTruthy()
   })
 })

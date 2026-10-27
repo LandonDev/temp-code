@@ -35,29 +35,50 @@ function useIsPrimaryHost(): boolean {
   return primary === id
 }
 
+/** A slide is loading, failed, or the image's URL. */
+type SlideState = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready'; src: string }
+
 function Slide({ item }: { item: LightboxItem }) {
-  const [src, setSrc] = useState<string | null>(item.src ?? null)
+  const [state, setState] = useState<SlideState>(item.src ? { kind: 'ready', src: item.src } : { kind: 'loading' })
   useEffect(() => {
     if (item.src) {
-      setSrc(item.src)
+      setState({ kind: 'ready', src: item.src })
       return
     }
-    setSrc(null)
-    if (!item.path) return
+    if (!item.path) {
+      setState({ kind: 'failed' })
+      return
+    }
+    setState({ kind: 'loading' })
     let alive = true
     void imageDataFor(item.environmentId, item.path).then((url) => {
-      if (alive) setSrc(url)
+      if (alive) setState(url ? { kind: 'ready', src: url } : { kind: 'failed' })
     })
     return () => {
       alive = false
     }
   }, [item])
-  if (!src) return <Spinner className="size-6 text-muted-foreground" />
+  if (state.kind === 'loading') {
+    return (
+      <p data-lightbox-state="loading" className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Spinner />
+        Loading…
+      </p>
+    )
+  }
+  if (state.kind === 'failed') {
+    return (
+      <p data-lightbox-state="failed" className="text-sm text-muted-foreground">
+        Couldn’t open {item.name}
+      </p>
+    )
+  }
   return (
     <img
-      src={src}
+      src={state.src}
       alt={item.name}
       draggable={false}
+      onError={() => setState({ kind: 'failed' })}
       className="max-h-[calc(100vh-112px)] max-w-[calc(100vw-160px)] select-none rounded-lg object-contain outline-1 -outline-offset-1 outline-foreground/10"
     />
   )
