@@ -4,10 +4,10 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import type { AdmissionState } from "@server/shared/contract-admission";
 
 /**
- * Settings → Remote access → Running threads: a row per connected host
- * with its running count of the cap, the queue, the memory line, the cap
- * field and Use default; a spinner while admission.get answers; no row for
- * a host that does not answer it.
+ * Settings → Hosts → a host's Running threads row: its running count of the
+ * cap, the queue, the memory the cap is sized from, the cap field and Use
+ * default; a skeleton while admission.get answers; no row for a host that
+ * does not answer it.
  */
 
 const state = (over: Partial<AdmissionState> = {}): AdmissionState => ({
@@ -24,7 +24,7 @@ const answers = new Map<string, () => Promise<AdmissionState>>();
 const requests: { env: string; method: string; params: unknown }[] = [];
 let caps: string[] = ["read", "operate", "approve", "admin"];
 
-vi.mock("../lib/connection", () => ({
+vi.mock("../../../lib/connection", () => ({
   useEnvironments: () => [
     { id: "local", name: "This Mac", routes: [], credentialRef: null },
     { id: "env_box", name: "The box", routes: [], credentialRef: null },
@@ -41,7 +41,9 @@ vi.mock("../lib/connection", () => ({
   },
 }));
 
-const { AdmissionSettings, gib } = await import("./AdmissionSettings");
+const { HostAdmission } = await import("./Admission");
+const { gib } = await import("./parts");
+const facts = (container: HTMLElement) => [...container.querySelectorAll("[data-slot=facts]")].map((f) => [...f.children].map((c) => c.textContent));
 
 afterEach(() => {
   cleanup();
@@ -56,17 +58,17 @@ const flush = async (): Promise<void> => {
   });
 };
 
-describe("AdmissionSettings", () => {
-  it("shows a spinner while admission.get answers, then the running line and the memory line", async () => {
+describe("HostAdmission", () => {
+  it("shows a skeleton row while admission.get answers, then the running facts and the memory facts", async () => {
     let resolve!: (s: AdmissionState) => void;
     answers.set("local:admission.get", () => new Promise((r) => (resolve = r)));
-    const { container } = render(<AdmissionSettings />);
+    const { container } = render(<HostAdmission environmentId="local" />);
     expect(screen.getByText("Running threads")).toBeTruthy();
-    expect(screen.getByText("This Mac")).toBeTruthy();
+    expect(container.querySelector("[data-slot=skeleton]")).not.toBeNull();
     expect(container.querySelector("[aria-label='Running cap']")).toBeNull();
     await act(async () => resolve(state()));
-    expect(screen.getByText("Running 118 of 120 · 7 queued")).toBeTruthy();
-    expect(screen.getByText("80 GiB budget · 331 MB per thread · 9 GiB free")).toBeTruthy();
+    expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
+    expect(facts(container)).toEqual([["118 of 120 running", "7 queued"], ["80 GiB budget", "331 MB per thread", "9 GiB free"]]);
     // On the default: the field shows it as its placeholder, and there is nothing to go back to.
     const field = screen.getByLabelText("Running cap") as HTMLInputElement;
     expect(field.value).toBe("");
@@ -75,24 +77,22 @@ describe("AdmissionSettings", () => {
   });
 
   it("a host that does not answer admission.get has no row", async () => {
-    answers.set("local:admission.get", async () => state({ queued: 0 }));
-    render(<AdmissionSettings />);
+    const { container } = render(<HostAdmission environmentId="env_box" />);
     await flush();
-    expect(screen.getByText("Running 118 of 120")).toBeTruthy();
-    expect(screen.queryByText("The box")).toBeNull();
+    expect(container.innerHTML).toBe("");
   });
 
   it("pins the cap from the field, and Use default goes back", async () => {
     answers.set("local:admission.get", async () => state());
     answers.set("local:admission.set", async () => state({ cap: 60, pinned: 60 }));
-    render(<AdmissionSettings />);
+    const { container } = render(<HostAdmission environmentId="local" />);
     await flush();
     const field = screen.getByLabelText("Running cap") as HTMLInputElement;
     fireEvent.change(field, { target: { value: "60" } });
     fireEvent.blur(field);
     await flush();
     expect(requests.filter((r) => r.method === "admission.set")).toEqual([{ env: "local", method: "admission.set", params: { cap: 60 } }]);
-    expect(screen.getByText("Running 118 of 60 · 7 queued")).toBeTruthy();
+    expect(facts(container)[0]).toEqual(["118 of 60 running", "7 queued"]);
     expect((screen.getByLabelText("Running cap") as HTMLInputElement).value).toBe("60");
     answers.set("local:admission.set", async () => state());
     fireEvent.click(screen.getByText("Use default"));
@@ -103,7 +103,7 @@ describe("AdmissionSettings", () => {
 
   it("a bad number puts the field back and sends nothing", async () => {
     answers.set("local:admission.get", async () => state());
-    render(<AdmissionSettings />);
+    render(<HostAdmission environmentId="local" />);
     await flush();
     const field = screen.getByLabelText("Running cap") as HTMLInputElement;
     fireEvent.change(field, { target: { value: "0" } });
@@ -115,7 +115,7 @@ describe("AdmissionSettings", () => {
   it("a key without admin reads the cap but cannot change it", async () => {
     caps = ["read", "operate"];
     answers.set("local:admission.get", async () => state({ cap: 60, pinned: 60 }));
-    render(<AdmissionSettings />);
+    render(<HostAdmission environmentId="local" />);
     await flush();
     expect((screen.getByLabelText("Running cap") as HTMLInputElement).disabled).toBe(true);
     expect(screen.queryByText("Use default")).toBeNull();

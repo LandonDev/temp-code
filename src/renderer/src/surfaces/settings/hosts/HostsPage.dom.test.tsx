@@ -55,8 +55,8 @@ vi.mock("../../../lib/nativeWeb", () => ({ isWebMode: () => false }));
 vi.mock("../../../chrome/HostGlyph", () => ({ HostGlyph: () => null }));
 vi.mock("../../../chrome/DeployDrift", () => ({ DeployDriftMark: () => null }));
 vi.mock("../../../stores/environment", () => ({ environment: { forget: () => {} } }));
-vi.mock("../../AdmissionSettings", () => ({ AdmissionSettings: () => null }));
-vi.mock("../../DeploySettings", () => ({ DeploySettings: () => null }));
+vi.mock("./Deploy", () => ({ HostDeploy: () => null, LocalRelease: () => null, useJobPolling: () => {} }));
+vi.mock("./Admission", () => ({ HostAdmission: () => null }));
 vi.mock("../../MacBridgeSettings", () => ({ MacBridgeSettings: () => null }));
 
 const { HostsPage } = await import("./HostsPage");

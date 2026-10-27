@@ -13,10 +13,10 @@ import { useMacBridgeHosts } from "../../../lib/macBridge";
 import { isWebMode } from "../../../lib/nativeWeb";
 import { loadSavedEnvironments } from "../../../lib/tcserver/link";
 import { environment as environmentSelection } from "../../../stores/environment";
-import { AdmissionSettings } from "../../AdmissionSettings";
-import { DeploySettings } from "../../DeploySettings";
 import { MacBridgeSettings } from "../../MacBridgeSettings";
+import { HostAdmission } from "./Admission";
 import { Clients } from "./Clients";
+import { HostDeploy, LocalRelease, useJobPolling } from "./Deploy";
 import { AddHostDialog } from "./dialogs/AddHostDialog";
 import { NewKeyDialog } from "./dialogs/NewKeyDialog";
 import { PairDialog } from "./dialogs/PairDialog";
@@ -25,6 +25,7 @@ import { RoutesDialog } from "./dialogs/RoutesDialog";
 import { hostSections } from "./hostSections";
 import { HostSection, type HostMenuAction } from "./HostSection";
 import { rpc } from "./rpc";
+import { Group } from "./Group";
 import { HostSync, LocalSync } from "./Sync";
 import { ThisHost } from "./ThisHost";
 
@@ -139,6 +140,10 @@ export function HostsPage({ onOpenSession }: { onOpenSession?: (sessionId: strin
   const bridgeHosts = useMacBridgeHosts();
   const deviceHosts = useHostDevicesHosts();
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  useJobPolling(
+    hosts.saved.map((h) => h.id),
+    !web,
+  );
 
   if (!remote.data) return <PageSkeleton error={remote.error} />;
   const { status, keys, pairings, sessions, harness, memory, attachments } = remote.data;
@@ -181,14 +186,26 @@ export function HostsPage({ onOpenSession }: { onOpenSession?: (sessionId: strin
                   onNewKey={() => setDialog({ kind: "key" })}
                   onAct={(method, params) => void remote.act(method, params)}
                 />
+                {web ? null : <LocalRelease />}
+                <Group>
+                  <HostAdmission environmentId={section.id} />
+                </Group>
                 {harness ? <LocalSync harness={harness} memory={memory} onAct={(method, params) => void remote.act(method, params)} /> : null}
-                <AdmissionSettings />
-                <DeploySettings />
                 <MacBridgeSettings onOpenSession={onOpenSession} />
               </>
-            ) : harness ? (
-              <HostSync environmentId={section.id} harness={harness} memory={memory} onSync={(id, h, m) => void remote.sync(id, h, m)} />
-            ) : null}
+            ) : (
+              <>
+                {section.saved ? (
+                  <Group>
+                    <HostDeploy environmentId={section.id} name={section.name} />
+                    <HostAdmission environmentId={section.id} />
+                  </Group>
+                ) : null}
+                {harness && section.saved ? (
+                  <HostSync environmentId={section.id} harness={harness} memory={memory} onSync={(id, h, m) => void remote.sync(id, h, m)} />
+                ) : null}
+              </>
+            )}
           </HostSection>
         </Fragment>
       ))}

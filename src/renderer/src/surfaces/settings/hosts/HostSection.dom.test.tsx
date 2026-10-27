@@ -62,8 +62,8 @@ vi.mock("../../../chrome/DeployDrift", () => ({
   DeployDriftMark: ({ environmentId }: { environmentId: string }) => <span data-deploy-drift={environmentId}>+3</span>,
 }));
 vi.mock("../../../stores/environment", () => ({ environment: { forget: () => {} } }));
-vi.mock("../../AdmissionSettings", () => ({ AdmissionSettings: () => null }));
-vi.mock("../../DeploySettings", () => ({ DeploySettings: () => null }));
+vi.mock("./Deploy", () => ({ HostDeploy: () => null, LocalRelease: () => null, useJobPolling: () => {} }));
+vi.mock("./Admission", () => ({ HostAdmission: () => null }));
 vi.mock("../../MacBridgeSettings", () => ({ MacBridgeSettings: () => null }));
 
 const { HostsPage } = await import("./HostsPage");
