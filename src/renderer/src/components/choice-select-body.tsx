@@ -1,6 +1,8 @@
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "./ui/select";
 
-export type Choice<T extends string> = { value: T; label: string };
+/** `group` names the heading an option sits under (a provider); options
+ *  without one come first, ungrouped. */
+export type Choice<T extends string> = { value: T; label: string; group?: string };
 
 /**
  * The one adapter from an options array to `Select`: every options list in
@@ -39,13 +41,38 @@ export function ChoiceSelect<T extends string>({
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        {options.map((option) => (
-          <SelectItem key={option.value} value={option.value}>
-            {option.label}
-          </SelectItem>
-        ))}
+        {groupsOf(options).map(({ group, items }) =>
+          group ? (
+            <SelectGroup key={group}>
+              <SelectLabel>{group}</SelectLabel>
+              {items.map(item)}
+            </SelectGroup>
+          ) : (
+            items.map(item)
+          ),
+        )}
       </SelectContent>
     </Select>
   );
+}
+
+function item<T extends string>(option: Choice<T>) {
+  return (
+    <SelectItem key={option.value} value={option.value}>
+      {option.label}
+    </SelectItem>
+  );
+}
+
+/** Options in runs by group, in the order each group first appears; the
+ *  ungrouped run first. */
+function groupsOf<T extends string>(options: readonly Choice<T>[]): { group?: string; items: Choice<T>[] }[] {
+  const runs: { group?: string; items: Choice<T>[] }[] = [];
+  for (const option of options) {
+    const run = runs.find((r) => r.group === option.group);
+    if (run) run.items.push(option);
+    else runs.push({ group: option.group, items: [option] });
+  }
+  return runs.sort((a, b) => Number(a.group !== undefined) - Number(b.group !== undefined));
 }
 

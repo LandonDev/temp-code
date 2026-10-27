@@ -1,6 +1,7 @@
 import { useId, type ReactNode } from "react";
 import { cn } from "@renderer/lib/cn";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "./ui/item";
+import { Skeleton } from "./ui/skeleton";
 
 /**
  * The frame of a settings or app page: a 672px column with a 24px inset,
@@ -26,7 +27,7 @@ function Page({
       <header className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-base font-semibold leading-tight tracking-[-0.01em] text-foreground">{title}</h1>
-          {description ? <p className="mt-1 truncate text-xs text-muted-foreground">{description}</p> : null}
+          {description ? <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{description}</p> : null}
         </div>
         {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
       </header>
@@ -118,4 +119,20 @@ function PageRow({
   );
 }
 
-export { Page, PageSection, PageRow };
+/** Rows in their shape while a section's values load: a title line and a
+ *  control. */
+function PageRowsSkeleton({ rows = 2 }: { rows?: number }) {
+  return (
+    <div aria-busy="true" aria-label="Loading">
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} data-slot="page-row-skeleton" className="flex items-center gap-3 py-3">
+          <Skeleton className="h-3.5 w-32" />
+          <span className="flex-1" />
+          <Skeleton className="h-8 w-40 rounded-lg" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export { Page, PageSection, PageRow, PageRowsSkeleton };

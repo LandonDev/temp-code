@@ -21,7 +21,7 @@ vi.mock("../../lib/harness/availability", () => ({
   subscribeHarnessAvailability: () => () => {},
   probeHarnessAvailability: async () => {},
   isHarnessAvailable: (id: string) => host.installed.has(id),
-  harnessUnavailableHint: (id: string) => `${id} not found. Install it.`,
+  harnessInstallCommand: (id: string) => (id === "cursor" ? "curl https://cursor.com/install | bash" : undefined),
 }));
 vi.mock("../../lib/harness/registry", () => ({ refreshHarnessCatalogs: async () => {} }));
 vi.mock("../../lib/models", () => ({
@@ -44,20 +44,21 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+/** The CLI's own row, in the first section; the picker section repeats the name. */
 const row = (harness: "claude" | "codex" | "cursor") =>
-  [...document.querySelectorAll<HTMLElement>("[data-slot=page-row]")].find(
+  [...document.querySelectorAll<HTMLElement>("[data-slot=page-section]")[0].querySelectorAll<HTMLElement>("[data-slot=page-row]")].find(
     (el) => el.querySelector("[data-slot=item-title]")?.textContent === HARNESS_TITLE[harness],
   )!;
 
 const DOCTOR = {
-  claude: { found: true, version: "2.1.263", path: "/usr/local/bin/claude" },
+  claude: { found: true, version: "2.1.263 (Claude Code)", path: "/usr/local/bin/claude" },
   codex: { found: true, version: "codex-cli 0.162.1", path: "/usr/bin/codex", error: "Login expired" },
 };
 
 describe("Providers", () => {
   it("holds a skeleton in each row until the first probe answers", () => {
     render(<ProvidersPage />);
-    const rows = [...document.querySelectorAll("[data-slot=page-row]")].filter((el) => el.querySelector("[data-slot=item-media]"));
+    const rows = [...document.querySelectorAll("[data-slot=page-section]")[0].querySelectorAll("[data-slot=page-row]")];
     expect(rows.length).toBeGreaterThan(1);
     for (const r of rows) expect(r.querySelector("[data-slot=skeleton]")).toBeTruthy();
   });
@@ -66,10 +67,12 @@ describe("Providers", () => {
     render(<ProvidersPage />);
     await act(async () => host.doctor?.(DOCTOR));
     expect(row("claude").textContent).toContain("v2.1.263");
+    expect(row("claude").textContent).not.toContain("(Claude Code)");
     expect(within(row("claude")).getByText("/usr/local/bin/claude").className).toContain("font-mono");
     expect(row("codex").textContent).toContain("codex-cli 0.162.1");
     expect(within(row("codex")).getByText("Login expired").className).toContain("text-warning");
-    expect(row("cursor").textContent).toContain("cursor not found");
+    expect(row("cursor").textContent).toContain("Not installed");
+    expect(within(row("cursor")).getByText("curl https://cursor.com/install | bash").className).toContain("font-mono");
   });
 
   it("updates a CLI with a spinner, and shows a failure under its row", async () => {
@@ -82,15 +85,18 @@ describe("Providers", () => {
     expect(host.update).toHaveBeenCalledWith("providers.update", { provider: "claude" });
     expect(update.querySelector("[data-slot=spinner]")).toBeTruthy();
     await act(async () => fail(new Error("npm exited 1")));
-    expect(within(row("claude")).getByText("npm exited 1").closest("p")?.className).toContain("text-destructive");
+    expect(within(row("claude")).getByText("npm exited 1").closest("[data-slot=item-description]")?.className).toContain("text-destructive");
   });
 
-  it("saves the picker switch, and has none for a missing CLI", async () => {
+  it("keeps the picker's switches in their own section, one per installed CLI", async () => {
     render(<ProvidersPage />);
     await act(async () => host.doctor?.(DOCTOR));
-    fireEvent.click(screen.getByRole("switch", { name: `Show ${HARNESS_TITLE.claude} in the model picker` }));
+    const picker = screen.getByRole("region", { name: "Model picker" });
+    expect(within(picker).getAllByRole("switch")).toHaveLength(2);
+    expect(within(row("claude")).queryByRole("switch")).toBeNull();
+    fireEvent.click(within(picker).getByRole("switch", { name: `Show ${HARNESS_TITLE.claude} in the model picker` }));
     expect(host.picker).toHaveBeenCalledWith("claude", false);
-    expect(within(row("cursor")).queryByRole("switch")).toBeNull();
+    expect(within(picker).queryByRole("switch", { name: `Show ${HARNESS_TITLE.cursor} in the model picker` })).toBeNull();
   });
 
   it("saves the Claude Code hooks switch", () => {

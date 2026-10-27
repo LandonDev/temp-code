@@ -5,12 +5,11 @@ import { HARNESS_LABEL } from "../lib/session";
 import { allModels, findModel, nativeModelId } from "../lib/models";
 import { EFFORT_LABELS, REASONING_LEVELS, effortLadder } from "../lib/tcserver/defaults";
 import {
-  BUILT_IN_PLAN_SCOPE,
   savePlanSettings,
   usePlanSettings,
 } from "../lib/tcserver/plans";
 import { ChoiceSelect } from "../components/choice-select";
-import { PageRow, PageSection } from "../components/page";
+import { PageRow, PageRowsSkeleton, PageSection } from "../components/page";
 import { Button } from "../components/ui/button";
 import { SettingSwitch } from "../components/setting-switch";
 
@@ -43,7 +42,7 @@ export function PlanSettingsFields({
   const known = !value.implementModel || models.some((m) => nativeModelId(m) === value.implementModel);
   const modelOptions = [
     SAME,
-    ...models.map((m) => ({ value: nativeModelId(m), label: `${HARNESS_LABEL[m.harness]} · ${m.name}` })),
+    ...models.map((m) => ({ value: nativeModelId(m), label: m.name, group: HARNESS_LABEL[m.harness] })),
     ...(known ? [] : [{ value: value.implementModel, label: value.implementModel }]),
   ];
   const reasoningOptions = [
@@ -69,7 +68,7 @@ export function PlanSettingsFields({
       >
         <SettingSwitch label="Archive the plan after start" on={value.archiveAfterStart} onChange={(on) => set({ archiveAfterStart: on })} />
       </PageRow>
-      <PageRow title="Build model" description={hint("The planning thread's own model unless fixed here.")}>
+      <PageRow title="Build model">
         <ChoiceSelect
           label="Build model"
           size={size}
@@ -78,7 +77,7 @@ export function PlanSettingsFields({
           onChange={(implementModel) => set({ implementModel })}
         />
       </PageRow>
-      <PageRow title="Build effort" description={hint("The planning thread's own effort unless fixed here.")}>
+      <PageRow title="Build effort">
         <ChoiceSelect
           label="Build effort"
           size={size}
@@ -87,10 +86,7 @@ export function PlanSettingsFields({
           onChange={(implementReasoning) => set({ implementReasoning: implementReasoning as PlanSettings["implementReasoning"] })}
         />
       </PageRow>
-      <PageRow
-        title="Build context"
-        description={hint("The planning thread's own window unless fixed; 1M applies only to models that offer it.")}
-      >
+      <PageRow title="Build context" description={hint("1M applies only to models that offer it.")}>
         <ChoiceSelect
           label="Build context"
           size={size}
@@ -103,15 +99,28 @@ export function PlanSettingsFields({
   );
 }
 
-export function planSettingsSummary(s: PlanSettings): string {
+/** The words of a plan set's summary, each its own fact. */
+export function planSettingsParts(s: PlanSettings): string[] {
   const parts = [s.autoImplement ? "Auto-start" : "Start by hand"];
   if (s.implementModel) parts.push(findModel(s.implementModel)?.name ?? s.implementModel);
   if (s.implementReasoning) parts.push(EFFORT_LABELS[s.implementReasoning]);
   if (s.implementContext) parts.push(s.implementContext === "1m" ? "1M" : "200k");
-  return parts.join(" · ");
+  return parts;
 }
 
-/** The global group on the Settings page: self-loading, saves on every change. */
+/** The summary as separate facts, 8px apart; `extra` adds one more (global). */
+export function PlanSettingsSummary({ settings, extra }: { settings: PlanSettings; extra?: string }) {
+  return (
+    <span className="inline-flex flex-wrap gap-x-2">
+      {[...planSettingsParts(settings), ...(extra ? [extra] : [])].map((part) => (
+        <span key={part}>{part}</span>
+      ))}
+    </span>
+  );
+}
+
+/** The global group on Settings → Thread defaults: self-loading, saves on
+ *  every change, rows in their shape until the set loads. */
 export function PlanSettingsEditor() {
   const environmentId = registry.primary().environmentId;
   const scope = usePlanSettings(environmentId, null);
@@ -120,19 +129,22 @@ export function PlanSettingsEditor() {
     setError(null);
     savePlanSettings(environmentId, null, next).catch((err) => setError(err instanceof Error ? err.message : String(err)));
   };
-  const shown = scope ?? BUILT_IN_PLAN_SCOPE;
   return (
     <PageSection
       title="Plans"
       action={
-        shown.overridden ? (
+        scope?.overridden ? (
           <Button variant="ghost" size="sm" onClick={() => save(null)}>
             Reset
           </Button>
         ) : null
       }
     >
-      <PlanSettingsFields value={shown.settings} onChange={save} environmentId={environmentId} />
+      {scope ? (
+        <PlanSettingsFields value={scope.settings} onChange={save} environmentId={environmentId} />
+      ) : (
+        <PageRowsSkeleton rows={5} />
+      )}
       {error ? <p className="pt-2 text-xs text-destructive">{error}</p> : null}
     </PageSection>
   );

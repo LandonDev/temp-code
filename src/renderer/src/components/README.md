@@ -21,7 +21,7 @@ DESIGN.md wins.
 | Floating content from a trigger | `Popover` (popover.tsx) | Pickers, account lists, previews. Scales from its anchor. |
 | A label on hover | `Tooltip` (tooltip.tsx) | Replaces every `title=`. Each carries its delay; a `TooltipProvider` around a toolbar lets neighbours share one. `TOOLTIP_DELAY` and `TOOLTIP_CLOSE_DELAY` are the numbers a hover popover reuses. |
 | An option picker | `Select` (select.tsx) | Bordered trigger, list aligned on the chosen item. |
-| An option picker from a list | `ChoiceSelect` (../choice-select.tsx) | The one adapter from `{ value, label }[]` to `Select`; an empty value (Auto) round-trips. Nothing maps `SelectItem`s by hand. |
+| An option picker from a list | `ChoiceSelect` (../choice-select.tsx) | The one adapter from `{ value, label }[]` to `Select`; an empty value (Auto) round-trips; an option's `group` lists it under that heading (a provider). Nothing maps `SelectItem`s by hand. |
 | A settings or app page | `Page`, `PageSection`, `PageRow` (../page.tsx) | 672px column, 24px inset, one 16px title; sections 24px apart under a 12px muted heading; rows with a hairline between neighbours. A page never draws its own header or section heading. |
 | A text field | `Input`, `Textarea` (input.tsx, textarea.tsx) | 32px, hairline border, ring inside. A field with a glyph or buttons in it (search) is `InputGroup` with `leading`/`trailing` around a `GroupInput`. |
 | A labelled field in a dialog or sheet | `Field`, `FieldRow` (chrome/DialogField.tsx) | Label, control, hint; `FieldRow` for a choice at the row's end. |

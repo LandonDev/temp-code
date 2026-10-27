@@ -62,8 +62,10 @@ function ItemTitle({ className, ...props }: ComponentProps<"div">) {
   return <div data-slot="item-title" className={cn("line-clamp-1 flex w-fit items-center gap-2 text-[13px] font-medium leading-snug text-foreground", className)} {...props} />;
 }
 
-function ItemDescription({ className, ...props }: ComponentProps<"p">) {
-  return <p data-slot="item-description" className={cn("line-clamp-2 text-start text-xs font-normal leading-normal text-muted-foreground [&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-foreground", className)} {...props} />;
+/** A div, not a p: a description may hold a skeleton, a progress bar or a
+ *  block line, which a paragraph cannot contain. */
+function ItemDescription({ className, ...props }: ComponentProps<"div">) {
+  return <div data-slot="item-description" className={cn("line-clamp-2 text-start text-xs font-normal leading-normal text-muted-foreground [&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-foreground", className)} {...props} />;
 }
 
 function ItemActions({ className, ...props }: ComponentProps<"div">) {

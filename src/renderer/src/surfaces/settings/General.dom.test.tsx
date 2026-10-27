@@ -4,13 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const linear = vi.hoisted(() => ({
   connected: false,
+  pending: null as null | Promise<{ connected: boolean }>,
   save: vi.fn(),
   teams: [] as { id: string; name: string; key: string }[],
 }));
 const update = vi.hoisted(() => ({ snapshot: { phase: "idle", currentVersion: "1.0.300" } as Record<string, unknown> }));
 
 vi.mock("../../lib/linear", () => ({
-  linearConnected: async () => ({ connected: linear.connected }),
+  linearConnected: () => linear.pending ?? Promise.resolve({ connected: linear.connected }),
   saveLinearToken: (...args: unknown[]) => linear.save(...args),
   disconnectLinear: async () => ({ connected: false }),
   listLinearTeams: async () => linear.teams,
@@ -25,8 +26,8 @@ vi.mock("../../lib/updateStore", () => ({
   useUpdateSnapshot: () => update.snapshot,
 }));
 vi.mock("../../lib/sounds", () => ({ loadSoundsEnabled: () => true, saveSoundsEnabled: vi.fn(), playCue: vi.fn() }));
-vi.mock("../../chrome/PlanSettingsFields", () => ({ PlanSettingsEditor: () => null }));
 vi.mock("../chunks", () => ({ releaseNotesChunk: { intent: {} } }));
+vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
 
 const { GeneralPage, updateActionLabel } = await import("./General");
 const settings = await import("../../lib/settings");
@@ -131,5 +132,23 @@ describe("General", () => {
     page();
     await act(async () => {});
     expect(screen.getByRole("progressbar", { name: "Download" }).getAttribute("aria-valuenow")).toBe("40");
+  });
+
+  it("holds the Linear row in its shape until the host says whether it is connected", async () => {
+    let answer: (status: { connected: boolean }) => void = () => {};
+    linear.pending = new Promise((resolve) => (answer = resolve));
+    page();
+    const section = screen.getByRole("region", { name: "Linear" });
+    expect(section.querySelector("[data-slot=page-row-skeleton]")).toBeTruthy();
+    expect(screen.queryByLabelText("Linear API key")).toBeNull();
+    await act(async () => answer({ connected: true }));
+    expect(screen.getByRole("button", { name: "Disconnect" })).toBeTruthy();
+    linear.pending = null;
+  });
+
+  it("leaves Plans to Thread defaults", async () => {
+    page();
+    await act(async () => {});
+    expect(screen.queryByRole("region", { name: "Plans" })).toBeNull();
   });
 });

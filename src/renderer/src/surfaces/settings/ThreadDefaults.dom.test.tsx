@@ -11,6 +11,8 @@ const state = vi.hoisted(() => ({
   open: vi.fn(),
 }));
 
+vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
+vi.mock("../../chrome/PlanSettingsFields", () => ({ PlanSettingsEditor: () => <section aria-label="Plans" /> }));
 vi.mock("../../lib/connection", () => ({ registry: { primary: () => ({ environmentId: "local" }) } }));
 vi.mock("../../lib/settings", () => ({ openWorkspaceSettings: (id: string) => state.open(id) }));
 vi.mock("../../lib/tcserver/defaults", async (original) => ({
@@ -39,9 +41,11 @@ vi.mock("../../lib/tcserver/workspaces", () => ({
 }));
 
 const { ThreadDefaultsPage } = await import("./ThreadDefaults");
+const { ThreadDefaultsDialog } = await import("../../chrome/ThreadDefaultsDialog");
 
 beforeEach(() => {
   state.ladder = ["low", "medium", "high"];
+  state.overridden = false;
   state.workspaces = [];
   state.overriding = new Set();
   state.save.mockClear();
@@ -50,9 +54,10 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Thread defaults", () => {
-  it("has a picker each for provider, model, reasoning and security", () => {
+  it("has a picker each for provider, model, reasoning and security, under no heading of its own", () => {
     render(<ThreadDefaultsPage />);
-    expect(screen.getByRole("region", { name: "New threads" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "New threads" })).toBeNull();
+    expect(screen.getByRole("region", { name: "Plans" })).toBeTruthy();
     for (const name of ["Provider", "Model", "Reasoning", "Security"]) {
       expect(screen.getByRole("combobox", { name })).toBeTruthy();
     }
@@ -65,7 +70,13 @@ describe("Thread defaults", () => {
     expect(screen.queryByRole("combobox", { name: "Reasoning" })).toBeNull();
   });
 
+  it("offers Reset only when the global set differs from the built-in one", () => {
+    render(<ThreadDefaultsPage />);
+    expect(screen.queryByRole("button", { name: "Reset" })).toBeNull();
+  });
+
   it("resets the global set to the built-in one", async () => {
+    state.overridden = true;
     render(<ThreadDefaultsPage />);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Reset" }));
@@ -84,5 +95,19 @@ describe("Thread defaults", () => {
     expect(screen.queryByRole("button", { name: "Alpha" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Beta" }));
     expect(state.open).toHaveBeenCalledWith("w2");
+  });
+
+  it("edits a workspace's set in a dialog: named pickers, Cancel and Save", async () => {
+    const onClose = vi.fn();
+    render(<ThreadDefaultsDialog workspace={{ id: "w1", name: "Alpha", environmentId: "local" } as never} onClose={onClose} />);
+    const dialog = await screen.findByRole("dialog");
+    expect(screen.getByRole("heading", { name: "Thread defaults" })).toBeTruthy();
+    expect(dialog.textContent).toContain("Alpha");
+    for (const name of ["Provider", "Model", "Security"]) expect(screen.getByRole("combobox", { name })).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    });
+    expect(state.save).toHaveBeenCalledWith("local", "w1", expect.objectContaining({ provider: "claude" }));
+    expect(onClose).toHaveBeenCalled();
   });
 });

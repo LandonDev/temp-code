@@ -42,7 +42,7 @@ export const SETTINGS_SECTIONS: {
     id: "defaults",
     group: "threads",
     label: "Thread defaults",
-    description: "What a new thread starts with. A workspace can override it.",
+    description: "What new threads and plan builds start with.",
   },
   { id: "providers", group: "threads", label: "Providers", description: "The agent CLIs this machine can run." },
   {

@@ -1,12 +1,10 @@
 import { registry } from "../lib/connection";
 import { useEffect, useState } from "react";
-import { GHOST, PRIMARY } from "./ConfirmDialog";
 import { ChoiceSelect } from "../components/choice-select";
-import { PageRow, PageSection } from "../components/page";
+import { PageRow, PageRowsSkeleton, PageSection } from "../components/page";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Button } from "../components/ui/button";
-import { Skeleton } from "../components/ui/skeleton";
 import { Spinner } from "../components/ui/spinner";
-import { Modal } from "./Modal";
 import {
   BUILT_IN_SCOPE,
   EFFORT_LABELS,
@@ -101,7 +99,7 @@ export function ThreadDefaultsEditor({ workspaceId }: { workspaceId: string | nu
   const workspace = useWorkspaceCatalog().workspaces.find((w) => w.id === workspaceId);
   // Global app settings belong to this machine.
   const environmentId = workspaceId === null ? registry.primary().environmentId : workspace?.environmentId;
-  if (!environmentId) return <DefaultsSkeleton />;
+  if (!environmentId) return <PageRowsSkeleton rows={4} />;
   return <DefaultsEditor key={environmentId} environmentId={environmentId} workspaceId={workspaceId} />;
 }
 
@@ -114,10 +112,13 @@ function DefaultsEditor({ environmentId, workspaceId }: { environmentId: string;
       .saveDefaults(environmentId, workspaceId, next)
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
   };
-  const resettable = scope ? (workspaceId === null ? true : scope.overridden) : false;
+  // Reset and Remove override show only when something differs from what
+  // this scope would otherwise use.
+  const resettable = scope?.overridden === true;
   return (
     <PageSection
-      title="New threads"
+      // The global page's own title says what this is; a workspace page names it.
+      title={workspaceId === null ? undefined : "New threads"}
       description={scopeHint(workspaceId, scope ?? BUILT_IN_SCOPE)}
       action={
         resettable ? (
@@ -127,27 +128,11 @@ function DefaultsEditor({ environmentId, workspaceId }: { environmentId: string;
         ) : null
       }
     >
-      {scope ? <ThreadDefaultsFields value={scope.defaults} onChange={save} environmentId={environmentId} /> : <DefaultsSkeleton rows />}
+      {scope ? <ThreadDefaultsFields value={scope.defaults} onChange={save} environmentId={environmentId} /> : <PageRowsSkeleton rows={4} />}
       {workspaceId === null ? <OverridingWorkspaces environmentId={environmentId} /> : null}
       {error ? <p className="pt-2 text-xs text-destructive">{error}</p> : null}
     </PageSection>
   );
-}
-
-/** The rows' shape while the scope loads. */
-function DefaultsSkeleton({ rows = false }: { rows?: boolean }) {
-  const body = (
-    <div aria-busy="true" aria-label="Loading">
-      {[0, 1, 2].map((i) => (
-        <div key={i} className="flex items-center gap-3 py-3">
-          <Skeleton className="h-3.5 w-24" />
-          <span className="flex-1" />
-          <Skeleton className="h-8 w-40 rounded-lg" />
-        </div>
-      ))}
-    </div>
-  );
-  return rows ? body : <PageSection title="New threads">{body}</PageSection>;
 }
 
 /** Under the global editor: which workspaces keep their own set. Each name
@@ -168,6 +153,7 @@ function OverridingWorkspaces({ environmentId }: { environmentId: string }) {
   );
 }
 
+/** A labelled picker in the dialog: the label 12px medium muted above it. */
 function Field({
   label,
   ...picker
@@ -178,10 +164,10 @@ function Field({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="flex flex-col gap-1">
-      <span className="text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">{label}</span>
+    <div className="flex flex-col gap-1.5">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
       <ChoiceSelect label={label} className="w-full" {...picker} />
-    </label>
+    </div>
   );
 }
 
@@ -214,37 +200,39 @@ export function ThreadDefaultsDialog({
   };
 
   return (
-    <Modal onClose={onClose} title="Thread defaults" description={workspace.name} size="sm" busy={pending}>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (value) void save(value);
-        }}
-      >
-        <div className="flex flex-col gap-3 px-4 py-3">
-          {value ? <DialogFields value={value} onChange={setValue} environmentId={workspace.environmentId} /> : null}
-          <p className="text-[12px] text-content/40">
-            {scopeHint(workspace.id, scope ?? BUILT_IN_SCOPE)}
-          </p>
-          {error ? <p className="text-[12px] text-danger">{error}</p> : null}
-        </div>
-        <div className="flex items-center gap-2 border-t border-content/10 px-4 py-3">
-          {scope?.overridden ? (
-            <button type="button" disabled={pending} onClick={() => void save(null)} className={GHOST}>
-              Remove override
-            </button>
-          ) : null}
-          <span className="flex-1" />
-          <button type="button" onClick={onClose} className={GHOST}>
-            Cancel
-          </button>
-          <button type="submit" disabled={pending || !value} className={PRIMARY}>
-            {pending ? <Spinner className="size-3.5" /> : null}
-            Save
-          </button>
-        </div>
-      </form>
-    </Modal>
+    <Dialog open onOpenChange={(open) => (open || pending ? null : onClose())}>
+      <DialogContent size="sm">
+        <form
+          className="grid gap-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (value) void save(value);
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Thread defaults</DialogTitle>
+            <DialogDescription>{workspace.name}</DialogDescription>
+          </DialogHeader>
+          {value ? <DialogFields value={value} onChange={setValue} environmentId={workspace.environmentId} /> : <PageRowsSkeleton rows={3} />}
+          <p className="text-xs text-muted-foreground">{scopeHint(workspace.id, scope ?? BUILT_IN_SCOPE)}</p>
+          {error ? <p className="text-xs text-destructive">{error}</p> : null}
+          <DialogFooter>
+            {scope?.overridden ? (
+              <Button type="button" variant="ghost" disabled={pending} onClick={() => void save(null)} className="me-auto">
+                Remove override
+              </Button>
+            ) : null}
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={pending || !value}>
+              {pending ? <Spinner className="size-3.5" /> : null}
+              Save
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -11,7 +11,7 @@ import { BUILD_EMPTY, BuildFields, buildOrNull } from "./rail/buildSettings";
 import { ConfirmDialog, DialogFooter as Footer, ErrorLine, GHOST, errorText } from "./ConfirmDialog";
 import { INPUT_CLASS, Toggle } from "../surfaces/settingsBits";
 import { TurnPassFields, loadTurnPass, saveTurnPass } from "./TurnPassFields";
-import { PlanSettingsFields, planSettingsSummary } from "./PlanSettingsFields";
+import { PlanSettingsFields, PlanSettingsSummary } from "./PlanSettingsFields";
 import { savePlanSettings, samePlanSettings, usePlanSettings } from "../lib/tcserver/plans";
 import type { PlanSettings } from "@server/shared/plans";
 import { ReviewFields, loadReviewScope, reviewSummary, saveReviewSettings, type ReviewScope } from "./ReviewFields";
@@ -770,7 +770,7 @@ function ProjectSettingsBody({
           </Disclosure>
           <Disclosure
             label="Plans"
-            summary={shownPlans ? `${planSettingsSummary(shownPlans)}${plans ? "" : " · global"}` : "…"}
+            summary={shownPlans ? <PlanSettingsSummary settings={shownPlans} extra={plans ? undefined : "global"} /> : "…"}
           >
             {shownPlans ? (
               <PlanSettingsFields

@@ -67,6 +67,11 @@ export function isHarnessAvailable(id: HarnessId, environmentId: string = here()
   return probeOf(environmentId).availability[id];
 }
 
+/** The shell command that installs a CLI, when there is one to give. */
+export function harnessInstallCommand(id: HarnessId): string | undefined {
+  return CLI[id].install;
+}
+
 export function harnessUnavailableHint(id: HarnessId): string {
   if (!isLiveHarness(id)) {
     return `${CLI[id].name} moves to the server later this milestone.`;

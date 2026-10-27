@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { Page, PageRow, PageSection } from "./page";
+import { Page, PageRow, PageRowsSkeleton, PageSection } from "./page";
 import { Button } from "./ui/button";
 
 afterEach(cleanup);
@@ -84,6 +84,14 @@ describe("PageRow", () => {
         }
       />,
     );
-    expect(screen.getByText("Login expired").closest("p")?.className).toContain("line-clamp-none");
+    const description = screen.getByText("Login expired").closest("[data-slot=item-description]");
+    expect(description?.tagName).toBe("DIV");
+    expect(description?.className).toContain("line-clamp-none");
+  });
+
+  it("holds rows in their shape while a section loads", () => {
+    render(<PageRowsSkeleton rows={3} />);
+    expect(screen.getByLabelText("Loading").getAttribute("aria-busy")).toBe("true");
+    expect(document.querySelectorAll("[data-slot=page-row-skeleton]")).toHaveLength(3);
   });
 });

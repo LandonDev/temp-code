@@ -6,7 +6,7 @@ import {
 } from "@server/shared/turnpass";
 import { linkOfWorkspace } from "../lib/tcserver/projects";
 import { ChoiceSelect } from "../components/choice-select";
-import { PageRow, PageSection } from "../components/page";
+import { PageRow, PageRowsSkeleton, PageSection } from "../components/page";
 import { SettingSwitch } from "../components/setting-switch";
 
 /**
@@ -23,7 +23,8 @@ export const COMMIT_OPTIONS: { value: TurnPass["commit"]; label: string }[] = [
 
 const COPY = {
   verify: { label: "Verify", hint: "Run the project's checks and fix what fails." },
-  build: { label: "Build", hint: "Create a build and say where it landed." },
+  // Not "Build": the workspace page's Build section means the command.
+  build: { label: "Make a build", hint: "Create a build and say where it landed." },
   commit: { label: "Commit", hint: "Commit the turn's changes to the branch." },
 };
 
@@ -52,7 +53,7 @@ export function TurnPassFields({
         <SettingSwitch label="Verify" on={value.verify} onChange={(verify) => onChange({ ...value, verify })} />
       </PageRow>
       <PageRow title={COPY.build.label} description={COPY.build.hint}>
-        <SettingSwitch label="Build" on={value.build} onChange={(build) => onChange({ ...value, build })} />
+        <SettingSwitch label={COPY.build.label} on={value.build} onChange={(build) => onChange({ ...value, build })} />
       </PageRow>
       <PageRow title={COPY.commit.label} description={COPY.commit.hint}>
         {commit}
@@ -114,11 +115,8 @@ export function TurnPassEditor({ workspaceId }: { workspaceId: string }) {
   };
 
   return (
-    <PageSection
-      title="Completed turn"
-      description="After a turn settles, implementation and orchestration threads run these before anything queued."
-    >
-      {value ? <TurnPassFields value={value} onChange={change} /> : null}
+    <PageSection title="Completed turn">
+      {value ? <TurnPassFields value={value} onChange={change} /> : error ? null : <PageRowsSkeleton rows={3} />}
       {error ? <p className="pt-2 text-xs text-destructive">{error}</p> : null}
     </PageSection>
   );

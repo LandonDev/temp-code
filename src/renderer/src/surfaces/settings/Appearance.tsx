@@ -25,7 +25,7 @@ export function AppearancePage() {
   const [fontSize, setFontSize] = useState<EditorFontSize>(loadEditorFontSize);
   return (
     <PageSection>
-      <PageRow title="Theme" description="System follows the OS.">
+      <PageRow title="Theme">
         <ChoiceSelect
           label="Theme"
           value={theme}

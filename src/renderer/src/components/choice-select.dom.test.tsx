@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ChoiceSelect } from "./choice-select";
+import { ChoiceSelect } from "./choice-select-body";
 
 const OPTIONS = [
   { value: "", label: "Auto" },
@@ -50,5 +50,29 @@ describe("ChoiceSelect", () => {
     await open(screen.getByRole("combobox", { name: "Editor" }));
     await choose("VS Code");
     expect(onChange).toHaveBeenCalledWith("code");
+  });
+
+  it("lists grouped options under their group, ungrouped ones first", async () => {
+    render(
+      <ChoiceSelect
+        label="Build model"
+        value=""
+        options={[
+          { value: "opus", label: "Opus", group: "Claude" },
+          { value: "", label: "Same as the plan" },
+          { value: "sol", label: "Sol", group: "Codex" },
+        ]}
+        onChange={() => {}}
+      />,
+    );
+    await open(screen.getByRole("combobox", { name: "Build model" }));
+    const list = await screen.findByRole("listbox");
+    expect([...list.querySelectorAll("[role=option], [data-slot=select-label]")].map((el) => el.textContent)).toEqual([
+      "Same as the plan",
+      "Claude",
+      "Opus",
+      "Codex",
+      "Sol",
+    ]);
   });
 });

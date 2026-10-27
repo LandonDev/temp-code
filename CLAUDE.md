@@ -1845,7 +1845,7 @@ threadBatch.test.ts), one `session.batch` per host.
   thread then settles. The planning preamble makes it the last tool call.
   The flow (src/main/server/planFlow.ts, settings in src/shared/plans.ts)
   runs on that settle, never mid-turn: with `plans.autoImplement` on
-  (default; Settings → General → Plans, overridable per project from the
+  (default; Settings → Thread defaults → Plans, overridable per project from the
   project's settings dialog) the host starts the implementation thread
   itself — same host, cwd, model, effort and context window as the plan
   thread unless `plans.implementModel` / `implementReasoning` /

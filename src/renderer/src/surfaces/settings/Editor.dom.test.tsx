@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const host = vi.hoisted(() => ({
   lsp: null as null | ((rows: unknown[]) => void),
   eula: null as null | ((eula: { build: string; text: string }) => void),
+  check: null as null | ((r: { current: string; latest: string; updated: boolean }) => void),
+  engine: undefined as undefined | { dist: boolean; accepted: boolean; build: string },
   editor: null as null | { editor: string; effective: string | null; installed: Record<string, boolean> },
 }));
 
@@ -16,7 +18,9 @@ vi.mock("../../lib/connection", () => ({
           ? new Promise((resolve) => (host.lsp = resolve))
           : method === "idea.eula"
             ? new Promise((resolve) => (host.eula = resolve))
-            : Promise.resolve({ java: { found: true, version: "21", jdtls: true, path: "/usr/lib/jvm/21" } }),
+            : method === "idea.checkUpdate"
+              ? new Promise((resolve) => (host.check = resolve))
+              : Promise.resolve({ java: { found: true, version: "21", jdtls: true, path: "/usr/lib/jvm/21", ideaServer: host.engine } }),
     }),
   },
 }));
@@ -99,5 +103,21 @@ describe("Editor", () => {
     expect(screen.getByText("intellij-server 263.1")).toBeTruthy();
     expect((screen.getByRole("button", { name: "Accept and enable" }) as HTMLButtonElement).disabled).toBe(false);
     expect(screen.getByRole("button", { name: "Cancel" }).dataset.variant).toBe("secondary");
+  });
+
+  it("shows a spinner in Check for update while it checks", async () => {
+    host.engine = { dist: true, accepted: true, build: "263.1" };
+    render(<EditorPage />);
+    await act(async () => {});
+    const check = screen.getByRole("button", { name: /Check for update/ });
+    await act(async () => {
+      fireEvent.click(check);
+    });
+    expect(check.querySelector("[data-slot=spinner]")).toBeTruthy();
+    expect((check as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => host.check?.({ current: "263.1", latest: "263.1", updated: false }));
+    expect(check.querySelector("[data-slot=spinner]")).toBeNull();
+    expect(screen.getByText("Up to date.")).toBeTruthy();
+    host.engine = undefined;
   });
 });

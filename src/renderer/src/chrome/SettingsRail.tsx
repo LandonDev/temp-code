@@ -15,6 +15,8 @@ import {
   type IconComponent,
 } from "./icons";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
+import { Button } from "../components/ui/button";
+import { cn } from "../lib/cn";
 import {
   SETTINGS_GROUPS,
   SETTINGS_SECTIONS,
@@ -125,21 +127,20 @@ function NavRow({
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       onClick={onClick}
-      aria-current={active ? "true" : undefined}
-      className={`flex w-full items-center gap-2 rounded-md px-2 py-2 text-left ${
-        active
-          ? "bg-content/10 text-content"
-          : "text-content/50 hover:bg-content/5 hover:text-content"
-      }`}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "h-9 w-full justify-start gap-2 px-2 text-[13px] font-normal",
+        active ? "bg-muted text-foreground hover:bg-muted" : "text-muted-foreground hover:text-foreground",
+      )}
     >
-      <Icon className="size-4 shrink-0 opacity-70" strokeWidth={1.75} />
-      <span className="min-w-0 flex-1 truncate text-sm font-medium leading-tight">
+      <Icon className="size-4 shrink-0" />
+      <span className="min-w-0 flex-1 truncate text-start">
         {label}
-        {detail ? <span className="ml-2 font-normal text-muted-foreground">{detail}</span> : null}
+        {detail ? <span className="ml-2 text-muted-foreground">{detail}</span> : null}
       </span>
-    </button>
+    </Button>
   );
 }

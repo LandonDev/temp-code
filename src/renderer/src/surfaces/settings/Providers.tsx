@@ -7,7 +7,7 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
 import {
   getHarnessAvailabilitySnapshot,
-  harnessUnavailableHint,
+  harnessInstallCommand,
   isHarnessAvailable,
   probeHarnessAvailability,
   subscribeHarnessAvailability,
@@ -50,6 +50,7 @@ export function ProvidersPage() {
           />
         ))}
       </PageSection>
+      <PickerSection />
       <PageSection title="Claude Code">
         <PageRow title="Run settings.json hooks" description="The hooks from your settings.json files run from the next turn.">
           <SettingSwitch
@@ -66,9 +67,11 @@ export function ProvidersPage() {
   );
 }
 
-/** "2.1.263 (Claude Code)" → "v2.1.263 (Claude Code)"; "codex-cli 0.153.4" stays as is. */
+/** "2.1.263 (Claude Code)" → "v2.1.263": the row's title already names the
+ *  CLI. "codex-cli 0.153.4" stays as is. */
 export function versionLabel(version: string): string {
-  return /^\d/.test(version) ? `v${version}` : version;
+  const bare = version.replace(/\s*\([^)]*\)\s*$/, "");
+  return /^\d/.test(bare) ? `v${bare}` : bare;
 }
 
 /** Providers whose CLI the server knows how to update in place. */
@@ -87,7 +90,6 @@ function ProviderRow({
   const title = HARNESS_TITLE[harness];
   const available = isHarnessAvailable(harness);
   const modelCount = modelsFor(harness).length;
-  const [inPicker, setInPicker] = useState(() => isPickerProviderVisible(harness));
   const [updating, setUpdating] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
 
@@ -122,8 +124,12 @@ function ProviderRow({
         {doctor.error ? <span className="block text-warning">{doctor.error}</span> : null}
       </>
     ) : (
-      // The hint already says it is not found and how to install it.
-      harnessUnavailableHint(harness)
+      <>
+        <span className="block">Not installed</span>
+        {harnessInstallCommand(harness) ? (
+          <span className="block truncate font-mono text-[11px]">{harnessInstallCommand(harness)}</span>
+        ) : null}
+      </>
     );
 
   return (
@@ -139,19 +145,36 @@ function ProviderRow({
           Update
         </Button>
       ) : null}
-      {available ? (
-        <>
-          <span className="ml-2 text-xs text-muted-foreground">Show in picker</span>
-          <SettingSwitch
-            label={`Show ${title} in the model picker`}
-            on={inPicker}
-            onChange={(visible) => {
-              savePickerProviderVisible(harness, visible);
-              setInPicker(visible);
-            }}
-          />
-        </>
-      ) : null}
+    </PageRow>
+  );
+}
+
+/** Which installed CLIs the model picker lists. */
+function PickerSection() {
+  const installed = HARNESSES.filter((harness) => isHarnessAvailable(harness));
+  if (installed.length === 0) return null;
+  return (
+    <PageSection title="Model picker">
+      {installed.map((harness) => (
+        <PickerRow key={harness} harness={harness} />
+      ))}
+    </PageSection>
+  );
+}
+
+function PickerRow({ harness }: { harness: HarnessId }) {
+  const title = HARNESS_TITLE[harness];
+  const [visible, setVisible] = useState(() => isPickerProviderVisible(harness));
+  return (
+    <PageRow media={<HarnessIcon harness={harness} className="size-4" />} title={title}>
+      <SettingSwitch
+        label={`Show ${title} in the model picker`}
+        on={visible}
+        onChange={(next) => {
+          savePickerProviderVisible(harness, next);
+          setVisible(next);
+        }}
+      />
     </PageRow>
   );
 }

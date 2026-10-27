@@ -216,15 +216,18 @@ export function EditorPage() {
       .catch((error) => setNote(error instanceof Error ? error.message : String(error)));
   };
 
+  const [checking, setChecking] = useState(false);
   const checkUpdate = () => {
-    setNote("Checking…");
+    setNote(null);
+    setChecking(true);
     void registry.primary()
       .request<{ current: string; latest: string; updated: boolean }>("idea.checkUpdate")
       .then((r) => {
         setNote(r.updated ? `Updated to ${r.latest}. Accept the EULA again.` : "Up to date.");
         refreshEngine();
       })
-      .catch(() => setNote("Update check failed."));
+      .catch(() => setNote("Update check failed."))
+      .finally(() => setChecking(false));
   };
 
   const jdkState =
@@ -311,7 +314,8 @@ export function EditorPage() {
           }
         />
         <PageRow title="IntelliJ engine" description={note ?? engineState ?? loading}>
-          <Button variant="secondary" size="sm" onClick={engine?.accepted ? checkUpdate : openGate}>
+          <Button variant="secondary" size="sm" disabled={checking} onClick={engine?.accepted ? checkUpdate : openGate}>
+            {checking ? <Spinner className="size-3.5" /> : null}
             {engine?.accepted ? "Check for update" : "Accept EULA"}
           </Button>
         </PageRow>

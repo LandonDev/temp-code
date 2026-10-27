@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { InboxProviderMark } from "../../chrome/InboxProviderMark";
 import { ChoiceSelect } from "../../components/choice-select";
-import { PageRow, PageSection } from "../../components/page";
+import { PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { Input } from "../../components/ui/input";
@@ -41,7 +41,6 @@ import {
 } from "../../lib/settings";
 import { loadSoundsEnabled, saveSoundsEnabled } from "../../lib/sounds";
 import { registry } from "../../lib/connection";
-import { PlanSettingsEditor } from "../../chrome/PlanSettingsFields";
 import { updateStore, useUpdateSnapshot } from "../../lib/updateStore";
 import { MANUAL_DOWNLOAD_URL, canRetry } from "../../lib/updater";
 import { openUrl } from "../../lib/native";
@@ -158,8 +157,6 @@ export function GeneralPage({
         />
       </PageSection>
 
-      <PlanSettingsEditor />
-
       <LinearSettings />
 
       <PageSection title="Extras">
@@ -186,7 +183,9 @@ export function GeneralPage({
 
 function LinearSettings() {
   const [token, setToken] = useState("");
-  const [connected, setConnected] = useState(false);
+  // null until the host answers: the key field and Connect would otherwise
+  // show for a connected account and then flip to Disconnect.
+  const [connected, setConnected] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [teams, setTeams] = useState<LinearTeam[]>([]);
@@ -203,11 +202,13 @@ function LinearSettings() {
 
   useEffect(() => {
     let cancelled = false;
-    void linearConnected(registry.primary().environmentId).then((status) => {
-      if (cancelled) return;
-      setConnected(status.connected);
-      if (status.connected) void loadTeams();
-    });
+    void linearConnected(registry.primary().environmentId)
+      .then((status) => {
+        if (cancelled) return;
+        setConnected(status.connected);
+        if (status.connected) void loadTeams();
+      })
+      .catch(() => !cancelled && setConnected(false));
     return () => {
       cancelled = true;
     };
@@ -262,39 +263,43 @@ function LinearSettings() {
   return (
     <>
       <PageSection title="Linear">
-        <PageRow
-          media={<InboxProviderMark provider="linear" className="size-4" />}
-          title="API key"
-          description="Create a personal key in Linear, under Settings, Security and access."
-          error={error}
-        >
-          {connected ? (
-            <Button variant="secondary" size="sm" onClick={() => void onDisconnect()} disabled={busy}>
-              {busy ? <Spinner className="size-3.5" /> : null}
-              Disconnect
-            </Button>
-          ) : (
-            <>
-              <Input
-                type="password"
-                value={token}
-                onChange={(event) => setToken(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") void onSave();
-                }}
-                placeholder="lin_api_…"
-                aria-label="Linear API key"
-                autoComplete="off"
-                spellCheck={false}
-                className="h-7 w-52"
-              />
-              <Button variant="secondary" size="sm" onClick={() => void onSave()} disabled={busy || !token.trim()}>
+        {connected === null ? (
+          <PageRowsSkeleton rows={1} />
+        ) : (
+          <PageRow
+            media={<InboxProviderMark provider="linear" className="size-4" />}
+            title="API key"
+            description="Create a personal key in Linear, under Settings, Security and access."
+            error={error}
+          >
+            {connected ? (
+              <Button variant="secondary" size="sm" onClick={() => void onDisconnect()} disabled={busy}>
                 {busy ? <Spinner className="size-3.5" /> : null}
-                Connect
+                Disconnect
               </Button>
-            </>
-          )}
-        </PageRow>
+            ) : (
+              <>
+                <Input
+                  type="password"
+                  value={token}
+                  onChange={(event) => setToken(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") void onSave();
+                  }}
+                  placeholder="lin_api_…"
+                  aria-label="Linear API key"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="w-52"
+                />
+                <Button variant="secondary" size="sm" onClick={() => void onSave()} disabled={busy || !token.trim()}>
+                  {busy ? <Spinner className="size-3.5" /> : null}
+                  Connect
+                </Button>
+              </>
+            )}
+          </PageRow>
+        )}
       </PageSection>
       {connected && teams.length > 0 ? (
         <PageSection title="Teams in the inbox">
