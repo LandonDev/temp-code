@@ -89,3 +89,18 @@ describe("chipMenuItems: the master pin", () => {
     expect(label(chip("idle", { parentId: "root" }))).toBeUndefined();
   });
 });
+
+describe("chipMenuItems: host moves", () => {
+  it("puts the thread's Move to <host> rows in their own group just before Archive", () => {
+    const moves = [{ kind: "item", id: "move:env_box", label: "Move to box…" }] as const;
+    const items = chipMenuItems(chip("idle"), undefined, 0, false, [...moves]);
+    const at = items.findIndex((i) => i.kind === "item" && i.id === "move:env_box");
+    expect(items[at - 1]?.kind).toBe("sep");
+    expect(items[at + 1]?.kind).toBe("sep");
+    expect(items[at + 2]).toMatchObject({ kind: "item", id: "archive" });
+  });
+
+  it("offers no move rows without a second host", () => {
+    expect(ids(chip("idle")).some((id) => id.startsWith("move:"))).toBe(false);
+  });
+});

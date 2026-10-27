@@ -1295,7 +1295,8 @@ function TitleBarComponent({
             </IconButton>
           </>
         ) : null}
-        {deckLayout && !projectless && (onShowTerminal || onNewTerminal) ? (
+        {/* With the thread header the terminal is a row of its ⋯ menu. */}
+        {deckLayout && !header && !projectless && (onShowTerminal || onNewTerminal) ? (
           <IconButton
             label={
               projectTerminalActive ? "Terminal" : `New Terminal (${MOD}\`)`
@@ -1419,6 +1420,9 @@ function TitleBarComponent({
           {deckLayout && header ? (
             <ThreadHeader
               {...header}
+              onShowTerminal={onShowTerminal}
+              onNewTerminal={onNewTerminal}
+              projectTerminalActive={projectTerminalActive}
               stripRef={setTabStripRef}
               activeRef={(el) => {
                 activeTabRef.current = el;

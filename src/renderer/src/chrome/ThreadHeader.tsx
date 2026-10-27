@@ -1,26 +1,26 @@
 import { sessionStore } from "../lib/tcserver/store";
 import { bridgeableEnvironment, loadThreadBridge, setThreadBridge, useThreadBridge } from "../lib/macBridge";
 import type { MacBridgeThreadState } from "@server/shared/contract-macbridge";
-import { useCallback, useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { ThreadRules } from "@server/shared/rules";
 import type { ThreadType } from "../lib/tcserver/types";
 import type { HeaderModel } from "../lib/threadHeaderModel";
-import { pauseAllLabel, type PauseAllState } from "../lib/threadHeaderModel";
 import type { ReadyMap } from "../lib/threadStripModel";
 import { THREAD_LABELS } from "../surfaces/threads/bits";
-import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
+import type { ExplorerMenuItem } from "./ExplorerMenu";
 import { NewThreadChooser } from "./NewThreadChooser";
 import { ProjectPlanChip } from "./ProjectPlanChip";
 import { ConfirmDialog } from "./ProjectDialogs";
-import { PanelRight } from "./icons";
 import { ThreadHeaderStrip, chipTitle, type ArchivedThread, type ChipThread, type StripChip } from "./ThreadHeaderStrip";
+import { MenuRows, ThreadMenu } from "./ThreadMenu";
 import { TuneDialog } from "./ThreadTune";
 import { MacBridgeRulesDialog } from "./MacBridgeRulesDialog";
 import { ArchiveThreadDialog, ThreadResourcesDialog } from "./ThreadResourcesDialog";
 import { liveResources, loadThreadResources, startThreadResources, useThreadResources } from "../lib/threadResources";
-import { ThreadHostChip } from "./ThreadHostChip";
-import { DevServerButton } from "./DevServerButton";
-import { IconButton } from "./TitleBar";
+import { useThreadHost } from "./ThreadHostChip";
+import { devPane, useDevPane } from "../lib/devPane";
+import { useDevRunning, useDevServable } from "../lib/devServers";
+import { useProjects } from "../lib/tcserver/workspaces";
 import { masterMenuLabel, useMasterIds } from "../lib/masterThread";
 import { setMaster } from "../lib/tcserver/commands";
 
@@ -61,7 +61,14 @@ const TUNABLE: ReadonlySet<ThreadType> = new Set(["orchestration", "research"]);
 /** The Mac bridge's switch for a thread on another host (lib/macBridge.ts); absent for this Mac's own threads. */
 export type ChipBridge = { state: MacBridgeThreadState | null };
 
-export function chipMenuItems(chip: StripChip, bridge?: ChipBridge, resources = 0, master = false): ExplorerMenuItem[] {
+export function chipMenuItems(
+  chip: StripChip,
+  bridge?: ChipBridge,
+  resources = 0,
+  master = false,
+  /** The thread's "Move to <host>…" rows (useThreadHost), before Archive. */
+  moves: readonly ExplorerMenuItem[] = [],
+): ExplorerMenuItem[] {
   const t = chip.thread;
   const items: ExplorerMenuItem[] = [{ kind: "item", id: "rename", label: "Rename" }];
   if (t.threadType && TUNABLE.has(t.threadType))
@@ -97,9 +104,27 @@ export function chipMenuItems(chip: StripChip, bridge?: ChipBridge, resources = 
   items.push({ kind: "sep" }, { kind: "item", id: "resources", label: resources ? `Resources (${resources})…` : "Resources…" });
   // A master thread (CLAUDE.md "Master threads"): any root in a project, as many as the person wants.
   if (t.projectId && !t.parentId) items.push({ kind: "item", id: "master", label: masterMenuLabel(master) });
+  if (moves.length) items.push({ kind: "sep" }, ...moves);
   items.push({ kind: "sep" }, { kind: "item", id: "archive", label: resources ? "Archive…" : "Archive" });
   items.push({ kind: "sep" }, { kind: "item", id: "delete", label: "Delete…", danger: true });
   return items;
+}
+
+/** Dev server in the thread menu (docs/box.md "Dev servers on the box"):
+ *  offered when a host can serve the thread's project or one of its servers
+ *  runs; it opens and closes the Dev servers pane and never starts anything. */
+function useDevServer(sessionId: string | null): { shown: boolean; open: boolean; onToggle: () => void } {
+  // The thread's project and host only: a streaming turn must not re-render the header.
+  const where = useSyncExternalStore(sessionStore.subscribe, () => {
+    const s = sessionId ? sessionStore.get(sessionId) : undefined;
+    return s?.projectId ? `${s.environmentId}|${s.projectId}` : "";
+  });
+  const [environmentId, projectId] = where.split("|");
+  const project = useProjects().find((p) => p.id === projectId && p.environmentId === environmentId);
+  const servable = useDevServable(project);
+  const running = useDevRunning(project?.id);
+  const open = useDevPane((s) => s.open);
+  return { shown: !!project && (servable || running), open, onToggle: devPane.toggle };
 }
 
 export function ThreadHeader({
@@ -120,13 +145,21 @@ export function ThreadHeader({
   onNew,
   onPauseAll,
   onToggleRail,
+  onShowTerminal,
+  onNewTerminal,
+  projectTerminalActive = false,
   stripRef,
   activeRef,
 }: ThreadHeaderProps & {
   stripRef: (el: HTMLDivElement | null) => void;
   activeRef: (el: HTMLDivElement | null) => void;
+  /** The project terminal, from the title bar: the menu's Terminal row. */
+  onShowTerminal?: () => void;
+  onNewTerminal?: () => void;
+  projectTerminalActive?: boolean;
 }) {
-  const [menu, setMenu] = useState<{ x: number; y: number; chip: StripChip } | null>(null);
+  // The thread a menu was last opened for: its right-click, or the ⋯ menu's active thread.
+  const [menuFor, setMenuFor] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [tuning, setTuning] = useState<StripChip | null>(null);
   const tuningSession = tuning ? sessionStore.get(tuning.id) : undefined;
@@ -135,36 +168,44 @@ export function ThreadHeader({
   const [resourcesFor, setResourcesFor] = useState<StripChip | null>(null);
   const [archiving, setArchiving] = useState<StripChip | null>(null);
   useEffect(() => startThreadResources(), []);
-  const [pauseAll, setPauseAll] = useState<PauseAllState>("idle");
 
-  const onContextMenu = useCallback((chip: StripChip, event: ReactMouseEvent<HTMLDivElement>) => {
-    setMenu({ x: event.clientX, y: event.clientY, chip });
-    const env = sessionStore.get(chip.id)?.environmentId;
-    if (env && bridgeableEnvironment(env)) void loadThreadBridge(env, chip.id);
-    void loadThreadResources(chip.id);
+  const loadMenu = useCallback((id: string) => {
+    setMenuFor(id);
+    const env = sessionStore.get(id)?.environmentId;
+    if (env && bridgeableEnvironment(env)) void loadThreadBridge(env, id);
+    void loadThreadResources(id);
   }, []);
-  const menuEnv = menu ? sessionStore.get(menu.chip.id)?.environmentId : undefined;
-  const menuBridgeState = useThreadBridge(menu?.chip.id);
-  const menuResources = useThreadResources(menu?.chip.id);
-  const menuBridge: ChipBridge | undefined = menuEnv && bridgeableEnvironment(menuEnv) ? { state: menuBridgeState } : undefined;
+  const onContextMenu = useCallback((chip: StripChip) => loadMenu(chip.id), [loadMenu]);
+  const target = menuFor ?? model.activeId;
+  const targetEnv = target ? sessionStore.get(target)?.environmentId : undefined;
+  const bridgeState = useThreadBridge(target ?? undefined);
+  const resources = useThreadResources(target ?? undefined);
+  const host = useThreadHost(target);
   const masterIds = useMasterIds();
-  const menuMaster = !!menu && masterIds.has(menu.chip.id);
+  const dev = useDevServer(model.activeId);
+  const activeChip = model.live.find((c) => c.id === model.activeId) ?? null;
 
-  const onPick = (id: string) => {
-    if (!menu) return;
-    const chip = menu.chip;
-    setMenu(null);
+  /** The one list for a thread: its chip's right-click and the ⋯ menu alike. */
+  const rowsFor = (chip: StripChip): ExplorerMenuItem[] => {
+    const own = chip.id === target;
+    const bridge: ChipBridge | undefined =
+      own && targetEnv && bridgeableEnvironment(targetEnv) ? { state: bridgeState } : undefined;
+    return chipMenuItems(chip, bridge, own ? resources.length : 0, masterIds.has(chip.id), own ? host.moves : []);
+  };
+
+  const pick = (chip: StripChip, id: string) => {
+    if (host.pick(id)) return;
     if (id === "rename") setRenamingId(chip.id);
     else if (id === "tune") setTuning(chip);
     // With resources on the ledger the archive asks whether they go too (ArchiveThreadDialog).
     else if (id === "archive") (liveResources(chip.id).length ? setArchiving(chip) : onArchive(chip.id));
     else if (id === "resources") setResourcesFor(chip);
-    else if (id === "master") void setMaster(chip.id, !menuMaster).catch((err) => console.warn("[master]", err));
+    else if (id === "master") void setMaster(chip.id, !masterIds.has(chip.id)).catch((err) => console.warn("[master]", err));
     else if (id === "delete") setDeleting(chip);
     else if (id === "mac-bridge-rules") setBridgeRules(chip);
     else if (id === "mac-bridge") {
       const env = sessionStore.get(chip.id)?.environmentId;
-      if (env) void setThreadBridge(env, chip.id, !menuBridgeState?.macPeer).catch((err) => console.warn("[mac-bridge]", err));
+      if (env) void setThreadBridge(env, chip.id, !bridgeState?.macPeer).catch((err) => console.warn("[mac-bridge]", err));
     }
     else onAction(chip.id, id as ThreadAction);
   };
@@ -173,17 +214,6 @@ export function ThreadHeader({
     setRenamingId(null);
     const chip = model.live.find((c) => c.id === id) ?? model.dormant.find((c) => c.id === id);
     if (title && chip && title !== chip.thread.title) onRename(id, title);
-  };
-
-  const pauseAllNow = async () => {
-    if (pauseAll === "busy") return;
-    setPauseAll("busy");
-    try {
-      await onPauseAll();
-      setPauseAll("idle");
-    } catch {
-      setPauseAll("failed");
-    }
   };
 
   const empty = model.live.length === 0 && model.dormant.length === 0;
@@ -197,11 +227,10 @@ export function ThreadHeader({
         onStartRename={setRenamingId}
         onRename={commitRename}
         onContextMenu={onContextMenu}
+        menu={(chip) => <MenuRows kind="context" items={rowsFor(chip)} onPick={(id) => pick(chip, id)} />}
         activeRef={activeRef}
         masterIds={masterIds}
         stripRef={stripRef}
-        archived={archived}
-        onRestore={onRestore}
         trailing={
           <>
             <NewThreadChooser workspaceId={workspaceId} empty={empty} onStart={onNew} />
@@ -209,44 +238,25 @@ export function ThreadHeader({
           </>
         }
         end={
-          <div className="mr-1.5 flex shrink-0 items-center gap-1">
-            {model.activeId ? <ThreadHostChip sessionId={model.activeId} /> : null}
-            {cost != null && cost > 0 ? (
-              <span className="px-1 text-[11px] tabular-nums text-content/50" title="Cost of this thread so far">
-                ${cost.toFixed(2)}
-              </span>
-            ) : null}
-            {running > 0 ? (
-              <button
-                type="button"
-                data-tauri-drag-region="false"
-                title={`Pause ${running === 1 ? "the running thread" : `${running} running threads`}`}
-                aria-busy={pauseAll === "busy"}
-                onClick={() => void pauseAllNow()}
-                className={`h-6 rounded-md px-2 text-[12px] hover:bg-content/5 ${
-                  pauseAll === "failed" ? "text-danger" : "text-content/50 hover:text-content"
-                }`}
-              >
-                {pauseAllLabel(pauseAll)}
-              </button>
-            ) : null}
-            {model.activeId ? <DevServerButton sessionId={model.activeId} /> : null}
-            <IconButton label={railOpen ? "Hide panel" : "Show panel"} active={railOpen} onClick={onToggleRail}>
-              <PanelRight className="size-3.5" strokeWidth={1.75} />
-            </IconButton>
-          </div>
+          <ThreadMenu
+            host={activeChip && model.activeId === target ? host.host : null}
+            cost={cost}
+            rows={activeChip ? rowsFor(activeChip) : []}
+            onPick={(id) => activeChip && pick(activeChip, id)}
+            onOpen={() => model.activeId && loadMenu(model.activeId)}
+            running={running}
+            onPauseAll={onPauseAll}
+            dev={dev}
+            terminal={{ onShow: onShowTerminal, onNew: onNewTerminal, active: projectTerminalActive }}
+            recent={model.dormant}
+            onOpenRecent={onSelect}
+            archived={archived}
+            onRestore={onRestore}
+            panel={{ open: railOpen, onToggle: onToggleRail }}
+          />
         }
       />
-      {menu ? (
-        <ExplorerMenu
-          x={menu.x}
-          y={menu.y}
-          items={chipMenuItems(menu.chip, menuBridge, menuResources.length, menuMaster)}
-          ariaLabel="Thread actions"
-          onPick={onPick}
-          onClose={() => setMenu(null)}
-        />
-      ) : null}
+      {host.dialog}
       {tuning && tuningSession ? (
         <TuneDialog
           environmentId={tuningSession.environmentId}

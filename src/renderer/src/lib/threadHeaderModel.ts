@@ -180,12 +180,3 @@ function tabIndex(tabs: readonly HeaderTab[]): Map<string, string> {
     for (const id of tab.sessionIds) if (!out.has(id)) out.set(id, tab.id);
   return out;
 }
-
-/** Pause All's button copy, from its last outcome. */
-export type PauseAllState = "idle" | "busy" | "failed";
-
-export function pauseAllLabel(state: PauseAllState): string {
-  if (state === "busy") return "Pausing…";
-  if (state === "failed") return "Pause failed — retry";
-  return "Pause all";
-}

@@ -17,6 +17,8 @@ export type ExplorerMenuItem =
       disabled?: boolean;
       danger?: boolean;
       checked?: boolean;
+      /** A second line under the label (a disabled move's reason); the new menus show it. */
+      description?: string;
     };
 
 type Props = {

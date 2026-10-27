@@ -1,7 +1,6 @@
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState, type JSX } from "react";
 import type { SessionMovePreview } from "@server/shared/contract-session-move";
-import { useProjectBranches } from "../hooks/useProjectBranches";
 import { registry, useEnvironments, useEnvironmentStatuses } from "../lib/connection";
 import { LAYER } from "../lib/layers";
 import { copiesOf, ensureLinkedArgs, ensureLinkedOn, rememberLinkHost } from "../lib/projectHostChoice";
@@ -10,7 +9,6 @@ import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import {
   dismissMoveNotice,
-  hostTone,
   moveNoticeLines,
   movePreviewLine,
   moveTargets,
@@ -22,38 +20,40 @@ import {
 } from "../lib/threadMove";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { retargetDraft } from "./DraftHostPicker";
-import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
-import { HostGlyph } from "./HostGlyph";
+import type { ExplorerMenuItem } from "./ExplorerMenu";
 
 /**
- * Which host the active thread lives on, with a status dot, the host's
- * glyph (idle or running alike) and the branch its folder is on, and the
- * menu that moves it to the other one ("Move to box…"). Each target is
- * disabled with its reason when the thread is busy, a link is down or the
- * key there is not admin. An unsent draft just switches to the other host's
+ * The active thread's host for the thread menu (chrome/ThreadMenu.tsx):
+ * the host's name when the window has two or more, and the rows that move
+ * the thread to another ("Move to box…"), each disabled with its reason as
+ * the row's second line when the thread is busy, a link is down or the key
+ * there is not admin. An unsent draft just switches to the other host's
  * copy of its project, and a thread nobody wrote to yet moves at once; only
  * a thread with messages asks first, the confirm saying what the move
- * carries (the branch and its uncommitted changes). A running move shows on
- * the chip.
+ * carries (the branch and its uncommitted changes). `pick` answers the
+ * menu's `move:` rows and leaves every other id to the caller.
  */
-export function ThreadHostChip({ sessionId }: { sessionId: string }): JSX.Element | null {
-  const session = useSession(sessionId);
-  const meta = useSessionMeta(sessionId);
+export function useThreadHost(sessionId: string | null): {
+  host: { environmentId: string; name: string } | null;
+  movingTo: string | null;
+  moves: ExplorerMenuItem[];
+  pick: (id: string) => boolean;
+  dialog: JSX.Element | null;
+} {
+  const session = useSession(sessionId ?? "");
+  const meta = useSessionMeta(sessionId ?? "");
   const environments = useEnvironments();
   const statuses = useEnvironmentStatuses();
-  const queue = useQueue(sessionId);
+  const queue = useQueue(sessionId ?? "");
   const moving = useMoving();
   const { projects, workspaces } = useWorkspaceCatalog();
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [confirm, setConfirm] = useState<{ to: string; name: string } | null>(null);
-  const cwd = session?.cwd ?? "";
-  const branches = useProjectBranches(cwd, !!session && environments.length >= 2);
-  if (!session) return null;
-  const env = environments.find((e) => e.id === session.environmentId);
+  const env = session ? environments.find((e) => e.id === session.environmentId) : undefined;
   // A window with one host has nothing to say here.
-  if (!env || environments.length < 2) return null;
-  const branch = branches?.current ?? null;
-  const movingTo = moving.get(sessionId);
+  if (!session || !sessionId || !env || environments.length < 2) {
+    return { host: null, movingTo: null, moves: [], pick: () => false, dialog: null };
+  }
+  const movingTo = moving.get(sessionId) ?? null;
   const targets = moveTargets(
     {
       id: session.id,
@@ -70,62 +70,33 @@ export function ThreadHostChip({ sessionId }: { sessionId: string }): JSX.Elemen
     (id) => statuses.get(id) ?? { transport: "offline", lastHello: null },
     !!movingTo,
   );
-  const items: ExplorerMenuItem[] = [{ kind: "item", id: "host", label: `On ${env.name}`, disabled: true }];
-  for (const t of targets) {
-    items.push({ kind: "sep" }, { kind: "item", id: `move:${t.environmentId}`, label: `Move to ${t.name}…`, disabled: !t.ok });
-    if (!t.ok) items.push({ kind: "item", id: `why:${t.environmentId}`, label: t.reason, disabled: true });
-  }
   const movingName = movingTo ? (registry.environment(movingTo)?.name ?? movingTo) : null;
-  return (
-    <>
-      <button
-        type="button"
-        data-tauri-drag-region="false"
-        data-thread-host={session.environmentId}
-        title={movingName ? `Moving to ${movingName}…` : `This thread runs on ${env.name}${branch ? ` on branch ${branch}` : ""}`}
-        aria-busy={!!movingTo}
-        onClick={(event) => {
-          const r = event.currentTarget.getBoundingClientRect();
-          setMenu({ x: r.left, y: r.bottom + 4 });
-        }}
-        className="flex h-6 max-w-64 items-center gap-1.5 rounded-md px-2 text-[12px] text-content/60 hover:bg-content/5 hover:text-content"
-      >
-        <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${movingTo ? "animate-pulse bg-warning" : hostTone(statuses.get(env.id))}`} />
-        <HostGlyph environmentId={session.environmentId} title={`This thread runs on ${env.name}`} />
-        <span className="truncate">{movingName ? `Moving to ${movingName}…` : env.name}</span>
-        {!movingName && branch ? (
-          <span data-thread-branch={branch} className="min-w-0 truncate text-content/40">
-            · {branch}
-          </span>
-        ) : null}
-      </button>
-      {menu ? (
-        <ExplorerMenu
-          x={menu.x}
-          y={menu.y}
-          items={items}
-          ariaLabel="Thread host"
-          onPick={(id) => {
-            setMenu(null);
-            if (!id.startsWith("move:")) return;
-            const to = id.slice("move:".length);
-            if (!meta) {
-              void retargetDraftTo(sessionId, to, projects, workspaces).catch(() => undefined);
-              return;
-            }
-            // Nothing written yet: nothing to carry, nothing to confirm.
-            if (session.loaded && !session.blocks.some((b) => b.role === "user")) {
-              void moveThread(sessionId, to).catch(() => undefined);
-              return;
-            }
-            setConfirm({ to, name: registry.environment(to)?.name ?? to });
-          }}
-          onClose={() => setMenu(null)}
-        />
-      ) : null}
-      {confirm ? <MoveThreadConfirm sessionId={sessionId} to={confirm.to} toName={confirm.name} fromName={env.name} onClose={() => setConfirm(null)} /> : null}
-    </>
-  );
+  const moves: ExplorerMenuItem[] = movingName
+    ? [{ kind: "item", id: "moving", label: `Moving to ${movingName}…`, disabled: true }]
+    : targets.map((t) => ({
+        kind: "item",
+        id: `move:${t.environmentId}`,
+        label: `Move to ${t.name}…`,
+        disabled: !t.ok,
+        ...(t.ok ? {} : { description: t.reason }),
+      }));
+  const pick = (id: string): boolean => {
+    if (!id.startsWith("move:")) return false;
+    const to = id.slice("move:".length);
+    if (!meta) {
+      void retargetDraftTo(sessionId, to, projects, workspaces).catch(() => undefined);
+    } else if (session.loaded && !session.blocks.some((b) => b.role === "user")) {
+      // Nothing written yet: nothing to carry, nothing to confirm.
+      void moveThread(sessionId, to).catch(() => undefined);
+    } else {
+      setConfirm({ to, name: registry.environment(to)?.name ?? to });
+    }
+    return true;
+  };
+  const dialog = confirm ? (
+    <MoveThreadConfirm sessionId={sessionId} to={confirm.to} toName={confirm.name} fromName={env.name} onClose={() => setConfirm(null)} />
+  ) : null;
+  return { host: { environmentId: env.id, name: env.name }, movingTo, moves, pick, dialog };
 }
 
 /** The confirm before a thread with messages moves, saying what travels

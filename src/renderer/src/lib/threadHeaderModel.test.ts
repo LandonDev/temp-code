@@ -5,7 +5,6 @@ import {
   headerOrder,
   holdDepartures,
   orderChips,
-  pauseAllLabel,
   stripChips,
 } from "./threadHeaderModel";
 import type { StripThread } from "./threadStripModel";
@@ -122,14 +121,6 @@ describe("headerOrder and headerNeighbour", () => {
       planReady: {},
     });
     expect(headerNeighbour(lone, "only")).toBeNull();
-  });
-});
-
-describe("pauseAllLabel", () => {
-  it("names each state", () => {
-    expect(pauseAllLabel("idle")).toBe("Pause all");
-    expect(pauseAllLabel("busy")).toBe("Pausing…");
-    expect(pauseAllLabel("failed")).toBe("Pause failed — retry");
   });
 });
 
