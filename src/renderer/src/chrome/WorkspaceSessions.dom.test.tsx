@@ -397,6 +397,53 @@ describe('a thread row ends in its mark', () => {
     expect(probe.container.querySelector('input')).toBeTruthy()
     probe.unmount()
   })
+
+  describe('the rename field', () => {
+    const renameProbe = () => {
+      const onRename = vi.fn()
+      const onStartRename = vi.fn()
+      const probe = mountProbe(
+        <ThreadList threads={[threadRow(meta('t0', { title: 'Old title' }), {})]} actions={{ ...actions, renamingId: 't0', onRename, onStartRename }} className="" />
+      )
+      const input = probe.container.querySelector('input')!
+      return { probe, input, onRename, onStartRename }
+    }
+
+    it('opens focused with the whole title selected', () => {
+      const { probe, input } = renameProbe()
+      expect(document.activeElement).toBe(input)
+      expect(input.value).toBe('Old title')
+      expect([input.selectionStart, input.selectionEnd]).toEqual([0, 9])
+      probe.unmount()
+    })
+
+    it('commits on Enter', () => {
+      const { probe, input, onRename, onStartRename } = renameProbe()
+      fireEvent.change(input, { target: { value: 'New title' } })
+      fireEvent.keyDown(input, { key: 'Enter' })
+      expect(onStartRename).toHaveBeenCalledWith(null)
+      expect(onRename).toHaveBeenCalledWith('t0', 'New title')
+      probe.unmount()
+    })
+
+    it('cancels on Escape, and the blur after it commits nothing', () => {
+      const { probe, input, onRename, onStartRename } = renameProbe()
+      fireEvent.change(input, { target: { value: 'New title' } })
+      fireEvent.keyDown(input, { key: 'Escape' })
+      fireEvent.blur(input)
+      expect(onStartRename).toHaveBeenCalledWith(null)
+      expect(onRename).not.toHaveBeenCalled()
+      probe.unmount()
+    })
+
+    it('commits on blur', () => {
+      const { probe, input, onRename } = renameProbe()
+      fireEvent.change(input, { target: { value: 'New title' } })
+      fireEvent.blur(input)
+      expect(onRename).toHaveBeenCalledWith('t0', 'New title')
+      probe.unmount()
+    })
+  })
 })
 
 describe('the host glyph on rail rows', () => {

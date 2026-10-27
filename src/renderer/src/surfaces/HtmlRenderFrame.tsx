@@ -12,6 +12,8 @@ import {
   type HtmlRenderReference,
 } from "@shared/htmlRender";
 import { Maximize2 } from "../chrome/icons";
+import { Button } from "../components/ui/button";
+import { Tip } from "../components/tip";
 import { useHtmlRenderTheme } from "../hooks/useHtmlRenderTheme";
 import { openHtmlRenderOverlay } from "./htmlRenderOverlayStore";
 
@@ -55,14 +57,17 @@ export const HtmlRenderRow = memo(function HtmlRenderRow({
         className="block size-full"
         onContentHeight={setContentHeight}
       />
-      <button
-        type="button"
-        aria-label="Open page"
-        onClick={() => openHtmlRenderOverlay(reference, host)}
-        className="pressable absolute right-2 top-2 grid size-7 place-items-center rounded-md bg-background-base/80 text-content/70 opacity-0 transition-opacity hover:bg-content/10 hover:text-content focus-visible:opacity-100 group-hover/html-render:opacity-100"
-      >
-        <Maximize2 className="size-3.5" strokeWidth={1.75} />
-      </button>
+      <Tip label="Open page">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Open page"
+          onClick={() => openHtmlRenderOverlay(reference, host)}
+          className="absolute right-2 top-2 bg-background/80 text-muted-foreground opacity-0 transition-[background-color,color,opacity,scale] hover:bg-background hover:text-foreground focus-visible:opacity-100 group-hover/html-render:opacity-100"
+        >
+          <Maximize2 className="size-3.5" strokeWidth={1.75} />
+        </Button>
+      </Tip>
     </div>
   );
 });

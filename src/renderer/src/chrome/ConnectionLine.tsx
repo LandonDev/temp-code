@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { degradedText, registry, useEnvironmentDegraded, useEnvironments, type Degraded } from "../lib/connection";
 import { Spinner } from "../components/ui/spinner";
+import { Button } from "../components/ui/button";
 import { shell } from "../stores/shell";
 import { settingsChunk } from "../surfaces/chunks";
 
@@ -26,6 +27,9 @@ export function useEnvironmentBlock(environmentId: string): { degraded: Degraded
   return { degraded, name, text: degraded ? degradedText(name, degraded, now) : null };
 }
 
+/** The line's one action: a ghost button in the line's own 11px muted type. */
+const ACTION = "h-5 px-1.5 text-[11px] font-normal text-muted-foreground hover:text-foreground";
+
 export function ConnectionLine({ environmentId }: { environmentId: string }) {
   const { degraded, text } = useEnvironmentBlock(environmentId);
   if (!degraded || !text) return null;
@@ -43,13 +47,13 @@ export function ConnectionLine({ environmentId }: { environmentId: string }) {
       )}
       <span className="min-w-0 flex-1 truncate">{text}</span>
       {unauthorized ? (
-        <button type="button" {...settingsChunk.intent} onClick={() => shell.openSettings("remote")} className="pressable shrink-0 rounded px-1.5 py-0.5 hover:bg-content/10 hover:text-content">
+        <Button variant="ghost" size="xs" {...settingsChunk.intent} onClick={() => shell.openSettings("remote")} className={ACTION}>
           Pair again
-        </button>
+        </Button>
       ) : degraded.kind !== "connecting" ? (
-        <button type="button" onClick={() => registry.retry(environmentId)} className="pressable shrink-0 rounded px-1.5 py-0.5 hover:bg-content/10 hover:text-content">
+        <Button variant="ghost" size="xs" onClick={() => registry.retry(environmentId)} className={ACTION}>
           Retry now
-        </button>
+        </Button>
       ) : null}
     </div>
   );

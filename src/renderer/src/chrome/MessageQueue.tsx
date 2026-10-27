@@ -8,6 +8,7 @@ import { modelsFor, resolveModel } from '../lib/models'
 import { HARNESSES, HARNESS_TITLE, type HarnessId } from '../lib/session'
 import { HarnessIcon } from './HarnessIcon'
 import { Button } from '../components/ui/button'
+import { Textarea } from '../components/ui/textarea'
 import { ChoiceSelect } from '../components/choice-select'
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip'
@@ -79,7 +80,7 @@ export function MessageQueue({
                   <GripVertical className="size-3.5" />
                 </span>
                 {editing === m.id ? (
-                  <textarea
+                  <Textarea
                     autoFocus
                     defaultValue={m.text}
                     rows={Math.min(4, m.text.split('\n').length)}
@@ -106,7 +107,7 @@ export function MessageQueue({
                       if (v && v !== m.text) onUpdate(m.id, v)
                     }}
                     aria-label="Edit queued message"
-                    className="min-w-0 flex-1 resize-none bg-transparent text-[13px] leading-5 text-foreground outline-none"
+                    className="field-sizing-fixed min-h-0 min-w-0 flex-1 resize-none rounded-none border-0 px-0 py-0 leading-5 text-foreground focus-within:shadow-none"
                   />
                 ) : (
                   <Button

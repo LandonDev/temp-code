@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "../components/ui/button";
 import type { Block } from "../lib/session";
 import { isErrorBlock } from "../lib/turnOutcome";
 import { isEditBlock } from "./editModel";
@@ -144,12 +145,12 @@ export const TranscriptMinimap = memo(function TranscriptMinimap({
         const spec = TICK[tick.kind];
         const hovered = hover?.id === tick.id;
         return (
-          <button
+          <Button
             key={tick.id}
-            type="button"
+            variant="ghost"
             tabIndex={-1}
             aria-label={`${spec.who}: ${tick.text.slice(0, 80)}`}
-            className="absolute left-0 flex h-[3px] items-center"
+            className="absolute left-0 h-[3px] justify-start rounded-none px-0 hover:bg-transparent active:bg-transparent"
             style={{ top: (index / ticks.length) * railH, width: 20 }}
             onMouseEnter={() => setHover(tick)}
             onClick={() => jump(tick)}
@@ -158,7 +159,7 @@ export const TranscriptMinimap = memo(function TranscriptMinimap({
               className={`block h-0.5 rounded-full transition-[width,opacity] duration-100 ${spec.className}`}
               style={{ width: spec.width + (hovered ? 4 : 0) }}
             />
-          </button>
+          </Button>
         );
       })}
       {hover ? (

@@ -37,6 +37,7 @@ vi.mock("../surfaces/chunks", async (importOriginal) => ({
 vi.mock("./ConfirmDialog", () => ({ useConfirm: () => async () => true }));
 
 import { FileTree } from "./FileTree";
+import { renamePath } from "../lib/fs";
 
 async function mount() {
   const onOpenFile = vi.fn();
@@ -120,5 +121,49 @@ describe("FileTree", () => {
     // Each verb with its glyph, and the file tree's real keys.
     expect((await row("Rename")).el.querySelector("svg")).toBeTruthy();
     expect((await row("Rename")).el.querySelector("kbd")?.textContent).toBe("F2");
+  });
+
+  describe("the rename field", () => {
+    async function startRename(): Promise<HTMLInputElement> {
+      await mount();
+      fireEvent.contextMenu(screen.getByRole("treeitem", { name: /README\.md/ }));
+      fireEvent.click((await row("Rename")).el);
+      return (await screen.findByRole("textbox")) as HTMLInputElement;
+    }
+    beforeEach(() => {
+      // jsdom has no layout: the field scrolls itself into view on open.
+      Element.prototype.scrollIntoView = vi.fn();
+      vi.mocked(renamePath).mockReset();
+      vi.mocked(renamePath).mockResolvedValue(`${ROOT}/NOTES.md`);
+    });
+
+    it("opens focused with the name's stem selected", async () => {
+      const input = await startRename();
+      expect(document.activeElement).toBe(input);
+      expect(input.value).toBe("README.md");
+      expect([input.selectionStart, input.selectionEnd]).toEqual([0, 6]);
+    });
+
+    it("commits on Enter", async () => {
+      const input = await startRename();
+      fireEvent.change(input, { target: { value: "NOTES.md" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      await vi.waitFor(() => expect(renamePath).toHaveBeenCalledWith("local", `${ROOT}/README.md`, "NOTES.md"));
+    });
+
+    it("cancels on Escape", async () => {
+      const input = await startRename();
+      fireEvent.change(input, { target: { value: "NOTES.md" } });
+      fireEvent.keyDown(input, { key: "Escape" });
+      expect(screen.queryByRole("textbox")).toBeNull();
+      expect(renamePath).not.toHaveBeenCalled();
+    });
+
+    it("commits on blur", async () => {
+      const input = await startRename();
+      fireEvent.change(input, { target: { value: "NOTES.md" } });
+      fireEvent.blur(input);
+      await vi.waitFor(() => expect(renamePath).toHaveBeenCalledWith("local", `${ROOT}/README.md`, "NOTES.md"));
+    });
   });
 });

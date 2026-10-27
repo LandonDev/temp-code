@@ -221,9 +221,9 @@ function VariableRow({ variable: v, onExpand }: { variable: DebugVariable; onExp
     );
   }
   return (
-    <button type="button" onClick={() => onExpand(v)} className={cn(shape, "hover:bg-foreground/5")} style={indent}>
+    <Button variant="ghost" onClick={() => onExpand(v)} className={cn(shape, "justify-start text-xs font-normal hover:bg-foreground/5")} style={indent}>
       {body}
-    </button>
+    </Button>
   );
 }
 

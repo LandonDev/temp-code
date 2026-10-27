@@ -32,6 +32,7 @@ import { modelLabel } from "../lib/threads/agents";
 import { AGENT_GLYPHS, THREAD_GLYPHS } from "../surfaces/threads/threadTypes";
 import { STATUS_WORD, StatusMark, type ThreadState } from "../components/ui/status";
 import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { cn } from "../lib/cn";
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
@@ -176,7 +177,7 @@ function InlineRename({
     }
   };
   return (
-    <input
+    <Input
       autoFocus
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
@@ -184,7 +185,7 @@ function InlineRename({
       onKeyDown={onKey}
       onClick={(e) => e.stopPropagation()}
       onFocus={(e) => e.currentTarget.select()}
-      className={cn("w-full rounded-md bg-background px-1.5 py-0.5 leading-snug text-foreground outline-none ring-1 ring-accent", className)}
+      className={cn("h-auto rounded-md bg-background px-1.5 py-px leading-snug text-foreground", className)}
     />
   );
 }

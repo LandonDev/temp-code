@@ -291,15 +291,15 @@ function AgentLineRow({ line, hostGlyph, onOpen }: { line: AgentLine; hostGlyph:
   const Glyph = line.agentType ? AGENT_GLYPHS[line.agentType] : line.threadType ? THREAD_GLYPHS[line.threadType] : null;
   return (
     <li>
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         onClick={(e) => {
           e.stopPropagation();
           onOpen(line.id);
         }}
         onKeyDown={stop}
         data-menu-id={line.id}
-        className="-mx-1 flex h-5 w-[calc(100%+8px)] min-w-0 cursor-default items-center gap-2 rounded-sm px-1 text-left text-xs hover:bg-foreground/5"
+        className="-mx-1 flex h-5 w-[calc(100%+8px)] min-w-0 justify-start gap-2 rounded-sm px-1 text-left text-xs font-normal hover:bg-foreground/5"
         data-agent={line.id}
       >
         <StatusMark state={line.state} word={false} />
@@ -309,7 +309,7 @@ function AgentLineRow({ line, hostGlyph, onOpen }: { line: AgentLine; hostGlyph:
           {line.detail}
         </span>
         {hostGlyph(line.environmentId)}
-      </button>
+      </Button>
     </li>
   );
 }

@@ -21,6 +21,7 @@ import {
   Trash2,
 } from "./icons";
 import { Button } from "@renderer/components/ui/button";
+import { Input } from "@renderer/components/ui/input";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import {
@@ -886,8 +887,8 @@ function TreeNode({ entry, depth }: { entry: FsEntry; depth: number }) {
         <Tooltip>
           <TooltipTrigger
             render={
-              <button
-                type="button"
+              <Button
+                variant="ghost"
                 role="treeitem"
                 data-path={entry.path}
                 aria-expanded={entry.isDir ? open : undefined}
@@ -896,8 +897,10 @@ function TreeNode({ entry, depth }: { entry: FsEntry; depth: number }) {
                 onClick={onClick}
                 data-menu-id={menuIdOf(entry)}
                 style={{ paddingLeft: 8 + depth * 12 }}
-                className={`flex h-7.5 w-full cursor-default items-center gap-1 pr-2 text-left text-[14px] leading-none text-foreground outline-none ${
-                  selected ? "bg-muted" : "hover:bg-foreground/5"
+                className={`flex h-7.5 w-full justify-start gap-1 rounded-none pr-2 text-left text-[14px] font-normal leading-none ${
+                  selected
+                    ? "bg-muted hover:bg-muted aria-expanded:bg-muted"
+                    : "hover:bg-foreground/5 aria-expanded:bg-transparent aria-expanded:hover:bg-foreground/5"
                 } ${cutPath === entry.path ? "opacity-50" : ""}`}
               />
             }
@@ -1018,7 +1021,7 @@ function NameRow({
         <span className="shrink-0">
           <FileTypeIcon name={leaf} isDir={isDir} />
         </span>
-        <input
+        <Input
           ref={inputRef}
           value={value}
           disabled={busy}
@@ -1044,7 +1047,7 @@ function NameRow({
             }
           }}
           onBlur={() => finish(issue === null || issue.severity !== "error")}
-          className="h-5 min-w-0 flex-1 rounded-md bg-background px-1 text-[14px] leading-none text-foreground outline-none ring-1 ring-ring"
+          className="h-5 flex-1 rounded-md bg-background px-1 py-0 text-[14px] leading-none"
         />
       </div>
       {showIssue ? (

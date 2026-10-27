@@ -671,15 +671,15 @@ function FileRow({
       </ItemMedia>
       <ItemContent className="min-w-0">
         {/* A deleted file has no diff to open, but its row still takes focus: its actions show on focus. */}
-        <button
-          type="button"
+        <Button
+          variant="ghost"
           aria-disabled={deleted || undefined}
           onClick={() => actions.open(file)}
-          className="flex min-w-0 items-center text-left outline-none before:absolute before:inset-0 before:content-[''] focus-visible:before:rounded-lg focus-visible:before:ring-2 focus-visible:before:ring-ring aria-disabled:cursor-default"
+          className="static flex h-auto min-w-0 justify-start rounded-none px-0 py-0 text-left font-normal before:absolute before:inset-0 before:content-[''] hover:bg-transparent focus-visible:before:rounded-lg focus-visible:before:ring-2 focus-visible:before:ring-ring active:bg-transparent active:not-aria-[haspopup]:scale-100 aria-disabled:cursor-default"
           aria-label={deleted ? `${file.relative}, deleted` : `Open the diff of ${file.relative}`}
         >
           <FileName relative={file.relative} muted={deleted} />
-        </button>
+        </Button>
       </ItemContent>
       <ItemActions className="relative z-10 gap-1">
         {rowBusy ? (
