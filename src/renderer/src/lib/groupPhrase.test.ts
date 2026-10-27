@@ -77,6 +77,16 @@ describe("groupPhrase", () => {
     expect(groupPhrase([bash("git status && npm test && bun run build")], CWD)).not.toMatch(/·|\+\d/);
   });
 
+  it("says one clause for a command of two, so its parts never read as two calls", () => {
+    expect(groupPhrase([read("a.ts"), bash("git status && npm test")], CWD)).toBe("Read a.ts, checked git status");
+    expect(groupPhrase([bash("git status && npm test")], CWD, true)).toBe("Checking git status");
+  });
+
+  it("keeps a described command whole, commas and all", () => {
+    const described = call("Bash", { command: "make", description: "Run the build, then sign" }, { id: "d" });
+    expect(groupPhrase([described], CWD)).toBe("Ran the build, then sign");
+  });
+
   it("ignores non-tool blocks and falls back for a call it cannot name", () => {
     expect(groupPhrase([{ id: "p", role: "assistant", text: "hi" }])).toBe("");
     expect(

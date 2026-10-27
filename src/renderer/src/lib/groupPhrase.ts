@@ -1,6 +1,6 @@
 import type { Block } from "./session";
 import { displayPath, projectName } from "./paths";
-import { isLive, kindOf, pathOf, toolPhrase } from "./toolPhrase";
+import { isLive, kindOf, pathOf, runClauses, toolPhrase } from "./toolPhrase";
 import { editModel, isEditBlock } from "../surfaces/editModel";
 import { splitEditCards } from "../surfaces/editCards";
 
@@ -75,11 +75,6 @@ function editsPhrases(edits: { verb: EditVerb; path: string }[], live: boolean):
   });
 }
 
-/** A command's phrase with one clause: the group line never says " · ". */
-function oneClause(phrase: string): string {
-  return phrase.split(" · ")[0].replace(/ \+\d+ more$/, "");
-}
-
 type Stretch = "read" | "edit" | "run" | "search" | "other";
 
 function stretchOf(block: Block): Stretch {
@@ -108,7 +103,8 @@ function stretchPhrases(stretch: Stretch, blocks: Block[], cwd: string | undefin
         live,
       );
     case "run":
-      if (blocks.length === 1) return [oneClause(toolPhrase(blocks[0], cwd, live))];
+      // One clause per command: the line's commas join phrases, never a command's parts.
+      if (blocks.length === 1) return [runClauses(blocks[0], cwd, live)[0] ?? `${live ? "Running" : "Ran"} a command`];
       return [`${live ? "Running" : "Ran"} ${blocks.length} commands`];
     case "search":
       if (blocks.length === 1) return [toolPhrase(blocks[0], cwd, live)];

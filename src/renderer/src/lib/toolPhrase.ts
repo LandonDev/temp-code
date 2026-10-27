@@ -460,23 +460,38 @@ export function commandPhrases(raw: string, cwd?: string): string[] {
   return out;
 }
 
+/** A title the fold already turned into "Read x" / "Find x", for a call with no command. */
+function foldedTitle(block: Block): RegExpExecArray | null {
+  if (str(inputOf(block).description).trim() || inputOf(block).command !== undefined) return null;
+  const title = (block.text || block.tool?.title || "").trim();
+  return /^(Read|Find|List|Edit|Write|Delete|Move|Fetch|Create)\s+(.+)$/.exec(title);
+}
+
+/**
+ * A run call's words as clauses, the first capitalized: a description or a
+ * folded title is one clause, a command one per distinct segment ("Checked
+ * git status", "ran the tests"). Empty when nothing can be said. The row
+ * joins the first two; the group line (lib/groupPhrase.ts) keeps the first.
+ */
+export function runClauses(block: Block, cwd?: string, live = isLive(block)): string[] {
+  const desc = str(inputOf(block).description).trim();
+  if (desc) return [cap(tense(trim(desc.charAt(0).toLowerCase() + desc.slice(1), 60), live))];
+  const m = foldedTitle(block);
+  if (m) return [`${cap(tense(m[1] === "Find" ? "search for" : m[1].toLowerCase(), live))} ${m[2]}`];
+  return commandPhrases(commandOf(block), cwd).map((p, i) => (i === 0 ? cap(tense(p, live)) : tense(p, live)));
+}
+
 /** The run row's words: a description or the command's gist, split at the verb. */
 function runParts(block: Block, cwd: string | undefined, live: boolean): PhraseParts {
-  const desc = str(inputOf(block).description).trim();
-  if (desc) return splitVerb(cap(tense(trim(desc.charAt(0).toLowerCase() + desc.slice(1), 60), live)));
-  if (inputOf(block).command === undefined) {
-    // The fold may already have turned the command into "Read x" / "Find x".
-    const title = (block.text || block.tool?.title || "").trim();
-    const m = /^(Read|Find|List|Edit|Write|Delete|Move|Fetch|Create)\s+(.+)$/.exec(title);
-    if (m) {
-      const verb = m[1] === "Find" ? "search for" : m[1].toLowerCase();
-      return { verb: cap(tense(verb, live)), object: m[2] };
-    }
+  const m = foldedTitle(block);
+  if (m) {
+    const verb = m[1] === "Find" ? "search for" : m[1].toLowerCase();
+    return { verb: cap(tense(verb, live)), object: m[2] };
   }
-  const phrases = commandPhrases(commandOf(block), cwd).map((p) => tense(p, live));
-  if (phrases.length === 0) return { verb: live ? "Running" : "Ran", object: "a command" };
-  const extra = phrases.length - 2;
-  return splitVerb(cap(phrases.slice(0, 2).join(", ") + (extra > 0 ? ` +${extra} more` : "")));
+  const clauses = runClauses(block, cwd, live);
+  if (clauses.length === 0) return { verb: live ? "Running" : "Ran", object: "a command" };
+  const extra = clauses.length - 2;
+  return splitVerb(clauses.slice(0, 2).join(", ") + (extra > 0 ? ` +${extra} more` : ""));
 }
 
 /** "Ran the tests" → verb "Ran", object "the tests"; the phrase's first word. */

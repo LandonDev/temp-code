@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Block, ToolPreview } from "./session";
-import { commandPhrases, humanName, kindOf, toolPhrase, toolPhraseParts } from "./toolPhrase";
+import { commandPhrases, humanName, kindOf, runClauses, toolPhrase, toolPhraseParts } from "./toolPhrase";
 
 const CWD = "/Users/me/monocode";
 
@@ -255,5 +255,21 @@ describe("commandPhrases", () => {
     expect(commandPhrases(`/bin/zsh -lc 'cd /x && git diff | cat'`)).toEqual(["view the diff"]);
     expect(commandPhrases("FOO=1 env npm run check:web")).toEqual(["run npm run check:web"]);
     expect(commandPhrases("echo hi > out.txt")).toEqual(["write out.txt"]);
+  });
+});
+
+describe("runClauses", () => {
+  it("is one clause per command segment, the first capitalized; the row joins two", () => {
+    const run = call("Bash", { command: "git status && npm test" });
+    expect(runClauses(run)).toEqual(["Checked git status", "ran the tests"]);
+    expect(toolPhrase(run)).toBe("Checked git status, ran the tests");
+  });
+
+  it("is one clause for a description or a folded title, and none for nothing", () => {
+    expect(runClauses(call("Bash", { command: "make", description: "Run the build, then sign" }))).toEqual(["Ran the build, then sign"]);
+    expect(runClauses({ id: "f", role: "tool", text: "Find tokens", tool: { kind: "execute", title: "Find tokens" } })).toEqual([
+      "Searched for tokens",
+    ]);
+    expect(runClauses(call("Bash", { command: "" }))).toEqual([]);
   });
 });
