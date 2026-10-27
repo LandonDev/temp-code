@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo } from "react";
+import { lazy, Suspense, useContext, useMemo } from "react";
 import { Button } from "@renderer/components/ui/button";
 import { Spinner } from "@renderer/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@renderer/components/ui/tabs";
@@ -35,6 +35,7 @@ import { useActivity } from "../lib/activity";
 import { ActivitySection } from "./threads/ActivitySection";
 import { FleetList } from "./threads/fleet/FleetPanel";
 import { NotesBody } from "./threads/NotesPanel";
+import { SessionActionsContext } from "./threadChat";
 
 // The Debug section drives the editor chunk's DAP session; it loads with it.
 const DebugPanel = lazy(() => import("../chrome/rail/DebugPanel"));
@@ -176,6 +177,7 @@ function SectionBody({
 }: RightPanelProps & { section: Section; project: ProjectMeta | undefined }) {
   const cwd = project?.cwd ?? session.cwd;
   const gitStatuses = useGitFileStatuses(cwd, section === "files");
+  const actions = useContext(SessionActionsContext);
   switch (section) {
     case "activity":
       return <ActivitySection threadId={session.id} onOpenAgents={() => rightPanel.open(session.id, "agents")} />;
@@ -194,7 +196,16 @@ function SectionBody({
     case "changes":
       return <ChangesPanel cwd={cwd} selectedPath={selectedPath} onOpenDiff={onOpenDiff} />;
     case "files":
-      return <FileTree key={cwd} cwd={cwd} onOpenFile={onOpenFile} gitStatuses={gitStatuses} />;
+      return (
+        <FileTree
+          key={cwd}
+          cwd={cwd}
+          onOpenFile={onOpenFile}
+          onFileMoved={actions?.onFileMoved}
+          onFileDeleted={actions?.onFileDeleted}
+          gitStatuses={gitStatuses}
+        />
+      );
     case "branch":
       return project ? <BranchPanel projectId={project.id} selectedPath={selectedPath} onOpenDiff={onOpenDiff} /> : null;
     case "build":

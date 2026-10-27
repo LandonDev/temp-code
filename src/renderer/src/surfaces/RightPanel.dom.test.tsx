@@ -43,11 +43,18 @@ vi.mock("../chrome/rail/BranchPanel", () => ({ BranchPanel: () => <div>branch</d
 vi.mock("../chrome/rail/BuildPanel", () => ({ BuildPanel: () => <div>build</div> }));
 vi.mock("../chrome/rail/DevServerPanel", () => ({ DevServerPanel: () => <div>dev</div> }));
 vi.mock("../chrome/rail/DebugPanel", () => ({ default: () => <div>debug</div> }));
-vi.mock("../chrome/FileTree", () => ({ FileTree: () => <div data-testid="files-body">files</div> }));
+vi.mock("../chrome/FileTree", () => ({
+  FileTree: (p: { onFileMoved?: (from: string, to: string) => void }) => (
+    <button type="button" data-testid="files-body" onClick={() => p.onFileMoved?.("/p/a.ts", "/p/b.ts")}>
+      files
+    </button>
+  ),
+}));
 
 import { rightPanel } from "../lib/rightPanel";
 import type { Session } from "../lib/session";
 import { RightPanel } from "./RightPanel";
+import { SessionActionsContext, type SessionActions } from "./threadChat";
 
 const session = { id: "s1", environmentId: "local", title: "T", cwd: "/p", projectId: "p1", status: "idle", blocks: [] } as unknown as Session;
 const agent = (id: string, status: string) => ({ id, status, parentId: "s1" }) as unknown as SessionMeta;
@@ -96,6 +103,18 @@ describe("RightPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Hide panel" }));
     expect(rightPanel.get("s1").open).toBe(false);
     expect(screen.queryByRole("tab")).toBeNull();
+  });
+
+  it("the file tree's moves reach App's handler, so open tabs follow a rename", () => {
+    rightPanel.open("s1", "files");
+    const onFileMoved = vi.fn();
+    render(
+      <SessionActionsContext.Provider value={{ onFileMoved } as unknown as SessionActions}>
+        <RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />
+      </SessionActionsContext.Provider>,
+    );
+    fireEvent.click(screen.getByTestId("files-body"));
+    expect(onFileMoved).toHaveBeenCalledWith("/p/a.ts", "/p/b.ts");
   });
 
   it("a chat with no project has notes alone", () => {

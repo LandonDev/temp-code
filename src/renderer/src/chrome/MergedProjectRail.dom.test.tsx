@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { fireEvent } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registry, type Environment, type EnvironmentStatus, type Link } from "../lib/connection";
 import type { ServerPush, SessionMeta, WorkspaceMeta } from "../lib/tcserver/types";
@@ -136,7 +137,7 @@ describe("the linked workspace's thread rows", () => {
 });
 
 describe("the rail", () => {
-  async function mountRail(environments: Environment[], statuses: Record<string, EnvironmentStatus> = {}) {
+  async function mountRail(environments: Environment[], statuses: Record<string, EnvironmentStatus> = {}, onSelectProject = (_: string) => {}) {
     pairHosts(environments, statuses);
     for (const e of environments) {
       workspaceStore.attach(new FakeLink(e.id));
@@ -147,7 +148,7 @@ describe("the rail", () => {
       <ProjectRail
         cwd="~"
         recents={[{ path: BOX_PATH, openedAt: 3 }, { path: MAC_PATH, openedAt: 2 }, { path: ONLY_BOX, openedAt: 1 }]}
-        onSelectProject={() => {}}
+        onSelectProject={onSelectProject}
         onOpenProject={() => {}}
         onOpenChats={() => {}}
       />,
@@ -176,6 +177,18 @@ describe("the rail", () => {
     expect(headers(root)).not.toContain("Accounts");
     // The rows themselves carry no title= (the status chip is A2's mark).
     expect(list.querySelector("[data-rail-row] > button[title]")).toBeNull();
+  });
+
+  it("selects a workspace from a click on its row, which the drag's pointer capture sends to the wrapper", async () => {
+    const onSelect = vi.fn();
+    const root = await mountRail([LOCAL, BOX], {}, onSelect);
+    const [lead, other] = workspaceRows(root);
+    fireEvent.click(lead);
+    expect(onSelect).toHaveBeenCalledWith(MAC_PATH);
+    fireEvent.click(other.querySelector("button")!);
+    expect(onSelect).toHaveBeenLastCalledWith(ONLY_BOX);
+    fireEvent.click(other.querySelector('[aria-label="Workspace options"]')!);
+    expect(onSelect).toHaveBeenCalledTimes(2);
   });
 
   it("counts both copies' threads on the row's status", async () => {

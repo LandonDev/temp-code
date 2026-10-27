@@ -822,7 +822,10 @@ function WorkspaceRow({
           if ((event.target as HTMLElement | null)?.closest("[data-no-drag]")) return;
           sortable.onItemPointerDown(item.path, event);
         }}
-        onClick={() => {
+        // The sortable captures the pointer on this wrapper, so a mouse click
+        // lands here, not on the row's button; a keyboard click bubbles here.
+        onClickCapture={(event) => {
+          if ((event.target as HTMLElement | null)?.closest("[data-no-drag]")) return;
           if (sortable.consumeClick()) return;
           onSelect(item.path);
         }}

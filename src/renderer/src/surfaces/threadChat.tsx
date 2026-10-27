@@ -74,6 +74,9 @@ export type SessionActions = {
   onHandoffCardDismiss?: (sessionId: string) => void;
   onSecondOpinion?: (sessionId: string, harness: HarnessId, turn: Block[], model: string) => void;
   onHandoff?: (sessionId: string, harness: HarnessId, turn: Block[], model: string) => void;
+  /** The right panel's file tree moved or deleted a path: open tabs follow it. */
+  onFileMoved?: (from: string, to: string) => void;
+  onFileDeleted?: (path: string) => void;
 };
 
 export const SessionActionsContext = createContext<SessionActions | null>(null);

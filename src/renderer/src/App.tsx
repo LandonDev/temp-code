@@ -3554,6 +3554,8 @@ export default function App() {
       onHandoffCardDismiss,
       onSecondOpinion,
       onHandoff,
+      onFileMoved,
+      onFileDeleted,
     }),
     [
       onSubmit,
@@ -3571,6 +3573,8 @@ export default function App() {
       onHandoffCardDismiss,
       onSecondOpinion,
       onHandoff,
+      onFileMoved,
+      onFileDeleted,
     ],
   );
 

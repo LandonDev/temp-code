@@ -79,9 +79,15 @@ export function RailRow({
   ...wrapper
 }: Props) {
   const hasTrailing = trailing != null || !!hoverAction;
+  // A control in the trailing slot (a status chip) keeps its place and the
+  // hover action follows it; a plain mark yields its place to the action.
   const trailingSlot = hasTrailing ? (
-    <span data-rail-trailing className={cn(TRAILING, hoverAction && YIELDS, trailingInteractive && "pr-3")}>
+    <span
+      data-rail-trailing
+      className={cn(TRAILING, hoverAction && !trailingInteractive && YIELDS, trailingInteractive && (hoverAction ? "pr-1" : "pr-3"))}
+    >
       {trailing}
+      {trailingInteractive && hoverAction ? <HoverAction action={hoverAction} inline /> : null}
     </span>
   ) : null;
   const rowProps = {
@@ -131,13 +137,13 @@ export function RailRow({
         <Button {...rowProps}>{content}</Button>
       )}
       {trailingInteractive ? trailingSlot : null}
-      {hoverAction ? <HoverAction action={hoverAction} /> : null}
+      {hoverAction && !trailingInteractive ? <HoverAction action={hoverAction} /> : null}
       {children}
     </div>
   );
 }
 
-function HoverAction({ action }: { action: RailRowAction }) {
+function HoverAction({ action, inline = false }: { action: RailRowAction; inline?: boolean }) {
   const { icon: Icon } = action;
   return (
     <Tooltip>
@@ -156,7 +162,8 @@ function HoverAction({ action }: { action: RailRowAction }) {
               action.onClick(event);
             }}
             className={cn(
-              "absolute top-1/2 right-1 -translate-y-1/2 text-muted-foreground hover:text-foreground",
+              !inline && "absolute top-1/2 right-1 -translate-y-1/2",
+              "text-muted-foreground hover:text-foreground",
               "pointer-events-none opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-none",
               "group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100 group-hover/row:pointer-events-auto group-hover/row:opacity-100",
               action.expanded && "pointer-events-auto opacity-100",

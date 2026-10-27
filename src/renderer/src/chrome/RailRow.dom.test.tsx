@@ -62,6 +62,24 @@ describe("RailRow", () => {
     expect(onRowClick).not.toHaveBeenCalled();
   });
 
+  it("an interactive trailing control stays shown, with the hover action after it, never over it", () => {
+    const { container } = render(
+      <RailRow
+        icon={Inbox}
+        label="alpha"
+        trailingInteractive
+        trailing={<button type="button">chip</button>}
+        hoverAction={{ label: "Workspace options", icon: MoreHorizontal, onClick: () => {} }}
+      />,
+    );
+    const slot = container.querySelector("[data-rail-trailing]")!;
+    expect(slot.className).not.toContain("group-hover/row:opacity-0");
+    const action = screen.getByRole("button", { name: "Workspace options" });
+    expect(slot.contains(action)).toBe(true);
+    expect(action.className).not.toContain("absolute");
+    expect(screen.getByRole("button", { name: "chip" }).compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("keeps an interactive trailing control outside the row's button", () => {
     render(<RailRow icon={Inbox} label="alpha" trailingInteractive trailing={<button type="button">chip</button>} />);
     const row = screen.getByRole("button", { name: "alpha" });
