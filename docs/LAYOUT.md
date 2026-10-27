@@ -343,6 +343,12 @@ State* (shimmer + elapsed while waiting). User messages render as
 Cursor-style bordered rounded fields, not colored bubbles. Column
 max-w-3xl centered.
 
+While the thread has changes nobody kept, the checkpoint strip sits on the
+composer's top edge (chrome/SessionReview.tsx): one 32px row with the file's
+name, or "3 files", and its `+n −n`, which opens the diff pane, then Undo
+(after a confirm naming what goes back) and Keep. With nothing to keep it is
+absent. It is the one control for the host's checkpoint.
+
 ### The board views: one frame
 
 Plan, research, project plan, implementation and master share

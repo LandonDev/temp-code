@@ -1374,7 +1374,8 @@ proof and the sizing rules; the pieces, by name:
 - Checkpoints are the host's (src/main/server/checkpointTurns.ts): a
   settled live edit costs a set lookup, a turn's settle writes the manifest
   and syncs once and pushes `checkpoint-changed`; status, undo and keep
-  take a sessionId only.
+  take a sessionId only. The strip above the composer
+  (chrome/SessionReview.tsx) is their only control, and its Undo confirms.
 - A thread's pane tells `loading`, `slow` and `failed` from empty (the
   store's `load` phase, request deadlines and retries in
   lib/connection/transport.ts and link.ts); empty is the host's word
