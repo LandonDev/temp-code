@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import { toast } from "sonner";
 import { Button } from "@renderer/components/ui/button";
 import type { ApprovalDecision } from "../lib/harness";
 import { hiddenApprovalNotices, type PendingApprovalNotice } from "../lib/approvalToast";
@@ -41,7 +40,7 @@ export function ApprovalToasts({ notices, onFocusSession, onApproval }: Props) {
   useToastSync(
     notices,
     (notice) => `approval:${notice.sessionId}:${notice.requestId}`,
-    ({ session, label, requestId }, id) =>
+    (toast, { session, label, requestId }, id) =>
       toast.warning(
         <Button variant="link" className="h-auto p-0 font-medium" onClick={() => onFocusSession(session.id)}>
           {sessionDisplayTitle(session.title, session.harness)}

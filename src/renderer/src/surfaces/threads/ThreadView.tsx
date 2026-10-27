@@ -14,7 +14,10 @@ const MasterView = threadViewsChunk.surface("MasterView", skeleton);
 const OrchestrationView = threadViewsChunk.surface("OrchestrationView", skeleton);
 const PlanView = threadViewsChunk.surface("PlanView", skeleton);
 const ResearchView = threadViewsChunk.surface("ResearchView", skeleton);
-import { RightPanel } from "../RightPanel";
+// The panel rides its own chunk and mounts only while open, so a closed panel costs nothing.
+const RightPanel = rightPanelChunk.surface("RightPanel", <SurfaceSkeleton kind="pane" label="Loading panel" />);
+import { useRightPanel } from "../../lib/rightPanel";
+import { rightPanelChunk } from "../chunks";
 
 export type { ChatOpts } from "./chatSlots";
 
@@ -36,17 +39,20 @@ export type ThreadViewProps = ChatSource & {
 export function ThreadView(props: ThreadViewProps) {
   const { session } = props;
   const master = isMasterThread(session);
+  const panelOpen = useRightPanel(session.id).open;
   const view = master ? <MasterView {...props} /> : typeView(props);
   if (session.parentId) return view;
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1">
       {view}
-      <RightPanel
-        session={session}
-        onOpenFile={props.onOpenFile}
-        onOpenDiff={props.onOpenDiff}
-        onOpenSession={props.onOpenSession}
-      />
+      {panelOpen ? (
+        <RightPanel
+          session={session}
+          onOpenFile={props.onOpenFile}
+          onOpenDiff={props.onOpenDiff}
+          onOpenSession={props.onOpenSession}
+        />
+      ) : null}
     </div>
   );
 }

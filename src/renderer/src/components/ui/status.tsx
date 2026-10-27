@@ -143,7 +143,7 @@ function Glyph({ state, className }: { state: ThreadState; className?: string })
     case "stopped":
       return <Square className={cn(c, "size-3")} />;
     case "watching":
-      return <Circle className={cn(c, "status-watching")} />;
+      return <Circle className={c} />;
     case "plan-ready":
       return <FileText className={c} />;
     case "done":
@@ -152,6 +152,9 @@ function Glyph({ state, className }: { state: ThreadState; className?: string })
       return <Circle className={cn(c, "opacity-50")} />;
   }
 }
+
+/** A live state's glyph breathes once over `--dur-slow` when the state changes (the key remounts it); nothing loops. */
+const LIVE: ReadonlySet<ThreadState> = new Set(["working", "waiting", "watching"]);
 
 /** The glyph alone (`word={false}`) for tight rows, glyph and the state's word, or glyph and a given word (a link's). */
 export function StatusMark({
@@ -169,7 +172,9 @@ export function StatusMark({
       className={cn("inline-flex items-center gap-1.5 text-xs font-medium", TONE_CLASS[STATUS_TONE[state]], className)}
       {...props}
     >
-      <Glyph state={state} />
+      <span key={state} className={cn("flex", LIVE.has(state) && "status-breathe")}>
+        <Glyph state={state} />
+      </span>
       {text}
     </span>
   );

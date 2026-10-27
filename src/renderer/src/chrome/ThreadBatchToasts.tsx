@@ -1,4 +1,3 @@
-import { toast } from "sonner";
 import { dismissBatchNotice, useBatchNotices, type BatchNotice } from "../lib/threadBatch";
 import { useToastSync } from "./toastSync";
 
@@ -18,7 +17,7 @@ export function ThreadBatchToasts({ onOpen }: Props): null {
   useToastSync(
     useBatchNotices(),
     (notice) => `batch:${notice.key}`,
-    (notice, id) => {
+    (toast, notice, id) => {
       const [first, ...rest] = notice.failed;
       const title = `${VERB[notice.action]} ${notice.succeeded}`;
       const done = () => dismissBatchNotice(notice.key);

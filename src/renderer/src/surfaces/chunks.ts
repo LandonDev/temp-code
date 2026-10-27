@@ -28,6 +28,8 @@ export const mediaChunk = defineChunk("media", () => import("./MediaViewer"));
 export const lightboxChunk = defineChunk("lightbox", () => import("../chrome/Lightbox"));
 /** The release notes tab, with the bundled changelog. */
 export const releaseNotesChunk = defineChunk("releaseNotes", () => import("./ReleaseNotesSurface"));
+/** The thread's right panel with its section bodies (RightPanel). */
+export const rightPanelChunk = defineChunk("rightPanel", () => import("./RightPanel"));
 
 /** Every chunk, for the tests and the idle warm-up. */
 export const allChunks = {
@@ -41,4 +43,5 @@ export const allChunks = {
   mediaChunk,
   lightboxChunk,
   releaseNotesChunk,
+  rightPanelChunk,
 };

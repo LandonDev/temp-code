@@ -49,7 +49,10 @@ describe("ThreadBatchToasts", () => {
     expect(title).toBe("Paused 3");
     expect(opts.duration).toBe(8_000);
     expect(toast.error).not.toHaveBeenCalled();
-    act(() => opts.onAutoClose?.());
+    await act(async () => {
+      opts.onAutoClose?.();
+      await Promise.resolve();
+    });
     expect(toast.dismiss).toHaveBeenCalledWith(opts.id);
   });
 
@@ -79,7 +82,10 @@ describe("ThreadBatchToasts", () => {
     render(<ThreadBatchToasts onOpen={() => {}} />);
     await act(() => runThreadBatch("resume", sel));
     const opts = options(vi.mocked(toast).mock.calls[0]);
-    act(() => opts.onDismiss());
+    await act(async () => {
+      opts.onDismiss();
+      await Promise.resolve();
+    });
     expect(toast.dismiss).toHaveBeenCalledWith(opts.id);
   });
 });

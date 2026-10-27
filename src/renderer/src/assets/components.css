@@ -158,21 +158,20 @@
   }
 }
 
-/* StatusMark: the watching glyph breathes, slowly. */
-@keyframes status-watching {
+/* StatusMark: a live glyph breathes once when its state changes; nothing loops. */
+@keyframes status-breathe {
   50% {
     opacity: 0.35;
   }
 }
 
-.status-watching {
-  animation: status-watching 2.4s ease-in-out infinite;
+.status-breathe {
+  animation: status-breathe var(--dur-slow) var(--ease-out) 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .status-watching {
+  .status-breathe {
     animation: none;
-    opacity: 0.6;
   }
 }
 

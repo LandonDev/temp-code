@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { toast } from "sonner";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Block, Session } from "../lib/session";
@@ -18,11 +18,15 @@ const notice = { sessionId: "s1", requestId: 7, label: "Bash: bun test", block: 
 
 type Options = { id: string; description: string; duration: number; action: { onClick: () => void }; cancel: { onClick: () => void } };
 
+// sonner loads on the first toast (chrome/toastSync.ts), so a toast lands a microtask after the render.
+const flush = () => act(() => Promise.resolve());
+
 describe("ApprovalToasts", () => {
-  it("holds a sonner toast per approval: the title opens the thread, Allow and Deny answer it", () => {
+  it("holds a sonner toast per approval: the title opens the thread, Allow and Deny answer it", async () => {
     const onFocusSession = vi.fn();
     const onApproval = vi.fn();
     const { container } = render(<ApprovalToasts notices={[notice]} onFocusSession={onFocusSession} onApproval={onApproval} />);
+    await flush();
     expect(container.innerHTML).toBe("");
     expect(toast.warning).toHaveBeenCalledTimes(1);
     const [title, raw] = vi.mocked(toast.warning).mock.calls[0];
@@ -39,11 +43,13 @@ describe("ApprovalToasts", () => {
     expect(onFocusSession).toHaveBeenCalledWith("s1");
   });
 
-  it("dismisses the toast once the approval is answered", () => {
+  it("dismisses the toast once the approval is answered", async () => {
     const props = { onFocusSession: vi.fn(), onApproval: vi.fn() };
     const { rerender } = render(<ApprovalToasts notices={[notice]} {...props} />);
+    await flush();
     const id = (vi.mocked(toast.warning).mock.calls[0][1] as unknown as Options).id;
     rerender(<ApprovalToasts notices={[]} {...props} />);
+    await flush();
     expect(toast.dismiss).toHaveBeenCalledWith(id);
   });
 });

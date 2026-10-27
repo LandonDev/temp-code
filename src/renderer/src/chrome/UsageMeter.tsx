@@ -2,7 +2,6 @@ import { useRef, useState } from "react";
 import { registry } from "../lib/connection";
 import { Button } from "../components/ui/button";
 import { Progress } from "../components/ui/progress";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { AccountsPopover } from "./AccountsPopover";
 import { HarnessIcon } from "./HarnessIcon";
 import { scopeOf } from "../lib/accountScope";
@@ -72,32 +71,22 @@ function MeterRow({
 
   return (
     <>
-      <Tooltip>
-        <TooltipTrigger
-          ref={anchor}
-          render={
-            <Button
-              variant="ghost"
-              className="h-9 w-full justify-start gap-2 rounded-md px-2.5 font-normal"
-              aria-haspopup="listbox"
-              aria-expanded={open}
-              aria-label={`${HARNESS_TITLE[provider]} usage`}
-              data-provider={provider}
-              onClick={() => setOpen((v) => !v)}
-            />
-          }
-        >
-          <HarnessIcon harness={provider} className="size-4 shrink-0" />
-          <Progress value={left} aria-label={`${HARNESS_TITLE[provider]} usage left`} className="w-20 shrink-0" />
-          {resets ? (
-            <span className="min-w-0 truncate text-[12px] text-muted-foreground tabular-nums">{resets}</span>
-          ) : null}
-        </TooltipTrigger>
-        <TooltipContent side="right">
-          <span>{HARNESS_TITLE[provider]}</span>
-          {left === null ? null : <span className="tabular-nums">{left}% left</span>}
-        </TooltipContent>
-      </Tooltip>
+      <Button
+        ref={anchor}
+        variant="ghost"
+        className="h-9 w-full justify-start gap-2 rounded-md px-2.5 font-normal"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={left === null ? `${HARNESS_TITLE[provider]} usage` : `${HARNESS_TITLE[provider]} usage, ${left}% left`}
+        data-provider={provider}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <HarnessIcon harness={provider} className="size-4 shrink-0" />
+        <Progress value={left} aria-label={`${HARNESS_TITLE[provider]} usage left`} className="w-20 shrink-0" />
+        {resets ? (
+          <span className="min-w-0 truncate text-[12px] text-muted-foreground tabular-nums">{resets}</span>
+        ) : null}
+      </Button>
       {open ? (
         <AccountsPopover
           anchor={anchor}

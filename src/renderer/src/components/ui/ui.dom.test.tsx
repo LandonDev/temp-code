@@ -163,6 +163,13 @@ describe("StatusMark", () => {
     rerender(<StatusMark state="done" word="Connected" />);
     expect(screen.getByText("Connected").dataset.state).toBe("done");
   });
+
+  it("a live glyph breathes once on a state change; a settled one is still", () => {
+    const { container, rerender } = render(<StatusMark state="watching" />);
+    expect(container.querySelector(".status-breathe")).not.toBeNull();
+    rerender(<StatusMark state="done" />);
+    expect(container.querySelector(".status-breathe")).toBeNull();
+  });
 });
 
 describe("Skeleton", () => {
