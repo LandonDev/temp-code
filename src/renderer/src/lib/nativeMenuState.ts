@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { EMPTY_MENU_STATE, sameMenuState, type MenuState } from "@shared/menuTree";
 import { shellStore } from "../stores/shell";
 import { threadsToMarkRead } from "./markRead";
-import { isWebMode } from "./nativeWeb";
+import { menuStateSender } from "./native";
 import { rightPanel } from "./rightPanel";
 import { loadLastSeen, seenFloor, subscribeLastSeen } from "./sessionSeen";
 import { loadNotesEnabled, subscribeNotesEnabled } from "./settings";
@@ -127,7 +127,7 @@ export function publishMenuState(
 export function useNativeMenuState(dock: { dockOpen: boolean; dockUsable: boolean }): void {
   const { dockOpen, dockUsable } = dock;
   useEffect(() => {
-    const setState = isWebMode() ? undefined : window.api?.menu?.setState;
+    const setState = menuStateSender();
     if (!setState) return;
     const publisher = publishMenuState(() => ({ dockOpen, dockUsable }), setState);
     return publisher.stop;
