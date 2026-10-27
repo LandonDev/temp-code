@@ -4,11 +4,13 @@ import {
   dedupePairedFiles,
   formatSeconds,
   hostTimingLabel,
+  hostToken,
   hostsMatching,
   matchesProject,
   mergeCrossHost,
   noteHits,
   parseSearchQuery,
+  setQueryToken,
   runCrossHostSearch,
   scoreMessages,
   transcriptHits,
@@ -66,29 +68,67 @@ describe("parseSearchQuery", () => {
   it("lifts host:, type: and project: tokens out of the words", () => {
     expect(parseSearchQuery("gateway host:box trace type:thread,file project:Temp-Code")).toEqual({
       text: "gateway trace",
-      host: "box",
+      hosts: ["box"],
       types: ["thread", "file"],
       project: "temp-code",
     });
   });
 
+  it("takes a comma list of hosts, lower-cased, across several tokens", () => {
+    expect(parseSearchQuery("fts host:box,Mac").hosts).toEqual(["box", "mac"]);
+    expect(parseSearchQuery("host:box fts host:gpu,box").hosts).toEqual(["box", "gpu"]);
+  });
+
   it("treats a token still being typed, an unknown key and an unknown type as words or nothing", () => {
-    expect(parseSearchQuery("host: fts")).toEqual({ text: "fts", host: null, types: null, project: null });
-    expect(parseSearchQuery("url:http type:bogus")).toEqual({ text: "url:http", host: null, types: null, project: null });
-    expect(parseSearchQuery("type:notes type:files")).toEqual({ text: "", host: null, types: ["note", "file"], project: null });
-    expect(parseSearchQuery("   ")).toEqual({ text: "", host: null, types: null, project: null });
+    expect(parseSearchQuery("host: fts")).toEqual({ text: "fts", hosts: null, types: null, project: null });
+    expect(parseSearchQuery("url:http type:bogus")).toEqual({ text: "url:http", hosts: null, types: null, project: null });
+    expect(parseSearchQuery("type:notes type:files")).toEqual({ text: "", hosts: null, types: ["note", "file"], project: null });
+    expect(parseSearchQuery("   ")).toEqual({ text: "", hosts: null, types: null, project: null });
   });
 });
 
 describe("hostsMatching", () => {
   const hosts = [env("local", "This Mac"), env("env_box1", "box")];
   it("names a host by name, by id, or by mac for the macOS host; every host without a token", () => {
-    expect(hostsMatching("box", hosts).map((h) => h.id)).toEqual(["env_box1"]);
-    expect(hostsMatching("env_box1", hosts).map((h) => h.id)).toEqual(["env_box1"]);
-    expect(hostsMatching("mac", hosts).map((h) => h.id)).toEqual(["local"]);
-    expect(hostsMatching("mac", [env("local", "This host"), env("b", "box")], true).map((h) => h.id)).toEqual(["local"]);
-    expect(hostsMatching("mac", [env("local", "This host"), env("b", "box")], false)).toEqual([]);
+    expect(hostsMatching(["box"], hosts).map((h) => h.id)).toEqual(["env_box1"]);
+    expect(hostsMatching(["env_box1"], hosts).map((h) => h.id)).toEqual(["env_box1"]);
+    expect(hostsMatching(["mac"], hosts).map((h) => h.id)).toEqual(["local"]);
+    expect(hostsMatching(["mac"], [env("local", "This host"), env("b", "box")], true).map((h) => h.id)).toEqual(["local"]);
+    expect(hostsMatching(["mac"], [env("local", "This host"), env("b", "box")], false)).toEqual([]);
     expect(hostsMatching(null, hosts)).toHaveLength(2);
+  });
+
+  it("takes the union of every name, in the hosts' order", () => {
+    const three = [env("local", "This Mac"), env("env_box1", "box"), env("env_gpu", "gpu")];
+    expect(hostsMatching(["gpu", "mac"], three).map((h) => h.id)).toEqual(["local", "env_gpu"]);
+    expect(hostsMatching(["zzz", "box"], three).map((h) => h.id)).toEqual(["env_box1"]);
+    expect(hostsMatching(["zzz"], three)).toEqual([]);
+  });
+});
+
+describe("hostToken", () => {
+  it("names exactly one host: mac on a Mac, a unique spaceless name, else the id", () => {
+    const hosts = [env("local", "This Mac"), env("env_box1", "box"), env("env_box2", "box2")];
+    expect(hostToken(hosts[0], hosts, true)).toBe("mac");
+    expect(hostToken(hosts[0], hosts, false)).toBe("local");
+    expect(hostToken(hosts[1], hosts)).toBe("env_box1");
+    expect(hostToken(hosts[2], hosts)).toBe("box2");
+  });
+});
+
+describe("setQueryToken", () => {
+  it("adds a token after the words", () => {
+    expect(setQueryToken("gateway  trace", "type", ["thread", "note"])).toBe("gateway trace type:thread,note");
+  });
+  it("replaces every token of the key and keeps the words in order", () => {
+    expect(setQueryToken("type:file gateway host:box trace TYPE:note", "type", ["thread"])).toBe("gateway host:box trace type:thread");
+  });
+  it("removes the token for null or an empty list", () => {
+    expect(setQueryToken("gateway host:box,mac trace", "host", null)).toBe("gateway trace");
+    expect(setQueryToken("project:app gateway", "project", [])).toBe("gateway");
+  });
+  it("parses back to what it wrote", () => {
+    expect(parseSearchQuery(setQueryToken("fts", "host", ["box", "mac"])).hosts).toEqual(["box", "mac"]);
   });
 });
 

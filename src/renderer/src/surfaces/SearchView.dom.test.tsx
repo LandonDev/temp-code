@@ -72,7 +72,6 @@ vi.mock("../chrome/WindowControls", () => ({ WindowControls: () => <span /> }));
 vi.mock("../chrome/EnvironmentSwitcher", () => ({ toneOf: () => "bg-success" }));
 vi.mock("../chrome/FileTypeIcon", () => ({ FileTypeIcon: () => <span data-icon="file" /> }));
 vi.mock("../chrome/HarnessIcon", () => ({ HarnessIcon: () => <span data-icon="harness" /> }));
-vi.mock("./threads/bits", () => ({ MatrixSpinner: () => <span data-spinner /> }));
 
 import { SearchView } from "./SearchView";
 
@@ -128,6 +127,23 @@ async function search(view: RenderResult, text: string): Promise<void> {
   });
 }
 
+/** Opens the field's filter menu and answers its rows by role and name. */
+async function openFilters(view: RenderResult): Promise<HTMLElement> {
+  await act(async () => {
+    fireEvent.click(view.getByRole("button", { name: "Filters" }));
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(10);
+  });
+  return view.baseElement.querySelector('[data-slot="dropdown-menu-content"]') as HTMLElement;
+}
+const menuLabels = (menu: HTMLElement) =>
+  [...menu.querySelectorAll('[data-slot="dropdown-menu-label"]')].map((el) => el.textContent);
+const menuItem = (menu: HTMLElement, name: string) =>
+  [...menu.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"], [role="menuitemradio"]')].find(
+    (el) => el.textContent === name,
+  ) as HTMLElement;
+
 const rows = (view: RenderResult) => [...view.container.querySelectorAll('[role="option"]')] as HTMLButtonElement[];
 const kinds = (view: RenderResult) => rows(view).map((row) => row.dataset.kind);
 /** The row's host glyph: its host's name on hover, and "newer" beside it on a folded file. */
@@ -167,7 +183,7 @@ describe("SearchView across hosts", () => {
     expect(hostOf(file)).toBe("This Mac");
     // Both hosts hold src/gw.ts:3; the box's copy is newer, so one row, on the box.
     expect(content.textContent).toContain("src/gw.ts:3");
-    expect(hostOf(content)).toBe("box · also on This Mac · newer");
+    expect(hostOf(content)).toBe("box, also on This Mac · newer");
     expect(content.querySelector("[data-host-glyph]")?.getAttribute("data-host-kind")).toBe("server");
     expect(thread.querySelector("[data-host-glyph]")?.getAttribute("data-host-kind")).toBe("mac");
     expect(note.textContent).toContain("about the gateway");
@@ -178,11 +194,14 @@ describe("SearchView across hosts", () => {
     const footer = view.getByLabelText("Hosts searched");
     expect(footer.textContent).toMatch(/^This Mac: \d+ ms(box|This Mac)/);
     expect(footer.textContent).toMatch(/box: \d+ ms/);
-    expect(view.container.querySelector("[data-spinner]")).toBeNull();
-    // Filters hint: one line, host: present because two hosts are paired.
-    expect(view.getByLabelText("Filters").textContent).toBe("host:mac, boxtype:thread,file,note,projectproject:name");
+    expect(view.container.querySelector('[data-slot="spinner"]')).toBeNull();
+    // No hint line under the field: the filters live in the field's menu.
+    expect(view.container.textContent).not.toContain("type:");
     // No entrance animation on any row.
-    for (const row of rows(view)) expect(row.className).not.toMatch(/animate|transition/);
+    for (const row of rows(view)) {
+      expect(row.className).not.toMatch(/animate|transition-\[/);
+      expect(row.className).toContain("transition-none");
+    }
     view.unmount();
   });
 
@@ -222,12 +241,10 @@ describe("SearchView across hosts", () => {
     await search(view, "gateway type:thread");
     expect(kinds(view)).toEqual(["conversation"]);
     expect(view.getByLabelText("Hosts searched").textContent).toContain("box: skipped (offline)");
-    expect(view.getByLabelText("Filters").textContent).toContain("type:thread");
 
     h.statuses = new Map([["env_box", { transport: "open", fresh: true }]]);
     await search(view, "gateway host:box");
     expect(kinds(view)).toEqual(["message", "content", "note"]);
-    expect(view.getByLabelText("Filters").textContent).toContain("host:box");
     expect(view.getByLabelText("Hosts searched").textContent).not.toContain("This Mac");
     view.unmount();
   });
@@ -240,8 +257,86 @@ describe("SearchView across hosts", () => {
     await search(view, "gateway");
     expect(kinds(view)).toEqual(["conversation", "file", "content", "project"]);
     expect(view.container.querySelector("[data-host-mark]")).toBeNull();
-    expect(view.getByLabelText("Filters").textContent).not.toContain("host:");
+    const menu = await openFilters(view);
+    expect(menuLabels(menu)).toEqual(["Type", "Project"]);
     expect(view.getByLabelText("Hosts searched").textContent).toMatch(/^This Mac: \d+ ms$/);
+    view.unmount();
+  });
+
+  it("the filter menu reads the typed tokens and rewrites them", async () => {
+    const p = props();
+    const view = render(<SearchView open cwd="/Users/me/app" recents={recents} {...p} />);
+    await search(view, "gateway");
+    const input = view.container.querySelector("input") as HTMLInputElement;
+    let menu = await openFilters(view);
+    expect(menuLabels(menu)).toEqual(["Type", "Host", "Project"]);
+    expect(menuItem(menu, "Files").getAttribute("aria-checked")).toBe("true");
+    expect(menuItem(menu, "Any").getAttribute("aria-checked")).toBe("true");
+    expect(menuItem(menu, "app")).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(menuItem(menu, "Files"));
+    });
+    expect(input.value).toBe("gateway type:thread,note,project");
+    menu = view.baseElement.querySelector('[data-slot="dropdown-menu-content"]') as HTMLElement;
+    expect(menuItem(menu, "Files").getAttribute("aria-checked")).toBe("false");
+
+    await act(async () => {
+      fireEvent.click(menuItem(menu, "This Mac"));
+    });
+    expect(input.value).toBe("gateway type:thread,note,project host:box");
+    await act(async () => {
+      fireEvent.click(menuItem(menu, "This Mac"));
+    });
+    expect(input.value).toBe("gateway type:thread,note,project");
+    await act(async () => {
+      fireEvent.click(menuItem(menu, "app"));
+    });
+    expect(input.value).toBe("gateway type:thread,note,project project:app");
+    view.unmount();
+  });
+
+  it("says no host matched a host: name", async () => {
+    const view = render(<SearchView open cwd="/Users/me/app" recents={recents} {...props()} />);
+    await search(view, "gateway host:zzz");
+    expect(rows(view)).toHaveLength(0);
+    expect(view.getByText("No host named zzz")).toBeTruthy();
+    view.unmount();
+  });
+
+  it("no results under a filter offers to clear the filters and keeps the words", async () => {
+    const view = render(<SearchView open cwd="/Users/me/app" recents={recents} {...props()} />);
+    await search(view, "nomatch type:project host:box");
+    expect(view.getByText("No results")).toBeTruthy();
+    expect(view.getByText("Filters are narrowing this search")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Clear filters" }));
+    });
+    expect((view.container.querySelector("input") as HTMLInputElement).value).toBe("nomatch");
+    view.unmount();
+  });
+
+  it("a notes hit's meta is the thread's title alone", async () => {
+    h.invokeOn.mockImplementation((env: string, method: string) =>
+      Promise.resolve({
+        hits:
+          method === "search_sessions" && env === "env_box"
+            ? [{ sessionId: "s-box", seq: 2, role: "notes", snippet: "gateway plan", ts: 1, rank: -2 }]
+            : [],
+        truncated: false,
+      }),
+    );
+    const view = render(<SearchView open cwd="/Users/me/app" recents={recents} {...props()} />);
+    await search(view, "gateway type:thread");
+    const note = rows(view).find((row) => row.textContent?.includes("gateway plan")) as HTMLElement;
+    expect(note.textContent).toContain("Box thread");
+    expect(note.textContent).not.toContain("Notes");
+    view.unmount();
+  });
+
+  it("opens with the command's initial query in the field", async () => {
+    const view = render(<SearchView open cwd="/Users/me/app" recents={recents} initialQuery="type:note" {...props()} />);
+    expect((view.container.querySelector("input") as HTMLInputElement).value).toBe("type:note ");
     view.unmount();
   });
 });

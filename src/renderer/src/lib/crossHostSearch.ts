@@ -18,8 +18,9 @@ import { relativeInPair, type ProjectPair } from "./projectPairs";
  * One search over every connected host.
  *
  * The query box takes three filter tokens beside the words: `host:` (a
- * host's name, or `mac` / `box`), `type:` (thread, file, note, project;
- * several with commas) and `project:` (a project's name). The rest is the
+ * host's name, or `mac` / `box`; several with commas), `type:` (thread,
+ * file, note, project; several with commas) and `project:` (a project's
+ * name). The field's filter menu reads and writes the same tokens. The rest is the
  * text every host is asked for. Each host is queried in parallel and its
  * hits land as they come (streaming), with the time it took and whether
  * it was skipped (offline) or failed; the merge gives every hit one score
@@ -31,7 +32,8 @@ import { relativeInPair, type ProjectPair } from "./projectPairs";
 export type ParsedQuery = {
   /** The words, filter tokens removed, single-spaced. */
   text: string;
-  host: string | null;
+  /** The `host:` names, lower-cased; null when no host is named. */
+  hosts: string[] | null;
   types: SearchKind[] | null;
   project: string | null;
 };
@@ -40,7 +42,7 @@ const FILTER_KEYS = new Set(["host", "type", "project"]);
 
 export function parseSearchQuery(raw: string): ParsedQuery {
   const words: string[] = [];
-  let host: string | null = null;
+  let hosts: string[] | null = null;
   let project: string | null = null;
   let types: SearchKind[] | null = null;
   for (const token of raw.trim().split(/\s+/)) {
@@ -54,7 +56,10 @@ export function parseSearchQuery(raw: string): ParsedQuery {
     const value = token.slice(colon + 1);
     // `host:` with nothing after it is a token being typed, not a filter.
     if (!value) continue;
-    if (key === "host") host = value.toLowerCase();
+    if (key === "host") {
+      const named = value.toLowerCase().split(",").filter(Boolean);
+      if (named.length > 0) hosts = [...new Set([...(hosts ?? []), ...named])];
+    }
     else if (key === "project") project = value.toLowerCase();
     else {
       const picked = value
@@ -65,24 +70,55 @@ export function parseSearchQuery(raw: string): ParsedQuery {
       if (picked.length > 0) types = [...new Set([...(types ?? []), ...picked])];
     }
   }
-  return { text: words.join(" "), host, types, project };
+  return { text: words.join(" "), hosts, types, project };
 }
 
-/** The hosts a `host:` token names: `mac` is the macOS host (this machine
- *  on a Mac, or a host called so), else any host whose name or id carries
- *  the token. Case-insensitive; an empty list means no host matched. */
+/** `raw` with every `key:` token removed and, when `values` has any, one
+ *  `key:a,b` token appended. The words keep their order; spacing collapses
+ *  to single spaces. */
+export function setQueryToken(
+  raw: string,
+  key: "host" | "type" | "project",
+  values: readonly string[] | null,
+): string {
+  const kept = raw
+    .trim()
+    .split(/\s+/)
+    .filter((token) => token && !token.toLowerCase().startsWith(`${key}:`));
+  if (values && values.length > 0) kept.push(`${key}:${values.join(",")}`);
+  return kept.join(" ");
+}
+
+/** The shortest token that names exactly this host: `mac` for this Mac,
+ *  else its name when that has no space and matches no other host, else
+ *  its id. */
+export function hostToken(env: Environment, environments: readonly Environment[], isMac = false): string {
+  if (isMac && env.id === "local") return "mac";
+  const name = env.name.toLowerCase();
+  if (/^[^\s,:]+$/.test(name)) {
+    const matched = hostsMatching([name], environments, isMac);
+    if (matched.length === 1 && matched[0].id === env.id) return name;
+  }
+  return env.id;
+}
+
+/** The hosts the `host:` names name, in the hosts' order: `mac` is the
+ *  macOS host (this machine on a Mac, or a host called so), else any host
+ *  whose name or id carries the name. Case-insensitive; the union of every
+ *  name; an empty list means no host matched. */
 export function hostsMatching(
-  token: string | null,
+  tokens: readonly string[] | null,
   environments: readonly Environment[],
   isMac = false,
 ): Environment[] {
-  if (!token) return [...environments];
-  const needle = token.toLowerCase();
+  if (!tokens) return [...environments];
+  const needles = tokens.map((token) => token.toLowerCase());
   return environments.filter((env) => {
     const name = env.name.toLowerCase();
-    if (name.includes(needle) || env.id.toLowerCase() === needle) return true;
-    if (needle === "mac" && env.id === "local" && isMac) return true;
-    return false;
+    return needles.some((needle) => {
+      if (name.includes(needle) || env.id.toLowerCase() === needle) return true;
+      return needle === "mac" && env.id === "local" && isMac;
+    });
   });
 }
 

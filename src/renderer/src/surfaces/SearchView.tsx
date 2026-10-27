@@ -1,5 +1,4 @@
 import { Folder, MessageSquare, Search, StickyNote } from "../chrome/icons";
-import { MatrixSpinner } from "./threads/bits";
 import {
   useCallback,
   useEffect,
@@ -14,12 +13,17 @@ import { HostGlyph } from "../chrome/HostGlyph";
 import { FileTypeIcon } from "../chrome/FileTypeIcon";
 import { HarnessIcon } from "../chrome/HarnessIcon";
 import { MatchText } from "../chrome/MatchText";
+import { SearchFiltersMenu } from "../chrome/SearchFiltersMenu";
 import { ProjectLogoIcon } from "../chrome/ProjectLogoIcon";
 import { OverlayNav } from "../chrome/TitleBar";
 import { WindowControls } from "../chrome/WindowControls";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
+import { Button } from "../components/ui/button";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
+import { Input } from "../components/ui/input";
+import { Item } from "../components/ui/item";
+import { Spinner } from "../components/ui/spinner";
 import {
-  SEARCH_KINDS,
   flattenGrouped,
   groupHits,
   hitsFromContentMatches,
@@ -38,6 +42,7 @@ import {
   noteHits,
   parseSearchQuery,
   runCrossHostSearch,
+  setQueryToken,
   transcriptHits,
   type HostProgress,
   type SearchHost,
@@ -64,9 +69,9 @@ import { sessionStore, useServerSessions, useSessionMetas } from "../lib/tcserve
 import { useWorkspaces } from "../lib/tcserver/workspaces";
 
 /**
- * Search over every connected host at once. The box takes the words and
- * three filters typed beside them (`host:`, `type:`, `project:`; the hint
- * line under the box names them). Each host answers in parallel and its
+ * Search over every connected host at once. The field takes the words and
+ * three filters beside them (`host:`, `type:`, `project:`), typed, or ticked
+ * in the field's filter menu, which writes the same tokens. Each host answers in parallel and its
  * rows land as they come; the footer says how long each took, or that it
  * was skipped. Rows carry the host's mark when more than one host is
  * paired. Enter opens a row where it lives; ⌘↩ opens it in a new pane.
@@ -76,6 +81,9 @@ import { useWorkspaces } from "../lib/tcserver/workspaces";
 type Props = {
   open: boolean;
   cwd: string;
+  /** What the field holds when search opens, e.g. `type:note` from the
+   *  Notes command or `type:file` from Find in project. */
+  initialQuery?: string;
   recents: RecentProject[];
   focusToken?: number;
   besideRail?: boolean;
@@ -109,6 +117,7 @@ function partnerFileList(host: string, cwd: string): Promise<ProjectFile[]> {
 export function SearchView({
   open,
   cwd,
+  initialQuery,
   recents,
   focusToken = 0,
   besideRail = false,
@@ -137,8 +146,8 @@ export function SearchView({
   const statuses = useEnvironmentStatuses();
   const multiHost = environments.length > 1;
   const askedHosts = useMemo(
-    () => hostsMatching(parsed.host, environments, IS_MAC),
-    [environments, parsed.host],
+    () => hostsMatching(parsed.hosts, environments, IS_MAC),
+    [environments, parsed.hosts],
   );
   const workspaces = useWorkspaces();
   const pairs = useMemo(() => pairWorkspaces(workspaces), [workspaces]);
@@ -146,10 +155,10 @@ export function SearchView({
 
   useEffect(() => {
     if (!open) return;
-    setQuery("");
+    setQuery(initialQuery?.trim() ? `${initialQuery.trim()} ` : "");
     setActive(0);
     setSnapshot(null);
-  }, [open]);
+  }, [initialQuery, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -384,65 +393,96 @@ export function SearchView({
   if (!open) return null;
 
   const empty = !text;
+  const noHost = parsed.hosts !== null && askedHosts.length === 0;
   const failed = progress.length > 0 && progress.every((row) => row.state === "failed" || row.state === "skipped");
   const noResults = !empty && hits.length === 0 && !searching && snapshot !== null;
+  const filtered = parsed.hosts !== null || parsed.types !== null || parsed.project !== null;
+  const focusField = () => inputRef.current?.focus();
+  const clearFilters = () => {
+    setQuery(setQueryToken(setQueryToken(setQueryToken(query, "host", null), "type", null), "project", null));
+    focusField();
+  };
 
   return (
     <div
       role="search"
       aria-label="Search"
       data-app-search
-      className="flex min-h-0 min-w-0 flex-1 flex-col text-content"
+      className="flex min-h-0 min-w-0 flex-1 flex-col text-foreground"
     >
       <div
-        className="flex h-10 shrink-0 select-none items-center border-b border-content/10"
+        className="flex h-10 shrink-0 select-none items-center border-b border-border"
         data-tauri-drag-region="deep"
       >
         {IS_MAC && !besideRail ? <div className="w-[78px] shrink-0" /> : null}
         {besideRail ? null : (
           <OverlayNav onBack={onClose} onToggleSidebar={onToggleSidebar} />
         )}
-        <label className="flex min-w-0 flex-1 items-center gap-2 px-3.5 text-content/50">
-          <Search className="size-3.5 shrink-0" strokeWidth={1.75} />
-          <input
-            ref={inputRef}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={onQueryKeyDown}
-            placeholder={multiHost ? "Search every host…" : "Search everything…"}
-            aria-label="Search"
-            aria-controls="app-search-results"
-            aria-activedescendant={activeHit ? `app-search-hit-${active}` : undefined}
-            spellCheck={false}
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            data-tauri-drag-region="false"
-            className="min-w-0 flex-1 bg-transparent text-[13px] text-content outline-none select-text placeholder:text-content/40"
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 px-3">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute start-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              ref={inputRef}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={onQueryKeyDown}
+              placeholder={multiHost ? "Search every host…" : "Search everything…"}
+              aria-label="Search"
+              aria-controls="app-search-results"
+              aria-activedescendant={activeHit ? `app-search-hit-${active}` : undefined}
+              spellCheck={false}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              data-tauri-drag-region="false"
+              className="select-text ps-8 pe-8"
+            />
+            {searching ? (
+              <Spinner className="absolute end-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            ) : null}
+          </div>
+          <SearchFiltersMenu
+            query={query}
+            onQueryChange={setQuery}
+            environments={environments}
+            cwd={cwd}
+            onClosed={focusField}
           />
-          {searching ? <MatrixSpinner cell={1.5} /> : null}
-        </label>
+        </div>
         {!IS_MAC ? <WindowControls /> : null}
       </div>
 
-      <FilterHint parsed={parsed} multiHost={multiHost} askedHosts={askedHosts} />
-
       <div
         ref={lockOverscroll}
-        className={
-          empty
-            ? "flex min-h-0 flex-1 items-center justify-center overflow-y-auto overscroll-none"
-            : "min-h-0 flex-1 overflow-y-auto overscroll-none px-1.5 py-1.5"
-        }
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-none px-1.5 py-1.5"
       >
-        {empty ? (
-          <EmptyState multiHost={multiHost} />
+        {empty ? null : noHost ? (
+          <Empty>
+            <EmptyHeader>
+              <EmptyTitle>No host named {parsed.hosts?.join(",")}</EmptyTitle>
+            </EmptyHeader>
+          </Empty>
         ) : failed && hits.length === 0 ? (
-          <p className="px-2 py-1.5 text-[12px] text-danger">
-            {progress.find((row) => row.state === "failed")?.detail ?? "No host could be searched"}
-          </p>
+          <Empty>
+            <EmptyHeader>
+              <EmptyTitle>Nothing could be searched</EmptyTitle>
+              <EmptyDescription>
+                {progress.find((row) => row.state === "failed" || row.state === "skipped")?.detail}
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : noResults ? (
-          <p className="px-2 py-1.5 text-[12px] text-content/50">No results</p>
+          <Empty>
+            <EmptyHeader>
+              <EmptyTitle>No results</EmptyTitle>
+              {filtered ? <EmptyDescription>Filters are narrowing this search</EmptyDescription> : null}
+            </EmptyHeader>
+            {filtered ? (
+              <Button variant="ghost" size="sm" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            ) : null}
+          </Empty>
         ) : (
           <ResultList
             hits={hits}
@@ -468,58 +508,22 @@ function isOnline(env: Environment, status: EnvironmentStatus | undefined): bool
   return status?.transport === "open";
 }
 
-/** The one line of filter chrome: the tokens the box understands, the
- *  active ones in the foreground color. */
-export function FilterHint({
-  parsed,
-  multiHost,
-  askedHosts,
-}: {
-  parsed: ReturnType<typeof parseSearchQuery>;
-  multiHost: boolean;
-  askedHosts: Environment[];
-}) {
-  const token = (label: string, value: string | null, placeholder: string) => (
-    <span className={value ? "text-content/70" : undefined}>
-      {label}:{value ?? placeholder}
-    </span>
-  );
-  const hostValue = parsed.host ? (askedHosts.length > 0 ? askedHosts.map((h) => h.name).join(", ") : `${parsed.host} (no such host)`) : null;
-  return (
-    <div
-      aria-label="Filters"
-      className="flex h-7 shrink-0 items-center gap-3 overflow-hidden border-b border-content/10 px-3.5 font-mono text-[11px] whitespace-nowrap text-content/40"
-    >
-      {multiHost ? token("host", hostValue, "mac, box") : null}
-      {token("type", parsed.types?.join(",") ?? null, SEARCH_KINDS.join(","))}
-      {token("project", parsed.project, "name")}
-    </div>
-  );
-}
-
 /** How long each host took, muted, at the foot; a skipped or failed host says why. */
 export function HostFooter({ progress }: { progress: HostProgress[] }) {
   return (
     <div
       aria-label="Hosts searched"
-      className="flex h-7 shrink-0 items-center gap-3 overflow-hidden border-t border-content/10 px-3.5 font-mono text-[11px] whitespace-nowrap text-content/40 tabular-nums"
+      className="flex h-7 shrink-0 items-center gap-4 overflow-hidden border-t border-border px-3 text-[12px] whitespace-nowrap text-muted-foreground tabular-nums"
     >
       {progress.map((row) => (
-        <span key={row.environmentId} data-host-state={row.state}>
+        <span
+          key={row.environmentId}
+          data-host-state={row.state}
+          className={row.state === "failed" ? "text-destructive" : undefined}
+        >
           {hostTimingLabel(row)}
         </span>
       ))}
-    </div>
-  );
-}
-
-function EmptyState({ multiHost }: { multiHost: boolean }) {
-  return (
-    <div className="flex flex-col items-center justify-center px-4 pb-24 text-center">
-      <Search className="mb-3 size-6 text-content/30" strokeWidth={1.75} />
-      <p className="text-[13px] text-content/40">
-        {multiHost ? "Find files, chats, notes and projects on every host" : "Find files, chats, notes and projects"}
-      </p>
     </div>
   );
 }
@@ -587,27 +591,32 @@ function ResultList({
         const highlighted = index === active;
         const row = rowCopy(hit, query);
         return (
-          <button
+          <Item
             key={hit.id}
+            size="xs"
             id={`app-search-hit-${index}`}
-            ref={highlighted ? activeRef : undefined}
-            type="button"
-            role="option"
-            aria-selected={highlighted}
             data-kind={hit.kind}
-            onMouseDown={(event) => event.preventDefault()}
-            onMouseEnter={() => onRowEnter(index)}
-            onClick={(event) => onOpen(hit, event.metaKey || event.ctrlKey)}
-            className={`flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] leading-none ${
-              highlighted ? "bg-content/10 text-content" : "text-content"
-            }`}
+            className={`h-8 flex-nowrap gap-2 rounded-md px-3 py-0 text-left transition-none ${highlighted ? "bg-muted" : ""}`}
+            render={
+              <button
+                ref={highlighted ? activeRef : undefined}
+                type="button"
+                role="option"
+                aria-selected={highlighted}
+                onMouseDown={(event) => event.preventDefault()}
+                onMouseEnter={() => onRowEnter(index)}
+                onClick={(event) => onOpen(hit, event.metaKey || event.ctrlKey)}
+              />
+            }
           >
-            <span className="grid size-4 shrink-0 place-items-center">
+            <span className="grid size-4 shrink-0 place-items-center text-muted-foreground">
               {row.icon}
             </span>
-            <span className="min-w-0 flex-1 truncate">{row.title}</span>
+            <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">{row.title}</span>
             {row.meta ? (
-              <span className="min-w-0 max-w-[45%] truncate font-mono text-[11px] text-content/40">
+              <span
+                className={`min-w-0 max-w-[45%] truncate text-[12px] text-muted-foreground ${row.mono ? "font-mono" : ""}`}
+              >
                 {row.meta}
               </span>
             ) : null}
@@ -619,7 +628,7 @@ function ResultList({
                 alsoOn={hit.kind === "file" || hit.kind === "content" ? hit.alsoOn?.map(nameOf) : undefined}
               />
             ) : null}
-          </button>
+          </Item>
         );
       })}
     </div>
@@ -639,48 +648,41 @@ export function HostMark({
   newer?: boolean;
   alsoOn?: string[];
 }) {
-  const also = alsoOn && alsoOn.length > 0 ? `also on ${alsoOn.join(", ")}` : undefined;
+  const also = alsoOn && alsoOn.length > 0 ? `${name}, also on ${alsoOn.join(", ")}` : undefined;
   return (
-    <span data-host-mark className="flex shrink-0 items-center gap-1.5 pl-1 text-[11px] text-content/40">
-      <HostGlyph environmentId={environmentId} title={also ? `${name} · ${also}` : undefined} />
-      {newer ? <span className="text-content/50">newer</span> : null}
+    <span data-host-mark className="flex shrink-0 items-center gap-1.5 ps-1 text-[12px] text-muted-foreground">
+      <HostGlyph environmentId={environmentId} title={also} />
+      {newer ? <span>newer</span> : null}
     </span>
   );
 }
 
-function rowCopy(
-  hit: AppSearchHit,
-  query: string,
-): { icon: ReactNode; title: ReactNode; meta: string } {
+type RowCopy = { icon: ReactNode; title: ReactNode; meta: string; mono: boolean };
+
+function rowCopy(hit: AppSearchHit, query: string): RowCopy {
   if (hit.kind === "conversation") {
     return {
       icon: <HarnessIcon harness={hit.harness} className="size-3.5" />,
-      title: <MatchText text={hit.title} positions={hit.positions} active />,
+      title: <MatchText text={hit.title} positions={hit.positions} />,
       meta: projectName(hit.cwd),
+      mono: false,
     };
   }
   if (hit.kind === "message") {
     const notes = hit.role === "notes";
     return {
-      icon: notes ? (
-        <StickyNote className="size-3.5 text-content/50" strokeWidth={1.75} />
-      ) : (
-        <MessageSquare
-          className="size-3.5 text-content/50"
-          strokeWidth={1.75}
-        />
-      ),
+      icon: notes ? <StickyNote className="size-3.5" /> : <MessageSquare className="size-3.5" />,
       title: <MatchText text={hit.preview || hit.title} query={query} />,
-      meta: notes ? `Notes · ${hit.title}` : hit.title,
+      meta: hit.title,
+      mono: false,
     };
   }
   if (hit.kind === "file") {
     return {
       icon: <FileTypeIcon name={hit.name} isDir={false} size={16} />,
-      title: (
-        <MatchText text={hit.name} positions={namePositions(hit)} active />
-      ),
+      title: <MatchText text={hit.name} positions={namePositions(hit)} />,
       meta: hit.relative,
+      mono: true,
     };
   }
   if (hit.kind === "content") {
@@ -688,25 +690,22 @@ function rowCopy(
       icon: <FileTypeIcon name={hit.name} isDir={false} size={16} />,
       title: <MatchText text={hit.preview} query={query} />,
       meta: `${hit.relative}:${hit.line}`,
+      mono: true,
     };
   }
   if (hit.kind === "note") {
     return {
-      icon: <StickyNote className="size-3.5 text-content/50" strokeWidth={1.75} />,
+      icon: <StickyNote className="size-3.5" />,
       title: <MatchText text={hit.preview || hit.title} query={query} />,
       meta: hit.title,
+      mono: false,
     };
   }
   return {
-    icon: (
-      <ProjectLogoIcon
-        path={hit.path}
-        className="size-3.5 rounded-md"
-        fallback={Folder}
-      />
-    ),
-    title: <MatchText text={hit.name} positions={hit.positions} active />,
+    icon: <ProjectLogoIcon path={hit.path} className="size-3.5 rounded-md" fallback={Folder} />,
+    title: <MatchText text={hit.name} positions={hit.positions} />,
     meta: prettyCwd(hit.path),
+    mono: true,
   };
 }
 
