@@ -90,8 +90,9 @@ export const SessionPane = memo(function SessionPane({
   const master = isMasterThread(session);
   const isEmpty = !master && session.blocks.length === 0 && loadPhase === "loaded" && session.load?.empty !== false;
   const waiting = !master && session.blocks.length === 0 && loadPhase !== "loaded";
-  // First rows later than half a second after the pane opened: one stall line.
-  useFirstPaintReport(session.id, session.environmentId, session.blocks.length > 0);
+  // First rows later than half a second after the pane opened: one stall
+  // line. A draft is not timed: its rows arrive when the person sends.
+  useFirstPaintReport(session.id, session.environmentId, session.blocks.length > 0, !sessionStore.isDraft(session.id));
   const retryLoad = useCallback(() => sessionStore.retryLoad(session.id), [session.id]);
   const showDeckProjectPicker = isEmpty && !looksLikeProject(session.cwd);
   const dockComposer = !isEmpty || inSplit;

@@ -573,6 +573,9 @@ export class GatewayHost {
         this.childError = event.message
         this.control.onError(event.message)
         return
+      case 'network':
+        this.control.onNetwork?.(event.info)
+        return
       case 'observeLimit':
         this.control.observeLimit(event.serviceId, event.name, event.limit)
         return

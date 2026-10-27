@@ -506,6 +506,7 @@ export const codexDriver: HarnessDriver = {
     }
 
     const onNotify = (method: string, params: Record<string, unknown>): void => {
+      ctx.mark?.('first-message')
       switch (method) {
         case 'thread/goal/updated':
           goalUpdated(params)
@@ -530,14 +531,18 @@ export const codexDriver: HarnessDriver = {
         }
         case 'turn/started':
           currentTurnId = String((params.turn as Item)?.id ?? '')
+          ctx.mark?.('init')
           break
         case 'item/started':
+          ctx.mark?.('first-content')
           itemStarted((params.item ?? {}) as Item)
           break
         case 'item/completed':
+          ctx.mark?.('first-content')
           itemCompleted((params.item ?? {}) as Item)
           break
         case 'item/agentMessage/delta':
+          ctx.mark?.('first-content')
           emit({
             type: 'assistant-text',
             text: String(params.delta ?? ''),

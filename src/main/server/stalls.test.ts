@@ -11,9 +11,12 @@ import {
   inFlightRequests,
   loopLine,
   recordBackpressure,
+  pushesField,
   recordCheckpoint,
+  recordSendSpan,
   recordSlowRequest,
   reportRendererStall,
+  resetPushesForTests,
   setBufferedBytes,
   setLaneStats,
   setRunningCount,
@@ -159,6 +162,26 @@ describe('stall recorder', () => {
     untrackRequest('1:7')
     const line = log().trim()
     expect(line).toMatch(/^\d{4}-\d\d-\d\dT[^ ]+ slow-request queue\.list 812ms inflight=session\.events:\d+ms pushes=meta:2,event:1 running=3 load=\d+\.\d rss=\d+MB wsbuf=0KB lane=bulk:0\/0$/)
+  })
+
+  it('a meta push names its producer and its session: the field reads the breakdown and the distinct ids', () => {
+    resetPushesForTests()
+    countPush('meta', 'accounts', 's1')
+    countPush('meta', 'accounts', 's2')
+    countPush('meta', 'accounts', 's1')
+    countPush('meta', 'status', 's3')
+    countPush('meta')
+    countPush('event')
+    expect(pushesField()).toBe('pushes=meta:5/3ids(accounts:3,status:1),event:1')
+    recordSlowRequest('session.list', 700)
+    expect(log().trim()).toMatch(/ pushes=meta:5\/3ids\(accounts:3,status:1\),event:1 running=3 /)
+    resetPushesForTests()
+    expect(pushesField()).toBe('pushes=meta:0,event:0')
+  })
+
+  it('a send span line rides with the context', () => {
+    recordSendSpan('send session=s1 accepted=0 prepared=12 handle=340(warm) delivered=355 init=- first-message=- first-content=-')
+    expect(log().trim()).toMatch(/ send session=s1 accepted=0 prepared=12 handle=340\(warm\) delivered=355 init=- first-message=- first-content=- inflight=- pushes=/)
   })
 
   it('the context carries the most unsent bytes on any client socket, and a backpressure line names the connection', () => {

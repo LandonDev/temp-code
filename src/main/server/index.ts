@@ -1395,8 +1395,8 @@ export async function startServer(
     }
 
     // Every client gets session-meta updates (cheap, drives the sidebar).
-    const offMeta = registry.onMeta((session) => {
-      countPush('meta')
+    const offMeta = registry.onMeta((session, producer) => {
+      countPush('meta', producer, session.id)
       emitPush({ push: 'session', session })
     })
     // A thread's notes changed: every client follows (the panel, the rows).

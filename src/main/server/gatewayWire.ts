@@ -1,5 +1,5 @@
 import type { Limit, LimitInfo, RoutedInfo, RouteScope, ServiceId, UsageReport } from 'aliax-core'
-import type { FailedOverInfo, ResponseInfo, ScopedRequest } from './gatewayCore'
+import type { FailedOverInfo, NetworkInfo, ResponseInfo, ScopedRequest } from './gatewayCore'
 
 /**
  * What main and the gateway's utility process say to each other over one
@@ -110,6 +110,7 @@ export type ChildEvent =
   | { e: 'routed'; info: RoutedInfo }
   | { e: 'failedOver'; info: FailedOverInfo }
   | { e: 'error'; message: string }
+  | { e: 'network'; info: NetworkInfo }
   | { e: 'observeLimit'; serviceId: ServiceId; name: string; limit: Limit }
   | { e: 'pin'; serviceId: ServiceId; name: string }
 

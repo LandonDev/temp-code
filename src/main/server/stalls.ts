@@ -75,6 +75,9 @@ let bufferedBytes: () => number = () => 0
 let laneStats: () => { running: number; held: number } = () => ({ running: 0, held: 0 })
 const inFlight = new Map<string, { method: string; startedAt: number }>()
 const pushes = { meta: 0, event: 0 }
+/** The last second's meta pushes by producer (notifyMeta's tag) and the distinct sessions they named. */
+const metaProducers = new Map<string, number>()
+const metaIds = new Set<string>()
 
 /** Where stall lines go; `null` (tests, no data dir) disables the recorder. */
 export function setStallLog(logDir: string | null): void {
@@ -120,9 +123,45 @@ export function inFlightRequests(): InFlightRequest[] {
   return [...inFlight.values()].map((r) => ({ method: r.method, ageMs: now - r.startedAt }))
 }
 
-/** One push frame went out; the loop line reports the last second's totals. */
-export function countPush(kind: 'meta' | 'event'): void {
+/** One push frame went out; the loop line reports the last second's totals.
+ *  A meta push names its producer (the registry's tag: `status`, `accounts`,
+ *  …) and the session, so a storm reads `meta:4038/781ids(accounts:3900,status:138)`:
+ *  how many frames, for how many threads, from which code. */
+export function countPush(kind: 'meta' | 'event', producer?: string, sessionId?: string): void {
   pushes[kind] += 1
+  if (kind !== 'meta') return
+  if (producer) metaProducers.set(producer, (metaProducers.get(producer) ?? 0) + 1)
+  if (sessionId) metaIds.add(sessionId)
+}
+
+/** The `pushes=` field: totals, and the meta breakdown when one was tagged. */
+export function pushesField(): string {
+  let meta = `meta:${pushes.meta}`
+  if (metaIds.size > 0 || metaProducers.size > 0) {
+    const by = [...metaProducers.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([producer, n]) => `${producer}:${n}`)
+      .join(',')
+    meta += `/${metaIds.size}ids${by ? `(${by})` : ''}`
+  }
+  return `pushes=${meta},event:${pushes.event}`
+}
+
+/** Test seam: the counters a tick would clear. */
+export function resetPushesForTests(): void {
+  resetPushes()
+}
+
+function resetPushes(): void {
+  pushes.meta = 0
+  pushes.event = 0
+  metaProducers.clear()
+  metaIds.clear()
+}
+
+/** A send's phase line (sendSpans.ts): the send-time picture rides with it. */
+export function recordSendSpan(body: string): void {
+  write(body)
 }
 
 /** Runs `fn` and logs it when it held the loop for TIMED_MS or more. */
@@ -177,8 +216,7 @@ export function startStallMonitor(): () => void {
     const line = loopLine({ max: histogram.max, mean: histogram.mean })
     histogram.reset()
     if (line) write(line)
-    pushes.meta = 0
-    pushes.event = 0
+    resetPushes()
   }, SAMPLE_MS)
   timer.unref()
   return () => {
@@ -214,7 +252,7 @@ export function context(): string {
   } catch {
     // context is best effort
   }
-  return `inflight=${requests || '-'} pushes=meta:${pushes.meta},event:${pushes.event} running=${running} load=${loadavg()[0].toFixed(1)} rss=${rss}MB wsbuf=${wsbuf}KB lane=bulk:${lane}`
+  return `inflight=${requests || '-'} ${pushesField()} running=${running} load=${loadavg()[0].toFixed(1)} rss=${rss}MB wsbuf=${wsbuf}KB lane=bulk:${lane}`
 }
 
 function write(body: string, withContext = true): void {

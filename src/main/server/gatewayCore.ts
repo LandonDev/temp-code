@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { createServer as createTlsServer } from 'node:https'
 import { Readable } from 'node:stream'
@@ -72,6 +73,45 @@ export interface RoutingHooks {
   substitute?: (info: ScopedRequest) => string | null
   /** A scoped request answered 401 under `account`: the account to replay it under, or null to pass the 401 through. */
   onUnauthorized?: (info: ScopedRequest) => string | null
+  /** The upstream fetch rejected (no answer at all): the limits log keeps a `network` record of it. */
+  onNetwork?: (info: NetworkInfo) => void
+}
+
+/** A request that got no upstream answer: the fetch itself failed (DNS, TLS, a reset, a timeout). */
+export interface NetworkInfo {
+  service: string
+  /** The request's path, scope included. */
+  path: string
+  /** The account the request was scoped to, when it was. */
+  account: string | null
+  /** The fetch error's message. */
+  error: string
+}
+
+/** A short, stable stand-in for an account name in logs: six hex digits of its SHA-1. */
+export function shortHash(name: string): string {
+  return createHash('sha1').update(name).digest('hex').slice(0, 6)
+}
+
+/** The trace lines behind TEMP_CODE_GATEWAY_TRACE: one `start` before the
+ *  forward and one finish after it, joined by the request's number. */
+export interface TraceStart {
+  id: number
+  method: string
+  url: string
+  thread: string | null
+  account: string | null
+  model: string | null
+}
+
+export function traceLine(label: string, stage: 'start', rec: TraceStart): string
+export function traceLine(label: string, stage: 'finish', rec: TraceStart & { status: number | null; reused: string; protocol: string | null; ms: number }): string
+export function traceLine(label: string, stage: 'start' | 'finish', rec: TraceStart & { status?: number | null; reused?: string; protocol?: string | null; ms?: number }): string {
+  const head = `${label} #${rec.id} ${rec.method} ${rec.url}`
+  if (stage === 'start') {
+    return `${head} start thread=${rec.thread ?? '-'} account=${rec.account ? shortHash(rec.account) : '-'} model=${rec.model ?? '-'}`
+  }
+  return `${head} → ${rec.status ?? 'no upstream'} reused=${rec.reused}${rec.protocol ? ` ${rec.protocol}` : ''} ${rec.ms}ms`
 }
 
 /** Core's word on one upstream answer, before its body streams back. */
@@ -107,6 +147,8 @@ export interface ControlPlane {
   onRouted(info: RoutedInfo): void
   onFailedOver(info: FailedOverInfo): void
   onError(message: string): void
+  /** The upstream fetch rejected; absent on a host that keeps no record. */
+  onNetwork?(info: NetworkInfo): void
 }
 
 export interface GatewayCoreOptions {
@@ -144,6 +186,8 @@ export class GatewayCore {
   private readonly accounts: AccountSource
   private readonly trace: boolean
   private readonly label: string
+  /** Numbers the trace lines, so a start and its finish read together. */
+  private requestSeq = 0
   /** Bumped whenever routed or the error changes, for a host that mirrors them. */
   onStats: (() => void) | null = null
 
@@ -296,6 +340,16 @@ export class GatewayCore {
     if (await handleControl(req, res, OWNER, { pid: this.options.pid, usage: (serviceId, force) => c.usage(serviceId, force) })) return
     const parsed = splitPath(req.url ?? '/')
     const serviceId = SERVICE_OF[parsed.service as AccountProvider] as ServiceId | undefined
+    const rec: TraceStart = {
+      id: ++this.requestSeq,
+      method: req.method ?? 'GET',
+      url: req.url ?? '/',
+      thread: parsed.scope?.thread ?? null,
+      account: parsed.scope?.account ?? null,
+      model: parsed.scope?.model ?? null
+    }
+    const startedAt = Date.now()
+    if (this.trace) console.log(traceLine(this.label, 'start', rec))
     // The upstream fetch fills the trace record in: whether the request rode
     // a socket that had carried one before, and over which protocol.
     const trace = newTrace()
@@ -304,7 +358,7 @@ export class GatewayCore {
     )
     if (this.trace) {
       const reused = trace.reused === null ? 'n/a' : trace.queued ? 'true (queued)' : String(trace.reused)
-      console.log(`${this.label} ${req.method} ${req.url} → ${out.status ?? 'no upstream'} reused=${reused}${trace.protocol ? ` ${trace.protocol}` : ''}`)
+      console.log(traceLine(this.label, 'finish', { ...rec, status: out.status, reused, protocol: trace.protocol, ms: Date.now() - startedAt }))
     }
     if (out.status !== null) {
       this.routed[out.service] = (this.routed[out.service] ?? 0) + 1
@@ -314,6 +368,7 @@ export class GatewayCore {
 
   private forward(req: IncomingMessage, res: ServerResponse, onResponse?: ForwardHooks['onResponse'], input?: ForwardInput): ReturnType<typeof forward> {
     const c = this.options.control
+    const url = req.url ?? '/'
     return forward(
       req,
       res,
@@ -329,6 +384,9 @@ export class GatewayCore {
         onError: (m) => {
           this.noteError(m)
           c.onError(m)
+          // No upstream answer at all: the host's limits log keeps the record.
+          const parsed = splitPath(url)
+          c.onNetwork?.({ service: parsed.service, path: url, account: parsed.scope?.account ?? null, error: m })
         }
       },
       input

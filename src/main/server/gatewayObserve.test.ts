@@ -82,6 +82,39 @@ describe('observeHooks', () => {
     expect(lines[0].headers['set-cookie']).toBeUndefined()
     expect(lines[0].body).toContain('session limit')
     expect(typeof lines[0].ts).toBe('number')
+    expect('attempt' in lines[0]).toBe(false)
+  })
+
+  it('logs a 529 too, with the replay attempt when the answer carries one', () => {
+    const { logDir, onObserved } = setup()
+    const hooks = observeHooks({ logDir, onObserved })
+    hooks.onResponse!({
+      service: 'claude',
+      path: '/v1/messages',
+      status: 529,
+      headers: new Headers({ 'retry-after': '5', 'request-id': 'req_9' }),
+      body: '{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}',
+      account: 'work',
+      model: 'claude-fable-5-1',
+      attempt: 2
+    } as Parameters<NonNullable<typeof hooks.onResponse>>[0])
+    hooks.onResponse!({ service: 'claude', path: '/v1/messages', status: 500, headers: new Headers(), body: 'x', account: 'work', model: null })
+    const lines = readFileSync(join(logDir, 'gateway-limits.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l))
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toMatchObject({ status: 529, account: 'work', attempt: 2, headers: { 'retry-after': '5', 'request-id': 'req_9' } })
+    expect(lines[0].body).toContain('Overloaded')
+  })
+
+  it('a fetch that got no answer is a network record: the path, the account hashed, the error', () => {
+    const { logDir, onObserved } = setup()
+    const hooks = observeHooks({ logDir, onObserved })
+    hooks.onNetwork!({ service: 'claude', path: '/~t=T1;a=work/v1/messages', account: 'work', error: 'fetch failed: ECONNRESET' })
+    const lines = readFileSync(join(logDir, 'gateway-limits.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l))
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toMatchObject({ kind: 'network', service: 'claude', path: '/~t=T1;a=work/v1/messages', error: 'fetch failed: ECONNRESET' })
+    expect(lines[0].account).toMatch(/^[0-9a-f]{6}$/)
+    expect(lines[0].account).not.toBe('work')
+    expect(typeof lines[0].ts).toBe('number')
   })
 })
 

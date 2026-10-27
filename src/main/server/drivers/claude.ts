@@ -521,11 +521,15 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
   // message re-arms the overdue-result watch below.
   state.armedAt = null
   state.nudged = false
+  ctx.mark?.('first-message')
   switch (msg.type) {
     case 'system':
       // The CLI boots lazily on the first send, so init arrives mid-turn —
       // record the native id but leave the running status alone.
-      if (msg.subtype === 'init') ctx.setNativeId(msg.session_id)
+      if (msg.subtype === 'init') {
+        ctx.setNativeId(msg.session_id)
+        ctx.mark?.('init')
+      }
       // Compaction lifecycle: status 'compacting' opens the distinct UI,
       // the boundary closes it with the numbers, a failed result closes
       // it with the error.
@@ -613,6 +617,7 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
         if (!lane) liveContext(ev.message.usage)
       } else if (ev.type === 'content_block_start') {
         if (ev.content_block.type === 'tool_use') {
+          ctx.mark?.('first-content')
           // Early visibility: the chip appears while input is still streaming.
           emit({
             type: 'tool-call',
@@ -655,6 +660,7 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
         const msgId = state.currentMsgId.get(lane)
         const blockIndex = ev.index
         if (ev.delta.type === 'text_delta') {
+          ctx.mark?.('first-content')
           emit({
             type: 'assistant-text',
             text: ev.delta.text,
@@ -664,6 +670,7 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
             parentCallId
           })
         } else if (ev.delta.type === 'thinking_delta') {
+          ctx.mark?.('first-content')
           emit({
             type: 'thinking',
             text: ev.delta.thinking,
@@ -705,6 +712,7 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
       break
     }
     case 'assistant': {
+      ctx.mark?.('first-content')
       // Synthetic messages are the CLI dressing an API refusal up as
       // assistant text. Report them as the errors they are — rendering
       // "Prompt is too long" as if the model said it confused everyone.
@@ -1383,11 +1391,14 @@ export const claudeDriver: HarnessDriver = {
     const own = gw?.url('claude')
     const warmable = !session.nativeId && !!gw && !!endpoint && !!own && (gw.status().owner || endpoint.startsWith(own))
     options.spawnClaudeCodeProcess = (spawnOpts) => {
-      cli = spawnOrAdoptClaude(
+      const spawned = spawnOrAdoptClaude(
         { command: spawnOpts.command, args: spawnOpts.args, cwd: spawnOpts.cwd, env: spawnOpts.env },
         (spawnOpts as { signal?: AbortSignal }).signal,
         { thread: session.id, scope: ctx.route ? { thread: session.id, ...ctx.route, model: session.model } : null, warmable }
-      ).proc
+      )
+      cli = spawned.proc
+      // The send's phase line says whether the process was adopted warm or spawned cold.
+      ctx.mark?.('handle', spawned.warmId ? 'warm' : 'cold')
       return cli as unknown as SpawnedProcess
     }
     const q = query({ prompt: input, options })

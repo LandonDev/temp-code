@@ -5,8 +5,9 @@ function harness() {
   let clock = 0;
   const painted: (() => void)[] = [];
   const lines: string[] = [];
-  const open = () =>
+  const open = (armed?: boolean) =>
     watchFirstPaint("s1", "env_box", {
+      ...(armed === undefined ? {} : { armed }),
       now: () => clock,
       afterPaint: (fn) => painted.push(fn),
       report: (line) => lines.push(line),
@@ -41,6 +42,15 @@ describe("watchFirstPaint", () => {
     closed.dispose();
     h.at(5_000);
     closed.rows();
+    h.paint();
+    expect(h.lines).toEqual([]);
+  });
+
+  it("a draft never reports: its first rows arrive when the person sends", () => {
+    const h = harness();
+    const draft = h.open(false);
+    h.at(30_000);
+    draft.rows();
     h.paint();
     expect(h.lines).toEqual([]);
   });

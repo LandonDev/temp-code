@@ -6,10 +6,14 @@ import { registry } from "./connection";
  * they land. Later than FIRST_PAINT_MS, the window reports one line through
  * `stall.report` (`[renderer] first-paint session=<id> host=<env> ms=<n>` in
  * stalls.log), once per open; a pane closed before its rows says nothing.
+ * Only a thread with persisted rows is timed: a draft's first rows arrive
+ * when the person sends, so its clock would count their typing.
  */
 export const FIRST_PAINT_MS = 500;
 
 export interface FirstPaintOptions {
+  /** False for a draft (no persisted rows yet): nothing is timed or reported. */
+  armed?: boolean;
   now?: () => number;
   /** Runs `fn` after the next paint (double rAF); a test passes its own. */
   afterPaint?: (fn: () => void) => void;
@@ -37,7 +41,7 @@ export function watchFirstPaint(sessionId: string, environmentId: string, option
   const afterPaint = options.afterPaint ?? doubleRaf;
   const report = options.report ?? reportLine;
   const openedAt = now();
-  let done = false;
+  let done = options.armed === false;
   return {
     rows() {
       if (done) return;
@@ -53,14 +57,14 @@ export function watchFirstPaint(sessionId: string, environmentId: string, option
   };
 }
 
-/** SessionPane's hook: one watch per open thread, told when its rows arrive. */
-export function useFirstPaintReport(sessionId: string, environmentId: string, hasRows: boolean): void {
+/** SessionPane's hook: one watch per open thread with persisted rows, told when its rows arrive. */
+export function useFirstPaintReport(sessionId: string, environmentId: string, hasRows: boolean, armed = true): void {
   const watch = useRef<FirstPaintWatch | null>(null);
   useEffect(() => {
-    const current = watchFirstPaint(sessionId, environmentId);
+    const current = watchFirstPaint(sessionId, environmentId, { armed });
     watch.current = current;
     return () => current.dispose();
-  }, [sessionId, environmentId]);
+  }, [sessionId, environmentId, armed]);
   useEffect(() => {
     if (hasRows) watch.current?.rows();
   }, [hasRows, sessionId, environmentId]);

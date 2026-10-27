@@ -1,6 +1,7 @@
 import type { AccountRoute } from '@shared/accounts'
 import type { ProviderId } from '@shared/catalog'
 import type { AgentEvent, Attachment, SessionMeta } from '@shared/events'
+import type { SendPhase } from '../sendSpans'
 
 /**
  * The per-harness contract. A driver owns exactly one running harness
@@ -52,6 +53,11 @@ export interface DriverCtx {
    *  null adds nothing. A driver with a post-tool hook asks it; the host
    *  whispers the line into the turn for one without (threadPorts.ts). */
   toolResultTail?: (callId: string, output: string) => Promise<string | null>
+  /** A phase of the current send landed (sendSpans.ts): `handle` with
+   *  `warm` or `cold` when the process is made, `init` at the harness's
+   *  own init, `first-message` on anything back, `first-content` on the
+   *  first text delta or tool call. Cheap and idempotent; absent in tests. */
+  mark?: (phase: SendPhase, note?: string) => void
 }
 
 export interface DriverHandle {

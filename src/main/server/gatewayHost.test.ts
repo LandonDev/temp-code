@@ -405,6 +405,12 @@ describe('PortControl', () => {
     expect(asks.filter((a) => a.m === 'substitute')).toHaveLength(1)
   })
 
+  it('a fetch that got no answer crosses to main as a network event', () => {
+    const { control, told } = setup(() => null)
+    control.onNetwork({ service: 'claude', path: '/~t=T1;a=A/v1/messages', account: 'A', error: 'fetch failed' })
+    expect(told).toEqual([{ e: 'network', info: { service: 'claude', path: '/~t=T1;a=A/v1/messages', account: 'A', error: 'fetch failed' } }])
+  })
+
   it('a 429 is charged in the local copy at once and told to main; the headers cross as the limit subset', async () => {
     const { control, told } = setup(() => null)
     control.observeLimit('claude-code', 'A', { window: '5h', resetsAt: 123 })

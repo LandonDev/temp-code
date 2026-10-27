@@ -123,7 +123,8 @@ import { batchMembershipOf, isMasterSession, notifyParentOfSettle, settleTargets
 import { batches } from './batch'
 import { foldTodo, newTodoFold, tallyOf, type TaskTally, type TodoFold } from './todos'
 import { liveDiffOnStatus } from './livediff'
-import { timed, whenLoopIdle } from './stalls'
+import { recordSendSpan, timed, whenLoopIdle } from './stalls'
+import { SendSpans } from './sendSpans'
 import { applyRowChange, buildSessionIndex, type SessionIndex } from './sessionIndex'
 import {
   appendJournal,
@@ -156,7 +157,8 @@ const THREAD_TITLES = {
 } as const
 
 type SessionListener = (row: EventRow) => void
-type MetaListener = (session: SessionMeta) => void
+/** `producer` is notifyMeta's tag: which code pushed (the stall log's `pushes=` breakdown). */
+type MetaListener = (session: SessionMeta, producer: string) => void
 
 /** Cap for the transcript handoff sent to a new harness on provider switch. */
 const HANDOFF_MAX_CHARS = 24_000
@@ -469,6 +471,8 @@ export class SessionRegistry {
   private steerWaiters = new Map<string, Set<(text: string) => void>>()
   /** The thread scheduler: `after` and the running cap (CLAUDE.md "Master threads"). */
   readonly scheduler: ThreadScheduler
+  /** One phase line per send in stalls.log (sendSpans.ts): where a slow send spent its time. */
+  private readonly spans = new SendSpans({ write: recordSendSpan })
   /** The running cap and the memory floor (admission.ts). Set by the server; null runs uncapped. */
   admission: Pick<Admission, 'cap' | 'memoryLow'> | null = null
   /** Boot-resume threads past the cap, queued with their nudge (the restart's time) until a slot frees. */
@@ -834,7 +838,7 @@ export class SessionRegistry {
       const meta = index.byId.get(fold.sessionId)
       if (!meta) continue
       const decorated = this.decorate(meta, index)
-      for (const l of this.metaListeners) l(decorated)
+      for (const l of this.metaListeners) l(decorated, 'folds')
     }
   }
 
@@ -1563,7 +1567,7 @@ export class SessionRegistry {
     } finally {
       if (!outer) {
         this.deferredMeta = null
-        for (const meta of deferred.values()) this.notifyMeta(meta)
+        for (const meta of deferred.values()) this.notifyMeta(meta, 'accounts')
       }
     }
   }
@@ -2381,9 +2385,13 @@ export class SessionRegistry {
     let meta = this.store.getSession(sessionId)
     if (!meta) throw new Error(`unknown session: ${sessionId}`)
     this.assertNotMoving(sessionId)
+    // The send's phase line (sendSpans.ts) opens here; a send that ends up
+    // queued instead of in a harness is dropped from it.
+    this.spans.begin(sessionId)
     // A paused tree accepts no harness input. User work stays ordered in the
     // same queue and releases only after the resumed turn settles.
     if (this.isTreePaused(sessionId)) {
+      this.spans.drop(sessionId)
       this.queueAdd(sessionId, text, opts)
       return
     }
@@ -2415,6 +2423,7 @@ export class SessionRegistry {
         } else {
           await this.clearGoal(sessionId)
         }
+        this.spans.drop(sessionId)
         return
       }
     }
@@ -2490,6 +2499,7 @@ export class SessionRegistry {
     // message waits at the front of the queue and `startQueued` sends it.
     const harness = this.handles.has(sessionId) || this.starting.has(sessionId)
     if (!opts?.echoed && this.scheduler.admit(meta, { first, optIn: this.wantsQueue(meta), harness }) === 'queue') {
+      this.spans.drop(sessionId)
       this.queueOptIn.delete(sessionId)
       this.append(sessionId, { type: 'status', status: 'queued' })
       this.queueAdd(sessionId, text, { ...opts, echoed: { first } }, true)
@@ -2509,6 +2519,7 @@ export class SessionRegistry {
     void this.armBaseline(sessionId)
     const retry: QueuedSendOpts = { ...opts, echoed: { first } }
     let handle: DriverHandle
+    const hadHandle = this.handles.has(sessionId)
     try {
       handle = await this.handleFor(sessionId)
     } catch {
@@ -2517,9 +2528,12 @@ export class SessionRegistry {
       // message at the front of the queue instead of dropping it, so once
       // the cause is fixed the thread runs what the user actually asked for
       // rather than an empty continue.
+      this.spans.drop(sessionId)
       this.queueAdd(sessionId, text, retry, true)
       return
     }
+    // A handle that was up is `live`; a fresh one said `warm` or `cold` itself (the claude driver).
+    this.spans.mark(sessionId, 'handle', hadHandle ? 'live' : undefined)
     this.lastActivity.set(sessionId, Date.now())
     // A goal passed to session.create lands here, ahead of the kickoff:
     // claude queues its /goal turn first, codex sets the RPC before
@@ -2632,6 +2646,7 @@ export class SessionRegistry {
         out = inlineReference(out, tokens, refMeta.title, digest)
       }
     }
+    this.spans.mark(sessionId, 'prepared')
     // Thread references are resolved above; appshots expand into the plain
     // image + text-file pair every harness understands (the persisted event
     // keeps the appshot itself, so the transcript renders the chip).
@@ -2651,10 +2666,12 @@ export class SessionRegistry {
       })
     try {
       await handle.send(out, sendAttachments)
+      this.spans.mark(sessionId, 'delivered')
     } catch (err) {
       // A steer at a provider that can't take mid-turn input (cursor's
       // process-per-turn) front-queues instead of erroring the composer.
       if (err instanceof Error && err.message.includes('still running')) {
+        this.spans.drop(sessionId)
         this.queueAdd(sessionId, text, retry, true)
         return
       }
@@ -2664,8 +2681,10 @@ export class SessionRegistry {
         await this.dropHandle(sessionId)
         const fresh = await this.handleFor(sessionId)
         await fresh.send(out, sendAttachments)
+        this.spans.mark(sessionId, 'delivered')
         return
       }
+      this.spans.drop(sessionId)
       throw err
     }
   }
@@ -3647,6 +3666,7 @@ export class SessionRegistry {
           emit: (event) => this.append(sessionId, event),
           requestApproval: (req) => this.requestApproval(sessionId, req),
           awaitBaseline: () => this.awaitBaseline(sessionId),
+          mark: (phase, note) => this.spans.mark(sessionId, phase, note),
           toolResultTail: (callId, output) => this.toolResultTail?.(sessionId, callId, output) ?? Promise.resolve(null),
           setNativeId: (nativeId) => {
             const next = this.store.updateSession(sessionId, { nativeId })
@@ -4642,19 +4662,21 @@ export class SessionRegistry {
    *  the pass is written (latest per session). */
   private deferredMeta: Map<string, SessionMeta> | null = null
 
-  private notifyMeta(session: SessionMeta): void {
+  /** `producer` names the code that pushed, for the stall log's `pushes=`
+   *  breakdown: `status` by default, `accounts` for a pass over the picks. */
+  private notifyMeta(session: SessionMeta, producer = 'status'): void {
     if (this.deferredMeta) {
       this.deferredMeta.set(session.id, session)
       return
     }
     const index = this.indexOf()
     const decorated = this.decorate(session, index)
-    for (const l of this.metaListeners) l(decorated)
+    for (const l of this.metaListeners) l(decorated, producer)
     if (session.parentId) {
       const root = index.byId.get(this.rootSessionOf(session.id))
       if (root) {
         const decoratedRoot = this.decorate(root, index)
-        for (const l of this.metaListeners) l(decoratedRoot)
+        for (const l of this.metaListeners) l(decoratedRoot, producer)
       }
     }
   }
