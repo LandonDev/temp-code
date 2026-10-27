@@ -49,3 +49,13 @@ describe("NoticeRow", () => {
     expect(container.querySelectorAll('[data-slot="notice-line"]').length).toBe(1);
   });
 });
+
+describe("SystemRow", () => {
+  it("a plain system block is one muted line", async () => {
+    const { SystemRow } = await import("./SystemRow");
+    const { container } = render(<SystemRow block={{ id: "s", role: "system", text: "Resumed after the host restarted at 3:41 PM" }} />);
+    expect(container.querySelectorAll('[data-slot="notice-line"]').length).toBe(1);
+    expect(container.querySelector("pre")).toBeNull();
+    expect(container.textContent).toBe("Resumed after the host restarted at 3:41 PM");
+  });
+});

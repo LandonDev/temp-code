@@ -1,42 +1,40 @@
 import { useState, type MouseEvent } from "react";
 import { ChevronRight } from "../chrome/icons";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/ui/collapsible";
+import { cn } from "../lib/cn";
 
 /**
  * The project rules a thread's first message opened with, folded to one
- * line above the brief the person wrote: "Project rules · 212 words".
- * Click opens the text in place; the bubble's own clamp toggle never sees
+ * line above the brief the person wrote: "Project rules  212 words". The
+ * caret opens the text in place; the bubble's own clamp toggle never sees
  * the click. The thread keeps the text it started with, so this is a
  * record, not an editor.
  */
 export function PreambleRow({ text, words }: { text: string; words: number }) {
   const [open, setOpen] = useState(false);
-  const toggle = (e: MouseEvent) => {
-    e.stopPropagation();
-    setOpen((v) => !v);
-  };
+  const stop = (e: MouseEvent) => e.stopPropagation();
   return (
-    <div className="mb-1.5 flex flex-col gap-1" data-preamble-row>
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={toggle}
-        className="-ml-1 flex w-fit items-center gap-1 rounded-md px-1 py-0.5 text-[12px] text-content/50 hover:text-content/70"
+    <Collapsible open={open} onOpenChange={setOpen} className="mb-1.5 flex flex-col" data-preamble-row>
+      <CollapsibleTrigger
+        onClick={stop}
+        className="-ml-1 flex w-fit items-center gap-2 rounded-md px-1 py-0.5 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent"
       >
         <ChevronRight
-          className={`size-3 shrink-0 transition-transform duration-150 ease-out ${open ? "rotate-90" : ""}`}
+          className={cn(
+            "size-3 shrink-0 transition-transform duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-none",
+            open && "rotate-90",
+          )}
         />
-        <span>
-          Project rules<span className="text-content/35"> · {words} word{words === 1 ? "" : "s"}</span>
+        <span>Project rules</span>
+        <span className="tabular-nums">
+          {words} word{words === 1 ? "" : "s"}
         </span>
-      </button>
-      {open ? (
-        <pre
-          onClick={(e) => e.stopPropagation()}
-          className="min-w-0 whitespace-pre-wrap break-words border-l border-content/15 pl-2.5 font-sans text-[12px] leading-5 text-content/60"
-        >
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <pre onClick={stop} className="min-w-0 whitespace-pre-wrap break-words pt-1 font-sans text-[13px] leading-5 text-muted-foreground">
           {text}
         </pre>
-      ) : null}
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }

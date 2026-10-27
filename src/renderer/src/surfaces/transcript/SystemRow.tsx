@@ -7,7 +7,7 @@ import type { OpenFileFn } from "../../lib/search";
 import { isNoticeBlock, NoticeRow } from "./NoticeRow";
 import { NoticeLine } from "./NoticeLine";
 
-/** A system row: a typed notice draws through NoticeRow, a plain one is its text. */
+/** A system row: a typed notice draws through NoticeRow, a plain one is a muted notice line. */
 export function SystemRow({
   block,
   cwd,
@@ -18,13 +18,8 @@ export function SystemRow({
   onOpenFile?: OpenFileFn;
 }) {
   if (isNoticeBlock(block)) return <NoticeRow block={block} cwd={cwd} onOpenFile={onOpenFile} />;
-  return (
-    <div className="py-2 text-content/50">
-      <pre className="min-w-0 whitespace-pre-wrap break-words">
-        {block.text}
-      </pre>
-    </div>
-  );
+  // A plain line the host wrote (a status detail, a goal): muted, wrapping.
+  return <NoticeLine lead={block.text} wrap />;
 }
 
 /** A handoff to another harness: "Continued with Codex", or the handoff
