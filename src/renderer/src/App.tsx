@@ -310,6 +310,7 @@ const InboxView = inboxChunk.surface("InboxView", <SurfaceSkeleton kind="page" l
 const InboxDetailPane = inboxChunk.surface("InboxDetailPane", <SurfaceSkeleton kind="pane" label="Loading inbox" />);
 const NotesView = notesChunk.surface("NotesView", <SurfaceSkeleton kind="page" label="Loading notes" />);
 import { inboxComposerCard, type InboxItem } from "./lib/githubTasks";
+import { windowTitle } from "./lib/windowTitle";
 import {
   linearIssueDetails,
   peekLinearIssueDetails,
@@ -509,6 +510,25 @@ export default function App() {
   );
 
   const { activeTab, active } = activeSessionOf(tabs, activeTabId, sessions);
+  // The window's title: the page that covers it, else the focused pane and its project.
+  const titleFile = activeTab ? focusedFileTab(activeTab) : undefined;
+  const titleProjectId = active ? active.projectId : selectedProjectId;
+  const titleProject = (titleProjectId && projects.find((project) => project.id === titleProjectId)?.name) || null;
+  const titleText = windowTitle({
+    page: settingsOpen ? "settings" : accountsPage ?? (notesViewOpen ? "notes" : inboxViewOpen ? "inbox" : searchViewOpen ? "search" : null),
+    pane:
+      titleFile?.terminal
+        ? { kind: "terminal" }
+        : titleFile
+          ? { kind: "file", path: titleFile.path }
+          : active
+            ? { kind: "thread", title: active.title }
+            : null,
+    project: titleProject,
+  });
+  useEffect(() => {
+    document.title = titleText;
+  }, [titleText]);
   // The window's environment: the thread on screen's, else the workspace's, else this machine.
   const activeEnvironmentId =
     active?.environmentId ?? (projectCwd !== "~" ? environmentOfCwd(projectCwd) : undefined) ?? registry.primaryEnvironmentId;
