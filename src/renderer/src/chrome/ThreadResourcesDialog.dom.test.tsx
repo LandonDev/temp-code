@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import type { ThreadResource } from '@server/shared/contract-resources'
+import { tooltipChunk, warmTooltips } from '@renderer/components/ui/tooltip'
 import { mountProbe } from '../test/renderProbe'
 import { threadResourcesStore } from '../lib/threadResources'
 import { macBridgeStore } from '../lib/macBridge'
@@ -61,12 +62,17 @@ describe('ThreadResourceList', () => {
     expect(rows[0].textContent).toContain('ios/home')
     // The identifier is the label's tooltip, not a title attribute.
     expect(probe.container.querySelector('[title]')).toBeNull()
-    expect(rows[0].querySelector('[data-slot=tooltip-trigger]')?.textContent).toBe('ios/home')
+    // The label is the tooltip's trigger; once the primitive has loaded, a hover opens it.
+    const label = () => probe!.container.querySelector('[data-resource=r1] [data-slot=item-title], [data-resource=r1] [data-slot=tooltip-trigger]') as HTMLElement
+    expect(label().textContent).toBe('ios/home')
     expect(rows[0].querySelector('[data-slot=item-description]')?.textContent).toBe('macworktree')
-    const trigger = rows[0].querySelector('[data-slot=tooltip-trigger]') as HTMLElement
-    fireEvent.pointerEnter(trigger, { pointerType: 'mouse' })
-    fireEvent.mouseEnter(trigger)
-    fireEvent.mouseMove(trigger)
+    await probe.act(async () => {
+      warmTooltips()
+      await tooltipChunk.load()
+    })
+    fireEvent.pointerEnter(label(), { pointerType: 'mouse' })
+    fireEvent.mouseEnter(label())
+    fireEvent.mouseMove(label())
     await waitFor(() => expect(screen.getByText('/Users/landon/IdeaProjects/tc-ios/home')).toBeTruthy(), { timeout: 1500 })
     expect(rows[1].textContent).toContain('simulator')
     expect(rows[1].textContent).toContain('tc-ios-home')
