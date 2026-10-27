@@ -22,7 +22,6 @@ import { WindowControls } from "../chrome/WindowControls";
 import { useDragResize } from "../hooks/useDragResize";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { Button } from "../components/ui/button";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { GroupInput, InputGroup } from "../components/ui/input";
 import { ItemButton } from "../components/ui/item";
 import { Skeleton } from "../components/ui/skeleton";
@@ -68,6 +67,7 @@ import { useWorkspaceCatalog, useWorkspaceIcon } from "../lib/tcserver/workspace
 import type { WorkspaceMeta } from "../lib/tcserver/types";
 import {
   applyInboxFilters,
+  DEFAULT_INBOX_FILTERS,
   hasActiveInboxFilters,
   inboxFetchState,
   loadInboxFilters,
@@ -518,22 +518,15 @@ export function InboxView({
         ) : loading && items.length === 0 ? (
           <InboxRowsSkeleton />
         ) : visibleItems.length === 0 ? (
-          <Empty>
-            <EmptyHeader>
-              <EmptyTitle>
-                {narrowedByUser
-                  ? "No matching issues"
-                  : source === "linear"
-                    ? "No Linear issues"
-                    : ghWorkspaces.length === 0
-                      ? "No GitHub workspaces"
-                      : "No issues or pull requests"}
-              </EmptyTitle>
-              {!narrowedByUser && source === "github" && ghWorkspaces.length === 0 ? (
-                <EmptyDescription>Add a GitHub repository as a workspace.</EmptyDescription>
-              ) : null}
-            </EmptyHeader>
-          </Empty>
+          <InboxListEmpty
+            narrowed={narrowedByUser}
+            source={source}
+            githubWorkspaces={ghWorkspaces.length}
+            onClearFilters={() => {
+              setSearchInput("");
+              onFiltersChange(DEFAULT_INBOX_FILTERS);
+            }}
+          />
         ) : (
           <ul className="flex flex-col gap-0.5 p-1.5">
             {visibleItems.map((item) => {
@@ -645,6 +638,37 @@ export function InboxView({
         </div>
       </div>
     </div>
+  );
+}
+
+/** The list with nothing to show: what narrowed it, or where items come from. */
+export function InboxListEmpty({
+  narrowed,
+  source,
+  githubWorkspaces,
+  onClearFilters,
+}: {
+  narrowed: boolean;
+  source: InboxSource;
+  githubWorkspaces: number;
+  onClearFilters: () => void;
+}) {
+  if (narrowed) {
+    return (
+      <EmptyState
+        title="No matching issues"
+        line="Filters are narrowing this list"
+        action={{ label: "Clear filters", onClick: onClearFilters }}
+      />
+    );
+  }
+  if (source === "linear") return <EmptyState title="No Linear issues" line="Open issues from your Linear teams show here." />;
+  if (githubWorkspaces === 0) return <EmptyState title="No GitHub workspaces" line="Add a GitHub repository as a workspace." />;
+  return (
+    <EmptyState
+      title="No issues or pull requests"
+      line="Open issues and pull requests from your GitHub workspaces show here."
+    />
   );
 }
 
