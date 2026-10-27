@@ -18,7 +18,13 @@ const windowName = (label: string): string => (label === "week" ? "weekly limit"
 export const paceTitle = (p: PaceSeries): string => `${PROVIDER[p.service] ?? p.service} ${windowName(p.label)}`;
 
 const hoursLeft = (p: PaceSeries): number => Math.max(0, ((1 - p.nowFrac) * p.periodMs) / 3_600_000);
-const timeLeft = (h: number): string => (h >= 48 ? `${Math.round(h / 24)} days` : h >= 1 ? `${Math.round(h)} hours` : "under an hour");
+/** "3 days", "1 hour", "5 hours", "under an hour": rounded first, then the word picked for that number. */
+export const timeLeft = (h: number): string => {
+  if (h >= 48) return `${Math.round(h / 24)} days`;
+  if (h < 1) return "under an hour";
+  const hours = Math.round(h);
+  return hours === 1 ? "1 hour" : `${hours} hours`;
+};
 
 /** The pace chart's headline in words; running low is amber, never red. */
 export function paceLine(p: PaceSeries): { text: string; warning: boolean } {

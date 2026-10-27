@@ -41,11 +41,13 @@ export function HeadroomLine({ headroom, now, className }: { headroom: AccountHe
           {look.until ? <span className="shrink-0">{look.until}</span> : null}
         </span>
       </TooltipTrigger>
-      <TooltipContent>
-        {look.lines.map((line) => (
-          <p key={line}>{line}</p>
-        ))}
-      </TooltipContent>
+      {look.lines.length > 0 ? (
+        <TooltipContent>
+          {look.lines.map((line) => (
+            <p key={line}>{line}</p>
+          ))}
+        </TooltipContent>
+      ) : null}
     </Tooltip>
   );
 }

@@ -1,8 +1,9 @@
 const fn = () => {}
 
-/** The seven kinds, for `bun run ui:preview …SurfaceSkeleton.tsx#SurfaceSkeleton`. */
+/** The eight kinds, for `bun run ui:preview …SurfaceSkeleton.tsx#SurfaceSkeleton`. */
 export default [
   { name: 'Page', props: { kind: 'page' } },
+  { name: 'Column', props: { kind: 'column' } },
   { name: 'Pane', props: { kind: 'pane' } },
   { name: 'Diff', props: { kind: 'diff' } },
   { name: 'Terminal', props: { kind: 'terminal' } },

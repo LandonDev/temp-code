@@ -98,9 +98,13 @@ export function SettingsView({
         {IS_MAC ? null : <WindowControls />}
       </div>
 
+      {/* Keyed by the section (a workspace's carries its id), so each page
+          opens at its top; the stable gutter keeps the column still when a
+          page gains a scrollbar. */}
       <div
+        key={section}
         ref={lockOverscroll}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-none"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-none [scrollbar-gutter:stable]"
       >
         <Page
           title={title}

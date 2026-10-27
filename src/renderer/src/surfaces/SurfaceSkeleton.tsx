@@ -12,8 +12,10 @@ import { Spinner } from "../components/ui/spinner";
  * around it does not jump when the real thing lands; nothing in it moves.
  */
 export type SkeletonKind =
-  /** A full page with a nav column (Settings, the Aliax pages). */
+  /** A full page with a list column beside its content (Search, Inbox, Notes). */
   | "page"
+  /** A page in the one 672px column under the title strip (Settings, Accounts, Stats). */
+  | "column"
   /** A pane of text lines (the editor, release notes, an issue body). */
   | "pane"
   /** A diff: a header strip and two hunks (a diff, an edit row's body, a PR diff). */
@@ -71,6 +73,27 @@ function body(kind: SkeletonKind, count: number): ReactNode {
             </div>
           </div>
         </div>
+      );
+    case "column":
+      // components/page.tsx's frame: the strip, then Page's column with its
+      // title, its line and rows in PageRowsSkeleton's shape.
+      return (
+        <>
+          <div className="h-10 shrink-0 border-b border-border" />
+          <div data-skeleton-column className="mx-auto w-full max-w-2xl p-6">
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="mt-2 h-3 w-64 max-w-full" />
+            <div className="mt-6 flex flex-col">
+              {Array.from({ length: count }, (_, i) => (
+                <div key={i} className="flex items-center gap-3 py-3">
+                  <Skeleton className="h-3.5 w-32" />
+                  <span className="flex-1" />
+                  <Skeleton className="h-8 w-40 rounded-lg" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
       );
     case "pane":
       return (
@@ -130,6 +153,7 @@ function body(kind: SkeletonKind, count: number): ReactNode {
 
 const FRAME: Record<SkeletonKind, string> = {
   page: "flex min-h-0 min-w-0 flex-1 flex-col",
+  column: "flex min-h-0 min-w-0 flex-1 flex-col",
   pane: "h-full min-h-0 w-full overflow-hidden",
   diff: "flex h-full min-h-0 w-full flex-col overflow-hidden",
   terminal: "monocode-terminal flex h-full min-h-0 w-full flex-col",

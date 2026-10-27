@@ -129,6 +129,15 @@ describe("AccountsView", () => {
     expect(within(screen.getByRole("dialog")).getByText("Fable")).toBeTruthy();
   });
 
+  it("says No answer yet once for an account no host has heard from", async () => {
+    render(<AccountsView {...props} headroom={{ "claude-code": { "a@x.com": { room: null, ratePerMin: 0, seenAt: null } as never } }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Usage details for Main" }));
+    await flush();
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getAllByText(/No answer/)).toHaveLength(1);
+    expect(dialog.textContent).not.toContain("No answer seen");
+  });
+
   it("has no details button for a row without a report", () => {
     render(<AccountsView {...props} />);
     expect(screen.queryByRole("button", { name: "Usage details for Spare" })).toBeNull();

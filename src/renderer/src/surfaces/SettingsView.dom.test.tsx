@@ -53,6 +53,17 @@ describe("SettingsView", () => {
     expect(document.querySelector("[data-page=remote]")).toBeTruthy();
   });
 
+  it("opens each section at its top, with the scroller's gutter held", () => {
+    render(view());
+    const scroller = () => document.querySelector("[data-slot=page]")!.parentElement as HTMLElement;
+    expect(scroller().className).toContain("[scrollbar-gutter:stable]");
+    scroller().scrollTop = 400;
+    const before = scroller();
+    act(() => shell.openSettings("editor"));
+    expect(scroller()).not.toBe(before);
+    expect(scroller().scrollTop).toBe(0);
+  });
+
   it("closes on Escape", () => {
     render(view());
     fireEvent.keyDown(window, { key: "Escape" });

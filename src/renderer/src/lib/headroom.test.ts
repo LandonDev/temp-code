@@ -6,8 +6,10 @@ const MIN = 60_000
 
 describe('headroomLook', () => {
   it('no answer yet: an empty bar and a muted word', () => {
-    expect(headroomLook(undefined, now)).toMatchObject({ percent: 0, text: 'No answer yet', until: null, tone: 'muted' })
-    expect(headroomLook({ room: null, ratePerMin: 0, seenAt: null }, now)).toMatchObject({ percent: 0, tone: 'muted' })
+    // Said once, as the word: no line under it repeats it.
+    expect(headroomLook(undefined, now)).toMatchObject({ percent: 0, text: 'No answer yet', until: null, tone: 'muted', lines: [] })
+    expect(headroomLook({ room: null, ratePerMin: 0, seenAt: null }, now)).toMatchObject({ percent: 0, tone: 'muted', lines: [] })
+    expect(headroomLook({ room: null, ratePerMin: 2, seenAt: null }, now).lines).toEqual(['2 answers in the last minute, every host'])
   })
   it('a 429 cooldown: an empty bar, Limited with the time left, and the pick-again moment on hover', () => {
     const look = headroomLook({ room: 0.8, ratePerMin: 3, seenAt: now, throttledUntil: now + 5 * MIN }, now)

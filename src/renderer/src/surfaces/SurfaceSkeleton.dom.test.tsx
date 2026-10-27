@@ -5,7 +5,7 @@ import { EmptyState, LoadingLine, SurfaceSkeleton, type SkeletonKind } from "./S
 
 afterEach(cleanup);
 
-const KINDS: SkeletonKind[] = ["page", "pane", "diff", "terminal", "frame", "transcript", "rows"];
+const KINDS: SkeletonKind[] = ["page", "column", "pane", "diff", "terminal", "frame", "transcript", "rows"];
 
 describe("SurfaceSkeleton", () => {
   it.each(KINDS)("%s: a labelled status of still skeleton blocks", (kind) => {
@@ -27,6 +27,15 @@ describe("SurfaceSkeleton", () => {
     const turn = container.querySelector("[data-surface-skeleton] > div > div")!;
     expect(turn.firstElementChild!.className).toContain("self-end");
     expect(turn.lastElementChild!.querySelectorAll('[data-slot="skeleton"]').length).toBe(3);
+  });
+
+  it("column: Settings' one 672px column under the strip, with no nav column", () => {
+    const { container } = render(<SurfaceSkeleton kind="column" label="Loading settings" />);
+    const column = container.querySelector("[data-skeleton-column]")!;
+    expect(column.className).toContain("max-w-2xl");
+    expect(column.className).toContain("mx-auto");
+    expect(container.querySelector(".w-52")).toBeNull();
+    expect(container.querySelector("[data-surface-skeleton] > .border-b")).not.toBeNull();
   });
 
   it("rows: count rows, four by default", () => {

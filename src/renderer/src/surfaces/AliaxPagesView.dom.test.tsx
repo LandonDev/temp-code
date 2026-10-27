@@ -24,4 +24,16 @@ describe("AliaxPagesView", () => {
     expect(screen.getByText("Available in the desktop app").closest("[data-slot=empty]")).toBeTruthy();
     expect(screen.queryByText("Stats")).toBeNull();
   });
+
+  it("opens each page at its top, with the scroller's gutter held", () => {
+    (window as { api?: unknown }).api = {};
+    const { rerender } = render(<AliaxPagesView page="accounts" onClose={() => {}} />);
+    const scroller = () => screen.getByRole("heading").parentElement as HTMLElement;
+    expect(scroller().className).toContain("[scrollbar-gutter:stable]");
+    scroller().scrollTop = 400;
+    const before = scroller();
+    rerender(<AliaxPagesView page="stats" onClose={() => {}} />);
+    expect(scroller()).not.toBe(before);
+    expect(scroller().scrollTop).toBe(0);
+  });
 });

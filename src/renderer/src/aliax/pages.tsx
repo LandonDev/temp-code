@@ -125,6 +125,7 @@ export function AccountsPage(): React.JSX.Element {
   return (
     <Page
       title="Accounts"
+      description="The Claude and Codex sign-ins threads route through."
       actions={
         <Tooltip>
           <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Refresh usage" disabled={refreshing} onClick={() => void reload()} />}>

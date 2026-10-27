@@ -39,7 +39,9 @@ export function AliaxPagesView({ page, besideRail = false, onClose, onToggleSide
         <div className="min-w-0 flex-1" />
         {IS_MAC ? null : <WindowControls />}
       </div>
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+      {/* Keyed by the page, so Stats opens at its top; the stable gutter keeps
+          the column still when a page gains a scrollbar. */}
+      <div key={page} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable]">
         {isWebMode() ? (
           <Empty>
             <EmptyTitle>{DESKTOP_ONLY_LINE}</EmptyTitle>

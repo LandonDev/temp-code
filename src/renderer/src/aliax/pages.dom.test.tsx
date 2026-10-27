@@ -148,6 +148,7 @@ describe('AccountsPage', () => {
     await act(flush)
 
     expect(screen.getByRole('heading', { level: 1, name: 'Accounts' })).toBeTruthy()
+    expect(screen.getByText('The Claude and Codex sign-ins threads route through.')).toBeTruthy()
     expect(screen.getByText('Claude Code')).toBeTruthy()
     expect(screen.getByText('Codex')).toBeTruthy()
     expect(screen.getByText('Main')).toBeTruthy()

@@ -25,7 +25,7 @@ export function headroomLook(h: AccountHeadroom | undefined, now: number): Headr
   const rate = h && h.ratePerMin > 0 ? `${h.ratePerMin} answer${h.ratePerMin === 1 ? "" : "s"} in the last minute, every host` : null;
   const lines = (...all: (string | null | undefined)[]) => all.filter((s): s is string => !!s);
   if (!h || (h.room === null && !h.throttledUntil)) {
-    return { percent: 0, text: "No answer yet", until: null, tone: "muted", lines: lines(rate ?? "No answer seen from this account yet") };
+    return { percent: 0, text: "No answer yet", until: null, tone: "muted", lines: lines(rate) };
   }
   if (h.throttledUntil !== undefined && h.throttledUntil > now) {
     const until = untilLabel(h.throttledUntil, now);
