@@ -1,6 +1,14 @@
-import { ChevronRight, Replace, X } from "./icons";
+import { ChevronRight, Replace } from "./icons";
 import { HARNESS_TITLE, type HarnessId } from "../lib/session";
 import { HarnessIcon } from "./HarnessIcon";
+import {
+  Attachment,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentMedia,
+  AttachmentTitle,
+} from "../components/ui/attachment";
+import { MiniCardRemove } from "./MiniCardRemove";
 
 type Card = {
   from: HarnessId;
@@ -14,6 +22,8 @@ type Props = {
   onDismiss?: () => void;
 };
 
+/** A handoff between harnesses: from and to, then the request and how
+ *  many files travel with it. */
 export function HandoffMiniCard({ card, onDismiss }: Props) {
   const files =
     card.files != null && card.files > 0
@@ -22,54 +32,27 @@ export function HandoffMiniCard({ card, onDismiss }: Props) {
 
   return (
     <div className="px-3 pt-2">
-      <div
-        className={`relative rounded-md border border-content/10 bg-content/6 px-2.5 py-2 ${
-          onDismiss ? "pr-8" : ""
-        }`}
-      >
-        <div className="flex w-full flex-col text-left">
-          <span className="flex min-w-0 items-center gap-1.5">
-            <Replace
-              className="size-3.5 shrink-0 text-content/40"
-              strokeWidth={1.75}
-            />
-            <span className="min-w-0 truncate text-[11px] text-content/50">
-              Handoff
-            </span>
-          </span>
-          <span className="mt-1 flex min-w-0 items-center gap-1.5 text-[13px] font-semibold leading-snug text-content">
+      <Attachment size="sm">
+        <AttachmentMedia>
+          <Replace className="size-3.5" />
+        </AttachmentMedia>
+        <AttachmentContent>
+          <AttachmentTitle className="flex items-center gap-1.5">
             <HarnessIcon harness={card.from} className="size-3.5 shrink-0" />
             <span className="min-w-0 truncate">{HARNESS_TITLE[card.from]}</span>
-            <ChevronRight
-              className="size-3 shrink-0 text-content/40"
-              strokeWidth={1.75}
-            />
+            <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
             <HarnessIcon harness={card.to} className="size-3.5 shrink-0" />
             <span className="min-w-0 truncate">{HARNESS_TITLE[card.to]}</span>
-          </span>
-          {card.request ? (
-            <span className="mt-1 line-clamp-1 text-[11px] text-content/40">
-              {card.request}
-            </span>
+          </AttachmentTitle>
+          {card.request || files ? (
+            <AttachmentDescription className="flex gap-3">
+              {card.request ? <span className="min-w-0 truncate">{card.request}</span> : null}
+              {files ? <span className="shrink-0 tabular-nums">{files}</span> : null}
+            </AttachmentDescription>
           ) : null}
-          {files ? (
-            <span className="mt-1 text-[11px] leading-4 text-content/40">
-              {files}
-            </span>
-          ) : null}
-        </div>
-        {onDismiss ? (
-          <button
-            type="button"
-            title="Remove"
-            aria-label="Remove handoff"
-            onClick={onDismiss}
-            className="absolute right-1.5 top-1.5 grid size-5 place-items-center rounded-md text-content/40 hover:bg-content/10 hover:text-content"
-          >
-            <X className="size-3" strokeWidth={2} />
-          </button>
-        ) : null}
-      </div>
+        </AttachmentContent>
+        {onDismiss ? <MiniCardRemove label="Remove handoff" onDismiss={onDismiss} /> : null}
+      </Attachment>
     </div>
   );
 }

@@ -1,20 +1,13 @@
-import { File, X } from "./icons";
-import { useState } from "react";
-import { ProjectLogoIcon } from "./ProjectLogoIcon";
-import { ProjectMascot } from "./ProjectMascot";
-import { useTabGroupLogos } from "../hooks/useTabGroupLogos";
+import { StickyNote } from "./icons";
+import { noteSourceProject, type NoteCardMeta } from "../lib/notes";
 import {
-  noteSourceProject,
-  type NoteCardMeta,
-} from "../lib/notes";
-import {
-  loadTabGroupColors,
-  loadTabGroupCustomColors,
-  loadTabGroupMascots,
-  resolveTabGroupColor,
-  resolveTabGroupLogo,
-  resolveTabGroupMascot,
-} from "../lib/tabGroups";
+  Attachment,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentMedia,
+  AttachmentTitle,
+} from "../components/ui/attachment";
+import { MiniCardRemove } from "./MiniCardRemove";
 
 type Props = {
   card: NoteCardMeta;
@@ -22,71 +15,23 @@ type Props = {
   embedded?: boolean;
 };
 
+/** A note on its way into a turn: its title and the project it came from
+ *  (embedded in a sent message, the title alone). */
 export function NoteMiniCard({ card, onDismiss, embedded = false }: Props) {
-  const logos = useTabGroupLogos();
-  const [mascots] = useState(loadTabGroupMascots);
-  const [colors] = useState(loadTabGroupColors);
-  const [customColors] = useState(loadTabGroupCustomColors);
-  const project = noteSourceProject(card.sourceCwd);
-  const logoPath = project ? resolveTabGroupLogo(project, logos) : null;
-  const mascotName = project ? resolveTabGroupMascot(project, mascots) : null;
-  const mascotColor = project
-    ? resolveTabGroupColor(project, colors, customColors, project)
-    : undefined;
-
+  const project = embedded ? null : noteSourceProject(card.sourceCwd);
+  const title = card.title || "Untitled";
   const inner = (
-    <div
-      className={`relative rounded-md border border-content/10 bg-content/6 px-2.5 py-2 ${
-        onDismiss ? "pr-8" : ""
-      }`}
-    >
-      <div className="flex w-full flex-col text-left">
-        <span className="flex min-w-0 items-center gap-1.5">
-          <File
-            className="size-3.5 shrink-0 text-content/40"
-            strokeWidth={1.75}
-          />
-          <span className="min-w-0 truncate text-[11px] text-content/50">
-            Note{!embedded && card.slug ? ` · ${card.slug}` : ""}
-          </span>
-        </span>
-        <span className="mt-1 line-clamp-1 text-[13px] font-semibold leading-snug text-content">
-          {card.title || "Untitled"}
-        </span>
-        {!embedded && project ? (
-          <span className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] text-content/40">
-            {logoPath ? (
-              <ProjectLogoIcon
-                path={logoPath}
-                className="size-3.5 shrink-0 rounded-md"
-                imageClassName="size-3.5"
-              />
-            ) : (
-              <ProjectMascot
-                project={project}
-                color={mascotColor}
-                name={mascotName}
-                className="size-3 shrink-0"
-              />
-            )}
-            <span className="min-w-0 truncate">{project}</span>
-          </span>
-        ) : null}
-      </div>
-      {onDismiss ? (
-        <button
-          type="button"
-          title="Remove"
-          aria-label={`Remove note ${card.title || "Untitled"}`}
-          onClick={onDismiss}
-          className="absolute right-1.5 top-1.5 grid size-5 place-items-center rounded-md text-content/40 hover:bg-content/10 hover:text-content"
-        >
-          <X className="size-3" strokeWidth={2} />
-        </button>
-      ) : null}
-    </div>
+    <Attachment size="sm">
+      <AttachmentMedia>
+        <StickyNote className="size-3.5" />
+      </AttachmentMedia>
+      <AttachmentContent>
+        <AttachmentTitle>{title}</AttachmentTitle>
+        {project ? <AttachmentDescription>{project}</AttachmentDescription> : null}
+      </AttachmentContent>
+      {onDismiss ? <MiniCardRemove label={`Remove note ${title}`} onDismiss={onDismiss} /> : null}
+    </Attachment>
   );
-
   if (embedded) return inner;
   return <div className="px-3 pt-2">{inner}</div>;
 }
