@@ -4,6 +4,7 @@ import { Button } from "@renderer/components/ui/button";
 import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from "@renderer/components/ui/empty";
 import { ScrollArea } from "@renderer/components/ui/scroll-area";
 import { Skeleton } from "@renderer/components/ui/skeleton";
+import { Textarea } from "@renderer/components/ui/textarea";
 import { TooltipProvider } from "@renderer/components/ui/tooltip";
 import { cn } from "@renderer/lib/cn";
 import { Check, Copy, Pencil } from "../../chrome/icons";
@@ -274,7 +275,7 @@ function NotesSource({ value, onChange, onDone }: { value: string; onChange: (va
           </div>
         ))}
       </div>
-      <textarea
+      <Textarea
         value={value}
         autoFocus
         onChange={(event) => onChange(event.target.value)}
@@ -285,7 +286,7 @@ function NotesSource({ value, onChange, onDone }: { value: string; onChange: (va
         }}
         spellCheck={false}
         aria-label="Notes source"
-        className="markdown-source-field absolute inset-0 h-full w-full resize-none overflow-hidden border-0 bg-transparent p-0 font-mono text-[13px] leading-5 whitespace-pre-wrap wrap-break-word outline-none"
+        className="markdown-source-field absolute inset-0 block h-full min-h-0 w-full resize-none overflow-hidden rounded-none border-0 p-0 font-mono leading-5 whitespace-pre-wrap wrap-break-word shadow-none! field-sizing-fixed"
       />
     </div>
   );

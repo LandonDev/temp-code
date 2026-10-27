@@ -2,6 +2,9 @@ import { Plus, Search, File, Trash2 } from "../chrome/icons";
 import { Button } from "../components/ui/button";
 import { Tip, TruncateTip } from "../components/tip";
 import { Spinner } from "../components/ui/spinner";
+import { GroupInput, Input, InputGroup } from "../components/ui/input";
+import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { Textarea } from "../components/ui/textarea";
 import { EmptyState, SurfaceSkeleton } from "./SurfaceSkeleton";
 import { ConfirmDialog } from "../chrome/ConfirmDialog";
 import {
@@ -214,21 +217,19 @@ export function NotesView({
   const list = (
     <div
       ref={resize.setPaneRef}
-      className="relative flex h-full min-h-0 shrink-0 flex-col border-r border-content/10"
+      className="relative flex h-full min-h-0 shrink-0 flex-col border-r border-border"
     >
-      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-content/10 px-2">
-        <div className="relative flex h-7 min-w-0 flex-1 items-center">
-          <Search className="pointer-events-none absolute left-2 size-3.5 shrink-0 text-content/50" strokeWidth={1.75} />
-          <input
+      <div className="flex shrink-0 items-center gap-1 border-b border-border p-2">
+        <InputGroup className="flex-1" leading={<Search />}>
+          <GroupInput
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Filter notes"
             aria-label="Filter notes"
             spellCheck={false}
             autoComplete="off"
-            className="h-7 w-full rounded-md bg-transparent pl-7 pr-2 text-[12px] text-content outline-none placeholder:text-content/40"
           />
-        </div>
+        </InputGroup>
         <Tip label="New note">
         <Button
           variant="ghost"
@@ -251,7 +252,7 @@ export function NotesView({
         className="min-h-0 flex-1 overflow-y-auto overscroll-none"
       >
         {error && notes.length === 0 ? (
-          <p className="px-3 py-2 text-[12px] text-danger">{error}</p>
+          <p className="px-3 py-2 text-[12px] text-destructive">{error}</p>
         ) : loading && notes.length === 0 ? (
           <SurfaceSkeleton kind="rows" count={6} label="Loading notes" />
         ) : visible.length === 0 ? (
@@ -279,7 +280,7 @@ export function NotesView({
         aria-orientation="vertical"
         aria-label="Resize notes list"
         className={`absolute inset-y-0 -right-px z-10 w-1.5 cursor-col-resize touch-none ${
-          resize.dragging ? "bg-content/15" : "hover:bg-content/10"
+          resize.dragging ? "bg-foreground/12" : "hover:bg-foreground/7"
         }`}
         onPointerDown={resize.onPointerDown}
         onDoubleClick={resize.onDoubleClick}
@@ -292,10 +293,10 @@ export function NotesView({
       role="region"
       aria-label="Notes"
       data-app-notes
-      className="flex min-h-0 min-w-0 flex-1 flex-col text-content"
+      className="flex min-h-0 min-w-0 flex-1 flex-col text-foreground"
     >
       <div
-        className="flex h-10 shrink-0 select-none items-center border-b border-content/10"
+        className="flex h-10 shrink-0 select-none items-center border-b border-border"
         data-tauri-drag-region="deep"
       >
         {IS_MAC && !besideRail ? <div className="w-[78px] shrink-0" /> : null}
@@ -304,10 +305,10 @@ export function NotesView({
         )}
         <div className="flex min-w-0 flex-1 items-center gap-2 px-3 text-[13px]">
           <File
-            className="size-3.5 shrink-0 text-content/40"
+            className="size-3.5 shrink-0 text-muted-foreground"
             strokeWidth={1.75}
           />
-          <span className="min-w-0 truncate text-content">Notes</span>
+          <span className="min-w-0 truncate text-foreground">Notes</span>
         </div>
         {IS_MAC ? null : <WindowControls />}
       </div>
@@ -372,33 +373,6 @@ function NoteProjectMark({
   );
 }
 
-function NoteDetailTab({
-  label,
-  selected,
-  onSelect,
-}: {
-  label: string;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={selected}
-      onClick={onSelect}
-      className={`relative -mb-px flex h-9 items-center text-[13px] font-medium leading-none transition-colors ${
-        selected ? "text-content" : "text-content/50 hover:text-content"
-      }`}
-    >
-      {label}
-      {selected ? (
-        <span className="absolute inset-x-0 -bottom-px h-px bg-content" />
-      ) : null}
-    </button>
-  );
-}
-
 function NoteCard({
   note,
   active,
@@ -416,19 +390,17 @@ function NoteCard({
   const project = noteSourceProject(note.sourceCwd);
   const time = formatRelativeTime(new Date(note.updatedAt).toISOString());
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       aria-current={active ? "true" : undefined}
       onClick={onSelect}
-      className={`flex w-full flex-col rounded-md border px-2.5 py-2 text-left ${
-        active
-          ? "border-transparent bg-content/10 text-content"
-          : "border-transparent text-content/70 hover:bg-content/5 hover:text-content"
+      className={`h-auto w-full flex-col items-stretch justify-start gap-0 whitespace-normal rounded-md px-2.5 py-2 text-left font-normal transition-none active:not-aria-[haspopup]:scale-100 ${
+        active ? "bg-muted hover:bg-muted" : "hover:bg-foreground/5"
       }`}
     >
       <span className="flex items-center gap-2">
         {project ? (
-          <span className="min-w-0 flex-1 text-[11px] text-content/50">
+          <span className="min-w-0 flex-1 text-[11px] text-muted-foreground">
             <NoteProjectMark
               project={project}
               logos={logos}
@@ -441,20 +413,20 @@ function NoteCard({
           <span className="min-w-0 flex-1" />
         )}
         {time ? (
-          <span className="shrink-0 text-[11px] tabular-nums text-content/40">
+          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
             {time}
           </span>
         ) : null}
       </span>
       <TruncateTip text={note.title}>
-        <span className="mt-1 block truncate text-[13px] font-semibold leading-snug text-content">{note.title}</span>
+        <span className="mt-1 block truncate text-[13px] font-medium leading-snug text-foreground">{note.title}</span>
       </TruncateTip>
       {preview ? (
-        <span className="mt-1 line-clamp-1 text-[12px] leading-snug text-content/40">
+        <span className="mt-0.5 line-clamp-1 text-[12px] leading-snug text-muted-foreground">
           {preview}
         </span>
       ) : null}
-    </button>
+    </Button>
   );
 }
 
@@ -477,9 +449,8 @@ function NoteDetail({
 } & ProjectMarks) {
   if (!note) {
     return (
-      <div className="flex h-full min-w-0 flex-1 flex-col items-center justify-center px-6 text-center">
-        <File className="mb-3 size-6 text-content/30" strokeWidth={1.75} />
-        <p className="text-[13px] text-content/40">Select a note</p>
+      <div className="flex h-full min-w-0 flex-1 flex-col">
+        <EmptyState title="Select a note" />
       </div>
     );
   }
@@ -604,7 +575,7 @@ function NoteEditor({
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-8 py-8">
         <header className="flex flex-col gap-3">
           {note.slug || project ? (
-            <div className="flex min-w-0 items-center gap-2 text-[12px] text-content/50">
+            <div className="flex min-w-0 items-center gap-3 text-[12px] text-muted-foreground">
               {note.slug ? (
                 <span className="min-w-0 truncate">{note.slug}</span>
               ) : null}
@@ -619,7 +590,7 @@ function NoteEditor({
               ) : null}
             </div>
           ) : null}
-          <input
+          <Input
             value={title}
             onChange={(event) => {
               setTitle(event.target.value);
@@ -632,29 +603,25 @@ function NoteEditor({
             }}
             onKeyDown={onTitleKeyDown}
             aria-label="Note title"
-            className="w-full border-0 bg-transparent p-0 text-2xl font-semibold leading-tight tracking-[-0.02em] text-content outline-none placeholder:text-content/40"
+            className="h-auto rounded-none border-0 p-0 text-[16px] font-semibold leading-snug tracking-[-0.01em] text-foreground shadow-none!"
             placeholder="Untitled"
           />
           {time ? (
-            <div className="text-[12px] text-content/50 tabular-nums">Updated {time}</div>
+            <div className="text-[12px] text-muted-foreground tabular-nums">Updated {time}</div>
           ) : null}
           <div className="flex flex-wrap items-center gap-2 pt-1">
-            <button
-              type="button"
-              disabled={!canAddToChat}
-              onClick={() => onAddToChat(draft)}
-              className="pressable inline-flex h-7 items-center gap-2 rounded-md bg-content px-3 text-[12px] font-medium text-background-base hover:bg-content/70 disabled:cursor-default disabled:opacity-50"
-            >
+            <Button size="sm" disabled={!canAddToChat} onClick={() => onAddToChat(draft)}>
               Add to chat
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
               onClick={() => setConfirmDelete(true)}
-              className="pressable inline-flex h-7 items-center gap-1.5 rounded-md px-3 text-[12px] text-content/70 hover:bg-content/8 hover:text-danger"
+              className="text-muted-foreground hover:text-destructive"
             >
-              <Trash2 className="size-3.5" strokeWidth={1.75} />
+              <Trash2 strokeWidth={1.75} />
               Delete
-            </button>
+            </Button>
           </div>
           {confirmDelete ? (
             <ConfirmDialog
@@ -671,25 +638,23 @@ function NoteEditor({
             />
           ) : null}
           {saveError ? (
-            <p className="text-[12px] text-danger">{saveError}</p>
+            <p className="text-[12px] text-destructive">{saveError}</p>
           ) : null}
         </header>
-        <div
-          role="tablist"
-          aria-label="Note sections"
-          className="flex h-9 items-stretch gap-4 border-b border-content/10"
-        >
-          <NoteDetailTab
-            label="Preview"
-            selected={mode === "preview"}
-            onSelect={() => setMode("preview")}
-          />
-          <NoteDetailTab
-            label="Source"
-            selected={mode === "source"}
-            onSelect={() => setMode("source")}
-          />
-        </div>
+        <Tabs value={mode} onValueChange={(next) => setMode(next as typeof mode)}>
+          <TabsList
+            variant="line"
+            aria-label="Note sections"
+            className="h-9 w-full justify-start gap-4 border-b border-border"
+          >
+            <TabsTrigger value="preview" className="flex-none">
+              Preview
+            </TabsTrigger>
+            <TabsTrigger value="source" className="flex-none">
+              Source
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
         {mode === "source" ? (
           <NoteSource
             autoFocus={blank}
@@ -702,7 +667,7 @@ function NoteEditor({
         ) : body.trim() ? (
           <AgentMarkdown text={body} cwd={note.sourceCwd} />
         ) : (
-          <p className="text-[13px] text-content/40">No description</p>
+          <p className="text-[13px] text-muted-foreground">No description</p>
         )}
       </div>
     </div>
@@ -726,14 +691,14 @@ function NoteSource({
     <div className="relative min-h-[448px]">
       <div
         aria-hidden
-        className="pointer-events-none grid font-mono text-[13px] leading-5 text-content"
+        className="pointer-events-none grid font-mono text-[13px] leading-5 text-foreground"
         style={{
           gridTemplateColumns: `${gutterWidth} minmax(0, 1fr)`,
         }}
       >
         {lines.map((line, index) => (
           <Fragment key={index}>
-            <div className="select-none pr-2 text-right tabular-nums whitespace-nowrap text-content/40">
+            <div className="select-none pr-2 text-right tabular-nums whitespace-nowrap text-muted-foreground">
               {index + 1}
             </div>
             <div className="min-h-5 min-w-0 pl-3 whitespace-pre-wrap wrap-break-word">
@@ -744,16 +709,17 @@ function NoteSource({
       </div>
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-y-0 w-px bg-content/10"
+        className="pointer-events-none absolute inset-y-0 w-px bg-border"
         style={{ left: gutterWidth }}
       />
-      <textarea
+      <Textarea
         value={value}
         autoFocus={autoFocus}
         onChange={(event) => onChange(event.target.value)}
         spellCheck={false}
+        aria-label="Note source"
         placeholder="Write markdown…"
-        className="markdown-source-field absolute inset-0 h-full w-full resize-none overflow-hidden border-0 bg-transparent py-0 pr-0 font-mono text-[13px] leading-5 whitespace-pre-wrap wrap-break-word outline-none"
+        className="markdown-source-field absolute inset-0 block h-full min-h-0 w-full resize-none overflow-hidden rounded-none border-0 py-0 pr-0 font-mono leading-5 whitespace-pre-wrap wrap-break-word shadow-none! field-sizing-fixed"
         style={{ paddingLeft: textOffset }}
       />
     </div>
