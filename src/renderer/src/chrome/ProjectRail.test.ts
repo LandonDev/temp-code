@@ -22,15 +22,16 @@ describe("chatsAriaLabel", () => {
 
 describe("projectMenuExtraItems", () => {
   it("puts the fleet switches after Mark all read, a row with nothing to act on disabled", () => {
-    const items = projectMenuExtraItems(false, true, { pause: 2, resume: 0, stop: 2, archiveDone: 1 });
-    expect(items.map((i) => i.id)).toEqual(["pin", "reveal", "read", "batch-pause", "batch-resume", "batch-stop", "batch-archiveDone", "archive", "delete"]);
+    const rows = projectMenuExtraItems(false, true, { pause: 2, resume: 0, stop: 2, archiveDone: 1 });
+    // Separators are rows of their own: one after reveal, one before archive.
+    expect(rows.map((r) => (r.kind === "item" ? r.id : "-"))).toEqual(["pin", "reveal", "-", "read", "batch-pause", "batch-resume", "batch-stop", "batch-archiveDone", "-", "archive", "delete"]);
+    const items = rows.flatMap((r) => (r.kind === "item" ? [r] : []));
     expect(items.find((i) => i.id === "batch-resume")?.disabled).toBe(true);
     expect(items.find((i) => i.id === "batch-pause")?.disabled).toBe(false);
-    expect(items.find((i) => i.id === "batch-pause")?.sepBefore).toBe(true);
   });
 
   it("disables every switch before the counts are known", () => {
-    const items = projectMenuExtraItems(true, false, null);
+    const items = projectMenuExtraItems(true, false, null).flatMap((r) => (r.kind === "item" ? [r] : []));
     expect(items.filter((i) => i.id.startsWith("batch-")).every((i) => i.disabled)).toBe(true);
     expect(items.map((i) => i.id)).not.toContain("archive");
   });
