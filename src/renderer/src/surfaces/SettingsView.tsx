@@ -116,11 +116,7 @@ export function SettingsView({
               frame's 24px section gap never lands between its rows. */}
           {section === "general" ? <GeneralPage onOpenWhatsNew={onOpenWhatsNew} /> : null}
           {section === "defaults" ? <ThreadDefaultsPage /> : null}
-          {workspace ? (
-            <div>
-              <WorkspacePage key={workspace.id} workspaceId={workspace.id} />
-            </div>
-          ) : null}
+          {workspace ? <WorkspacePage key={workspace.id} workspaceId={workspace.id} /> : null}
           {section === "appearance" ? <AppearancePage /> : null}
           {section === "editor" ? <EditorPage /> : null}
           {section === "keybindings" ? <KeybindingsPage /> : null}
