@@ -3,7 +3,8 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { sessions, commands, dropThread, goalOpen, tabs } = vi.hoisted(() => ({
+const { sessions, commands, dropThread, goalOpen, tabs, dev } = vi.hoisted(() => ({
+  dev: { servable: false, open: false, toggle: vi.fn() },
   sessions: new Map<string, Record<string, unknown>>(),
   commands: { pause: vi.fn(() => Promise.resolve()), resume: vi.fn(() => Promise.resolve()), interrupt: vi.fn(() => Promise.resolve()) },
   dropThread: vi.fn(),
@@ -12,8 +13,11 @@ const { sessions, commands, dropThread, goalOpen, tabs } = vi.hoisted(() => ({
 }));
 
 vi.mock("../lib/tcserver/store", () => ({
-  sessionStore: { get: (id: string) => sessions.get(id), metaOf: () => null },
+  sessionStore: { get: (id: string) => sessions.get(id), metaOf: () => null, subscribe: () => () => {} },
 }));
+vi.mock("../lib/tcserver/workspaces", () => ({ useProjects: () => [{ id: "p1", environmentId: "local", cwd: "/p", name: "P" }] }));
+vi.mock("../lib/devServers", () => ({ useDevServable: () => dev.servable, useDevRunning: () => false }));
+vi.mock("../lib/devPane", () => ({ devPane: { toggle: dev.toggle }, useDevPane: (pick: (s: { open: boolean }) => boolean) => pick({ open: dev.open }) }));
 vi.mock("../lib/tcserver/commands", () => commands);
 vi.mock("../lib/macBridge", () => ({
   bridgeableEnvironment: () => false,
@@ -42,6 +46,8 @@ import { useThreadMenu } from "./useThreadMenu";
 afterEach(() => {
   cleanup();
   sessions.clear();
+  dev.servable = false;
+  dev.open = false;
   vi.clearAllMocks();
 });
 
@@ -88,6 +94,25 @@ describe("one thread menu on every surface", () => {
     const chip = labels(await screen.findByRole("menu", { name: "Chip" }));
     expect(chip).toEqual(rail);
     expect(rail).toEqual(expect.arrayContaining(["Rename", "Pause", "Stop", "Delete…"]));
+  });
+
+  it("Dev server is the thread's own row where a host can serve its project, and toggles the pane", async () => {
+    thread("t1");
+    dev.servable = true;
+    dev.open = true;
+    render(<Surfaces />);
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    const row = within(await screen.findByRole("menu", { name: "Chip" })).getByRole("menuitemcheckbox", { name: "Dev server" });
+    expect(row.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(row);
+    expect(dev.toggle).toHaveBeenCalledOnce();
+  });
+
+  it("no Dev server row where nothing can serve the project", async () => {
+    thread("t1");
+    render(<Surfaces />);
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    expect(within(await screen.findByRole("menu", { name: "Chip" })).queryByText("Dev server")).toBeNull();
   });
 
   it("Pause calls the pause command for that thread", async () => {

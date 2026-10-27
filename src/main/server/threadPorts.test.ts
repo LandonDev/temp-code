@@ -57,6 +57,15 @@ describe('ThreadPorts', () => {
     expect(rows).toMatchObject([{ kind: 'port', identifier: '5173', label: 'http://localhost:5173', pid: 201, callId: 'c1', sessionId: 'root' }])
   })
 
+  it('names a port row from the process that listens', async () => {
+    call('root', 'c1', 'bun src/server.ts')
+    await flush()
+    parents.set(202, HARNESS)
+    listeners.push({ port: 4100, pid: 202, address: '*', command: 'bun src/server.ts' })
+    const rows = await ports.settle('root', 'c1', 'Listening on http://localhost:4100\n')
+    expect(rows).toMatchObject([{ identifier: '4100', what: 'Bun server' }])
+  })
+
   it('never records an announcement nothing listens on', async () => {
     call('root', 'c1', 'cat old.log')
     await flush()

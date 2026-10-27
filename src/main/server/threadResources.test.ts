@@ -106,6 +106,15 @@ describe('ThreadResources ledger', () => {
     expect(ledger.record('other', ME, made)).toHaveLength(1)
     expect(ledger.summary('other')).toEqual({ total: 2, byHost: { [ME]: 1, [MAC]: 1 } })
   })
+  it("a port row keeps what its process is, and a row from before reads null", () => {
+    ledger.record('root', ME, { created: [{ kind: 'port', identifier: '5173', label: 'http://localhost:5173', branch: null, pid: 9, callId: 'c', what: 'Vite dev server' }], removed: [] })
+    ledger.record('root', ME, { created: [{ kind: 'port', identifier: '5174', label: 'http://localhost:5174', branch: null, pid: 10, callId: 'd' }], removed: [] })
+    expect(ledger.live(ME, 'port', '5173')).toMatchObject({ what: 'Vite dev server', pid: 9, callId: 'c' })
+    expect(ledger.live(ME, 'port', '5174')?.what).toBeNull()
+    // A worktree carries no port facts.
+    ledger.record('root', ME, { created: [{ kind: 'worktree', identifier: '/w', label: 'w', branch: 'w' }], removed: [] })
+    expect(ledger.live(ME, 'worktree', '/w')).not.toHaveProperty('what')
+  })
   it('a simctl delete by name stamps the row recorded by UDID', () => {
     ledger.record('root', MAC, { created: [{ kind: 'simulator', identifier: 'ABCDEF00-0000-4000-8000-000000000000', label: 'tc-x', branch: null }], removed: [] })
     ledger.record('root', MAC, { created: [], removed: [{ kind: 'simulator', identifier: 'tc-x' }] })

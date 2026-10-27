@@ -839,9 +839,10 @@ public struct ThreadResource: Codable, Hashable, Sendable {
     public let note: String?
     public let pid: Int?
     public let callId: String?
+    public let what: String?
     public let forwards: [Forward]?
 
-    public init(id: String, sessionId: String, environmentId: String, kind: ThreadResourceKind, identifier: String, label: String, branch: String?, createdAt: Int, removeRequestedAt: Int?, removedAt: Int?, note: String?, pid: Int? = nil, callId: String? = nil, forwards: [Forward]? = nil) {
+    public init(id: String, sessionId: String, environmentId: String, kind: ThreadResourceKind, identifier: String, label: String, branch: String?, createdAt: Int, removeRequestedAt: Int?, removedAt: Int?, note: String?, pid: Int? = nil, callId: String? = nil, what: String? = nil, forwards: [Forward]? = nil) {
         self.id = id
         self.sessionId = sessionId
         self.environmentId = environmentId
@@ -855,11 +856,12 @@ public struct ThreadResource: Codable, Hashable, Sendable {
         self.note = note
         self.pid = pid
         self.callId = callId
+        self.what = what
         self.forwards = forwards
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, sessionId, environmentId, kind, identifier, label, branch, createdAt, removeRequestedAt, removedAt, note, pid, callId, forwards
+        case id, sessionId, environmentId, kind, identifier, label, branch, createdAt, removeRequestedAt, removedAt, note, pid, callId, what, forwards
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -877,6 +879,7 @@ public struct ThreadResource: Codable, Hashable, Sendable {
         try container.encode(note, forKey: .note)
         try container.encodeIfPresent(pid, forKey: .pid)
         try container.encodeIfPresent(callId, forKey: .callId)
+        try container.encodeIfPresent(what, forKey: .what)
         try container.encodeIfPresent(forwards, forKey: .forwards)
     }
 }

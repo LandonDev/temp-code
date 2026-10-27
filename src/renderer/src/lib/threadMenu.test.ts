@@ -118,6 +118,13 @@ describe("threadMenuRows: resources, the bridge and the host moves", () => {
     expect(row(threadMenuRows(facts({ resources: 1, removable: 1 })), "resources")).not.toHaveProperty("disabled");
   });
 
+  it("offers Dev server when a host can serve the project, checked while the pane is open", () => {
+    expect(row(threadMenuRows(facts({ dev: { open: true } })), "dev")).toMatchObject({ label: "Dev server", checked: true });
+    expect(row(threadMenuRows(facts({ dev: { open: false } })), "dev")).toMatchObject({ checked: false });
+    expect(row(threadMenuRows(facts({ dev: null })), "dev")).toBeUndefined();
+    expect(row(threadMenuRows(facts()), "dev")).toBeUndefined();
+  });
+
   it("shows the Mac bridge on, offline and inherited", () => {
     const bridge = (b: ThreadMenuFacts["bridge"]) => row(threadMenuRows(facts({ bridge: b })), "mac-bridge");
     expect(ids(threadMenuRows(facts()))).not.toContain("mac-bridge");

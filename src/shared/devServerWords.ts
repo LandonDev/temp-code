@@ -49,8 +49,16 @@ export function serverWords(framework: string | null): string {
   return (framework && WORDS[framework]) || 'Dev server'
 }
 
+/** A command line with its package runner read past: "bun run dev" runs a script, not Bun. */
+const bareOf = (command: string): string =>
+  command.replace(/\b(?:bun|npm|pnpm|yarn)\s+run\b|\b(?:npx|bunx|pnpx)\b|\b(?:pnpm|yarn)\s+(?=[a-z])/g, ' ')
+
 /** A command line in plain words, its package runner ("bun run dev", "npx vite") read past: "bun run dev" is a Dev server, not a Bun server. */
 export function commandWords(command: string): string {
-  const bare = command.replace(/\b(?:bun|npm|pnpm|yarn)\s+run\b|\b(?:npx|bunx|pnpx)\b|\b(?:pnpm|yarn)\s+(?=[a-z])/g, ' ')
-  return serverWords(frameworkOf(bare))
+  return serverWords(frameworkOf(bareOf(command)))
+}
+
+/** A listening port in plain words: the framework of the process that listens ("node …/vite" is a Vite dev server), else of the command that opened it. */
+export function listenerWords(process: string | null | undefined, label: string): string {
+  return serverWords((process ? frameworkOf(bareOf(process)) : null) ?? frameworkOf(bareOf(label)))
 }

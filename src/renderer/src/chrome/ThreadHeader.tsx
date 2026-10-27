@@ -1,5 +1,4 @@
-import { sessionStore } from "../lib/tcserver/store";
-import { useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 import type { ThreadRules } from "@server/shared/rules";
 import type { ThreadType } from "../lib/tcserver/types";
 import type { HeaderModel } from "../lib/threadHeaderModel";
@@ -10,9 +9,6 @@ import { ThreadHeaderStrip, type ArchivedThread, type ChipThread } from "./Threa
 import { ThreadMenu } from "./ThreadMenu";
 import { useThreadHost } from "./ThreadHostChip";
 import { useThreadMenu } from "./useThreadMenu";
-import { devPane, useDevPane } from "../lib/devPane";
-import { useDevRunning, useDevServable } from "../lib/devServers";
-import { useProjects } from "../lib/tcserver/workspaces";
 import { useMasterIds } from "../lib/masterThread";
 
 /**
@@ -48,23 +44,6 @@ export type ThreadHeaderProps = {
   /** The thread menu's Type rows (App's onThreadTypeChange). */
   onSetType: (id: string, threadType: ThreadType) => void;
 };
-
-/** Dev server in the thread menu (docs/box.md "Dev servers on the box"):
- *  offered when a host can serve the thread's project or one of its servers
- *  runs; it opens and closes the Dev servers pane and never starts anything. */
-function useDevServer(sessionId: string | null): { shown: boolean; open: boolean; onToggle: () => void } {
-  // The thread's project and host only: a streaming turn must not re-render the header.
-  const where = useSyncExternalStore(sessionStore.subscribe, () => {
-    const s = sessionId ? sessionStore.get(sessionId) : undefined;
-    return s?.projectId ? `${s.environmentId}|${s.projectId}` : "";
-  });
-  const [environmentId, projectId] = where.split("|");
-  const project = useProjects().find((p) => p.id === projectId && p.environmentId === environmentId);
-  const servable = useDevServable(project);
-  const running = useDevRunning(project?.id);
-  const open = useDevPane((s) => s.open);
-  return { shown: !!project && (servable || running), open, onToggle: devPane.toggle };
-}
 
 export function ThreadHeader({
   model,
@@ -109,7 +88,6 @@ export function ThreadHeader({
   });
   const host = useThreadHost(model.activeId);
   const masterIds = useMasterIds();
-  const dev = useDevServer(model.activeId);
   const activeChip = model.live.find((c) => c.id === model.activeId) ?? null;
 
   const commitRename = (id: string, title: string) => {
@@ -151,7 +129,6 @@ export function ThreadHeader({
             onOpen={() => menu.onOpenChange(model.activeId, true)}
             running={running}
             onPauseAll={onPauseAll}
-            dev={dev}
             terminal={{ onShow: onShowTerminal, onNew: onNewTerminal, active: projectTerminalActive }}
             recent={model.dormant}
             onOpenRecent={onSelect}

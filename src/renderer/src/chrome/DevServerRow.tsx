@@ -3,19 +3,16 @@ import { useStore } from "zustand";
 import { Button } from "../components/ui/button";
 import { Item, ItemActions, ItemContent, ItemTitle } from "../components/ui/item";
 import { Spinner } from "../components/ui/spinner";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { openUrl, portOpen } from "../lib/devPorts";
 import { stopLiveServer, type LiveServer } from "../lib/devServers";
 import { macBridgeStore } from "../lib/macBridge";
 import { isWebMode } from "../lib/nativeWeb";
 import { HostGlyph } from "./HostGlyph";
-import { Square } from "./icons";
 
 /**
- * One live dev server (docs/box.md "Dev servers on the box"), the same row
- * in the Dev servers pane and in a thread's Resources: what it is in plain
- * words, its address on its host, "Open on the Mac :5174" when it opens
- * here, and Stop. `onPick` makes the row pick its console (the pane).
+ * One live dev server (docs/box.md "Dev servers on the box"), a row of the
+ * Dev servers pane: what it is in plain words, its address on its host,
+ * "Open on the Mac :5174" when it opens here, and Stop. `onPick` makes the row pick its console (the pane).
  */
 export function DevServerRow({ server, picked = false, onPick }: { server: LiveServer; picked?: boolean; onPick?: () => void }) {
   const localId = useStore(macBridgeStore, (s) => s.localId);
@@ -75,26 +72,21 @@ export function DevServerRow({ server, picked = false, onPick }: { server: LiveS
         ) : null}
       </ItemContent>
       <ItemActions>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label="Stop"
-                disabled={pending}
-                className="text-muted-foreground hover:text-foreground"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  stop();
-                }}
-              />
-            }
-          >
-            {pending ? <Spinner className="size-3" /> : <Square className="size-3" strokeWidth={2} />}
-          </TooltipTrigger>
-          <TooltipContent>Stop</TooltipContent>
-        </Tooltip>
+        {/* The word says what it does: no tooltip. */}
+        <Button
+          variant="ghost"
+          size="xs"
+          disabled={pending}
+          aria-busy={pending || undefined}
+          className="text-muted-foreground hover:text-foreground"
+          onClick={(event) => {
+            event.stopPropagation();
+            stop();
+          }}
+        >
+          {pending ? <Spinner aria-hidden className="size-3" /> : null}
+          Stop
+        </Button>
       </ItemActions>
     </Item>
   );

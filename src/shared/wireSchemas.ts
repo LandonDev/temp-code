@@ -598,6 +598,7 @@ export const ThreadResourceSchema = z.object({
   note: z.string().nullable(),
   pid: z.number().int().nullable().optional(),
   callId: z.string().nullable().optional(),
+  what: z.string().nullable().optional(),
   forwards: z.array(PortForwardInfoSchema).optional()
 })
 export const ThreadResourceRemovalSchema = z.object({

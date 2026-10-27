@@ -10,7 +10,7 @@ import { THREAD_GLYPHS } from "../surfaces/threads/threadTypes";
 import { timeAgo } from "../lib/duration";
 import { LazyPopover, RowsMenu, tidy, type MenuRow } from "./menuRows";
 import { HostGlyph } from "./HostGlyph";
-import { ArchiveRestore, Clock, Globe, MoreHorizontal, PanelRight, Pause, Terminal } from "./icons";
+import { ArchiveRestore, Clock, MoreHorizontal, PanelRight, Pause, Terminal } from "./icons";
 import { chipTitle, type ArchivedThread, type StripChip } from "./ThreadHeaderStrip";
 
 /**
@@ -18,8 +18,8 @@ import { chipTitle, type ArchivedThread, type StripChip } from "./ThreadHeaderSt
  * panel toggle (last, nearest the panel it opens). The menu holds a quiet
  * line naming the host and the thread's cost, the active thread's own rows
  * (lib/threadMenu.ts, the list its chip's right-click shows), and the
- * project's rows: Pause all, Dev server, Terminal, Recent threads and
- * Archived threads.
+ * project's rows: Pause all, Terminal, Recent threads and Archived
+ * threads.
  */
 
 export type ThreadMenuProps = {
@@ -35,8 +35,6 @@ export type ThreadMenuProps = {
   /** Roots with live work in the project. */
   running: number;
   onPauseAll: () => Promise<unknown>;
-  /** Shown when a host can serve the project or one of its servers runs. */
-  dev: { shown: boolean; open: boolean; onToggle: () => void };
   terminal: { onShow?: () => void; onNew?: () => void; active: boolean };
   /** Settled threads, freshest first. */
   recent: readonly StripChip[];
@@ -57,7 +55,6 @@ export function ThreadMenu({
   onOpen,
   running,
   onPauseAll,
-  dev,
   terminal,
   recent,
   onOpenRecent,
@@ -91,7 +88,6 @@ export function ThreadMenu({
   }
   all.push(...rows, { kind: "sep" });
   if (running > 0) all.push({ kind: "item", id: "pause-all", label: "Pause all", icon: Pause, hint: String(running) });
-  if (dev.shown) all.push({ kind: "item", id: "dev", label: "Dev server", icon: Globe, checked: dev.open });
   if (openTerminal) all.push({ kind: "item", id: "terminal", label: "Terminal", icon: Terminal, shortcut: shortcutFor("Terminal", "New") });
   if (recent.length > 0) {
     all.push({
@@ -112,7 +108,6 @@ export function ThreadMenu({
 
   const pick = (id: string) => {
     if (id === "pause-all") onPauseAll().catch(() => loadToast().then((toast) => toast.error("Couldn't pause every thread")));
-    else if (id === "dev") dev.onToggle();
     else if (id === "terminal") openTerminal?.();
     else if (id === "archived") setArchivedOpen(true);
     else if (id.startsWith("recent:")) onOpenRecent(id.slice("recent:".length));

@@ -23,6 +23,8 @@ export interface Created {
   /** port: the listening pid and the tool call that opened it. */
   pid?: number | null
   callId?: string | null
+  /** port: what the listening process is, in plain words ("Vite dev server"; devServerWords.ts). */
+  what?: string | null
 }
 
 export interface Removed {

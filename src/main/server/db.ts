@@ -280,9 +280,10 @@ export function openDb(path: string): DatabaseSync {
     `ALTER TABLE workspaces ADD COLUMN link_id TEXT`,
     `ALTER TABLE projects ADD COLUMN link_id TEXT`,
     `ALTER TABLE projects ADD COLUMN settings_updated_at INTEGER`,
-    // A dev server's row (kind 'port'): the listening pid, and the tool call that opened it.
+    // A dev server's row (kind 'port'): the listening pid, the tool call that opened it, and what the process is.
     `ALTER TABLE thread_resources ADD COLUMN pid INTEGER`,
-    `ALTER TABLE thread_resources ADD COLUMN call_id TEXT`
+    `ALTER TABLE thread_resources ADD COLUMN call_id TEXT`,
+    `ALTER TABLE thread_resources ADD COLUMN what TEXT`
   ]) {
     try {
       db.exec(stmt)

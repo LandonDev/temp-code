@@ -1736,17 +1736,20 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
   Dev Server run (each host's `devServer.runs` at link-up, then its
   `dev-run` pushes) or a `port` row on a thread's ledger that is not
   removed and still passes the shared rules (a port a run holds is the
-  run's, listed once), titled in plain words ("Vite dev server", read past
-  the package runner: `commandWords`), with its address, the host glyph
-  when two hosts are paired, "Open on the Mac :5174" when it opens here,
-  and Stop (chrome/DevServerRow.tsx; a thread's Activity section lists its
-  own). A port the shared rules say is not a dev
+  run's, listed once), titled in plain words: a run by its command ("Vite
+  dev server", read past the package runner: `commandWords`), a `port` row
+  by the `what` the host stamped from the process that listens
+  (`listenerWords`: `bun src/server.ts` is a "Bun server"; a row from
+  before that by its label), with its address, the host glyph when two
+  hosts are paired, "Open on the Mac :5174" when it opens here, and the
+  word Stop (chrome/DevServerRow.tsx; a thread's Activity section lists its
+  own). A row's console is the server's log alone. A port the shared rules say is not a dev
   server (the gate's or a test run's worker) is never announced to the
   thread. The host dropping a server takes its row out at once: no
   "Exited" rows, no
   history. With nothing live the console's place says what Run would start.
-  The pane is closed until the person opens it (the thread menu's Dev
-  server row toggles it, the bar's Dev servers tab opens it, a Run opens
+  The pane is closed until the person opens it (the Dev server row of
+  every thread menu toggles it, the bar's Dev servers tab opens it, a Run opens
   it on that run); nothing opens it on its own. It takes the dock's place
   while open, at the dock's height (the terminal dock keeps its own open
   flag and comes back when a terminal tab is picked or a terminal is asked

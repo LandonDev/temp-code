@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DevRun } from '@server/shared/contract-devservers'
 import type { ThreadResource } from '@server/shared/contract-resources'
-import { commandWords } from '@server/shared/devServerWords'
+import { commandWords, listenerWords } from '@server/shared/devServerWords'
 import { applyDevRunPush, applyHostRuns, devHosts, devTabOf, runChoice, serverGroups, threadRoot, devServerStore, liveServers, shownServer, targetLabel, type LiveServerSources } from './devServers'
 import { devPane, devPaneStore, resetDevPane } from './devPane'
 import { pairWorkspaces } from './projectPairs'
@@ -104,6 +104,18 @@ describe('the live dev servers', () => {
       ['env_box/res1', 'Dev server', 3007, 'Coins page']
     ])
     expect(list[1]).toMatchObject({ environmentId: 'env_box', sessionId: 't1', resource: { id: 'res1', sessionId: 't1' }, runId: null })
+  })
+
+  it('titles a port row by what the host says its process is, else by its label', () => {
+    const list = liveServers(sources({ resources: { t1: [port({ what: 'Bun server' }), port({ id: 'res2', identifier: '3008', label: 'npx vite --port 3008' })] } }))
+    expect(Object.fromEntries(list.map((s) => [s.key, s.title]))).toEqual({ 'env_box/res1': 'Bun server', 'env_box/res2': 'Vite dev server' })
+  })
+
+  it('names a listener by its process first, then the command that opened it', () => {
+    expect(listenerWords('bun src/server.ts', 'http://localhost:3000')).toBe('Bun server')
+    expect(listenerWords('/usr/bin/node /w/node_modules/.bin/vite', 'bun run dev')).toBe('Vite dev server')
+    expect(listenerWords('bun run dev', 'npx next dev')).toBe('Next.js dev server')
+    expect(listenerWords(null, 'http://localhost:3000')).toBe('Dev server')
   })
 
   it('reads a command past its package runner', () => {

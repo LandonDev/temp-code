@@ -328,7 +328,8 @@ export function liveServers(src: LiveServerSources): LiveServer[] {
       out.push({
         key: `${thread.environmentId}/${row.id}`,
         environmentId: thread.environmentId,
-        title: commandWords(row.label),
+        // The host names the row from its listening process; a row from before that is named by its label.
+        title: row.what ?? commandWords(row.label),
         sessionId,
         owner: thread.title,
         port: { number, environmentId: row.environmentId, forwards: row.forwards },

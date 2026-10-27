@@ -310,8 +310,12 @@ app replaces itself from the feed, and only from the feed.
   the `file://` localStorage over once (src/main/originMigration.ts, marker
   `<userData>/localstorage-migrated`).
 - Monaco file and review panes use `surfaces/FileHeader.tsx` for the folder
-  and review stepper. CodeMirror mounts `surfaces/HunkBar.tsx` for Stage
-  and Revert with shared buttons and tooltips. `lib/colourGuard.test.ts`
+  and review stepper. A Monaco review tab opens on its first change, and
+  the header's Revert change and Stage change act on the change the caret
+  is in (Stage only for a review against HEAD, built on the index; editorGit
+  reached through `import()`, line helpers in surfaces/monaco/diffActions.ts).
+  CodeMirror mounts `surfaces/HunkBar.tsx` for Stage and Revert with shared
+  buttons and tooltips. `lib/colourGuard.test.ts`
   checks literal renderer colours against the token layer and counted
   palette exceptions; the counts only shrink.
 - The renderer is split (docs/bundle-split.md): the index chunk carries
@@ -945,7 +949,9 @@ routed to (aliax-core's `forward`). Two listeners:
   a bridged worktree's record and removal.
 - Dev servers on the box reach the Mac's browser over the Mac's peer link.
   A dev server a thread opens is a `port` row on the ledger (pid, the call
-  that opened it; src/main/server/threadPorts.ts): the server's own
+  that opened it, and `what`, the listening process in plain words from
+  `listenerWords` in src/shared/devServerWords.ts, "Bun server" for `bun
+  src/server.ts`, which the Dev servers pane titles it by; src/main/server/threadPorts.ts): the server's own
   "Local: http://localhost:5173" line with a listener behind it, a listener
   new under the harness tree (`ss`/`lsof` + `ps`) while a shell call runs,
   or the host-wide sweep (portSweep.ts: 3 s after a shell call settles and
@@ -997,13 +1003,16 @@ routed to (aliax-core's `forward`). Two listeners:
   connected host now (a running run, or a ledger `port` row still listening
   that passes the shared rules; a port a run holds is listed once), under
   the thread it belongs to, in plain words ("Vite dev server") with its
-  address, "Open on the Mac :5174" and Stop (chrome/DevServerRow.tsx); a row leaves the moment its host
+  address, "Open on the Mac :5174" and the word Stop (chrome/DevServerRow.tsx), its
+  console the server's log alone; a row leaves the moment its host
   drops it. The dock
   is bottom only and has one bar (chrome/DockBar.tsx: the project's
   terminals and the Dev servers tab as line tabs, New terminal, Hide); the
   tab shows only when a host can serve the project, a server runs or the
-  pane is open. Closed by default and never opened on its own (the thread
-  menu's Dev server row toggles it, the bar's tab and a Run open it);
+  pane is open. Closed by default and never opened on its own (the Dev
+  server row of every thread menu toggles it, lib/threadMenu.ts with
+  `useThreadDevServer` in chrome/useThreadMenu.tsx; the bar's tab and a Run
+  open it);
   while open it takes the terminals' place at the dock's height.
   Dev server consoles are never terminal tabs; old saved `devLog` tabs are
   dropped on load. docs/box.md "Dev servers on the box"; proof `bun run script:e2e-port-forward` (seam
@@ -1013,7 +1022,9 @@ routed to (aliax-core's `forward`). Two listeners:
   "Tool processes: a mark per call, an orphan sweep, a memory cap"): a
   claude thread in full access runs every Bash call with `TEMP_CODE_THREAD`
   and `TEMP_CODE_CALL` exported into its shell (the driver's PreToolUse
-  hook, `wrapBashCommand`; the approval card shows the command as written),
+  hook, `wrapBashCommand`; the approval card and the Activity row show the
+  command as written, through `unwrapBashCommand` in src/shared/bashMarks.ts
+  with the two marks),
   and the host SIGTERMs then SIGKILLs what still carries the call's mark
   when the call ends (never a harness, a ledger pid or a backgrounded
   call); every 10 s an orphan sweep kills a process of this user with no

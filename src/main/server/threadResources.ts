@@ -37,10 +37,11 @@ interface Row {
   note: string | null
   pid: number | null
   call_id: string | null
+  what: string | null
 }
 
 const toResource = (r: Row): ThreadResource => ({
-  ...(r.kind === 'port' ? { pid: r.pid, callId: r.call_id } : {}),
+  ...(r.kind === 'port' ? { pid: r.pid, callId: r.call_id, what: r.what ?? null } : {}),
   id: r.id,
   sessionId: r.session_id,
   environmentId: r.environment_id,
@@ -171,10 +172,10 @@ export class ThreadResources {
       const id = `r${randomBytes(9).toString('base64url')}`
       const r = this.deps.db
         .prepare(
-          `INSERT OR IGNORE INTO thread_resources (id, session_id, environment_id, kind, identifier, label, branch, created_at, pid, call_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          `INSERT OR IGNORE INTO thread_resources (id, session_id, environment_id, kind, identifier, label, branch, created_at, pid, call_id, what)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
-        .run(id, owner, environmentId, c.kind, c.identifier, c.label, c.branch, this.now(), c.pid ?? null, c.callId ?? null)
+        .run(id, owner, environmentId, c.kind, c.identifier, c.label, c.branch, this.now(), c.pid ?? null, c.callId ?? null, c.what ?? null)
       if (r.changes > 0) {
         made.push(this.get(id) as ThreadResource)
         this.log(`thread=${owner}${owner !== sessionId ? ` (via ${sessionId})` : ''} ${c.kind} ${c.identifier} on ${environmentId}`)

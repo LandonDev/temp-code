@@ -130,7 +130,6 @@ export function DevConsole({ source, active }: { source: DevConsoleSource; activ
             term.reset();
             from = undefined;
           } else {
-            if (shown === null && log.source === "file" && log.path) term.write(dim(log.path));
             if (log.data) term.write(log.data);
             from = log.next;
           }

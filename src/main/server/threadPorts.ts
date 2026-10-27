@@ -1,6 +1,7 @@
 import { execFileBudgeted } from './spawnBudget'
 import type { ThreadResource } from '@shared/contract-resources'
 import { notDevServer, underRunner } from '@shared/devServerRules'
+import { listenerWords } from '@shared/devServerWords'
 import type { EventRow } from '@shared/events'
 import type { ThreadResources } from './threadResources'
 import { shellOf } from './threadResourcesParse'
@@ -197,7 +198,7 @@ export class ThreadPorts {
       // An announcement from a test run, a typecheck or the gate (a preview
       // server a script started) is the runner's, whatever it printed.
       if (underRunner(this.ancestry(scan, l.pid, harness))) continue
-      this.record(sessionId, ann.port, l.pid, callId, portLabel(ann.port, { url: ann.url }))
+      this.record(sessionId, ann.port, l.pid, callId, portLabel(ann.port, { url: ann.url }), null, listenerWords(l.command, command))
     }
     if (a) this.fromTree(sessionId, a, scan, callId, command)
     for (const l of this.endListeners) l(sessionId, callId)
@@ -229,7 +230,8 @@ export class ThreadPorts {
       const running = [...a.calls.entries()].at(-1)
       const by = callId ? { callId, command: command ?? '' } : running ? { callId: running[0], command: running[1] } : a.last
       if (!by) continue
-      this.record(sessionId, l.port, l.pid, by.callId, portLabel(l.port, { command: by.command, process: l.command }), l.command)
+      const label = portLabel(l.port, { command: by.command, process: l.command })
+      this.record(sessionId, l.port, l.pid, by.callId, label, l.command, listenerWords(l.command, label))
     }
   }
 
@@ -243,10 +245,10 @@ export class ThreadPorts {
   }
 
   /** A database, an MCP server or a test run's worker is never filed (src/shared/devServerRules.ts). */
-  private record(sessionId: string, port: number, pid: number, callId: string, label: string, name: string | null = null): void {
+  private record(sessionId: string, port: number, pid: number, callId: string, label: string, name: string | null, what: string): void {
     if (notDevServer(port, name, label)) return
     const made = this.deps.resources.record(sessionId, this.deps.environmentId, {
-      created: [{ kind: 'port', identifier: String(port), label, branch: null, pid, callId }],
+      created: [{ kind: 'port', identifier: String(port), label, branch: null, pid, callId, what }],
       removed: []
     })
     if (made.length) this.log(`thread=${sessionId} port ${port} pid ${pid}`)

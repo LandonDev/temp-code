@@ -37,7 +37,6 @@ const end = (
     onPick={() => {}}
     running={1}
     onPauseAll={() => Promise.resolve()}
-    dev={{ shown: false, open: false, onToggle: () => {} }}
     terminal={{ active: false }}
     recent={[]}
     onOpenRecent={() => {}}

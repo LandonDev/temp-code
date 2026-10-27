@@ -237,6 +237,12 @@ describe('PortSweep', () => {
     expect(probes).toEqual([300])
   })
 
+  it('names the row from the process that listens', async () => {
+    serve(3002, 302, { cwd: '/srv/agents/work/a', args: 'bun src/server.ts' })
+    await sweep.sweep()
+    expect(ledger.live(ME, 'port', '3002')).toMatchObject({ sessionId: 'a', what: 'Bun server' })
+  })
+
   it('ties a server to the call that named its output file, and that file to the call', async () => {
     sweep.observeEvent(event({ type: 'tool-call', callId: 'c1', name: 'Bash', input: { command: 'npx expo start --tunnel', run_in_background: true } }))
     sweep.observeEvent(event({ type: 'tool-result', callId: 'c1', output: 'Command running in background with ID: b1. Output is being written to: /tmp/cc/tasks/b1.output', isError: false }))

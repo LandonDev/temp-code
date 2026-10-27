@@ -3,6 +3,7 @@ import {
   Archive,
   Blocks,
   FoldVertical,
+  Globe,
   Laptop,
   Layers,
   Lock,
@@ -58,6 +59,9 @@ export type ThreadMenuFacts = {
   side?: boolean;
   /** The thread has an open tab: Close tab (Close pane in a split); `shortcut` is ⌘W's caps when it is the focused pane. */
   close?: { split: boolean; shortcut?: string };
+  /** The Dev server row, checked while the Dev servers pane is open; null (or absent)
+   *  when no host can serve the thread's project and none of its servers runs. */
+  dev?: { open: boolean } | null;
 };
 
 export type ThreadMenuExtra = { open?: boolean; newPass?: boolean };
@@ -135,6 +139,7 @@ export function threadMenuRows(facts: ThreadMenuFacts, extra: ThreadMenuExtra = 
     });
     if (on) rows.push({ kind: "item", id: "mac-bridge-rules", label: "Mac approvals…", icon: Lock });
   }
+  if (facts.dev) rows.push({ kind: "item", id: "dev", label: "Dev server", icon: Globe, checked: facts.dev.open });
   rows.push({
     kind: "item",
     id: "resources",

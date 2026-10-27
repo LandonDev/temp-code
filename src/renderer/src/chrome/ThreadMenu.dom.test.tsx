@@ -46,7 +46,6 @@ function menu(over: Partial<ComponentProps<typeof ThreadMenu>> = {}) {
     onPick: vi.fn(),
     running: 0,
     onPauseAll: vi.fn(() => Promise.resolve()),
-    dev: { shown: false, open: false, onToggle: vi.fn() },
     terminal: { onNew: vi.fn(), active: false },
     recent: [],
     onOpenRecent: vi.fn(),
@@ -128,10 +127,10 @@ describe("ThreadMenu", () => {
     expect(props.onRestore).toHaveBeenCalledWith("x");
   });
 
-  it("Terminal opens the project terminal, Dev server toggles the pane", async () => {
-    const props = menu({ dev: { shown: true, open: true, onToggle: vi.fn() } });
+  it("Terminal opens the project terminal; Dev server is the thread's own row, not the project's", async () => {
+    const props = menu();
     const list = await openMenu();
-    expect(within(list).getByRole("menuitemcheckbox", { name: "Dev server" }).getAttribute("aria-checked")).toBe("true");
+    expect(within(list).queryByText("Dev server")).toBeNull();
     fireEvent.click(within(list).getByText("Terminal"));
     expect(props.terminal.onNew).toHaveBeenCalled();
   });

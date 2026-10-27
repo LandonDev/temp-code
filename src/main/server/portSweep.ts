@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
 import { readFile, readlink } from 'node:fs/promises'
 import { notDevServer, underRunner } from '@shared/devServerRules'
+import { listenerWords } from '@shared/devServerWords'
 import type { EventRow } from '@shared/events'
 import type { ThreadResources } from './threadResources'
 import { shellOf } from './threadResourcesParse'
@@ -429,9 +430,10 @@ export class PortSweep {
       const callId = verdict.credit.callId ?? guess?.call.callId ?? null
       // The call's command names the server when the call is known to be its; otherwise the process does.
       const named = verdict.credit.callId ? this.calls.get(sessionId)?.find((c) => c.callId === callId)?.command : guess?.named ? guess.call.command : null
-      const label = portLabel(l.port, { command: named ?? serverCommand(chain, stops), process: l.command })
+      const listener = serverCommand(chain, stops) ?? l.command
+      const label = portLabel(l.port, { command: named ?? listener, process: l.command })
       const made = this.deps.resources.record(sessionId, this.deps.environmentId, {
-        created: [{ kind: 'port', identifier: String(l.port), label, branch: null, pid: l.pid, callId }],
+        created: [{ kind: 'port', identifier: String(l.port), label, branch: null, pid: l.pid, callId, what: listenerWords(listener, label) }],
         removed: []
       })
       if (made.length) {

@@ -40,6 +40,8 @@ export interface ThreadResource {
   pid?: number | null
   /** port only: the tool call whose command opened it (its transcript row offers the link). */
   callId?: string | null
+  /** port only: what the listening process is, in plain words ("Vite dev server"); absent on a row from before it was kept. */
+  what?: string | null
   /** port only: where it is forwarded (a Mac's number for it; contract-ports.ts). */
   forwards?: PortForwardInfo[]
 }

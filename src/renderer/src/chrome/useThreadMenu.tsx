@@ -1,8 +1,11 @@
-import { useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { devPane, useDevPane } from "../lib/devPane";
+import { useDevRunning, useDevServable } from "../lib/devServers";
 import { bridgeableEnvironment, loadThreadBridge, setThreadBridge, useThreadBridge } from "../lib/macBridge";
 import { useMasterIds } from "../lib/masterThread";
 import * as commands from "../lib/tcserver/commands";
 import { sessionStore } from "../lib/tcserver/store";
+import { useProjects } from "../lib/tcserver/workspaces";
 import type { ThreadRules } from "@server/shared/rules";
 import type { SessionMeta, ThreadType } from "../lib/tcserver/types";
 import { threadMenuRows, type ThreadMenuExtra } from "../lib/threadMenu";
@@ -83,6 +86,23 @@ function titleOf(id: string): string {
   return (sessionStore.get(id)?.title ?? sessionStore.metaOf(id)?.title) || "Untitled";
 }
 
+/** The Dev server row (docs/box.md "Dev servers on the box"): offered when a
+ *  host can serve the thread's project or one of its servers runs; it opens
+ *  and closes the Dev servers pane and never starts anything. */
+export function useThreadDevServer(sessionId: string | null): { open: boolean } | null {
+  // The thread's project and host only: a streaming turn must not re-render the menu's owner.
+  const where = useSyncExternalStore(sessionStore.subscribe, () => {
+    const t = sessionId ? (sessionStore.get(sessionId) ?? sessionStore.metaOf(sessionId)) : undefined;
+    return t?.projectId ? `${t.environmentId}|${t.projectId}` : "";
+  });
+  const [environmentId, projectId] = where.split("|");
+  const project = useProjects().find((p) => p.id === projectId && p.environmentId === environmentId);
+  const servable = useDevServable(project);
+  const running = useDevRunning(project?.id);
+  const open = useDevPane((s) => s.open);
+  return project && (servable || running) ? { open } : null;
+}
+
 export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi {
   const latest = useRef(handlers);
   latest.current = handlers;
@@ -94,6 +114,7 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
   const bridgeState = useThreadBridge(target ?? undefined);
   const resources = useThreadResources(target ?? undefined);
   const host = useThreadHost(target);
+  const dev = useThreadDevServer(target);
   const masterIds = useMasterIds();
   useEffect(() => startThreadResources(), []);
 
@@ -125,6 +146,7 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
         moves: own ? host.moves : [],
         side: !!sidePane(id),
         close: actions?.onCloseTab ? closeFact(id) : undefined,
+        dev: own ? dev : null,
       },
       extra,
     );
@@ -169,6 +191,7 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
       if (env) quiet(setThreadBridge(env, id, !bridgeState?.macPeer));
     } else if (pick === "mac-bridge-rules") setDialog({ kind: "bridge", id });
     else if (pick === "resources") setDialog({ kind: "resources", id });
+    else if (pick === "dev") devPane.toggle();
     else if (pick === "remove-queue") {
       const env = metaOf(id)?.environmentId ?? sessionStore.get(id)?.environmentId;
       if (env) quiet(commands.sessionBatch(env, "stop", [id]));

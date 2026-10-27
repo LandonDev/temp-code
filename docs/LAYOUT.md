@@ -187,10 +187,12 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   header's order: Activity when background tasks, live subagents, a
   watching master's wait or a running dev server exist; Agents when the
   thread has subagents of its own (a master's batch lives on its board,
-  never here); Changes when its cwd is a project
-  checkout; Notes for every root; Files and Build for a
-  project thread (dev servers live in the bottom dock's tab), and Debug for one on a dev build or once "Debug this
-  file" asked for it on the thread. The default is Activity if it exists, else Agents when
+  never here); Changes when its cwd is a project checkout, or when it is a
+  loose chat whose workspace's folder is a git repository (`checkout`,
+  read on the workspace's path); Notes for every root; Files with Changes;
+  Build for a project thread (dev servers live in the bottom dock's tab),
+  and Debug for one on a dev build or once "Debug this file" asked for it
+  on the thread. The default is Activity if it exists, else Agents when
   the thread has subagents (live or done), else Changes, else Notes; a remembered section that no
   longer exists falls back to the default.
 - **Frame.** A docked column, 320px by default, 260 to 480 by the sash on
@@ -237,11 +239,15 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
     into hunks (the caret takes the icon's place on hover), each stageable
     (`hunksOf` in surfaces/editorGit.ts, reached through `import()`). Under
     them the Against group (`ChangesAgainst.tsx`, what the Branch section
-    was): a `Select` of the target, `↑3 ↓1`, a ⋯ menu with Update from,
-    Rebase onto and Merge into (a local target only), the files changed
-    since the merge base opening the diff against it, and one fold line,
-    "3 commits ahead  1 behind", over the commits; a landed move is a
-    toast, conflicts one `Alert` with nothing changed. The commit field is
+    was): a `Select` of the target, a ⋯ menu with Update from, Rebase
+    onto and Merge into (a local target only), the files changed since the
+    merge base opening the diff against it ("No file differs" when none
+    does but commits do; nothing at all when even), and one fold line,
+    "3 commits ahead  1 behind", over the commits, the one place ahead and
+    behind are said. With no branch but the current one there is no
+    default target: the `Select` stands alone on "Choose a branch", and a
+    picked branch that is gone reads "<branch> no longer exists". A landed
+    move is a toast, conflicts one `Alert` with nothing changed. The commit field is
     pinned at the foot while there are changes: the generate button inside
     it, Commit (⌘↩) with a menu for Commit & push and Commit, push & create
     PR. Loading is skeleton rows, nothing is one Empty, "No changes", a

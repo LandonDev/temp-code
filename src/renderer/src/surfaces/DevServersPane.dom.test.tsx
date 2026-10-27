@@ -228,7 +228,9 @@ describe('DevServersPane', () => {
     threadResourcesStore.setState({ bySession: { t1: [port()] } })
     mount()
     for (const key of ['env_box/run1', 'env_box/res1'])
-      await probe!.act(async () => (probe!.container.querySelector(`[data-dev-server="${key}"] [aria-label="Stop"]`) as HTMLElement).click())
+      await probe!.act(async () =>
+        [...probe!.container.querySelectorAll<HTMLButtonElement>(`[data-dev-server="${key}"] button`)].find((b) => b.textContent === 'Stop')!.click()
+      )
     expect(requests).toContainEqual(['env_box', 'devServer.stop', { runId: 'run1' }])
     expect(requests).toContainEqual(['env_box', 'resources.remove', { sessionId: 't1', ids: ['res1'] }])
   })
