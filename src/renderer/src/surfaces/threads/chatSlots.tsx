@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { registerToastAnchor } from "../../lib/toastAnchor";
 
 /**
  * The chat column pulled into its three slots so a view can seat them
@@ -19,6 +20,8 @@ export type ChatSlots = {
   /** The working strip; null where the view has no use for it. */
   strip: ReactNode;
   composer: ReactNode;
+  /** The pane holds the focus: the toast stack sits above this footer. */
+  anchor?: boolean;
 };
 
 export type RenderChat = (opts?: ChatOpts) => ReactNode;
@@ -44,7 +47,11 @@ export function ChatColumn({ slots }: { slots: ChatSlots }) {
 /** The centred footer alone, for a view that seats the transcript elsewhere. */
 export function ChatFooter({ slots, className = "" }: { slots: ChatSlots; className?: string }) {
   return (
-    <div className={`mx-auto w-full max-w-4xl shrink-0 ${className}`}>
+    <div
+      ref={slots.anchor ? registerToastAnchor : undefined}
+      data-toast-anchor={slots.anchor ? "" : undefined}
+      className={`mx-auto w-full max-w-4xl shrink-0 ${className}`}
+    >
       {slots.strip}
       {slots.composer}
     </div>

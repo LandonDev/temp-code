@@ -264,7 +264,9 @@ app replaces itself from the feed, and only from the feed.
   (Kobra on Base UI, adapted flat to the tokens at the top of
   `src/renderer/src/index.css`, to `chrome/icons` and to the motion tokens;
   `StatusMark` is the one status vocabulary, `threadStateOf` turns a wire
-  status into its state; sonner is the one toast stack). Nothing in
+  status into its state; sonner is the one toast stack, seated 8px above the
+  focused thread's strip and inside its column, `toastInset` in
+  components/ui/toaster.tsx). Nothing in
   src/renderer writes a literal colour, duration or curve, and no bullet
   lists appear in the UI. The motion guard has no application timing
   exceptions: CSS uses the motion tokens, JavaScript uses `lib/ease.ts`,

@@ -422,6 +422,7 @@ export function useThreadChat({
         />
       ) : null,
     composer: composerOf(opts),
+    anchor: focused && visible,
   });
   const renderChat = (opts?: ChatOpts) => <ChatColumn slots={renderSlots(opts)} />;
   return { composerOf, renderSlots, renderChat, newPassArmed, armNewPass, addSelectionToChat };

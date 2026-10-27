@@ -341,7 +341,11 @@ No cards within cards. No glows. No decorative badges or chips. No
 repeating the same data twice. No over-explaining: states are shown, not
 narrated. No colour without meaning. No shadows on docked UI. No left colour
 bar for focus or selection (a focused or selected row is a `muted` fill).
-No bullet points in the UI. Confirmation dialogs only for destructive,
+No bullet points in the UI. A toast never covers a control: the stack sits
+8px above the focused thread's strip, 16px inside its column's right edge
+(`toastInset` in components/ui/toaster.tsx, measured from the footer
+`ChatFooter` registers in lib/toastAnchor.ts), and 16px from the window's
+corner where no thread is focused. Confirmation dialogs only for destructive,
 irreversible actions. Every spacing and timing value is a token we can name.
 
 ## Verifying without a dev instance
