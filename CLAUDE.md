@@ -529,7 +529,12 @@ routed to (aliax-core's `forward`). Two listeners:
   cache TTL; a `fresh` pick keeps only the cache term). A pinned account is
   the route regardless. Picks read the store live; the rows' snapshot
   (`headroom` per provider, the bars on the account chip's menu and the
-  Claude panel, reset on hover) follows at most every 5 s. Each host pushes
+  Claude panel, reset on hover) follows at most every 5 s. The rail's foot
+  names no account: each provider's row is the pooled share from
+  `src/shared/usageMeter.ts` (`meterFor`: the mean room over routable
+  accounts, each its tighter of 5h and week) with the next refill, or
+  "Limited 3m" while every account is throttled, and its popover lists the
+  windows and how many accounts have room. Each host pushes
   its own picture to its peers every 30 s and within a second of a 429
   (`accounts.headroom`, admin; the answer carries the peer's), merged under
   the sender's id, so the Mac and the box pick from one picture. Proof:
