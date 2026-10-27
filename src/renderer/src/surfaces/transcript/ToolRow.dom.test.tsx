@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Block } from "../../lib/session";
 import { SelectSessionContext } from "../AgentMarkdown";
 import { ActionRow } from "./ActionRow";
+import { ActivityRow } from "./ActivityRow";
 
 // FileRefMenu asks the native bridge which editor opens a file; jsdom has none.
 vi.mock("../../lib/editorConfig", () => ({ useEditorConfig: () => null }));
@@ -151,5 +152,32 @@ describe("ActionRow", () => {
     });
     expect(container.querySelector("pre")!.textContent).toContain('"pattern"');
     expect(getByRole("button", { name: "Show formatted" })).toBeTruthy();
+  });
+
+  it("a call waiting on approval says its live verb and carries the card once, with no body of its own", () => {
+    const onApproval = vi.fn();
+    const block = call("Bash", { command: "git push", description: "Push master" }, { status: "pending", approval: { requestId: 7 } });
+    const { container, getAllByRole, getByRole, queryByRole } = render(<ActionRow block={block} onApproval={onApproval} />);
+    expect(container.textContent).toContain("Pushing");
+    expect(container.querySelector('[data-glyph] [data-state="waiting"]')).not.toBeNull();
+    expect(queryByRole("button", { expanded: false })).toBeNull();
+    expect(getAllByRole("button", { name: "Allow" })).toHaveLength(1);
+    fireEvent.click(getByRole("button", { name: "Allow" }));
+    expect(onApproval).toHaveBeenCalledWith(7, "allow");
+  });
+
+  it("a decided call is an ordinary row again, with its caret", () => {
+    const block = call("Bash", { command: "git push", description: "Push master" }, { approval: { requestId: 7, decided: "allow" } });
+    const { getByRole, queryByRole } = render(<ActionRow block={block} />);
+    expect(getByRole("button", { name: "Pushed master" }).getAttribute("aria-expanded")).toBe("false");
+    expect(queryByRole("button", { name: "Allow" })).toBeNull();
+  });
+
+  it("an edit waiting on approval is an action row, not an edit row", () => {
+    const block = call("Edit", { file_path: "/repo/a.ts", old_string: "a", new_string: "b" }, { status: "pending", approval: { requestId: 3 } });
+    const { container, getAllByRole } = render(<ActivityRow block={block} cwd="/repo" />);
+    expect(container.textContent).toContain("Editing");
+    expect(container.querySelector('[data-glyph] [data-state="waiting"]')).not.toBeNull();
+    expect(getAllByRole("button", { name: "Allow" })).toHaveLength(1);
   });
 });

@@ -92,7 +92,9 @@ export function ActionRow({
           </CollapsibleContent>
         </Collapsible>
       ) : null}
-      {/* Pending: the board. Decided: its one-line verdict. Neither: nothing. */}
+      {/* Where the approval card mounts: what the call asks and Allow / Deny
+          while it waits, its verdict once decided. A9's ApprovalCard takes
+          this spot with the same props. */}
       <ApprovalControls block={block} onApproval={onApproval} />
       {block.question ? <QuestionCard question={block.question} /> : null}
     </div>

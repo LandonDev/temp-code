@@ -1,13 +1,11 @@
 // A8 (action rows): a tool call outside a group.
-import { FilePreview } from "../../chrome/FilePreview";
-import { isEditTool, stubFilePreview } from "../../lib/harness/preview";
+import { isEditTool } from "../../lib/harness/preview";
 import { type Block } from "../../lib/session";
 import type { OpenFileFn } from "../../lib/search";
 import { EditRow } from "../EditRow";
 import { splitEditCards } from "../editCards";
 import { isIncompleteTool, needsApproval, toolCallLabel, toolCallState } from "../transcriptActivity";
 import { ActionRow } from "./ActionRow";
-import { ApprovalControls } from "./Approval";
 import type { ApprovalHandler } from "./types";
 
 /**
@@ -20,7 +18,6 @@ export function ToolCall({
   onApproval,
   onOpenFile,
   onOpenDiff,
-  embedded,
   plain = false,
 }: {
   block: Block;
@@ -28,30 +25,18 @@ export function ToolCall({
   onApproval?: ApprovalHandler;
   onOpenFile?: OpenFileFn;
   onOpenDiff?: (path: string) => void;
+  /** Kept for TranscriptBlock's call; rows look the same anywhere. */
   embedded?: boolean;
   /** Render as a plain tool row even when the call is an edit (a memory-file edit). */
   plain?: boolean;
 }) {
   const preview = block.tool?.preview;
   const label = toolCallLabel(block, cwd);
-  const frame = embedded ? "py-0.5" : "py-1";
   const editTool = isEditTool(block.tool?.kind, block.text || block.tool?.title, preview);
 
-  if (editTool && !plain && !block.question) {
-    if (needsApproval(block)) {
-      return (
-        <div className={frame}>
-          <FilePreview
-            preview={preview ?? stubFilePreview(block.tool?.kind, label)}
-            status={toolCallState(block)}
-            cwd={cwd}
-            onOpenFile={onOpenDiff ?? onOpenFile}
-          />
-          <ApprovalControls block={block} onApproval={onApproval} />
-        </div>
-      );
-    }
-    // One row per file the call touched; app bookkeeping as a plain row.
+  // One row per file an edit touched, app bookkeeping as a plain row. An
+  // edit still waiting on approval is an action row: its card shows the ask.
+  if (editTool && !plain && !block.question && !needsApproval(block)) {
     const { cards, internal } = splitEditCards(block);
     return (
       <>
