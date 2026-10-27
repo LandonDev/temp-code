@@ -31,11 +31,6 @@ export interface EditDiff {
 /** Past this many rows a diff is cut off. */
 export const DIFF_LINE_CAP = 600;
 
-/** How long a settled edit's rows take to pour in. */
-export function revealDuration(rows: number): number {
-  return Math.min(300, 150 + rows * 6);
-}
-
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const rec = (v: unknown): Record<string, unknown> =>
   v && typeof v === "object" && !Array.isArray(v)

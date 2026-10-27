@@ -9,7 +9,6 @@ import {
   parseApplyPatchFile,
   parseUnifiedDiff,
   previewToRows,
-  revealDuration,
   rowsFromHunks,
 } from "./diffRows";
 
@@ -175,10 +174,3 @@ describe("locating hunks", () => {
   });
 });
 
-describe("revealDuration", () => {
-  it("grows 6ms a row from 150 and caps at 300", () => {
-    expect(revealDuration(0)).toBe(150);
-    expect(revealDuration(10)).toBe(210);
-    expect(revealDuration(500)).toBe(300);
-  });
-});

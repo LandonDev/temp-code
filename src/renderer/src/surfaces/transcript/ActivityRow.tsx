@@ -94,9 +94,7 @@ export function ActivityRow({
     return (
       <>
         {cards.map((card) => (
-          <div key={card.id} className="py-1">
-            <EditRow block={card} cwd={cwd} onOpenFile={onOpenDiff ?? onOpenFile} />
-          </div>
+          <EditRow key={card.id} block={card} cwd={cwd} onOpenFile={onOpenDiff ?? onOpenFile} />
         ))}
         {internal ? <ActionRow block={internal} cwd={cwd} onOpenFile={onOpenFile} /> : null}
         {/* A decided board leaves its one-line verdict under the edit it judged. */}

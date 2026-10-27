@@ -1,15 +1,15 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import { useReducedMotion } from 'motion/react'
-import { ChevronRight, FilePlusCorner, PenLine, Trash2 } from '../chrome/icons'
-import { TerminalSpinner } from '../chrome/TerminalSpinner'
-import { usePaneVisible } from '../hooks/paneVisibility'
+import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { GitCompare, Pencil } from '../chrome/icons'
+import { Button } from '../components/ui/button'
+import { Collapsible, CollapsibleContent } from '../components/ui/collapsible'
+import { Skeleton } from '../components/ui/skeleton'
+import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip'
 import { readTextFile } from '../lib/fs'
 import { hostOfCwd } from '../lib/tcserver/projects'
 import { resolveWorkspacePath } from '../lib/paths'
 import type { OpenFileFn } from '../lib/search'
 import type { Block } from '../lib/session'
 import { sessionStore, useLiveEdits } from '../lib/tcserver/store'
-import { TweenHeight, useCountUp } from '../motion'
 import { diffChunk } from './chunks'
 import { SurfaceSkeleton } from './SurfaceSkeleton'
 
@@ -21,29 +21,26 @@ import {
   locateHunks,
   parseUnifiedDiff,
   previewToRows,
-  revealDuration,
   rowsFromHunks,
   type DiffRow,
   type EditDiff
 } from './diffRows'
 import { RenderCache, cacheKey } from '../lib/renderCache'
-import { editModel, splitPath } from './editModel'
+import { editModel } from './editModel'
 import { editOpenKey, usePersistedOpen } from './editOpenState'
 import { OmittedNote } from './ToolDetails'
-import { toolCallState } from './transcriptActivity'
-import { toolPhraseParts } from '../lib/toolPhrase'
 import { useTranscriptSession } from './transcriptSession'
-import { MatrixSpinner } from './threads/bits'
+import { ActionLine } from './transcript/ActionLine'
+import { actionOf } from './transcript/actionModel'
+import { ToolGlyph } from './transcript/ToolGlyph'
 
 const InlineEditor = lazy(() => import('./monaco/InlineEditor'))
 
 /**
- * A file change stands alone and loud — never folded into the quiet run of
- * tool calls. Bordered card, the file name leading (basename bold, directory
- * muted), a live verb while the call runs, then an unmissable +N / −N
- * diffstat with created and deleted states. Expands in place to the diff:
- * rides open while the edit lands, pours the rows in, holds a beat, folds.
- * A click on a numbered row swaps the diff for the editor at that line.
+ * One file change as one action line: the verb ("Edited", "Created",
+ * "Deleted"), the file's name, its +N / -N counts ticking while it streams.
+ * The diff opens in place under the line on the caret only, never on its
+ * own. A click on a numbered row swaps the diff for the editor at that line.
  */
 
 /** The rows to show: the tool input's hunks located in the landed file
@@ -141,14 +138,11 @@ export function EditRow({
   onOpenFile?: OpenFileFn
 }) {
   const m = editModel(block)
-  const state = toolCallState(block)
-  const running = state === 'pending'
-  const failed = state === 'rejected'
-  const { name, dir } = splitPath(m.path, cwd)
+  const action = actionOf(block, cwd)
+  const running = action.running
   const filePath = m.path ? resolveWorkspacePath(m.path, cwd) : undefined
   const sessionId = useTranscriptSession()
   const environmentId = (sessionId ? sessionStore.environmentOf(sessionId) : undefined) ?? hostOfCwd(filePath ?? cwd ?? '')
-  const reduce = useReducedMotion()
 
   // Editing in place: which line the editor opens at, and a bump after a
   // save so the diff re-locates in the file as it is now.
@@ -181,18 +175,9 @@ export function EditRow({
     (running && liveRows ? liveRows : parsedRows).some((r) => r.type === 'add' || r.type === 'del') ||
     !!omitted
 
-  // Watched live: the counters tick up and the name fades in once known.
-  const [liveAtMount] = useState(running)
-  const adds = useCountUp(running ? (liveRec?.adds ?? m.adds) : m.adds, liveAtMount)
-  const dels = useCountUp(running ? (liveRec?.dels ?? m.dels) : m.dels, liveAtMount)
-
-  // Auto mode: the diff rides open while the edit lands, pours its rows in
-  // once settled, holds a beat, then folds — unless the user toggled, which
-  // wins and is remembered per session and call.
+  // Opening is the caret's alone, remembered per session and call.
   const [userOpen, setUserOpen] = usePersistedOpen(editOpenKey(sessionId, block))
-  const [holdOpen, setHoldOpen] = useState(running)
-  const [revealed, setRevealed] = useState<number | null>(null)
-  const open = hasDiff && (editMode || (userOpen ?? (liveAtMount && (running || holdOpen))))
+  const open = hasDiff && (editMode || !!userOpen)
   useEffect(() => {
     if (open && omitted && !omitted.loading && !omitted.failed) void sessionStore.loadRowBodies(block)
   }, [open, omitted, block])
@@ -200,41 +185,7 @@ export function EditRow({
   const located = useLocatedRows(environmentId, block, diff, filePath, !running, refresh, open)
   const rows = located ?? parsedRows
   const shownRows = running && liveRows ? liveRows : rows
-  // The body mounts the first time the diff opens and stays for the close
-  // tween; a row that never opens never renders its lines.
-  const everOpen = useRef(false)
-  if (open) everOpen.current = true
-  const rowCount = rows.length
-  const paneShown = usePaneVisible()
-  useEffect(() => {
-    if (running || !liveAtMount) return
-    if (reduce || !paneShown || rowCount === 0) {
-      const t = window.setTimeout(() => setHoldOpen(false), 800)
-      return () => clearTimeout(t)
-    }
-    const dur = revealDuration(rowCount)
-    const t0 = performance.now()
-    let raf = 0
-    let hold = 0
-    const tick = (now: number): void => {
-      const p = Math.min(1, Math.max(0, (now - t0) / dur))
-      setRevealed(Math.max(1, Math.round(p * rowCount)))
-      if (p < 1) raf = requestAnimationFrame(tick)
-      else {
-        setRevealed(null)
-        hold = window.setTimeout(() => setHoldOpen(false), 800)
-      }
-    }
-    setRevealed(1)
-    raf = requestAnimationFrame(tick)
-    return () => {
-      cancelAnimationFrame(raf)
-      clearTimeout(hold)
-      setRevealed(null)
-    }
-  }, [running, liveAtMount, rowCount, reduce, paneShown])
 
-  const Icon = m.remove ? Trash2 : m.create ? FilePlusCorner : PenLine
   const startLine = block.tool?.preview?.startLine
   const openFile =
     filePath && onOpenFile
@@ -246,98 +197,40 @@ export function EditRow({
     setEditMode(true)
     setUserOpen(true)
   }
-  const smallButton =
-    'absolute right-2 top-1 z-10 rounded-[5px] bg-content/8 px-1.5 py-0.5 text-[10px] text-content/50 hover:text-content'
+  const label = [action.verb, action.object].filter(Boolean).join(' ')
 
   return (
-    <div
-      className={`edit-row overflow-hidden rounded-[10px] border bg-content/6 ${
-        failed ? 'border-danger/30' : 'border-content/10'
-      } ${liveAtMount ? 'z-fade-in' : ''}`}
-    >
-      <div className="flex h-9 min-w-0 items-center gap-2.5 px-2">
-        <span className="flex size-5 shrink-0 items-center justify-center rounded-[6px] bg-content/10 text-content/70">
-          {running ? (
-            <TerminalSpinner className="text-content/70" />
-          ) : (
-            <Icon className="size-3.5" strokeWidth={1.75} />
-          )}
-        </span>
-        <span className="flex min-w-0 flex-1 items-baseline gap-1.5 text-[13px]">
-          {running ? <span className="shrink-0 text-content/50">{toolPhraseParts(block, cwd, true).verb}</span> : null}
-          {name ? (
-            <button
-              type="button"
-              title={m.path}
-              onClick={openFile}
-              className={`min-w-0 truncate text-left ${
-                openFile ? 'cursor-pointer hover:underline' : 'cursor-default'
-              } ${running ? 'z-fade-quick' : ''}`}
-            >
-              <span
-                className={`font-medium ${
-                  failed
-                    ? 'text-danger'
-                    : m.remove
-                      ? 'text-content/70 line-through'
-                      : 'text-content'
-                }`}
-              >
-                {name}
-              </span>
-              {dir ? <span className="ml-1.5 text-xs text-content/40">{dir}</span> : null}
-              {m.extraPaths.length > 0 ? (
-                <span className="ml-1.5 text-xs text-content/40">+{m.extraPaths.length} more</span>
-              ) : null}
-            </button>
-          ) : null}
-        </span>
-        <span className="ml-auto flex shrink-0 items-center gap-2 pl-2">
-          {failed ? (
-            <span className="text-xs font-medium text-danger">failed</span>
-          ) : m.remove ? (
-            <span className="text-xs font-medium text-danger/80">deleted</span>
-          ) : adds > 0 || dels > 0 ? (
-            <span className="text-xs font-semibold tracking-tight tabular-nums">
-              {adds > 0 ? <span className="text-success">+{adds}</span> : null}
-              {adds > 0 && dels > 0 ? ' ' : null}
-              {dels > 0 ? <span className="text-danger">−{dels}</span> : null}
-            </span>
-          ) : null}
-          {hasDiff ? (
-            <button
-              type="button"
-              aria-expanded={open}
-              aria-label={open ? 'Hide diff' : 'Show diff'}
-              onClick={() => {
+    <div data-block={block.id} className="flex min-w-0 flex-col">
+      <ActionLine
+        glyph={<ToolGlyph action={action} block={block} />}
+        verb={action.verb}
+        object={action.object}
+        title={action.title}
+        label={label}
+        onObject={openFile}
+        objectLabel={openFile ? `Open ${action.object}` : undefined}
+        adds={running ? (liveRec?.adds ?? m.adds) : m.adds}
+        dels={running ? (liveRec?.dels ?? m.dels) : m.dels}
+        ticking={running}
+        open={open}
+        onToggle={
+          hasDiff
+            ? () => {
                 if (open) setEditMode(false)
                 setUserOpen(!open)
-              }}
-              className="flex size-[18px] items-center justify-center rounded-[5px] bg-content/8 text-content/50 hover:text-content"
-            >
-              <ChevronRight
-                className={`size-3 transition-transform duration-150 ${open ? 'rotate-90' : ''}`}
-                strokeWidth={1.75}
-              />
-            </button>
-          ) : null}
-        </span>
-      </div>
-      <TweenHeight open={open} animate={!reduce}>
-        {everOpen.current ? (
-          <div className="relative border-t border-content/10">
+              }
+            : undefined
+        }
+      />
+      <Collapsible open={open}>
+        <CollapsibleContent>
+          <div className="group/body relative px-3 pb-2">
             {editMode && filePath && cwd ? (
               <>
-                <button type="button" onClick={() => setEditMode(false)} className={smallButton}>
-                  diff
-                </button>
-                <Suspense
-                  fallback={
-                    <div className="flex h-80 items-center justify-center">
-                      <MatrixSpinner />
-                    </div>
-                  }
-                >
+                <CornerButton label="Show diff" onClick={() => setEditMode(false)}>
+                  <GitCompare strokeWidth={1.5} />
+                </CornerButton>
+                <Suspense fallback={<Skeleton className="h-80" />}>
                   <InlineEditor
                     path={filePath}
                     cwd={cwd}
@@ -353,24 +246,50 @@ export function EditRow({
             ) : (
               <>
                 {canEdit ? (
-                  <button type="button" onClick={() => editHere()} className={smallButton}>
-                    edit
-                  </button>
+                  <CornerButton label="Edit here" onClick={() => editHere()}>
+                    <Pencil strokeWidth={1.5} />
+                  </CornerButton>
                 ) : null}
                 {omitted ? (
                   <OmittedNote bytes={omitted.bytes} failed={!!omitted.failed} />
                 ) : (
-                  <DiffBody
-                    rows={shownRows}
-                    visible={revealed ?? undefined}
-                    onEditAt={canEdit ? editHere : undefined}
-                  />
+                  <DiffBody rows={shownRows} onEditAt={canEdit ? editHere : undefined} />
                 )}
               </>
             )}
           </div>
-        ) : null}
-      </TweenHeight>
+        </CollapsibleContent>
+      </Collapsible>
     </div>
+  )
+}
+
+/** A ghost icon button at the body's top right, shown on hover and focus. */
+function CornerButton({
+  label,
+  onClick,
+  children
+}: {
+  label: string
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={label}
+            onClick={onClick}
+            className="absolute right-3 top-0 z-10 text-muted-foreground opacity-0 transition-[opacity,background-color] group-hover/body:opacity-100 focus-visible:opacity-100"
+          />
+        }
+      >
+        {children}
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   )
 }

@@ -56,9 +56,7 @@ export function ToolCall({
     return (
       <>
         {cards.map((card) => (
-          <div key={card.id} className={frame}>
-            <EditRow block={card} cwd={cwd} onOpenFile={onOpenDiff ?? onOpenFile} />
-          </div>
+          <EditRow key={card.id} block={card} cwd={cwd} onOpenFile={onOpenDiff ?? onOpenFile} />
         ))}
         {internal ? <ActionRow block={internal} cwd={cwd} onOpenFile={onOpenFile} /> : null}
       </>
